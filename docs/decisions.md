@@ -312,6 +312,168 @@ posture would cost more than it saves. Evidence first, decision in the RFC.
 
 ---
 
-*RFC-001-Chartworks.md is the next artifact: it settles what D-011…D-018 defer (the P1
-access primitive and SQL-safety mechanism, the pipeline shape, the surface set, the
-store inventory). Product decisions land here as phases ship, numbered D-019+.*
+### D-019 — MCP surface on `mcp-go` for V1; Dockyard re-evaluated at Wave 5 · *accepted (RFC-001 §11.1, 2026-07-06)*
+
+Resolves the question D-011 re-opened, on brief 13's evidence. V1 builds
+`internal/mcpserver` on **`mark3labs/mcp-go`**, pinned at the current upstream line
+(v0.55.x; Soundings' v0.43.2 seams are shape-identical). Deciding factor: mcp-go's
+global `WithToolHandlerMiddleware` makes the scope/grant gate **structural** — every
+tool passes it; a missed wrap cannot exist — which is load-bearing for P1a. Dockyard's
+runtime is confirmed importable and otherwise fit, but applies cross-cutting gates
+per-registration by convention. Chartworks keeps its tool contracts Dockyard-portable
+(Go structs as source of truth, one registration list, one package) and **re-evaluates
+Dockyard at the Wave-5 boundary**.
+
+**Why:** a structurally guaranteed access gate beats a conventioned one on the product's
+most security-sensitive surface; the proven path also avoids being Dockyard's first
+headless production consumer while shipping a new DE stage and dual SQL modes.
+
+---
+
+### D-020 — The access primitive: one grants relation, three grains, one resolver · *accepted (RFC-001 §5, 2026-07-06)*
+
+Resolves D-015's mechanism. Access = `(tenant, principal, grain ∈ {source, topic,
+dataset}, resource, permission ∈ {read, query, manage})`, deny-by-default, with tenant
+roles (admin/member/viewer) as defaults and **agents as first-class principals**
+(`agent:<id>` holds its own grants). Capability scopes ride the token and gate
+operation families; grants live in Chartworks' store and gate resources; both must
+pass. One resolver computes the caller's effective access into the frozen envelope
+once per request; every store/warehouse query takes non-optional scope parameters;
+empty set short-circuits. Per-decision metrics + the admin-only scope-debug diagnostic.
+
+**Why:** dataset-grain is what the DE stage demands (a materialization grantable
+independently of its topic); the shape synthesizes the client predecessor's grant data
+model with the fork's unified resolver (brief 05) and closes the "topic access ⇒ data
+access" scar (brief 04).
+
+---
+
+### D-021 — SQL-safety mechanism: three-stage AST validation ∩ grants, defense-in-depth read-only execution, split read/write interfaces · *accepted (RFC-001 §9.5–9.6, 2026-07-06)*
+
+Concretizes P1b/P1c. Validation: minimal pre-parse (never duplicating parser judgment —
+the CTE-regression lesson, brief 03) → dialect-aware AST parse → whole-tree statement
+blocking + single-statement + allowlisting against **topic pack ∩ caller grants** +
+join-graph reachability, all as typed error codes. Execution: `ValidatedSQL` is the
+only executable type (an adapter cannot run a raw string); read-only
+transaction/session enforcement at the adapter where the engine supports it;
+server-side statement timeouts; cursor-level row caps (never LIMIT-by-wrapping). The
+write path (`sources.Materializer`) is a distinct interface on declared destinations —
+no shared entry point with a read/write flag. No regex injection heuristics presented
+as controls.
+
+**Why:** the predecessors' validator was strong but was the *entire* guarantee, and
+callers could reach `execute()` without it (brief 02/04); defense-in-depth and
+type-level unbypassability close that class.
+
+---
+
+### D-022 — BYO-agent mode: a published, versioned context bundle + `submit_sql` through the identical core · *accepted (RFC-001 §9.4, 2026-07-06)*
+
+Mechanism for D-014. `get_query_context` returns a **published, versioned** bundle
+(routing result, capability-contract slice, governance constraints *restated
+explicitly*, dialect + SQL requirements, clarification slots, provenance-labeled prior
+SQL as optional guidance). `submit_sql` runs the identical validation/execution core as
+internal generation — the validator assumes an adversarial submitter; provenance
+(`internal | byo`) is recorded end-to-end; context-read and submit are distinct
+capability scopes. A standing parity test proves mode (b) cannot bypass a mode-(a)
+check.
+
+**Why:** brief 03's Q10 analysis — the bundle is a public contract the moment it ships,
+and external agents can't be assumed to know unspoken governance; P7 forbids a second
+validation path.
+
+---
+
+### D-023 — Bruin: mine ideas only; no engine dependency · *accepted (RFC-001 §7, 2026-07-06; resolves D-018)*
+
+Bruin is not adopted as a library or CLI subprocess: its SQL-parsing core requires
+CGo + a Rust FFI (or an embedded Python runtime), and ingestion delegates to a Python
+tool — direct collisions with D-005's single-static-binary posture (brief 10). Its
+pipeline/quality/lineage model is mined as design input for `internal/engineering`.
+The standalone, pure-Go **`semantic-engine`** submodule remains a candidate for a
+narrow post-V1 spike, as a separate decision.
+
+---
+
+### D-024 — Uploads are first-class sources via a managed Postgres upload workspace · *accepted (RFC-001 §7.4, 2026-07-06)*
+
+CSV/XLSX/Parquet uploads load into a tenant-scoped, Chartworks-managed Postgres
+database (the *upload workspace*) and register as datasets queried through the
+standard `postgres` **data-source adapter** — same identity path, same grants, same
+execution route as any warehouse. No DuckDB (its Go driver requires CGo — D-005
+holds); no parallel "spreadsheet mode" (the predecessors' weak-auth parallel path is
+the named scar, briefs 01/02/04). The workspace is customer-data territory reached via
+the adapter seam, never the `store` seam (D-004 boundary preserved).
+
+---
+
+### D-025 — One generic leased job queue; no per-concern worker classes · *accepted (RFC-001 §3.3, 2026-07-06)*
+
+All background work (profiling, topic generation, publishing, pipeline runs, refresh)
+runs as typed handlers on one Postgres-leased queue (`FOR UPDATE SKIP LOCKED`, lease +
+heartbeat + reclaim); the schedule dispatcher enqueues into the same queue. The
+predecessors' 13 worker classes are the P7 counterexample (brief 01).
+
+---
+
+### D-026 — Charts V1: declarative spec + deterministic selector; no renderer, no LLM ranker · *accepted (RFC-001 §10, 2026-07-06)*
+
+V1 emits `ColumnMetadata[]` + `ChartRecipe` + provenance envelope (brief 06's
+recommended contract) and selects via the ported rules engine (slot binding + weighted
+suitability + adaptive alternatives — pure Go, no model call). ECharts-style option
+inflation never happens in Go; the LLM ranker is post-V1 and gateway-schema-constrained
+when it comes (the predecessors' free-text JSON parse is the named anti-pattern).
+
+---
+
+### D-027 — Governed rules + proactive clarification are V1 scope (scoped down) · *accepted (RFC-001 §8.4, 2026-07-06)*
+
+The client predecessor's governed business-rules and underspecification layers — the
+largest capability gap vs the fork (briefs 03/05) — ship in V1 as: rule authoring with
+structural validation and lifecycle (`proposed → active → retired`), a budgeted
+injection lane with dropped/contradiction visibility, and topic-scoped clarification
+patterns running before generation. Shadow evaluation and historical replay defer to a
+late wave.
+
+---
+
+### D-028 — No in-process NLP library; no bundled language models · *accepted (RFC-001 §9.1, 2026-07-06)*
+
+Span hints are lexicon-light Go; embedding retrieval and gateway models carry semantic
+weight. The predecessors' spaCy EN/ES dependency (brief 01) does not transfer — it
+would break D-005 and the single-binary posture for marginal routing gain.
+
+---
+
+### D-029 — `vindex` seam confirmed: pgvector, single driver, facet vectors only · *accepted (RFC-001 §3.2/§12, 2026-07-06)*
+
+Routing needs vector retrieval over topic facets, so the conditional seam in CLAUDE.md
+§4.4 is exercised: `internal/vindex` with one V1 driver (`pgvector`), scoped
+`(tenant, topic, version)`, embedding model + dims pinned per index and validated at
+boot.
+
+---
+
+### D-030 — No local user management; self-issue = API keys; admin bootstrap via CLI · *accepted (RFC-001 §4.3–4.4, 2026-07-06)*
+
+Chartworks ships no password login, signup, invites, or header-exchange endpoints.
+Ecosystem users arrive as Pengui tokens; standalone callers are API keys exchanged for
+short-lived self-issued JWTs; first-admin provisioning is a local operator CLI action.
+This deletes the predecessors' highest-severity scar (header-trust identity minting,
+brief 04) by removing the surface entirely.
+
+---
+
+### D-031 — Eval strategy: golden + red-team CI gates, grounded-accuracy manual loop, live gate · *accepted (RFC-001 §16, 2026-07-06)*
+
+Five golden suites (routing, SQL generation, validation incl. the standing CTE
+fixture, chart selection, context budgets) and a red-team suite (injection,
+schema-escape, cross-tenant, resource exhaustion, adversarial BYO submissions) gate CI
+at a 0.85 pass threshold + zero criticals, on the mock/fixture path.
+BIRD/Spider-informed accuracy benchmarking against the sample warehouse is a manual
+loop scored as *grounded* generation; the live gate (D-010) blocks wave closes.
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031 above. Further product
+decisions land here as phases ship, numbered D-032+.*
