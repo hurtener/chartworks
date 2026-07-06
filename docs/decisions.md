@@ -8,16 +8,15 @@
 > Status vocabulary: **accepted** (binding) · **superseded-by-D-NNN** · **proposed**
 > (recorded, not yet binding).
 >
-> **Bootstrap note.** Chartworks is a new repo. The seed entries below are **proposed
-> (inherited from the sibling Soundings build)** — they restate transferable ecosystem
-> decisions for this product so the method layer is coherent from day one. The **kickoff
-> interview** flips each to *accepted* or *superseded*; product-specific decisions
-> (pipeline shape, semantic model, SQL-safety mechanism, surface set) start **after** the
-> kickoff and the RFC, numbered from where these seeds leave off.
+> **Bootstrap note.** Chartworks is a new repo. The seed entries D-001…D-010 were
+> inherited from the sibling Soundings build as *proposed*; the **kickoff interview
+> (2026-07-06)** flipped them to *accepted* (D-007 superseded by D-011) and filed the
+> interview-born decisions D-011…D-018 below. Product-specific decisions continue from
+> there as the RFC and phases land.
 
 ---
 
-### D-001 — Clean-room Go rewrite, two predecessors, never copied · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-001 — Clean-room Go rewrite, two predecessors, never copied · *accepted (kickoff interview, 2026-07-06)*
 
 Chartworks is a clean-room redesign of two Python predecessors — **the client
 predecessor** (`_ref/original_wayfinder/`, the client-tailored original) and
@@ -36,7 +35,7 @@ cheapest way to inherit the *right* half of each.
 
 ---
 
-### D-002 — Product name & family seat · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-002 — Product name & family seat · *accepted (kickoff interview, 2026-07-06)*
 
 The product is **Chartworks** (repo `chartworks`, module
 `github.com/hurtener/chartworks` — a **placeholder pending the kickoff interview**), the
@@ -50,7 +49,7 @@ but is not yet load-bearing, so it stays a placeholder the kickoff confirms.
 
 ---
 
-### D-003 — One intelligence seam, Bifrost driver · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-003 — One intelligence seam, Bifrost driver · *accepted (kickoff interview, 2026-07-06)*
 
 Every embedding / LLM / rerank / SQL-generation call goes through the `internal/gateway`
 seam (interface + factory + driver). V1 drivers: **`bifrost`** (wrapping
@@ -66,7 +65,7 @@ prevents.
 
 ---
 
-### D-004 — Postgres-first for Chartworks' OWN store; SQLite dropped; customer data sources are separate · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-004 — Postgres-first for Chartworks' OWN store; SQLite dropped; customer data sources are separate · *accepted (kickoff interview, 2026-07-06)*
 
 Durable Chartworks state goes through a `Store` seam. **V1 ships exactly one store driver —
 `postgres` (pgx/v5).** A **SQLite / embedded store is explicitly out of scope**; do not
@@ -89,7 +88,7 @@ called out at bootstrap rather than discovered in a phase.
 
 ---
 
-### D-005 — CGo-free posture (deliberately reversing the Soundings exception) · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-005 — CGo-free posture (deliberately reversing the Soundings exception) · *accepted (kickoff interview, 2026-07-06)*
 
 Chartworks is **CGo-free**: `CGO_ENABLED=0`, a single static binary, no C toolchain
 prerequisite — the strict posture of Portico / Harbor / Dockyard / Stowage. This
@@ -102,9 +101,13 @@ future CGo need is a **new decision entry** that reverses this posture — never
 default reclaims the single-static-binary guarantee the family prefers. Recording the
 reversal here stops a contributor from assuming Soundings' exception transfers.
 
+**Kickoff nuance (2026-07-06):** CGo-free is the *preferred default*, not dogma — if a
+dependency materially better on performance or development simplicity requires CGo, the
+reversal is on the table; it still requires its own decision entry, never a silent flip.
+
 ---
 
-### D-006 — Asymmetric-JWT dual-mode auth · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-006 — Asymmetric-JWT dual-mode auth · *accepted (kickoff interview, 2026-07-06)*
 
 Auth uses **asymmetric JWT only** (RS/ES `256|384|512`); `HS*`/`none` are rejected at the
 parser before any business logic. Two modes ship from one binary and are combinable:
@@ -123,7 +126,7 @@ transfers wholesale; only the *access* half is product-specific and deferred to 
 
 ---
 
-### D-007 — MCP surface on `mark3labs/mcp-go` unless Dockyard becomes consumable · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-007 — MCP surface on `mark3labs/mcp-go` unless Dockyard becomes consumable · *superseded-by-D-011 (kickoff interview, 2026-07-06)*
 
 The MCP tool surface (`internal/mcpserver`) is built on **`github.com/mark3labs/mcp-go`**,
 which supplies streamable-HTTP, stdio, in-process sessions, and the context/middleware
@@ -139,7 +142,7 @@ superseded.
 
 ---
 
-### D-008 — CLI on stdlib `flag`; cobra rejected · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-008 — CLI on stdlib `flag`; cobra rejected · *accepted (kickoff interview, 2026-07-06)*
 
 The `chartworks` CLI (including any `admin` command family) uses stdlib `flag` with
 hand-rolled subcommand dispatch, not cobra.
@@ -150,7 +153,7 @@ cobra's tree. The Soundings build reached the same conclusion at its breadth poi
 
 ---
 
-### D-009 — Preflight fast/full + coverage-band + drift-audit as the standing quality machinery · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-009 — Preflight fast/full + coverage-band + drift-audit as the standing quality machinery · *accepted (kickoff interview, 2026-07-06)*
 
 The standing quality gates are: a **preflight** gate in two modes (fast — changed phases
 only, for the pre-commit hook; full — every phase's smoke, for CI and pre-merge); a
@@ -166,7 +169,7 @@ the "green CI, broken product" failure D-010 guards.
 
 ---
 
-### D-010 — Live-verification gate as a standing wave-end check · *proposed (inherited from the Soundings build; confirm or supersede at kickoff)*
+### D-010 — Live-verification gate as a standing wave-end check · *accepted (kickoff interview, 2026-07-06)*
 
 A **live-verification gate** runs the real pipeline against real provider models (via a
 local `.env`, e.g. an OpenRouter key through the `bifrost` driver) at each wave boundary.
@@ -180,7 +183,135 @@ models is even more load-bearing.
 
 ---
 
-*The RFC-001-Chartworks.md is pending; the kickoff interview flips these seed entries to
-**accepted** or **superseded** and settles the product-specific concerns each defers to
-the RFC (P1 access model, SQL-safety mechanism, pipeline shape, surface set). Product
-decisions land here as phases ship, numbered from where these seeds leave off (D-011+).*
+### D-011 — Dockyard is consumable as a Go library; MCP-surface library choice is RFC-owned · *accepted (kickoff interview, 2026-07-06)*
+
+Supersedes D-007's premise: at kickoff the user confirmed **Dockyard was and is
+consumable as a Go dependency** (its rejection on the Soundings build was the prior
+agent's call, not a hard constraint). The Chartworks MCP surface library —
+`mark3labs/mcp-go` (the Soundings-proven path) vs. Dockyard — is therefore **re-opened
+and decided in the RFC**, after a dedicated research brief evaluates Dockyard's fit for
+an in-process, one-binary dual-surface server. The contract is unchanged either way:
+the tool set + typed error results + JWT validation + access (P7 thin-surface rule).
+
+**Why:** the D-007 rationale ("an unavailable sibling framework cannot gate the
+contract") no longer applies; using the family's own MCP framework has ecosystem value
+if its architecture fits, and that is an evidence question for a brief, not a default.
+
+---
+
+### D-012 — Three consumer classes; a derived consumer-request doc · *accepted (kickoff interview, 2026-07-06)*
+
+Chartworks is consumed exactly as Soundings is: **Pengui Console (HTTP)**, **Harbor
+agents (MCP)**, and **standalone API customers** (self-issue mode). A **consumer-request
+doc** (the analog of Soundings' Pengui request doc) is derived at bootstrap as an
+interview output and fills slot 5 of the CLAUDE.md §2 authority chain. The
+Soundings/Chartworks boundary stands as drawn — unstructured documents (including a
+scanned PDF of a table) are Soundings' domain; structured data, **including full
+warehouse consumption** (not just CSV/XLSX upload), is Chartworks' domain.
+
+**Why:** the dual-surface, three-consumer posture is the ecosystem shape; deriving the
+request doc now gives phases a contract anchor before Pengui's side exists.
+
+---
+
+### D-013 — V1 scope: full data-engineering stage + migrated NLQ core; charts/frontend deferred · *accepted (kickoff interview, 2026-07-06)*
+
+V1 includes the **complete data-engineering stage** — source connectors (uploaded
+CSV/XLSX/Parquet **and** warehouse connections), profiling/quality checks, schema
+inference, transformations/modeling with materializations, dataset versioning/lineage,
+and refresh scheduling — plus the **migrated NLQ-to-SQL core** with the topic-pack
+semantic layer **kept and enhanced** (its lean, budget-friendly context-card engineering
+is a deliberate crown jewel). **Charts and the frontend are deferred from V1** — the
+priority is migrating everything else; a future session may re-create or adopt a
+frontend. Normalized output shapes still reserve a chart-spec slot so deferral is not a
+redesign. Depth is favored over delivery speed ("nobody is waiting for this to be mega
+fast"). The competitive capability target: exceed Teramot-class GenBI offerings on top
+of predecessor capabilities.
+
+**Why:** the DE stage is the product's reason to exist beyond the predecessors; cutting
+it would rebuild the predecessor instead of the successor. Charts are the family's most
+replaceable layer (dataviz assets exist elsewhere) and the cheapest deferral.
+
+---
+
+### D-014 — Dual SQL-generation modes: gateway-generated and BYO-agent, one validation/execution core · *accepted (kickoff interview, 2026-07-06)*
+
+The NLQ pipeline supports two generation modes: **(a) internal** — Chartworks generates
+SQL through the `gateway` seam (the predecessors' mode), and **(b) BYO-agent** — the
+calling agent (e.g. a ChatGPT- or Claude-backed agent outside our subscription) receives
+the semantic context (topic pack / context cards / schema slice) from Chartworks,
+generates the SQL itself, and submits it back; Chartworks **validates and executes** it
+under exactly the same safety gates. Both modes converge on **one** validation +
+execution core (P7 — no parallel paths); mode (b) never bypasses a check mode (a) runs.
+
+**Why:** the predecessors force BYOK on every team wanting agents outside their
+subscription — a real adoption blocker the user called out. Teramot proves the
+context-handoff pattern; the safety property makes it viable: generated SQL is untrusted
+regardless of who generated it, so the same validator serves both.
+
+---
+
+### D-015 — Access model: per-principal (and per-agent) deny-by-default ACL; concrete primitive RFC-owned · *accepted (kickoff interview, 2026-07-06)*
+
+Multi-tenant from day one, as Soundings. The access primitive moves to **per-principal
+ACL — and likely per-agent principals** — replacing the predecessors' model where the
+*application* held the privileges and the only restriction lived at the key/agent level
+("if you have access to the topic, the server has access to the data"). The DE stage
+makes that model untenable: engineered datasets and write paths need finer grants than
+topic visibility. The concrete primitive (claim-carried ACL like Soundings, data-source/
+dataset grants, or both) is **RFC-owned** (P1).
+
+**Why:** greenfield chance to fix the predecessors' coarsest security scar; deferring
+the mechanism (not the principle) to the RFC keeps the decision evidence-based on the
+briefs.
+
+---
+
+### D-016 — Customer data-source credentials: encrypted at rest in the Store (MVP) · *accepted (kickoff interview, 2026-07-06)*
+
+Warehouse/data-source credentials are stored in Chartworks' own store **encrypted at
+rest** (MVP posture); never logged, never echoed into errors or results (CLAUDE.md §7).
+The RFC pins the mechanism (envelope encryption, key source, rotation) and keeps an
+external secret-manager reference as a future seam, not a V1 driver.
+
+**Why:** a concern Soundings never had; encrypted-at-rest is the proportionate MVP for a
+single-binary product, with the seam leaving room for vault-class backends later.
+
+---
+
+### D-017 — Write-posture split: NLQ strictly read-only; the DE stage writes through a distinct governed path · *accepted (kickoff interview, 2026-07-06)*
+
+Chartworks **does write into client warehouses** — that is the point of the
+data-engineering stage (materializations, engineered datasets). The P1 SQL-safety
+property therefore splits: the **NLQ path remains strictly read-only** (no DDL/DML ever,
+schema-allowlisted, injection-guarded), while the **engineering stage owns a separate,
+explicitly governed write path** — declared destinations, scoped credentials/grants,
+audited operations — that NLQ-generated or BYO-agent SQL can never reach. The RFC
+defines both halves as binding properties.
+
+**Why:** "read-only everywhere" would amputate the product's new stage; "writes anywhere"
+would gut P1. Splitting the posture by pipeline stage keeps both invariants honest and
+reviewable.
+
+---
+
+### D-018 — Bruin is a candidate embedded engine, adopt-or-ditch in the RFC · *accepted (kickoff interview, 2026-07-06)*
+
+**Bruin** (`github.com/bruin-data/bruin`, staged under `external_refs/bruin-cli`) is
+evaluated as a candidate **engine** — not just an idea source — for both query execution
+against customer warehouses and DE pipeline running (which could absorb significant
+development). Unlike the predecessors, code-level dependency on Bruin is permissible if
+adopted (it is OSS, not confidential); the brief evaluates library consumability,
+license, connector coverage, CGo implications (D-005), and architectural fit. The RFC
+makes the adopt/ditch call. The `ssr_analyst_analysis_DE_pipeline` internal draft is
+mined the same pass as a non-validated first draft — take or ditch freely.
+
+**Why:** a proven multi-warehouse execution/pipeline engine could collapse the largest
+new subsystem's cost; but an engine that fights the seam architecture or the CGo/binary
+posture would cost more than it saves. Evidence first, decision in the RFC.
+
+---
+
+*RFC-001-Chartworks.md is the next artifact: it settles what D-011…D-018 defer (the P1
+access primitive and SQL-safety mechanism, the pipeline shape, the surface set, the
+store inventory). Product decisions land here as phases ship, numbered D-019+.*

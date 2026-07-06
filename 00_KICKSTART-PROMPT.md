@@ -115,7 +115,11 @@ open question.
      **agents**. Confirm which get briefs and what to mine from each (the
      Soundings build mined PageIndex/OpenKB to real effect). Additional
      candidates if useful: dbt/Ibis (transforms), Cube/MetricFlow (semantic
-     layer), BIRD/Spider (text-to-SQL evals), data-profiling tools.
+     layer), BIRD/Spider (text-to-SQL evals), data-profiling tools. Also important to 
+     take into consideration Bruin (https://github.com/bruin-data/bruin) as CLI engine.
+     Plus there is added ssr_analyst_analysis_DE_pipeline which is an internal idea
+     we can take or ditch about how to do the DE pipeline. The idea was not validated
+     and can be considered a first draft.
  10. Cadence. Wave granularity and PR ceremony as in Soundings (CI at wave ends,
      stacked PRs)? Anything you want done differently this time (call out: the
      Soundings retro favors — fresh-DB test harnesses from day one; live gate
