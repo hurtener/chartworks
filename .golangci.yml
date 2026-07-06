@@ -1,0 +1,104 @@
+# golangci-lint v2 config. Conservative and strict rather than exotic —
+# CLAUDE.md §5 (style), §7 (security), §10 (gateway seam).
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # third_party/ (if ever added) would hold a vendored, upstream-generated Go
+  # binding consumed via a go.mod replace — never linted as our code. Excluded
+  # up front so a future vendor drop doesn't require touching this file.
+  exclusions:
+    generated: lax
+    paths:
+      - third_party
+    rules:
+      # examples/ are runnable demo mains — fmt.Println is idiomatic there,
+      # same as cmd/; the forbidigo rule targets library/server code.
+      - path: ^examples/
+        linters:
+          - forbidigo
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - revive
+    - gosec
+    - misspell
+    - gocritic
+    - bodyclose
+    - forbidigo
+    - depguard
+    - sloglint # best-effort: drop this line if unavailable in the local golangci-lint build
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: error-strings
+        - name: context-as-argument
+    gosec:
+      excludes:
+        - G104 # unhandled errors are errcheck's job, not gosec's
+    sloglint:
+      # log/slog only (CLAUDE.md §5) — no key-value mismatches.
+      no-mixed-args: true
+      kv-only: false
+    forbidigo:
+      # CLAUDE.md §5: log/slog only — never log.Printf/Println, logrus, zap.
+      # fmt.Println has no place outside cmd/ and tests.
+      forbid:
+        - pattern: '^log\.Printf$'
+          msg: "use log/slog, not the log package (CLAUDE.md §5)"
+        - pattern: '^log\.Println$'
+          msg: "use log/slog, not the log package (CLAUDE.md §5)"
+        - pattern: '^log\.Fatal'
+          msg: "use log/slog + explicit os.Exit, not log.Fatal* (CLAUDE.md §5)"
+        - pattern: '^fmt\.Println$'
+          msg: "no bare fmt.Println outside cmd/ and tests (CLAUDE.md §5)"
+      analyze-types: true
+    depguard:
+      rules:
+        provider-sdks-confined-to-gateway:
+          # No package outside internal/gateway may import a provider SDK or
+          # construct a provider HTTP request directly — the one intelligence
+          # seam rule (CLAUDE.md §10, ported from Soundings' P5). This list is
+          # best-effort — extend it as real provider SDKs are added to go.mod;
+          # it cannot catch a raw net/http call to a provider host.
+          files:
+            - "!**/internal/gateway/**"
+          deny:
+            - pkg: "github.com/sashabaranov/go-openai"
+              desc: "provider SDKs are confined to internal/gateway (CLAUDE.md §10)"
+            - pkg: "github.com/anthropics/anthropic-sdk-go"
+              desc: "provider SDKs are confined to internal/gateway (CLAUDE.md §10)"
+            - pkg: "cloud.google.com/go/vertexai"
+              desc: "provider SDKs are confined to internal/gateway (CLAUDE.md §10)"
+            - pkg: "github.com/maximhq/bifrost"
+              desc: "the Bifrost driver lives in internal/gateway only (CLAUDE.md §10)"
+        logging:
+          files:
+            - "**/*.go"
+          deny:
+            - pkg: "github.com/sirupsen/logrus"
+              desc: "log/slog only — no logrus (CLAUDE.md §5)"
+            - pkg: "go.uber.org/zap"
+              desc: "log/slog only — no zap (CLAUDE.md §5)"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    paths:
+      - third_party

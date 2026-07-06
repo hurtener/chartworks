@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-mirror (AGENTS.md == CLAUDE.md, CLAUDE.md §18)
+        run: make check-mirror
+
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: drift-audit (CLAUDE.md §16 / §14)
+        run: make drift-audit
+
+  build-test:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 0
+      # The Docker Postgres service (below) — exported so any store/integration
+      # tests and PG-gated smoke checks run (not SKIP) in CI.
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        ports:
+          - 5434:5432
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Go source
+        id: gosrc
+        run: |
+          if find . -name '*.go' -not -path './_ref/*' -not -path './external_refs/*' -not -path './.git/*' -print -quit | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No Go source yet — build/vet/test/coverage will no-op (SKIP)."
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.gosrc.outputs.present == 'true'
+        with:
+          go-version: "1.26"
+
+      - name: make build
+        run: make build
+
+      - name: make vet
+        run: make vet
+
+      - name: make test
+        run: make test
+
+      - name: make coverage
+        run: make coverage
+
+      - name: make preflight-full (PREFLIGHT_FULL=1 — every phase's smoke; §14)
+        run: make preflight-full
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Go source
+        id: gosrc
+        run: |
+          if find . -name '*.go' -not -path './_ref/*' -not -path './external_refs/*' -not -path './.git/*' -print -quit | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.gosrc.outputs.present == 'true'
+        with:
+          go-version: "1.26"
+
+      - name: golangci-lint
+        if: steps.gosrc.outputs.present == 'true'
+        # golangci-lint v2 requires golangci-lint-action >= v7 (v8 enforces linter
+        # >= v2.1.0). Pin the linter to the exact version proven on Soundings
+        # (v2.12.2, built with go1.26.x) so CI never resolves to an older build
+        # whose toolchain trips the "linter built with an older Go than the
+        # targeted go.mod version" guard.
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+
+      - name: skip (no Go source yet)
+        if: steps.gosrc.outputs.present == 'false'
+        run: |
+          echo "SKIP: lint — no Go source files yet"
+
+  cross-build:
+    # Cross-compile check: linux/amd64 + darwin/arm64, CGO_ENABLED=0
+    # (Chartworks is CGo-free by default — no extraction-style seam needing CGo).
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Go source
+        id: gosrc
+        run: |
+          if find . -name '*.go' -not -path './_ref/*' -not -path './external_refs/*' -not -path './.git/*' -print -quit | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.gosrc.outputs.present == 'true'
+        with:
+          go-version: "1.26"
+
+      - name: cross-build ${{ matrix.goos }}/${{ matrix.goarch }}
+        if: steps.gosrc.outputs.present == 'true'
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -o "/tmp/chartworks-${{ matrix.goos }}-${{ matrix.goarch }}" ./cmd/chartworks
+
+      - name: skip (no Go source yet)
+        if: steps.gosrc.outputs.present == 'false'
+        run: |
+          echo "SKIP: cross-build — no Go source files yet"

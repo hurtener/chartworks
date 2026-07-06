@@ -1,0 +1,31 @@
+# Local Postgres for development and integration tests.
+#
+#   make pg-up    # start (docker compose up -d postgres)
+#   make pg-down  # stop and remove (docker compose down -v)
+#
+# pgvector/pgvector:pg17 is used even though vector search may or may not be
+# needed for Chartworks (the RFC settles that) — the image is a strict superset
+# of plain postgres, so it costs nothing to keep and avoids a rebuild if a
+# vector-backed feature (e.g. semantic-layer / schema-embedding search) lands
+# later. Host port 5434 — Soundings already occupies 5433 on this machine, so
+# 5434 avoids the clash when both repos run locally at once.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: chartworks
+      POSTGRES_PASSWORD: chartworks
+      POSTGRES_DB: chartworks
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chartworks -d chartworks"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - chartworks_pgdata:/var/lib/postgresql/data
+
+volumes:
+  chartworks_pgdata:

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-commit hook — runs the preflight gate (CLAUDE.md §4.1).
+# Installed into .git/hooks/pre-commit by scripts/install-hooks.sh.
+#
+# Uses the FAST default of `make preflight`: build + drift-audit always, plus the
+# smoke scripts for only the phases whose owning packages changed vs HEAD. CI runs
+# the full sweep (`make preflight-full` / PREFLIGHT_FULL=1), so nothing is lost —
+# the local hook just stays quick. Force a full local run with
+# `PREFLIGHT_FULL=1 git commit …` when in doubt.
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+cd "$REPO_ROOT"
+
+if ! make preflight; then
+  echo ""
+  echo "COMMIT BLOCKED: 'make preflight' failed (CLAUDE.md §4.1)."
+  echo "Preflight is the non-negotiable gate: build + every smoke check + drift-audit."
+  echo "Fix the failure above and re-commit."
+  echo ""
+  echo "Bypassing with 'git commit --no-verify' is reserved for a documented"
+  echo "emergency (CLAUDE.md §4.1 / §13) — not routine practice."
+  exit 1
+fi

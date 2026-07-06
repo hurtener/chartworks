@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# The two predecessors — kept locally only, never committed (00_KICKSTART-PROMPT.md,
+# CLAUDE.md "Predecessor hygiene"). Copy _ref/ manually to a fresh clone.
+_ref/
+
+# Third-party repos staged locally for idea-mining research briefs (never committed;
+# ideas enter only through docs/research/ briefs, same rule as the predecessors).
+external_refs/
+
+# Go build artifacts
+/bin/
+/dist/
+*.out
+*.test
+
+# Environment / secrets
+.env
+.env.*
+
+# Coverage / profiling / scratch build output (Makefile `coverage`/`bench`)
+coverage.out
+*.prof
+
+# Vendored FFI/native shared libraries fetched per-platform by a future driver's
+# fetch script, should one ever be added — never committed (mirrors Soundings'
+# xberg .lib/ precedent). Chartworks is CGo-free by default (D-005 analog).
+.lib/
