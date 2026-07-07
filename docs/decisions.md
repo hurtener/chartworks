@@ -750,6 +750,42 @@ power ceiling a plan instead of a hope, without letting it creep into V1.
 
 ---
 
-*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-042 were filed
+### D-043 — Per-role provider configurability; `rerank` joins the role enum; Soundings' validated provider setup is inherited, not re-derived · *accepted (user directive, 2026-07-07)*
+
+Three parts:
+
+1. **Every gateway role configures its provider independently.** A role's config block
+   is `{provider, model, credential (env: indirection), endpoint?, params}` — end
+   users must be able to express any combination in config alone (e.g. OpenAI for
+   embeddings + OpenRouter for generation + direct Cohere for rerank) with **no
+   assumption of one key or one provider for all roles**. The bifrost driver's
+   multi-provider fan-out carries this; the config surface must expose it per role.
+   The named counterexample: Soundings' initial brief locked all roles mono-provider
+   with no knobs and it **cost a rework wave** — Chartworks builds the knobs on day
+   one.
+2. **`rerank` is the eighth gateway role.** The predecessors reranked retrieval with
+   an in-process cross-encoder (torch — excluded by D-028); Soundings validated the
+   API-based replacement through its gateway seam. Chartworks' `nlq` facet retrieval
+   consumes it as an **optional, config-gated** stage (off ⇒ retrieval order stands;
+   on ⇒ rerank through the gateway, metered like every role). Amends RFC §13's
+   seven-role enum (phase-05's note anticipated this needs a decision entry — this is
+   it).
+3. **The dev/live reference configuration is inherited from Soundings, already
+   validated and working** — the root `.env` (gitignored, present): `OPENROUTER_API_KEY`
+   + `EMBEDDED_MODEL` (perplexity/pplx-embed-v1-0.6b) + `RERANK_MODEL`
+   (cohere/rerank-4-fast) + `LLM_MODEL`, all routed via OpenRouter. **Phase 05's §16
+   inputs now include mining Soundings' gateway wiring** (`../soundings/internal/
+   gateway` + its config surface): how requests route per provider, how bifrost is
+   configured, how the mock pairs with recorded fixtures — inherit the validated
+   setup; do not re-spend the trial-and-error Soundings already paid for. The
+   embedding model + dims pin (D-003) applies to whatever the config selects.
+
+**Why:** provider flexibility is a real customer requirement Soundings proved the
+hard way, and the working provider matrix is sitting one directory over — both are
+inheritance, not invention.
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-043 were filed
 during the planning review. Further product decisions land here as phases ship,
-numbered D-043+.*
+numbered D-044+.*

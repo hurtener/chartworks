@@ -904,12 +904,22 @@ database (§7.4), which is customer-data territory, not Store territory (D-004).
 ## 13. Gateway seam (P5; D-003)
 
 Drivers: `bifrost` (wrapping `github.com/maximhq/bifrost/core`) + `mock`.
-Model **roles**, each independently configurable (model id, temperature, token
-budget): `embedding` (facet/routing vectors — model + dims **pinned per index**,
-validated at boot; a change is an explicit re-embed operation), `enhance` (topic
-generation), `sqlgen` (mode-a generation), `sqlfix` (bounded repair),
-`clarify` (ambiguity-pattern generation), `pipeline_draft` (assisted DE
-authoring), `profile_summary` (dataset descriptions). All structured outputs are
+Model **roles** — eight, each configuring its **provider independently** (D-043:
+`{provider, model, credential via env: indirection, endpoint?, params}`; any
+combination expressible in config alone — e.g. OpenAI embeddings + OpenRouter
+generation + direct Cohere rerank; never one locked key/provider for all —
+Soundings' mono-provider initial design cost a rework wave and is the named
+counterexample): `embedding` (facet/routing vectors — model + dims **pinned per
+index**, validated at boot; a change is an explicit re-embed operation),
+`rerank` (optional retrieval reranking, consumed config-gated by `nlq` — the
+API-based replacement for the predecessors' in-process cross-encoder, D-028/
+D-043), `enhance` (topic generation), `sqlgen` (mode-a generation), `sqlfix`
+(bounded repair), `clarify` (ambiguity-pattern generation), `pipeline_draft`
+(assisted DE authoring), `profile_summary` (dataset descriptions). The dev/live
+reference configuration is Soundings-validated (D-043): OpenRouter key,
+`perplexity/pplx-embed-v1-0.6b` embeddings, `cohere/rerank-4-fast` rerank —
+phase 05 mines Soundings' gateway wiring rather than re-deriving it. All
+structured outputs are
 JSON-schema-constrained; free-text JSON parsing of model output is forbidden and
 lint-checked (the predecessors did it twice — brief 06). Every call is metered
 (tokens, cost, latency → `gateway_call_events` + Prometheus). The `mock` driver
@@ -938,7 +948,8 @@ Key domains and the defaults that are contractual until re-tuned:
 - `nlq`: complexity-tier token budgets (defaults ≈ 1500/3000/6500), confidence
   bands (0.70/0.85), rules-lane budget (default 300 tokens, tokenizer-backed),
   example caps (max 7).
-- `gateway`: driver, per-role model configs, embedding model + dims (pinned).
+- `gateway`: driver; **per-role provider blocks** (provider, model, credential
+  `env:` ref, endpoint, params — D-043); embedding model + dims (pinned).
 - `jobs`: worker concurrency (default 4), lease timeout, heartbeat interval.
 - `telemetry`: log format, metrics on, OTel endpoint (off by default).
 
@@ -1017,7 +1028,7 @@ or lease-reclaimed with status checkpointed.
 
 ## 18. Decisions settled by this RFC
 
-Logged as D-019…D-042 in `docs/decisions.md`:
+Logged as D-019…D-043 in `docs/decisions.md`:
 
 | D | Decision |
 |---|---|
@@ -1045,6 +1056,7 @@ Logged as D-019…D-042 in `docs/decisions.md`:
 | D-040 | The write boundary: managed `chartworks_*` schemas only; client baseline data read-only forever; enforced at definition validation + render gate + write-credential scope |
 | D-041 | Autopilot governance: `autonomy.propose`/`autonomy.apply` scopes; no autonomous topic publication at any level; revert = drop managed artifacts, atomic per proposal |
 | D-042 | Investigations = the committed V1.1 wave (internal orchestrator, cross-topic queries, managed-schema scratchpad); V1 ships multi-step BYO-agent analysis as a documented supported pattern |
+| D-043 | Per-role provider configurability (no mono-provider lock — the Soundings rework-wave counterexample); `rerank` as the eighth role, optional in retrieval; Soundings' validated provider setup inherited as the reference config |
 
 Consumer-request §12 questions: Q1 §5.3/§5.1 · Q2 §6.1/§6.3 · Q3 §9.4 ·
 Q4 §11.1 · Q5 §8.4 (in V1, scoped) · Q6 §10 (yes, deterministic selector) ·

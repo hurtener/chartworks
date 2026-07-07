@@ -152,11 +152,17 @@ predicate; adversarial suite green.
 
 ### Phase 05 — `gateway` (Wave 2)
 **RFC:** §13. **Briefs:** 03, 01. **Difficulty:** medium.
-The intelligence seam: role-based model config (`embedding`/`enhance`/`sqlgen`/
-`sqlfix`/`clarify`/`pipeline_draft`/`profile_summary`), `bifrost` + `mock` drivers,
-schema-constrained structured outputs (free-text JSON parse forbidden + lint),
-per-call metering → `gateway_call_events` + metrics, embedding model/dims pinning
-validated at boot, recorded-fixture tests per role.
+The intelligence seam: **eight roles, each with an independent provider block**
+(`{provider, model, credential env: ref, endpoint?, params}` — D-043; any
+combination expressible in config alone, never mono-provider-locked):
+`embedding`/`rerank`/`enhance`/`sqlgen`/`sqlfix`/`clarify`/`pipeline_draft`/
+`profile_summary`. `bifrost` + `mock` drivers, schema-constrained structured
+outputs (free-text JSON parse forbidden + lint), per-call metering →
+`gateway_call_events` + metrics, embedding model/dims pinning validated at boot,
+recorded-fixture tests per role. **§16 inputs include mining Soundings' gateway
+wiring** (../soundings/internal/gateway + config) — inherit the validated
+provider routing (OpenRouter + pplx-embed + cohere-rerank reference config in
+the root .env); do not re-derive it.
 **Key criteria:** a provider SDK import outside `internal/gateway` fails an
 architecture test; schema violation ⇒ typed error, never partial parse; every call
 metered; dims mismatch at boot ⇒ refused start.
@@ -313,7 +319,9 @@ output, never silent; clarification slots produced for ambiguous fixtures.
 ### Phase 17 — `nlq-routing-context` (Wave 5)
 **RFC:** §9.1–9.2, §8.3. **Briefs:** 03 (deepest), 05, 08. **Difficulty:** high.
 Span hints (lexicon-light Go — D-028), facet retrieval (typed candidates,
-k-per-type, tenant-scoped caches), routing decisions + calibrated confidence
+k-per-type, tenant-scoped caches; **optional config-gated rerank via the gateway
+`rerank` role — off ⇒ retrieval order stands, D-043**), routing decisions +
+calibrated confidence
 (published ∩ healthy ∩ granted eligibility), the `ContextAssembler` (single pruning
 owner: card caps → complexity-tier budgets, one tokenizer-backed currency,
 never-mutate-source, reduction logging, provenance on filters, rules lane).
@@ -454,7 +462,7 @@ audit punch list resolved; live gate green as the release blocker.
 | Upload workspace provisioning (per-tenant DBs) complicates ops | 11 | Single-instance/two-database default for dev; provisioning behind one interface so a managed-DB driver can replace it without core surgery |
 | Context-budget tuning regresses generation quality invisibly | 17, 18, 24 | Token-count goldens from day one; the eval gate runs from Wave 7 backward-applied to Wave-5 fixtures; live gate scores grounded accuracy each wave end |
 | BYO bundle becomes a de-facto public API before it stabilizes | 19 | `bundle_version` from the first ship; backward-compat golden; the contract is explicitly marked pre-1.0 until phase 25 |
-| The 13-role gateway config sprawls | 05+ | Roles are a closed enum in config; adding one is a decision entry |
+| The gateway role/provider config sprawls | 05+ | Roles are a closed enum (eight, D-043); per-role provider blocks are one fixed shape; adding a role is a decision entry |
 | Wave 5 is the long pole (6 phases, chained) | 15–20 | 20 is explicitly slippable; 15→18 are the critical path — staff them Opus-first; checkpoint audit at the boundary before surfaces build on them |
 | Predecessor scars re-enter via familiarity (repair vocab, header trust, flag-switched writes) | all | drift-audit forbidden-word scan; architecture tests for P1c/P5/P7 land with the phase that owns each seam, not at the end |
 | The autopilot (26) is the least battle-tested subsystem in the product | 26 | It lands LAST, on proven gates (13/15/16); proposals are atomic + revertible; L3 is per-tenant opt-in behind policy; D-040 makes baseline damage structurally impossible at any autonomy level; the wave-7 checkpoint audits it against real L1 usage evidence |
