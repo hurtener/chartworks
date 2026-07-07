@@ -102,6 +102,14 @@
 - **Autonomy policy / autonomy ladder** — L0 manual · L1 assisted · L2 goal-driven
   proposal (V1 target) · L3 policy-scoped auto-apply (per-tenant opt-in); outside
   policy degrades to review, loudly (D-039).
+- **Investigation** — the read-side autonomy analog (committed V1.1 wave, D-042): an
+  analytical goal decomposed into sub-questions, each through the unchanged
+  validation/execution gates, synthesized into evidence-backed findings with
+  per-step decision records. At V1, multi-step analysis is a documented supported
+  pattern via external agents looping the BYO tools.
+- **Analysis scratchpad** — ephemeral intermediate views/tables under managed
+  `chartworks_` schemas, created/dropped through the D-040 gates, session-scoped and
+  erased on close (V1.1, D-042).
 - **NLQ (Natural Language Query)** — a natural-language question routed through the
   semantic model to validated read-only SQL.
 

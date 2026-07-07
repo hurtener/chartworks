@@ -109,6 +109,7 @@ The wire/UI nouns (request §2, binding under P6):
 | **proposal** | The atomic, reviewable, revertible changeset an L2/L3 agent produces: pipelines + datasets + topic deltas + schedules (§7.7, D-039). |
 | **decision record** | The stored reasoning trail attached to every agent-proposed object: goal, matched-vs-built, alternatives, evidence, provenance (D-039). |
 | **autonomy policy** | A tenant's declaration of what may auto-publish at L3; outside it, degrade to review — loudly (D-039). |
+| **investigation** | The read-side autonomy analog (V1.1, D-042): an analytical goal decomposed into sub-questions, each through the unchanged validation/execution gates, synthesized into evidence-backed findings with per-step decision records. |
 | **principal** | `user:<id>` · `agent:<id>` · `svc:<name>` · `key:<id>`. |
 | **session** | A conversation scope for refinement; part of the isolation triple. |
 | **freshness** | Dataset recency status: `fresh` / `stale` / `very_stale` / `unknown` (age-bucketed; brief 09). |
@@ -661,6 +662,13 @@ The Teramot-class flow, built on §8.3's machinery:
 - One validation/execution core serves both modes (P7); mode (b) can never
   bypass a check mode (a) runs — enforced by construction (`ValidatedSQL` is the
   only executable type) and by a standing parity test.
+- **Multi-step agent analysis is a supported pattern from day one (D-042):** an
+  external agent looping `get_query_context` → `submit_sql` across sub-questions
+  within a session is the intended analyst shape at V1 — every step validated,
+  executed read-only, and audited; the bundle documentation states this
+  explicitly. The *internal* investigation orchestrator, cross-topic queries,
+  and the managed-schema analysis scratchpad are the committed V1.1 wave
+  (D-042), built on D-039/D-040's proven machinery.
 
 ### 9.5 Validation (P1b concrete; layered — D-038)
 
@@ -1009,7 +1017,7 @@ or lease-reclaimed with status checkpointed.
 
 ## 18. Decisions settled by this RFC
 
-Logged as D-019…D-041 in `docs/decisions.md`:
+Logged as D-019…D-042 in `docs/decisions.md`:
 
 | D | Decision |
 |---|---|
@@ -1036,6 +1044,7 @@ Logged as D-019…D-041 in `docs/decisions.md`:
 | D-039 | The DE autonomy ladder: L2 goal-driven proposals w/ decision records (V1 target); L3 policy-scoped auto-apply (per-tenant opt-in); the drift-driven evolution loop; phase 26 |
 | D-040 | The write boundary: managed `chartworks_*` schemas only; client baseline data read-only forever; enforced at definition validation + render gate + write-credential scope |
 | D-041 | Autopilot governance: `autonomy.propose`/`autonomy.apply` scopes; no autonomous topic publication at any level; revert = drop managed artifacts, atomic per proposal |
+| D-042 | Investigations = the committed V1.1 wave (internal orchestrator, cross-topic queries, managed-schema scratchpad); V1 ships multi-step BYO-agent analysis as a documented supported pattern |
 
 Consumer-request §12 questions: Q1 §5.3/§5.1 · Q2 §6.1/§6.3 · Q3 §9.4 ·
 Q4 §11.1 · Q5 §8.4 (in V1, scoped) · Q6 §10 (yes, deterministic selector) ·
@@ -1050,7 +1059,9 @@ pipeline assets + `ingestr` ingestion through Bruin (D-036 — SQL-only in V1) �
 condition/event schedule triggers (§7.8) ·
 shadow-evaluation + historical replay for rules (D-027) · query-result caching
 (correctness-hazardous under per-grant access; revisit with evidence) · result
-pagination · cross-topic relationship discovery jobs (post-V1) · GEPA-style
+pagination · investigations: cross-topic relationship discovery, the internal
+investigation orchestrator, the analysis scratchpad (the committed V1.1 wave —
+D-042, a plan, not an open-ended deferral) · GEPA-style
 prompt-pack optimization (post-V1; prompt packs themselves are config) ·
 SQLite/embedded store (D-004) · external secret-manager driver (§6.3 seam
 exists) · Dockyard adoption (re-evaluated Wave 5, D-019) · MCP Apps UI ·

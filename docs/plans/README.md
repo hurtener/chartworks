@@ -461,5 +461,17 @@ audit punch list resolved; live gate green as the release blocker.
 
 ---
 
-*Authored per the §16 workflow inputs: RFC-001 v1.0, decisions D-001…D-031, briefs
+## The V1.1 horizon (committed, not planned here)
+
+**Investigations (D-042)** — the read-side autonomy analog — is the designated V1.1
+wave, planned via the §16 workflow after the Wave-7 checkpoint: the internal
+investigation orchestrator (D-039's governance pattern over the unchanged
+query primitives), cross-topic queries (promoted from non-goals), and the
+managed-schema analysis scratchpad (D-040 machinery). V1 already ships its
+external form: multi-step BYO-agent analysis is a documented supported pattern
+(phase 19's bundle docs).
+
+---
+
+*Authored per the §16 workflow inputs: RFC-001 v1.0, decisions D-001…D-042, briefs
 01–13. Wave-end PRs fill the §14 checklist from the orchestrator's own gate runs.*

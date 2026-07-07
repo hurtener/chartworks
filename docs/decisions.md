@@ -716,6 +716,40 @@ managed-schema write gates, so revert can no more touch baseline than apply can.
 
 ---
 
-*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-041 were filed
+### D-042 — Investigations: the read-side autonomy analog is the designated V1.1 wave · *accepted (user directive, 2026-07-06)*
+
+The read path's power ceiling is raised the same way the write path's was (D-039), as
+a committed **V1.1 wave** (not V1 scope), with three components:
+
+1. **The internal investigation orchestrator** — an analytical goal → gateway-driven
+   decomposition into sub-questions → each through the *unchanged* routing/context/
+   validation/execution primitives (P7 — a new caller in a loop, no core rework) →
+   synthesized, evidence-backed findings. Governance is D-039's pattern
+   re-instantiated: investigation = read-side proposal; per-sub-query decision
+   records; budgets (token, query-count, row, wall-clock) as the policy; since reads
+   are safe by construction, auto-run-within-budget needs no human gate.
+2. **Cross-topic queries, promoted from post-V1**: confirmed cross-topic
+   relationships (the predecessors' machinery, brief 05) extend the join graph and
+   the allowlist so validated queries may span topics the caller is granted.
+3. **The analysis scratchpad**: ephemeral intermediate views/tables under managed
+   `chartworks_` schemas, created and dropped through the same D-040 gates —
+   the read path borrows the write path's governed muscle; scratchpad artifacts are
+   session-scoped, erased on investigation close and by tenant erasure.
+
+**V1 reserves only what is cheap now:** the `investigation` vocabulary (glossary +
+RFC §2), session linkage on `queries` rows (already present), and BYO-bundle
+documentation positioning **multi-step external-agent analysis as a supported
+pattern today** — a Harbor/Claude/ChatGPT agent looping `get_query_context` →
+`submit_sql` under the same gates *is* the analyst surface at V1 ship, every step
+validated and audited. No V1 phase gains scope; the V1.1 wave is planned after the
+Wave-7 checkpoint proves the D-039/D-040 machinery in production.
+
+**Why:** competing with Teramot-class "AI analysts" is a sequencing choice, not a
+redesign risk — the seams are already right; writing the commitment down keeps the
+power ceiling a plan instead of a hope, without letting it creep into V1.
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-042 were filed
 during the planning review. Further product decisions land here as phases ship,
-numbered D-042+.*
+numbered D-043+.*
