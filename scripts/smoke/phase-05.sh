@@ -64,9 +64,11 @@ run_group ./internal/gateway "-race" \
   "TestEveryCallMetered|criterion 3: every call emits one gateway_call_events row + counter tick" \
   "TestEmbeddingDimsMismatchRefusesBoot|criterion 4: embedding dims mismatch ⇒ refused boot (D-029)" \
   "TestArch_NoFreeTextJSONParse|criterion 5: free-text JSON parse of model output forbidden (lint)" \
-  "TestUnknownRoleRejectedAtConfig|criterion 6: role enum is closed; unknown/missing role rejected" \
+  "TestUnknownRoleRejectedAtConfig|criterion 6: role enum is closed at eight; unknown/missing role rejected (D-043)" \
   "TestGatewayConcurrentReuse|criterion 7: Gateway safe under concurrent reuse (-race)" \
-  "TestRecordedFixturePerRole|criterion 8: ≥1 recorded-fixture test per role" \
-  "TestMockDriverAllRolesResolvable|criterion 9: mock driver resolves all seven roles"
+  "TestRecordedFixturePerRole|criterion 8: ≥1 recorded-fixture test per role (all eight)" \
+  "TestMockDriverAllRolesResolvable|criterion 9: mock driver resolves all eight roles" \
+  "TestMixedProviderPerRoleRouting|criterion 10: mixed-provider config boots; each role routes to its own provider (D-043)" \
+  "TestRerankConfigGate|criterion 11: rerank config-gated: absent => typed ErrUnsupported, present => index-aligned scores"
 
 summarize_and_exit

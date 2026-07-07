@@ -57,7 +57,7 @@ fi
 # One entry per acceptance criterion. run_group SKIPs any test not yet present, so
 # a partially-built package still surfaces per-criterion progress.
 
-# Criteria 1-8, 10-12: the standard (non-race) suite in one process.
+# Criteria 1-8, 10-13: the standard (non-race) suite in one process.
 run_group "./internal/nlq/..." "" \
   "TestRoutingEligibilityMatrix|criterion 1: eligibility = published ∩ healthy ∩ granted" \
   "TestSpanHintsModelFree|criterion 2: span hints model-free (D-028)" \
@@ -69,7 +69,8 @@ run_group "./internal/nlq/..." "" \
   "TestOneTokenizerCurrency|criterion 8: one tokenizer-backed budget currency" \
   "TestNoRouteClarifyTyped|criterion 10: no_route/clarify are typed, never empty" \
   "TestQueryContextEnvelopeStrategy|criterion 11: stable envelope + strategy discriminator + provenance" \
-  "TestNLQConfigFailLoud|criterion 12: malformed nlq.* config fails loud at boot"
+  "TestNLQConfigFailLoud|criterion 12: malformed nlq.* config fails loud at boot" \
+  "TestRerankConfigGated|criterion 13: rerank gate off ⇒ byte-identical, on ⇒ reordered, timeout ⇒ loud fallback (D-043)"
 
 # Criterion 9: shared-router concurrent reuse under the race detector.
 run_group "./internal/nlq/..." "-race" \

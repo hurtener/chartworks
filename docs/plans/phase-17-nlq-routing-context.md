@@ -33,14 +33,17 @@ kickoff's named crown jewel (D-013), kept and enhanced.
   library), **D-029** (`vindex` facet vectors), **D-020** (grants + the one
   resolver), **D-003** (gateway seam, schema-constrained), **D-027** (governed
   rules + clarification are V1 scope), **D-013** (context engineering is the crown
-  jewel). Downstream: **D-021** (validation), **D-022/D-014** (BYO handoff).
+  jewel), **D-043** (per-role provider config; `rerank` as the eighth gateway role,
+  consumed here as an optional config-gated retrieval stage — amends RFC §13).
+  Downstream: **D-021** (validation), **D-022/D-014** (BYO handoff).
 
 ## Depends on
 
-- **phase-05-gateway** — the `embedding` role (question + facet vectors) flows
-  through the gateway seam; the `mock` driver backs every routing test. Routing
-  itself makes **no LLM call** (span hints are model-free; retrieval uses only the
-  pinned embedding role).
+- **phase-05-gateway** — the `embedding` role (question + facet vectors) and the
+  optional `rerank` role (D-043) flow through the gateway seam; the `mock` driver
+  backs every routing test. Routing itself makes **no generative LLM call** (span
+  hints are model-free; retrieval uses only the pinned embedding role plus, when
+  enabled, the metered rerank role).
 - **phase-07-vindex** — facet retrieval reads `(tenant, topic, version)`-scoped
   facet vectors via the `vindex` seam.
 - **phase-15-topics-lifecycle** — supplies published, health-stamped topic packs,
@@ -120,6 +123,13 @@ kickoff's named crown jewel (D-013), kept and enhanced.
   facet hits are weighted as pre-vetted "metrics-first" evidence and recorded in the
   routing evidence, so generation (phase 18) can prefer a known metric shape over
   ad-hoc SQL. (The *direct metric-execution path* is not built here — see non-goals.)
+- **Optional rerank, gateway-based (brief 03 §1, D-043).** The predecessors' optional
+  cross-encoder rerank pattern is carried in its API-based form: a **config-gated**
+  stage between retrieval and evidence aggregation, through the new gateway `rerank`
+  role (metered like every role, P5). Off (default) ⇒ the retrieval order stands
+  byte-identical; on ⇒ candidates rerank through the gateway; a gateway error or
+  hard timeout **falls back to the original order loudly** — logged + metriced,
+  never silent (P4).
 - **Tenant-scoped cache + the flagged GLOBAL fallback (brief 02 §252).** The
   retrieval cache key carries `(tenant, topic, version)`. Chartworks' tenant is
   mandatory (P3), so the predecessors' `GLOBAL_CACHE_TENANT` bucket is adopted only
@@ -148,9 +158,11 @@ kickoff's named crown jewel (D-013), kept and enhanced.
   (all *runtime* pruning is in `nlq.ContextAssembler`; `semantics` only bakes the
   static card caps). Filed as a follow-up to align §8.3's label with §3.2 — flagged,
   not silently ignored (CLAUDE.md §2/§15).
-- **Cross-encoder rerank and the DSPy response cache (brief 03 §1/§3).** Not carried
-  in V1: rerank is an optional post-V1 gateway-schema-constrained step; there is no
-  free-text-cached predictor. The retrieval cache above covers the hot path.
+- **The in-process cross-encoder rerank (brief 03 §1) and the DSPy response cache
+  (§3).** The torch-based in-process cross-encoder is not carried (D-028); its
+  **API-based replacement ships here** as the optional, config-gated gateway
+  `rerank` role (D-043) — see "Brief findings incorporated." The free-text-cached
+  predictor is not carried; the retrieval cache above covers the hot path.
 
 ## Scope
 
@@ -162,7 +174,8 @@ Delivers in **`internal/nlq`** (new package, created this phase):
 - **Facet retrieval** (`nlq/retrieval`): embeds the question via the gateway
   `embedding` role, queries `vindex` under `(tenant, topic, version)`, returns typed
   `FacetCandidate`s with per-type k caps; the tenant-scoped retrieval cache with the
-  flagged GLOBAL-fallback guard.
+  flagged GLOBAL-fallback guard; the **optional config-gated rerank stage** via the
+  gateway `rerank` role with loud timeout-fallback (D-043).
 - **Router** (`nlq/routing`): the shared, immutable-after-construction router;
   eligibility filter (published ∩ healthy ∩ granted); evidence aggregation → typed
   `RoutingDecision` + one calibrated confidence + primary/secondary topics; the
@@ -175,7 +188,8 @@ Delivers in **`internal/nlq`** (new package, created this phase):
   `strategy` discriminator and per-filter provenance.
 - Config: the `nlq` domain keys below.
 - Telemetry: the NLQ funnel counters for the routed/clarified segment, retrieval
-  cache hit/miss + the GLOBAL-fallback guard counter, and per-tier reduction gauges.
+  cache hit/miss + the GLOBAL-fallback guard counter, the rerank timeout-fallback
+  counter (P4), and per-tier reduction gauges.
 
 ## Non-goals
 
@@ -229,13 +243,27 @@ hard filter, so a lexicon miss degrades gracefully to embedding-only routing (no
 `no_route`).
 
 **Facet retrieval.** `retrieval.Candidates(ctx, q, eligibleVersions)` embeds `q`
-through the gateway `embedding` role (the only model call on the read path, and it is
-metered), then does a per-type `vindex` search scoped `(tenant, topic, version)` for
+through the gateway `embedding` role (metered; with rerank off — the default — the
+only model call on the read path), then does a per-type `vindex` search scoped `(tenant, topic, version)` for
 each eligible version, capping at `nlq.retrieval.k_per_type` per facet kind. Results
 are typed `FacetCandidate{kind, topicVersion, facetID, score, payload}`. A
 `(tenant, topic, version, q-hash)` cache (TTL `nlq.retrieval.cache_ttl`) fronts it;
 the cache scope is tenant-mandatory, and a `GLOBAL` bucket exists only as a fail-loud
 guard (never served, metered if hit) per brief 02.
+
+**Optional rerank (D-043).** When `nlq.retrieval.rerank_enabled` is on, the typed
+candidates pass through the gateway **`rerank`** role (the API-based replacement for
+the predecessors' in-process cross-encoder — brief 03 §1; the torch version stays
+excluded by D-028) **before evidence aggregation**. Semantics: off (default) ⇒ the
+retrieval order stands unchanged — the rerank code path is not entered and results
+are byte-identical to baseline; on ⇒ candidates rerank through the gateway, metered
+like every role (P5), under a hard timeout (`nlq.retrieval.rerank_timeout`, plus the
+request's context deadline); on timeout or gateway error the stage **falls back to
+the original retrieval order** with a structured log + a dedicated metric — never a
+silent degrade (P4). Rerank reorders; it never adds, drops, or mutates candidates
+(the k-per-type caps and typed shapes are unchanged), and it runs after the cache
+(cached entries store the pre-rerank order, so toggling the flag never poisons the
+cache).
 
 **Routing + the one confidence primitive.** `routing.Route` runs the eligibility
 filter first — **published** (lifecycle stage, phase 15) ∩ **healthy**
@@ -283,8 +311,9 @@ set before any retrieval; empty ⇒ typed `no_route`, no query. P3: every `vinde
 store read carries the mandatory tenant predicate; the retrieval cache is
 tenant-keyed with the fail-loud GLOBAL guard. P4: `clarify`/`no_route` are typed
 decisions + metrics, never empty results; a lexicon/retrieval miss is a typed outcome.
-P5: the only model call is the metered `embedding` role through the gateway seam;
-routing/assembly are model-free. P6: the envelope carries domain nouns only (no
+P5: the only model calls are the metered `embedding` role and (when enabled) the
+metered `rerank` role, both through the gateway seam; routing aggregation and
+assembly are model-free. P6: the envelope carries domain nouns only (no
 "embedding"/"index"/"cache" on the wire). P7: one router, one assembler, one confidence
 primitive — no parallel paths; the same assembled context feeds mode-a generation
 (phase 18) and the mode-b bundle (phase 19).
@@ -293,7 +322,10 @@ primitive — no parallel paths; the same assembled context feeds mode-a generat
 
 `nlq` domain (RFC §14). `nlq.rules_lane_budget` is **consumed** here but **owned by
 phase 16** (not re-declared). Card caps (top-5/5/3/2) are owned by phase 15's
-capability-contract build (not re-declared here).
+capability-contract build (not re-declared here). The `rerank` role's per-role
+provider block (`gateway` domain, `{provider, model, credential, endpoint?, params}`
+— D-043) is owned by phase 05's config surface; this phase adds only the `nlq`-side
+gate below.
 
 | Key | Type | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
@@ -305,6 +337,8 @@ capability-contract build (not re-declared here).
 | `nlq.example_caps.max` | int | 7 | no | Few-shot example-lane ceiling (RFC §14; brief 03 §2.3 documented ceiling of 7). |
 | `nlq.retrieval.k_per_type` | int | 5 | no | Max facet candidates per type from `vindex`. |
 | `nlq.retrieval.cache_ttl` | duration | 5m | no | TTL of the `(tenant,topic,version,q-hash)` retrieval cache. |
+| `nlq.retrieval.rerank_enabled` | bool | false | no | Config-gated rerank of facet candidates via the gateway `rerank` role (D-043). Off ⇒ retrieval order stands unchanged. |
+| `nlq.retrieval.rerank_timeout` | duration | 2s | no | Hard timeout on the rerank gateway call; on expiry, loud fallback to the original order (logged + metriced, P4). |
 | `nlq.tokenizer.encoding` | string | `cl100k_base` | no | Token-counter encoding (tiktoken-family); pinned + fixture-verified (convention 8), CGo-free (D-005). |
 
 Documented in the plan (here), the example config (§14 config file, this PR), and
@@ -357,6 +391,13 @@ Numbered, mechanically checkable; each maps to a smoke assertion below.
 12. **Config fail-loud.** A malformed `nlq.*` value (e.g. `complexity_budgets.high <
     medium`, or a non-tiktoken `tokenizer.encoding`) is rejected at boot with a typed
     error; the shipped example config validates.
+13. **Config-gated rerank (D-043).** With `rerank_enabled` off (default), retrieval
+    results are **byte-identical** to the no-rerank baseline (no gateway `rerank`
+    call is made — mock call-count zero); with it on against the gateway `mock`
+    driver, the reordering is applied to the candidates (order differs per the mock's
+    fixture, membership/typing/k-caps unchanged); a simulated gateway timeout falls
+    back to the original retrieval order **loudly** — the fallback metric increments
+    and a structured log is emitted, never a silent degrade.
 
 ## Test obligations
 
@@ -365,8 +406,11 @@ Per CLAUDE.md §11:
 - **Unit:** table-driven — the eligibility truth table (1), the `aggregate`
   confidence function (4), tier selection from confidence bands (5), card-cap
   enforcement (6), the `TokenCounter` against pinned fixtures (5/8), envelope shape
-  (11), config validators (12).
-- **Integration:** required — this phase consumes phase-05 (gateway `embedding`),
+  (11), config validators (12), the rerank gate's three-way semantics — off /
+  on-with-mock / timeout-fallback — against the gateway `mock` driver (13; paired,
+  per §10, with the `rerank` role's recorded-fixture test owned by phase 05).
+- **Integration:** required — this phase consumes phase-05 (gateway `embedding` +
+  `rerank`),
   phase-07 (`vindex`), phase-15 (capability contracts + health), phase-16 (rules/
   slots) and opens the `ContextAssembler`/`RoutingDecision` interfaces phase 18/19
   build on. An integration test wires the real `vindex` (Docker Postgres + pgvector,
@@ -415,6 +459,7 @@ criterion 9 under the race detector.
 | 10 | `TestNoRouteClarifyTyped` (typed decisions + metrics, never empty) |
 | 11 | `TestQueryContextEnvelopeStrategy` (golden envelope; strategy discriminator; provenance) |
 | 12 | `TestNLQConfigFailLoud` (malformed `nlq.*` ⇒ typed boot error; example config valid) |
+| 13 | `TestRerankConfigGated` (off ⇒ byte-identical + zero rerank calls; on-with-mock ⇒ reordered; timeout ⇒ loud fallback to original order) |
 
 ## Glossary additions
 
@@ -451,7 +496,9 @@ already present:
 Files **no new decision entry** (per authoring scope). Relies on existing: **D-028**
 (lexicon-light span hints), **D-029** (`vindex` facets), **D-020** (grants + one
 resolver), **D-003** (gateway seam), **D-027** (rules/clarification V1 scope),
-**D-013** (context engineering is the crown jewel), **D-005** (CGo-free tokenizer).
+**D-013** (context engineering is the crown jewel), **D-005** (CGo-free tokenizer),
+**D-043** (the `rerank` gateway role, consumed here config-gated; RFC §13 as
+amended).
 One **flagged reconciliation** (not a decision): RFC §8.3 labels the pruning owner
 `semantics.ContextAssembler` while §3.2 places context assembly in `internal/nlq`;
 this plan follows §3.2 and files a follow-up to align §8.3's label — see "Findings
