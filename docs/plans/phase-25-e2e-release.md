@@ -5,8 +5,9 @@
 > **Depends on:** all shipped phases (01–24)
 
 The release phase. It ships **no new product capability**: it proves the whole
-system end to end in both auth modes, packages the one static binary as a
-reference image, writes the operator- and consumer-facing docs, runs the **final
+system end to end in both auth modes, packages the **deployment unit — the reference
+image carrying the `chartworks` binary plus the pinned `bruin` executor**
+(D-036/D-037), writes the operator- and consumer-facing docs, runs the **final
 cumulative audit** (the Soundings lesson — the last full-system pass catches what
 every per-phase gate missed), and cuts **v0.1.0**.
 
@@ -14,10 +15,21 @@ every per-phase gate missed), and cuts **v0.1.0**.
 
 ## RFC / request sections
 
-- **RFC §17** (Operational shape) — the one static CGo-free binary (D-005), the
-  `docker-compose` dev stack (Postgres 16 + pgvector on 5434 + the upload-workspace
-  database), the reference `Dockerfile` shipping "at the release wave", graceful
-  shutdown (servers drain, job leases release, in-flight runs checkpoint).
+- **RFC §17 (amended)** (Operational shape) — **the container is the deployment unit
+  (D-037)**: the reference image (glibc base — debian-slim class, never bare musl)
+  carries the `chartworks` binary (CGo-free today; CGo permissible per-dependency by
+  decision entry) **plus the pinned `bruin` binary (v0.11.666, glibc-dynamic, telemetry
+  disabled — D-036)**. Bare-metal remains supported; pipeline execution without `bruin`
+  on PATH degrades to a typed "pipeline execution unavailable" (P4). The `docker-compose`
+  dev stack (Postgres 16 + pgvector on 5434 + the upload-workspace database), the
+  reference `Dockerfile` shipping "at the release wave", graceful shutdown (servers
+  drain, job leases release, in-flight Bruin runs awaited or lease-reclaimed with status
+  checkpointed).
+- **D-036** (Bruin as the DE write-path executor: a CLI subprocess behind the
+  `PipelineRunner` seam; **SQL-only assets — never Python/R assets, never `ingestr`**;
+  credentials via `${ENV}` interpolation or a custody-rendered tmpfs config — plaintext
+  never on persistent disk) and **D-037** (supersedes D-005: single-static-binary demoted
+  to a *preference for the `chartworks` binary itself*).
 - **RFC §3.1** (the pipeline) — the exact ordering the E2E walks: `sources → engineering
   → semantics → nlq → exec → charts`.
 - **RFC §3.3 / §15** (boot + health) — fail-loud readiness (`/readyz` = store reachable
@@ -72,8 +84,12 @@ slice:
   `docs/research/09-agents-repo-ideas.md` — the dry-plan→dry-run→query ladder, the layered
   SQL-safety gates, the fail-closed tool-annotation allowlist (the E2E round-trips the MCP
   tools; the audit re-runs the allowlist test).
-- `docs/research/10-bruin-engine-evaluation.md` — the CGo/Rust/Python collision with D-005
-  (the Dockerfile's `CGO_ENABLED=0` static-binary proof is the standing regression guard).
+- `docs/research/10-bruin-engine-evaluation.md` — the library-import collisions that
+  D-023 rejected and D-036 dissolved by narrowing to a pinned CLI subprocess (SQL-only, no
+  `ingestr`/Python, telemetry disabled, glibc base). The E2E's in-container pipeline run
+  and the audit's no-Python-assets / no-plaintext-secrets sweeps are the standing guards;
+  the `chartworks` binary itself stays CGo-free (`CGO_ENABLED=0` build proof, D-037
+  preference).
 - `docs/research/11-ssr-de-pipeline-draft.md` — the DE pipeline shape the E2E's
   upload→profile→(topic) leg exercises.
 - `docs/research/12-genbi-landscape.md` — the Teramot capability bar and the BIRD/Spider
@@ -97,8 +113,13 @@ slice:
   DDL-smuggle / cross-tenant / forged-header probes through the real HTTP + MCP surfaces,
   not just the `exec` unit tests — proving the gate holds where a caller actually stands.
 - **Platform-agnostic image (brief 01).** The Dockerfile has no platform-coupled bootstrap
-  (the Databricks-Apps coupling is the named counterexample); it is a plain static binary
-  + `/readyz` healthcheck, runnable anywhere.
+  (the Databricks-Apps coupling is the named counterexample); it is two pinned binaries +
+  a `/readyz` healthcheck on a plain glibc base, runnable anywhere.
+- **The subprocess boundary is verified where it deploys (brief 10, D-036).** Bruin's
+  objections dissolved only in the narrowed shape — so the E2E proves exactly that shape
+  *inside the container*: pinned version, telemetry disabled, SQL-only pipeline run
+  through the `PipelineRunner` seam, no plaintext credentials on persistent disk, and the
+  bare-metal degraded mode failing loud (P4), never silently.
 - **The live gate is load-bearing for a model-driven product (D-010, brief 12).** Chartworks'
   routing and SQL generation are model-driven, so a real-provider run via `.env` blocks the
   release exactly as it blocks a wave — the "every gate green, production broken" failure P4
@@ -131,13 +152,25 @@ Docs, tests, and packaging only — no `internal/` capability code.
      grants); Chartworks validates it fail-closed and serves the same flow — proving the
      validation path is identical for both issuers (RFC §4.1). Runs against its **own** fresh
      database.
-   - Both suites carry the through-the-stack adversarial obligations (§11): a cross-tenant
+   - `TestE2EPipelineRun` — the **in-container DE write-path walk** (D-036): against the
+     compose stack, define a SQL-only pipeline with a dockerized-Postgres destination,
+     run it through the `PipelineRunner` seam (Bruin subprocess inside the container),
+     and assert the materialization lands, lineage is recorded, and **no plaintext
+     connection secret touches persistent disk** during the run.
+   - `TestE2EDegradedNoBruin` — the **bare-metal degraded mode** (D-037, P4): with no
+     `bruin` on PATH, a pipeline run returns the typed "pipeline execution unavailable"
+     error (+ metric) — never a silent skip; NLQ reads keep working (they never route
+     through Bruin, D-036).
+   - All suites carry the through-the-stack adversarial obligations (§11): a cross-tenant
      probe, a forged-`X-*`-header attempt, a DDL/injection submission — each rejected with a
      typed error at the surface, not the unit.
-2. **The reference `Dockerfile`** (multi-stage: `golang:1.26` builder → `CGO_ENABLED=0`
-   static build → `gcr.io/distroless/static` or `scratch` runtime), running as a **non-root**
-   user, with a `HEALTHCHECK` against `/readyz`, and **`docker-compose.e2e.yml`** (fresh
-   Postgres 16 + pgvector, the upload-workspace database, the `mock` gateway — secret-free).
+2. **The reference `Dockerfile`** (multi-stage: `golang:1.26` builder with `CGO_ENABLED=0`
+   for the `chartworks` binary + a pinned, checksum-verified `bruin` v0.11.666 fetch stage →
+   a **glibc-class runtime** (`debian:stable-slim`; never distroless-static/musl — Bruin is
+   glibc-dynamic, D-036/D-037)), running as a **non-root** user, Bruin telemetry disabled in
+   the image, with a `HEALTHCHECK` against `/readyz`, and **`docker-compose.e2e.yml`** (fresh
+   Postgres 16 + pgvector, the upload-workspace database, a dockerized-Postgres pipeline
+   destination, the `mock` gateway — secret-free).
 3. **Ops docs** — `docs/ops.md` (the operator runbook: config surface pointer, boot/health,
    auth-mode setup, backup/restore of the store, `admin` CLI reference including
    `bootstrap`/`keys`/`scope-debug`/`erase`, graceful shutdown, the live-gate `.env`).
@@ -205,10 +238,32 @@ second-tenant token seeing nothing of tenant `demo` (cross-tenant), a forged
 `X-Tenant`/`X-User` header having no effect (P2), and a `DROP TABLE`/`UNION`-smuggle
 submission (mode-b `submit_sql`) rejected with a typed `validation.*` error (P1b).
 
-### The reference Dockerfile
+**In-container pipeline run (`TestE2EPipelineRun`, D-036):** drives the *containerized*
+server (the compose stack — the only place `bruin` is guaranteed present): create a
+SQL-only pipeline whose declared destination is the dockerized-Postgres destination DB →
+`POST /pipelines/{id}:run` → poll the run to `completed`. Asserts: the materialization
+exists in the destination; lineage + freshness are stamped; the run is audited/metered by
+Chartworks (Bruin is the executor, not the designer); and — by inspecting the container's
+writable layer and volumes during/after the run — **no plaintext connection secret is
+present on persistent disk** (credentials ride `${ENV}` interpolation or a
+custody-rendered tmpfs config).
+
+**Degraded mode (`TestE2EDegradedNoBruin`, D-037/P4):** boots the server bare-metal with
+`bruin` absent from PATH. A pipeline run request returns the typed
+"pipeline execution unavailable" error and increments its metric — never a silent skip,
+never a queued-forever run — while Discover/Ask keep working (NLQ reads never route
+through Bruin, D-038 posture per D-036).
+
+### The reference Dockerfile (two binaries, glibc base — D-036/D-037)
+
+The container is the deployment unit (D-037): the image carries the `chartworks` binary
+**and** the pinned `bruin` executor. Bruin's prebuilt binary is **glibc-dynamic** (needs
+`libc`, `libstdc++`, `libgcc_s`), so the runtime base is **glibc-class debian-slim** —
+never `distroless/static`, `scratch`, or musl/Alpine (D-036's hard rule).
 
 ```dockerfile
-# builder — pinned Go, CGo OFF (D-005): the static-binary guarantee.
+# chartworks builder — pinned Go; CGO_ENABLED=0 remains the preference for the
+# chartworks binary itself (D-037 — the binary is CGo-free today).
 FROM golang:1.26 AS build
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 WORKDIR /src
@@ -217,10 +272,26 @@ RUN go mod download
 COPY . .
 RUN go build -ldflags="-s -w" -o /out/chartworks ./cmd/chartworks
 
-# runtime — distroless static, non-root, self-describing health.
-FROM gcr.io/distroless/static:nonroot
+# bruin fetch — pinned v0.11.666 (D-036/D-035), checksum-verified against the
+# release asset; the pin is a build ARG so a bump is one reviewed line + a
+# conformance re-run, never a floating "latest".
+FROM debian:stable-slim AS bruin
+ARG BRUIN_VERSION=v0.11.666
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSLo /tmp/bruin.tar.gz "<pinned release asset for ${BRUIN_VERSION}>" \
+ && echo "<pinned sha256>  /tmp/bruin.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/bruin.tar.gz -C /out
+
+# runtime — glibc base (bruin is glibc-dynamic: libc/libstdc++/libgcc_s),
+# non-root, telemetry disabled, self-describing health.
+FROM debian:stable-slim
+RUN useradd --system --uid 65532 --home /nonexistent --shell /usr/sbin/nologin chartworks
 COPY --from=build /out/chartworks /usr/local/bin/chartworks
-USER nonroot:nonroot
+COPY --from=bruin /out/bruin /usr/local/bin/bruin
+# Bruin telemetry OFF, baked into the image (D-036; the exact knob is the one
+# phase 13 confirmed as its implementation blocker).
+ENV <BRUIN_TELEMETRY_DISABLE_KNOB>=1
+USER chartworks
 EXPOSE 8080 8081 9090
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
   CMD ["/usr/local/bin/chartworks", "healthcheck", "--url", "http://localhost:8080/readyz"]
@@ -230,18 +301,26 @@ CMD ["serve"]
 
 Load-bearing properties, each a regression guard the smoke asserts mechanically:
 
-- **`CGO_ENABLED=0`** in the build stage — the D-005 static-binary posture; the E2E build
-  additionally runs `file $(bin)` and asserts *statically linked* / no dynamic interpreter
-  (the standing proof that no CGo dependency crept in, brief 10).
-- **`distroless/static:nonroot` + `USER nonroot`** — no shell, no package manager, an
-  unprivileged UID; the container cannot be exec'd into and cannot write outside its mounts.
+- **`CGO_ENABLED=0` for the `chartworks` binary** — the D-037 preference; the E2E build
+  runs `file` on it and asserts *statically linked* (the per-dependency-CGo rule means any
+  future dynamic linkage of *chartworks itself* must trace to a decision entry, never drift).
+- **Glibc-class base, never musl** — `bruin` must load; the E2E asserts
+  `bruin --version` inside the container reports exactly the pinned **v0.11.666**.
+- **Bruin telemetry disabled** — the disable mechanism (confirmed by phase 13, a D-036
+  implementation blocker) is baked in as image ENV and verified by the E2E (no telemetry
+  egress observed / the CLI reports telemetry off).
+- **Non-root `USER`** — an unprivileged system UID; retained from the original design.
 - **`HEALTHCHECK` → `/readyz`** — Docker/orchestrator liveness rides the same fail-loud
   readiness gate the ecosystem derives "healthy" from (RFC §15); if migrations aren't current
   or JWKS is stale, the container reports unhealthy, never "up but degraded."
+- **Credential hygiene at run time** — pipeline runs render Bruin connection config via
+  `${ENV}` interpolation or a custody-rendered **tmpfs** file (D-036); the E2E pipeline run
+  asserts no plaintext connection secret lands on a persistent volume/layer.
 
-`docker-compose.e2e.yml` composes this image with a fresh Postgres 16 + pgvector and the
-`mock` gateway; Chartworks migrates on boot; the whole thing is **secret-free** (no provider
-key) so `docker compose -f docker-compose.e2e.yml up --build` is the from-scratch smoke.
+`docker-compose.e2e.yml` composes this image with a fresh Postgres 16 + pgvector, a
+dockerized-Postgres pipeline destination, and the `mock` gateway; Chartworks migrates on
+boot; the whole thing is **secret-free** (no provider key) so
+`docker compose -f docker-compose.e2e.yml up --build` is the from-scratch smoke.
 
 ### Ops docs inventory (`docs/ops.md`)
 
@@ -260,6 +339,11 @@ key) so `docker compose -f docker-compose.e2e.yml up --build` is the from-scratc
    sanctioned "why no data / why no route" answer (never a user-facing repair surface).
 7. **The live gate** — the `.env` shape (a real provider key through `bifrost`) and how to
    run the manual accuracy loop + release blocker (D-010, D-031).
+8. **Pipeline execution & Bruin** — the container as the deployment unit (D-037); the
+   pinned `bruin` v0.11.666 (bump = one reviewed pin + conformance re-run, D-035
+   discipline); telemetry-disable verification; credential hygiene (`${ENV}` / tmpfs —
+   never plaintext on persistent disk); the **bare-metal degraded mode** (no `bruin` on
+   PATH ⇒ typed "pipeline execution unavailable"; NLQ unaffected).
 
 ### The product README outline (family voice)
 
@@ -360,6 +444,14 @@ bug is fixed in the owning phase's code, in the same PR (§17). **Checklist:**
 17. The fuzz corpora (JWT, NLQ payloads, SQL-validation) run as ordinary CI tests; the
     adversarial obligations (injection, schema-escape, cross-tenant, resource exhaustion,
     BYO) are green (phase 24 red-team + the E2E through-surface probes).
+18. **No plaintext connection secret on persistent disk during a pipeline run** (D-036) —
+    credentials reach Bruin only via `${ENV}` interpolation or a custody-rendered tmpfs
+    config; the E2E pipeline run's disk sweep is green and the rendering code path has no
+    persistent-write branch (code inspection + the mechanical sweep).
+19. **No `ingestr`/Python assets reachable in V1** (D-036's hard rule) — the pipeline
+    definition validator rejects non-SQL asset kinds (typed error); no `ingestr` binary or
+    Python runtime exists in the reference image; no code path invokes `bruin` with an
+    ingestion/Python asset (grep + image inspection + a rejection test).
 
 ## Config keys added
 
@@ -381,9 +473,10 @@ sets `gateway.driver=bifrost` + a provider key from `.env` (D-010) — again exi
 2. **`TestE2EExternalIssuer` green** — the external-issuer Discover→Ask walk passes against a
    **fresh** DB via the local JWKS stub, including the fail-closed rejections (`HS256` at the
    parser, stale-JWKS ⇒ not-ready 401, wrong-`aud` cross-surface).
-3. **The reference Dockerfile builds a CGo-free static binary** — the build stage sets
-   `CGO_ENABLED=0`; `file` on the produced binary reports *statically linked* / no dynamic
-   interpreter (D-005 proof).
+3. **The `chartworks` binary builds `CGO_ENABLED=0` on a glibc-class base** — the build
+   stage sets `CGO_ENABLED=0` (`file` reports *statically linked* — the D-037 preference
+   proof for the binary itself), and the runtime base is glibc-class debian-slim (never
+   `distroless/static` / `scratch` / musl — Bruin is glibc-dynamic, D-036).
 4. **The image is non-root with a `/readyz` healthcheck** — the Dockerfile declares a
    non-root `USER` and a `HEALTHCHECK` targeting `/readyz`.
 5. **`docker compose -f docker-compose.e2e.yml up --build` serves and smokes from scratch** —
@@ -403,6 +496,19 @@ sets `gateway.driver=bifrost` + a provider key from `.env` (D-010) — again exi
     credentials/observability/live-gate sections).
 11. **The live gate is green as the release blocker (D-010)** — the real-provider E2E via
     `.env` passes `-count=1` (manual; recorded in the release checklist; never CI-required).
+12. **`bruin` is present in the image at the pinned version** — `bruin --version` inside
+    the container reports exactly **v0.11.666** (D-036/D-035; the fetch stage is
+    checksum-verified against the release asset).
+13. **Bruin telemetry is disabled in the image** — the phase-13-confirmed disable
+    mechanism is baked in as image ENV and verified inside the container (the CLI reports
+    telemetry off / no telemetry egress observed during the pipeline run).
+14. **`TestE2EPipelineRun` green in-container** — a SQL-only pipeline with a
+    dockerized-Postgres destination runs to `completed` through the `PipelineRunner` seam
+    inside the compose stack; the materialization + lineage are asserted, and the disk
+    sweep finds **no plaintext connection secret on persistent disk** during the run.
+15. **`TestE2EDegradedNoBruin` green** — bare-metal with no `bruin` on PATH, a pipeline
+    run returns the typed "pipeline execution unavailable" error + metric (P4, never
+    silent), while Discover/Ask continue to work.
 
 ## Test obligations
 
@@ -411,7 +517,8 @@ Per CLAUDE.md §11:
 - **Unit:** the JWKS stub (`test/e2e/jwksstub`) and the E2E harness helpers (fresh-DB
   provisioning, token minting, poll-until) carry table-driven unit tests for their own
   logic (keypair generation, JWKS JSON shape, teardown idempotency).
-- **Integration / E2E:** the two E2E suites **are** the integration tests for this phase —
+- **Integration / E2E:** the E2E suites (auth-mode walks + the in-container pipeline run +
+  the degraded mode) **are** the integration tests for this phase —
   real drivers on every seam (Docker Postgres for store/vindex/workspace; the gateway
   `mock` driver, the one sanctioned boundary mock), identity/scope propagation proven across
   the whole pipeline, ≥1 failure mode per mode (fail-closed JWKS; typed rejection on an
@@ -460,6 +567,10 @@ The script SKIPs entirely until the release artifacts exist.
 | 9 | `CHANGELOG.md` contains a `## [0.1.0]` heading; the tag procedure text is present |
 | 10 | `docs/ops.md` exists with the runbook section headings |
 | 11 | the live-gate target/recipe exists (`.env.example` + the documented `LIVE=1` recipe); under `LIVE=1` it runs `-count=1` green (manual, never CI) |
+| 12 | `Dockerfile` pins `BRUIN_VERSION=v0.11.666` + a sha256 check; under `E2E=1`, `docker run … bruin --version` reports the pin |
+| 13 | `Dockerfile` bakes the Bruin telemetry-disable ENV; under `E2E=1` the in-container check confirms telemetry off |
+| 14 | `TestE2EPipelineRun` exists; under `E2E=1` it runs green in-container (materialization + lineage + no-plaintext-secret sweep) |
+| 15 | `TestE2EDegradedNoBruin` exists; under `E2E=1` it runs green (typed "pipeline execution unavailable", P4) |
 
 ## Glossary additions
 
@@ -476,8 +587,11 @@ The script SKIPs entirely until the release artifacts exist.
 
 ## Decisions filed
 
-**No new decision.** This phase relies on existing entries: **D-005** (CGo-free static
-binary — the Dockerfile proof), **D-006** (dual-mode / dual-audience auth — both E2E walks),
+**No new decision.** This phase relies on existing entries: **D-036** (Bruin as the DE
+write-path executor — the pinned second binary, telemetry disable, SQL-only rule, the
+credential-hygiene and no-Python audit items), **D-037** (the container as the deployment
+unit, superseding D-005 — the glibc base + the `chartworks` CGo-free preference proof +
+the bare-metal degraded mode), **D-006** (dual-mode / dual-audience auth — both E2E walks),
 **D-009** (preflight/coverage/drift machinery — the release gates), **D-010** (the live gate
 as the release blocker), **D-004 / D-024** (store vs. upload workspace — the E2E's upload
 leg), **D-020 / D-021** (access + SQL-safety — the through-surface adversarial probes),

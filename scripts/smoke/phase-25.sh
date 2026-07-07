@@ -86,20 +86,25 @@ else
   skip "criterion 2: TestE2EExternalIssuer not defined yet"
 fi
 
-# --- criterion 3: CGo-free static binary (D-005) -----------------------------
+# --- criterion 3: chartworks CGO_ENABLED=0 + glibc-class base (D-036/D-037) --
 if [ -f "Dockerfile" ]; then
   if grep -q 'CGO_ENABLED=0' Dockerfile; then
-    if [ "$E2E" = "1" ] && [ -x "bin/chartworks" ]; then
-      if file bin/chartworks | grep -qiE 'statically linked|static-pie'; then
-        ok "criterion 3: Dockerfile sets CGO_ENABLED=0 and the binary is statically linked"
+    if grep -qE '^\s*FROM\s+(debian:|[^ ]*base-debian)' Dockerfile \
+       && ! grep -qE '^\s*FROM\s+(gcr\.io/distroless/static|scratch|alpine|[^ ]*-alpine)' Dockerfile; then
+      if [ "$E2E" = "1" ] && [ -x "bin/chartworks" ]; then
+        if file bin/chartworks | grep -qiE 'statically linked|static-pie'; then
+          ok "criterion 3: chartworks builds CGO_ENABLED=0 (statically linked) on a glibc-class base"
+        else
+          fail "criterion 3: chartworks binary is not statically linked (D-037 preference; a per-dependency decision entry must exist)"
+        fi
       else
-        fail "criterion 3: binary is not statically linked (CGo may have crept in — D-005)"
+        ok "criterion 3: Dockerfile sets CGO_ENABLED=0 and uses a glibc-class base (set E2E=1 with bin/chartworks to prove static linkage)"
       fi
     else
-      ok "criterion 3: Dockerfile sets CGO_ENABLED=0 (set E2E=1 with a built bin/chartworks to prove static linkage)"
+      fail "criterion 3: runtime base must be glibc-class debian-slim — never distroless-static/scratch/musl (bruin is glibc-dynamic, D-036)"
     fi
   else
-    fail "criterion 3: Dockerfile does not set CGO_ENABLED=0 (D-005)"
+    fail "criterion 3: Dockerfile does not set CGO_ENABLED=0 for the chartworks binary (D-037)"
   fi
 else
   skip "criterion 3: Dockerfile not present yet"
@@ -206,6 +211,70 @@ if [ -f ".env.example" ] || grep -q '^live-gate:\|LIVE=1' Makefile 2>/dev/null; 
   fi
 else
   skip "criterion 11: live-gate recipe (.env.example / Makefile target) not present yet"
+fi
+
+# --- criterion 12: bruin present at the pinned version (D-036/D-035) ---------
+if [ -f "Dockerfile" ]; then
+  if grep -q 'BRUIN_VERSION=v0.11.666' Dockerfile && grep -qi 'sha256' Dockerfile; then
+    if [ "$E2E" = "1" ] && command -v docker >/dev/null 2>&1 && [ -n "${CHARTWORKS_IMAGE:-}" ]; then
+      got="$(docker run --rm --entrypoint bruin "$CHARTWORKS_IMAGE" --version 2>/dev/null || true)"
+      if printf '%s' "$got" | grep -q '0\.11\.666'; then
+        ok "criterion 12: in-container bruin --version reports the pinned v0.11.666"
+      else
+        fail "criterion 12: in-container bruin --version does not report v0.11.666 (got: ${got:-none})"
+      fi
+    else
+      ok "criterion 12: Dockerfile pins BRUIN_VERSION=v0.11.666 with a sha256 check (set E2E=1 + CHARTWORKS_IMAGE to verify in-container)"
+    fi
+  else
+    fail "criterion 12: Dockerfile must pin BRUIN_VERSION=v0.11.666 with a checksum-verified fetch (D-036)"
+  fi
+else
+  skip "criterion 12: Dockerfile not present yet"
+fi
+
+# --- criterion 13: bruin telemetry disabled in the image (D-036) -------------
+if [ -f "Dockerfile" ]; then
+  # The exact disable knob is the one phase 13 confirmed (a D-036 implementation
+  # blocker); the mechanical check is that the Dockerfile bakes a telemetry
+  # disable ENV at all — the in-container verification rides the E2E pipeline run.
+  if grep -qiE '^\s*ENV\s+[A-Z0-9_]*TELEMETRY[A-Z0-9_]*' Dockerfile; then
+    ok "criterion 13: Dockerfile bakes the Bruin telemetry-disable ENV (in-container verification rides the E2E pipeline run)"
+  else
+    fail "criterion 13: Dockerfile does not bake a Bruin telemetry-disable ENV (D-036)"
+  fi
+else
+  skip "criterion 13: Dockerfile not present yet"
+fi
+
+# --- criterion 14: in-container pipeline run via the PipelineRunner seam -----
+if [ -d "test/e2e" ] && go test -list 'TestE2EPipelineRun' ./test/e2e/... 2>/dev/null | grep -q 'TestE2EPipelineRun'; then
+  if [ "$E2E" = "1" ]; then
+    if go test -race -p 1 -count=1 -run '^TestE2EPipelineRun$' ./test/e2e/... >/dev/null 2>&1; then
+      ok "criterion 14: TestE2EPipelineRun green (SQL-only pipeline, dockerized-postgres destination, no plaintext secret on persistent disk)"
+    else
+      fail "criterion 14: TestE2EPipelineRun failed"
+    fi
+  else
+    ok "criterion 14: TestE2EPipelineRun present (set E2E=1 to run it in-container)"
+  fi
+else
+  skip "criterion 14: TestE2EPipelineRun not defined yet"
+fi
+
+# --- criterion 15: bare-metal degraded mode fails loud (D-037, P4) -----------
+if [ -d "test/e2e" ] && go test -list 'TestE2EDegradedNoBruin' ./test/e2e/... 2>/dev/null | grep -q 'TestE2EDegradedNoBruin'; then
+  if [ "$E2E" = "1" ]; then
+    if go test -race -p 1 -count=1 -run '^TestE2EDegradedNoBruin$' ./test/e2e/... >/dev/null 2>&1; then
+      ok "criterion 15: TestE2EDegradedNoBruin green (typed 'pipeline execution unavailable', never silent)"
+    else
+      fail "criterion 15: TestE2EDegradedNoBruin failed"
+    fi
+  else
+    ok "criterion 15: TestE2EDegradedNoBruin present (set E2E=1 to run it)"
+  fi
+else
+  skip "criterion 15: TestE2EDegradedNoBruin not defined yet"
 fi
 
 summarize_and_exit

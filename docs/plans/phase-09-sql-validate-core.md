@@ -4,42 +4,46 @@
 > **Owner:** orchestrator-assigned (Opus-first — high difficulty, security-critical)
 > **Depends on:** phase-01-binary-config-telemetry
 
-Copy per CLAUDE.md §16. This plan owns the **validation half** of `internal/exec`
-(P1b, D-021, RFC §9.5). The read-execution half is phase 10; the topic-pack ∩ grants
-allowlist walk is phase 18 (it needs `internal/semantics`, which does not exist yet).
+Copy per CLAUDE.md §16. This plan owns the **client-side validation layers** of
+`internal/exec` (P1b, D-021 as amended by D-038, RFC §9.5 amended). The engine-side
+layers (read-only credentials, dry-run/EXPLAIN) are phase 10's; the topic-pack ∩
+grants allowlist walk is phase 18 (it needs `internal/semantics`).
 
 ---
 
 ## RFC / request sections
 
-- **RFC §1.2 (P1b)** — SQL is untrusted regardless of origin; it executes only after
-  the three-stage validation, and validation failure is a typed error, never a
-  skip-to-execute.
-- **RFC §9.5** — the three validation stages (pre-parse → dialect-aware AST parse →
-  post-parse whole-tree statement blocking + single-statement + typed error
-  vocabulary). This phase implements **stages 1–2 in full** and the
-  **semantics-independent half of stage 3** (statement-family / blocked-node / single
-  statement / dialect escapes). The `topic pack ∩ caller grants` allowlist and
-  join-reachability portions of stage 3 are phase 18.
-- **RFC §6.1** — the adapter seam owns `ValidatedSQL` as an opaque type
-  constructible **only** by this validator; the `ansi` dialect sentinel covers
-  unknown-dialect handling.
+- **RFC §1.2 (P1b)** — SQL is untrusted regardless of origin; validation failure is a
+  typed error, never a skip-to-execute.
+- **RFC §9.5 (amended — layered, D-038)** — this phase implements **layer 1 (tokenizer
+  screens, every dialect)** and **layer 2 (client-side AST validation via the parser
+  seam)** in their semantics-independent form, plus the layer-record contract that
+  lets phase 10 enforce **layer 3 (engine-side dry-run/EXPLAIN)** before execution.
+  The `topic pack ∩ caller grants` allowlist and join-reachability walks are phase 18.
+- **RFC §6.1** — the adapter seam owns `ValidatedSQL` as an opaque type constructible
+  **only** by the validator.
 - **RFC §7.6 (P1c)** — the write-shape variant this phase produces for phase 13's
-  `sources.Materializer` (single statement, declared output, declared inputs).
-- **D-021** — three-stage AST validation, `ValidatedSQL` as the only executable type,
-  split read/write interfaces, no regex injection heuristics.
-- **D-032** — the V1 driver/dialect set is **six**: `postgres`, `mysql`, `sqlserver`
-  (tsql), `bigquery`, `snowflake`, `databricks`, plus the `ansi` sentinel.
-- **D-005** — CGo-free; the parser must be pure Go.
-- **D-017** — the read/write posture split this validator enforces at the type level.
+  materialization path (single statement, declared output, declared inputs).
+- **D-038** — the layered posture: engine-side enforcement is primary; the client AST
+  layer adds depth via a **parser seam** with per-dialect, **evidence-gated** driver
+  adoption; a dialect without a proven driver **skips** the AST layer with a typed
+  marker — it never fakes it. Generation targets the **native dialect** (D-033's
+  generation-subset obligation is superseded).
+- **D-033** — the `crdb` driver pin (`cockroachdb-parser` v0.25.2), retained by D-038.
+- **D-021 / D-017** — `ValidatedSQL` as the only executable type; split read/write
+  interfaces, no flag on a shared entry point.
+- **D-037** — CGo permitted per-dependency; both adopted parser drivers are pure Go,
+  so the binary stays CGo-free in practice.
+- **D-032** — the six V1 dialects: `postgres`, `mysql`, `sqlserver` (tsql),
+  `bigquery`, `snowflake`, `databricks`, plus the `ansi` sentinel.
 
 ## Depends on
 
-- **phase-01-binary-config-telemetry** — typed errors + the telemetry/metric
-  primitives the typed validation-error vocabulary emits against, and the module/go.mod
-  the parser dependency is pinned into. No store, no auth, no gateway: validation is a
-  pure, deterministic, dependency-light library (this is deliberate — it keeps the most
-  security-sensitive gate testable without a DB or a live model).
+- **phase-01-binary-config-telemetry** — typed errors + telemetry primitives the
+  typed validation vocabulary emits against, and the module the parser drivers pin
+  into. No store, no auth, no gateway: layers 1–2 are pure, deterministic,
+  DB-free library code (deliberate — the most security-sensitive gates stay testable
+  without a DB or a live model).
 
 ## Informing briefs
 
@@ -51,197 +55,203 @@ Per `docs/research/INDEX.md` (`internal/exec` row): primary
 
 ## Brief findings incorporated
 
-- **Brief 02 (headline scar): AST allowlist, not regex.** The predecessors' validator
-  parsed with an AST library and allowlisted only `Select`/`With`/`Union`/`Intersect`/
-  `Except` as the top-level node, with a base DDL/DML blocked-node list plus
-  dialect-specific additions (e.g. DuckDB `Attach`/`Copy`/`Pragma`). This plan carries
-  the **shape** — a walkable typed AST, a top-level SELECT-family gate, a blocked-node
-  class list, and per-dialect escape additions — but re-derives the error codes fresh
-  (brief 02 §"reusable shapes … not the codes").
-- **Brief 02: the single-gate scar is the thing we are correcting.** The predecessors'
-  read-only guarantee lived *entirely* in the validator, and callers could reach
-  `execute()` without it. This phase's answer is the **unforgeable `ValidatedSQL`
-  type** (an adapter cannot execute a raw string); the *independent* execution-time
-  read-only enforcement is phase 10. Both must hold; this phase ships the first half.
-- **Brief 02/04: no regex "injection heuristic" presented as a control.** The AST
-  allowlist *is* the injection guardrail; identifiers are never string-assembled from
-  model output. A source-level architecture test forbids a regex statement-classifier
-  in the validate path (brief 02 §"dead-weight code that looks like security").
-- **Brief 03 §4 (the CTE-regression lesson): the pre-parse stage must not duplicate
-  parser judgment.** The predecessors once shipped a pre-parse rule that flatly
-  rejected any query not starting with `SELECT`, silently blocking *every* CTE query
-  (an estimated 15–25pt acceptance-rate cost) even though the parser had full CTE
-  support. This plan makes it a **standing review rule + a golden CTE fixture guard**:
-  pre-parse does *only* what a parser cannot (byte/length/encoding caps), never a
-  keyword or statement-shape decision the parser makes correctly.
-- **Brief 04 (D-017 requirement 2): the two allowlist sets are intersected, not
-  conflated.** This phase does not yet do the allowlist (phase 18), but it **reserves
-  the split** in the error vocabulary (`table.not_in_topic` vs `table.not_granted` as
-  distinct, documented, semantics-gated codes) so phase 18 cannot collapse them.
-- **Brief 07 (WrenAI): the validate-without-executing rung.** WrenAI's `dry-plan`
-  (transpile/validate, no DB hit) → `dry-run` → `query` ladder maps onto Chartworks'
-  validate (this phase, no DB) → execute (phase 10). The typed retry-vs-propagate
-  error taxonomy (its `ErrorPhase`) informs our closed, exported error-code enum: a
-  parse/validation code is a *caller/model-fixable* class (phase 18 bounded repair
-  keys off it), distinct from an execution/connection class (phase 10).
-- **Brief 08 (Datus): several small independently-testable gates, not one
-  "validate SQL" function.** Statement-count, statement-type/family, node-class, and
-  (later) allowlist are separate gates that each fail closed and each are unit-testable
-  — the `SqlPolicyEnforcer`-seam shape, adopted as internal structure of the validator.
+- **Brief 02: AST allowlist, not regex.** The predecessors parsed with an AST library
+  and allowlisted only SELECT-family top-level nodes with a base blocked-node list
+  plus dialect-specific additions. Carried as the **shape** of the AST layer (walkable
+  typed tree, SELECT-family gate, blocked-node classes, per-dialect escapes); error
+  codes re-derived fresh.
+- **Brief 02: the single-gate scar.** The predecessors' read-only guarantee lived
+  *entirely* in one upstream validator and callers could reach `execute()` without
+  it. D-038 inverts the emphasis — the engine-side credential + dry-run is primary and
+  the client AST layer adds depth — and this phase ships the structural half: the
+  **unforgeable `ValidatedSQL`** carrying a **layer record**, so phase 10 can refuse
+  execution until every required layer has run. No layer's absence silently widens
+  access (P4).
+- **Brief 02/04: no regex "injection heuristic" presented as a control.** The
+  statement blocking + allowlists *are* the injection guardrail; identifiers are never
+  string-assembled from model output. An architecture test forbids a regex statement
+  classifier in the validate path.
+- **Brief 03 §4 (the CTE-regression lesson).** A pre-parse rule once rejected any
+  query not starting with `SELECT`, silently blocking every CTE query (~15–25pt
+  acceptance cost) despite full parser-level CTE support. Standing review rule +
+  golden CTE fixture: **the tokenizer layer does only what a parser cannot** —
+  byte/encoding caps, statement separation, comment/quote hygiene — never a keyword or
+  statement-shape judgment the parser makes correctly.
+- **Brief 04 (D-017 requirement 2): topic and grant sets are intersected, not
+  conflated.** Not implemented here (phase 18), but the error vocabulary **reserves
+  the split** (`table.not_in_topic` vs `table.not_granted` as distinct codes) so phase
+  18 lands against a fixed contract.
+- **Brief 07 (WrenAI): the validate ladder + engine dry-run.** WrenAI's
+  `dry-plan → dry-run → query` ladder is the direct ancestor of the D-038 layering;
+  its typed `ErrorPhase` taxonomy informs the closed error-code enum (a
+  validation-class code is model/caller-fixable — phase 18's bounded repair keys off
+  it — distinct from execution/connection classes).
+- **Brief 08 (Datus): several small independently-testable gates, not one "validate
+  SQL" function.** Statement-count, statement-family, node-class, and escape gates are
+  separate, each fails closed, each unit-testable — adopted as the internal structure
+  of layers 1–2, and now also as the *layer record* the type carries.
 
 ## Findings I'm departing from
 
-- **Brief 02's `sqlglot`-family multi-dialect parser is not portable to Go.** `sqlglot`
-  is Python and multi-dialect; adopting it means a subprocess or an embedded runtime —
-  a direct D-005 / single-static-binary violation. No pure-Go multi-dialect parser
-  exists (evaluated below). We therefore depart from "one parser understands every
-  dialect" and adopt a **Postgres-grammar pure-Go base + fail-closed rejection of
-  unparseable dialect syntax + a per-dialect escape blocklist** — the risk-register
-  mitigation, made concrete.
-- **Brief 03's dialect-specific pre-parse syntax checks (e.g. `DATEADD`/`INTERVAL`
-  mixing, `DATE_TRUNC` comma checks) are NOT carried into pre-parse.** They are exactly
-  the "pre-parse duplicating parser judgment" trap the CTE regression warns against; if
-  a construct is malformed, the AST parse stage rejects it as `parse.error`. Pre-parse
-  stays byte-level only.
-- **Brief 08's `read_only` as a runtime flag on a shared path is rejected** in favor of
-  the D-017/P1c type split (a separate `ValidatedWriteSQL` type + a separate
-  materializer interface). No flag ever selects read vs write on a shared entry point.
+- **Brief 03's dialect-specific pre-parse syntax checks** (e.g. `DATEADD`/`INTERVAL`
+  mixing) are NOT carried into the tokenizer layer — they are the "duplicating parser
+  judgment" trap. Malformed constructs are the parser drivers' or the engine
+  dry-run's job.
+- **Brief 08's `read_only` runtime flag on a shared path is rejected** in favor of the
+  D-017/P1c type split (`ValidatedWriteSQL` + a separate materializer interface).
+- **The predecessors' "one parser understands every dialect" assumption is replaced**,
+  per D-038, by the parser seam + per-dialect evidence-gated adoption + engine-side
+  dialect truth. (The prior revision's ANSI-conservative generation framing is
+  dropped — superseded by D-038's native-dialect rule.)
 
 ## Scope
 
-Delivers, in `internal/exec` (validation half only):
+Delivers, in `internal/exec` (client-side validation layers only):
 
-1. **Parser selection + pin** — `github.com/cockroachdb/cockroachdb-parser`
-   **v0.25.2** (see Design), added to `go.mod` and its dev-build caveat pinned.
-2. **The three-stage validator** — `Validate(ctx, raw string, dialect Dialect) →
-   (ValidatedSQL, error)`:
-   - Stage 1 **pre-parse**: byte-length cap, statement-length cap, UTF-8/encoding
-     sanity, NUL/control-byte rejection. Nothing keyword- or shape-aware.
-   - Stage 2 **parse**: dialect-aware AST parse via the pinned parser; unparseable ⇒
-     typed `parse.error`; a construct the base grammar cannot represent ⇒ typed
-     `parse.unsupported` (fail-closed, never a silent pass).
-   - Stage 3 (semantics-independent half) **whole-tree statement blocking**: top-level
-     node ∈ SELECT-family (`SELECT`/`WITH`/`UNION`/`INTERSECT`/`EXCEPT`) only; blocked
-     node classes rejected **anywhere in the tree**; single-statement enforcement;
-     dialect-escape blocklist. CTE-local names are resolved scope-aware (never a
-     hard-fail on legitimate CTE shadowing).
-3. **The typed validation-error vocabulary** — a closed, exported enum of error codes,
-   normative for both surfaces; a golden test pins the set. Semantics-gated codes
-   (`table.not_in_topic`, `table.not_granted`, `column.unknown`, `join.unreachable`)
-   are declared here as reserved constants so phase 18 lands against a fixed contract,
-   but are not *emitted* by this phase.
-4. **The unforgeable `ValidatedSQL` type** — an opaque struct in `internal/exec` with
-   no exported fields and no exported constructor; the only path to a value is a
-   successful `Validate`. A compile-time proof (external `_test` package) shows it is
-   unconstructible outside the package. This is the type the phase-08 adapter `Query`
-   signature already requires (RFC §6.1).
-5. **The write-shape variant** — `ValidateWriteShape(ctx, raw string, dialect Dialect,
-   spec WriteShapeSpec) → (ValidatedWriteSQL, error)` for phase 13's `Materializer`:
-   a single statement whose *only* write target is the one declared output, whose read
-   references are ⊆ the declared inputs, and whose body otherwise passes the same
-   node-class blocking (no nested DDL/DML, no second write). Returns a **distinct**
-   `ValidatedWriteSQL` type — the read `exec.Query` path does not accept it and the
-   materializer does not accept a read `ValidatedSQL` (P1c type-split, no flag).
+1. **The tokenizer layer (layer 1, every dialect)** — byte-length cap, UTF-8/encoding
+   sanity, NUL/control-byte rejection, **dialect-aware single-statement enforcement**
+   and **comment/quote hygiene** (a separator inside a string literal or comment is
+   not a statement boundary; an unterminated quote/comment is a typed rejection).
+   Nothing keyword- or statement-shape-aware beyond separation.
+2. **The parser seam (layer 2)** — interface + factory + driver (§4.4):
+   - driver **`crdb`** = `github.com/cockroachdb/cockroachdb-parser` **v0.25.2**
+     (D-033, retained by D-038) — postgres-family: postgres sources and every upload
+     workspace (D-024);
+   - driver **`sqlglotgo`** = `jonathan-fulton/sqlglot-go` **v0.4.0** (D-038; MIT,
+     pure Go, all six dialects, walkable AST). **Per-dialect adoption is
+     evidence-gated** through the conformance-reproduction harness below.
+   - Where a driver covers the dialect: whole-tree statement blocking (top-level ∈
+     SELECT-family; blocked node classes anywhere in the tree; dialect escapes),
+     CTE-scope-aware name resolution (warning on shadowing, never hard-fail).
+   - A dialect/input without a proven driver **skips the AST layer with the typed
+     `parse.unsupported` marker** — recorded on the layer record, never a fake pass;
+     the engine-side layers (phase 10) still apply to it.
+3. **The conformance-reproduction harness** — the per-dialect fixture corpus (read
+   fixtures incl. dialect-specific syntax; write/DDL fixtures top-level and nested;
+   escape fixtures; multi-statement; CTE goldens) run mechanically through **each**
+   parser driver. A dialect flips to a driver **only** on a 100% corpus pass
+   (every write classified blockable, every read fixture parsed, every escape
+   detectable in-tree). The harness emits a committed per-dialect conformance report,
+   and the driver-adoption table is **generated from that report** — never
+   hand-flipped. Re-run on every driver version bump (D-035 discipline).
+4. **The typed validation vocabulary** — a closed, exported, golden-pinned enum.
+   `parse.unsupported` means **"the AST layer was skipped for this input; engine-side
+   layers still apply"** — a capability *marker*, not a rejection of the query.
+   Semantics-gated codes (`table.not_in_topic`, `table.not_granted`, `column.unknown`,
+   `join.unreachable`) are reserved constants, not emitted here.
+5. **The unforgeable `ValidatedSQL` type + layer record** — opaque, no exported
+   fields/constructor; the only path to a value is a successful `Validate`. It records
+   **which layers ran and their outcome**: `tokenizer: passed`,
+   `ast: passed | skipped(parse.unsupported)`, `engine: pending`. `engine: pending` is
+   the **mandatory initial state**: the phase-10 contract (declared here as an
+   interface expectation, implemented there) is that `exec.Query` refuses any
+   `ValidatedSQL` whose engine-side layer has not completed. The layer record is
+   append-only and package-private to mutation.
+6. **The write-shape variant** — `ValidateWriteShape(ctx, raw, dialect, spec) →
+   (ValidatedWriteSQL, error)` for phase 13: a single statement whose only write
+   target is the one declared output, whose reads are ⊆ declared inputs, and whose
+   body passes the same node-class blocking. A **distinct** type with the same layer
+   record; the read `Query` path does not accept it and the materializer does not
+   accept a read `ValidatedSQL` (P1c, no flag). Where the destination dialect lacks a
+   proven AST driver, the write-shape AST check is skipped with the same typed marker
+   and phase 13's remaining gates (declared destinations, `bruin validate`, D-036)
+   carry the load — recorded, never silent.
 
 ## Non-goals
 
-- **No execution.** No adapter call, no DB connection, no read-only session, no
-  timeouts/row caps — all phase 10. Validation is pure and DB-free.
-- **No topic-pack ∩ grants allowlist, no join-reachability walk.** Needs
-  `internal/semantics` — phase 18. The error codes and the intersection *contract* are
-  reserved here; the walk is not implemented.
-- **No bounded repair / self-curation** — phase 18/§9.6.
-- **No cross-dialect transpilation.** A template authored for one dialect is validated
-  against that dialect; we never rewrite it (RFC §9.3).
-- **No new surface** (no CLI command, endpoint, MCP tool, config key). This is an
-  internal library other phases consume.
+- **No execution and no engine-side layers.** Read-only credential posture, dry-run/
+  EXPLAIN, referenced-table extraction, timeouts, row caps — all phase 10. This phase
+  only defines the `engine: pending` layer-record state phase 10 consumes.
+- **No topic-pack ∩ grants allowlist, no join reachability** — phase 18.
+- **No bounded repair / self-curation** — phase 18 / RFC §9.6.
+- **No transpilation.** sqlglot-go can transpile; Chartworks does not use it —
+  generation targets the native dialect (D-038) and validation never rewrites.
+- **No new surface** (no CLI command, endpoint, MCP tool, config key).
 
 ## Design
 
-### Parser selection (this plan's first design duty — convention 8)
+### Parser seam & drivers (evidence, convention 8)
 
-The choice was made against a **real per-dialect fixture corpus** exercised through
-each candidate's actual API (a throwaway module, `go run`, against the live module
-proxy — not from memory). Findings:
+Both drivers were verified against a real fixture corpus through their actual APIs (a
+throwaway module against the live proxy — not from memory):
 
-| Candidate (verified on proxy) | Grammar | Pure Go / CGo-free | Verdict |
-| --- | --- | --- | --- |
-| `github.com/cockroachdb/cockroachdb-parser` **v0.25.2** | PostgreSQL + ANSI | yes | **Selected** |
-| `vitess.io/vitess/go/vt/sqlparser` v0.24.2 | MySQL | yes | Rejected — single MySQL dialect (wrong for 5 of 6) |
-| `github.com/pingcap/tidb/pkg/parser` | MySQL | yes | Rejected — single MySQL dialect |
-| `github.com/auxten/postgresql-parser` v1.0.1 (2022) | PostgreSQL | yes | Rejected — stale, older CRDB extraction, same grammar with less maintenance |
-| `sqlglot` (predecessors' choice) | multi-dialect | **no (Python)** | Rejected — violates D-005 / single static binary |
+**`crdb` — cockroachdb-parser v0.25.2** (D-033, verified previously): pure Go; full
+Postgres grammar; ANSI-common SELECT/CTE/set-ops parse as `*tree.Select`; every
+DDL/DML is a distinct AST node type (`*tree.Insert`, `*tree.CreateTable`, …) so
+blocking is a type-switch over `tree.WalkStmt`; multi-statement = `len(stmts) > 1`.
+It does **not** parse dialect-specific SELECT extensions (MySQL backticks, T-SQL
+`TOP`/brackets, Snowflake `QUALIFY`, BigQuery `EXCEPT()`, Databricks `LATERAL VIEW`)
+— under D-038 those inputs route to the `sqlglotgo` driver or skip the AST layer
+with the marker; they are no longer framed as a capability limit of the product.
+Dev-build caveat: transitive `gosigar` v0.14.3 breaks a darwin `CGO_ENABLED=0` build
+(Go 1.26 API drift; the static Linux target builds clean); pin/bump `gosigar` v0.14.4.
 
-**Why cockroachdb-parser v0.25.2.** It is the only actively-maintained, pure-Go parser
-with a full Postgres-grade grammar and a **walkable typed AST**
-(`tree.Statement`, `tree.WalkStmt` + a `Visitor` for whole-tree traversal). Verified
-behaviour against the six-dialect corpus:
+**`sqlglotgo` — jonathan-fulton/sqlglot-go v0.4.0** (D-038), probed against the
+six-dialect corpus:
 
-- **ANSI-common SELECT / CTE (`WITH`) / set-ops parse as a single `*tree.Select`** —
-  across all six dialects for the shared read core. Postgres is the *exact* grammar
-  (and the upload workspace is Postgres too, D-024), so two of six dialects are native.
-- **Every DDL/DML gets a distinct AST node type** — `*tree.Insert`, `*tree.Update`,
-  `*tree.Delete`, `*tree.CreateTable`, `*tree.DropTable`, `*tree.Call`, `*tree.CopyFrom`,
-  … — so whole-tree blocking is a type-switch over the walked tree, and
-  multi-statement is `len(stmts) > 1`. This is mechanically robust, not heuristic.
-- **Dialect-specific SELECT extensions do NOT parse** (verified: MySQL backtick
-  identifiers; T-SQL `TOP` and `[bracketed]` identifiers; Snowflake `QUALIFY`;
-  BigQuery `SELECT * EXCEPT(...)`; Databricks `LATERAL VIEW`). Under the **fail-closed**
-  posture these become a typed `parse.unsupported` rejection — **safe (never a silent
-  pass)**, at a legitimate-query coverage cost. This *is* the standing risk-register
-  entry ("Go SQL-parser dialect coverage falls short of the V1 warehouses"); the
-  mitigation (the `ansi` sentinel + capability gating degrading unknown constructs to
-  typed rejections) is realized exactly here.
+- Parses all six dialects' distinctive read syntax (verified: MySQL backticks, T-SQL
+  `TOP` + `[bracketed]`, Snowflake `QUALIFY`, BigQuery `SELECT * EXCEPT(...)`,
+  Databricks `LATERAL VIEW`) via `sqlglot.Parse(sql, Options{Read: dialect})`.
+- Statement classification via `Expression.Kind()` with distinct kinds for
+  `Insert`/`Update`/`Delete`/`Merge`/`Create`/`Drop`/`Command`(CALL)/`Copy` — all
+  verified blockable; multi-statement detectable (`len(exprs) > 1`); whole-tree walk
+  via `Expression.Walk`/`Find`/`FindAll`.
+- **The decisive escape case is proven**: T-SQL `SELECT a INTO newt FROM t` parses as
+  kind `Select` — a write masquerading as a read — and the `exp.Into` node **is
+  findable in-tree** (`e.Find(exp.Into) != nil`), so the escape blocklist catches it
+  structurally. MySQL `INTO OUTFILE` / `LOAD DATA` fail to parse → AST-skip marker →
+  the engine-side read-only credential still blocks them (the layered guarantee).
+- Pure Go (zero CGo files — consistent with D-037's preference).
+- **Packaging defect (convention-8 finding, load-bearing):** every published version
+  (v0.1.0–v0.4.0) declares module path `github.com/jonathanfulton/sqlglot-go` (no
+  hyphen) while the repo lives at `github.com/jonathan-fulton/sqlglot-go`, and no
+  repo exists at the declared path. The module is **unconsumable without a `replace`
+  directive**: `replace github.com/jonathanfulton/sqlglot-go =>
+  github.com/jonathan-fulton/sqlglot-go v0.4.0` (verified working). This strengthens
+  D-038's anticipated endgame — a fork under our org (which also fixes the module
+  path) once the driver proves out; until then the replace + exact pin is the recorded
+  posture. Bus factor 1 / 4-weeks-old is exactly why adoption is harness-gated.
 
-**The `ansi` sentinel + dialect profiles.** `Dialect` maps each of the six engines (+
-`ansi`) to a parse profile: the base grammar plus a per-dialect **escape blocklist** of
-write-capable constructs that can masquerade as a read (even where a future dialect
-parser would parse them as a `Select`): T-SQL `SELECT … INTO` and `EXEC`/`EXECUTE`,
-MySQL `SELECT … INTO OUTFILE`/`INTO DUMPFILE` and `LOAD DATA`, Postgres/Snowflake
-`COPY`/`COPY INTO`, `CALL`, and the base DDL/DML classes. Verified today these all
-either surface as a distinct blockable node or fail to parse (→ `parse.unsupported`);
-the blocklist is the belt to the parser's braces, so a grammar upgrade never silently
-widens the write surface. An unknown dialect resolves to `ansi` (strictest common
-subset), never to "parse permissively."
+### The conformance-reproduction harness (the D-038 gate, designed here)
 
-**Build/dependency caveat (evidenced, convention 8 "verify packaging against real
-release assets").** The **static Linux target** — D-005's actual deliverable — builds
-clean under `CGO_ENABLED=0 GOOS=linux`. A *local* `CGO_ENABLED=0` dev build on darwin
-trips a stale transitive dep (`github.com/elastic/gosigar` v0.14.3, reached via
-`pkg/sql/types → pkg/util/debugutil`; a Go 1.26 API drift, **not** a CGo issue —
-v0.14.4 exists). Mitigation pinned in this plan: bump/replace `gosigar` to v0.14.4 in
-`go.mod` so local `CGO_ENABLED=0` dev builds match CI. The parser drags a sizeable
-transitive footprint (~120 CRDB packages); acceptable for a security-core gate, noted
-so no one is surprised by `go.sum` size.
+A table-driven harness (`internal/exec`, ordinary `go test` + a generator step): for
+each `(dialect, driver)` pair it runs the full fixture corpus and scores four
+families — *read-parses* (incl. dialect-specific syntax), *write-classification*
+(every DDL/DML fixture, top-level and nested, maps to a blockable node), *escapes*
+(every escape fixture detectable in-tree or a parse failure — never a clean
+`Select`-and-nothing-else), *statement-count* (multi-statement fixtures). A pair is
+**adopted** only at 100% on all four; the result is written to a committed
+per-dialect conformance report (golden — a driver bump that changes it fails the
+diff), and the factory's dialect→driver table is generated from the report. Expected
+V1 outcome per the probes: `postgres` → `crdb`; the other five → `sqlglotgo` where
+the full corpus confirms the probe results; any pair that fails stays AST-skipped
+with the typed marker. **The harness, not this plan, is the authority** — that is the
+point.
 
-### Stage structure & the "never duplicate parser judgment" review rule
+### Layer record & the "never duplicate parser judgment" rule
 
-Pre-parse is deliberately dumb: it does *only* what a parser cannot (bytes, length,
-encoding). A **binding review rule** (stated in the package doc and asserted by an
-architecture test) forbids any pre-parse rule that inspects keywords, statement kind,
-or SQL shape — that is the CTE-regression trap. The golden CTE fixture is the standing
-guard: a representative `WITH`/recursive-CTE/set-op corpus must validate as SELECT-
-family. If a pre-parse rule ever rejects a CTE, the guard fails.
+`Validate` runs tokenizer → (adopted driver? AST walk : skip-with-marker) and stamps
+the layer record. The tokenizer is deliberately dumb; a **binding review rule**
+(package doc + architecture test) forbids any tokenizer-layer rule that inspects
+keywords or statement shape beyond separator/quote/comment mechanics — the
+CTE-regression trap. The golden CTE fixture is the behavioural guard on both drivers.
 
 ### Upholding P1–P7
 
-- **P1b** — the three stages + the fail-closed unparseable path; the AST allowlist is
-  the sole injection guardrail (no regex control). **P1c** — the read/write type split.
-- **P4** — every rejection is a typed error code + a metric increment; there is no
-  "skip to execute" and no silent pass; an unparseable input is a loud typed rejection.
-- **P5** — n/a to this phase (no model call); the error taxonomy is shaped so phase
-  18's schema-constrained repair keys off typed codes, never free-text.
-- **P7** — one validation core; the write-shape validator shares the same node-class
-  engine; mode (a)/(b) both reach the same `Validate` (phase 18/19 parity keys off the
-  fact that `ValidatedSQL` is the *only* executable type).
+- **P1b** — layers 1–2 + the honest layer record; the allowlist/blocking is the
+  injection guardrail (no regex control). **P1c** — the read/write type split.
+- **P4** — every rejection and every skip is typed + metered; a skipped layer is a
+  recorded marker, never a silent pass; no layer's absence widens access.
+- **P5** — n/a (no model call); error taxonomy shaped for phase 18's typed repair.
+- **P7** — one validation core; both generation modes and the write path reach the
+  same seam; `ValidatedSQL` is the only executable type.
 
 ## Config keys added
 
-**None.** Deliberate. Validation is pure, deterministic library code with no operator
-knobs: the pre-parse byte/length caps are **safety constants**, not config — making
-them tunable would let an operator *widen* the attack surface (a fail-closed constant
-is the correct posture). The execution-side tunables (row caps, statement timeouts)
-are config, but they belong to phase 10 (`internal/exec` execution half), not here.
+**None.** Deliberate: tokenizer caps are fail-closed **safety constants**, not
+operator knobs; the driver-adoption table is **harness-generated**, not configured (a
+config override would let an operator widen the AST-skip surface silently — the exact
+P4 failure). Engine-side tunables (timeouts, row caps) are phase 10's.
 
 | Key | Type | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
@@ -249,71 +259,78 @@ are config, but they belong to phase 10 (`internal/exec` execution half), not he
 
 ## Acceptance criteria
 
-1. **Whole-tree DDL/DML rejection across all six V1 dialects.** A table-driven
-   per-dialect corpus (postgres, mysql, sqlserver/tsql, bigquery, snowflake,
-   databricks) of `INSERT`/`UPDATE`/`DELETE`/`MERGE`/`CREATE`/`ALTER`/`DROP`/`TRUNCATE`/
-   `CALL`/`COPY`/`GRANT` — at top level **and nested** (e.g. inside a CTE / subquery) —
-   is rejected with a typed error (`statement.blocked` where parsed, `parse.error`/
-   `parse.unsupported` where not); **zero** entries yield a `ValidatedSQL`.
-2. **CTE golden fixture passes.** A golden `WITH`/recursive-CTE/set-op SELECT corpus
-   validates as SELECT-family and produces a `ValidatedSQL` (the CTE-regression guard).
-3. **Multi-statement rejected.** Any input parsing to `len(stmts) > 1` yields typed
-   `statement.multiple`; single-statement SELECT passes.
-4. **`FuzzValidate` never panics, never passes a write.** A Go fuzz target with a seed
-   corpus asserts two invariants on every input: (a) `Validate` never panics; (b) if it
-   returns a `ValidatedSQL`, the parsed tree contains no write/DDL node class.
-5. **`ValidatedSQL` unconstructible outside the package.** A compile-time proof (an
-   external `exec_test` package) demonstrates no exported constructor/field can build a
-   value; the type has zero exported mutable surface.
-6. **Dialect-specific syntax degrades to a typed, fail-closed rejection.** A per-dialect
-   "unsupported-but-safe" corpus (MySQL backticks; T-SQL `TOP`/`[brackets]`; Snowflake
-   `QUALIFY`; BigQuery `EXCEPT(...)`; Databricks `LATERAL VIEW`) yields
-   `parse.unsupported` — never a `ValidatedSQL`, never a panic.
-7. **Typed error vocabulary is a closed, golden-pinned enum.** A golden test pins the
-   exported error-code set; the reserved semantics-gated codes
-   (`table.not_in_topic`/`table.not_granted`/`column.unknown`/`join.unreachable`) exist
-   as distinct constants (not conflated) but are asserted **not emitted** by this phase.
-8. **Pre-parse does only byte/encoding work.** An architecture/review test asserts the
-   pre-parse stage references no SQL keyword / statement-kind token (the "never
-   duplicate parser judgment" rule); the CTE golden fixture is the behavioural guard.
-9. **Write-shape variant is correct and type-split.** `ValidateWriteShape` accepts a
-   single CTAS / `INSERT … SELECT` writing only to the declared output and reading only
-   declared inputs (→ `ValidatedWriteSQL`); it rejects a write outside the declared
-   output, a second write, and any nested DDL/DML. A compile-time proof shows
-   `exec.Query` does not accept `ValidatedWriteSQL` and the materializer signature does
-   not accept a read `ValidatedSQL` (P1c split, no flag).
-10. **No regex injection heuristic exists.** A source-level architecture test asserts
-    the validate path contains no regex-based statement classifier — the AST allowlist
-    is the sole guardrail.
+1. **Conformance-reproduction harness gates driver adoption.** The harness runs the
+   full per-dialect fixture corpus against each parser driver, emits the committed
+   per-dialect conformance report (golden), and the factory's dialect→driver table is
+   generated from it; a hand-edit to the table without a matching report diff fails
+   the build. No `(dialect, driver)` pair below a 100% corpus pass is adopted.
+2. **Whole-tree DDL/DML rejection across the V1 dialects.** For every dialect with an
+   adopted AST driver, the table-driven write corpus (`INSERT`/`UPDATE`/`DELETE`/
+   `MERGE`/`CREATE`/`ALTER`/`DROP`/`TRUNCATE`/`CALL`/`COPY`/`GRANT`, top-level **and
+   nested**) is rejected with typed `statement.blocked`; **zero** corpus entries
+   yield a `ValidatedSQL` whose record claims `ast: passed`; a non-adopted pair shows
+   `ast: skipped` for the same corpus — never a fake pass.
+3. **CTE golden fixture passes on both drivers.** The `WITH`/recursive-CTE/set-op
+   SELECT corpus validates as SELECT-family through `crdb` and `sqlglotgo` (the
+   CTE-regression guard).
+4. **Tokenizer screens hold on every dialect.** Multi-statement input is rejected
+   typed (`statement.multiple`) **dialect-aware**: a separator inside a string
+   literal or comment does not trip it; a genuine second statement does; an
+   unterminated quote/comment and an over-cap/malformed-encoding input are typed
+   rejections. Runs identically for all six dialects + `ansi`.
+5. **`FuzzValidate` invariants.** A fuzz target with a seed corpus asserts, per input:
+   (a) never panics; (b) a returned `ValidatedSQL` claiming `ast: passed` contains no
+   write/DDL/escape node; (c) the layer record never claims a layer that did not run.
+6. **`ValidatedSQL` unconstructible + honest layer record.** Compile-time proof
+   (external `exec_test` package) that no exported constructor/field can build a
+   value; the layer record is read-only outside the package; `engine: pending` is the
+   mandatory initial state (the phase-10 refusal contract is asserted as an interface
+   expectation test against the exported contract type).
+7. **AST-skip is typed and fail-honest.** For a dialect/input without a proven
+   driver, `Validate` returns a `ValidatedSQL` with `ast: skipped` + the
+   `parse.unsupported` marker (never an `ast: passed` claim, never a panic); the
+   golden error/marker vocabulary test pins the closed enum, including the reserved
+   (unemitted) semantics codes as distinct constants.
+8. **Tokenizer never duplicates parser judgment.** An architecture test asserts the
+   tokenizer-layer source references no SQL keyword/statement-kind token beyond
+   separator/quote/comment mechanics; the CTE golden fixture is the behavioural
+   guard.
+9. **Write-shape variant correct and type-split.** `ValidateWriteShape` accepts a
+   single CTAS / `INSERT … SELECT` writing only to the declared output reading only
+   declared inputs (→ `ValidatedWriteSQL`); rejects a write outside the declared
+   output, a second write, and nested DDL/DML; skips-with-marker on a non-adopted
+   destination dialect. Compile-time proof that `exec.Query` does not accept
+   `ValidatedWriteSQL` and the materializer signature does not accept `ValidatedSQL`.
+10. **Dialect escapes are caught structurally; no regex heuristic.** The escape corpus
+    (T-SQL `SELECT … INTO`, `EXEC`; MySQL `INTO OUTFILE`/`LOAD DATA`; Snowflake
+    `COPY INTO`; `CALL`) each either yields a typed block (in-tree detection — e.g.
+    the verified `exp.Into` node) or an AST-skip marker — never an `ast: passed`
+    `ValidatedSQL`; an architecture test asserts no regex-based statement classifier
+    exists in the validate path.
 
 ## Test obligations
 
 Per CLAUDE.md §11:
 
-- **Unit:** table-driven per-dialect corpora for criteria 1/3/6; the write-shape
-  matrix (criterion 9); the error-vocabulary golden (criteria 2, 7). All DB-free and
-  pure — deterministic golden tests.
-- **Integration:** **n/a for this phase.** It closes no cross-subsystem seam and touches
-  no real driver — it *opens* the `ValidatedSQL` contract phase 08/10 build on. The
-  first integration proof (validator → adapter `Query`) lands in phase 10, and the
-  per-dialect recorded-fixture dialect tests land in phase 14 (§17); a stub row for the
-  reserved allowlist codes is handed to phase 18. (Stated deliberately, not skipped.)
-- **Adversarial:** this is a SQL-safety path — the standing obligations (§11 / master
-  plan convention 5) apply: the DDL/DML corpus (criterion 1), a write/DDL-injection
-  probe (nested writes, stacked statements, comment-smuggled DDL), and a schema-escape
-  probe seed. The *cross-tenant* and *fetch-then-filter* members of the access set are
-  **n/a here** (no access set until phase 18) — noted, not silently dropped.
-- **Fuzz:** **required** — `FuzzValidate` with a seed corpus and the two asserted
-  invariants (criterion 4). This is a prime parse/decode surface (CLAUDE.md §11).
-- **Bench:** `BenchmarkValidate` on a representative statement — the validator is a hot
-  reusable artifact on every plan/run; a baseline, not a CI gate. A `-race`
-  concurrent-reuse test proves the validator (a shared, immutable-after-construction
-  singleton) is safe under concurrent `Validate` calls.
+- **Unit:** the conformance harness itself (criterion 1); per-dialect corpora for
+  criteria 2/3/4/10; the write-shape matrix (criterion 9); vocabulary + report
+  goldens (criteria 1, 7). All DB-free, deterministic.
+- **Integration:** **n/a for this phase** — it closes no seam and touches no real
+  driver-at-the-boundary; it *opens* the `ValidatedSQL` + layer-record contract that
+  phase 10 (engine layer + refusal contract) and phase 14 (per-engine recorded
+  fixtures) integrate against (§17). Stated deliberately, not skipped.
+- **Adversarial:** SQL-safety path — the standing obligations apply: the write/DDL
+  corpus (criterion 2), injection probes (nested writes, stacked statements,
+  comment-smuggled DDL, quote-confusion around separators), the escape corpus
+  (criterion 10), and a layer-record forgery attempt (criterion 5c/6). Cross-tenant
+  and fetch-then-filter members are n/a until phase 18 — noted, not dropped.
+- **Fuzz:** **required** — `FuzzValidate` with seed corpus + the three invariants
+  (criterion 5). Prime parse/decode surface.
+- **Bench:** `BenchmarkValidate` (hot path on every plan/run); a `-race`
+  concurrent-reuse test proves the validator + both parser drivers are safe under
+  concurrent `Validate` (shared, immutable after construction).
 
 ## Coverage targets
-
-`internal/exec` sits in the **85% (`exec`)** band (master plan convention 4). This
-phase creates the package, so it adds the band entry in the same PR.
 
 | Package | Target | Rationale (if not the default) |
 | --- | --- | --- |
@@ -321,57 +338,69 @@ phase creates the package, so it adds the band entry in the same PR.
 
 ## Smoke checks
 
-`scripts/smoke/phase-09.sh` SKIPs cleanly until `internal/exec` exists, then runs one
-assertion per criterion (all pure `go test` targets + two source-structural greps — no
-binary, no DB needed).
+`scripts/smoke/phase-09.sh` SKIPs cleanly until `internal/exec` exists; all
+assertions are pure `go test` targets + source-structural greps (no binary, no DB).
 
 | Acceptance criterion | Smoke assertion |
 | --- | --- |
-| 1 | `go test -run TestValidate_BlocksWritesAllDialects` passes (per-dialect DDL/DML corpus, zero pass) |
-| 2 | `go test -run TestValidate_CTEGolden` passes (WITH/set-op corpus validates) |
-| 3 | `go test -run TestValidate_RejectsMultiStatement` passes |
-| 4 | `go test -run '^FuzzValidate$' -fuzz='^FuzzValidate$' -fuzztime=5s` (corpus run) never panics / never passes a write |
-| 5 | `go build ./internal/exec/...` + `go vet`; the `ValidatedSQL` unconstructibility proof compiles (`TestValidatedSQL_Unconstructible` present) |
-| 6 | `go test -run TestValidate_DialectSyntaxFailsClosed` passes (`parse.unsupported`, no panic) |
-| 7 | `go test -run TestErrorVocabulary_Golden` passes; reserved codes present-but-unemitted |
-| 8 | grep proves no SQL keyword token in the pre-parse source unit; `go test -run TestPreParse_NoParserJudgment` passes |
-| 9 | `go test -run TestValidateWriteShape` passes; grep proves `Query(...)` signature takes `ValidatedSQL` not `ValidatedWriteSQL` |
-| 10 | grep proves no `regexp` import in the validate source units; `go test -run TestNoRegexInjectionHeuristic` passes |
+| 1 | `go test -run TestConformanceHarness_GatesAdoption` (report golden + generated table match) |
+| 2 | `go test -run TestValidate_BlocksWritesAllDialects` (adopted pairs reject typed; zero ast-passed) |
+| 3 | `go test -run TestValidate_CTEGolden` (both drivers) |
+| 4 | `go test -run TestTokenizer_Screens` (dialect-aware multi-statement, quote/comment hygiene, caps) |
+| 5 | `go test -run '^FuzzValidate$' -fuzz='^FuzzValidate$' -fuzztime=5s` (three invariants on corpus) |
+| 6 | `go test -run TestValidatedSQL_Unconstructible` + `TestLayerRecord_EnginePendingContract` |
+| 7 | `go test -run TestValidate_ASTSkipTypedMarker` + `TestErrorVocabulary_Golden` |
+| 8 | grep proves no SQL keyword token in tokenizer source; `go test -run TestTokenizer_NoParserJudgment` |
+| 9 | `go test -run TestValidateWriteShape`; grep proves `Query(...)` takes `ValidatedSQL`, not `ValidatedWriteSQL` |
+| 10 | `go test -run TestDialectEscapes_Structural` + `TestNoRegexInjectionHeuristic`; grep for `regexp` import |
 
 ## Glossary additions
 
-Only genuinely new terms (most exist already — `SQL-safety property`, `ValidatedSQL`
-usage, `Data-source adapter`, `ansi` sentinel are covered):
+Only genuinely new terms:
 
-- **Validated SQL** — an opaque value produced *only* by the validator (RFC §9.5) on a
-  successful three-stage pass; the sole type a data-source adapter's read `Query`
-  accepts. Unconstructible outside `internal/exec` — an adapter structurally cannot
-  execute a raw string (P1b, D-021).
+- **Validated SQL** — an opaque value produced *only* by the validator (RFC §9.5) and
+  the sole type a data-source adapter's read `Query` accepts; unconstructible outside
+  `internal/exec` (P1b, D-021). Carries the **layer record**.
+- **Layer record** — the per-value record of which validation layers ran and their
+  outcome (`tokenizer: passed`, `ast: passed | skipped`, `engine: pending |
+  completed`); append-only, package-private to mutation. Execution refuses a value
+  whose engine-side layer is pending (D-038, phase 10).
 - **Validated write SQL** — the write-shape analogue for the materialization path
-  (RFC §7.6): a single statement writing only to a declared destination and reading
-  only declared inputs, on a **distinct** type the read path never accepts (P1c).
-- **Dialect escape** — a write-capable or side-effecting construct that can masquerade
-  as a read (`SELECT … INTO`, `INTO OUTFILE`, `LOAD DATA`, `COPY`/`COPY INTO`, `EXEC`,
-  `CALL`); blocked by the per-dialect escape list even where the parser would accept it.
-- **Fail-closed parse** — an input the base grammar cannot represent is a typed
-  `parse.unsupported` rejection, never a silent pass — the posture that trades some
-  legitimate-dialect-syntax coverage for a guarantee that nothing unproven executes.
+  (RFC §7.6): a single statement writing only to a declared destination, reading only
+  declared inputs, on a **distinct** type the read path never accepts (P1c).
+- **Parser seam** — the interface + factory + driver seam for client-side AST
+  validation (D-038); V1 drivers `crdb` and `sqlglotgo`, adoption per dialect gated
+  by the conformance-reproduction harness.
+- **Conformance-reproduction harness** — the mechanical gate that adopts a
+  `(dialect, parser-driver)` pair for the AST layer only after independently
+  reproducing the driver's conformance against the phase-09 fixture corpus; its
+  committed report generates the dialect→driver table.
+- **Dialect escape** — a write-capable or side-effecting construct that can
+  masquerade as a read (`SELECT … INTO`, `INTO OUTFILE`, `LOAD DATA`,
+  `COPY`/`COPY INTO`, `EXEC`, `CALL`); blocked structurally in-tree where a driver is
+  adopted, otherwise covered by the AST-skip marker + engine-side layers.
+- **AST-skip marker (`parse.unsupported`)** — the typed marker recording that the
+  client AST layer was skipped for an input (no proven driver for the dialect, or a
+  construct the driver cannot represent); engine-side layers still apply — it is a
+  coverage marker, never a silent pass and no longer a capability rejection.
 
 ## Decisions filed
 
-- **References** D-021 (three-stage AST validation + `ValidatedSQL` + read/write split),
-  D-032 (six-dialect set), D-017 (write-posture split), D-005 (CGo-free), D-024 (upload
-  workspace is Postgres — why the Postgres grammar is native for two dialects).
-- **Ratified as D-033** during the planning review (parser pin + fail-closed dialect
-  posture + the phase-18 generation-side obligation). Original proposal text follows
-  (number was for the orchestrator to assign; **not**
-  written to `docs/decisions.md` by this plan): *"SQL validator parser pin —
-  `github.com/cockroachdb/cockroachdb-parser` v0.25.2, a Postgres-grammar pure-Go base
-  with fail-closed rejection of unparseable dialect syntax and a per-dialect escape
-  blocklist; the `ansi` sentinel is the strictest-common-subset fallback. Includes the
-  `gosigar` v0.14.4 dev-build pin."* The parser pin is a load-bearing, hard-to-reverse
-  dependency choice with a security posture attached — it warrants its own `D-NNN`
-  once the orchestrator accepts this plan.
+- **References** D-038 (layered validation, parser seam, both driver pins,
+  native-dialect generation), D-033 (the `crdb` pin — retained; its
+  generation-subset obligation superseded by D-038), D-021 (typed vocabulary,
+  `ValidatedSQL`, read/write split), D-017 (write-posture split), D-032 (dialect
+  set), D-036 (Bruin as the write-path executor phase 13 pairs the write-shape
+  variant with), D-037 (CGo posture; both drivers pure Go), D-024 (upload workspaces
+  are Postgres — why `crdb` natively covers them), D-035 (pin-and-reverify
+  discipline the harness re-run rule follows).
+- **Proposal for the orchestrator** (not written to `docs/decisions.md` by this
+  plan): record the **sqlglot-go packaging defect** — all published versions declare
+  module path `github.com/jonathanfulton/sqlglot-go` (hyphen-less) with no repo at
+  that path, so consumption requires an exact-pin `replace` directive — as an
+  addendum to D-038 (or a small follow-up entry), since it materially strengthens
+  D-038's fork-under-our-org endgame and any contributor touching `go.mod` will trip
+  over it.
 
 ## Deviation log
 

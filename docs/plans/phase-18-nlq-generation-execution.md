@@ -12,21 +12,30 @@ prior stops at a `ValidatedSQL` value; nothing has executed it on the NLQ path.
 
 ## RFC / request sections
 
-- **RFC §9.3** — internal generation (mode a): `sqlgen`, schema-constrained; the one
-  precedence resolution function `edit_base > hints > examples > default`; bounded
-  validation repair (≤1 `sqlfix`).
-- **RFC §9.5 (allowlist stage)** — the semantics-aware post-parse walk: table/column ∈
-  (topic pack schema ∩ caller dataset grants), join-graph reachability. This phase
-  supplies the **semantics-dependent half** of §9.5 stage 3 that phase 09 deliberately
-  deferred ("Topic-pack/grant allowlisting lands in phase 18").
-- **RFC §9.6** — read-only execution wiring for the NLQ path; execution-time bounded
-  repair (≤1 `sqlfix`), server-side timeouts + cursor caps (from phase 10), idempotency
-  keys.
+- **RFC §9.3** — internal generation (mode a): `sqlgen`, schema-constrained, targeting
+  the source's **native dialect** (D-038 — no ANSI-subset constraint; the dialect + its
+  SQL requirements ride the context); the one precedence resolution function
+  `edit_base > hints > examples > default`; bounded validation repair (≤1 `sqlfix`).
+- **RFC §9.5 (amended — layered, D-038)** — the semantics-aware allowlist inside the
+  layered validation: where the **parser seam** has a proven driver for the dialect
+  (layer 2), the client-side AST walk does **column-grain** (topic pack schema ∩ caller
+  dataset grants) + join reachability; the **engine dry-run/EXPLAIN** (layer 3)
+  guarantees **table-grain** allowlisting on every engine (dry-run referenced-table set
+  ∩ topic ∩ grants), regardless of layer-2 coverage. A dialect without a proven parser
+  driver skips layer 2 — recorded, never faked. This phase supplies the
+  semantics-dependent halves of layers 2 and 3 that phases 09/10 deferred.
+- **RFC §9.6 (amended)** — read-only execution wiring for the NLQ path: read-only
+  credentials as the **primary** read-only guarantee (D-038), the dry-run step inserted
+  before execution, execution-time bounded repair (≤1 `sqlfix`), server-side timeouts +
+  cursor caps (from phase 10), idempotency keys.
 - **RFC §9.7** — the normalized result envelope `run_query` returns.
 - **RFC §9.8** — feedback + the learn-positive job (DB-first weights: Wilson + recency +
   evidence-growth blend, paraphrase dedup) + the examples lifecycle.
 - **D-021** — the intersection proof (topic pack ∩ grants), defense-in-depth read-only,
   `ValidatedSQL` as the only executable type.
+- **D-038** — layered read-side validation (credentials primary; engine dry-run/EXPLAIN
+  dialect-truth; parser seam adds depth per-dialect); native-dialect generation
+  (supersedes D-033's generation-subset obligation; D-033's `crdb` parser pin retained).
 - **D-014** — dual generation modes converge on one validation/execution core (BYO is
   phase 19; this phase builds the core mode (b) reuses).
 - Capability scopes: **RFC §5.3** `query.preflight` / `query.plan` / `query.execute` /
@@ -34,14 +43,17 @@ prior stops at a `ValidatedSQL` value; nothing has executed it on the NLQ path.
 
 ## Depends on
 
-- **phase-09-sql-validate-core** — provides the three-stage skeleton, the `ValidatedSQL`
-  opaque type, the typed error vocabulary, and dialect-aware AST parse. This phase adds
-  the semantics-aware allowlist as the final post-parse walk **inside phase 09's
-  machinery** — it does not fork a second validator (P7).
-- **phase-10-exec-read** — provides `exec.Query(ctx, ValidatedSQL, opts)`, read-only
-  session enforcement, server-side timeouts, cursor caps, `ResultPreview` shaping, and
-  idempotency-key support. This phase is the first caller that executes generated SQL
-  through it.
+- **phase-09-sql-validate-core** — provides the layered-validation skeleton: tokenizer
+  screens, the **parser seam** (drivers `crdb`; `sqlglotgo` per-dialect, evidence-gated —
+  D-038), the `ValidatedSQL` opaque type, and the typed error vocabulary. This phase adds
+  the semantics-aware allowlist as the final AST walk **inside phase 09's machinery**
+  where a parser driver covers the dialect — it does not fork a second validator (P7).
+- **phase-10-exec-read** — provides `exec.Query(ctx, ValidatedSQL, opts)`, the read-only
+  credential/session posture (the primary guarantee, D-038), the **engine dry-run/EXPLAIN
+  step** (dialect-true syntax check + the referenced-table set), server-side timeouts,
+  cursor caps, `ResultPreview` shaping, and idempotency-key support. This phase is the
+  first caller that executes generated SQL through it, and wires the dry-run
+  referenced-table set into the table-grain grant check.
 - **phase-17-nlq-routing-context** — provides routing decisions, the pruned capability
   contract (query context), clarification slots, and the calibrated confidence primitive
   the complexity directive reads.
@@ -68,9 +80,10 @@ idempotency, self-curation bounds), **08** (reflect/fix split, layered gates).
 - **Brief 03 §3 — generator concurrency safety.** The generator is a shared singleton;
   per-request state (the resolved few-shot set) rides `ctx`, never a receiver field —
   proven by a `-race` concurrent-reuse test (CLAUDE.md §5).
-- **Brief 03 §4 / §9 — three-stage validation + the CTE scar.** The semantics-aware
-  allowlist is a post-parse (AST) walk, never a pre-parse string check; the standing
-  golden CTE fixture (phase 09) still passes after this phase adds its walk.
+- **Brief 03 §4 / §9 — the CTE scar.** The semantics-aware allowlist is an AST walk (and,
+  at layer 3, the engine's own parse) — never a pre-parse string check; a tokenizer screen
+  must not duplicate parser-level judgment; the standing golden CTE fixture (phase 09)
+  still passes after this phase adds its walk.
 - **Brief 03 §5 / ADR-005 — DB-first learn-positive.** Learned weight persists to the
   `examples` row (Wilson-score + recency + log-growth-of-evidence blend), cache is
   read-through only; a restart never regresses quality. Paraphrase dedup keyed
@@ -117,26 +130,43 @@ repair orchestration over phase 10's executor):
 
 1. **Internal generation** (`nlq.Generate`): a schema-constrained `sqlgen` gateway call
    (P5 — never free-text JSON) taking the §9.2 query context + resolved precedence inputs,
-   targeting the routed adapter's dialect, emitting a candidate SQL string + generation
-   provenance (`generator: internal`).
+   targeting the routed source's **native dialect** (D-038 — no ANSI-subset directive;
+   the dialect and its SQL requirements are stated in the context), emitting a candidate
+   SQL string + generation provenance (`generator: internal`).
 2. **The one precedence function** (`nlq.ResolvePrecedence`): `edit_base > hints >
    examples > default`, threshold-gated, few-shot-disabling on the top two paths;
    unit-tested table-driven.
-3. **The semantics-aware validation stage** (`exec` — extends phase 09): the post-parse
-   allowlist walk intersecting every table/column reference against
-   (topic-pack schema ∩ caller dataset grants) and checking join reachability against the
-   declared join graph; typed codes `statement.blocked`, `table.not_granted`,
-   `table.not_in_topic`, `column.unknown`, `join.unreachable`. Produces `ValidatedSQL`
-   only when the full walk passes.
-4. **Bounded repair** (`nlq`/`exec`): ≤1 `sqlfix` on validation failure (revalidate, then
-   typed terminal `sql.generation_failed`); ≤1 `sqlfix` on a warehouse execution error
-   (revalidate → re-execute, then typed terminal `sql.execution_failed`); each attempt
-   increments an observable round counter.
+3. **The semantics-aware allowlist inside the layered validation** (`exec` — extends
+   phases 09/10, D-038):
+   - **Layer 2 (client-side AST, where the parser seam covers the dialect):** the
+     allowlist walk intersecting every table/**column** reference against
+     (topic-pack schema ∩ caller dataset grants) and checking join reachability against
+     the declared join graph; typed codes `statement.blocked`, `table.not_granted`,
+     `table.not_in_topic`, `column.unknown`, `join.unreachable`, `parse.unsupported`. A
+     dialect without a proven driver skips this layer — recorded in the validation
+     report, never faked.
+   - **Layer 3 (engine dry-run/EXPLAIN, every engine, pre-execution):** the dry-run's
+     referenced-**table** set is checked against (topic ∩ caller grants) before the real
+     run — table-grain allowlisting guaranteed on every engine regardless of layer-2
+     coverage; a dry-run syntax error is a typed validation failure.
+   `ValidatedSQL` is produced after tokenizer screens + layer 2 (where covered); the
+   layer-3 gate lives inside `exec.Query` so no caller can execute without it.
+4. **Bounded repair** (`nlq`/`exec`): ≤1 `sqlfix` on validation failure — including a
+   **dry-run/EXPLAIN failure**, whose engine error message is dialect-true fix context
+   (cheaper than an execution round, D-038) — revalidate, then typed terminal
+   `sql.generation_failed`; ≤1 `sqlfix` on a real warehouse execution error (revalidate →
+   re-execute, then typed terminal `sql.execution_failed`); each attempt increments an
+   observable round counter. Grant denials (`table.not_granted`) short-circuit repair on
+   the run path once generation context already reflected the caller's grants — repair
+   never becomes a grant-probing loop.
 5. **The service surface** (`nlq`): `Preflight` (routability + clarification slots, no
-   SQL), `Plan` (route → generate → validate, **no execution**), `Run` (plan then
-   `exec.Query`, idempotent), `Refine` (session-scoped re-run). Scope mapping: `Preflight`
-   → `query.preflight`, `Plan` → `query.plan`, `Run`/`Refine` → `query.execute`. `Run`
-   idempotency scoped `(operation, tenant, principal, client_key)` via `idempotency_cache`.
+   SQL), `Plan` (route → generate → client-side validate, **no execution and no engine
+   contact** — layers 1–2 only; the validation report marks the dry-run gate as pending),
+   `Run` (plan, then **dry-run + table-grain allowlist, then execute** — the D-038
+   sequencing, all engine contact under `query.execute`), `Refine` (session-scoped
+   re-run). Scope mapping: `Preflight` → `query.preflight`, `Plan` → `query.plan`,
+   `Run`/`Refine` → `query.execute`. `Run` idempotency scoped
+   `(operation, tenant, principal, client_key)` via `idempotency_cache`.
 6. **The §9.7 result envelope**: routing evidence (topics, confidence, decision),
    assumptions + ambiguity assessment, the SQL + provenance + validation report, the
    `ResultPreview`, a chart-spec slot (populated by phase 20; reserved shape here), and
@@ -164,19 +194,31 @@ repair orchestration over phase 10's executor):
 
 ### Data flow (Run)
 
+The D-038 sequencing: **validate (layers 1–2, client-side) → dry-run + table-grain
+allowlist (layer 3, engine) → execute**. `Plan` stops after the client-side layers;
+all engine contact (dry-run included) sits behind `query.execute`.
+
 ```
-question ──▶ [17] route + assemble context ──▶ ResolvePrecedence
-   │                                                    │
-   │                                          Generate (sqlgen, schema-constrained)
-   │                                                    │  candidate SQL
-   ▼                                                    ▼
-scope+grant gate (04)                       [09] parse ─▶ semantics-aware allowlist walk
-   │  query.execute?                                     │  (pack ∩ grants + join graph)
-   ▼                                          fail? ─▶ sqlfix ×≤1 ─▶ revalidate ─▶ terminal
-short-circuit if empty access                         │ pass
-   │                                              ValidatedSQL  ← only executable type
-   ▼                                                    ▼
-idempotency_cache lookup ───hit──▶ cached envelope   [10] exec.Query (read-only, timeout, caps)
+question ──▶ [17] route + assemble context (native dialect + ──▶ ResolvePrecedence
+   │              SQL requirements ride the context, D-038)          │
+   │                                          Generate (sqlgen, schema-constrained,
+   │                                                    │            native dialect)
+   ▼                                                    ▼  candidate SQL
+scope+grant gate (04)                  [09] tokenizer screens ─▶ AST allowlist walk
+   │  query.execute?                        (parser seam,          (column-grain
+   ▼                                         where covered)         pack ∩ grants
+short-circuit if empty access                           │           + join graph)
+   │                                     fail? ─▶ sqlfix ×≤1 ─▶ revalidate ─▶ terminal
+   ▼                                                    │ pass  ─── Plan stops here ───
+idempotency_cache lookup ──hit──▶ cached env.      ValidatedSQL ← only executable type
+                                                        ▼
+                                       [10] exec.Query: engine dry-run/EXPLAIN
+                                            referenced tables ∩ topic ∩ grants
+                                                        │  dry-run error ─▶ feeds the
+                                                        │  ≤1 validation sqlfix (D-038)
+                                                        ▼ pass
+                                            real execution (read-only creds primary,
+                                            timeout, cursor caps)
                                                         │  exec error? ─▶ sqlfix ×≤1 ─▶ terminal
                                                         ▼
                                         §9.7 envelope (labels resolved) ─▶ persist queries row
@@ -185,9 +227,10 @@ idempotency_cache lookup ───hit──▶ cached envelope   [10] exec.Query
 ### Key types / interfaces
 
 - `nlq.GenerationInput` — query context (§9.2) + `PrecedenceResult`; `nlq.ResolvePrecedence(ctx, RoutingDecision, retrieved, cfg) → PrecedenceResult` where `PrecedenceResult.Strategy ∈ {edit_base, hints, examples, default}` and `FewShotDisabled bool`. One function, one discriminator (brief 03 §2.4 stable-envelope shape).
-- `exec.Validate(ctx, raw string, scope AllowlistScope) → (ValidatedSQL, error)` — extends phase 09; `AllowlistScope` carries the routed topic pack's allowed tables/columns **and** the caller's `EffectiveAccess` dataset set. The intersection is computed here (D-021 requirement 2), never conflated: a reference outside the pack → `table.not_in_topic`; a reference in the pack but outside grants → `table.not_granted`.
-- `exec.RepairBudget` — `{ValidationAttempts: 1, ExecutionAttempts: 1}` are **invariant constants**, not config (weakening the cap would weaken P1b); the on/off toggle (`exec.self_repair`) only disables the loop, never raises the cap. Each attempt increments `nlq_repair_rounds_total{stage}`.
-- The service methods return the §9.7 envelope; `Plan` returns it with `Result == nil` and never constructs an executor call path (compile-time: `Plan` has no `exec.Query` reference).
+- `exec.Validate(ctx, raw string, scope AllowlistScope) → (ValidatedSQL, error)` — extends phase 09 (layers 1–2); `AllowlistScope` carries the routed topic pack's allowed tables/columns **and** the caller's `EffectiveAccess` dataset set. The intersection is computed here (D-021 requirement 2), never conflated: a reference outside the pack → `table.not_in_topic`; a reference in the pack but outside grants → `table.not_granted`. When the parser seam has no proven driver for the dialect, the AST walk is skipped and the `ValidationReport` records `ast_layer: skipped` — never faked (D-038).
+- The **same `AllowlistScope`** rides into `exec.Query` (layer 3): the engine dry-run/EXPLAIN's referenced-table set is checked against its table-grain projection before the real run — one scope value, two layers, no second access representation (P7). The gate is internal to `exec.Query`, so a caller structurally cannot execute without it.
+- `exec.RepairBudget` — `{ValidationAttempts: 1, ExecutionAttempts: 1}` are **invariant constants**, not config (weakening the cap would weaken P1b); the on/off toggle (`exec.self_repair`) only disables the loop, never raises the cap. A dry-run/EXPLAIN failure consumes the *validation* attempt (its engine error is dialect-true fix context — cheaper than an execution round, D-038); a real execution error consumes the *execution* attempt. Each attempt increments `nlq_repair_rounds_total{stage}`.
+- The service methods return the §9.7 envelope; `Plan` returns it with `Result == nil` and never constructs an executor call path (compile-time: `Plan` has no `exec.Query` reference — and therefore no dry-run: plan-scope callers never contact the engine).
 
 ### P1–P7 upholding
 
@@ -195,10 +238,12 @@ idempotency_cache lookup ───hit──▶ cached envelope   [10] exec.Query
   `EffectiveAccess` dataset set short-circuits at the `Run`/`Plan` entry (typed
   `access.none`, no generation, no query). Store/adapter call-count assertions prove no
   query issues on denial.
-- **P1b (this phase closes it)** — `ValidatedSQL` is the only type `exec.Query` accepts
-  (phase 09 compile-time proof, re-asserted here); read-only enforcement + timeouts +
-  caps are phase 10's, independent of the validator (defense-in-depth). No execution path
-  exists that skips the walk.
+- **P1b (this phase closes it)** — layered per D-038: read-only credentials/sessions are
+  the primary guarantee (phase 10); the engine dry-run's table-grain check runs inside
+  `exec.Query` on every engine; the client-side AST walk adds column-grain depth where the
+  parser seam covers the dialect. `ValidatedSQL` is the only type `exec.Query` accepts
+  (phase 09 compile-time proof, re-asserted here). No layer's absence silently widens
+  access: a skipped AST layer is recorded, and table-grain + read-only hold regardless.
 - **P1c** — the NLQ path never references `sources.Materializer`; an architecture test
   asserts `internal/nlq` and the read path of `internal/exec` import no write interface.
 - **P4** — every repair round is a metric + structured log; an exhausted budget is a
@@ -230,49 +275,67 @@ keys, unchanged.
 
 ## Acceptance criteria
 
-1. **Plan→run golden round-trip on the mock stack.** `Preflight → Plan → Run` over a
-   fixed question + pinned pack drives the mock gateway (`sqlgen`) + mock adapter and
-   produces the §9.7 envelope matching a golden fixture (normalized compare; ids resolved
-   to labels). *(master plan)*
-2. **Generation is schema-constrained.** `Generate` calls the gateway `sqlgen` role with a
-   JSON schema; a malformed/partial model output yields a typed error, never a free-text
-   parse; no provider SDK is importable from `internal/nlq` (architecture assertion).
+1. **Plan→run golden round-trip on the mock stack, D-038 sequencing.** `Preflight → Plan
+   → Run` over a fixed question + pinned pack drives the mock gateway (`sqlgen`) + mock
+   adapter and produces the §9.7 envelope matching a golden fixture (normalized compare;
+   ids resolved to labels); the mock adapter's call log proves the ordering
+   **validate → dry-run → execute**, and that `Plan` made no adapter call at all.
+   *(master plan)*
+2. **Generation is schema-constrained and native-dialect.** `Generate` calls the gateway
+   `sqlgen` role with a JSON schema; a malformed/partial model output yields a typed
+   error, never a free-text parse; the generation context states the routed source's
+   native dialect + SQL requirements and carries **no ANSI-subset directive** (golden
+   context fixture — D-038); no provider SDK is importable from `internal/nlq`
+   (architecture assertion).
 3. **One precedence resolution function.** `ResolvePrecedence` is table-driven unit-tested:
    `edit_base > hints > examples > default`, threshold-gated (weight ≥ 0.9, similarity ≥
    0.8, topic-match), and the top two strategies set `FewShotDisabled = true`.
-4. **D-021 intersection proof.** An ungranted-but-in-topic table → `table.not_granted`;
-   an in-grant-but-not-in-topic table → `table.not_in_topic`; the two are distinct codes,
-   proving pack ∩ grants is an intersection, not a conflation. *(master plan)*
-5. **Join reachability.** A query joining two topic tables with no declared join-graph
-   edge → typed `join.unreachable`.
-6. **`ValidatedSQL` gates execution.** The semantics-aware stage yields `ValidatedSQL`
-   only after the full allowlist walk; `exec.Query` accepts no other type (compile-time
-   proof re-asserted); a raw string cannot reach an adapter on the NLQ path.
-7. **Bounded validation repair.** On validation failure, ≤1 `sqlfix` attempt runs, is
-   revalidated, and a still-invalid result returns typed terminal `sql.generation_failed`;
-   `nlq_repair_rounds_total{stage="validation"}` increments exactly once. *(master plan)*
-8. **Bounded execution repair.** On a warehouse execution error, ≤1 `sqlfix` attempt runs
-   (revalidate → re-execute); a still-failing result returns typed terminal
-   `sql.execution_failed`; the round counter increments exactly once; `exec.self_repair=false`
-   makes the first execution error terminal.
-9. **Plan-scope cannot execute (P1b hard gate).** A caller holding `query.plan` but not
-   `query.execute` calling `Run` gets typed `access.scope_missing`, and the adapter/exec
-   call count is zero (store/adapter call-count assertion). *(master plan)*
-10. **Run idempotency.** A repeated `Run` with the same `(operation, tenant, principal,
+4. **D-021 intersection proof (AST path, postgres).** Via the `crdb` parser driver on a
+   postgres source: an ungranted-but-in-topic table → `table.not_granted`; an
+   in-grant-but-not-in-topic table → `table.not_in_topic`; the two are distinct codes at
+   **column-grain**, proving pack ∩ grants is an intersection, not a conflation.
+   *(master plan)*
+5. **Table-grain everywhere (dry-run path, no AST driver).** For a dialect the parser
+   seam does not cover, the AST layer is recorded as skipped (never faked), and the
+   engine dry-run's referenced-table set is checked against topic ∩ grants **before**
+   execution: an ungranted referenced table → typed `table.not_granted` with zero real
+   executions (mock adapter: dry-run called, execute never called). *(D-038)*
+6. **Join reachability (AST path).** A query joining two topic tables with no declared
+   join-graph edge → typed `join.unreachable`.
+7. **`ValidatedSQL` + the dry-run gate structurally precede execution.** The
+   semantics-aware stage yields `ValidatedSQL` only after the client-side layers pass;
+   `exec.Query` accepts no other type (compile-time proof re-asserted) and performs the
+   dry-run + table-grain check internally — no call path reaches real execution without
+   both; a raw string cannot reach an adapter on the NLQ path.
+8. **Bounded validation repair, dry-run errors as fix context.** On a client-side
+   validation failure — or a dry-run/EXPLAIN failure, whose engine error message is
+   passed to `sqlfix` as dialect-true fix context — ≤1 `sqlfix` attempt runs, is
+   revalidated, and a still-invalid result returns typed terminal
+   `sql.generation_failed`; `nlq_repair_rounds_total{stage="validation"}` increments
+   exactly once. *(master plan)*
+9. **Bounded execution repair.** On a real warehouse execution error, ≤1 `sqlfix` attempt
+   runs (revalidate → re-execute); a still-failing result returns typed terminal
+   `sql.execution_failed`; the round counter increments exactly once;
+   `exec.self_repair=false` makes the first execution error terminal.
+10. **Plan-scope cannot execute (P1b hard gate).** A caller holding `query.plan` but not
+    `query.execute` calling `Run` gets typed `access.scope_missing`, and the adapter call
+    count is zero — **including dry-run** (all engine contact sits behind
+    `query.execute`). *(master plan)*
+11. **Run idempotency.** A repeated `Run` with the same `(operation, tenant, principal,
     client_key)` short-circuits to the cached §9.7 envelope with no second warehouse
-    execution (adapter call-count = 1 across two calls).
-11. **Learn-positive survives restart (DB-first).** A positive feedback event runs the
+    execution (adapter execute call-count = 1 across two calls).
+12. **Learn-positive survives restart (DB-first).** A positive feedback event runs the
     learn-positive job, which recomputes and persists the example's weight (Wilson +
     recency + evidence-growth) to the `examples` row; a fresh service instance (cold cache)
     reads the improved weight from the store, not memory. *(master plan)*
-12. **Examples lifecycle + dedup.** An example transitions `candidate → active → retired`
+13. **Examples lifecycle + dedup.** An example transitions `candidate → active → retired`
     with a typed audit row per transition; a paraphrase duplicate keyed
     `(tenant, topic, example, sample_hash)` is deduped, not re-inserted.
-13. **Injection corpus rejected.** The red-team injection corpus (statement smuggling,
+14. **Injection corpus rejected.** The red-team injection corpus (statement smuggling,
     tautology, UNION exfiltration, dialect-escape) is each rejected with a typed §9.5 code
-    at the allowlist stage; `FuzzValidateAllowlist` seed corpus asserts "never panics,
+    by the layered validation; `FuzzValidateAllowlist` seed corpus asserts "never panics,
     never yields `ValidatedSQL` for a write". *(master plan)*
-14. **Cross-tenant NLQ probe.** A `Run` whose routed topic/dataset belongs to another
+15. **Cross-tenant NLQ probe.** A `Run` whose routed topic/dataset belongs to another
     tenant returns typed denial with no query issued; the generator singleton is safe
     under concurrent reuse (`-race`). *(master plan)*
 
@@ -291,10 +354,11 @@ Per CLAUDE.md §11:
   exhaustion). Runs under `-race`. Lives in `internal/nlq` (the wiring boundary) with the
   execution half in `internal/exec`.
 - **Adversarial:** required (SQL-safety + access path, §11): cross-tenant NLQ probe
-  (criterion 14), empty-access-set short-circuit, injection corpus (criterion 13), a
+  (criterion 15), empty-access-set short-circuit, injection corpus (criterion 14), a
   schema-escape probe (a table one join-hop outside the pack), a write/DDL-injection
-  probe smuggled through generation, and a fetch-then-filter regression guard (grants
-  intersected inside validation, never after execution).
+  probe smuggled through generation, a table-grain escape probe on a no-AST-driver
+  dialect (criterion 5 — dry-run gate), and a fetch-then-filter regression guard (grants
+  intersected inside validation/dry-run, never after execution).
 - **Fuzz:** required — `FuzzValidateAllowlist` (generated/submitted SQL → validation) with
   a seed corpus and the asserted invariant "never panics, never returns `ValidatedSQL`
   for a non-SELECT-family or out-of-allowlist statement." Complements phase 09's
@@ -316,24 +380,25 @@ is added; the existing bands hold and the new code must not regress them.
 ## Smoke checks
 
 Each criterion maps to one Go test, exercised via `run_group` (SKIPs cleanly until the
-package + test exist). Fuzz criterion 13 runs its seed corpus as an ordinary test.
+package + test exist). Fuzz criterion 14 runs its seed corpus as an ordinary test.
 
 | Acceptance criterion | Smoke assertion |
 | --- | --- |
-| 1 | `internal/nlq` `TestPlanRunGolden` PASS |
-| 2 | `internal/nlq` `TestGenerationSchemaConstrained` PASS |
+| 1 | `internal/nlq` `TestPlanRunGolden` PASS (asserts validate→dry-run→execute order) |
+| 2 | `internal/nlq` `TestGenerationSchemaConstrainedNativeDialect` PASS |
 | 3 | `internal/nlq` `TestPrecedenceResolution` PASS |
-| 4 | `internal/exec` `TestAllowlistIntersection` PASS |
-| 5 | `internal/exec` `TestJoinReachability` PASS |
-| 6 | `internal/exec` `TestSemanticsValidatedSQLUnbypassable` PASS |
-| 7 | `internal/nlq` `TestRepairValidationBounded` PASS |
-| 8 | `internal/nlq` `TestRepairExecutionBounded` PASS |
-| 9 | `internal/nlq` `TestPlanScopeCannotExecute` PASS |
-| 10 | `internal/nlq` `TestRunIdempotency` PASS |
-| 11 | `internal/nlq` `TestLearnPositiveSurvivesRestart` PASS |
-| 12 | `internal/nlq` `TestExamplesLifecycle` PASS |
-| 13 | `internal/exec` `TestInjectionCorpus` + `FuzzValidateAllowlist` (seed corpus) PASS |
-| 14 | `internal/nlq` `TestNLQAdversarialCrossTenant` PASS |
+| 4 | `internal/exec` `TestAllowlistIntersectionASTPostgres` PASS |
+| 5 | `internal/exec` `TestTableGrainDryRunAllowlist` PASS |
+| 6 | `internal/exec` `TestJoinReachability` PASS |
+| 7 | `internal/exec` `TestSemanticsValidatedSQLUnbypassable` PASS |
+| 8 | `internal/nlq` `TestRepairValidationBounded` PASS (incl. dry-run-error fix context) |
+| 9 | `internal/nlq` `TestRepairExecutionBounded` PASS |
+| 10 | `internal/nlq` `TestPlanScopeCannotExecute` PASS (zero adapter calls incl. dry-run) |
+| 11 | `internal/nlq` `TestRunIdempotency` PASS |
+| 12 | `internal/nlq` `TestLearnPositiveSurvivesRestart` PASS |
+| 13 | `internal/nlq` `TestExamplesLifecycle` PASS |
+| 14 | `internal/exec` `TestInjectionCorpus` + `FuzzValidateAllowlist` (seed corpus) PASS |
+| 15 | `internal/nlq` `TestNLQAdversarialCrossTenant` PASS |
 | config | example config parses with `nlq.example_weight_threshold` / `nlq.example_similarity_threshold` / `exec.self_repair` present |
 
 ## Glossary additions
@@ -344,10 +409,11 @@ Only terms this phase introduces that are not already in `docs/glossary.md`:
   examples > default` (RFC §9.3): which prior-SQL source grounds a generation, threshold-
   gated; the top two disable few-shot demos. One unit-tested function, not scattered
   conditionals.
-- **Bounded repair** — the internal mechanism that, on a validation or execution failure,
-  makes at most one `sqlfix` attempt per stage before returning a typed terminal error
-  (RFC §9.3/§9.6). Internal term only; the wire error is `sql.generation_failed` /
-  `sql.execution_failed` (never "repair" — P6).
+- **Bounded repair** — the internal mechanism that, on a validation failure (including an
+  engine dry-run/EXPLAIN failure, whose dialect-true error is the fix context — D-038) or
+  a real execution failure, makes at most one `sqlfix` attempt per stage before returning
+  a typed terminal error (RFC §9.3/§9.6). Internal term only; the wire error is
+  `sql.generation_failed` / `sql.execution_failed` (never "repair" — P6).
 - **Learn-positive** — the DB-first learning job (RFC §9.8): on positive feedback it
   re-embeds an example, dedupes paraphrases, and recomputes its routing weight
   (Wilson-score + recency + evidence-growth blend) persisted to the store, so a restart
@@ -359,11 +425,15 @@ Only terms this phase introduces that are not already in `docs/glossary.md`:
 
 No new `D-NNN` entry. This phase implements existing decisions: **D-021** (SQL-safety
 mechanism — the intersection + defense-in-depth this phase realizes on the NLQ path),
-**D-014** (dual modes, one core — this phase builds the core), **D-020** (grants/scopes),
-**D-025** (learn-positive runs on the one leased queue), **D-031** (the red-team injection
-corpus this phase's adversarial suite anchors). Any reasonable deviation discovered in
-implementation is logged in the Deviation log below and the plan updated in the same PR
-(CLAUDE.md §4.3); a genuinely new architectural decision would be filed as `D-032+`.
+**D-038** (layered read-side validation: credentials primary, engine dry-run table-grain
+everywhere, parser-seam column-grain where covered; native-dialect generation), **D-033**
+(the `crdb` parser pin the AST path rides; its generation-subset obligation is superseded
+by D-038), **D-014** (dual modes, one core — this phase builds the core), **D-020**
+(grants/scopes), **D-025** (learn-positive runs on the one leased queue), **D-031** (the
+red-team injection corpus this phase's adversarial suite anchors). Any reasonable
+deviation discovered in implementation is logged in the Deviation log below and the plan
+updated in the same PR (CLAUDE.md §4.3); a genuinely new architectural decision would be
+filed as the next decision number in `docs/decisions.md`.
 
 ## Deviation log
 

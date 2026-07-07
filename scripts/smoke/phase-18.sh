@@ -64,30 +64,31 @@ EXEC_PKG="./internal/exec"
 # --- assertions: internal/nlq -------------------------------------------------
 if [ -d "internal/nlq" ]; then
   run_group "$NLQ_PKG" "-race" \
-    "TestPlanRunGolden|criterion 1: plan→run golden round-trip on the mock stack" \
-    "TestGenerationSchemaConstrained|criterion 2: sqlgen generation is schema-constrained" \
+    "TestPlanRunGolden|criterion 1: plan→run golden round-trip, validate→dry-run→execute order (D-038)" \
+    "TestGenerationSchemaConstrainedNativeDialect|criterion 2: sqlgen schema-constrained, native dialect, no ANSI-subset" \
     "TestPrecedenceResolution|criterion 3: one precedence resolution function (thresholds)" \
-    "TestRepairValidationBounded|criterion 7: bounded validation repair, typed terminal" \
-    "TestRepairExecutionBounded|criterion 8: bounded execution repair, typed terminal" \
-    "TestPlanScopeCannotExecute|criterion 9: plan-scope caller cannot reach execution (P1b)" \
-    "TestRunIdempotency|criterion 10: run idempotency short-circuits, no second execution" \
-    "TestLearnPositiveSurvivesRestart|criterion 11: learn-positive DB-first survives restart" \
-    "TestExamplesLifecycle|criterion 12: examples lifecycle + paraphrase dedup, audited" \
-    "TestNLQAdversarialCrossTenant|criterion 14: cross-tenant NLQ probe, concurrent-safe generator"
+    "TestRepairValidationBounded|criterion 8: bounded validation repair incl. dry-run-error fix context" \
+    "TestRepairExecutionBounded|criterion 9: bounded execution repair, typed terminal" \
+    "TestPlanScopeCannotExecute|criterion 10: plan-scope caller never contacts engine, dry-run included (P1b)" \
+    "TestRunIdempotency|criterion 11: run idempotency short-circuits, no second execution" \
+    "TestLearnPositiveSurvivesRestart|criterion 12: learn-positive DB-first survives restart" \
+    "TestExamplesLifecycle|criterion 13: examples lifecycle + paraphrase dedup, audited" \
+    "TestNLQAdversarialCrossTenant|criterion 15: cross-tenant NLQ probe, concurrent-safe generator"
 else
-  skip "criteria 1,2,3,7,8,9,10,11,12,14: internal/nlq not built yet"
+  skip "criteria 1,2,3,8,9,10,11,12,13,15: internal/nlq not built yet"
 fi
 
 # --- assertions: internal/exec ------------------------------------------------
 if [ -d "internal/exec" ]; then
   run_group "$EXEC_PKG" "-race" \
-    "TestAllowlistIntersection|criterion 4: D-021 intersection (not_granted vs not_in_topic)" \
-    "TestJoinReachability|criterion 5: join reachability against declared graph" \
-    "TestSemanticsValidatedSQLUnbypassable|criterion 6: ValidatedSQL only after full walk" \
-    "TestInjectionCorpus|criterion 13: injection corpus rejected with typed codes" \
-    "FuzzValidateAllowlist|criterion 13: fuzz seed corpus — never panics, never passes a write"
+    "TestAllowlistIntersectionASTPostgres|criterion 4: D-021 intersection via the AST path on postgres (column-grain)" \
+    "TestTableGrainDryRunAllowlist|criterion 5: table-grain dry-run allowlist on a no-AST-driver dialect (D-038)" \
+    "TestJoinReachability|criterion 6: join reachability against declared graph" \
+    "TestSemanticsValidatedSQLUnbypassable|criterion 7: ValidatedSQL + internal dry-run gate precede execution" \
+    "TestInjectionCorpus|criterion 14: injection corpus rejected with typed codes" \
+    "FuzzValidateAllowlist|criterion 14: fuzz seed corpus — never panics, never passes a write"
 else
-  skip "criteria 4,5,6,13: internal/exec not built yet"
+  skip "criteria 4,5,6,7,14: internal/exec not built yet"
 fi
 
 # --- config assertion ---------------------------------------------------------

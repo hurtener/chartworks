@@ -33,20 +33,31 @@ Two engine classes, two validation strategies (D-032):
   credential custody (envelope-encrypted, decrypted only at construction) each
   driver consumes (owned by phase 08; this phase supplies each credential-shape
   descriptor).
-- **RFC §9.6** — the read-only execution obligations each driver satisfies:
-  independent read-only enforcement at the adapter, server-side statement
-  timeouts + context deadlines, cursor-level row caps (never LIMIT-wrapping),
+- **RFC §9.6 (amended — D-038)** — the read-only execution obligations each
+  driver satisfies, with **read-only credentials/sessions PROMOTED to the primary
+  read-only guarantee**: SELECT-only provisioning where the engine supports it
+  (documented per driver), the **connection test asserting the posture** by
+  attempting a write and expecting engine denial, reinforced by read-only
+  transaction/session mode where one exists; plus server-side statement timeouts
+  + context deadlines, cursor-level row caps (never LIMIT-wrapping), and
   `QueryResult` shaping. Phase 10 owns the layer; this phase implements the
   per-engine mechanisms it drives.
-- **RFC §9.5 / §6.1** — the `ValidatedSQL`-only `Query` signature (no raw-string
-  execute) and dialect-aware parsing (recorded fixtures per dialect, incl. mysql +
-  T-SQL).
+- **RFC §9.5 (amended — D-038)** — layered validation: this phase supplies
+  **layer 3's per-engine dry-run/EXPLAIN capability** (`DryRun → referenced
+  tables`, run under the read-only credential: BigQuery dryRun — referenced
+  tables explicit; Snowflake/Databricks/MySQL EXPLAIN; SQL Server
+  showplan/`sp_describe_first_result_set`), the `ValidatedSQL`-only `Query`
+  signature, and recorded dialect fixtures (incl. mysql + T-SQL) for the
+  parser-seam corpus.
 - **RFC §17** — the docker-compose dev shape (Postgres already on 5434); this phase
   adds the mysql + sqlserver services + a seeding script.
 - **Decisions:** **D-032** (five-driver set + dockerized-engine validation),
-  D-004 (customer sources ≠ the `Store`), **D-005** (CGo-free — load-bearing),
-  D-021 (defense-in-depth read-only + split read/write), D-023 (Bruin
-  mine-ideas-only — drivers are native pure-Go, never an engine dependency).
+  **D-038** (layered read-side validation: credentials primary, engine
+  dry-run/EXPLAIN dialect-truth, native-dialect generation), **D-036** (Bruin is
+  the DE **write**-path executor — NLQ reads never route through Bruin; these
+  drivers are the read path), D-035 (driver version pins), D-004 (customer
+  sources ≠ the `Store`), **D-005** (CGo-free — load-bearing), D-021
+  (defense-in-depth + split read/write).
 
 ## Depends on
 
@@ -77,13 +88,17 @@ Per `docs/research/INDEX.md`, `internal/sources` is informed by **brief 02** and
 
 ## Brief findings incorporated
 
-- **Brief 02 — the single-gate read-only scar (headline).** The predecessors'
-  validator was the *entire* read-only guarantee; a caller could reach `execute()`
-  around it. Every driver carries an **independent, engine-native read-only
-  posture** (per-driver §Design). The validator (phase 09) is the primary gate; the
-  engine posture is defense-in-depth; **both hold independently** (risk register
-  row 10/14, RFC §9.6, D-021). For the self-hostable trio this is a **dockerized
-  probe**, not live-gate-only evidence.
+- **Brief 02 — the single-gate read-only scar (headline; resolution amended by
+  D-038).** The predecessors' validator was the *entire* read-only guarantee; a
+  caller could reach `execute()` around it. D-038 inverts the hierarchy the first
+  draft of this plan assumed: the **engine-native read-only credential/session is
+  now the PRIMARY guarantee** (SELECT-only provisioning, documented per driver;
+  the connection test asserts it by attempting a write and expecting engine
+  denial), and the client-side validator (phase 09 parser seam) **adds depth** —
+  each layer holds independently, no layer's absence silently widens access (P4,
+  RFC §9.5/§9.6). Every driver also supplies the engine's own parser as the
+  dialect-truth check: `DryRun → referenced tables` (D-038 layer 3). For the
+  self-hostable trio both are **dockerized probes**, not live-gate-only evidence.
 - **Brief 05 — the fork's `sqlserver` adapter (carried).** The fork shipped SQL
   Server in production; two specifics carry: **cursor-level capping** (`rows.Next()`
   stop at the ceiling — never LIMIT-wrapping, so `ORDER BY` survives) and
@@ -110,9 +125,12 @@ Per `docs/research/INDEX.md`, `internal/sources` is informed by **brief 02** and
 
 ## Findings I'm departing from
 
-- **Adopting an execution engine (Bruin) instead of native drivers — rejected per
-  D-023.** Bruin's SQL/ingestion core needs CGo + a Rust FFI (or embedded Python),
-  colliding with D-005; all five drivers are consumed as native pure-Go libraries.
+- **Routing reads through an execution engine (Bruin) — rejected; the split is
+  D-036's.** Bruin is adopted for the DE **write path only** (a CLI subprocess
+  behind the `PipelineRunner` seam, phase 13); **NLQ reads never route through
+  Bruin** (D-036, verbatim). All five drivers here are native pure-Go libraries on
+  the read path — the D-005 static binary is untouched by Bruin's glibc-dynamic
+  subprocess, which lives on the write side.
 - **Trusting each driver's default build to be CGo-free — rejected.** Convention 8
   caught that `gosnowflake`'s *default* build links a native `minicore` probe via
   `import "C"`; this plan pins the `-tags minicore_disabled` build (§Design,
@@ -135,9 +153,13 @@ extensions + the self-hostable dockerized harness:
 - `internal/sources/databricks` — `github.com/databricks/databricks-sql-go`
   **v1.13.0** (pure-Go `database/sql`, name `"databricks"`).
 - Each driver: `init()` registration into the phase-08 factory; the full adapter
-  interface; the credential-shape descriptor for phase-08 custody; per-engine
-  read-only + timeout + cursor-cap mechanisms honouring `QueryOpts`; the pooling
-  shape for its kind.
+  interface **including the seam's `DryRun(ctx, sql) → referenced tables` entry
+  point (RFC §9.5 layer 3, D-038 — if phase 08/10 have not already added it to
+  the seam, this phase adds it and retrofits the `postgres`/`null`/`mock`
+  drivers in the same PR)**; the credential-shape descriptor for phase-08
+  custody; per-engine promoted read-only posture (SELECT-only provisioning +
+  connection-test write-denial) + timeout + cursor-cap mechanisms honouring
+  `QueryOpts`; the pooling shape for its kind.
 - **Conformance-suite extension** (phase 08's suite), parameterized per driver and
   split by engine class: **dockerized** (mysql, sqlserver — real engines) vs
   **hermetic-fixtures + live-gate** (cloud trio). Recorded-fixture dialect tests
@@ -152,8 +174,11 @@ extensions + the self-hostable dockerized harness:
 
 ## Non-goals
 
-- **Materialization / write support.** `sources.Materializer` is a *separate*
-  interface (P1c, RFC §7.6); all five are **read-only query drivers only** here.
+- **Materialization / write support — the WRITE side of these engines is Bruin's
+  job (D-036).** The DE write path executes through Bruin behind the
+  `PipelineRunner` seam (phase 13, RFC §7.6); these five drivers are **read-only
+  by construction** and implement **no `Materializer` anywhere** (P1c) — an
+  architecture test may assert none of the five satisfies the write interface.
 - **The exec caps/timeouts themselves.** Ceilings/defaults live in `exec` (phase
   10, RFC §14); this phase implements only the engine-side enforcement of the
   `QueryOpts` values.
@@ -172,12 +197,21 @@ extensions + the self-hostable dockerized harness:
 
 Each driver is an `internal/sources` adapter (interface + factory + `init()`
 registration, CLAUDE.md §4.4). `Query` takes only `ValidatedSQL` — a raw string is
-unconstructible, so no driver executes unvalidated SQL. The validator is the
-**primary** read-only gate; each driver adds an **independent** engine-native
-posture (defense-in-depth, D-021). Credentials arrive decrypted from phase-08
-custody only at construction, held in memory, never logged/echoed (RFC §6.3,
-CLAUDE.md §7). Adapters are immutable after construction and safe under concurrent
-reuse (CLAUDE.md §5).
+unconstructible, so no driver executes unvalidated SQL. Per **D-038** the layers
+stack as: the **SELECT-only credential/session is the PRIMARY read-only
+guarantee** (provisioning guidance documented per engine below; `TestConnection`
+asserts the posture by attempting a write and expecting engine denial); the
+engine's **dry-run/EXPLAIN is the dialect-truth validator** (each driver
+implements the seam's `DryRun(ctx, sql) → referenced tables` so exec can check
+the referenced-table set against topic ∩ grants pre-execution — dry-run parses
+and plans, it never executes); and the client-side parser seam (phase 09) adds
+depth where its dialect driver is proven. No layer's absence silently widens
+access (P4). The **write side of every one of these engines is Bruin's job
+(D-036)** — these drivers are read-only by construction, no `Materializer`
+anywhere. Credentials arrive decrypted from phase-08 custody only at
+construction, held in memory, never logged/echoed (RFC §6.3, CLAUDE.md §7).
+Adapters are immutable after construction and safe under concurrent reuse
+(CLAUDE.md §5).
 
 ### Version pins (verified against release assets — convention 8)
 
@@ -197,11 +231,20 @@ build.
 ### `mysql` — `go-sql-driver/mysql` v1.10.0 (self-hostable / dockerized)
 
 - **Query path.** `database/sql` → `QueryContext(ctx, sql.String())`.
-- **Read-only posture (defense-in-depth).** MySQL **supports read-only
-  transactions**: the adapter runs each query in `START TRANSACTION READ ONLY`
-  (rolled back after fetch), so a write smuggled past a broken validator errors at
-  the engine; belt-and-suspenders a read-scoped user (SELECT-only grant). The
-  dockerized probe (criterion 8) asserts a write is rejected.
+- **Read-only posture (PRIMARY — D-038).** Credential provisioning guidance: a
+  dedicated MySQL user with **`GRANT SELECT` only** (no
+  INSERT/UPDATE/DELETE/DDL) on the granted schemas — documented in the connection
+  docs and the Console hint. Session reinforcement: the adapter runs each query in
+  `START TRANSACTION READ ONLY` (rolled back after fetch). **`TestConnection`
+  asserts the posture**: it attempts a trivial write (e.g. `CREATE TEMPORARY
+  TABLE`-free `INSERT` probe against a probe target) and expects engine denial —
+  a connection that *can* write fails the test loudly (D-038). The dockerized
+  probes (criteria 7–8) prove both.
+- **Dry-run capability (D-038 layer 3).** `DryRun` = `EXPLAIN FORMAT=JSON
+  <sql>` under the read-only credential: the engine's own parser is the
+  dialect-truth syntax check (a syntax error is a typed failure), and the
+  referenced-table set is extracted from the plan JSON for the topic ∩ grants
+  check. EXPLAIN plans without executing. Dockerized proof (criterion 13).
 - **Timeout.** Server-side `MAX_EXECUTION_TIME` (the `SET SESSION
   max_execution_time` / `/*+ MAX_EXECUTION_TIME(n) */` optimizer hint, SELECT-only)
   from `QueryOpts` **plus** context cancellation (the driver sends `KILL QUERY` on
@@ -216,11 +259,19 @@ build.
 ### `sqlserver` — `microsoft/go-mssqldb` v1.10.0 (self-hostable / dockerized)
 
 - **Query path.** `database/sql` (`"sqlserver"`) over TDS → `QueryContext`.
-- **Read-only posture (defense-in-depth).** T-SQL has no `BEGIN READ ONLY`;
-  enforced by (1) the validator (primary), (2) a **read-scoped login** (`db_datareader`
-  only) + `ApplicationIntent=ReadOnly` in the connection, (3) no write-statement
-  path in the adapter. Dockerized probe (criterion 8) asserts a smuggled write is
-  rejected by the login's role.
+- **Read-only posture (PRIMARY — D-038).** T-SQL has no `BEGIN READ ONLY`;
+  credential provisioning guidance: a dedicated login mapped to
+  **`db_datareader` only** (no `db_datawriter`/`db_ddladmin`), plus
+  `ApplicationIntent=ReadOnly` on the connection; the adapter has no
+  write-statement path. **`TestConnection` asserts the posture** by attempting a
+  write and expecting the login's role to deny it (D-038). Dockerized probes
+  (criteria 7–8) prove both.
+- **Dry-run capability (D-038 layer 3).** `DryRun` = **showplan**
+  (`SET SHOWPLAN_XML ON` — plan-only, nothing executes) and/or
+  `sp_describe_first_result_set` (parses + binds, returns the result shape) under
+  the read-only login: syntax errors are typed failures; the referenced-table set
+  is extracted from the showplan XML for the topic ∩ grants check. Dockerized
+  proof (criterion 13).
 - **Timeout.** Context deadline — go-mssqldb sends a TDS **Attention** (cancel) on
   ctx cancel, stopping the query server-side — plus the connection query-timeout
   param. (SQL Server's server-side governor is a server config, not per-session; the
@@ -245,11 +296,19 @@ build.
 - **Query path.** Wraps `*bigquery.Client`; `Query()` constructs a **read query
   job**, `Read(ctx)` → `*RowIterator`. Only query jobs are ever issued — no
   table/dataset mutation calls — so the adapter exposes no DDL/DML surface.
-- **Read-only posture.** No `BEGIN READ ONLY`; enforced by the validator (primary),
-  the query-only job path, and a read-scoped service account (`jobUser` +
-  `dataViewer`, **no** `dataEditor`). The engine with the weakest native session
-  guarantee — documented explicitly; live probe asserts a write job is rejected by
-  the SA.
+- **Read-only posture (PRIMARY — D-038).** No `BEGIN READ ONLY`; credential
+  provisioning guidance: a dedicated service account with
+  **`roles/bigquery.jobUser` + `roles/bigquery.dataViewer` only** (never
+  `dataEditor`/`dataOwner`) — the SELECT-only credential is the primary
+  guarantee; the adapter reinforces it by issuing only query jobs (no
+  table/dataset mutation calls). **`TestConnection` asserts the posture** by
+  attempting a write (a DML query job) and expecting IAM denial (D-038).
+  Live probe (criterion 10).
+- **Dry-run capability (D-038 layer 3 — the strongest of the six).** `DryRun` =
+  the job's **`dryRun: true`** flag: validates + plans without running or
+  billing, and the job statistics return the **referenced tables explicitly**
+  (no plan parsing needed) for the topic ∩ grants check; syntax errors are typed
+  failures.
 - **Timeout.** Context deadline + `Query.JobTimeoutMs` (server-side cancel) +
   optional `maximumBytesBilled` cost ceiling (a resource guard the SQL engines
   lack). Ctx cancel cancels the job.
@@ -265,9 +324,16 @@ build.
 ### `snowflake` — `gosnowflake` v1.19.1 (cloud)
 
 - **Query path.** `database/sql` → `QueryContext`; Arrow default result format.
-- **Read-only posture.** No transaction read-only mode; enforced by the validator
-  (primary) + a **read-scoped role + warehouse** in the DSN (SELECT only) + no
-  write path. Live probe asserts a smuggled write is rejected by the role.
+- **Read-only posture (PRIMARY — D-038).** No transaction read-only mode;
+  credential provisioning guidance: a **dedicated role granted `SELECT` only**
+  (plus `USAGE` on database/schema/warehouse) pinned in the DSN — the SELECT-only
+  role is the primary guarantee; the adapter has no write path.
+  **`TestConnection` asserts the posture** by attempting a write and expecting
+  role denial (D-038). Live probe (criterion 10).
+- **Dry-run capability (D-038 layer 3).** `DryRun` = `EXPLAIN <sql>` (plans
+  without executing) under the read-only role: syntax errors are typed failures;
+  the referenced-table set is extracted from the explain output (`objects`
+  column) for the topic ∩ grants check.
 - **Timeout.** `STATEMENT_TIMEOUT_IN_SECONDS` (server-side, from `QueryOpts`) +
   ctx cancel (server-side abort).
 - **Cursor caps.** `rows.Next()` stop; Arrow-batch backed. Never LIMIT-wrap.
@@ -284,9 +350,16 @@ build.
 
 - **Query path.** `database/sql` (`"databricks"`) over HTTP-Thrift to a SQL
   warehouse; `QueryContext`; pure-Go Arrow fetch.
-- **Read-only posture.** No read-only txn mode; enforced by the validator (primary)
-  + a Unity Catalog service principal scoped to SELECT + no write path. Live probe
-  asserts a smuggled write is rejected by the principal.
+- **Read-only posture (PRIMARY — D-038).** No read-only txn mode; credential
+  provisioning guidance: a Unity Catalog **service principal granted `SELECT`
+  (+ `USE CATALOG`/`USE SCHEMA`) only** on the granted objects — the SELECT-only
+  principal is the primary guarantee; the adapter has no write path.
+  **`TestConnection` asserts the posture** by attempting a write and expecting
+  Unity Catalog denial (D-038). Live probe (criterion 10).
+- **Dry-run capability (D-038 layer 3).** `DryRun` = `EXPLAIN <sql>` (plans
+  without executing) under the read-only principal: syntax errors are typed
+  failures; the referenced-table set is extracted from the plan for the
+  topic ∩ grants check.
 - **Timeout.** Ctx deadline (`QueryContext` cancel → Thrift `CancelOperation`) +
   connector `timeout`.
 - **Cursor caps.** `rows.Next()` stop; Arrow fetch-size configured. Never LIMIT-wrap.
@@ -337,8 +410,9 @@ manifest), **idempotent** and **licensing-clean**:
 | dialect + `TypeCategory` fixtures | hermetic | hermetic |
 | credential-shape secret-free | hermetic | hermetic |
 | CGO_ENABLED=0 build | hermetic (CI) | hermetic (CI) |
-| TestConnection / Discover / Sample | **dockerized** (seeded engine) | **live-gated** (D-010) |
-| read-only enforcement probe | **dockerized** | **live-gated** |
+| TestConnection (incl. **write-denial assertion**, D-038) / Discover / Sample | **dockerized** (seeded engine) | **live-gated** (D-010) |
+| read-only smuggled-write probe | **dockerized** | **live-gated** |
+| `DryRun → referenced tables` (D-038 layer 3) | **dockerized** | **live-gated** (fixture-shaped hermetic parse tests in CI) |
 | server-side timeout probe | **dockerized** | **live-gated** |
 | cursor row-cap clamp | **dockerized** | **live-gated** |
 | Databricks cold-start / pool | — | **live-gated** |
@@ -376,11 +450,12 @@ and the smoke skeleton).
 ## Acceptance criteria
 
 Numbered and mechanically checkable. **Hermetic** (CI): 1–5, 12. **Dockerized**
-(self-hostable trio, seeded real engines): 6–9. **Live-gated** (cloud trio, D-010):
+(self-hostable engines, seeded): 6–9, 13. **Live-gated** (cloud trio, D-010):
 10–11. This set covers the master plan's key criteria (conformance per driver —
 dockerized for the self-hostable class, live-tagged for the cloud class;
 `CGO_ENABLED=0` build proof in CI; per-engine read-only documented + tested, split
-by class).
+by class) plus the D-038 promoted-posture obligations (connection-test
+write-denial; `DryRun → referenced tables`).
 
 1. **Registration + factory (hermetic).** Each of the five drivers registers via
    `init()` blank-import and is constructible through the phase-08 factory by
@@ -404,21 +479,26 @@ by class).
    mysql + sqlserver; `scripts/seed/warehouses.sh` is **idempotent** (re-run is a
    no-op via the marker table) and **licensing-clean** (asserts an allowlisted
    license file per dataset; a missing/unknown license fails the seed loudly).
-7. **Dockerized conformance — connect/discover/sample (dockerized).** mysql +
-   sqlserver pass `TestConnection` + `DiscoverSchema` + `SampleValues` against the
-   seeded public datasets, with correct `TypeCategory` classification.
-8. **Per-engine read-only — documented + tested (dockerized half).** The mysql +
-   sqlserver read-only posture is documented (§Design) and a write smuggled past a
-   hypothetically broken validator is rejected by the engine (read-only txn / role)
-   — dockerized probe.
+7. **Dockerized conformance — connect (incl. write-denial) / discover / sample
+   (dockerized).** mysql + sqlserver pass `TestConnection` — **including the
+   D-038 posture assertion: the connection test attempts a write and the engine
+   denies it** — plus `DiscoverSchema` + `SampleValues` against the seeded public
+   datasets, with correct `TypeCategory` classification.
+8. **Per-engine read-only — promoted posture documented + tested (dockerized
+   half).** The mysql + sqlserver SELECT-only credential provisioning guidance
+   is documented (§Design) and a write smuggled past a hypothetically broken
+   validator is rejected by the engine (SELECT-only user/login + read-only txn /
+   `db_datareader`) — dockerized probe.
 9. **Per-engine timeout + cursor cap (dockerized half).** For mysql + sqlserver: a
    query past the configured timeout stops server-side; row output clamps to the
    `QueryOpts` ceiling regardless of caller input with `ORDER BY` preserved (no
    LIMIT-wrapping) — dockerized.
-10. **Cloud read-only + timeout + cap (live-gated).** For bigquery + snowflake +
-    databricks: the read-only probe, server-side timeout, and cursor-cap clamp each
-    hold against a real warehouse under the live gate; the read-only posture is
-    documented (§Design).
+10. **Cloud promoted posture + timeout + cap (live-gated).** For bigquery +
+    snowflake + databricks: the connection-test **write-denial assertion**, the
+    smuggled-write probe, the server-side timeout, the cursor-cap clamp, and
+    `DryRun → referenced tables` each hold against a real warehouse under the
+    live gate; the SELECT-only provisioning guidance is documented per engine
+    (§Design).
 11. **Cloud connect/discover incl. Databricks cold-start (live-gated).**
     `TestConnection` + `DiscoverSchema` succeed against a real warehouse per cloud
     engine, including Databricks cold-start / pool behavior.
@@ -426,6 +506,13 @@ by class).
     SKIPs when its engine env is unset and every live test SKIPs when its `.env` is
     unset — no unguarded external test runs in CI; live suites run `-count=1` under
     the gate.
+13. **`DryRun → referenced tables` (dockerized half — D-038 layer 3).** For mysql
+    (`EXPLAIN FORMAT=JSON`) + sqlserver (showplan /
+    `sp_describe_first_result_set`): `DryRun` under the read-only credential
+    returns the referenced-table set for a fixture query, executes nothing, and
+    surfaces a syntax error as a typed failure — dockerized proof. (Cloud
+    engines: fixture-shaped hermetic parse tests in CI + the live half in
+    criterion 10.)
 
 ## Test obligations
 
@@ -441,11 +528,15 @@ Per CLAUDE.md §11:
   as store conformance uses Docker Postgres); cloud engines use recorded fixtures in
   CI + the **live gate** for real round-trips (CI has no cloud warehouse). All
   `-race`.
-- **Adversarial:** the read-only defense-in-depth probe (criteria 8 + 10) is a
-  standing SQL-safety obligation (write/DDL smuggled past a broken validator →
-  engine rejects) — dockerized for the self-hostable trio, live-gated for the cloud
-  trio; the hermetic half asserts the `ValidatedSQL`-only signature. No new
-  auth/ACL path is introduced (access is enforced upstream), so the cross-tenant /
+- **Adversarial:** the promoted read-only posture probes (criteria 7, 8, 10) are
+  standing SQL-safety obligations — the connection-test **write-denial
+  assertion** (D-038) and the smuggled-write probe (write/DDL past a broken
+  validator → engine rejects) — dockerized for the self-hostable engines,
+  live-gated for the cloud trio; `DryRun` fixtures include a syntax-bomb and a
+  write statement (both must surface as typed failures, never execute); the
+  hermetic half asserts the `ValidatedSQL`-only signature and (architecture
+  test) that no driver implements `Materializer` (D-036/P1c). No new auth/ACL
+  path is introduced (access is enforced upstream), so the cross-tenant /
   forged-header set rides phases 04/08.
 - **Fuzz:** n/a — no new parse/decode surface (SQL parsing is phase 09). The
   recorded-fixture dialect corpus feeds phase 09's `FuzzValidate`.
@@ -493,12 +584,13 @@ gate, not the smoke loop).
 | 4 | `TestDialectFixtures` / `TestTypeCategoryFixtures` (incl. mysql, tsql) present + PASS. |
 | 5 | `TestConfigShapeHasNoSecret` present + PASS. |
 | 6 | Seeder present + idempotent + license-allowlist assertion; SKIP unless `CHARTWORKS_MYSQL_DSN`/`CHARTWORKS_SQLSERVER_DSN` set (docker up). |
-| 7 | `TestConnectDiscoverSample_{Mysql,Sqlserver}` — SKIP unless docker env set. |
+| 7 | `TestConnectDiscoverSample_{Mysql,Sqlserver}` (TestConnection incl. the write-denial assertion) — SKIP unless docker env set. |
 | 8 | `TestReadOnlyProbe_{Mysql,Sqlserver}` — dockerized SKIP-gate. |
 | 9 | `TestTimeoutAndRowCap_{Mysql,Sqlserver}` — dockerized SKIP-gate. |
-| 10 | `TestCloudReadOnlyTimeoutCap_{Bigquery,Snowflake,Databricks}` — SKIP unless `CHARTWORKS_LIVE_<KIND>_DSN` set. |
+| 10 | `TestCloudReadOnlyTimeoutCap_{Bigquery,Snowflake,Databricks}` (write-denial + smuggled-write + timeout + cap + DryRun) — SKIP unless `CHARTWORKS_LIVE_<KIND>_DSN` set. |
 | 11 | `TestConnectAndDiscover_{Bigquery,Snowflake,Databricks}` — live SKIP-gate. |
 | 12 | Meta: `go test -run <External test names>` with no docker/live env reports SKIP (never PASS/FAIL) — guards hold. |
+| 13 | `TestDryRunReferencedTables_{Mysql,Sqlserver}` — dockerized SKIP-gate. |
 
 ## Glossary additions
 
@@ -518,6 +610,12 @@ Only genuinely new terms — `data source`, `data-source adapter`, `dialect`,
   licensing-clean loader that populates the dockerized self-hostable engines with
   public (Kaggle-class) datasets for conformance; asserts an allowlisted license per
   dataset and commits no data bytes.
+- **Dry-run check** *(Internals & seams)* — the adapter seam's
+  `DryRun(ctx, sql) → referenced tables` entry point (RFC §9.5 layer 3, D-038):
+  the engine's own parser validates the candidate SQL without executing it
+  (BigQuery dryRun; MySQL/Snowflake/Databricks EXPLAIN; SQL Server
+  showplan/`sp_describe_first_result_set`), returning the referenced-table set
+  for the topic ∩ grants check. Internal term — never wire/UI-facing.
 - **`minicore` build exclusion** *(Internals & seams)* — the `gosnowflake` default
   build links a native `dlopen`-based "minicore" probe via CGo; Chartworks builds
   the snowflake driver `-tags minicore_disabled` (and sets `SF_DISABLE_MINICORE=true`)
@@ -549,8 +647,10 @@ append in the implementing PR:
   and excluded via a documented class+reason (CLAUDE.md §11) — never a silent
   lowering. (mysql/sqlserver reach full 85% via the dockerized engines and need no
   override.)
-- **Relied upon (existing):** **D-032**, D-004, **D-005** (load-bearing), D-021,
-  D-023.
+- **Relied upon (existing):** **D-032**, **D-035** (the ratified pins),
+  **D-036** (Bruin owns the write side; these drivers are read-only by
+  construction), **D-038** (promoted read-only posture + `DryRun` layer),
+  D-004, **D-005** (load-bearing), D-021.
 
 ## Deviation log
 

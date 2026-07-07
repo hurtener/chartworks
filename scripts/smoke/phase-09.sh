@@ -4,8 +4,9 @@ set -euo pipefail
 # Smoke-check for phase 09 — sql-validate-core (CLAUDE.md §4.2 / §16 step 7).
 #
 # The "surface" this phase ships is the internal validation library
-# `internal/exec` (no binary, no HTTP route, no MCP tool, no config key). Its
-# checks are pure `go test` targets plus two source-structural greps — no DB,
+# `internal/exec` — layers 1–2 of the D-038 layered validation (tokenizer
+# screens + the parser seam) plus the ValidatedSQL layer record. Its checks
+# are pure `go test` targets plus source-structural greps — no binary, no DB,
 # no live model. The whole script SKIPs cleanly until the package exists so
 # `make preflight` stays green as the build grows.
 
@@ -38,10 +39,10 @@ summarize_and_exit() {
   exit 0
 }
 
-# Run a `go test -run <pattern>` for one package; OK if it actually ran and
-# passed, FAIL if it ran and failed. A pattern that matches no test yet (the
-# package exists but this phase's tests aren't written) is treated as
-# not-built-yet -> SKIP, so partial progress never reddens preflight.
+# Run a `go test -run <pattern>` for the exec package; OK if it ran and
+# passed, FAIL if it ran and failed. A pattern matching no test yet (package
+# exists, this phase's tests not written) is not-built-yet -> SKIP, so
+# partial progress never reddens preflight.
 run_test() {
   desc="$1"
   pattern="$2"
@@ -72,59 +73,64 @@ fi
 
 # --- assertions --------------------------------------------------------------
 
-# 1: whole-tree DDL/DML rejection across all six V1 dialects.
-run_test "criterion 1: whole-tree DDL/DML rejected across all V1 dialects" \
+# 1: conformance-reproduction harness gates parser-driver adoption.
+run_test "criterion 1: conformance harness gates driver adoption (report golden + generated table)" \
+  "TestConformanceHarness_GatesAdoption"
+
+# 2: whole-tree DDL/DML rejection for every adopted (dialect, driver) pair.
+run_test "criterion 2: whole-tree DDL/DML rejected across adopted V1 dialects (zero ast-passed)" \
   "TestValidate_BlocksWritesAllDialects"
 
-# 2: CTE golden fixture passes (the CTE-regression guard).
-run_test "criterion 2: CTE golden fixture validates as SELECT-family" \
+# 3: CTE golden fixture passes on both parser drivers.
+run_test "criterion 3: CTE golden fixture validates on crdb and sqlglotgo drivers" \
   "TestValidate_CTEGolden"
 
-# 3: multi-statement rejected.
-run_test "criterion 3: multi-statement input rejected (statement.multiple)" \
-  "TestValidate_RejectsMultiStatement"
+# 4: tokenizer screens — dialect-aware single-statement + quote/comment hygiene.
+run_test "criterion 4: tokenizer screens (multi-statement dialect-aware, hygiene, caps)" \
+  "TestTokenizer_Screens"
 
-# 4: FuzzValidate never panics / never passes a write (seed corpus run).
+# 5: FuzzValidate — never panics; ast-passed never contains a write; honest record.
 if go test -count=1 -run '^FuzzValidate$' ./internal/exec/... >/dev/null 2>&1; then
-  ok "criterion 4: FuzzValidate seed corpus (never panics / never passes a write)"
+  ok "criterion 5: FuzzValidate seed corpus (no panic, no ast-passed write, honest layer record)"
 else
-  # distinguish not-present-yet from a real failure
   out="$(go test -count=1 -run '^FuzzValidate$' ./internal/exec/... 2>&1 || true)"
   if printf '%s' "$out" | grep -qE 'no tests to run|no test files|cannot find'; then
-    skip "criterion 4: FuzzValidate (not present yet)"
+    skip "criterion 5: FuzzValidate (not present yet)"
   else
-    fail "criterion 4: FuzzValidate seed corpus"
+    fail "criterion 5: FuzzValidate seed corpus"
   fi
 fi
 
-# 5: ValidatedSQL unconstructible outside the package (compile-time proof).
-run_test "criterion 5: ValidatedSQL unconstructible outside internal/exec" \
+# 6: ValidatedSQL unconstructible + engine-pending layer-record contract.
+run_test "criterion 6a: ValidatedSQL unconstructible outside internal/exec" \
   "TestValidatedSQL_Unconstructible"
+run_test "criterion 6b: layer record engine-pending refusal contract (phase-10 interface expectation)" \
+  "TestLayerRecord_EnginePendingContract"
 
-# 6: dialect-specific syntax degrades to a typed, fail-closed rejection.
-run_test "criterion 6: dialect-specific syntax fails closed (parse.unsupported)" \
-  "TestValidate_DialectSyntaxFailsClosed"
-
-# 7: typed error vocabulary is a closed, golden-pinned enum.
-run_test "criterion 7: error vocabulary golden (reserved codes present, unemitted)" \
+# 7: AST-skip is typed and fail-honest; vocabulary golden-pinned.
+run_test "criterion 7a: unproven dialect/input yields ast-skipped + parse.unsupported marker" \
+  "TestValidate_ASTSkipTypedMarker"
+run_test "criterion 7b: error/marker vocabulary golden (reserved codes present, unemitted)" \
   "TestErrorVocabulary_Golden"
 
-# 8: pre-parse does only byte/encoding work (no parser judgment).
-run_test "criterion 8: pre-parse never duplicates parser judgment" \
-  "TestPreParse_NoParserJudgment"
+# 8: tokenizer never duplicates parser judgment.
+run_test "criterion 8: tokenizer never duplicates parser judgment (arch test)" \
+  "TestTokenizer_NoParserJudgment"
 
 # 9: write-shape variant correct + type-split from the read path.
-run_test "criterion 9: write-shape variant (declared output/inputs, type-split)" \
+run_test "criterion 9: write-shape variant (declared output/inputs, ValidatedWriteSQL type-split)" \
   "TestValidateWriteShape"
 
-# 10: no regex injection heuristic in the validate path.
+# 10: dialect escapes caught structurally; no regex heuristic in the gate.
+run_test "criterion 10a: dialect-escape corpus never yields an ast-passed ValidatedSQL" \
+  "TestDialectEscapes_Structural"
 if grep -rIlE 'regexp' internal/exec >/dev/null 2>&1; then
   # a regexp import in the validate source units is the anti-pattern; allow it
   # only if the accompanying architecture test asserts it's not in the gate.
-  run_test "criterion 10: no regex injection heuristic (arch test)" \
+  run_test "criterion 10b: no regex injection heuristic (arch test)" \
     "TestNoRegexInjectionHeuristic"
 else
-  ok "criterion 10: no regex injection heuristic (no regexp import in internal/exec)"
+  ok "criterion 10b: no regex injection heuristic (no regexp import in internal/exec)"
 fi
 
 summarize_and_exit

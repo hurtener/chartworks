@@ -615,7 +615,10 @@ parser:
    evidence-gated**: a dialect flips to it only after its conformance claims are
    independently reproduced against the phase-09 fixture corpus; it is 4 weeks old
    with bus factor 1, so a fork under our org is the anticipated endgame if it proves
-   out. Where a parser driver covers the dialect, column-grain allowlisting and the
+   out. *(Phase-09 verification addendum, same day: its go.mod declares a hyphen-less
+   module path (`jonathanfulton/...`) that resolves to no repo — consumption requires
+   a verified `replace` directive, or the fork fixes the path; live-parse of all six
+   dialects' distinctive syntax confirmed.)* Where a parser driver covers the dialect, column-grain allowlisting and the
    whole-tree statement blocklist apply client-side as an additional layer.
 4. **Tokenizer-level screens everywhere**: byte/encoding caps, dialect-aware
    single-statement enforcement, comment/quote hygiene.

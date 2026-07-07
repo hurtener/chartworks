@@ -115,18 +115,21 @@ if [ -n "${CHARTWORKS_MYSQL_DSN:-}" ] && [ -n "${CHARTWORKS_SQLSERVER_DSN:-}" ];
   fi
   if declare -f run_group >/dev/null 2>&1; then
     run_group "$SRC_PKG" "-race" \
-      "TestConnectDiscoverSample_Mysql|criterion 7: mysql connect/discover/sample on seeded data" \
-      "TestConnectDiscoverSample_Sqlserver|criterion 7: sqlserver connect/discover/sample on seeded data" \
-      "TestReadOnlyProbe_Mysql|criterion 8: mysql read-only defense-in-depth probe" \
-      "TestReadOnlyProbe_Sqlserver|criterion 8: sqlserver read-only defense-in-depth probe" \
+      "TestConnectDiscoverSample_Mysql|criterion 7: mysql connect (incl. write-denial assertion, D-038)/discover/sample on seeded data" \
+      "TestConnectDiscoverSample_Sqlserver|criterion 7: sqlserver connect (incl. write-denial assertion, D-038)/discover/sample on seeded data" \
+      "TestReadOnlyProbe_Mysql|criterion 8: mysql promoted read-only posture probe (SELECT-only user + read-only txn)" \
+      "TestReadOnlyProbe_Sqlserver|criterion 8: sqlserver promoted read-only posture probe (db_datareader login)" \
       "TestTimeoutAndRowCap_Mysql|criterion 9: mysql server-side timeout + cursor cap (ORDER BY kept)" \
-      "TestTimeoutAndRowCap_Sqlserver|criterion 9: sqlserver server-side timeout + cursor cap (ORDER BY kept)"
+      "TestTimeoutAndRowCap_Sqlserver|criterion 9: sqlserver server-side timeout + cursor cap (ORDER BY kept)" \
+      "TestDryRunReferencedTables_Mysql|criterion 13: mysql DryRun (EXPLAIN FORMAT=JSON) referenced tables, executes nothing" \
+      "TestDryRunReferencedTables_Sqlserver|criterion 13: sqlserver DryRun (showplan/sp_describe_first_result_set) referenced tables, executes nothing"
   fi
 else
   skip "criterion 6: dockerized seeder (CHARTWORKS_MYSQL_DSN/CHARTWORKS_SQLSERVER_DSN unset — run make warehouses-up)"
-  skip "criterion 7: dockerized connect/discover/sample (self-hostable engines not up)"
-  skip "criterion 8: dockerized read-only probes (self-hostable engines not up)"
+  skip "criterion 7: dockerized connect (write-denial)/discover/sample (self-hostable engines not up)"
+  skip "criterion 8: dockerized promoted read-only probes (self-hostable engines not up)"
   skip "criterion 9: dockerized timeout + row-cap (self-hostable engines not up)"
+  skip "criterion 13: dockerized DryRun referenced-tables (self-hostable engines not up)"
 fi
 
 # --- live-gated criteria (cloud: bigquery, snowflake, databricks) ------------
@@ -136,7 +139,7 @@ for kind in BIGQUERY SNOWFLAKE DATABRICKS; do
   Title="$(printf '%s' "$kind" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')"
   if [ -n "${!var:-}" ] && declare -f run_group >/dev/null 2>&1; then
     run_group "$SRC_PKG" "-count=1" \
-      "TestCloudReadOnlyTimeoutCap_${Title}|criterion 10: ${Title} read-only + timeout + cap (live)" \
+      "TestCloudReadOnlyTimeoutCap_${Title}|criterion 10: ${Title} write-denial + smuggled-write + timeout + cap + DryRun (live)" \
       "TestConnectAndDiscover_${Title}|criterion 11: ${Title} connect + discover (live)"
   else
     skip "criterion 10/11: ${Title} live gate ($var unset — D-010 wave-end check)"

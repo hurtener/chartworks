@@ -65,19 +65,26 @@ fi
 
 # --- assertions --------------------------------------------------------------
 # One criterion per run_group entry; -race per CLAUDE.md §11. A not-yet-written
-# test surfaces as SKIP; a t.Skip'd (e.g. store-URL-gated) test surfaces as SKIP.
+# test surfaces as SKIP; a t.Skip'd test (store URL unset, pinned bruin binary
+# absent) surfaces as SKIP.
 run_group "$PKG" "-race" \
   "TestPipelineStepWriteOutOfScopeRejected|criterion 1: step write outside declared output rejected" \
   "TestPipelineStepInputNotDeclaredRejected|criterion 2: step read of undeclared input rejected" \
-  "TestMaterializeUndeclaredDestinationRejected|criterion 3: undeclared destination unmaterializable" \
+  "TestRunUndeclaredDestinationRejectedBeforeRender|criterion 3: undeclared destination rejected before render" \
   "TestQualityCheckFailureFailsRunLoudly|criterion 4: failed quality check fails run loudly" \
-  "TestP1cWriteSplitArchitecture|criterion 5: NLQ path cannot reach Materializer (P1c)" \
+  "TestP1cWriteSplitArchitecture|criterion 5: nlq/exec cannot reach PipelineRunner (P1c strengthened)" \
   "TestLineageRecordedPerMaterialization|criterion 6: lineage recorded per materialization" \
   "TestFreshnessStampedOnMaterialization|criterion 7: freshness stamped on materialization" \
   "TestDraftPublicationGate|criterion 8: draft-only publication gate" \
   "TestPipelineVersionImmutable|criterion 9: pipeline definition versioned + immutable" \
-  "TestMaterializerStrategiesAndUnforgeableWriteType|criterion 10: strategies + unforgeable write type" \
-  "TestScheduleAttachmentEnqueues|criterion 11: schedule attachment enqueues on the queue" \
-  "TestCanonicalRegistryResolveThenCompare|criterion 12: canonical registry resolve-then-compare, fail-closed"
+  "TestRenderGatedByBruinValidate|criterion 10: render from WriteValidatedSQL only, gated by bruin validate" \
+  "TestSQLOnlyAssetEnforcement|criterion 11: Python/R/ingestion assets rejected (SQL-only, D-036)" \
+  "TestNoPlaintextSecretPersists|criterion 12: plaintext secrets never persist (ENV/tmpfs only)" \
+  "TestBruinTelemetryDisabledOnEveryInvocation|criterion 13: bruin telemetry disabled on every invocation" \
+  "TestBruinOutcomeMappingTyped|criterion 14: exit codes/per-asset results map to typed outcomes" \
+  "TestStrategyEngineCompatibility|criterion 15: strategy/engine compatibility (merge-on-Databricks rejected)" \
+  "TestMissingBruinDegradesLoud|criterion 16: missing bruin binary degrades loud (typed unavailable)" \
+  "TestScheduleAttachmentEnqueues|criterion 17: schedule attachment enqueues on the queue" \
+  "TestCanonicalRegistryResolveThenCompare|criterion 18: canonical registry resolve-then-compare, fail-closed"
 
 summarize_and_exit
