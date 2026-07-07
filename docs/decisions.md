@@ -475,5 +475,25 @@ loop scored as *grounded* generation; the live gate (D-010) blocks wave closes.
 
 ---
 
-*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031 above. Further product
-decisions land here as phases ship, numbered D-032+.*
+### D-032 — V1 warehouse driver set expanded: + `mysql`, `sqlserver`; dockerized-engine validation for the self-hostable class · *accepted (kickoff follow-up, 2026-07-06)*
+
+User directive during planning: the V1 data-source driver set is **postgres, mysql,
+sqlserver, bigquery, snowflake, databricks** — SQL Server and Postgres per the fork's
+shipped adapters (brief 05), MySQL added. Both additions have official pure-Go drivers
+(`go-sql-driver/mysql`, `microsoft/go-mssqldb`), so D-005 holds. **Validation strategy
+by engine class:** the self-hostable engines (Postgres, MySQL, SQL Server) run the full
+adapter conformance suite against **dockerized instances loaded with public datasets**
+(Kaggle-class) locally and at wave ends — real-engine validation without cloud
+credentials; the cloud warehouses (BigQuery, Snowflake, Databricks) validate
+hermetically via recorded fixtures and fully via the live gate (D-010). Amends RFC-001
+§6.1 (amended in the same planning PR).
+
+**Why:** the predecessors' production coverage is the floor, not the ceiling; and the
+self-hostable trio turns most of phase 14's risk (per-engine read-only posture, capping,
+dialect fixtures) into cheap, repeatable local proof instead of live-gate-only evidence.
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032 amends its §6.1 in
+the same planning PR. Further product decisions land here as phases ship, numbered
+D-033+.*

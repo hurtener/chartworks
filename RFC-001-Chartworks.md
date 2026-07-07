@@ -302,12 +302,22 @@ brief 02's "nothing requires prior validation" scar). Materialization writes liv
 on a **separate** interface implemented only by destination-capable drivers
 (§7.6), never on the query interface (P1c).
 
-**V1 driver set:** `postgres` (pgx — also serves upload workspaces, §7.4),
-`bigquery`, `snowflake`, `databricks` (each on its official Go SQL driver/
-connector), plus `mock` (tests) and `null` (fail-loud placeholder, fork keeper).
-All four real drivers are pure-Go — the CGo-free posture holds (D-005). A generic
-`ansi` dialect sentinel covers unknown-dialect handling (fork keeper, brief 05).
-Adding a driver is a driver package + conformance run, never core surgery.
+**V1 driver set (D-032):** `postgres` (pgx — also serves upload workspaces,
+§7.4), `mysql` (go-sql-driver/mysql), `sqlserver` (microsoft/go-mssqldb — the
+fork shipped this driver; brief 05), `bigquery`, `snowflake`, `databricks` (each
+on its official Go SQL driver/connector), plus `mock` (tests) and `null`
+(fail-loud placeholder, fork keeper). All six real drivers are pure-Go — the
+CGo-free posture holds (D-005). A generic `ansi` dialect sentinel covers
+unknown-dialect handling (fork keeper, brief 05). Adding a driver is a driver
+package + conformance run, never core surgery.
+
+**Validation strategy per engine class (D-032):** the self-hostable engines —
+Postgres, MySQL, SQL Server — run the full adapter conformance suite against
+**dockerized instances loaded with public datasets** (Kaggle-class), locally and
+at wave ends, so their read-only posture, capping, timeouts, and dialect fixtures
+are validated without cloud credentials; the cloud warehouses (BigQuery,
+Snowflake, Databricks) validate hermetically via recorded fixtures and fully via
+the live gate (D-010).
 
 ### 6.2 The connections registry
 
@@ -900,7 +910,7 @@ servers drain, job leases release, in-flight runs checkpoint status.
 
 ## 18. Decisions settled by this RFC
 
-Logged as D-019…D-031 in `docs/decisions.md`:
+Logged as D-019…D-032 in `docs/decisions.md`:
 
 | D | Decision |
 |---|---|
@@ -917,6 +927,7 @@ Logged as D-019…D-031 in `docs/decisions.md`:
 | D-029 | `vindex` seam confirmed: pgvector single driver, facet vectors only |
 | D-030 | No local user/password/invite management; self-issue = API keys; admin bootstrap is a local CLI operation |
 | D-031 | Eval strategy: golden + red-team CI gates (0.85 threshold), grounded-accuracy manual loop, live gate per D-010 |
+| D-032 | V1 warehouse drivers = postgres, mysql, sqlserver, bigquery, snowflake, databricks; self-hostable engines validated against dockerized instances with public datasets, cloud engines via fixtures + the live gate |
 
 Consumer-request §12 questions: Q1 §5.3/§5.1 · Q2 §6.1/§6.3 · Q3 §9.4 ·
 Q4 §11.1 · Q5 §8.4 (in V1, scoped) · Q6 §10 (yes, deterministic selector) ·

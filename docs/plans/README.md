@@ -76,7 +76,7 @@
 | | 11 | `uploads-workspace` | upload parsing + workspace provisioning + dataset registration | 08 |
 | **4 Engineering** | 12 | `engineering-profiling` | profiles, quality, freshness, type classification | 05, 06, 08 |
 | | 13 | `engineering-pipelines` | pipeline defs, write-shape validation, materializer, runs, lineage, schedules | 06, 09, 10, 12 |
-| | 14 | `warehouse-drivers` | `bigquery`, `snowflake`, `databricks` drivers + conformance | 08, 10 |
+| | 14 | `warehouse-drivers` | `mysql`, `sqlserver`, `bigquery`, `snowflake`, `databricks` drivers + conformance (D-032) | 08, 10 |
 | **5 Semantics & NLQ** | 15 | `topics-lifecycle` | `internal/semantics` (packs, lifecycle, facets, capability contracts, export/import) | 04, 05, 07, 12 |
 | | 16 | `rules-clarification` | governed rules, clarification patterns, canonical registry | 15 |
 | | 17 | `nlq-routing-context` | span hints, retrieval, routing, context assembly, budgets | 05, 07, 15, 16 |
@@ -256,16 +256,21 @@ cannot reach `Materializer` (architecture test — the P1c proof); lineage recor
 per materialization.
 
 ### Phase 14 — `warehouse-drivers` (Wave 4)
-**RFC:** §6.1. **Briefs:** 02, 05. **Difficulty:** medium.
-`bigquery`, `snowflake`, `databricks` drivers on their official pure-Go
-drivers/connectors (exact versions pinned + verified against release assets —
-convention 8), each passing the adapter conformance suite (discovery, typing,
-read-only posture, caps, timeouts) + recorded-fixture dialect tests for the
-validator.
-**Key criteria:** conformance suite green per driver (live halves tagged for the
-live gate); CGo stays disabled (`CGO_ENABLED=0` build proof in CI); per-engine
-read-only enforcement documented + tested (live-gated where a real warehouse is
-needed).
+**RFC:** §6.1 (D-032). **Briefs:** 02, 05. **Difficulty:** medium-high.
+`mysql`, `sqlserver`, `bigquery`, `snowflake`, `databricks` drivers on their
+official pure-Go drivers/connectors (exact versions pinned + verified against
+release assets — convention 8), each passing the adapter conformance suite
+(discovery, typing, read-only posture, caps, timeouts) + recorded-fixture dialect
+tests for the validator. **The self-hostable engines (mysql, sqlserver — joining
+postgres from phase 08) run the conformance suite against dockerized instances
+loaded with public datasets (Kaggle-class)** — docker-compose services + a dataset
+seeding script are part of this phase's deliverable; the cloud trio validates via
+recorded fixtures + the live gate.
+**Key criteria:** conformance suite green per driver (dockerized for the
+self-hostable class; live halves tagged for the cloud class); CGo stays disabled
+(`CGO_ENABLED=0` build proof in CI); per-engine read-only enforcement documented +
+tested (dockerized proof for postgres/mysql/sqlserver, live-gated for the rest);
+the dataset seeding script is idempotent and licensing-clean.
 
 ### Phase 15 — `topics-lifecycle` (Wave 5)
 **RFC:** §8.1–8.3. **Briefs:** 05 (binding state machine), 03, 07. **Difficulty:** high.
@@ -405,8 +410,8 @@ audit punch list resolved; live gate green as the release blocker.
 
 | Risk | Phase(s) | Mitigation |
 |---|---|---|
-| Go SQL-parser dialect coverage falls short of the four V1 warehouses | 09, 14 | Parser selected against a real per-dialect fixture corpus *before* the plan bakes it in (convention 8); the `ansi` sentinel + capability gating degrade unknown constructs to typed rejections, never silent passes |
-| Read-only session enforcement differs materially per engine | 10, 14 | Documented per-driver posture + live-gated probes; the validator remains the primary gate, the session mode is defense-in-depth — both must hold independently |
+| Go SQL-parser dialect coverage falls short of the six V1 engines (D-032) | 09, 14 | Parser selected against a real per-dialect fixture corpus (incl. mysql + tsql) *before* the plan bakes it in (convention 8); the `ansi` sentinel + capability gating degrade unknown constructs to typed rejections, never silent passes |
+| Read-only session enforcement differs materially per engine | 10, 14 | Documented per-driver posture; **dockerized real-engine probes for postgres/mysql/sqlserver** (D-032) + live-gated probes for the cloud trio; the validator remains the primary gate, the session mode is defense-in-depth — both must hold independently |
 | Upload workspace provisioning (per-tenant DBs) complicates ops | 11 | Single-instance/two-database default for dev; provisioning behind one interface so a managed-DB driver can replace it without core surgery |
 | Context-budget tuning regresses generation quality invisibly | 17, 18, 24 | Token-count goldens from day one; the eval gate runs from Wave 7 backward-applied to Wave-5 fixtures; live gate scores grounded accuracy each wave end |
 | BYO bundle becomes a de-facto public API before it stabilizes | 19 | `bundle_version` from the first ship; backward-compat golden; the contract is explicitly marked pre-1.0 until phase 25 |
