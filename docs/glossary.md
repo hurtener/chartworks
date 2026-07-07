@@ -27,27 +27,91 @@
 - **The generalistic predecessor** — the generalistic "Explorer" fork of the same codebase
   (`_ref/forked_wayfinder_explorer/`). Never named directly in this repo (D-001).
 
-## Domain
+## Domain (populated by RFC-001 §2)
 
-> *Stub — the RFC populates this section. Seeded only with product-defining terms unlikely
-> to change.*
-
-- **Data source** — a customer structured-data backend Chartworks reads to answer a query
-  (e.g. a data warehouse). Reached read-only and access-scoped through a data-source
-  adapter; **distinct** from Chartworks' own `Store` (D-004).
-- **Dataset** — a scoped, addressable body of structured data within a data source that a
-  caller may be granted access to; the unit deny-by-default access is computed over (P1).
-- **NLQ (Natural Language Query)** — a natural-language question Chartworks routes, through
-  the semantic model, to validated read-only SQL. The core inference the product migrates
-  from the predecessors.
-- **Data-engineering stage** — the upfront preparation step that shapes structured sources
-  before modeling and NLQ; the extension the predecessors did not have (CLAUDE.md §1).
-  *(Exact scope RFC-owned.)*
-- **Semantic model** — the predecessors' "topic pack" concept: the curated business
-  metadata (measures, dimensions, KPIs, join graphs) that grounds NLQ routing. *(Final
-  shape, vocabulary, and lifecycle RFC-owned; the topic-lifecycle diff brief informs it.)*
-- **Chart spec** — the normalized, provider-agnostic visualization output a query result
-  renders as. *(Shape RFC-owned.)*
+- **Data source** — a customer warehouse connection or an upload workspace: the
+  structured-data backend Chartworks reads (and, only via materializations, writes).
+  Reached through a data-source adapter; **distinct** from Chartworks' own `Store`
+  (D-004). Status lifecycle: `unverified → connected → unavailable`.
+- **Dataset** — a governed, queryable, table-shaped artifact: a registered source table,
+  an uploaded file's table, or a materialization. Carries schema, profile, freshness,
+  lineage, version, and grants; the finest access grain (P1a, D-020).
+- **Topic** — the semantic-model unit grounding NLQ: measures, dimensions, derived KPIs,
+  join graph, business context, governed rules. Versioned and governed (RFC §8.2:
+  draft → review → published → deprecated; topic-level active ⇄ archived).
+- **Topic pack** — a topic version's full payload (the authoring view).
+- **Capability contract** — the compact, prompt-safe projection of a published topic
+  pack that routing and SQL generation actually consume (the lean context layer,
+  RFC §8.3).
+- **Context bundle** — the *published, versioned* projection handed to a BYO agent in
+  `get_query_context`: routing result, contract slice, restated governance constraints,
+  dialect + SQL requirements, clarification slots (RFC §9.4, D-022).
+- **Question / plan / run** — the NL question; *plan* = route + generate + validate
+  without executing; *run* = plan then execute (distinct capability scopes).
+- **Preflight** — the routability check: which topic(s), what confidence, which
+  clarification slots — no SQL, no execution.
+- **Pipeline** — a declarative, versioned data-engineering definition: SQL steps +
+  quality checks + a declared destination + an optional schedule (RFC §7.3).
+- **Materialization** — a pipeline write into a declared destination; the only write
+  Chartworks performs against customer infrastructure (P1c, D-017/D-021).
+- **Upload workspace** — the managed Postgres database where a tenant's uploaded
+  CSV/XLSX/Parquet files become queryable tables, reached through the standard
+  `postgres` adapter like any warehouse (RFC §7.4, D-024).
+- **Grant** — an explicit per-principal permission `(grain ∈ source|topic|dataset,
+  permission ∈ read|query|manage)`; absence means denial (D-020).
+- **Principal** — `user:<id>` · `agent:<id>` · `svc:<name>` · `key:<id>`. Agents hold
+  their own grants (D-020).
+- **Session** — a conversation scope for query refinement; part of the isolation triple.
+- **Freshness** — dataset recency status: `fresh` / `stale` / `very_stale` / `unknown`.
+- **Lineage** — a dataset's declared upstream datasets + producing pipeline/step.
+- **Governed rule** — a tenant/topic-scoped, structurally validated business constraint
+  injected into generation context under its own token budget; lifecycle
+  `proposed → active → retired` (RFC §8.4, D-027).
+- **Clarification slot** — a named ambiguity ("which region", "which time grain")
+  detected by topic-scoped patterns *before* generation (RFC §8.4).
+- **Example (learned)** — a question→SQL pair with a routing weight, learned from
+  feedback; lifecycle `candidate → active → retired` (RFC §9.8).
+- **Re-check source / revalidate** — the domain-clean names for the operations the
+  predecessors called "repair": refresh schema after source drift; re-verify a topic or
+  example against its sources (P6).
+- **Chart spec** — the declarative, provider-agnostic presentation contract:
+  `ColumnMetadata[]` + `ChartRecipe` (kind, bindings, formatting, score, rationale) +
+  provenance envelope; V1 never pre-inflates a charting library's options (RFC §10,
+  D-026).
+- **Scope-debug** — the admin-only, read-only diagnostic reporting *which predicate*
+  denied access or routing (RFC §5.4); never user-facing.
+- **PipelineRunner seam** — the interface behind which pipeline execution happens;
+  V1 driver: the pinned Bruin CLI subprocess (D-036). Writes live here and only here
+  (P1c); NLQ adapters have no write capability at all.
+- **Parser seam** — the client-side SQL-AST validation seam (RFC §9.5 layer 2);
+  drivers: `crdb` (cockroachdb-parser, postgres-family) and `sqlglotgo`
+  (jonathan-fulton/sqlglot-go, per-dialect adoption evidence-gated — D-038).
+- **Dry-run validation** — the engine-side pre-execution check (dry-run/EXPLAIN under
+  the read-only credential) providing dialect-true syntax validation and the
+  referenced-table set for table-grain allowlisting on every engine (D-038).
+- **Managed schema** — a Chartworks-created namespace inside a customer warehouse
+  (default prefix `chartworks_`); the only place materializations may write (D-040).
+- **Baseline table** — any table/view Chartworks did not create: read-only forever,
+  inputs only (D-040).
+- **Proposal** — the atomic, reviewable, revertible changeset an L2/L3 agent produces
+  (pipelines + datasets + topic deltas + schedules); the unit of review, application,
+  and rollback (D-039).
+- **Decision record** — the stored reasoning trail on every agent-proposed object:
+  goal served, matched-vs-built, alternatives rejected, evidence, provenance, cost
+  (D-039).
+- **Autonomy policy / autonomy ladder** — L0 manual · L1 assisted · L2 goal-driven
+  proposal (V1 target) · L3 policy-scoped auto-apply (per-tenant opt-in); outside
+  policy degrades to review, loudly (D-039).
+- **Investigation** — the read-side autonomy analog (committed V1.1 wave, D-042): an
+  analytical goal decomposed into sub-questions, each through the unchanged
+  validation/execution gates, synthesized into evidence-backed findings with
+  per-step decision records. At V1, multi-step analysis is a documented supported
+  pattern via external agents looping the BYO tools.
+- **Analysis scratchpad** — ephemeral intermediate views/tables under managed
+  `chartworks_` schemas, created/dropped through the D-040 gates, session-scoped and
+  erased on close (V1.1, D-042).
+- **NLQ (Natural Language Query)** — a natural-language question routed through the
+  semantic model to validated read-only SQL.
 
 ## Internals & seams
 
