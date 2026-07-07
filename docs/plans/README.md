@@ -192,8 +192,10 @@ cannot be expressed against the seam; discovery conformance on Docker Postgres.
 ### Phase 09 — `sql-validate-core` (Wave 3)
 **RFC:** §9.5 (stages 1–2 + the semantics-independent half of 3). **Briefs:** 02,
 04, 03, 07, 08. **Difficulty:** high.
-Parser selection (evaluated against real dialect fixtures — convention 8's
-pin-and-verify), the three-stage skeleton: byte/encoding pre-parse (**never
+The **parser seam** (D-038): driver `crdb` (cockroachdb-parser v0.25.2, D-033) +
+driver `sqlglotgo` (jonathan-fulton/sqlglot-go v0.4.0, per-dialect adoption gated on
+independently reproducing its conformance against this phase's fixture corpus), the
+layered skeleton: byte/encoding pre-parse (**never
 duplicating parser judgment** — the CTE-regression rule + golden CTE fixture),
 dialect-aware AST parse, whole-tree statement blocking (SELECT-family only, blocked
 node classes incl. dialect escapes), single-statement enforcement, the typed error
@@ -207,9 +209,12 @@ output) lands here for phase 13's use.
 
 ### Phase 10 — `exec-read` (Wave 3)
 **RFC:** §9.6. **Briefs:** 02, 04. **Difficulty:** high.
-The read execution layer over the adapter seam: read-only transaction/session
-enforcement per driver (documented per-engine), server-side statement timeouts +
-context deadlines, cursor-level row caps (never LIMIT-wrapping — the `ORDER BY`
+The read execution layer over the adapter seam: **read-only credentials/sessions as
+the primary P1b guarantee** (SELECT-only provisioning asserted by the connection
+test — D-038) + read-only transaction/session enforcement per driver (documented
+per-engine), the **engine dry-run/EXPLAIN pre-execution step** (dialect-true syntax +
+referenced-table extraction for table-grain allowlisting on every engine — D-038),
+server-side statement timeouts + context deadlines, cursor-level row caps (never LIMIT-wrapping — the `ORDER BY`
 lesson as a standing exec rule + regression test), `QueryResult` → `ResultPreview`
 shaping, idempotency-key support, execution metrics.
 **Key criteria:** a write statement smuggled past a hypothetically-broken validator
@@ -243,12 +248,16 @@ freshness buckets correct across fixtures; drift diff flags dependents.
 ### Phase 13 — `engineering-pipelines` (Wave 4)
 **RFC:** §7.3, §7.6–7.7. **Briefs:** 11, 10, 02. **Difficulty:** high.
 Pipeline definitions (versioned, declared inputs/output/destination per step),
-write-shape validation via phase 09, quality checks (fail-loud), the
-`Materializer` interface (distinct from `Query` — P1c) with `create-or-replace` +
-`full refresh` strategies on declared destinations only, runs + lineage + freshness
-stamping, schedule attachment, LLM-assisted drafting (`pipeline_draft` role,
-draft-only — publication is an explicit human gate), the canonical identity
-registry.
+write-shape validation via phase 09, quality checks (fail-loud), and the
+**`PipelineRunner` seam with the pinned Bruin CLI driver (D-036)**: rendering our
+definitions to Bruin's format, custody-rendered connections (env interpolation /
+tmpfs — plaintext never persists), SQL-only assets, telemetry-disable confirmation
+(implementation blocker), typed mapping of exit codes/per-asset results,
+`validate -o json` gating and `lineage -o json` consumption. Strategies inherited
+incl. merge/incremental + scd2 (per-engine support recorded). Runs + lineage +
+freshness stamping, schedule attachment, LLM-assisted drafting (`pipeline_draft`
+role, draft-only — publication is an explicit human gate), the canonical identity
+registry. NLQ adapters carry no write capability at all (P1c).
 **Key criteria:** a step writing outside its declared output is rejected at
 validation; an undeclared destination cannot be materialized to (typed error); a
 failed quality check fails the run loudly (status + metric + audit); NLQ-path code
@@ -410,7 +419,9 @@ audit punch list resolved; live gate green as the release blocker.
 
 | Risk | Phase(s) | Mitigation |
 |---|---|---|
-| Go SQL-parser dialect coverage falls short of the six V1 engines (D-032) | 09, 14 | Parser selected against a real per-dialect fixture corpus (incl. mysql + tsql) *before* the plan bakes it in (convention 8); the `ansi` sentinel + capability gating degrade unknown constructs to typed rejections, never silent passes |
+| Go SQL-parser dialect coverage falls short of the six V1 engines (D-032) | 09, 14 | D-038 layering: safety never rests on the client parser (read-only credentials + engine dry-run carry P1b everywhere); the parser seam adds depth per dialect as drivers prove out against the fixture corpus |
+| sqlglot-go driver is 4 weeks old, bus factor 1 | 09, 18 | Per-dialect, evidence-gated adoption behind the parser seam; crdb + engine-side layers always present; fork-under-our-org anticipated if it proves out (D-038) |
+| Bruin churn (daily releases), glibc-dynamic binary, default telemetry | 13, 25 | Strict pin (v0.11.666) + conformance re-run per bump; glibc base image pinned; telemetry-disable confirmed as a phase-13 blocker (D-036) |
 | Read-only session enforcement differs materially per engine | 10, 14 | Documented per-driver posture; **dockerized real-engine probes for postgres/mysql/sqlserver** (D-032) + live-gated probes for the cloud trio; the validator remains the primary gate, the session mode is defense-in-depth — both must hold independently |
 | Upload workspace provisioning (per-tenant DBs) complicates ops | 11 | Single-instance/two-database default for dev; provisioning behind one interface so a managed-DB driver can replace it without core surgery |
 | Context-budget tuning regresses generation quality invisibly | 17, 18, 24 | Token-count goldens from day one; the eval gate runs from Wave 7 backward-applied to Wave-5 fixtures; live gate scores grounded accuracy each wave end |

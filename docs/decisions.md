@@ -541,6 +541,99 @@ at a bump is a D-005 event requiring its own decision.
 
 ---
 
-*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-035 were filed
-during planning (driver set, parser, bundle_ref, pins). Further product decisions land
-here as phases ship, numbered D-036+.*
+### D-036 — Bruin adopted as the DE write-path executor (CLI subprocess, narrowed scope) · *accepted (planning review with user, 2026-07-06; narrows-and-supersedes D-023)*
+
+The data-engineering **write path** executes through **Bruin** (`bruin-data/bruin`,
+Apache-2.0, pinned **v0.11.666**) as a **CLI subprocess behind a `PipelineRunner`
+seam** — not a library import. Chartworks' declarative pipeline definitions render to
+Bruin's pipeline format at run time; Bruin executes transformations, materializations
+(create+replace, delete+insert, append, **merge/incremental**, time_interval,
+scd2 — per-engine support varies; Databricks lacks merge), and quality checks;
+Chartworks consumes `bruin validate -o json` and `bruin lineage -o json`
+(machine-readable, spike-verified) and wraps runs with its own audit/metering.
+**Hard V1 rules:** SQL-only assets — never Python/R assets and never `ingestr`
+ingestion (FSL-1.1 license + Python runtime; spike-verified that SQL-only runs need no
+Python); credentials injected via `.bruin.yml` `${ENV}` interpolation or a
+custody-rendered tmpfs config — plaintext never lands on persistent disk; Bruin's
+telemetry is disabled, and **confirming the real disable mechanism is an
+implementation blocker** for phase 13; the prebuilt binary is glibc-dynamic — the
+reference image uses a glibc base (debian-slim class), never bare musl/Alpine.
+NLQ **reads never route through Bruin** — they stay on Chartworks' native adapters
+(D-038). Brief 11's orchestration keepers (blind planner, whitelist composition,
+contract-before-materialize) remain Chartworks-owned; Bruin is the executor, not the
+designer. Daily upstream release cadence ⇒ strict pin + conformance re-run per bump
+(D-035 discipline).
+
+**Why:** D-023 rejected *engine adoption* (library import: CGo/Rust build, Python
+ingestion, plaintext config) — every one of those objections dissolves in the narrowed
+shape, verified against real release artifacts. It buys the most expensive halves of
+the DE stage (incremental/merge strategies, quality checks, column lineage, write-side
+engine breadth) at the cost of one pinned subprocess boundary.
+
+---
+
+### D-037 — CGo-free posture relaxed: the container is the deployment unit · *accepted (user directive, 2026-07-06; supersedes D-005 per its own reversal clause)*
+
+The primary deployment target is a **container Chartworks controls** ("this will be
+mostly dockerized"). Consequences: (a) the deployment unit is the **image**, which may
+carry additional pinned binaries (Bruin, D-036) and dynamic linkage; the
+single-static-binary property is demoted from invariant to *preference for the
+`chartworks` binary itself*; (b) **CGo is permitted** in the `chartworks` binary when a
+dependency genuinely earns it — recorded per-dependency in a decision entry, never a
+silent flip. As of this entry the binary remains CGo-free (no current dependency needs
+it: the adopted parser drivers are pure Go, D-038). Bare-metal/standalone deployment
+remains supported: the binary runs everywhere; DE pipeline execution requires `bruin`
+on PATH and degrades to a typed "pipeline execution unavailable" otherwise (P4 — loud,
+never silent).
+
+---
+
+### D-038 — Read-side SQL validation: layered engine-side enforcement + a parser seam; native-dialect generation · *accepted (planning review with user, 2026-07-06; supersedes D-033's generation-subset obligation)*
+
+P1b on the NLQ read path is enforced in layers, none of which depends on an immature
+parser:
+
+1. **Read-only credentials/sessions are the primary read-only mechanism.** Each
+   data-source connection is provisioned SELECT-only where the engine supports it
+   (documented per driver); the connection test asserts the posture (attempts a write,
+   expects engine denial). The engine enforces read-only in its own dialect against
+   any SQL whatsoever.
+2. **Engine dry-run/EXPLAIN is the dialect-true validator.** Before execution, the
+   candidate SQL is dry-run (BigQuery dryRun — returns referenced tables explicitly)
+   or EXPLAIN'd (Postgres/MySQL/Snowflake/Databricks; SQL Server showplan/
+   `sp_describe_first_result_set`) under the read-only credential; syntax errors are
+   typed failures, and the **referenced-table set is checked against topic ∩ caller
+   grants** before the real run. Table-grain allowlisting is thereby guaranteed on
+   every engine by the engine's own parser.
+3. **Client-side AST validation rides a parser seam** (interface + factory + driver,
+   §4.4): driver `crdb` = `cockroachdb-parser` v0.25.2 (hardened, postgres-family —
+   covers postgres sources and every upload workspace; D-033's pin retained); driver
+   `sqlglotgo` = **`jonathan-fulton/sqlglot-go` v0.4.0** (MIT, pure Go, all six
+   dialects, walkable AST + statement classification + transpile; the only genuine Go
+   sqlglot port — `tensafe/sqlglot-go` was evaluated and rejected: fingerprinting
+   tool, parser unimplemented). sqlglot-go adoption is **per-dialect and
+   evidence-gated**: a dialect flips to it only after its conformance claims are
+   independently reproduced against the phase-09 fixture corpus; it is 4 weeks old
+   with bus factor 1, so a fork under our org is the anticipated endgame if it proves
+   out. Where a parser driver covers the dialect, column-grain allowlisting and the
+   whole-tree statement blocklist apply client-side as an additional layer.
+4. **Tokenizer-level screens everywhere**: byte/encoding caps, dialect-aware
+   single-statement enforcement, comment/quote hygiene.
+
+**Generation targets the native dialect** of the source — no ANSI-conservative subset
+constraint (D-033's obligation is dropped; it would have broken ordinary questions on
+4 of 6 engines). The BYO context bundle states the dialect and the SQL requirements;
+validation is the trust boundary, exactly as before.
+
+**Why:** the engine's own parser is the only authority on its dialect that will ever
+exist; credentials are the only read-only guarantee that survives any parser gap. The
+client parser layer then *adds* depth without gating capability — and improves
+per-dialect as the sqlglot-go driver matures, with zero redesign (the seam is the
+contract).
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-038 were filed
+during the planning review (driver set, parser strategy, bundle_ref, pins, Bruin
+adoption, the D-005 reversal, layered read validation). Further product decisions land
+here as phases ship, numbered D-039+.*

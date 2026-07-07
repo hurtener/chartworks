@@ -80,6 +80,15 @@
   D-026).
 - **Scope-debug** — the admin-only, read-only diagnostic reporting *which predicate*
   denied access or routing (RFC §5.4); never user-facing.
+- **PipelineRunner seam** — the interface behind which pipeline execution happens;
+  V1 driver: the pinned Bruin CLI subprocess (D-036). Writes live here and only here
+  (P1c); NLQ adapters have no write capability at all.
+- **Parser seam** — the client-side SQL-AST validation seam (RFC §9.5 layer 2);
+  drivers: `crdb` (cockroachdb-parser, postgres-family) and `sqlglotgo`
+  (jonathan-fulton/sqlglot-go, per-dialect adoption evidence-gated — D-038).
+- **Dry-run validation** — the engine-side pre-execution check (dry-run/EXPLAIN under
+  the read-only credential) providing dialect-true syntax validation and the
+  referenced-table set for table-grain allowlisting on every engine (D-038).
 - **NLQ (Natural Language Query)** — a natural-language question routed through the
   semantic model to validated read-only SQL.
 

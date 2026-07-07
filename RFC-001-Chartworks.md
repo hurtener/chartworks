@@ -68,12 +68,14 @@ three named sub-properties:
   customer-warehouse query. Empty set ⇒ typed denial, no query issued.
 - **P1b — SQL-safety.** Generated or submitted SQL is untrusted regardless of
   origin (internal generator or BYO agent — request §1.8). It executes only after
-  the three-stage validation of §9.5 (AST-first, whole-tree statement blocking,
-  schema/column/join allowlisting against *topic pack ∩ caller grants*,
-  single-statement, dialect-aware) and only through the read-only execution layer
-  of §9.6 (independent execution-time read-only enforcement, server-side
-  timeouts, cursor-level row caps). Validation failure is a typed error — never a
-  skip-to-execute.
+  the **layered validation** of §9.5 (tokenizer screens; client-side AST
+  validation via the parser seam where a driver covers the dialect; engine-side
+  dry-run/EXPLAIN as the dialect-true validator with referenced-table
+  allowlisting against *topic pack ∩ caller grants* on every engine) and only
+  through the read-only execution layer of §9.6, whose **primary read-only
+  guarantee is the SELECT-only credential/session** the engine itself enforces
+  (D-038), plus server-side timeouts and cursor-level row caps. Validation
+  failure is a typed error — never a skip-to-execute.
 - **P1c — The write split.** The NLQ path is structurally read-only: the `exec`
   seam exposes no write operation. Warehouse writes exist only in the engineering
   stage's materialization path (§7.6) — a **distinct interface** with declared
@@ -421,21 +423,36 @@ pipeline definition (declared, not inferred — V1 does not parse arbitrary SQL 
 lineage). Schema drift detection: a re-discovery diff marks affected datasets and
 flags dependent topics' source health (§8.2, stage 7).
 
-### 7.6 Materializations — the governed write path (P1c concrete)
+### 7.6 Materializations — the governed write path (P1c concrete; D-036)
 
-The **only** write Chartworks performs against customer infrastructure:
+The **only** write Chartworks performs against customer infrastructure, executed
+by **Bruin** (pinned v0.11.666, Apache-2.0) as a CLI subprocess behind the
+**`PipelineRunner` seam** (interface + factory + driver; `bruin` is the V1
+driver):
 
 - Destinations are **declared** per pipeline: a (source, schema) pair the tenant
   admin has explicitly marked writable + a `manage` grant on that source. No
-  declared destination ⇒ no write, ever.
-- The write interface (`sources.Materializer`) is implemented separately from
-  `Query`; drivers that don't support writes don't implement it. Strategies V1:
-  `create-or-replace table` and `full refresh insert` (incremental strategies are
-  post-V1).
-- Every materialization is audited (content-free: pipeline, step, destination,
-  row count, duration, outcome) and stamped into dataset lineage + freshness.
-- Failed quality checks **fail the run loudly** (typed error, metric, run status)
-  — never a silent partial publish (P4).
+  declared destination ⇒ no write, ever. Chartworks renders its declarative
+  pipeline definition to Bruin's format at run time; connections are injected
+  via env-var interpolation or a custody-rendered tmpfs config — plaintext
+  secrets never persist to disk.
+- **The NLQ adapters have no write capability at all** — the strongest P1c
+  shape: reads live in `internal/sources` adapters; writes live behind
+  `PipelineRunner` in a separate executor process. No shared entry point exists
+  to flag-switch.
+- Strategies (inherited from Bruin, per-engine support recorded per driver):
+  create+replace, delete+insert, truncate+insert, append, **merge/incremental**,
+  time_interval, scd2. Quality checks (unique/not_null/accepted_values/
+  pattern/min/max/custom) run blocking by default.
+- **V1 hard rules (D-036):** SQL-only assets — never Python/R assets, never
+  `ingestr` ingestion (FSL license + Python runtime); Bruin telemetry disabled
+  (confirming the mechanism is a phase-13 implementation blocker); `bruin
+  validate -o json` gates rendering, `bruin lineage -o json` feeds lineage.
+- Every materialization run is audited by Chartworks (content-free: pipeline,
+  step, destination, row count, duration, outcome) and stamped into dataset
+  lineage + freshness. Failed quality checks **fail the run loudly** (typed
+  error, metric, run status) — never a silent partial publish (P4). Bruin exit
+  codes and per-asset results map to typed run outcomes at the seam.
 
 ### 7.7 Refresh & scheduling
 
@@ -592,40 +609,56 @@ The Teramot-class flow, built on §8.3's machinery:
   bypass a check mode (a) runs — enforced by construction (`ValidatedSQL` is the
   only executable type) and by a standing parity test.
 
-### 9.5 Validation (P1b concrete; three stages)
+### 9.5 Validation (P1b concrete; layered — D-038)
 
-1. **Pre-parse** — only what a parser cannot do: byte/length caps, encoding
-   sanity. **A pre-parse rule must not duplicate parser-level judgment** (the
-   CTE-blocking regression, brief 03 §4 — a standing review rule plus a golden
-   CTE fixture guard it).
-2. **Parse** — dialect-aware AST parse (Go SQL parser library selected in the
-   exec phase plan; recorded-fixture tested per dialect). Unparseable ⇒ typed
-   error.
-3. **Post-parse** — the allowlist walk: top-level node ∈ SELECT-family
-   (`SELECT`/`WITH`/set-ops) only; blocked node classes (`INSERT`/`UPDATE`/
-   `DELETE`/`MERGE`/`CREATE`/`ALTER`/`DROP`/`TRUNCATE`/`CALL`/`COPY`/dialect
-   escapes) rejected **anywhere in the tree**; single statement; every
-   table/column reference ∈ (topic pack schema ∩ caller's dataset grants) — the
-   two are intersected, not conflated (brief 04's D-017 requirement 2); join
+Validation is layered; no layer's absence silently widens access (P4):
+
+1. **Tokenizer screens (every dialect)** — byte/length caps, encoding sanity,
+   dialect-aware single-statement enforcement, comment/quote hygiene. **A
+   pre-parse rule must not duplicate parser-level judgment** (the CTE-blocking
+   regression, brief 03 §4 — a standing review rule plus a golden CTE fixture
+   guard it).
+2. **Client-side AST validation via the parser seam** (interface + factory +
+   driver): driver `crdb` = `cockroachdb-parser` v0.25.2 (postgres-family —
+   postgres sources and all upload workspaces); driver `sqlglotgo` =
+   `jonathan-fulton/sqlglot-go` v0.4.0 (all six dialects; **per-dialect
+   adoption gated** on independently reproducing its conformance against the
+   phase-09 fixture corpus — D-038). Where a driver covers the dialect: the
+   allowlist walk — top-level node ∈ SELECT-family only; blocked node classes
+   (`INSERT`/`UPDATE`/`DELETE`/`MERGE`/`CREATE`/`ALTER`/`DROP`/`TRUNCATE`/
+   `CALL`/`COPY`/dialect escapes) rejected **anywhere in the tree**; every
+   table/**column** reference ∈ (topic pack schema ∩ caller's dataset grants) —
+   intersected, not conflated (brief 04's D-017 requirement 2); join
    reachability against the declared join graph; CTE-local names resolved
-   scope-aware (warning-level, never hard-fail on shadowing). Typed error codes
-   (`statement.blocked`, `table.not_granted`, `table.not_in_topic`,
-   `column.unknown`, `join.unreachable`, …) — the error vocabulary is normative
-   for both surfaces.
+   scope-aware (warning-level on shadowing). A dialect without a proven driver
+   skips this layer — it never fakes it.
+3. **Engine-side dry-run/EXPLAIN (every engine, pre-execution)** — the candidate
+   SQL is dry-run (BigQuery) or EXPLAIN'd (Postgres/MySQL/Snowflake/Databricks;
+   SQL Server showplan) under the read-only credential: the engine's own parser
+   is the dialect-truth syntax check, and the **referenced-table set is checked
+   against topic ∩ grants** before the real run — table-grain allowlisting
+   guaranteed on every engine regardless of layer 2 coverage.
 
-No regex "injection heuristics" presented as controls (brief 02/04): the AST
-allowlist *is* the injection guardrail; identifiers are never string-assembled
-from model output.
+Typed error codes (`statement.blocked`, `table.not_granted`,
+`table.not_in_topic`, `column.unknown`, `join.unreachable`,
+`parse.unsupported`, …) — the vocabulary is normative for both surfaces. No
+regex "injection heuristics" presented as controls (brief 02/04): the
+allowlist + statement blocking *are* the injection guardrail; identifiers are
+never string-assembled from model output. **Generation targets the source's
+native dialect** — no ANSI-subset constraint (D-038).
 
 ### 9.6 Execution (read-only, defense-in-depth)
 
 `exec.Query(ctx, ValidatedSQL, opts)` — the only execution entry point on the
 read path:
 
-- **Independent read-only enforcement at the adapter**: read-only transaction /
-  session mode where the engine supports it (Postgres `BEGIN READ ONLY`;
-  engine-equivalent elsewhere; documented per driver) — the validator is not the
-  sole guarantee (brief 02's headline scar).
+- **Read-only credentials/sessions are the PRIMARY read-only guarantee
+  (D-038)**: each connection is provisioned SELECT-only where the engine
+  supports it, reinforced by read-only transaction/session mode (Postgres
+  `BEGIN READ ONLY`; engine-equivalent elsewhere; documented per driver); the
+  connection test asserts the posture by attempting a write and expecting
+  engine denial. The validator adds depth — it is never the sole guarantee
+  (brief 02's headline scar).
 - **Server-side statement timeout** per adapter (e.g. Postgres
   `statement_timeout`) *plus* the context deadline — a cancelled query stops
   consuming warehouse compute (brief 02 Q2). Defaults in §14.
@@ -901,18 +934,26 @@ Key domains and the defaults that are contractual until re-tuned:
 
 ## 17. Operational shape
 
-One static CGo-free binary (D-005). `docker-compose` dev: Postgres 16 + pgvector
-on **5434** (store) — the upload workspace uses a second database in the same
-instance for dev. Reference `Dockerfile` ships at the release wave. Deployment
-is platform-agnostic; no platform-coupled bootstrap code outside a driver
-(brief 01's Databricks-Apps coupling is the counterexample). Graceful shutdown:
-servers drain, job leases release, in-flight runs checkpoint status.
+**The container is the deployment unit (D-037).** The reference image (glibc
+base — debian-slim class, never bare musl) carries: the `chartworks` binary
+(CGo-free today, CGo permissible per-dependency by decision entry) + the pinned
+`bruin` binary (v0.11.666, glibc-dynamic; telemetry disabled — D-036). Bare-
+metal/standalone remains supported: the binary runs everywhere; pipeline
+execution requires `bruin` on PATH and otherwise degrades to a typed "pipeline
+execution unavailable" (P4). `docker-compose` dev: Postgres 16 + pgvector on
+**5434** (store) — the upload workspace uses a second database in the same
+instance; dockerized MySQL/SQL Server with public datasets join for driver
+conformance (D-032). Reference `Dockerfile` ships at the release wave.
+Deployment is platform-agnostic; no platform-coupled bootstrap code outside a
+driver (brief 01's Databricks-Apps coupling is the counterexample). Graceful
+shutdown: servers drain, job leases release, in-flight Bruin runs are awaited
+or lease-reclaimed with status checkpointed.
 
 ---
 
 ## 18. Decisions settled by this RFC
 
-Logged as D-019…D-032 in `docs/decisions.md`:
+Logged as D-019…D-038 in `docs/decisions.md`:
 
 | D | Decision |
 |---|---|
@@ -930,6 +971,12 @@ Logged as D-019…D-032 in `docs/decisions.md`:
 | D-030 | No local user/password/invite management; self-issue = API keys; admin bootstrap is a local CLI operation |
 | D-031 | Eval strategy: golden + red-team CI gates (0.85 threshold), grounded-accuracy manual loop, live gate per D-010 |
 | D-032 | V1 warehouse drivers = postgres, mysql, sqlserver, bigquery, snowflake, databricks; self-hostable engines validated against dockerized instances with public datasets, cloud engines via fixtures + the live gate |
+| D-033 | Parser pin (cockroachdb-parser v0.25.2); its generation-subset obligation later superseded by D-038 |
+| D-034 | BYO `bundle_ref`: stateless signed TTL handle pinning context, not capability |
+| D-035 | Convention-8-verified driver/parser pins (incl. gosnowflake `minicore_disabled`) |
+| D-036 | Bruin (pinned v0.11.666) as the DE write executor: CLI subprocess behind the `PipelineRunner` seam, SQL-only, custody-rendered connections; narrows-and-supersedes D-023 |
+| D-037 | D-005 reversed per its clause: the container is the deployment unit; CGo permissible per-dependency; single-static-binary is a preference, not an invariant |
+| D-038 | Layered read-side validation: read-only credentials primary, engine dry-run/EXPLAIN dialect-truth + table-grain allowlist everywhere, parser seam (crdb + gated sqlglot-go) for client-side depth; native-dialect generation |
 
 Consumer-request §12 questions: Q1 §5.3/§5.1 · Q2 §6.1/§6.3 · Q3 §9.4 ·
 Q4 §11.1 · Q5 §8.4 (in V1, scoped) · Q6 §10 (yes, deterministic selector) ·
@@ -939,8 +986,9 @@ Q7 §7.7 (cron/interval only) · Q8 §14 (`exec` defaults).
 
 ## 19. Non-goals (V1)
 
-Chart rendering / frontend (D-013) · LLM chart ranker (D-026) · incremental
-materialization strategies (§7.6) · condition/event schedule triggers (§7.7) ·
+Chart rendering / frontend (D-013) · LLM chart ranker (D-026) · Python/R
+pipeline assets + `ingestr` ingestion through Bruin (D-036 — SQL-only in V1) ·
+condition/event schedule triggers (§7.7) ·
 shadow-evaluation + historical replay for rules (D-027) · query-result caching
 (correctness-hazardous under per-grant access; revisit with evidence) · result
 pagination · cross-topic relationship discovery jobs (post-V1) · GEPA-style
