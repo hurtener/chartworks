@@ -271,9 +271,11 @@ Scopes gate *operation families*; grants gate *resources*. Both must pass. The
 V1 scope set: `catalog.read` · `topic.read` · `topic.write` · `topic.publish` ·
 `dataset.read` · `source.manage` · `pipeline.manage` · `pipeline.run` ·
 `query.preflight` · `query.plan` · `query.execute` · `query.context` (BYO bundle)
-· `query.submit` (BYO SQL) · `feedback.write` · `admin`. Plan-vs-execute are
-distinct scopes (predecessor keeper, brief 02), and BYO context-vs-submit are
-distinct so a context-reading agent can be denied execution.
+· `query.submit` (BYO SQL) · `feedback.write` · `autonomy.propose` ·
+`autonomy.apply` (D-041) · `admin`. Plan-vs-execute are distinct scopes
+(predecessor keeper, brief 02); BYO context-vs-submit are distinct so a
+context-reading agent can be denied execution; propose-vs-apply are distinct so
+a goal-submitting caller can never self-approve.
 
 ### 5.4 Per-decision observability + scope-debug
 
@@ -492,6 +494,10 @@ gates, the same D-040 write boundary, and the same audit spine:
   only — non-negotiable), required quality gates, cost/row ceilings, schedule
   bounds. Outside policy ⇒ degrade to L2 review, loudly (P4). Auto-applied
   changes remain decision-recorded, post-hoc reviewable, and revertible.
+  **Autonomous topic publication is barred at every level** (D-041): topic
+  deltas stop at draft/review — meaning changes always get a human. Revert
+  semantics per D-041 (managed-schema artifacts drop by default; atomic per
+  proposal).
 - **The evolution loop.** Schema drift, failed freshness, or failed quality
   checks generate *proposed amendments* through the same proposal machinery —
   the medallion evolves under audit instead of decaying behind flags. Goal
@@ -1003,7 +1009,7 @@ or lease-reclaimed with status checkpointed.
 
 ## 18. Decisions settled by this RFC
 
-Logged as D-019…D-040 in `docs/decisions.md`:
+Logged as D-019…D-041 in `docs/decisions.md`:
 
 | D | Decision |
 |---|---|
@@ -1029,6 +1035,7 @@ Logged as D-019…D-040 in `docs/decisions.md`:
 | D-038 | Layered read-side validation: read-only credentials primary, engine dry-run/EXPLAIN dialect-truth + table-grain allowlist everywhere, parser seam (crdb + gated sqlglot-go) for client-side depth; native-dialect generation |
 | D-039 | The DE autonomy ladder: L2 goal-driven proposals w/ decision records (V1 target); L3 policy-scoped auto-apply (per-tenant opt-in); the drift-driven evolution loop; phase 26 |
 | D-040 | The write boundary: managed `chartworks_*` schemas only; client baseline data read-only forever; enforced at definition validation + render gate + write-credential scope |
+| D-041 | Autopilot governance: `autonomy.propose`/`autonomy.apply` scopes; no autonomous topic publication at any level; revert = drop managed artifacts, atomic per proposal |
 
 Consumer-request §12 questions: Q1 §5.3/§5.1 · Q2 §6.1/§6.3 · Q3 §9.4 ·
 Q4 §11.1 · Q5 §8.4 (in V1, scoped) · Q6 §10 (yes, deterministic selector) ·

@@ -85,6 +85,11 @@ run_group "$PKG" "-race" \
   "TestStrategyEngineCompatibility|criterion 15: strategy/engine compatibility (merge-on-Databricks rejected)" \
   "TestMissingBruinDegradesLoud|criterion 16: missing bruin binary degrades loud (typed unavailable)" \
   "TestScheduleAttachmentEnqueues|criterion 17: schedule attachment enqueues on the queue" \
-  "TestCanonicalRegistryResolveThenCompare|criterion 18: canonical registry resolve-then-compare, fail-closed"
+  "TestCanonicalRegistryResolveThenCompare|criterion 18: canonical registry resolve-then-compare, fail-closed" \
+  "TestManagedSchemaOnlyAtDefinitionValidation|criterion 19: non-managed output rejected at definition validation (D-040)" \
+  "TestManagedSchemaOnlyAtRenderGateIndependently|criterion 20: non-managed output dies at render gate even when definition check bypassed (D-040)" \
+  "TestBaselineDataInputsOnlyAdversarial|criterion 21: baseline table as output (incl. view/CTAS trickery) typed-rejected (D-040)" \
+  "TestWriteCredentialScopedToManagedSchemas|criterion 22: write credential scoped to managed schemas (postgres engine-denial proof)" \
+  "TestManagedSchemaProvisioning|criterion 23: destination declaration provisions + records the managed schema"
 
 summarize_and_exit

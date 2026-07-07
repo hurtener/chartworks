@@ -9,17 +9,27 @@
 
 ## RFC / request sections
 
-- **RFC-001 §1.2 (P1c — the write split)** — the governing invariant, in its
-  **strengthened D-036 shape**: the NLQ adapters have **no write capability at all**;
-  writes live behind the `PipelineRunner` seam in a separate executor process.
+- **RFC-001 §1.2 (P1c — the write split, amended D-036/D-040)** — the governing
+  invariant, twice strengthened: the NLQ adapters have **no write capability at all**
+  (writes live behind the `PipelineRunner` seam in a separate executor process), and the
+  write path itself is **bounded to Chartworks-managed schemas** — client baseline
+  tables/views are read-only forever, inputs only. No autonomy level can relax this.
 - **RFC-001 §7.3** — transformations & pipelines (definition model, write-shaped
   allowlist, LLM-assisted drafting, the canonical identity registry).
 - **RFC-001 §7.5** — versioning, lineage, freshness.
-- **RFC-001 §7.6 (amended, D-036)** — materializations executed by **Bruin (pinned
+- **RFC-001 §7.6 (amended, D-036/D-040)** — materializations executed by **Bruin (pinned
   v0.11.666)** as a CLI subprocess behind the **`PipelineRunner` seam**: render-at-run-time,
   custody-injected connections, SQL-only assets, telemetry disabled, `bruin validate -o
-  json` gating and `bruin lineage -o json` feeding lineage, exit codes → typed outcomes.
-- **RFC-001 §7.7** — refresh & scheduling (phase-06 dispatcher/queue, skip-if-running).
+  json` gating and `bruin lineage -o json` feeding lineage, exit codes → typed outcomes;
+  destinations are always **(source, managed schema)** pairs — namespaces Chartworks
+  creates (default prefix `chartworks_`, per-source configurable) — with non-managed
+  outputs rejected at definition validation **and** the render gate, and the write
+  credential schema-scoped where the engine supports it.
+- **RFC-001 §7.7 (new, D-039)** — the autonomy ladder: phase 26 (`engineering-autopilot`)
+  builds L2/L3 proposals **on this phase's machinery**; this plan's gates are callable by
+  it without modification (stated in Design; no new work here).
+- **RFC-001 §7.8** — refresh & scheduling (phase-06 dispatcher/queue, skip-if-running;
+  renumbered from §7.7 by the D-039 amendment).
 - **RFC-001 §9.5** — the validation machinery whose **write-shape variant** (declared
   inputs / one declared output, single statement) phase 09 ships for this phase.
 - **RFC-001 §12** — the budgeted schema: `pipelines`, `pipeline_runs`, `datasets`,
@@ -34,7 +44,9 @@
   DE stage), **D-017** (write-posture split), **D-021** (write-shape validation +
   unforgeable validated types), **D-025** (one leased queue), **D-020** (grants gate the
   write), **D-004** (store vs. customer-warehouse boundary), **D-035** (pin discipline —
-  Bruin's daily release cadence ⇒ strict pin + conformance re-run per bump).
+  Bruin's daily release cadence ⇒ strict pin + conformance re-run per bump), **D-040**
+  (the write boundary: managed schemas only, client baseline read-only forever, layered
+  enforcement), **D-039** (autonomy ladder — phase 26 consumes this phase's gates).
 
 ## Depends on
 
@@ -124,13 +136,20 @@ Delivers, in `internal/engineering` (extending the package phase 12 created):
 
 - **Pipeline definition model** — versioned; ordered SQL steps, each with declared inputs,
   exactly one declared output, optional per-step quality checks; a pipeline-level declared
-  destination `(source_id, schema)`; a per-step **materialization strategy** from the
-  inherited set. Persisted in the budgeted `pipelines` columns.
+  destination `(source_id, managed schema)`; a per-step **materialization strategy** from
+  the inherited set. Persisted in the budgeted `pipelines` columns.
+- **Managed-schema provisioning (D-040)** — declaring a destination provisions the managed
+  schema (`CREATE SCHEMA IF NOT EXISTS`, default prefix `chartworks_`, per-source
+  configurable at declaration time) in the customer warehouse, records it as
+  Chartworks-managed in `data_sources.writable_destinations` (JSONB — no new column), and
+  audits it content-free. Only Chartworks-created namespaces are ever declarable.
 - **Definition validation** — phase-09 write-shape validation of every step
-  (`exec.WriteValidatedSQL`); **SQL-only enforcement** (a definition declaring a Python/R
-  asset or any ingestion asset is rejected, typed); **strategy/engine compatibility**
-  (per-engine variance recorded per driver — e.g. Databricks lacks merge; an unsupported
-  pair is a typed validation error, never a runtime surprise).
+  (`exec.WriteValidatedSQL`); **managed-schema resolution** (an output resolving to any
+  non-managed schema — including a client baseline table, a view over one, or a
+  CTAS-into-baseline — is rejected, typed); **SQL-only enforcement** (a definition
+  declaring a Python/R asset or any ingestion asset is rejected, typed); **strategy/engine
+  compatibility** (per-engine variance recorded per driver — e.g. Databricks lacks merge;
+  an unsupported pair is a typed validation error, never a runtime surprise).
 - **The `PipelineRunner` seam** — interface + factory + driver (§4.4); V1 driver **`bruin`**
   (pinned v0.11.666, CLI subprocess): renders the declarative definition to Bruin's
   pipeline format at run time in a tmpfs-backed workdir; injects connections via `.bruin.yml`
@@ -162,8 +181,12 @@ vs. flag vs. config key — verified empirically, convention 8), and encode it i
   mega-factory dependency graph — D-036 adopts the subprocess boundary only).
 - Python/R assets, `ingestr`/SaaS ingestion (D-036 hard rule; the *enforcement* is in
   scope, the capability never is).
-- Drift/refresh fingerprinting (§19); condition/event triggers (post-V1, §7.7).
-- The autonomous demand-driven medallion / blind planner (brief-11 departures).
+- Drift/refresh fingerprinting (§19); condition/event triggers (post-V1, §7.8).
+- The autonomy ladder's L2/L3 machinery — proposals, decision records, `autonomy_policy`
+  (**phase 26**, D-039). This phase only guarantees its gates are callable by phase 26
+  without modification (see Design); it builds none of the proposal surface.
+- The autonomous demand-driven medallion / blind planner (brief-11 departures; now
+  phase 26's design input per D-039, not this phase's).
 - Topic-pack reads of canonical entities (phase 15 wires the pack side).
 - New store tables/columns — the §12 budget is closed.
 - HTTP/MCP surfaces for pipelines (phase 21; this phase ships the core — P7).
@@ -180,7 +203,7 @@ vs. flag vs. config key — verified empirically, convention 8), and encode it i
 draft (assisted, pipeline_draft role) ─┐
 hand-authored (Console/HTTP core) ─────┴─▶ DRAFT pipeline (definition_json, version N)
         │ definition validation: write-shape (exec.WriteValidatedSQL) + SQL-only
-        │ + strategy/engine compatibility + destination declared
+        │ + managed-schema resolution (D-040) + strategy/engine compat + destination declared
         ▼                                    publication gate (pipeline.manage scope +
                                              manage grant on destination source)
                                     PUBLISHED pipeline (immutable version N)
@@ -191,6 +214,7 @@ hand-authored (Console/HTTP core) ─────┴─▶ DRAFT pipeline (defin
                           PipelineRunner seam ── driver: bruin (pinned v0.11.666)
    render definition → Bruin format (tmpfs workdir; ${ENV}/custody-rendered connections;
                                      telemetry disabled)
+     → render gate: every asset output ∈ managed schemas (D-040 — independent re-check)
      → bruin validate -o json   (gate: invalid ⇒ typed error, no execution)
      → bruin run                (exit code + per-asset results → typed outcomes)
      → bruin lineage -o json    (per-run lineage evidence)
@@ -207,8 +231,8 @@ Unchanged in shape from RFC §7.3, extended per §7.6 (amended):
 - `Step`: `{ id, ordinal, name, sql_text, declared_inputs []DatasetRef,
   declared_output DatasetRef, strategy Strategy, quality_checks []QualityCheck }` —
   exactly **one** declared output per step.
-- `PipelineDefinition`: `{ steps (ordered), destination Destination{source_id, schema},
-  dialect }` in `pipelines.definition_json`; `pipelines.version` monotonic;
+- `PipelineDefinition`: `{ steps (ordered), destination Destination{source_id,
+  managed_schema}, dialect }` in `pipelines.definition_json`; `pipelines.version` monotonic;
   `pipelines.status ∈ {draft, published}`. Published versions are immutable; edits branch
   a new version row (grow-by-addition, brief 11).
 - `Strategy` is the **inherited Bruin set**: `create+replace`, `delete+insert`,
@@ -218,7 +242,7 @@ Unchanged in shape from RFC §7.3, extended per §7.6 (amended):
   definition validation with a typed `pipeline.strategy_unsupported`, never discovered at
   run time.
 
-### Definition validation (phase-09 variant + D-036 hard rules)
+### Definition validation (phase-09 variant + D-036/D-040 hard rules)
 
 Every step passes, at authoring/publish time (all typed errors, P4):
 
@@ -229,6 +253,13 @@ Every step passes, at authoring/publish time (all typed errors, P4):
   the **only** SQL the renderer will emit into a Bruin asset (unconstructible outside
   `internal/exec`; D-021's unforgeability carried to the write side: a raw string cannot
   reach the runner).
+- **Managed-schema resolution** (D-040): every declared output — and every write target
+  the statement actually resolves to, including `CREATE VIEW` / CTAS-shaped writes — must
+  resolve into the pipeline's declared **managed schema**. An output resolving to any
+  non-managed schema (a client baseline table, a baseline schema, an unqualified name that
+  would default outside the managed namespace) ⇒ typed
+  `pipeline.destination_not_managed`. Baseline tables/views may appear **only** in
+  declared inputs — read-only forever.
 - **SQL-only** (D-036): a definition declaring any non-SQL asset kind (Python/R) or any
   ingestion asset ⇒ typed `pipeline.asset_kind_forbidden` at validation — rejected before
   persistence, long before rendering.
@@ -274,13 +305,45 @@ type PipelineRunner interface {
   via one table-driven mapping — never string-matching stderr prose as control flow. An
   unmappable exit ⇒ typed `pipeline.outcome_unknown`, run status `failed`, loud (P4 —
   never a silent success).
-- **Destinations remain declared + granted.** A run refuses any destination not in
-  `data_sources.writable_destinations` ∩ the caller's `manage` grant on that source
-  (`materialize.destination_undeclared` / `access.none`) — checked **before** any render,
-  so an undeclared destination never even reaches Bruin. No declared destination ⇒ no
+- **Destinations remain declared + granted — and are always managed schemas (D-040).** A
+  run refuses any destination not in `data_sources.writable_destinations` ∩ the caller's
+  `manage` grant on that source (`materialize.destination_undeclared` / `access.none`) —
+  checked **before** any render, so an undeclared destination never even reaches Bruin.
+  Only Chartworks-managed schemas are declarable at all. No declared destination ⇒ no
   write, ever (P1a/P1c).
+- **The render gate re-checks the write boundary independently (D-040).** After rendering
+  and before `bruin validate`, the renderer walks the rendered project's asset outputs
+  (schema-qualified names in the Bruin asset definitions) and rejects any output outside
+  the managed-schema set with typed `pipeline.destination_not_managed` — a **second,
+  independent** enforcement of the same rule the definition check applies, so a
+  hypothetically-bypassed definition check still dies at render. The two checks share the
+  managed-schema resolver but run at different stages on different representations
+  (definition AST vs. rendered assets).
 
-### P1c — strengthened (D-036 / RFC §7.6 amended)
+### The write boundary (D-040): managed schemas only; baseline read-only forever
+
+- **Managed schemas.** A destination is always a namespace **Chartworks created**: default
+  prefix `chartworks_` (config), overridable per source at declaration time. Declaring a
+  destination provisions it (`CREATE SCHEMA IF NOT EXISTS` through the destination
+  driver's admin connection), records it as managed inside
+  `data_sources.writable_destinations` (JSONB — no new column; §12 budget intact), and
+  audits the provisioning content-free. The medallion (bronze/silver/gold) is Chartworks
+  tables/views exclusively.
+- **Client baseline data is inputs-only, forever.** Anything Chartworks did not create is
+  structurally read-only: it may appear only in `declared_inputs`. The managed-schema
+  resolution check + the render gate reject every write-shaped route to it, including
+  view/CTAS trickery (a `CREATE VIEW` in a baseline schema, a CTAS whose target resolves
+  outside the managed namespace, an unqualified target defaulting to a baseline
+  search-path schema — the resolver qualifies before judging, never string-matches).
+- **Credential scoping — the third layer.** Where the engine supports it, the **write
+  credential** used for materialization runs is scoped to the managed schemas only
+  (Postgres: a role with `USAGE`+`CREATE` on managed schemas and no write privilege
+  elsewhere — proven against Docker Postgres; other engines documented per destination
+  driver as phase-14 conformance obligations). The mirror of D-038's credential-primary
+  posture, applied to writes: even a bug in both gates cannot write baseline data, because
+  the engine itself refuses.
+
+### P1c — strengthened (D-036/D-040 / RFC §1.2/§7.6 amended)
 
 The NLQ adapters now have **no write capability at all**: reads live in `internal/sources`
 adapters; writes live behind `PipelineRunner` in a separate executor **process**. No shared
@@ -288,7 +351,19 @@ entry point exists to flag-switch. The build-time architecture test asserts **no
 under `internal/nlq` and none of the `internal/exec` read path imports
 `engineering.PipelineRunner` or the renderer**, and that `internal/sources` adapters expose
 no write method — the strongest P1c shape, landing with this phase per the master-plan risk
-register.
+register. And the write path itself is bounded (D-040): managed schemas only, client
+baseline read-only forever — no autonomy level (§7.7) can relax it.
+
+### Phase-26 consumability (D-039 — stated, no new work)
+
+Phase 26 (`engineering-autopilot`) builds L2 goal-driven proposals and L3 policy-scoped
+auto-apply **on this phase's machinery**. The three gates this phase ships — **definition
+validation** (write-shape + managed-schema + SQL-only + strategy compatibility),
+**the render gate**, and **the publication gate** — are exposed as core service interfaces
+callable with an `identity.Envelope` and a definition, with no HTTP/MCP coupling and no
+human-session assumption, so a phase-26 proposal applies through the *identical* gates a
+human publication uses (D-039: "approval publishes through the existing gates"). Nothing
+in this phase special-cases the caller; this is a design constraint here, not new work.
 
 ### Run orchestration (phase-06 queue)
 
@@ -319,7 +394,7 @@ output dataset `version` bump + `freshness = fresh` stamped at run time.
 Unchanged by D-036, restated for completeness:
 
 - **Schedules:** a `schedules` row (`target = pipeline`, cron/interval `trigger_json`)
-  dispatched by phase 06 into the queue; skip-if-running + log + metric (§7.7); pause/
+  dispatched by phase 06 into the queue; skip-if-running + log + metric (§7.8); pause/
   resume via status; `schedule_runs` records outcomes.
 - **Drafting:** the `pipeline_draft` gateway role (phase 05), schema-constrained (P5 —
   never free-text JSON), grounded in profiles (phase 12) + the canonical registry; output
@@ -343,9 +418,11 @@ Unchanged by D-036, restated for completeness:
 
 ### How it upholds the properties
 
-- **P1c (strengthened)** — no write capability in any NLQ/read adapter; writes only via
-  `PipelineRunner` in a separate process, on declared + `manage`-granted destinations, from
-  unforgeable `WriteValidatedSQL`; the architecture test proves `nlq`/`exec` cannot reach
+- **P1c (strengthened, D-036 + D-040)** — no write capability in any NLQ/read adapter;
+  writes only via `PipelineRunner` in a separate process, on declared + `manage`-granted
+  **managed schemas**, from unforgeable `WriteValidatedSQL`; client baseline data is
+  inputs-only forever, enforced at definition validation + the render gate + the
+  schema-scoped write credential; the architecture test proves `nlq`/`exec` cannot reach
   the runner.
 - **P1a** — destination grant checked before render; no grant ⇒ no render, no subprocess,
   no write (short-circuit).
@@ -376,6 +453,7 @@ check in the implementing PR (CLAUDE.md §4.2).
 | `pipelines.draft_enabled` | bool | true | no | LLM-assisted drafting on/off; off ⇒ typed `unavailable` from the draft operation. |
 | `pipelines.quality_check_default_blocking` | bool | true | no | Default `blocking` flag for a check that does not set one (RFC §7.6). |
 | `pipelines.max_quality_checks_per_step` | int | 20 | no | Bound on checks per step; over-limit ⇒ typed validation error. |
+| `pipelines.managed_schema_prefix` | string | `chartworks_` | no | Default prefix for Chartworks-managed destination schemas (D-040); overridable per source at declaration time; provisioned namespaces are recorded as managed. |
 
 ## Acceptance criteria
 
@@ -444,6 +522,32 @@ check in the implementing PR (CLAUDE.md §4.2).
     name-vs-name comparison; an unconfident resolution returns typed
     `canonical.resolution_ambiguous` and mints no duplicate id; the same interface backs
     pipeline assistance and topic generation (one vocabulary).
+19. **Managed-schema-only at definition validation (D-040).** A step output resolving to
+    any non-managed schema is rejected at definition validation with typed
+    `pipeline.destination_not_managed`; only Chartworks-managed schemas are declarable as
+    destinations at all.
+20. **Managed-schema-only at the render gate — independently (D-040).** A rendered project
+    whose asset outputs include a non-managed schema is rejected at the render gate with
+    typed `pipeline.destination_not_managed` **even when the definition-validation check
+    is bypassed** (proven by constructing a definition that skips validation in-test): a
+    hypothetically-bypassed definition check still dies at render, before `bruin validate`
+    and before any run.
+21. **Baseline data is inputs-only (adversarial, D-040).** A definition naming a client
+    baseline table as an output — directly, via `CREATE VIEW` into a baseline schema, via
+    a CTAS whose target resolves outside the managed namespace, or via an unqualified
+    target defaulting to a baseline search-path schema — is typed-rejected
+    (`pipeline.destination_not_managed`); baseline tables/views pass only as declared
+    inputs.
+22. **Write credential scoped to managed schemas (Postgres proof).** On Docker Postgres,
+    the materialization write credential holds `USAGE`+`CREATE` on managed schemas only:
+    a direct write attempt against a baseline schema under that credential is denied **by
+    the engine itself** (the third enforcement layer); other engines' scoping posture is
+    documented per destination driver (phase-14 conformance obligation).
+23. **Managed-schema provisioning.** Declaring a destination provisions the managed schema
+    (`CREATE SCHEMA IF NOT EXISTS`, prefix default `chartworks_`, per-source override
+    honored), records it as Chartworks-managed in `data_sources.writable_destinations`,
+    and emits a content-free audit row; an existing non-managed schema cannot be adopted
+    as a destination (typed rejection).
 
 ## Test obligations
 
@@ -453,13 +557,18 @@ Per CLAUDE.md §11:
   strategy/engine compatibility table (15), renderer output (golden: definition → rendered
   Bruin project shape), outcome-mapping table (14, golden), definition versioning/
   immutability (9), canonical resolve/mint/fail-closed (18), telemetry-mechanism presence
-  on every invocation shape (13), quality-check blocking semantics (4).
+  on every invocation shape (13), quality-check blocking semantics (4), managed-schema
+  resolution table (19 — qualified/unqualified/view/CTAS cases) and the independent
+  render-gate re-check with a validation-bypassed definition (20).
 - **Integration (required — closes seams phases 06/08/09/12 opened; real drivers):** a
   full **draft → publish → run → materialize** round-trip with the **real pinned Bruin
   binary** against **Docker Postgres** (`make pg-up`) writing to a declared
   workspace-class destination: proves render/validate/run/lineage end-to-end (6–7, 10),
   the `pipeline_run` handler on the real phase-06 queue + a real schedule tick (17), and
-  env-interpolated custody injection with the sentinel-secret scan (12). Dev/CI images
+  env-interpolated custody injection with the sentinel-secret scan (12). The same harness
+  proves **managed-schema provisioning** (23 — declaration creates the `chartworks_*`
+  schema and records it managed) and the **schema-scoped write credential** (22 — a
+  baseline-schema write under the materialization role is engine-denied). Dev/CI images
   carry the pinned binary (glibc base — the phase-25 constraint applies to dev/CI now).
   The gateway `mock` driver backs `pipeline_draft` (paired with a recorded-fixture test);
   the `mock` runner driver backs unit-level orchestration tests; per D-035, a Bruin
@@ -467,13 +576,15 @@ Per CLAUDE.md §11:
 - **Adversarial (required — write path + grant-gated destinations):** cross-tenant
   materialization probe (tenant A's `manage` grant cannot authorize a write to tenant B's
   destination); empty-access-set short-circuit (no render); a write-smuggling step
-  (DDL/second statement/out-of-scope target) rejected pre-render; a forbidden-asset
-  smuggle (a definition attempting a Python/ingestion asset via crafted JSON) rejected
-  (11); the strengthened P1c architecture test (5) as a standing guard; the
-  sentinel-secret persistence scan (12); a fetch-then-filter regression guard on
-  destination resolution.
+  (DDL/second statement/out-of-scope target) rejected pre-render; the **baseline-output
+  corpus** (21 — direct baseline output, view-into-baseline, CTAS-into-baseline,
+  unqualified-name default) all typed-rejected at both gates; a forbidden-asset smuggle
+  (a definition attempting a Python/ingestion asset via crafted JSON) rejected (11); the
+  strengthened P1c architecture test (5) as a standing guard; the sentinel-secret
+  persistence scan (12); a fetch-then-filter regression guard on destination resolution.
 - **Fuzz:** `FuzzValidateWriteShape` (phase-09 twin — invariant: never panics, never
-  admits an out-of-scope write or undeclared read) and `FuzzParseBruinOutput` over the
+  admits an out-of-scope write, an undeclared read, or an output resolving outside the
+  managed schema) and `FuzzParseBruinOutput` over the
   validate/run/lineage JSON decoders (seed corpus recorded from the real pinned binary;
   invariant: never panics, never maps unparseable output to a success outcome).
 - **Bench:** `BenchmarkRenderPipeline` (hot per-run path; baseline, not a gate). The
@@ -520,6 +631,11 @@ surfacing as SKIP).
 | 16 | `TestMissingBruinDegradesLoud` PASS |
 | 17 | `TestScheduleAttachmentEnqueues` PASS |
 | 18 | `TestCanonicalRegistryResolveThenCompare` PASS |
+| 19 | `TestManagedSchemaOnlyAtDefinitionValidation` PASS |
+| 20 | `TestManagedSchemaOnlyAtRenderGateIndependently` PASS |
+| 21 | `TestBaselineDataInputsOnlyAdversarial` PASS |
+| 22 | `TestWriteCredentialScopedToManagedSchemas` PASS |
+| 23 | `TestManagedSchemaProvisioning` PASS |
 
 ## Glossary additions
 
@@ -529,9 +645,13 @@ New terms, pre-written for `docs/glossary.md` (same PR, CLAUDE.md §14); existin
 - **Pipeline step** — one ordered, declarative unit of a pipeline: a single SQL statement
   with declared inputs, exactly one declared output, a materialization strategy, and
   optional quality checks (RFC §7.3/§7.6).
-- **Declared / writable destination** — a `(data source, schema)` pair a tenant admin has
-  explicitly marked writable and holds a `manage` grant on; the only place a
-  materialization may write (RFC §7.6, P1c).
+- **Managed schema** — a namespace Chartworks creates and owns inside a customer warehouse
+  (default prefix `chartworks_`, per-source configurable at declaration time); the only
+  place a materialization may write. Client baseline tables/views — anything Chartworks
+  did not create — are read-only forever, inputs only (RFC §2/§7.6, D-040).
+- **Declared / writable destination** — a `(data source, managed schema)` pair a tenant
+  admin has explicitly declared (provisioning the managed schema) and holds a `manage`
+  grant on; never an existing client schema (RFC §7.6, P1c, D-040).
 - **Write-shape validation** — the phase-09 validator variant a pipeline step must pass:
   single statement, writes only the declared output, reads only declared inputs; yields the
   unforgeable `WriteValidatedSQL` (RFC §7.3/§9.5, D-021).
@@ -547,7 +667,7 @@ New terms, pre-written for `docs/glossary.md` (same PR, CLAUDE.md §14); existin
   per-engine support recorded per destination driver (RFC §7.6, D-036).
 - **Pipeline run** — one execution of a published pipeline as a typed job on the leased
   queue, wrapping one executor invocation; recorded in `pipeline_runs` with a typed
-  outcome, stats, and any typed error (RFC §7.6/§7.7, D-025/D-036).
+  outcome, stats, and any typed error (RFC §7.6/§7.8, D-025/D-036).
 - **Publication gate** — the single, `pipeline.manage`-scoped `draft → published`
   transition; nothing materializes until it passes (contract-before-materialize, brief 11).
 - **Canonical identity registry** — the tenant-scoped, mint-once, fail-closed vocabulary
@@ -558,14 +678,17 @@ New terms, pre-written for `docs/glossary.md` (same PR, CLAUDE.md §14); existin
 ## Decisions filed
 
 No new `docs/decisions.md` entry. This phase implements existing decisions: **D-036**
-(Bruin as the DE write executor — the shape of this whole phase), **D-037** (container as
-deployment unit; loud bare-metal degradation), **D-017/D-021** (write split; unforgeable
-validated types), **D-013**, **D-025**, **D-020**, **D-004**, **D-035** (pin discipline —
-a Bruin version bump is a conformance re-run; any change to a D-036 hard rule is a
-superseding decision entry, never a silent edit). The telemetry-disable-mechanism
-confirmation (the D-036 implementation blocker) lands its finding in this plan's deviation
-log; if no reliable disable mechanism exists, that escalates to a decision entry before
-any Bruin invocation ships.
+(Bruin as the DE write executor — the shape of this whole phase), **D-040** (the write
+boundary: managed schemas only, baseline read-only forever — the double gate + credential
+scoping + provisioning land here), **D-039** (autonomy ladder — this phase's gates are the
+interfaces phase 26 consumes; nothing here is built for it beyond callability), **D-037**
+(container as deployment unit; loud bare-metal degradation), **D-017/D-021** (write split;
+unforgeable validated types), **D-013**, **D-025**, **D-020**, **D-004**, **D-035** (pin
+discipline — a Bruin version bump is a conformance re-run; any change to a D-036/D-040
+hard rule is a superseding decision entry, never a silent edit). The
+telemetry-disable-mechanism confirmation (the D-036 implementation blocker) lands its
+finding in this plan's deviation log; if no reliable disable mechanism exists, that
+escalates to a decision entry before any Bruin invocation ships.
 
 ## Deviation log
 

@@ -698,6 +698,24 @@ violate it even in principle.
 
 ---
 
-*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-040 were filed
+### D-041 — Autopilot governance: two new scopes; no autonomous topic publication; revert drops managed-schema artifacts · *accepted (phase-26 planning review, 2026-07-06)*
+
+Ratifies the phase-26 plan's proposals: (a) two capability scopes join the §5.3 set —
+**`autonomy.propose`** (submit/read goals and proposals) and **`autonomy.apply`**
+(approve/reject/revert — additionally requiring D-020 `manage` grants on each affected
+resource); policy CRUD reuses `admin`. (b) **Autonomous topic publication is barred at
+every autonomy level**: an L3 policy can auto-apply data plumbing into managed
+schemas, but topic deltas always stop at draft/review — a published topic shapes what
+every NLQ caller sees, so meaning changes always get a human. This is a standing
+guardrail, not a policy option. (c) **Revert semantics**: per object class —
+pipelines unpublish (versions retained), managed-schema materializations **drop by
+default** (reproducible by construction; `archive` configurable), datasets
+unregister, draft topic versions discard, schedules detach; atomic per proposal,
+blocked loudly on cross-proposal dependents; the drop itself rides D-040's
+managed-schema write gates, so revert can no more touch baseline than apply can.
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-041 were filed
 during the planning review. Further product decisions land here as phases ship,
-numbered D-041+.*
+numbered D-042+.*
