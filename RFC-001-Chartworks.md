@@ -76,11 +76,15 @@ three named sub-properties:
   guarantee is the SELECT-only credential/session** the engine itself enforces
   (D-038), plus server-side timeouts and cursor-level row caps. Validation
   failure is a typed error — never a skip-to-execute.
-- **P1c — The write split.** The NLQ path is structurally read-only: the `exec`
-  seam exposes no write operation. Warehouse writes exist only in the engineering
-  stage's materialization path (§7.6) — a **distinct interface** with declared
-  destinations, its own scoped grants, and full audit. No flag selects between
-  read and write on a shared entry point (D-017, brief 04).
+- **P1c — The write split, and the write boundary.** The NLQ path is
+  structurally read-only: the `exec` seam exposes no write operation. Warehouse
+  writes exist only in the engineering stage's materialization path (§7.6) — a
+  **distinct interface** with declared destinations, its own scoped grants, and
+  full audit. No flag selects between read and write on a shared entry point
+  (D-017, brief 04). And the write path itself is bounded (D-040): it writes
+  **only into Chartworks-managed schemas** — client baseline tables/views are
+  read-only forever, inputs only; the medallion is Chartworks tables/views
+  exclusively. No autonomy level (§7.7) can relax this.
 
 ---
 
@@ -100,6 +104,11 @@ The wire/UI nouns (request §2, binding under P6):
 | **pipeline** | A data-engineering definition (steps + checks + destination + schedule) producing datasets. |
 | **materialization** | A pipeline write into a declared destination — the only write Chartworks ever performs against customer infrastructure. |
 | **grant** | An explicit per-principal permission at one grain: source, topic, or dataset (§5). |
+| **managed schema** | A Chartworks-created namespace inside a customer warehouse (default prefix `chartworks_`) — the only place materializations may write (D-040). |
+| **baseline table** | Any table/view Chartworks did not create — read-only forever, inputs only (D-040). |
+| **proposal** | The atomic, reviewable, revertible changeset an L2/L3 agent produces: pipelines + datasets + topic deltas + schedules (§7.7, D-039). |
+| **decision record** | The stored reasoning trail attached to every agent-proposed object: goal, matched-vs-built, alternatives, evidence, provenance (D-039). |
+| **autonomy policy** | A tenant's declaration of what may auto-publish at L3; outside it, degrade to review — loudly (D-039). |
 | **principal** | `user:<id>` · `agent:<id>` · `svc:<name>` · `key:<id>`. |
 | **session** | A conversation scope for refinement; part of the isolation triple. |
 | **freshness** | Dataset recency status: `fresh` / `stale` / `very_stale` / `unknown` (age-bucketed; brief 09). |
@@ -163,7 +172,7 @@ concurrency) + the schedule dispatcher. **One generic leased job queue** (Postgr
 `FOR UPDATE SKIP LOCKED`, lease + heartbeat + reclaim) with typed handlers —
 profiling, topic generation, publishing reindex, pipeline runs, refresh — replaces
 the predecessors' 13 bespoke worker classes (brief 01 scar; D-025). Schedules
-(cron/interval, §7.7) dispatch into the same queue. Expensive LLM work never sits
+(cron/interval, §7.8) dispatch into the same queue. Expensive LLM work never sits
 on a query's hot path (brief 03): enhancement/profiling are async jobs; routing
 reads pre-built state.
 
@@ -430,12 +439,17 @@ by **Bruin** (pinned v0.11.666, Apache-2.0) as a CLI subprocess behind the
 **`PipelineRunner` seam** (interface + factory + driver; `bruin` is the V1
 driver):
 
-- Destinations are **declared** per pipeline: a (source, schema) pair the tenant
-  admin has explicitly marked writable + a `manage` grant on that source. No
-  declared destination ⇒ no write, ever. Chartworks renders its declarative
-  pipeline definition to Bruin's format at run time; connections are injected
-  via env-var interpolation or a custody-rendered tmpfs config — plaintext
-  secrets never persist to disk.
+- Destinations are **declared** per pipeline and are always **Chartworks-managed
+  schemas** (D-040): a (source, managed schema) pair — namespaces Chartworks
+  creates (default prefix `chartworks_`, per-source configurable) — marked
+  writable by the tenant admin + a `manage` grant on that source. An output
+  resolving to any non-managed schema is rejected at definition validation AND
+  at the render gate; where the engine supports it, the write credential is
+  itself scoped to the managed schemas. Client baseline tables appear only as
+  inputs. No declared destination ⇒ no write, ever. Chartworks renders its
+  declarative pipeline definition to Bruin's format at run time; connections are
+  injected via env-var interpolation or a custody-rendered tmpfs config —
+  plaintext secrets never persist to disk.
 - **The NLQ adapters have no write capability at all** — the strongest P1c
   shape: reads live in `internal/sources` adapters; writes live behind
   `PipelineRunner` in a separate executor process. No shared entry point exists
@@ -454,7 +468,40 @@ driver):
   error, metric, run status) — never a silent partial publish (P4). Bruin exit
   codes and per-asset results map to typed run outcomes at the seam.
 
-### 7.7 Refresh & scheduling
+### 7.7 The autonomy ladder (D-039)
+
+The DE stage's agentic posture is an explicit ladder; every level shares the same
+gates, the same D-040 write boundary, and the same audit spine:
+
+- **L0 manual / L1 assisted** — human-authored or agent-drafted pipelines,
+  human-published (the §7.3 flow).
+- **L2 goal-driven proposal (the V1 target).** A business goal enters (HTTP,
+  Console) ⇒ the demand-driven engine plans **blind** (no catalog access at plan
+  time, so gaps are detectable rather than silently trimmed — brief 11), then
+  matches top-down against existing datasets/topics via the canonical registry
+  (retrieve → verify → confirm; resolve-then-compare, never name comparison) and
+  builds bottom-up only what's missing ⇒ one atomic, reviewable **proposal**:
+  pipelines + datasets + topic deltas + schedules, each choice carrying a
+  **decision record** (goal, matched-vs-built, alternatives rejected, evidence,
+  model/agent provenance, token cost). Approval applies the changeset through
+  the ordinary publication gates; rejection and edit-then-approve are
+  first-class; every applied proposal is revertible as a unit.
+- **L3 policy-scoped auto-apply (designed in V1, per-tenant opt-in).** A tenant
+  `autonomy_policy` declares what may publish without a human gate: permitted
+  risk classes (non-destructive strategies), destination scopes (managed schemas
+  only — non-negotiable), required quality gates, cost/row ceilings, schedule
+  bounds. Outside policy ⇒ degrade to L2 review, loudly (P4). Auto-applied
+  changes remain decision-recorded, post-hoc reviewable, and revertible.
+- **The evolution loop.** Schema drift, failed freshness, or failed quality
+  checks generate *proposed amendments* through the same proposal machinery —
+  the medallion evolves under audit instead of decaying behind flags. Goal
+  history + decision records make "why does this table exist" a query, not
+  archaeology.
+
+Proposal/decision-record/policy surfaces are management-plane: HTTP + SDK only
+(agents do not administer tenants, §11.1). Owned by phase 26.
+
+### 7.8 Refresh & scheduling
 
 Schedules (cron or interval — condition/event triggers are post-V1, D-013 scope
 note) attach to a pipeline or a saved query and dispatch runs into the jobs
@@ -824,12 +871,15 @@ every query predicate; forward-only migrations.
 | `jobs` | job_id, tenant_id, kind, status, priority, attempts, lease_owner, lease_expires_at, payload/result/error JSONB, timestamps |
 | `schedules` | tenant_id, schedule_id, target (pipeline\|saved_query), target_id, trigger_json, status, timestamps |
 | `schedule_runs` | schedule_id, run_id, outcome, ts |
+| `proposals` | tenant_id, proposal_id, goal_text, status (draft\|proposed\|approved\|rejected\|applied\|reverted), changeset_json, created_by (principal/agent), reviewed_by, timestamps |
+| `decision_records` | tenant_id, record_id, proposal_id, subject (pipeline\|dataset\|topic\|schedule), decision_json (matched-vs-built, alternatives, evidence refs, provenance, cost), ts |
+| `autonomy_policies` | tenant_id, policy_id, source_id?, rules_json (risk classes, quality gates, ceilings, schedule bounds), status, updated_by, timestamps |
 | `idempotency_cache` | tenant_id, operation, principal, client_key, response_hash, payload, expires_at |
 | `audit_events` | ts, tenant_id, principal, action, resource_type/id, decision, request_id — content-free |
 | `gateway_call_events` | ts, tenant_id, stage, model, tokens_in/out, cost, latency_ms |
 | `schema_migrations` | forward-only |
 
-25 tables — roughly half the predecessors' sprawl (brief 02's ~50-table scar),
+28 tables — well under the predecessors' ~50-table sprawl (brief 02's ~50-table scar),
 with query/SQL/topic identifiers stored once each (no cross-table duplication).
 Uploaded file bytes live on disk/object storage under a tenant-scoped path
 (config), not in the store; workspace tables live in the upload-workspace
@@ -953,7 +1003,7 @@ or lease-reclaimed with status checkpointed.
 
 ## 18. Decisions settled by this RFC
 
-Logged as D-019…D-038 in `docs/decisions.md`:
+Logged as D-019…D-040 in `docs/decisions.md`:
 
 | D | Decision |
 |---|---|
@@ -977,10 +1027,12 @@ Logged as D-019…D-038 in `docs/decisions.md`:
 | D-036 | Bruin (pinned v0.11.666) as the DE write executor: CLI subprocess behind the `PipelineRunner` seam, SQL-only, custody-rendered connections; narrows-and-supersedes D-023 |
 | D-037 | D-005 reversed per its clause: the container is the deployment unit; CGo permissible per-dependency; single-static-binary is a preference, not an invariant |
 | D-038 | Layered read-side validation: read-only credentials primary, engine dry-run/EXPLAIN dialect-truth + table-grain allowlist everywhere, parser seam (crdb + gated sqlglot-go) for client-side depth; native-dialect generation |
+| D-039 | The DE autonomy ladder: L2 goal-driven proposals w/ decision records (V1 target); L3 policy-scoped auto-apply (per-tenant opt-in); the drift-driven evolution loop; phase 26 |
+| D-040 | The write boundary: managed `chartworks_*` schemas only; client baseline data read-only forever; enforced at definition validation + render gate + write-credential scope |
 
 Consumer-request §12 questions: Q1 §5.3/§5.1 · Q2 §6.1/§6.3 · Q3 §9.4 ·
 Q4 §11.1 · Q5 §8.4 (in V1, scoped) · Q6 §10 (yes, deterministic selector) ·
-Q7 §7.7 (cron/interval only) · Q8 §14 (`exec` defaults).
+Q7 §7.8 (cron/interval only) · Q8 §14 (`exec` defaults).
 
 ---
 
@@ -988,7 +1040,7 @@ Q7 §7.7 (cron/interval only) · Q8 §14 (`exec` defaults).
 
 Chart rendering / frontend (D-013) · LLM chart ranker (D-026) · Python/R
 pipeline assets + `ingestr` ingestion through Bruin (D-036 — SQL-only in V1) ·
-condition/event schedule triggers (§7.7) ·
+condition/event schedule triggers (§7.8) ·
 shadow-evaluation + historical replay for rules (D-027) · query-result caching
 (correctness-hazardous under per-grant access; revisit with evidence) · result
 pagination · cross-topic relationship discovery jobs (post-V1) · GEPA-style

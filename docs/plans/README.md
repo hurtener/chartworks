@@ -86,13 +86,16 @@
 | **6 Surfaces** | 21 | `http-api` | `internal/api` (full §11.2) | 04, 08, 11, 13, 15–20 |
 | | 22 | `mcp-server` | `internal/mcpserver` (11 tools, middleware gate, annotations test) | same as 21 |
 | | 23 | `sdk-cli-parity` | `sdk/chartworks`, admin CLI, three-surface parity tests | 21, 22 |
-| **7 Quality & release** | 24 | `eval` | `eval/`, `chartworks eval`, golden + red-team CI gates | 18, 19, 20 |
-| | 25 | `e2e-release` | E2E both auth modes, Dockerfile, product README, CHANGELOG, v0.1.0 | all |
+| **7 Autonomy, quality & release** | 24 | `eval` | `eval/`, `chartworks eval`, golden + red-team CI gates | 18, 19, 20 |
+| | 26 | `engineering-autopilot` | L2 proposals + decision records + L3 policies + evolution loop (D-039/D-040) | 12, 13, 15, 16, 21 |
+| | 25 | `e2e-release` | E2E both auth modes, Dockerfile, product README, CHANGELOG, v0.1.0 | all (incl. 26) |
 
 Within a wave, phases without mutual deps run in parallel (01 → 02∥03; 04∥05∥06∥07;
 08∥09 → 10∥11; 12 → 13∥14; 15 → 16 → 17 → 18 → 19, with 20 parallel from 15;
-21∥22 → 23). Phase 14 may slip into Wave 5 without blocking anything (it is
-additive behind the adapter seam). Phase 20 may land in Wave 6 if Wave 5 runs long.
+21∥22 → 23; 24∥26 → 25). Phase 14 may slip into Wave 5 without blocking anything
+(it is additive behind the adapter seam). Phase 20 may land in Wave 6 if Wave 5 runs
+long. Phase 26 executes after 24 starts and before 25 closes — numbering stays
+stable; execution order in Wave 7 is 24 ∥ 26 → 25.
 
 ---
 
@@ -259,10 +262,12 @@ freshness stamping, schedule attachment, LLM-assisted drafting (`pipeline_draft`
 role, draft-only — publication is an explicit human gate), the canonical identity
 registry. NLQ adapters carry no write capability at all (P1c).
 **Key criteria:** a step writing outside its declared output is rejected at
-validation; an undeclared destination cannot be materialized to (typed error); a
-failed quality check fails the run loudly (status + metric + audit); NLQ-path code
-cannot reach `Materializer` (architecture test — the P1c proof); lineage recorded
-per materialization.
+validation; an undeclared destination cannot be materialized to (typed error); **an
+output resolving outside a Chartworks-managed schema is rejected at definition
+validation AND the render gate, and baseline tables are inputs-only (D-040 — the
+write-boundary proof)**; a failed quality check fails the run loudly (status +
+metric + audit); NLQ-path code cannot reach the write path (architecture test — the
+P1c proof); lineage recorded per materialization.
 
 ### Phase 14 — `warehouse-drivers` (Wave 4)
 **RFC:** §6.1 (D-032). **Briefs:** 02, 05. **Difficulty:** medium-high.
@@ -402,8 +407,31 @@ golden-case seeding from positive feedback.
 the gate (self-test); red-team suite covers all six categories with ≥N cases each;
 accuracy harness runs against the sample warehouse under the live gate (`-count=1`).
 
+### Phase 26 — `engineering-autopilot` (Wave 7; executes 24∥26 → 25)
+**RFC:** §7.7, §12 (proposals/decision_records/autonomy_policies), D-039, D-040.
+**Briefs:** 11 (the engine), 12, 09. **Difficulty:** high.
+L2: the goal-driven proposal flow — blind planner, retrieve→verify→confirm matching
+via the canonical registry, top-down-match/bottom-up-build — producing atomic
+proposals (pipelines + datasets + topic deltas + schedules) with per-choice decision
+records; review/edit/approve/reject/revert lifecycle; approval applies through the
+existing publication gates. L3: per-tenant autonomy policies (risk classes, quality
+gates, ceilings; managed-schema scope non-negotiable), auto-apply within policy,
+loud degrade to L2 outside it. The evolution loop: drift/freshness/quality failures
+generate proposed amendments. Three forward-only migrations + store conformance
+additions; HTTP + SDK surfaces (management-plane — no MCP tools); gateway role
+reuse (`pipeline_draft` + `enhance`).
+**Key criteria:** a proposal is atomic (approve applies all-or-nothing, revert
+restores prior state — proven); every proposed object carries a queryable decision
+record; L3 auto-applies only inside policy and degrades loudly outside (table-driven
+policy matrix); no proposal at any level can target a non-managed schema (D-040
+adversarial probe); drift produces a proposed amendment end-to-end (integration);
+goal→medallion round-trip on the mock stack (golden).
+
 ### Phase 25 — `e2e-release` (Wave 7)
 **RFC:** §17 + all. **Briefs:** all (cumulative audit). **Difficulty:** medium.
+Depends on all phases including 26 — the E2E self-issue walk extends with an L2
+proposal flow (goal → proposal → approve → materialize into a managed schema), and
+the cumulative audit gains the D-040 write-boundary sweep.
 E2E suites in both auth modes (self-issue + external-issuer with a local JWKS
 stub), the reference Dockerfile (static binary, `CGO_ENABLED=0` proof), ops docs,
 the product README in the family voice, CHANGELOG + v0.1.0 tag procedure, and the
@@ -429,6 +457,7 @@ audit punch list resolved; live gate green as the release blocker.
 | The 13-role gateway config sprawls | 05+ | Roles are a closed enum in config; adding one is a decision entry |
 | Wave 5 is the long pole (6 phases, chained) | 15–20 | 20 is explicitly slippable; 15→18 are the critical path — staff them Opus-first; checkpoint audit at the boundary before surfaces build on them |
 | Predecessor scars re-enter via familiarity (repair vocab, header trust, flag-switched writes) | all | drift-audit forbidden-word scan; architecture tests for P1c/P5/P7 land with the phase that owns each seam, not at the end |
+| The autopilot (26) is the least battle-tested subsystem in the product | 26 | It lands LAST, on proven gates (13/15/16); proposals are atomic + revertible; L3 is per-tenant opt-in behind policy; D-040 makes baseline damage structurally impossible at any autonomy level; the wave-7 checkpoint audits it against real L1 usage evidence |
 
 ---
 

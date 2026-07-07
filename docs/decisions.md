@@ -636,7 +636,68 @@ contract).
 
 ---
 
-*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-038 were filed
-during the planning review (driver set, parser strategy, bundle_ref, pins, Bruin
-adoption, the D-005 reversal, layered read validation). Further product decisions land
-here as phases ship, numbered D-039+.*
+### D-039 — Agentic data engineering: the autonomy ladder; L2 is the V1 target, L3 ships policy-gated · *accepted (user directive, 2026-07-06)*
+
+The DE stage's agentic posture is an explicit **autonomy ladder** (RFC §7.8):
+
+- **L0 manual** and **L1 assisted drafting** (agent drafts, human publishes) — the
+  floor, already planned.
+- **L2 goal-driven proposal — the V1 target.** A business goal in ⇒ the demand-driven
+  engine (brief 11's keepers, now promoted from ideas to design: **blind planner** so
+  gaps are detectable, retrieve→verify→confirm matching against the canonical
+  registry, top-down-match/bottom-up-build) ⇒ one reviewable, atomic **proposal**
+  (changeset): pipelines + datasets + topic deltas + schedules, every choice carrying
+  a **decision record** (goal served, matches found vs built, alternatives rejected,
+  evidence consulted, agent/model provenance). A human approves the *proposal*, not
+  each piece; approval publishes through the existing gates (write-shape validation,
+  quality checks, D-040 destinations). Rejection and partial-edit-then-approve are
+  first-class. Proposals and decision records are budgeted store tables — the
+  reasoning trail is queryable audit state, not log archaeology.
+- **L3 policy-scoped auto-apply — designed in V1, enabled per tenant.** A tenant
+  `autonomy_policy` declares what may auto-publish without a human gate: risk classes
+  (e.g. non-destructive strategies only), destination scopes (D-040 managed schemas
+  only — always), quality-gate requirements, cost/row ceilings, schedule bounds.
+  Anything outside policy degrades to L2 review — never silently proceeds (P4).
+  Every auto-applied change is a decision-recorded, revertible proposal post-hoc.
+- **The evolution loop** closes at L2/L3: schema drift or failed freshness/quality
+  produces a *proposed amendment* (same proposal machinery) rather than only a flag —
+  the medallion evolves under audit instead of decaying.
+
+Teramot's "agent fleet" claim is marketing-opaque (brief 12); this ladder is built on
+our own validated primitives instead: the ssr draft's engine (brief 11), the
+publication gates, Bruin execution (D-036), grants (D-020). New phase 26
+(`engineering-autopilot`) owns L2/L3 on top of phases 12/13/15/16.
+
+**Why:** the DE stage is the product's reason to exist beyond the predecessors and its
+only un-battle-tested part; the ladder gives Teramot-class automation with a
+reviewable, auditable, revertible unit at every level — capability without betting
+the warehouse on an opaque loop.
+
+---
+
+### D-040 — The write boundary: Chartworks-managed schemas only; client baseline data is read-only, forever · *accepted (user directive, 2026-07-06)*
+
+Materializations write **only into Chartworks-managed schemas** — namespaces
+Chartworks creates and owns inside the customer warehouse (default prefix
+`chartworks_`, configurable per source at declaration time). **Client baseline
+tables/views — anything not created by Chartworks — are structurally read-only
+forever**: they may appear only as *inputs*; the write path rejects, at definition
+validation AND at render time, any output that resolves outside a managed schema, and
+the medallion (bronze/silver/gold) is Chartworks tables/views exclusively. Destination
+declaration (D-036) therefore means: which source + which **managed** schema — never
+an existing client schema. Enforcement is layered like everything else: definition
+validation → render-gate on the Bruin asset outputs → and, where the engine supports
+it, the write credential is scoped to the managed schemas only (mirror of D-038's
+credential-primary posture, applied to writes). This strengthens P1c: NLQ can't
+write; pipelines can't touch baseline.
+
+**Why:** "we never overwrite clients' raw data" is the single most important trust
+property an enterprise DE product has; making it structural (namespace + credential +
+double gate) rather than behavioral means no agent decision at any autonomy level can
+violate it even in principle.
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-040 were filed
+during the planning review. Further product decisions land here as phases ship,
+numbered D-041+.*

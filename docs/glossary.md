@@ -89,6 +89,19 @@
 - **Dry-run validation** — the engine-side pre-execution check (dry-run/EXPLAIN under
   the read-only credential) providing dialect-true syntax validation and the
   referenced-table set for table-grain allowlisting on every engine (D-038).
+- **Managed schema** — a Chartworks-created namespace inside a customer warehouse
+  (default prefix `chartworks_`); the only place materializations may write (D-040).
+- **Baseline table** — any table/view Chartworks did not create: read-only forever,
+  inputs only (D-040).
+- **Proposal** — the atomic, reviewable, revertible changeset an L2/L3 agent produces
+  (pipelines + datasets + topic deltas + schedules); the unit of review, application,
+  and rollback (D-039).
+- **Decision record** — the stored reasoning trail on every agent-proposed object:
+  goal served, matched-vs-built, alternatives rejected, evidence, provenance, cost
+  (D-039).
+- **Autonomy policy / autonomy ladder** — L0 manual · L1 assisted · L2 goal-driven
+  proposal (V1 target) · L3 policy-scoped auto-apply (per-tenant opt-in); outside
+  policy degrades to review, loudly (D-039).
 - **NLQ (Natural Language Query)** — a natural-language question routed through the
   semantic model to validated read-only SQL.
 
