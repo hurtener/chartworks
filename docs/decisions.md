@@ -494,6 +494,53 @@ dialect fixtures) into cheap, repeatable local proof instead of live-gate-only e
 
 ---
 
-*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032 amends its §6.1 in
-the same planning PR. Further product decisions land here as phases ship, numbered
-D-033+.*
+### D-033 — SQL parser: `cockroachdb/cockroachdb-parser` v0.25.2; fail-closed dialect posture; generation-side dialect obligation · *accepted (phase-09 planning, 2026-07-06)*
+
+The validation core parses with **`github.com/cockroachdb/cockroachdb-parser` v0.25.2**
+(pure-Go, D-005-clean; transitive `gosigar` pinned v0.14.4 for the darwin dev build) —
+selected against a real six-dialect fixture corpus; vitess/tidb (MySQL-only) and
+sqlglot (Python) rejected. No pure-Go multi-dialect parser exists, so the posture is
+**fail-closed**: dialect-specific surface syntax the base grammar cannot represent is a
+typed `parse.unsupported`, never a silent pass, plus a per-dialect escape blocklist.
+**The generation-side obligation this creates (phase 18):** internal generation and the
+BYO context bundle's SQL requirements target a **validated ANSI-conservative subset**
+per engine; any mechanical post-validation surface rendering (quoting/limit forms) is
+derived from the parsed AST, never string patching; the dockerized MySQL/SQL Server
+engines (D-032) are the proving ground. If a construct cannot be expressed in the
+subset for an engine, that is a typed limitation — never a validation bypass.
+
+**Why:** the predecessors' multi-dialect validator was Python `sqlglot`; porting its
+posture wholesale is impossible without breaking D-005. Fail-closed + a constrained
+generation subset preserves P1b at the cost of dialect breadth — the right trade for a
+security property, with the gap made visible and testable instead of implicit.
+
+---
+
+### D-034 — BYO `bundle_ref`: a stateless, signed, TTL-bounded context handle that pins context, not capability · *accepted (phase-19 planning, 2026-07-06)*
+
+`get_query_context` returns a `bundle_ref` that is **stateless** (no store table — §12
+budget preserved), **asymmetrically signed**, **TTL-bounded** (`nlq.bundle_ttl`,
+default 15m), **principal-bound**, and **reusable within its TTL** (iterate-then-submit
+is legitimate). Critically it pins **context, not capability**: grants, topic health,
+and publication state are re-resolved live at every `submit_sql` — a revoked grant
+fails loud regardless of a valid bundle. Answers brief 08's URL-path-scope
+anti-pattern directly.
+
+---
+
+### D-035 — Warehouse-driver and upload-parser version pins (convention-8 verified) · *accepted (phase-11/14 planning, 2026-07-06)*
+
+Pinned against real release assets: `go-sql-driver/mysql` v1.10.0 ·
+`microsoft/go-mssqldb` v1.10.0 · `cloud.google.com/go/bigquery` v1.77.0 ·
+`snowflakedb/gosnowflake` v1.19.1 — **CGo-free only with `-tags minicore_disabled`,
+which is therefore a mandatory build tag** (a silent default build links a CGo probe —
+the D-005 hazard made explicit) · `databricks/databricks-sql-go` v1.13.0 ·
+`xuri/excelize/v2` v2.11.0 · `parquet-go/parquet-go` v0.30.1 (uploads; CSV is stdlib).
+A version bump re-runs the conformance suite; a driver that loses its pure-Go property
+at a bump is a D-005 event requiring its own decision.
+
+---
+
+*RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-035 were filed
+during planning (driver set, parser, bundle_ref, pins). Further product decisions land
+here as phases ship, numbered D-036+.*

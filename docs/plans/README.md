@@ -84,7 +84,7 @@
 | | 19 | `byo-mode` | context bundle contract, `get_query_context`, `submit_sql`, parity proofs | 18 |
 | | 20 | `charts-spec` | `internal/charts` (rules selector, declarative spec) | 10, 15 |
 | **6 Surfaces** | 21 | `http-api` | `internal/api` (full §11.2) | 04, 08, 11, 13, 15–20 |
-| | 22 | `mcp-server` | `internal/mcpserver` (10 tools, middleware gate, annotations test) | same as 21 |
+| | 22 | `mcp-server` | `internal/mcpserver` (11 tools, middleware gate, annotations test) | same as 21 |
 | | 23 | `sdk-cli-parity` | `sdk/chartworks`, admin CLI, three-surface parity tests | 21, 22 |
 | **7 Quality & release** | 24 | `eval` | `eval/`, `chartworks eval`, golden + red-team CI gates | 18, 19, 20 |
 | | 25 | `e2e-release` | E2E both auth modes, Dockerfile, product README, CHANGELOG, v0.1.0 | all |
@@ -361,7 +361,7 @@ skeleton with MCP verified for the Ask tier; smoke drives one endpoint per group
 
 ### Phase 22 — `mcp-server` (Wave 6)
 **RFC:** §11.1, D-019. **Briefs:** 13, 09, 08. **Difficulty:** medium.
-The 10-tool surface on mcp-go (pinned, verified): global tool middleware (scope +
+The 11-tool surface on mcp-go (pinned, verified): global tool middleware (scope +
 grant gate + panic recovery + typed error results), streamable-HTTP + stdio +
 in-process, per-surface `aud` enforcement, the **fail-closed annotation allowlist
 test** (every registered tool explicitly read-only/write), tool results on the

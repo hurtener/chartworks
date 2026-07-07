@@ -504,10 +504,12 @@ The mechanism brief 03 documents, carried with its scars fixed:
   semantic units, never raw schema.
 - **Two-layer compression, one owner**: the capability contract applies hard
   structural caps (top-N measures/dimensions/joins/patterns; truncated
-  definitions), then a complexity-tier token budget (low/medium/high, bands set
-  by routing confidence) prunes further. **All pruning lives in one component**
-  (`semantics.ContextAssembler`) — not split across packer and generator (the
-  predecessors' duplication trap, brief 03 §2.2/Q3).
+  definitions — owned by `semantics`, computed at publish), then a
+  complexity-tier token budget (low/medium/high, bands set by routing
+  confidence) prunes further at query time. **All runtime pruning lives in one
+  component** (`nlq.ContextAssembler`, per the §3.2 placement) — not split
+  across packer and generator (the predecessors' duplication trap, brief 03
+  §2.2/Q3).
 - **One budget currency**: a real tokenizer-backed estimator for *every* context
   lane (evidence, rules, examples) — no char/4 second currency (brief 03 Q5).
 - **Never mutate source evidence**: pruning operates on per-call copies; the
@@ -700,7 +702,7 @@ or a second production adopter). Panic recovery + typed error results are
 middleware-installed as Soundings does. This supersedes the question D-011
 re-opened.
 
-**The V1 tool set (10 tools):**
+**The V1 tool set (11 tools):**
 
 | Tier | Tool | Scope | Effect |
 |---|---|---|---|
