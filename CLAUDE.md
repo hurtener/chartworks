@@ -1,637 +1,111 @@
-# Chartworks — Contributor & Agent Normatives
-
-> This file is **binding** for anyone — human or AI — modifying this repository.
-> It is mirrored **verbatim** in `AGENTS.md` so all agent tooling picks it up
-> automatically. If the two files diverge, the most recent commit timestamp wins;
-> flag the drift in your PR.
->
-> Chartworks is at **bootstrap**: the RFC and the phase plans are not yet authored, and
-> the kickoff interview will refine the product frame in §1. Where this file states a
-> rule as *inherited-binding now*, it holds today; where it states one as *RFC-pending*,
-> it is a provisional default the RFC (or a superseding decision) will confirm or replace.
-> Both kinds are marked. If a rule below conflicts with the RFC or a phase plan, the
-> **RFC wins**, then the **phase plan**, then this file. Update whichever artifact is
-> wrong; never silently ignore the conflict.
-
----
-
-## Starting a new session — orientation (READ THIS FIRST)
-
-Chartworks is a multi-phase, doc-driven build. The design surface is large on purpose:
-hygiene up front is cheaper than retrofitting it. Before substantive work, skim, in
-order:
-
-1. **§1 — What Chartworks is.** The product and its binding properties.
-2. **§2 — Authoritative sources.** The priority chain: RFC > phase plans > master plan >
-   this file > a consumer request (if the kickoff produces one) > research briefs > code
-   comments.
-3. **§16 — Authoring a phase plan.** The binding workflow for any contributor touching a
-   phase. Skipping it is the single largest source of design drift.
-
-**Drift-hygiene artifacts (live references):**
-
-- `RFC-001-Chartworks.md` — the design source of truth. *(Not yet authored — the RFC is
-  the next setup step after the kickoff interview; until it lands, this file and
-  `docs/decisions.md` are the standing authority.)*
-- `00_KICKSTART-PROMPT.md` — the **bootstrap artifact** that framed this repo and the
-  kickoff interview. Authoritative for *bootstrap intent* until the RFC absorbs it; a
-  `docs/decisions.md` entry may revise a specific point.
-- `docs/decisions.md` — append-only log of settled decisions (`D-NNN`). At bootstrap the
-  seed entries are *proposed* (inherited from the sibling Soundings build); the kickoff
-  flips them to accepted or superseded. When tempted to re-litigate something, grep here
-  first.
-- `docs/glossary.md` — Chartworks vocabulary. New terms land here in the same PR.
-- `docs/research/INDEX.md` — subsystem → research-brief reverse index *(created with the
-  first brief)*.
-- `docs/plans/_template.md` — phase plan template; new phases start as a copy.
-- `scripts/drift-audit.sh` — mechanical drift checks (`make drift-audit`).
-
-If asked to do something that doesn't fit a phase (a one-off fix, a question, a small
-doc edit), proceed without the full §16 ritual — but mention any drift risk you spot.
-
-**Predecessor hygiene.** Chartworks is a clean-room redesign, not a port. It has **two**
-Python predecessors, both living under `_ref/` (gitignored — never copied, vendored, or
-committed here):
-
-- **the client predecessor** — `_ref/original_wayfinder/`: the client-tailored
-  original NLQ-to-SQL router-first platform, carrying
-  production fixes worth mining — **especially the topic lifecycle**. The client's
-  name, schemas, and data samples are confidential: they never appear — even
-  paraphrased — in any brief, plan, commit, or doc in this repo.
-- **the generalistic predecessor** — `_ref/forked_wayfinder_explorer/` (the "Explorer"
-  fork): the generalistic descendant of the same codebase; the two share most
-  functionality.
-
-Refer to them only as "the client predecessor" and "the generalistic predecessor." Ideas
-are inherited **only** through `docs/research/` briefs — never by reading files across
-into this tree. A dedicated **diff brief** comparing the client fixes against the fork
-(especially the topic-lifecycle divergence) is a **mandatory phase-0 research artifact**.
-
----
-
-## 1. What Chartworks is
-
-> **Provisional frame — the kickoff interview + RFC will refine this. Marked accordingly
-> throughout.**
-
-Chartworks is the ecosystem's **Explorer seat**: a Go-native **structured-data analytics**
-service. It is the sixth and (for now) final product in the family, and a clean-room Go
-migration of an NLQ-to-SQL product (the two Python predecessors above), **extended** with
-an upfront **data-engineering stage** before the NLQ-to-SQL functionality. Where Soundings
-serves *unstructured documents*, Chartworks serves *structured data* — the boundary the
-consumer request draws explicitly ("not structured CSV/XLSX — that is Explorer's domain").
-
-```text
-Portico   — the MCP gateway         (connects and governs tools)
-Harbor    — the agent framework     (builds and runs agents; owns the MCP client)
-Dockyard  — the MCP Apps framework  (builds the MCP servers and apps users touch)
-Stowage   — memory infrastructure   (remembers, reconciles, retrieves, forgets)
-Soundings — the KnowledgeProvider   (unstructured docs: extract + index + retrieve + ACL)
-Chartworks— the Explorer            (structured data: engineer → model → NLQ-to-SQL →
-                                      charts)
-```
-
-The provisional pipeline direction is **engineer → model → NLQ-to-SQL → charts**: an
-upfront data-engineering stage shapes and prepares structured sources; a semantic model
-(the predecessors' "topic packs" — measures, dimensions, KPIs, join graphs) grounds them;
-natural-language questions route through that model to **validated, read-only SQL**; and
-results render as charts. The final capability inventory, surface set, and scope
-boundaries are **owned by the RFC** — this frame is the starting point for the kickoff,
-not a settled contract.
-
-Chartworks is expected to present a **dual surface** — an **MCP tool surface** for agents
-(consumed through Harbor's MCP southbound driver) and an **HTTP surface** for a Console /
-consumer UI — from **one binary** (`chartworks`), running **both standalone** (its own
-token issuer, for API-key callers) **and as an ecosystem citizen** (validating tokens
-Pengui issues). Like Soundings, it is intended as a **swappable capability**: any Explorer
-that implements the tool set + HTTP surface + JWT validation + access contract is a
-drop-in. *(All of this paragraph is RFC-pending in its specifics; the ecosystem-citizen
-posture and one-binary dual-surface shape are inherited defaults.)*
-
-**Binding properties.** These distil the ecosystem invariants into product law. The P2–P7
-set is **inherited-binding now** — a change that weakens one is wrong; reach for the RFC
-(or a decision entry), not the keyboard. **P1 is a stub**: its access model is inherited
-in principle but its concrete shape (and the Chartworks-specific SQL-safety property it
-implies) is **RFC-pending**.
-
-1. **P1 — Deny-by-default access, computed in the query path *(inherited principle;
-   concrete model RFC-pending)*.** Access to a **data source** or a **dataset** is
-   deny-by-default: absence of an explicit grant means no access, and the access
-   restriction is applied **inside** the query that reaches the data — never
-   fetch-then-filter. An empty effective-access set short-circuits to "no results" and
-   never issues a query. **The exact access primitive** (whether Chartworks carries an
-   ACL-style claim like Soundings, or scopes by data-source/dataset grants, or both) **is
-   for the RFC to define.** Additionally, and specific to this product: **SQL-generation
-   safety** — read-only execution, schema allowlisting, and injection guardrails — **will
-   be a Chartworks-specific binding property the RFC must define.** It is called out here
-   so no phase ships generated-SQL execution before that property is settled; until then,
-   treat any generated SQL as untrusted and non-executable by default.
-2. **P2 — Identity lives in the signed token, never in headers *(inherited-binding
-   now)*.** Asymmetric JWT only (RS/ES `256|384|512`); `HS*` and `none` are rejected **at
-   the parser**, before any business logic. `aud` is mandatory and per-instance (replay
-   defense). The caller's **resolved identity/access claim** is the source of truth, read
-   once into a **frozen per-request envelope** and never mutated mid-request. Chartworks
-   is **stateless about identity**: it never recomputes sharing and never trusts `X-*`
-   headers for identity or access.
-3. **P3 — Multi-isolation on `(tenant, user, session)` *(inherited-binding now)*.** The
-   `tenant` claim is mandatory; a query never matches across tenants regardless of any
-   other prefix. Isolation is enforced at the storage/index layer (an inescapable tenant
-   predicate), not by a filter a code path could forget.
-4. **P4 — Fail loud, never silently degrade *(inherited-binding now)*.** A denied scope,
-   an unreachable dependency, a missing identity, or a failed SQL validation yields a
-   **typed error + a metric** — never an empty result that reads as "nothing found," never
-   a silent fallback that widens access or executes an unvalidated query, never an
-   empty-catch.
-5. **P5 — One intelligence seam *(inherited-binding now)*.** Every embedding / LLM /
-   rerank / SQL-generation model call goes through the `gateway` seam (Bifrost driver
-   first). No package outside `internal/gateway` imports a provider SDK or constructs a
-   provider HTTP request. Structured outputs use schema-constrained calls; free-text JSON
-   parsing of model output is forbidden.
-6. **P6 — Domain vocabulary only on the wire and in the UI *(inherited-binding now;
-   forbidden-word list RFC-pending)*.** User-facing surfaces use domain terms only.
-   Plumbing words (representative, generic examples pending the predecessor research —
-   `collection`, `wiring`, `repair`, `index`, `shard`, `embedding`, `namespace`, `sync`)
-   never appear in an API field, a UI string, an error message, or a human-read log. The
-   **authoritative forbidden-word list is RFC-pending** and will be informed by the
-   predecessor diff brief (the client predecessor grew a user-facing "repair"-class
-   surface exactly because plumbing ids leaked — the anti-pattern this property exists to
-   prevent).
-7. **P7 — One primitive family, no parallel paths *(inherited-binding now)*.** One auth
-   model, one access representation, one query/routing contract, implemented once in the
-   core and exposed through thin surfaces (§6). Two of anything is the failure mode we are
-   correcting — the predecessors' monolith scars (a router core wired into many bespoke
-   call paths) are what the rewrite sheds.
-
----
-
-## 2. Authoritative sources (in priority order)
-
-1. `RFC-001-Chartworks.md` — product intent and design decisions *(pending; see §1)*.
-2. `docs/plans/phase-NN-*.md` — implementation specifications. Acceptance criteria are
-   binding.
-3. `docs/plans/README.md` — the master phase plan: cross-cutting conventions and the
-   phase index.
-4. This file (`CLAUDE.md` / `AGENTS.md`) — operational rules.
-5. A **consumer request doc**, if the kickoff interview produces one (a Pengui/Explorer
-   contract request). Until it exists, this slot is empty and the chain skips to briefs.
-6. `docs/research/*.md` — phase-planning research briefs. Authoritative for *context*, not
-   for design. (The phase-0 predecessor diff brief is the first of these.)
-7. Code comments and godoc — last and least authoritative.
-
-`00_KICKSTART-PROMPT.md` is the bootstrap artifact that seeded the repo; it sits outside
-this chain as historical intent and is superseded section-by-section as the RFC lands.
-When a phase plan and the RFC drift, the RFC wins. File a follow-up to fix the plan.
-
----
-
-## 3. Repository layout
-
-> Provisional, in the sibling Soundings shape. **The RFC owns the final package
-> inventory** — the domain packages below are marked `TBD-by-RFC` and will be renamed,
-> split, or dropped as the RFC settles the pipeline. The infrastructure packages
-> (`api`, `mcpserver`, `auth`, `identity`, `config`, `gateway`, `store`, `telemetry`) are
-> inherited-shape and unlikely to move.
-
-```text
-.
-├── RFC-001-Chartworks.md             # design RFC — source of truth (pending)
-├── 00_KICKSTART-PROMPT.md            # the bootstrap / kickoff artifact
-├── README.md
-├── CHANGELOG.md                      # release notes (Keep a Changelog)
-├── CLAUDE.md / AGENTS.md             # this file (verbatim copies)
-├── Makefile                          # canonical build / test / lint commands
-├── go.mod / go.sum                   # module github.com/hurtener/chartworks (placeholder, D-002)
-├── docker-compose.yml                # local Postgres for dev & tests (D-004)
-├── .github/                          # CI, PR template
-├── .golangci.yml / .editorconfig / .gitignore
-├── _ref/                             # the two Python predecessors — gitignored, never
-│                                     #   copied/vendored/committed; ideas via briefs only
-├── cmd/
-│   └── chartworks/                   # the `chartworks` binary (serve, mcp, CLI)
-├── internal/
-│   ├── api/                          # HTTP surface: routing, validation
-│   ├── mcpserver/                    # MCP tool surface
-│   ├── auth/                         # JWT validation; self-issue + external-issuer; JWKS
-│   ├── identity/                     # (tenant,user,session) triple + frozen envelope
-│   ├── config/                       # typed config, env indirection, fail-loud validation
-│   ├── gateway/                      # the intelligence seam + drivers {bifrost, mock} (P5)
-│   ├── store/                        # the Store seam + driver {postgres} — Chartworks' OWN
-│   │                                 #   state, distinct from the customer data sources (D-004)
-│   ├── telemetry/                    # slog, metrics, per-decision counters, audit, optional OTel
-│   ├── sources/                      # TBD-by-RFC: customer data-source connections it queries
-│   ├── engineering/                  # TBD-by-RFC: the upfront data-engineering stage
-│   ├── semantics/                    # TBD-by-RFC: the semantic model (topics/measures/dims/KPIs)
-│   ├── nlq/                          # TBD-by-RFC: NL → routing → SQL generation
-│   ├── exec/                         # TBD-by-RFC: read-only, guarded SQL execution
-│   └── charts/                       # TBD-by-RFC: chart / visualization spec generation
-├── sdk/
-│   └── chartworks/                   # public Go client (HTTP + in-process modes)
-├── eval/                             # NLQ/routing/SQL-quality harness (`chartworks eval`)
-├── examples/
-├── test/integration/
-├── scripts/
-│   ├── preflight.sh                  # the preflight gate
-│   ├── drift-audit.sh                # design-coherence checks
-│   ├── smoke/                        # per-phase smoke scripts
-│   ├── hooks/pre-commit
-│   └── install-hooks.sh
-└── docs/
-    ├── plans/                        # master plan (README.md) + phase plans + _template.md
-    ├── research/                     # research briefs + INDEX.md
-    ├── decisions.md                  # append-only D-NNN log
-    └── glossary.md
-```
-
-Directories are created as the phases that own them land. Anything that doesn't have a
-home above is wrong — if you need a new top-level directory, propose it in the RFC first;
-once the RFC lands, `§3` (as the RFC amends it) is the binding layout.
-
----
-
-## 4. Build, test, lint, run
-
-All targets are canonical and run by CI. Targets no-op gracefully before the code they act
-on exists.
-
-```bash
-make build         # build the chartworks binary
-make test          # go test -race ./...
-make coverage      # per-package coverage profile + the mechanical band gate
-make bench         # run the Go benchmarks (on demand — not a CI gate)
-make vet           # go vet ./...
-make lint          # golangci-lint run
-make pg-up         # start the local Postgres (docker compose) for tests
-make pg-down       # stop and remove it
-make drift-audit   # design-coherence checks (RFC/plans/briefs/mirror/forbidden names)
-make check-mirror  # verify AGENTS.md == CLAUDE.md
-make preflight     # build + smoke checks + drift-audit
-make install-hooks # install the pre-commit hook (one-time, per clone)
-```
-
-### 4.1 Preflight gate — non-negotiable
-
-`make preflight` is the same gate the pre-commit hook and CI enforce: it builds, runs
-every per-phase smoke script (which SKIP gracefully where the surface isn't built yet),
-and runs `drift-audit`. Do not bypass the pre-commit hook with `--no-verify` outside a
-documented emergency.
-
-### 4.2 Phase implementor contract
-
-A phase is **done** only when: (a) every acceptance criterion in its plan passes; (b)
-coverage targets for touched packages are met; (c) `scripts/smoke/phase-NN.sh` reports
-`OK ≥ count(criteria)` and `FAIL = 0`; (d) prior phases' smoke scripts still pass. A new
-CLI command, HTTP endpoint, MCP tool, or public API ⇒ a smoke check in the **same** PR. A
-new config key ⇒ documented in the plan, the example config, and a smoke check.
-
-### 4.3 Reasonable plan deviations
-
-Plans are specifications, not straitjackets. A reasonable deviation discovered during
-implementation is fine — document it in the PR description and update the plan file **in
-the same PR**. Silent divergence from a plan or the RFC is drift.
-
-### 4.4 Extensibility seams (project-wide policy)
-
-Any subsystem with a plausible alternate backend lives behind an **interface + factory +
-driver** pattern; drivers register via `init()` blank-import. V1 mandates this for:
-
-- the **`gateway`** intelligence seam — `bifrost` + `mock` (P5, D-003);
-- the **`store`** — `postgres` only in V1 (the seam exists for future backends; SQLite is
-  explicitly out of scope, D-004). *This is Chartworks' own durable state — see the
-  D-004 note distinguishing it from the customer data sources it queries.*
-- the **auth issuer** — `self_issue` and `external_issuer`, selectable and combinable
-  (D-006);
-- the **telemetry/events** emitter;
-- any **data-source / warehouse adapter** the RFC introduces (the predecessors carried
-  Databricks/Postgres/BigQuery/Snowflake adapters — the seam shape is inherited, the V1
-  driver set is RFC-owned).
-
-A **vector-search seam** is *conditionally* mandated: if the RFC's routing/retrieval needs
-vector search, it ships behind a seam with a single V1 driver, exactly as the store does.
-It is not carried speculatively.
-
-A seam with a single V1 driver still ships as a seam: the interface is the contract, so a
-second driver never means a rewrite.
-
-**CGo posture — CGo-free by default (D-005).** Unlike the sibling Soundings (which took a
-deliberate CGo exception for its extraction library), Chartworks is **CGo-free**:
-`CGO_ENABLED=0`, single static binary, no C toolchain prerequisite. A genuine CGo need
-would **reverse** this posture and therefore requires its **own decision entry** before any
-CGo dependency enters the tree — never a silent `CGO_ENABLED=1`.
-
----
-
-## 5. Code conventions (Go)
-
-- **Toolchain.** Go 1.26, pinned in every `go.mod`. Module path
-  `github.com/hurtener/chartworks` *(placeholder pending the kickoff interview, D-002)*.
-- **CGo posture.** CGo-free by default (§4.4, D-005). `CGO_ENABLED=0` builds a single
-  static binary; a new CGo dependency needs a decision entry that reverses D-005.
-- **Style.** `gofmt -s`; `go vet` and `golangci-lint run` clean. Generated code is marked
-  with a `// Code generated … DO NOT EDIT.` header and stays boring and readable.
-- **Errors.** `errors.Is`/`errors.As`, `%w` wrapping, sentinel errors, `errors.Join`. Wrap
-  with context. **Never `panic` for control flow** and never panic across the API or MCP
-  boundary.
-- **Context.** `context.Context` is the first parameter of any call that does I/O, blocks,
-  or can be cancelled. Honour cancellation.
-- **Logging.** `log/slog` only — no `log.Printf`, no `logrus`/`zap`. JSON handler in
-  production, text in dev. No unredacted secrets, no token bytes, no customer data rows in
-  logs.
-- **Concurrency.** Race detector mandatory on tests. A reusable artifact (a server, a
-  store, a gateway driver, a pipeline stage) must be safe under concurrent use; prove it.
-  Per-request state lives in `ctx` and parameters, never receiver fields; shared instances
-  are immutable after construction. The frozen per-request identity envelope (P2) is
-  constructed once and never mutated.
-- **Tests.** Table-driven where it fits; golden tests for prompt/contract output; `-race`
-  always.
-- **JSON.** Stdlib `encoding/json` (v1).
-
----
-
-## 6. The non-negotiable product rules
-
-These enforce P1–P7 (§1). They are binding on every phase. Where a rule depends on a model
-the RFC has not yet defined, the rule states the *principle* now and the RFC pins the
-*mechanism*.
-
-- **Deny-by-default access, computed in the query path (P1 — mechanism RFC-pending).**
-  Every read of a data source / dataset applies the caller's effective access as a
-  restriction **inside** the query — never fetch-then-filter. An empty effective-access
-  set short-circuits — no query. A store or data-source query method without a scope
-  parameter is rejected in review. The precise access primitive is RFC-owned.
-- **SQL-generation safety (P1 — Chartworks-specific, RFC must define).** Generated SQL is
-  untrusted until validated. The RFC defines the binding safety property: **read-only
-  execution** (no DDL/DML/side effects), **schema allowlisting** (a query may only touch
-  tables/columns the semantic model and the caller's grants expose), and **injection
-  guardrails** (parameterization / canonicalization, never string-concatenated identifiers
-  from model output). No phase executes generated SQL against a real data source before
-  this property is settled and implemented; validation failure is a typed error (P4), never
-  a silent skip-to-execute.
-- **Token-carried identity (P2).** Both surfaces validate the same token the same way:
-  asymmetric-only, `iss` matches, `aud` mandatory and per-instance, `exp` enforced, JWKS
-  past `jwks_max_stale` fails **closed**. Identity/access are read from the validated claim
-  into the frozen envelope — never from headers, never recomputed. Service-to-service calls
-  (rare) use a `svc:` identity model, never a bespoke shared secret.
-- **Tenant isolation (P3).** The tenant predicate is applied at the storage/index layer on
-  every read and write of Chartworks' own state, and on every query to a customer data
-  source. No unscoped query API exists.
-- **Fail loud (P4).** No degraded-on-failure without a loud signal; an upstream `403` is
-  surfaced, never swallowed; a dead filter that silently excludes everything is a bug; an
-  unvalidated query is never executed as a fallback. Every access branch increments a
-  metric and emits a structured, content-free log, surfaced only through an admin
-  diagnostic — never into a tool result or a user-facing string.
-- **One intelligence seam (P5).** No provider SDK or provider HTTP request outside
-  `internal/gateway`. Any embedding model + dimensions are pinned per index and validated
-  at boot; a model change is an explicit reindex, never silent. Every gateway call is
-  metered (tokens, cost). SQL and structured routing outputs use schema-constrained
-  generation.
-- **Domain vocabulary (P6 — list RFC-pending).** Wire/field/UI/error/log strings use domain
-  terms only. Pengui (or the eventual consumer) owns any external id map in **one** place;
-  Chartworks receives ids and never mirrors, "wires", or "repairs" them. The authoritative
-  forbidden-word list lands with the RFC, informed by the predecessor diff brief.
-- **One logic core, thin surfaces (P7).** Every capability is implemented once in the
-  core/service layer; `sdk/chartworks`, `internal/api` (HTTP), and `internal/mcpserver`
-  (MCP) are thin callers, and a capability's side effects (validation, audit, events, cache
-  invalidation) live in the core so no surface can omit them. A new capability ships on all
-  of its tier's surfaces in the same PR with a parity test (MCP included).
-- **Outputs are first-class, normalized shapes.** Routing evidence, generated SQL, result
-  previews, and chart specs are returned in normalized, provider-agnostic shapes — never a
-  bespoke per-caller format. Tools return **typed error results**, never a raised stack
-  trace, and never leak internal endpoint URLs, index names, warehouse credentials, or
-  model details into a result the model or user sees.
-- **The Store schema is budgeted.** A table or column outside the RFC's schema inventory
-  requires an RFC amendment first (guardrail against sprawl) — the same discipline that
-  keeps the predecessors' "id in seven columns across six tables" sprawl from recurring.
-
----
-
-## 7. Security — non-negotiable rules
-
-- No hardcoded secrets, anywhere — including tests. Config secrets use `env.VAR`
-  indirection and fail closed at boot. **Warehouse / data-source credentials** are secrets:
-  never logged, never echoed into an error, never returned in a result.
-- Asymmetric JWT only (RS/ES); `HS*`/`none` rejected at the parser. `aud` mandatory. Stale
-  JWKS past the max-stale ceiling fails closed. Identity/access never ride `X-*` headers.
-- Access scoping is enforced in the store / data-source query layer; handler-layer
-  filtering is not a substitute. Access is intersected inside the query, never
-  fetch-then-filter.
-- **Generated SQL is executed read-only, against allowlisted schema, with injection
-  guardrails (P1).** Until the RFC settles this property, generated SQL is not executed
-  against real data.
-- In self-issue mode, API keys are compared in constant time and never logged.
-- HTTP transport: timeouts, body limits, Origin/Content-Type and cross-origin protections
-  are set **explicitly** — never inherited from an SDK default.
-- The HTTP audience may be a distinct `aud` from the MCP audience, so a UI token cannot be
-  replayed as an agent token. No unauthenticated endpoints except `/healthz` / `/readyz`.
-- Audit records (source connection, model/query changes, access denials) are
-  **content-free** — ids + principals + decision, never data rows, never token bytes.
-  Redaction profiles apply before any gateway call.
-
----
-
-## 8. Observability — the rules
-
-- Metrics: per-access-decision counters (§6), ingest/engineering throughput and latency,
-  NLQ routing and SQL-generation latency, execution latency, cache hit rates, and the
-  standard RED metrics. Prefer Prometheus/OTel so it composes with the ecosystem's
-  telemetry.
-- Health: `/healthz` + `/readyz` (ready = JWKS fetched + Chartworks' own storage reachable;
-  data-source reachability is reported, never a boot gate). Pengui derives
-  "connected/healthy" **live** from this; it persists only the *intent* to connect.
-- A **scope-debug diagnostic** is the sanctioned way to answer "why didn't the caller see
-  data X / route to topic Y" — admin-only, read-only, never a user-facing "repair" surface
-  (the exact anti-pattern the predecessors grew).
-- OTel export is an adapter behind the telemetry seam, off by default; it is never a
-  prerequisite to observe locally.
-
----
-
-## 9. Persistence — the `Store` seam rules
-
-- All durable state goes through the `Store` interface. **V1 ships exactly one driver:
-  `postgres` (pgx/v5) (D-004).** SQLite / an embedded store is **explicitly out of scope** —
-  do not spend effort on it; the seam exists for a *future* backend, not a second V1
-  driver.
-- **Chartworks' own store is distinct from the customer data sources it queries (D-004).**
-  The `Store` seam holds Chartworks' state (semantic models, jobs, sessions, audit, etc.).
-  The **customer data warehouses** Chartworks reads to answer NLQ are a *separate* concern,
-  reached through data-source adapters (§4.4), read-only and access-scoped — never mixed
-  into the `Store` seam. The RFC pins this boundary; do not conflate the two.
-- Local development and CI run against a **Docker Postgres** (`make pg-up`); there is no
-  in-memory shortcut that bypasses the real store for integration tests.
-- A new persistence concern adds a method to the seam and is covered by the store
-  conformance suite. Migrations are forward-only; never edit a migration after it merges.
-
----
-
-## 10. The gateway seam rules (P5)
-
-- `internal/gateway` is the only package that knows provider wire formats. The Bifrost
-  driver wraps `github.com/maximhq/bifrost/core` (D-003); a `mock` driver backs every test
-  that must not call a paid API — paired with at least one recorded-fixture test against
-  the real wire format.
-- Any embedding model + dimensions are pinned per index and validated at boot; a model
-  change is an explicit reindex operation, never silent.
-- Every gateway call is metered (tokens, cost) and surfaced to telemetry.
-- Structured outputs (routing decisions, generated SQL, chart specs) use
-  JSON-schema-constrained calls; free-text JSON parsing of model output is forbidden.
-
----
-
-## 11. Testing rules
-
-- `-race` on every test run. CI fails on a race.
-- API contracts and routing / SQL-generation / chart-spec output are covered by **golden
-  tests** (fixed input → fixed output).
-- A phase that consumes another subsystem's surface, or closes a cross-subsystem seam,
-  ships an **integration test** with real drivers against the Docker Postgres — see §17.
-  The gateway `mock` driver is the one sanctioned boundary mock (pair it with a
-  recorded-fixture test against the real wire format).
-- Coverage defaults (override per phase): 80% new packages; 85% the `store` driver, the
-  `auth`/access packages, and conformance-tested subsystems; 70% CLI / tooling. **The
-  bands are a mechanical gate** (`make coverage`); a regression, or a new package with no
-  configured threshold, fails the build. A band genuinely unreachable hermetically gets a
-  documented override (class + reason) and a decision entry — never a silent lowering.
-- The **access and SQL-safety paths carry adversarial tests**: a cross-tenant probe, an
-  empty access set, a forged-header attempt, a fetch-then-filter regression guard, and —
-  once SQL execution exists — a write/DDL-injection and a schema-escape probe are standing
-  test obligations, not optional.
-- Prime parse/decode surfaces (JWT, NLQ payloads, generated-SQL validation) carry Go
-  `FuzzXxx` **fuzz targets** with a seed corpus and an asserted invariant; the corpus runs
-  as an ordinary CI test. Hot reusable artifacts carry `BenchmarkXxx` **benchmarks**
-  (`make bench` — a baseline, not a CI gate).
-
----
-
-## 12. Commit and PR conventions
-
-- **Commits:** imperative mood, scoped (`feat(nlq): …`, `fix(exec): …`, `chore: …`,
-  `docs: …`). Small and coherent. Commits are **unsigned** in this repository
-  (`commit.gpgsign=false` is set locally; do not enable signing). Author with the personal
-  GitHub identity, never a work email.
-- **Branches:** never commit feature work directly to `main`; use `feat/phase-NN-*` (or
-  `chore/*`, `docs/*`). Once past scaffolding, do not modify `main` directly — use a
-  worktree or branch.
-- **PRs:** reference the RFC section(s) (or the bootstrap / consumer-request section, until
-  the RFC lands) and the phase. State any plan deviation and update the plan in the same
-  PR. The pre-merge checklist (§14) gates the PR.
-- **Merge:** squash unless history is meaningful. CI green is mandatory.
-
----
-
-## 13. Forbidden practices
-
-- Hardcoded secrets, including in tests; logging warehouse / data-source credentials.
-- `panic` for control flow; panicking across the API or MCP boundary.
-- Copying or vendoring code/files from either Python predecessor; reading across from
-  `_ref/` into this tree; naming a predecessor by its product name (refer to "the client
-  predecessor" and "the generalistic predecessor").
-- Carrying identity/access in `X-*` headers (violates P2).
-- Fetch-then-filter access, or any store / data-source query API without a scope parameter
-  (violates P1/P3).
-- Executing generated SQL that is not read-only, schema-allowlisted, and injection-guarded
-  (violates P1 SQL-safety); executing it at all before the RFC settles that property.
-- Importing a provider SDK or building provider requests outside `internal/gateway`
-  (violates P5).
-- Symmetric or `none` JWT; accepting a token without a validated `aud`.
-- Plumbing vocabulary on the wire or in the UI/error/log surfaces (violates P6).
-- Spending effort on a SQLite/embedded store driver (out of scope — D-004).
-- Adding a CGo dependency without a decision entry reversing the CGo-free posture (D-005).
-- Free-text JSON parsing of model output (§10).
-- Silent degradation, dead filters, empty-catch (violates P4).
-- Adding a CLI command, endpoint, MCP tool, or config key without a smoke check in the same
-  PR.
-- Editing a migration after merge.
-- Bypassing the pre-commit hook with `--no-verify` outside a documented emergency.
-
----
-
-## 14. Pre-merge checklist
-
-- [ ] `make drift-audit` passes.
-- [ ] `make check-mirror` passes (`AGENTS.md` == `CLAUDE.md`).
-- [ ] `make preflight-full` passes (the full sweep — `PREFLIGHT_FULL=1`, every phase's
-      smoke; the same gate CI runs. The pre-commit hook's fast `make preflight` runs only
-      changed phases, so confirm the full sweep before merge).
-- [ ] `go test -race ./...` and `golangci-lint run` are clean.
-- [ ] All cross-references (`RFC §X.Y`, bootstrap / request-doc `§X`, `D-NNN`, `brief NN`)
-      resolve.
-- [ ] Coverage on touched packages ≥ the phase's stated target — `make coverage` passes (a
-      new package is added to the coverage config in the same PR).
-- [ ] A new CLI command / endpoint / MCP tool / config key has a smoke check in this PR.
-- [ ] If a reusable artifact changed: a concurrent-reuse test passes under `-race`.
-- [ ] If an access/auth/SQL-safety path changed: the adversarial test obligations (§11)
-      still pass.
-- [ ] If a cross-subsystem seam was opened or consumed: an integration test against the
-      Docker Postgres exists (§17).
-- [ ] New vocabulary added to `docs/glossary.md` in this PR.
-- [ ] A new architectural decision (or a departure from a brief / the bootstrap doc) is
-      filed in `docs/decisions.md`.
-
----
-
-## 15. When in doubt
-
-The RFC wins; until it exists, the bootstrap doc + `docs/decisions.md` do (and, once the
-kickoff produces one, the consumer request). If all are silent, the phase plan decides; if
-that too is silent, raise it — do not invent a decision and bury it in code. A new settled
-decision is an entry in `docs/decisions.md`; a change to a settled decision is an RFC (or
-bootstrap/request-doc) PR plus a superseding decision entry, never a silent edit.
-
----
-
-## 16. Authoring a phase plan (workflow)
-
-The canonical workflow for any contributor starting a phase. The drift-audit gate enforces
-what it can; this workflow covers what it can't.
-
-1. **Read the master plan entry.** Open `docs/plans/README.md`, find the Phase N detail
-   block. Note owning subsystem, RFC/bootstrap sections, dependencies, risks.
-2. **Read the cited RFC/bootstrap sections.**
-3. **Read the relevant briefs** per `docs/research/INDEX.md`. A phase plan that cites no
-   informing brief is a drift signal. (The phase-0 predecessor diff brief is mandatory
-   before any NLQ/topic-lifecycle phase.)
-4. **Read the glossary** for any term you're unsure about; pre-write the entry for any new
-   term you introduce.
-5. **Read the decisions log** (`docs/decisions.md`) for entries touching this subsystem.
-   Settled decisions are not re-litigated silently.
-6. **Copy the template:** `cp docs/plans/_template.md docs/plans/phase-NN-slug.md`. Fill
-   every section. "Brief findings incorporated" and "Findings I'm departing from" are
-   forcing functions — they make inheritance visible.
-7. **Author the smoke skeleton:** `cp scripts/smoke/_template.sh scripts/smoke/phase-NN.sh`.
-8. **Run `make drift-audit` and `make preflight`** before committing.
-9. **Commit only when both pass.** The PR references the RFC/bootstrap section and any
-   superseded decision.
-
----
-
-## 17. End-to-end + integration testing
-
-Per-package unit tests miss two classes of bug: **cross-package wiring gaps** (two phases
-each ship their half of a seam, neither connects them) and **cross-subsystem concurrency
-interactions**.
-
-A phase ships an integration test whenever its `Deps` name a different subsystem's shipped
-phase, or it closes a seam another phase opened, or it introduces a public interface other
-phases will build on. Integration tests use **real drivers** on the seam — a real Docker
-Postgres for the store, a real token for auth (no mocks at the boundary; the gateway `mock`
-driver is the one sanctioned exception, paired with a recorded-fixture test). They prove
-identity/scope propagation, cover ≥1 failure mode, and run under `-race`. They live
-in-package when the package *is* the wiring boundary, otherwise in `test/integration/`.
-
-At wave boundaries a read-only **checkpoint audit** reviews every shipped phase for wiring
-gaps, RFC drift, weak tests, and hygiene regressions, and lands its punch list as one
-`chore(checkpoint)` PR. When an integration test surfaces a bug, fix it in the same PR —
-even when the root cause is in an earlier phase. A **live-verification gate** (real provider
-models via `.env`, never CI-required — D-010) is a standing wave-end check.
-
----
-
-## 18. Mirroring
-
-`AGENTS.md` and `CLAUDE.md` are kept **verbatim identical**. After any edit:
-
-```bash
-diff -q AGENTS.md CLAUDE.md   # expected: no output
-```
-
-CI enforces this; the `mirror` job fails the build if they differ.
+# Chartworks — Contributor and Agent Normatives
+
+Binding for human and automated contributors. This file and CLAUDE.md are byte-identical. The current task is a doc-driven Go implementation; a written plan or green planning check is not a shipped runtime capability.
+
+## 1. Product
+
+Chartworks is Pengui's structured analytics and governed publishing service: sources/uploads, profiles, reviewed semantic topics, NLQ/BYO query execution, reusable approved blocks, reports/dashboards, scheduled runs, retained results and portable rendering. API-first means no required standalone authoring application; a read viewer and true static rendering are in scope.
+
+Pengui alone owns authentication, the issuer, identity, service accounts and access-policy decisions. Chartworks verifies Pengui JWTs and enforces their signed action/resource scopes. Do not recreate users, memberships, roles, grants, API keys, login/OAuth, token issuance, bootstrap admin or embed credentials. Warehouse connector secrets are a separate source concern, not permission to duplicate Pengui integration credentials.
+
+Harbor/Pengui MCP Apps support is established end to end by the owner. Build/test Chartworks tools/resources/viewer; do not add host qualification, framework re-evaluation or unrelated protocol-upgrade gates.
+
+## 2. Authority and orientation
+
+Read, in order: RFC-001 (shared architecture/security), RFC-002 (reporting), the owning active phase plan and COMMON.md, the master plan/registry, this file, the consumer request, informing research. Read the Pengui authority contract for any protected operation. Decisions are append-only across docs/decisions.md and docs/decisions/*.md; an accepted superseding entry requires corresponding current RFC/plan updates.
+
+Current entry point: docs/plans/README.md. There are 34 planned workstreams; IDs are not execution order. Phases 21–23 provide early thin shells; domain phases add concrete operations. Phase 25 is the final release gate. Phase-registry status and the coverage map are bookkeeping, never runtime evidence.
+
+Anything under docs/archive is historical reference, not active instruction. Prior source research remains evidence at its stated date/depth; the latest owner decisions supersede recommendations that assigned authentication or host qualification to Chartworks.
+
+## 3. Confidential source hygiene
+
+Mine source behavior only through neutral research/contract descriptions. No client/product identifiers, source repository URLs, source code/prompts, confidential schemas/data or credentials are copied into new implementation/docs/tests. Authorized private source checkouts and mappings remain outside the repository. Existing historical references stay historical. Newly committed examples and goldens are synthetic.
+
+Use ordinary domain names: source, dataset, topic, block, report, dashboard, run, artifact, rendition, schedule, parameter. Protocol-standard field names and technical evidence metadata are legitimate; do not distort MCP/OpenAPI or artifact contracts to satisfy an overbroad vocabulary grep. A lexical naming check is hygiene, not a security control.
+
+## 4. Structural invariants
+
+P1: deny when signed authority or data-safety proof is insufficient; tenant/resource restrictions apply before data access. P2: the verified envelope is the identity source, never request headers/body fields. P3: tenant boundaries exist in storage/source interfaces, not optional post-filtering. P4: typed observable failure, no silent authority widening. P5: one model gateway. P6: clear domain vocabulary. P7: one core per capability with thin surfaces.
+
+Read execution accepts only a nonzero validator-issued plan bound to source/context/semantics/parameters. SQL parsing or native planning alone is not a safety proof. Use read-only source credentials/session controls plus positive dependency/function/statement enforcement. Managed engineering writes use a separate interface/process and registered owned destinations, never a read/write flag.
+
+Published definitions are immutable. Publication, certification, current health and current signed authority are different facts. An approved block refresh does not interpret questions, generate/correct SQL or select charts. Optional narratives operate on bounded retained evidence only. Existing artifact reads/renders do not execute warehouse/model work. Private previews remain private after later publication.
+
+## 5. Identity and durable authority
+
+Implement only the decoder/enforcer in docs/contracts/pengui-authority.md. Require configured issuer/audiences, asymmetric algorithm/key binding, expiration/temporal and claim-size checks. JWKS addresses are trusted configuration, not token-selected URLs. No admin/creator/agent name expands permissions. Do not invent alternative issuer profiles.
+
+A JWT is a bounded authority snapshot, not instantaneous offline revocation. Pengui owns renewal/revocation decisions. New requests validate current supplied bearers; long-lived jobs/schedules obtain fresh Pengui authority using an authorized opaque execution binding through the existing platform broker adapter. Never persist a user's token for later replay or sign a replacement locally. Do not invent a broker endpoint when its actual contract must be read and wired.
+
+The actual source execution context defines its data partition. A client label cannot narrow a broad result. Reuse and reading require signed target/context reach and persisted privacy. No tenant-only cache or browser-side security filter.
+
+## 6. Architecture and Go conventions
+
+Use the existing Go toolchain/module baseline, gofmt/goimports, context-first cancellable I/O, wrapped typed errors and log/slog. Shared compiled dependencies are immutable and race-safe; request state lives in the call context. Bound goroutines/channels, join them on shutdown and avoid mutable package globals except explicit registries/metrics.
+
+Use seams with first real consumers; no speculative interface hierarchy. Keep exec/source dependencies acyclic by defining read interfaces/validated plans in exec and injecting concrete source drivers. Thin HTTP/MCP/SDK/CLI callers must not repeat domain logic or bypass the verified envelope.
+
+The container is the reference deployment unit. CGo-free core builds remain preferred, but accepted per-dependency exceptions are explicit rather than contradicted by old unconditional claims. The pipeline/render subprocesses are bounded, pinned and supervised; no generic workflow engine or extra message broker is required.
+
+## 7. Secrets and logging
+
+Never log tokens, signing/warehouse/provider credentials, raw prompts, SQL or result rows by default. Domain SQL/evidence storage is separately protected and retained. Source list/read shapes structurally exclude secret bytes. Secret rotation invalidates relevant pools/contexts. No shell interpolation, path traversal or plaintext long-lived credentials in generated pipeline/render artifacts.
+
+Audit contains actor/resource/operation IDs, reason/outcome and version/effect evidence. Metrics use bounded labels; high-cardinality identity belongs in protected traces/audit. Unknown costs/outcomes stay unknown, not fabricated zero/success.
+
+## 8. Persistence and concurrency
+
+PostgreSQL/pgx with forward-only migrations and tenant-composite identity/reference constraints. Add domain tables with their consumers. No API-key/grant/role/membership/service-identity/issuer-key tables. Domain operational settings do not grant identity authority.
+
+CAS and transaction boundaries protect draft edits, publication pointers, operation keys and accepted manifests. One leased queue/occurrence engine supplies attempts/fences/retries. Local atomic commit does not guarantee external exactly-once execution or cross-warehouse rollback; persist staged effects, reconcile and compensate explicitly.
+
+## 9. Intelligence and source continuity
+
+Every model/embedding/rerank/narrative call uses the gateway, independently configured per role. Structured output is validated, budgets reserved/enforced before and during work, and retries counted. Frozen operations remain useful with irrelevant model services unavailable.
+
+Keep compact semantic contracts, one tokenizer budget, pinned metrics/hard constraints, English/Spanish fixtures, confirmed same-source multi-topic relationships, templates/refinement, rules/replay/shadow, feedback/examples and bounded optimization. Do not defer actual source features under a new internal-analyst label. L2 reviewed engineering stays included; L3/new internal analyst are later extensions.
+
+## 10. Scheduling and rendering
+
+Only actual cron/interval/manual behavior and functional targets are advertised. Discard event/condition/condition-check/custom-code stubs; bounded maintenance remains internal. Preserve accepted due time/window/revisions through retries. Catalog delivery is not email; optional notification effects use existing Pengui integration receipts.
+
+MCP uses the established Apps bridge. Iframe auth uses a Pengui/client BFF forwarding scoped tokens server-side. Chartworks creates no embed session/bootstrap code. Static chart SSR must render actual content without client chart JavaScript. Renderer input is sealed typed data/spec, not arbitrary URLs or scripts; no network/source/model credentials, bounded resource usage and sanitized output.
+
+## 11. Testing
+
+Follow docs/plans/COMMON.md. Each phase owns TestPhaseNN/ACxx acceptance subtests with real assertions. Missing/skipped tests are not passing implementation. Use real PostgreSQL and applicable source/renderer boundaries; recorded model fixtures are not live provider measurements. Fuzz parse surfaces and require cross-tenant/same-tenant-different-context/concurrent-reuse negatives.
+
+Coverage defaults: 85% store/auth/identity/access/exec/vindex/conformance, 80% other internal code, 70% CLI/evaluation. Benchmark environment/raw values and distinguish source/model latency from service overhead. Do not claim a screenshot, fixture inventory or a lexical scan proves security, performance or parity.
+
+## 12. Build and preflight
+
+make planning-check validates documents, dependency graph, references and mapped criteria. make preflight-full runs planning plus implemented-phase runtime acceptance; explicitly allowed planned SKIPs are reported as unimplemented. make release-check requires all actual phase tests, no skips and reviewed shipped status. Never use a planned status to evade tests for new implementation.
+
+Go race tests require the race-capable build environment, even if the shipping core is built with CGO_ENABLED=0. Build tags/dependency exceptions must be documented consistently in CI and the reference image. The documentation phase does not claim a Go build ran when there is no Go source.
+
+## 13. API/SDK changes
+
+Every new operation registers schema, scope/resource loader, errors and audit/side-effect classification. Generate parity coverage from actual registration. Domain phases update clients and examples with their concrete operations. No success-returning placeholder capabilities. Explicit cancellation of durable work differs from disconnecting an HTTP client.
+
+## 14. Documentation coherence
+
+An ownership/non-goal change updates current RFCs, affected phases, the master/registry, consumer request, glossary and both mirrored rule files in the same change. Preserve historical decisions; add superseding entries with unique IDs across the log and annexes. Do not leave contradictory active instructions and ask the next agent to reconcile them.
+
+## 15. Review and delivery
+
+Work on a branch and open a scoped PR. No force push/main merge/tag/deployment without explicit authorization. State exactly what was checked, which tests were run and which evidence is still missing. A documentation change may be complete while the runtime remains unimplemented. Do not describe planned checks as passing tests.
+
+## 16. Authoring a phase plan
+
+Read the master, RFCs, informing briefs, glossary and decision history. Fill docs/plans/_template.md with owning packages, hard dependencies, concrete tasks/config/persistence, non-goals and individually numbered observable acceptance criteria. Pair scripts/smoke/phase-NN.sh and registry/coverage updates. Run the planning checker and applicable preflight. Use COMMON.md for repeated mechanics instead of copying pages of generic guidance into each phase.
+
+A new required capability needs an owner, actual consumer, migration disposition and tests; do not solve it only with another research paragraph. Any reasonable implementation deviation records preserved/equivalent behavior and evidence in the phase before closure.
+
+## 17. Integration and migration
+
+Runtime/service data is accessed through public seams, never another service's private DB. Pengui/Harbor retain references to authoritative Chartworks artifacts, not a sole divergent copy. Import/export uses neutral mappings, private source-controlled comparisons and explicit lifecycle/authority revalidation. Cutover deduplicates scheduled occurrences and retains an honest rollback path without claiming to undo irreversible external effects.
+
+## 18. Mirror and final check
+
+AGENTS.md and CLAUDE.md must be byte-identical. Confirm the active plan DAG, all feature/gate references, named test coverage, supported source/renderer matrix and secret/name hygiene before approval. Archive content never overrides these rules. Full migration/release requires phase 34 then phase 25; the first useful slice is not complete parity.
