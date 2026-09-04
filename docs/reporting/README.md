@@ -1,28 +1,9 @@
-# Reporting foundation — development entry point
+# Governed reporting — implementation entry point
 
-Status: proposed design package, 2026-09-04. No runtime implementation or full migration certification is claimed.
+The owner merged the research in PR #2 and clarified the boundary: Pengui alone owns authentication/authorization policy; Harbor/Pengui MCP Apps compatibility is established; functional scheduling is retained and source stubs are discarded.
 
-Read in this order:
+Start at [the active phase plan](../plans/README.md), then [RFC-001](../../RFC-001-Chartworks.md), [RFC-002](../../RFC-002-Governed-Reporting.md) and [the signed-authority contract](../contracts/pengui-authority.md). [Contracts](contracts.md), [delivery](delivery.md), [implementation](implementation-plan.md) and [review corrections](planning-review.md) now describe executable work, not a second proposed design layer.
 
-1. [RFC-002](../../RFC-002-Governed-Reporting.md): product boundaries and targeted amendments to RFC-001.
-2. [Evidence and parity audit](../research/14-reporting-parity-audit.md): what was observed, what is source debt, and what remains unverified.
-3. [Domain and API contracts](contracts.md): revision, parameter, output, security, execution, and scheduling contracts.
-4. [Delivery](delivery.md): MCP Apps, iframe authentication, genuine SSR, and host compatibility gates.
-5. [Implementation and acceptance](implementation-plan.md): vertical slices, phase crosswalk, tests, migration, and coding-agent handoff.
-6. [Planning review](planning-review.md): findings against the accessible planning baseline and unresolved evidence.
+[Brief 14](../research/14-reporting-parity-audit.md) preserves source evidence levels. Its 63 feature IDs and the earlier 40 gate IDs are assigned in the phase coverage map. CODE means inspected source, TEST means inspected test definitions, not executed tests. Historical proposals and the original detailed phase notes remain under `docs/archive/`; they are not current instructions.
 
-This package supplements the existing semantic/NLQ/engineering plans. It is not permission to drop their features. Acceptance of RFC-002 must be accompanied by the explicit reconciliation checklist in the implementation plan, so an implementation agent cannot accidentally follow the old no-rendering scope.
-
-## Evidence discipline
-
-`CODE` means the listed source or selected source range was inspected. `DOC` means behavior was described in a source document. `TEST` means a test definition was inspected, not executed. `INVENTORY` means the file/surface exists but its behavior was not fully audited. `STUB` means the inspected implementation is explicitly incomplete. `NEW` is a proposed product capability.
-
-No label means production validation. This review did not clone or run the source systems, perform a live warehouse comparison, or exercise the deployed MCP host. Those are release gates, not hidden assumptions.
-
-## Repository hygiene
-
-The evidence identifiers intentionally avoid source repository URLs, product/client identifiers, copied code, prompts, schemas, and data. Authorized reviewers resolve the primary and secondary source checkouts privately. Test fixtures committed here must be newly authored synthetic examples.
-
-## Definition of the product
-
-Explore when the question is new. Govern the answer when it becomes reusable. Deliver the same retained result through the API, an agent, or an embedded view without silently changing its meaning or its audience.
+All phases are initially planned. The first usable slice is not a complete migration; phase 34 closes functional parity and phase 25 closes release readiness.
