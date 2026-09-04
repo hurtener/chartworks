@@ -1,29 +1,33 @@
-# Re-evaluation after owner feedback
+# Re-evaluation and completed planning corrections
 
-Date: 2026-09-04. PR #2 is merged. This review corrects the earlier proposal and makes its scope actionable in the active phase documents.
+Reviewed 2026-09-04 after merged PR #2 and the owner's subsequent corrections. This records changes to the implementation baseline, not completed Go features.
 
-## Corrections to my earlier proposal
+## Ownership corrections
 
-The MCP Apps compatibility qualification was unnecessary: the owner confirms Harbor/Pengui support end to end. Remove the gate and the old framework re-evaluation checkpoint. Test new Chartworks resources/tools/viewer, not the established hosts. The earlier release-date/stateless-core statement was not needed for the design and is not carried as an implementation requirement.
+Pengui exclusively owns identity/access policy and token issuance. Removed the local issuer/API-key/bootstrap/roles/grants/service-account/embed-credential design from active plans, RFCs and contributor rules. Chartworks validates supplied JWTs and applies signed scopes while retaining SQL safety, business evidence/lifecycle and tenant/data-context constraints. Expiry-bounded validation is not instantaneous offline revocation.
 
-Authentication correction is wider than deleting a mint endpoint. Local grant/role resolution, service-account provisioning, embed grants/bootstrap codes and signed bundle handles would all have introduced another authority mechanism. They are removed. Pengui signs identity/action/resource authority; Chartworks verifies/enforces it. It still validates SQL, business state, dependencies, budgets and actual execution-context restrictions. Those checks do not decide user membership or sharing.
+Harbor/Pengui MCP Apps is an established dependency. Removed the host qualification/framework-selection/protocol migration detour. New Chartworks resource/tool/viewer behavior still needs ordinary functional tests.
 
-A valid signed JWT cannot support a claim of instantaneous offline revocation. The design now states token-lifetime-bounded freshness, uses new tokens on new requests and fresh Pengui delegation for queued work. No local revocation database or policy-epoch subsystem is invented.
+All production learned-model calls now use the embedded Bifrost Go SDK and remote providers. The single gateway contract covers completions, structured output, embeddings, rerank, narratives and model-assisted optimization. No local model/weight download/server/cross-encoder or alternate direct-compatible production client. Local deterministic tokenization, SQL parsing, rules, pgvector and rendering remain allowed.
 
-The rendering exclusion, deferred source reporting features and late all-at-once surface phase conflicted with the desired offering. Active RFCs/phase plans are now reconciled, transport shells land early, and every domain phase ships its own concrete operations. Historical detailed notes are preserved under `docs/archive/`, not left as competing specifications.
+## Product and correctness corrections
 
-## Functional scope retained and made explicit
+Frozen refresh cannot regenerate SQL, reroute a question or select charts. Existing artifact reads/renders make zero model/source calls and remain available during unrelated provider failures. Certification, publication, health and data authority are independent. Private previews, lossless numeric data, exact occurrence periods/revisions, bounded partial results and actual source context partitions are required across surfaces.
 
-Blocks/revisions/validation/certification; multiple outputs/parameters/narratives; reports/hybrid widgets/dashboards; private previews and retained artifacts; typed scopes/SQL-read separation; cron/interval/manual runs and real saved-query/block/report targets; current delegated service authority; source adapters/uploads; topic/context/rules/refinement/replay/learning; onboarding; MCP viewer; static rendering/BFF iframe; and migration/cutover all have owning phases and named acceptance IDs.
+Preserve blocks/revisions/parameters/output subsets/narratives, reports/hybrid widgets/dashboards, retained results and functional schedules. Retain source semantic/NLQ/templates/refinement/rules/replay/feedback/learning and guided setup behavior through explicit phase ownership. Event/condition/condition-check/custom-code stubs are removed rather than counted as delivered features. Catalog recipient metadata is not email evidence.
 
-Event/condition/condition-check and unrestricted custom-job stubs are intentionally discarded, not left as public enums returning success. Bounded cleanup remains implemented maintenance. Recipient metadata stays catalog/notification intent rather than an email delivery claim.
+Separate local transactional publication from external side effects; use fenced attempts/reconciliation/compensation without universal exactly-once or distributed rollback claims. Managed writes require actual ownership/credential proof, not a schema-name prefix.
 
-## Other design problems corrected
+## New-pass findings
 
-Native planning is not itself a safety proof. Read interfaces and validation must avoid a Go import cycle and reject zero/unbound executable plans. Topic publication must not expose new meaning before matching facets are ready. Sampling is not proof that no full scan occurred. Model outages must not break healthy frozen/artifact reads. Exact values survive rendering/export; hidden partial results cannot look complete. Logical idempotency and local transactions do not imply universal exactly-once remote execution or atomic cross-engine revert.
+The prior rewritten plans were only in an unattached tree; recovered them onto the branch. Mirrored contributor rules, root kickoff/request/README/glossary, active counts, smoke wrappers and missing checker/acceptance tooling are now part of the change. The old empty fast-preflight ownership map is replaced with conservative cumulative checking. Shipping CGo-free and race-test CGo settings are distinguished.
 
-L2 reviewed engineering remains in scope. L3 and a new internal analyst are explicit extensions rather than blockers. Existing same-source multi-topic/rule replay/learning features are not swept into that deferral.
+Phase31 no longer waits for scheduling30. Phase06 now delivers the actual Pengui fresh-authority adapter and first durable consumer, avoiding an undeclared late dependency for early profiling/semantic/report jobs;30 only extends reporting targets. The exact new execution-binding API is not claimed deployed: read/reuse the actual platform contract or make a Pengui-owned extension in06.
+
+Do not blindly copy sibling inference adapters. Validate embedding INPUT/response counts, unique/full indices, dimensions and finite values; full embedding identity includes provider/model revision and preprocessing, not dimensions alone. Rerank requires complete unique valid indices/finite scores; missing results cannot become zero scores. Optional failure preserves original authorized order visibly or fails. Cache and batching preserve caller/context/input association. SDK and domain retries share a budget.
 
 ## Verification boundary
 
-This change is planning/documentation plus planning-gate tooling, not production implementation. The source review in brief 14 remains selected-source evidence, not a claim that every file or deployed warehouse was tested. The new matrix makes missing runtime evidence visible and fail-closed at release instead of repeating a claim of complete parity.
+The 34 active phases assign224 acceptance criteria, all63 source-feature rows and41 review gates. Those mappings are checked mechanically but not proof of business correctness. The strict runner requires actual named Go child-test results, rejects missing/skipped/empty tests and forbids development skips at release. Tooling has21 regression tests; these are tests of the checker/runner, not the future Chartworks service.
+
+No live warehouse/model call, source-suite execution, runtime benchmark, browser report or actual migration is claimed in this documentation pass. Applicable runtime evidence belongs to the phase; missing engine/feature support prevents that cohort's cutover. Archived material remains historical evidence, not an alternative authority chain.

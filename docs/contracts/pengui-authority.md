@@ -1,55 +1,47 @@
-# Pengui authority contract for Chartworks
+# Pengui authority consumed by Chartworks
 
-Status: provider integration contract, 2026-09-04. Pengui owns authentication and authorization decisions. This document defines what the capability consumes; it does not claim all new scopes are already registered in Pengui.
+Status: integration implementation contract, 2026-09-04. Pengui alone authenticates, decides permissions and issues tokens. Newly described provider scopes/execution bindings are integration deliverables, not claims that current Pengui already exposes every proposed field/API.
 
-## One boundary
+## Request verification
 
-Pengui authenticates a person/service and resolves permissions. It issues a short-lived asymmetric JWT for Chartworks. Chartworks verifies the token and enforces its signed authority. There are no local identities, roles, memberships, grants, token issuance, API-key exchange, OAuth endpoints or embed credential services.
+Pengui-issued Authorization bearer -> configured asymmetric/JWKS verifier -> immutable envelope -> signed action/resource enforcement -> domain service. Verify iss, intended aud, exp and supplied nbf/iat plus configured temporal/size limits. Require tenant/user/session/scopes under the actual minter contract; sub agrees with user when present. Trust configured key locations/algorithm-key bindings, not arbitrary token-selected URLs.
 
-Required verified identity fields are `iss`, intended `aud`, `exp`, `tenant`, `user`, `session`, and `scopes` (string array); `sub` agrees with `user` when present. Validate `nbf`/`iat` when supplied and a configured maximum token lifetime. The service identity and occurrence-specific session come from Pengui too, never a report body's actor hint. Normal issuer configuration supplies trusted JWKS and algorithm allowlists; token headers cannot select arbitrary key URLs.
+No local issuer/signing key, login/OAuth, users/groups/roles/grants, service accounts, passwords/API keys, bootstrap admin or embed credential system. Metadata can establish reference ownership and business validity, not create access. A bare admin string, actor prefix or creator label grants nothing.
 
-## Scope contract
+## Signed operation and addressed-resource scopes
 
-Use Pengui's existing opaque provider-scope minting capability. Chartworks operation scopes remain familiar dotted names (`topic.publish`, `query.execute`, `reporting.read`, etc.). To avoid a local grant resolver, bounded resource restrictions are also signed scope strings:
+Use Pengui's opaque provider-scope minting seam. Operations such as reporting.execute or reporting.publish are separate from bounded addressed reach. Proposed single representation: `cw.<kind>.<permission>:<id>`. Phases03/04 register and test it with Pengui; where a supported existing serializer already supplies equivalent authority, adopt that single contract here rather than maintain parallel encodings.
 
-```
-cw.<kind>.<permission>:<id>
-```
+Kinds: source, dataset, topic, block, report, dashboard, run, execution_context, execution_binding, tenant. Permissions: read, query, write, execute, preview, publish, certify, export, use, erase. IDs are bounded canonical identifiers, not labels. Reject ambiguous delimiter/encoding forms. Only an explicit whole-ID `*` signed by Pengui permits tenant-wide reach; no prefix/glob/substring matching. Malformed/duplicate/excessive authority fails, never truncates.
 
-Kinds: `source`, `dataset`, `topic`, `block`, `report`, `dashboard`, `run`, `execution_context`, `execution_binding`, `tenant`.
-Permissions: `read`, `query`, `write`, `execute`, `preview`, `publish`, `certify`, `export`, `use`, `erase`.
-IDs are canonical service IDs, not display names; reject reserved delimiters or ambiguous encodings. A literal `*` may replace the whole ID only when Pengui explicitly grants that permission tenant-wide. No prefix/glob/substring matching. Tenant isolation still applies. A bare `admin` or unknown scope grants nothing. Duplicate/malformed/oversized scope sets fail rather than truncate. Unknown well-formed operation scopes may be ignored with bounded diagnostics, never converted into a known permission.
+Each operation registration specifies the action and target/parent/dependency reach it requires. Report execution checks reporting.execute, target execution and actual resolved executable dependencies/source contexts. Retained-result reading checks reporting.read, result/report read and the artifact's actual context partition, not query-execute authority. Exact run reach narrows to that result; report reach covers only eligible publications. Private previews additionally require reporting.preview and target preview reach; creator metadata never bypasses it.
 
-A route registration defines the operation scope and required resource permission. Report-run creation, for example, requires `reporting.execute`, `cw.report.execute:<report>`, and query/execution reach for the resolved block/topic/dataset/source/context dependencies. Reading its retained result requires `reporting.read`, target read reach and `cw.execution_context.read:<recorded-context>`; it does not need query-execute authority. An exact run read scope can restrict the caller to one result; a report read scope may permit that report's eligible published results. Private previews additionally require `reporting.preview` and exact target preview reach. Creator identity alone is not an access bypass.
+Creation checks signed write reach on its parent: blocks under topics, datasets under sources, and sources/reports/dashboards under the tenant. Publishing/certifying/exporting has separate operation and addressed-resource checks. Immutable revisions, evidence/health/reference/SQL-safety checks still apply as domain validity, not independently invented identity policy.
 
-Creating an object checks signed write reach on its declared parent boundary: block under topic, dataset under source, source/report/dashboard under tenant. Operation scope still distinguishes the action, so parent reach alone does not permit every mutation. Publishing/certifying/exporting require their own operation and addressed-resource permission. Lifecycle, dependency and business-validation gates apply in addition; they do not create authority.
+## Actual source context
 
-The chosen resource-scope encoding must be registered/documented in Pengui as part of phase 03/04's first consumer integration. It uses the ordinary signed scopes claim and does not require a second auth mechanism. If an existing Pengui resource-scope serializer is used instead, change this one contract and its decoder/fixtures together; do not keep parallel encodings.
+The registered context fixes credentials/warehouse role/secure-view or RLS behavior and semantic binding. Selecting it requires signed use authority. Its actual version defines the result data partition. Caller labels cannot narrow broad output after the fact; changes in exposure invalidate context equivalence and result reuse.
 
-## Execution context and data partitions
+Reading/reusing retained values needs Pengui entitlement to the target and actual partition plus persisted preview privacy. Do not fetch broad data and filter for security afterward. No tenant-only shared cache or local team-sharing logic.
 
-A source's registered execution context fixes its credentials/warehouse role or secure-view/RLS behavior and semantic source binding. A query selects it only within signed `use` reach. Context identity and effective version are recorded with the result. The service derives the actual partition from the context used; a client cannot label a broad result as a narrow partition.
+## Durable work: phase06 owns the first real adapter
 
-Artifact reuse/read requires Pengui's signed entitlement to that actual context/partition and target. This is direct enforcement, not Chartworks deciding which teams share data. No fetch-wide-then-filter fallback. A changed context that would expose broader data is a new version/partition, not an unnoticed reuse of the old identity. Resource/presentation metadata cannot narrow an already broad result retroactively.
+Admission validates target/dependency and execution-binding use reach. Store the immutable accepted manifest, opaque Pengui-authorized binding and attribution, not token bytes. The binding cannot select a stronger identity than the signed request permits.
 
-## Queued and scheduled work
+`ExecutionAuthorityProvider` is a thin injected client that obtains fresh Pengui JWTs at dispatch/retry/checkpoints and validates them through the same verifier. It is not a token issuer. Only server-accepted binding/operation/target/audience are sent; model/body hints cannot ask for broader scopes. Connector credentials are secret references, not embedded in job records.
 
-The caller requests work with a valid JWT. An operation that may outlive it stores an opaque `execution_binding_ref` issued/authorized by Pengui, not the bearer itself. The caller needs `cw.execution_binding.use:<ref>` and all relevant operation/target authority at admission. Binding and attribution are immutable for the accepted occurrence.
+**Concrete ownership:** phases03/04 wire actual claim/scope serialization; **phase06 implements the actual platform adapter and first bounded durable consumer**; phase30 reuses it for reporting targets. This corrects earlier phase-30-only wording (D-055). The source review did not establish this exact binding API as deployed. The phase06 implementation reads the actual Pengui broker/minter contract, reuses a supported operation or implements the required Pengui-owned extension, records exact schema/version/fixtures, then proves its real consumer. No guessed endpoint, parallel broker/auth service or local signing is acceptable.
 
-An `ExecutionAuthorityProvider` is a thin client of Pengui's existing authority broker, not an issuer. At execution/retry it requests authority for `(binding_ref, operation_id, target, intended audience)`, receives a Pengui-signed JWT, verifies it with the same verifier and checks exact target/dependency scope. Requests use the configured platform connection credentials; secret bytes are never in the operation record. Scope requested from Pengui cannot be taken from arbitrary model/body fields.
+Missing/refused renewal records blocked work, not ambient execution. New authority does not alter accepted revisions, parameters, occurrence window or attribution. A bounded interactive operation can finish under its valid supplied token; durable acceptance cannot rely on its token surviving indefinitely. Explicit authorized cancellation differs from client disconnect. Retained reads do not wait for a broker, warehouse or inference provider.
 
-The Pengui adapter's exact endpoint/request schema is wired from the existing broker contract in phase 30; absence/mismatch fails unattended execution explicitly. Do not implement a guessed compatibility endpoint or local signing fallback. Expired authority at a privileged checkpoint requires refresh/revalidation before publication/delivery. Token renewal changes authority, not the accepted revision/period manifest.
+## Freshness and browser delivery
 
-For direct short interactive operations no binding is needed if all privileged work completes within the valid token and configured budget. Accepted durable work must not rely on that coincidence. A caller disconnect does not automatically cancel a durable operation; cancellation is a separate authorized action.
+Offline signature validation cannot observe permissions changed after token issuance. Pengui controls lifetime/renewal/revocation. Chartworks enforces expiry plus bounded configured skew, validates each new supplied token and obtains fresh authority for queued attempts. No immediate offline-revocation promise or local revocation/membership database.
 
-## Freshness and revocation
+Apps use the established host bridge; UI resources/tool arguments contain no shared token. Iframe uses a Pengui/client BFF that authenticates and forwards scoped Pengui tokens server-side. Chartworks returns authorized HTML/SVG/data and issues no embed session/bootstrap code/signed capability URL. Other API consumers also obtain credentials from Pengui.
 
-Pengui controls new issuance/renewal. Without online introspection, an already-valid JWT remains usable until its enforced expiry (plus configured bounded skew). Do not promise immediate revocation or implement local revocation/role tables. Each new API/MCP/render request validates its supplied token. A queued attempt always obtains fresh authority; an unavailable/denying broker produces no new output under stale authority.
+Bifrost provider credentials are separate remote-inference secrets: never accepted as Chartworks authority, copied into reports or sent to a browser. All learned-model calls use the SDK gateway; no local fallback bypasses permissions/budgets.
 
-## Browser and Apps delivery
+## Acceptance
 
-MCP Apps use the established Harbor/Pengui bridge. No platform bearer is inserted in UI resources or tool arguments. Iframes use an authenticated Pengui/client BFF route that forwards a scoped Pengui token server-side to Chartworks. Chartworks returns authorized HTML/SVG/data; it does not create an embed session, one-time bootstrap credential or signed URL. Other API clients obtain their credentials from Pengui too.
-
-## Required negatives
-
-Wrong issuer/audience/algorithm/key, invalid temporal or required identity claims, ambiguous scope encoding, unsigned actor/tenant overrides, missing resource reach, excessive claims, service-binding escalation, unauthorized partitions and expired tokens are rejected. These are tests of Chartworks' enforcement, not a reimplementation of Pengui login or a new host-compatibility certification.
+Reject wrong issuer/audience/algorithm/key, malformed temporal/identity/scope claims, unsigned overrides, missing reach, stronger binding selection, unauthorized partitions and expired tokens. Phase06 proves the actual adapter/consumer and zero protected work on denial; phase30 adds reporting-specific target/window checks. These are Chartworks enforcement/integration tests, not a reimplementation of Pengui login or established Apps support.

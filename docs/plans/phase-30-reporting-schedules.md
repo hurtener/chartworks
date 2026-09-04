@@ -4,47 +4,47 @@ Status: planned. Owner: internal/jobs, internal/reporting. Hard dependencies: 06
 
 ## Authority and design
 
-RFC-002 §7, `docs/contracts/pengui-authority.md`, D-048/D-051 and [COMMON.md](COMMON.md) apply. Scheduling is domain work in Chartworks; identity and permission issuance remain Pengui's. This phase wires the first real asynchronous authority consumer to Pengui's existing broker contract.
+RFC-002 §7, the Pengui authority contract, D-048/D-051/D-055 and [COMMON.md](COMMON.md) apply. Scheduling domain behavior belongs to Chartworks; identity and permissions remain Pengui-owned. Reuse the real shared authority adapter and queue already delivered in phase06, not another reporting auth client.
 
 ## Brief findings incorporated
 
-Briefs 02, 14; source coverage Q01–Q11. Preserve all real schedule target and run/catalog behavior, but discard event/condition/condition-check/custom-code stubs.
+Briefs 02 and 14, coverage Q01–Q11: preserve real target/run/catalog behavior and discard event/condition/condition-check/custom-code stubs.
 
 ## Findings I'm departing from
 
-No local service accounts, permission expansion by selecting a stronger account, persisted end-user bearer, fresh local JWT or guessed broker API. Recipient metadata is not email-sent evidence. Idempotency is logical, not universal exactly-once remote execution.
+No local service accounts, stronger-account selection, retained user JWT, local re-signing or guessed platform endpoint. Catalog recipients are not email-sent evidence. Phase30 is no longer the first real consumer of the authority provider: early profiling/semantic jobs require that in06.
 
 ## Scope and implementation tasks
 
-1. Implement real targets for reviewed saved SQL, dynamic saved questions, direct certified block/output selection and published reports using the existing queue.
-2. Wire a thin ExecutionAuthorityProvider to Pengui's existing broker, binding authorization at admission and validating fresh JWTs at each occurrence/retry/checkpoint.
-3. Implement test/pause/resume/update/retire, exact recurrence/window/revision policies, bounded budgets and catalog delivery with optional Pengui notification intent.
+1. Implement four reporting targets: reviewed saved SQL, explicitly dynamic saved questions, certified pinned block/output selection and published reports. Existing pipeline/maintenance targets share the same occurrence engine.
+2. Extend the phase06 provider's target-binding fixtures for these reporting resources; enforce admission reach and fresh authority at occurrence/retry/checkpoints through the ordinary verifier.
+3. Implement test/pause/resume/update/retire/history, recurrence/timezone/window/revision resolution, bounded budgets, catalog delivery and optional Pengui notification intents/receipts.
 
-The owning implementation first reads the actual Pengui broker request/response contract, records it in the consumer handoff and supplies an adapter fixture plus actual integration consumer. No invented endpoint may be treated as existing. Admission needs signed use reach for the opaque execution binding and the target/dependencies. Each attempt obtains a fresh Pengui JWT and passes it through the ordinary verifier/enforcer. Missing/denied renewal produces a blocked outcome; it never falls back to ambient credentials. This port also closes long-lived semantic/profile/report operations that use phase 06.
+A schedule cannot choose a stronger execution binding than the creator's signed use/target/dependency permissions. Each attempt validates renewed Pengui authority and business eligibility. Missing or refused renewal records blocked state; it does not use ambient credentials. The new token changes authority, not the accepted occurrence's revision/period. No arbitrary request field asks the broker for broader scopes.
 
 ## Non-goals
 
-No new authentication service, mail delivery platform, generic event processor or arbitrary scheduled code.
+No new auth broker, mail platform, general event processor or arbitrary scheduled code. Established Apps/viewer delivery is independent of this phase; scheduled runs later appear in the same result catalog.
 
 ## Config and persistence
 
-Scheduler default no overlap/no unbounded catch-up, retry ceiling/backoff, timezone database version, max elapsed/model/warehouse attempts, Pengui broker connection reference and optional notification integration. Persist exact due instant, half-open window, selected revision manifest, target, binding reference and delivery intent/receipt independently. Retry uses the original occurrence clock; a schedule edit changes only future unaccepted occurrences.
+Defaults prohibit overlap and unbounded catch-up; configure retry ceiling/backoff, timezone-database version and elapsed/model/warehouse attempt budgets. Reuse the shared platform connection reference; optional notifications use Pengui integrations. Persist due instant, half-open window, resolved revisions, target/binding and delivery intent/receipt separately. A schedule edit affects future unaccepted occurrences only.
 
 ## Acceptance criteria
 
-1. **AC01** — All four target types execute their actual domain path; direct block schedules create no hidden report and dynamic targets have explicit opt-in.
-2. **AC02** — Admission prevents stronger-binding selection; current Pengui refusal/expiry/missing scope stops work. No account creation or stored user bearer is used.
-3. **AC03** — Cron/interval/DST/leap/first/missed occurrence windows are specified and persisted as half-open instants; retries never recompute from wall clock.
-4. **AC04** — Pinned/default and explicit latest-published policies resolve once; pause/resume/update/retire/test/history are durable and CAS-safe.
-5. **AC05** — Overlap/catch-up/backoff/cancel/timeout/fencing and per-occurrence model/query budgets are tested with concurrent workers and crashes.
-6. **AC06** — Artifact retention, catalog publication and notification intent/receipt are distinct; recipient metadata is not email-sent evidence or a data grant.
-7. **AC07** — Missing outputs/dependencies/approval/authority mark attention/blocked states instead of silently repinning or using ambient credentials.
-8. **AC08** — Event/condition/condition-check/unrestricted custom schedule kinds are absent from registration; maintenance cleanup remains bounded internal work.
+1. **AC01** — All four targets execute their real domain paths; direct block delivery creates no hidden report, and dynamic execution needs explicit opt-in.
+2. **AC02** — Reporting admission prevents stronger binding selection; renewed Pengui refusal/expiry/missing reach stops work, without local accounts, alternate issuer or stored user bearer.
+3. **AC03** — Cron/interval/DST/leap/first/missed windows are defined and retained as half-open instants; retries never recalculate from current wall clock.
+4. **AC04** — Exact pins and explicit latest-published resolve once; pause/resume/update/retire/test/history are durable and CAS-safe.
+5. **AC05** — Overlap/catch-up/backoff/cancel/timeout/fencing and model/query budgets hold under concurrent workers and crash/recovery.
+6. **AC06** — Query completion, retained artifact, catalog publication and notification intent/receipt are distinct; stored recipients grant no data access and prove no email sent.
+7. **AC07** — Missing outputs/dependencies/approval/authority produces attention/blocked states, not automatic repinning or ambient access.
+8. **AC08** — Unsupported event/condition/condition-check/unrestricted custom kinds remain absent from registration and rejected on input; bounded internal cleanup is preserved.
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase30/AC01` through `TestPhase30/AC08`. Use the actual authority adapter contract, real queue/store/targets and a deterministic timezone clock. Refusal/expiry tests assert zero fresh source work; crash tests cover post-query/pre-delivery uncertainty. Exercise fixed/relative periods and exact schedule mutation races. COMMON.md sets coverage and evidence; `scripts/smoke/phase-30.sh` requires all eight results.
+Implement TestPhase30/AC01 through TestPhase30/AC08 with real queue/store/targets, phase06's actual authority adapter and deterministic timezone fixtures. Refusal asserts zero protected work; crashes after source acceptance/before delivery retain uncertainty. Test fixed/relative windows, mutation races and existing viewer catalog consumption without a new execution model. COMMON.md supplies evidence/coverage; scripts/smoke/phase-30.sh requires eight passes.
 
 ## Glossary, decisions and deviations
 
-Execution binding and delegated JWT are supplied by Pengui; occurrence/attempt/delivery state belong to Chartworks. D-048 applies. The exact broker integration is an implementation deliverable, not a capability claimed tested in this document.
+Pengui supplies authority; Chartworks retains occurrence/attempt/delivery state. D-055 puts first adapter delivery in06 and reporting consumption here. No runtime completion is claimed.
