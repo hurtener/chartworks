@@ -6,7 +6,7 @@
     "02": {"slug":"store-migrations","depends_on":["01"],"status":"planned","acceptance_count":6},
     "03": {"slug":"auth-identity","depends_on":["01"],"status":"planned","acceptance_count":6},
     "04": {"slug":"access-grants","depends_on":["02","03"],"status":"planned","acceptance_count":6},
-    "05": {"slug":"gateway","depends_on":["01"],"status":"planned","acceptance_count":6},
+    "05": {"slug":"gateway","depends_on":["01"],"status":"planned","acceptance_count":10},
     "06": {"slug":"jobs-scheduler","depends_on":["02","03","04"],"status":"planned","acceptance_count":6},
     "07": {"slug":"vindex","depends_on":["02","04"],"status":"planned","acceptance_count":6},
     "08": {"slug":"sources-core","depends_on":["04","09"],"status":"planned","acceptance_count":6},
@@ -32,7 +32,7 @@
     "28": {"slug":"reporting-execution-artifacts","depends_on":["05","06","10","20","27"],"status":"planned","acceptance_count":8},
     "29": {"slug":"reports-dashboards","depends_on":["18","28"],"status":"planned","acceptance_count":8},
     "30": {"slug":"reporting-schedules","depends_on":["06","18","23","28","29"],"status":"planned","acceptance_count":8},
-    "31": {"slug":"reporting-mcp-apps","depends_on":["22","23","28","29","30"],"status":"planned","acceptance_count":8},
+    "31": {"slug":"reporting-mcp-apps","depends_on":["22","23","28","29"],"status":"planned","acceptance_count":8},
     "32": {"slug":"reporting-rendering-embed","depends_on":["28","29","31"],"status":"planned","acceptance_count":8},
     "33": {"slug":"guided-onboarding","depends_on":["11","12","13","15","27"],"status":"planned","acceptance_count":8},
     "34": {"slug":"migration-parity-cutover","depends_on":["14","16","18","19","23","24","26","27","28","29","30","31","32","33"],"status":"planned","acceptance_count":8}

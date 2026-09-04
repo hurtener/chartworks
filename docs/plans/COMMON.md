@@ -1,59 +1,61 @@
 # Shared phase implementation and completion contract
 
-This is part of every active phase plan, factored once to avoid repetitive boilerplate. It complements RFC-001/RFC-002 and does not weaken their invariants. Historical plans in docs/archive are reference only.
+Binding with every active phase. RFC-001/RFC-002, [Pengui authority](../contracts/pengui-authority.md), and [Bifrost-only remote inference](../contracts/model-gateway.md) apply. Archived plans are historical reference, not competing instructions. D-053 narrows any generic gateway wording to one production SDK driver.
 
 ## Before implementation
 
-Read the active RFC sections, owning phase, authority contract, relevant briefs and the original plus appended decision log. Preserve the source-feature IDs in coverage.json. Work on a branch; no direct main/automatic release. Use the established Go conventions and secret-safe synthetic fixtures. An interface is delivered with its first real consumer, not a promise that someone might implement it later.
+Read the owning phase, master, relevant research and append-only decisions. Work on a branch and retain all source-feature IDs in coverage.json. Use synthetic fixtures; private source mappings, code, prompts, customer schemas and credentials do not enter the repository.
 
-When precise deployment/provider syntax is needed, consult the actual supported implementation and record the selected contract/dependency version. This is ordinary integration work, not permission to reopen owner-confirmed MCP Apps support. New provider resource scopes must be supplied by Pengui's existing signing seam; no alternative issuer or guessed broker endpoint is implemented here.
+A seam lands with its first real consumer. Resolve actual platform/provider API syntax from the supported implementation; do not invent a broker endpoint or claim new scope serialization is already deployed. Required Pengui extensions remain Pengui-owned. This is ordinary integration work, not permission to reopen owner-confirmed MCP Apps support.
 
-## Service and data design
+## Service design and authority
 
-Implement domain services once and pass verified immutable envelopes to all I/O. Separate operation authorization from business validation. Signed scopes are applied, never widened by local role/ownership/membership policy. Source read contexts and managed-object ownership are verified against real connector configuration. Do not introduce a general policy language.
+One core service implements each capability. All protected I/O receives an immutable verified envelope. Signed scopes are applied, not widened by creator/role/membership policy. Source execution contexts and managed-object ownership reflect actual credentials and database boundaries. No local IAM or general policy-language subsystem.
 
-Use bounded contexts/channels/workers, explicit cancellation and deterministic clock seams. Source readers consume only validator-issued plans; reject zero/mismatched plans. Go package dependencies remain acyclic. Do not retain user tokens in operations; the existing Pengui client obtains fresh transient authority for durable work.
+Use bounded cancellable work and deterministic clock seams. Readers take nonzero validator-issued plans. Keep package dependencies acyclic and migrations paired with consumers. Tenant-composite keys, CAS, publication and idempotency constraints are database-enforced as appropriate. Published definitions and applied migrations are immutable. External side effects use attempts, reconciliation and compensation; local commit is not distributed atomicity.
 
-Ship migrations with the consuming domain, including tenant-composite keys/foreign keys, CAS/publication/idempotency constraints and retention indexes. Test fresh database and upgrade behavior. Do not overwrite published definitions, historical evidence or applied migrations. External work uses durable attempts/staged effects; local transaction atomicity is not distributed atomicity.
+Tokens remain transient. Durable work stores an authorized opaque binding and obtains fresh Pengui authority at dispatch/retry or required checkpoints. Expiry-bounded validation is not instantaneous offline revocation. The concrete binding/broker adapter is an integration deliverable, not a local token issuer.
+
+## Model access
+
+Every production learned-model call uses Bifrost core SDK through internal/gateway/bifrost and remote providers. There is no alternate compatible HTTP client, local model, weight download, ONNX runtime or local cross-encoder. Config/fixtures from Soundings/Stowage guide the adapter; their local stores/auth and credentials are not copied. Deterministic tokenization, rules, SQL parsing, pgvector and renderers are allowed normal computation.
+
+Check role-specific provider/capability/config, full embedding-space identity, complete response index coverage, finite values and SDK attempt budgets. Rerank may only order already authorized candidates. Disabled optional roles make zero calls; failure behavior is explicit. No automatic embedding-model substitution. Provider failures must not disable frozen no-narrative execution or retained-result reads. Bifrost is an embedded client library, not a required separately deployed proxy.
 
 ## Surface deliverables
 
-Every feature phase adds actual HTTP/API schemas and SDK operations, typed errors, audit/usage attribution and scope/resource registration in the same change. Add the relevant existing-core MCP operations or reporting tools where assigned. Early shell tests enumerate implemented registration; every later feature reruns them. Missing feature endpoints cannot be advertised as ready.
+Domain phases add actual HTTP schemas and SDK operations, signed-scope/resource checks, errors, audit/usage and side-effect classification with their first consumer. MCP operations are added where assigned; early registration/parity suites expand with every implemented feature. An unbuilt endpoint is absent, not a success-returning stub. Explicit cancellation of durable work is different from disconnecting a client.
 
-Use one route action naming convention and generate OpenAPI/SDK shape checks. Closed write schemas and bounded unions reject unknown/malformed authority-bearing fields. CLI has injectable I/O and never accepts an actor override as authority. Examples use synthetic names and secret references. Frontend code is the read viewer, not a mandatory builder UI.
+Use closed write schemas and bounded unions, one route action convention and generated OpenAPI/SDK checks. The browser surface is a read viewer, not a mandatory builder. Its resources contain no bearer/provider/source credentials or authoritative duplicate report state. Iframe auth remains in the BFF.
 
-## Tests and acceptance naming
+## Acceptance naming and evidence
 
-Each numbered phase criterion owns a named Go acceptance subtest under `test/acceptance`: parent `TestPhaseNN`, children `AC01` ... declared count. Helpers exercise the real service/driver; a parent test that passes with zero children is not acceptance. More detailed child cases may exist underneath each AC. The strict runner requires all expected cases to have pass events and rejects failure/skip events, including nested cases.
+Each numbered criterion has a named Go acceptance subtest under `test/acceptance`: `TestPhaseNN/AC01` through its declared count. Helpers exercise real behavior; a parent that passes without children is not acceptance. More detailed cases may appear beneath an AC. The strict runner checks actual Go JSON pass events and rejects missing/duplicate/unexpected criteria, failure, skip, nonzero exit and timed-out execution, including nested skipped cases.
 
-Use pure unit/property tests for normalization, time arithmetic, state transitions and bindings. Add fuzz seeds for JWT/scope/input/SQL/output decoders. Shared objects need concurrent reuse tests under race detection; identity/resource changes need cross-tenant and same-tenant/different-context adversarial fixtures.
+Pure unit/property tests cover normalization, time arithmetic, bindings and transitions. Fuzz parse/decode surfaces. Shared objects require concurrent-reuse tests under race detection. Identity-sensitive changes require cross-tenant and same-tenant/different-context negatives. Assert zero source calls on denial, zero model calls on frozen/no-narrative work, zero source/model calls on artifact views, no baseline writes, no mutable publication and no preview leakage.
 
-Store/warehouse semantics need real boundary drivers. PostgreSQL/pgvector and self-hostable engines run in containers; cloud support needs recorded fixtures plus separately captured live evidence before its support/cutover claim. Gateway test fixtures are permitted but are not live model-quality evidence. A browser/component or real renderer test can be invoked by a Go acceptance subtest; its process failure or missing dependency fails that acceptance, never skips into success.
+Storage/warehouse guarantees use real drivers. Self-hostable engines use container fixtures; cloud support needs recorded fixtures plus applicable live evidence before a support/cutover claim. The actual Bifrost SDK can run against recorded provider responses in ordinary CI; those fixtures are not live quality measurements. Real viewer/renderer tests can be invoked by a Go AC; missing runtime dependencies or process failure fail acceptance rather than skipping to success.
 
-Test forbidden behavior directly: zero source calls on denial; no inference in frozen refresh; zero SQL/model calls on artifact view; no baseline writes; no mutable publication; no data from broader contexts; no hidden preview publication. A lexical check can catch documentation drift or API accidents but is not an authorization/security proof.
+## Configuration, coverage and measurements
 
-## Coverage and measurement
+Each changed setting names its typed key, units, default/bounds, secret status and positive/negative tests. Reject retired auth/signing/bootstrap settings. Keep the reference gateway excerpt compatible with the actual typed decoder. Update setup/source/renderer/runner matrices and operational limits with implementation.
 
-Coverage defaults: 85% auth/identity/access/store/exec/vindex/conformance code; 80% other new internal packages; 70% CLI/evaluation tooling. Add exact touched-package entries to scripts/coverage-bands.conf during implementation. Exceptions require a reviewed deviation with rationale; do not achieve a percentage through no-op wrappers.
+Coverage defaults: 85% auth/identity/access/store/exec/vindex/conformance, 80% other internal packages, 70% CLI/evaluation tooling. Register touched packages in coverage-bands.conf. Exceptions need reviewed evidence; no no-op wrappers to manufacture coverage.
 
-Record benchmark environment, data, warm/cold behavior, source/model time versus service overhead and raw measurements. No inherited POC speedup or promised startup/latency is a measurement. Budget assertions include retries and work accepted before a crash. Unknown cost remains unknown rather than a fabricated zero.
+Record benchmark environment, data and warm/cold behavior; separate model/warehouse latency from service overhead. Unknown cost/outcome stays unknown. Test pre-call admission and in-flight/retry usage, not only post-hoc accounting. A lexical check, row count or screenshot is not a security/performance proof.
 
-## Configuration and documentation
+## Planning, smoke and release
 
-Each changed setting needs an exact typed key, units, default, valid bounds, secret classification, example and a positive/negative test. Reject retired auth-mode/signing/bootstrap settings rather than treating them as aliases. Update source/runner/renderer support matrices, getting-started instructions and operational limits in the same feature change. Artifact retention and preview policy are explicit and cannot be inferred from a current pointer.
+`phase-registry.json` statuses are planned, in_progress or shipped. All start planned here; they are evidence labels, not feature flags. Implementation submitted for acceptance changes status and supplies actual named tests. Leaving code planned to evade testing is prohibited.
 
-## Smoke and status semantics
+`make planning-check` runs the standard-library checker and its unit tests: graph, plan metadata, criteria, links, feature/gate mappings, mirrored rules and Bifrost configuration policy. It proves planning coherence only.
 
-`phase-registry.json` status is planned, in_progress or shipped. It is an evidence label, not a feature toggle. All phases start planned in this planning change. Once implementation is submitted for phase acceptance, supply the named tests and change status accordingly; leaving implemented code marked planned to evade tests is not allowed.
+`python3 scripts/run_phase_acceptance.py --phase NN` executes real Go acceptance with race detection and uncached results. Missing code/tests/dependencies fails. Explicit `CHARTWORKS_ALLOW_PLANNED_SKIP=1` permits only a clearly labeled unimplemented planned phase to skip in development; `make preflight-full` uses that mode. It still fails implemented-phase errors. Phase wrappers use this runner, not independent success counters.
 
-`python3 scripts/planning_check.py` validates document metadata, DAG, reference/coverage completeness, mirrored contributor rules and current decision references. Its success is planning coherence only.
+`make release-check` runs every phase in dependency order, requires all statuses shipped and disallows all skips regardless of that environment flag. A status or existing filename alone is insufficient; actual child test events are required. Applicable live provider/source evidence must also match the code/config/data/support claim through the phase25/34 assertions.
 
-`python3 scripts/run_phase_acceptance.py --phase NN` runs the actual Go acceptance parent with race detection and uncached results, then checks every expected child event. Missing Go code/tests/dependencies or a skipped child fails. `--all` covers the registry. Planned phases may explicitly report SKIP only with `CHARTWORKS_ALLOW_PLANNED_SKIP=1`; this is the documented development/preflight mode, never a passing phase. `--release` disallows all skips and requires every phase to be shipped after evidence review.
+Go race testing requires a race-capable build environment with CGo enabled even when the shipping core is built CGo-free. Build and race-test settings are separated in Makefile. The documentation stage does not claim a Go build/test occurred when source is absent.
 
-The runtime harness should arrange deterministic local fixtures automatically where practical. Expensive live provider/warehouse evidence has its own recorded execution reference, configuration/commit/data fingerprints and owner-run command. Release acceptance checks that evidence is applicable to the current support claim; a filename or manually checked status is not proof.
+## Completion and deviations
 
-## Phase completion and deviations
-
-Each owning phase registers its actual tests, surfaces, config and migrations; run its acceptance plus affected prior suites. Attach evidence IDs to feature/gate rows or the corresponding release evidence file as implementation proceeds. Shipped status requires the named results plus the relevant consumer/real-driver obligations. Cumulative tests can extend a previously delivered core without creating reverse package dependencies.
-
-Add new domain vocabulary to docs/glossary.md. Append new decisions without rewriting the original log or annex history; IDs remain unique across both. Record reasonable implementation deviations in the phase's final section, including the replaced criterion, equivalent behavior and proof. A required source feature cannot disappear by editing a row to deferred without the owner's explicit scope change.
+Attach actual evidence to each implemented feature/gate. Cumulative consumer tests extend earlier services without reverse package dependencies. Keep the registry/counts, phase headers, master, scope contracts, examples and mirrored rules coherent. Preserve old decisions and append explicit superseding ones with unique IDs. A required source feature cannot be removed by silently editing its disposition; approved equivalent behavior needs an explicit migration rule and proof.

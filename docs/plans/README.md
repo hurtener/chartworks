@@ -1,86 +1,84 @@
 # Chartworks — actionable implementation plan
 
-Revised 2026-09-04 after the owner merged PR #2 and clarified the security/Apps boundaries. The active RFCs and all phase plans are reconciled. The previous detailed plans are preserved under `docs/archive/phase0-plans/` as historical reference, not competing instructions.
+Revised 2026-09-04 after PR #2 and the owner's authentication, Apps and remote-inference directives. The active RFCs and numbered plans replace the historical plans preserved in `docs/archive/phase0-plans/`. This is an implementation baseline, not a claim that Go capabilities already exist.
 
-## Fixed product decisions
+## Fixed decisions
 
-Pengui is the sole issuer and authentication/access-policy owner. Chartworks verifies JWTs and applies signed scopes/resource restrictions; it does not maintain local roles, grants, service accounts, API keys or embed credentials. Harbor/Pengui MCP Apps compatibility is established. Build Chartworks's tools/resources/viewer, not a compatibility project. Preserve functional cron/interval/manual schedules and actual saved-query/block/report targets; discard the source event/condition/condition-check/custom-code stubs.
+Pengui alone owns issuer/authentication/access-policy decisions. Chartworks validates Pengui JWTs and enforces signed scopes and resource restrictions. No local users, roles, grants, API keys, service identities, bootstrap admin, OAuth server or embed credential issuer. [The authority contract](../contracts/pengui-authority.md) separates the integration schema from already implemented platform behavior.
 
-Business validation, semantic review, certification, SQL safety, source isolation, retention and execution budgets remain Chartworks responsibilities. These checks do not decide identity or sharing. See [the authority contract](../contracts/pengui-authority.md) and D-044–D-052 in the appended decision log.
+Harbor/Pengui MCP Apps support is established. Implement Chartworks's tools/resources/viewer; no host qualification, framework selection or unrelated protocol migration. Use the existing Pengui/client BFF for iframe credentials.
 
-## How to use this plan
+All production completion, structured generation, embeddings and reranking use the embedded Bifrost Go SDK and remote providers. No local learned models, weights/downloads, cross-encoder service or parallel direct model client. [The gateway contract](../contracts/model-gateway.md) and [reference excerpt](../../examples/chartworks.gateway.json) are binding inputs to phase 05. Local deterministic tokenization, SQL parsing, pgvector search and rendering remain normal application work.
 
-Read RFC-001 for shared architecture/security, RFC-002 for reporting, then [COMMON.md](COMMON.md) and the owning phase below. `phase-registry.json` is the compact dependency/status/acceptance-count registry. `coverage.json` maps the 63 source-feature IDs and 40 review gates to named phase acceptance IDs. Neither file claims the tests have run.
+Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/block/report targets. Discard source event/condition/condition-check/custom-code stubs. Preserve business validation, immutable revisions, certification, SQL safety, actual source data partitions, retention and execution budgets: those remain Chartworks domain responsibilities, not a second IAM system.
 
-All phases are initially **planned**. Each original phase has six criteria; each added phase has eight: **220 acceptance criteria** in total. One real `TestPhaseNN/ACxx` result must back each criterion. A planning SKIP is not a runtime pass. The completion workflow and strict runner are in COMMON.md.
+## Working from the plans
 
-Phase numbers are stable identifiers, not chronology. In particular, phases 21–23 are early transport/client shells, and phase 25 is the final release gate. Domain phases register concrete HTTP/SDK/MCP capabilities as they land. An unbuilt operation must be absent, not a success-returning placeholder.
+Read RFC-001 for the shared architecture, RFC-002 for reporting, [COMMON.md](COMMON.md), then the owning phase. Each phase names its packages, hard dependencies, tasks, configuration/persistence, non-goals and individually testable acceptance criteria. `phase-registry.json` supplies the dependency/status/count ledger. `coverage.json` maps all 63 source-feature IDs and 41 review gates to phase criteria; neither file is test evidence.
+
+There are **34 planned phases and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases 27–34 have eight each. Each criterion requires a real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as implementation. All phase statuses start planned.
+
+Phase numbers identify workstreams, not chronology. Phases 21–23 provide early transport/client shells; domain phases register concrete operations as they land. Phase 25 is the final release gate. An unbuilt operation is absent rather than a success-returning placeholder.
 
 ## Dependency and ownership table
 
 | Phase | Plan | Hard dependencies | Deliverable |
 |---|---|---|---|
-| 01 | [Binary/config/telemetry](phase-01-binary-config-telemetry.md) | none | Typed config, safe lifecycle/health, metrics/audit |
-| 02 | [Store](phase-02-store-migrations.md) | 01 | Real PostgreSQL transactions, tenant/CAS/migration primitives; no IAM tables |
-| 03 | [JWT/identity](phase-03-auth-identity.md) | 01 | Pengui verification-only envelope and provider scope handoff |
-| 04 | [Scope enforcement](phase-04-access-grants.md) | 02,03 | Enforce signed action/resource reach; no local grant resolver |
-| 05 | [Gateway](phase-05-gateway.md) | 01 | Per-role providers, structured outputs, budgets and optional roles |
-| 06 | [Queue/occurrences](phase-06-jobs-scheduler.md) | 02,03,04 | Leases/fencing, idempotency, cron/interval and delegated-authority port |
-| 07 | [Facets](phase-07-vindex.md) | 02,04 | Scoped pgvector generations and batched retrieval |
-| 08 | [Source core](phase-08-sources-core.md) | 04,09 | PostgreSQL, registry/secret custody and actual execution contexts |
-| 09 | [SQL validation](phase-09-sql-validate-core.md) | 03,04 | Read interface/opaque validated plan, parser/native safety |
-| 10 | [Read execution](phase-10-exec-read.md) | 08,09 | Read-only query/caps/cancel, exact normalized data |
-| 11 | [Uploads](phase-11-uploads-workspace.md) | 06,08 | CSV/XLSX/Parquet staged workspace -> normal governed dataset |
-| 12 | [Profiling](phase-12-engineering-profiling.md) | 05,06,08,10 | Versioned profile/quality/freshness and source drift |
-| 13 | [Pipelines](phase-13-engineering-pipelines.md) | 06,09,10,12 | SQL-only runner, managed writes, quality/lineage, staged effects |
-| 14 | [Warehouse drivers](phase-14-warehouse-drivers.md) | 08,09,10 | Six-engine source contract and real support evidence |
-| 15 | [Topics](phase-15-topics-lifecycle.md) | 04,05,07,12,21 | Entity lifecycle, ready-facet publication, health and portability |
-| 16 | [Rules/clarification](phase-16-rules-clarification.md) | 05,15 | Rules, slots, hard constraints, replay/shadow |
-| 17 | [Routing/context](phase-17-nlq-routing-context.md) | 05,07,15,16 | Lean budgets, pins, English/Spanish, confirmed multi-topic context |
-| 18 | [NLQ](phase-18-nlq-generation-execution.md) | 09,10,17 | Preflight/plan/run/refine, templates, bounded correction and learning |
-| 19 | [BYO](phase-19-byo-mode.md) | 02,10,17 | Versioned stored context reference and identical submit safety |
-| 20 | [Output specs](phase-20-charts-spec.md) | 10,15 | Fourteen-kind catalog, exact formats and safe saved mappings |
-| 21 | [HTTP shell](phase-21-http-api.md) | 01,02,03,04 | Early protected routing/schema/audit registration |
-| 22 | [MCP shell](phase-22-mcp-server.md) | 21 | Early established-profile tools/resources, no host qualification |
-| 23 | [SDK/CLI](phase-23-sdk-cli-parity.md) | 21,22 | Early typed clients, caller token provider and cumulative parity |
-| 24 | [Evaluation](phase-24-eval.md) | 18,19,20,29 | Quality/adversarial/replay/optimization and evidence |
-| 25 | [Final release](phase-25-e2e-release.md) | 24,26,34 | Cumulative all-feature/engine/operational closure |
-| 26 | [L2 engineering](phase-26-engineering-autopilot.md) | 13,15,16,21,27 | Reviewed proposals and drift amendments; staged apply/compensation |
+| 01 | [Binary/config/telemetry](phase-01-binary-config-telemetry.md) | none | Typed config, lifecycle/health, metrics/audit |
+| 02 | [Store](phase-02-store-migrations.md) | 01 | PostgreSQL transaction/tenant/CAS/migration primitives, no IAM tables |
+| 03 | [JWT/identity](phase-03-auth-identity.md) | 01 | Pengui verification-only envelope |
+| 04 | [Scope enforcement](phase-04-access-grants.md) | 02,03 | Signed action/resource enforcement, no local grant policy |
+| 05 | [Bifrost gateway](phase-05-gateway.md) | 01 | Remote SDK inference, independent roles, strict response/budget contracts |
+| 06 | [Queue/occurrences](phase-06-jobs-scheduler.md) | 02,03,04 | Leases/fencing, occurrence idempotency, cron/interval, authority-provider seam |
+| 07 | [Facets](phase-07-vindex.md) | 02,04 | pgvector generations, embedding-space identity, batched retrieval |
+| 08 | [Source core](phase-08-sources-core.md) | 04,09 | PostgreSQL reader, registry/custody and actual source execution contexts |
+| 09 | [SQL validation](phase-09-sql-validate-core.md) | 03,04 | Read interface/opaque validated plan and positive SQL safety |
+| 10 | [Read execution](phase-10-exec-read.md) | 08,09 | Caps/cancel/reconciliation, exact normalized data |
+| 11 | [Uploads](phase-11-uploads-workspace.md) | 06,08 | CSV/XLSX/Parquet workspace to ordinary governed datasets |
+| 12 | [Profiling](phase-12-engineering-profiling.md) | 05,06,08,10 | Profile/quality/freshness and drift |
+| 13 | [Pipelines](phase-13-engineering-pipelines.md) | 06,09,10,12 | SQL-only managed writes, checks/lineage and staged effects |
+| 14 | [Warehouse drivers](phase-14-warehouse-drivers.md) | 08,09,10 | Six-engine contracts and applicable source evidence |
+| 15 | [Topics](phase-15-topics-lifecycle.md) | 04,05,07,12,21 | Versioned semantics, ready-facet publication, health/portability |
+| 16 | [Rules/clarification](phase-16-rules-clarification.md) | 05,15 | Rules/slots, constraints, replay/shadow |
+| 17 | [Routing/context](phase-17-nlq-routing-context.md) | 05,07,15,16 | Compact budgets, remote rerank, pins, languages and confirmed joins |
+| 18 | [NLQ](phase-18-nlq-generation-execution.md) | 09,10,17 | Plan/run/refine/templates/correction/learning |
+| 19 | [BYO](phase-19-byo-mode.md) | 02,10,17 | Stored context references and identical submit safety |
+| 20 | [Output specifications](phase-20-charts-spec.md) | 10,15 | Fourteen-kind catalog and saved mappings/formats |
+| 21 | [HTTP shell](phase-21-http-api.md) | 01,02,03,04 | Early protected registration/schema/audit |
+| 22 | [MCP shell](phase-22-mcp-server.md) | 21 | Established-profile tools/resources, no host qualification |
+| 23 | [SDK/CLI](phase-23-sdk-cli-parity.md) | 21,22 | Typed clients, caller token provider, cumulative parity |
+| 24 | [Evaluation](phase-24-eval.md) | 18,19,20,29 | Quality/adversarial/replay and remote prompt optimization |
+| 25 | [Final release](phase-25-e2e-release.md) | 24,26,34 | Cumulative capability/engine/operational closure |
+| 26 | [L2 engineering](phase-26-engineering-autopilot.md) | 13,15,16,21,27 | Reviewed proposals/drift amendments and honest compensation |
 | 27 | [Governed blocks](phase-27-reporting-blocks.md) | 15,20,21 | Draft/revision/validation/certification/parameters/impact |
-| 28 | [Frozen execution/artifacts](phase-28-reporting-execution-artifacts.md) | 05,06,10,20,27 | Multi-output runs, narratives, context-safe reuse and retention |
-| 29 | [Reports/dashboards](phase-29-reports-dashboards.md) | 18,28 | Hybrid widgets, exact pages, filters, private review, partial outcomes |
-| 30 | [Reporting schedules](phase-30-reporting-schedules.md) | 06,18,23,28,29 | Real targets, fresh Pengui broker authority, exact periods and delivery state |
-| 31 | [MCP Apps viewer](phase-31-reporting-mcp-apps.md) | 22,23,28,29,30 | Reporting tools and shared read viewer over established Apps |
-| 32 | [SSR/iframe/export](phase-32-reporting-rendering-embed.md) | 28,29,31 | BFF iframe, isolated SVG renderer and explicit safe exports |
-| 33 | [Guided onboarding](phase-33-guided-onboarding.md) | 11,12,13,15,27 | Resumable connect/profile/semantic draft/review/example workflow |
-| 34 | [Migration/cutover](phase-34-migration-parity-cutover.md) | 14,16,18,19,23,24,26–33 | Neutral imports, all-feature comparison, one schedule stream and rollback |
+| 28 | [Frozen runs/artifacts](phase-28-reporting-execution-artifacts.md) | 05,06,10,20,27 | Selected outputs, narratives, context-safe reuse and retention |
+| 29 | [Reports/dashboards](phase-29-reports-dashboards.md) | 18,28 | Hybrid widgets, pages, filters, private review and partial outcomes |
+| 30 | [Reporting schedules](phase-30-reporting-schedules.md) | 06,18,23,28,29 | Real targets, fresh Pengui authority, exact periods and delivery state |
+| 31 | [MCP Apps viewer](phase-31-reporting-mcp-apps.md) | 22,23,28,29 | Reporting tools/shared viewer independent of schedule delivery |
+| 32 | [SSR/iframe/export](phase-32-reporting-rendering-embed.md) | 28,29,31 | BFF iframe, isolated SVG rendering, explicit safe exports |
+| 33 | [Guided onboarding](phase-33-guided-onboarding.md) | 11,12,13,15,27 | Resumable setup/profile/semantic draft/review workflow |
+| 34 | [Migration/cutover](phase-34-migration-parity-cutover.md) | 14,16,18,19,23,24,26–33 | Neutral import, complete parity, schedule handoff and rollback |
 
-## Execution sequence and incremental delivery
+## Delivery sequence
 
-Start with 01, then 02/03/05 in parallel; 04 unlocks 06/07/09 and early 21->22->23. Read adapters follow 09->08->10, avoiding an import cycle. Profiling and source inspection unlock 15/20->27->28: the first approved block with real validation, selected outputs and a retained API artifact.
+Start 01, then 02/03/05 in parallel. Phase 04 unlocks 06/07/09 and early 21->22->23. Source interfaces/adapters follow 09->08->10 to avoid the old import-cycle ambiguity. Profiling/semantics unlock 15/20->27->28: a real approved block, selected outputs and a retained API artifact.
 
-Run semantic/NLQ work 16->17->18 alongside block work, then add 19/29/30->31->32. This supplies hybrid reports, dashboards, functional scheduling, the Apps viewer and genuine SSR/BFF iframe rendering. The viewer can be developed early against synthetic sealed artifacts; its phase closes only with real domain consumers.
+Run semantic/NLQ work 16->17->18 alongside block work, then add 19/29. Reports unlock **30 and 31 in parallel**: scheduling is not a prerequisite for the viewer. Static delivery follows 31->32. The viewer can be developed against synthetic sealed artifacts earlier; closure requires its actual domain consumer.
 
-Uploads, full driver coverage, managed pipelines and L2 proposals can proceed on their graph branches; they do not hold the first reporting API demonstration hostage. Phase 33 composes the real guided setup flow. Phase 34 closes all required source behavior and cohort migration; phase 25 closes deployment/release with every transitive dependency satisfied.
+Uploads, complete driver coverage, pipelines and L2 proposals proceed on their own branches. They do not hold the first reporting demonstration hostage. Phase 33 composes guided onboarding; phase 34 closes every required source capability and cohort migration; phase 25 closes release after all transitive dependencies. L3 and a new internal analyst do not gate this migration.
 
-The graph is acyclic at the **core implementation** boundary. Some cumulative checks explicitly exercise later consumers: phase 12's initial profile consumer is its inspection API, with semantic integration extended in 15; phase 11's reporting check is extended when reporting lands; 16's full query replay integration closes with 18/24; early 21–23 registration suites expand with every feature. Do not create reverse package dependencies to satisfy those tests. Distinguish delivered core interfaces from full cumulative feature closure in the evidence record.
+Core dependencies are acyclic. Cumulative tests extend earlier services as later consumers arrive without reverse imports: profiling initially serves its inspection API, semantic use lands in15; rule replay's full query integration closes in18/24; early transport parity expands per feature. Phase05 is a build-time dependency of28 because narrative support uses its interface; a frozen runtime operation without narrative must still make zero SDK/provider calls.
 
 ## First useful product proof
 
-A valid Pengui JWT selects an authorized source/topic. An API caller creates a block draft, validates real SQL, publishes/certifies explicitly, executes multiple selected outputs and reads the retained result without more SQL/model calls. Wrong resource reach fails. An expired token cannot refresh itself in Chartworks. A later report publication cannot reveal a private preview.
+A Pengui JWT selects an authorized source/topic. Create a block draft, validate real SQL, publish/certify explicitly, run multiple selected outputs and read the retained result without another SQL/model call. Wrong resource reach fails; expired tokens cannot renew themselves in Chartworks; a later publication cannot reveal a private preview. This is a usable slice, not a complete replacement claim.
 
-This is a demonstrable slice, not a full replacement claim. Full cutover also requires reports/dashboards, dynamics, schedules, Apps/static delivery, source adapters and all retained semantic/NLQ workflows.
+Complete cutover additionally requires the mapped semantics/NLQ/learning behavior, hybrid reports, dashboards, schedules, Apps/static delivery and all required source adapters. The 63 feature rows remain: 62 required, Q11 deliberately discarded stubs. G27 tests Chartworks Apps code, G28 tests the BFF boundary, G24 respects expiry-bounded JWT freshness, and G41 enforces Bifrost-only remote inference.
 
-## Scope boundaries and risks
+## Verification and remaining integration work
 
-Keep one Go core, one queue, one model gateway and one direct signed-scope enforcement path. Add migrations with actual consumers. Use a bounded optional chart renderer and the accepted pipeline runner rather than recreating them or introducing a workflow platform. No standalone authoring UI is required.
+`make planning-check` validates this graph, criteria, links, mappings, mirrored rules and gateway configuration excerpt. `make preflight-full` adds actual acceptance tests for implemented phases and reports planned phases as unimplemented SKIPs. `make release-check` requires every phase shipped and every expected test passed with no SKIPs; statuses alone are not proof.
 
-The most important risks are incomplete per-dialect relation/function/read-policy enforcement; confusing definition pins with data snapshots; reuse across actual execution partitions; missing fresh Pengui authority for durable work; private-preview leakage; imprecise decimals; and external effects being called atomic/exactly-once. The owning phases contain direct assertions for each.
+The Pengui resource-scope serialization and fresh scheduled-authority adapter must be wired to the platform's actual contract during phases03/04/30. This is a Pengui-owned integration change where needed, not permission to implement a local issuer or guess a platform endpoint. Current source/host/model availability is not claimed from this documentation review.
 
-L2 reviewed engineering remains included. L3 auto-apply, a new internal analyst, arbitrary federation, PDF/PNG document layout and event-driven scheduling extensions are not requirements hidden inside this migration. Existing source replay/multi-topic/dynamic-report behavior is not deferred under those labels.
-
-## Completion and evidence
-
-Run `make planning-check` for document/registry coherence, `make preflight-full` for cumulative implemented phase checks, and `make release-check` for the strict all-phase runtime gate. `CHARTWORKS_ALLOW_PLANNED_SKIP=1` only permits clearly labeled unimplemented-phase skips in documentation/development preflight; release mode ignores it. Every new code phase must leave planned state and supply its acceptance tests before claiming implementation.
-
-The 63 feature IDs originate in brief 14. `coverage.json` retains every row: 62 required and Q11 deliberately discarded stubs. Forty review gate IDs are retained with corrected meaning; G27 tests Chartworks Apps behavior, G28 tests the BFF authority boundary, and G24 obeys the expiry-bounded JWT model. Definitions and real test evidence, not row counts, determine completeness.
+The standing risks are per-dialect safety, unsafe cross-context artifact reuse, reference/window drift on retries, private-preview leakage, numeric precision and overstated external atomicity. Their owning phase tests remain required. D-044–D-054 record ownership and scope; D-043 remains reserved for the earlier separate provider-role history.

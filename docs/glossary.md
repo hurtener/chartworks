@@ -1,144 +1,54 @@
-# Chartworks — Glossary
+# Chartworks glossary
 
-> Chartworks vocabulary. A new term introduced by a phase lands here in the same PR
-> (CLAUDE.md §14). Domain terms only reach the wire and UI (P6); plumbing words stay
-> internal.
->
-> **Bootstrap note.** The Domain section is a **stub** — the RFC populates it (and the
-> authoritative P6 forbidden-word list) once the pipeline and semantic model are settled.
-> Only obviously-safe, product-defining terms are seeded now.
+Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; historical terminology in archived plans is not an alternative contract.
 
-## Ecosystem
+| Term | Meaning |
+|---|---|
+| Pengui authority | Identity, action and resource permissions signed by the sole issuer. Chartworks enforces them, not local memberships/roles/grants. |
+| Verified envelope | Immutable validated identity/scope/context data supplied to all protected core operations. |
+| Scope | Signed permission string for an operation or addressed resource, never a client-provided role hint. |
+| Execution context | Registered source credential/warehouse-role/secure-view context actually used to access data. |
+| Data partition | The real access context and version of a result. A report label cannot narrow broad source data retroactively. |
+| Execution binding | Opaque Pengui-authorized reference for obtaining fresh authority for durable work. Not a retained bearer or local service account. |
+| Source | Registered customer database/warehouse or upload workspace reached through an adapter. |
+| Dataset | Registered source table/view or managed materialization with schema, lineage and health. |
+| Managed object | An output whose ownership is verified in the managed registry and database privileges; a name prefix is not proof. |
+| Profile | Versioned sampled data/schema/quality/freshness evidence with its method and observation time. |
+| Topic / topic pack | Versioned business semantic contract containing tables, measures, dimensions, KPIs, joins, rules and routing context. |
+| Capability card | Compact published semantic projection used by routing/context, distinct from full authoring metadata. |
+| Facet | Typed semantic retrieval unit scoped to tenant/topic/version/embedding generation. |
+| Embedding space | Provider/model revision, dimensions and preprocessing/input/normalization contract; same dimensions do not imply compatibility. |
+| Bifrost SDK | In-process Go client for remote model providers. Embedding the SDK does not mean executing models locally. |
+| Remote inference | Completion, structured generation, embedding or rerank produced by configured external providers through Bifrost. |
+| Deterministic local computation | Tokenization, rules, SQL parsing, pgvector search and rendering; not a local learned model. |
+| Rerank | Relevance ordering of an already authorized candidate set, with validated IDs/scores and no authority expansion. |
+| Context assembler | Sole owner of query-time token budgeting, pins, mandatory constraints, examples and provenance. |
+| BYO context reference | Stored bounded context handle, reauthorized using Pengui JWTs; not a locally signed capability. |
+| Validated plan | Nonzero validator-issued source/dialect/context/semantic/parameter-bound executable plan. Parsing alone is not a safety proof. |
+| Block | Reusable analytical definition with typed parameters, exact dependencies and saved outputs. |
+| Revision | Versioned definition; published payloads are immutable and amendments start new drafts. |
+| Validation evidence | Proof that the exact definition/dependencies underwent the declared validation against observed schema/results. |
+| Publication | Explicit eligibility transition for an exact revision. It grants neither data access nor certification. |
+| Certification / attestation | Review approval of an exact revision/evidence set, distinct from current health or authorization. |
+| Health | Current dependency/schema/source status; not the same as historical approval. |
+| Frozen execution | Approved SQL and outputs refreshed without NLQ interpretation, generation/correction or chart reselection. |
+| Narrative | Optional bounded evidence-based post-query model output, with no query/write tools. |
+| Report | Versioned composition of block, explicitly dynamic-query and safe text widgets. |
+| Dynamic widget | Explicit query execution with its own provenance and policy; report publication does not certify changing SQL. |
+| Query durability | Replayable question versus a reference requiring the originating authorized session. |
+| Dashboard | Versioned ordered collection of exact report-revision pages, not another execution engine. |
+| Run / logical operation | Accepted request with a sealed revision/parameter/window/context manifest and one or more attempts. |
+| Attempt / fence | Leased execution and stale-owner commit protection. Neither guarantees physical exactly-once remote work. |
+| Artifact | Retained immutable result/evidence until retention removes payloads; opening it does not run SQL or models. |
+| Rendition | Rendered representation of an artifact under a recorded renderer/theme/viewport version, inheriting privacy/expiry. |
+| Preview | Private draft/review execution; remains private after later report publication. |
+| Idempotency | Same accepted key/request resolves to the same logical operation, not a universal remote exactly-once promise. |
+| Occurrence | Schedule due time with exact target revisions and half-open period preserved across retries. |
+| Catalog delivery | Authorized pull access to a retained result; recipients in metadata do not prove outbound email. |
+| SSR | Actual server-generated visual content, not an HTML shell requiring client chart JavaScript. |
+| BFF | Pengui/client backend that authenticates browser requests and forwards scoped authority server-side. |
+| MCP App | Chartworks's read viewer/resources over the established Harbor/Pengui host bridge; no host qualification project. |
+| L2 proposal | Reviewed, evidenced managed-engineering changes with staged external effects and compensation. |
+| Planned / shipped | Work specification versus runtime acceptance plus reviewed evidence. A planning SKIP never means shipped. |
 
-- **Chartworks** — this product: the ecosystem's Explorer seat, a Go-native structured-data
-  analytics service (engineer → model → NLQ-to-SQL → charts, with access enforcement and
-  read-only guarded SQL).
-- **Soundings** — the sibling KnowledgeProvider: a Go-native full RAG over *unstructured*
-  documents. Chartworks is its structured-data counterpart; the two split the
-  document-vs-data boundary of the ecosystem.
-- **Portico / Harbor / Dockyard / Stowage** — the other sibling products: the MCP gateway,
-  the agent framework, the MCP Apps framework, and memory infrastructure, respectively.
-- **Pengui** — the white-label multi-runtime coordinator that consumes the ecosystem's
-  capabilities; owns identity, sharing policy, external id maps, and the Console UI.
-  Whether Chartworks has a Pengui-side consumer request is settled at kickoff.
-- **The client predecessor** — the prior client-tailored NLQ-to-SQL
-  platform (`_ref/original_wayfinder/`), carrying production fixes worth mining (especially
-  the topic lifecycle). Never named directly in this repo (D-001).
-- **The generalistic predecessor** — the generalistic "Explorer" fork of the same codebase
-  (`_ref/forked_wayfinder_explorer/`). Never named directly in this repo (D-001).
-
-## Domain (populated by RFC-001 §2)
-
-- **Data source** — a customer warehouse connection or an upload workspace: the
-  structured-data backend Chartworks reads (and, only via materializations, writes).
-  Reached through a data-source adapter; **distinct** from Chartworks' own `Store`
-  (D-004). Status lifecycle: `unverified → connected → unavailable`.
-- **Dataset** — a governed, queryable, table-shaped artifact: a registered source table,
-  an uploaded file's table, or a materialization. Carries schema, profile, freshness,
-  lineage, version, and grants; the finest access grain (P1a, D-020).
-- **Topic** — the semantic-model unit grounding NLQ: measures, dimensions, derived KPIs,
-  join graph, business context, governed rules. Versioned and governed (RFC §8.2:
-  draft → review → published → deprecated; topic-level active ⇄ archived).
-- **Topic pack** — a topic version's full payload (the authoring view).
-- **Capability contract** — the compact, prompt-safe projection of a published topic
-  pack that routing and SQL generation actually consume (the lean context layer,
-  RFC §8.3).
-- **Context bundle** — the *published, versioned* projection handed to a BYO agent in
-  `get_query_context`: routing result, contract slice, restated governance constraints,
-  dialect + SQL requirements, clarification slots (RFC §9.4, D-022).
-- **Question / plan / run** — the NL question; *plan* = route + generate + validate
-  without executing; *run* = plan then execute (distinct capability scopes).
-- **Preflight** — the routability check: which topic(s), what confidence, which
-  clarification slots — no SQL, no execution.
-- **Pipeline** — a declarative, versioned data-engineering definition: SQL steps +
-  quality checks + a declared destination + an optional schedule (RFC §7.3).
-- **Materialization** — a pipeline write into a declared destination; the only write
-  Chartworks performs against customer infrastructure (P1c, D-017/D-021).
-- **Upload workspace** — the managed Postgres database where a tenant's uploaded
-  CSV/XLSX/Parquet files become queryable tables, reached through the standard
-  `postgres` adapter like any warehouse (RFC §7.4, D-024).
-- **Grant** — an explicit per-principal permission `(grain ∈ source|topic|dataset,
-  permission ∈ read|query|manage)`; absence means denial (D-020).
-- **Principal** — `user:<id>` · `agent:<id>` · `svc:<name>` · `key:<id>`. Agents hold
-  their own grants (D-020).
-- **Session** — a conversation scope for query refinement; part of the isolation triple.
-- **Freshness** — dataset recency status: `fresh` / `stale` / `very_stale` / `unknown`.
-- **Lineage** — a dataset's declared upstream datasets + producing pipeline/step.
-- **Governed rule** — a tenant/topic-scoped, structurally validated business constraint
-  injected into generation context under its own token budget; lifecycle
-  `proposed → active → retired` (RFC §8.4, D-027).
-- **Clarification slot** — a named ambiguity ("which region", "which time grain")
-  detected by topic-scoped patterns *before* generation (RFC §8.4).
-- **Example (learned)** — a question→SQL pair with a routing weight, learned from
-  feedback; lifecycle `candidate → active → retired` (RFC §9.8).
-- **Re-check source / revalidate** — the domain-clean names for the operations the
-  predecessors called "repair": refresh schema after source drift; re-verify a topic or
-  example against its sources (P6).
-- **Chart spec** — the declarative, provider-agnostic presentation contract:
-  `ColumnMetadata[]` + `ChartRecipe` (kind, bindings, formatting, score, rationale) +
-  provenance envelope; V1 never pre-inflates a charting library's options (RFC §10,
-  D-026).
-- **Scope-debug** — the admin-only, read-only diagnostic reporting *which predicate*
-  denied access or routing (RFC §5.4); never user-facing.
-- **PipelineRunner seam** — the interface behind which pipeline execution happens;
-  V1 driver: the pinned Bruin CLI subprocess (D-036). Writes live here and only here
-  (P1c); NLQ adapters have no write capability at all.
-- **Parser seam** — the client-side SQL-AST validation seam (RFC §9.5 layer 2);
-  drivers: `crdb` (cockroachdb-parser, postgres-family) and `sqlglotgo`
-  (jonathan-fulton/sqlglot-go, per-dialect adoption evidence-gated — D-038).
-- **Dry-run validation** — the engine-side pre-execution check (dry-run/EXPLAIN under
-  the read-only credential) providing dialect-true syntax validation and the
-  referenced-table set for table-grain allowlisting on every engine (D-038).
-- **Managed schema** — a Chartworks-created namespace inside a customer warehouse
-  (default prefix `chartworks_`); the only place materializations may write (D-040).
-- **Baseline table** — any table/view Chartworks did not create: read-only forever,
-  inputs only (D-040).
-- **Proposal** — the atomic, reviewable, revertible changeset an L2/L3 agent produces
-  (pipelines + datasets + topic deltas + schedules); the unit of review, application,
-  and rollback (D-039).
-- **Decision record** — the stored reasoning trail on every agent-proposed object:
-  goal served, matched-vs-built, alternatives rejected, evidence, provenance, cost
-  (D-039).
-- **Autonomy policy / autonomy ladder** — L0 manual · L1 assisted · L2 goal-driven
-  proposal (V1 target) · L3 policy-scoped auto-apply (per-tenant opt-in); outside
-  policy degrades to review, loudly (D-039).
-- **Investigation** — the read-side autonomy analog (committed V1.1 wave, D-042): an
-  analytical goal decomposed into sub-questions, each through the unchanged
-  validation/execution gates, synthesized into evidence-backed findings with
-  per-step decision records. At V1, multi-step analysis is a documented supported
-  pattern via external agents looping the BYO tools.
-- **Analysis scratchpad** — ephemeral intermediate views/tables under managed
-  `chartworks_` schemas, created/dropped through the D-040 gates, session-scoped and
-  erased on close (V1.1, D-042).
-- **NLQ (Natural Language Query)** — a natural-language question routed through the
-  semantic model to validated read-only SQL.
-
-## Internals & seams
-
-- **`gateway` seam** — the one intelligence seam; all embedding/LLM/rerank/SQL-generation
-  calls flow through it. V1 drivers: `bifrost`, `mock` (D-003, P5).
-- **Schema-constrained generation** — the only way the gateway produces structured output
-  (routing decisions, generated SQL, chart specs): a mandatory JSON schema constrains the
-  call and re-validates the result; a violation is a typed error, never a free-text/partial
-  parse (P5).
-- **Recorded-fixture test** — replays a once-captured, secret-scrubbed real provider
-  wire-format response so the `bifrost` mapping is validated without a live paid API call
-  in CI.
-- **`store` seam** — Chartworks' own durable state; V1 driver `postgres` (pgx/v5). SQLite is
-  out of scope (D-004). Distinct from the customer data sources it queries.
-- **Data-source adapter** — the read-only, access-scoped connector to a customer data
-  warehouse behind its own seam; the V1 driver set is RFC-owned (D-004).
-- **Frozen per-request envelope** — the caller's identity triple `(tenant, user, session)`
-  plus resolved access claim, read once from the validated token and never mutated
-  mid-request (P2).
-- **Self-issue / external-issuer** — the two auth modes: Chartworks mints its own tokens
-  (standalone) or validates Pengui-issued tokens (ecosystem). Both from one binary, with
-  per-instance dual audiences (MCP / HTTP) (D-006).
-- **SQL-safety property** — the Chartworks-specific binding property the RFC must define:
-  read-only execution, schema allowlisting, and injection guardrails over generated SQL
-  (P1, CLAUDE.md §6). Until settled, generated SQL is not executed against real data.
-- **Scope-debug diagnostic** — the admin-only, read-only diagnostic answering "why didn't
-  the caller see data X / route to topic Y" — never a user-facing "repair" surface (the
-  anti-pattern the predecessors grew).
-- **Live-verification gate** — the real-provider, `.env`-driven, never-CI wave-end check
-  that runs the pipeline against real models (D-010).
+Business data and diagnostic metadata may use ordinary technical names such as artifact, MIME and index where appropriate. Protocol-standard field names are not renamed to satisfy an overbroad lexical check. Hygiene checks are not authorization controls.

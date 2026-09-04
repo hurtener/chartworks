@@ -105,6 +105,7 @@
     "G37":{"description":"Neutral migration","acceptance":["34.AC01","34.AC02","34.AC03"]},
     "G38":{"description":"Measured performance","acceptance":["25.AC03"]},
     "G39":{"description":"Reference deployment","acceptance":["25.AC01","25.AC02"]},
-    "G40":{"description":"Full required-feature release closure","acceptance":["34.AC07","25.AC06"]}
+    "G40":{"description":"Full required-feature release closure","acceptance":["34.AC07","25.AC06"]},
+    "G41":{"description":"Bifrost SDK only, remote inference and strict embedding/rerank contracts","acceptance":["05.AC07","05.AC08","05.AC09","05.AC10","07.AC02","17.AC02","28.AC01","25.AC02"]}
   }
 }
