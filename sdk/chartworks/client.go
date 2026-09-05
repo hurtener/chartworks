@@ -107,6 +107,12 @@ func (c *Client) call(ctx context.Context, method, path, key string, body, out a
 		return &StatusError{resp.StatusCode}
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
+	if err == nil && len(data) <= 1<<20 {
+		if text, ok := out.(*string); ok {
+			*text = string(data)
+			return nil
+		}
+	}
 	if err != nil || len(data) > 1<<20 || json.Unmarshal(data, out) != nil {
 		return errors.New("chartworks: invalid response")
 	}

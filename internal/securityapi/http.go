@@ -149,6 +149,8 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 				return
 			}
 			respond(w, cw.Operation{ID: result.ID, Status: result.Status, PolicyRevision: result.PolicyRevision, Cutoff: result.Cutoff, Limit: result.Limit, DeletedEvents: result.DeletedEvents, DeletedOperations: result.DeletedOperations})
+		default:
+			failure(w, access.ErrNotFound)
 		}
 	}))
 }
@@ -174,6 +176,7 @@ func bodyDecode(w http.ResponseWriter, r *http.Request, out any, fields ...strin
 	}
 	b, err := io.ReadAll(io.LimitReader(r.Body, 4097))
 	if err != nil || len(b) > 4096 {
+		w.Header().Set("Connection", "close")
 		failure(w, store.ErrInvalid)
 		return false
 	}

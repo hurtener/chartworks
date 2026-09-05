@@ -45,7 +45,7 @@ func TestProtectedRequestNegatives(t *testing.T) {
 	if callProtected(t, h, "GET", "/metrics", token, "", nil).Code != 200 {
 		t.Fatal("scoped aggregate metrics unavailable")
 	}
-	r, err := telemetry.New(io.Discard, "json")
+	r, err := telemetry.New(io.Discard, "json", true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -126,13 +125,4 @@ func callProtected(t testing.TB, h http.Handler, method, path, token, body strin
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	return w
-}
-func bodyText(t testing.TB, r *http.Response) string {
-	t.Helper()
-	defer func() { _ = r.Body.Close() }()
-	b, e := io.ReadAll(r.Body)
-	if e != nil {
-		t.Fatal(e)
-	}
-	return string(b)
 }

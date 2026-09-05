@@ -44,7 +44,7 @@ func protectedFixture(t *testing.T, f *tokenFixture) (*securityapi.Service, http
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := telemetry.New(io.Discard, "json")
+	r, err := telemetry.New(io.Discard, "json", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestPhase04(t *testing.T) {
 		if access.Require(e, "reporting.execute", r) != nil {
 			t.Fatal("exact reach denied")
 		}
-		for _, change := range []access.Resource{{"foreign", "report", "execute", "r1"}, {"tenant", "report", "execute", "r2"}, {"tenant", "report", "read", "r1"}, {"tenant", "unknown", "execute", "r1"}, {"tenant", "report", "execute", "*"}, {"tenant", "tenant", "execute", "foreign"}} {
+		for _, change := range []access.Resource{{Tenant: "foreign", Kind: "report", Permission: "execute", ID: "r1"}, {Tenant: "tenant", Kind: "report", Permission: "execute", ID: "r2"}, {Tenant: "tenant", Kind: "report", Permission: "read", ID: "r1"}, {Tenant: "tenant", Kind: "unknown", Permission: "execute", ID: "r1"}, {Tenant: "tenant", Kind: "report", Permission: "execute", ID: "*"}, {Tenant: "tenant", Kind: "tenant", Permission: "execute", ID: "foreign"}} {
 			if access.Require(e, "reporting.execute", change) == nil {
 				t.Fatal("scope broadened")
 			}
@@ -139,8 +139,8 @@ func TestPhase04(t *testing.T) {
 		f := newTokenFixture(t)
 		refs := []string{"reporting.execute", "reporting.read", "cw.report.execute:report1", "cw.report.read:report1", "cw.source.query:source1", "cw.execution_context.use:context1:v1"}
 		e := f.envelope(t, "tenant", "user", refs...)
-		contextRef := access.Resource{"tenant", "execution_context", "use", "context1:v1"}
-		x := access.Execution{Target: access.Resource{"tenant", "report", "execute", "report1"}, Dependencies: []access.Resource{{"tenant", "source", "query", "source1"}}, Contexts: []access.Resource{contextRef}}
+		contextRef := access.Resource{Tenant: "tenant", Kind: "execution_context", Permission: "use", ID: "context1:v1"}
+		x := access.Execution{Target: access.Resource{Tenant: "tenant", Kind: "report", Permission: "execute", ID: "report1"}, Dependencies: []access.Resource{{Tenant: "tenant", Kind: "source", Permission: "query", ID: "source1"}}, Contexts: []access.Resource{contextRef}}
 		if access.RequireExecution(e, x) != nil {
 			t.Fatal("valid resolved execution denied")
 		}

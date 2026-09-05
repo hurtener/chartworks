@@ -74,23 +74,34 @@ func StoreScope(e identity.Envelope, action, permission string) (store.Scope, er
 // Selection is immutable pre-query restriction data. The zero value selects nothing.
 // Database adapters MUST apply Tenant and IDs/All in SQL, never fetch-wide then filter.
 type Selection struct {
-	tenant string
-	ids    []string
-	all    bool
+	authority identity.Envelope
+	tenant    string
+	ids       []string
+	all       bool
 }
 
 // Tenant is mandatory even when All is true.
-func (s Selection) Tenant() string { return s.tenant }
+func (s Selection) Tenant() string {
+	if !s.authority.Valid() {
+		return ""
+	}
+	return s.tenant
+}
 
 // IDs is a detached, canonical list of allowed identifiers.
-func (s Selection) IDs() []string { return append([]string(nil), s.ids...) }
+func (s Selection) IDs() []string {
+	if !s.authority.Valid() {
+		return nil
+	}
+	return append([]string(nil), s.ids...)
+}
 
 // All means all eligible IDs within this tenant, never all tenants.
-func (s Selection) All() bool { return s.all && s.tenant != "" }
+func (s Selection) All() bool { return s.authority.Valid() && s.all && s.tenant != "" }
 
 // Contains is useful for pre-I/O reference checks, not post-fetch security filtering.
 func (s Selection) Contains(tenant, id string) bool {
-	if s.tenant == "" || tenant != s.tenant || !identity.Identifier(id) {
+	if !s.authority.Valid() || s.tenant == "" || tenant != s.tenant || !identity.Identifier(id) {
 		return false
 	}
 	if s.all {
@@ -111,7 +122,7 @@ func Constrain(e identity.Envelope, action, kind, permission string) (Selection,
 	if _, err := identity.ParseReach("cw." + kind + "." + permission + ":probe"); err != nil {
 		return Selection{}, ErrNotFound
 	}
-	s := Selection{tenant: e.Tenant()}
+	s := Selection{tenant: e.Tenant(), authority: e}
 	for _, r := range e.Reach() {
 		if r.Kind != kind || r.Permission != permission {
 			continue
