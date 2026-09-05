@@ -78,6 +78,8 @@ jobs:
       - name: Phase 07-08 and prerequisite acceptance
         run: go test -race -count=1 -timeout=10m -v ./test/acceptance -run 'TestPhase0[789]|TestVindex|TestSource|TestSQL' 2>&1 | tee /tmp/chartworks-evidence/acceptance.log
       - name: Full race coverage inventory
+        env:
+          CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-evidence/coverage.out
         run: make coverage 2>&1 | tee /tmp/chartworks-evidence/coverage.log
       - name: Preserve exact reviewed source and test evidence
         if: always()

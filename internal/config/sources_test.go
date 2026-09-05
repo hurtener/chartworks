@@ -14,8 +14,8 @@ func sourceConfigFixture() Sources {
 	return out
 }
 func TestSourceConfiguration(t *testing.T) {
-	good := sourceConfigFixture()
-	if err := ValidateSources(good); err != nil {
+	settings := sourceConfigFixture()
+	if err := ValidateSources(settings); err != nil {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*Sources){
@@ -24,13 +24,13 @@ func TestSourceConfiguration(t *testing.T) {
 			s.Connections[0].Relations = append(s.Connections[0].Relations, s.Connections[0].Relations[0])
 		},
 	} {
-		bad := good.Clone()
+		bad := settings.Clone()
 		mutate(&bad)
 		if ValidateSources(bad) == nil {
 			t.Fatal("invalid source configuration accepted")
 		}
 	}
-	data, err := json.Marshal(Defaults())
+	data, err := json.Marshal(map[string]any{"auth": good().Auth, "sources": DefaultSources()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,9 +41,7 @@ func TestSourceConfiguration(t *testing.T) {
 	if parsed.Values().Sources.Connections == nil {
 		t.Fatal("default aliases serialized as null")
 	}
-	v := Defaults()
-	v.Sources = good
-	data, err = json.Marshal(v)
+	data, err = json.Marshal(map[string]any{"auth": good().Auth, "sources": settings})
 	if err != nil {
 		t.Fatal(err)
 	}
