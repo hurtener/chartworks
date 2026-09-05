@@ -1,6 +1,6 @@
 # Phase 04 — access-grants
 
-Status: planned. Owner: internal/access. Hard dependencies: 02, 03.
+Status: in_progress. Owner: internal/access. Hard dependencies: 02, 03.
 
 ## Authority and design
 

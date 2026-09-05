@@ -10,7 +10,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/internal/telemetry"
 )
@@ -123,9 +125,16 @@ func Start(ctx context.Context, cfg config.Config, log io.Writer) error {
 		return err
 	}
 	defer db.Close()
-	keyProbe := NewKeyProbe(v.Auth, nil)
+	keyProbe, err := auth.New(v.Auth, nil, nil)
+	if err != nil {
+		return err
+	}
+	service, err := securityapi.New(db)
+	if err != nil {
+		return err
+	}
 	defer keyProbe.Close()
-	s, err := NewServer(cfg, r, func(ctx context.Context) Dependency { return Dependency{Ready: db.Check(ctx) == nil} }, keyProbe.Check)
+	s, err := NewServer(cfg, r, func(ctx context.Context) Dependency { return Dependency{Ready: db.Check(ctx) == nil} }, keyProbe.Check, securityapi.Handler(keyProbe, service, r, v.Telemetry.Metrics))
 	if err != nil {
 		return err
 	}

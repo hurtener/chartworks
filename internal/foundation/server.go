@@ -23,14 +23,22 @@ type Server struct {
 	store, keys Checker
 	mu          sync.RWMutex
 	state       map[string]Dependency
+	protected   http.Handler
 }
 
 // NewServer rejects missing real probes, rather than treating nil dependencies as healthy.
-func NewServer(cfg config.Config, r *telemetry.Reporter, store, keys Checker) (*Server, error) {
+func NewServer(cfg config.Config, r *telemetry.Reporter, store, keys Checker, protected ...http.Handler) (*Server, error) {
 	if r == nil || store == nil || keys == nil || cfg.StoreDSN() == "" {
 		return nil, errors.New("foundation: configuration, telemetry and dependency probes required")
 	}
-	return &Server{values: cfg.Values(), reporter: r, store: store, keys: keys, state: map[string]Dependency{}}, nil
+	var h http.Handler
+	if len(protected) > 1 {
+		return nil, errors.New("foundation: one protected router required")
+	}
+	if len(protected) == 1 {
+		h = protected[0]
+	}
+	return &Server{values: cfg.Values(), reporter: r, store: store, keys: keys, state: map[string]Dependency{}, protected: h}, nil
 }
 func (s *Server) observe(ctx context.Context, name string, check Checker, interval time.Duration) {
 	refresh := func() {
@@ -88,6 +96,10 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if r.URL.Path != "/healthz" && r.URL.Path != "/readyz" && r.URL.Path != "/capabilities" {
+			if s.protected != nil {
+				s.protected.ServeHTTP(w, r)
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -128,7 +140,7 @@ func (s *Server) Handler() http.Handler {
 				Implemented    []string `json:"implemented"`
 				BusinessAPI    bool     `json:"business_api"`
 				Authentication bool     `json:"authentication"`
-			}{"01-02-foundation", []string{"configuration", "health", "postgresql_metadata"}, false, false}
+			}{"01-04-authority", s.implemented(), false, s.protected != nil}
 		}
 		w.WriteHeader(status)
 		if r.Method != http.MethodHead {
@@ -187,4 +199,12 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 		return errors.New("foundation: listener failed")
 	}
 	return nil
+}
+
+func (s *Server) implemented() []string {
+	out := []string{"configuration", "health", "postgresql_metadata"}
+	if s.protected != nil {
+		out = append(out, "jwt_verification", "signed_scope_enforcement", "operational_api")
+	}
+	return out
 }

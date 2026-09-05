@@ -1,6 +1,6 @@
 # Phase 03 — auth-identity
 
-Status: planned. Owner: internal/auth, internal/identity. Hard dependencies: 01.
+Status: in_progress. Owner: internal/auth, internal/identity. Hard dependencies: 01.
 
 ## Authority and design
 
