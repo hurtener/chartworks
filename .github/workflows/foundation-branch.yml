@@ -1,0 +1,58 @@
+name: Foundation branch verification
+on:
+  push:
+    branches: [feat/phase-01-02-foundation]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        ports: [5434:5432]
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: PostgreSQL tools
+        run: |
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
+      - name: Normalize newly introduced Go source and dependency lock
+        run: |
+          go mod tidy
+          find cmd internal test -name '*.go' -print0 | xargs -0 gofmt -w
+          if ! git diff --quiet -- go.mod go.sum cmd internal test || [ -n "$(git ls-files --others --exclude-standard go.sum)" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add go.mod go.sum cmd internal test
+            git commit -m 'chore: format foundation source and lock Go dependencies'
+            git push origin HEAD:feat/phase-01-02-foundation
+          fi
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+      - name: Compile, vet and real database race tests
+        run: |
+          CGO_ENABLED=0 go build ./...
+          go vet ./...
+          go test -race -count=1 -timeout=10m -coverpkg=./internal/...,./cmd/... -coverprofile=/tmp/foundation-coverage.out ./...
+          go tool cover -func=/tmp/foundation-coverage.out
+      - name: Benchmarks
+        run: go test ./test/acceptance -run '^$' -bench 'Benchmark(ConfigurationStartup|IdleHealth)$' -benchmem -benchtime=100x
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
