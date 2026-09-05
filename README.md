@@ -21,3 +21,7 @@ make release-check    # strict: actual tests, all phases shipped, no SKIPs
 ```
 
 There are 34 phase plans, 224 acceptance criteria, 63 source-feature rows and 41 review gates. Those counts and a green planning check are not runtime proof. Historical plans remain under `docs/archive/`. Development follows the graph rather than numeric phase order; phases21–23 are early thin surfaces and phase25 is the final release gate.
+
+## Phase 01–02 foundation
+
+The first Go foundation now has strict configuration, lifecycle/health, PostgreSQL metadata migrations and real-store acceptance tests. Business JWT enforcement, analytics and reporting remain later phases. Start with [GETTING-STARTED.md](GETTING-STARTED.md); the [adversarial review](docs/reviews/phase-01-02-adversarial.md) records failure probes and corrections.

@@ -1,0 +1,25 @@
+{
+  "server": {
+    "listen": "127.0.0.1:8080"
+  },
+  "auth": {
+    "issuer": "env:CHARTWORKS_ISSUER",
+    "jwks_url": "env:CHARTWORKS_JWKS_URL",
+    "audience": "env:CHARTWORKS_AUDIENCE"
+  },
+  "store": {
+    "dsn": "env:CHARTWORKS_STORE_URL",
+    "migration_policy": "apply"
+  },
+  "telemetry": {
+    "log_format": "json",
+    "metrics": true,
+    "otel": false
+  },
+  "features": {
+    "gateway": false,
+    "mcp": false,
+    "reporting": false,
+    "renderer": false
+  }
+}

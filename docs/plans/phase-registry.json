@@ -2,8 +2,8 @@
   "schema_version": 1,
   "baseline_commit": "4d45cb5339be21e2ea0a8728dd03ad48625f5fa9",
   "phases": {
-    "01": {"slug":"binary-config-telemetry","depends_on":[],"status":"planned","acceptance_count":6},
-    "02": {"slug":"store-migrations","depends_on":["01"],"status":"planned","acceptance_count":6},
+    "01": {"slug":"binary-config-telemetry","depends_on":[],"status":"shipped","acceptance_count":6},
+    "02": {"slug":"store-migrations","depends_on":["01"],"status":"shipped","acceptance_count":6},
     "03": {"slug":"auth-identity","depends_on":["01"],"status":"planned","acceptance_count":6},
     "04": {"slug":"access-grants","depends_on":["02","03"],"status":"planned","acceptance_count":6},
     "05": {"slug":"gateway","depends_on":["01"],"status":"planned","acceptance_count":10},
