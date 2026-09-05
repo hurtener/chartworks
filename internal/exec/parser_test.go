@@ -53,6 +53,13 @@ func TestSQLResolverGrammar(t *testing.T) {
 		`SELECT row_number() OVER w AS n FROM analytics.sales WINDOW w AS (ORDER BY id)`,
 		`SELECT id, sum(amount) FROM analytics.sales GROUP BY GROUPING SETS ((id),())`,
 		`VALUES (1, 'a'), (2, 'b')`,
+		`SELECT id AS secret FROM analytics.sales ORDER BY secret`,
+		`SELECT q.exposed FROM (SELECT id FROM analytics.sales) AS q(exposed)`,
+		`WITH q AS (SELECT id FROM analytics.sales) SELECT exposed FROM q AS x(exposed)`,
+		`SELECT id AS label FROM analytics.sales GROUP BY id ORDER BY label`,
+		`SELECT DISTINCT id FROM analytics.sales`,
+		`SELECT ARRAY[id, 2], ROW(id, amount) FROM analytics.sales`,
+		`WITH q AS (SELECT id FROM analytics.sales), r AS (SELECT id FROM q) SELECT id FROM r`,
 	} {
 		t.Run(sql, func(t *testing.T) {
 			cols, err, raw := resolveFixture(sql)
@@ -81,6 +88,13 @@ func TestSQLResolverAdversarial(t *testing.T) {
 		`SELECT sales.* FROM analytics.sales`,
 		`SELECT secret FROM analytics.sales`,
 		`SELECT custom FROM analytics.sales`,
+		`SELECT exposed FROM analytics.sales AS t(exposed)`,
+		`SELECT 1 AS secret, count(id) FROM analytics.sales GROUP BY secret`,
+		`SELECT 1 AS secret, count(id) FROM analytics.sales GROUP BY GROUPING SETS ((secret),())`,
+		`SELECT id AS secret FROM analytics.sales ORDER BY secret || ''`,
+		`SELECT id AS secret FROM analytics.sales ORDER BY lower(secret)`,
+		`SELECT id AS secret FROM analytics.sales ORDER BY secret::text`,
+		`SELECT DISTINCT ON (secret) id AS secret FROM analytics.sales`,
 		`SELECT id FROM sales`,
 		`SELECT id FROM foreign_database.analytics.sales`,
 		`SELECT id FROM public.unregistered`,

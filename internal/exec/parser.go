@@ -180,7 +180,11 @@ func (r *sqlResolver) selectStatement(v any, inherited map[string][]string) ([]s
 		}
 		width := 0
 		for _, row := range values {
-			items := array(fieldObject(row, "List")["items"])
+			list := fieldObject(row, "List")
+			if !only(list, "items") {
+				return nil, ErrUnsafe
+			}
+			items := array(list["items"])
 			if len(items) == 0 {
 				return nil, ErrUnsafe
 			}
@@ -227,10 +231,14 @@ func (r *sqlResolver) selectStatement(v any, inherited map[string][]string) ([]s
 	}
 	for _, field := range []string{"groupClause", "distinctClause"} {
 		for _, item := range array(m[field]) {
-			if item == nil && field == "distinctClause" {
+			empty, isObject := item.(map[string]any)
+			if field == "distinctClause" && (item == nil || isObject && len(empty) == 0) {
 				continue
 			}
-			if err := r.expr(item, scope, true); err != nil {
+			// GROUP BY resolves input names before output aliases. A filtered
+			// semantic projection cannot prove that an alias is not a hidden
+			// physical column. DISTINCT ON is conservatively input-only too.
+			if err := r.expr(item, scope, false); err != nil {
 				return nil, err
 			}
 		}
@@ -320,6 +328,13 @@ func (r *sqlResolver) from(v any, s *sqlScope) error {
 				return ErrUnsafe
 			}
 			return addSource(s, name, cols, m["alias"])
+		}
+		// Base-table column aliases are positional against the physical table,
+		// not the filtered semantic projection. Renaming its permitted columns
+		// would let an excluded physical column borrow a permitted alias.
+		// CTE/derived outputs above/below have fully resolved positions instead.
+		if alias := m["alias"]; alias != nil && len(array(fieldObject(alias, "Alias")["colnames"])) != 0 {
+			return ErrUnsafe
 		}
 		for _, relation := range r.binding.Relations {
 			if relation.Schema != schema || relation.Name != name {
@@ -472,6 +487,12 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 		return ErrUnsafe
 	}
 	for kind, value := range root {
+		// PostgreSQL resolves an output alias only as a bare ORDER BY name.
+		// Inside operators, function arguments, casts or aggregate ordering,
+		// the same spelling resolves against input columns instead.
+		if kind != "ColumnRef" && kind != "SortBy" {
+			outputs = false
+		}
 		m := object(value)
 		switch kind {
 		case "ColumnRef":
@@ -549,7 +570,11 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 				return err
 			}
 			if m["over"] != nil {
-				if err := r.window(fieldObject(m["over"], "WindowDef"), s); err != nil {
+				over := fieldObject(m["over"], "WindowDef")
+				if name := text(over["name"]); name != "" && !s.windows[name] {
+					return ErrUnsafe
+				}
+				if err := r.window(over, s); err != nil {
 					return err
 				}
 			}
