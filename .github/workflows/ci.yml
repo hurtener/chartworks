@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/phase-01-02-foundation]
+    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority]
 
 permissions:
   contents: read
@@ -65,24 +65,32 @@ jobs:
           go mod verify
           go mod tidy
           git diff --exit-code -- go.mod go.sum
-          test -z "$(find cmd internal test -name '*.go' -print0 | xargs -0 gofmt -l)"
-          test -z "$(find scripts -name '_foundation_edits*.py' -print)"
+          test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
+          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' \) -print)"
       - run: make build
       - run: make vet
-      - name: Race-enabled unit, integration and PostgreSQL recovery coverage
+      - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
-      - name: All twelve phase acceptance criteria, no missing/skipped tests
+      - name: All twenty-four implemented phase criteria, no missing/skipped tests
         run: |
           python3 scripts/run_phase_acceptance.py --phase 01
           python3 scripts/run_phase_acceptance.py --phase 02
-      - name: Compiled binary lifecycle and safe capability smoke
+          python3 scripts/run_phase_acceptance.py --phase 03
+          python3 scripts/run_phase_acceptance.py --phase 04
+      - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
+      - name: Bounded security mutation fuzz campaigns
+        run: |
+          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzAuthorityJSON$' -fuzztime=5s -parallel=2
+          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=5s -parallel=2
       - name: Full cumulative development preflight
         run: make preflight-full
       - name: Microbenchmark baseline (not warehouse or end-user latency)
         run: go test ./test/acceptance -run '^$' -bench 'Benchmark(ConfigurationStartup|IdleHealth)$' -benchmem -benchtime=100x
       - name: Working tree must remain unchanged
-        run: git diff --exit-code
+        run: |
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
 
   lint:
     runs-on: ubuntu-24.04
