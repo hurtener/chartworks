@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -29,8 +30,13 @@ type Validator struct {
 
 // NewValidator uses the pinned native PostgreSQL parser compiled to WASM, not a keyword filter.
 func NewValidator(adapter ReadAdapter, limits config.ReadValidation) (*Validator, error) {
-	if adapter == nil || config.ValidateReadValidation(limits) != nil {
+	if adapter == nil || reflect.ValueOf(adapter).Kind() == reflect.Ptr && reflect.ValueOf(adapter).IsNil() || config.ValidateReadValidation(limits) != nil {
 		return nil, ErrBinding
+	}
+	// Initialize the pinned WASM parser at explicit capability construction, not
+	// during the first user request. Disabled sources never initialize it.
+	if _, err := pgquery.ParseToJSON("SELECT 1"); err != nil {
+		return nil, ErrUnsupported
 	}
 	return &Validator{adapter: adapter, limits: limits, slots: make(chan struct{}, limits.Concurrency)}, nil
 }
@@ -38,6 +44,12 @@ func NewValidator(adapter ReadAdapter, limits config.ReadValidation) (*Validator
 // Validate constructs the only nonzero executable Plan after authority, whole-tree
 // resolution and constrained native EXPLAIN have all succeeded.
 func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request) (Plan, error) {
+	if ctx == nil {
+		return Plan{}, ErrBinding
+	}
+	if err := ctx.Err(); err != nil {
+		return Plan{}, err
+	}
 	if !e.Valid() {
 		return Plan{}, ErrBinding
 	}

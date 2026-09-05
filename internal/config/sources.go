@@ -45,7 +45,7 @@ type ReadValidation struct {
 
 // DefaultSources leaves warehouse access opt-in and keeps metadata reads available.
 func DefaultSources() Sources {
-	return Sources{MaxConns: 4, ConnectTimeout: Duration(time.Second), QueryTimeout: Duration(2 * time.Second), MaxRows: 256, MaxBytes: 1 << 20}
+	return Sources{Connections: []SourceConnection{}, MaxConns: 4, ConnectTimeout: Duration(time.Second), QueryTimeout: Duration(2 * time.Second), MaxRows: 256, MaxBytes: 1 << 20}
 }
 
 // DefaultReadValidation supplies explicit conservative parser limits.
@@ -55,7 +55,7 @@ func DefaultReadValidation() ReadValidation {
 
 // Clone detaches the complete operator connector snapshot.
 func (s Sources) Clone() Sources {
-	s.Connections = append([]SourceConnection(nil), s.Connections...)
+	s.Connections = append([]SourceConnection{}, s.Connections...)
 	for i := range s.Connections {
 		s.Connections[i].Relations = append([]SourceRelation(nil), s.Connections[i].Relations...)
 		for j := range s.Connections[i].Relations {

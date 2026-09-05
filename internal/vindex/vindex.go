@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -247,7 +248,7 @@ type Service struct{ repo Repository }
 
 // New binds the pgvector repository without starting workers or loading any learned model.
 func New(repo Repository) (*Service, error) {
-	if repo == nil {
+	if repo == nil || reflect.ValueOf(repo).Kind() == reflect.Ptr && reflect.ValueOf(repo).IsNil() {
 		return nil, store.ErrInvalid
 	}
 	return &Service{repo: repo}, nil
