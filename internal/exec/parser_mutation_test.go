@@ -112,7 +112,7 @@ func TestSQLResolverNestedFailureBoundaries(t *testing.T) {
 		`SELECT current_user`,
 	} {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			if _, err, _ := resolveFixture(sql); err == nil {
+			if _, _, err := resolveFixture(sql); err == nil {
 				t.Fatal("unsafe nested dependency accepted", sql)
 			}
 		})
