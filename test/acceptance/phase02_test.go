@@ -268,6 +268,7 @@ func TestPhase02(t *testing.T) {
 		}
 	})
 	t.Run("AC05", func(t *testing.T) {
+		checkOperationExpiry(t)
 		dsn := support.Database(t)
 		db := support.Open(t, dsn)
 		s := support.Scope(t, "operations", "actor")

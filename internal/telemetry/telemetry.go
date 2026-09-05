@@ -32,6 +32,7 @@ const (
 
 // Reporter is safe for concurrent use. Callers never obtain its mutable registry/logger.
 type Reporter struct {
+	enabled  bool
 	logger   *slog.Logger
 	registry *prometheus.Registry
 	events   *prometheus.CounterVec
@@ -39,7 +40,7 @@ type Reporter struct {
 }
 
 // New constructs and initializes every metric series, including zero-valued counters.
-func New(w io.Writer, format string) (*Reporter, error) {
+func New(w io.Writer, format string, enabled bool) (*Reporter, error) {
 	if w == nil {
 		return nil, errors.New("telemetry: writer required")
 	}
@@ -52,7 +53,7 @@ func New(w io.Writer, format string) (*Reporter, error) {
 	default:
 		return nil, errors.New("telemetry: unsupported log format")
 	}
-	r := &Reporter{logger: slog.New(h), registry: prometheus.NewRegistry(), events: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "chartworks_events_total", Help: "Content-free foundation events."}, []string{"event", "outcome"}), ready: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "chartworks_dependency_ready", Help: "Required dependency readiness."}, []string{"dependency"})}
+	r := &Reporter{enabled: enabled, logger: slog.New(h), registry: prometheus.NewRegistry(), events: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "chartworks_events_total", Help: "Content-free foundation events."}, []string{"event", "outcome"}), ready: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "chartworks_dependency_ready", Help: "Required dependency readiness."}, []string{"dependency"})}
 	if err := r.registry.Register(r.events); err != nil {
 		return nil, errors.New("telemetry: metric registration failed")
 	}
@@ -81,7 +82,9 @@ func (r *Reporter) Record(ctx context.Context, event Event, success bool) error 
 	if success {
 		outcome = "ok"
 	}
-	r.events.WithLabelValues(string(event), outcome).Inc()
+	if r.enabled {
+		r.events.WithLabelValues(string(event), outcome).Inc()
+	}
 	// High-frequency request data remains in counters, not an unbounded log stream.
 	if event != Request {
 		r.logger.LogAttrs(ctx, slog.LevelInfo, "chartworks", slog.String("event", string(event)), slog.String("outcome", outcome))
@@ -98,12 +101,17 @@ func (r *Reporter) Dependency(name string, ready bool) error {
 	if ready {
 		value = 1
 	}
-	r.ready.WithLabelValues(name).Set(value)
+	if r.enabled {
+		r.ready.WithLabelValues(name).Set(value)
+	}
 	return nil
 }
 
 // Handler is the real Prometheus exporter. It is not installed on an unauthenticated business listener.
 func (r *Reporter) Handler() http.Handler {
+	if !r.enabled {
+		return http.NotFoundHandler()
+	}
 	return promhttp.HandlerFor(r.registry, promhttp.HandlerOpts{})
 }
 

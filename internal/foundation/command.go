@@ -114,7 +114,7 @@ func Command(ctx context.Context, args []string, lookup func(string) (string, bo
 // Start connects the actual store before binding, then runs health with trusted JWKS checks.
 func Start(ctx context.Context, cfg config.Config, log io.Writer) error {
 	v := cfg.Values()
-	r, err := telemetry.New(log, v.Telemetry.LogFormat)
+	r, err := telemetry.New(log, v.Telemetry.LogFormat, v.Telemetry.Metrics)
 	if err != nil {
 		return err
 	}
@@ -124,6 +124,7 @@ func Start(ctx context.Context, cfg config.Config, log io.Writer) error {
 	}
 	defer db.Close()
 	keyProbe := NewKeyProbe(v.Auth, nil)
+	defer keyProbe.Close()
 	s, err := NewServer(cfg, r, func(ctx context.Context) Dependency { return Dependency{Ready: db.Check(ctx) == nil} }, keyProbe.Check)
 	if err != nil {
 		return err

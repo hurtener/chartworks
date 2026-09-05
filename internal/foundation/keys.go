@@ -3,6 +3,7 @@
 package foundation
 
 import (
+	"bytes"
 	"context"
 	"crypto/elliptic"
 	"encoding/base64"
@@ -36,7 +37,7 @@ type KeyProbe struct {
 
 // NewKeyProbe pins the transport and rejects redirects. A supplied client is for trusted transport configuration.
 func NewKeyProbe(auth config.Auth, client *http.Client) *KeyProbe {
-	c := http.Client{}
+	c := http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
 	if client != nil {
 		c = *client
 	}
@@ -82,6 +83,13 @@ func decode(s string) []byte {
 	return v
 }
 func validKeys(data []byte, allowed []string) bool {
+	d := json.NewDecoder(bytes.NewReader(data))
+	if uniqueValue(d, 0) != nil {
+		return false
+	}
+	if _, e := d.Token(); !errors.Is(e, io.EOF) {
+		return false
+	}
 	var doc struct {
 		Keys []map[string]json.RawMessage `json:"keys"`
 	}
@@ -94,6 +102,14 @@ func validKeys(data []byte, allowed []string) bool {
 	}
 	seen := map[string]bool{}
 	for _, k := range doc.Keys {
+		for _, field := range []string{"kid", "kty", "use", "alg", "n", "e", "crv", "x", "y"} {
+			if raw, present := k[field]; present {
+				var v string
+				if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &v) != nil {
+					return false
+				}
+			}
+		}
 		kid := str(k, "kid")
 		if len(kid) == 0 || len(kid) > 128 || strings.TrimSpace(kid) != kid || seen[kid] {
 			return false
@@ -163,4 +179,47 @@ func validKeys(data []byte, allowed []string) bool {
 		}
 	}
 	return true
+}
+
+// Close releases idle verification-key connections after the monitor has joined.
+func (p *KeyProbe) Close() { p.client.CloseIdleConnections() }
+func uniqueValue(d *json.Decoder, depth int) error {
+	if depth > 16 {
+		return errors.New("invalid key document")
+	}
+	v, e := d.Token()
+	if e != nil || v == nil {
+		return errors.New("invalid key document")
+	}
+	if delimiter, ok := v.(json.Delim); ok {
+		switch delimiter {
+		case '{':
+			seen := map[string]bool{}
+			for d.More() {
+				k, err := d.Token()
+				if err != nil {
+					return err
+				}
+				key, ok := k.(string)
+				if !ok || seen[key] {
+					return errors.New("duplicate key field")
+				}
+				seen[key] = true
+				if e = uniqueValue(d, depth+1); e != nil {
+					return e
+				}
+			}
+		case '[':
+			for d.More() {
+				if e = uniqueValue(d, depth+1); e != nil {
+					return e
+				}
+			}
+		default:
+			return errors.New("invalid key document")
+		}
+		_, e = d.Token()
+		return e
+	}
+	return nil
 }

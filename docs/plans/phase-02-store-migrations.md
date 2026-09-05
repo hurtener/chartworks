@@ -1,6 +1,6 @@
 # Phase 02 — store-migrations
 
-Status: planned. Owner: internal/store. Hard dependencies: 01.
+Status: in_progress. Owner: internal/store. Hard dependencies: 01.
 
 ## Authority and design
 

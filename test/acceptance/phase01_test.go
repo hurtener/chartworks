@@ -145,6 +145,7 @@ func TestPhase01(t *testing.T) {
 		}
 	})
 	t.Run("AC02", func(t *testing.T) {
+		checkRealStartup(t)
 		dsn := support.Database(t)
 		db := support.Open(t, dsn)
 		doc := keyDocument(t)
@@ -164,7 +165,7 @@ func TestPhase01(t *testing.T) {
 			m["auth"].(map[string]any)["request_timeout"] = "100ms"
 		})
 		c := loaded(t, b, dsn)
-		r, e := telemetry.New(io.Discard, "json")
+		r, e := telemetry.New(io.Discard, "json", true)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -219,7 +220,7 @@ func TestPhase01(t *testing.T) {
 	})
 	t.Run("AC03", func(t *testing.T) {
 		var logs bytes.Buffer
-		r, e := telemetry.New(&logs, "json")
+		r, e := telemetry.New(&logs, "json", true)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -252,16 +253,16 @@ func TestPhase01(t *testing.T) {
 		if strings.Contains(logs.String()+w.Body.String(), canary) {
 			t.Fatal("secret in observability")
 		}
-		if _, e = telemetry.New(nil, "json"); e == nil {
+		if _, e = telemetry.New(nil, "json", true); e == nil {
 			t.Fatal("nil writer accepted")
 		}
-		if _, e = telemetry.New(io.Discard, "unknown"); e == nil {
+		if _, e = telemetry.New(io.Discard, "unknown", true); e == nil {
 			t.Fatal("unknown log format accepted")
 		}
 	})
 	t.Run("AC04", func(t *testing.T) {
 		c := loaded(t, configBytes(t, nil), "fixture")
-		r, e := telemetry.New(io.Discard, "text")
+		r, e := telemetry.New(io.Discard, "text", true)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -352,7 +353,7 @@ func TestPhase01(t *testing.T) {
 	t.Run("AC06", func(t *testing.T) {
 		b := configBytes(t, nil)
 		c := loaded(t, b, canary)
-		r, e := telemetry.New(io.Discard, "json")
+		r, e := telemetry.New(io.Discard, "json", true)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -396,7 +397,7 @@ func BenchmarkConfigurationStartup(b *testing.B) {
 }
 func BenchmarkIdleHealth(b *testing.B) {
 	cfg := loaded(b, configBytes(b, nil), "fixture")
-	r, e := telemetry.New(io.Discard, "json")
+	r, e := telemetry.New(io.Discard, "json", true)
 	if e != nil {
 		b.Fatal(e)
 	}

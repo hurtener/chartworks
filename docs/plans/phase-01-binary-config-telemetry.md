@@ -1,6 +1,6 @@
 # Phase 01 — binary-config-telemetry
 
-Status: planned. Owner: cmd/chartworks, internal/config, internal/telemetry. Hard dependencies: none.
+Status: in_progress. Owner: cmd/chartworks, internal/config, internal/telemetry. Hard dependencies: none.
 
 ## Authority and design
 
