@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 20
     env:
       CGO_ENABLED: 1
-      CHARTWORKS_COVERAGE_OUTPUT: ${{ runner.temp }}/chartworks-coverage.out
+      CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
       # Synthetic disposable PostgreSQL fixture, never a production credential.
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
     services:
@@ -103,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: race-coverage
-          path: ${{ runner.temp }}/chartworks-coverage.out
+          path: /tmp/chartworks-coverage.out
           retention-days: 14
       - name: Working tree must remain unchanged
         run: |
