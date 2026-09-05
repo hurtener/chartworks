@@ -8,7 +8,7 @@ CREATE TABLE chartworks.operations (
  policy_revision bigint NOT NULL,
  cutoff timestamptz NOT NULL,
  batch_limit integer NOT NULL CHECK (batch_limit BETWEEN 1 AND 1000),
- status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','running','succeeded')),
+ status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','running','succeeded','expired')),
  fence bigint NOT NULL DEFAULT 0 CHECK (fence >= 0),
  lease_owner text CHECK (lease_owner ~ '^[A-Za-z0-9_.:-]{1,128}$'),
  lease_until timestamptz,
@@ -23,7 +23,7 @@ CREATE TABLE chartworks.operations (
  FOREIGN KEY (tenant_id,policy_revision) REFERENCES chartworks.policy_revisions(tenant_id,revision),
  CHECK ((lease_owner IS NULL) = (lease_until IS NULL)),
  CHECK ((status = 'running') = (lease_until IS NOT NULL)),
- CHECK ((status = 'succeeded') = (finished_at IS NOT NULL)),
+ CHECK ((status IN ('succeeded','expired')) = (finished_at IS NOT NULL)),
  CHECK (expires_at > created_at)
 );
 ALTER TABLE chartworks.audit_events ADD COLUMN operation_id text;
