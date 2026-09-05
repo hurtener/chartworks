@@ -1,6 +1,6 @@
-# Running the phase 01–04 verified foundation
+# Running Chartworks phases 01–06
 
-This build implements configuration, lifecycle/health, PostgreSQL metadata, Pengui JWT verification and signed-scope enforcement on its operational APIs. It does **not** implement NLQ, reporting, the full MCP server, rendering or Bifrost inference yet. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
+This build implements configuration, lifecycle/health, PostgreSQL metadata, Pengui JWT verification and signed-scope enforcement on its operational APIs. It also implements remote Bifrost inference and durable maintenance scheduling. It does **not** implement NLQ, reporting, the full MCP server or rendering yet. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ curl http://127.0.0.1:8080/readyz
 curl --fail http://127.0.0.1:8080/capabilities
 ```
 
-Liveness is independent of dependency health. Readiness reports `starting`, `ready`, `unavailable` or `stale` for PostgreSQL and trusted verification-key material. The real JWT verifier and readiness use the same bounded trusted public-key cache; a readiness result does not authorize an individual request. Failed key refresh never extends key freshness. Optional inference/render capabilities are not enabled or probed.
+Liveness is independent of dependency health. Readiness reports `starting`, `ready`, `unavailable` or `stale` for PostgreSQL and trusted verification-key material. The real JWT verifier and readiness use the same bounded trusted public-key cache; a readiness result does not authorize an individual request. Failed key refresh never extends key freshness. The default configuration does not enable inference or workers, and readiness never makes a paid model call.
 
 Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors, release idle HTTP connections and close the database pool. `chartworks mcp` currently exits 3 with an explicit unavailable message; it does not start a fake MCP server. Operational `/v1/*` and `/metrics` requests now require a valid Pengui bearer plus their separately registered action and addressed reach. Anonymous requests return 401; a valid caller receives a nondisclosing 404 for unregistered/inaccessible resources. Metrics also needs `ops.metrics` and returns 404 when disabled. Use the operation manifest below; there is no local login or default administrator token.
 
@@ -44,7 +44,7 @@ Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors
 
 JSON is the implemented format. `config-check --defaults` prints the exact typed defaults, with secret references rather than resolved credentials. Precedence is defaults -> file -> explicitly named `env:NAME` references -> explicit `--listen` override. `--config` selects the file before `CHARTWORKS_CONFIG`; arbitrary environment variables do not silently override fields. See [the complete key reference](docs/configuration.md).
 
-The existing `examples/chartworks.gateway.json` is a future gateway excerpt. The foundation accepts and validates its remote-provider shapes when combined with required foundation configuration, but cannot enable inference. No SDK call, local model download or provider-secret resolution happens in this phase. Phase 05 owns Bifrost initialization and the remote embedding/rerank/completion consumers.
+The `examples/chartworks.gateway.json` excerpt is now implemented. Combine it with your foundation configuration and set `features.gateway=true` to construct the remote SDK clients. Provider secrets are resolved at service construction, not by `config-check`; construction makes no inference calls. No local model download or second inference service is required.
 
 ## Tests and completion
 
@@ -84,3 +84,25 @@ The retention service is the first internal consumer of immutable revisions, com
 ## Verified operational access (phases 03/04)
 
 The production `serve` command now protects retention policy, audit, synchronous retention sweep, diagnostics and metrics with Pengui JWTs and signed addressed scopes. The old health-only foundation boundary is superseded for these implemented operations, not for the later analytical/MCP features. The listener remains explicit-loopback; a trusted backend supplies credentials. See [operator registration](docs/contracts/pengui-provider-registration.md), [operation manifest](docs/contracts/chartworks-operations.json) and [authority contract](docs/contracts/pengui-authority.md). The public Go client is `sdk/chartworks`; its caller supplies a current Pengui token provider. Chartworks issues no credentials.
+
+## Enable remote models
+
+Keep the existing foundation JSON and merge its top-level `gateway` member with `examples/chartworks.gateway.json`; set `features.gateway` to `true`. Get the OpenRouter and Cohere keys from your approved provider accounts and set the environment variables named in the excerpt. The **Cohere key is separate**: the pinned SDK does not support reranking through OpenRouter. Never paste keys into the JSON or commit them.
+
+Review every role's model, timeout and output limits. Choose an operator-owned `embedding.model_revision` and change it whenever the remote embedding generation changes. Dimension equality does not make two spaces interchangeable. Rerank, narrative and visual ranking run only when explicitly enabled. `config-check` validates the choices without spending money.
+
+After startup, an operator with `ops.model` and `cw.tenant.use:<tenant>` can call `POST /v1/gateway/probes` with `{"role":"embedding"}` (or another configured role). This is a **paid remote request with fixed synthetic input**. Use the Go SDK's `ProbeGateway`; it obtains the bearer from your existing Pengui token provider. Do not put a bearer in a URL, command history or a repository file. Probe failures contain sanitized receipts, not provider error bodies. Run one separately authorized live smoke per chosen provider operation before declaring deployment support.
+
+## Enable durable maintenance
+
+First merge and deploy the companion Pengui execution-authority change and configure its operator-approved binding file, described in [execution authority v1](docs/contracts/execution-authority-v1.md). Use a registered, enabled runtime and capability; obtain its existing tenant-bound broker client through Pengui's normal vault lifecycle. Do not create a local Chartworks signer or borrow an end-user JWT for the worker.
+
+Merge `examples/chartworks.jobs.json` into the foundation configuration. The new `auth.audiences.jobs` must be an execution-only audience ending in `:execution`, distinct from both ordinary audiences. When using `auth.audiences`, remove the shorthand `auth.audience`. Replace the example issuer URL and tenant with real approved values, and set the environment variables referenced by the broker credentials. The schema contains **references only**. Enable `jobs.enabled` only after the companion endpoint is available.
+
+Configure a retention policy for each tenant before admitting work. A submission uses `{"kind":"retention.sweep","binding_id":"maintenance"}` and one explicit `Idempotency-Key`. The bearer must allow `scheduling.write`, `ops.maintain`, tenant `write`/`erase` and the exact execution-binding `use` reach. Reading and cancelling use `scheduling.read`/`scheduling.cancel` plus addressed `run.read`/`run.write` reach. Schedule creation uses the same admission authority; read/state/manual-run operations additionally use the corresponding signed `schedule` reach. The SDK exposes these typed operations without retaining credentials.
+
+A successful submission reports `pending`, not completed erasure. The worker records its actual terminal outcome. `blocked` means authority or accepted-definition validation failed; after correcting the cause, submit a **new logical key** rather than silently rewriting the accepted job. Cron is five-field/IANA-zone, intervals are anchored, and manual runs share overlap rules. Pause/resume preserves the durable cursor and applies the configured bounded missed-run policy when resumed; pausing does not cancel already accepted jobs.
+
+The same metadata database is the queue; no Redis, message bus or extra scheduler is needed. Multi-replica bounds are pinned on first use. To change the shared concurrency/pending fingerprint, stop all workers, verify there is no active work, and explicitly remove the single `chartworks.queue_limits` configuration row before restarting all replicas with the same new settings. This row contains no authority or secrets.
+
+Turning off `jobs.enabled` stops new admission and dispatch while preserving authorized reads, cancellation and schedule pause. Neither inference nor the broker is required for these retained metadata operations. Back up the metadata database before applying migration003; checksum checks preserve migrations001/002 unchanged. Use `make coverage`, phase 05/06 smoke scripts and `make preflight-full` for real fixture-based validation; later planned phases remain explicit skips in development, not shipped analytics features.

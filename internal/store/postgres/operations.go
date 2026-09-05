@@ -40,7 +40,7 @@ func (d *DB) ReserveSweep(ctx context.Context, s store.Scope, key, hash string, 
 		}
 		var storedHash string
 		var expired bool
-		row := tx.QueryRow(ctx, `SELECT `+operationColumns+`,request_hash,(expires_at<=clock_timestamp()) FROM chartworks.operations WHERE tenant_id=$1 AND actor_id=$2 AND kind='retention.sweep' AND client_key=$3`, s.Tenant(), s.Actor(), key)
+		row := tx.QueryRow(ctx, `SELECT `+operationColumns+`,request_hash,(expires_at<=clock_timestamp()) FROM chartworks.operations WHERE dispatch_mode='inline' AND tenant_id=$1 AND actor_id=$2 AND kind='retention.sweep' AND client_key=$3`, s.Tenant(), s.Actor(), key)
 		if e = row.Scan(&out.ID, &out.Status, &out.PolicyRevision, &out.Cutoff, &out.Limit, &out.DeletedEvents, &out.DeletedOperations, &storedHash, &expired); e != nil {
 			return e
 		}
@@ -70,7 +70,7 @@ func (d *DB) Claim(ctx context.Context, s store.Scope, opID, owner string, ttl t
 	out = store.Lease{OperationID: opID, Owner: owner}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		e := tx.QueryRow(ctx, `UPDATE chartworks.operations SET status='running',fence=fence+1,lease_owner=$4,lease_until=clock_timestamp()+$5::bigint*interval '1 microsecond'
- WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND status IN ('pending','running') AND expires_at>clock_timestamp() AND (lease_until IS NULL OR lease_until<=clock_timestamp()) RETURNING fence`, s.Tenant(), s.Actor(), opID, owner, ttl.Microseconds()).Scan(&out.Fence)
+ WHERE dispatch_mode='inline' AND tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND status IN ('pending','running') AND expires_at>clock_timestamp() AND (lease_until IS NULL OR lease_until<=clock_timestamp()) RETURNING fence`, s.Tenant(), s.Actor(), opID, owner, ttl.Microseconds()).Scan(&out.Fence)
 		if e == pgx.ErrNoRows {
 			return store.ErrConflict
 		}
@@ -91,7 +91,7 @@ func (d *DB) Renew(ctx context.Context, s store.Scope, l store.Lease, ttl time.D
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, e := tx.Exec(ctx, `UPDATE chartworks.operations SET lease_until=clock_timestamp()+$6::bigint*interval '1 microsecond' WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND lease_owner=$4 AND fence=$5 AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`, s.Tenant(), s.Actor(), l.OperationID, l.Owner, l.Fence, ttl.Microseconds())
+		tag, e := tx.Exec(ctx, `UPDATE chartworks.operations SET lease_until=clock_timestamp()+$6::bigint*interval '1 microsecond' WHERE dispatch_mode='inline' AND tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND lease_owner=$4 AND fence=$5 AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`, s.Tenant(), s.Actor(), l.OperationID, l.Owner, l.Fence, ttl.Microseconds())
 		if e != nil {
 			return e
 		}
@@ -112,7 +112,7 @@ func (d *DB) CommitSweep(ctx context.Context, s store.Scope, l store.Lease) (out
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var e error
-		out, e = scanOperation(tx.QueryRow(ctx, `SELECT `+operationColumns+` FROM chartworks.operations WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND lease_owner=$4 AND fence=$5 AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp() FOR UPDATE`, s.Tenant(), s.Actor(), l.OperationID, l.Owner, l.Fence))
+		out, e = scanOperation(tx.QueryRow(ctx, `SELECT `+operationColumns+` FROM chartworks.operations WHERE dispatch_mode='inline' AND tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND lease_owner=$4 AND fence=$5 AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp() FOR UPDATE`, s.Tenant(), s.Actor(), l.OperationID, l.Owner, l.Fence))
 		if e == pgx.ErrNoRows {
 			return store.ErrConflict
 		}
@@ -137,7 +137,7 @@ func (d *DB) CommitSweep(ctx context.Context, s store.Scope, l store.Lease) (out
 		}
 		out.DeletedOperations = tag.RowsAffected()
 		// Check expiry again after the work. Expiration while holding the row lock rolls EVERYTHING back.
-		tag, e = tx.Exec(ctx, `UPDATE chartworks.operations SET status='succeeded',finished_at=clock_timestamp(),lease_owner=NULL,lease_until=NULL,deleted_events=$6,deleted_operations=$7 WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND lease_owner=$4 AND fence=$5 AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`, s.Tenant(), s.Actor(), out.ID, l.Owner, l.Fence, out.DeletedEvents, out.DeletedOperations)
+		tag, e = tx.Exec(ctx, `UPDATE chartworks.operations SET status='succeeded',finished_at=clock_timestamp(),lease_owner=NULL,lease_until=NULL,deleted_events=$6,deleted_operations=$7 WHERE dispatch_mode='inline' AND tenant_id=$1 AND actor_id=$2 AND operation_id=$3 AND lease_owner=$4 AND fence=$5 AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`, s.Tenant(), s.Actor(), out.ID, l.Owner, l.Fence, out.DeletedEvents, out.DeletedOperations)
 		if e != nil {
 			return e
 		}

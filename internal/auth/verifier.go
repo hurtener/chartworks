@@ -30,6 +30,8 @@ const (
 	HTTP Surface = iota + 1
 	// MCP is the provider audience for the existing platform tool bridge.
 	MCP
+	// ExecutionSurface is accepted only by the durable worker, never the API/MCP router.
+	ExecutionSurface
 )
 
 // Verifier is immutable apart from its concurrency-safe public-key cache.
@@ -191,12 +193,19 @@ func (v *Verifier) Verify(ctx context.Context, token string, surface Surface) (i
 		}
 		seen[a] = true
 	}
+	skew := time.Duration(v.cfg.ClockSkew)
 	expected := ""
 	switch surface {
 	case HTTP:
 		expected = v.cfg.HTTPAudience()
 	case MCP:
 		expected = v.cfg.MCPAudience()
+	case ExecutionSurface:
+		expected = v.cfg.Audiences.Jobs
+		skew = 0
+		if expected == "" || len(audiences) != 1 || expires-issued > 60 {
+			return fail()
+		}
 	default:
 		return fail()
 	}
@@ -205,11 +214,11 @@ func (v *Verifier) Verify(ctx context.Context, token string, surface Surface) (i
 			return nil, ErrToken
 		}
 		return v.keys.key(ctx, kid, alg)
-	}, jwt.WithValidMethods(v.cfg.Algorithms), jwt.WithIssuer(v.cfg.Issuer), jwt.WithAudience(expected), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithJSONNumber(), jwt.WithStrictDecoding(), jwt.WithLeeway(time.Duration(v.cfg.ClockSkew)), jwt.WithTimeFunc(v.now))
+	}, jwt.WithValidMethods(v.cfg.Algorithms), jwt.WithIssuer(v.cfg.Issuer), jwt.WithAudience(expected), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithJSONNumber(), jwt.WithStrictDecoding(), jwt.WithLeeway(skew), jwt.WithTimeFunc(v.now))
 	if err != nil || verified == nil || !verified.Valid || ctx.Err() != nil {
 		return fail()
 	}
-	env, err := identity.FromVerified(tenant, user, session, scopes, time.Unix(expires, 0).Add(time.Duration(v.cfg.ClockSkew)), v.now)
+	env, err := identity.FromVerified(tenant, user, session, scopes, time.Unix(expires, 0).Add(skew), v.now)
 	if err != nil {
 		return fail()
 	}

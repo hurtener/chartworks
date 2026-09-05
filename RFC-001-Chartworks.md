@@ -132,7 +132,7 @@ Frozen/no-narrative execution and artifact reads work with inference unavailable
 
 ## 14. Configuration
 
-Typed configuration rejects unknown/retired keys. Pengui issuer/JWKS/intended audiences/algorithm/temporal/size rules are required; no auth mode or signing secret. The phase05 decoder consumes the nested Bifrost provider/role excerpt and fails loudly on invalid required config. Provider network health is reported per capability rather than preventing unrelated reads.
+Typed configuration rejects unknown/retired keys. Pengui issuer/JWKS/intended audiences/algorithm/temporal/size rules are required; no auth mode or signing secret. The phase 05 decoder consumes the nested Bifrost provider/role excerpt and fails loudly on invalid required config. Provider network health is reported per capability rather than preventing unrelated reads.
 
 Reference bounds: metadata body10MiB; upload100MiB/1M rows plus expansion limits; query default10,000/ceiling100,000 rows, preview200 and statement timeout60s; context tiers1500/3000/6500 tokens with mandatory constraint handling; seven examples; four workers. Reporting/renderer/scheduler limits live in their phase. These are configurable limits, not performance promises.
 
@@ -167,3 +167,12 @@ L2 reviewed engineering/drift proposals remain planned. L3 auto-apply and a new 
 ## Phase 03/04 authority implementation
 
 D-059–D-061 implement the existing Pengui provider-scope seam with one JWT verifier/cache and immutable signed envelope. [The operator handoff](docs/contracts/pengui-provider-registration.md) and [actual operation manifest](docs/contracts/chartworks-operations.json) describe the implemented consumer. Scope limits are 32 entries, 256 bytes each, 4096 total; exact HTTP/MCP audiences may be configured separately. Synchronous operational routes and SDK clients are present, but no local issuer, grants database, reporting API or full MCP transport is added by this milestone.
+
+## Phases 05/06 implementation addendum (2026-09-05)
+
+D-062/D-063 deliver the remote-only Bifrost gateway, fixed-input operator probes,
+one PostgreSQL queue and bounded maintenance occurrences with the actual
+[Pengui execution-authority v1 companion](docs/contracts/execution-authority-v1.md).
+Metadata cancellation/read/pause do not require live models or an enabled worker.
+Broader analytic/reporting targets and external-effect reconciliation remain owned
+by their later phases; this is not a reporting release or live provider acceptance.

@@ -1,6 +1,6 @@
 # Phase 06 — jobs-scheduler
 
-Status: planned. Owner: internal/jobs. Hard dependencies: 02, 03, 04.
+Status: shipped. Owner: internal/jobs. Hard dependencies: 02, 03, 04.
 
 ## Authority and design
 
@@ -44,4 +44,8 @@ Implement TestPhase06/AC01 through TestPhase06/AC06 with real PostgreSQL and the
 
 ## Glossary, decisions and deviations
 
-Occurrence, attempt, fence and execution binding remain shared terms. D-055 moves the real adapter/first consumer earlier; it does not move identity ownership. No runtime completion is claimed.
+Occurrence, attempt, fence and execution binding remain shared terms. D-055 moves the real adapter/first consumer earlier; it does not move identity ownership. Implementation and recorded-wire/real-store acceptance are provided in this change; no production deployment or paid-provider live acceptance is claimed.
+
+## Implemented evidence and limits
+
+See [phase 05–06 review](../reviews/phase-05-06-adversarial.md), [operator setup](../../GETTING-STARTED.md), and [execution authority v1](../contracts/execution-authority-v1.md). Named criteria execute against the pinned SDK and PostgreSQL 17, not mocked production drivers. D-062/D-063 record provider corrections, the exact Pengui-owned companion and scope boundaries. Broader analytics, pipeline, report and delivery targets remain owned by their subsequent phases.

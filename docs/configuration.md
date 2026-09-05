@@ -52,7 +52,7 @@ The real verifier and readiness share one bounded public-key cache. It rejects d
 | `telemetry.log_format` | enum | `json` | `json` or `text`, using slog only. |
 | `telemetry.metrics` | boolean | true | Enables the internal counter/gauge exporter. False disables updates/export while retaining bounded lifecycle logs. `/metrics` is protected by explicit Pengui-issued `ops.metrics` and tenant read reach; false returns 404 even to a permitted operator. |
 | `telemetry.otel` | boolean | false | True is explicitly rejected: the optional export adapter is not implemented, not silently ignored. |
-| `features.gateway` | boolean | false | True rejected until phase 05 is implemented. |
+| `features.gateway` | boolean | false | Enables the real Bifrost SDK adapter; false leaves it unconstructed. |
 | `features.mcp` | boolean | false | True rejected until the MCP surface phase is implemented. |
 | `features.reporting` | boolean | false | True rejected until reporting phases are implemented. |
 | `features.renderer` | boolean | false | True rejected until rendering is implemented. |
@@ -61,9 +61,9 @@ The real verifier and readiness share one bounded public-key cache. It rejects d
 
 ## Future Bifrost configuration accepted as an inactive excerpt
 
-`gateway.driver` must be `bifrost`; `gateway.max_attempts_per_call` defaults to 2 and accepts 1–4. `gateway.bifrost.providers[]` contains a unique remote `name`, an `api_key` in `env:NAME` form, and an optional HTTPS `base_url` without userinfo/query/fragment. No local/ollama/mock production provider is accepted. Provider credentials are not resolved or used while the capability is unimplemented.
+`gateway.driver` must be `bifrost`; `gateway.max_attempts_per_call` defaults to 2 and accepts 1–4. `gateway.bifrost.providers[]` contains a unique remote `name`, an `api_key` in `env:NAME` form, and an optional HTTPS `base_url` without userinfo/query/fragment. No local/ollama/mock production provider is accepted. Provider credentials are resolved only when the adapter is enabled. Native provider types currently supported are openai/openrouter for chat/embedding and cohere for rerank; a route alias uses the optional `type` field.
 
-`gateway.roles` is a closed map: `embedding`, `enhance`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Each configured role supplies its remote provider/model and a positive timeout of at most 5 minutes. `max_tokens` is 0–65536; phase 05 applies the role-specific execution budget. Optional roles can carry `enabled` and `on_failure` (`fail` or `preserve_candidates`).
+`gateway.roles` is a closed map: `embedding`, `enhance`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Each configured role supplies its remote provider/model and a positive timeout of at most 5 minutes. `max_tokens` is 0–65536; phase 05 applies the role-specific execution budget. Optional roles require `enabled=true` to call inference. Only rerank accepts `on_failure` (`fail` or `preserve_candidates`). Structured roles require a positive `max_tokens` cap.
 
 The embedding role also requires `dimensions` 1–16384, `max_batch_items` 1–1024 and `max_batch_bytes` 1–4 MiB. Rerank requires `max_candidates` 1–1024. These are configuration-shape bounds, not live provider capability proofs. The separate [gateway contract](contracts/model-gateway.md) owns execution/response validation in phase 05. The existing example remains the remote embedding/rerank starting point; no local model support is added.
 
@@ -72,3 +72,37 @@ The embedding role also requires `dimensions` 1–16384, `max_batch_items` 1–1
 File selection: explicit `--config` takes precedence over `CHARTWORKS_CONFIG`. Value precedence: typed defaults -> supplied file fields -> explicit named environment references -> explicit `--listen`. Environment names after `env:` use uppercase letters, digits after the first character, and underscores, with a 128-character ceiling. Missing or empty referenced values fail. There is no second flat environment alias system.
 
 Configuration snapshots and their returned `Values()` copies are safe to share concurrently. Printing the configuration redacts resolved credentials; serialization includes references only. The raw DSN accessor is limited to connection construction and must never be logged. All driver failures are mapped to safe categories rather than returning SQL/connection error text.
+
+## Implemented worker and gateway bounds
+
+`gateway.limits` defaults to concurrency8, tenant_concurrency4, max_input_bytes262144,
+max_output_bytes1048576, cache_entries1024, cache_bytes16777216, cache_ttl10m.
+Concurrency must be 1–64; per-tenant concurrency cannot exceed it. Input/output caps
+are 1–4 MiB, cache entries0–8192, cache bytes0–128 MiB and TTL1s–1h. Zero cache
+entries/bytes disable storage. Output bounds reject oversized SDK observations;
+they do not claim a streaming transport-level memory sandbox around the SDK.
+
+`jobs` defaults: enabled=false, workers4, global_concurrency16, tenant_concurrency2,
+max_pending10000, max_pending_per_tenant1000, max_attempts3, batch100, lease15s,
+heartbeat5s, poll500ms, attempt_timeout10s, backoff1s. Worker count1–32, global
+concurrency1–128 (at least workers), tenant concurrency1–global, pending1–100000,
+per-tenant pending1–global pending, attempts1–8, batch1–1000. Lease1s–1m,
+heartbeat10ms–less-than-half-lease, poll10ms–5s, timeout100ms–1m, backoff10ms–30s;
+retry backoff is capped at1m. The queued operation lifetime snapshots the current
+retention policy's `operation_hours`, not a hardcoded 24h.
+
+`jobs.broker_url` is the trusted HTTPS Pengui `/exchange/execution-authority`
+endpoint. `jobs.credentials[]` contains up to128 unique tenant partitions plus
+`env:` client ID/secret references. No credential is stored in job rows or receipts.
+`auth.audiences.jobs` is distinct, execution-only and optional while workers are off.
+Execution JWT validation uses zero clock skew and at most60s lifetime; the matching
+Pengui producer issues30s and refuses to issue beyond binding expiry.
+
+Schedule definitions require an explicit timezone, `missed` skip/catch_up and
+`overlap` skip/queue. Catch-up max1–32; interval60s–31days with a fixed anchor;
+cron is a five-field expression. A tick advances at most32 definitions and32
+occurrences per definition; older skipped windows are recorded as a range, not
+an invented count. Skipping old work uses a5s late-tick grace. Equal local times at
+DST fall-back have distinct UTC occurrence keys; nonexistent spring-forward
+local times do not execute. Manual overlap skip is a conflict for a new request;
+a replay returns its original accepted receipt.

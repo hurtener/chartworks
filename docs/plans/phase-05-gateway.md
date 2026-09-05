@@ -1,6 +1,6 @@
 # Phase 05 — gateway
 
-Status: planned. Owner: internal/gateway. Hard dependencies: 01.
+Status: shipped. Owner: internal/gateway. Hard dependencies: 01.
 
 ## Authority and design
 
@@ -52,4 +52,8 @@ Implement `TestPhase05/AC01` through `TestPhase05/AC10`. Exercise the real SDK w
 
 ## Glossary, decisions and deviations
 
-D-053 narrows the existing gateway seam to one production SDK driver. A local SDK client is not local inference; pgvector is storage/search, not an embedding model. Configuration reuse does not mean copying secrets or claiming sibling test execution. No runtime completion is claimed.
+D-053 narrows the existing gateway seam to one production SDK driver. A local SDK client is not local inference; pgvector is storage/search, not an embedding model. Configuration reuse does not mean copying secrets or claiming sibling test execution. Implementation and recorded-wire/real-store acceptance are provided in this change; no production deployment or paid-provider live acceptance is claimed.
+
+## Implemented evidence and limits
+
+See [phase 05–06 review](../reviews/phase-05-06-adversarial.md), [operator setup](../../GETTING-STARTED.md), and [execution authority v1](../contracts/execution-authority-v1.md). Named criteria execute against the pinned SDK and PostgreSQL 17, not mocked production drivers. D-062/D-063 record provider corrections, the exact Pengui-owned companion and scope boundaries. Broader analytics, pipeline, report and delivery targets remain owned by their subsequent phases.

@@ -1,0 +1,56 @@
+[
+  {
+    "method": "POST",
+    "path": "/v1/gateway/probes",
+    "action": "ops.model",
+    "effect": "paid_model_call"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/jobs",
+    "action": "scheduling.write",
+    "effect": "durable_admission"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/jobs",
+    "action": "scheduling.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/jobs/{id}",
+    "action": "scheduling.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/jobs/{id}/cancel",
+    "action": "scheduling.cancel",
+    "effect": "durable_cancellation"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/schedules",
+    "action": "scheduling.write",
+    "effect": "schedule_creation"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/schedules/{id}",
+    "action": "scheduling.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/schedules/{id}/state",
+    "action": "scheduling.write",
+    "effect": "schedule_state"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/schedules/{id}/runs",
+    "action": "scheduling.execute",
+    "effect": "durable_admission"
+  }
+]

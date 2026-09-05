@@ -37,7 +37,7 @@ func ParseReach(s string) (Reach, error) {
 	if !ok || len(p) != 3 || p[0] != "cw" || (id != "*" && !Identifier(id)) {
 		return r, ErrInvalid
 	}
-	if !member(p[1], "source", "dataset", "topic", "block", "report", "dashboard", "run", "execution_context", "execution_binding", "tenant") || !member(p[2], "read", "query", "write", "execute", "preview", "publish", "certify", "export", "use", "erase") {
+	if !member(p[1], "schedule", "source", "dataset", "topic", "block", "report", "dashboard", "run", "execution_context", "execution_binding", "tenant") || !member(p[2], "read", "query", "write", "execute", "preview", "publish", "certify", "export", "use", "erase") {
 		return r, ErrInvalid
 	}
 	return Reach{p[1], p[2], id}, nil

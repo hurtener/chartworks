@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority]
+    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs]
 
 permissions:
   contents: read
@@ -66,17 +66,19 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
-          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' \) -print)"
+          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' \) -print)"
       - run: make build
       - run: make vet
       - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
-      - name: All twenty-four implemented phase criteria, no missing/skipped tests
+      - name: All forty implemented phase criteria, no missing/skipped tests
         run: |
           python3 scripts/run_phase_acceptance.py --phase 01
           python3 scripts/run_phase_acceptance.py --phase 02
           python3 scripts/run_phase_acceptance.py --phase 03
           python3 scripts/run_phase_acceptance.py --phase 04
+          python3 scripts/run_phase_acceptance.py --phase 05
+          python3 scripts/run_phase_acceptance.py --phase 06
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns

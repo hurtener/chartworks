@@ -3,20 +3,84 @@
     "driver": "bifrost",
     "bifrost": {
       "providers": [
-        {"name": "openrouter", "api_key": "env:CHARTWORKS_OPENROUTER_API_KEY"}
+        {
+          "name": "openrouter",
+          "api_key": "env:CHARTWORKS_OPENROUTER_API_KEY"
+        },
+        {
+          "name": "cohere",
+          "api_key": "env:CHARTWORKS_COHERE_API_KEY"
+        }
       ]
     },
     "roles": {
-      "embedding": {"provider": "openrouter", "model": "perplexity/pplx-embed-v1-0.6b", "dimensions": 1024, "timeout": "30s", "max_batch_items": 64, "max_batch_bytes": 262144},
-      "enhance": {"provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "60s", "max_tokens": 4096},
-      "sqlgen": {"provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "60s", "max_tokens": 4096},
-      "sqlfix": {"provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "30s", "max_tokens": 4096},
-      "clarify": {"provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "30s", "max_tokens": 1024},
-      "pipeline_draft": {"provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "60s", "max_tokens": 4096},
-      "profile_summary": {"provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "30s", "max_tokens": 1024},
-      "rerank": {"enabled": true, "provider": "openrouter", "model": "cohere/rerank-4-fast", "timeout": "10s", "max_candidates": 64, "on_failure": "preserve_candidates"},
-      "narrative": {"enabled": false, "provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "30s", "max_tokens": 600, "on_failure": "fail"},
-      "visual_rank": {"enabled": false, "provider": "openrouter", "model": "deepseek/deepseek-v4-flash", "timeout": "10s", "max_tokens": 512, "on_failure": "preserve_candidates"}
+      "embedding": {
+        "provider": "openrouter",
+        "model": "perplexity/pplx-embed-v1-0.6b",
+        "dimensions": 1024,
+        "timeout": "30s",
+        "max_batch_items": 64,
+        "max_batch_bytes": 262144,
+        "model_revision": "operator-generation-1"
+      },
+      "enhance": {
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "60s",
+        "max_tokens": 4096
+      },
+      "sqlgen": {
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "60s",
+        "max_tokens": 4096
+      },
+      "sqlfix": {
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "30s",
+        "max_tokens": 4096
+      },
+      "clarify": {
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "30s",
+        "max_tokens": 1024
+      },
+      "pipeline_draft": {
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "60s",
+        "max_tokens": 4096
+      },
+      "profile_summary": {
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "30s",
+        "max_tokens": 1024
+      },
+      "rerank": {
+        "enabled": true,
+        "provider": "cohere",
+        "model": "rerank-4-fast",
+        "timeout": "10s",
+        "max_candidates": 64,
+        "on_failure": "preserve_candidates"
+      },
+      "narrative": {
+        "enabled": false,
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "30s",
+        "max_tokens": 600
+      },
+      "visual_rank": {
+        "enabled": false,
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "10s",
+        "max_tokens": 512
+      }
     },
     "max_attempts_per_call": 2
   }

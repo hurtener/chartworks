@@ -1,6 +1,6 @@
 # Model gateway: Bifrost SDK, remote inference only
 
-Status: implementation contract, 2026-09-04; owner directive recorded in D-053. Applies to every phase and supersedes any reading of an older plan that permits a second production model driver. This specifies the implementation; no live model call or new Go runtime is claimed in this documentation change.
+Status: implementation contract, 2026-09-04; owner directive recorded in D-053. Applies to every phase and supersedes any reading of an older plan that permits a second production model driver. Implemented in phase 05 with recorded-wire SDK tests; no paid-provider live support claim is made.
 
 ## Boundary
 
@@ -65,3 +65,13 @@ Record role, provider/model revision, prompt/schema version, duration, input/out
 Phase 05 AC01-AC10 cover the SDK boundary, role configuration, schemas, budgets, remote-only policy, embedding/rerank response validation and fixture mapping. Phase 07 covers generation/cache identity; phase 17 covers authorization-before-rerank and visible fallback; phase 28 covers zero-call frozen/artifact paths; phase 25 audits image/package contents and startup without model downloads. G41 maps the cross-cutting requirement. These are runtime obligations, not satisfied by this prose or a config file.
 
 Official SDK documentation checked for implementation syntax: https://docs.getbifrost.ai/quickstart/go-sdk/reranking and https://docs.getbifrost.ai/providers/supported-providers/overview . Adopted version behavior is established by phase-05 tests, not by assuming documentation for a newer release matches a pin.
+
+## Pinned SDK findings adopted in implementation (D-062)
+
+Bifrost core **v1.6.2** has a native OpenRouter rerank method that returns unsupported. The historical sibling configuration row above is an inspected reference, not evidence that its route is callable in this pin. Chartworks therefore routes reranking through **native Cohere**, model `rerank-4-fast`, with an independent environment-indirected key. OpenAI/OpenRouter serve completion and embeddings; unsupported provider-role combinations fail configuration. No custom HTTP workaround is installed.
+
+Successful SDK responses are validated using its internal raw-response observation before accepting typed defaults: a missing/null index or relevance score must not become a fabricated zero. This observation is discarded inside the adapter, never returned, logged or cached. Returned usage counts/costs distinguish absent fields from explicit zero; total cost is never added to its components. Reservations remain charged for unknown failures, and observed overages block further attempts.
+
+The authority/cache key includes tenant, user, session, action, sorted signed scopes, resolved resources, caller context and the full embedding space. Changing model revision, provider/model/endpoint, dimensions or preprocessing changes that space; later published-index consumers must perform fenced reindexing (phase07), not silently replace a same-dimensional model.
+
+SDK retries are disabled; the adapter owns the only 1–4 attempt ceiling. Structured output validation failures are not retried as free text. The first consumer is the fixed-input `/v1/gateway/probes` operator endpoint; domain semantic/NLQ/artifact consumers arrive in their owning phases.

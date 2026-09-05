@@ -140,7 +140,7 @@ func (s *Server) Handler() http.Handler {
 				Implemented    []string `json:"implemented"`
 				BusinessAPI    bool     `json:"business_api"`
 				Authentication bool     `json:"authentication"`
-			}{"01-04-authority", s.implemented(), false, s.protected != nil}
+			}{"01-06-gateway-jobs", s.implemented(), false, s.protected != nil}
 		}
 		w.WriteHeader(status)
 		if r.Method != http.MethodHead {
@@ -205,6 +205,12 @@ func (s *Server) implemented() []string {
 	out := []string{"configuration", "health", "postgresql_metadata"}
 	if s.protected != nil {
 		out = append(out, "jwt_verification", "signed_scope_enforcement", "operational_api")
+	}
+	if s.values.Features.Gateway {
+		out = append(out, "remote_bifrost_gateway")
+	}
+	if s.values.Jobs.Enabled {
+		out = append(out, "durable_operations", "scheduling")
 	}
 	return out
 }

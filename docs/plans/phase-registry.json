@@ -38,7 +38,7 @@
       "depends_on": [
         "01"
       ],
-      "status": "planned",
+      "status": "shipped",
       "acceptance_count": 10
     },
     "06": {
@@ -48,7 +48,7 @@
         "03",
         "04"
       ],
-      "status": "planned",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "07": {

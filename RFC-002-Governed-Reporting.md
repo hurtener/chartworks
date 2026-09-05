@@ -87,3 +87,12 @@ Go renders tables/KPIs/text; a pinned isolated ECharts worker renders SVG from s
 27/28 own blocks/frozen runs/artifacts;29 owns reports/hybrid/dashboard;30 owns reporting targets/delivery;31 owns Apps/viewer;32 owns SSR/BFF/export;33 owns guided onboarding;34 owns migration. Shared original phases own foundations/source/semantics/NLQ/evaluation/L2 engineering, with25 final release regardless of number.
 
 The registry maps63 source rows and41 review gates to224 named criteria over34 phases. Q11 is explicitly discarded stubs; other required capabilities cannot disappear behind a demo or disabled flag. G41 adds Bifrost-only remote inference. Planning tests prove coherence, not live source/model behavior or completed migration. Runtime closure requires real named tests and applicable evidence.
+
+## Phases 05/06 implementation addendum (2026-09-05)
+
+D-062/D-063 deliver the remote-only Bifrost gateway, fixed-input operator probes,
+one PostgreSQL queue and bounded maintenance occurrences with the actual
+[Pengui execution-authority v1 companion](docs/contracts/execution-authority-v1.md).
+Metadata cancellation/read/pause do not require live models or an enabled worker.
+Broader analytic/reporting targets and external-effect reconciliation remain owned
+by their later phases; this is not a reporting release or live provider acceptance.
