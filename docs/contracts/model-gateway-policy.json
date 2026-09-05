@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "production_driver": "bifrost",
+  "sdk_module": "github.com/maximhq/bifrost/core",
+  "initial_sdk_pin": "v1.6.2",
+  "local_inference": false,
+  "bundled_model_weights": false,
+  "required_separate_gateway_service": false,
+  "fixture_driver_production_allowed": false,
+  "reference_embedding_model": "perplexity/pplx-embed-v1-0.6b",
+  "reference_embedding_dimensions": 1024,
+  "reference_rerank_model": "cohere/rerank-4-fast",
+  "embedding_model_fallback": false,
+  "rerank_failure_policies": ["fail", "preserve_candidates"],
+  "roles": ["embedding", "enhance", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank"]
+}

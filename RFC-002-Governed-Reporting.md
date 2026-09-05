@@ -1,139 +1,89 @@
-# RFC-002 — Governed reporting and portable delivery
+# RFC-002 — Governed reporting implementation contract
 
-Status: PROPOSED, 2026-09-04. Documentation only; no runtime capability is claimed.
+Status: implementation design, revised 2026-09-04. RFC-001 controls shared architecture/security and the Bifrost-only inference contract; this file controls reporting semantics. Active phases27–34 and the revised original phases implement it. Historical proposals are archived; a design is not a passing runtime test.
 
-This is a targeted amendment to RFC-001, not a replacement of its source, semantics, NLQ, or engineering architecture. Acceptance of this RFC supersedes only the conflicts listed below. Until acceptance and the documentation reconciliation gate in `docs/reporting/implementation-plan.md`, implementation must not treat the old rendering exclusion as compatible with this proposal. Other RFC-001 requirements remain in force.
+## 1. Product boundary
 
-## 1. Product decision
+Explore a question, turn a useful result into a reviewed reusable definition, execute it predictably, retain the evidence/result and consume it through API, MCP Apps, iframe or static rendering. No standalone builder is required. Harbor/Pengui Apps support is established; no host qualification work is introduced.
 
-Chartworks is a governed analytics execution and publishing service. Its valuable reusable asset is not an attractive chart: it is an approved business question, executable definition, typed parameter contract, and traceable output that can be reused through an API, an agent, or an embedded report without asking a model to reinterpret the question on every refresh.
+Pengui owns identity/access decisions and signs authority. Chartworks verifies JWTs, applies signed scopes/restrictions and enforces business/data-safety invariants. No local issuer, role/grant/service-account registry, bootstrap or embed credential service. Read [the authority contract](docs/contracts/pengui-authority.md).
 
-The end-to-end product path is:
+All learned-model operations, including narrative, authoring assistance, embeddings and rerank, use [the embedded Bifrost SDK with remote providers](docs/contracts/model-gateway.md). No local models, weight downloads or alternate direct-compatible client. Frozen/no-narrative execution and artifact viewing remain independent of provider health.
 
-```
-Connect / upload -> inspect -> propose semantic definitions -> review / publish
-        -> explore a question -> save a governed block -> validate / publish / certify
-        -> compose a report -> run / schedule -> retain an artifact
-        -> API data | MCP App | authenticated embedded viewer | server-rendered output
-```
+## 2. Domain and custody
 
-Not every customer needs materializations. Direct querying of a usable source is a first-class path. Managed data engineering is introduced when evidence justifies it, not as an obligatory medallion project before a first answer.
+Block identity carries localized metadata, canonical question/aliases, authorship provenance and draft/published pointers. Revisions contain exact topic/template references, approved SQL/execution definition, typed parameters, ordered expected schema, dependency manifest and stable saved output IDs. Validation evidence binds exact content/dependencies and observed schema to a real checked execution; certification is a separate attestation.
 
-## 2. Explicit amendments
+A report revision contains ordered/grid widgets, filters/bindings, safe presentation settings, locale/timezone and execution/partial policies. A dashboard revision orders exact report-revision pages; it adds no query engine.
 
-| Existing decision / passage | Amendment |
-|---|---|
-| D-013 / D-026 and RFC-001 rendering non-goal | Chart specification remains the stable core contract, but read-oriented rendering is in scope. No standalone authoring application is required. MCP App and iframe delivery are required product surfaces; genuine chart SSR is a separately testable capability. |
-| RFC-001 source/topic/dataset grant grains | Extend the same resolver to blocks, reports, and dashboards; artifact access is derived from the retained artifact's privacy and data-policy partition. Do not introduce a second IAM system. |
-| RFC-001 token scopes | Add the reporting operation families in `docs/reporting/contracts.md`. SQL inspection, execution, authoring, publication, certification, scheduling, and artifact reading remain distinct. |
-| RFC-001 external claims use prefixed `sub`, optional `session` | Add an explicit issuer-profile adapter. Pengui's verified tenant/user/session convention must interoperate without pretending that its raw subject already has Chartworks' internal principal prefix. Standalone API-key subjects retain their own documented profile. |
-| Chart-only planning / HTTP / MCP phase coverage | Add block governance, report composition, dashboards, durable artifacts, scheduling targets, and delivery conformance. A chart-spec phase alone cannot close reporting parity. |
-| D-038 layered SQL validation | Retain native-dialect generation and independent read credentials. Clarify that EXPLAIN, successful parsing, or a SELECT keyword alone is not a read-only/security proof; adapter-specific function, relation, and policy controls are still required. |
-| D-039–D-041 atomic proposal / revert terminology | A metadata publication can be transactional. Multi-engine DDL and external pipeline effects are not assumed to be one distributed transaction. Require staged application, durable steps, compensation where possible, and honest partial-failure states. |
-| D-042 investigations sequencing | New internal investigation orchestration may remain later. Existing source capabilities must not be relabeled as new investigations and silently deferred; multi-topic and follow-up parity need explicit disposition. |
-| Existing table and phase budgets | Re-budget required reporting state explicitly. Neither a historical table cap nor 25/26 planning smoke scripts is evidence of reporting completeness. Reuse the queue and access model rather than multiplying workers or stores. |
+A run seals resolved definitions, parameters/window, selected outputs, actor/service attribution, actual source context/data partition, observation times, attempts/usage and output/model/renderer versions. The artifact retains values and evidence. Chartworks is authoritative; Pengui/Harbor keep references or rebuildable discovery, not divergent sole copies.
 
-The post-merge D-043 provider-role amendment is relevant and should be reconciled into the accepted baseline: configurable providers by role, optional reorder-only reranking with observable fallback, and reuse of established gateway behavior. This RFC does not represent unmerged branch work as already present on main.
+Immutable definitions do not freeze source data. Re-executing a revision can produce different values; a retained artifact records one execution. Cross-source runs are not one transactional snapshot without actual engine support. Expose observation/freshness evidence.
 
-## 3. Domain boundaries
+## 3. Lifecycles and business trust
 
-Chartworks owns source definitions and references to secrets, semantic versions, query validation/execution, blocks, reports, dashboards, executions, retained artifacts, and reporting schedules. Pengui owns product entitlements, organization/project identity projection, white-label configuration, and its integration credential broker. Harbor owns agent sessions and orchestration. Product integrations use public APIs/protocols; neither Pengui nor Chartworks reads another service's internal database.
+Preserve draft/published/superseded/archived block semantics. Published content is immutable; edits create drafts. Validation/publication require expected-version checks and exact fresh content-bound evidence. Publication grants neither certification nor data/audience authority.
 
-A report artifact is authoritative in Chartworks. Harbor may retain its reference in a conversation; Pengui may keep a rebuildable discovery index. Neither becomes the sole copy of the artifact. Any durable transfer to a different artifact store must declare custody, retention, and deletion responsibilities instead of silently creating two authorities.
+Certification references exact revision/evidence. Current valid/stale/withdrawn/unavailable status stays separate from historical approval. Preserve published/certified-only/explicit-stale/private-preview execution policy; stale business approval never permits expired JWTs or wider data.
 
-Stowage and Soundings remain separate capabilities. Retrieving business documentation or conversational memory may assist authoring, but neither is a mandatory dependency of a frozen report refresh.
+Reports retain private draft -> pending review -> published plus explicit reject/return/amend/archive. Preview needs exact private revision and signed preview authority. Public run cannot accept a prefer-draft bypass. Persist artifact privacy independently of later report publication.
 
-## 4. Two execution lanes
+Version canonicalization and execution/revision/rendition hashes separately. Validation derives actual dependencies; authors cannot omit restricted relations from a manifest to authorize them. Classify cosmetic, exact rename, review-required and unavailable changes. Even a rename proposes a new draft and revalidation; approved SQL never changes during refresh.
 
-### 4.1 Exploration
+## 4. Explicit execution lanes
 
-The exploration lane preserves language understanding, authorized topic selection, bounded context packing, semantic retrieval, templates, clarification/refinement, dialect-aware generation and validation, bounded corrective attempts, feedback, evaluation, and agent-facing signals. An external agent may use the context/submit split instead of Chartworks' internal generator. Every submitted query still receives the same validation and authorization.
+Exploration retains context/routing/generation/clarification/refinement/templates/validation/bounded correction/feedback. Capturing a result is draft authoring, not automatic certification.
 
-A result can be proposed as a block. This is a new authoring operation, not automatic certification of a successful answer.
+Frozen execution resolves an eligible published revision, verifies signed authority and dependency health, binds typed parameters, validates the approved query against the actual source context, executes and fans selected saved outputs out from one logical normalized result. Interpretation/retrieval/routing/SQL generation or correction/chart selection are forbidden. Default model calls are zero; only an explicitly enabled saved bounded narrative is an allowed post-query exception through Bifrost.
 
-### 4.2 Governed execution
+One logical query serving several outputs does not imply physically once-only remote execution after a crash/network failure. Record and reconcile attempts/query IDs. Opening or rerendering an existing artifact always makes zero source/model calls.
 
-A published block revision binds one approved query definition to typed parameters, an expected result schema, a dependency manifest, and one or more saved outputs. Execution resolves the revision once, checks current authority and health, binds values, executes the approved query, validates the result, and evaluates selected outputs from that same result.
+Dynamic widgets require explicit opt-in and ordinary query safety/scope/budgets. Replayable questions differ from session-bound query references; unavailable originating authority/context fails clearly. Publishing the report does not certify dynamic SQL. The service derives provenance/trust; it does not accept caller badges. Session-only scheduling requires explicit permitted and available context.
 
-Frozen execution must not invoke question interpretation, topic routing, SQL generation, query rewriting, or automatic chart selection. Model use is zero unless a saved bounded narrative output explicitly permits it. Narrative generation cannot modify or regenerate the query.
+## 5. Parameters, outputs and presentation
 
-“One query, several outputs” is a logical execution contract, not an exactly-once guarantee across a warehouse/network crash. Retries and indeterminate attempts are recorded honestly. Viewing an existing artifact must never issue a warehouse query or model call.
+Preserve date/datetime/relative period/dimension value/number/integer/boolean/grain/top-N types, required/default/range/enum rules, locale/timezone and value provenance. Bind values rather than SQL fragments; identifier-like choices map to closed approved structures.
 
-### 4.3 Explicit dynamic widgets
+Canonical precedence: block default -> report global default -> widget literal -> declared filter binding -> explicitly permitted invocation override. Same-level conflicts fail. Imports normalize old precedence with equivalent result fixtures rather than assuming every source path used this order. Security restrictions are not overridable business filters.
 
-Preserve dynamic query widgets as a separate, opt-in lane. Distinguish a replayable question from a session-bound reference. Session-bound execution needs the originating authorized context and an explicit scheduling policy; it must not be silently reconstructed under a service account.
+Resolve relative periods from named timezone and accepted logical time into half-open intervals. Preserve explicit/from-date/previous/rolling/schedule windows, first-occurrence and leap/DST policy. Retries retain their period. Assisted parameterization produces bounded draft changes and original-question/template/provenance lineage, never unrelated silent SQL changes.
 
-A published report may contain dynamic widgets, but publication does not certify their changing SQL or results. Origin and trust are calculated by the service, never accepted from a caller-supplied badge. Disabling dynamic execution returns an explicit per-widget issue, not an unnoticed replacement by a frozen block.
+Chart/KPI/table outputs preserve mappings, ordering, labels/legends, units/currency/percent formatting, comparisons/thresholds, safe options and expected schema. Decimal/large-integer values remain exact in transport/labels/evidence/exports. Truncated subtotals cannot appear as full-source totals. Required fourteen-kind visual coverage is in phase20; fallback must be labeled and is not full chart parity.
 
-## 5. Revision, publication, certification, and health
+Narrative definitions pin type/instructions, allowed/redacted evidence fields, deterministic reduction, row/byte/character/call/token/time limits, prompt/model/schema versions, locale/tone and evidence/caveat requirements. They have no query/write tools, use the remote SDK gateway, validate claims and retain exact output. Later rendering never regenerates text. Failure/omission is reflected in report policy.
 
-These are independent concepts:
+Safe text/Markdown is not arbitrary HTML. Grid/filter/widget/output references are unique and bounded. Presentation overrides cannot add scripts, external resources, unauthorized columns or security predicates. Dashboard redaction omits hidden names/data; authoring still requires valid pages.
 
-- A draft is editable under optimistic concurrency. Published execution definitions are immutable; an amendment creates a new draft.
-- Publication makes an exact revision eligible for its configured readers and execution policy. It does not grant source access or prove business correctness.
-- Certification is a review attestation bound to the exact content/dependency hash and validation evidence. It can become stale or be withdrawn without rewriting historical evidence.
-- Health reflects current source availability, permissions, schema/semantic compatibility, and dependency state.
+## 6. Runs, idempotency and retained values
 
-Reports retain draft, review, and published states. Previews remain private even after a later report revision is published. Dashboards are lightweight versioned collections of exact report revision references, not a second visualization or execution engine.
+Reserve request key/canonical hash before resolving floating references. New work resolves once and seals the manifest. Replay uses it even after new publication; a changed request under the same key conflicts. Queue attempts are fenced. Retain bounded intermediate normalized results where needed to resume outputs without another source call. Reconcile indeterminate remote work or record another budgeted attempt rather than manufacture exactly-once evidence.
 
-Dependency changes are classified as cosmetic, amendment-eligible, review-required, or unavailable. Even a mechanically detectable rename produces a new draft plus validation; it never rewrites an approved query during refresh. Semantic definition changes always require human publication approval. Historical artifacts retain their original evidence and show current approval/availability status separately.
+Equivalent-result reuse differs from request replay. Include exact definitions/output selection/parameters/window/locale/timezone, actual partition/privacy/freshness and relevant narrative/render versions in its key. Private previews stay actor/reach constrained. No tenant-only or raw-token-keyed shared results. Without reliable watermarks, state observation time/maximum age, not live freshness.
 
-## 6. Report composition and artifacts
+Artifact list/read/page/rendition needs a valid supplied Pengui JWT with target and actual partition reach; it does not query local IAM or require query-execute permission. Offline authority freshness is bounded by token expiry. Retention removes values and derived renditions while permitting minimal safe tombstones. Expired identifiers do not rerun old work silently.
 
-A report revision contains a bounded grid, frozen/dynamic/text widgets, declared filters and parameter bindings, presentation overrides, locale/timezone policy, and partial-failure policy. Support the source's ordinary chart, KPI, table, and bounded narrative outputs. A text widget is safe text or constrained Markdown, not arbitrary HTML or script.
+## 7. Scheduling and delivery
 
-A run resolves all floating references once into a manifest before execution. The manifest records report/block/topic revisions, selected outputs, resolved parameters and temporal window, actor/service attribution, data-policy partition, source observation times or watermarks, execution evidence, and renderer/model/prompt versions when used. A dashboard's page order and exact report references are likewise versioned.
+One queue/occurrence engine supplies real cron/interval/manual tests. Reporting targets are reviewed saved SQL, explicit dynamic saved questions, pinned certified block/output selection and published report. Direct blocks create no hidden report. Default revisions are exact; explicitly latest-published resolves once per occurrence.
 
-An immutable artifact is the retained result of a particular execution, not merely a saved URL to rerun a report. Pinning definitions does not pin warehouse data; a later execution can legitimately produce different values. Cross-source execution is not described as one transactional data snapshot unless the adapters can prove that property. Expose per-source observation times and warn when freshness is mixed.
+Phase06 delivers the actual thin Pengui authority adapter with its first durable consumer; phase30 reuses it for reporting targets (D-055). Admission validates signed target/dependency and binding-use authority. Store the opaque binding, not a bearer or local account. Dispatch/retry obtains fresh Pengui authority, verifies it normally and checks actual target/context plus business eligibility. The concrete platform binding/renewal API must be read/reused or extended in Pengui; this plan does not assert a newly described API already exists. Missing/denied authority blocks work without local signing, impersonation or ambient bypass.
 
-Artifact immutability lasts until retention/deletion policy removes sensitive payloads. A minimal audit tombstone can survive; an expired payload must not be silently recomputed under its old identifier. Rendering a retained artifact may be repeated without data/model execution, using the recorded renderer version or an explicitly labeled compatible rendition.
+Persist due instant/timezone/window/resolved revisions/overlap/missed-run decisions/attempts/idempotency. Tomorrow's retry does not change today's period. Specify first/missing/duplicate DST behavior and bounded catch-up. Use fences for commits. Missing approval/health/output leads to attention/blocked state, never automatic replacement of the pin.
 
-## 7. Authorization and data isolation
+Query success, retention, catalog publication and notification intent/receipt are separate. Catalog pull delivery is the baseline; recipients are neither authority nor email-sent evidence. Optional outbound notifications use existing Pengui integrations and durable effect/receipt state. Unsupported event/condition/condition-check/custom-code stubs are absent from registration and rejected on input; bounded maintenance stays internal.
 
-All surfaces call the same domain services and access resolver. Authorization applies before discovery, execution, result retrieval, rendering, export, and schedule delivery—not only when a report is created.
+## 8. API, Apps and rendering
 
-The hosted profile validates asymmetric signatures, configured issuer, intended per-surface audience, expiration, applicable not-before/issued-at rules, mandatory identity fields, and bounded claims. Unknown key IDs and stale verification material fail closed. Never trust body/header tenant overrides, browser-supplied principal prefixes, or an unsigned agent identifier. Do not store a user's short-lived token as a schedule credential.
+All surfaces use the same domain services. Default reporting tools are search/describe/run/run-history/view. API/SDK provides full authoring/publication/certification/schedule management; new MCP mutation tools need a concrete consumer and the same explicit authority/confirmation rules.
 
-The Pengui issuer adapter maps the verified tenant/user/session triple into the internal identity envelope and checks any simultaneous subject representation for consistency. Agent identity is either a separately authorized service principal or an explicitly verified delegation constraint; merely naming an agent must not inherit its owner's authority. Scope syntax and token claims are pinned by issuer-profile contract tests, not guessed from sibling services.
+The shared read viewer consumes versioned specs and artifacts through the established Apps bridge. Public assets contain no tenant values/platform/provider credentials. Test Chartworks metadata, loading/paging/filter/exact-value/error/private/trust/theme behavior and content safety—not host compatibility. Viewer31 does not depend on scheduling30; later scheduled results use its existing catalog.
 
-A snapshot's data-policy partition includes the tenant, effective source/row/column policy, credential execution context, and approved audience policy. A caller may receive it only if the current resolver proves access to that partition. A service account producing a wide result does not make all its rows safe for every tenant member. There is no fetch-wide-then-filter-in-JavaScript path. V1 denies cross-partition artifact reuse unless an explicit governed audience policy proves it safe.
+Iframe uses an authenticated Pengui/client BFF which forwards a scoped JWT server-side. Chartworks returns authorized HTML/SVG/data. No local embed grants/bootstrap codes/cookies/token minting or bearer URLs. The serving BFF controls approved ancestors and user session behavior.
 
-Artifact viewing does not require permission to author SQL or initiate another query, but it does require current data entitlement. Preview privacy and SQL visibility remain separate checks. Embedding never creates anonymous sharing implicitly. Existing grants and an approved delegated audience policy—not a new ad hoc ACL subsystem—carry any future report-only sharing.
+Go renders tables/KPIs/text; a pinned isolated ECharts worker renders SVG from sealed typed data, with no network/arbitrary URLs/scripts/source/model credentials. Bound resources and sanitize output. SSR must show promised chart content with client chart JavaScript disabled. Authorized JSON/CSV/HTML/SVG export is explicit; PDF/PNG/paginated document generation is later scope, not implied.
 
-## 8. Scheduling and delivery
+## 9. Delivery and closure
 
-Reuse the existing durable leased queue and scheduler. First-class targets are a reviewed saved query, an explicitly dynamic saved question, a pinned block/output selection, and a report. A block schedule does not create a hidden report. Cron and interval triggers are required; event/condition triggers found as source stubs are documented extensions, not evidence of implemented parity.
+27/28 own blocks/frozen runs/artifacts;29 owns reports/hybrid/dashboard;30 owns reporting targets/delivery;31 owns Apps/viewer;32 owns SSR/BFF/export;33 owns guided onboarding;34 owns migration. Shared original phases own foundations/source/semantics/NLQ/evaluation/L2 engineering, with25 final release regardless of number.
 
-New schedules default to exact published revisions. A latest-published policy is explicit and resolves once per occurrence. Scheduled execution uses a current authorized service identity with only the necessary resource coverage. Creating a schedule cannot enlarge the caller's authority by selecting a stronger service identity.
-
-The logical occurrence stores its due time, timezone, resolved half-open window, target revisions, and idempotency key. Retries do not change the period to the current clock. Define overlap, missed-run, daylight-saving, retry, timeout, cancellation, and fencing behavior. Apply budgets before and during work, including model/warehouse retries—not only after an expensive run completes.
-
-Execution success, artifact retention, and external delivery are separate states. The authenticated run catalog is a supported delivery channel. A list of recipients is not proof that email was sent. Outbound delivery is an optional adapter or Pengui integration using a durable effect record, retry policy, and provider receipt; never an implied feature of catalog publication.
-
-## 9. Rendering without a builder application
-
-Ship a small read-oriented renderer with three adapters: MCP host bridge, authenticated embedded viewer, and server rendering. They consume the same versioned report/artifact contract. Theme configuration is constrained data; no per-customer code fork or arbitrary user JavaScript.
-
-API-first does not mean zero browser code: visual MCP Apps and interactive iframes require a viewer. Serving an HTML shell that later draws charts in the browser is not chart SSR. The baseline may render tables, KPIs, and text in Go; full static chart SSR can use an isolated, pinned ECharts SVG renderer. This does not move query execution or governance out of Go. No headless browser is required for initial SVG support; pagination/PDF fidelity is a later separately tested capability.
-
-MCP Apps support, iframe authentication, CSP, and exact host compatibility are specified in `docs/reporting/delivery.md`. Do not equate ordinary MCP tools with working MCP Apps. Unsupported hosts still receive useful structured/text results.
-
-## 10. Onboarding and managed engineering
-
-Offer a resumable connect -> inspect -> propose -> validate -> review -> publish flow. Separate operational setup (configuration, connectivity, permissions, secret references) from semantic inference and optional materialization. The model cannot provision arbitrary infrastructure or manufacture credentials.
-
-Profiles and inferred joins/measures/dimensions/KPIs carry evidence, confidence, and unresolved questions. Capture grain, cardinality, units/currency, aggregation behavior, temporal meaning, null policy, and sensitive fields. Missing semantic output is explicit incompleteness, not silently approved default semantics. Use bounded batches and stable identifiers; regenerate affected definitions rather than an entire workspace unnecessarily.
-
-Retain the established managed-write boundary: customer baseline objects remain inputs only. A name beginning with a managed-schema prefix is insufficient; the managed-object registry and database privileges must prove ownership. Separate engineering credentials and adapters from read execution. Staged proposals, quality checks, lineage, safe publication switches, and dependency-aware compensation precede policy-limited autonomy. Semantic publication never becomes autonomous.
-
-## 11. Deliberate limits
-
-Use one Go domain service and existing PostgreSQL queue/access model. Add narrowly typed reporting persistence, not a generic workflow platform. Reuse the gateway for optional narrative calls. Add an object-store driver when artifact size/retention needs it; do not require a distributed data plane for a first deployment.
-
-Do not build a drag-and-drop application, arbitrary code widgets, custom JavaScript formatting, a new OAuth authorization server, an email campaign system, unrestricted custom schedule jobs, or a general-purpose orchestration engine. Do not postpone source parity behind L3 autonomy or a new internal analyst agent.
-
-## 12. Acceptance
-
-The evidence ledger in `docs/research/14-reporting-parity-audit.md` and acceptance matrix in `docs/reporting/implementation-plan.md` define closure. An observed source model or test is not proof that Chartworks implements it. Every required capability needs a target contract, executable test, and migration disposition. Planning-only skips cannot satisfy release gates.
-
-The first demonstrable slice is: verified identity -> approved topic -> block draft -> validation -> publication/certification -> report -> durable run -> API artifact -> MCP/iframe view -> scheduled occurrence -> revocation test. This is a bounded product proof, not the complete migration release.
+The registry maps63 source rows and41 review gates to224 named criteria over34 phases. Q11 is explicitly discarded stubs; other required capabilities cannot disappear behind a demo or disabled flag. G41 adds Bifrost-only remote inference. Planning tests prove coherence, not live source/model behavior or completed migration. Runtime closure requires real named tests and applicable evidence.
