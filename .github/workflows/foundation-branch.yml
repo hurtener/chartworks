@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-          cache: false
+          cache: true
       - name: PostgreSQL 17 client tools
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -39,13 +39,14 @@ jobs:
           /usr/lib/postgresql/17/bin/pg_dump --version
       - name: Normalize source and dependency lock before review
         run: |
-          if [ -f scripts/_foundation_edits.py ]; then
-            python3 scripts/_foundation_edits.py
-            git rm scripts/_foundation_edits.py
-          fi
+          for f in scripts/_foundation_edits*.py; do
+            [ -f "$f" ] || continue
+            python3 "$f"
+            git rm "$f"
+          done
           go mod tidy
           find cmd internal test -name '*.go' -print0 | xargs -0 gofmt -w
-          git add go.mod go.sum cmd internal test
+          git add go.mod go.sum cmd internal test docs/plans
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -59,9 +60,17 @@ jobs:
           go vet ./...
           go test -race -count=1 -timeout=10m -coverpkg=./internal/...,./cmd/... -coverprofile=/tmp/foundation-coverage.out ./...
           go tool cover -func=/tmp/foundation-coverage.out
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 scripts/run_phase_acceptance.py --phase 01
+          python3 scripts/run_phase_acceptance.py --phase 02
+      - name: Coverage diagnostics
+        if: always()
+        run: |
+          if [ -f /tmp/foundation-coverage.out ]; then go tool cover -func=/tmp/foundation-coverage.out; fi
       - name: Benchmarks
         run: go test ./test/acceptance -run '^$' -bench 'Benchmark(ConfigurationStartup|IdleHealth)$' -benchmem -benchtime=100x
       - name: Lint
+        if: always()
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
