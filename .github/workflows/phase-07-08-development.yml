@@ -1,0 +1,57 @@
+name: Phase 07-08 development
+on:
+  push:
+    branches: [feat/phase-07-08-vindex-sources]
+permissions:
+  contents: write
+concurrency:
+  group: phase-07-08-development
+  cancel-in-progress: false
+jobs:
+  develop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-07-08-vindex-sources
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Bounded development-only source preparation
+        run: |
+          test "$GITHUB_REF" = refs/heads/feat/phase-07-08-vindex-sources
+          if test -f scripts/_phase_07_08_prepare.py; then python3 scripts/_phase_07_08_prepare.py; fi
+          if test -f internal/exec/validator.go; then go get github.com/wasilibs/go-pgquery@b511bb3bfd6e3dc19af37ab4c7d44f711995fc7c; fi
+          go mod tidy
+          find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"; then
+            git add cmd internal sdk test go.mod go.sum docs scripts examples .github GETTING-STARTED.md README.md AGENTS.md CLAUDE.md RFC-001-Chartworks.md RFC-002-Governed-Reporting.md docker-compose.yml
+            git commit -m 'build: materialize phase 07-08 source and pinned dependency lock'
+            git push origin HEAD:feat/phase-07-08-vindex-sources
+          fi
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+      - name: Build and vet current implementation
+        run: |
+          CGO_ENABLED=0 go build ./...
+          go vet ./...
+      - name: Phase 07-08 and prerequisite acceptance
+        run: go test -race -count=1 -timeout=10m -v ./test/acceptance -run 'TestPhase0[789]|TestVindex|TestSource|TestSQL'
+      - name: Coverage inventory
+        run: make coverage
