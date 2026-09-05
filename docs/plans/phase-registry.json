@@ -57,7 +57,7 @@
         "02",
         "04"
       ],
-      "status": "planned",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "08": {
@@ -66,7 +66,7 @@
         "04",
         "09"
       ],
-      "status": "planned",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "09": {
@@ -75,7 +75,7 @@
         "03",
         "04"
       ],
-      "status": "planned",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "10": {

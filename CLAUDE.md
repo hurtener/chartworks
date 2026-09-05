@@ -123,3 +123,7 @@ Do not add external targets without their first real handler, uncertainty policy
 and actual tests. Candidate/cache identities include signed reach; SDK raw response
 observations stay inside the adapter. Retained metadata must not depend on models
 or worker credentials. See docs/reviews/phase-05-06-adversarial.md for evidence.
+
+## Phases 07/08 and validated-read prerequisite
+
+D-064 and docs/contracts/vector-sources-validation.md govern the actual PostgreSQL 17 source and native-parser subset. Do not bypass opaque plans, widen signed context reach, turn an operator alias into a public DSN field, or treat parsed SQL as authority. Vector generations require complete exact-origin manifests and atomic publication; do not add tenant-only evidence caches or local inference. Preserve the SQL alias, rollback, oversized-batch and concurrent generation regressions. Later phase 10/14/15 consumers retain their existing obligations. Final CI is read-only and must test committed source without preparation or repair scripts.

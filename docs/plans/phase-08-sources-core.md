@@ -1,6 +1,6 @@
 # Phase 08 — sources-core
 
-Status: planned. Owner: internal/sources. Hard dependencies: 04, 09.
+Status: shipped. Owner: internal/sources. Hard dependencies: 04, 09.
 
 ## Authority and design
 
@@ -43,4 +43,8 @@ Implement `TestPhase08/AC01` through `TestPhase08/AC06` using real PostgreSQL an
 
 ## Glossary, decisions and deviations
 
-Source execution context is connector configuration, not an IAM role. D-044/D-045/D-051 apply. No runtime completion is claimed.
+Source execution context is connector configuration, not an IAM role. D-044/D-045/D-051 apply. Runtime implementation and named acceptance are supplied here; no production deployment is claimed.
+
+## Implemented evidence and qualified scope
+
+D-064 and [the vector/source/read contract](../contracts/vector-sources-validation.md) pin the qualified scope. See the [adversarial review](../reviews/phase-07-08-adversarial.md). Existing hard dependencies and all six numbered criteria remain unchanged. Real PostgreSQL/pgvector and native-parser fixtures provide runtime evidence; final exact-head CI must pass before merge. The full execution product remains phase 10, additional engines phase 14 and the semantic generation consumer phase 15.

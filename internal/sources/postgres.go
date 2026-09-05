@@ -80,7 +80,7 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 	mode := u.Query().Get("sslmode")
 	ip := net.ParseIP(u.Hostname())
 	loopback := u.Hostname() == "localhost" || ip != nil && ip.IsLoopback()
-	if mode != "verify-full" && !(loopback && mode == "disable") {
+	if mode != "verify-full" && (!loopback || mode != "disable") {
 		return nil, "", store.ErrInvalid
 	}
 	key := c.Tenant + "/" + c.ID
@@ -144,6 +144,15 @@ func (s *Service) probe(ctx context.Context, c config.SourceConnection, id strin
 		defer stop()
 		_ = tx.Rollback(cleanup)
 	}()
+	// This catalog/type/exposure proof is qualified against PostgreSQL 17.
+	// Reject unknown majors before interpreting catalogs or locking targets.
+	var serverVersion int
+	if err = tx.QueryRow(ctx, `SELECT current_setting('server_version_num')::integer`).Scan(&serverVersion); err != nil {
+		return out, safe(err)
+	}
+	if !supportedPostgresVersion(serverVersion) {
+		return out, readexec.ErrUnsupported
+	}
 	if _, err = tx.Exec(ctx, `SELECT set_config('search_path','pg_catalog',true),set_config('row_security','on',true),set_config('statement_timeout',$1,true),set_config('lock_timeout',$1,true)`, strconv.FormatInt(time.Duration(s.settings.QueryTimeout).Milliseconds(), 10)); err != nil {
 		return out, safe(err)
 	}
@@ -347,3 +356,6 @@ func readRows(ctx context.Context, tx readTransaction, statement string, paramet
 	}
 	return out, nil
 }
+
+// supportedPostgresVersion pins the independently tested source safety contract.
+func supportedPostgresVersion(version int) bool { return version >= 170000 && version < 180000 }

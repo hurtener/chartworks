@@ -1,6 +1,6 @@
 # Phase 09 — sql-validate-core
 
-Status: planned. Owner: internal/exec. Hard dependencies: 03, 04.
+Status: shipped. Owner: internal/exec. Hard dependencies: 03, 04.
 
 ## Authority and design
 
@@ -43,4 +43,8 @@ Implement `TestPhase09/AC01` through `TestPhase09/AC06`. Use dialect-positive an
 
 ## Glossary, decisions and deviations
 
-Validated plan, dependency set and execution context are shared contract terms. D-051 corrects the old universal safety assumptions. No runtime completion is claimed.
+Validated plan, dependency set and execution context are shared contract terms. D-051 corrects the old universal safety assumptions. Runtime implementation and named acceptance are supplied here; no production deployment is claimed.
+
+## Implemented evidence and qualified scope
+
+D-064 and [the vector/source/read contract](../contracts/vector-sources-validation.md) pin the qualified scope. See the [adversarial review](../reviews/phase-07-08-adversarial.md). Existing hard dependencies and all six numbered criteria remain unchanged. Real PostgreSQL/pgvector and native-parser fixtures provide runtime evidence; final exact-head CI must pass before merge. The full execution product remains phase 10, additional engines phase 14 and the semantic generation consumer phase 15.

@@ -1,0 +1,37 @@
+{
+  "sources": {
+    "enabled": true,
+    "max_conns": 4,
+    "max_rows": 256,
+    "max_bytes": 1048576,
+    "connect_timeout": "1s",
+    "query_timeout": "2s",
+    "connections": [
+      {
+        "tenant": "example-tenant",
+        "id": "warehouse",
+        "version": "operator-v1",
+        "read_dsn": "env:CHARTWORKS_SOURCE_READ",
+        "write_dsn": "env:CHARTWORKS_SOURCE_WRITE",
+        "relations": [
+          {
+            "schema": "analytics",
+            "name": "sales",
+            "columns": [
+              "id",
+              "amount",
+              "created_at"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "exec": {
+    "max_sql_bytes": 32768,
+    "max_parameters": 64,
+    "max_ast_depth": 64,
+    "max_ast_nodes": 8192,
+    "concurrency": 2
+  }
+}

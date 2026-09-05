@@ -30,7 +30,7 @@ type Validator struct {
 
 // NewValidator uses the pinned native PostgreSQL parser compiled to WASM, not a keyword filter.
 func NewValidator(adapter ReadAdapter, limits config.ReadValidation) (*Validator, error) {
-	if adapter == nil || reflect.ValueOf(adapter).Kind() == reflect.Ptr && reflect.ValueOf(adapter).IsNil() || config.ValidateReadValidation(limits) != nil {
+	if adapter == nil || reflect.ValueOf(adapter).Kind() == reflect.Pointer && reflect.ValueOf(adapter).IsNil() || config.ValidateReadValidation(limits) != nil {
 		return nil, ErrBinding
 	}
 	// Initialize the pinned WASM parser at explicit capability construction, not

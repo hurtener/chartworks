@@ -14,22 +14,22 @@ func parserBinding() Binding {
 		{ID: "items", Schema: "analytics", Name: "items", Columns: []Column{{Name: "sale_id", NativeType: "integer", Safe: true}, {Name: "quantity", NativeType: "integer", Safe: true}}},
 	}}
 }
-func resolveFixture(sql string) ([]string, error, string) {
+func resolveFixture(sql string) ([]string, string, error) {
 	raw, err := pgquery.ParseToJSON(sql)
 	if err != nil {
-		return nil, err, ""
+		return nil, "", err
 	}
 	var tree map[string]any
 	if err = json.Unmarshal([]byte(raw), &tree); err != nil {
-		return nil, err, raw
+		return nil, raw, err
 	}
 	statements := array(tree["stmts"])
 	if len(statements) != 1 {
-		return nil, ErrUnsafe, raw
+		return nil, raw, ErrUnsafe
 	}
 	r := sqlResolver{binding: parserBinding(), dependencies: map[string]bool{}, parameters: map[int]bool{}, parameterCount: 1}
 	cols, err := r.selectStatement(object(statements[0])["stmt"], nil)
-	return cols, err, raw
+	return cols, raw, err
 }
 func TestSQLResolverGrammar(t *testing.T) {
 	for _, sql := range []string{
@@ -62,7 +62,7 @@ func TestSQLResolverGrammar(t *testing.T) {
 		`WITH q AS (SELECT id FROM analytics.sales), r AS (SELECT id FROM q) SELECT id FROM r`,
 	} {
 		t.Run(sql, func(t *testing.T) {
-			cols, err, raw := resolveFixture(sql)
+			cols, raw, err := resolveFixture(sql)
 			if err != nil || len(cols) == 0 {
 				t.Fatalf("safe grammar rejected: %v\nAST: %s", err, raw)
 			}
@@ -106,7 +106,7 @@ func TestSQLResolverAdversarial(t *testing.T) {
 		`WITH RECURSIVE q AS (SELECT 1 AS n UNION ALL SELECT n+1 FROM q) SELECT n FROM q`,
 	} {
 		t.Run(sql, func(t *testing.T) {
-			_, err, _ := resolveFixture(sql)
+			_, _, err := resolveFixture(sql)
 			if err == nil {
 				t.Fatal("unsafe/unqualified SQL accepted")
 			}

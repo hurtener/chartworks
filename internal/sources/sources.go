@@ -103,7 +103,7 @@ var _ readexec.ReadAdapter = (*Service)(nil)
 
 // New constructs registry metadata access without connecting to a warehouse.
 func New(repo Repository, settings config.Sources, lookup func(string) (string, bool)) (*Service, error) {
-	if repo == nil || reflect.ValueOf(repo).Kind() == reflect.Ptr && reflect.ValueOf(repo).IsNil() || lookup == nil || config.ValidateSources(settings) != nil {
+	if repo == nil || reflect.ValueOf(repo).Kind() == reflect.Pointer && reflect.ValueOf(repo).IsNil() || lookup == nil || config.ValidateSources(settings) != nil {
 		return nil, store.ErrInvalid
 	}
 	return &Service{repo: repo, settings: settings.Clone(), lookup: lookup, pools: map[string]poolEntry{}}, nil

@@ -242,3 +242,12 @@ func Require(e identity.Envelope, b Binding, dependencies []string) error {
 	}
 	return access.Require(e, "sources.query", refs...)
 }
+
+// UnmarshalJSON rejects all reconstruction from serialized data. A failed attempt
+// also clears any existing plan, so its previous authority cannot survive a decode.
+func (p *Plan) UnmarshalJSON([]byte) error {
+	if p != nil {
+		*p = Plan{}
+	}
+	return ErrBinding
+}

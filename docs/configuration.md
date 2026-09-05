@@ -106,3 +106,9 @@ an invented count. Skipping old work uses a5s late-tick grace. Equal local times
 DST fall-back have distinct UTC occurrence keys; nonexistent spring-forward
 local times do not execute. Manual overlap skip is a conflict for a new request;
 a replay returns its original accepted receipt.
+
+## Source and validation configuration
+
+The typed `sources` block defaults to disabled. Bounds: max_conns 1–16 (default 4), max_rows 1–1000 (256), max_bytes 1 KiB–4 MiB (1 MiB), connect_timeout and query_timeout 1 ms–4 s (1 s and 2 s). Connection aliases are tenant-bound and carry version, declared relations/columns and independent env: read/write references; the reader never resolves write credentials.
+
+The typed `exec` block bounds SQL bytes 128–65536 (32768), parameters 1–64 (64), AST depth 4–64 (64), AST nodes 32–16384 (8192) and concurrent validations 1–16 (2). Unknown/retired keys fail. These limits are not skip-validation settings. See `../examples/chartworks.sources.json` and `contracts/vector-sources-validation.md` for enforced fixed vector bounds, credential custody, PostgreSQL qualification and operational behavior.

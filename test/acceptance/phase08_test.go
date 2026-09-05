@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,7 +80,11 @@ func TestPhase08(t *testing.T) {
 		if _, err := f.s.Read(ctx, f.e, oldPlan); err != nil {
 			t.Fatal(err)
 		}
-		newPassword := "ROTATED_SYNTHETIC_PASSWORD"
+		var nonce [16]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			t.Fatal(err)
+		}
+		newPassword := fmt.Sprintf("%x", nonce[:])
 		if _, err := f.admin.Exec(ctx, "ALTER ROLE "+pgx.Identifier{f.role}.Sanitize()+" PASSWORD '"+newPassword+"'"); err != nil {
 			t.Fatal(err)
 		}
@@ -172,8 +177,11 @@ func TestPhase08(t *testing.T) {
 			t.Fatal("zero plan reached warehouse")
 		}
 		var forged readexec.Plan
-		if err := json.Unmarshal([]byte(`{"SQL":"DELETE FROM analytics.sales","nativeChecked":true}`), &forged); err != nil {
-			t.Fatal(err)
+		if err := json.Unmarshal([]byte(`{"SQL":"DELETE FROM analytics.sales","nativeChecked":true}`), &forged); !errors.Is(err, readexec.ErrBinding) {
+			t.Fatal("serialized data reconstructed a plan", err)
+		}
+		if err := (*readexec.Plan)(nil).UnmarshalJSON([]byte(`{}`)); !errors.Is(err, readexec.ErrBinding) {
+			t.Fatal("nil reconstruction accepted", err)
 		}
 		if _, err := f.s.Read(ctx, f.e, forged); !errors.Is(err, readexec.ErrBinding) {
 			t.Fatal("deserialized plan authorized")
@@ -189,6 +197,14 @@ func TestPhase08(t *testing.T) {
 		plan := f.plan(t, source, `SELECT id FROM analytics.sales WHERE id=$1`, readexec.Parameter{Kind: "integer", Value: "1"})
 		if rows, err := f.s.Read(ctx, f.e, plan); err != nil || len(rows.Values) != 1 {
 			t.Fatal("valid plan failed", err)
+		}
+		forged = plan
+		if err := json.Unmarshal([]byte(`{}`), &forged); !errors.Is(err, readexec.ErrBinding) {
+			t.Fatal("existing plan reconstruction accepted", err)
+		}
+		before = f.lookups.Load()
+		if _, err := f.s.Read(ctx, f.e, forged); !errors.Is(err, readexec.ErrBinding) || before != f.lookups.Load() {
+			t.Fatal("failed decode retained previous plan authority", err)
 		}
 	})
 	t.Run("AC05", func(t *testing.T) {
