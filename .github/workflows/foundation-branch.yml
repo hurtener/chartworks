@@ -36,7 +36,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client-17
           echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
-          /usr/lib/postgresql/17/bin/pg_dump --version
       - name: Normalize source and dependency lock before review
         run: |
           for f in scripts/_foundation_edits*.py; do
@@ -46,7 +45,7 @@ jobs:
           done
           go mod tidy
           find cmd internal test -name '*.go' -print0 | xargs -0 gofmt -w
-          git add go.mod go.sum cmd internal test docs/plans
+          git add go.mod go.sum cmd internal test docs/plans README.md
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -54,19 +53,15 @@ jobs:
             git push origin HEAD:feat/phase-01-02-foundation
           fi
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
-      - name: Compile, vet and real database race tests
+      - name: Compile, vet and real database race coverage
         run: |
           CGO_ENABLED=0 go build ./...
           go vet ./...
-          go test -race -count=1 -timeout=10m -coverpkg=./internal/...,./cmd/... -coverprofile=/tmp/foundation-coverage.out ./...
-          go tool cover -func=/tmp/foundation-coverage.out
+          make coverage
+          make planning-check
           python3 -m unittest discover -s scripts -p 'test_*.py'
           python3 scripts/run_phase_acceptance.py --phase 01
           python3 scripts/run_phase_acceptance.py --phase 02
-      - name: Coverage diagnostics
-        if: always()
-        run: |
-          if [ -f /tmp/foundation-coverage.out ]; then go tool cover -func=/tmp/foundation-coverage.out; fi
       - name: Benchmarks
         run: go test ./test/acceptance -run '^$' -bench 'Benchmark(ConfigurationStartup|IdleHealth)$' -benchmem -benchtime=100x
       - name: Lint
