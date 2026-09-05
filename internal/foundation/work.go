@@ -3,108 +3,112 @@ package foundation
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
-	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
-	"github.com/hurtener/chartworks/internal/sourceapi"
-	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/internal/workapi"
 )
 
-type workAssembly struct {
-	handler       http.Handler
-	engine        gateway.Engine
-	queue         *jobs.Service
-	broker        *broker.Provider
-	sourceService *sources.Service
-	cancel        context.CancelFunc
-	wait          sync.WaitGroup
-	once          sync.Once
-	logger        *slog.Logger
+// work owns all enabled SDK clients and durable-worker goroutines. Its close method is
+// joined before the store or shared JWT verifier are released by the composition root.
+type work struct {
+	handler http.Handler
+	engine  gateway.Engine
+	queue   *jobs.Service
+	broker  *broker.Provider
+	cancel  context.CancelFunc
+	wait    sync.WaitGroup
+	once    sync.Once
+	logger  *slog.Logger
 }
 
-func setupWork(parent context.Context, v config.Values, db *postgres.DB, verifier *auth.Verifier, lookup config.LookupEnv, logs *Loggers, next http.Handler) (*workAssembly, error) {
-	if db == nil || verifier == nil || lookup == nil || logs == nil || next == nil {
-		return nil, errors.New("work: incomplete composition dependencies")
+func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *auth.Verifier, next http.Handler, lookup func(string) (string, bool), log io.Writer) (*work, error) {
+	if ctx == nil || db == nil || verifier == nil || next == nil || lookup == nil || log == nil {
+		return nil, errors.New("work: complete service dependencies required")
 	}
-	w := &workAssembly{logger: logs.App}
-	var err error
+	ctx, cancel := context.WithCancel(ctx)
+	w := &work{cancel: cancel, handler: next, logger: slog.New(slog.NewJSONHandler(log, nil))}
 	if v.Features.Gateway {
-		w.engine, err = bifrost.New(parent, v.Gateway, lookup)
+		engine, err := bifrost.New(ctx, v.Gateway, lookup, bifrost.TransportOptions{})
 		if err != nil {
+			w.close()
 			return nil, err
 		}
+		w.engine = engine
 	}
-	limits, err := jobs.FromConfig(v.Jobs)
+	metadata, err := jobs.NewMetadata(db, jobLimits(v.Jobs))
 	if err != nil {
 		w.close()
 		return nil, err
 	}
-	w.queue, err = jobs.NewMetadata(db, limits)
-	if err != nil {
-		w.close()
-		return nil, err
-	}
+	w.queue = metadata
 	if v.Jobs.Enabled {
-		if err := db.ConfigureQueue(parent, limits); err != nil {
-			w.close()
-			return nil, err
-		}
-		w.broker, err = broker.New(v.Jobs.Authority, v.Auth, lookup)
-		if err != nil {
-			w.close()
-			return nil, err
-		}
-		w.queue, err = jobs.New(db, w.broker, limits, func(stage string) { logs.App.Error("background work failure", "stage", stage) })
-		if err != nil {
-			w.close()
-			return nil, err
-		}
-		ctx, cancel := context.WithCancel(parent)
-		w.cancel = cancel
-		w.wait.Add(1)
-		go func() {
-			defer w.wait.Done()
-			if err := w.queue.Run(ctx); err != nil {
-				logs.App.Error("background work lifecycle failed", "stage", "worker_run")
+		credentials := map[string]broker.Credential{}
+		for _, ref := range v.Jobs.Credentials {
+			id, ok := lookup(strings.TrimPrefix(ref.ClientID, "env:"))
+			secret, has := lookup(strings.TrimPrefix(ref.ClientSecret, "env:"))
+			if !ok || !has {
+				w.close()
+				return nil, errors.New("work: broker credential unavailable")
 			}
-		}()
-	}
-	w.sourceService, err = sources.New(db, v.Sources, lookup)
-	if err != nil {
-		w.close()
-		return nil, err
-	}
-	var validator *readexec.Validator
-	if v.Sources.Enabled {
-		validator, err = readexec.NewValidator(w.sourceService, v.Exec)
+			credentials[ref.Tenant] = broker.Credential{ClientID: id, Secret: secret}
+		}
+		provider, err := broker.New(v.Jobs.BrokerURL, credentials, verifier, nil)
 		if err != nil {
 			w.close()
 			return nil, err
 		}
+		w.broker = provider
+		limits := jobLimits(v.Jobs)
+		if err := db.ConfigureQueue(ctx, limits); err != nil {
+			w.close()
+			return nil, err
+		}
+		queue, err := jobs.New(db, provider, limits, func(stage string) {
+			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
+		})
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+		w.queue = queue
 	}
-	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
+	w.handler = workapi.Handler(verifier, w.engine, w.queue, next)
 	return w, nil
 }
-
-func (w *workAssembly) close() {
+func jobLimits(j config.Jobs) jobs.Limits {
+	return jobs.Limits{Workers: j.Workers, GlobalConcurrency: j.GlobalConcurrency, TenantConcurrency: j.TenantConcurrency, MaxPending: j.MaxPending, MaxPendingPerTenant: j.MaxPendingPerTenant, MaxAttempts: j.MaxAttempts, Batch: j.Batch, Lease: time.Duration(j.Lease), Heartbeat: time.Duration(j.Heartbeat), Poll: time.Duration(j.Poll), AttemptTimeout: time.Duration(j.AttemptTimeout), Backoff: time.Duration(j.Backoff)}
+}
+func (w *work) run(ctx context.Context) {
+	if w.queue == nil || !w.queue.DispatchEnabled() {
+		return
+	}
+	ctx, stop := context.WithCancel(ctx)
+	cancel := w.cancel
+	w.cancel = func() { stop(); cancel() }
+	w.wait.Add(1)
+	go func() {
+		defer w.wait.Done()
+		if err := w.queue.Run(ctx); err != nil && ctx.Err() == nil {
+			w.logger.Error("durable worker stopped; check configured queue limits and metadata availability")
+		}
+	}()
+}
+func (w *work) close() {
 	w.once.Do(func() {
-		if w.cancel != nil {
-			w.cancel()
-		}
+		w.cancel()
 		w.wait.Wait()
-		if w.sourceService != nil {
-			w.sourceService.Close()
-		}
 		if w.engine != nil {
 			w.engine.Close()
 		}

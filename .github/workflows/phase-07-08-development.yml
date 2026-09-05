@@ -7,6 +7,9 @@ permissions:
 concurrency:
   group: phase-07-08-development
   cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
 jobs:
   develop:
     runs-on: ubuntu-24.04
@@ -32,6 +35,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+          cache: false
+      - uses: actions/cache/restore@v4
+        id: build-cache
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: chartworks-phases-07-08-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            chartworks-phases-07-08-${{ runner.os }}-${{ hashFiles('go.sum') }}-
       - name: PostgreSQL recovery client
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -44,24 +57,44 @@ jobs:
         run: |
           test "$GITHUB_REF" = refs/heads/feat/phase-07-08-vindex-sources
           if test -f scripts/_phase_07_08_prepare.py; then python3 scripts/_phase_07_08_prepare.py; fi
-          if test -f internal/exec/validator.go; then go get github.com/wasilibs/go-pgquery@b511bb3bfd6e3dc19af37ab4c7d44f711995fc7c; fi
           go mod tidy
           find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"; then
             git add cmd internal sdk test go.mod go.sum docs scripts examples .github GETTING-STARTED.md README.md AGENTS.md CLAUDE.md RFC-001-Chartworks.md RFC-002-Governed-Reporting.md docker-compose.yml
-            git commit -m 'build: materialize phase 07-08 source and pinned dependency lock'
+            git commit -m 'build: materialize reviewed phase 07-08 source'
             git push origin HEAD:feat/phase-07-08-vindex-sources
           fi
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
-      - name: Build and vet current implementation
+          mkdir -p /tmp/chartworks-evidence
+          git rev-parse HEAD > /tmp/chartworks-evidence/tested-commit.txt
+      - name: Build and vet actual existing assembly
         run: |
-          CGO_ENABLED=0 go build ./...
-          go vet ./...
+          CGO_ENABLED=0 go build ./... 2>&1 | tee /tmp/chartworks-evidence/build.log
+          go vet ./... 2>&1 | tee /tmp/chartworks-evidence/vet.log
       - name: Positive SQL grammar and negative corpus
-        run: go test -race -count=1 -timeout=5m -v ./internal/exec ./internal/sources
+        run: go test -race -count=1 -timeout=5m -v ./internal/exec ./internal/sources 2>&1 | tee /tmp/chartworks-evidence/parser.log
       - name: Phase 07-08 and prerequisite acceptance
-        run: go test -race -count=1 -timeout=10m -v ./test/acceptance -run 'TestPhase0[789]|TestVindex|TestSource|TestSQL'
-      - name: Coverage inventory
-        run: make coverage
+        run: go test -race -count=1 -timeout=10m -v ./test/acceptance -run 'TestPhase0[789]|TestVindex|TestSource|TestSQL' 2>&1 | tee /tmp/chartworks-evidence/acceptance.log
+      - name: Full race coverage inventory
+        run: make coverage 2>&1 | tee /tmp/chartworks-evidence/coverage.log
+      - name: Preserve exact reviewed source and test evidence
+        if: always()
+        run: |
+          mkdir -p /tmp/chartworks-evidence
+          git archive --format=tar.gz -o /tmp/chartworks-evidence/source.tar.gz HEAD
+          git rev-parse HEAD > /tmp/chartworks-evidence/tested-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-07-08-evidence
+          path: /tmp/chartworks-evidence
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
