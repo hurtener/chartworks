@@ -1,32 +1,34 @@
 # Phase 02 — store-migrations
 
-Status: in_progress. Owner: internal/store. Hard dependencies: 01.
+Status: shipped. Owner: internal/store. Hard dependencies: 01.
 
 ## Authority and design
 
-RFC-001, RFC-002, the Pengui authority contract and D-044–D-052 apply. [COMMON.md](COMMON.md) supplies the binding implementation, testing, coverage and smoke workflow. Register concrete operations with the early transport/SDK shells in the same feature change.
+RFC-001, RFC-002, the Pengui authority contract, D-044–D-052 and [COMMON.md](COMMON.md) apply. D-057 records the first concrete store consumer. Shipped means implemented and verified in this PR, not a deployment or permission to expose unprotected business routes.
 
 ## Brief findings incorporated
 
-Briefs 02, 05, 14; retain tenant-safe durable state and real-driver conformance. Historical detailed notes in `docs/archive/phase0-plans/` are background, not competing instructions.
+Briefs 02, 05, 14: tenant-composite durable references, immutable revision/CAS semantics, fresh/upgrade database proofs, transactional effects and real-driver recovery. Historical plans are not competing instructions.
 
 ## Findings I'm departing from
 
-Remove speculative local IAM and preallocation of every domain table before its consumer exists. Pengui issues all authority.
+No local IAM or preallocation of every later analytics table. `store.Scope` is an internal validated tenant/actor isolation coordinate, not proof of authentication or a public request parameter. Phases 03/04 will project verified Pengui authority into this boundary. No HTTP/CLI tenant-override maintenance endpoint bypasses them. Local transaction success does not imply distributed exactly-once execution.
 
 ## Scope and implementation tasks
 
-1. Implement narrow domain store interfaces, pgx transactions, forward-only migrations and a fresh-database conformance harness.
-2. Provide tenant-composite keys/FKs, immutable revision/CAS helpers, operation-key and lease primitives. Domain owners add their tables with the first consuming feature.
-3. Remove planned API-key/grant/role/membership/service-identity tables. Retain business/configuration metadata without granting access from it.
+1. Delivered narrow store interfaces, real pgx pool/transactions, cancellable statement/lock timeouts, compiled forward-only migrations and disposable PostgreSQL conformance fixtures.
+2. Delivered tenant-composite keys/FKs, immutable operational revisions, CAS pointers with transactional audit, unique operation keys/manifests and monotonic lease fences.
+3. Delivered the internal retention service as the first real consumer; its settings are business/retention configuration, not identity or sharing policy. Operator backup/restore is real PostgreSQL tooling, not an in-memory serialization demonstration.
 
 ## Non-goals
 
-No local IAM, token issuance, SQLite driver or unrelated subsystem implementation.
+No local users, API keys, roles, grants, memberships, service-account provisioning, issuer secrets, SQLite, raw public SQL port, reporting engine or scheduler dispatcher. Later domain phases add their necessary schema through forward migrations.
 
 ## Config and persistence
 
-Store DSN via secret reference, pool/transaction timeouts and migration policy; no local identity bootstrap configuration. Domain schema changes ship with their first consumer. All domain methods carry verified tenant/authority context.
+The [configuration reference](../configuration.md) defines secret-reference DSN, pool/connect/transaction timeouts and apply/check migration policy. Only five necessary relations ship: `schema_migrations`, `policy_revisions`, `policies`, `audit_events`, `operations`. Every tenant-owned repository operation takes a nonzero isolation coordinate; database predicates and composite references enforce its partition independently.
+
+Migration history includes ordered names/checksums. Concurrent fresh boot applies each once, and failed DDL cannot commit partial history. Check/startup also verifies required relations exist. This does not claim protection against an operator with database-superuser privileges deliberately disabling constraints.
 
 ## Acceptance criteria
 
@@ -39,12 +41,12 @@ Store DSN via secret reference, pool/transaction timeouts and migration policy; 
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase02/AC01` through `TestPhase02/AC06` against real PostgreSQL transactions; COMMON.md sets the workflow and 85% store coverage. `scripts/smoke/phase-02.sh` requires every named acceptance result. Missing/skipped runtime tests are not passes. Feature/gate ownership is in `coverage.json`.
+`test/acceptance/phase02_test.go` implements all six `TestPhase02/ACxx` children with real PostgreSQL. Tests cover concurrent migration/CAS/key reservation, injected audit/DDL failures, composite-reference escape, stale-worker fencing, mid-transaction expiry, changed retention policy, restart replay, actual private `pg_dump`/`pg_restore`, and refusal to restore over a nonempty target. A separate schema-health regression prevents valid history from hiding a missing relation.
+
+`scripts/smoke/phase-02.sh` requires all actual named results. `make coverage` instruments these real integration callers and enforces 85% on both store packages. Missing database/client tooling fails, never skips. [Operator instructions](../../GETTING-STARTED.md), [self-review](../reviews/phase-01-02-adversarial.md) and [verification record](../reviews/phase-01-02-verification.md) accompany the code.
 
 ## Glossary, decisions and deviations
 
-Update the shared glossary. D-044–D-052 govern this revision. No runtime completion is claimed; record implementation findings and equivalent behavior before closure.
+D-057: storage scope is not authentication; retention is the first consumer; expired keys retain tombstones. D-058: cross-package coverage and trusted-operator recovery. `DeletedOperations` counts compacted expired operation payloads, not reusable deletion of their keys. Required revision/audit references are retained rather than cascaded destructively; tests verify scoped deletion cannot affect another tenant or orphan dependencies.
 
-## Implementation record — 2026-09-05
-
-The criterion-to-test mapping is implemented in `test/acceptance/phase02_test.go`, with shared adversarial cases and real PostgreSQL fixtures. The first foundation is intentionally loopback health-only before phases 03/04; storage scopes are isolation coordinates, not authentication. See D-056, D-057 and D-058, [operator instructions](../../GETTING-STARTED.md), [configuration reference](../configuration.md) and [self-review](../reviews/phase-01-02-adversarial.md). Package coverage uses full-suite cross-package instrumentation at unchanged thresholds. All six criteria must pass without skips before this phase is marked shipped.
+All six acceptance criteria and the actual backup/restore round-trip passed under race detection before this status changed. Store coverage, vet and lint passed. Final read-only CI rechecks the exact PR tree. Full scheduler/reporting/product release remains in its owning later phases.
