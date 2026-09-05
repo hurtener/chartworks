@@ -1,10 +1,11 @@
 package acceptance
 
 import (
-	"github.com/hurtener/chartworks/internal/auth"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/auth"
 )
 
 func httpRequestWithDuplicateHeader() *http.Request {

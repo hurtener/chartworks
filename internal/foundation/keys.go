@@ -2,9 +2,10 @@
 package foundation
 
 import (
+	"net/http"
+
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
-	"net/http"
 )
 
 // Dependency is a sanitized observation from the shared verifier cache.

@@ -220,6 +220,7 @@ func TestPhase03(t *testing.T) {
 				if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 					return nil
 				}
+				// #nosec G304 -- repository source files discovered under fixed test-owned roots, never user paths.
 				b, err := os.ReadFile(path)
 				if err != nil {
 					return err

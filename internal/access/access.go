@@ -3,9 +3,10 @@ package access
 
 import (
 	"errors"
+	"sort"
+
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
-	"sort"
 )
 
 var (

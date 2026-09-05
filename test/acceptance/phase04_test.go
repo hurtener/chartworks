@@ -206,7 +206,7 @@ func TestPhase04(t *testing.T) {
 		f := newTokenFixture(t)
 		actions := map[string]string{"reporting.preview": "preview", "reporting.sql.read": "read", "reporting.publish": "publish", "reporting.certify": "certify", "reporting.export": "export", "reporting.schedule.manage": "execute"}
 		for action, permission := range actions {
-			resource := access.Resource{"tenant", "block", permission, "block1"}
+			resource := access.Resource{Tenant: "tenant", Kind: "block", Permission: permission, ID: "block1"}
 			e := f.envelope(t, "tenant", "user", action, "cw.block."+permission+":block1")
 			if access.Require(e, action, resource) != nil {
 				t.Fatal("explicit action denied")

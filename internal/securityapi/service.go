@@ -4,11 +4,12 @@ package securityapi
 
 import (
 	"context"
+	"time"
+
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/maintenance"
 	"github.com/hurtener/chartworks/internal/store"
-	"time"
 )
 
 // Service owns authorization for both HTTP and in-process consumers.

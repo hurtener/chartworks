@@ -6,10 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/hurtener/chartworks/internal/identity"
 	"io"
 	"math/big"
 	"strings"
+
+	"github.com/hurtener/chartworks/internal/identity"
 )
 
 func str(m map[string]json.RawMessage, k string) string {

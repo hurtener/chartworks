@@ -1,12 +1,13 @@
 package acceptance
 
 import (
-	"github.com/hurtener/chartworks/internal/securityapi"
-	"github.com/hurtener/chartworks/internal/telemetry"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/securityapi"
+	"github.com/hurtener/chartworks/internal/telemetry"
 )
 
 func TestProtectedRequestNegatives(t *testing.T) {

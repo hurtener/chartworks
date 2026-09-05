@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/pem"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -150,5 +149,5 @@ func TestCompiledAuthorityLifecycle(t *testing.T) {
 	if strings.Contains(output.String(), token) || strings.Contains(output.String(), dsn) {
 		t.Fatal("credential leak in compiled logs")
 	}
-	t.Log(fmt.Sprintf("compiled JWT -> scope -> PostgreSQL -> SDK and SIGTERM path passed; operations=%d", len(checks)))
+	t.Logf("compiled JWT -> scope -> PostgreSQL -> SDK and SIGTERM path passed; operations=%d", len(checks))
 }
