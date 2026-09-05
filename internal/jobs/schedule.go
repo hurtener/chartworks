@@ -20,6 +20,7 @@ type Spec struct {
 	Overlap         string    `json:"overlap"`
 }
 
+// Validate rejects malformed or unbounded values before use.
 func (s Spec) Validate() error {
 	if s.Missed != "skip" && s.Missed != "catch_up" || s.Overlap != "skip" && s.Overlap != "queue" || s.MaxCatchUp < 0 || s.MaxCatchUp > 32 || s.Missed == "catch_up" && s.MaxCatchUp < 1 || s.Timezone == "" || len(s.Timezone) > 128 {
 		return ErrInvalid
@@ -138,6 +139,7 @@ type ScheduleRequest struct {
 	Spec   Spec       `json:"spec"`
 }
 
+// Validate rejects malformed or unbounded values before use.
 func (r ScheduleRequest) Validate() error {
 	if r.Target.Validate() != nil {
 		return ErrInvalid
@@ -145,6 +147,7 @@ func (r ScheduleRequest) Validate() error {
 	return r.Spec.Validate()
 }
 
+// Schedule is the retained, revisioned definition and its durable occurrence cursor.
 type Schedule struct {
 	ID               string          `json:"id"`
 	Revision         int64           `json:"revision"`
@@ -157,4 +160,5 @@ type Schedule struct {
 	PreviousDue      *time.Time      `json:"previous_due,omitempty"`
 }
 
+// JSON serializes a validated immutable schedule request for persistence.
 func (r ScheduleRequest) JSON() []byte { b, _ := json.Marshal(r); return b }

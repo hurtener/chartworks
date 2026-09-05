@@ -149,7 +149,7 @@ func Start(ctx context.Context, cfg config.Config, log io.Writer) error {
 	if err != nil {
 		return errors.New("foundation: cannot bind configured listener")
 	}
-	active.run()
+	active.run(ctx)
 	err = s.Serve(ctx, listener)
 	stopWork()
 	return err

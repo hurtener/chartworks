@@ -1,6 +1,6 @@
 # Chartworks — actionable implementation plan
 
-Current implementation status: phases 01–04 provide the Go/PostgreSQL foundation and verified operational access. Thirty later workstreams remain planned. The registry records status; actual named tests and reviewed execution evidence establish acceptance, not this paragraph or a green documentation check. Historical superseded plans remain under `docs/archive/phase0-plans/`.
+Current implementation status: phases 01–06 provide the Go/PostgreSQL foundation, verified operational access, remote Bifrost inference and durable maintenance work. Twenty-eight later workstreams remain planned. The registry records status; actual named tests and reviewed execution evidence establish acceptance, not this paragraph or a green documentation check. Historical superseded plans remain under `docs/archive/phase0-plans/`.
 
 ## Fixed decisions
 
@@ -8,7 +8,7 @@ Pengui alone owns issuer/authentication/access-policy decisions. Chartworks vali
 
 Harbor/Pengui MCP Apps support is established. Implement Chartworks tools/resources/viewer; no host qualification, framework selection or unrelated protocol migration. Use the existing Pengui/client BFF for iframe credentials.
 
-All production completion, structured generation, embeddings and reranking use the embedded Bifrost Go SDK and remote providers. No local learned models, weights/downloads, cross-encoder service or parallel direct model client. [The gateway contract](../contracts/model-gateway.md) and [reference excerpt](../../examples/chartworks.gateway.json) are binding phase05 inputs. Deterministic tokenization, SQL parsing, pgvector search and rendering remain normal application work. No model call is performed by the implemented authority foundation.
+All production completion, structured generation, embeddings and reranking use the embedded Bifrost Go SDK and remote providers. No local learned models, weights/downloads, cross-encoder service or parallel direct model client. [The gateway contract](../contracts/model-gateway.md) and [reference excerpt](../../examples/chartworks.gateway.json) are binding phase05 inputs. Deterministic tokenization, SQL parsing, pgvector search and rendering remain normal application work. Constructing the gateway performs no inference; the explicitly authorized operator probe performs paid remote inference when invoked.
 
 Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/block/report targets. Discard source event/condition/condition-check/custom-code stubs. Business validation, immutable revisions, certification, SQL safety, source data partitions, retention and execution budgets remain Chartworks responsibilities, not a second IAM system.
 
@@ -16,7 +16,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 224 acceptance criteria**: phase05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–04 are implemented; the remaining thirty are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success.
+There are **34 workstreams and 224 acceptance criteria**: phase05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–06 are implemented; the remaining twenty-eight are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 
@@ -61,7 +61,7 @@ Numbers identify workstreams, not chronology. Phases21–23 extend the early tra
 
 ## Delivery sequence
 
-Phases01–04 now supply the foundation. Phase05 can proceed independently; phase04 also unlocks06/07/09 and the expanded21->22->23 surfaces. Source interfaces/adapters follow09->08->10 to avoid import cycles. Profiling/semantics unlock15/20->27->28: a real approved block, selected outputs and retained API artifact.
+Phases01–06 now supply the foundation, gateway and queue. Phase04 unlocks07/09 and the expanded21->22->23 surfaces. Source interfaces/adapters follow09->08->10 to avoid import cycles. Profiling/semantics unlock15/20->27->28: a real approved block, selected outputs and retained API artifact.
 
 Run semantic/NLQ work16->17->18 alongside block work, then add19/29. Reports unlock30 and31 in parallel; scheduling is not a viewer prerequisite. Static delivery follows31->32. Viewer development may use synthetic sealed artifacts earlier, but closure requires the actual consumer.
 
@@ -79,6 +79,6 @@ Complete cutover also requires semantic/NLQ/learning behavior, hybrid reports, d
 
 `make planning-check` checks graph/criteria/links/mappings/mirrors/configuration. `make preflight-full` runs actual implemented acceptance and reports later planned phases as unimplemented. `make release-check` requires every phase shipped and every criterion passed without skips.
 
-The existing Pengui provider bearer serialization is now consumed by phases03/04. [Its operation manifest](../contracts/chartworks-operations.json) and [registration guide](../contracts/pengui-provider-registration.md) let the operator configure approved scope sets; no production registration is fabricated. Phase06 still reads/reuses the actual durable binding/renewal contract or implements an extension owned by Pengui, then proves its first durable consumer. Phase30 reuses it. No local issuer or guessed broker endpoint is permitted.
+The existing Pengui provider bearer serialization is now consumed by phases03/04. [Its operation manifest](../contracts/chartworks-operations.json) and [registration guide](../contracts/pengui-provider-registration.md) let the operator configure approved scope sets; no production registration is fabricated. Phase06 implements the [Pengui-owned execution authority v1 extension](../contracts/execution-authority-v1.md) with its real maintenance consumer. Merge/deploy the companion issuer before enabling dispatch; Phase30 reuses the same provider. No local issuer or guessed broker endpoint is permitted.
 
 Standing risks remain dialect safety, complete dependency manifests, unsafe artifact-context reuse, retry reference/window drift, private previews, exact numeric values and overstated external atomicity. Their later real-adapter tests remain required. D-059–D-061 record the implemented authority decisions without weakening those obligations.

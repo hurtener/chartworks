@@ -28,6 +28,7 @@ type Operation struct {
 	Effect string `json:"effect"`
 }
 
+// Registry enumerates only the implemented routes for the selected service capabilities.
 func Registry(models, queue bool) []Operation {
 	out := []Operation{}
 	if models {
@@ -55,6 +56,15 @@ func Handler(v *auth.Verifier, engine gateway.Engine, queue *jobs.Service, next 
 		return http.NotFoundHandler()
 	}
 	registered := Registry(engine != nil, queue != nil)
+	if queue != nil && !queue.DispatchEnabled() {
+		filtered := []Operation{}
+		for _, op := range registered {
+			if op.Action == "ops.model" || op.Action == "scheduling.read" || op.Action == "scheduling.cancel" || op.Effect == "schedule_state" {
+				filtered = append(filtered, op)
+			}
+		}
+		registered = filtered
+	}
 	protected := v.Middleware(auth.HTTP, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		e, err := identity.FromContext(r.Context())
 		if err != nil {

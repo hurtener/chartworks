@@ -1,0 +1,20 @@
+{
+  "auth": {
+    "audiences": {
+      "http": "chartworks:http",
+      "mcp": "chartworks:mcp",
+      "jobs": "chartworks:execution"
+    }
+  },
+  "jobs": {
+    "enabled": true,
+    "broker_url": "https://your-pengui-host.example/exchange/execution-authority",
+    "credentials": [
+      {
+        "tenant": "your-approved-tenant",
+        "client_id": "env:CHARTWORKS_BROKER_CLIENT_ID",
+        "client_secret": "env:CHARTWORKS_BROKER_CLIENT_SECRET"
+      }
+    ]
+  }
+}

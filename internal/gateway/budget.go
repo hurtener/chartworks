@@ -21,6 +21,7 @@ type Budget struct {
 	maxCalls, maxTokens, calls, tokens int
 }
 
+// NewBudget binds a bounded operation allowance to the exact verified call context.
 func NewBudget(call Call, limits Limits) (*Budget, error) {
 	if !call.Valid() || limits.Calls < 1 || limits.Calls > 64 || limits.Tokens < 1 || limits.Tokens > 16<<20 || limits.Duration <= 0 || limits.Duration > 10*time.Minute {
 		return nil, ErrInput
@@ -31,6 +32,8 @@ func NewBudget(call Call, limits Limits) (*Budget, error) {
 	}
 	return &Budget{key: call.Key(), deadline: deadline, maxCalls: limits.Calls, maxTokens: limits.Tokens}, nil
 }
+
+// Reserve atomically charges one attempt and its pessimistic token bound before inference.
 func (b *Budget) Reserve(call Call, tokens int) error {
 	if b == nil || !call.Valid() {
 		return ErrBudget
@@ -44,12 +47,16 @@ func (b *Budget) Reserve(call Call, tokens int) error {
 	b.tokens += tokens
 	return nil
 }
+
+// Deadline returns the effective validity deadline without extending it.
 func (b *Budget) Deadline() time.Time {
 	if b == nil {
 		return time.Time{}
 	}
 	return b.deadline
 }
+
+// Used returns the charged call and token reservations, including failed attempts.
 func (b *Budget) Used() (int, int) {
 	if b == nil {
 		return 0, 0

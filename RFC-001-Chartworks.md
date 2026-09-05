@@ -167,3 +167,12 @@ L2 reviewed engineering/drift proposals remain planned. L3 auto-apply and a new 
 ## Phase 03/04 authority implementation
 
 D-059–D-061 implement the existing Pengui provider-scope seam with one JWT verifier/cache and immutable signed envelope. [The operator handoff](docs/contracts/pengui-provider-registration.md) and [actual operation manifest](docs/contracts/chartworks-operations.json) describe the implemented consumer. Scope limits are 32 entries, 256 bytes each, 4096 total; exact HTTP/MCP audiences may be configured separately. Synchronous operational routes and SDK clients are present, but no local issuer, grants database, reporting API or full MCP transport is added by this milestone.
+
+## Phase05/06 implementation addendum (2026-09-05)
+
+D-062/D-063 deliver the remote-only Bifrost gateway, fixed-input operator probes,
+one PostgreSQL queue and bounded maintenance occurrences with the actual
+[Pengui execution-authority v1 companion](docs/contracts/execution-authority-v1.md).
+Metadata cancellation/read/pause do not require live models or an enabled worker.
+Broader analytic/reporting targets and external-effect reconciliation remain owned
+by their later phases; this is not a reporting release or live provider acceptance.

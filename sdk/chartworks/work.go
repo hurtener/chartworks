@@ -24,10 +24,14 @@ type Recurrence struct {
 	MaxCatchUp      int       `json:"max_catch_up,omitempty"`
 	Overlap         string    `json:"overlap"`
 }
+
+// ScheduleRequest pairs a supported fixed target with a bounded recurrence definition.
 type ScheduleRequest struct {
 	Target JobTarget  `json:"target"`
 	Spec   Recurrence `json:"spec"`
 }
+
+// Schedule is the retained, revisioned definition and its durable occurrence cursor.
 type Schedule struct {
 	ID               string          `json:"id"`
 	Revision         int64           `json:"revision"`
@@ -75,6 +79,7 @@ type GatewayProbe struct {
 	Receipt    json.RawMessage `json:"receipt"`
 }
 
+// ProbeGateway calls the fixed synthetic-input model probe; it cannot send arbitrary prompts.
 func (c *Client) ProbeGateway(ctx context.Context, role string) (GatewayProbe, error) {
 	var out GatewayProbe
 	err := c.call(ctx, "POST", "/v1/gateway/probes", "", struct {
@@ -82,6 +87,8 @@ func (c *Client) ProbeGateway(ctx context.Context, role string) (GatewayProbe, e
 	}{role}, &out)
 	return out, err
 }
+
+// SubmitJob submits a fixed target with an explicit logical operation key.
 func (c *Client) SubmitJob(ctx context.Context, key string, target JobTarget) (Job, error) {
 	var out Job
 	if !wireID(key) {
@@ -90,11 +97,15 @@ func (c *Client) SubmitJob(ctx context.Context, key string, target JobTarget) (J
 	err := c.call(ctx, "POST", "/v1/jobs", key, target, &out)
 	return out, err
 }
+
+// Jobs reads only the server-authorized retained job list.
 func (c *Client) Jobs(ctx context.Context) ([]Job, error) {
 	var out []Job
 	err := c.call(ctx, "GET", "/v1/jobs", "", nil, &out)
 	return out, err
 }
+
+// Job reads one retained job by its validated opaque ID.
 func (c *Client) Job(ctx context.Context, id string) (Job, error) {
 	var out Job
 	if !wireID(id) {
@@ -103,6 +114,8 @@ func (c *Client) Job(ctx context.Context, id string) (Job, error) {
 	err := c.call(ctx, "GET", "/v1/jobs/"+id, "", nil, &out)
 	return out, err
 }
+
+// CancelJob cancels pending work or a live attempt using the tenant-scoped operation row.
 func (c *Client) CancelJob(ctx context.Context, id string) (Job, error) {
 	var out Job
 	if !wireID(id) {
@@ -111,6 +124,8 @@ func (c *Client) CancelJob(ctx context.Context, id string) (Job, error) {
 	err := c.call(ctx, "POST", "/v1/jobs/"+id+"/cancel", "", struct{}{}, &out)
 	return out, err
 }
+
+// CreateSchedule stores or replays a fixed target and validated recurrence under tenant scope.
 func (c *Client) CreateSchedule(ctx context.Context, key string, request ScheduleRequest) (Schedule, error) {
 	var out Schedule
 	if !wireID(key) {
@@ -119,6 +134,8 @@ func (c *Client) CreateSchedule(ctx context.Context, key string, request Schedul
 	err := c.call(ctx, "POST", "/v1/schedules", key, request, &out)
 	return out, err
 }
+
+// Schedule is the retained, revisioned definition and its durable occurrence cursor.
 func (c *Client) Schedule(ctx context.Context, id string) (Schedule, error) {
 	var out Schedule
 	if !wireID(id) {
@@ -127,6 +144,8 @@ func (c *Client) Schedule(ctx context.Context, id string) (Schedule, error) {
 	err := c.call(ctx, "GET", "/v1/schedules/"+id, "", nil, &out)
 	return out, err
 }
+
+// SetScheduleState updates pause/resume with an explicit expected revision.
 func (c *Client) SetScheduleState(ctx context.Context, id string, expected int64, enabled bool) (Schedule, error) {
 	var out Schedule
 	if !wireID(id) {
@@ -139,6 +158,8 @@ func (c *Client) SetScheduleState(ctx context.Context, id string, expected int64
 	err := c.call(ctx, "PUT", "/v1/schedules/"+id+"/state", "", body, &out)
 	return out, err
 }
+
+// FireSchedule admits a replay-safe manual occurrence under the same overlap policy as scheduled work.
 func (c *Client) FireSchedule(ctx context.Context, id, key string) (Job, error) {
 	var out Job
 	if !wireID(id) || !wireID(key) {

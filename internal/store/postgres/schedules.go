@@ -40,6 +40,8 @@ func scheduleTimes(spec jobs.Spec, now time.Time) (previous, next *time.Time, er
 	}
 	return &p, &n, nil
 }
+
+// CreateSchedule stores or replays a fixed target and validated recurrence under tenant scope.
 func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key string, request jobs.ScheduleRequest, l jobs.Limits) (out jobs.Schedule, err error) {
 	if !scope.Valid() || !identity.Identifier(session) || !identity.Identifier(key) || request.Validate() != nil || l.Validate() != nil {
 		return out, jobs.ErrInvalid
@@ -88,6 +90,8 @@ func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key
 	})
 	return out, err
 }
+
+// ReadSchedule reads the definition only inside the supplied tenant partition.
 func (d *DB) ReadSchedule(ctx context.Context, scope store.Scope, id string) (out jobs.Schedule, err error) {
 	if !scope.Valid() || !identity.Identifier(id) {
 		return out, store.ErrScope
@@ -99,6 +103,8 @@ func (d *DB) ReadSchedule(ctx context.Context, scope store.Scope, id string) (ou
 	})
 	return out, err
 }
+
+// SetSchedule applies a revision-checked pause/resume while preserving the durable occurrence cursor.
 func (d *DB) SetSchedule(ctx context.Context, scope store.Scope, id string, expected int64, enabled bool) (out jobs.Schedule, err error) {
 	if !scope.Valid() || !identity.Identifier(id) || expected < 1 || expected >= 1<<62 {
 		return out, jobs.ErrInvalid
@@ -113,16 +119,8 @@ func (d *DB) SetSchedule(ctx context.Context, scope store.Scope, id string, expe
 			return store.ErrConflict
 		}
 		previous, next := out.PreviousDue, out.NextDue
-		if enabled && !out.Enabled {
-			var now time.Time
-			if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
-				return e
-			}
-			previous, next, e = scheduleTimes(out.Request.Spec, now)
-			if e != nil {
-				return e
-			}
-		}
+		// Keep the durable cursor across pause/resume. The next tick applies the declared
+		// skip/catch-up bound to the missed range instead of silently discarding it.
 		if _, e = tx.Exec(ctx, `UPDATE chartworks.job_schedules SET revision=revision+1,enabled=$3,previous_due=$4,next_due=$5 WHERE tenant_id=$1 AND schedule_id=$2`, scope.Tenant(), id, enabled, previous, next); e != nil {
 			return e
 		}
@@ -134,6 +132,8 @@ func (d *DB) SetSchedule(ctx context.Context, scope store.Scope, id string, expe
 	})
 	return out, err
 }
+
+// FireSchedule admits a replay-safe manual occurrence under the same overlap policy as scheduled work.
 func (d *DB) FireSchedule(ctx context.Context, scope store.Scope, session, id, key string, l jobs.Limits) (out jobs.Job, err error) {
 	if !scope.Valid() || !identity.Identifier(session) || !identity.Identifier(id) || !identity.Identifier(key) || l.Validate() != nil {
 		return out, jobs.ErrInvalid

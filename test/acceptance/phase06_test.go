@@ -199,7 +199,7 @@ func TestPhase06(t *testing.T) {
 			t.Fatal(err)
 		}
 		due := now.Truncate(time.Minute).Add(-3 * time.Minute)
-		if _, err := raw.Exec(context.Background(), `UPDATE chartworks.job_schedules SET next_due=$2,previous_due=$2-interval '1 minute' WHERE schedule_id=$1`, s.ID, due); err != nil {
+		if _, err := raw.Exec(context.Background(), `UPDATE chartworks.job_schedules SET next_due=$2::timestamptz,previous_due=$2::timestamptz-interval '1 minute' WHERE schedule_id=$1`, s.ID, due); err != nil {
 			t.Fatal(err)
 		}
 		count, err := q.db.TickSchedules(context.Background(), q.limits)

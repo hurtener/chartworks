@@ -26,6 +26,7 @@ var (
 	ErrRunning   = errors.New("jobs: worker already running")
 )
 
+// MaintenanceKind is the only executable target implemented in this phase.
 const MaintenanceKind = "retention.sweep"
 
 // Limits apply at admission and across all replicas sharing the same database.
@@ -45,9 +46,12 @@ type Limits struct {
 	Backoff             time.Duration `json:"-"`
 }
 
+// Defaults returns the bounded reference worker and admission limits.
 func Defaults() Limits {
 	return Limits{Workers: 4, GlobalConcurrency: 16, TenantConcurrency: 2, MaxPending: 10000, MaxPendingPerTenant: 1000, MaxAttempts: 3, Batch: 100, Lease: 15 * time.Second, Heartbeat: 5 * time.Second, Poll: 500 * time.Millisecond, AttemptTimeout: 10 * time.Second, Backoff: time.Second}
 }
+
+// Validate rejects malformed or unbounded values before use.
 func (l Limits) Validate() error {
 	if l.Workers < 1 || l.Workers > 32 || l.GlobalConcurrency < l.Workers || l.GlobalConcurrency > 128 || l.TenantConcurrency < 1 || l.TenantConcurrency > l.GlobalConcurrency || l.MaxPending < 1 || l.MaxPending > 100000 || l.MaxPendingPerTenant < 1 || l.MaxPendingPerTenant > l.MaxPending || l.MaxAttempts < 1 || l.MaxAttempts > 8 || l.Batch < 1 || l.Batch > 1000 || l.Lease < time.Second || l.Lease > time.Minute || l.Heartbeat < 10*time.Millisecond || l.Heartbeat >= l.Lease/2 || l.Poll < 10*time.Millisecond || l.Poll > 5*time.Second || l.AttemptTimeout < 100*time.Millisecond || l.AttemptTimeout > time.Minute || l.Backoff < 10*time.Millisecond || l.Backoff > 30*time.Second {
 		return ErrInvalid
@@ -68,15 +72,20 @@ type Submission struct {
 	BindingID string `json:"binding_id"`
 }
 
+// Validate rejects malformed or unbounded values before use.
 func (s Submission) Validate() error {
 	if s.Kind != MaintenanceKind || !BindingID(s.BindingID) {
 		return ErrInvalid
 	}
 	return nil
 }
+
+// BindingID validates the opaque binding grammar shared with Pengui execution authority v1.
 func BindingID(s string) bool {
 	return identity.Identifier(s) && len(s) <= 64 && !strings.Contains(s, ":")
 }
+
+// Executor derives the expected Pengui service attribution; the name alone grants no authority.
 func Executor(binding string) string { return "svc:chartworks:" + binding }
 
 // Job is retained execution metadata, not authority. All temporal values are UTC microseconds.
@@ -111,6 +120,8 @@ func (j Job) Digest() string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
+
+// Valid checks the value's invariants and any attached authority expiry.
 func (j Job) Valid() bool {
 	return identity.Identifier(j.ID) && identity.Identifier(j.Tenant) && BindingID(j.BindingID) && j.Kind == MaintenanceKind && j.Executor == Executor(j.BindingID) && identity.Identifier(j.Initiator) && identity.Identifier(j.InitiatorSession) && j.PolicyRevision > 0 && j.Batch >= 1 && j.Batch <= 1000 && !j.DueAt.IsZero() && !j.WindowStart.After(j.WindowEnd) && j.WindowEnd.Equal(j.DueAt) && j.ManifestHash == j.Digest()
 }

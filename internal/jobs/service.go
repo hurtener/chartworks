@@ -20,15 +20,41 @@ type Service struct {
 	authority Authority
 	limits    Limits
 	running   atomic.Bool
+	observe   func(string)
 }
 
-func New(repo Repository, authority Authority, limits Limits) (*Service, error) {
-	if repo == nil || authority == nil || limits.Validate() != nil {
+// New constructs a worker service. An optional concurrent-safe observer receives only fixed error stages.
+func New(repo Repository, authority Authority, limits Limits, observer ...func(string)) (*Service, error) {
+	if repo == nil || authority == nil || limits.Validate() != nil || len(observer) > 1 {
 		return nil, ErrInvalid
 	}
-	return &Service{repo: repo, authority: authority, limits: limits}, nil
+	s := &Service{repo: repo, authority: authority, limits: limits}
+	if len(observer) == 1 {
+		s.observe = observer[0]
+	}
+	return s, nil
+}
+
+// NewMetadata exposes retained metadata, cancellation and pause without model/broker availability.
+// It cannot admit work or start workers; no pretend Authority is installed.
+func NewMetadata(repo Repository, limits Limits) (*Service, error) {
+	if repo == nil || limits.Validate() != nil {
+		return nil, ErrInvalid
+	}
+	return &Service{repo: repo, limits: limits}, nil
+}
+
+// DispatchEnabled reports whether the real authority consumer is wired.
+func (s *Service) DispatchEnabled() bool { return s != nil && s.authority != nil }
+func (s *Service) report(stage string, err error) {
+	if err != nil && !errors.Is(err, ErrEmpty) && !errors.Is(err, context.Canceled) && s.observe != nil {
+		s.observe(stage)
+	}
 }
 func (s *Service) admission(e identity.Envelope, request Submission) (store.Scope, error) {
+	if !s.DispatchEnabled() {
+		return store.Scope{}, ErrTransient
+	}
 	if request.Validate() != nil {
 		return store.Scope{}, ErrInvalid
 	}
@@ -37,6 +63,8 @@ func (s *Service) admission(e identity.Envelope, request Submission) (store.Scop
 	}
 	return access.StoreScope(e, "ops.maintain", "erase")
 }
+
+// Submit authorizes a fixed target and durably admits or replays its logical request key.
 func (s *Service) Submit(ctx context.Context, e identity.Envelope, key string, request Submission) (Job, error) {
 	scope, err := s.admission(e, request)
 	if err != nil {
@@ -47,6 +75,8 @@ func (s *Service) Submit(ctx context.Context, e identity.Envelope, key string, r
 	}
 	return s.repo.AdmitJob(ctx, scope, e.Session(), key, request, s.limits)
 }
+
+// Get authorizes a retained job read before accessing the repository.
 func (s *Service) Get(ctx context.Context, e identity.Envelope, id string) (Job, error) {
 	if err := access.Require(e, "scheduling.read", access.Resource{Tenant: e.Tenant(), Kind: "run", Permission: "read", ID: id}); err != nil {
 		return Job{}, err
@@ -57,6 +87,8 @@ func (s *Service) Get(ctx context.Context, e identity.Envelope, id string) (Job,
 	}
 	return s.repo.ReadJob(ctx, scope, id)
 }
+
+// List returns only jobs selected by the caller's signed tenant and addressed read reach.
 func (s *Service) List(ctx context.Context, e identity.Envelope, limit int) ([]Job, error) {
 	selection, err := access.Constrain(e, "scheduling.read", "run", "read")
 	if err != nil {
@@ -71,6 +103,8 @@ func (s *Service) List(ctx context.Context, e identity.Envelope, limit int) ([]J
 	}
 	return s.repo.ListJobs(ctx, scope, selection, limit)
 }
+
+// Cancel authorizes and persists cancellation without granting any execution authority.
 func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string) (Job, error) {
 	if err := access.Require(e, "scheduling.cancel", access.Resource{Tenant: e.Tenant(), Kind: "run", Permission: "write", ID: id}); err != nil {
 		return Job{}, err
@@ -81,6 +115,8 @@ func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string) (J
 	}
 	return s.repo.CancelJob(ctx, scope, id)
 }
+
+// CreateSchedule stores or replays a fixed target and validated recurrence under tenant scope.
 func (s *Service) CreateSchedule(ctx context.Context, e identity.Envelope, key string, request ScheduleRequest) (Schedule, error) {
 	if request.Validate() != nil || !identity.Identifier(key) {
 		return Schedule{}, ErrInvalid
@@ -91,6 +127,8 @@ func (s *Service) CreateSchedule(ctx context.Context, e identity.Envelope, key s
 	}
 	return s.repo.CreateSchedule(ctx, scope, e.Session(), key, request, s.limits)
 }
+
+// GetSchedule requires signed schedule read reach before loading its metadata.
 func (s *Service) GetSchedule(ctx context.Context, e identity.Envelope, id string) (Schedule, error) {
 	if err := access.Require(e, "scheduling.read", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "read", ID: id}); err != nil {
 		return Schedule{}, err
@@ -101,6 +139,8 @@ func (s *Service) GetSchedule(ctx context.Context, e identity.Envelope, id strin
 	}
 	return s.repo.ReadSchedule(ctx, scope, id)
 }
+
+// SetSchedule applies a revision-checked pause/resume while preserving the durable occurrence cursor.
 func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id string, expected int64, enabled bool) (Schedule, error) {
 	if err := access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: id}); err != nil {
 		return Schedule{}, err
@@ -120,6 +160,8 @@ func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id strin
 	}
 	return s.repo.SetSchedule(ctx, scope, id, expected, enabled)
 }
+
+// Fire authorizes one idempotent manual occurrence of a stored schedule.
 func (s *Service) Fire(ctx context.Context, e identity.Envelope, id, key string) (Job, error) {
 	if err := access.Require(e, "scheduling.execute", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "execute", ID: id}); err != nil {
 		return Job{}, err
@@ -143,6 +185,9 @@ func (s *Service) Fire(ctx context.Context, e identity.Envelope, id, key string)
 
 // Run starts a fixed worker set and joins all of it on every exit path. There is no detached job.
 func (s *Service) Run(ctx context.Context) error {
+	if !s.DispatchEnabled() {
+		return ErrTransient
+	}
 	if !s.running.CompareAndSwap(false, true) {
 		return ErrRunning
 	}
@@ -162,7 +207,8 @@ func (s *Service) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		_, _ = s.repo.TickSchedules(ctx, s.limits)
+		_, err := s.repo.TickSchedules(ctx, s.limits)
+		s.report("schedule_tick", err)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -177,7 +223,7 @@ func (s *Service) worker(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		_ = s.RunOnce(ctx)
+		s.report("worker_attempt", s.RunOnce(ctx))
 		select {
 		case <-ctx.Done():
 			return
@@ -188,6 +234,9 @@ func (s *Service) worker(ctx context.Context) {
 
 // RunOnce is also the bounded synchronous worker entry used by operational acceptance tests.
 func (s *Service) RunOnce(ctx context.Context) error {
+	if !s.DispatchEnabled() {
+		return ErrTransient
+	}
 	var random [16]byte
 	if _, err := rand.Read(random[:]); err != nil {
 		return ErrTransient

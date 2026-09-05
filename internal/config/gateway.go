@@ -16,15 +16,22 @@ type GatewayLimits struct {
 	CacheTTL          Duration `json:"cache_ttl"`
 }
 
+// DefaultGatewayLimits returns conservative process, input, response and cache bounds.
 func DefaultGatewayLimits() GatewayLimits {
 	return GatewayLimits{Concurrency: 8, TenantConcurrency: 4, MaxInputBytes: 256 << 10, MaxOutputBytes: 1 << 20, CacheEntries: 1024, CacheBytes: 16 << 20, CacheTTL: Duration(10 * time.Minute)}
 }
+
+// OptionalRole identifies operations that require explicit enablement.
 func OptionalRole(name string) bool {
 	return name == "rerank" || name == "narrative" || name == "visual_rank"
 }
+
+// RoleNames returns a detached inventory of the implemented model roles.
 func RoleNames() []string {
 	return []string{"embedding", "enhance", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank"}
 }
+
+// NativeProvider resolves the trusted route alias to its native Bifrost provider.
 func NativeProvider(p Provider) string {
 	if p.Type != "" {
 		return p.Type
@@ -68,6 +75,9 @@ func ValidateGateway(g Gateway, enabled bool) error {
 	}
 	for name, r := range g.Roles {
 		p, ok := providers[r.Provider]
+		if r.MaxTokens < 0 || r.MaxTokens > 65536 {
+			return invalid("gateway.roles.max_tokens", "output-token bound exceeded")
+		}
 		if !names[name] || !ok || r.Model == "" || len(r.Model) > 256 || strings.TrimSpace(r.Model) != r.Model || strings.ContainsAny(r.Model, "\r\n\t") || r.Timeout <= 0 || r.Timeout > Duration(5*time.Minute) {
 			return invalid("gateway.roles", "known role, route, model and bounded timeout required")
 		}
@@ -82,7 +92,7 @@ func ValidateGateway(g Gateway, enabled bool) error {
 				return invalid("gateway.roles.embedding.model_revision", "operator-owned generation revision required")
 			}
 		} else if name == "rerank" {
-			if NativeProvider(p) == "openai" || r.MaxCandidates < 1 || r.MaxCandidates > 1024 {
+			if NativeProvider(p) != "cohere" || r.MaxCandidates < 1 || r.MaxCandidates > 1024 {
 				return invalid("gateway.roles.rerank", "rerank-capable route and bounded candidates required")
 			}
 		} else if NativeProvider(p) == "cohere" || r.MaxTokens < 1 || r.MaxTokens > 65536 {

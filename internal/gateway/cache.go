@@ -24,12 +24,15 @@ type Cache struct {
 	now                         func() time.Time
 }
 
+// NewCache constructs an entry-, byte- and TTL-bounded cache; nonpositive capacity disables storage.
 func NewCache(entries, bytes int, ttl time.Duration, now func() time.Time) *Cache {
 	if now == nil {
 		now = time.Now
 	}
 	return &Cache{entries: map[string]*list.Element{}, lru: list.New(), maxEntries: entries, maxBytes: bytes, ttl: ttl, now: now}
 }
+
+// CloneVectors copies both the vector list and each coordinate slice.
 func CloneVectors(in [][]float32) [][]float32 {
 	out := make([][]float32, len(in))
 	for i, v := range in {
@@ -37,6 +40,8 @@ func CloneVectors(in [][]float32) [][]float32 {
 	}
 	return out
 }
+
+// Get returns a detached unexpired cache value.
 func (c *Cache) Get(key string) ([][]float32, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -52,6 +57,8 @@ func (c *Cache) Get(key string) ([][]float32, bool) {
 	c.lru.MoveToFront(e)
 	return CloneVectors(v.vectors), true
 }
+
+// Put copies a value into the bounded cache, evicting older entries when needed.
 func (c *Cache) Put(key string, vectors [][]float32) {
 	size := len(key) + len(vectors)*24
 	for _, v := range vectors {
@@ -80,6 +87,8 @@ func (c *Cache) remove(e *list.Element) {
 	c.bytes -= v.bytes
 	c.lru.Remove(e)
 }
+
+// Clear removes all cached vectors under the cache lock.
 func (c *Cache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

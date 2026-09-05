@@ -46,6 +46,7 @@ type Engine struct {
 	once    sync.Once
 }
 
+// New constructs the real pinned Bifrost SDK clients without performing inference.
 func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, bool), transport TransportOptions) (*Engine, error) {
 	if ctx == nil || lookup == nil {
 		return nil, gateway.ErrInput
@@ -117,7 +118,11 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 	e.space = hex.EncodeToString(hash[:])
 	return e, nil
 }
+
+// Space returns the complete immutable embedding-space identifier.
 func (e *Engine) Space() string { return e.space }
+
+// Close cancels and joins active calls and closes each owned SDK client once.
 func (e *Engine) Close() {
 	e.once.Do(func() {
 		e.mu.Lock()
@@ -189,8 +194,13 @@ func (e *Engine) bounded(ctx context.Context, call gateway.Call, b *gateway.Budg
 // contextFromDone bridges the application lifetime without retaining a request context.
 type contextFromDone struct{ done <-chan struct{} }
 
+// Deadline returns the effective validity deadline without extending it.
 func (contextFromDone) Deadline() (time.Time, bool) { return time.Time{}, false }
-func (c contextFromDone) Done() <-chan struct{}     { return c.done }
+
+// Done exposes application shutdown to the request context bridge.
+func (c contextFromDone) Done() <-chan struct{} { return c.done }
+
+// Err reports application cancellation without request data.
 func (c contextFromDone) Err() error {
 	select {
 	case <-c.done:
@@ -199,6 +209,8 @@ func (c contextFromDone) Err() error {
 		return nil
 	}
 }
+
+// Value exposes no application values to the lifetime bridge.
 func (contextFromDone) Value(any) any { return nil }
 func retry(ctx context.Context, attempt int) error {
 	timer := time.NewTimer(time.Duration(attempt+1) * 50 * time.Millisecond)
@@ -212,37 +224,6 @@ func retry(ctx context.Context, attempt int) error {
 }
 func retryable(err *schemas.BifrostError) bool {
 	return err != nil && err.StatusCode != nil && (*err.StatusCode == 429 || *err.StatusCode >= 500)
-}
-func usage(role string, p route, model, actual string, start time.Time, u *schemas.BifrostLLMUsage) gateway.Usage {
-	out := gateway.Usage{Role: role, Provider: p.name, RequestedModel: model, ActualModel: actual, Attempts: 1, DurationMS: time.Since(start).Milliseconds()}
-	if u == nil {
-		return out
-	}
-	if u.PromptTokens >= 0 && u.CompletionTokens >= 0 {
-		in, outCount := u.PromptTokens, u.CompletionTokens
-		out.InputTokens = &in
-		out.OutputTokens = &outCount
-	}
-	if u.Cost != nil {
-		c := u.Cost
-		values := []float64{c.TotalCost, c.RequestCost, c.InputTokensCost, c.OutputTokensCost, c.ReasoningTokensCost, c.CitationTokensCost, c.SearchQueriesCost}
-		valid := true
-		for _, n := range values {
-			valid = valid && n >= 0 && !math.IsInf(n, 0) && !math.IsNaN(n)
-		}
-		if valid {
-			cost := c.TotalCost
-			if cost == 0 {
-				for _, n := range values[1:] {
-					cost += n
-				}
-			}
-			if cost > 0 && !math.IsInf(cost, 0) {
-				out.CostUSD = &cost
-			}
-		}
-	}
-	return out
 }
 func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Budget, name, system, prompt string, schema *gateway.Schema) (gateway.Generated, error) {
 	out := gateway.Generated{}
@@ -277,14 +258,17 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 		response, be := p.client.ChatCompletionRequest(bc, &schemas.BifrostChatRequest{Provider: p.provider, Model: r.Model, Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: &prompt}}}, Params: &schemas.ChatParameters{ResponseFormat: &format, MaxCompletionTokens: &r.MaxTokens, Store: core.Ptr(false)}})
 		bcCancel()
 		actual := ""
-		var metered *schemas.BifrostLLMUsage
+		var raw any
 		if response != nil {
-			actual = response.Model
-			metered = response.Usage
+			actual = observedModel(response.Model)
+			raw = response.ExtraFields.RawResponse
 		}
-		out.Receipt.Calls = append(out.Receipt.Calls, usage(name, p, r.Model, actual, start, metered))
+		out.Receipt.Calls = append(out.Receipt.Calls, usage(name, p, r.Model, actual, start, raw))
 		if ctx.Err() != nil {
 			return out, ctx.Err()
+		}
+		if err := observe(b, call, len(prompt)+len(system)+len(schema.Document())+1024+r.MaxTokens, out.Receipt); err != nil {
+			return out, err
 		}
 		if be != nil {
 			if retryable(be) && attempt+1 < e.cfg.MaxAttemptsPerCall {
@@ -295,12 +279,15 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 			}
 			return out, gateway.ErrUnavailable
 		}
+		if _, err := wire(raw, e.cfg.Limits.MaxOutputBytes+65536); err != nil {
+			return out, err
+		}
 		if response == nil || len(response.Choices) != 1 || response.Choices[0].ChatNonStreamResponseChoice == nil {
 			return out, gateway.ErrOutput
 		}
 		choice := response.Choices[0]
 		message := choice.ChatNonStreamResponseChoice.Message
-		if message == nil || message.Content == nil || message.Content.ContentStr == nil || choice.FinishReason == nil || *choice.FinishReason != "stop" || len(message.ToolCalls) != 0 {
+		if message == nil || message.Content == nil || message.Content.ContentStr == nil || choice.FinishReason == nil || *choice.FinishReason != "stop" || (message.ChatAssistantMessage != nil && len(message.ToolCalls) != 0) {
 			return out, gateway.ErrOutput
 		}
 		result := []byte(*message.Content.ContentStr)
@@ -312,6 +299,8 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 	}
 	return out, gateway.ErrUnavailable
 }
+
+// Embed batches and validates finite indexed embeddings without changing generation identity.
 func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget, expectedSpace string, texts []string) (gateway.Embedded, error) {
 	out := gateway.Embedded{Space: e.space}
 	r, p, err := e.role("embedding")
@@ -375,14 +364,17 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			response, be := p.client.EmbeddingRequest(bc, &schemas.BifrostEmbeddingRequest{Provider: p.provider, Model: r.Model, Input: &schemas.EmbeddingInput{Texts: append([]string(nil), texts[start:end]...)}, Params: &schemas.EmbeddingParameters{Dimensions: &r.Dimensions}})
 			bcCancel()
 			actual := ""
-			var metered *schemas.BifrostLLMUsage
+			var raw any
 			if response != nil {
-				actual = response.Model
-				metered = response.Usage
+				actual = observedModel(response.Model)
+				raw = response.ExtraFields.RawResponse
 			}
-			out.Receipt.Calls = append(out.Receipt.Calls, usage("embedding", p, r.Model, actual, began, metered))
+			out.Receipt.Calls = append(out.Receipt.Calls, usage("embedding", p, r.Model, actual, began, raw))
 			if ctx.Err() != nil {
 				return out, ctx.Err()
+			}
+			if err := observe(b, call, bytes+128*(end-start), out.Receipt); err != nil {
+				return out, err
 			}
 			if be != nil {
 				if retryable(be) && attempt+1 < e.cfg.MaxAttemptsPerCall {
@@ -392,6 +384,9 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 					continue
 				}
 				return out, gateway.ErrUnavailable
+			}
+			if err := indexedWire(raw, "data", "embedding", end-start, e.cfg.Limits.MaxOutputBytes); err != nil {
+				return out, err
 			}
 			if response == nil || len(response.Data) != end-start {
 				return out, gateway.ErrOutput
@@ -430,6 +425,8 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 	out.Vectors = all
 	return out, nil
 }
+
+// Rerank orders only sealed candidates through the native SDK and validates a complete permutation.
 func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budget, query string, candidates gateway.Candidates) (gateway.Ranked, error) {
 	out := gateway.Ranked{}
 	if !candidates.Valid(call) {
@@ -482,14 +479,17 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 		response, be := p.client.RerankRequest(bc, &schemas.BifrostRerankRequest{Provider: p.provider, Model: r.Model, Query: query, Documents: documents, Params: &schemas.RerankParameters{TopN: core.Ptr(len(items)), ReturnDocuments: core.Ptr(false)}})
 		bcCancel()
 		actual := ""
-		var metered *schemas.BifrostLLMUsage
+		var raw any
 		if response != nil {
-			actual = response.Model
-			metered = response.Usage
+			actual = observedModel(response.Model)
+			raw = response.ExtraFields.RawResponse
 		}
-		out.Receipt.Calls = append(out.Receipt.Calls, usage("rerank", p, r.Model, actual, start, metered))
+		out.Receipt.Calls = append(out.Receipt.Calls, usage("rerank", p, r.Model, actual, start, raw))
 		if ctx.Err() != nil {
 			return out, ctx.Err()
+		}
+		if err := observe(b, call, size+128*len(items), out.Receipt); err != nil {
+			return out, err
 		}
 		if be != nil {
 			if retryable(be) && attempt+1 < e.cfg.MaxAttemptsPerCall {
@@ -499,6 +499,9 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 				continue
 			}
 			return fallback(gateway.ErrUnavailable)
+		}
+		if err := indexedWire(raw, "results", "relevance_score", len(items), e.cfg.Limits.MaxOutputBytes); err != nil {
+			return fallback(err)
 		}
 		if response == nil || len(response.Results) != len(items) {
 			return fallback(gateway.ErrOutput)

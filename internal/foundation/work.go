@@ -23,7 +23,6 @@ import (
 // work owns all enabled SDK clients and durable-worker goroutines. Its close method is
 // joined before the store or shared JWT verifier are released by the composition root.
 type work struct {
-	ctx     context.Context
 	handler http.Handler
 	engine  gateway.Engine
 	queue   *jobs.Service
@@ -35,8 +34,11 @@ type work struct {
 }
 
 func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *auth.Verifier, next http.Handler, lookup func(string) (string, bool), log io.Writer) (*work, error) {
+	if ctx == nil || db == nil || verifier == nil || next == nil || lookup == nil || log == nil {
+		return nil, errors.New("work: complete service dependencies required")
+	}
 	ctx, cancel := context.WithCancel(ctx)
-	w := &work{ctx: ctx, cancel: cancel, handler: next, logger: slog.New(slog.NewJSONHandler(log, nil))}
+	w := &work{cancel: cancel, handler: next, logger: slog.New(slog.NewJSONHandler(log, nil))}
 	if v.Features.Gateway {
 		engine, err := bifrost.New(ctx, v.Gateway, lookup, bifrost.TransportOptions{})
 		if err != nil {
@@ -45,6 +47,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		}
 		w.engine = engine
 	}
+	metadata, err := jobs.NewMetadata(db, jobLimits(v.Jobs))
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.queue = metadata
 	if v.Jobs.Enabled {
 		credentials := map[string]broker.Credential{}
 		for _, ref := range v.Jobs.Credentials {
@@ -67,7 +75,9 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			w.close()
 			return nil, err
 		}
-		queue, err := jobs.New(db, provider, limits)
+		queue, err := jobs.New(db, provider, limits, func(stage string) {
+			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
+		})
 		if err != nil {
 			w.close()
 			return nil, err
@@ -80,11 +90,13 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 func jobLimits(j config.Jobs) jobs.Limits {
 	return jobs.Limits{Workers: j.Workers, GlobalConcurrency: j.GlobalConcurrency, TenantConcurrency: j.TenantConcurrency, MaxPending: j.MaxPending, MaxPendingPerTenant: j.MaxPendingPerTenant, MaxAttempts: j.MaxAttempts, Batch: j.Batch, Lease: time.Duration(j.Lease), Heartbeat: time.Duration(j.Heartbeat), Poll: time.Duration(j.Poll), AttemptTimeout: time.Duration(j.AttemptTimeout), Backoff: time.Duration(j.Backoff)}
 }
-func (w *work) run() {
-	ctx := w.ctx
-	if w.queue == nil {
+func (w *work) run(ctx context.Context) {
+	if w.queue == nil || !w.queue.DispatchEnabled() {
 		return
 	}
+	ctx, stop := context.WithCancel(ctx)
+	cancel := w.cancel
+	w.cancel = func() { stop(); cancel() }
 	w.wait.Add(1)
 	go func() {
 		defer w.wait.Done()

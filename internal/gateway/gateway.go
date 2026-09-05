@@ -30,6 +30,7 @@ var (
 type Call struct {
 	envelope  identity.Envelope
 	partition string
+	key       string
 }
 
 // Authorize validates every supplied reference before making any input eligible for inference.
@@ -40,15 +41,31 @@ func Authorize(e identity.Envelope, action, partition string, resources ...acces
 	if err := access.Require(e, action, resources...); err != nil {
 		return Call{}, err
 	}
-	return Call{envelope: e, partition: partition}, nil
+	scopes := e.Scopes()
+	sort.Strings(scopes)
+	refs := append([]access.Resource(nil), resources...)
+	sort.Slice(refs, func(i, j int) bool {
+		a, _ := json.Marshal(refs[i])
+		b, _ := json.Marshal(refs[j])
+		return string(a) < string(b)
+	})
+	material, _ := json.Marshal([]any{e.Tenant(), e.User(), e.Session(), partition, action, scopes, refs})
+	hash := sha256.Sum256(material)
+	return Call{envelope: e, partition: partition, key: hex.EncodeToString(hash[:])}, nil
 }
-func (c Call) Valid() bool         { return c.envelope.Valid() && c.partition != "" }
-func (c Call) Tenant() string      { return c.envelope.Tenant() }
+
+// Valid checks the value's invariants and any attached authority expiry.
+func (c Call) Valid() bool { return c.envelope.Valid() && c.partition != "" && c.key != "" }
+
+// Tenant returns the verified tenant partition.
+func (c Call) Tenant() string { return c.envelope.Tenant() }
+
+// Deadline returns the effective validity deadline without extending it.
 func (c Call) Deadline() time.Time { return c.envelope.Deadline() }
+
+// Key returns the digest of the exact identity, signed reach and data context.
 func (c Call) Key() string {
-	b, _ := json.Marshal([]string{c.envelope.Tenant(), c.envelope.User(), c.envelope.Session(), c.partition})
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	return c.key
 }
 
 // Candidate contains an already resolved reference; IDs are stable output associations, not authority.
@@ -63,6 +80,7 @@ type Candidates struct {
 	items []Candidate
 }
 
+// AdmitCandidates checks every resolved reference and seals a detached candidate set.
 func AdmitCandidates(call Call, action string, items []Candidate) (Candidates, error) {
 	if !call.Valid() || len(items) == 0 || len(items) > 1024 {
 		return Candidates{}, ErrInput
@@ -81,9 +99,13 @@ func AdmitCandidates(call Call, action string, items []Candidate) (Candidates, e
 	}
 	return Candidates{call: call, items: out}, nil
 }
+
+// Valid checks the value's invariants and any attached authority expiry.
 func (c Candidates) Valid(call Call) bool {
 	return call.Valid() && c.call.Valid() && c.call.Key() == call.Key() && len(c.items) > 0
 }
+
+// Items returns detached input associations; it does not authorize additional candidates.
 func (c Candidates) Items() []Candidate { return append([]Candidate(nil), c.items...) }
 
 // Usage reports observations, never a fabricated zero bill. Nil cost/counts mean unknown.
@@ -106,6 +128,7 @@ type Receipt struct {
 	Warning string  `json:"warning,omitempty"`
 }
 
+// Append adds all observed attempts and preserves a visible fallback warning.
 func (r *Receipt) Append(other Receipt) {
 	r.Calls = append(r.Calls, other.Calls...)
 	if other.Warning != "" {
@@ -131,11 +154,14 @@ type RankedItem struct {
 	ID    string   `json:"id"`
 	Score *float64 `json:"score,omitempty"`
 }
+
+// Ranked contains only original candidate IDs and observed scores or an explicit unchanged-order receipt.
 type Ranked struct {
 	Items   []RankedItem
 	Receipt Receipt
 }
 
+// Preserve returns the original authorized order with unknown scores and a visible warning.
 func Preserve(c Candidates, warning string, receipt Receipt) Ranked {
 	receipt.Warning = warning
 	out := Ranked{Receipt: receipt, Items: make([]RankedItem, len(c.items))}
@@ -144,6 +170,8 @@ func Preserve(c Candidates, warning string, receipt Receipt) Ranked {
 	}
 	return out
 }
+
+// StableRank orders finite scored candidates with ties resolved by their original input positions.
 func StableRank(items []RankedItem, original map[string]int) {
 	sort.SliceStable(items, func(i, j int) bool {
 		if *items[i].Score == *items[j].Score {

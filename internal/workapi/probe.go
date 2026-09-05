@@ -16,6 +16,8 @@ import (
 type ProbeRequest struct {
 	Role string `json:"role"`
 }
+
+// ProbeResult reports the actual fixed-input probe outcome and its metered attempt receipt.
 type ProbeResult struct {
 	Role       string          `json:"role"`
 	OK         bool            `json:"ok"`

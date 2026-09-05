@@ -60,6 +60,10 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		mode := f.mode.Load().(string)
+		if strings.HasPrefix(mode, "raw:") {
+			_, _ = io.WriteString(w, strings.TrimPrefix(mode, "raw:"))
+			return
+		}
 		if mode == "error" {
 			w.WriteHeader(503)
 			_, _ = io.WriteString(w, `{"error":{"message":"PROVIDER_ERROR_CANARY_SECRET"}}`)
@@ -146,6 +150,12 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		default:
 			content := `{"summary":"fixture result"}`
 			finish := "stop"
+			if mode == "echo" {
+				messages, _ := input["messages"].([]any)
+				last, _ := messages[len(messages)-1].(map[string]any)
+				raw, _ := json.Marshal(map[string]any{"summary": last["content"]})
+				content = string(raw)
+			}
 			if strings.Contains(model, "visual_rank") {
 				content = `{"order":["second","first"]}`
 			}
@@ -174,6 +184,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 	f.ca = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.server.TLS.Certificates[0].Certificate[0]}))
 	f.cfg = config.Defaults().Gateway
 	f.cfg.Bifrost.Providers = []config.Provider{{Name: "primary", Type: "openrouter", APIKey: "env:PRIMARY_KEY", BaseURL: f.server.URL}, {Name: "secondary", Type: "openrouter", APIKey: "env:SECONDARY_KEY", BaseURL: f.server.URL}}
+	f.cfg.Bifrost.Providers = append(f.cfg.Bifrost.Providers, config.Provider{Name: "reranker", Type: "cohere", APIKey: "env:PRIMARY_KEY", BaseURL: f.server.URL})
 	f.cfg.Roles = map[string]config.Role{}
 	for _, name := range config.RoleNames() {
 		f.cfg.Roles[name] = config.Role{Enabled: true, Provider: "primary", Model: "model-" + name, Timeout: config.Duration(2 * time.Second), MaxTokens: 64}
@@ -186,6 +197,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 	embedding.MaxBatchBytes = 128
 	f.cfg.Roles["embedding"] = embedding
 	rerank := f.cfg.Roles["rerank"]
+	rerank.Provider = "reranker"
 	rerank.MaxCandidates = 64
 	rerank.OnFailure = "fail"
 	f.cfg.Roles["rerank"] = rerank

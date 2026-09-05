@@ -42,6 +42,8 @@ func queueLock(ctx context.Context, tx pgx.Tx, l jobs.Limits) error {
 	}
 	return nil
 }
+
+// ConfigureQueue pins shared admission bounds and rejects disagreeing replicas.
 func (d *DB) ConfigureQueue(ctx context.Context, l jobs.Limits) error {
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error { return queueLock(ctx, tx, l) })
 }
@@ -68,6 +70,8 @@ func auditJob(ctx context.Context, tx pgx.Tx, scope store.Scope, action, id stri
 	_, err = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES($1,$2,$3,$4,$5)`, scope.Tenant(), event, scope.Actor(), action, id)
 	return err
 }
+
+// AdmitJob reserves the logical key and immutable maintenance manifest in one transaction.
 func (d *DB) AdmitJob(ctx context.Context, scope store.Scope, session, key string, request jobs.Submission, l jobs.Limits) (out jobs.Job, err error) {
 	if !scope.Valid() || !identity.Identifier(session) || !identity.Identifier(key) || request.Validate() != nil || l.Validate() != nil {
 		return out, jobs.ErrInvalid
@@ -111,12 +115,29 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return jobs.Job{}, err
 	}
+	// Enforce the same overlap contract for manual and clock-driven admissions, but
+	// only AFTER the replay lookup: retrying an accepted key must return its receipt.
+	if scheduleID != "" {
+		var overlap string
+		if err := tx.QueryRow(ctx, `SELECT request->'spec'->>'overlap' FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2`, scope.Tenant(), scheduleID).Scan(&overlap); err != nil {
+			return jobs.Job{}, err
+		}
+		if overlap == "skip" {
+			active, err := activeSchedule(ctx, tx, scope.Tenant(), scheduleID)
+			if err != nil {
+				return jobs.Job{}, err
+			}
+			if active {
+				return jobs.Job{}, store.ErrConflict
+			}
+		}
+	}
 	if err := queueCapacity(ctx, tx, scope.Tenant(), l); err != nil {
 		return jobs.Job{}, err
 	}
 	var revision int64
-	var days int
-	if err := tx.QueryRow(ctx, `SELECT p.current_revision,r.audit_days FROM chartworks.policies p JOIN chartworks.policy_revisions r ON (r.tenant_id,r.revision)=(p.tenant_id,p.current_revision) WHERE p.tenant_id=$1 FOR SHARE OF p`, scope.Tenant()).Scan(&revision, &days); err != nil {
+	var days, hours int
+	if err := tx.QueryRow(ctx, `SELECT p.current_revision,r.audit_days,r.operation_hours FROM chartworks.policies p JOIN chartworks.policy_revisions r ON (r.tenant_id,r.revision)=(p.tenant_id,p.current_revision) WHERE p.tenant_id=$1 FOR SHARE OF p`, scope.Tenant()).Scan(&revision, &days, &hours); err != nil {
 		return jobs.Job{}, err
 	}
 	id, err := newID()
@@ -131,7 +152,7 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 		return jobs.Job{}, jobs.ErrInvalid
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO chartworks.operations(tenant_id,operation_id,actor_id,kind,client_key,request_hash,policy_revision,cutoff,batch_limit,expires_at,dispatch_mode,binding_id,initiator_id,initiator_session,due_at,window_start,window_end,manifest_hash,max_attempts,next_attempt_at,schedule_id,schedule_revision)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,GREATEST(clock_timestamp(),$13)+interval '24 hours','queued',$10,$11,$12,$13,$14,$13,$15,$16,$13,NULLIF($17,''),NULLIF($18,0))`, j.Tenant, j.ID, j.Executor, j.Kind, clientKey, requestHash, j.PolicyRevision, j.Cutoff, j.Batch, j.BindingID, j.Initiator, j.InitiatorSession, j.DueAt, j.WindowStart, j.ManifestHash, j.MaxAttempts, j.ScheduleID, j.ScheduleRevision)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()+make_interval(hours=>$19),'queued',$10,$11,$12,$13,$14,$13,$15,$16,$13,NULLIF($17,''),NULLIF($18,0))`, j.Tenant, j.ID, j.Executor, j.Kind, clientKey, requestHash, j.PolicyRevision, j.Cutoff, j.Batch, j.BindingID, j.Initiator, j.InitiatorSession, j.DueAt, j.WindowStart, j.ManifestHash, j.MaxAttempts, j.ScheduleID, j.ScheduleRevision, hours)
 	if err != nil {
 		return jobs.Job{}, err
 	}
@@ -140,6 +161,8 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	}
 	return j, nil
 }
+
+// ReadJob loads a queued operation only from the supplied tenant partition.
 func (d *DB) ReadJob(ctx context.Context, scope store.Scope, id string) (out jobs.Job, err error) {
 	if !scope.Valid() || !identity.Identifier(id) {
 		return out, store.ErrScope
@@ -151,6 +174,8 @@ func (d *DB) ReadJob(ctx context.Context, scope store.Scope, id string) (out job
 	})
 	return out, err
 }
+
+// ListJobs applies signed selection predicates before the result limit.
 func (d *DB) ListJobs(ctx context.Context, scope store.Scope, selection access.Selection, limit int) (out []jobs.Job, err error) {
 	if !scope.Valid() || selection.Tenant() != scope.Tenant() || !selection.All() && len(selection.IDs()) == 0 || limit < 1 || limit > 100 {
 		return nil, store.ErrScope
@@ -173,6 +198,8 @@ func (d *DB) ListJobs(ctx context.Context, scope store.Scope, selection access.S
 	})
 	return out, err
 }
+
+// CancelJob cancels pending work or a live attempt using the tenant-scoped operation row.
 func (d *DB) CancelJob(ctx context.Context, scope store.Scope, id string) (out jobs.Job, err error) {
 	if !scope.Valid() || !identity.Identifier(id) {
 		return out, store.ErrScope
@@ -201,6 +228,8 @@ func (d *DB) CancelJob(ctx context.Context, scope store.Scope, id string) (out j
 	})
 	return out, err
 }
+
+// ClaimJob claims one eligible operation with a new fence under shared concurrency bounds.
 func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out jobs.Lease, err error) {
 	if !identity.Identifier(owner) || l.Validate() != nil {
 		return out, jobs.ErrInvalid
@@ -215,7 +244,7 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
  UPDATE chartworks.operations o SET status=CASE WHEN o.expires_at<=clock_timestamp() THEN 'expired' ELSE 'failed' END,error_code=CASE WHEN o.expires_at<=clock_timestamp() THEN 'operation_expired' ELSE 'attempts_exhausted' END,finished_at=clock_timestamp(),lease_owner=NULL,lease_until=NULL FROM expired x WHERE(o.tenant_id,o.operation_id)=(x.tenant_id,x.operation_id)`); e != nil {
 			return e
 		}
-		if _, e := tx.Exec(ctx, `UPDATE chartworks.operation_attempts a SET state='abandoned',error_code='lease_lost',finished_at=clock_timestamp() FROM chartworks.operations o WHERE(o.tenant_id,o.operation_id)=(a.tenant_id,a.operation_id) AND a.state='acquiring' AND o.dispatch_mode='queued' AND o.status IN ('expired','failed')`); e != nil {
+		if _, e := tx.Exec(ctx, `WITH abandoned AS (SELECT a.tenant_id,a.operation_id,a.fence FROM chartworks.operation_attempts a JOIN chartworks.operations o USING(tenant_id,operation_id) WHERE a.state='acquiring' AND o.dispatch_mode='queued' AND o.status IN ('expired','failed') ORDER BY a.started_at LIMIT 100 FOR UPDATE OF a SKIP LOCKED) UPDATE chartworks.operation_attempts a SET state='abandoned',error_code='lease_lost',finished_at=clock_timestamp() FROM abandoned x WHERE(a.tenant_id,a.operation_id,a.fence)=(x.tenant_id,x.operation_id,x.fence)`); e != nil {
 			return e
 		}
 		var active int
@@ -262,6 +291,8 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 	}
 	return out, err
 }
+
+// HeartbeatJob extends only the current, unexpired owner and fence.
 func (d *DB) HeartbeatJob(ctx context.Context, lease jobs.Lease, ttl time.Duration) error {
 	if !lease.Job.Valid() || !identity.Identifier(lease.Owner) || lease.Fence < 1 || ttl < time.Second || ttl > time.Minute {
 		return jobs.ErrInvalid
@@ -277,6 +308,8 @@ func (d *DB) HeartbeatJob(ctx context.Context, lease jobs.Lease, ttl time.Durati
 		return nil
 	})
 }
+
+// FinishAttempt records a bounded retry or terminal outcome only for the live fenced attempt.
 func (d *DB) FinishAttempt(ctx context.Context, lease jobs.Lease, code string, permanent bool, delay time.Duration) error {
 	if !lease.Job.Valid() || lease.Fence < 1 || !identity.Identifier(lease.Owner) || delay < 0 || delay > time.Minute {
 		return jobs.ErrInvalid

@@ -21,8 +21,13 @@ import (
 // Credential is an operator-resolved existing Pengui broker client, not Chartworks user auth.
 type Credential struct{ ClientID, Secret string }
 
-func (Credential) String() string               { return "pengui-broker-credential(redacted)" }
-func (c Credential) GoString() string           { return c.String() }
+// String redacts credential values from implicit projections.
+func (Credential) String() string { return "pengui-broker-credential(redacted)" }
+
+// GoString redacts credential values from implicit projections.
+func (c Credential) GoString() string { return c.String() }
+
+// MarshalJSON redacts credential values from implicit projections.
 func (Credential) MarshalJSON() ([]byte, error) { return []byte(`"redacted"`), nil }
 
 // Provider owns immutable issuer endpoint/credential references and a bounded dedicated client.
@@ -33,6 +38,7 @@ type Provider struct {
 	client      *http.Client
 }
 
+// New pins the trusted Pengui endpoint and copies bounded broker credentials.
 func New(endpoint string, credentials map[string]Credential, verifier *auth.Verifier, client *http.Client) (*Provider, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(u.Path, "/exchange/execution-authority") || verifier == nil || len(credentials) == 0 || len(credentials) > 128 {
@@ -49,10 +55,13 @@ func New(endpoint string, credentials map[string]Credential, verifier *auth.Veri
 	if client != nil {
 		c = *client
 	}
+	c.Jar = nil
 	c.Timeout = 3 * time.Second
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("broker redirect refused") }
 	return &Provider{endpoint: endpoint, credentials: copied, verifier: verifier, client: &c}, nil
 }
+
+// Close releases idle connections in the owned broker transport.
 func (p *Provider) Close() { p.client.CloseIdleConnections() }
 
 type request struct {
@@ -70,6 +79,7 @@ type response struct {
 	BindingRevision int64  `json:"binding_revision"`
 }
 
+// Acquire pulls fresh Pengui authority and verifies the exact accepted job and manifest before use.
 func (p *Provider) Acquire(ctx context.Context, j jobs.Job) (auth.Execution, error) {
 	if !j.Valid() {
 		return auth.Execution{}, jobs.ErrAuthority

@@ -18,6 +18,7 @@ type Schema struct {
 	compiled *jsonschema.Schema
 }
 
+// NewSchema compiles a private, immutable schema without network reference resolution.
 func NewSchema(name string, document []byte) (*Schema, error) {
 	if len(name) == 0 || len(name) > 64 {
 		return nil, ErrInput
@@ -47,18 +48,24 @@ func NewSchema(name string, document []byte) (*Schema, error) {
 	}
 	return &Schema{name: name, document: append([]byte(nil), document...), compiled: compiled}, nil
 }
+
+// Name returns the validated schema name.
 func (s *Schema) Name() string {
 	if s == nil {
 		return ""
 	}
 	return s.name
 }
+
+// Document returns a detached copy of the compiled schema document.
 func (s *Schema) Document() json.RawMessage {
 	if s == nil {
 		return nil
 	}
 	return append([]byte(nil), s.document...)
 }
+
+// Validate rejects malformed or unbounded values before use.
 func (s *Schema) Validate(document []byte, maxBytes int) error {
 	if s == nil || s.compiled == nil {
 		return ErrInput
