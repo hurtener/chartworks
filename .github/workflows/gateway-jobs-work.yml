@@ -29,14 +29,14 @@ jobs:
           go-version: '1.26.4'
       - name: Normalize explicit implementation changes on this branch only
         run: |
-          for f in scripts/_gateway_jobs_edits.py scripts/_gateway_jobs_followup.py; do
+          for f in scripts/_gateway_jobs*.py; do
             [ -f "$f" ] || continue
             python3 "$f"
             git rm "$f"
           done
           go mod tidy
           find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
-          git add go.mod go.sum cmd internal sdk test docs examples scripts
+          git add go.mod go.sum cmd internal sdk test docs examples scripts .github/workflows/gateway-jobs-work.yml
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -48,3 +48,5 @@ jobs:
         run: go build ./...
       - name: Vet all packages
         run: go vet ./...
+      - name: Present gateway and queue tests
+        run: go test -race ./internal/gateway/... ./internal/jobs/... ./test/acceptance -run 'TestPhase0[56]|TestGateway|TestQueue|TestJobs|TestDispatch' -count=1
