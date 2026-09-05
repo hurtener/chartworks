@@ -92,7 +92,7 @@ jobs:
           names=$(go test ./internal/exec -list '^Fuzz' | grep '^Fuzz')
           test -n "$names"
           for name in $names; do
-            go test -race ./internal/exec -run '^$' -fuzz "^${name}$" -fuzztime=5s -parallel=2
+            go test -race ./internal/exec -run '^$' -fuzz "^${name}$" -fuzztime=64x -timeout=3m -parallel=2
           done
       - name: Full cumulative development preflight
         run: make preflight-full
