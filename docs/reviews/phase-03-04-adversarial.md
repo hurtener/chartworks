@@ -1,0 +1,38 @@
+# Adversarial self-review — phases 03 and 04
+
+Date: 2026-09-05. Scope: the actual verifier, immutable authority envelope, shared key cache, enforcement primitives, first PostgreSQL-backed operational API, SDK, configuration and regression gates. This is an implementer self-review performed before opening the implementation PR, not independent external certification.
+
+## Findings and corrections
+
+| Boundary challenged | Correction / established invariant | Evidence |
+|---|---|---|
+| A proposed scope spelling or larger ceiling could diverge from the actual issuer. | Inspected the existing Pengui minter. Consume `scopes: []string` only, with its exact 32-entry, 256-byte-per-entry and 4096-total-byte ceilings. Signed registration envelopes and alternate authority field names are not API bearers. | Phase03 AC02/AC04; provider registration manifest test; operator source fingerprint. |
+| Valid signatures might conceal duplicate headers, claims, nulls or ambiguous NumericDates. | Bounded, duplicate-free, UTF-8 JSON decoding precedes the maintained cryptographic verifier. Require integer iat/exp, consistent optional sub and valid optional nbf; reject critical/header-selected key sources and HS/none. | Phase03 AC01/AC02/AC06; correctly signed duplicate-claim tests; all six configured RS/ES algorithm fixtures. |
+| Readiness and request verification could disagree about key freshness or retain removed keys. | One cache backs both. Success replaces the set atomically; failure never extends last-success expiry. Removed keys cease to work after replacement. | Phase03 AC01/AC06; inherited malformed/private/public-coordinate key fixtures. |
+| Unknown-kid floods could trigger unbounded network work or grow a negative-key cache. | Single-flight, globally interval-bounded refresh. Unknown IDs are not retained in an unbounded map. Cancellation-aware waiters do not spawn work. Rotation delay until the next allowed refresh is explicitly fail-closed. | Concurrent phase03 AC06 requests and request-count assertions. |
+| A retained pre-query selection could outlive its verified token. | The selection now retains the immutable envelope and becomes unusable after its deadline. It never converts expiry or an empty set into unrestricted access. | `TestSelectionExpiresWithVerifiedEnvelope`; phase04 AC02. |
+| HTTP checks alone would permit direct in-process service calls to bypass authorization. | The real operational service checks the same signed action/reach before producing storage coordinates. Its synchronous context is bounded by the verified token deadline. | Phase04 AC02/AC06; counted real repository proving zero reads on denial. |
+| A broad parent, service prefix, creator label, or action-only token could bypass data scope. | Exact action AND every addressed resource are mandatory; whole-ID wildcards remain within the signed tenant. Identity/creator/service labels confer no authority. | Phase04 AC01/AC04; every actual route tested with no token, action-only and reach-only credentials. |
+| Exact-run read or later publication might reveal a private preview or foreign data partition. | Retained reads need exact run or eligible published parent AND actual context revision reach. Private output additionally needs preview action/target reach, regardless of subsequent publication. | Phase04 AC03; changed-context-version and mixed-tenant negative fixtures. |
+| Request fields and parser ambiguity could change effective tenant or mutation semantics. | Derive tenant/actor only from the verified envelope. Closed request schemas reject extra/case-variant/duplicate/null fields, query overrides, duplicated limits and missing/repeated operation keys before domain work. | Protected request negatives; compiled header/foreign-token denial; phase04 AC02. |
+| An SDK redirect might forward a bearer to another destination or return credential-bearing errors. | Refuse redirects/cookies, pin trusted HTTPS or explicit-loopback test base, use a current token provider and bounded responses, and return fixed errors without provider/server body contents. | Public SDK negative tests and compiled/HTTP-to-PostgreSQL parity. |
+| Registry drift could leave a successful but unimplemented handler or undocumented privilege. | One actual operation registry, fail-closed unmatched handlers, a checked operator manifest and SDK coverage for all six routes. Diagnostics expose only current permission outcomes, not identity/token/private records. | Phase04 AC05/AC06; `TestProviderRegistrationManifest`; compiled diagnostics/metrics calls. |
+| A source-hygiene test itself used a race-prone filesystem walk/read. | Confine the source scan to `os.Root` rather than suppressing filesystem traversal diagnostics. It remains a supplementary no-signer check, not proof of runtime authorization. | Phase03 AC05; full strict lint. |
+
+## What was executed
+
+The normalized implementation at `0feb589663f32680bcbb696b10c094da1408d9d9` passed the complete race-enabled real PostgreSQL suite, package coverage thresholds, all twelve new named acceptance criteria, all twelve earlier phase01/02 criteria, the compiled TLS-JWKS -> JWT -> scope -> PostgreSQL -> SDK -> SIGTERM path, and all 31 repository-tool regression tests. Its sole remaining lint finding was in the source-scan test and is corrected by the root-confined scan above. Final exact-head CI, including the lint correction and documentation reconciliation, is recorded in the PR before it is opened; an earlier successful substep is not substituted for that result.
+
+No threshold was lowered. Missing or skipped implemented-phase criteria still fail. Later planned phases remain explicit development skips, not completed functionality. Fuzz entry points are included; a fuzz seed pass is not described as a timed mutation campaign unless that command was actually executed and recorded.
+
+## Deliberate boundaries and residual obligations
+
+This implementation has no local signer, API-key exchange, user/group/role/grant store or browser credential service. The issuer-shaped fixtures are synthetic; no deployed Pengui user session or customer signing key was used. Source inspection establishes serializer compatibility, not proof of a production deployment.
+
+The loopback listener remains the deployment default/boundary until the wider transport phase. Public health is content-free; operational metrics require an explicitly issued deployment-operator scope, not ordinary analytical read permission. Full MCP transport remains phase22; the shared verifier already enforces both intended-audience profiles without requalifying Harbor/Pengui Apps support.
+
+An in-process constructor is a trusted verifier seam, not a sandbox against malicious code linked into the process. Only verified middleware/domain callers may provide envelopes to protected services. Raw store coordinates remain lower-level isolation values and cannot authenticate a remote request.
+
+Execution/artifact checks consume complete server-resolved dependency/context metadata. They cannot infer an omitted relation. The later validator/source/reporting phases must prove manifest completeness and apply pre-query restrictions at their actual database/warehouse boundary. No report or SQL endpoint is falsely exposed now merely to claim that future integration already exists.
+
+Offline JWT validation cannot observe permission changes after issuance. Expiry plus bounded configured skew defines the accepted snapshot window. Fresh delegated authority for durable work is phase06, not a persisted bearer or local renewal path. Context cancellation is not a promise to undo effects already committed before cancellation. Existing fencing/transaction tests remain required.
