@@ -12,10 +12,13 @@ import (
 
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/internal/sourceapi"
+	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/internal/workapi"
 )
@@ -23,14 +26,15 @@ import (
 // work owns all enabled SDK clients and durable-worker goroutines. Its close method is
 // joined before the store or shared JWT verifier are released by the composition root.
 type work struct {
-	handler http.Handler
-	engine  gateway.Engine
-	queue   *jobs.Service
-	broker  *broker.Provider
-	cancel  context.CancelFunc
-	wait    sync.WaitGroup
-	once    sync.Once
-	logger  *slog.Logger
+	sourceService *sources.Service
+	handler       http.Handler
+	engine        gateway.Engine
+	queue         *jobs.Service
+	broker        *broker.Provider
+	cancel        context.CancelFunc
+	wait          sync.WaitGroup
+	once          sync.Once
+	logger        *slog.Logger
 }
 
 func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *auth.Verifier, next http.Handler, lookup func(string) (string, bool), log io.Writer) (*work, error) {
@@ -84,7 +88,20 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		}
 		w.queue = queue
 	}
-	w.handler = workapi.Handler(verifier, w.engine, w.queue, next)
+	w.sourceService, err = sources.New(db, v.Sources, lookup)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	var validator *readexec.Validator
+	if v.Sources.Enabled {
+		validator, err = readexec.NewValidator(w.sourceService, v.Exec)
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
+	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {
@@ -109,6 +126,9 @@ func (w *work) close() {
 	w.once.Do(func() {
 		w.cancel()
 		w.wait.Wait()
+		if w.sourceService != nil {
+			w.sourceService.Close()
+		}
 		if w.engine != nil {
 			w.engine.Close()
 		}

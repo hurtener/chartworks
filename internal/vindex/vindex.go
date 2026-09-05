@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -36,7 +37,7 @@ type Space struct {
 // Valid rejects incomplete identities and dimensions unsupported by pgvector.
 func (s Space) Valid() bool {
 	for _, v := range []string{s.Provider, s.Route, s.Model, s.Revision, s.Preprocessing, s.InputType, s.Normalization} {
-		if len(v) < 1 || len(v) > 256 || strings.TrimSpace(v) != v || strings.ContainsAny(v, "\x00\r\n\t") {
+		if !utf8.ValidString(v) || len(v) < 1 || len(v) > 256 || strings.TrimSpace(v) != v || strings.ContainsAny(v, "\x00\r\n\t") {
 			return false
 		}
 	}
@@ -128,19 +129,22 @@ func VectorLiteral(v []float32, dimensions int) (string, error) {
 	}
 	var b strings.Builder
 	b.WriteByte('[')
-	nonzero := false
+	squaredNorm := float64(0)
 	for i, n := range v {
 		if math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) {
 			return "", store.ErrInvalid
 		}
-		nonzero = nonzero || n != 0
+		squaredNorm += float64(n) * float64(n)
 		if i != 0 {
 			b.WriteByte(',')
 		}
 		b.WriteString(strconv.FormatFloat(float64(n), 'g', -1, 32))
 	}
 	b.WriteByte(']')
-	if !nonzero {
+	// pgvector 0.8.2 accumulates cosine norms in float32. Finite components alone
+	// do not prevent zero/overflowed accumulators and NaN distances. This declared
+	// domain leaves ample margin for all supported dimensions without rescaling evidence.
+	if squaredNorm < 1e-20 || squaredNorm > 1e20 {
 		return "", store.ErrInvalid
 	}
 	return b.String(), nil
@@ -159,7 +163,7 @@ func CheckBatch(g Generation, facets []Facet) error {
 	size := 0
 	for _, f := range facets {
 		o, ok := origins[f.ID]
-		if !ok || seen[f.ID] || f.Kind != o.Kind || f.SourceID != o.SourceID || len(f.Text) < 1 || len(f.Text) > 4096 || TextHash(f.Text) != o.TextHash {
+		if !ok || seen[f.ID] || f.Kind != o.Kind || f.SourceID != o.SourceID || !utf8.ValidString(f.Text) || len(f.Text) < 1 || len(f.Text) > 4096 || TextHash(f.Text) != o.TextHash {
 			return store.ErrInvalid
 		}
 		if _, err := VectorLiteral(f.Vector, g.Space.Dimensions); err != nil {

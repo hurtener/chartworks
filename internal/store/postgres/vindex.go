@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
@@ -233,6 +234,10 @@ func (d *DB) SearchFacets(ctx context.Context, s store.Scope, queries []vindex.Q
 				if e = rows.Scan(&h.ID, &h.Kind, &h.SourceID, &h.Text, &h.Distance); e != nil {
 					rows.Close()
 					return e
+				}
+				if math.IsNaN(h.Distance) || math.IsInf(h.Distance, 0) || h.Distance < 0 || h.Distance > 2 {
+					rows.Close()
+					return store.ErrInvalid
 				}
 				bytes += len(h.Text) + len(h.ID) + len(h.SourceID) + len(h.Generation) + len(h.Version) + len(h.SourceGeneration) + 128
 				if bytes > 2<<20 {

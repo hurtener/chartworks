@@ -206,7 +206,7 @@ func discoverRelation(ctx context.Context, tx readTransaction, relation config.S
 	if !selectable || writable || columnWritable {
 		return out, nil, readexec.ErrUnsafe
 	}
-	rows, err := tx.Query(ctx, `SELECT a.attname,t.typname,n.nspname,format_type(a.atttypid,a.atttypmod),a.atttypid::bigint,a.atttypmod,NOT a.attnotnull,t.typtype::text,COALESCE(bt.typname,''),COALESCE(bn.nspname,'') FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_type t ON t.oid=a.atttypid JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace LEFT JOIN pg_catalog.pg_type bt ON bt.oid=t.typbasetype LEFT JOIN pg_catalog.pg_namespace bn ON bn.oid=bt.typnamespace WHERE a.attrelid=$1 AND a.attnum>0 AND NOT a.attisdropped AND a.attname=ANY($2::text[]) ORDER BY a.attnum LIMIT 257`, out.OID, relation.Columns)
+	rows, err := tx.Query(ctx, `SELECT a.attname,t.typname,n.nspname,CASE WHEN n.nspname='pg_catalog' THEN format_type(a.atttypid,a.atttypmod) ELSE n.nspname||'.'||t.typname END,a.atttypid::bigint,a.atttypmod,NOT a.attnotnull,t.typtype::text,COALESCE(bt.typname,''),COALESCE(bn.nspname,'') FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_type t ON t.oid=a.atttypid JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace LEFT JOIN pg_catalog.pg_type bt ON bt.oid=t.typbasetype LEFT JOIN pg_catalog.pg_namespace bn ON bn.oid=bt.typnamespace WHERE a.attrelid=$1 AND a.attnum>0 AND NOT a.attisdropped AND a.attname=ANY($2::text[]) ORDER BY a.attnum LIMIT 257`, out.OID, relation.Columns)
 	if err != nil {
 		return out, nil, safe(err)
 	}

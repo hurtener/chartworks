@@ -18,7 +18,7 @@ CREATE TABLE chartworks.source_revisions (
  PRIMARY KEY(tenant_id,source_id,revision),
  UNIQUE(tenant_id,context_id),
  CHECK(context_id=source_id||':v'||revision::text),
- CHECK(binding->>'tenant'=tenant_id AND binding->>'source'=source_id AND binding->>'context'=context_id AND binding->>'dialect'='postgres' AND (binding->>'revision')::bigint=revision)
+ CHECK(binding ?& ARRAY['tenant','source','context','dialect','revision'] AND binding->>'tenant'=tenant_id AND binding->>'source'=source_id AND binding->>'context'=context_id AND binding->>'dialect'='postgres' AND (binding->>'revision')::bigint=revision)
 );
 ALTER TABLE chartworks.sources ADD CONSTRAINT source_revision_reference FOREIGN KEY(tenant_id,source_id,current_revision) REFERENCES chartworks.source_revisions(tenant_id,source_id,revision) DEFERRABLE INITIALLY DEFERRED;
 CREATE TRIGGER immutable_source_revision BEFORE UPDATE ON chartworks.source_revisions FOR EACH ROW EXECUTE FUNCTION chartworks.reject_revision_update();

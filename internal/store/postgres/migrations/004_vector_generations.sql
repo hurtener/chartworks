@@ -42,7 +42,7 @@ CREATE TABLE chartworks.vector_facets (
  body text NOT NULL CHECK (octet_length(body) BETWEEN 1 AND 4096),
  space_key text NOT NULL,
  dimensions integer NOT NULL,
- embedding public.vector NOT NULL CHECK (public.vector_dims(embedding)=dimensions AND public.vector_norm(embedding)>0),
+ embedding public.vector NOT NULL CHECK (public.vector_dims(embedding)=dimensions AND public.vector_norm(embedding) BETWEEN 1e-10 AND 1e10),
  PRIMARY KEY (tenant_id,topic_id,context_id,generation_id,facet_id),
  FOREIGN KEY (tenant_id,topic_id,context_id,generation_id,space_key,dimensions)
  REFERENCES chartworks.vector_generations(tenant_id,topic_id,context_id,generation_id,space_key,dimensions) ON DELETE CASCADE
@@ -61,12 +61,20 @@ CREATE TRIGGER immutable_vector_generation BEFORE UPDATE ON chartworks.vector_ge
 CREATE FUNCTION chartworks.protect_vector_facet() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE current_state text;
 BEGIN
+ IF TG_OP IN ('UPDATE','DELETE') THEN
+  SELECT state INTO current_state FROM chartworks.vector_generations
+  WHERE tenant_id=OLD.tenant_id AND topic_id=OLD.topic_id AND context_id=OLD.context_id AND generation_id=OLD.generation_id FOR SHARE;
+  IF current_state='ready' THEN RAISE EXCEPTION 'sealed vector generation' USING ERRCODE='23514'; END IF;
+  -- A parent deletion has already removed the generation in this transaction;
+  -- only that legitimate cascade may erase facets from a formerly sealed parent.
+  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ END IF;
  SELECT state INTO current_state FROM chartworks.vector_generations
  WHERE tenant_id=NEW.tenant_id AND topic_id=NEW.topic_id AND context_id=NEW.context_id AND generation_id=NEW.generation_id FOR SHARE;
  IF current_state IS DISTINCT FROM 'staging' THEN RAISE EXCEPTION 'sealed vector generation' USING ERRCODE='23514'; END IF;
  RETURN NEW;
 END $$;
-CREATE TRIGGER immutable_vector_facet BEFORE INSERT OR UPDATE ON chartworks.vector_facets FOR EACH ROW EXECUTE FUNCTION chartworks.protect_vector_facet();
+CREATE TRIGGER immutable_vector_facet BEFORE INSERT OR UPDATE OR DELETE ON chartworks.vector_facets FOR EACH ROW EXECUTE FUNCTION chartworks.protect_vector_facet();
 
 ALTER TABLE chartworks.audit_events DROP CONSTRAINT audit_events_action_check;
 ALTER TABLE chartworks.audit_events ADD CONSTRAINT audit_events_action_check CHECK(action IN ('retention_policy.updated','retention.sweep','job.accepted','job.cancelled','schedule.created','schedule.updated','schedule.fired','facets.generation_staged','facets.generation_published','facets.archived','facets.erased'));
