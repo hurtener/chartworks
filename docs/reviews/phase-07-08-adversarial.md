@@ -32,6 +32,31 @@ through the actual closed configuration decoder by `TestSourceReferenceExcerpt`.
 No lint/coverage exception was added; code and synthetic credentials were corrected
 instead of suppressing the reported checks.
 
+## Final fuzz-gate recovery
+
+The stronger iteration-bounded SQL fuzz campaign exposed a setup failure at head
+`9d1d4f2a334925aec43ddd6824b3fbc1ff9c7fe4`: [PR CI run 33998461486](https://github.com/hurtener/chartworks/actions/runs/33998461486/job/101392981407)
+passed race coverage and all 58 named criteria, then failed during the unchanged
+`FuzzSQLTree/seed#1` baseline after approximately 11 seconds. That run is a failure,
+not a complete passing release or preflight result.
+
+The pinned parser compiles its WASM runtime on the first `ParseToJSON` call.
+Go 1.26.4 separately imposes a ten-second watchdog on each fuzz target invocation;
+raising the overall `-timeout` does not change that watchdog. The ordinary test
+suite initializes the parser before reaching the fuzz corpus, while a fresh fuzz
+worker previously compiled it inside the first timed input.
+
+`FuzzSQLTree` now initializes and validates the real parser/resolver in process
+setup before `F.Fuzz`, in both coordinator and fresh workers. The same four seeds,
+real pinned parser, resolver, input bounds and race instrumentation remain. The
+per-input watchdog and the `-fuzztime=64x -timeout=3m -parallel=2` campaign are not
+relaxed. Setup errors fail the test; there is no skipped seed or mock parser.
+Final readiness requires the new run to complete baseline coverage and actual
+mutations as well as every cumulative gate; exact results belong in the PR comment.
+
+Primary implementation references: [Go 1.26.4 worker watchdog](https://github.com/golang/go/blob/go1.26.4/src/internal/fuzz/worker.go)
+and [pinned parser runtime construction](https://github.com/wasilibs/go-pgquery/blob/b511bb3bfd6e3dc19af37ab4c7d44f711995fc7c/parser/parser_wazero.go).
+
 ## Executed development evidence and final gates
 
 The reviewed runtime snapshot `8fe346673500657ebda47dea67e4123e1e0cda84` has retained

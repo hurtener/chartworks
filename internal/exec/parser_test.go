@@ -3,6 +3,7 @@ package exec
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
 	pgquery "github.com/wasilibs/go-pgquery"
@@ -132,6 +133,17 @@ func TestSQLTreeBounds(t *testing.T) {
 }
 
 func FuzzSQLTree(f *testing.F) {
+	// Every fresh fuzz worker initializes its own pinned WASM parser. Keep that
+	// one-time compilation outside F.Fuzz's 10-second per-input watchdog; the
+	// overall test timeout still bounds setup. Do not shorten the corpus or
+	// disable race instrumentation to hide a cold worker initialization failure.
+	started := time.Now()
+	cols, _, err := resolveFixture(`WITH q AS (SELECT id FROM analytics.sales) SELECT id FROM q`)
+	if err != nil || len(cols) != 1 || cols[0] != "id" {
+		f.Fatal("SQL fuzz parser initialization failed")
+	}
+	f.Logf("SQL fuzz parser initialization completed in %s", time.Since(started))
+
 	for _, sql := range []string{`SELECT id FROM analytics.sales`, `WITH q AS (SELECT id FROM analytics.sales) SELECT id FROM q`, `SELECT pg_sleep(1)`, `SELECT amount+$1 FROM analytics.sales`} {
 		f.Add(sql)
 	}
