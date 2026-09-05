@@ -98,6 +98,7 @@ type Features struct {
 
 // Provider is a non-secret reference to remote Bifrost configuration.
 type Provider struct {
+	Type    string `json:"type,omitempty"`
 	Name    string `json:"name"`
 	APIKey  string `json:"api_key"`
 	BaseURL string `json:"base_url,omitempty"`
@@ -105,6 +106,7 @@ type Provider struct {
 
 // Role is the shared remote-provider configuration contract. No inference occurs here.
 type Role struct {
+	ModelRevision string   `json:"model_revision,omitempty"`
 	Enabled       bool     `json:"enabled,omitempty"`
 	Provider      string   `json:"provider"`
 	Model         string   `json:"model"`
@@ -119,7 +121,8 @@ type Role struct {
 
 // Gateway preserves the Bifrost-only production contract for phase 05.
 type Gateway struct {
-	Driver  string `json:"driver"`
+	Limits  GatewayLimits `json:"limits"`
+	Driver  string        `json:"driver"`
 	Bifrost struct {
 		Providers []Provider `json:"providers"`
 	} `json:"bifrost"`
@@ -173,7 +176,7 @@ func Defaults() Values {
 		Auth:      Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
 		Store:     Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
 		Telemetry: Telemetry{LogFormat: "json", Metrics: true},
-		Gateway:   Gateway{Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
+		Gateway:   Gateway{Limits: DefaultGatewayLimits(), Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
 	}
 }
 
@@ -350,52 +353,12 @@ func validate(v Values) error {
 	if v.Telemetry.OTel {
 		return invalid("telemetry.otel", "export not implemented; disable explicitly")
 	}
-	if v.Features.Gateway || v.Features.MCP || v.Features.Reporting || v.Features.Renderer {
+	if v.Features.MCP || v.Features.Reporting || v.Features.Renderer {
 		return invalid("features", "requested capability is not implemented in phases 01-02")
 	}
-	if v.Gateway.Driver != "bifrost" {
-		return invalid("gateway.driver", "only the Bifrost SDK production driver is permitted")
-	}
-	if v.Gateway.MaxAttemptsPerCall < 1 || v.Gateway.MaxAttemptsPerCall > 4 {
-		return invalid("gateway.max_attempts_per_call", "must be between 1 and 4")
-	}
-	providers := map[string]bool{}
-	for _, p := range v.Gateway.Bifrost.Providers {
-		if p.Name == "" || len(p.Name) > 64 || providers[p.Name] || p.Name == "local" || p.Name == "ollama" || p.Name == "mock" {
-			return invalid("gateway.bifrost.providers", "invalid or duplicate remote provider")
-		}
-		if _, err := reference(p.APIKey); err != nil {
-			return invalid("gateway.bifrost.providers.api_key", "environment reference required")
-		}
-		if p.BaseURL != "" && !secureURL(p.BaseURL) {
-			return invalid("gateway.bifrost.providers.base_url", "HTTPS endpoint required")
-		}
-		providers[p.Name] = true
-	}
-	for name, r := range v.Gateway.Roles {
-		switch name {
-		case "embedding", "enhance", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank":
-		default:
-			return invalid("gateway.roles", "unknown role")
-		}
-		if !providers[r.Provider] || r.Model == "" || len(r.Model) > 256 || strings.ContainsAny(r.Model, "\r\n") {
-			return invalid("gateway.roles", "configured remote provider/model required")
-		}
-		if r.Timeout <= 0 || r.Timeout > Duration(5*time.Minute) || r.MaxTokens < 0 || r.MaxTokens > 65536 {
-			return invalid("gateway.roles", "role budget out of bounds")
-		}
-		if name == "embedding" && (r.Dimensions <= 0 || r.Dimensions > 16384 || r.MaxBatchItems < 1 || r.MaxBatchItems > 1024 || r.MaxBatchBytes < 1 || r.MaxBatchBytes > 4<<20) {
-			return invalid("gateway.roles.embedding", "dimensions and batch bounds required")
-		}
-		if name == "rerank" && (r.MaxCandidates < 1 || r.MaxCandidates > 1024) {
-			return invalid("gateway.roles.rerank", "candidate bound required")
-		}
-		if r.OnFailure != "" && r.OnFailure != "fail" && r.OnFailure != "preserve_candidates" {
-			return invalid("gateway.roles", "invalid failure policy")
-		}
-	}
-	return nil
+	return ValidateGateway(v.Gateway, v.Features.Gateway)
 }
+
 func checkJSON(d *json.Decoder, depth int) error {
 	if depth > 32 {
 		return invalid("document", "nesting limit exceeded")
