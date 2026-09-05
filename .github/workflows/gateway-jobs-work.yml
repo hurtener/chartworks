@@ -51,6 +51,21 @@ jobs:
           name: chartworks-review-source
           path: /tmp/chartworks-source.tar
           retention-days: 1
+      - name: Portable public test dependencies for offline reviewer sandbox
+        run: |
+          mkdir -p /tmp/cw-tools/mod /tmp/cw-tools/pg /tmp/cw-tools/pgshare
+          cp -a "$(go env GOROOT)" /tmp/cw-tools/go
+          cp -a "$(go env GOMODCACHE)/." /tmp/cw-tools/mod/
+          rm -rf /tmp/cw-tools/mod/cache
+          docker cp '${{ job.services.postgres.id }}:/usr/lib/postgresql/17/.' /tmp/cw-tools/pg/
+          docker cp '${{ job.services.postgres.id }}:/usr/share/postgresql/17/.' /tmp/cw-tools/pgshare/
+          tar czf /tmp/chartworks-public-test-tools.tar.gz -C /tmp/cw-tools .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chartworks-public-test-tools
+          path: /tmp/chartworks-public-test-tools.tar.gz
+          compression-level: 0
+          retention-days: 1
       - name: Compile the production graph
         run: go build ./...
       - name: Vet all packages
