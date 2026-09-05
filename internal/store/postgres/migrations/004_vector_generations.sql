@@ -67,3 +67,6 @@ BEGIN
  RETURN NEW;
 END $$;
 CREATE TRIGGER immutable_vector_facet BEFORE INSERT OR UPDATE ON chartworks.vector_facets FOR EACH ROW EXECUTE FUNCTION chartworks.protect_vector_facet();
+
+ALTER TABLE chartworks.audit_events DROP CONSTRAINT audit_events_action_check;
+ALTER TABLE chartworks.audit_events ADD CONSTRAINT audit_events_action_check CHECK(action IN ('retention_policy.updated','retention.sweep','job.accepted','job.cancelled','schedule.created','schedule.updated','schedule.fired','facets.generation_staged','facets.generation_published','facets.archived','facets.erased'));

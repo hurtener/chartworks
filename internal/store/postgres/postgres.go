@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -96,7 +98,7 @@ func safe(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	for _, e := range []error{jobs.ErrInvalid, jobs.ErrBusy, jobs.ErrEmpty, jobs.ErrAuthority, jobs.ErrTransient, store.ErrScope, store.ErrInvalid, store.ErrConflict, store.ErrMigration, store.ErrNotFound, store.ErrUnavailable, store.ErrExpired} {
+	for _, e := range []error{readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound, jobs.ErrInvalid, jobs.ErrBusy, jobs.ErrEmpty, jobs.ErrAuthority, jobs.ErrTransient, store.ErrScope, store.ErrInvalid, store.ErrConflict, store.ErrMigration, store.ErrNotFound, store.ErrUnavailable, store.ErrExpired} {
 		if errors.Is(err, e) {
 			return e
 		}

@@ -132,13 +132,15 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
-	Jobs      Jobs      `json:"jobs"`
-	Server    Server    `json:"server"`
-	Auth      Auth      `json:"auth"`
-	Store     Store     `json:"store"`
-	Telemetry Telemetry `json:"telemetry"`
-	Features  Features  `json:"features"`
-	Gateway   Gateway   `json:"gateway"`
+	Sources   Sources        `json:"sources"`
+	Exec      ReadValidation `json:"exec"`
+	Jobs      Jobs           `json:"jobs"`
+	Server    Server         `json:"server"`
+	Auth      Auth           `json:"auth"`
+	Store     Store          `json:"store"`
+	Telemetry Telemetry      `json:"telemetry"`
+	Features  Features       `json:"features"`
+	Gateway   Gateway        `json:"gateway"`
 }
 
 // Config is immutable after Load. Its resolved credential has no printable projection.
@@ -158,6 +160,7 @@ func (c Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.values) }
 // Values returns a deep copy, so consumers cannot race by mutating the live snapshot.
 func (c Config) Values() Values {
 	v := c.values
+	v.Sources = c.values.Sources.Clone()
 	v.Jobs.Credentials = append([]BrokerCredential(nil), v.Jobs.Credentials...)
 	v.Auth.Algorithms = append([]string(nil), v.Auth.Algorithms...)
 	v.Gateway.Bifrost.Providers = append([]Provider(nil), v.Gateway.Bifrost.Providers...)
@@ -174,6 +177,8 @@ func (c Config) StoreDSN() string { return c.dsn }
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
 	return Values{
+		Sources:   DefaultSources(),
+		Exec:      DefaultReadValidation(),
 		Server:    Server{Listen: "127.0.0.1:8080", ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(30 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
 		Auth:      Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
 		Store:     Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
@@ -360,6 +365,12 @@ func validate(v Values) error {
 		return invalid("features", "requested capability is not implemented in phases 01-02")
 	}
 	if err := ValidateJobs(v.Jobs, v.Auth); err != nil {
+		return err
+	}
+	if err := ValidateSources(v.Sources); err != nil {
+		return err
+	}
+	if err := ValidateReadValidation(v.Exec); err != nil {
 		return err
 	}
 	return ValidateGateway(v.Gateway, v.Features.Gateway)
