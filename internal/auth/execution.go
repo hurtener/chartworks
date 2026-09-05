@@ -12,7 +12,7 @@ import (
 // a dedicated audience, zero expiry leeway and a maximum sixty-second lifetime.
 // A JWT for another job, binding, manifest or ordinary surface cannot authorize this attempt.
 func (v *Verifier) VerifyExecution(ctx context.Context, token, binding, job, digest string, revision int64) (Execution, error) {
-	e, err := v.Verify(ctx, token, Execution)
+	e, err := v.Verify(ctx, token, ExecutionSurface)
 	if err != nil {
 		return Execution{}, ErrToken
 	}

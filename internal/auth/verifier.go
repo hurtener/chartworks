@@ -31,7 +31,7 @@ const (
 	// MCP is the provider audience for the existing platform tool bridge.
 	MCP
 	// Execution is accepted only by the durable worker, never the API/MCP router.
-	Execution
+	ExecutionSurface
 )
 
 // Verifier is immutable apart from its concurrency-safe public-key cache.
@@ -200,7 +200,7 @@ func (v *Verifier) Verify(ctx context.Context, token string, surface Surface) (i
 		expected = v.cfg.HTTPAudience()
 	case MCP:
 		expected = v.cfg.MCPAudience()
-	case Execution:
+	case ExecutionSurface:
 		expected = v.cfg.Audiences.Jobs
 		skew = 0
 		if expected == "" || len(audiences) != 1 || expires-issued > 60 {
