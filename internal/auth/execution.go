@@ -42,7 +42,10 @@ type Execution struct {
 	binding, job, manifest string
 }
 
+// Envelope returns the verified identity bound to this execution proof, without token bytes.
 func (e Execution) Envelope() identity.Envelope { return e.envelope }
+
+// Matches checks current proof validity and exact binding, job and manifest coordinates.
 func (e Execution) Matches(binding, job, manifest string) bool {
 	return e.envelope.Valid() && e.binding == binding && e.job == job && e.manifest == manifest && manifest != ""
 }

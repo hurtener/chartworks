@@ -30,7 +30,7 @@ const (
 	HTTP Surface = iota + 1
 	// MCP is the provider audience for the existing platform tool bridge.
 	MCP
-	// Execution is accepted only by the durable worker, never the API/MCP router.
+	// ExecutionSurface is accepted only by the durable worker, never the API/MCP router.
 	ExecutionSurface
 )
 
