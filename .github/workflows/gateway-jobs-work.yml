@@ -36,7 +36,8 @@ jobs:
           done
           go mod tidy
           find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
-          git add go.mod go.sum cmd internal sdk test docs examples scripts .github/workflows/gateway-jobs-work.yml
+          git diff --exit-code -- .github
+          git add go.mod go.sum cmd internal sdk test docs examples scripts
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -44,9 +45,15 @@ jobs:
             git push origin HEAD:feat/phase-05-06-gateway-jobs
           fi
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+          git archive HEAD -o /tmp/chartworks-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chartworks-review-source
+          path: /tmp/chartworks-source.tar
+          retention-days: 1
       - name: Compile the production graph
         run: go build ./...
       - name: Vet all packages
         run: go vet ./...
-      - name: Present gateway and queue tests
-        run: go test -race ./internal/gateway/... ./internal/jobs/... ./test/acceptance -run 'TestPhase0[56]|TestGateway|TestQueue|TestJobs|TestDispatch' -count=1
+      - name: Gateway and queue integration tests
+        run: go test -race ./internal/gateway/... ./internal/jobs/... ./test/acceptance -run 'TestPhase0[56]|TestGateway|TestQueue|TestJobs|TestDispatch|TestWork' -count=1 -timeout=3m -v
