@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -125,11 +126,15 @@ type Lease struct {
 
 // Authority is implemented by the concrete Pengui HTTP adapter, not a local signer.
 type Authority interface {
-	Acquire(context.Context, Job) (identity.Envelope, error)
+	Acquire(context.Context, Job) (auth.Execution, error)
 }
 
 // AssertExecution is repeated at the effect boundary, after broker verification and before writes.
-func AssertExecution(e identity.Envelope, j Job) error {
+func AssertExecution(proof auth.Execution, j Job) error {
+	e := proof.Envelope()
+	if !proof.Matches(j.BindingID, j.ID, j.ManifestHash) {
+		return ErrAuthority
+	}
 	if !j.Valid() || !e.Valid() || e.Tenant() != j.Tenant || e.User() != j.Executor || e.Session() != j.ID {
 		return ErrAuthority
 	}
@@ -148,7 +153,7 @@ type Repository interface {
 	CancelJob(context.Context, store.Scope, string) (Job, error)
 	ClaimJob(context.Context, string, Limits) (Lease, error)
 	HeartbeatJob(context.Context, Lease, time.Duration) error
-	CompleteJob(context.Context, Lease, identity.Envelope) (Job, error)
+	CompleteJob(context.Context, Lease, auth.Execution) (Job, error)
 	FinishAttempt(context.Context, Lease, string, bool, time.Duration) error
 	CreateSchedule(context.Context, store.Scope, string, string, ScheduleRequest, Limits) (Schedule, error)
 	ReadSchedule(context.Context, store.Scope, string) (Schedule, error)

@@ -158,6 +158,7 @@ type Engine interface {
 	Generate(context.Context, Call, *Budget, string, string, string, *Schema) (Generated, error)
 	Embed(context.Context, Call, *Budget, string, []string) (Embedded, error)
 	Rerank(context.Context, Call, *Budget, string, Candidates) (Ranked, error)
+	VisualRank(context.Context, Call, *Budget, string, Candidates) (Ranked, error)
 	Space() string
 	Close()
 }

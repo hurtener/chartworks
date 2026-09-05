@@ -134,7 +134,14 @@ func Start(ctx context.Context, cfg config.Config, log io.Writer) error {
 		return err
 	}
 	defer keyProbe.Close()
-	s, err := NewServer(cfg, r, func(ctx context.Context) Dependency { return Dependency{Ready: db.Check(ctx) == nil} }, keyProbe.Check, securityapi.Handler(keyProbe, service, r, v.Telemetry.Metrics))
+	workCtx, stopWork := context.WithCancel(ctx)
+	defer stopWork()
+	active, err := setupWork(workCtx, v, db, keyProbe, securityapi.Handler(keyProbe, service, r, v.Telemetry.Metrics), os.LookupEnv, log)
+	if err != nil {
+		return err
+	}
+	defer active.close()
+	s, err := NewServer(cfg, r, func(ctx context.Context) Dependency { return Dependency{Ready: db.Check(ctx) == nil} }, keyProbe.Check, active.handler)
 	if err != nil {
 		return err
 	}
@@ -142,5 +149,8 @@ func Start(ctx context.Context, cfg config.Config, log io.Writer) error {
 	if err != nil {
 		return errors.New("foundation: cannot bind configured listener")
 	}
-	return s.Serve(ctx, listener)
+	active.run()
+	err = s.Serve(ctx, listener)
+	stopWork()
+	return err
 }

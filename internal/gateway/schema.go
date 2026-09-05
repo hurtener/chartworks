@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"math"
+	"strconv"
 	"unicode/utf8"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
@@ -99,6 +101,15 @@ func walkJSON(d *json.Decoder, depth int) error {
 	v, err := d.Token()
 	if err != nil {
 		return ErrOutput
+	}
+	if number, ok := v.(json.Number); ok {
+		if len(number.String()) > 128 {
+			return ErrOutput
+		}
+		n, err := strconv.ParseFloat(number.String(), 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+			return ErrOutput
+		}
 	}
 	if delim, ok := v.(json.Delim); ok {
 		switch delim {

@@ -30,9 +30,9 @@ ALTER TABLE chartworks.operations
  binding_id IS NOT NULL AND binding_id ~ '^[A-Za-z0-9_.-]{1,64}$' AND
  initiator_id IS NOT NULL AND initiator_id ~ '^[A-Za-z0-9_.:-]{1,128}$' AND
  initiator_session IS NOT NULL AND initiator_session ~ '^[A-Za-z0-9_.:-]{1,128}$' AND
- actor_id='svc:chartworks:'||binding_id AND due_at IS NOT NULL AND window_start IS NOT NULL AND window_end=due_at AND window_start<=window_end AND
+ actor_id='svc:chartworks:'||binding_id AND due_at IS NOT NULL AND window_start IS NOT NULL AND window_end IS NOT NULL AND window_end=due_at AND window_start<=window_end AND
  manifest_hash IS NOT NULL AND manifest_hash ~ '^[a-f0-9]{64}$' AND
- ((schedule_id IS NULL AND schedule_revision IS NULL) OR (schedule_id ~ '^[a-f0-9]{32}$' AND schedule_revision>0))));
+ ((schedule_id IS NULL AND schedule_revision IS NULL) OR (schedule_id IS NOT NULL AND schedule_revision IS NOT NULL AND schedule_id ~ '^[a-f0-9]{32}$' AND schedule_revision>0))));
 
 CREATE TABLE chartworks.queue_limits (
  singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
@@ -42,7 +42,7 @@ CREATE TABLE chartworks.operation_attempts (
  tenant_id text NOT NULL, operation_id text NOT NULL, fence bigint NOT NULL CHECK(fence>0),
  attempt integer NOT NULL CHECK(attempt BETWEEN 1 AND 8), owner_id text NOT NULL,
  state text NOT NULL CHECK(state IN ('acquiring','succeeded','retry','failed','blocked','cancelled','abandoned')),
- error_code text NOT NULL DEFAULT '', started_at timestamptz NOT NULL DEFAULT clock_timestamp(), finished_at timestamptz,
+ error_code text NOT NULL DEFAULT '' CHECK(error_code IN ('','authority_blocked','attempt_failed','attempt_timeout','definition_changed','cancelled','lease_lost')), started_at timestamptz NOT NULL DEFAULT clock_timestamp(), finished_at timestamptz,
  executor_id text,
  PRIMARY KEY(tenant_id,operation_id,fence), UNIQUE(tenant_id,operation_id,attempt),
  FOREIGN KEY(tenant_id,operation_id) REFERENCES chartworks.operations(tenant_id,operation_id),

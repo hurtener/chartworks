@@ -220,7 +220,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 		err = AssertExecution(envelope, lease.Job)
 	}
 	if err == nil {
-		effect, stop := context.WithDeadline(work, envelope.Deadline())
+		effect, stop := context.WithDeadline(work, envelope.Envelope().Deadline())
 		_, err = s.repo.CompleteJob(effect, lease, envelope)
 		stop()
 	}

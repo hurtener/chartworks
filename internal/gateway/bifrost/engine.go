@@ -132,7 +132,7 @@ func (e *Engine) Close() {
 	})
 }
 func (e *Engine) enter(call gateway.Call, b *gateway.Budget) (func(), error) {
-	if !call.Valid() || b == nil || !time.Now().Before(b.Deadline()) {
+	if b.Check(call) != nil {
 		return nil, gateway.ErrBudget
 	}
 	e.mu.Lock()
@@ -244,7 +244,7 @@ func usage(role string, p route, model, actual string, start time.Time, u *schem
 	}
 	return out
 }
-func (e *Engine) Generate(ctx context.Context, call gateway.Call, b *gateway.Budget, name, system, prompt string, schema *gateway.Schema) (gateway.Generated, error) {
+func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Budget, name, system, prompt string, schema *gateway.Schema) (gateway.Generated, error) {
 	out := gateway.Generated{}
 	r, p, err := e.role(name)
 	if err != nil {
@@ -530,3 +530,11 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 }
 
 var _ gateway.Engine = (*Engine)(nil)
+
+// Generate handles structured authoring and tool-free narratives. Visual ranking requires its sealed candidate method.
+func (e *Engine) Generate(ctx context.Context, call gateway.Call, b *gateway.Budget, name, system, prompt string, schema *gateway.Schema) (gateway.Generated, error) {
+	if name == "visual_rank" {
+		return gateway.Generated{}, gateway.ErrInput
+	}
+	return e.generate(ctx, call, b, name, system, prompt, schema)
+}

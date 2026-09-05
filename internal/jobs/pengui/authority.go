@@ -70,56 +70,56 @@ type response struct {
 	BindingRevision int64  `json:"binding_revision"`
 }
 
-func (p *Provider) Acquire(ctx context.Context, j jobs.Job) (identity.Envelope, error) {
+func (p *Provider) Acquire(ctx context.Context, j jobs.Job) (auth.Execution, error) {
 	if !j.Valid() {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	credential, ok := p.credentials[j.Tenant]
 	if !ok {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	body, err := json.Marshal(request{Version: 1, Binding: j.BindingID, Job: j.ID, Manifest: j.ManifestHash})
 	if err != nil {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return identity.Envelope{}, jobs.ErrTransient
+		return auth.Execution{}, jobs.ErrTransient
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.SetBasicAuth(credential.ClientID, credential.Secret)
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return identity.Envelope{}, jobs.ErrTransient
+		return auth.Execution{}, jobs.ErrTransient
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == 429 || resp.StatusCode >= 500 {
-		return identity.Envelope{}, jobs.ErrTransient
+		return auth.Execution{}, jobs.ErrTransient
 	}
 	if resp.StatusCode != http.StatusOK {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
 	if err != nil || len(data) > 64<<10 {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	object, err := auth.Object(data, 64<<10)
 	if err != nil || len(object) != 6 {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	for _, key := range []string{"version", "access_token", "token_type", "expires_in", "binding_id", "binding_revision"} {
 		if object[key] == nil {
-			return identity.Envelope{}, jobs.ErrAuthority
+			return auth.Execution{}, jobs.ErrAuthority
 		}
 	}
 	var result response
 	if json.Unmarshal(data, &result) != nil || result.Version != 1 || result.TokenType != "Bearer" || result.Binding != j.BindingID || result.BindingRevision < 1 || result.ExpiresIn < 1 || result.ExpiresIn > 60 {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	e, err := p.verifier.VerifyExecution(ctx, result.AccessToken, j.BindingID, j.ID, j.ManifestHash, result.BindingRevision)
 	if err != nil || jobs.AssertExecution(e, j) != nil {
-		return identity.Envelope{}, jobs.ErrAuthority
+		return auth.Execution{}, jobs.ErrAuthority
 	}
 	return e, nil
 }
