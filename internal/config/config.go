@@ -54,17 +54,22 @@ type Server struct {
 	MaxHeaderBytes    int      `json:"max_header_bytes"`
 }
 
-// Auth configures trusted verification-key health, not an issuer or login service.
+// Auth configures the Pengui verifier and its shared key cache, never a local issuer.
 type Auth struct {
-	Issuer           string   `json:"issuer"`
-	JWKSURL          string   `json:"jwks_url"`
-	Audience         string   `json:"audience"`
-	Algorithms       []string `json:"algorithms"`
-	JWKSMaxStale     Duration `json:"jwks_max_stale"`
-	RefreshInterval  Duration `json:"refresh_interval"`
-	RequestTimeout   Duration `json:"request_timeout"`
-	ClockSkew        Duration `json:"clock_skew"`
-	MaxTokenLifetime Duration `json:"max_token_lifetime"`
+	Issuer           string    `json:"issuer"`
+	JWKSURL          string    `json:"jwks_url"`
+	Audience         string    `json:"audience,omitempty"`
+	Audiences        Audiences `json:"audiences,omitempty"`
+	MaxTokenBytes    int       `json:"max_token_bytes"`
+	MaxClaimBytes    int       `json:"max_claim_bytes"`
+	MaxScopes        int       `json:"max_scopes"`
+	MaxScopeBytes    int       `json:"max_scope_bytes"`
+	Algorithms       []string  `json:"algorithms"`
+	JWKSMaxStale     Duration  `json:"jwks_max_stale"`
+	RefreshInterval  Duration  `json:"refresh_interval"`
+	RequestTimeout   Duration  `json:"request_timeout"`
+	ClockSkew        Duration  `json:"clock_skew"`
+	MaxTokenLifetime Duration  `json:"max_token_lifetime"`
 }
 
 // Store contains a reference to a DSN, never a literal credential.
@@ -165,7 +170,7 @@ func (c Config) StoreDSN() string { return c.dsn }
 func Defaults() Values {
 	return Values{
 		Server:    Server{Listen: "127.0.0.1:8080", ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(30 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
-		Auth:      Auth{Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
+		Auth:      Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
 		Store:     Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
 		Telemetry: Telemetry{LogFormat: "json", Metrics: true},
 		Gateway:   Gateway{Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
@@ -227,7 +232,7 @@ func Load(r io.Reader, lookup func(string) (string, bool), override Overrides) (
 	for _, item := range []struct {
 		name  string
 		value *string
-	}{{"server.listen", &v.Server.Listen}, {"auth.issuer", &v.Auth.Issuer}, {"auth.jwks_url", &v.Auth.JWKSURL}, {"auth.audience", &v.Auth.Audience}} {
+	}{{"server.listen", &v.Server.Listen}, {"auth.issuer", &v.Auth.Issuer}, {"auth.jwks_url", &v.Auth.JWKSURL}, {"auth.audience", &v.Auth.Audience}, {"auth.audiences.http", &v.Auth.Audiences.HTTP}, {"auth.audiences.mcp", &v.Auth.Audiences.MCP}} {
 		if err = resolve(item.name, item.value); err != nil {
 			return Config{}, err
 		}
@@ -286,7 +291,7 @@ func validate(v Values) error {
 	if e != nil || portErr != nil || port < 0 || port > 65535 || p == "" || h == "" {
 		return invalid("server.listen", "host:port required")
 	}
-	// Only health is exposed until phase 03. Do not accidentally deploy an open business API.
+	// External listener/TLS exposure remains with phase21; operational routes now require JWTs.
 	ip := net.ParseIP(h)
 	if ip == nil || !ip.IsLoopback() {
 		return invalid("server.listen", "foundation must bind an explicit loopback IP")
@@ -317,8 +322,8 @@ func validate(v Values) error {
 	if !secureURL(v.Auth.JWKSURL) {
 		return invalid("auth.jwks_url", "trusted HTTPS URL required")
 	}
-	if len(v.Auth.Audience) == 0 || len(v.Auth.Audience) > 512 || strings.ContainsAny(v.Auth.Audience, "\r\n\t ") {
-		return invalid("auth.audience", "bounded exact audience required")
+	if err := ValidateAuth(v.Auth); err != nil {
+		return err
 	}
 	seen := map[string]bool{}
 	if len(v.Auth.Algorithms) == 0 {

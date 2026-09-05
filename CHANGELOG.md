@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — verified authority foundation
+
+Pengui JWT verification, exact signed resource/action enforcement, current-envelope query constraints, protected real operational consumers and public SDK parity. Shared bounded JWKS rotation/freshness, issuer-shaped fixtures, adversarial tests and compiled JWT-to-PostgreSQL lifecycle coverage. No new IAM tables or local issuer.
+
 ## Unreleased
 
 ### Added — phases 01 and 02

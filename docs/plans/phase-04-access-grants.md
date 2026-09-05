@@ -1,10 +1,10 @@
 # Phase 04 — access-grants
 
-Status: planned. Owner: internal/access. Hard dependencies: 02, 03.
+Status: shipped. Owner: internal/access. Hard dependencies: 02, 03.
 
 ## Authority and design
 
-The existing filename is retained for stable links; the implementation is signed-scope enforcement, not local grants. RFC-001 §5, the Pengui authority contract and D-045 control it. [COMMON.md](COMMON.md) supplies shared mechanics.
+The filename is retained for stable links; the implementation is signed-scope enforcement, not local grants. RFC-001 §5, [the Pengui authority contract](../contracts/pengui-authority.md), D-045 and D-059–D-061 control it. [COMMON.md](COMMON.md) supplies shared mechanics.
 
 ## Brief findings incorporated
 
@@ -12,21 +12,21 @@ Briefs 04, 05, 14: deny by default, tenant predicates in the data path, independ
 
 ## Findings I'm departing from
 
-Remove local roles, memberships, grant CRUD, principal management, ownership shortcuts and an implicit admin sentinel. Pengui makes those policy decisions and signs the result.
+No local roles, memberships, grant CRUD, principal management, ownership shortcuts or implicit admin sentinel. Pengui makes policy decisions and signs the result. The implementation does not expose unbuilt reporting/source APIs to claim their future integration is already complete.
 
 ## Scope and implementation tasks
 
-1. Keep the phase number/path for continuity, but replace grant resolution with exact enforcement of Pengui-signed operation/resource scopes.
-2. Build Require/Constrain helpers and scoped query inputs; resolve resource/dependency identity without role/membership/ownership-derived permission expansion.
-3. Register route/tool scope and audit requirements centrally; expose signed-operator diagnostics of actual checks, not a local principal management system.
+1. Exact enforcement of Pengui-signed operation and addressed-resource scopes with tenant-bound whole-ID wildcard semantics.
+2. Require/Constrain helpers, expiry-bound immutable query selections, and execution/dependency/artifact-context checks over server-resolved metadata.
+3. A central actual [operation registry](../contracts/chartworks-operations.json), protected diagnostics, and the first real PostgreSQL retention/audit/maintenance consumers with matching public SDK methods.
 
 ## Non-goals
 
-No local policy engine, user/grant/role tables, sharing inference or token issuance.
+No local policy engine, user/grant/role tables, sharing inference or token issuance. Full reporting, warehouse and MCP transport consumers stay in their owning phases. The selection/manifest contracts are mandatory inputs to those consumers, not a claim to infer omitted dependencies automatically.
 
 ## Config and persistence
 
-Use the single provider scope grammar and common bounds; no configurable alternate authorization mode. Business resource lookups verify references/tenant/context only. Explicit wildcard scopes follow the contract and never erase tenant predicates.
+One provider-scope grammar and common issuer bounds; no configurable alternate authorization mode. Business resource metadata establishes tenant/reference/context integrity, not access. Explicit wildcard scopes never remove tenant predicates. No new schema migration or local permission-policy table is required by this phase.
 
 ## Acceptance criteria
 
@@ -39,8 +39,10 @@ Use the single provider scope grammar and common bounds; no configurable alterna
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase04/AC01` through `TestPhase04/AC06`. Assert no source query on denial, not just an empty filtered response. Use actual registered operations and store boundaries, test malformed/foreign scopes and reuse across concurrent callers. COMMON.md requires 85% access coverage. `scripts/smoke/phase-04.sh` requires all six results.
+`TestPhase04/AC01` through `AC06` cover the actual access helpers and registered operational consumers. A counted wrapper around the real PostgreSQL repository proves denial before I/O, not broad retrieval followed by filtering. Concurrent SDK requests use distinct tenants, service attributions and operation keys. Every registered endpoint has missing-bearer/action-only/reach-only negatives. Direct in-process service calls independently enforce the same policy. Execution/artifact fixtures cover complete reference sets, private preview status, context revision mismatches and distinct operation permissions; later domain adapters must supply complete manifests and extend the same tests at their source boundary.
+
+`TestCompiledAuthorityLifecycle` exercises the actual binary, ephemeral TLS JWKS, PostgreSQL, all six SDK operations and graceful shutdown. `TestProviderRegistrationManifest` prevents documented operation/scopes from drifting from the registry. `TestSelectionExpiresWithVerifiedEnvelope` rejects stale pre-query selections. The existing 85% access threshold remains. `scripts/smoke/phase-04.sh` requires every named criterion with no skips.
 
 ## Glossary, decisions and deviations
 
-Signed reach and execution context are defined in the provider contract. D-044/D-045 supersede the former mechanism, not deny-by-default safety. No runtime completion is claimed.
+The [adversarial review](../reviews/phase-03-04-adversarial.md) and [verification record](../reviews/phase-03-04-verification.md) distinguish implemented evidence from later domain work. Actual execution-context revision IDs, not caller labels, define policy partitions. Reading retained values does not imply permission to execute a new query, and exact-run read does not bypass private preview requirements. Operational metrics is separately issued deployment-operator authority. Pengui remains the sole policy owner; Chartworks merely verifies/enforces the signed result.

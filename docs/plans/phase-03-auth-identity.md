@@ -1,32 +1,32 @@
 # Phase 03 — auth-identity
 
-Status: planned. Owner: internal/auth, internal/identity. Hard dependencies: 01.
+Status: shipped. Owner: internal/auth, internal/identity. Hard dependencies: 01.
 
 ## Authority and design
 
-RFC-001 §4 and `docs/contracts/pengui-authority.md` are the security contract. [COMMON.md](COMMON.md) supplies the implementation/testing workflow. This phase is a token verifier and envelope decoder, not an authentication provider.
+RFC-001 §4, D-044/D-045 and D-059–D-061, and [the Pengui authority contract](../contracts/pengui-authority.md) control security. [COMMON.md](COMMON.md) supplies the implementation/testing workflow. This is a token verifier and envelope decoder, not an authentication provider.
 
 ## Brief findings incorporated
 
-Briefs 04, 14: asymmetric verification, signed identity, bounded key refresh, safe failures and immutable per-call context. Keep these outcomes without copying a sibling's local issuer.
+Briefs 04, 14: asymmetric verification, signed identity, bounded key refresh, safe failures and immutable per-call context. These outcomes remain without copying a sibling's local issuer.
 
 ## Findings I'm departing from
 
-D-044 removes both issuer-driver modes, API-key exchange, signing secrets, local bootstrap and local service-account creation. Pengui alone issues authority. Apps compatibility is established and unrelated to this work.
+D-044 removes both issuer-driver modes, API-key exchange, signing secrets, local bootstrap and local service-account creation. Pengui alone issues authority. Apps compatibility is established and unrelated to this work. The actual provider minter supplies at most 32 scopes / 256 bytes each / 4096 bytes total, not a guessed larger claim contract.
 
 ## Scope and implementation tasks
 
-1. Implement a verification-only Pengui JWT middleware and immutable envelope for HTTP/MCP/in-process clients; use the single documented identity/scope contract.
-2. Wire trusted JWKS refresh and key rotation with bounded staleness, token/claim size limits and algorithm/key matching; verify temporal and issuer/audience claims.
-3. Provide the provider-scope registration/consumer handoff to Pengui using its existing minting seam. No issuer profile framework or alternate auth mode.
+1. Verification-only Pengui JWT middleware and immutable envelope for HTTP/MCP/in-process callers, using the single documented identity/scope contract.
+2. Shared trusted JWKS refresh, rotation, bounded staleness, token/claim size limits and algorithm/key matching; issuer/audience/time verification through golang-jwt v5.
+3. Concrete [provider registration handoff](../contracts/pengui-provider-registration.md) against Pengui's existing opaque provider mint seam, with a checked manifest and real operational consumer. No alternate issuer profile or local mode.
 
 ## Non-goals
 
-No local issuer, token renewal/signing, key exchange, login, grants, OAuth service or user/service-account store.
+No local issuer, token renewal/signing, key exchange, login, grants, OAuth service or user/service-account store. Full MCP transport is phase22; durable delegated authority is phase06. This milestone does not claim a deployed Pengui session was exercised.
 
 ## Config and persistence
 
-`auth.issuer`, `auth.jwks_url`, `auth.audiences.http/mcp`, `auth.algorithms`, `auth.max_token_lifetime`, `auth.clock_skew`, `auth.jwks_max_stale`, token/claim byte ceilings. Issuer/audiences are required; no signing configuration. Verification keys may be cached with freshness metadata, never private keys or user-policy records. Exact defaults are documented in the typed configuration reference.
+The typed configuration supports issuer/JWKS, exact HTTP/MCP audiences or an explicit same-audience shorthand, asymmetric algorithm allowlist, maximum token lifetime/skew, hard key freshness, refresh/request timeouts, token/claim/scope limits. The [configuration reference](../configuration.md) documents implemented defaults and bounds. There is no signing setting or local policy persistence.
 
 ## Acceptance criteria
 
@@ -39,8 +39,8 @@ No local issuer, token renewal/signing, key exchange, login, grants, OAuth servi
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase03/AC01` through `TestPhase03/AC06`, using test-only ephemeral signers and the real verifier/key loader. Test JOSE/claim malformed input and concurrent key rotation. COMMON.md requires 85% auth/identity coverage. `scripts/smoke/phase-03.sh` requires all six results; missing/skipped tests fail runtime acceptance.
+`TestPhase03/AC01` through `AC06` exercise the real verifier/key loader with ephemeral test-only asymmetric signers. Additional tests cover all six supported RS/ES algorithms, correctly signed duplicate claims, strict JSON, issuer limits, concurrent cache use, rotation/removal, immutable slices, and compiled TLS-JWKS-to-PostgreSQL operations. Fuzz targets cover the actual verifier and JSON decoder. Coverage retains the 85% auth/identity threshold. `scripts/smoke/phase-03.sh` requires all six named results; missing/skipped tests cannot close acceptance.
 
 ## Glossary, decisions and deviations
 
-D-044/D-045 define sole-issuer ownership and direct enforcement. Register the new provider scopes with their first Pengui consumer; do not claim they are already configured. No implementation completion is claimed.
+The [adversarial review](../reviews/phase-03-04-adversarial.md) and [verification record](../reviews/phase-03-04-verification.md) describe evidence and boundaries. Signature/key freshness is an authorization snapshot, not instantaneous permission revocation. Only the trusted verifier constructs production envelopes; storage coordinates do not authenticate users. Request verification and health use one cache. The operator must configure its approved scope set in Pengui; no production registration is claimed from the synthetic fixture.

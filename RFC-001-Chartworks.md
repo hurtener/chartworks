@@ -163,3 +163,7 @@ D-044–D-052 in `docs/decisions/2026-09-04-execution-baseline.md` replace old d
 No Chartworks identity policy service, host compatibility investigation, builder application, local inference, alternate production model client, unrestricted custom schedule jobs, event/condition stubs, script widgets, general multi-warehouse federation or full BI document-layout engine. Required scheduling is functional cron/interval/manual with real targets; optional notifications use Pengui integration receipts.
 
 L2 reviewed engineering/drift proposals remain planned. L3 auto-apply and a new internal analyst are explicit post-cutover extensions, not reporting blockers. Existing cross-topic/replay/learning/hybrid-report behavior is not swept into those deferrals. PDF/PNG/paginated documents are not implied by required HTML/SVG rendering.
+
+## Phase 03/04 authority implementation
+
+D-059–D-061 implement the existing Pengui provider-scope seam with one JWT verifier/cache and immutable signed envelope. [The operator handoff](docs/contracts/pengui-provider-registration.md) and [actual operation manifest](docs/contracts/chartworks-operations.json) describe the implemented consumer. Scope limits are 32 entries, 256 bytes each, 4096 total; exact HTTP/MCP audiences may be configured separately. Synchronous operational routes and SDK clients are present, but no local issuer, grants database, reporting API or full MCP transport is added by this milestone.

@@ -1,0 +1,6 @@
+{
+  "scopes": [
+    "cw.tenant.read:tenant_demo",
+    "ops.read"
+  ]
+}

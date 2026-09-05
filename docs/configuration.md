@@ -1,6 +1,6 @@
-# Implemented foundation configuration
+# Implemented configuration and authority
 
-Source of truth: `internal/config.Values`, `Defaults()` and validation. JSON only; unknown, retired, duplicate, null and trailing documents are rejected. Document size is at most 1 MiB and nesting at most 32 levels. Errors identify a safe known field/container and fixed rule, never a rejected value or secret environment contents. The full application/provider APIs remain in later phases.
+Source of truth: `internal/config.Values`, `Defaults()` and validation. JSON only; unknown, retired, duplicate, null and trailing documents are rejected. Document size is at most 1 MiB and nesting at most 32 levels. Errors identify a safe known field/container and fixed rule, never a rejected value or secret environment contents. Operational APIs now require verified Pengui authority; analytics and full MCP transports remain in their owning phases.
 
 Use `chartworks config-check --defaults` for a machine-readable defaults snapshot. Required blanks deliberately do not form a runnable development-authority configuration. The example `examples/chartworks.foundation.json` supplies references for the required deployment-specific values.
 
@@ -30,29 +30,34 @@ The PostgreSQL schema is `chartworks`; queries are schema-qualified and pooled s
 |---|---|---|---|
 | `auth.issuer` | HTTPS URL or env reference | required | No userinfo, query or fragment; identity issuer belongs to Pengui. |
 | `auth.jwks_url` | trusted HTTPS URL or env reference | required | No userinfo, query or fragment; redirects refused. HTTP fetch timeout and 1 MiB/32-key response limits. |
-| `auth.audience` | string or env reference | required | Nonempty, at most 512 bytes; no spaces/control separators. Exact intended audience is reserved for phase 03 enforcement. |
+| `auth.audience` | string or env reference | required unless using pair | Explicit same-audience shorthand for both surfaces, at most 512 bytes. Cannot be combined with nonempty `auth.audiences`. |
+| `auth.audiences.http` / `.mcp` | strings or env references | required together when shorthand absent | Exact per-surface intended audiences, at most 512 bytes each. Distinct values deny cross-surface replay. |
 | `auth.algorithms` | string array | `RS256`, `ES256` | Nonempty unique allowlist from RS/ES 256/384/512. HS/none unsupported. |
 | `auth.jwks_max_stale` | duration | `5m0s` | Positive, at most 1 hour. Failed refresh cannot reset last-success expiry. |
 | `auth.refresh_interval` | duration | `1m0s` | Positive and strictly below maximum stale age. |
 | `auth.request_timeout` | duration | `3s` | Positive, at most 1 minute. |
-| `auth.clock_skew` | duration | `30s` | 0–1 minute; validated/reserved for the phase 03 verifier, not used to extend the health probe's key freshness. |
-| `auth.max_token_lifetime` | duration | `15m0s` | Positive, at most 24 hours; validated/reserved for phase 03. No token is accepted by this foundation. |
+| `auth.clock_skew` | duration | `30s` | 0–1 minute; applies to registered token-time validation and envelope deadline, never to JWKS freshness. |
+| `auth.max_token_lifetime` | duration | `15m0s` | 1 second–24 hours; integer `exp - iat` must be positive and within the limit. |
+| `auth.max_token_bytes` | integer bytes | 32768 | 1024–65536; entire compact token bound before decoding. |
+| `auth.max_claim_bytes` | integer bytes | 24576 | 512–token bound; decoded claims. JOSE header is separately capped at 2048 bytes. |
+| `auth.max_scopes` | integer count | 32 | 1–32, matching the actual Pengui provider-minter maximum. |
+| `auth.max_scope_bytes` | integer bytes | 4096 | 1–4096 summed scope-string bytes; each scope also has a fixed 256-byte ceiling. |
 
-The key-health probe rejects duplicate IDs/fields, symmetric/private key material, invalid public coordinates/moduli and incompatible declared algorithms. It does not authenticate requests. Phase 03 must consume the same health seam with its real verifier/cache, not mistake the probe for JWT verification or add a local issuer.
+The real verifier and readiness share one bounded public-key cache. It rejects duplicate IDs/fields, symmetric/private material, invalid coordinates/moduli and key/algorithm mismatch; fetch failure does not extend last-success freshness. Rotation is single-flight and interval-bounded, including unknown-kid traffic. JSON nulls, duplicate claims, alternate authority representations and token-selected URLs are denied. Only the actual `tenant/user/session/scopes` issuer representation is accepted. See [provider registration](contracts/pengui-provider-registration.md).
 
 ## Telemetry and explicit capability enablement
 
 | Key | Type | Default | Behavior |
 |---|---|---|---|
 | `telemetry.log_format` | enum | `json` | `json` or `text`, using slog only. |
-| `telemetry.metrics` | boolean | true | Enables the internal counter/gauge exporter. False disables updates/export while retaining bounded lifecycle logs. The exporter is not mounted on the public/health router. |
+| `telemetry.metrics` | boolean | true | Enables the internal counter/gauge exporter. False disables updates/export while retaining bounded lifecycle logs. `/metrics` is protected by explicit Pengui-issued `ops.metrics` and tenant read reach; false returns 404 even to a permitted operator. |
 | `telemetry.otel` | boolean | false | True is explicitly rejected: the optional export adapter is not implemented, not silently ignored. |
 | `features.gateway` | boolean | false | True rejected until phase 05 is implemented. |
 | `features.mcp` | boolean | false | True rejected until the MCP surface phase is implemented. |
 | `features.reporting` | boolean | false | True rejected until reporting phases are implemented. |
 | `features.renderer` | boolean | false | True rejected until rendering is implemented. |
 
-`/capabilities` reports implemented foundation functionality and explicitly says business API and authentication are unavailable. It never returns provider credentials, source IDs or deployment DSNs. `/metrics`, `/mcp`, `/v1/*`, login and bootstrap paths are absent. Later authenticated API registration owns protected metric/audit access.
+`/capabilities` reports verified authentication, signed-scope enforcement and operational APIs as implemented, with analytical business APIs still unavailable. It never returns tokens, source IDs or DSNs. Health is public; the [registered operational routes](contracts/chartworks-operations.json) require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
 
 ## Future Bifrost configuration accepted as an inactive excerpt
 

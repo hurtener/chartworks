@@ -109,3 +109,7 @@ Runtime/service data is accessed through public seams, never another service's p
 ## 18. Mirror and final check
 
 AGENTS.md and CLAUDE.md must be byte-identical. Confirm the active plan DAG, all feature/gate references, named test coverage, supported source/renderer matrix and secret/name hygiene before approval. Archive content never overrides these rules. Full migration/release requires phase 34 then phase 25; the first useful slice is not complete parity.
+
+## Implemented authority baseline
+
+D-059–D-061 and docs/contracts/pengui-provider-registration.md pin the consumed Pengui bearer format and actual operational scope registry. The only production envelope constructor caller is the verifier; raw store coordinates are never authentication. Keep issuer limits, exact audience policy, shared cache freshness, expiry-bound selections and service-level enforcement intact when adding consumers. No production signing/renewal/local-policy path is authorized.

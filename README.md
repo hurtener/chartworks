@@ -2,7 +2,7 @@
 
 **Governed analytics and publishing for Pengui.** Go services for semantic data access, NLQ/BYO SQL, reusable approved reporting blocks, reports/dashboards, scheduled runs and portable retained results.
 
-Status: implementation planning. This repository does not yet claim a working Go service or completed source migration.
+Status: the Go foundation and verified operational authority (phases 01–04) are implemented with real PostgreSQL acceptance tests. Analytics/reporting implementation and full source migration remain in the subsequent phases.
 
 ## Start here
 
@@ -24,4 +24,8 @@ There are 34 phase plans, 224 acceptance criteria, 63 source-feature rows and 41
 
 ## Phase 01–02 foundation
 
-The first Go foundation now has strict configuration, lifecycle/health, PostgreSQL metadata migrations and real-store acceptance tests. Business JWT enforcement, analytics and reporting remain later phases. Start with [GETTING-STARTED.md](GETTING-STARTED.md); the [adversarial review](docs/reviews/phase-01-02-adversarial.md) records failure probes and corrections.
+The first Go foundation now has strict configuration, lifecycle/health, PostgreSQL metadata migrations and real-store acceptance tests. JWT verification and signed-scope enforcement now protect the operational consumer; analytics and reporting remain later phases. Start with [GETTING-STARTED.md](GETTING-STARTED.md); the [adversarial review](docs/reviews/phase-01-02-adversarial.md) records failure probes and corrections.
+
+## Verified operational access (phases 03/04)
+
+The production `serve` command now protects retention policy, audit, synchronous retention sweep, diagnostics and metrics with Pengui JWTs and signed addressed scopes. The old health-only foundation boundary is superseded for these implemented operations, not for the later analytical/MCP features. The listener remains explicit-loopback; a trusted backend supplies credentials. See [operator registration](docs/contracts/pengui-provider-registration.md), [operation manifest](docs/contracts/chartworks-operations.json) and [authority contract](docs/contracts/pengui-authority.md). The public Go client is `sdk/chartworks`; its caller supplies a current Pengui token provider. Chartworks issues no credentials.

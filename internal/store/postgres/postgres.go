@@ -11,11 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/hurtener/chartworks/internal/store"
 )
 
 // Options bounds database work. MigrationPolicy is apply or check; no down migration exists.
