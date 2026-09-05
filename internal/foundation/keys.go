@@ -5,7 +5,7 @@ package foundation
 import (
 	"bytes"
 	"context"
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -151,17 +151,21 @@ func validKeys(data []byte, allowed []string) bool {
 				return false
 			}
 		case "EC":
-			var curve elliptic.Curve
+			var curve ecdh.Curve
+			var size int
 			var expected string
 			switch str(k, "crv") {
 			case "P-256":
-				curve = elliptic.P256()
+				curve = ecdh.P256()
+				size = 32
 				expected = "ES256"
 			case "P-384":
-				curve = elliptic.P384()
+				curve = ecdh.P384()
+				size = 48
 				expected = "ES384"
 			case "P-521":
-				curve = elliptic.P521()
+				curve = ecdh.P521()
+				size = 66
 				expected = "ES512"
 			default:
 				return false
@@ -170,8 +174,12 @@ func validKeys(data []byte, allowed []string) bool {
 				return false
 			}
 			x, y := decode(str(k, "x")), decode(str(k, "y"))
-			size := (curve.Params().BitSize + 7) / 8
-			if len(x) != size || len(y) != size || !curve.IsOnCurve(new(big.Int).SetBytes(x), new(big.Int).SetBytes(y)) {
+			if len(x) != size || len(y) != size {
+				return false
+			}
+			point := append([]byte{4}, x...)
+			point = append(point, y...)
+			if _, e := curve.NewPublicKey(point); e != nil {
 				return false
 			}
 		default:

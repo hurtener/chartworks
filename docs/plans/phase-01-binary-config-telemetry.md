@@ -44,3 +44,7 @@ Implement `TestPhase01/AC01` through `TestPhase01/AC06` against the real owning 
 ## Glossary, decisions and deviations
 
 Update the shared glossary for new terms. D-044–D-052 govern this revision. No runtime completion/deviation is claimed; record implementation findings and equivalent behavior here before closure.
+
+## Implementation record — 2026-09-05
+
+The criterion-to-test mapping is implemented in `test/acceptance/phase01_test.go`, with shared adversarial cases and real PostgreSQL fixtures. The first foundation is intentionally loopback health-only before phases 03/04; storage scopes are isolation coordinates, not authentication. See D-056, D-057 and D-058, [operator instructions](../../GETTING-STARTED.md), [configuration reference](../configuration.md) and [self-review](../reviews/phase-01-02-adversarial.md). Package coverage uses full-suite cross-package instrumentation at unchanged thresholds. All six criteria must pass without skips before this phase is marked shipped.

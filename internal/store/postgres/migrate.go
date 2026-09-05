@@ -88,7 +88,7 @@ func (d *DB) migrate(ctx context.Context) error {
 				return store.ErrMigration
 			}
 		}
-		return nil
+		return requiredRelations(ctx, tx)
 	})
 }
 
@@ -106,7 +106,7 @@ func (d *DB) Check(ctx context.Context) error {
 		if n != len(manifest) {
 			return store.ErrMigration
 		}
-		return nil
+		return requiredRelations(ctx, tx)
 	})
 }
 
@@ -117,4 +117,16 @@ func SchemaVersion() string {
 		return "unavailable"
 	}
 	return fmt.Sprint(len(m))
+}
+
+// Required relation presence complements history checks, without claiming a superuser-tamper sandbox.
+func requiredRelations(ctx context.Context, tx pgx.Tx) error {
+	var count int
+	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname IN ('schema_migrations','policies','policy_revisions','audit_events','operations')`).Scan(&count); e != nil {
+		return e
+	}
+	if count != 5 {
+		return store.ErrMigration
+	}
+	return nil
 }

@@ -84,7 +84,7 @@ func TestKeyHTTPFailures(t *testing.T) {
 			s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch mode {
 				case "redirect":
-					http.Redirect(w, r, "https://other.example", 302)
+					http.Redirect(w, r, "https://other.example", http.StatusFound)
 				case "oversize":
 					_, _ = io.WriteString(w, strings.Repeat("x", (1<<20)+2))
 				case "status":

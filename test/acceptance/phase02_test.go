@@ -382,6 +382,7 @@ func TestPhase02(t *testing.T) {
 			commandCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			args := append([]string{"../../scripts/store_archive.py", action, archive}, extra...)
+			// #nosec G204 -- fixed tool and test-owned temporary paths; no shell or caller input.
 			cmd := exec.CommandContext(commandCtx, "python3", args...)
 			cmd.Env = append(os.Environ(), "CHARTWORKS_STORE_URL="+uri)
 			return cmd.CombinedOutput()

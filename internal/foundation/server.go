@@ -65,11 +65,12 @@ func (s *Server) readiness() (bool, map[string]string) {
 	for _, name := range []string{"store", "verification_keys"} {
 		v, ok := s.state[name]
 		state := "unavailable"
-		if !ok {
+		switch {
+		case !ok:
 			state = "starting"
-		} else if !v.ValidUntil.IsZero() && !now.Before(v.ValidUntil) {
+		case !v.ValidUntil.IsZero() && !now.Before(v.ValidUntil):
 			state = "stale"
-		} else if v.Ready {
+		case v.Ready:
 			state = "ready"
 		}
 		out[name] = state

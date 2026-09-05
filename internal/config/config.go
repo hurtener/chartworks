@@ -25,6 +25,7 @@ func invalid(field, rule string) error { return &Error{Field: field, Rule: rule}
 // Duration is a JSON duration string with explicit units.
 type Duration time.Duration
 
+// UnmarshalJSON accepts explicit duration strings only.
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var s string
 	if json.Unmarshal(b, &s) != nil {
@@ -37,6 +38,8 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	*d = Duration(v)
 	return nil
 }
+
+// MarshalJSON preserves explicit duration units.
 func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(time.Duration(d).String()) }
 
 // Server contains only implemented transport controls.
@@ -135,8 +138,12 @@ type Config struct {
 	dsn    string
 }
 
-func (c Config) String() string               { return "configuration(redacted)" }
-func (c Config) GoString() string             { return c.String() }
+func (c Config) String() string { return "configuration(redacted)" }
+
+// GoString prevents detailed formatting from printing a resolved credential.
+func (c Config) GoString() string { return c.String() }
+
+// MarshalJSON emits detached values and secret references, never credential bytes.
 func (c Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.values) }
 
 // Values returns a deep copy, so consumers cannot race by mutating the live snapshot.
@@ -250,9 +257,10 @@ func reference(s string) (string, error) {
 		return "", invalid("secret", "invalid reference")
 	}
 	for i, c := range n {
-		if !((c >= 'A' && c <= 'Z') || c == '_' || (i > 0 && c >= '0' && c <= '9')) {
-			return "", invalid("secret", "invalid reference")
+		if (c >= 'A' && c <= 'Z') || c == '_' || (i > 0 && c >= '0' && c <= '9') {
+			continue
 		}
+		return "", invalid("secret", "invalid reference")
 	}
 	return n, nil
 }
@@ -261,9 +269,10 @@ func safeField(s string) string {
 		return "document"
 	}
 	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || c == '_' || c == '.') {
-			return "document"
+		if (c >= 'a' && c <= 'z') || c == '_' || c == '.' {
+			continue
 		}
+		return "document"
 	}
 	return s
 }
@@ -320,6 +329,9 @@ func validate(v Values) error {
 			return invalid("auth.algorithms", "invalid or duplicate algorithm")
 		}
 		seen[a] = true
+	}
+	if v.Store.TransactionTimeout < Duration(time.Millisecond) {
+		return invalid("store.transaction_timeout", "minimum duration is one millisecond")
 	}
 	if v.Store.MaxConns < 1 || v.Store.MaxConns > 100 {
 		return invalid("store.max_conns", "must be between 1 and 100")
@@ -394,7 +406,8 @@ func checkJSON(d *json.Decoder, depth int) error {
 		}
 		return nil
 	}
-	if delim == '{' {
+	switch {
+	case delim == '{':
 		seen := map[string]bool{}
 		for d.More() {
 			k, err := d.Token()
@@ -410,13 +423,13 @@ func checkJSON(d *json.Decoder, depth int) error {
 				return err
 			}
 		}
-	} else if delim == '[' && depth > 0 {
+	case delim == '[' && depth > 0:
 		for d.More() {
 			if e = checkJSON(d, depth+1); e != nil {
 				return e
 			}
 		}
-	} else {
+	default:
 		return invalid("document", "object required")
 	}
 	if _, e = d.Token(); e != nil {
