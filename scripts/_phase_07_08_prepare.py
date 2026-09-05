@@ -1,101 +1,18 @@
-from pathlib import Path
+"""Temporary branch-only review patch application; removed before final PR CI.
+The existing foundation/source/vector materialization is already committed.
+"""
+import base64
+import hashlib
+import subprocess
+import zlib
 
-# Temporary development materialization; removed before final read-only CI and PR.
-def edit(path, fn):
-    p = Path(path)
-    s = p.read_text()
-    out = fn(s)
-    if out != s:
-        p.write_text(out)
-
-# Extend the actual merged composition root; preserve its broker/gateway lifecycle APIs.
-def work(s):
-    if 'sourceService' in s:
-        return s
-    s = s.replace('"github.com/hurtener/chartworks/internal/config"', '"github.com/hurtener/chartworks/internal/config"\n readexec "github.com/hurtener/chartworks/internal/exec"\n "github.com/hurtener/chartworks/internal/sourceapi"\n "github.com/hurtener/chartworks/internal/sources"')
-    s = s.replace('type work struct {', 'type work struct {\n sourceService *sources.Service')
-    marker = '\tw.handler = workapi.Handler(verifier, w.engine, w.queue, next)'
-    assert marker in s
-    s = s.replace(marker, '''	w.sourceService, err = sources.New(db, v.Sources, lookup)
-	if err != nil { w.close(); return nil, err }
-	var validator *readexec.Validator
-	if v.Sources.Enabled {
-		validator, err = readexec.NewValidator(w.sourceService, v.Exec)
-		if err != nil { w.close(); return nil, err }
-	}
-	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))''', 1)
-    s = s.replace('w.wait.Wait()', 'w.wait.Wait()\n if w.sourceService != nil { w.sourceService.Close() }', 1)
-    return s
-edit('internal/foundation/work.go', work)
-
-def vector(s):
-    if '"unicode/utf8"' not in s:
-        s = s.replace('"time"', '"time"\n "unicode/utf8"')
-    s = s.replace('if len(v) < 1 ||', 'if !utf8.ValidString(v) || len(v) < 1 ||', 1)
-    s = s.replace('len(f.Text) < 1', '!utf8.ValidString(f.Text) || len(f.Text) < 1') if '!utf8.ValidString(f.Text)' not in s else s
-    start = s.index('func VectorLiteral(')
-    end = s.index('\n}\n', start) + 3
-    s = s[:start] + '''func VectorLiteral(v []float32, dimensions int) (string, error) {
-	if dimensions < 1 || dimensions > 16000 || len(v) != dimensions { return "", store.ErrInvalid }
-	var b strings.Builder
-	b.WriteByte('[')
-	squaredNorm := float64(0)
-	for i, n := range v {
-		if math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) { return "", store.ErrInvalid }
-		squaredNorm += float64(n)*float64(n)
-		if i != 0 { b.WriteByte(',') }
-		b.WriteString(strconv.FormatFloat(float64(n), 'g', -1, 32))
-	}
-	b.WriteByte(']')
-	// pgvector 0.8.2 accumulates cosine norms in float32. Finite components alone
-	// do not prevent zero/overflowed accumulators and NaN distances. This declared
-	// domain leaves ample margin for all supported dimensions without rescaling evidence.
-	if squaredNorm < 1e-20 || squaredNorm > 1e20 { return "", store.ErrInvalid }
-	return b.String(), nil
-}
-''' + s[end:]
-    return s
-edit('internal/vindex/vindex.go', vector)
-
-def vector_store(s):
-    if '"math"' not in s:
-        s = s.replace('"errors"', '"errors"\n "math"')
-    if 'math.IsNaN(h.Distance)' not in s:
-        s = s.replace('bytes += len(h.Text)', 'if math.IsNaN(h.Distance) || math.IsInf(h.Distance, 0) || h.Distance < 0 || h.Distance > 2 { rows.Close(); return store.ErrInvalid }\n bytes += len(h.Text)', 1)
-    return s
-edit('internal/store/postgres/vindex.go', vector_store)
-
-def vector_migration(s):
-    s = s.replace('public.vector_norm(embedding)>0', 'public.vector_norm(embedding) BETWEEN 1e-10 AND 1e10')
-    if "TG_OP IN ('UPDATE','DELETE')" not in s:
-        start = s.index('CREATE FUNCTION chartworks.protect_vector_facet()')
-        end_marker = 'CREATE TRIGGER immutable_vector_facet BEFORE INSERT OR UPDATE ON chartworks.vector_facets FOR EACH ROW EXECUTE FUNCTION chartworks.protect_vector_facet();'
-        end = s.index(end_marker, start) + len(end_marker)
-        s = s[:start] + '''CREATE FUNCTION chartworks.protect_vector_facet() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE current_state text;
-BEGIN
- IF TG_OP IN ('UPDATE','DELETE') THEN
-  SELECT state INTO current_state FROM chartworks.vector_generations
-  WHERE tenant_id=OLD.tenant_id AND topic_id=OLD.topic_id AND context_id=OLD.context_id AND generation_id=OLD.generation_id FOR SHARE;
-  IF current_state='ready' THEN RAISE EXCEPTION 'sealed vector generation' USING ERRCODE='23514'; END IF;
-  -- A parent deletion has already removed the generation in this transaction;
-  -- only that legitimate cascade may erase facets from a formerly sealed parent.
-  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
- END IF;
- SELECT state INTO current_state FROM chartworks.vector_generations
- WHERE tenant_id=NEW.tenant_id AND topic_id=NEW.topic_id AND context_id=NEW.context_id AND generation_id=NEW.generation_id FOR SHARE;
- IF current_state IS DISTINCT FROM 'staging' THEN RAISE EXCEPTION 'sealed vector generation' USING ERRCODE='23514'; END IF;
- RETURN NEW;
-END $$;
-CREATE TRIGGER immutable_vector_facet BEFORE INSERT OR UPDATE OR DELETE ON chartworks.vector_facets FOR EACH ROW EXECUTE FUNCTION chartworks.protect_vector_facet();''' + s[end:]
-    return s
-edit('internal/store/postgres/migrations/004_vector_generations.sql', vector_migration)
-
-def source_types(s):
-    # Do not invoke a custom type's typmod formatter while merely discovering it.
-    s = s.replace("format_type(a.atttypid,a.atttypmod)", "CASE WHEN n.nspname='pg_catalog' THEN format_type(a.atttypid,a.atttypmod) ELSE n.nspname||'.'||t.typname END") if "ELSE n.nspname||'.'||t.typname END" not in s else s
-    return s
-edit('internal/sources/postgres.go', source_types)
-
-# Closed JSON binding checks must also reject absent keys at the SQL constraint.
-edit('internal/store/postgres/migrations/005_sources.sql', lambda s: s.replace("CHECK(binding->>'tenant'=tenant_id", "CHECK(binding ?& ARRAY['tenant','source','context','dialect','revision'] AND binding->>'tenant'=tenant_id"))
+DATA = """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"""
+# Correct two transcription insertions before verifying the complete local patch hash.
+DATA = DATA.replace('MTdx3bkMtMt8bS0', 'MTdx3bkMt8bS0').replace('HcuMvUBUMnJCOh', 'HcuMvUBMnJCOh')
+patch = zlib.decompress(base64.b64decode(DATA, validate=True))
+assert hashlib.sha256(patch).hexdigest() == 'b389fe2c11373466102837aed1a948c9f28f1a18c3a69c102724e04311fe85d7'
+check = subprocess.run(['git', 'apply', '--check', '-'], input=patch, capture_output=True)
+if check.returncode == 0:
+    subprocess.run(['git', 'apply', '-'], input=patch, check=True)
+else:
+    subprocess.run(['git', 'apply', '--reverse', '--check', '-'], input=patch, check=True)
