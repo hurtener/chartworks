@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -12,19 +13,42 @@ func TestSourceReferenceExcerpt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var document map[string]any
-	if err := json.Unmarshal(data, &document); err != nil {
+	var excerpt map[string]json.RawMessage
+	if err = json.Unmarshal(data, &excerpt); err != nil {
 		t.Fatal(err)
 	}
-	// The example is an excerpt, so supply the existing synthetic verifier fixture.
-	document["auth"] = good().Auth
-	data, err = json.Marshal(document)
+	if len(excerpt) != 2 || excerpt["sources"] == nil || excerpt["exec"] == nil {
+		t.Fatal("unexpected reference sections")
+	}
+	authority, err := json.Marshal(good().Auth)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(bytes.NewReader(data), func(string) (string, bool) {
-		return "synthetic-reference-value", true
-	}, Overrides{}); err != nil {
-		t.Fatal("published source excerpt is not consumable", err)
+	excerpt["auth"] = authority
+	input, err := json.Marshal(excerpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookup := func(name string) (string, bool) {
+		if name != "CHARTWORKS_STORE_URL" {
+			t.Fatalf("configuration resolved warehouse credentials: %s", name)
+		}
+		return "synthetic", true
+	}
+	cfg, err := Load(bytes.NewReader(input), lookup, Overrides{})
+	if err != nil {
+		t.Fatal("published source excerpt rejected", err)
+	}
+	before := cfg.Values()
+	if !before.Sources.Enabled || len(before.Sources.Connections) != 1 || before.Sources.Connections[0].ReadDSN != "env:CHARTWORKS_SOURCE_READ" || before.Exec.Concurrency != 2 {
+		t.Fatal("reference lost typed configuration")
+	}
+	wire, err := json.Marshal(map[string]any{"auth": before.Auth, "sources": before.Sources, "exec": before.Exec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load(bytes.NewReader(wire), lookup, Overrides{})
+	if err != nil || !reflect.DeepEqual(before, again.Values()) {
+		t.Fatal("configuration roundtrip changed source/read policy", err)
 	}
 }

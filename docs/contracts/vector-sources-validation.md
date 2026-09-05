@@ -10,11 +10,15 @@ The executable operation inventory is [chartworks-source-operations.json](chartw
 The source HTTP handler and Go SDK use the same service checks. Create requires
 `sources.write` and signed tenant write reach. Read/list require `sources.read`
 and signed source read reach, applied before the database limit. Test/discovery
-require their registered action, source query reach and use reach for the actual
+require `sources.read`, source read reach and use reach for the actual
 immutable execution-context revision. Rotation requires source write reach.
 Denials occur before credential resolution or warehouse work. Exact request fields
 are closed; a body/header tenant, DSN, credential, relation list or context label
-cannot override the registered binding. SQL is not accepted by the source HTTP API.
+cannot override the registered binding. The `/validate` operation accepts SQL only
+for checked validation/native planning and returns a non-executable receipt. No
+source HTTP operation executes caller-supplied SQL or reconstructs an executable
+plan from a receipt. JSON reconstruction is explicitly rejected and clears any
+previous plan state.
 
 Operators configure a bounded tenant-bound connection alias and explicit `env:`
 references using [chartworks.sources.json](../../examples/chartworks.sources.json).
@@ -107,9 +111,13 @@ cannot authorize reuse. Oversized responses fail atomically without partial hits
 
 Current hard bounds: 4096 origins per generation; 64 facets and 4 MiB per upsert;
 4096 bytes per facet text; 8 queries per search batch; 8 kinds and 10 hits per kind;
-2 MiB combined response; 1–16000 vector dimensions. These are enforced initial
-bounds, not a new configurable tuning interface. Retrieval is exact pgvector search
-with partition indexes; no ANN/production-latency claim is inferred from fixtures.
+2 MiB combined response; 1–16000 vector dimensions; vector L2 norm from 1e-10 to
+1e10. Finite components alone do not guarantee finite cosine products in the pinned
+pgvector implementation. API validation and a database constraint reject unsafe
+magnitudes without silently normalizing them; invalid result distances fail the
+entire response. These are enforced initial bounds, not a new configurable tuning
+interface. Retrieval is exact pgvector search with partition indexes; no
+ANN/production-latency claim is inferred from fixtures.
 
 ## Operation and deployment
 

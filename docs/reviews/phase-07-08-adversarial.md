@@ -17,6 +17,21 @@ it is not a rewrite or an independent external security audit.
 | An oversized batch could return partially authorized evidence | Atomic bounded response failure; `TestVindexBatchResponseCapIsAtomic` exceeds the real 2 MiB response limit. |
 | Caller mutation, incomplete generations, rotation and narrowed authority could reuse stale state | Detached bindings/slices, sealed manifests, immutable context revisions, signed selections and concurrent publish/search/rotation negatives in phase acceptance. |
 
+## Recovery additions
+
+`TestVindexRejectsUnstableCosine` reproduces the pinned pgvector cosine NaN with
+finite extreme inputs and rejects both overflow and underflow magnitudes at the
+service and database boundaries. The wide documented L2-norm interval is checked
+without silently changing normalization. A deliberately invalid distance from the
+backend is rejected atomically, with no partial results.
+
+Phase 08 AC04 now rejects all JSON reconstruction of a plan, including attempts
+against an existing valid plan: failed reconstruction clears its prior authority
+and performs zero warehouse work. The source reference excerpt is exercised
+through the actual closed configuration decoder by `TestSourceReferenceExcerpt`.
+No lint/coverage exception was added; code and synthetic credentials were corrected
+instead of suppressing the reported checks.
+
 ## Executed development evidence and final gates
 
 The reviewed runtime snapshot `8fe346673500657ebda47dea67e4123e1e0cda84` has retained
