@@ -1,0 +1,8 @@
+[
+  {"method":"GET","path":"/v1/retention-policy","action":"ops.read","permission":"read","mutation":false},
+  {"method":"PUT","path":"/v1/retention-policy","action":"ops.write","permission":"write","mutation":true},
+  {"method":"GET","path":"/v1/audit-events","action":"ops.audit","permission":"read","mutation":false},
+  {"method":"POST","path":"/v1/retention-sweeps","action":"ops.maintain","permission":"erase","mutation":true},
+  {"method":"GET","path":"/v1/access/diagnostics","action":"ops.inspect","permission":"read","mutation":false},
+  {"method":"GET","path":"/metrics","action":"ops.metrics","permission":"read","mutation":false}
+]
