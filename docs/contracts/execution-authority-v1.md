@@ -29,7 +29,7 @@ nor credential values enter telemetry. There are no on-disk token caches.
 Set `PENGUI_EXECUTION_BINDINGS_FILE` to an absolute, regular, operator-controlled
 JSON file with no group/world write permission. Replace it atomically for changes;
 keep its parent directory operator-controlled. Pengui reads it on every request.
-The file contains version1 and at most128 unique bindings. A binding has only
+The file contains version 1 and at most128 unique bindings. A binding has only
 `id`, `revision`, `tenant`, `runtime_id`, `capability_id`, `audience`, `operation`,
 `enabled`, `not_after`. Only `retention.sweep` is supported. The registered runtime
 and MCP-server capability must both still be enabled. The binding tenant/runtime
@@ -42,7 +42,7 @@ asymmetric issuer/key lifecycle signs only `ops.maintain`,
 `cw.run.execute:<job_id>`. The dedicated `:execution` audience and
 `execution_version`, `execution_binding`, `execution_binding_revision`,
 `execution_manifest` fields bind the token to the exact accepted manifest.
-The response is refused when a30s grant would outlive the approved binding.
+The response is refused when a 30s grant would outlive the approved binding.
 Revocation is checked at each pull; an already-issued offline JWT remains usable
 until its <=30s expiry. This is not an immediate-revocation promise.
 

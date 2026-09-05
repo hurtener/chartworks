@@ -88,7 +88,7 @@ Go renders tables/KPIs/text; a pinned isolated ECharts worker renders SVG from s
 
 The registry maps63 source rows and41 review gates to224 named criteria over34 phases. Q11 is explicitly discarded stubs; other required capabilities cannot disappear behind a demo or disabled flag. G41 adds Bifrost-only remote inference. Planning tests prove coherence, not live source/model behavior or completed migration. Runtime closure requires real named tests and applicable evidence.
 
-## Phase05/06 implementation addendum (2026-09-05)
+## Phases 05/06 implementation addendum (2026-09-05)
 
 D-062/D-063 deliver the remote-only Bifrost gateway, fixed-input operator probes,
 one PostgreSQL queue and bounded maintenance occurrences with the actual

@@ -57,7 +57,7 @@ func ValidateJobs(j Jobs, a Auth) error {
 			return invalid("jobs.credentials", "unique tenant coordinates required")
 		}
 		for _, r := range c.Tenant {
-			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.' || r == ':') {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' && r != '.' && r != ':' {
 				return invalid("jobs.credentials", "invalid tenant coordinate")
 			}
 		}

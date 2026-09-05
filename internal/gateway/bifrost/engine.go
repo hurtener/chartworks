@@ -286,7 +286,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 			return out, gateway.ErrOutput
 		}
 		choice := response.Choices[0]
-		message := choice.ChatNonStreamResponseChoice.Message
+		message := choice.Message
 		if message == nil || message.Content == nil || message.Content.ContentStr == nil || choice.FinishReason == nil || *choice.FinishReason != "stop" || (message.ChatAssistantMessage != nil && len(message.ToolCalls) != 0) {
 			return out, gateway.ErrOutput
 		}

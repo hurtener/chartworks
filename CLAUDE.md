@@ -114,7 +114,7 @@ AGENTS.md and CLAUDE.md must be byte-identical. Confirm the active plan DAG, all
 
 D-059–D-061 and docs/contracts/pengui-provider-registration.md pin the consumed Pengui bearer format and actual operational scope registry. The only production envelope constructor caller is the verifier; raw store coordinates are never authentication. Keep issuer limits, exact audience policy, shared cache freshness, expiry-bound selections and service-level enforcement intact when adding consumers. No production signing/renewal/local-policy path is authorized.
 
-## Phase05/06 consumers
+## Phases 05/06 consumers
 
 D-062/D-063 and docs/contracts/execution-authority-v1.md pin the only production
 Bifrost path and the real Pengui-owned execution companion. New jobs must use the

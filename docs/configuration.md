@@ -65,7 +65,7 @@ The real verifier and readiness share one bounded public-key cache. It rejects d
 
 `gateway.roles` is a closed map: `embedding`, `enhance`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Each configured role supplies its remote provider/model and a positive timeout of at most 5 minutes. `max_tokens` is 0–65536; phase 05 applies the role-specific execution budget. Optional roles require `enabled=true` to call inference. Only rerank accepts `on_failure` (`fail` or `preserve_candidates`). Structured roles require a positive `max_tokens` cap.
 
-The embedding role also requires `dimensions` 1–16384, `max_batch_items` 1–1024 and `max_batch_bytes` 1–4 MiB. Rerank requires `max_candidates` 1–1024. These are configuration-shape bounds, not live provider capability proofs. The separate [gateway contract](contracts/model-gateway.md) owns execution/response validation in phase05. The existing example remains the remote embedding/rerank starting point; no local model support is added.
+The embedding role also requires `dimensions` 1–16384, `max_batch_items` 1–1024 and `max_batch_bytes` 1–4 MiB. Rerank requires `max_candidates` 1–1024. These are configuration-shape bounds, not live provider capability proofs. The separate [gateway contract](contracts/model-gateway.md) owns execution/response validation in phase 05. The existing example remains the remote embedding/rerank starting point; no local model support is added.
 
 ## Sources and secret handling
 
@@ -89,7 +89,7 @@ concurrency1–128 (at least workers), tenant concurrency1–global, pending1–
 per-tenant pending1–global pending, attempts1–8, batch1–1000. Lease1s–1m,
 heartbeat10ms–less-than-half-lease, poll10ms–5s, timeout100ms–1m, backoff10ms–30s;
 retry backoff is capped at1m. The queued operation lifetime snapshots the current
-retention policy's `operation_hours`, not a hardcoded24h.
+retention policy's `operation_hours`, not a hardcoded 24h.
 
 `jobs.broker_url` is the trusted HTTPS Pengui `/exchange/execution-authority`
 endpoint. `jobs.credentials[]` contains up to128 unique tenant partitions plus

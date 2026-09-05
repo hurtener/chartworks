@@ -18,12 +18,18 @@ import (
 )
 
 var (
-	ErrInvalid   = errors.New("jobs: invalid request")
-	ErrBusy      = errors.New("jobs: queue capacity reached")
-	ErrEmpty     = errors.New("jobs: no eligible operation")
+	// ErrInvalid rejects malformed operation or schedule input.
+	ErrInvalid = errors.New("jobs: invalid request")
+	// ErrBusy reports a durable queue admission limit.
+	ErrBusy = errors.New("jobs: queue capacity reached")
+	// ErrEmpty reports that no operation is eligible for dispatch.
+	ErrEmpty = errors.New("jobs: no eligible operation")
+	// ErrAuthority rejects unavailable current execution authority.
 	ErrAuthority = errors.New("jobs: fresh execution authority unavailable")
+	// ErrTransient reports temporarily unavailable execution authority.
 	ErrTransient = errors.New("jobs: execution authority temporarily unavailable")
-	ErrRunning   = errors.New("jobs: worker already running")
+	// ErrRunning rejects a duplicate worker lifecycle start.
+	ErrRunning = errors.New("jobs: worker already running")
 )
 
 // MaintenanceKind is the only executable target implemented in this phase.

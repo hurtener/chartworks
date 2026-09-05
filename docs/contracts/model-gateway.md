@@ -1,6 +1,6 @@
 # Model gateway: Bifrost SDK, remote inference only
 
-Status: implementation contract, 2026-09-04; owner directive recorded in D-053. Applies to every phase and supersedes any reading of an older plan that permits a second production model driver. Implemented in phase05 with recorded-wire SDK tests; no paid-provider live support claim is made.
+Status: implementation contract, 2026-09-04; owner directive recorded in D-053. Applies to every phase and supersedes any reading of an older plan that permits a second production model driver. Implemented in phase 05 with recorded-wire SDK tests; no paid-provider live support claim is made.
 
 ## Boundary
 

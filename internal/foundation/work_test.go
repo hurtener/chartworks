@@ -24,6 +24,7 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer verifier.Close()
+	// #nosec G101 -- environment-variable references only; synthetic test credentials are resolved separately.
 	v.Gateway.Bifrost.Providers = []config.Provider{{Name: "openai", APIKey: "env:MODEL_TEST_KEY"}}
 	for _, role := range config.RoleNames() {
 		if config.OptionalRole(role) {
@@ -34,6 +35,7 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	v.Features.Gateway = true
 	v.Jobs.Enabled = true
 	v.Jobs.BrokerURL = "https://issuer.example.test/exchange/execution-authority"
+	// #nosec G101 -- environment-variable references only; synthetic test credentials are resolved separately.
 	v.Jobs.Credentials = []config.BrokerCredential{{Tenant: "tenant", ClientID: "env:CLIENT_TEST_ID", ClientSecret: "env:CLIENT_TEST_SECRET"}}
 	lookup := func(string) (string, bool) { return "SYNTHETIC_ASSEMBLY_ONLY_NOT_A_LIVE_CREDENTIAL", true }
 	w, err := setupWork(ctx, v, db, verifier, http.NotFoundHandler(), lookup, io.Discard)

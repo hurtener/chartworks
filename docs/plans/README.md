@@ -8,7 +8,7 @@ Pengui alone owns issuer/authentication/access-policy decisions. Chartworks vali
 
 Harbor/Pengui MCP Apps support is established. Implement Chartworks tools/resources/viewer; no host qualification, framework selection or unrelated protocol migration. Use the existing Pengui/client BFF for iframe credentials.
 
-All production completion, structured generation, embeddings and reranking use the embedded Bifrost Go SDK and remote providers. No local learned models, weights/downloads, cross-encoder service or parallel direct model client. [The gateway contract](../contracts/model-gateway.md) and [reference excerpt](../../examples/chartworks.gateway.json) are binding phase05 inputs. Deterministic tokenization, SQL parsing, pgvector search and rendering remain normal application work. Constructing the gateway performs no inference; the explicitly authorized operator probe performs paid remote inference when invoked.
+All production completion, structured generation, embeddings and reranking use the embedded Bifrost Go SDK and remote providers. No local learned models, weights/downloads, cross-encoder service or parallel direct model client. [The gateway contract](../contracts/model-gateway.md) and [reference excerpt](../../examples/chartworks.gateway.json) are binding phase 05 inputs. Deterministic tokenization, SQL parsing, pgvector search and rendering remain normal application work. Constructing the gateway performs no inference; the explicitly authorized operator probe performs paid remote inference when invoked.
 
 Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/block/report targets. Discard source event/condition/condition-check/custom-code stubs. Business validation, immutable revisions, certification, SQL safety, source data partitions, retention and execution budgets remain Chartworks responsibilities, not a second IAM system.
 
@@ -16,7 +16,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 224 acceptance criteria**: phase05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–06 are implemented; the remaining twenty-eight are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success.
+There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–06 are implemented; the remaining twenty-eight are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 
@@ -67,7 +67,7 @@ Run semantic/NLQ work16->17->18 alongside block work, then add19/29. Reports unl
 
 Uploads, full driver coverage, pipelines and L2 proposals proceed on their own dependencies. They do not delay the first reporting demonstration unnecessarily. Phase33 composes onboarding,34 closes every required capability/cohort, and25 closes release. L3 and a new internal analyst do not gate this migration.
 
-Core dependencies are acyclic. Cumulative tests extend earlier services without reverse imports. The phase05 build-time dependency of28 supports optional narrative interfaces; frozen runtime operations without narrative still make zero SDK/provider calls. Retained artifact reads do not require a live warehouse or model provider.
+Core dependencies are acyclic. Cumulative tests extend earlier services without reverse imports. The phase 05 build-time dependency of28 supports optional narrative interfaces; frozen runtime operations without narrative still make zero SDK/provider calls. Retained artifact reads do not require a live warehouse or model provider.
 
 ## First useful product proof
 

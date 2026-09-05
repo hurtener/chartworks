@@ -24,7 +24,7 @@ func NewSchema(name string, document []byte) (*Schema, error) {
 		return nil, ErrInput
 	}
 	for _, r := range name {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' {
 			return nil, ErrInput
 		}
 	}

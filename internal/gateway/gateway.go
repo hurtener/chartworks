@@ -15,14 +15,22 @@ import (
 )
 
 var (
-	ErrInput       = errors.New("gateway: invalid input")
-	ErrOutput      = errors.New("gateway: invalid provider output")
-	ErrDisabled    = errors.New("gateway: role disabled")
+	// ErrInput rejects an invalid or unauthorized inference input.
+	ErrInput = errors.New("gateway: invalid input")
+	// ErrOutput rejects a malformed or incomplete provider result.
+	ErrOutput = errors.New("gateway: invalid provider output")
+	// ErrDisabled reports an operation that is not explicitly enabled.
+	ErrDisabled = errors.New("gateway: role disabled")
+	// ErrUnavailable hides provider transport and credential details.
 	ErrUnavailable = errors.New("gateway: provider unavailable")
-	ErrBudget      = errors.New("gateway: operation budget exhausted")
-	ErrBusy        = errors.New("gateway: concurrency limit reached")
-	ErrClosed      = errors.New("gateway: closed")
-	ErrSpace       = errors.New("gateway: embedding space mismatch; reindex required")
+	// ErrBudget reports an exhausted operation budget.
+	ErrBudget = errors.New("gateway: operation budget exhausted")
+	// ErrBusy reports bounded concurrency admission refusal.
+	ErrBusy = errors.New("gateway: concurrency limit reached")
+	// ErrClosed reports an engine that has begun shutdown.
+	ErrClosed = errors.New("gateway: closed")
+	// ErrSpace requires reindexing rather than mixing embedding spaces.
+	ErrSpace = errors.New("gateway: embedding space mismatch; reindex required")
 )
 
 // Call is an immutable, authorized data partition. Domain services supply actual resolved references.
@@ -149,7 +157,7 @@ type Embedded struct {
 	Receipt Receipt
 }
 
-// Ranked preserves stable caller IDs. A nil Score means unchanged order, not an invented zero.
+// RankedItem preserves stable caller IDs. A nil Score means unchanged order, not an invented zero.
 type RankedItem struct {
 	ID    string   `json:"id"`
 	Score *float64 `json:"score,omitempty"`

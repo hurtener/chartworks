@@ -17,7 +17,7 @@ The existing broker token path did not supply durable manifest-bound service
 execution. Implement the additive Pengui `/exchange/execution-authority` v1
 endpoint with its existing vault and asymmetric minter, not a guessed URL or
 Chartworks issuer. An operator binding file lives only in Pengui; every pull
-rechecks its exact broker/runtime/capability and bounds a30s execution token to
+rechecks its exact broker/runtime/capability and bounds a 30s execution token to
 the accepted job/manifest and binding expiry. Chartworks persists opaque binding
 and attribution but no bearer. The sole initial handler is bounded retention in
 the same PostgreSQL transaction as attempt completion and audit.

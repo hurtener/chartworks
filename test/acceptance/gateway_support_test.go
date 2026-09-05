@@ -183,7 +183,9 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 	t.Cleanup(f.server.Close)
 	f.ca = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.server.TLS.Certificates[0].Certificate[0]}))
 	f.cfg = config.Defaults().Gateway
+	// #nosec G101 -- environment-variable references only; synthetic test credentials are resolved separately.
 	f.cfg.Bifrost.Providers = []config.Provider{{Name: "primary", Type: "openrouter", APIKey: "env:PRIMARY_KEY", BaseURL: f.server.URL}, {Name: "secondary", Type: "openrouter", APIKey: "env:SECONDARY_KEY", BaseURL: f.server.URL}}
+	// #nosec G101 -- environment-variable references only; synthetic test credentials are resolved separately.
 	f.cfg.Bifrost.Providers = append(f.cfg.Bifrost.Providers, config.Provider{Name: "reranker", Type: "cohere", APIKey: "env:PRIMARY_KEY", BaseURL: f.server.URL})
 	f.cfg.Roles = map[string]config.Role{}
 	for _, name := range config.RoleNames() {

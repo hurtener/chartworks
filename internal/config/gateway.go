@@ -81,22 +81,25 @@ func ValidateGateway(g Gateway, enabled bool) error {
 		if !names[name] || !ok || r.Model == "" || len(r.Model) > 256 || strings.TrimSpace(r.Model) != r.Model || strings.ContainsAny(r.Model, "\r\n\t") || r.Timeout <= 0 || r.Timeout > Duration(5*time.Minute) {
 			return invalid("gateway.roles", "known role, route, model and bounded timeout required")
 		}
-		if r.OnFailure != "" && !(name == "rerank" && (r.OnFailure == "fail" || r.OnFailure == "preserve_candidates")) {
+		if r.OnFailure != "" && (name != "rerank" || r.OnFailure != "fail" && r.OnFailure != "preserve_candidates") {
 			return invalid("gateway.roles.on_failure", "only rerank has an explicit fallback policy")
 		}
-		if name == "embedding" {
+		switch name {
+		case "embedding":
 			if NativeProvider(p) == "cohere" || r.Dimensions < 1 || r.Dimensions > 16384 || r.MaxBatchItems < 1 || r.MaxBatchItems > 1024 || r.MaxBatchBytes < 1 || r.MaxBatchBytes > 4<<20 {
 				return invalid("gateway.roles.embedding", "invalid embedding limits or provider")
 			}
 			if enabled && (r.ModelRevision == "" || len(r.ModelRevision) > 128) {
 				return invalid("gateway.roles.embedding.model_revision", "operator-owned generation revision required")
 			}
-		} else if name == "rerank" {
+		case "rerank":
 			if NativeProvider(p) != "cohere" || r.MaxCandidates < 1 || r.MaxCandidates > 1024 {
 				return invalid("gateway.roles.rerank", "rerank-capable route and bounded candidates required")
 			}
-		} else if NativeProvider(p) == "cohere" || r.MaxTokens < 1 || r.MaxTokens > 65536 {
-			return invalid("gateway.roles", "structured role requires a chat route and output-token cap")
+		default:
+			if NativeProvider(p) == "cohere" || r.MaxTokens < 1 || r.MaxTokens > 65536 {
+				return invalid("gateway.roles", "structured role requires a chat route and output-token cap")
+			}
 		}
 	}
 	if enabled {
