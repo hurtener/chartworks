@@ -95,3 +95,5 @@ CREATE FUNCTION chartworks.protect_schedule_definition() RETURNS trigger LANGUAG
  RETURN NEW;
 END $$;
 CREATE TRIGGER schedule_definition_immutable BEFORE UPDATE ON chartworks.job_schedules FOR EACH ROW EXECUTE FUNCTION chartworks.protect_schedule_definition();
+
+CREATE UNIQUE INDEX queued_caller_idempotency ON chartworks.operations(tenant_id,initiator_id,client_key) WHERE dispatch_mode='queued';

@@ -132,6 +132,7 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
+	Jobs      Jobs      `json:"jobs"`
 	Server    Server    `json:"server"`
 	Auth      Auth      `json:"auth"`
 	Store     Store     `json:"store"`
@@ -157,6 +158,7 @@ func (c Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.values) }
 // Values returns a deep copy, so consumers cannot race by mutating the live snapshot.
 func (c Config) Values() Values {
 	v := c.values
+	v.Jobs.Credentials = append([]BrokerCredential(nil), v.Jobs.Credentials...)
 	v.Auth.Algorithms = append([]string(nil), v.Auth.Algorithms...)
 	v.Gateway.Bifrost.Providers = append([]Provider(nil), v.Gateway.Bifrost.Providers...)
 	v.Gateway.Roles = make(map[string]Role, len(c.values.Gateway.Roles))
@@ -175,6 +177,7 @@ func Defaults() Values {
 		Server:    Server{Listen: "127.0.0.1:8080", ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(30 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
 		Auth:      Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
 		Store:     Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
+		Jobs:      DefaultJobs(),
 		Telemetry: Telemetry{LogFormat: "json", Metrics: true},
 		Gateway:   Gateway{Limits: DefaultGatewayLimits(), Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
 	}
@@ -235,7 +238,7 @@ func Load(r io.Reader, lookup func(string) (string, bool), override Overrides) (
 	for _, item := range []struct {
 		name  string
 		value *string
-	}{{"server.listen", &v.Server.Listen}, {"auth.issuer", &v.Auth.Issuer}, {"auth.jwks_url", &v.Auth.JWKSURL}, {"auth.audience", &v.Auth.Audience}, {"auth.audiences.http", &v.Auth.Audiences.HTTP}, {"auth.audiences.mcp", &v.Auth.Audiences.MCP}} {
+	}{{"server.listen", &v.Server.Listen}, {"auth.issuer", &v.Auth.Issuer}, {"auth.jwks_url", &v.Auth.JWKSURL}, {"auth.audience", &v.Auth.Audience}, {"auth.audiences.http", &v.Auth.Audiences.HTTP}, {"auth.audiences.mcp", &v.Auth.Audiences.MCP}, {"auth.audiences.jobs", &v.Auth.Audiences.Jobs}, {"jobs.broker_url", &v.Jobs.BrokerURL}} {
 		if err = resolve(item.name, item.value); err != nil {
 			return Config{}, err
 		}
@@ -355,6 +358,9 @@ func validate(v Values) error {
 	}
 	if v.Features.MCP || v.Features.Reporting || v.Features.Renderer {
 		return invalid("features", "requested capability is not implemented in phases 01-02")
+	}
+	if err := ValidateJobs(v.Jobs, v.Auth); err != nil {
+		return err
 	}
 	return ValidateGateway(v.Gateway, v.Features.Gateway)
 }

@@ -122,10 +122,10 @@ func SchemaVersion() string {
 // Required relation presence complements history checks, without claiming a superuser-tamper sandbox.
 func requiredRelations(ctx context.Context, tx pgx.Tx) error {
 	var count int
-	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname IN ('schema_migrations','policies','policy_revisions','audit_events','operations')`).Scan(&count); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname IN ('schema_migrations','policies','policy_revisions','audit_events','operations','queue_limits','operation_attempts','job_schedules','job_occurrences')`).Scan(&count); e != nil {
 		return e
 	}
-	if count != 5 {
+	if count != 9 {
 		return store.ErrMigration
 	}
 	return nil

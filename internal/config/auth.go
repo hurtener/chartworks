@@ -7,6 +7,7 @@ import (
 
 // Audiences pins the intended resource on each transport; values are never taken from a token.
 type Audiences struct {
+	Jobs string `json:"jobs,omitempty"`
 	HTTP string `json:"http"`
 	MCP  string `json:"mcp"`
 }
@@ -39,6 +40,9 @@ func ValidateAuth(a Auth) error {
 		if len(s) == 0 || len(s) > 512 || strings.ContainsAny(s, " \r\n\t") {
 			return invalid("auth.audiences", "both bounded intended audiences are required")
 		}
+	}
+	if a.Audiences.Jobs != "" && (len(a.Audiences.Jobs) > 512 || !strings.HasSuffix(a.Audiences.Jobs, ":execution") || strings.ContainsAny(a.Audiences.Jobs, " \t\r\n") || a.Audiences.Jobs == a.HTTPAudience() || a.Audiences.Jobs == a.MCPAudience()) {
+		return invalid("auth.audiences.jobs", "distinct execution audience required")
 	}
 	if len(a.Algorithms) == 0 || len(a.Algorithms) > 6 {
 		return invalid("auth.algorithms", "asymmetric allowlist required")
