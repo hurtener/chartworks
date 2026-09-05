@@ -1,0 +1,165 @@
+name: Complete phases 07-08 verification
+on:
+  push:
+    branches: [feat/phase-07-08-vindex-sources]
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+concurrency:
+  group: phase-07-08-final-verification
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-completion/coverage.out
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-07-08-vindex-sources
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: PostgreSQL recovery client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Finalize once and remove all source writers
+        run: |
+          test "$GITHUB_REF" = refs/heads/feat/phase-07-08-vindex-sources
+          if test -f scripts/_phase_07_08_finalize.py; then python3 scripts/_phase_07_08_finalize.py; fi
+          test -f internal/sources/version_test.go
+          test -f docs/reviews/phase-07-08-adversarial.md
+          rm -f .github/workflows/phase-07-08-development.yml .github/workflows/phase-07-08-finalize.yml .github/workflows/phase-07-08-complete.yml
+          go mod tidy
+          find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
+          make planning-check drift-audit check-mirror
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"; then
+            git add -A
+            git commit -m 'ci: retain only read-only verification for completed phase 07-08 source'
+            git push origin HEAD:feat/phase-07-08-vindex-sources
+          fi
+          mkdir -p /tmp/chartworks-completion
+          git rev-parse HEAD | tee /tmp/chartworks-completion/tested-commit.txt
+          test -z "$(find scripts -name '_phase_07_08*' -print)"
+      - name: Verify dependencies and build actual assembly
+        run: |
+          go mod verify
+          make build 2>&1 | tee /tmp/chartworks-completion/build.log
+          make vet 2>&1 | tee /tmp/chartworks-completion/vet.log
+      - name: Full uncached race suite and unchanged coverage gates
+        run: make coverage 2>&1 | tee /tmp/chartworks-completion/coverage.log
+      - name: All 58 named acceptance criteria
+        run: |
+          for phase in 01 02 03 04 05 06 07 09 08; do
+            python3 scripts/run_phase_acceptance.py --phase "$phase"
+          done 2>&1 | tee /tmp/chartworks-completion/acceptance.log
+      - name: Binary lifecycle and cumulative development preflight
+        run: |
+          make foundation-smoke 2>&1 | tee /tmp/chartworks-completion/lifecycle.log
+          make preflight-full 2>&1 | tee /tmp/chartworks-completion/preflight.log
+      - name: Authority and SQL mutation fuzzing
+        run: |
+          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzAuthorityJSON$' -fuzztime=5s -parallel=2
+          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=5s -parallel=2
+          names=$(go test ./internal/exec -list '^Fuzz' | grep '^Fuzz')
+          test -n "$names"
+          for name in $names; do
+            go test -race ./internal/exec -run '^$' -fuzz "^${name}$" -fuzztime=5s -parallel=2
+          done
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+      - name: CGo-free Linux and macOS cross-builds
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/chartworks-linux ./cmd/chartworks
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o /tmp/chartworks-macos ./cmd/chartworks
+      - name: Require exact unchanged source
+        run: |
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+      - name: Preserve executed evidence
+        if: always()
+        run: |
+          mkdir -p /tmp/chartworks-completion
+          git rev-parse HEAD > /tmp/chartworks-completion/tested-commit.txt
+          git archive --format=tar.gz -o /tmp/chartworks-completion/source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-07-08-completion-evidence
+          path: /tmp/chartworks-completion
+          retention-days: 14
+      - name: Publish successful exact-head verification and mark the existing PR ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tested=$(cat /tmp/chartworks-completion/tested-commit.txt)
+          current=$(gh api repos/hurtener/chartworks/git/ref/heads/feat/phase-07-08-vindex-sources --jq '.object.sha')
+          test "$tested" = "$current"
+          gh api repos/hurtener/chartworks/pulls/7 > /tmp/chartworks-completion/pr.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=json.loads(Path('/tmp/chartworks-completion/pr.json').read_text())
+          sha=Path('/tmp/chartworks-completion/tested-commit.txt').read_text().strip()
+          assert p['state']=='open' and not p['merged_at']
+          assert p['head']['ref']=='feat/phase-07-08-vindex-sources' and p['head']['sha']==sha
+          assert p['base']['ref']=='main'
+          run=f"https://github.com/hurtener/chartworks/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          text=f'''## Completed implementation
+
+          Extends the merged phases 01–06 baseline with phase 07 pgvector generations and phase 08 PostgreSQL sources, including the actual phase-09 validated-read prerequisite. No rewrite or dependency weakening.
+
+          Verified source: `{sha}`. Executed evidence: {run} (artifact `phase-07-08-completion-evidence`). This is the exact source checked inside the recovery job; its trigger commit can differ because source-writing helpers were removed before validation.
+
+          ## Runtime scope
+
+          Full-space tenant/topic/context-bound pgvector generations, complete atomic publication, deterministic bounded snapshot batches, archive and targeted cleanup. PostgreSQL 17 source registry/discovery/status, trusted credential references, immutable actual execution contexts, rotation and pool lifecycle. Opaque validated plans, native PostgreSQL grammar, positive AST/dependency checks and constrained native planning. Source HTTP and Go SDK operations use the same authority-enforcing services.
+
+          ## Adversarial self-review
+
+          Fixed base-table positional alias leakage, GROUP BY name precedence and nested ORDER BY alias leakage with real PostgreSQL oracles and zero-native-work rejection assertions. Added unknown-AST/window/VALUES regressions, source/vector transaction rollback, atomic oversized vector response, context/rotation and concurrent publication tests. Explicitly reject unqualified PostgreSQL majors. See `docs/reviews/phase-07-08-adversarial.md` and D-064. This is not an independent external security audit.
+
+          ## Executed gates
+
+          All **58 named criteria across phases 01–09**, including all 18 phase-07/08/09 criteria, passed without implemented-phase skips. Full uncached race-enabled coverage passed the unchanged 85/80/70 percent package gates. Build, vet, lint, dependency/format, planning/drift/mirror, compiled lifecycle, cumulative preflight, SQL/authority fuzzing and CGo-free Linux amd64/macOS arm64 cross-builds passed. The published source example round-trips through the actual decoder.
+
+          Temporary source-writing scripts/workflows are absent from the final tree. The retained permanent CI is read-only and checks committed source; the recovery job was a one-time source finalization/verification job.
+
+          ## Boundaries
+
+          Pengui remains the sole issuer and policy owner. No local IAM, retained human JWT, integration vault, public raw-SQL bypass or alternative inference backend is introduced. Qualified PostgreSQL subset only; full execution products remain phase 10, additional engines phase 14, and the Bifrost semantic-generation consumer phase 15. Twenty-five future workstreams remain planned. No paid model call, production deployment or merge is claimed.
+          '''
+          Path('/tmp/chartworks-completion/pr-body.md').write_text(text)
+          PY
+          gh api "repos/hurtener/chartworks/statuses/$tested" -f state=success -f context=phases-07-09/final-verification -f description='58 named criteria, full race/coverage, lint and cross-builds passed' -f target_url="https://github.com/hurtener/chartworks/actions/runs/$GITHUB_RUN_ID"
+          gh pr edit 7 --repo hurtener/chartworks --body-file /tmp/chartworks-completion/pr-body.md
+          if test "$(gh api repos/hurtener/chartworks/pulls/7 --jq '.draft')" = true; then
+            gh pr ready 7 --repo hurtener/chartworks
+          fi
