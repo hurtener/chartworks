@@ -124,12 +124,15 @@ func newID() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 func (d *DB) transaction(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
+	return d.transactionOptions(ctx, pgx.TxOptions{}, fn)
+}
+func (d *DB) transactionOptions(ctx context.Context, options pgx.TxOptions, fn func(context.Context, pgx.Tx) error) error {
 	if d.closed.Load() {
 		return store.ErrUnavailable
 	}
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
-	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := d.pool.BeginTx(ctx, options)
 	if err != nil {
 		return safe(err)
 	}
