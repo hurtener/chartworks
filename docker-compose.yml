@@ -1,18 +1,15 @@
-# Local Postgres for development and integration tests.
+# Local PostgreSQL/pgvector for development and real integration tests.
 #
 #   make pg-up    # start (docker compose up -d postgres)
-#   make pg-down  # stop and remove (docker compose down -v)
+#   make pg-down  # stop and remove disposable local data
 #
-# pgvector/pgvector:pg17 is used even though vector search may or may not be
-# needed for Chartworks (the RFC settles that) — the image is a strict superset
-# of plain postgres, so it costs nothing to keep and avoids a rebuild if a
-# vector-backed feature (e.g. semantic-layer / schema-embedding search) lands
-# later. Host port 5434 — Soundings already occupies 5433 on this machine, so
-# 5434 avoids the clash when both repos run locally at once.
+# Match the qualified phase-07/08 reference used by CI. Host port 5434
+# keeps this disposable metadata server separate from sibling services.
+# The values below are synthetic local credentials, not deployment secrets.
 
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:0.8.2-pg17
     ports:
       - "5434:5432"
     environment:
