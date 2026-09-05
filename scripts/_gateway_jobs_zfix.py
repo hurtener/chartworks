@@ -4,4 +4,3 @@ p=Path('internal/store/postgres/migrations/003_durable_dispatch.sql');s=p.read_t
 s=s.replace("error_code text NOT NULL DEFAULT '', started_at", "error_code text NOT NULL DEFAULT '' CHECK(error_code IN ('','authority_blocked','attempt_failed','attempt_timeout','definition_changed','cancelled','lease_lost')), started_at")
 p.write_text(s)
 p=Path('internal/store/postgres/jobs.go');s=p.read_text().replace('if jobs.AssertExecution(e, lease.Job) != nil {','ctx, cancel := context.WithDeadline(ctx, e.Deadline())\n defer cancel()\n if jobs.AssertExecution(e, lease.Job) != nil {',1);p.write_text(s)
-p=Path('.github/workflows/gateway-jobs-work.yml');s=p.read_text().replace("-run 'TestPhase0[56]|TestGateway|TestQueue|TestJobs|TestDispatch' -count=1","-run 'TestPhase0[56]|TestGateway|TestQueue|TestJobs|TestDispatch' -count=1 -timeout=3m -v");p.write_text(s)
