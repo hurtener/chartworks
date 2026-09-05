@@ -56,9 +56,9 @@ jobs:
           mkdir -p /tmp/cw-tools/mod /tmp/cw-tools/pg /tmp/cw-tools/pgshare
           cp -a "$(go env GOROOT)" /tmp/cw-tools/go
           cp -a "$(go env GOMODCACHE)/." /tmp/cw-tools/mod/
-          rm -rf /tmp/cw-tools/mod/cache
+          find /tmp/cw-tools/mod/cache -name '*.zip' -delete
           docker cp '${{ job.services.postgres.id }}:/usr/lib/postgresql/17/.' /tmp/cw-tools/pg/
-          docker cp '${{ job.services.postgres.id }}:/usr/share/postgresql/17/.' /tmp/cw-tools/pgshare/
+          docker exec '${{ job.services.postgres.id }}' tar -ch -C /usr/share/postgresql/17 . | tar -x -C /tmp/cw-tools/pgshare
           tar czf /tmp/chartworks-public-test-tools.tar.gz -C /tmp/cw-tools .
       - uses: actions/upload-artifact@v4
         with:
