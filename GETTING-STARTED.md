@@ -1,6 +1,6 @@
-# Running the phase 01–02 foundation
+# Running the phase 01–04 verified foundation
 
-This build implements configuration, lifecycle/health and the PostgreSQL metadata foundation. It does **not** implement authentication, NLQ, reporting, MCP, rendering or Bifrost inference yet. Those remain separate numbered phases. Pengui is still the sole authority issuer; this build exposes no business endpoint and creates no local credentials.
+This build implements configuration, lifecycle/health, PostgreSQL metadata, Pengui JWT verification and signed-scope enforcement on its operational APIs. It does **not** implement NLQ, reporting, the full MCP server, rendering or Bifrost inference yet. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ export CHARTWORKS_AUDIENCE='your-chartworks-audience'
 ./bin/chartworks serve --config examples/chartworks.foundation.json
 ```
 
-Replace the example host and audience with the real platform configuration. `config-check` performs no network calls or inference. `serve` connects PostgreSQL and applies/checks migrations before listening. The foundation binds **only an explicit loopback IP**; broad listeners are deliberately unavailable until the JWT enforcement phases. Do not publish this foundation through an unauthenticated reverse proxy.
+Replace the example host and audience with the real platform configuration. `config-check` performs no network calls or inference. `serve` connects PostgreSQL and applies/checks migrations before listening. The foundation binds **only an explicit loopback IP**; broad listeners and external TLS deployment remain with the wider transport phase. JWT verification is active on every registered operational endpoint. Do not publish this foundation through an unauthenticated reverse proxy.
 
 ```bash
 curl --fail http://127.0.0.1:8080/healthz
@@ -36,9 +36,9 @@ curl http://127.0.0.1:8080/readyz
 curl --fail http://127.0.0.1:8080/capabilities
 ```
 
-Liveness is independent of dependency health. Readiness reports `starting`, `ready`, `unavailable` or `stale` for PostgreSQL and trusted verification-key material. The key probe confirms structurally usable public keys, **not** JWT authentication: phase 03 will connect its verifier/cache to this health seam. Failed key refresh never extends key freshness. Optional inference/render capabilities are not enabled or probed.
+Liveness is independent of dependency health. Readiness reports `starting`, `ready`, `unavailable` or `stale` for PostgreSQL and trusted verification-key material. The real JWT verifier and readiness use the same bounded trusted public-key cache; a readiness result does not authorize an individual request. Failed key refresh never extends key freshness. Optional inference/render capabilities are not enabled or probed.
 
-Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors, release idle HTTP connections and close the database pool. `chartworks mcp` currently exits 3 with an explicit unavailable message; it does not start a fake MCP server. `/metrics` and all `/v1/*` paths return 404. The real Prometheus exporter is an in-process interface with conformance tests; a protected metrics endpoint is left to the authenticated API phase.
+Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors, release idle HTTP connections and close the database pool. `chartworks mcp` currently exits 3 with an explicit unavailable message; it does not start a fake MCP server. Operational `/v1/*` and `/metrics` requests now require a valid Pengui bearer plus their separately registered action and addressed reach. Anonymous requests return 401; a valid caller receives a nondisclosing 404 for unregistered/inaccessible resources. Metrics also needs `ops.metrics` and returns 404 when disabled. Use the operation manifest below; there is no local login or default administrator token.
 
 ## Configuration contract
 
@@ -56,12 +56,14 @@ make vet
 make lint
 python3 scripts/run_phase_acceptance.py --phase 01
 python3 scripts/run_phase_acceptance.py --phase 02
+python3 scripts/run_phase_acceptance.py --phase 03
+python3 scripts/run_phase_acceptance.py --phase 04
 make preflight-full
 ```
 
 Real-store tests create unique `cw_test_*` databases on the explicit test server and remove them afterward. Missing PostgreSQL/client tools, a missing acceptance child, or a skipped runtime test is a failure, not a pass. Coverage instruments production packages across the full test suite, including integration callers; thresholds remain 85% for store, 80% for other internal code and 70% for CLI.
 
-The other 32 phases remain unimplemented and are explicitly reported as planned skips in development preflight. `make release-check` correctly refuses an all-product release while they are planned. This does not block acceptance of phases 01–02.
+The other 30 phases remain unimplemented and are explicitly reported as planned skips in development preflight. `make release-check` correctly refuses an all-product release while they are planned. This does not block acceptance of the implemented phases 01–04.
 
 ## Backup, restore and rollback
 
@@ -77,4 +79,8 @@ Restore only trusted archives into an empty database under exclusive operator co
 
 The driver verifies ordered migration versions and checksums on startup. A changed, missing or future version is a refusal, not an automatic repair. Recovery means restoring a compatible backup into a new database and deliberately switching configuration; never edit an applied migration or run an invented down migration.
 
-The retention service is the first internal consumer of immutable revisions, compare-and-swap pointers, content-free audit, operation keys and fencing. It is **not** publicly callable before Pengui JWT enforcement. Its scope type is a storage isolation coordinate, not authentication. Expired operation keys retain tombstones so retries cannot silently create fresh work. Old revision references and audit dependencies are preserved; a policy change blocks previously accepted destructive work until a new operation is explicitly accepted.
+The retention service is the first internal consumer of immutable revisions, compare-and-swap pointers, content-free audit, operation keys and fencing. The bounded synchronous sweep is now reachable only through the registered Pengui-JWT-protected operational service; unattended scheduling is not implemented here. Its scope type is a storage isolation coordinate, not authentication. Expired operation keys retain tombstones so retries cannot silently create fresh work. Old revision references and audit dependencies are preserved; a policy change blocks previously accepted destructive work until a new operation is explicitly accepted.
+
+## Verified operational access (phases 03/04)
+
+The production `serve` command now protects retention policy, audit, synchronous retention sweep, diagnostics and metrics with Pengui JWTs and signed addressed scopes. The old health-only foundation boundary is superseded for these implemented operations, not for the later analytical/MCP features. The listener remains explicit-loopback; a trusted backend supplies credentials. See [operator registration](docs/contracts/pengui-provider-registration.md), [operation manifest](docs/contracts/chartworks-operations.json) and [authority contract](docs/contracts/pengui-authority.md). The public Go client is `sdk/chartworks`; its caller supplies a current Pengui token provider. Chartworks issues no credentials.

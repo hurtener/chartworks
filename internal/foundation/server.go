@@ -89,7 +89,7 @@ func (s *Server) readiness() (bool, map[string]string) {
 	return ready, out
 }
 
-// Handler exposes no metrics, configuration values, authority bypass, or business endpoints.
+// Handler serves public content-free health and delegates operational routes to the verifier/enforcer.
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

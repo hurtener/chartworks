@@ -8,9 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -212,16 +212,20 @@ func TestPhase03(t *testing.T) {
 	})
 	t.Run("AC05", func(t *testing.T) {
 		// Production has verification imports, but no call to a signing primitive or local issuer.
-		for _, root := range []string{"../../internal", "../../cmd", "../../sdk"} {
-			err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		repo, err := os.OpenRoot("../..")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = repo.Close() }()
+		for _, root := range []string{"internal", "cmd", "sdk"} {
+			err := fs.WalkDir(repo.FS(), root, func(path string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return err
 				}
 				if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 					return nil
 				}
-				// #nosec G304 -- repository source files discovered under fixed test-owned roots, never user paths.
-				b, err := os.ReadFile(path)
+				b, err := repo.ReadFile(path)
 				if err != nil {
 					return err
 				}

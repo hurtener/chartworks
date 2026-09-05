@@ -1,6 +1,6 @@
 # Phase 04 — access-grants
 
-Status: in_progress. Owner: internal/access. Hard dependencies: 02, 03.
+Status: shipped. Owner: internal/access. Hard dependencies: 02, 03.
 
 ## Authority and design
 
@@ -43,4 +43,10 @@ Implement `TestPhase04/AC01` through `TestPhase04/AC06`. Assert no source query 
 
 ## Glossary, decisions and deviations
 
-Signed reach and execution context are defined in the provider contract. D-044/D-045 supersede the former mechanism, not deny-by-default safety. No runtime completion is claimed.
+Signed reach and execution context are defined in the provider contract. D-044/D-045 supersede the former mechanism, not deny-by-default safety. Runtime acceptance and integration boundaries are recorded below.
+
+## Implementation record — 2026-09-05
+
+The six named acceptance criteria have real Go assertions and first consumers. See [provider handoff](../contracts/pengui-provider-registration.md) and [adversarial review](../reviews/phase-03-04-adversarial.md). No production platform credential or deployed session was used; issuer-shaped synthetic signing fixtures feed the actual verifier and PostgreSQL API/SDK consumer. No local policy database or issuer was added.
+
+`internal/access` supplies Require/Constrain and execution/artifact partition gates; `internal/securityapi` applies them before the existing real metadata/maintenance consumer and again in-process. All six protected routes have SDK coverage and a checked operation manifest. Reporting/source domains must still supply complete server-resolved dependency manifests in their owning phases; no unimplemented reporting API is advertised.

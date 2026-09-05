@@ -1,6 +1,6 @@
 # Phase 03 — auth-identity
 
-Status: in_progress. Owner: internal/auth, internal/identity. Hard dependencies: 01.
+Status: shipped. Owner: internal/auth, internal/identity. Hard dependencies: 01.
 
 ## Authority and design
 
@@ -44,3 +44,9 @@ Implement `TestPhase03/AC01` through `TestPhase03/AC06`, using test-only ephemer
 ## Glossary, decisions and deviations
 
 D-044/D-045 define sole-issuer ownership and direct enforcement. Register the new provider scopes with their first Pengui consumer; do not claim they are already configured. No implementation completion is claimed.
+
+## Implementation record — 2026-09-05
+
+The six named acceptance criteria have real Go assertions and first consumers. See [provider handoff](../contracts/pengui-provider-registration.md) and [adversarial review](../reviews/phase-03-04-adversarial.md). No production platform credential or deployed session was used; issuer-shaped synthetic signing fixtures feed the actual verifier and PostgreSQL API/SDK consumer. No local policy database or issuer was added.
+
+`internal/auth` now owns the key cache shared with readiness, bounded JWT decoder and golang-jwt cryptographic verification. HTTP and MCP intended audiences are exact; the full MCP transport stays phase22. Token scope limits match the actual provider minter: 32 / 256 bytes each / 4096 bytes total.

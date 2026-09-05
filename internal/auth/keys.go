@@ -40,7 +40,13 @@ type KeyProbe struct {
 
 // NewKeyProbe uses only trusted configuration and refuses redirects and cookies.
 func NewKeyProbe(cfg config.Auth, client *http.Client) *KeyProbe {
-	c := http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+	transport := http.DefaultTransport
+	if base, ok := transport.(*http.Transport); ok {
+		copyTransport := base.Clone()
+		copyTransport.MaxResponseHeaderBytes = 64 << 10
+		transport = copyTransport
+	}
+	c := http.Client{Transport: transport}
 	if client != nil {
 		c = *client
 	}

@@ -21,7 +21,7 @@
       "depends_on": [
         "01"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "04": {
@@ -30,7 +30,7 @@
         "02",
         "03"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "05": {
