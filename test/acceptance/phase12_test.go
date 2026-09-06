@@ -45,12 +45,12 @@ func TestPhase12(t *testing.T) {
 			native, category string
 			nulls, distinct  int
 		}{
-			"id":         {"int4", "numeric", 0, 2},
-			"amount":     {"numeric", "numeric", 0, 2},
-			"active":     {"bool", "boolean", 0, 2},
+			"id":         {"integer", "numeric", 0, 2},
+			"amount":     {"numeric(30,3)", "numeric", 0, 2},
+			"active":     {"boolean", "boolean", 0, 2},
 			"name":       {"text", "text", 0, 2},
 			"payload":    {"bytea", "binary", 1, 1},
-			"created_at": {"timestamptz", "temporal", 0, 2},
+			"created_at": {"timestamp with time zone", "temporal", 0, 2},
 		}
 		for _, c := range p.Columns {
 			expected, ok := want[c.Name]
@@ -344,8 +344,12 @@ func TestPhase12(t *testing.T) {
 			if _, err = f.service.Evidence(ctx, e, input.ID); err == nil {
 				t.Fatal("inspection crossed signed/private reach")
 			}
-			if _, err = f.service.History(ctx, e, input.Source, input.Context, input.Dataset, 1); err == nil {
-				t.Fatal("history crossed signed/private reach")
+			rows, historyErr := f.service.History(ctx, e, input.Source, input.Context, input.Dataset, 1)
+			if len(rows) != 0 {
+				t.Fatal("history exposed another identity's private evidence")
+			}
+			if (!e.Valid() || !e.Has("cw.execution_context.use:*")) && historyErr == nil {
+				t.Fatal("history accepted missing signed context authority")
 			}
 		}
 		if f.lookups.Load() != before {

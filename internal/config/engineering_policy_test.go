@@ -88,14 +88,14 @@ func TestProfilingCeilingsAndPrivacyPolicyValidation(t *testing.T) {
 		t.Fatal("explicit bounded privacy policy rejected")
 	}
 	for name, change := range map[string]func(*Profiling){
-		"duplicate": func(p *Profiling) { p.Policies = append(p.Policies, p.Policies[0]) },
-		"missing-id": func(p *Profiling) { p.Policies[0].ID = "" },
-		"missing-tenant": func(p *Profiling) { p.Policies[0].Tenant = "" },
-		"invalid-source": func(p *Profiling) { p.Policies[0].Source = "PRIVATE_SECRET/../source" },
-		"too-many": func(p *Profiling) { p.Policies = make([]ProfilePolicy, 129) },
+		"duplicate":        func(p *Profiling) { p.Policies = append(p.Policies, p.Policies[0]) },
+		"missing-id":       func(p *Profiling) { p.Policies[0].ID = "" },
+		"missing-tenant":   func(p *Profiling) { p.Policies[0].Tenant = "" },
+		"invalid-source":   func(p *Profiling) { p.Policies[0].Source = "PRIVATE_SECRET/../source" },
+		"too-many":         func(p *Profiling) { p.Policies = make([]ProfilePolicy, 129) },
 		"too-many-columns": func(p *Profiling) { p.Policies[0].RangeColumns = make([]string, 257) },
 		"duplicate-column": func(p *Profiling) { p.Policies[0].RangeColumns = []string{"amount", "amount"} },
-		"expression": func(p *Profiling) { p.Policies[0].RangeColumns = []string{"amount; PRIVATE_SECRET"} },
+		"expression":       func(p *Profiling) { p.Policies[0].RangeColumns = []string{"amount; PRIVATE_SECRET"} },
 	} {
 		copy := base.Clone()
 		change(&copy)

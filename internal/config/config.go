@@ -165,9 +165,9 @@ func (c Config) Values() Values {
 	v.Sources = c.values.Sources.Clone()
 	v.Uploads = c.values.Uploads.Clone()
 	v.Profiling = c.values.Profiling.Clone()
-	v.Jobs.Credentials = append([]BrokerCredential(nil), v.Jobs.Credentials...)
+	v.Jobs.Credentials = append([]BrokerCredential{}, v.Jobs.Credentials...)
 	v.Auth.Algorithms = append([]string(nil), v.Auth.Algorithms...)
-	v.Gateway.Bifrost.Providers = append([]Provider(nil), v.Gateway.Bifrost.Providers...)
+	v.Gateway.Bifrost.Providers = append([]Provider{}, v.Gateway.Bifrost.Providers...)
 	v.Gateway.Roles = make(map[string]Role, len(c.values.Gateway.Roles))
 	for k, r := range c.values.Gateway.Roles {
 		v.Gateway.Roles[k] = r
@@ -180,7 +180,7 @@ func (c Config) StoreDSN() string { return c.dsn }
 
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
-	return Values{
+	v := Values{
 		Uploads:   DefaultUploads(),
 		Profiling: DefaultProfiling(),
 		Sources:   DefaultSources(),
@@ -192,6 +192,9 @@ func Defaults() Values {
 		Telemetry: Telemetry{LogFormat: "json", Metrics: true},
 		Gateway:   Gateway{Limits: DefaultGatewayLimits(), Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
 	}
+	v.Gateway.Bifrost.Providers = []Provider{}
+	v.Jobs.Credentials = []BrokerCredential{}
+	return v
 }
 
 // Overrides are explicit CLI overrides, applied after defaults, file, and env references.

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -375,7 +374,7 @@ func (s *Service) copyUpload(ctx context.Context, tx pgx.Tx, raw []byte, spec Up
 			return nil, child.Err()
 		case row, ok := <-rows:
 			if !ok {
-				return nil, io.EOF
+				return nil, nil
 			}
 			values := make([]any, len(row))
 			for i, cell := range row {

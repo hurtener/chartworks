@@ -68,9 +68,9 @@ func DefaultReadValidation() ReadValidation {
 func (s Sources) Clone() Sources {
 	s.Connections = append([]SourceConnection{}, s.Connections...)
 	for i := range s.Connections {
-		s.Connections[i].Relations = append([]SourceRelation(nil), s.Connections[i].Relations...)
+		s.Connections[i].Relations = append([]SourceRelation{}, s.Connections[i].Relations...)
 		for j := range s.Connections[i].Relations {
-			s.Connections[i].Relations[j].Columns = append([]string(nil), s.Connections[i].Relations[j].Columns...)
+			s.Connections[i].Relations[j].Columns = append([]string{}, s.Connections[i].Relations[j].Columns...)
 		}
 	}
 	return s

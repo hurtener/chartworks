@@ -71,9 +71,9 @@ func (u Uploads) Clone() Uploads { u.Formats = append([]string(nil), u.Formats..
 
 // Clone detaches every profile policy and its column list.
 func (p Profiling) Clone() Profiling {
-	p.Policies = append([]ProfilePolicy(nil), p.Policies...)
+	p.Policies = append([]ProfilePolicy{}, p.Policies...)
 	for i := range p.Policies {
-		p.Policies[i].RangeColumns = append([]string(nil), p.Policies[i].RangeColumns...)
+		p.Policies[i].RangeColumns = append([]string{}, p.Policies[i].RangeColumns...)
 	}
 	return p
 }

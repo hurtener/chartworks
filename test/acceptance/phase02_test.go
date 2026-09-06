@@ -418,7 +418,7 @@ func TestPhase02(t *testing.T) {
 			t.Fatal("restored operation lost idempotency/result")
 		}
 		raw := support.Raw(t, restored)
-		if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations`) != 6 {
+		if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations`) != count(t, support.Raw(t, dsn), `SELECT count(*) FROM chartworks.schema_migrations`) {
 			t.Fatal("restored schema history invalid")
 		}
 		if _, e := raw.Exec(ctx, `DELETE FROM chartworks.operations WHERE tenant_id=$1 AND operation_id=$2`, a.Tenant(), o.ID); e == nil {

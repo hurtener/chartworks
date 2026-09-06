@@ -22,9 +22,9 @@ func profileFixture(t *testing.T, fields []readexec.Field, rows [][]json.RawMess
 	}
 	record := ProfileRecord{
 		Tenant: "tenant", Actor: "actor", Session: "session",
-		Spec: ProfileSpec{ID: "version", Source: "source", Context: "source:v1", Dataset: "dataset", SkipLLM: true},
-		Binding: readexec.Binding{Tenant: "tenant", Source: "source", Context: "source:v1", Revision: 1, Dialect: "postgresql", Contract: "fixture-v1", Fingerprint: readexec.Hash("fixture"), Relations: []readexec.Relation{{ID: "dataset", Schema: "analytics", Name: "data", Columns: columns}}},
-		Policy: config.ProfilePolicy{ID: "redacted", Tenant: "tenant", Source: "source", RangeColumns: []string{}},
+		Spec:     ProfileSpec{ID: "version", Source: "source", Context: "source:v1", Dataset: "dataset", SkipLLM: true},
+		Binding:  readexec.Binding{Tenant: "tenant", Source: "source", Context: "source:v1", Revision: 1, Dialect: "postgresql", Contract: "fixture-v1", Fingerprint: readexec.Hash("fixture"), Relations: []readexec.Relation{{ID: "dataset", Schema: "analytics", Name: "data", Columns: columns}}},
+		Policy:   config.ProfilePolicy{ID: "redacted", Tenant: "tenant", Source: "source", RangeColumns: []string{}},
 		Settings: config.DefaultProfiling(), State: "reserved", Created: time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC),
 	}
 	record.Settings.SampleRows = 2000
@@ -107,9 +107,9 @@ func TestProfileRangesStayExactAndFailClosed(t *testing.T) {
 func TestProfileEmptyNullAndConstantRules(t *testing.T) {
 	fields := []readexec.Field{{Name: "value", Type: "text", NativeType: "text", Encoding: "string"}}
 	for _, tc := range []struct {
-		name string
-		rows [][]json.RawMessage
-		code string
+		name  string
+		rows  [][]json.RawMessage
+		code  string
 		nulls int
 	}{
 		{"empty", [][]json.RawMessage{}, "empty_observation", 0},
@@ -139,19 +139,34 @@ func TestProfileRejectsInvalidResultAndSelection(t *testing.T) {
 	fields := []readexec.Field{{Name: "id", Type: "integer", NativeType: "int8", Encoding: "string"}}
 	record, report := profileFixture(t, fields, [][]json.RawMessage{{json.RawMessage(`"1"`)}})
 	for name, change := range map[string]func(*ProfileRecord, *readexec.ExecutionReport){
-		"invalid-record": func(r *ProfileRecord, _ *readexec.ExecutionReport) { r.Spec.ID = "../invalid" },
-		"no-result": func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result = nil },
+		"invalid-record":  func(r *ProfileRecord, _ *readexec.ExecutionReport) { r.Spec.ID = "../invalid" },
+		"no-result":       func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result = nil },
 		"invalid-outcome": func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Outcome = "uncertain" },
-		"row-bound": func(r *ProfileRecord, _ *readexec.ExecutionReport) { r.Settings.SampleRows = 1; r.SpecHash = r.Digest() },
+		"row-bound": func(r *ProfileRecord, _ *readexec.ExecutionReport) {
+			r.Settings.SampleRows = 1
+			r.SpecHash = r.Digest()
+		},
 		"byte-bound": func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Bytes = (16 << 20) + 1 },
-		"unknown-dataset": func(r *ProfileRecord, _ *readexec.ExecutionReport) { r.Spec.Dataset = "absent"; r.SpecHash = r.Digest() },
-		"unknown-column": func(r *ProfileRecord, _ *readexec.ExecutionReport) { r.Spec.Columns = []string{"absent"}; r.SpecHash = r.Digest() },
-		"unsafe-column": func(r *ProfileRecord, _ *readexec.ExecutionReport) { r.Binding.Relations[0].Columns[0].Safe = false; r.SpecHash = r.Digest() },
-		"missing-time": func(r *ProfileRecord, _ *readexec.ExecutionReport) { r.Spec.TimeColumn = "absent"; r.SpecHash = r.Digest() },
+		"unknown-dataset": func(r *ProfileRecord, _ *readexec.ExecutionReport) {
+			r.Spec.Dataset = "absent"
+			r.SpecHash = r.Digest()
+		},
+		"unknown-column": func(r *ProfileRecord, _ *readexec.ExecutionReport) {
+			r.Spec.Columns = []string{"absent"}
+			r.SpecHash = r.Digest()
+		},
+		"unsafe-column": func(r *ProfileRecord, _ *readexec.ExecutionReport) {
+			r.Binding.Relations[0].Columns[0].Safe = false
+			r.SpecHash = r.Digest()
+		},
+		"missing-time": func(r *ProfileRecord, _ *readexec.ExecutionReport) {
+			r.Spec.TimeColumn = "absent"
+			r.SpecHash = r.Digest()
+		},
 		"schema-size": func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Schema = nil },
 		"schema-name": func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Schema[0].Name = "different" },
-		"row-size": func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Rows[0] = nil },
-		"wire-type": func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Rows[0][0] = json.RawMessage(`{}`) },
+		"row-size":    func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Rows[0] = nil },
+		"wire-type":   func(_ *ProfileRecord, r *readexec.ExecutionReport) { r.Result.Rows[0][0] = json.RawMessage(`{}`) },
 	} {
 		r := record
 		r.Binding = record.Binding.Clone()

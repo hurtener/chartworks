@@ -44,6 +44,13 @@ func FreshnessAt(observed time.Time, latest *time.Time, complete bool, l config.
 	out.Basis = "complete_result_event_max"
 	return out
 }
+
+// This is a type-family check after the source adapter's positive OID proof.
+// Keep display precision in the profile; never infer a timezone from this name.
+var profileTimeTypePattern = regexp.MustCompile(`^(date|timestamp(\([0-6]\))?( (with|without) time zone)?|timestamptz(\([0-6]\))?)$`)
+
+func profileTimeType(native string) bool { return profileTimeTypePattern.MatchString(native) }
+
 func relationFor(r ProfileRecord) (readexec.Relation, error) {
 	for _, rel := range r.Binding.Relations {
 		if rel.ID == r.Spec.Dataset {

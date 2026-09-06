@@ -78,7 +78,7 @@ func (s *Service) profileRecord(ctx context.Context, e identity.Envelope, spec P
 		return ProfileRecord{}, err
 	}
 	for _, c := range columns {
-		if c.Name == spec.TimeColumn && c.NativeType != "date" && c.NativeType != "timestamp" && c.NativeType != "timestamptz" {
+		if c.Name == spec.TimeColumn && !profileTimeType(c.NativeType) {
 			return ProfileRecord{}, readexec.ErrUnsupported
 		}
 	}
