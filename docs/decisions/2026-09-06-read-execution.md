@@ -1,6 +1,6 @@
 # Read execution implementation decision
 
-## D-065 — One bounded validated read core with explicit attempt uncertainty · accepted
+### D-065 — One bounded validated read core with explicit attempt uncertainty · accepted
 
 Continue D-064 and the existing phase-09 validator; do not replace its opaque
 plans or weaken any acceptance criterion. Phase 10 extends the concrete source
