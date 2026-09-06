@@ -1,0 +1,15 @@
+{
+  "server": {"write_timeout": "75s"},
+  "exec": {
+    "rows_default": 10000,
+    "rows_ceiling": 100000,
+    "preview_rows": 200,
+    "bytes_default": 4194304,
+    "bytes_ceiling": 16777216,
+    "timeout": "60s",
+    "cancel_grace": "2s",
+    "planner_cost_ceiling": 10000000,
+    "execution_concurrency": 2,
+    "max_read_attempts": 3
+  }
+}
