@@ -713,6 +713,21 @@
   },
   "implementation_evidence": {
     "05": "test/acceptance/phase05_test.go; docs/reviews/phase-05-06-adversarial.md",
-    "06": "test/acceptance/phase06_test.go; docs/contracts/execution-authority-v1.md"
+    "06": "test/acceptance/phase06_test.go; docs/contracts/execution-authority-v1.md",
+    "07": [
+      "docs/contracts/vector-sources-validation.md",
+      "docs/reviews/phase-07-08-adversarial.md",
+      "test/acceptance/phase07_test.go"
+    ],
+    "08": [
+      "docs/contracts/vector-sources-validation.md",
+      "docs/reviews/phase-07-08-adversarial.md",
+      "test/acceptance/phase08_test.go"
+    ],
+    "09": [
+      "docs/contracts/vector-sources-validation.md",
+      "docs/reviews/phase-07-08-adversarial.md",
+      "test/acceptance/phase09_test.go"
+    ]
   }
 }

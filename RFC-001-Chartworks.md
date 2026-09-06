@@ -1,6 +1,6 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-04 after owner feedback on reporting, Pengui authority, established MCP Apps and Bifrost-only remote inference. Design acceptance is not runtime completion; all 34 phases remain planned.
+Status: implementation design, revised 2026-09-04 after owner feedback on reporting, Pengui authority, established MCP Apps and Bifrost-only remote inference. Phases 01–09 now have runtime implementations; 25 later workstreams remain planned. Named tests and exact-source verification, not design acceptance alone, establish completion.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 

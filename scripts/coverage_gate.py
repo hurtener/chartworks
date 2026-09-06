@@ -6,6 +6,7 @@ from collections import defaultdict
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -80,9 +81,16 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="chartworks-coverage-") as directory:
             profile = Path(directory) / "coverage.out"
             targets = ",".join(module + "/" + name for name in sorted(packages))
-            command(["go", "test", "-race", "-count=1", "-timeout=10m", "-covermode=atomic",
-                     "-coverpkg=" + targets, "-coverprofile=" + str(profile), "./..."], root)
-            totals = measure(profile.read_text(), module, packages)
+            try:
+                command(["go", "test", "-race", "-count=1", "-timeout=10m", "-covermode=atomic",
+                         "-coverpkg=" + targets, "-coverprofile=" + str(profile), "./..."], root)
+                totals = measure(profile.read_text(), module, packages)
+            finally:
+                # Preserve real instrumentation, including failed-suite evidence, when CI asks.
+                # This does not change test selection, thresholds or failure propagation.
+                destination = os.environ.get("CHARTWORKS_COVERAGE_OUTPUT")
+                if destination and profile.is_file():
+                    shutil.copyfile(profile, destination)
         failed = False
         for name in sorted(packages):
             covered, total = totals[name]

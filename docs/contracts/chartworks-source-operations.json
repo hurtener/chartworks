@@ -1,0 +1,9 @@
+[
+  {"method":"GET","path":"/v1/sources","action":"sources.read","effect":"metadata_read"},
+  {"method":"GET","path":"/v1/sources/{id}","action":"sources.read","effect":"metadata_read"},
+  {"method":"POST","path":"/v1/sources","action":"sources.write","effect":"source_registration"},
+  {"method":"POST","path":"/v1/sources/{id}/test","action":"sources.read","effect":"warehouse_catalog_read"},
+  {"method":"GET","path":"/v1/sources/{id}/schema","action":"sources.read","effect":"warehouse_catalog_read"},
+  {"method":"POST","path":"/v1/sources/{id}/rotate","action":"sources.rotate","effect":"context_rotation"},
+  {"method":"POST","path":"/v1/sources/{id}/validate","action":"sources.query","effect":"bounded_native_planning"}
+]

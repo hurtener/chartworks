@@ -2,7 +2,7 @@
 
 **Governed analytics and publishing for Pengui.** Go services for semantic data access, NLQ/BYO SQL, reusable approved reporting blocks, reports/dashboards, scheduled runs and portable retained results.
 
-Status: the Go foundation verified operational authority, remote Bifrost gateway and durable maintenance scheduling (phases 01–06) are implemented with real PostgreSQL acceptance tests. Analytics/reporting implementation and full source migration remain in the subsequent phases.
+Status: the Go foundation verified operational authority, remote Bifrost gateway and durable maintenance scheduling (phases 01–09) are implemented with real PostgreSQL acceptance tests. Analytics/reporting implementation and full source migration remain in the subsequent phases.
 
 ## Start here
 

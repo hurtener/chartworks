@@ -1,6 +1,6 @@
 # Phase 07 — vindex
 
-Status: planned. Owner: internal/vindex. Hard dependencies: 02, 04.
+Status: shipped. Owner: internal/vindex. Hard dependencies: 02, 04.
 
 ## Authority and design
 
@@ -44,4 +44,8 @@ Implement `TestPhase07/AC01` through `TestPhase07/AC06` against PostgreSQL/pgvec
 
 ## Glossary, decisions and deviations
 
-Embedding-space identity, facet generation and model output dimension are separate terms. D-049/D-053 apply. No runtime completion is claimed.
+Embedding-space identity, facet generation and model output dimension are separate terms. D-049/D-053 apply. Runtime implementation and named acceptance are supplied here; no production deployment is claimed.
+
+## Implemented evidence and qualified scope
+
+D-064 and [the vector/source/read contract](../contracts/vector-sources-validation.md) pin the qualified scope. See the [adversarial review](../reviews/phase-07-08-adversarial.md). Existing hard dependencies and all six numbered criteria remain unchanged. Real PostgreSQL/pgvector and native-parser fixtures provide runtime evidence; final exact-head CI must pass before merge. The full execution product remains phase 10, additional engines phase 14 and the semantic generation consumer phase 15.

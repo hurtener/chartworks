@@ -22,7 +22,7 @@ Use `chartworks config-check --defaults` for a machine-readable defaults snapsho
 | `store.transaction_timeout` | duration string | `5s` | At least 1 millisecond, at most 1 minute; context deadline plus PostgreSQL statement/lock limits. |
 | `store.migration_policy` | enum | `apply` | `apply` atomically adds pending forward migrations; `check` rejects missing/mismatched history without migrating. |
 
-The PostgreSQL schema is `chartworks`; queries are schema-qualified and pooled sessions use `search_path=pg_catalog`. The executable never accepts arbitrary migration paths or raw query strings from an HTTP caller. Warehouse-source connection configuration is not implemented by these metadata settings.
+The PostgreSQL schema is `chartworks`; queries are schema-qualified and pooled sessions use `search_path=pg_catalog`. The metadata API accepts neither arbitrary migration paths nor raw execution queries. Source validation is a separate protected operation returning a non-executable receipt. Warehouse connections use the dedicated source settings below, not these metadata settings.
 
 ## Verification configuration and dependency health
 
@@ -59,7 +59,7 @@ The real verifier and readiness share one bounded public-key cache. It rejects d
 
 `/capabilities` reports verified authentication, signed-scope enforcement and operational APIs as implemented, with analytical business APIs still unavailable. It never returns tokens, source IDs or DSNs. Health is public; the [registered operational routes](contracts/chartworks-operations.json) require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
 
-## Future Bifrost configuration accepted as an inactive excerpt
+## Bifrost configuration and inactive excerpts
 
 `gateway.driver` must be `bifrost`; `gateway.max_attempts_per_call` defaults to 2 and accepts 1–4. `gateway.bifrost.providers[]` contains a unique remote `name`, an `api_key` in `env:NAME` form, and an optional HTTPS `base_url` without userinfo/query/fragment. No local/ollama/mock production provider is accepted. Provider credentials are resolved only when the adapter is enabled. Native provider types currently supported are openai/openrouter for chat/embedding and cohere for rerank; a route alias uses the optional `type` field.
 
@@ -106,3 +106,9 @@ an invented count. Skipping old work uses a5s late-tick grace. Equal local times
 DST fall-back have distinct UTC occurrence keys; nonexistent spring-forward
 local times do not execute. Manual overlap skip is a conflict for a new request;
 a replay returns its original accepted receipt.
+
+## Source and validation configuration
+
+The typed `sources` block defaults to disabled. Bounds: max_conns 1–16 (default 4), max_rows 1–1000 (256), max_bytes 1 KiB–4 MiB (1 MiB), connect_timeout and query_timeout 1 ms–4 s (1 s and 2 s). Connection aliases are tenant-bound and carry version, declared relations/columns and independent env: read/write references; the reader never resolves write credentials.
+
+The typed `exec` block bounds SQL bytes 128–65536 (32768), parameters 1–64 (64), AST depth 4–64 (64), AST nodes 32–16384 (8192) and concurrent validations 1–8 (2). Unknown/retired keys fail. These limits are not skip-validation settings. See `../examples/chartworks.sources.json` and `contracts/vector-sources-validation.md` for enforced fixed vector bounds, credential custody, PostgreSQL qualification and operational behavior.
