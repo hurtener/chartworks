@@ -2,7 +2,6 @@ name: Phase 09-10 development
 on:
   push:
     branches: [feat/phase-09-10-read-execution]
-    paths-ignore: [.github/workflows/read-execution-workspace.yml]
 permissions:
   contents: write
 concurrency:
@@ -33,19 +32,31 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Materialize bounded development edits
+      - name: Materialize one-use development edits
         run: |
           test "$GITHUB_REF" = refs/heads/feat/phase-09-10-read-execution
-          for script in scripts/_phase_09_10*.py; do python3 "$script"; done
+          for script in scripts/_phase_09_10*.py; do
+            test -f "$script" || continue
+            python3 "$script"
+            rm "$script"
+          done
           find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff --quiet; then
-            git add cmd internal sdk test docs scripts examples .github README.md GETTING-STARTED.md AGENTS.md CLAUDE.md RFC-001-Chartworks.md RFC-002-Governed-Reporting.md
+            git add -A
             git commit -m 'build: materialize phase 09-10 incremental source edits'
             git push origin HEAD:feat/phase-09-10-read-execution
           fi
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+      - name: PostgreSQL recovery tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Build and vet
         run: |
           CGO_ENABLED=0 go build ./...
