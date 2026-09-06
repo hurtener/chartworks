@@ -108,24 +108,25 @@ type Repository interface {
 // Service owns bounded upload work and deterministic profiles. Actual querying
 // always goes through the injected validator/executor; managed writes are separate.
 type Service struct {
-	repo      Repository
-	sources   *sources.Service
-	validator *readexec.Validator
-	executor  *readexec.Executor
-	gateway   *gateway.Engine
-	runner    *jobs.RequestRunner
-	values    config.Values
-	lookup    func(string) (string, bool)
-	slots     chan struct{}
-	lifecycle sync.RWMutex
-	ctx       context.Context
-	cancel    context.CancelFunc
-	closed    bool
+	summarySchema *gateway.Schema
+	repo          Repository
+	sources       *sources.Service
+	validator     *readexec.Validator
+	executor      *readexec.Executor
+	gateway       gateway.Engine
+	runner        *jobs.RequestRunner
+	values        config.Values
+	lookup        func(string) (string, bool)
+	slots         chan struct{}
+	lifecycle     sync.RWMutex
+	ctx           context.Context
+	cancel        context.CancelFunc
+	closed        bool
 }
 
 // New does not open warehouse connections or call a model. Retained metadata is
 // available independently from source credentials and optional summary services.
-func New(repo Repository, source *sources.Service, validator *readexec.Validator, executor *readexec.Executor, model *gateway.Engine, values config.Values, lookup func(string) (string, bool)) (*Service, error) {
+func New(repo Repository, source *sources.Service, validator *readexec.Validator, executor *readexec.Executor, model gateway.Engine, values config.Values, lookup func(string) (string, bool)) (*Service, error) {
 	if repo == nil || source == nil || lookup == nil || config.ValidateUploads(values.Uploads) != nil || config.ValidateProfiling(values.Profiling) != nil {
 		return nil, ErrInvalid
 	}
@@ -152,8 +153,12 @@ func New(repo Repository, source *sources.Service, validator *readexec.Validator
 	values.Sources = values.Sources.Clone()
 	values.Uploads = values.Uploads.Clone()
 	values.Profiling = values.Profiling.Clone()
+	schema, err := profileSummarySchema()
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{repo: repo, sources: source, validator: validator, executor: executor, gateway: model, runner: runner, values: values, lookup: lookup, slots: make(chan struct{}, values.Uploads.Concurrency), ctx: ctx, cancel: cancel}, nil
+	return &Service{summarySchema: schema, repo: repo, sources: source, validator: validator, executor: executor, gateway: model, runner: runner, values: values, lookup: lookup, slots: make(chan struct{}, values.Uploads.Concurrency), ctx: ctx, cancel: cancel}, nil
 }
 
 // Close cancels and joins owned work before releasing service lifecycle state.
