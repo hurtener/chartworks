@@ -104,6 +104,7 @@ type AttemptStore interface {
 	BeginRead(context.Context, store.Scope, Attempt, int) error
 	DispatchRead(context.Context, store.Scope, string, RemoteQuery, bool) error
 	GetRead(context.Context, store.Scope, string) (Attempt, error)
+	GetReadOperation(context.Context, store.Scope, string) (Attempt, error)
 	CancelRead(context.Context, store.Scope, string) error
 	FinishRead(context.Context, store.Scope, Attempt, bool) error
 }
@@ -237,7 +238,12 @@ func (x *Executor) Execute(ctx context.Context, e identity.Envelope, p Plan, o O
 		return ExecutionReport{}, err
 	}
 	observer := &readObserver{repo: x.repo, scope: scope, id: a.ID}
-	native, runErr := x.adapter.ExecuteRead(ctx, e, p, limits, a.ID, observer)
+	nativeContext, joinWatcher := watchRead(ctx, observer)
+	native, runErr := x.adapter.ExecuteRead(nativeContext, e, p, limits, a.ID, observer)
+	if watchErr := joinWatcher(); watchErr != nil {
+		runErr = watchErr
+		native.Result = Result{}
+	}
 	status, code := "failed", "source_unavailable"
 	if runErr == nil {
 		status = native.Result.Outcome
@@ -291,6 +297,11 @@ func (x *Executor) Execute(ctx context.Context, e identity.Envelope, p Plan, o O
 	if err = x.repo.FinishRead(cleanup, scope, current, false); err != nil {
 		return ExecutionReport{}, ErrUncertain
 	}
+	current, err = x.repo.GetRead(cleanup, scope, a.ID)
+	if err != nil {
+		return ExecutionReport{}, ErrUncertain
+	}
+	status = current.Status
 	report := ExecutionReport{Attempt: current}
 	if runErr == nil && (status == "succeeded" || status == "empty" || status == "truncated") {
 		report.Result = &native.Result
@@ -394,4 +405,52 @@ func (x *Executor) Control(ctx context.Context, e identity.Envelope, id string, 
 		}
 	}
 	return ControlReceipt{Attempt: a, RemoteState: state}, nil
+}
+
+// watchRead owns one bounded, joined cancellation observer per active read.
+// Metadata failure cancels work instead of silently losing the cancellation fence.
+func watchRead(ctx context.Context, observer Observer) (context.Context, func() error) {
+	child, cancel := context.WithCancel(ctx)
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(25 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				done <- nil
+				return
+			case <-ctx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				probe, end := context.WithTimeout(child, time.Second)
+				err := observer.Check(probe)
+				end()
+				if err != nil {
+					cancel()
+					done <- err
+					return
+				}
+			}
+		}
+	}()
+	return child, func() error { close(stop); err := <-done; cancel(); return err }
+}
+
+// ByOperation recovers a content-free attempt after a lost response. It never reruns values.
+func (x *Executor) ByOperation(ctx context.Context, e identity.Envelope, operation string) (Attempt, error) {
+	if ctx == nil || !e.Valid() || !identity.Identifier(operation) {
+		return Attempt{}, ErrBinding
+	}
+	scope, err := store.NewScope(e.Tenant(), e.User())
+	if err != nil {
+		return Attempt{}, err
+	}
+	a, err := x.repo.GetReadOperation(ctx, scope, operation)
+	if err != nil {
+		return Attempt{}, err
+	}
+	return x.Inspect(ctx, e, a.ID)
 }

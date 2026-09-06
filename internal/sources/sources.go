@@ -326,7 +326,7 @@ func (s *Service) Binding(ctx context.Context, e identity.Envelope, id, partitio
 	if err = access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: partition}); err != nil {
 		return out, err
 	}
-	err = s.call(ctx, e, true, func(ctx context.Context) error {
+	err = s.call(ctx, e, false, func(ctx context.Context) error {
 		record, e2 := s.repo.ReadSource(ctx, scope, id)
 		if e2 != nil {
 			return e2

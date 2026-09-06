@@ -76,7 +76,7 @@ func TestPhase02(t *testing.T) {
 		}
 		wg.Wait()
 		c := support.Raw(t, dsn)
-		if count(t, c, `SELECT count(*) FROM chartworks.schema_migrations`) != 5 {
+		if count(t, c, `SELECT count(*) FROM chartworks.schema_migrations`) != 6 {
 			t.Fatal("migrations not exactly once")
 		}
 		db := support.Open(t, dsn)
@@ -242,7 +242,7 @@ func TestPhase02(t *testing.T) {
 		if rows.Err() != nil {
 			t.Fatal("schema rows failed")
 		}
-		expected := []string{"audit_events", "job_occurrences", "job_schedules", "operation_attempts", "operations", "policies", "policy_revisions", "queue_limits", "schema_migrations", "source_revisions", "sources", "vector_facets", "vector_generations", "vector_heads"}
+		expected := []string{"audit_events", "job_occurrences", "job_schedules", "operation_attempts", "operations", "policies", "policy_revisions", "queue_limits", "schema_migrations", "source_revisions", "sources", "read_attempts", "vector_facets", "vector_generations", "vector_heads"}
 		sort.Strings(expected)
 		if strings.Join(names, ",") != strings.Join(expected, ",") {
 			t.Fatalf("unexpected foundation schema: %v", names)
@@ -418,7 +418,7 @@ func TestPhase02(t *testing.T) {
 			t.Fatal("restored operation lost idempotency/result")
 		}
 		raw := support.Raw(t, restored)
-		if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations`) != 5 {
+		if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations`) != 6 {
 			t.Fatal("restored schema history invalid")
 		}
 		if _, e := raw.Exec(ctx, `DELETE FROM chartworks.operations WHERE tenant_id=$1 AND operation_id=$2`, a.Tenant(), o.ID); e == nil {

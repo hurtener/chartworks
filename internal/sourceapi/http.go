@@ -230,13 +230,13 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = 404, "not_found"
 	case errors.Is(err, store.ErrInvalid):
 		status, code = 400, "invalid_request"
-	case errors.Is(err, store.ErrConflict):
+	case errors.Is(err, readexec.ErrReplay), errors.Is(err, store.ErrConflict):
 		status, code = 409, "conflict"
 	case errors.Is(err, readexec.ErrBinding):
 		status, code = 409, "context_changed"
 	case errors.Is(err, readexec.ErrUnsafe):
 		status, code = 422, "sql_unsafe"
-	case errors.Is(err, readexec.ErrUnsupported):
+	case errors.Is(err, readexec.ErrType), errors.Is(err, readexec.ErrUnsupported):
 		status, code = 422, "unsupported"
 	case errors.Is(err, readexec.ErrLimit):
 		status, code = 413, "limit_exceeded"

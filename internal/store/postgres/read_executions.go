@@ -178,7 +178,7 @@ func (d *DB) FinishRead(ctx context.Context, s store.Scope, a readexec.Attempt, 
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_state=$5,finished_at=$6,rows_returned=$7,bytes_returned=$8,code=$9 WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND manifest_hash=$10 AND (finished_at IS NULL OR status='uncertain') AND (NOT $11 OR status='uncertain' OR deadline + interval '3 seconds'<clock_timestamp())`, s.Tenant(), s.Actor(), a.ID, a.Status, a.RemoteState, a.Finished, a.Rows, a.Bytes, a.Code, readexec.Hash(a.Manifest), reconcile)
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $4 END,remote_state=$5,finished_at=$6,rows_returned=CASE WHEN cancel_requested THEN 0 ELSE $7 END,bytes_returned=CASE WHEN cancel_requested THEN 0 ELSE $8 END,code=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $9 END WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND manifest_hash=$10 AND (finished_at IS NULL OR status='uncertain') AND (NOT $11 OR status='uncertain' OR deadline + interval '3 seconds'<clock_timestamp())`, s.Tenant(), s.Actor(), a.ID, a.Status, a.RemoteState, a.Finished, a.Rows, a.Bytes, a.Code, readexec.Hash(a.Manifest), reconcile)
 		if err != nil {
 			return err
 		}
@@ -187,4 +187,23 @@ func (d *DB) FinishRead(ctx context.Context, s store.Scope, a readexec.Attempt, 
 		}
 		return auditJob(ctx, tx, s, "read."+a.Status, a.ID)
 	})
+}
+
+// GetReadOperation finds an actor's latest physical attempt for a retained logical key.
+func (d *DB) GetReadOperation(ctx context.Context, s store.Scope, operation string) (a readexec.Attempt, err error) {
+	if !s.Valid() {
+		return a, store.ErrScope
+	}
+	if !identity.Identifier(operation) {
+		return a, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var e error
+		a, e = scanRead(tx.QueryRow(ctx, `SELECT `+readAttemptColumns+` FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 ORDER BY attempt_number DESC LIMIT 1`, s.Tenant(), s.Actor(), operation))
+		return e
+	})
+	if err != nil {
+		return readexec.Attempt{}, err
+	}
+	return a, nil
 }

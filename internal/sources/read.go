@@ -189,7 +189,7 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 				count = left
 			}
 		}
-		rows, queryErr := tx.Query(ctx, "FETCH FORWARD "+strconv.Itoa(count)+" FROM chartworks_read", pgx.QueryResultFormatsByOID{790: pgx.BinaryFormatCode})
+		rows, queryErr := tx.Query(ctx, "FETCH FORWARD "+strconv.Itoa(count)+" FROM chartworks_read", pgx.QueryExecModeDescribeExec, pgx.QueryResultFormatsByOID{790: pgx.BinaryFormatCode})
 		if queryErr != nil {
 			return out, queryErr
 		}
@@ -376,7 +376,8 @@ func moneyDecimal(raw []byte) ([]byte, error) {
 }
 
 // ControlRead only controls a verified, journal-backed tagged backend transaction.
-// A successful pg_cancel_backend return is a request receipt, not termination proof.
+// Cancellation signals are sent only by the live owner using its original connection secret.
+// ControlRead itself only observes; it cannot accidentally cancel a reused backend PID.
 func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control readexec.Control, cancel bool) (string, error) {
 	id, partition := control.Coordinates()
 	scope, err := sourceScope(e, "sources.query", "query", id)
@@ -404,13 +405,7 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 		if err != nil {
 			return err
 		}
-		if cancel {
-			var sent bool
-			err = pool.QueryRow(ctx, `SELECT pg_cancel_backend(pid) FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database()`, q.PID, q.Started, q.Tag).Scan(&sent)
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return safe(err)
-			}
-		}
+
 		var exists bool
 		err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, q.PID, q.Started, q.Tag).Scan(&exists)
 		if err != nil {
