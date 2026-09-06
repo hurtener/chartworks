@@ -32,19 +32,50 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Identify committed integration state
+          cache: false
+      - uses: actions/cache/restore@v4
+        id: go-cache
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: linux-go1.26.4-engineering-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            linux-go1.26.4-engineering-${{ hashFiles('go.sum') }}-
+      - name: Install matching PostgreSQL 17 backup client
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
+          sudo install -D -m 0644 /tmp/pgdg.asc /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
+      - name: Identify committed source and preserve completed migrations
         run: |
           set -euo pipefail
           git rev-parse HEAD
           git diff --exit-code
-          git log --oneline -12
-      - name: Compile and run the full uncached race baseline
+          git merge-base --is-ancestor 7f7fd67d43a71607a53015842d58889ae4f25425 HEAD
+          git diff --exit-code 7f7fd67d43a71607a53015842d58889ae4f25425 -- 'internal/store/postgres/migrations/00[1-6]*'
+          git log --oneline -8
+      - name: Prebuild the actual binary for its unchanged lifecycle test deadline
+        run: go build -o /tmp/chartworks-test-binary ./cmd/chartworks
+      - name: Run the full uncached race suite, including new acceptance cases
         run: |
           set -euo pipefail
           go test -race -count=1 -timeout=15m ./... 2>&1 | tee /tmp/phase-tests.log
       - name: Confirm tests did not change committed source
         if: always()
         run: git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always() && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
       - name: Preserve exact source and test output for recovery
         if: always()
         run: |
