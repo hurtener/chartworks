@@ -72,3 +72,16 @@ a paid-provider test or a deployment. Scheduled reporting handlers and retained
 result artifacts remain phases 30 and 28. Uncertain observations remain unknown,
 optimizer cost is not actual scanned bytes, offline authority ends at its JWT
 boundary, and explicit replay protection is bounded by the retained receipt window.
+
+## Finalization discipline
+
+All new runtime assertions are retained, including actual PID reuse, credential
+context substitution, late-cancellation audit truth and the reference configuration
+through the closed decoder with required Pengui verifier settings. Migration 006
+is reflected in the cumulative schema-version assertion. No threshold, criterion,
+fuzz seed or race instrumentation has been removed to resolve a failure.
+
+Permanent CI now requires all 64 implemented criteria, including phase10, and
+rejects source preparation scripts and temporary development/workspace workflows.
+Those files are removed before the final verification commit. The final PR records
+exact tested source, completed runs and any remaining qualified boundaries.

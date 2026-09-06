@@ -1,6 +1,6 @@
 # Phase 10 — exec-read
 
-Status: in_progress. Owner: internal/exec. Hard dependencies: 08, 09.
+Status: shipped. Owner: internal/exec. Hard dependencies: 08, 09.
 
 ## Authority and design
 
@@ -43,7 +43,7 @@ Implement `TestPhase10/AC01` through `TestPhase10/AC06` against real read-only P
 
 ## Glossary, decisions and deviations
 
-Attempt and indeterminate outcome are not successful exactly-once execution. D-051 applies. Runtime implementation and executable acceptance are supplied on the implementation branch; final source verification remains required.
+Attempt and indeterminate outcome are not successful exactly-once execution. D-051 applies. Runtime implementation and all six executable acceptance criteria are supplied here; final exact-source CI is required before PR readiness.
 
 ## Implemented contract and review
 
