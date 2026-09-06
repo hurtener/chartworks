@@ -133,3 +133,12 @@ response-bound regressions are recorded in the [adversarial review](../reviews/p
 Final exact-head CI must pass the existing package gates and cumulative acceptance.
 No paid model call, additional warehouse-engine support, deployment or full-product
 release acceptance is claimed. Twenty-five later workstreams remain planned.
+
+## Phase-10 read consumer
+
+The [D-065 read execution contract](../contracts/read-execution.md) extends the
+existing validated plan and source adapter without changing their authority or
+qualification boundaries. Its [adversarial review](../reviews/phase-09-10-adversarial.md)
+records the actual cursor, attempt, cancellation and exact-result regressions.
+Earlier statements assigning execution to phase 10 are now realized by that
+consumer; other-engine and retained reporting deliverables remain separately owned.

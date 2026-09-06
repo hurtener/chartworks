@@ -21,3 +21,10 @@ Pengui remains the sole authority issuer. No local IAM, authentication bypass, i
 ## Planning baseline
 
 The earlier commits contain the governed-reporting analysis and actionable 34-phase implementation plan. Their historical detailed notes remain under `docs/archive/`; planning checks are not runtime acceptance.
+
+## Phase 10 read execution / phase 09 continuation
+
+- One plan-only PostgreSQL cursor core with exact ordered results and honest empty/truncated/error states.
+- Content-free explicit attempt journal, cancellation intent and observed reconciliation; no hidden retries or result cache.
+- Source-revision fence through bounded execution/cleanup; API/SDK parity and real adversarial regressions.
+- Forward migration 006; applied migrations 001–005 and existing phase-09 criteria preserved.

@@ -753,3 +753,5 @@ power ceiling a plan instead of a hope, without letting it creep into V1.
 *RFC-001-Chartworks.md v1.0 (2026-07-06) settles D-019…D-031; D-032…D-042 were filed
 during the planning review. Further product decisions land here as phases ship,
 numbered D-043+.*
+
+Read execution continuation: [bounded plan-only reads and attempt uncertainty](decisions/2026-09-06-read-execution.md).

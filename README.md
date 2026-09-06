@@ -37,3 +37,5 @@ The embedded Bifrost v1.6.2 adapter implements all ten configured roles, strict 
 One PostgreSQL operation ledger now owns queued maintenance, attempts, fencing, bounded cron/interval/manual occurrences, retries and cancellation. Every privileged attempt obtains fresh **Pengui-issued** authority bound to its accepted manifest. This requires the [companion Pengui endpoint](docs/contracts/execution-authority-v1.md); Chartworks has no local credential renewal or signing path. Retained metadata remains available with model inference and job dispatch disabled.
 
 See [setup](GETTING-STARTED.md) and the [adversarial review and verification record](docs/reviews/phase-05-06-adversarial.md). The implementation has recorded-wire tests, not paid live-provider or production deployment acceptance. Reporting targets and the full MCP surface are still later workstreams.
+
+Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](docs/contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.

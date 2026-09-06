@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -90,6 +91,10 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 		s.mu.Unlock()
 		return entry.pool, u.Host + u.EscapedPath(), nil
 	}
+	if s.retiring[key] {
+		s.mu.Unlock()
+		return nil, "", readexec.ErrBinding
+	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		s.mu.Unlock()
@@ -102,10 +107,13 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 	cfg.ConnConfig.ConnectTimeout = time.Duration(s.settings.ConnectTimeout)
 	cfg.ConnConfig.Fallbacks = nil
 	cfg.ConnConfig.RuntimeParams = map[string]string{"search_path": "pg_catalog", "application_name": "chartworks-source-reader", "default_transaction_read_only": "on", "row_security": "on", "statement_timeout": strconv.FormatInt(time.Duration(s.settings.QueryTimeout).Milliseconds(), 10), "lock_timeout": strconv.FormatInt(time.Duration(s.settings.QueryTimeout).Milliseconds(), 10)}
+	cfg.ConnConfig.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
+		return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, CancelRequestDelay: 0, DeadlineDelay: 2 * time.Second}
+	}
 	cfg.ConnConfig.OnNotice = nil
 	cfg.ConnConfig.OnNotification = nil
 	// Bound backend protocol message allocation before pgx receives large row values.
-	maximum := s.settings.MaxBytes + 32768
+	maximum := (16 << 20) + 32768
 	cfg.ConnConfig.BuildFrontend = func(reader io.Reader, writer io.Writer) *pgproto3.Frontend {
 		frontend := pgproto3.NewFrontend(reader, writer)
 		frontend.SetMaxBodyLen(maximum)
@@ -118,10 +126,18 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 	}
 	old := s.pools[key]
 	s.pools[key] = poolEntry{material: material, pool: pool}
-	s.mu.Unlock()
 	if old.pool != nil {
-		old.pool.Close()
+		s.retiring[key] = true
+		s.reap.Add(1)
+		go func() {
+			defer s.reap.Done()
+			old.pool.Close()
+			s.mu.Lock()
+			delete(s.retiring, key)
+			s.mu.Unlock()
+		}()
 	}
+	s.mu.Unlock()
 	return pool, u.Host + u.EscapedPath(), nil
 }
 
@@ -144,49 +160,9 @@ func (s *Service) probe(ctx context.Context, c config.SourceConnection, id strin
 		defer stop()
 		_ = tx.Rollback(cleanup)
 	}()
-	// This catalog/type/exposure proof is qualified against PostgreSQL 17.
-	// Reject unknown majors before interpreting catalogs or locking targets.
-	var serverVersion int
-	if err = tx.QueryRow(ctx, `SELECT current_setting('server_version_num')::integer`).Scan(&serverVersion); err != nil {
-		return out, safe(err)
-	}
-	if !supportedPostgresVersion(serverVersion) {
-		return out, readexec.ErrUnsupported
-	}
-	if _, err = tx.Exec(ctx, `SELECT set_config('search_path','pg_catalog',true),set_config('row_security','on',true),set_config('statement_timeout',$1,true),set_config('lock_timeout',$1,true)`, strconv.FormatInt(time.Duration(s.settings.QueryTimeout).Milliseconds(), 10)); err != nil {
-		return out, safe(err)
-	}
-	relations := append([]config.SourceRelation(nil), c.Relations...)
-	sort.Slice(relations, func(i, j int) bool {
-		return relations[i].Schema+"."+relations[i].Name < relations[j].Schema+"."+relations[j].Name
-	})
-	for _, relation := range relations {
-		if _, err = tx.Exec(ctx, "LOCK TABLE ONLY "+pgx.Identifier{relation.Schema, relation.Name}.Sanitize()+" IN ACCESS SHARE MODE"); err != nil {
-			return out, safe(err)
-		}
-	}
-	evidence := contextEvidence{Location: location, Version: c.Version}
-	var session, readonly string
-	var super, bypass, createRole, createDB bool
-	if err = tx.QueryRow(ctx, `SELECT current_user,session_user,r.oid::bigint,r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,current_setting('transaction_read_only') FROM pg_catalog.pg_roles r WHERE r.rolname=current_user`).Scan(&evidence.User, &session, &evidence.RoleOID, &super, &bypass, &createRole, &createDB, &readonly); err != nil {
-		return out, safe(err)
-	}
-	if evidence.User != session || super || bypass || createRole || createDB || readonly != "on" {
-		return out, readexec.ErrUnsafe
-	}
-	out = readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "postgres"}
-	for _, relation := range relations {
-		proof, columns, e := discoverRelation(ctx, tx, relation)
-		if e != nil {
-			return readexec.Binding{}, e
-		}
-		evidence.Tables = append(evidence.Tables, proof)
-		out.Relations = append(out.Relations, readexec.Relation{ID: "ds:" + readexec.Hash([]string{id, relation.Schema, relation.Name})[:32], Schema: relation.Schema, Name: relation.Name, Columns: columns})
-	}
-	out.Contract = "source-contract:" + readexec.Hash([]any{c.Version, out.Relations})[:32]
-	out.Fingerprint = readexec.Hash(evidence)
-	if !out.Valid() {
-		return readexec.Binding{}, readexec.ErrBinding
+	out, err = s.inspectReadContext(ctx, tx, c, id, revision, location)
+	if err != nil {
+		return readexec.Binding{}, err
 	}
 	if consume != nil {
 		if err = consume(ctx, tx, out.Clone()); err != nil {
@@ -310,52 +286,56 @@ func explain(ctx context.Context, tx readTransaction, statement string, paramete
 	}
 	return nil
 }
-func readRows(ctx context.Context, tx readTransaction, statement string, parameters []readexec.Parameter, maxRows, maxBytes int) (out Rows, err error) {
-	args, err := arguments(parameters)
-	if err != nil {
-		return out, err
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	args = append([]any{pgx.QueryResultFormats{pgx.TextFormatCode}}, args...)
-	rows, err := tx.Query(ctx, statement, args...)
-	if err != nil {
-		return out, safe(err)
-	}
-	defer rows.Close()
-	bytes := 0
-	for _, column := range rows.FieldDescriptions() {
-		out.Columns = append(out.Columns, column.Name)
-		bytes += len(column.Name) + 16
-	}
-	out.Values = [][]*string{}
-	for rows.Next() {
-		if len(out.Values) >= maxRows {
-			cancel()
-			return Rows{}, readexec.ErrLimit
-		}
-		values := rows.RawValues()
-		for _, value := range values {
-			bytes += len(value) + 16
-		}
-		if bytes > maxBytes {
-			cancel()
-			return Rows{}, readexec.ErrLimit
-		}
-		row := make([]*string, len(values))
-		for i, value := range values {
-			if value != nil {
-				text := string(value)
-				row[i] = &text
-			}
-		}
-		out.Values = append(out.Values, row)
-	}
-	if err = rows.Err(); err != nil {
-		return Rows{}, safe(err)
-	}
-	return out, nil
-}
 
 // supportedPostgresVersion pins the independently tested source safety contract.
 func supportedPostgresVersion(version int) bool { return version >= 170000 && version < 180000 }
+
+// inspectReadContext is shared by native planning and the bounded read cursor.
+func (s *Service) inspectReadContext(ctx context.Context, tx readTransaction, c config.SourceConnection, id string, revision int64, location string) (out readexec.Binding, err error) {
+	// This catalog/type/exposure proof is qualified against PostgreSQL 17.
+	// Reject unknown majors before interpreting catalogs or locking targets.
+	var serverVersion int
+	if err = tx.QueryRow(ctx, `SELECT current_setting('server_version_num')::integer`).Scan(&serverVersion); err != nil {
+		return out, safe(err)
+	}
+	if !supportedPostgresVersion(serverVersion) {
+		return out, readexec.ErrUnsupported
+	}
+	if _, err = tx.Exec(ctx, `SELECT set_config('search_path','pg_catalog',true),set_config('row_security','on',true),set_config('statement_timeout',$1,true),set_config('lock_timeout',$1,true)`, strconv.FormatInt(time.Duration(s.settings.QueryTimeout).Milliseconds(), 10)); err != nil {
+		return out, safe(err)
+	}
+	relations := append([]config.SourceRelation(nil), c.Relations...)
+	sort.Slice(relations, func(i, j int) bool {
+		return relations[i].Schema+"."+relations[i].Name < relations[j].Schema+"."+relations[j].Name
+	})
+	for _, relation := range relations {
+		if _, err = tx.Exec(ctx, "LOCK TABLE ONLY "+pgx.Identifier{relation.Schema, relation.Name}.Sanitize()+" IN ACCESS SHARE MODE"); err != nil {
+			return out, safe(err)
+		}
+	}
+	evidence := contextEvidence{Location: location, Version: c.Version}
+	var session, readonly string
+	var super, bypass, createRole, createDB bool
+	if err = tx.QueryRow(ctx, `SELECT current_user,session_user,r.oid::bigint,r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,current_setting('transaction_read_only') FROM pg_catalog.pg_roles r WHERE r.rolname=current_user`).Scan(&evidence.User, &session, &evidence.RoleOID, &super, &bypass, &createRole, &createDB, &readonly); err != nil {
+		return out, safe(err)
+	}
+	if evidence.User != session || super || bypass || createRole || createDB || readonly != "on" {
+		return out, readexec.ErrUnsafe
+	}
+	out = readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "postgres"}
+	for _, relation := range relations {
+		proof, columns, e := discoverRelation(ctx, tx, relation)
+		if e != nil {
+			return readexec.Binding{}, e
+		}
+		evidence.Tables = append(evidence.Tables, proof)
+		out.Relations = append(out.Relations, readexec.Relation{ID: "ds:" + readexec.Hash([]string{id, relation.Schema, relation.Name})[:32], Schema: relation.Schema, Name: relation.Name, Columns: columns})
+	}
+	out.Contract = "source-contract:" + readexec.Hash([]any{c.Version, out.Relations})[:32]
+	out.Fingerprint = readexec.Hash(evidence)
+	if !out.Valid() {
+		return readexec.Binding{}, readexec.ErrBinding
+	}
+
+	return out, nil
+}

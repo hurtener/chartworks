@@ -36,11 +36,21 @@ type Sources struct {
 
 // ReadValidation bounds native SQL parsing, independently from connection and execution limits.
 type ReadValidation struct {
-	MaxSQLBytes   int `json:"max_sql_bytes"`
-	MaxParameters int `json:"max_parameters"`
-	MaxASTDepth   int `json:"max_ast_depth"`
-	MaxASTNodes   int `json:"max_ast_nodes"`
-	Concurrency   int `json:"concurrency"`
+	RowsDefault          int      `json:"rows_default"`
+	RowsCeiling          int      `json:"rows_ceiling"`
+	PreviewRows          int      `json:"preview_rows"`
+	BytesDefault         int      `json:"bytes_default"`
+	BytesCeiling         int      `json:"bytes_ceiling"`
+	Timeout              Duration `json:"timeout"`
+	CancelGrace          Duration `json:"cancel_grace"`
+	PlannerCostCeiling   float64  `json:"planner_cost_ceiling"`
+	ExecutionConcurrency int      `json:"execution_concurrency"`
+	MaxReadAttempts      int      `json:"max_read_attempts"`
+	MaxSQLBytes          int      `json:"max_sql_bytes"`
+	MaxParameters        int      `json:"max_parameters"`
+	MaxASTDepth          int      `json:"max_ast_depth"`
+	MaxASTNodes          int      `json:"max_ast_nodes"`
+	Concurrency          int      `json:"concurrency"`
 }
 
 // DefaultSources leaves warehouse access opt-in and keeps metadata reads available.
@@ -50,7 +60,7 @@ func DefaultSources() Sources {
 
 // DefaultReadValidation supplies explicit conservative parser limits.
 func DefaultReadValidation() ReadValidation {
-	return ReadValidation{MaxSQLBytes: 32768, MaxParameters: 64, MaxASTDepth: 64, MaxASTNodes: 8192, Concurrency: 2}
+	return ReadValidation{RowsDefault: 10000, RowsCeiling: 100000, PreviewRows: 200, BytesDefault: 4 << 20, BytesCeiling: 16 << 20, Timeout: Duration(time.Minute), CancelGrace: Duration(2 * time.Second), PlannerCostCeiling: 1e7, ExecutionConcurrency: 2, MaxReadAttempts: 3, MaxSQLBytes: 32768, MaxParameters: 64, MaxASTDepth: 64, MaxASTNodes: 8192, Concurrency: 2}
 }
 
 // Clone detaches the complete operator connector snapshot.
@@ -133,6 +143,9 @@ func ValidateSources(s Sources) error {
 
 // ValidateReadValidation checks parsing admission separately from SQL authorization.
 func ValidateReadValidation(v ReadValidation) error {
+	if v.RowsDefault < 1 || v.RowsDefault > v.RowsCeiling || v.RowsCeiling > 100000 || v.PreviewRows < 1 || v.PreviewRows > v.RowsDefault || v.BytesDefault < 1024 || v.BytesDefault > v.BytesCeiling || v.BytesCeiling > 16<<20 || v.Timeout < Duration(time.Millisecond) || v.Timeout > Duration(time.Minute) || v.CancelGrace < Duration(time.Millisecond) || v.CancelGrace > Duration(3*time.Second) || !(v.PlannerCostCeiling > 0 && v.PlannerCostCeiling <= 1e12) || v.ExecutionConcurrency < 1 || v.ExecutionConcurrency > 16 || v.MaxReadAttempts < 1 || v.MaxReadAttempts > 3 {
+		return invalid("exec", "execution bounds exceeded")
+	}
 	if v.MaxSQLBytes < 128 || v.MaxSQLBytes > 65536 || v.MaxParameters < 1 || v.MaxParameters > 64 || v.MaxASTDepth < 4 || v.MaxASTDepth > 64 || v.MaxASTNodes < 32 || v.MaxASTNodes > 16384 || v.Concurrency < 1 || v.Concurrency > 8 {
 		return invalid("exec", "parser bounds exceeded")
 	}

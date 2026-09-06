@@ -22,7 +22,7 @@ func TestSafeErrors(t *testing.T) {
 			t.Fatal("unsafe database error")
 		}
 	}
-	if SchemaVersion() != "5" {
+	if SchemaVersion() != "6" {
 		t.Fatal("schema version")
 	}
 }

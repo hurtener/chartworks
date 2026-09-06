@@ -1,0 +1,7 @@
+[
+ {"method":"GET","path":"/v1/read-operations/{id}","action":"sources.query","effect":"attempt_metadata_read"},
+ {"method":"POST","path":"/v1/sources/{id}/execute","action":"sources.query","effect":"bounded_warehouse_read"},
+ {"method":"GET","path":"/v1/read-executions/{id}","action":"sources.query","effect":"attempt_metadata_read"},
+ {"method":"POST","path":"/v1/read-executions/{id}/cancel","action":"sources.query","effect":"cancel_intent_and_backend_signal"},
+ {"method":"POST","path":"/v1/read-executions/{id}/reconcile","action":"sources.query","effect":"remote_observation_and_attempt_reconciliation"}
+]

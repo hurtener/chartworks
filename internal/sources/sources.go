@@ -97,6 +97,8 @@ type Service struct {
 	closed    bool
 	mu        sync.Mutex
 	pools     map[string]poolEntry
+	retiring  map[string]bool
+	reap      sync.WaitGroup
 }
 
 var _ readexec.ReadAdapter = (*Service)(nil)
@@ -106,7 +108,7 @@ func New(repo Repository, settings config.Sources, lookup func(string) (string, 
 	if repo == nil || reflect.ValueOf(repo).Kind() == reflect.Pointer && reflect.ValueOf(repo).IsNil() || lookup == nil || config.ValidateSources(settings) != nil {
 		return nil, store.ErrInvalid
 	}
-	return &Service{repo: repo, settings: settings.Clone(), lookup: lookup, pools: map[string]poolEntry{}}, nil
+	return &Service{repo: repo, settings: settings.Clone(), lookup: lookup, pools: map[string]poolEntry{}, retiring: map[string]bool{}}, nil
 }
 
 // Enabled reports execution capability, not the availability of retained metadata.
@@ -121,11 +123,12 @@ func (s *Service) Close() {
 	}
 	s.closed = true
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for key, entry := range s.pools {
 		entry.pool.Close()
 		delete(s.pools, key)
 	}
+	s.mu.Unlock()
+	s.reap.Wait()
 }
 func (s *Service) call(ctx context.Context, e identity.Envelope, warehouse bool, fn func(context.Context) error) error {
 	if ctx == nil || !e.Valid() {
@@ -326,7 +329,7 @@ func (s *Service) Binding(ctx context.Context, e identity.Envelope, id, partitio
 	if err = access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: partition}); err != nil {
 		return out, err
 	}
-	err = s.call(ctx, e, true, func(ctx context.Context) error {
+	err = s.call(ctx, e, false, func(ctx context.Context) error {
 		record, e2 := s.repo.ReadSource(ctx, scope, id)
 		if e2 != nil {
 			return e2
@@ -373,49 +376,15 @@ func (s *Service) Explain(ctx context.Context, e identity.Envelope, candidate re
 
 // Read is the only query execution entry point. It accepts an opaque Plan, never
 // raw SQL, and rechecks current binding under the metadata and warehouse fences.
-func (s *Service) Read(ctx context.Context, e identity.Envelope, plan readexec.Plan) (out Rows, err error) {
-	id, partition := plan.Coordinates()
-	if id == "" || partition == "" {
-		return out, readexec.ErrBinding
-	}
-	scope, err := sourceScope(e, "sources.query", "query", id)
-	if err != nil {
-		return out, err
-	}
-	err = s.call(ctx, e, true, func(ctx context.Context) error {
-		return s.repo.WithSource(ctx, scope, id, func(ctx context.Context, record Record) error {
-			if record.Source.ContextID != partition {
-				return readexec.ErrBinding
-			}
-			if _, _, err := plan.SQL(e, record.Binding); err != nil {
-				return err
-			}
-			connection, err := s.connection(e.Tenant(), record.Connection)
-			if err != nil {
-				return err
-			}
-			_, err = s.probe(ctx, connection, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
-				statement, parameters, err := plan.SQL(e, b)
-				if err != nil {
-					return err
-				}
-				out, err = readRows(ctx, tx, statement, parameters, s.settings.MaxRows, s.settings.MaxBytes)
-				return err
-			})
-			return err
-		})
-	})
-	if err != nil {
-		return Rows{}, err
-	}
-	return out, nil
+func (s *Service) Read(ctx context.Context, e identity.Envelope, p readexec.Plan) (Rows, error) {
+	return s.readCompatibility(ctx, e, p)
 }
 
 func safe(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, known := range []error{context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
+	for _, known := range []error{readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
 		if errors.Is(err, known) {
 			return known
 		}

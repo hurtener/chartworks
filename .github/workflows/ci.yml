@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs, feat/phase-07-08-vindex-sources]
+    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs, feat/phase-07-08-vindex-sources, feat/phase-09-10-read-execution]
 
 permissions:
   contents: read
@@ -67,12 +67,12 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
-          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' \) -print)"
+          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' \) -print)"
       - run: make build
       - run: make vet
       - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
-      - name: All fifty-eight implemented phase criteria, no missing/skipped tests
+      - name: All sixty-four implemented phase criteria, no missing/skipped tests
         run: |
           python3 scripts/run_phase_acceptance.py --phase 01
           python3 scripts/run_phase_acceptance.py --phase 02
@@ -83,6 +83,7 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 07
           python3 scripts/run_phase_acceptance.py --phase 09
           python3 scripts/run_phase_acceptance.py --phase 08
+          python3 scripts/run_phase_acceptance.py --phase 10
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
@@ -105,6 +106,11 @@ jobs:
           name: race-coverage
           path: /tmp/chartworks-coverage.out
           retention-days: 14
+      - name: Read-only workflow and source preparation hygiene
+        run: |
+          test ! -f .github/workflows/phase-09-10-development.yml
+          test ! -f .github/workflows/read-snapshot.yml
+          test ! -f .github/workflows/read-execution-workspace.yml
       - name: Working tree must remain unchanged
         run: |
           git diff --exit-code

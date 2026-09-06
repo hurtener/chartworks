@@ -93,6 +93,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+	var executor *readexec.Executor
 	var validator *readexec.Validator
 	if v.Sources.Enabled {
 		validator, err = readexec.NewValidator(w.sourceService, v.Exec)
@@ -101,7 +102,15 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			return nil, err
 		}
 	}
+	if validator != nil {
+		executor, err = readexec.NewExecutor(w.sourceService, db, v.Exec)
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
 	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
+	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {

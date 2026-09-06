@@ -67,7 +67,7 @@ func New(base string, client *http.Client, token TokenProvider) (*Client, error)
 	if u.Scheme != "https" && (u.Scheme != "http" || ip == nil || !ip.IsLoopback()) {
 		return nil, errors.New("chartworks: HTTPS required")
 	}
-	c := http.Client{Timeout: 30 * time.Second}
+	c := http.Client{Timeout: 75 * time.Second}
 	if client != nil {
 		c = *client
 	}
@@ -76,6 +76,9 @@ func New(base string, client *http.Client, token TokenProvider) (*Client, error)
 	return &Client{strings.TrimSuffix(base, "/"), &c, token}, nil
 }
 func (c *Client) call(ctx context.Context, method, path, key string, body, out any) error {
+	return c.callLimit(ctx, method, path, key, body, out, 1<<20)
+}
+func (c *Client) callLimit(ctx context.Context, method, path, key string, body, out any, limit int64) error {
 	token, err := c.token(ctx)
 	if err != nil || token == "" || strings.ContainsAny(token, " \r\n\t,") {
 		return errors.New("chartworks: credential unavailable")
@@ -106,14 +109,14 @@ func (c *Client) call(ctx context.Context, method, path, key string, body, out a
 	if resp.StatusCode != http.StatusOK {
 		return &StatusError{resp.StatusCode}
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
-	if err == nil && len(data) <= 1<<20 {
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err == nil && int64(len(data)) <= limit {
 		if text, ok := out.(*string); ok {
 			*text = string(data)
 			return nil
 		}
 	}
-	if err != nil || len(data) > 1<<20 || json.Unmarshal(data, out) != nil {
+	if err != nil || int64(len(data)) > limit || json.Unmarshal(data, out) != nil {
 		return errors.New("chartworks: invalid response")
 	}
 	return nil

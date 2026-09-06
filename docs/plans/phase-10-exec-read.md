@@ -1,6 +1,6 @@
 # Phase 10 — exec-read
 
-Status: planned. Owner: internal/exec. Hard dependencies: 08, 09.
+Status: shipped. Owner: internal/exec. Hard dependencies: 08, 09.
 
 ## Authority and design
 
@@ -43,4 +43,25 @@ Implement `TestPhase10/AC01` through `TestPhase10/AC06` against real read-only P
 
 ## Glossary, decisions and deviations
 
-Attempt and indeterminate outcome are not successful exactly-once execution. D-051 applies. No runtime completion is claimed.
+Attempt and indeterminate outcome are not successful exactly-once execution. D-051 applies. Runtime implementation and all six executable acceptance criteria are supplied here; final exact-source CI is required before PR readiness.
+
+## Implemented contract and review
+
+D-065 and [read-execution.md](../contracts/read-execution.md) specify the actual
+PostgreSQL cursor, exact type encodings, server/client/JWT deadlines, separate
+source-revision fence, bounded response/optimizer admission and content-free
+attempt journal. Migration 006 accompanies its consumers; applied 001–005 remain
+unchanged. The [adversarial review](../reviews/phase-09-10-adversarial.md) records
+real failures and fixes. HTTP and Go SDK operations use the same plan-only core.
+
+`exec.bytes_default=4194304`, `bytes_ceiling=16777216`, `cancel_grace=2s`,
+`planner_cost_ceiling=10000000`, `execution_concurrency=2` and
+`max_read_attempts=3` supplement the row/time settings above. Optimizer cost is an
+estimate; PostgreSQL does not implement a hard scan-byte ceiling and reports actual
+scan bytes as unknown. There is no misleading scan_bytes setting. Attempt records
+have a bounded 24-hour replay window and fixed admission capacity; uncertain
+records require reconciliation rather than automatic erasure. Values are not retained.
+
+The common core's caps apply to later scheduled/frozen consumers without a mode
+bypass. Actual scheduled reporting targets remain phase 30 and are not fabricated
+to close phase 10. Phase 09 was already merged and all six of its criteria remain.
