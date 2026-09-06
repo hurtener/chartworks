@@ -341,12 +341,14 @@ func normalizeCell(column UploadColumn, cell Cell) (Cell, error) {
 		}
 	case "date":
 		v, e := time.Parse("2006-01-02", s)
-		if e != nil || v.Format("2006-01-02") != s {
+		if e != nil || v.Year() < 1 || v.Format("2006-01-02") != s {
 			return Cell{}, ErrFormat
 		}
 	case "timestamp":
 		v, e := time.Parse(time.RFC3339Nano, s)
-		if e != nil {
+		// The managed PostgreSQL workspace has microsecond resolution and no
+		// year zero. Never silently discard precision or cross supported years.
+		if e != nil || v.Nanosecond()%1000 != 0 || v.UTC().Year() < 1 || v.UTC().Year() > 9999 {
 			return Cell{}, ErrFormat
 		}
 		s = v.UTC().Format(time.RFC3339Nano)
