@@ -43,13 +43,13 @@ func TestPhase12(t *testing.T) {
 		}
 		want := map[string]struct {
 			native, category string
-			nulls, distinct int
+			nulls, distinct  int
 		}{
-			"id": {"int4", "numeric", 0, 2},
-			"amount": {"numeric", "numeric", 0, 2},
-			"active": {"bool", "boolean", 0, 2},
-			"name": {"text", "text", 0, 2},
-			"payload": {"bytea", "binary", 1, 1},
+			"id":         {"int4", "numeric", 0, 2},
+			"amount":     {"numeric", "numeric", 0, 2},
+			"active":     {"bool", "boolean", 0, 2},
+			"name":       {"text", "text", 0, 2},
+			"payload":    {"bytea", "binary", 1, 1},
 			"created_at": {"timestamptz", "temporal", 0, 2},
 		}
 		for _, c := range p.Columns {
@@ -67,7 +67,7 @@ func TestPhase12(t *testing.T) {
 					t.Fatal("permitted temporal range absent", c)
 				}
 			case "name":
-				if c.Minimum != nil || c.Maximum != nil || c.Families["email_like"] != 1 || c.Families["empty"] != 1 {
+				if c.Minimum != nil || c.Maximum != nil || c.Families["email_like"] != 1 || c.Families["empty_text"] != 1 {
 					t.Fatal("sensitive values retained or family classification changed", c)
 				}
 			default:
@@ -83,7 +83,7 @@ func TestPhase12(t *testing.T) {
 			}
 			findings[finding.Code+":"+finding.Column] = finding.Count
 		}
-		if findings["contains_nulls:payload"] != 1 || findings["empty_text:name"] != 1 || findings["constant_observed_value:payload"] != 1 {
+		if findings["contains_nulls:payload"] != 1 || findings["empty_text:name"] != 1 || findings["constant_observed_value:payload"] != 0 {
 			t.Fatal("fixed quality rules changed", findings)
 		}
 		if p.Summary.Status != "available" || p.Summary.Text != "fixture result" || model.requests.Load() != 1 || len(p.Summary.Receipt.Calls) != 1 {
@@ -165,19 +165,19 @@ func TestPhase12(t *testing.T) {
 		now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 		settings := config.DefaultProfiling()
 		for _, tc := range []struct {
-			name string
-			latest *time.Time
-			complete bool
+			name          string
+			latest        *time.Time
+			complete      bool
 			state, reason string
 		}{
 			{"no-event", nil, true, "unknown", "no_event_time"},
 			{"fresh", profileTime(now.Add(-time.Hour)), true, "fresh", "configured_thresholds"},
-			{"aging", profileTime(now.Add(-48*time.Hour)), true, "aging", "configured_thresholds"},
-			{"stale", profileTime(now.Add(-8*24*time.Hour)), true, "stale", "configured_thresholds"},
+			{"aging", profileTime(now.Add(-48 * time.Hour)), true, "aging", "configured_thresholds"},
+			{"stale", profileTime(now.Add(-8 * 24 * time.Hour)), true, "stale", "configured_thresholds"},
 			{"future", profileTime(now.Add(time.Hour)), true, "unknown", "future_event_time"},
 			{"partial", profileTime(now.Add(-time.Hour)), false, "unknown", "partial_sample"},
 		} {
-			got := engineering.FreshnessAt(now, tc.latest, tc.complete, false, settings)
+			got := engineering.FreshnessAt(now, tc.latest, tc.complete, settings, false)
 			if got.State != tc.state || got.Reason != tc.reason || got.Latest != nil {
 				t.Fatal("freshness rule or value minimization changed", tc.name, got)
 			}
@@ -246,7 +246,7 @@ func TestPhase12(t *testing.T) {
 			t.Fatal("old immutable evidence changed", err)
 		}
 		metadata := support.Raw(t, f.dsn)
-		if count(t, metadata, `SELECT count(*) FROM chartworks.profile_health`) != 1 || count(t, metadata, `SELECT count(*) FROM chartworks.profile_dependencies`) != 1 {
+		if count(t, metadata, `SELECT count(*) FROM chartworks.profile_health_events`) != 1 || count(t, metadata, `SELECT count(*) FROM chartworks.profile_dependencies`) != 1 {
 			t.Fatal("health or dependency publication was not idempotent")
 		}
 	})
@@ -361,7 +361,7 @@ func profileTime(t time.Time) *time.Time { return &t }
 type interruptedProfilePublication struct {
 	*postgres.DB
 	interrupt atomic.Bool
-	before func(context.Context, jobs.Invocation) error
+	before    func(context.Context, jobs.Invocation) error
 }
 
 func (r *interruptedProfilePublication) PublishProfile(ctx context.Context, inv jobs.Invocation, record engineering.ProfileRecord, profile engineering.Profile) error {

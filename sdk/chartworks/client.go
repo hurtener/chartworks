@@ -19,7 +19,7 @@ import (
 type Policy struct {
 	Revision       int64 `json:"revision"`
 	AuditDays      int   `json:"audit_days"`
-	OperationHours int  `json:"operation_hours"`
+	OperationHours int   `json:"operation_hours"`
 }
 
 // Audit is an authorized metadata record.
@@ -146,7 +146,7 @@ func (c *Client) SetRetentionPolicy(ctx context.Context, expected int64, auditDa
 	body := struct {
 		Expected       int64 `json:"expected_revision"`
 		AuditDays      int   `json:"audit_days"`
-		OperationHours int  `json:"operation_hours"`
+		OperationHours int   `json:"operation_hours"`
 	}{expected, auditDays, operationHours}
 	var p Policy
 	err := c.call(ctx, "PUT", "/v1/retention-policy", "", body, &p)

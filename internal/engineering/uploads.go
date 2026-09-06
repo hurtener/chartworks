@@ -381,13 +381,43 @@ func (s *Service) runUpload(ctx context.Context, e identity.Envelope, id, key st
 }
 
 // RequestOperation inspects only an actor/session-bound task with current reach.
-func (s *Service) RequestOperation(ctx context.Context, e identity.Envelope, id string) (jobs.RequestTask, error) {
-	return s.runner.Inspect(ctx, e, id)
+func (s *Service) RequestOperation(ctx context.Context, e identity.Envelope, id string) (out jobs.RequestTask, err error) {
+	if !e.Valid() {
+		return out, access.ErrUnauthenticated
+	}
+	if !e.Has("jobs.read") {
+		return out, access.ErrForbidden
+	}
+	err = s.call(ctx, e, false, func(ctx context.Context) error {
+		// The shared runner independently checks the actual task's original
+		// domain reach and actor/session ownership, not merely its identifier.
+		out, err = s.runner.Inspect(ctx, e, id)
+		return err
+	})
+	if err != nil {
+		return jobs.RequestTask{}, err
+	}
+	return out, nil
 }
 
 // CancelOperation persists intent; stopping the actual owner is separately observed.
-func (s *Service) CancelOperation(ctx context.Context, e identity.Envelope, id string) (jobs.RequestTask, error) {
-	return s.runner.Cancel(ctx, e, id)
+func (s *Service) CancelOperation(ctx context.Context, e identity.Envelope, id string) (out jobs.RequestTask, err error) {
+	if !e.Valid() {
+		return out, access.ErrUnauthenticated
+	}
+	if !e.Has("jobs.cancel") {
+		return out, access.ErrForbidden
+	}
+	err = s.call(ctx, e, false, func(ctx context.Context) error {
+		// The shared runner independently checks the actual task's original
+		// domain reach and actor/session ownership, not merely its identifier.
+		out, err = s.runner.Cancel(ctx, e, id)
+		return err
+	})
+	if err != nil {
+		return jobs.RequestTask{}, err
+	}
+	return out, nil
 }
 
 // SweepUploads explicitly erases a bounded set of expired private staging records.

