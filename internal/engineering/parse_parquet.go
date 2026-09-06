@@ -137,7 +137,9 @@ func parquetCell(v parquet.Value, c parquetColumn, declared UploadColumn) (Cell,
 			if declared.Type != "number" {
 				return Cell{}, ErrFormat
 			}
-			s = strconv.FormatFloat(float64(v.Float()), 'g', -1, 32)
+			// The destination parses float64. Preserve the exact promoted binary
+			// value, not merely a decimal that round-trips at float32 precision.
+			s = strconv.FormatFloat(float64(v.Float()), 'g', -1, 64)
 		case 5:
 			if declared.Type != "number" {
 				return Cell{}, ErrFormat
