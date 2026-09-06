@@ -59,7 +59,7 @@ jobs:
           git rev-parse HEAD
           git diff --exit-code
           git merge-base --is-ancestor 7f7fd67d43a71607a53015842d58889ae4f25425 HEAD
-          git merge-base --is-ancestor 6b16e5433944c78d6a91f94295c4b621304dc147 HEAD
+          git merge-base --is-ancestor ff17acc0a891131e4beacb25abafdbcfd342967f HEAD
           git diff --exit-code 7f7fd67d43a71607a53015842d58889ae4f25425 -- 'internal/store/postgres/migrations/00[1-6]*'
           git log --oneline -8
       - name: Prebuild the actual binary for its unchanged lifecycle test deadline
@@ -68,13 +68,22 @@ jobs:
         run: |
           set -euo pipefail
           make coverage 2>&1 | tee /tmp/phase-tests.log
-      - name: Preserve measured function coverage, including failed-run evidence
+      - name: Preserve measured function coverage and readable failure annotations
         if: always()
         run: |
           if test -s /tmp/chartworks-coverage.out; then
             go tool cover -func=/tmp/chartworks-coverage.out > /tmp/phase-functions.log
-            cat /tmp/phase-functions.log
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path=Path('/tmp/phase-tests.log')
+          if path.exists():
+              for line in path.read_text().splitlines():
+                  if re.search(r'--- FAIL:|_test.go:[0-9]+:|below|coverage.*(FAIL|failed)|^FAIL\b|undefined:',line):
+                      text=line[:2500].replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+                      print('::notice title=Verification evidence::'+text)
+          PY
       - name: Confirm tests did not change committed source
         if: always()
         run: git diff --exit-code
