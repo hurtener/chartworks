@@ -104,10 +104,10 @@ func (d *DB) ReserveUpload(ctx context.Context, e identity.Envelope, spec engine
 		if err = tx.QueryRow(ctx, `SELECT count(*),COALESCE(sum(accounted_bytes),0)::bigint FROM chartworks.uploads WHERE tenant_id=$1 AND state<>'erased'`, e.Tenant()).Scan(&count, &used); err != nil {
 			return err
 		}
+		// Even uncompressed CSV can grow when values are normalized. Reserve
+		// the configured decoded ceiling for every format, then release the
+		// unused reservation atomically when actual decoded bytes are known.
 		reserve := l.MaxExpandedBytes
-		if spec.Format == "csv" {
-			reserve = spec.Bytes
-		}
 		if count >= l.MaxPerTenant || used+reserve > l.MaxTenantBytes {
 			return engineering.ErrLimit
 		}
@@ -381,7 +381,7 @@ func (d *DB) ExpiredUploads(ctx context.Context, e identity.Envelope, limit int)
 	defer stop()
 	out = []engineering.UploadRecord{}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+uploadColumns+` FROM chartworks.uploads u WHERE u.tenant_id=$1 AND u.actor_id=$2 AND u.session_id=$3 AND u.source_id IS NOT NULL AND u.state IN('awaiting_data','staged','deleting') AND u.expires_at<=clock_timestamp() AND ($4 OR u.source_id=ANY($5::text[])) ORDER BY u.expires_at,u.source_id LIMIT $6`, e.Tenant(), e.User(), e.Session(), selection.All(), selection.IDs(), limit)
+		rows, err := tx.Query(ctx, `SELECT `+uploadColumns+` FROM chartworks.uploads u WHERE u.tenant_id=$1 AND u.actor_id=$2 AND u.session_id=$3 AND u.state IN('awaiting_data','staged','deleting') AND u.expires_at<=clock_timestamp() AND ($4 OR u.source_id=ANY($5::text[])) ORDER BY u.expires_at,u.source_id LIMIT $6`, e.Tenant(), e.User(), e.Session(), selection.All(), selection.IDs(), limit)
 		if err != nil {
 			return err
 		}
