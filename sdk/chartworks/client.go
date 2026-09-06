@@ -19,7 +19,7 @@ import (
 type Policy struct {
 	Revision       int64 `json:"revision"`
 	AuditDays      int   `json:"audit_days"`
-	OperationHours int   `json:"operation_hours"`
+	OperationHours int  `json:"operation_hours"`
 }
 
 // Audit is an authorized metadata record.
@@ -79,24 +79,36 @@ func (c *Client) call(ctx context.Context, method, path, key string, body, out a
 	return c.callLimit(ctx, method, path, key, body, out, 1<<20)
 }
 func (c *Client) callLimit(ctx context.Context, method, path, key string, body, out any, limit int64) error {
-	token, err := c.token(ctx)
-	if err != nil || token == "" || strings.ContainsAny(token, " \r\n\t,") {
-		return errors.New("chartworks: credential unavailable")
-	}
 	var input []byte
+	media := ""
 	if body != nil {
+		var err error
 		input, err = json.Marshal(body)
 		if err != nil {
 			return errors.New("chartworks: invalid request")
 		}
+		media = "application/json"
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(input))
+	return c.callReader(ctx, method, path, key, media, bytes.NewReader(input), out, limit)
+}
+
+// callReader is the only authenticated transport. It reads no file bytes before
+// obtaining the current token and never follows credential-bearing redirects.
+func (c *Client) callReader(ctx context.Context, method, path, key, media string, input io.Reader, out any, limit int64) error {
+	if c == nil || ctx == nil {
+		return errors.New("chartworks: invalid request")
+	}
+	token, err := c.token(ctx)
+	if err != nil || token == "" || strings.ContainsAny(token, " \r\n\t,") {
+		return errors.New("chartworks: credential unavailable")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, input)
 	if err != nil {
 		return errors.New("chartworks: invalid request")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if media != "" {
+		req.Header.Set("Content-Type", media)
 	}
 	if key != "" {
 		req.Header.Set("Idempotency-Key", key)
@@ -134,7 +146,7 @@ func (c *Client) SetRetentionPolicy(ctx context.Context, expected int64, auditDa
 	body := struct {
 		Expected       int64 `json:"expected_revision"`
 		AuditDays      int   `json:"audit_days"`
-		OperationHours int   `json:"operation_hours"`
+		OperationHours int  `json:"operation_hours"`
 	}{expected, auditDays, operationHours}
 	var p Policy
 	err := c.call(ctx, "PUT", "/v1/retention-policy", "", body, &p)
