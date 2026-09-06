@@ -325,7 +325,8 @@ func (d *DB) ActivateUpload(ctx context.Context, i jobs.Invocation, r engineerin
 }
 
 // FinishUploadErasure seals only the same live erase operation after external
-// ownership-checked removal. Source metadata remains a non-queryable tombstone.
+// ownership-checked removal. Derived values are erased in the same transaction;
+// source metadata remains a non-queryable tombstone.
 func (d *DB) FinishUploadErasure(ctx context.Context, i jobs.Invocation, r engineering.UploadRecord) error {
 	e, err := i.Current("upload.erase", r.Spec.ID, r.SpecHash)
 	if err != nil {
@@ -346,6 +347,9 @@ func (d *DB) FinishUploadErasure(ctx context.Context, i jobs.Invocation, r engin
 			return store.ErrConflict
 		}
 		if _, err = requestFenceTx(ctx, tx, i); err != nil {
+			return err
+		}
+		if err = eraseUploadProfiles(ctx, tx, e.Tenant(), r.Spec.ID); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(ctx, `UPDATE chartworks.uploads SET state='erased',receipt=NULL,accounted_bytes=0 WHERE tenant_id=$1 AND source_id=$2`, e.Tenant(), r.Spec.ID); err != nil {
@@ -377,7 +381,7 @@ func (d *DB) ExpiredUploads(ctx context.Context, e identity.Envelope, limit int)
 	defer stop()
 	out = []engineering.UploadRecord{}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+uploadColumns+` FROM chartworks.uploads u WHERE u.tenant_id=$1 AND u.actor_id=$2 AND u.session_id=$3 AND u.state IN('awaiting_data','staged','deleting') AND u.expires_at<=clock_timestamp() AND ($4 OR u.source_id=ANY($5::text[])) ORDER BY u.expires_at,u.source_id LIMIT $6`, e.Tenant(), e.User(), e.Session(), selection.All(), selection.IDs(), limit)
+		rows, err := tx.Query(ctx, `SELECT `+uploadColumns+` FROM chartworks.uploads u WHERE u.tenant_id=$1 AND u.actor_id=$2 AND u.session_id=$3 AND u.source_id IS NOT NULL AND u.state IN('awaiting_data','staged','deleting') AND u.expires_at<=clock_timestamp() AND ($4 OR u.source_id=ANY($5::text[])) ORDER BY u.expires_at,u.source_id LIMIT $6`, e.Tenant(), e.User(), e.Session(), selection.All(), selection.IDs(), limit)
 		if err != nil {
 			return err
 		}
