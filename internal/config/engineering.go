@@ -5,48 +5,48 @@ import "time"
 // Uploads bounds customer-file parsing and managed workspace operations. The
 // workspace itself is an explicitly approved source alias, never the metadata DB.
 type Uploads struct {
-	Enabled bool `json:"enabled"`
-	Formats []string `json:"formats"`
-	MaxBytes int64 `json:"max_bytes"`
-	MaxRows int `json:"max_rows"`
-	MaxColumns int `json:"max_columns"`
-	MaxCells int64 `json:"max_cells"`
-	MaxCellBytes int `json:"max_cell_bytes"`
-	MaxExpandedBytes int64 `json:"max_expanded_bytes"`
-	MaxArchiveEntries int `json:"max_archive_entries"`
-	MaxSheets int `json:"max_sheets"`
-	MaxExpansionRatio int64 `json:"max_expansion_ratio"`
-	MaxPageBytes int64 `json:"max_page_bytes"`
-	MaxRowGroupBytes int64 `json:"max_row_group_bytes"`
-	MaxPerTenant int `json:"max_per_tenant"`
-	MaxTenantBytes int64 `json:"max_tenant_bytes"`
-	Concurrency int `json:"concurrency"`
-	Timeout Duration `json:"timeout"`
-	StagingTTL Duration `json:"staging_ttl"`
+	Enabled           bool     `json:"enabled"`
+	Formats           []string `json:"formats"`
+	MaxBytes          int64    `json:"max_bytes"`
+	MaxRows           int      `json:"max_rows"`
+	MaxColumns        int      `json:"max_columns"`
+	MaxCells          int64    `json:"max_cells"`
+	MaxCellBytes      int      `json:"max_cell_bytes"`
+	MaxExpandedBytes  int64    `json:"max_expanded_bytes"`
+	MaxArchiveEntries int      `json:"max_archive_entries"`
+	MaxSheets         int      `json:"max_sheets"`
+	MaxExpansionRatio int64    `json:"max_expansion_ratio"`
+	MaxPageBytes      int64    `json:"max_page_bytes"`
+	MaxRowGroupBytes  int64    `json:"max_row_group_bytes"`
+	MaxPerTenant      int      `json:"max_per_tenant"`
+	MaxTenantBytes    int64    `json:"max_tenant_bytes"`
+	Concurrency       int      `json:"concurrency"`
+	Timeout           Duration `json:"timeout"`
+	StagingTTL        Duration `json:"staging_ttl"`
 }
 
 // ProfilePolicy is a data-minimization policy, not an identity grant. Only named
 // numeric/temporal fields may retain ranges. No sample values enter model input.
 type ProfilePolicy struct {
-	ID string `json:"id"`
-	Tenant string `json:"tenant"`
-	Source string `json:"source"`
+	ID           string   `json:"id"`
+	Tenant       string   `json:"tenant"`
+	Source       string   `json:"source"`
 	RangeColumns []string `json:"range_columns"`
 }
 
 // Profiling controls a bounded, explicitly described sample through the common
 // validated-read executor. Returned rows never imply a bounded physical scan.
 type Profiling struct {
-	Enabled bool `json:"enabled"`
-	SampleRows int `json:"sample_rows"`
-	SampleBytes int `json:"sample_bytes"`
-	PlannerCostCeiling float64 `json:"planner_cost_ceiling"`
-	Timeout Duration `json:"timeout"`
-	FreshFor Duration `json:"fresh_for"`
-	StaleAfter Duration `json:"stale_after"`
-	Summaries bool `json:"summaries"`
-	MaxVersions int `json:"max_versions"`
-	Policies []ProfilePolicy `json:"policies"`
+	Enabled            bool            `json:"enabled"`
+	SampleRows         int             `json:"sample_rows"`
+	SampleBytes        int             `json:"sample_bytes"`
+	PlannerCostCeiling float64         `json:"planner_cost_ceiling"`
+	Timeout            Duration        `json:"timeout"`
+	FreshFor           Duration        `json:"fresh_for"`
+	StaleAfter         Duration        `json:"stale_after"`
+	Summaries          bool            `json:"summaries"`
+	MaxVersions        int             `json:"max_versions"`
+	Policies           []ProfilePolicy `json:"policies"`
 }
 
 // DefaultUploads keeps parsing opt-in with the phase-11 file and row ceilings.
@@ -56,14 +56,14 @@ func DefaultUploads() Uploads {
 		MaxExpandedBytes: 256 << 20, MaxArchiveEntries: 1024, MaxSheets: 32,
 		MaxExpansionRatio: 100, MaxPageBytes: 8 << 20, MaxRowGroupBytes: 64 << 20,
 		MaxPerTenant: 32, MaxTenantBytes: 1 << 30, Concurrency: 2,
-		Timeout: Duration(time.Minute), StagingTTL: Duration(24*time.Hour)}
+		Timeout: Duration(time.Minute), StagingTTL: Duration(24 * time.Hour)}
 }
 
 // DefaultProfiling redacts ranges unless an explicit operational policy permits them.
 func DefaultProfiling() Profiling {
 	return Profiling{SampleRows: 1000, SampleBytes: 1 << 20, PlannerCostCeiling: 1e7,
-		Timeout: Duration(30*time.Second), FreshFor: Duration(24*time.Hour),
-		StaleAfter: Duration(7*24*time.Hour), MaxVersions: 32, Policies: []ProfilePolicy{}}
+		Timeout: Duration(30 * time.Second), FreshFor: Duration(24 * time.Hour),
+		StaleAfter: Duration(7 * 24 * time.Hour), MaxVersions: 32, Policies: []ProfilePolicy{}}
 }
 
 // Clone detaches upload format configuration from its caller.
@@ -72,7 +72,9 @@ func (u Uploads) Clone() Uploads { u.Formats = append([]string(nil), u.Formats..
 // Clone detaches every profile policy and its column list.
 func (p Profiling) Clone() Profiling {
 	p.Policies = append([]ProfilePolicy(nil), p.Policies...)
-	for i := range p.Policies { p.Policies[i].RangeColumns = append([]string(nil), p.Policies[i].RangeColumns...) }
+	for i := range p.Policies {
+		p.Policies[i].RangeColumns = append([]string(nil), p.Policies[i].RangeColumns...)
+	}
 	return p
 }
 
@@ -91,7 +93,9 @@ func ValidateUploads(u Uploads) error {
 	}
 	seen := map[string]bool{}
 	for _, f := range u.Formats {
-		if (f != "csv" && f != "xlsx" && f != "parquet") || seen[f] { return invalid("uploads.formats", "unique qualified formats required") }
+		if (f != "csv" && f != "xlsx" && f != "parquet") || seen[f] {
+			return invalid("uploads.formats", "unique qualified formats required")
+		}
 		seen[f] = true
 	}
 	return nil
@@ -114,7 +118,9 @@ func ValidateProfiling(p Profiling) error {
 		seen[key] = true
 		columns := map[string]bool{}
 		for _, c := range policy.RangeColumns {
-			if !sourceSQLName(c) || columns[c] { return invalid("profiling.policies", "unique declared columns required") }
+			if !sourceSQLName(c) || columns[c] {
+				return invalid("profiling.policies", "unique declared columns required")
+			}
 			columns[c] = true
 		}
 	}
