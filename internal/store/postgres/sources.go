@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -120,7 +121,17 @@ func (d *DB) WithSource(ctx context.Context, s store.Scope, id string, fn func(c
 	if !s.Valid() || !identity.Identifier(id) || fn == nil {
 		return store.ErrScope
 	}
-	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	timeout := d.timeout
+	if until, ok := ctx.Deadline(); ok {
+		timeout = time.Until(until)
+		if timeout > 65*time.Second {
+			timeout = 65 * time.Second
+		}
+		if timeout <= 0 {
+			return context.DeadlineExceeded
+		}
+	}
+	return d.transactionDuration(ctx, pgx.TxOptions{}, timeout, func(ctx context.Context, tx pgx.Tx) error {
 		r, err := scanSource(tx.QueryRow(ctx, `SELECT `+sourceColumns+` FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE s.tenant_id=$1 AND s.source_id=$2 FOR SHARE OF s`, s.Tenant(), id))
 		if err != nil {
 			return err

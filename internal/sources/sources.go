@@ -373,49 +373,15 @@ func (s *Service) Explain(ctx context.Context, e identity.Envelope, candidate re
 
 // Read is the only query execution entry point. It accepts an opaque Plan, never
 // raw SQL, and rechecks current binding under the metadata and warehouse fences.
-func (s *Service) Read(ctx context.Context, e identity.Envelope, plan readexec.Plan) (out Rows, err error) {
-	id, partition := plan.Coordinates()
-	if id == "" || partition == "" {
-		return out, readexec.ErrBinding
-	}
-	scope, err := sourceScope(e, "sources.query", "query", id)
-	if err != nil {
-		return out, err
-	}
-	err = s.call(ctx, e, true, func(ctx context.Context) error {
-		return s.repo.WithSource(ctx, scope, id, func(ctx context.Context, record Record) error {
-			if record.Source.ContextID != partition {
-				return readexec.ErrBinding
-			}
-			if _, _, err := plan.SQL(e, record.Binding); err != nil {
-				return err
-			}
-			connection, err := s.connection(e.Tenant(), record.Connection)
-			if err != nil {
-				return err
-			}
-			_, err = s.probe(ctx, connection, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
-				statement, parameters, err := plan.SQL(e, b)
-				if err != nil {
-					return err
-				}
-				out, err = readRows(ctx, tx, statement, parameters, s.settings.MaxRows, s.settings.MaxBytes)
-				return err
-			})
-			return err
-		})
-	})
-	if err != nil {
-		return Rows{}, err
-	}
-	return out, nil
+func (s *Service) Read(ctx context.Context, e identity.Envelope, p readexec.Plan) (Rows, error) {
+	return s.readCompatibility(ctx, e, p)
 }
 
 func safe(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, known := range []error{context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
+	for _, known := range []error{readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
 		if errors.Is(err, known) {
 			return known
 		}
