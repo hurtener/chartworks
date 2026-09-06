@@ -12,6 +12,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
@@ -27,6 +28,7 @@ import (
 // joined before the store or shared JWT verifier are released by the composition root.
 type work struct {
 	sourceService *sources.Service
+	engineering   *engineering.Service
 	handler       http.Handler
 	engine        gateway.Engine
 	queue         *jobs.Service
@@ -109,8 +111,14 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			return nil, err
 		}
 	}
+	w.engineering, err = engineering.New(db, w.sourceService, validator, executor, w.engine, v, lookup)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
 	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
 	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
+	w.handler = sourceapi.EngineeringHandler(verifier, w.engineering, w.handler)
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {
@@ -135,6 +143,9 @@ func (w *work) close() {
 	w.once.Do(func() {
 		w.cancel()
 		w.wait.Wait()
+		if w.engineering != nil {
+			w.engineering.Close()
+		}
 		if w.sourceService != nil {
 			w.sourceService.Close()
 		}
