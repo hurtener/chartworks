@@ -1,0 +1,48 @@
+name: Temporary phase 11–12 reviewed source edit
+on:
+  push:
+    branches: [feat/phase-11-12-uploads-profiling]
+    paths:
+      - .github/workflows/phase-11-12-edit.yml
+      - scripts/_phase_11_12_review.py
+permissions:
+  contents: write
+concurrency:
+  group: phase-11-12-source-edit
+  cancel-in-progress: false
+jobs:
+  commit-reviewed-edit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Apply only exact reviewed replacements and format changed Go files
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          branch=feat/phase-11-12-uploads-profiling
+          base=7f7fd67d43a71607a53015842d58889ae4f25425
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git ls-remote origin refs/heads/$branch | cut -f1)" = "$EXPECTED_HEAD"
+          git merge-base --is-ancestor "$base" HEAD
+          git merge-base --is-ancestor 6b16e5433944c78d6a91f94295c4b621304dc147 HEAD
+          test -z "$(git status --porcelain)"
+          python3 scripts/_phase_11_12_review.py
+          git diff --name-only --diff-filter=ACMRT -z "$base" -- '*.go' | xargs -0 -r gofmt -w
+          git diff --check
+          git diff --exit-code "$base" -- 'internal/store/postgres/migrations/00[1-6]*'
+          git diff --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- internal sdk test
+          git commit -m 'fix(engineering): close parser, freshness, authority and publication review findings'
+          git push origin HEAD:refs/heads/$branch
+          git rev-parse HEAD
+          test -z "$(git status --porcelain)"
