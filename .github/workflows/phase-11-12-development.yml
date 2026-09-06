@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 25
     env:
       CGO_ENABLED: 1
+      CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
     services:
       postgres:
@@ -58,14 +59,22 @@ jobs:
           git rev-parse HEAD
           git diff --exit-code
           git merge-base --is-ancestor 7f7fd67d43a71607a53015842d58889ae4f25425 HEAD
+          git merge-base --is-ancestor 6b16e5433944c78d6a91f94295c4b621304dc147 HEAD
           git diff --exit-code 7f7fd67d43a71607a53015842d58889ae4f25425 -- 'internal/store/postgres/migrations/00[1-6]*'
           git log --oneline -8
       - name: Prebuild the actual binary for its unchanged lifecycle test deadline
         run: go build -o /tmp/chartworks-test-binary ./cmd/chartworks
-      - name: Run the full uncached race suite, including new acceptance cases
+      - name: Full uncached race suite with actual cross-package acceptance coverage
         run: |
           set -euo pipefail
-          go test -race -count=1 -timeout=15m ./... 2>&1 | tee /tmp/phase-tests.log
+          make coverage 2>&1 | tee /tmp/phase-tests.log
+      - name: Preserve measured function coverage, including failed-run evidence
+        if: always()
+        run: |
+          if test -s /tmp/chartworks-coverage.out; then
+            go tool cover -func=/tmp/chartworks-coverage.out > /tmp/phase-functions.log
+            cat /tmp/phase-functions.log
+          fi
       - name: Confirm tests did not change committed source
         if: always()
         run: git diff --exit-code
@@ -83,7 +92,9 @@ jobs:
           mkdir -p /tmp/source-recovery
           git bundle create /tmp/source-recovery/source.bundle --all
           git rev-parse HEAD > /tmp/source-recovery/HEAD
-          test ! -f /tmp/phase-tests.log || cp /tmp/phase-tests.log /tmp/source-recovery/
+          for file in /tmp/phase-tests.log /tmp/phase-functions.log /tmp/chartworks-coverage.out; do
+            test ! -f "$file" || cp "$file" /tmp/source-recovery/
+          done
           (cd /tmp/source-recovery && sha256sum source.bundle > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         if: always()
