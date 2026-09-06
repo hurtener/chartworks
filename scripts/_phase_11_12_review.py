@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply inspected incremental fixes; separate read-only CI verifies the commit."""
+"""Apply only inspected recovery deltas; read-only CI verifies the resulting commit."""
 from pathlib import Path
 import subprocess
 
@@ -12,108 +12,86 @@ def replace(path: str, before: str, after: str) -> None:
     file.write_text(text.replace(before, after))
 
 
-# pgx.CopyFromFunc uses nil,nil for completion. io.EOF is an abort, not a row terminator.
-replace("internal/engineering/workspace.go", '\t"io"\n', '')
-replace("internal/engineering/workspace.go", '\t\t\t\treturn nil, io.EOF\n', '\t\t\t\treturn nil, nil\n')
+# CopyFrom EOF was corrected previously, but the same file still uses io in the
+# bounded wire frontend. Restore the import without changing COPY completion.
+replace('internal/engineering/workspace.go', '\t"errors"\n', '\t"errors"\n\t"io"\n')
 
-# Discovery preserves format_type, including typmods, whereas wire results use OID names.
-replace("internal/engineering/profiles.go", 'c.Name == spec.TimeColumn && c.NativeType != "date" && c.NativeType != "timestamp" && c.NativeType != "timestamptz"', 'c.Name == spec.TimeColumn && !profileTimeType(c.NativeType)')
-replace("internal/engineering/profile_stats.go", 'func relationFor(r ProfileRecord)', '''// This is a type-family check after the source adapter's positive OID proof.
-// Keep display precision in the profile; never infer a timezone from this name.
-var profileTimeTypePattern = regexp.MustCompile(`^(date|timestamp(\\([0-6]\\))?( (with|without) time zone)?|timestamptz(\\([0-6]\\))?)$`)
+# The workspace destination is float64. A shortest float32 decimal does NOT
+# preserve the original binary value when it is subsequently parsed as float64.
+replace('internal/engineering/parse_parquet.go',
+        "strconv.FormatFloat(float64(v.Float()), 'g', -1, 32)",
+        "strconv.FormatFloat(float64(v.Float()), 'g', -1, 64)")
 
-func profileTimeType(native string) bool { return profileTimeTypePattern.MatchString(native) }
-
-func relationFor(r ProfileRecord)''')
-replace("test/acceptance/phase12_test.go", '"id":         {"int4", "numeric", 0, 2}', '"id":         {"integer", "numeric", 0, 2}')
-replace("test/acceptance/phase12_test.go", '"amount":     {"numeric", "numeric", 0, 2}', '"amount":     {"numeric(30,3)", "numeric", 0, 2}')
-replace("test/acceptance/phase12_test.go", '"active":     {"bool", "boolean", 0, 2}', '"active":     {"boolean", "boolean", 0, 2}')
-replace("test/acceptance/phase12_test.go", '"created_at": {"timestamptz", "temporal", 0, 2}', '"created_at": {"timestamp with time zone", "temporal", 0, 2}')
-
-# A signed wildcard user may list their own empty private history. No foreign row
-# may be returned; missing action/context authority must still be rejected.
-replace("test/acceptance/phase12_test.go", '''			if _, err = f.service.History(ctx, e, input.Source, input.Context, input.Dataset, 1); err == nil {
-				t.Fatal("history crossed signed/private reach")
-			}''', '''			rows, historyErr := f.service.History(ctx, e, input.Source, input.Context, input.Dataset, 1)
-			if len(rows) != 0 {
-				t.Fatal("history exposed another identity's private evidence")
-			}
-			if (!e.Valid() || !e.Has("cw.execution_context.use:*")) && historyErr == nil {
-				t.Fatal("history accepted missing signed context authority")
-			}''')
-
-# The restore gate compares the actual migrated inventory, not a stale six-row literal.
-replace("test/acceptance/phase02_test.go", 'count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations`) != 6', 'count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations`) != count(t, support.Raw(t, dsn), `SELECT count(*) FROM chartworks.schema_migrations`)')
-
-# Configuration snapshots are serializable. Empty arrays must not become forbidden
-# JSON null when a managed alias has no pre-existing tables or a policy list is empty.
-replace("internal/config/sources.go", 'append([]SourceRelation(nil), s.Connections[i].Relations...)', 'append([]SourceRelation{}, s.Connections[i].Relations...)')
-replace("internal/config/sources.go", 'append([]string(nil), s.Connections[i].Relations[j].Columns...)', 'append([]string{}, s.Connections[i].Relations[j].Columns...)')
-replace("internal/config/engineering.go", 'append([]ProfilePolicy(nil), p.Policies...)', 'append([]ProfilePolicy{}, p.Policies...)')
-replace("internal/config/engineering.go", 'append([]string(nil), p.Policies[i].RangeColumns...)', 'append([]string{}, p.Policies[i].RangeColumns...)')
-replace("internal/config/config.go", 'append([]BrokerCredential(nil), v.Jobs.Credentials...)', 'append([]BrokerCredential{}, v.Jobs.Credentials...)')
-replace("internal/config/config.go", 'append([]Provider(nil), v.Gateway.Bifrost.Providers...)', 'append([]Provider{}, v.Gateway.Bifrost.Providers...)')
-replace("internal/config/config.go", 'func Defaults() Values {\n\treturn Values{', 'func Defaults() Values {\n\tv := Values{')
-replace("internal/config/config.go", '''	}
-}
-
-// Overrides are explicit CLI overrides''', '''	}
-	v.Gateway.Bifrost.Providers = []Provider{}
-	v.Jobs.Credentials = []BrokerCredential{}
-	return v
-}
-
-// Overrides are explicit CLI overrides''')
+# PostgreSQL 17 stores timestamps at microsecond resolution and has no year zero.
+# Reject unrepresentable data rather than silently round/truncate declared values.
+replace('internal/engineering/parse.go',
+        'if e != nil || v.Format("2006-01-02") != s {',
+        'if e != nil || v.Year() < 1 || v.Format("2006-01-02") != s {')
+replace('internal/engineering/parse.go',
+        '''v, e := time.Parse(time.RFC3339Nano, s)
+		if e != nil {
+			return Cell{}, ErrFormat
+		}
+		s = v.UTC().Format(time.RFC3339Nano)''',
+        '''v, e := time.Parse(time.RFC3339Nano, s)
+		if e != nil || v.Nanosecond()%1000 != 0 || v.UTC().Year() < 1 || v.UTC().Year() > 9999 {
+			return Cell{}, ErrFormat
+		}
+		s = v.UTC().Format(time.RFC3339Nano)''')
 
 files = {
-"internal/config/engineering_serialization_test.go": r'''package config
+'internal/engineering/upload_precision_test.go': r'''package engineering
 
 import (
- "bytes"
- "encoding/json"
+ "errors"
+ "math"
  "testing"
+ "time"
+
+ "github.com/parquet-go/parquet-go"
 )
 
-func TestEngineeringSnapshotPreservesEmptyArrays(t *testing.T) {
- v := Defaults()
- v.Sources.Connections = []SourceConnection{{Tenant:"tenant", ID:"workspace", ManagedSchema:"cw_test", Relations:[]SourceRelation{}}}
- c := Config{values:v}
- for _, snapshot := range []Values{v, c.Values(), {Sources:v.Sources.Clone(), Profiling:v.Profiling.Clone()}} {
-  // Test the concrete new fields separately from unrelated zero-value settings.
-  for _, value := range []any{snapshot.Sources, snapshot.Profiling} {
-   raw, err := json.Marshal(value)
-   if err != nil { t.Fatal(err) }
-   if err = checkJSON(json.NewDecoder(bytes.NewReader(raw)),0); err != nil { t.Fatalf("snapshot cannot pass the closed configuration decoder: %s: %v",raw,err) }
+func TestParquetFloat32WorkspacePromotionIsLossless(t *testing.T) {
+ for _, value := range []float32{0, float32(math.Copysign(0,-1)), 0.1, -0.1, math.SmallestNonzeroFloat32, math.MaxFloat32} {
+  cell, err := parquetCell(parquet.FloatValue(value), parquetColumn{physical:4}, UploadColumn{Type:"number"})
+  if err != nil { t.Fatal(err) }
+  cell, err = normalizeCell(UploadColumn{Type:"number"}, cell)
+  if err != nil { t.Fatal(err) }
+  out, err := copyCell(UploadColumn{Type:"number"},cell)
+  if err != nil { t.Fatal(err) }
+  if got,ok:=out.(float64); !ok || math.Float64bits(got)!=math.Float64bits(float64(value)) {
+   t.Fatalf("float32 promotion lost its exact value: %v -> %q -> %v",value,cell.Text,out)
   }
  }
- raw, err := json.Marshal(c.Values())
- if err != nil { t.Fatal(err) }
- if err = checkJSON(json.NewDecoder(bytes.NewReader(raw)),0); err != nil { t.Fatalf("complete snapshot contains invalid JSON: %s: %v",raw,err) }
- original := DefaultProfiling()
- original.Policies = []ProfilePolicy{{ID:"p",Tenant:"t",Source:"s",RangeColumns:[]string{}}}
- copied := original.Clone()
- copied.Policies[0].RangeColumns = append(copied.Policies[0].RangeColumns,"amount")
- if len(original.Policies[0].RangeColumns)!=0 {t.Fatal("snapshot shares a policy column list")}
+ for _, value := range []float32{float32(math.NaN()),float32(math.Inf(1)),float32(math.Inf(-1))} {
+  cell, err := parquetCell(parquet.FloatValue(value),parquetColumn{physical:4},UploadColumn{Type:"number"})
+  if err != nil { t.Fatal(err) }
+  if _,err=normalizeCell(UploadColumn{Type:"number"},cell); !errors.Is(err,ErrFormat) {t.Fatal("nonfinite value accepted",err)}
+ }
 }
-''',
-"internal/engineering/profile_native_type_test.go": r'''package engineering
 
-import "testing"
-
-func TestProfileNativeTemporalTypes(t *testing.T) {
- for _, native := range []string{"date","timestamp","timestamptz","timestamp with time zone","timestamp without time zone","timestamp(0) with time zone","timestamp(6) without time zone","timestamptz(3)"} {
-  if !profileTimeType(native) {t.Errorf("qualified native temporal type rejected: %q",native)}
+func TestUploadTimestampCannotSilentlyLosePrecision(t *testing.T) {
+ column:=UploadColumn{Type:"timestamp"}
+ for _, input:=range []string{"2026-01-02T03:04:05Z","2026-01-02T06:04:05.123456+03:00","2026-01-02T03:04:05.123456000Z","0001-01-01T00:00:00Z"} {
+  cell,err:=normalizeCell(column,Cell{Text:input})
+  if err!=nil {t.Fatalf("representable timestamp rejected %q: %v",input,err)}
+  copied,err:=copyCell(column,cell)
+  if err!=nil {t.Fatal(err)}
+  stamp,ok:=copied.(time.Time)
+  expected,err:=time.Parse(time.RFC3339Nano,input)
+  if !ok || err!=nil || !stamp.Equal(expected) || stamp.Nanosecond()%1000!=0 {t.Fatal("timestamp changed",input,copied,err)}
  }
- for _, native := range []string{"time","timetz","interval","text","numeric(30,3)","analytics.timestamp","timestamp(9) with time zone","timestamp with time zone; SELECT 1"," timestamp","timestamp\n"} {
-  if profileTimeType(native) {t.Errorf("unsupported type accepted: %q",native)}
+ for _, input:=range []string{"2026-01-02T03:04:05.000000001Z","2026-01-02T03:04:05.123456789Z","0000-01-01T00:00:00Z","0001-01-01T00:00:00+01:00","9999-12-31T23:59:59-01:00"} {
+  if _,err:=normalizeCell(column,Cell{Text:input}); !errors.Is(err,ErrFormat) {t.Fatalf("unrepresentable timestamp accepted %q: %v",input,err)}
  }
+ if _,err:=normalizeCell(UploadColumn{Type:"date"},Cell{Text:"0000-01-01"}); !errors.Is(err,ErrFormat) {t.Fatal("year zero accepted",err)}
 }
 '''
 }
 for name, content in files.items():
-    path = Path(name)
+    path=Path(name)
     if path.exists():
-        raise RuntimeError(f"refusing to overwrite {name}")
+        raise RuntimeError(f'refusing to overwrite {name}')
     path.write_text(content)
-subprocess.run(["git", "add", "--", *files], check=True)
-print("Applied COPY end-of-data, native temporal display, complete migration restore, private-list isolation and config serialization fixes.")
+subprocess.run(['git','add','--',*files],check=True)
+print('Applied missing io import, exact float promotion and representable timestamp checks with regression tests.')
