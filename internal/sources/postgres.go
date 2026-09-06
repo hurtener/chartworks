@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,36 +58,16 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 	if !ok || len(dsn) > 16384 {
 		return nil, "", store.ErrUnavailable
 	}
-	u, err := url.Parse(dsn)
-	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.User == nil || u.User.Username() == "" || u.Hostname() == "" || u.Path == "" || u.Path == "/" || u.Fragment != "" {
-		return nil, "", store.ErrInvalid
-	}
-	password, has := u.User.Password()
-	if !has || password == "" || len(password) > 8192 {
-		return nil, "", store.ErrInvalid
-	}
-	for key, values := range u.Query() {
-		if len(values) != 1 {
-			return nil, "", store.ErrInvalid
-		}
-		switch key {
-		case "sslmode", "sslrootcert", "sslcert", "sslkey":
-		default:
-			return nil, "", store.ErrInvalid
-		}
-	}
-	mode := u.Query().Get("sslmode")
-	ip := net.ParseIP(u.Hostname())
-	loopback := u.Hostname() == "localhost" || ip != nil && ip.IsLoopback()
-	if mode != "verify-full" && (!loopback || mode != "disable") {
-		return nil, "", store.ErrInvalid
+	_, location, err := ParseApprovedDSN(dsn)
+	if err != nil {
+		return nil, "", err
 	}
 	key := c.Tenant + "/" + c.ID
 	material := readexec.Hash([]any{dsn, c.Version}) // ephemeral; never persisted or logged
 	s.mu.Lock()
 	if entry, ok := s.pools[key]; ok && entry.material == material {
 		s.mu.Unlock()
-		return entry.pool, u.Host + u.EscapedPath(), nil
+		return entry.pool, location, nil
 	}
 	if s.retiring[key] {
 		s.mu.Unlock()
@@ -138,7 +116,7 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 		}()
 	}
 	s.mu.Unlock()
-	return pool, u.Host + u.EscapedPath(), nil
+	return pool, location, nil
 }
 
 // probe locks registered base tables before inspecting their effective role and

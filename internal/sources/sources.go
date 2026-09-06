@@ -177,6 +177,9 @@ func (s *Service) Create(ctx context.Context, e identity.Envelope, r CreateReque
 	if err != nil {
 		return out, err
 	}
+	if connection.ManagedSchema != "" {
+		return out, store.ErrInvalid
+	}
 	err = s.call(ctx, e, true, func(ctx context.Context) error {
 		binding, e2 := s.probe(ctx, connection, r.ID, 1, nil)
 		if e2 != nil {
@@ -254,7 +257,7 @@ func (s *Service) Rotate(ctx context.Context, e identity.Envelope, id string, ex
 		if e2 = actualContext(e, "sources.rotate", old); e2 != nil {
 			return e2
 		}
-		connection, e2 := s.connection(e.Tenant(), old.Connection)
+		connection, e2 := s.recordConnection(old)
 		if e2 != nil {
 			return e2
 		}
@@ -285,7 +288,7 @@ func (s *Service) observed(ctx context.Context, e identity.Envelope, id string, 
 			if err := actualContext(e, "sources.read", record); err != nil {
 				return err
 			}
-			connection, err := s.connection(e.Tenant(), record.Connection)
+			connection, err := s.recordConnection(record)
 			if err != nil {
 				return err
 			}
@@ -358,7 +361,7 @@ func (s *Service) Explain(ctx context.Context, e identity.Envelope, candidate re
 			if _, _, err := candidate.SQL(e, record.Binding); err != nil {
 				return err
 			}
-			connection, err := s.connection(e.Tenant(), record.Connection)
+			connection, err := s.recordConnection(record)
 			if err != nil {
 				return err
 			}

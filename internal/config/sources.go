@@ -15,12 +15,13 @@ type SourceRelation struct {
 // SourceConnection is operator-controlled and tenant-bound. Public source creation can
 // choose only an alias here, never arbitrary environment variables or network locations.
 type SourceConnection struct {
-	Tenant    string           `json:"tenant"`
-	ID        string           `json:"id"`
-	Version   string           `json:"version"`
-	ReadDSN   string           `json:"read_dsn"`
-	WriteDSN  string           `json:"write_dsn,omitempty"`
-	Relations []SourceRelation `json:"relations"`
+	ManagedSchema string           `json:"managed_schema,omitempty"`
+	Tenant        string           `json:"tenant"`
+	ID            string           `json:"id"`
+	Version       string           `json:"version"`
+	ReadDSN       string           `json:"read_dsn"`
+	WriteDSN      string           `json:"write_dsn,omitempty"`
+	Relations     []SourceRelation `json:"relations"`
 }
 
 // Sources configures only the implemented PostgreSQL connector and its bounds.
@@ -110,8 +111,11 @@ func ValidateSources(s Sources) error {
 	seen := map[string]bool{}
 	for _, c := range s.Connections {
 		key := c.Tenant + "/" + c.ID
-		if !sourceCoordinate(c.Tenant) || !sourceCoordinate(c.ID) || !sourceCoordinate(c.Version) || seen[key] || len(c.Relations) < 1 || len(c.Relations) > 32 {
+		if !sourceCoordinate(c.Tenant) || !sourceCoordinate(c.ID) || !sourceCoordinate(c.Version) || seen[key] || c.ManagedSchema == "" && len(c.Relations) < 1 || len(c.Relations) > 32 {
 			return invalid("sources.connections", "bounded unique tenant aliases required")
+		}
+		if c.ManagedSchema != "" && (!sourceSQLName(c.ManagedSchema) || !strings.HasPrefix(c.ManagedSchema, "cw_") || len(c.ManagedSchema) > 30 || c.WriteDSN == "" || len(c.Relations) != 0) {
+			return invalid("sources.connections.managed_schema", "explicit isolated workspace required")
 		}
 		seen[key] = true
 		if _, err := reference(c.ReadDSN); err != nil {

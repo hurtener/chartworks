@@ -225,7 +225,7 @@ func (x *Executor) limits(o Options) (Limits, error) {
 
 // Execute requires a currently authorized nonzero plan, then admits exactly one
 // explicit attempt. A failed durable finalization discards rows and leaves recovery evidence.
-func (x *Executor) Execute(ctx context.Context, e identity.Envelope, p Plan, o Options) (ExecutionReport, error) {
+func (x *Executor) execute(ctx context.Context, e identity.Envelope, p Plan, o Options, caps *Caps) (ExecutionReport, error) {
 	if ctx == nil || !e.Valid() {
 		return ExecutionReport{}, ErrBinding
 	}
@@ -235,6 +235,12 @@ func (x *Executor) Execute(ctx context.Context, e identity.Envelope, p Plan, o O
 	limits, err := x.limits(o)
 	if err != nil {
 		return ExecutionReport{}, err
+	}
+	if caps != nil {
+		limits.Rows = min(limits.Rows, caps.Rows)
+		limits.Bytes = min(limits.Bytes, caps.Bytes)
+		limits.Timeout = min(limits.Timeout, caps.Timeout)
+		limits.PlannerCost = min(limits.PlannerCost, caps.PlannerCost)
 	}
 	ctx, cancel := context.WithTimeout(ctx, limits.Timeout)
 	defer cancel()

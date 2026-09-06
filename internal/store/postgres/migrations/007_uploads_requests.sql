@@ -46,6 +46,7 @@ CREATE TABLE chartworks.uploads (
  state text NOT NULL DEFAULT 'awaiting_data' CHECK(state IN('awaiting_data','staged','active','deleting','erased')),
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  expires_at timestamptz NOT NULL CHECK(expires_at>created_at AND expires_at<=created_at+interval '7 days'),
+ accounted_bytes bigint NOT NULL CHECK(accounted_bytes BETWEEN 0 AND 268435456),
  operation_id text,
  receipt jsonb CHECK(jsonb_typeof(receipt)='object' AND octet_length(receipt::text)<=8192),
  PRIMARY KEY(tenant_id,source_id),

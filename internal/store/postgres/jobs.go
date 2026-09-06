@@ -49,7 +49,7 @@ func (d *DB) ConfigureQueue(ctx context.Context, l jobs.Limits) error {
 }
 func queueCapacity(ctx context.Context, tx pgx.Tx, tenant string, l jobs.Limits) error {
 	var global, local int
-	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.operations WHERE dispatch_mode='queued' AND status IN ('pending','retry','running')`, tenant).Scan(&global, &local); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.operations WHERE dispatch_mode IN ('queued','request') AND status IN ('pending','retry','running')`, tenant).Scan(&global, &local); err != nil {
 		return err
 	}
 	if global >= l.MaxPending || local >= l.MaxPendingPerTenant {
@@ -248,7 +248,7 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 			return e
 		}
 		var active int
-		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.operations WHERE dispatch_mode='queued' AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`).Scan(&active); e != nil {
+		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.operations WHERE dispatch_mode IN ('queued','request') AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`).Scan(&active); e != nil {
 			return e
 		}
 		if active >= l.GlobalConcurrency {
@@ -256,7 +256,7 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 			return nil
 		}
 		row := tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations o WHERE dispatch_mode='queued' AND status IN ('pending','retry','running') AND next_attempt_at<=clock_timestamp() AND due_at<=clock_timestamp() AND expires_at>clock_timestamp() AND attempt_count<max_attempts AND(lease_until IS NULL OR lease_until<=clock_timestamp())
- AND(SELECT count(*) FROM chartworks.operations a WHERE a.dispatch_mode='queued' AND a.tenant_id=o.tenant_id AND a.status='running' AND a.lease_until>clock_timestamp())<$1
+ AND(SELECT count(*) FROM chartworks.operations a WHERE a.dispatch_mode IN ('queued','request') AND a.tenant_id=o.tenant_id AND a.status='running' AND a.lease_until>clock_timestamp())<$1
  AND(o.schedule_id IS NULL OR NOT EXISTS(SELECT 1 FROM chartworks.operations a WHERE a.tenant_id=o.tenant_id AND a.schedule_id=o.schedule_id AND a.operation_id<>o.operation_id AND a.status='running' AND a.lease_until>clock_timestamp()))
  ORDER BY next_attempt_at,due_at,operation_id LIMIT 1 FOR UPDATE OF o SKIP LOCKED`, l.TenantConcurrency)
 		j, e := scanJob(row)
@@ -270,18 +270,11 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 		if !j.Valid() {
 			return jobs.ErrInvalid
 		}
-		if _, e = tx.Exec(ctx, `UPDATE chartworks.operation_attempts SET state='abandoned',finished_at=clock_timestamp(),error_code='lease_lost' WHERE tenant_id=$1 AND operation_id=$2 AND state='acquiring'`, j.Tenant, j.ID); e != nil {
-			return e
-		}
-		var fence int64
-		var until time.Time
-		e = tx.QueryRow(ctx, `UPDATE chartworks.operations SET status='running',fence=fence+1,attempt_count=attempt_count+1,lease_owner=$3,lease_until=LEAST(expires_at,clock_timestamp()+$4*interval '1 millisecond'),error_code='' WHERE tenant_id=$1 AND operation_id=$2 RETURNING fence,attempt_count,lease_until`, j.Tenant, j.ID, owner, l.Lease.Milliseconds()).Scan(&fence, &j.Attempts, &until)
+		fence, attempt, until, e := claimOperationLease(ctx, tx, j.Tenant, j.ID, owner, l.Lease)
 		if e != nil {
 			return e
 		}
-		if _, e = tx.Exec(ctx, `INSERT INTO chartworks.operation_attempts(tenant_id,operation_id,fence,attempt,owner_id,state) VALUES($1,$2,$3,$4,$5,'acquiring')`, j.Tenant, j.ID, fence, j.Attempts, owner); e != nil {
-			return e
-		}
+		j.Attempts = attempt
 		j.State = "running"
 		out = jobs.Lease{Job: j, Owner: owner, Fence: fence, Attempt: j.Attempts, Until: until}
 		return nil
@@ -298,14 +291,7 @@ func (d *DB) HeartbeatJob(ctx context.Context, lease jobs.Lease, ttl time.Durati
 		return jobs.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, e := tx.Exec(ctx, `UPDATE chartworks.operations SET lease_until=LEAST(expires_at,clock_timestamp()+$5*interval '1 millisecond') WHERE tenant_id=$1 AND operation_id=$2 AND dispatch_mode='queued' AND status='running' AND lease_owner=$3 AND fence=$4 AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`, lease.Job.Tenant, lease.Job.ID, lease.Owner, lease.Fence, ttl.Milliseconds())
-		if e != nil {
-			return e
-		}
-		if tag.RowsAffected() != 1 {
-			return store.ErrConflict
-		}
-		return nil
+		return renewOperationLease(ctx, tx, operationLease{tenant: lease.Job.Tenant, id: lease.Job.ID, owner: lease.Owner, manifest: lease.Job.ManifestHash, mode: "queued", fence: lease.Fence}, ttl)
 	})
 }
 
@@ -320,24 +306,7 @@ func (d *DB) FinishAttempt(ctx context.Context, lease jobs.Lease, code string, p
 		return jobs.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		var attempts, maximum int
-		if e := tx.QueryRow(ctx, `SELECT attempt_count,max_attempts FROM chartworks.operations WHERE tenant_id=$1 AND operation_id=$2 AND dispatch_mode='queued' AND status='running' AND lease_owner=$3 AND fence=$4 AND lease_until>clock_timestamp() AND expires_at>clock_timestamp() FOR UPDATE`, lease.Job.Tenant, lease.Job.ID, lease.Owner, lease.Fence).Scan(&attempts, &maximum); e != nil {
-			if errors.Is(e, pgx.ErrNoRows) {
-				return store.ErrConflict
-			}
-			return e
-		}
-		state := "retry"
-		if permanent {
-			state = "blocked"
-		} else if attempts >= maximum {
-			state = "failed"
-		}
-		if _, e := tx.Exec(ctx, `UPDATE chartworks.operations SET status=$5,error_code=$6,lease_owner=NULL,lease_until=NULL,finished_at=CASE WHEN $5='retry' THEN NULL ELSE clock_timestamp() END,next_attempt_at=clock_timestamp()+$7*interval '1 millisecond' WHERE tenant_id=$1 AND operation_id=$2 AND lease_owner=$3 AND fence=$4`, lease.Job.Tenant, lease.Job.ID, lease.Owner, lease.Fence, state, code, delay.Milliseconds()); e != nil {
-			return e
-		}
-		_, e := tx.Exec(ctx, `UPDATE chartworks.operation_attempts SET state=$4,error_code=$5,finished_at=clock_timestamp() WHERE tenant_id=$1 AND operation_id=$2 AND fence=$3 AND state='acquiring'`, lease.Job.Tenant, lease.Job.ID, lease.Fence, state, code)
-		return e
+		return failOperationLease(ctx, tx, operationLease{tenant: lease.Job.Tenant, id: lease.Job.ID, owner: lease.Owner, manifest: lease.Job.ManifestHash, mode: "queued", fence: lease.Fence}, code, permanent, delay)
 	})
 }
 

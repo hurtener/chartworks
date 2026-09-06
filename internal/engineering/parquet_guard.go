@@ -327,7 +327,7 @@ func (p *parser) parquetPreflight(raw []byte) ([]parquetColumn, error) {
 			}
 			for _, enc := range meta.fields[2].list {
 				switch enc.n {
-				case 0, 2, 3, 4, 8:
+				case 0, 2, 3, 4, 6, 8:
 				default:
 					return nil, ErrFormat
 				}
@@ -494,6 +494,13 @@ func (p *parser) parquetPages(raw []byte, column parquetColumn, codec int, expec
 		switch encoding {
 		case 0:
 			if err = guardPlain(data, column, int(nonNull), p.limits.MaxCellBytes); err != nil {
+				return err
+			}
+		case 6:
+			if column.physical != 6 {
+				return ErrFormat
+			}
+			if err = guardDeltaLengths(data, int(nonNull), p.limits.MaxCellBytes); err != nil {
 				return err
 			}
 		case 2, 8:

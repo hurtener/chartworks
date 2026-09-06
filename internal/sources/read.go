@@ -70,7 +70,7 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 				return err
 			}
 		}
-		connection, err := s.connection(e.Tenant(), record.Connection)
+		connection, err := s.recordConnection(record)
 		if err != nil {
 			return err
 		}
@@ -420,7 +420,7 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 			if _, err := control.Target(e, record.Binding); err != nil {
 				return err
 			}
-			c, err := s.connection(e.Tenant(), record.Connection)
+			c, err := s.recordConnection(record)
 			if err != nil {
 				return err
 			}
