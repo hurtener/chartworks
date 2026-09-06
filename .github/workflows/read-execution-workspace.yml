@@ -1,0 +1,36 @@
+name: Read execution offline workspace
+on:
+  push:
+    branches: [feat/phase-09-10-read-execution]
+    paths: [.github/workflows/read-execution-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Retain only public pinned build dependencies
+        run: |
+          go mod download
+          mkdir -p /tmp/offline
+          tar -czf /tmp/offline/go-toolchain.tar.gz -C "$(go env GOROOT)" .
+          tar -czf /tmp/offline/go-modules.tar.gz -C "$(go env GOMODCACHE)" .
+          docker pull pgvector/pgvector:0.8.2-pg17
+          container=$(docker create pgvector/pgvector:0.8.2-pg17)
+          docker export "$container" | gzip > /tmp/offline/postgres-rootfs.tar.gz
+          docker rm "$container"
+          sha256sum /tmp/offline/*.tar.gz > /tmp/offline/SHA256SUMS
+          git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: read-execution-offline-workspace
+          path: /tmp/offline
+          retention-days: 1
+          compression-level: 0
