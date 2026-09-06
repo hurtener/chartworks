@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -189,19 +190,27 @@ func ensureWorkspace(ctx context.Context, tx pgx.Tx, c config.SourceConnection, 
 	return nil
 }
 
-// ownedTable refuses baseline objects, views, partitions, triggers, rules and RLS.
-// Erasure also requires the exact registered OID; a same-name replacement is not
-// silently adopted as something Chartworks is allowed to delete.
+// ownedTable proves the exact object both before and after acquiring its DDL
+// lock. The workspace advisory lock alone cannot fence non-Chartworks DDL.
+// Hold the table lock through the caller's mutation and transaction completion.
 func ownedTable(ctx context.Context, tx pgx.Tx, schema, table string, expected int64) (int64, error) {
 	var oid int64
-	var kind string
-	var owned, unsafe bool
-	err := tx.QueryRow(ctx, `SELECT c.oid::bigint,c.relkind::text,c.relowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user),c.relrowsecurity OR c.relforcerowsecurity OR c.relispartition OR EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid OR inhparent=c.oid) OR EXISTS(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid=c.oid AND NOT tgisinternal) OR EXISTS(SELECT 1 FROM pg_catalog.pg_rewrite WHERE ev_class=c.oid) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2`, schema, table).Scan(&oid, &kind, &owned, &unsafe)
-	if err != nil {
-		return 0, err
-	}
-	if kind != "r" || !owned || unsafe || expected != 0 && expected != oid {
-		return 0, ErrOwnership
+	for pass := 0; pass < 2; pass++ {
+		var kind string
+		var owned, unsafe bool
+		err := tx.QueryRow(ctx, `SELECT c.oid::bigint,c.relkind::text,c.relowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user),c.relrowsecurity OR c.relforcerowsecurity OR c.relispartition OR EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid OR inhparent=c.oid) OR EXISTS(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid=c.oid AND NOT tgisinternal) OR EXISTS(SELECT 1 FROM pg_catalog.pg_rewrite WHERE ev_class=c.oid) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2`, schema, table).Scan(&oid, &kind, &owned, &unsafe)
+		if err != nil {
+			return 0, err
+		}
+		if kind != "r" || !owned || unsafe || expected != 0 && expected != oid {
+			return 0, ErrOwnership
+		}
+		if pass == 0 {
+			expected = oid
+			if _, err = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{schema, table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+				return 0, err
+			}
+		}
 	}
 	return oid, nil
 }
@@ -328,11 +337,10 @@ func (s *Service) loadWorkspace(ctx context.Context, e identity.Envelope, c conf
 		if err != nil {
 			return err
 		}
-		grants := make([]string, len(columns))
-		for i, column := range columns {
-			grants[i] = pgx.Identifier{column}.Sanitize()
-		}
-		if _, err = tx.Exec(ctx, "GRANT SELECT ("+strings.Join(grants, ",")+") ON "+qualified+" TO "+pgx.Identifier{reader}.Sanitize()); err != nil {
+		// The ordinary source adapter requires table-level SELECT and rejects all
+		// write privileges. Grant it only on this newly created declared dataset;
+		// do not weaken source qualification or grant workspace-wide access.
+		if _, err = tx.Exec(ctx, "GRANT SELECT ON "+qualified+" TO "+pgx.Identifier{reader}.Sanitize()); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(ctx, "UPDATE "+registry+" SET state='loaded',raw=NULL,table_oid=$2,rows_loaded=$3,decoded_bytes=$4 WHERE upload_id=$1", r.Spec.ID, oid, receipt.Rows, receipt.DecodedBytes); err != nil {
