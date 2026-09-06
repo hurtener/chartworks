@@ -345,6 +345,15 @@ func normalizeCell(column UploadColumn, cell Cell) (Cell, error) {
 			return Cell{}, ErrFormat
 		}
 	case "timestamp":
+		// Inspect every fractional digit before parsing. Checking only the
+		// resulting nanoseconds could miss a nonzero digit beyond that precision.
+		if dot := strings.IndexAny(s, ".,"); dot >= 0 {
+			for i := dot + 1; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+				if i > dot+6 && s[i] != '0' {
+					return Cell{}, ErrFormat
+				}
+			}
+		}
 		v, e := time.Parse(time.RFC3339Nano, s)
 		// The managed PostgreSQL workspace has microsecond resolution and no
 		// year zero. Never silently discard precision or cross supported years.
