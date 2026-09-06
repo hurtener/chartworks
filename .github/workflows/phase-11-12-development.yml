@@ -32,12 +32,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Identify committed recovery state
+      - name: Identify committed integration state
         run: |
           set -euo pipefail
           git rev-parse HEAD
           git diff --exit-code
-          git log --oneline -40
+          git log --oneline -12
       - name: Compile and run the full uncached race baseline
         run: |
           set -euo pipefail
