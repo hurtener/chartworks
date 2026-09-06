@@ -358,11 +358,9 @@ func (s *Service) runUpload(ctx context.Context, e identity.Envelope, id, key st
 			for i, c := range r.Spec.Columns {
 				columns[i] = c.Name
 			}
-			source, err := s.sources.DescribeManaged(ctx, e, id, r.Spec.Name, r.Spec.Connection, columns)
-			if err != nil {
-				return err
-			}
-			return s.repo.ActivateUpload(ctx, i, r, receipt, source)
+			return s.sources.WithManagedRecord(ctx, e, id, r.Spec.Name, r.Spec.Connection, columns, receipt.TableOID, func(ctx context.Context, source sources.Record) error {
+				return s.repo.ActivateUpload(ctx, i, r, receipt, source)
+			})
 		})
 		if task.ID == "" {
 			return runErr
