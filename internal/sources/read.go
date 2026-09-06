@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -99,6 +100,7 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 		return out, safe(err)
 	}
 	defer func() {
+		queryErr := err
 		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), l.CancelGrace)
 		defer stop()
 		rollback := tx.Rollback(cleanup)
@@ -122,6 +124,9 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 				observeErr := pool.QueryRow(cleanup, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, remote.PID, remote.Started, remote.Tag).Scan(&active)
 				if observeErr == nil && !active {
 					out.RemoteState = "stopped"
+					if queryErr != nil {
+						err = readFailure(ctx, queryErr)
+					}
 					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 						err = readexec.ErrTimeout
 					} else if errors.Is(ctx.Err(), context.Canceled) {
@@ -318,7 +323,7 @@ func readFailure(ctx context.Context, err error) error {
 		return readexec.ErrCancelled
 	}
 	var pg *pgconn.PgError
-	if errors.As(err, &pg) && pg.Code == "57014" {
+	if errors.As(err, &pg) && (pg.Code == "57014" || pg.Code == "25P03" || pg.Code == "25P04") {
 		return readexec.ErrTimeout
 	}
 	return safe(err)
@@ -378,12 +383,17 @@ func moneyDecimal(raw []byte) ([]byte, error) {
 	if len(raw) != 8 {
 		return nil, readexec.ErrType
 	}
-	n := int64(binary.BigEndian.Uint64(raw))
-	magnitude := uint64(n)
+	var n int64
+	if err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &n); err != nil {
+		return nil, readexec.ErrType
+	}
+	var magnitude uint64
 	sign := ""
 	if n < 0 {
 		magnitude = uint64(-(n + 1)) + 1
 		sign = "-"
+	} else {
+		magnitude = uint64(n)
 	}
 	fraction := strconv.FormatUint(magnitude%100, 10)
 	if len(fraction) == 1 {

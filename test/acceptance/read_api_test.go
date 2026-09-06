@@ -123,6 +123,15 @@ func TestReadAPIAndSDK(t *testing.T) {
 			}
 		}
 	}
+	before = f.lookups.Load()
+	invalidBounds := input
+	invalidBounds.Execution.Operation = "oversized-http"
+	invalidBounds.Execution.Rows = 100001
+	_, err = client.ExecuteRead(ctx, source.ID, invalidBounds)
+	var rejected *cw.StatusError
+	if !errors.As(err, &rejected) || rejected.Status != 413 || f.lookups.Load() != before {
+		t.Fatal("HTTP ceilings did not reject before native planning", err)
+	}
 	// The execution endpoint has a larger explicit SDK bound than ordinary metadata.
 	if _, err = f.admin.Exec(ctx, `UPDATE analytics.sales SET name=repeat('z',700000)`); err != nil {
 		t.Fatal(err)

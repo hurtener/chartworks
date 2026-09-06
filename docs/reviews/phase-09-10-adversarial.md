@@ -21,6 +21,24 @@ Phase 09 was already implemented in PR #7 and is retained as the read prerequisi
 | Empty output can trigger unapproved SQL widening | No model or rewrite dependency in the core, no automatic retries; phase10 AC06 preserves the empty schema and original operation. |
 | HTTP/SDK transport can accept conflicting authority/limits or truncate large valid responses | Closed typed decoder, negative transport tests, route-inventory parity and a real >1 MiB response in `TestReadAPIAndSDK`. |
 
+## Additional final-review findings
+
+- `TestReadReconciliationCannotSwitchCredentialContext` changes the actual
+  credential/database without rotation. Reconciliation re-probes the current
+  technical binding under the source-revision fence before observing an old
+  query; a foreign database cannot falsely prove termination.
+- `TestReadOldCancellationCannotSignalReusedBackend` proves actual PID reuse,
+  cancels the old uncertain attempt and verifies the new tagged transaction is
+  still active. Only its own owner can cancel it.
+- Retired credential pools are bounded to one per alias and joined on shutdown;
+  a short control request no longer synchronously waits for an old 60-second read.
+- Late cancellation now also controls the committed audit action. The regression
+  requires zero `read.succeeded` records and one `read.cancelled` record.
+- Request ceilings are checked before HTTP-triggered native planning, and
+  PostgreSQL-17 transaction/idle-transaction SQLSTATEs retain typed timeout errors.
+- The whole-suite schema-version assertion now includes actual migration 006;
+  no migration/acceptance check or coverage threshold was bypassed.
+
 ## Preserved authority and lifecycle checks
 
 The existing phase-09 six named criteria, whole-tree parser negatives, hidden-column

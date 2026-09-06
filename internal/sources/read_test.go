@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -25,9 +26,11 @@ func TestReadNativeResultTypes(t *testing.T) {
 		n    int64
 		want string
 	}{{0, "0.00"}, {1, "0.01"}, {1234, "12.34"}, {-1, "-0.01"}, {math.MinInt64, "-92233720368547758.08"}, {math.MaxInt64, "92233720368547758.07"}} {
-		raw := make([]byte, 8)
-		binary.BigEndian.PutUint64(raw, uint64(c.n))
-		got, err := moneyDecimal(raw)
+		var raw bytes.Buffer
+		if err := binary.Write(&raw, binary.BigEndian, c.n); err != nil {
+			t.Fatal(err)
+		}
+		got, err := moneyDecimal(raw.Bytes())
 		if err != nil || string(got) != c.want {
 			t.Fatal("money precision", c.n, string(got), err)
 		}
@@ -50,5 +53,13 @@ func TestReadNativeResultTypes(t *testing.T) {
 	}
 	if err := readFailure(expired, readexec.ErrUncertain); !errors.Is(err, readexec.ErrUncertain) {
 		t.Fatal("unknown outcome disguised as definite timeout")
+	}
+}
+
+func TestReadNativeTransactionTimeoutCodes(t *testing.T) {
+	for _, code := range []string{"25P03", "25P04"} {
+		if err := readFailure(context.Background(), &pgconn.PgError{Code: code, Message: "PRIVATE_ERROR_CANARY"}); !errors.Is(err, readexec.ErrTimeout) {
+			t.Fatal("transaction deadline lost its typed category", code, err)
+		}
 	}
 }

@@ -74,6 +74,9 @@ func ExecutionHandler(verifier *auth.Verifier, validator *readexec.Validator, ex
 		case "/v1/sources/{id}/execute":
 			var input ExecutionRequest
 			if err = body(w, r, &input); err == nil {
+				err = executor.ValidateOptions(input.Execution)
+			}
+			if err == nil {
 				var p readexec.Plan
 				p, err = validator.Validate(r.Context(), e, readexec.Request{Source: id, Context: input.Context, SQL: input.SQL, Parameters: input.Parameters})
 				if err == nil {

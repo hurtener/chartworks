@@ -34,6 +34,7 @@ type Limits struct {
 	PlannerCost float64       `json:"planner_cost_ceiling"`
 }
 
+// Valid checks every execution ceiling independently of caller authority.
 func (l Limits) Valid() bool {
 	return l.Rows > 0 && l.Rows <= 100000 && l.Bytes >= 128 && l.Bytes <= 16<<20 && l.Timeout >= time.Millisecond && l.Timeout <= time.Minute && l.CancelGrace >= time.Millisecond && l.CancelGrace <= 3*time.Second && l.PlannerCost > 0 && l.PlannerCost <= 1e12 && !math.IsNaN(l.PlannerCost)
 }
@@ -57,6 +58,7 @@ type RemoteQuery struct {
 	Tag     string    `json:"tag"`
 }
 
+// Valid checks a canonical native backend identity without exposing its secret.
 func (q RemoteQuery) Valid() bool {
 	return q.PID > 0 && !q.Started.IsZero() && len(q.Tag) == 40 && q.Tag[:8] == "cw-read:" && hashID(q.Tag[8:])
 }
@@ -75,6 +77,7 @@ type Manifest struct {
 	Preview   bool    `json:"preview"`
 }
 
+// Valid checks bounded retained coordinates and exact validation metadata.
 func (m Manifest) Valid() bool {
 	r := m.Receipt
 	if !identity.Identifier(m.Operation) || !identity.Identifier(m.Session) || !r.Validated || !identity.Identifier(r.Source) || !identity.Identifier(r.Context) || !identity.Identifier(r.Contract) || len(r.Dependencies) > 32 || len(r.Columns) < 1 || len(r.Columns) > 256 || !m.Limits.Valid() {
@@ -480,4 +483,11 @@ func (x *Executor) ByOperation(ctx context.Context, e identity.Envelope, operati
 		return Attempt{}, err
 	}
 	return x.Inspect(ctx, e, a.ID)
+}
+
+// ValidateOptions rejects unsupported invocation bounds before native validation I/O.
+// It is admission only and never authorizes or constructs an executable plan.
+func (x *Executor) ValidateOptions(o Options) error {
+	_, err := x.limits(o)
+	return err
 }
