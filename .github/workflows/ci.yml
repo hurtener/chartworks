@@ -67,12 +67,12 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
-          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' \) -print)"
+          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' -o -name '_phase_11_12*' \) -print)"
       - run: make build
       - run: make vet
       - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
-      - name: All sixty-four implemented phase criteria, no missing/skipped tests
+      - name: All seventy-six implemented phase criteria, no missing/skipped tests
         run: |
           python3 scripts/run_phase_acceptance.py --phase 01
           python3 scripts/run_phase_acceptance.py --phase 02
@@ -84,6 +84,8 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 09
           python3 scripts/run_phase_acceptance.py --phase 08
           python3 scripts/run_phase_acceptance.py --phase 10
+          python3 scripts/run_phase_acceptance.py --phase 11
+          python3 scripts/run_phase_acceptance.py --phase 12
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
@@ -94,6 +96,11 @@ jobs:
           test -n "$names"
           for name in $names; do
             go test -race ./internal/exec -run '^$' -fuzz "^${name}$" -fuzztime=64x -timeout=3m -parallel=2
+          done
+          names=$(go test ./internal/engineering -list '^Fuzz' | grep '^Fuzz')
+          test -n "$names"
+          for name in $names; do
+            go test -race ./internal/engineering -run '^$' -fuzz "^${name}$" -fuzztime=64x -timeout=3m -parallel=2
           done
       - name: Full cumulative development preflight
         run: make preflight-full
@@ -111,6 +118,9 @@ jobs:
           test ! -f .github/workflows/phase-09-10-development.yml
           test ! -f .github/workflows/read-snapshot.yml
           test ! -f .github/workflows/read-execution-workspace.yml
+          test ! -f .github/workflows/phase-11-12-edit.yml
+          test ! -f .github/workflows/phase-11-12-development.yml
+          test ! -f .github/workflows/phase-11-12-workspace.yml
       - name: Working tree must remain unchanged
         run: |
           git diff --exit-code
