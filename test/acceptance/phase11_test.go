@@ -225,7 +225,7 @@ func TestPhase11(t *testing.T) {
 	})
 	t.Run("AC05", func(t *testing.T) {
 		f := newEngineeringFixture(t, nil, nil)
-		client := f.client(t)
+		client := f.binaryClient(t)
 		raw, columns := engineeringCSV()
 		internal := engineeringSpec("sdk-upload", "csv", raw, columns)
 		wire, err := json.Marshal(internal)
@@ -258,7 +258,7 @@ func TestPhase11(t *testing.T) {
 			t.Fatal("upload bypassed or diverged from the common executor", err, result)
 		}
 		receipt, err := client.ReadExecution(context.Background(), result.Attempt.ID)
-		if err != nil || receipt.Manifest.Validation.Context != source.ContextID || receipt.Status != "succeeded" {
+		if err != nil || receipt.Manifest.Receipt.Context != source.ContextID || receipt.Status != "succeeded" {
 			t.Fatal("ordinary retained execution receipt", err, receipt)
 		}
 	})

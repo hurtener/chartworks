@@ -127,7 +127,7 @@ func (f *engineeringFixture) binaryClient(t *testing.T) *sdk.Client {
 // The process can still be writing while a readiness failure is reported. Keep
 // diagnostic capture bounded and synchronized; never race on bytes.Buffer.
 type engineeringProcessOutput struct {
-	mu sync.Mutex
+	mu     sync.Mutex
 	buffer bytes.Buffer
 }
 

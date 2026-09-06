@@ -1,6 +1,6 @@
 # Phase 11 — uploads-workspace
 
-Status: planned. Owner: internal/engineering, internal/sources. Hard dependencies: 06, 08.
+Status: in_progress. Owner: internal/engineering, internal/sources. Hard dependencies: 06, 08.
 
 ## Authority and design
 

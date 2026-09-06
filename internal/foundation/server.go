@@ -140,7 +140,7 @@ func (s *Server) Handler() http.Handler {
 				Implemented    []string `json:"implemented"`
 				BusinessAPI    bool     `json:"business_api"`
 				Authentication bool     `json:"authentication"`
-			}{"01-06-gateway-jobs", s.implemented(), false, s.protected != nil}
+			}{"01-12-engineering", s.implemented(), false, s.protected != nil}
 		}
 		w.WriteHeader(status)
 		if r.Method != http.MethodHead {
@@ -211,6 +211,15 @@ func (s *Server) implemented() []string {
 	}
 	if s.values.Jobs.Enabled {
 		out = append(out, "durable_operations", "scheduling")
+	}
+	if s.values.Sources.Enabled {
+		out = append(out, "governed_sources", "validated_read_execution")
+	}
+	if s.values.Uploads.Enabled {
+		out = append(out, "governed_uploads")
+	}
+	if s.values.Profiling.Enabled {
+		out = append(out, "versioned_profile_evidence")
 	}
 	return out
 }

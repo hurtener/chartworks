@@ -1,6 +1,6 @@
 # Phase 12 — engineering-profiling
 
-Status: planned. Owner: internal/engineering. Hard dependencies: 05, 06, 08, 10.
+Status: in_progress. Owner: internal/engineering. Hard dependencies: 05, 06, 08, 10.
 
 ## Authority and design
 

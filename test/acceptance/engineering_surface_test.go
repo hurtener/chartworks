@@ -163,7 +163,7 @@ func TestEngineeringHTTPCheckpointCancellationAndResume(t *testing.T) {
 	}
 	defer owner.Close()
 	server := httptest.NewServer(sourceapi.EngineeringHandler(f.token.verifier, owner, http.NotFoundHandler()))
-	defer server.Close()
+	defer func() { owner.Close(); server.Close() }()
 	token := f.token.sign(t, f.token.claims(f.e.Tenant(), f.e.User(), f.e.Scopes()), nil)
 	client, err := sdk.New(server.URL, &http.Client{Timeout: 10 * time.Second}, func(context.Context) (string, error) { return token, nil })
 	if err != nil {
@@ -237,7 +237,7 @@ func TestEngineeringHTTPCheckpointCancellationAndResume(t *testing.T) {
 
 type waitForUploadCancellation struct {
 	*postgres.DB
-	once atomic.Bool
+	once    atomic.Bool
 	entered chan struct{}
 }
 
