@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,25 +15,22 @@ func TestReadExecutionReferenceExcerpt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defaults, _ := json.Marshal(config.Defaults())
-	var base, patch map[string]any
-	if json.Unmarshal(defaults, &base) != nil || json.Unmarshal(excerpt, &patch) != nil {
-		t.Fatal("reference JSON")
+	var document map[string]json.RawMessage
+	if err = json.Unmarshal(excerpt, &document); err != nil {
+		t.Fatal(err)
 	}
-	for key, value := range patch {
-		dst, ok := base[key].(map[string]any)
-		if !ok {
-			t.Fatal("reference unknown object")
-		}
-		for field, v := range value.(map[string]any) {
-			dst[field] = v
-		}
+	// Compose the excerpt with the required Pengui verifier configuration.
+	// Load applies its own defaults; serializing all default Values first can
+	// introduce unrelated nil slices that the closed document format rejects.
+	document["auth"] = json.RawMessage(`{"issuer":"https://issuer.example","jwks_url":"https://issuer.example/keys","audience":"test"}`)
+	input, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
 	}
-	document, _ := json.Marshal(base)
 	lookup := func(key string) (string, bool) {
 		return "postgres://synthetic:synthetic@localhost:5434/reference?sslmode=disable", key == "CHARTWORKS_STORE_URL"
 	}
-	loaded, err := config.Load(bytes.NewReader(document), lookup, config.Overrides{})
+	loaded, err := config.Load(bytes.NewReader(input), lookup, config.Overrides{})
 	if err != nil {
 		t.Fatal("actual configuration decoder rejected execution excerpt", err)
 	}
@@ -42,11 +38,25 @@ func TestReadExecutionReferenceExcerpt(t *testing.T) {
 	if v.Exec.RowsCeiling != 100000 || v.Exec.Timeout != config.Duration(time.Minute) || v.Server.WriteTimeout != config.Duration(75*time.Second) {
 		t.Fatal("reference did not match default contract")
 	}
-	for _, bad := range []string{strings.Replace(string(document), `"rows_ceiling":100000`, `"rows_ceiling":100001`, 1), strings.Replace(string(document), `"timeout":"60s"`, `"skip_validation":true,"timeout":"60s"`, 1)} {
-		if bad == string(document) {
-			t.Fatal("negative configuration fixture was not mutated")
+	for _, change := range []func(map[string]any){
+		func(exec map[string]any) { exec["rows_ceiling"] = 100001 },
+		func(exec map[string]any) { exec["skip_validation"] = true },
+	} {
+		var execution map[string]any
+		if err = json.Unmarshal(document["exec"], &execution); err != nil {
+			t.Fatal(err)
 		}
-		if _, err = config.Load(strings.NewReader(bad), lookup, config.Overrides{}); err == nil {
+		change(execution)
+		value, err := json.Marshal(execution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		badDocument := map[string]json.RawMessage{"auth": document["auth"], "exec": value, "server": document["server"]}
+		bad, err := json.Marshal(badDocument)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = config.Load(bytes.NewReader(bad), lookup, config.Overrides{}); err == nil {
 			t.Fatal("invalid execution configuration")
 		}
 	}
