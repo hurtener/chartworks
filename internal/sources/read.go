@@ -395,7 +395,7 @@ func moneyDecimal(raw []byte) ([]byte, error) {
 // ControlRead only controls a verified, journal-backed tagged backend transaction.
 // Cancellation signals are sent only by the live owner using its original connection secret.
 // ControlRead itself only observes; it cannot accidentally cancel a reused backend PID.
-func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control readexec.Control, cancel bool) (string, error) {
+func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control readexec.Control, _ bool) (string, error) {
 	id, partition := control.Coordinates()
 	scope, err := sourceScope(e, "sources.query", "query", id)
 	if err != nil {
@@ -403,36 +403,39 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 	}
 	state := "unknown"
 	err = s.call(ctx, e, true, func(ctx context.Context) error {
-		record, err := s.repo.ReadSource(ctx, scope, id)
-		if err != nil {
+		return s.repo.WithSource(ctx, scope, id, func(ctx context.Context, record Record) error {
+			if record.Source.ContextID != partition {
+				return readexec.ErrBinding
+			}
+			if _, err := control.Target(e, record.Binding); err != nil {
+				return err
+			}
+			c, err := s.connection(e.Tenant(), record.Connection)
+			if err != nil {
+				return err
+			}
+			// Prove actual credentials/catalog context before observing a native identity;
+			// a replacement database cannot falsely prove an old backend stopped.
+			_, err = s.probe(ctx, c, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
+				if readexec.Hash(b) != readexec.Hash(record.Binding) {
+					return readexec.ErrBinding
+				}
+				q, err := control.Target(e, b)
+				if err != nil {
+					return err
+				}
+				var exists bool
+				if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, q.PID, q.Started, q.Tag).Scan(&exists); err != nil {
+					return safe(err)
+				}
+				state = "stopped"
+				if exists {
+					state = "running"
+				}
+				return nil
+			})
 			return err
-		}
-		if record.Source.ContextID != partition {
-			return readexec.ErrBinding
-		}
-		q, err := control.Target(e, record.Binding)
-		if err != nil {
-			return err
-		}
-		c, err := s.connection(e.Tenant(), record.Connection)
-		if err != nil {
-			return err
-		}
-		pool, _, err := s.pool(ctx, c)
-		if err != nil {
-			return err
-		}
-
-		var exists bool
-		err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, q.PID, q.Started, q.Tag).Scan(&exists)
-		if err != nil {
-			return safe(err)
-		}
-		state = "stopped"
-		if exists {
-			state = "running"
-		}
-		return nil
+		})
 	})
 	return state, err
 }

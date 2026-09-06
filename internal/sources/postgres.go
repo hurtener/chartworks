@@ -91,6 +91,10 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 		s.mu.Unlock()
 		return entry.pool, u.Host + u.EscapedPath(), nil
 	}
+	if s.retiring[key] {
+		s.mu.Unlock()
+		return nil, "", readexec.ErrBinding
+	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		s.mu.Unlock()
@@ -122,10 +126,18 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 	}
 	old := s.pools[key]
 	s.pools[key] = poolEntry{material: material, pool: pool}
-	s.mu.Unlock()
 	if old.pool != nil {
-		old.pool.Close()
+		s.retiring[key] = true
+		s.reap.Add(1)
+		go func() {
+			defer s.reap.Done()
+			old.pool.Close()
+			s.mu.Lock()
+			delete(s.retiring, key)
+			s.mu.Unlock()
+		}()
 	}
+	s.mu.Unlock()
 	return pool, u.Host + u.EscapedPath(), nil
 }
 

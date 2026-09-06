@@ -127,3 +127,14 @@ or worker credentials. See docs/reviews/phase-05-06-adversarial.md for evidence.
 ## Phases 07/08 and validated-read prerequisite
 
 D-064 and docs/contracts/vector-sources-validation.md govern the actual PostgreSQL 17 source and native-parser subset. Do not bypass opaque plans, widen signed context reach, turn an operator alias into a public DSN field, or treat parsed SQL as authority. Vector generations require complete exact-origin manifests and atomic publication; do not add tenant-only evidence caches or local inference. Preserve the SQL alias, rollback, oversized-batch and concurrent generation regressions. Later phase 10/14/15 consumers retain their existing obligations. Final CI is read-only and must test committed source without preparation or repair scripts.
+
+## Phases 09/10 read execution
+
+D-065 and docs/contracts/read-execution.md extend the existing opaque plan, source
+adapter and metadata store. Keep the source-revision fence through native cleanup,
+short ordinary metadata deadlines and reserved journal/control capacity. Every
+consumer uses exact typed results and the same caps; optimizer estimates are not
+scan-byte guarantees. Persist cancel intent and only signal the original owned
+connection, never a reusable PID. Final receipt/audit commit must resolve late
+cancellation before exposing values. Reconcile uncertain physical attempts before
+explicit retries; never reconstruct lost values or silently rewrite empty SQL.

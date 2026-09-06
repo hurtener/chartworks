@@ -48,3 +48,12 @@ Source execution context is connector configuration, not an IAM role. D-044/D-04
 ## Implemented evidence and qualified scope
 
 D-064 and [the vector/source/read contract](../contracts/vector-sources-validation.md) pin the qualified scope. See the [adversarial review](../reviews/phase-07-08-adversarial.md). Existing hard dependencies and all six numbered criteria remain unchanged. Real PostgreSQL/pgvector and native-parser fixtures provide runtime evidence; final exact-head CI must pass before merge. The full execution product remains phase 10, additional engines phase 14 and the semantic generation consumer phase 15.
+
+## Phase-10 read consumer
+
+The [D-065 read execution contract](../contracts/read-execution.md) extends the
+existing validated plan and source adapter without changing their authority or
+qualification boundaries. Its [adversarial review](../reviews/phase-09-10-adversarial.md)
+records the actual cursor, attempt, cancellation and exact-result regressions.
+Earlier statements assigning execution to phase 10 are now realized by that
+consumer; other-engine and retained reporting deliverables remain separately owned.

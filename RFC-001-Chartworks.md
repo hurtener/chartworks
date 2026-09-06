@@ -1,6 +1,6 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-04 after owner feedback on reporting, Pengui authority, established MCP Apps and Bifrost-only remote inference. Phases 01–09 now have runtime implementations; 25 later workstreams remain planned. Named tests and exact-source verification, not design acceptance alone, establish completion.
+Status: implementation design, revised 2026-09-04 after owner feedback on reporting, Pengui authority, established MCP Apps and Bifrost-only remote inference. Phases 01–09 are merged; phase 10 now has its runtime implementation under final verification. Twenty-four later workstreams remain planned. Named tests and exact-source verification, not design acceptance alone, establish completion.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 
@@ -176,3 +176,5 @@ one PostgreSQL queue and bounded maintenance occurrences with the actual
 Metadata cancellation/read/pause do not require live models or an enabled worker.
 Broader analytic/reporting targets and external-effect reconciliation remain owned
 by their later phases; this is not a reporting release or live provider acceptance.
+
+Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](docs/contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.

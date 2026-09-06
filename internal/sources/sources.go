@@ -97,6 +97,8 @@ type Service struct {
 	closed    bool
 	mu        sync.Mutex
 	pools     map[string]poolEntry
+	retiring  map[string]bool
+	reap      sync.WaitGroup
 }
 
 var _ readexec.ReadAdapter = (*Service)(nil)
@@ -106,7 +108,7 @@ func New(repo Repository, settings config.Sources, lookup func(string) (string, 
 	if repo == nil || reflect.ValueOf(repo).Kind() == reflect.Pointer && reflect.ValueOf(repo).IsNil() || lookup == nil || config.ValidateSources(settings) != nil {
 		return nil, store.ErrInvalid
 	}
-	return &Service{repo: repo, settings: settings.Clone(), lookup: lookup, pools: map[string]poolEntry{}}, nil
+	return &Service{repo: repo, settings: settings.Clone(), lookup: lookup, pools: map[string]poolEntry{}, retiring: map[string]bool{}}, nil
 }
 
 // Enabled reports execution capability, not the availability of retained metadata.
@@ -121,11 +123,12 @@ func (s *Service) Close() {
 	}
 	s.closed = true
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for key, entry := range s.pools {
 		entry.pool.Close()
 		delete(s.pools, key)
 	}
+	s.mu.Unlock()
+	s.reap.Wait()
 }
 func (s *Service) call(ctx context.Context, e identity.Envelope, warehouse bool, fn func(context.Context) error) error {
 	if ctx == nil || !e.Valid() {

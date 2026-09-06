@@ -1,6 +1,6 @@
 # Chartworks — actionable implementation plan
 
-Current implementation status: phases 01–09 provide the existing foundation, authority, gateway and jobs plus pgvector generations, qualified PostgreSQL sources and validated-read contracts. Twenty-five later workstreams remain planned. The registry records status; actual named tests and reviewed execution evidence establish acceptance, not this paragraph or a green documentation check. Historical superseded plans remain under `docs/archive/phase0-plans/`.
+Current implementation status: phases 01–09 provide the existing foundation, authority, gateway and jobs plus pgvector generations, qualified PostgreSQL sources and validated-read contracts. Phase 10 is implemented under final verification; twenty-four later workstreams remain planned. The registry records status; actual named tests and reviewed execution evidence establish acceptance, not this paragraph or a green documentation check. Historical superseded plans remain under `docs/archive/phase0-plans/`.
 
 ## Fixed decisions
 
@@ -16,7 +16,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–09 are implemented; the remaining twenty-five are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success.
+There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–09 are merged, phase10 is implemented under final verification, and the remaining twenty-four are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 
@@ -82,3 +82,5 @@ Complete cutover also requires semantic/NLQ/learning behavior, hybrid reports, d
 The existing Pengui provider bearer serialization is now consumed by phases03/04. [Its operation manifest](../contracts/chartworks-operations.json) and [registration guide](../contracts/pengui-provider-registration.md) let the operator configure approved scope sets; no production registration is fabricated. Phase06 implements the [Pengui-owned execution authority v1 extension](../contracts/execution-authority-v1.md) with its real maintenance consumer. Merge/deploy the companion issuer before enabling dispatch; Phase30 reuses the same provider. No local issuer or guessed broker endpoint is permitted.
 
 Standing risks remain dialect safety, complete dependency manifests, unsafe artifact-context reuse, retry reference/window drift, private previews, exact numeric values and overstated external atomicity. Their later real-adapter tests remain required. D-059–D-061 record the implemented authority decisions without weakening those obligations.
+
+Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](../contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.

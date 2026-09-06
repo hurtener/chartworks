@@ -99,6 +99,12 @@ func TestReadLateCancellationCannotPublishRows(t *testing.T) {
 	if r.Result != nil || r.Attempt.Status != "cancelled" || r.Attempt.Rows != 0 || r.Attempt.Bytes != 0 || !r.Attempt.CancelRequested {
 		t.Fatal("cancellation race leaked completed rows", r.Attempt)
 	}
+	meta := support.Raw(t, f.dsn)
+	var success, cancelled int
+	if err := meta.QueryRow(context.Background(), `SELECT count(*) FILTER(WHERE action='read.succeeded'),count(*) FILTER(WHERE action='read.cancelled') FROM chartworks.audit_events WHERE resource_id=$1`, r.Attempt.ID).Scan(&success, &cancelled); err != nil || success != 0 || cancelled != 1 {
+		t.Fatal("audit contradicted committed cancellation", err, success, cancelled)
+	}
+
 }
 
 type lostReadReply struct {

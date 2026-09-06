@@ -96,3 +96,11 @@ one PostgreSQL queue and bounded maintenance occurrences with the actual
 Metadata cancellation/read/pause do not require live models or an enabled worker.
 Broader analytic/reporting targets and external-effect reconciliation remain owned
 by their later phases; this is not a reporting release or live provider acceptance.
+
+## Validated read execution consumer
+
+[D-065](docs/contracts/read-execution.md) supplies the existing phase-09 validator's
+bounded phase-10 execution consumer, exact transport, attempt evidence and
+cancellation/reconciliation. Reporting and scheduler consumers must reuse it and
+its ceilings. It introduces no new reporting target, retained result cache,
+identity-policy owner or model dependency.

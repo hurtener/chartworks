@@ -88,6 +88,7 @@ func TestReadAPIAndSDK(t *testing.T) {
 	if f.lookups.Load() != before {
 		t.Fatal("denied route resolved credentials")
 	}
+	input.Parameters = []cw.ReadParameter{}
 	encoded, _ := json.Marshal(input)
 	for _, body := range []string{`{}`, `null`, strings.Replace(string(encoded), `"execution":{`, `"execution":{"tenant":"foreign",`, 1), strings.Replace(string(encoded), `"attempt":1`, `"attempt":1,"attempt":2`, 1), strings.Replace(string(encoded), `"rows":0`, `"ROWS":0`, 1), strings.Replace(string(encoded), `"preview":false`, `"preview":null`, 1)} {
 		r := callProtected(t, h, "POST", "/v1/sources/sales/execute", token, body, nil)

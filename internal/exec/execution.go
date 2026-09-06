@@ -76,7 +76,27 @@ type Manifest struct {
 }
 
 func (m Manifest) Valid() bool {
-	return identity.Identifier(m.Operation) && identity.Identifier(m.Session) && m.Receipt.Validated && identity.Identifier(m.Receipt.Source) && identity.Identifier(m.Receipt.Context) && len(m.Receipt.Manifest) == 64 && len(m.Receipt.Dependencies) <= 32 && m.Limits.Valid()
+	r := m.Receipt
+	if !identity.Identifier(m.Operation) || !identity.Identifier(m.Session) || !r.Validated || !identity.Identifier(r.Source) || !identity.Identifier(r.Context) || !identity.Identifier(r.Contract) || len(r.Dependencies) > 32 || len(r.Columns) < 1 || len(r.Columns) > 256 || !m.Limits.Valid() {
+		return false
+	}
+	hash, err := hex.DecodeString(r.Manifest)
+	if err != nil || len(hash) != 32 || hex.EncodeToString(hash) != r.Manifest {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, id := range r.Dependencies {
+		if !identity.Identifier(id) || seen[id] {
+			return false
+		}
+		seen[id] = true
+	}
+	for _, name := range r.Columns {
+		if len(name) < 1 || len(name) > 1024 {
+			return false
+		}
+	}
+	return true
 }
 
 // Attempt is protected, content-free execution evidence; active receipts expire

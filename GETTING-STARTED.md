@@ -112,3 +112,34 @@ Turning off `jobs.enabled` stops new admission and dispatch while preserving aut
 The reference metadata image is `pgvector/pgvector:0.8.2-pg17`; install the extension before migrations when using a restricted migration role. Merge the source excerpt from `examples/chartworks.sources.json` into the existing configuration, replace the synthetic tenant/relation coordinates, and provide the read DSN through the referenced environment variable. Never put a resolved credential or human JWT in metadata. The optional write reference is not used by the reader.
 
 The source adapter is qualified for PostgreSQL 17 and the documented ordinary-heap subset. Use explicit source test/discovery and revision-checked rotation; registered metadata is not a health promise. Obtain Pengui-issued action/resource/context reach for the actual operations. See `docs/contracts/vector-sources-validation.md` and the executable source operation inventory. No additional warehouse engine, public raw-SQL route or local model is enabled by this excerpt.
+
+## Validated read execution (phases 09/10)
+
+Merge the non-secret [execution excerpt](examples/chartworks.execution.json) with
+your source/verifier configuration; warehouse aliases remain opt-in. Install/check
+forward migration 006 after unchanged 001–005. The metadata pool must have at least
+`exec.execution_concurrency + 2` connections. Default HTTP write/client timeouts are
+75 seconds; custom proxy/client budgets must leave validation and cleanup room.
+
+Using a current Pengui bearer with source/context and all dataset query scopes,
+POST `/v1/sources/sales/execute` with a synthetic registered `sales:v1` context:
+
+```json
+{"context":"sales:v1","sql":"SELECT id, amount FROM analytics.sales ORDER BY id","parameters":[],"execution":{"operation":"read-example-001","attempt":1,"preview":false,"rows":0,"bytes":0}}
+```
+
+HTTP 200 returns an accepted attempt receipt; check its status before using result
+values. `empty` retains schema; `truncated` marks incomplete rows/bytes. Exact
+integers/decimals are strings, booleans and null retain JSON types, and JSON columns
+contain exact JSON text strings. The same invocation never automatically retries.
+
+After a lost response, GET `/v1/read-operations/read-example-001` to recover its
+attempt ID, then GET `/v1/read-executions/{id}`. POST `{}` to that path's `/cancel`
+or `/reconcile` suffix. A cancellation request is not termination proof; unknown
+remote state remains uncertain. No result values are retained or rerun by these
+metadata calls. After a proven interrupted/failed attempt, an explicitly supplied
+next attempt number may retry the same immutable operation; changed input conflicts.
+
+Read the complete [read contract](docs/contracts/read-execution.md) before enabling
+execution. Actual scan bytes remain unknown; row/response-byte caps are not scan
+budgets. The 24-hour content-free receipt window is not phase-28 result retention.

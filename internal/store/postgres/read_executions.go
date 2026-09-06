@@ -185,7 +185,11 @@ func (d *DB) FinishRead(ctx context.Context, s store.Scope, a readexec.Attempt, 
 		if tag.RowsAffected() != 1 {
 			return store.ErrConflict
 		}
-		return auditJob(ctx, tx, s, "read."+a.Status, a.ID)
+		var committed string
+		if err = tx.QueryRow(ctx, `SELECT status FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3`, s.Tenant(), s.Actor(), a.ID).Scan(&committed); err != nil {
+			return err
+		}
+		return auditJob(ctx, tx, s, "read."+committed, a.ID)
 	})
 }
 

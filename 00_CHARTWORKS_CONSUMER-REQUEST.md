@@ -37,3 +37,11 @@ Use one core, one PostgreSQL queue and one SDK-backed inference seam. Managed da
 [The master plan](docs/plans/README.md) assigns 34 phases, 224 acceptance criteria and a mapping of 63 source-feature rows plus 41 review gates. Follow each owning phase and COMMON.md; no required feature is silently deferred because it is outside the first demonstration. First useful reporting and complete migration are separate milestones.
 
 Pengui integration scope serialization and unattended execution binding must be implemented against actual platform APIs in the owning integration phases. This document does not assert that newly proposed scope strings or a fresh-authority endpoint are already deployed. Resolve missing platform support on the Pengui side, never by creating local auth. Record exact provider/source versions and runtime evidence before deployment claims.
+
+## Validated read execution consumer
+
+[D-065](docs/contracts/read-execution.md) supplies the existing phase-09 validator's
+bounded phase-10 execution consumer, exact transport, attempt evidence and
+cancellation/reconciliation. Reporting and scheduler consumers must reuse it and
+its ceilings. It introduces no new reporting target, retained result cache,
+identity-policy owner or model dependency.
