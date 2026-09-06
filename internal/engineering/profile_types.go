@@ -63,6 +63,11 @@ type ProfileRecord struct {
 	Created                time.Time
 	Result                 *Profile
 	SummaryStarted         bool
+	// Read intent is progress, not part of the immutable input digest. It is
+	// committed before native dispatch and retained across interrupted attempts.
+	// An absent native receipt is not proof of no execution until this deadline.
+	LastReadOperation string
+	LastReadDeadline  time.Time
 }
 
 func (r ProfileRecord) Digest() string {
