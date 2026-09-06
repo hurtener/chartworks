@@ -1,0 +1,71 @@
+name: Phase 11–12 development verification
+on:
+  push:
+    branches: [feat/phase-11-12-uploads-profiling]
+    paths: [scripts/_phase_11_12.py, .github/workflows/phase-11-12-development.yml]
+permissions:
+  contents: write
+concurrency:
+  group: phase-11-12-development
+  cancel-in-progress: false
+jobs:
+  develop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: --health-cmd "pg_isready -U chartworks -d chartworks" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Inspect actual integration seams
+        if: ${{ hashFiles('scripts/_phase_11_12.py') == '' }}
+        run: |
+          for f in internal/config/config.go internal/foundation/work.go internal/jobs/service.go internal/store/postgres/jobs.go internal/store/postgres/migrations/003_jobs.sql internal/store/postgres/migrations/005_sources_vectors.sql internal/store/postgres/migrations/006_read_attempts.sql internal/exec/contract.go internal/gateway/gateway.go test/acceptance/phase08_test.go; do
+            if test -f "$f"; then echo "FILE_BEGIN $f"; cat "$f"; echo "FILE_END $f"; fi
+          done
+          find internal/store/postgres internal/exec test/support docs/research -maxdepth 2 -type f 2>/dev/null || true
+      - name: Materialize reviewed incremental source edits
+        if: ${{ hashFiles('scripts/_phase_11_12.py') != '' }}
+        run: |
+          python3 scripts/_phase_11_12.py
+          go get github.com/parquet-go/parquet-go@v0.32.0
+          go mod tidy
+          find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
+      - name: Commit the actual source before execution
+        if: ${{ hashFiles('scripts/_phase_11_12.py') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'Santi Benvenuto'
+          git config user.email 'benvenuto.santiago@hotmail.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(engineering): materialize uploads and profiling implementation'
+            auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin HEAD:feat/phase-11-12-uploads-profiling
+          fi
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+      - name: Compile and run real workspace/profile regressions
+        if: ${{ hashFiles('scripts/_phase_11_12.py') != '' }}
+        run: |
+          go test -race -count=1 -timeout=10m ./internal/engineering/... ./internal/sources ./internal/exec ./internal/config ./sdk/chartworks
+          go test -race -count=1 -timeout=10m -v ./test/acceptance -run 'Test(Phase(08|09|10|11|12)|Upload|Profile|Engineering|Managed)'
+      - name: Confirm tests did not change committed source
+        if: ${{ hashFiles('scripts/_phase_11_12.py') != '' }}
+        run: git diff --exit-code
