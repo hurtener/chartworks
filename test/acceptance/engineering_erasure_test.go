@@ -28,6 +28,12 @@ func (r *interruptedErasurePublication) FinishUploadErasure(ctx context.Context,
 	return r.DB.FinishUploadErasure(ctx, invocation, upload)
 }
 
+type erasureCheckpointFixture struct{ *postgres.DB }
+
+func (r *erasureCheckpointFixture) PublishProfile(context.Context, jobs.Invocation, engineering.ProfileRecord, engineering.Profile) error {
+	return store.ErrUnavailable
+}
+
 func TestUploadErasureRemovesDerivedProfileValuesAcrossActors(t *testing.T) {
 	f := newEngineeringFixture(t, func(v *config.Values) {
 		v.Profiling.Policies = []config.ProfilePolicy{{ID: "retained-ranges", Tenant: "source-a", Source: "erase-evidence", RangeColumns: []string{"id", "amount", "event_time"}}}
@@ -53,6 +59,17 @@ func TestUploadErasureRemovesDerivedProfileValuesAcrossActors(t *testing.T) {
 	if err != nil || otherRun.Profile.State != "complete" || otherRun.Profile.Profile == nil {
 		t.Fatal("second actor's real profile did not complete", err, otherRun)
 	}
+	checkpointService, err := engineering.New(&erasureCheckpointFixture{DB: f.db}, f.s, f.validator, f.executor, nil, f.values, f.lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpointSpec := spec
+	checkpointSpec.ID, checkpointSpec.Previous = "unpublished-profile", spec.ID
+	checkpoint, err := checkpointService.Build(ctx, f.e, checkpointSpec, "checkpoint-before-erasure", false)
+	checkpointService.Close()
+	if err != nil || checkpoint.Profile.State != "checkpoint" || checkpoint.Profile.Profile != nil {
+		t.Fatal("unpublished deterministic checkpoint fixture failed", err, checkpoint)
+	}
 	survivorSpec := f.profileSpec(t, *survivor.Upload.Source, "surviving-profile", []string{"id", "amount"}, "")
 	survivorProfile := f.profile(t, survivorSpec).Profile.Profile
 	before := survivorProfile.DeterministicHash()
@@ -66,8 +83,8 @@ func TestUploadErasureRemovesDerivedProfileValuesAcrossActors(t *testing.T) {
 	}
 	metadata := support.Raw(t, f.dsn)
 	var profiles, dependencies int
-	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.profile_versions WHERE tenant_id=$1 AND source_id=$2 AND result IS NOT NULL`, f.e.Tenant(), spec.Source).Scan(&profiles); err != nil || profiles != 2 {
-		t.Fatal("private evidence fixtures were not persisted", err, profiles)
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.profile_versions WHERE tenant_id=$1 AND source_id=$2 AND result IS NOT NULL`, f.e.Tenant(), spec.Source).Scan(&profiles); err != nil || profiles != 3 {
+		t.Fatal("complete and checkpoint evidence fixtures were not persisted", err, profiles)
 	}
 	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.profile_dependencies WHERE tenant_id=$1 AND source_id=$2`, f.e.Tenant(), spec.Source).Scan(&dependencies); err != nil || dependencies != 1 {
 		t.Fatal("dependency fixture was not persisted", err, dependencies)
@@ -93,7 +110,7 @@ func TestUploadErasureRemovesDerivedProfileValuesAcrossActors(t *testing.T) {
 		t.Fatal("same-operation erasure did not reconcile", err, resumed)
 	}
 	var erased, remaining int
-	if err = metadata.QueryRow(ctx, `SELECT count(*) FILTER(WHERE state='erased'),count(*) FILTER(WHERE result IS NOT NULL OR deterministic_hash IS NOT NULL OR changes<>'[]'::jsonb OR last_read_operation IS NOT NULL OR last_read_deadline IS NOT NULL) FROM chartworks.profile_versions WHERE tenant_id=$1 AND source_id=$2`, f.e.Tenant(), spec.Source).Scan(&erased, &remaining); err != nil || erased != 2 || remaining != 0 {
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FILTER(WHERE state='erased'),count(*) FILTER(WHERE result IS NOT NULL OR deterministic_hash IS NOT NULL OR changes<>'[]'::jsonb OR last_read_operation IS NOT NULL OR last_read_deadline IS NOT NULL) FROM chartworks.profile_versions WHERE tenant_id=$1 AND source_id=$2`, f.e.Tenant(), spec.Source).Scan(&erased, &remaining); err != nil || erased != 3 || remaining != 0 {
 		t.Fatal("derived ranges or checkpoint values survived completed erasure", err, erased, remaining)
 	}
 	for _, query := range []string{
