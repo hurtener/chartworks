@@ -84,6 +84,7 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 
 func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (out readexec.NativeResult, err error) {
 	out.RemoteState = "not_issued"
+	var remote readexec.RemoteQuery
 	pool, location, err := s.pool(ctx, c)
 	if err != nil {
 		return out, err
@@ -112,6 +113,22 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 		}
 		if rollback != nil {
 			_ = conn.Conn().Close(cleanup)
+			conn.Release()
+			// Closing a socket alone does not prove remote termination. Independently
+			// observe the exact tagged backend identity under the already accepted
+			// operation's bounded cleanup allowance; never signal a reusable PID.
+			if remote.Valid() && out.RemoteState == "unknown" {
+				var active bool
+				observeErr := pool.QueryRow(cleanup, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, remote.PID, remote.Started, remote.Tag).Scan(&active)
+				if observeErr == nil && !active {
+					out.RemoteState = "stopped"
+					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+						err = readexec.ErrTimeout
+					} else if errors.Is(ctx.Err(), context.Canceled) {
+						err = readexec.ErrCancelled
+					}
+				}
+			}
 		}
 		if err != nil {
 			out.Result = readexec.Result{}
@@ -139,7 +156,7 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 	if cost > l.PlannerCost {
 		return out, readexec.ErrLimit
 	}
-	remote := readexec.RemoteQuery{Tag: "cw-read:" + id}
+	remote = readexec.RemoteQuery{Tag: "cw-read:" + id}
 	if err = tx.QueryRow(ctx, `SELECT pg_backend_pid(),backend_start FROM pg_catalog.pg_stat_activity WHERE pid=pg_backend_pid()`).Scan(&remote.PID, &remote.Started); err != nil {
 		return out, err
 	}
@@ -467,4 +484,9 @@ func (s *Service) readCompatibility(ctx context.Context, e identity.Envelope, p 
 		out.Values = append(out.Values, values)
 	}
 	return out, nil
+}
+
+// ReadCapabilities reports the qualified PostgreSQL implementation only.
+func (s *Service) ReadCapabilities() readexec.Capabilities {
+	return readexec.Capabilities{Cancellation: "owner_cancel_request", Reconciliation: "tagged_backend_observation", ServerDeadline: true, PlannerCost: "optimizer_estimate", ScanByteCeiling: false, ResultRetention: false}
 }

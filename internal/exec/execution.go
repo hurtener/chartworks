@@ -124,6 +124,7 @@ type NativeResult struct {
 
 // ExecutionAdapter is the plan-only concrete source boundary. It contains no raw SQL API.
 type ExecutionAdapter interface {
+	ReadCapabilities() Capabilities
 	ReadAdapter
 	ExecuteRead(context.Context, identity.Envelope, Plan, Limits, string, Observer) (NativeResult, error)
 	ControlRead(context.Context, identity.Envelope, Control, bool) (string, error)
@@ -157,8 +158,9 @@ func (c Control) Coordinates() (string, string) {
 // ExecutionReport distinguishes a terminal query failure from transport/admission failure.
 // HTTP 200 means an accepted attempt has a durable receipt; inspect Attempt.Status.
 type ExecutionReport struct {
-	Attempt Attempt `json:"attempt"`
-	Result  *Result `json:"result"`
+	Capabilities Capabilities `json:"capabilities"`
+	Attempt      Attempt      `json:"attempt"`
+	Result       *Result      `json:"result"`
 }
 
 // Executor is one model-free read core; it never rewrites SQL or retries automatically.
@@ -259,6 +261,8 @@ func (x *Executor) Execute(ctx context.Context, e identity.Envelope, p Plan, o O
 			status, code = "cancelled", "cancelled"
 		case errors.Is(runErr, ErrTimeout), errors.Is(runErr, context.DeadlineExceeded):
 			status, code = "timed_out", "timed_out"
+		case errors.Is(runErr, ErrUncertain):
+			status, code = "uncertain", "remote_outcome_unknown"
 		case errors.Is(runErr, ErrType):
 			code = "result_type_unsupported"
 		case errors.Is(runErr, ErrLimit):
@@ -302,7 +306,7 @@ func (x *Executor) Execute(ctx context.Context, e identity.Envelope, p Plan, o O
 		return ExecutionReport{}, ErrUncertain
 	}
 	status = current.Status
-	report := ExecutionReport{Attempt: current}
+	report := ExecutionReport{Attempt: current, Capabilities: x.adapter.ReadCapabilities()}
 	if runErr == nil && (status == "succeeded" || status == "empty" || status == "truncated") {
 		report.Result = &native.Result
 	}
@@ -390,6 +394,9 @@ func (x *Executor) Control(ctx context.Context, e identity.Envelope, id string, 
 		state, err = x.adapter.ControlRead(ctx, e, Control{attempt: a, tenant: e.Tenant(), actor: e.User()}, cancel)
 		if err != nil {
 			state = "unknown"
+			if errors.Is(err, ErrUnsupported) {
+				state = "unsupported"
+			}
 		}
 	}
 	// Only a crashed/expired attempt is reconciled here. A live owner remains

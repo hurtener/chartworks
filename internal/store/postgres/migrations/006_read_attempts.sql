@@ -40,3 +40,10 @@ BEGIN
  RETURN NEW;
 END $$;
 CREATE TRIGGER immutable_read_manifest BEFORE UPDATE ON chartworks.read_attempts FOR EACH ROW EXECUTE FUNCTION chartworks.protect_read_manifest();
+
+ALTER TABLE chartworks.audit_events DROP CONSTRAINT audit_events_action_check;
+ALTER TABLE chartworks.audit_events ADD CONSTRAINT audit_events_action_check CHECK(action IN (
+ 'retention_policy.updated','retention.sweep','job.accepted','job.cancelled','schedule.created','schedule.updated','schedule.fired',
+ 'facets.generation_staged','facets.generation_published','facets.archived','facets.erased','source.created','source.rotated',
+ 'read.accepted','read.cancel_requested','read.succeeded','read.empty','read.truncated','read.cancelled','read.timed_out','read.failed','read.uncertain','read.interrupted'
+));

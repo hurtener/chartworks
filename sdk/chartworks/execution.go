@@ -95,8 +95,9 @@ type ReadAttempt struct {
 // ReadExecutionReport may describe a failed accepted attempt. Check Attempt.Status;
 // an HTTP 200 receipt does not assert that warehouse execution succeeded.
 type ReadExecutionReport struct {
-	Attempt ReadAttempt `json:"attempt"`
-	Result  *ReadResult `json:"result"`
+	Capabilities ReadCapabilities `json:"capabilities"`
+	Attempt      ReadAttempt      `json:"attempt"`
+	Result       *ReadResult      `json:"result"`
 }
 
 // ReadControlReceipt distinguishes cancellation intent from observed termination.
@@ -151,4 +152,14 @@ func (c *Client) ReadOperation(ctx context.Context, id string) (out ReadAttempt,
 	}
 	err = c.call(ctx, "GET", "/v1/read-operations/"+id, "", nil, &out)
 	return out, err
+}
+
+// ReadCapabilities separates implemented cancellation and cost gates from unknown guarantees.
+type ReadCapabilities struct {
+	Cancellation    string `json:"cancellation"`
+	Reconciliation  string `json:"reconciliation"`
+	ServerDeadline  bool   `json:"server_deadline"`
+	PlannerCost     string `json:"planner_cost"`
+	ScanByteCeiling bool   `json:"scan_byte_ceiling"`
+	ResultRetention bool   `json:"result_retention"`
 }
