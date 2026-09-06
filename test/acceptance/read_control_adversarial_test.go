@@ -159,17 +159,24 @@ func TestReadTypedFailureContractAndInvalidAdmission(t *testing.T) {
 			t.Fatal("invalid execution bounds", err)
 		}
 	}
-	if _, err := x.Execute(nil, f.e, p, readOptions("nil-context")); err == nil {
-		t.Fatal("nil context")
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	for _, invalid := range []struct {
+		name string
+		ctx  context.Context
+	}{{"nil", nil}, {"expired", expired}} {
+		if _, err := x.Execute(invalid.ctx, f.e, p, readOptions("invalid-context")); err == nil {
+			t.Fatal("invalid execution context accepted", invalid.name)
+		}
+		if _, err := x.ByOperation(invalid.ctx, f.e, "valid"); err == nil {
+			t.Fatal("invalid operation context accepted", invalid.name)
+		}
 	}
 	if _, err := x.Execute(context.Background(), identity.Envelope{}, p, readOptions("zero-authority")); err == nil {
 		t.Fatal("zero authority")
 	}
 	if _, err := x.Inspect(context.Background(), f.e, "../bad"); err == nil {
 		t.Fatal("invalid attempt")
-	}
-	if _, err := x.ByOperation(nil, f.e, "valid"); err == nil {
-		t.Fatal("nil operation context")
 	}
 	if _, err := x.ByOperation(context.Background(), f.e, "../bad"); err == nil {
 		t.Fatal("invalid operation")

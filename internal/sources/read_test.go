@@ -5,11 +5,12 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	readexec "github.com/hurtener/chartworks/internal/exec"
-	"github.com/jackc/pgx/v5/pgconn"
 	"math"
 	"testing"
 	"time"
+
+	readexec "github.com/hurtener/chartworks/internal/exec"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestReadNativeResultTypes(t *testing.T) {

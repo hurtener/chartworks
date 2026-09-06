@@ -82,7 +82,7 @@ func TestReadRevisionFenceExceedsMetadataTimeout(t *testing.T) {
 type cancelAtFinish struct{ *postgres.DB }
 
 func (r cancelAtFinish) FinishRead(ctx context.Context, s store.Scope, a readexec.Attempt, reconcile bool) error {
-	if err := r.DB.CancelRead(ctx, s, a.ID); err != nil {
+	if err := r.CancelRead(ctx, s, a.ID); err != nil {
 		return err
 	}
 	return r.DB.FinishRead(ctx, s, a, reconcile)

@@ -61,7 +61,8 @@ func (d *DB) BeginRead(ctx context.Context, s store.Scope, a readexec.Attempt, m
 			return err
 		}
 		previous, err := scanRead(tx.QueryRow(ctx, `SELECT `+readAttemptColumns+` FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 ORDER BY attempt_number DESC LIMIT 1`, s.Tenant(), s.Actor(), a.Manifest.Operation))
-		if err == nil {
+		switch {
+		case err == nil:
 			if readexec.Hash(previous.Manifest) != readexec.Hash(a.Manifest) {
 				return store.ErrConflict
 			}
@@ -76,9 +77,9 @@ func (d *DB) BeginRead(ctx context.Context, s store.Scope, a readexec.Attempt, m
 			default:
 				return store.ErrConflict
 			}
-		} else if !errors.Is(err, pgx.ErrNoRows) {
+		case !errors.Is(err, pgx.ErrNoRows):
 			return err
-		} else if a.Number != 1 {
+		case a.Number != 1:
 			return store.ErrConflict
 		}
 		var total, actor int
