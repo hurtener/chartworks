@@ -11,13 +11,14 @@ import (
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
 	"github.com/jackc/pgx/v5"
 )
 
-func rebuildPipelineSources(t *testing.T, f *pipelineFixture) {
+func rebuildPipelineSources(t *testing.T, f *pipelineFixture, model gateway.Engine) {
 	t.Helper()
 	f.pipelines.Close()
 	f.s.Close()
@@ -31,7 +32,7 @@ func rebuildPipelineSources(t *testing.T, f *pipelineFixture) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.pipelines, err = engineering.NewPipelineService(f.db, f.s, f.validator, nil, f.values, f.lookup)
+	f.pipelines, err = engineering.NewPipelineService(f.db, f.s, f.validator, model, f.values, f.lookup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestPipelineRejectsDifferentInputDatabase(t *testing.T) {
 	f.mu.Lock()
 	f.sourceFixture.values["CHARTWORKS_PIPELINE_READ"] = f.sourceFixture.values["CHARTWORKS_SOURCE_READ"]
 	f.mu.Unlock()
-	rebuildPipelineSources(t, f)
+	rebuildPipelineSources(t, f, model.engine)
 	source := f.create(t, "source-a")
 	definition := f.definition(t, source, "same-name-different-db")
 	draft, err := f.pipelines.Draft(ctx, f.e, definition, 0)
@@ -253,7 +254,7 @@ func TestPipelineServiceVerifiesEnabledRunnerAtConstruction(t *testing.T) {
 func TestPipelinePublishesTwoOutputsWithOneReadConnection(t *testing.T) {
 	f := newPipelineFixture(t, nil, nil)
 	f.values.Sources.MaxConns = 1
-	rebuildPipelineSources(t, f)
+	rebuildPipelineSources(t, f, nil)
 	ctx := context.Background()
 	source := f.create(t, "pool-one-source")
 	definition := f.definition(t, source, "pool-one-pipeline")
