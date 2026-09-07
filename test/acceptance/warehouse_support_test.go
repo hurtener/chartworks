@@ -170,14 +170,20 @@ func warehouseSQLServerActiveCancel(t *testing.T, f *sourceFixture) {
 		t.Fatal(err)
 	}
 	observer := &warehouseSQLServerObserver{}
-	started := time.Now()
-	rows, _, err := client.OpenRead(context.Background(), &bruinquery.Query{Query: "WAITFOR DELAY '00:00:05'; SELECT 1 AS completed"}, "fixture-"+hex.EncodeToString(nonce[:]), observer, bruinmssql.ReadOptions{Timeout: 100 * time.Millisecond, CancelTimeout: time.Second})
+	setupCtx, cancelRead := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelRead()
+	var cancelTimer *time.Timer
+	observer.onDispatch = func() { cancelTimer = time.AfterFunc(100*time.Millisecond, cancelRead) }
+	rows, _, err := client.OpenRead(setupCtx, &bruinquery.Query{Query: "WAITFOR DELAY '00:00:05'; SELECT 1 AS completed"}, "fixture-"+hex.EncodeToString(nonce[:]), observer, bruinmssql.ReadOptions{Timeout: 30 * time.Second, CancelTimeout: time.Second})
+	if cancelTimer != nil {
+		cancelTimer.Stop()
+	}
 	if rows != nil {
 		_ = rows.Close()
 	}
 	var failure *bruinmssql.ReadFailure
-	if !observer.dispatched || !errors.As(err, &failure) || !failure.Stopped || time.Since(started) > 4*time.Second {
-		t.Fatal("native wait cancellation/cleanup was not confirmed", err)
+	if !observer.dispatched || !errors.As(err, &failure) || !failure.Stopped || time.Since(observer.dispatchedAt) > 4*time.Second {
+		t.Fatalf("native wait cancellation/cleanup was not confirmed (dispatched=%t): %v", observer.dispatched, err)
 	}
 	admin, err := dbsql.Open("sqlserver", os.Getenv("CHARTWORKS_TEST_SQLSERVER_DSN"))
 	if err != nil {
@@ -205,13 +211,19 @@ func warehouseSQLServerActiveCancel(t *testing.T, f *sourceFixture) {
 }
 
 type warehouseSQLServerObserver struct {
-	identity   bruinmssql.ReadIdentity
-	dispatched bool
+	identity     bruinmssql.ReadIdentity
+	dispatched   bool
+	dispatchedAt time.Time
+	onDispatch   func()
 }
 
 func (o *warehouseSQLServerObserver) OnDispatch(_ context.Context, id bruinmssql.ReadIdentity) error {
 	o.identity = id
 	o.dispatched = true
+	o.dispatchedAt = time.Now()
+	if o.onDispatch != nil {
+		o.onDispatch()
+	}
 	return nil
 }
 func (o *warehouseSQLServerObserver) OnAcknowledged(context.Context, bruinmssql.ReadIdentity) error {
