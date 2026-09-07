@@ -107,6 +107,9 @@ func TestPhase14(t *testing.T) {
 								t.Fatal("serialized byte ceiling not enforced")
 							}
 						}
+						if dialect == "sqlserver" {
+							warehouseSQLServerActiveCancel(t, f)
+						}
 						limits = warehouseLimits()
 						active, stop := context.WithCancel(ctx)
 						observer := &warehouseCancelObserver{cancel: stop}
