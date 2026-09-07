@@ -170,7 +170,21 @@ func (q RemoteQuery) Acknowledges(next RemoteQuery) bool {
 		return false
 	}
 	if q.Controllable() {
-		return reflect.DeepEqual(q, next)
+		switch q.Driver {
+		case "postgres":
+			return q.Postgres.PID == next.Postgres.PID && q.Postgres.Started.Equal(next.Postgres.Started)
+		case "mysql":
+			return q.MySQL.ConnectionID == next.MySQL.ConnectionID
+		case "sqlserver":
+			return q.SQLServer.SessionID == next.SQLServer.SessionID && q.SQLServer.RequestID == next.SQLServer.RequestID && q.SQLServer.Started.Equal(next.SQLServer.Started)
+		case "bigquery":
+			return *q.BigQuery == *next.BigQuery
+		case "snowflake":
+			return *q.Snowflake == *next.Snowflake
+		case "databricks":
+			return *q.Databricks == *next.Databricks
+		}
+		return false
 	}
 	switch q.Driver {
 	case "snowflake":

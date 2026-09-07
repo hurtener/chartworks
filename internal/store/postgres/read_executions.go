@@ -10,6 +10,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var _ readexec.AttemptStore = (*DB)(nil)
@@ -130,7 +131,12 @@ func (d *DB) DispatchRead(ctx context.Context, s store.Scope, id string, q reade
 				return store.ErrInvalid
 			}
 		}
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND (($8::jsonb IS NULL AND remote_query IS NULL) OR remote_query=$8::jsonb) AND (manifest#>>'{validation,dialect}'=$7 OR manifest#>>'{validation,dialect}' IS NULL AND $7='postgres')`, s.Tenant(), s.Actor(), id, to, remote, from, q.Driver, previous)
+		var tag pgconn.CommandTag
+		if accepted {
+			tag, err = tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND remote_query=$8::jsonb AND (manifest#>>'{validation,dialect}'=$7 OR manifest#>>'{validation,dialect}' IS NULL AND $7='postgres')`, s.Tenant(), s.Actor(), id, to, remote, from, q.Driver, previous)
+		} else {
+			tag, err = tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND remote_query IS NULL AND (manifest#>>'{validation,dialect}'=$7 OR manifest#>>'{validation,dialect}' IS NULL AND $7='postgres')`, s.Tenant(), s.Actor(), id, to, remote, from, q.Driver)
+		}
 		if err != nil {
 			return err
 		}
