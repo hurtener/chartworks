@@ -31,7 +31,7 @@ func (r *missingNativeReceipt) StartProfileRead(ctx context.Context, invocation 
 	return nil
 }
 
-func waitProfileDeadline(t *testing.T, ctx context.Context, deadline time.Time) {
+func waitProfileDeadline(ctx context.Context, t *testing.T, deadline time.Time) {
 	t.Helper()
 	delay := time.Until(deadline) + 25*time.Millisecond
 	if delay < 0 || delay > 8*time.Second {
@@ -72,7 +72,7 @@ func TestMissingProfileReadReceiptWaitsForOriginalDeadline(t *testing.T) {
 	if err != nil || blocked.Operation.State != "retry" || blocked.Code != "reconciliation_required" || blocked.Profile.Profile != nil || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != 0 {
 		t.Fatal("absent receipt was treated as proof that dispatch never happened", err, blocked)
 	}
-	waitProfileDeadline(t, ctx, record.LastReadDeadline)
+	waitProfileDeadline(ctx, t, record.LastReadDeadline)
 	completed, err := f.service.Build(ctx, f.e, spec, "missing-native-operation", true)
 	if err != nil || completed.Operation.ID != first.Operation.ID || completed.Operation.Attempts != 3 || completed.Operation.State != "succeeded" || completed.Profile.State != "complete" {
 		t.Fatal("expired intent did not resume the same accepted profile", err, completed)
@@ -107,7 +107,7 @@ func TestProfileReconcilesUnknownReadBeforeAnotherDispatch(t *testing.T) {
 	if err != nil || blocked.Code != "reconciliation_required" || blocked.Profile.Profile != nil || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != 1 {
 		t.Fatal("retry dispatched before the original attempt was reconciled", err, blocked)
 	}
-	waitProfileDeadline(t, ctx, attempt.Deadline.Add(attempt.Manifest.Limits.CancelGrace))
+	waitProfileDeadline(ctx, t, attempt.Deadline.Add(attempt.Manifest.Limits.CancelGrace))
 	completed, err := f.service.Build(ctx, f.e, spec, "uncertain-native-operation", true)
 	if err != nil || completed.Operation.ID != first.Operation.ID || completed.Operation.Attempts != 3 || completed.Operation.State != "succeeded" || completed.Profile.State != "complete" || completed.Profile.Profile == nil {
 		t.Fatal("native stop reconciliation did not permit an explicit retry", err, completed)

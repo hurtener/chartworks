@@ -51,75 +51,75 @@ func TestEngineeringRepositoriesDenyBeforeEffectsAndClearFailedResults(t *testin
 	limits := jobs.Defaults()
 	calls := []struct {
 		name string
-		run  func(context.Context, identity.Envelope) error
+		run  func(context.Context, *testing.T, identity.Envelope) error
 	}{
-		{"reserve-upload", func(ctx context.Context, e identity.Envelope) error {
+		{"reserve-upload", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ReserveUpload(ctx, e, uploadSpec, f.values.Uploads)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"read-upload", func(ctx context.Context, e identity.Envelope) error {
+		{"read-upload", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ReadUpload(ctx, e, uploadSpec.ID, "sources.read", "read")
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"stage-upload", func(ctx context.Context, e identity.Envelope) error {
+		{"stage-upload", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.StageUpload(ctx, e, uploadSpec.ID, func(context.Context, engineering.UploadRecord) error {
 				t.Error("rejected staging reached a warehouse effect")
 				return errors.New("unexpected staging callback")
 			})
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"attach-upload", func(ctx context.Context, e identity.Envelope) error {
+		{"attach-upload", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.AttachUpload(ctx, e, uploadSpec.ID, upload.Operation, false)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"expired-uploads", func(ctx context.Context, e identity.Envelope) error {
+		{"expired-uploads", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ExpiredUploads(ctx, e, 4)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"reserve-profile", func(ctx context.Context, e identity.Envelope) error {
+		{"reserve-profile", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ReserveProfile(ctx, e, record)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"read-profile", func(ctx context.Context, e identity.Envelope) error {
+		{"read-profile", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ReadProfile(ctx, e, profileSpec.ID, false)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"attach-profile", func(ctx context.Context, e identity.Envelope) error {
+		{"attach-profile", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.AttachProfile(ctx, e, profileSpec.ID, profile.Operation)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"profile-evidence", func(ctx context.Context, e identity.Envelope) error {
+		{"profile-evidence", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ProfileEvidence(ctx, e, profileSpec.ID)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"profile-history", func(ctx context.Context, e identity.Envelope) error {
+		{"profile-history", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ProfileHistory(ctx, e, profileSpec.Source, profileSpec.Context, profileSpec.Dataset, 4)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"register-dependency", func(ctx context.Context, e identity.Envelope) error {
+		{"register-dependency", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			return f.db.RegisterDependency(ctx, e, profileSpec.ID, dependency)
 		}},
-		{"dependency-health", func(ctx context.Context, e identity.Envelope) error {
+		{"dependency-health", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.DependencyHealth(ctx, e, dependency)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"admit-request", func(ctx context.Context, e identity.Envelope) error {
+		{"admit-request", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.AdmitRequest(ctx, e, "rejected-repository-key", profile.Operation.Input, limits)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"read-request", func(ctx context.Context, e identity.Envelope) error {
+		{"read-request", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ReadRequest(ctx, e, profile.Operation.ID)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"resume-request", func(ctx context.Context, e identity.Envelope) error {
+		{"resume-request", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ResumeRequest(ctx, e, profile.Operation.ID)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"cancel-request", func(ctx context.Context, e identity.Envelope) error {
+		{"cancel-request", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.CancelRequest(ctx, e, profile.Operation.ID)
 			return rejectedEngineeringValue(t, out, err)
 		}},
-		{"claim-request", func(ctx context.Context, e identity.Envelope) error {
+		{"claim-request", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
 			out, err := f.db.ClaimRequest(ctx, e, profile.Operation.ID, "repository-owner", limits)
 			return rejectedEngineeringValue(t, out, err)
 		}},
@@ -144,7 +144,7 @@ func TestEngineeringRepositoriesDenyBeforeEffectsAndClearFailedResults(t *testin
 	} {
 		for _, call := range calls {
 			t.Run(scenario.name+"/"+call.name, func(t *testing.T) {
-				if err := call.run(scenario.ctx, scenario.e); err == nil {
+				if err := call.run(scenario.ctx, t, scenario.e); err == nil {
 					t.Fatal("rejected repository boundary succeeded")
 				}
 			})
@@ -158,7 +158,7 @@ func TestEngineeringRepositoriesDenyBeforeEffectsAndClearFailedResults(t *testin
 	f.db.Close()
 	for _, call := range calls {
 		t.Run("unavailable-store/"+call.name, func(t *testing.T) {
-			if err := call.run(ctx, f.e); err == nil {
+			if err := call.run(ctx, t, f.e); err == nil {
 				t.Fatal("unavailable repository reported success")
 			}
 		})
@@ -198,17 +198,7 @@ func TestEngineeringRepositoryClosedInputAndReservationLimits(t *testing.T) {
 	if _, err = f.db.ReserveProfile(ctx, f.e, tampered); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("profile identifier accepted a replacement manifest", err)
 	}
-	limited := record
-	limited.Spec.ID, limited.Spec.Previous = "over-profile-cap", record.Spec.ID
-	limited.Settings.MaxVersions = 1
-	limited.SpecHash = limited.Digest()
-	if !limited.Valid() {
-		t.Fatal("profile version-cap fixture invalid")
-	}
-	if _, err = f.db.ReserveProfile(ctx, f.e, limited); !errors.Is(err, engineering.ErrLimit) {
-		t.Fatal("profile version limit not enforced before insertion", err)
-	}
-	stale := limited
+	stale := record
 	stale.Spec.ID, stale.Settings.MaxVersions, stale.Spec.Previous = "stale-profile-parent", 10, "unknown-previous"
 	stale.SpecHash = stale.Digest()
 	if _, err = f.db.ReserveProfile(ctx, f.e, stale); !errors.Is(err, store.ErrConflict) {
@@ -350,38 +340,38 @@ func (r *profileReceiptBoundary) PublishProfile(ctx context.Context, inv jobs.In
 	if err := r.DB.PublishProfile(ctx, inv, record, bad); !errors.Is(err, store.ErrConflict) {
 		r.t.Fatal("unadmitted model summary was published", err)
 	}
-	if err := r.DB.StartProfileRead(ctx, inv, record, "replace-retained-read", time.Now().Add(time.Second)); !errors.Is(err, store.ErrConflict) {
+	if err := r.StartProfileRead(ctx, inv, record, "replace-retained-read", time.Now().Add(time.Second)); !errors.Is(err, store.ErrConflict) {
 		r.t.Fatal("retained checkpoint was reset to sampling", err)
 	}
 	for _, until := range []time.Time{{}, time.Now().Add(-time.Second), time.Now().Add(2 * time.Minute)} {
-		if err := r.DB.StartProfileRead(ctx, inv, record, "invalid-deadline", until); !errors.Is(err, engineering.ErrInvalid) {
+		if err := r.StartProfileRead(ctx, inv, record, "invalid-deadline", until); !errors.Is(err, engineering.ErrInvalid) {
 			r.t.Fatal("unbounded or expired native dispatch deadline", err)
 		}
 	}
-	if err := r.DB.StartProfileRead(ctx, inv, record, "bad operation", time.Now().Add(time.Second)); !errors.Is(err, engineering.ErrInvalid) {
+	if err := r.StartProfileRead(ctx, inv, record, "bad operation", time.Now().Add(time.Second)); !errors.Is(err, engineering.ErrInvalid) {
 		r.t.Fatal("malformed native operation admitted", err)
 	}
-	if _, err := r.DB.StartProfileSummary(ctx, jobs.Invocation{}, record); !errors.Is(err, jobs.ErrAuthority) {
+	if _, err := r.StartProfileSummary(ctx, jobs.Invocation{}, record); !errors.Is(err, jobs.ErrAuthority) {
 		r.t.Fatal("forged invocation admitted optional paid work", err)
 	}
 	wrongActor := record
 	wrongActor.Actor = "unrelated-actor"
-	if _, err := r.DB.StartProfileSummary(ctx, inv, wrongActor); !errors.Is(err, store.ErrNotFound) {
+	if _, err := r.StartProfileSummary(ctx, inv, wrongActor); !errors.Is(err, store.ErrNotFound) {
 		r.t.Fatal("caller modified retained profile ownership", err)
 	}
-	if _, err := r.DB.PulseRequest(ctx, inv, true, 0); !errors.Is(err, jobs.ErrInvalid) {
+	if _, err := r.PulseRequest(ctx, inv, true, 0); !errors.Is(err, jobs.ErrInvalid) {
 		r.t.Fatal("unbounded lease renewal accepted", err)
 	}
-	if _, err := r.DB.PulseRequest(ctx, jobs.Invocation{}, false, time.Second); !errors.Is(err, jobs.ErrAuthority) {
+	if _, err := r.PulseRequest(ctx, jobs.Invocation{}, false, time.Second); !errors.Is(err, jobs.ErrAuthority) {
 		r.t.Fatal("forged invocation inspected a live lease", err)
 	}
-	if err := r.DB.FailRequest(ctx, jobs.Invocation{}, "attempt_failed", false, time.Second); !errors.Is(err, jobs.ErrInvalid) {
+	if err := r.FailRequest(ctx, jobs.Invocation{}, "attempt_failed", false, time.Second); !errors.Is(err, jobs.ErrInvalid) {
 		r.t.Fatal("forged invocation sealed another owner's attempt", err)
 	}
-	if err := r.DB.FailRequest(ctx, inv, "PRIVATE_DRIVER_TEXT", false, time.Second); !errors.Is(err, jobs.ErrInvalid) {
+	if err := r.FailRequest(ctx, inv, "PRIVATE_DRIVER_TEXT", false, time.Second); !errors.Is(err, jobs.ErrInvalid) {
 		r.t.Fatal("arbitrary error text entered the retained ledger", err)
 	}
-	if err := r.DB.FailRequest(ctx, inv, "attempt_failed", false, -time.Second); !errors.Is(err, jobs.ErrInvalid) {
+	if err := r.FailRequest(ctx, inv, "attempt_failed", false, -time.Second); !errors.Is(err, jobs.ErrInvalid) {
 		r.t.Fatal("invalid retry delay changed a live operation", err)
 	}
 	if err := r.DB.PublishProfile(ctx, inv, record, profile); err != nil {
@@ -390,7 +380,7 @@ func (r *profileReceiptBoundary) PublishProfile(ctx context.Context, inv jobs.In
 	if err := r.DB.PublishProfile(ctx, inv, record, profile); !errors.Is(err, store.ErrConflict) {
 		r.t.Fatal("completed immutable publication was mutated", err)
 	}
-	state, err := r.DB.PulseRequest(ctx, inv, true, time.Second)
+	state, err := r.PulseRequest(ctx, inv, true, time.Second)
 	if err != nil || state != "succeeded" {
 		r.t.Fatal("late observer did not preserve confirmed completion", err, state)
 	}
@@ -494,4 +484,29 @@ func TestUploadStoreBindsActivationAndErasureToOwnedReceipts(t *testing.T) {
 	}
 }
 
-var _ = config.DefaultUploads
+// Exercise the valid minimum against real published versions. An invalid
+// configuration must not masquerade as evidence that a storage cap works.
+func TestProfileVersionCapCountsRealPublications(t *testing.T) {
+	f := newEngineeringFixture(t, func(v *config.Values) { v.Profiling.MaxVersions = 2 }, nil)
+	ctx := context.Background()
+	source := f.create(t, "version-cap-source")
+	first := f.profileSpec(t, source, "version-cap-first", []string{"id", "amount"}, "")
+	f.profile(t, first)
+	second := first
+	second.ID, second.Previous = "version-cap-second", first.ID
+	f.profile(t, second)
+	metadata := support.Raw(t, f.dsn)
+	before := count(t, metadata, `SELECT count(*) FROM chartworks.audit_events`)
+	third := second
+	third.ID, third.Previous = "version-cap-third", second.ID
+	if _, err := f.service.Build(ctx, f.e, third, "version-cap-third-build", false); !errors.Is(err, engineering.ErrLimit) {
+		t.Fatal("third version was not rejected at the valid two-version cap", err)
+	}
+	if count(t, metadata, `SELECT count(*) FROM chartworks.profile_versions`) != 2 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != 2 || count(t, metadata, `SELECT count(*) FROM chartworks.audit_events`) != before {
+		t.Fatal("rejected third version inserted metadata, sampled the source or emitted an audit")
+	}
+	evidence, err := f.service.Evidence(ctx, f.e, second.ID)
+	if err != nil || !evidence.Active {
+		t.Fatal("version cap changed the last published head", err)
+	}
+}
