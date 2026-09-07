@@ -51,7 +51,7 @@ An upload's final erasure transaction also removes complete and checkpoint profi
 
 Implement `TestPhase11/AC01` through `TestPhase11/AC06`; malformed/archive/cell fuzz seeds, real workspace load and kill/retry/cleanup tests are required. AC05 closes with the common execution/report consumer before migration acceptance. COMMON.md supplies coverage; `scripts/smoke/phase-11.sh` requires all six results.
 
-The recovered branch contains the six named tests, HTTP/SDK/binary integration fixtures and additional exact-value, normalization-budget, publication-lock, replacement-race and derived-erasure regressions. See the [adversarial review and verification ledger](../reviews/phase-11-12-adversarial.md) for each finding/test and the execution blocker. None of the current recovery-session tests is claimed passed. Permanent read-only CI requires all 76 implemented criteria and the unchanged race-enabled package coverage gates. Missing runtime evidence keeps this phase in progress.
+The current candidate contains the six named tests, HTTP/SDK/binary integration fixtures, a checked [engineering operation manifest](../contracts/chartworks-engineering-operations.json), and exact-value, normalization-budget, publication-lock, replacement-race and derived-erasure regressions. Historical failures remain in the [adversarial review](../reviews/phase-11-12-adversarial.md) and [request-recovery record](../reviews/phase-11-12-request-recovery.md). The [current evidence ledger](../reviews/phase-11-12-current-evidence.md) owns exact-head gate results. Missing evidence keeps this phase in progress.
 
 ## Glossary, decisions and deviations
 

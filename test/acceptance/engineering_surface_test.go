@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -28,6 +30,14 @@ func TestEngineeringRegisteredSurfaces(t *testing.T) {
 	registry := sourceapi.EngineeringRegistry(true, true)
 	if len(registry) != 14 {
 		t.Fatal("unexpected implemented engineering operation inventory", registry)
+	}
+	raw, err := os.ReadFile("../../docs/contracts/chartworks-engineering-operations.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published []sourceapi.Operation
+	if json.Unmarshal(raw, &published) != nil || !reflect.DeepEqual(published, registry) {
+		t.Fatal("published engineering operation manifest drifted from executable registry")
 	}
 	seen := map[string]bool{}
 	for _, operation := range registry {
