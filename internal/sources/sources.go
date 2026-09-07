@@ -43,11 +43,16 @@ type Record struct {
 	Source     Source
 	Connection string
 	Binding    readexec.Binding
+	Pipeline   *PipelineLocation
 }
 
 // Valid checks coherent immutable source/context coordinates before a store accepts them.
 func (r Record) Valid() bool {
-	return identity.Identifier(r.Source.ID) && len(r.Source.ID) <= 80 && len(r.Source.Name) > 0 && len(r.Source.Name) <= 128 && !strings.ContainsAny(r.Source.Name, "\x00\r\n\t") && r.Source.Dialect == "postgres" && r.Source.Revision > 0 && r.Source.Revision < 1<<62 && r.Source.ContextID == contextID(r.Source.ID, r.Source.Revision) && r.Source.Status == "registered" && identity.Identifier(r.Connection) && r.Binding.Valid() && r.Binding.Source == r.Source.ID && r.Binding.Context == r.Source.ContextID && r.Binding.Revision == r.Source.Revision && r.Binding.Dialect == r.Source.Dialect
+	valid := identity.Identifier(r.Source.ID) && len(r.Source.ID) <= 80 && len(r.Source.Name) > 0 && len(r.Source.Name) <= 128 && !strings.ContainsAny(r.Source.Name, "\x00\r\n\t") && r.Source.Dialect == "postgres" && r.Source.Revision > 0 && r.Source.Revision < 1<<62 && r.Source.ContextID == contextID(r.Source.ID, r.Source.Revision) && r.Source.Status == "registered" && identity.Identifier(r.Connection) && r.Binding.Valid() && r.Binding.Source == r.Source.ID && r.Binding.Context == r.Source.ContextID && r.Binding.Revision == r.Source.Revision && r.Binding.Dialect == r.Source.Dialect
+	if !valid || r.Pipeline == nil {
+		return valid
+	}
+	return r.Pipeline.Valid() && r.Pipeline.Source == r.Source.ID && r.Pipeline.Context == r.Source.ContextID && r.Pipeline.Revision == r.Source.Revision && r.Pipeline.Alias == r.Connection && len(r.Binding.Relations) == 1 && r.Binding.Relations[0].Schema == r.Pipeline.Schema && r.Binding.Relations[0].Name == r.Pipeline.Table
 }
 
 // Repository applies tenant selections in SQL and holds a shared current-revision

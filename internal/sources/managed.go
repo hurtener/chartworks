@@ -28,6 +28,21 @@ func (s *Service) recordConnection(record Record) (config.SourceConnection, erro
 	if c.ManagedSchema == "" {
 		return c, nil
 	}
+	if record.Pipeline != nil {
+		if !record.Pipeline.Valid() || len(record.Binding.Relations) != 1 {
+			return c, readexec.ErrBinding
+		}
+		r := record.Binding.Relations[0]
+		if r.Schema != record.Pipeline.Schema || r.Name != record.Pipeline.Table {
+			return c, readexec.ErrBinding
+		}
+		names := make([]string, len(r.Columns))
+		for i, column := range r.Columns {
+			names[i] = column.Name
+		}
+		c.Relations = []config.SourceRelation{{Schema: r.Schema, Name: r.Name, Columns: names}}
+		return c, nil
+	}
 	schema, table, err := ManagedLocation(c, record.Source.ID)
 	if err != nil {
 		return c, err
