@@ -39,7 +39,7 @@ Per-driver connector/pool/session/cost defaults and pinned module/build constrai
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase14/AC01` through `TestPhase14/AC06`. Offline recorded evidence is separate from owner-run cloud evidence and never called a live pass. Real engine suites cover PostgreSQL/MySQL/SQL Server; cloud gating is explicit per engine. COMMON.md supplies conformance coverage and evidence rules; `scripts/smoke/phase-14.sh` requires all six results for full phase closure.
+Implement `TestPhase14/AC01` through `TestPhase14/AC06`. Fork leaf-client protocol fixtures and injected Chartworks Service lifecycle tests are separate from owner-run cloud evidence and never called a live pass. Real engine suites cover PostgreSQL/MySQL/SQL Server; cloud gating is explicit per engine. COMMON.md supplies conformance coverage and evidence rules; `scripts/smoke/phase-14.sh` requires all six results for full phase closure.
 
 ## Glossary, decisions and deviations
 
@@ -53,9 +53,9 @@ subset and the explicit recorded-only cloud boundary.
 
 | Criterion | Mandatory runtime evidence |
 | --- | --- |
-| AC01 | `TestPhase14/AC01` native discovery and exact values; recorded cloud source lifecycle/type tests and fork SDK protocol tests |
-| AC02 | `TestPhase14/AC02` validator/native planning success and rejection; parser dialect tests and cloud native metadata lifecycle fixtures |
-| AC03 | `TestPhase14/AC03` real SELECT-only account and context isolation; recorded cloud effective-context negatives |
+| AC01 | `TestPhase14/AC01` native discovery and exact values; injected cloud source lifecycle/type tests and fork leaf-client SDK/HTTP protocol fixtures |
+| AC02 | `TestPhase14/AC02` validator/native planning success and rejection; parser dialect tests and injected cloud metadata lifecycle fixtures |
+| AC03 | `TestPhase14/AC03` real SELECT-only account and context isolation; injected cloud effective-context negatives |
 | AC04 | `TestPhase14/AC04` binding, serialized caps, acknowledged cancellation and rotation; fork owned-cancel/indeterminate protocol tests |
 | AC05 | `TestPhase14/AC05` repeatable real fixtures and separate registry identities; SQL Server Developer test-only container; no cloud cutover qualification |
 | AC06 | `TestPhase14/AC06` closed/unknown driver behavior and retained metadata without credentials; native shipping builds and documented support limits |

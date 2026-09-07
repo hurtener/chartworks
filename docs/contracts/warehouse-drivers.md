@@ -16,9 +16,9 @@ The supervised managed-write runner remains separate from read execution.
 | PostgreSQL 17 | Existing real PostgreSQL/pgvector source and execution suites | Existing exact native scalar contract | Original owned connection and durable native attempt evidence |
 | MySQL 8.4 | Real container suite required in CI | Native bound scalars, exact decimal text/results, binary/null; closed supported types | Owned connection plus exact native identity reconciliation; no blind connection-ID reuse |
 | SQL Server 2022 | Native Linux amd64 Developer container suite required in CI; Mac emulation is not qualification | Native integer/text/bool/null binding; exact integer/decimal/binary/temporal results. Decimal input is explicitly unsupported by the current driver binding seam | Local owned connection cancellation and acknowledged cleanup. Restart cancellation is unsupported; exact DMV observations can remain indeterminate |
-| BigQuery | Recorded SDK/HTTP and source lifecycle fixtures only | Closed scalar binding; exact decimal/integer/time/binary/null. Arrays/records unsupported | Deterministic project/location/job identity; native cancel plus bounded status reconciliation |
-| Snowflake | Recorded protocol and source lifecycle fixtures only | Closed scalar/result support, with unsupported types rejected | Request identity is distinct from acknowledged query identity; lost replies remain uncertain |
-| Databricks | Recorded Statement Execution API and source lifecycle fixtures only | Closed scalar binding; binary result codec unsupported | Workspace/warehouse/attempt precedes actual statement ID; lost submit reply is uncertain and never automatically resubmitted |
+| BigQuery | Fork leaf-client SDK/HTTP protocol fixtures plus injected Chartworks Service lifecycle fixtures only | Closed scalar binding; exact decimal/integer/time/binary/null. Arrays/records unsupported | Deterministic project/location/job identity; native cancel plus bounded status reconciliation |
+| Snowflake | Fork leaf-client protocol fixtures plus injected Chartworks Service lifecycle fixtures only | Closed scalar/result support, with unsupported types rejected | Request identity is distinct from acknowledged query identity; lost replies remain uncertain |
+| Databricks | Fork leaf-client Statement Execution API fixtures plus injected Chartworks Service lifecycle fixtures only | Closed scalar binding; binary result codec unsupported | Workspace/warehouse/attempt precedes actual statement ID; lost submit reply is uncertain and never automatically resubmitted |
 
 Cloud rows in this matrix describe implementation scope, not live deployment
 qualification. No live cloud credentials were requested or used. Cloud migration
@@ -63,12 +63,13 @@ not produce passing skips.
 
 `TestPhase14/AC01`–`AC06` exercise actual source creation/discovery, native validation,
 read-only accounts, exact values, caps, cancellation, rotation and repeatable seeds.
-Mandatory leaf protocol suites and `TestBigQuerySourceLifecycleRecorded`,
-`TestSnowflakeSourceLifecycleRecorded` and `TestDatabricksSourceLifecycleRecorded`
-supplement the named criteria for cloud engines. The latter exercise the actual
-Chartworks Service using private per-instance recorded client factories; they do
-not replace the fork tests against real SDK/HTTP protocol fixtures. Hosted CI must pass on the final committed head before
-these pending implementations are described as qualified.
+Mandatory fork leaf-package suites exercise the real SDK/HTTP protocol clients with
+recorded fixtures. `TestBigQuerySourceLifecycleInjected`,
+`TestSnowflakeSourceLifecycleInjected` and `TestDatabricksSourceLifecycleInjected`
+separately exercise the actual Chartworks Service with private per-instance injected
+fixture clients. Neither layer is live cloud qualification. Hosted CI must pass on
+the final committed head before these pending implementations are described as
+qualified.
 
 The root `Dockerfile` is the reference deployment image. Its Go1.26.4/Rust1.98.1
 build and Debian bookworm runtime share the same libc ABI; the Rust parser is
