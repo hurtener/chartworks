@@ -332,12 +332,22 @@ func (s *Service) observed(ctx context.Context, e identity.Envelope, id string, 
 			if err != nil {
 				return err
 			}
-			if readexec.Hash(binding) != readexec.Hash(record.Binding) {
+			if !observedBindingMatches(record.Binding, binding) {
 				return readexec.ErrBinding
 			}
 			return fn(record, binding)
 		})
 	})
+}
+
+// observedBindingMatches preserves reads for bindings persisted before catalog
+// coordinates were recorded. The existing fingerprint still binds the native
+// database/project/catalog; only the newly added structural field is normalized.
+func observedBindingMatches(stored, observed readexec.Binding) bool {
+	if stored.Catalog == "" {
+		observed.Catalog = ""
+	}
+	return readexec.Hash(stored) == readexec.Hash(observed)
 }
 
 // Test returns successful health only after a real read-only context probe.

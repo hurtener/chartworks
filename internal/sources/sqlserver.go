@@ -176,7 +176,7 @@ func inspectSQLServerContext(ctx context.Context, session bruinmssql.ReadSession
 	sort.Slice(relations, func(i, j int) bool {
 		return relations[i].Schema+"."+relations[i].Name < relations[j].Schema+"."+relations[j].Name
 	})
-	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "sqlserver"}
+	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "sqlserver", Catalog: sqlServerText(current[3])}
 	for _, relation := range relations {
 		qualified := sqlServerQuote(relation.Schema) + "." + sqlServerQuote(relation.Name)
 		for _, target := range []struct{ name, kind string }{{relation.Schema, "SCHEMA"}, {qualified, "OBJECT"}} {
@@ -504,7 +504,7 @@ func (s *Service) explainSQLServer(ctx context.Context, e identity.Envelope, can
 		if err != nil {
 			return err
 		}
-		if readexec.Hash(actual) != readexec.Hash(expected) {
+		if !observedBindingMatches(expected, actual) {
 			return readexec.ErrBinding
 		}
 		_, err = sqlServerExplain(ctx, session, statement, args, actual)

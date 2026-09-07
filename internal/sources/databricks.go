@@ -58,7 +58,7 @@ func (s *Service) databricksClient(c config.SourceConnection) (databricksClient,
 		return nil, nil, store.ErrUnavailable
 	}
 	var native bruindatabricks.Config
-	if json.Unmarshal([]byte(raw), &native) != nil || native.Host == "" || native.Path == "" || (!native.UseOAuthM2M() && native.Token == "") {
+	if json.Unmarshal([]byte(raw), &native) != nil || native.Host == "" || native.Path == "" || native.Catalog == "" || (!native.UseOAuthM2M() && native.Token == "") {
 		return nil, nil, store.ErrInvalid
 	}
 	key := c.Tenant + "/" + c.ID
@@ -101,7 +101,7 @@ func (s *Service) probeDatabricks(ctx context.Context, c config.SourceConnection
 	if err != nil {
 		return readexec.Binding{}, err
 	}
-	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "databricks"}
+	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "databricks", Catalog: native.Catalog}
 	evidence := []any{native.Host, native.Path, native.Catalog, native.Schema, c.Version}
 	options := bruindatabricks.ReadOptions{MaxRows: 257, MaxBytes: 1 << 20, MaxResponseBytes: 2 << 20, PollInterval: 25 * time.Millisecond, CancelTimeout: time.Second, Timeout: time.Minute}
 	for _, relation := range c.Relations {
@@ -197,7 +197,7 @@ func (s *Service) controlDatabricks(ctx context.Context, e identity.Envelope, co
 	if err != nil {
 		return "unknown", err
 	}
-	if readexec.Hash(actual) != readexec.Hash(record.Binding) {
+	if !observedBindingMatches(record.Binding, actual) {
 		return "unknown", readexec.ErrBinding
 	}
 	target, err := control.Target(e, actual)

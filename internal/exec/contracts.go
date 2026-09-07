@@ -53,6 +53,7 @@ type Binding struct {
 	Context     string     `json:"context"`
 	Revision    int64      `json:"revision"`
 	Dialect     string     `json:"dialect"`
+	Catalog     string     `json:"catalog,omitempty"`
 	Contract    string     `json:"contract"`
 	Fingerprint string     `json:"fingerprint"`
 	Relations   []Relation `json:"relations"`
@@ -61,6 +62,9 @@ type Binding struct {
 // Valid checks bounded resolved coordinates. Database evidence is supplied by the adapter.
 func (b Binding) Valid() bool {
 	if !identity.Identifier(b.Tenant) || !identity.Identifier(b.Source) || !identity.Identifier(b.Context) || !identity.Identifier(b.Contract) || b.Revision < 1 || len(b.Fingerprint) != 64 || len(b.Relations) < 1 || len(b.Relations) > 32 {
+		return false
+	}
+	if b.Catalog != "" && (!identity.Identifier(b.Catalog) || strings.Contains(b.Catalog, ".")) {
 		return false
 	}
 	if _, err := hex.DecodeString(b.Fingerprint); err != nil {

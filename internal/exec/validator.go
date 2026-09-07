@@ -162,8 +162,7 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 		var relation Relation
 		matches := 0
 		for _, candidate := range binding.Relations {
-			qualified := candidate.Schema + "." + candidate.Name
-			if table == qualified || strings.HasSuffix(table, "."+qualified) {
+			if warehouseRelationMatches(binding, candidate, table, false) {
 				relation, matches = candidate, matches+1
 			}
 		}
@@ -179,7 +178,7 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 		}
 		matches := 0
 		for _, relation := range selected {
-			if column.Table != "" && column.Table != relation.Name && column.Table != relation.Schema+"."+relation.Name {
+			if column.Table != "" && !warehouseRelationMatches(binding, relation, column.Table, true) {
 				continue
 			}
 			for _, candidate := range relation.Columns {
@@ -212,6 +211,25 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 		return Plan{}, err
 	}
 	return Plan{candidate: candidate, nativeChecked: true}, nil
+}
+
+func warehouseRelationMatches(binding Binding, relation Relation, name string, allowBare bool) bool {
+	parts := strings.Split(name, ".")
+	switch len(parts) {
+	case 1:
+		return allowBare && parts[0] == relation.Name
+	case 2:
+		return parts[0] == relation.Schema && parts[1] == relation.Name
+	case 3:
+		if binding.Catalog == "" {
+			return false
+		}
+		switch binding.Dialect {
+		case "sqlserver", "bigquery", "snowflake", "databricks":
+			return parts[0] == binding.Catalog && parts[1] == relation.Schema && parts[2] == relation.Name
+		}
+	}
+	return false
 }
 
 func boundedTree(v any, depth int, count *int, limits config.ReadValidation) bool {

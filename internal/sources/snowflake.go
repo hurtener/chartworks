@@ -97,7 +97,7 @@ func (s *Service) probeSnowflake(ctx context.Context, c config.SourceConnection,
 	if err != nil {
 		return readexec.Binding{}, err
 	}
-	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "snowflake"}
+	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "snowflake", Catalog: native.Database}
 	evidence := []any{native.Account, native.Database, native.Schema, native.Role, native.Warehouse, c.Version}
 	for _, relation := range c.Relations {
 		tableSQL := "SELECT table_type FROM " + snowflakeName(native.Database) + ".information_schema.tables WHERE table_schema=? AND table_name=?"
@@ -191,7 +191,7 @@ func (s *Service) controlSnowflake(ctx context.Context, e identity.Envelope, con
 	if err != nil {
 		return "unknown", err
 	}
-	if readexec.Hash(actual) != readexec.Hash(record.Binding) {
+	if !observedBindingMatches(record.Binding, actual) {
 		return "unknown", readexec.ErrBinding
 	}
 	target, err := control.Target(e, actual)

@@ -87,11 +87,14 @@ func TestSnowflakeSourceLifecycleInjected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got := repo.records["tenant/source"].Binding.Catalog; got != "database" {
+		t.Fatalf("database was not bound as catalog: %q", got)
+	}
 	validator, err := readexec.NewValidator(service, config.DefaultReadValidation())
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: source.ID, Context: source.ContextID, SQL: "SELECT id FROM analytics.sales"})
+	plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: source.ID, Context: source.ContextID, SQL: "SELECT id FROM database.analytics.sales"})
 	if err != nil {
 		t.Fatal(err)
 	}

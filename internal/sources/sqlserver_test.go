@@ -88,7 +88,7 @@ func TestSQLServerContext(t *testing.T) {
 	c := sqlServerFixtureConfig()
 	session := &sqlServerFixtureSession{}
 	binding, err := inspectSQLServerContext(context.Background(), session, c, "source", 1, "localhost:1433/analytics")
-	if err != nil || !binding.Valid() || session.locks != 1 || binding.Dialect != "sqlserver" || len(binding.Relations) != 1 {
+	if err != nil || !binding.Valid() || session.locks != 1 || binding.Dialect != "sqlserver" || binding.Catalog != "analytics" || len(binding.Relations) != 1 {
 		t.Fatalf("context: %+v %v", binding, err)
 	}
 	again, err := inspectSQLServerContext(context.Background(), &sqlServerFixtureSession{}, c, "source", 1, "localhost:1433/analytics")

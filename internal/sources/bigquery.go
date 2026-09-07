@@ -103,7 +103,7 @@ func (s *Service) probeBigQuery(ctx context.Context, c config.SourceConnection, 
 	if err != nil {
 		return readexec.Binding{}, err
 	}
-	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "bigquery"}
+	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "bigquery", Catalog: native.ProjectID}
 	evidence := []any{native.ProjectID, native.Location, c.Version}
 	for _, relation := range c.Relations {
 		tableSQL := fmt.Sprintf("SELECT table_type FROM `%s.%s.INFORMATION_SCHEMA.TABLES` WHERE table_name=@table", native.ProjectID, relation.Schema)
@@ -216,7 +216,7 @@ func (s *Service) controlBigQuery(ctx context.Context, e identity.Envelope, cont
 	if err != nil {
 		return "unknown", err
 	}
-	if readexec.Hash(actual) != readexec.Hash(record.Binding) {
+	if !observedBindingMatches(record.Binding, actual) {
 		return "unknown", readexec.ErrBinding
 	}
 	target, err := control.Target(e, actual)

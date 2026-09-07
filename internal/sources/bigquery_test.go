@@ -190,6 +190,9 @@ func TestBigQuerySourceLifecycleInjected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got := repo.records["tenant/source"].Binding.Catalog; got != "synthetic-project" {
+		t.Fatalf("project was not bound as catalog: %q", got)
+	}
 	discovery, err := service.Discover(t.Context(), e, source.ID)
 	if err != nil || len(discovery.Relations) != 1 || discovery.Relations[0].Columns[0].Category != "integer" {
 		t.Fatalf("discovery: %#v %v", discovery, err)
@@ -198,7 +201,7 @@ func TestBigQuerySourceLifecycleInjected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: source.ID, Context: source.ContextID, SQL: "SELECT id FROM analytics.sales"})
+	plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: source.ID, Context: source.ContextID, SQL: "SELECT id FROM `synthetic-project.analytics.sales`"})
 	if err != nil {
 		t.Fatal(err)
 	}
