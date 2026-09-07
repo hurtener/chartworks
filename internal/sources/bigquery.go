@@ -21,8 +21,22 @@ import (
 
 type bigQueryPoolEntry struct {
 	material string
-	client   *bruinbigquery.Client
+	client   bigQueryClient
 }
+type bigQueryClient interface {
+	OpenRead(context.Context, *query.Query, string, bruinbigquery.ReadObserver, bruinbigquery.ReadOptions) (query.RowStream, bruinbigquery.ReadIdentity, error)
+	DryRunRead(context.Context, *query.Query, int64) (bruinbigquery.ReadDryRun, error)
+	ReadStatus(context.Context, bruinbigquery.ReadIdentity) (bruinbigquery.ReadState, error)
+	CancelRead(context.Context, bruinbigquery.ReadIdentity, bruinbigquery.ReadOptions) (bruinbigquery.ReadState, error)
+	Close() error
+}
+type bigQueryLeaf struct{ *bruinbigquery.Client }
+
+func (c bigQueryLeaf) OpenRead(ctx context.Context, q *query.Query, tag string, o bruinbigquery.ReadObserver, options bruinbigquery.ReadOptions) (query.RowStream, bruinbigquery.ReadIdentity, error) {
+	return c.Client.OpenRead(ctx, q, tag, o, options)
+}
+
+type bigQueryFactory func(*bruinbigquery.Config) (bigQueryClient, error)
 
 type bigQueryObserver struct {
 	observer readexec.Observer
@@ -42,7 +56,7 @@ func (o bigQueryObserver) dispatch(ctx context.Context, id bruinbigquery.ReadIde
 	return o.observer.Dispatch(ctx, readexec.RemoteQuery{Driver: "bigquery", Tag: o.tag, BigQuery: &readexec.BigQueryRemoteQuery{Project: id.ProjectID, Location: id.Location, JobID: id.JobID}}, accepted)
 }
 
-func (s *Service) bigQueryClient(c config.SourceConnection) (*bruinbigquery.Client, *bruinbigquery.Config, error) {
+func (s *Service) bigQueryClient(c config.SourceConnection) (bigQueryClient, *bruinbigquery.Config, error) {
 	raw, ok := s.lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
 	if !ok || len(raw) == 0 || len(raw) > 1<<20 {
 		return nil, nil, store.ErrUnavailable
@@ -58,7 +72,14 @@ func (s *Service) bigQueryClient(c config.SourceConnection) (*bruinbigquery.Clie
 	if entry, ok := s.bigQueryPools[key]; ok && entry.material == material {
 		return entry.client, &native, nil
 	}
-	client, err := bruinbigquery.NewDB(&native)
+	create := s.newBigQuery
+	if create == nil {
+		create = func(c *bruinbigquery.Config) (bigQueryClient, error) {
+			client, err := bruinbigquery.NewDB(c)
+			return bigQueryLeaf{client}, err
+		}
+	}
+	client, err := create(&native)
 	if err != nil {
 		return nil, nil, safe(err)
 	}

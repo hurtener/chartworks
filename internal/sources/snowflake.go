@@ -18,8 +18,21 @@ import (
 
 type snowflakePoolEntry struct {
 	material string
-	client   *bruinsnowflake.DB
+	client   snowflakeClient
 }
+type snowflakeClient interface {
+	OpenRead(context.Context, *query.Query, string, bruinsnowflake.ReadObserver) (query.RowStream, bruinsnowflake.ReadIdentity, error)
+	ReadStatus(context.Context, bruinsnowflake.ReadIdentity) (bruinsnowflake.ReadState, error)
+	CancelRead(context.Context, bruinsnowflake.ReadIdentity) error
+	Close() error
+}
+type snowflakeLeaf struct{ *bruinsnowflake.DB }
+
+func (c snowflakeLeaf) OpenRead(ctx context.Context, q *query.Query, tag string, o bruinsnowflake.ReadObserver) (query.RowStream, bruinsnowflake.ReadIdentity, error) {
+	return c.DB.OpenRead(ctx, q, tag, o)
+}
+
+type snowflakeFactory func(*bruinsnowflake.Config) (snowflakeClient, error)
 type snowflakeObserver struct {
 	observer readexec.Observer
 	tag      string
@@ -38,7 +51,7 @@ func (o snowflakeObserver) dispatch(ctx context.Context, id bruinsnowflake.ReadI
 	return o.observer.Dispatch(ctx, readexec.RemoteQuery{Driver: "snowflake", Tag: o.tag, Snowflake: &readexec.SnowflakeRemoteQuery{RequestID: id.RequestID, QueryID: id.QueryID, QueryTag: id.QueryTag, Account: id.Account, Database: id.Database, SessionID: id.SessionID}}, accepted)
 }
 
-func (s *Service) snowflakeClient(c config.SourceConnection) (*bruinsnowflake.DB, *bruinsnowflake.Config, error) {
+func (s *Service) snowflakeClient(c config.SourceConnection) (snowflakeClient, *bruinsnowflake.Config, error) {
 	raw, ok := s.lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
 	if !ok || len(raw) == 0 || len(raw) > 1<<20 {
 		return nil, nil, store.ErrUnavailable
@@ -54,7 +67,14 @@ func (s *Service) snowflakeClient(c config.SourceConnection) (*bruinsnowflake.DB
 	if entry, ok := s.snowflakePools[key]; ok && entry.material == material {
 		return entry.client, &native, nil
 	}
-	client, err := bruinsnowflake.NewDB(&native)
+	create := s.newSnowflake
+	if create == nil {
+		create = func(c *bruinsnowflake.Config) (snowflakeClient, error) {
+			client, err := bruinsnowflake.NewDB(c)
+			return snowflakeLeaf{client}, err
+		}
+	}
+	client, err := create(&native)
 	if err != nil {
 		return nil, nil, safe(err)
 	}

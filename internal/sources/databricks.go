@@ -19,8 +19,21 @@ import (
 
 type databricksPoolEntry struct {
 	material string
-	client   *bruindatabricks.DB
+	client   databricksClient
 }
+type databricksClient interface {
+	OpenRead(context.Context, *query.Query, string, bruindatabricks.ReadObserver, bruindatabricks.ReadOptions) (query.RowStream, bruindatabricks.ReadIdentity, error)
+	ReadStatus(context.Context, bruindatabricks.ReadIdentity) (bruindatabricks.ReadState, error)
+	CancelRead(context.Context, bruindatabricks.ReadIdentity, bruindatabricks.ReadOptions) (bruindatabricks.ReadState, error)
+	Close() error
+}
+type databricksLeaf struct{ *bruindatabricks.DB }
+
+func (c databricksLeaf) OpenRead(ctx context.Context, q *query.Query, attempt string, o bruindatabricks.ReadObserver, options bruindatabricks.ReadOptions) (query.RowStream, bruindatabricks.ReadIdentity, error) {
+	return c.DB.OpenRead(ctx, q, attempt, o, options)
+}
+
+type databricksFactory func(*bruindatabricks.Config) (databricksClient, error)
 type databricksObserver struct {
 	observer readexec.Observer
 	tag      string
@@ -39,7 +52,7 @@ func (o databricksObserver) dispatch(ctx context.Context, id bruindatabricks.Rea
 	return o.observer.Dispatch(ctx, readexec.RemoteQuery{Driver: "databricks", Tag: o.tag, Databricks: &readexec.DatabricksRemoteQuery{Workspace: id.Workspace, Warehouse: id.WarehouseID, StatementID: id.StatementID}}, accepted)
 }
 
-func (s *Service) databricksClient(c config.SourceConnection) (*bruindatabricks.DB, *bruindatabricks.Config, error) {
+func (s *Service) databricksClient(c config.SourceConnection) (databricksClient, *bruindatabricks.Config, error) {
 	raw, ok := s.lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
 	if !ok || len(raw) == 0 || len(raw) > 1<<20 {
 		return nil, nil, store.ErrUnavailable
@@ -55,7 +68,14 @@ func (s *Service) databricksClient(c config.SourceConnection) (*bruindatabricks.
 	if entry, ok := s.databricksPools[key]; ok && entry.material == material {
 		return entry.client, &native, nil
 	}
-	client, err := bruindatabricks.NewDB(&native)
+	create := s.newDatabricks
+	if create == nil {
+		create = func(c *bruindatabricks.Config) (databricksClient, error) {
+			client, err := bruindatabricks.NewDB(c)
+			return databricksLeaf{client}, err
+		}
+	}
+	client, err := create(&native)
 	if err != nil {
 		return nil, nil, safe(err)
 	}
