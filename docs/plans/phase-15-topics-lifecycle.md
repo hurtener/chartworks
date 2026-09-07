@@ -1,6 +1,6 @@
 # Phase 15 — topics-lifecycle
 
-Status: planned. Owner: internal/semantics. Hard dependencies: 04, 05, 07, 12, 21.
+Status: in_progress. Owner: internal/semantics. Hard dependencies: 04, 05, 07, 12, 21.
 
 ## Authority and design
 

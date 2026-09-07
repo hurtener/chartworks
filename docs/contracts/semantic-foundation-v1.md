@@ -1,9 +1,13 @@
 # Semantic foundation v1
 
-Status: bounded phase 15/16 implementation foundations, 2026-09-07. Phases 15, 16,
-and 21 remain planned. This contract records implemented behavior only where it points
+Status: bounded phase 15/16 implementation foundations, 2026-09-07. Phases 15/16 are
+`in_progress`; phase 21 remains planned. This contract records implemented behavior only where it points
 to executable code and tests; the later-state sections are implementation inputs,
 not runtime claims.
+
+The [bounded review evidence](../reviews/phase-15-16-foundation.md) pins the reviewed
+code and focused checks. Full phase acceptance remains unavailable until the
+remaining service work is implemented.
 
 ## Implemented boundary
 
@@ -252,7 +256,7 @@ active rule set or widen its source/context reach.
    deterministic multilingual fixtures, zero-call assertions for deterministic paths,
    current-authority negatives, and immutable shadow evidence.
 
-Until those steps and their named tests pass, phase 16 remains planned.
+Until those steps and their named tests pass, phase 16 remains `in_progress`, not shipped.
 
 ## Foundation verification
 

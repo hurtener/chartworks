@@ -1,6 +1,6 @@
 # Phase 16 — rules-clarification
 
-Status: planned. Owner: internal/semantics, internal/nlq. Hard dependencies: 05, 15.
+Status: in_progress. Owner: internal/semantics, internal/nlq. Hard dependencies: 05, 15.
 
 ## Authority and design
 
