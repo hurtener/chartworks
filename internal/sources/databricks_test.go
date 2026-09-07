@@ -173,6 +173,7 @@ func validatedDatabricksPlan(t *testing.T, lookup func(string) (string, bool), f
 }
 
 func TestDatabricksExecutionFailurePreservesRemoteState(t *testing.T) {
+	// #nosec G117 -- serializer input is deliberately synthetic configuration for a local injected fixture.
 	raw, _ := json.Marshal(bruindatabricks.Config{Host: "workspace.example", Port: 443, Path: "/sql/1.0/warehouses/warehouse", Catalog: "catalog", Schema: "analytics", Token: "token"})
 	client := &databricksFixtureClient{}
 	service, e, plan := validatedDatabricksPlan(t, func(name string) (string, bool) { return string(raw), name == "DBX_CONFIG" }, func(*bruindatabricks.Config) (databricksClient, error) { return client, nil })
@@ -210,6 +211,7 @@ func TestDatabricksExecutionFailurePreservesRemoteState(t *testing.T) {
 
 func TestDatabricksExecutionRequiresRotationAfterCredentialReplacement(t *testing.T) {
 	marshal := func(c bruindatabricks.Config) string {
+		// #nosec G117 -- serializer input is deliberately synthetic configuration for a local injected fixture.
 		raw, err := json.Marshal(c)
 		if err != nil {
 			t.Fatal(err)

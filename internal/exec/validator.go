@@ -97,7 +97,7 @@ func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request
 	if binding.Dialect != "postgres" {
 		return v.validateWarehouse(ctx, e, r, binding)
 	}
-	private, initialProof, err := validationAuthority(v.adapter, e, binding, nil)
+	_, initialProof, err := validationAuthority(v.adapter, e, binding, nil)
 	if err != nil {
 		return Plan{}, err
 	}

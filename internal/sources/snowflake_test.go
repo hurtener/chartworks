@@ -167,6 +167,7 @@ func validatedSnowflakePlan(t *testing.T, lookup func(string) (string, bool), fa
 }
 
 func TestSnowflakeExecutionFailurePreservesRemoteState(t *testing.T) {
+	// #nosec G117 -- serializer input is deliberately synthetic configuration for a local injected fixture.
 	raw, _ := json.Marshal(bruinsnowflake.Config{Account: "account", Database: "database", Schema: "analytics", Token: "token"})
 	client := &snowflakeFixtureClient{}
 	service, e, plan := validatedSnowflakePlan(t, func(name string) (string, bool) { return string(raw), name == "SF_CONFIG" }, func(*bruinsnowflake.Config) (snowflakeClient, error) { return client, nil })
@@ -204,6 +205,7 @@ func TestSnowflakeExecutionFailurePreservesRemoteState(t *testing.T) {
 
 func TestSnowflakeExecutionRequiresRotationAfterCredentialReplacement(t *testing.T) {
 	marshal := func(c bruinsnowflake.Config) string {
+		// #nosec G117 -- serializer input is deliberately synthetic configuration for a local injected fixture.
 		raw, err := json.Marshal(c)
 		if err != nil {
 			t.Fatal(err)
