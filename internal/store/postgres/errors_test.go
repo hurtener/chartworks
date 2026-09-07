@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/store"
@@ -22,7 +23,17 @@ func TestSafeErrors(t *testing.T) {
 			t.Fatal("unsafe database error")
 		}
 	}
-	if SchemaVersion() != "8" {
-		t.Fatal("schema version")
+	manifest, err := Migrations()
+	if err != nil || SchemaVersion() != "9" || len(manifest) != 9 {
+		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
+	}
+	latest := manifest[len(manifest)-1]
+	if latest.Version != 9 || latest.Name != "migrations/009_pipelines.sql" || len(latest.Checksum) != 64 {
+		t.Fatal("latest embedded migration identity", latest.Version, latest.Name, latest.Checksum)
+	}
+	for _, relation := range []string{"pipeline_definitions", "pipeline_runs", "pipeline_stages", "pipeline_outputs"} {
+		if !strings.Contains(latest.SQL, "chartworks."+relation) {
+			t.Fatal("pipeline migration missing required relation", relation)
+		}
 	}
 }
