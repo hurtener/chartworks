@@ -62,3 +62,23 @@ func TestSourceConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceConfigurationClosedDialects(t *testing.T) {
+	for _, dialect := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
+		settings := DefaultSources()
+		settings.Enabled = true
+		settings.Connections = []SourceConnection{{Dialect: dialect, Tenant: "tenant", ID: "warehouse", Version: "v1", ReadDSN: "env:READ_DSN", Relations: []SourceRelation{{Schema: "Analytics", Name: "Facts", Columns: []string{"Value"}}}}}
+		if dialect == "postgres" || dialect == "mysql" {
+			settings.Connections[0].Relations[0] = SourceRelation{Schema: "analytics", Name: "facts", Columns: []string{"value"}}
+		}
+		if err := ValidateSources(settings); err != nil {
+			t.Fatalf("qualified dialect %s rejected: %v", dialect, err)
+		}
+	}
+	settings := DefaultSources()
+	settings.Enabled = true
+	settings.Connections = []SourceConnection{{Dialect: "other", Tenant: "tenant", ID: "warehouse", Version: "v1", ReadDSN: "env:READ_DSN", Relations: []SourceRelation{{Schema: "analytics", Name: "facts", Columns: []string{"value"}}}}}
+	if ValidateSources(settings) == nil {
+		t.Fatal("open-ended source dialect accepted")
+	}
+}

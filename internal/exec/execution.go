@@ -76,11 +76,17 @@ type PostgresRemoteQuery struct {
 }
 type MySQLRemoteQuery struct {
 	ConnectionID uint64 `json:"connection_id"`
+	Account      string `json:"account"`
+	Database     string `json:"database"`
+	ServerUUID   string `json:"server_uuid"`
 }
 type SQLServerRemoteQuery struct {
 	SessionID int32     `json:"session_id"`
 	RequestID int32     `json:"request_id"`
 	Started   time.Time `json:"started_at"`
+	Server    string    `json:"server"`
+	Account   string    `json:"account"`
+	Database  string    `json:"database"`
 }
 type BigQueryRemoteQuery struct {
 	Project  string `json:"project"`
@@ -124,9 +130,9 @@ func (q RemoteQuery) Valid() bool {
 	case "postgres":
 		return q.Postgres != nil && q.Postgres.PID > 0 && !q.Postgres.Started.IsZero()
 	case "mysql":
-		return q.MySQL != nil && q.MySQL.ConnectionID > 0
+		return q.MySQL != nil && q.MySQL.ConnectionID > 0 && remoteText(q.MySQL.Account, 256) && remoteText(q.MySQL.Database, 128) && remoteCoordinate(q.MySQL.ServerUUID, 128)
 	case "sqlserver":
-		return q.SQLServer != nil && q.SQLServer.SessionID > 0 && q.SQLServer.RequestID >= 0 && !q.SQLServer.Started.IsZero()
+		return q.SQLServer != nil && q.SQLServer.SessionID > 0 && q.SQLServer.RequestID >= 0 && !q.SQLServer.Started.IsZero() && remoteText(q.SQLServer.Server, 256) && remoteText(q.SQLServer.Account, 256) && remoteText(q.SQLServer.Database, 128)
 	case "bigquery":
 		return q.BigQuery != nil && remoteCoordinate(q.BigQuery.Project, 128) && remoteCoordinate(q.BigQuery.Location, 64) && remoteCoordinate(q.BigQuery.JobID, 256)
 	case "snowflake":
@@ -174,9 +180,9 @@ func (q RemoteQuery) Acknowledges(next RemoteQuery) bool {
 		case "postgres":
 			return q.Postgres.PID == next.Postgres.PID && q.Postgres.Started.Equal(next.Postgres.Started)
 		case "mysql":
-			return q.MySQL.ConnectionID == next.MySQL.ConnectionID
+			return *q.MySQL == *next.MySQL
 		case "sqlserver":
-			return q.SQLServer.SessionID == next.SQLServer.SessionID && q.SQLServer.RequestID == next.SQLServer.RequestID && q.SQLServer.Started.Equal(next.SQLServer.Started)
+			return q.SQLServer.SessionID == next.SQLServer.SessionID && q.SQLServer.RequestID == next.SQLServer.RequestID && q.SQLServer.Started.Equal(next.SQLServer.Started) && q.SQLServer.Server == next.SQLServer.Server && q.SQLServer.Account == next.SQLServer.Account && q.SQLServer.Database == next.SQLServer.Database
 		case "bigquery":
 			return *q.BigQuery == *next.BigQuery
 		case "snowflake":

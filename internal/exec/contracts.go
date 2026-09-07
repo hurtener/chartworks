@@ -68,13 +68,13 @@ func (b Binding) Valid() bool {
 	}
 	seen := map[string]bool{}
 	for _, r := range b.Relations {
-		if !identity.Identifier(r.ID) || !SQLIdentifier(r.Schema) || !SQLIdentifier(r.Name) || seen[r.Schema+"."+r.Name] || len(r.Columns) < 1 || len(r.Columns) > 256 {
+		if !identity.Identifier(r.ID) || !SQLIdentifierForDialect(b.Dialect, r.Schema) || !SQLIdentifierForDialect(b.Dialect, r.Name) || seen[r.Schema+"."+r.Name] || len(r.Columns) < 1 || len(r.Columns) > 256 {
 			return false
 		}
 		seen[r.Schema+"."+r.Name] = true
 		columns := map[string]bool{}
 		for _, c := range r.Columns {
-			if !SQLIdentifier(c.Name) || columns[c.Name] || len(c.NativeType) < 1 || len(c.NativeType) > 128 {
+			if !SQLIdentifierForDialect(b.Dialect, c.Name) || columns[c.Name] || len(c.NativeType) < 1 || len(c.NativeType) > 128 {
 				return false
 			}
 			columns[c.Name] = true
@@ -90,6 +90,25 @@ func SQLIdentifier(s string) bool {
 	}
 	for i, c := range s {
 		if c >= 'a' && c <= 'z' || c == '_' || i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// SQLIdentifierForDialect is a closed connector-name subset. PostgreSQL and
+// MySQL retain the initial lowercase contract; case-preserving warehouses also
+// admit ASCII uppercase without silently folding configured native names.
+func SQLIdentifierForDialect(dialect, s string) bool {
+	if dialect == "postgres" || dialect == "mysql" || dialect == "" {
+		return SQLIdentifier(s)
+	}
+	if len(s) < 1 || len(s) > 128 {
+		return false
+	}
+	for i, c := range s {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || i > 0 && c >= '0' && c <= '9' {
 			continue
 		}
 		return false

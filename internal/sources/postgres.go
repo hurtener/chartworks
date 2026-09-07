@@ -122,7 +122,7 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 // probe locks registered base tables before inspecting their effective role and
 // schema. READ COMMITTED sees the post-lock catalog state; ACCESS SHARE prevents
 // concurrent DDL from changing those objects through EXPLAIN/read completion.
-func (s *Service) probe(ctx context.Context, c config.SourceConnection, id string, revision int64, consume func(context.Context, readTransaction, readexec.Binding) error) (out readexec.Binding, err error) {
+func (s *Service) probePostgres(ctx context.Context, c config.SourceConnection, id string, revision int64, consume func(context.Context, readTransaction, readexec.Binding) error) (out readexec.Binding, err error) {
 	return s.probeDuration(ctx, c, id, revision, time.Duration(s.settings.QueryTimeout), consume)
 }
 

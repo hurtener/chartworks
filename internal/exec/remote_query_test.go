@@ -36,8 +36,8 @@ func TestRemoteQueryClosedVariantsAndLegacyPostgres(t *testing.T) {
 	}
 
 	valid := []RemoteQuery{
-		{Driver: "mysql", Tag: tag, MySQL: &MySQLRemoteQuery{ConnectionID: 7}},
-		{Driver: "sqlserver", Tag: tag, SQLServer: &SQLServerRemoteQuery{SessionID: 8, RequestID: 0, Started: started}},
+		{Driver: "mysql", Tag: tag, MySQL: &MySQLRemoteQuery{ConnectionID: 7, Account: "reader", Database: "analytics", ServerUUID: "server-uuid"}},
+		{Driver: "sqlserver", Tag: tag, SQLServer: &SQLServerRemoteQuery{SessionID: 8, RequestID: 0, Started: started, Server: "server", Account: "reader", Database: "analytics"}},
 		{Driver: "bigquery", Tag: tag, BigQuery: &BigQueryRemoteQuery{Project: "project-1", Location: "us-central1", JobID: "job_1"}},
 		{Driver: "snowflake", Tag: tag, Snowflake: &SnowflakeRemoteQuery{RequestID: "request-1", QueryTag: "tag-1", Account: "account", Database: "database", SessionID: 1, QueryID: "01b2-ABC"}},
 		{Driver: "databricks", Tag: tag, Databricks: &DatabricksRemoteQuery{Workspace: "https://workspace.example", Warehouse: "warehouse", StatementID: "01b2-abc"}},

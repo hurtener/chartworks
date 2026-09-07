@@ -84,6 +84,18 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 }
 
 func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (out readexec.NativeResult, err error) {
+	switch c.Dialect {
+	case "mysql":
+		return s.executeMySQL(ctx, e, p, record, c, l, id, observer)
+	case "bigquery":
+		return s.executeBigQuery(ctx, e, p, record, c, l, id, observer)
+	case "snowflake":
+		return s.executeSnowflake(ctx, e, p, record, c, l, id, observer)
+	case "databricks":
+		return s.executeDatabricks(ctx, e, p, record, c, l, id, observer)
+	case "sqlserver":
+		return s.executeSQLServer(ctx, e, p, record, c, l, id, observer)
+	}
 	out.RemoteState = "not_issued"
 	var remote readexec.RemoteQuery
 	pool, location, err := s.pool(ctx, c)
@@ -410,7 +422,7 @@ func moneyDecimal(raw []byte) ([]byte, error) {
 // ControlRead only controls a verified, journal-backed tagged backend transaction.
 // Cancellation signals are sent only by the live owner using its original connection secret.
 // ControlRead itself only observes; it cannot accidentally cancel a reused backend PID.
-func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control readexec.Control, _ bool) (string, error) {
+func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control readexec.Control, cancel bool) (string, error) {
 	id, partition := control.Coordinates()
 	scope, err := sourceScope(e, "sources.query", "query", id)
 	if err != nil {
@@ -427,6 +439,24 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 			}
 			c, err := s.recordConnection(record)
 			if err != nil {
+				return err
+			}
+			switch c.Dialect {
+			case "mysql":
+				var e2 error
+				state, e2 = s.controlMySQL(ctx, e, control, record, c, cancel)
+				return e2
+			case "bigquery":
+				state, err = s.controlBigQuery(ctx, e, control, record, c, cancel)
+				return err
+			case "snowflake":
+				state, err = s.controlSnowflake(ctx, e, control, record, c, cancel)
+				return err
+			case "databricks":
+				state, err = s.controlDatabricks(ctx, e, control, record, c, cancel)
+				return err
+			case "sqlserver":
+				state, err = s.controlSQLServer(ctx, e, control, c, cancel)
 				return err
 			}
 			// Prove actual credentials/catalog context before observing a native identity;

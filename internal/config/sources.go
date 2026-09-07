@@ -15,6 +15,7 @@ type SourceRelation struct {
 // SourceConnection is operator-controlled and tenant-bound. Public source creation can
 // choose only an alias here, never arbitrary environment variables or network locations.
 type SourceConnection struct {
+	Dialect       string           `json:"dialect,omitempty"`
 	ManagedSchema string           `json:"managed_schema,omitempty"`
 	Tenant        string           `json:"tenant"`
 	ID            string           `json:"id"`
@@ -111,10 +112,14 @@ func ValidateSources(s Sources) error {
 	seen := map[string]bool{}
 	for _, c := range s.Connections {
 		key := c.Tenant + "/" + c.ID
-		if !sourceCoordinate(c.Tenant) || !sourceCoordinate(c.ID) || !sourceCoordinate(c.Version) || seen[key] || c.ManagedSchema == "" && len(c.Relations) < 1 || len(c.Relations) > 32 {
+		dialect := c.Dialect
+		if dialect == "" {
+			dialect = "postgres"
+		}
+		if !sourceDialect(dialect) || !sourceCoordinate(c.Tenant) || !sourceCoordinate(c.ID) || !sourceCoordinate(c.Version) || seen[key] || c.ManagedSchema == "" && len(c.Relations) < 1 || len(c.Relations) > 32 {
 			return invalid("sources.connections", "bounded unique tenant aliases required")
 		}
-		if c.ManagedSchema != "" && (!sourceSQLName(c.ManagedSchema) || !strings.HasPrefix(c.ManagedSchema, "cw_") || len(c.ManagedSchema) > 30 || c.WriteDSN == "" || len(c.Relations) != 0) {
+		if c.ManagedSchema != "" && (dialect != "postgres" || !sourceSQLName(c.ManagedSchema) || !strings.HasPrefix(c.ManagedSchema, "cw_") || len(c.ManagedSchema) > 30 || c.WriteDSN == "" || len(c.Relations) != 0) {
 			return invalid("sources.connections.managed_schema", "explicit isolated workspace required")
 		}
 		seen[key] = true
@@ -129,13 +134,13 @@ func ValidateSources(s Sources) error {
 		relations := map[string]bool{}
 		for _, r := range c.Relations {
 			key := r.Schema + "." + r.Name
-			if !sourceSQLName(r.Schema) || strings.HasPrefix(r.Schema, "pg_") || r.Schema == "information_schema" || !sourceSQLName(r.Name) || relations[key] || len(r.Columns) < 1 || len(r.Columns) > 256 {
+			if !sourceSQLNameFor(dialect, r.Schema) || strings.HasPrefix(strings.ToLower(r.Schema), "pg_") || strings.EqualFold(r.Schema, "information_schema") || !sourceSQLNameFor(dialect, r.Name) || relations[key] || len(r.Columns) < 1 || len(r.Columns) > 256 {
 				return invalid("sources.connections.relations", "explicit non-system tables and columns required")
 			}
 			relations[key] = true
 			columns := map[string]bool{}
 			for _, name := range r.Columns {
-				if !sourceSQLName(name) || columns[name] {
+				if !sourceSQLNameFor(dialect, name) || columns[name] {
 					return invalid("sources.connections.relations.columns", "unique supported column names required")
 				}
 				columns[name] = true
@@ -143,6 +148,30 @@ func ValidateSources(s Sources) error {
 		}
 	}
 	return nil
+}
+
+func sourceSQLNameFor(dialect, value string) bool {
+	if dialect == "postgres" || dialect == "mysql" {
+		return sourceSQLName(value)
+	}
+	if len(value) < 1 || len(value) > 128 {
+		return false
+	}
+	for i, c := range value {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func sourceDialect(dialect string) bool {
+	switch dialect {
+	case "postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks":
+		return true
+	}
+	return false
 }
 
 // ValidateReadValidation checks parsing admission separately from SQL authorization.

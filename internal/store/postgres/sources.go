@@ -22,14 +22,17 @@ func scanSource(row pgx.Row) (out sources.Record, err error) {
 	if err != nil {
 		return out, err
 	}
-	out.Source.Dialect = "postgres"
 	out.Source.Status = "registered"
 	if pipeline != nil {
 		if json.Unmarshal(pipeline, &out.Pipeline) != nil {
 			return sources.Record{}, store.ErrInvalid
 		}
 	}
-	if json.Unmarshal(binding, &out.Binding) != nil || !out.Valid() {
+	if json.Unmarshal(binding, &out.Binding) != nil {
+		return sources.Record{}, store.ErrInvalid
+	}
+	out.Source.Dialect = out.Binding.Dialect
+	if !out.Valid() {
 		return sources.Record{}, store.ErrInvalid
 	}
 	return out, nil
@@ -131,14 +134,14 @@ func (d *DB) ListSources(ctx context.Context, s store.Scope, selection access.Se
 	}
 	out = []sources.Source{}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) ORDER BY s.source_id LIMIT $4`, s.Tenant(), selection.All(), selection.IDs(), limit)
+		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id,r.binding#>>'{dialect}' FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) ORDER BY s.source_id LIMIT $4`, s.Tenant(), selection.All(), selection.IDs(), limit)
 		if e != nil {
 			return e
 		}
 		defer rows.Close()
 		for rows.Next() {
-			item := sources.Source{Dialect: "postgres", Status: "registered"}
-			if e = rows.Scan(&item.ID, &item.Name, &item.Revision, &item.ContextID); e != nil {
+			item := sources.Source{Status: "registered"}
+			if e = rows.Scan(&item.ID, &item.Name, &item.Revision, &item.ContextID, &item.Dialect); e != nil {
 				return e
 			}
 			out = append(out, item)
