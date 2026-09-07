@@ -1,4 +1,4 @@
-name: Temporary reviewed attachment verification
+name: Temporary reviewed completion verification
 on:
   push:
     branches: [feat/phase-11-12-uploads-profiling]
@@ -8,11 +8,11 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       CGO_ENABLED: 1
       CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
-      # Disposable test database; not a production credential.
+      # Synthetic disposable fixture, never a production credential.
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
     services:
       postgres:
@@ -28,29 +28,106 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 0a761ddb4568ad06b93369cbdbce5a9245af827f
+          ref: b524163192cecae7b32bde568c37a90b707d8eb0
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Apply inspected receipt correction and format
+      - name: Apply reviewed receipt fix and operator-document corrections
         id: edit
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import subprocess
-          p = Path('internal/store/postgres/profiles.go')
-          text = p.read_text()
-          before = '\treturn admitted, err\n'
-          assert text.count(before) == 1
-          p.write_text(text.replace(before, '\tif err != nil {\n\t\treturn false, err\n\t}\n\treturn admitted, nil\n'))
-          subprocess.run(['gofmt','-s','-w',str(p),'test/acceptance/engineering_attachment_fences_test.go'],check=True)
+          def replace(path, before, after):
+              p = Path(path)
+              text = p.read_text()
+              assert text.count(before) == 1, (path,before,text.count(before))
+              p.write_text(text.replace(before,after))
+          replace('internal/store/postgres/profiles.go','\treturn admitted, err\n','\tif err != nil {\n\t\treturn false, err\n\t}\n\treturn admitted, nil\n')
+          replace('docs/contracts/uploads-profiling.md','Obtain the current context and dataset IDs\nfrom the returned ordinary source binding, rather than deriving private table\nnames or guessing a revision.','Use the returned source pointer for its current context ID. Obtain dataset IDs\nfrom authorized source discovery, not from private table names or a guessed\nrevision; upload status intentionally does not contain the backend binding.')
+          replace('GETTING-STARTED.md','# Running Chartworks phases 01–06','# Running Chartworks phases 01–12')
+          replace('GETTING-STARTED.md','It also implements remote Bifrost inference and durable maintenance scheduling.','It also implements remote Bifrost inference, durable maintenance scheduling, vector generations, qualified sources, validated read execution, governed uploads and deterministic profiling.')
+          replace('GETTING-STARTED.md','Customer source data never goes into this metadata schema.','Raw uploads and warehouse tables remain outside the metadata database. Bounded derived profile evidence can contain approved ranges and must also be treated as sensitive.')
+          replace('GETTING-STARTED.md','python3 scripts/run_phase_acceptance.py --phase 01\npython3 scripts/run_phase_acceptance.py --phase 02\npython3 scripts/run_phase_acceptance.py --phase 03\npython3 scripts/run_phase_acceptance.py --phase 04','for phase in 01 02 03 04 05 06 07 08 09 10 11 12; do\n  python3 scripts/run_phase_acceptance.py --phase "$phase"\ndone')
+          replace('GETTING-STARTED.md','thresholds remain 85% for store, 80% for other internal code and 70% for CLI.','the unchanged per-package thresholds are defined in `scripts/coverage_gate.py` (including 85% for PostgreSQL storage and 80% for engineering).')
+          replace('GETTING-STARTED.md','The other 30 phases remain unimplemented and are explicitly reported as planned skips in development preflight.','The other 22 phases remain unimplemented and are explicitly reported as planned skips in development preflight.')
+          replace('GETTING-STARTED.md','implemented phases 01–04.','implemented phases 01–12.')
+          replace('GETTING-STARTED.md','unattended scheduling is not implemented here.','opt-in unattended maintenance uses the existing Pengui execution-authority integration described below.')
+          with Path('GETTING-STARTED.md').open('a') as f:
+              f.write('''
+
+          ## Governed uploads and profiling (phases 11/12)
+
+          Use the non-secret [engineering configuration](examples/chartworks.engineering.json)
+          with your Pengui issuer/JWKS/audience and a separately provisioned PostgreSQL 17
+          workspace. Replace the synthetic tenant; supply distinct read/write environment
+          references for the workspace, not the metadata database. Keep the managed alias's
+          `relations` empty and let Chartworks create its isolated marked schema. The writer
+          must not be a superuser or have BYPASSRLS, CREATEROLE or CREATEDB.
+
+          Apply/check migrations 007–008 without changing 001–006. The metadata connection
+          pool needs `uploads.concurrency + exec.execution_concurrency + 2` connections.
+          Configure tenant operation retention before admission. Explicit uploads/profiles
+          do not require enabling unattended broker workers or a model provider.
+
+          Reserve an immutable upload manifest, stage its exact bytes/checksum, then load
+          it with an explicit logical key. Only `active` with a source pointer is queryable.
+          Obtain dataset IDs through authorized source discovery. Build profiles against
+          that source/context using `skip_llm:true` initially; subsequent profile versions
+          identify the previous active version. HTTP 200 can contain retry/failure states:
+          inspect the returned domain and operation states, not only the HTTP code.
+
+          The [complete upload/profiling contract](docs/contracts/uploads-profiling.md)
+          documents every implemented route, bounded-format defaults, optional redacted
+          summaries, explicit resume/cancellation, source/dependency health and erasure.
+          It also distinguishes unknown scan/model cost from zero and logical live-data
+          removal from backup/WAL destruction. Back up both metadata and workspace data.
+          ''')
+          replace('docs/configuration.md','| `server.write_timeout` | duration string | `30s` |','| `server.write_timeout` | duration string | `75s` |')
+          replace('docs/configuration.md','with analytical business APIs still unavailable.','with qualified source/read/upload/profiling operations available when explicitly enabled; later NLQ/reporting/MCP surfaces remain unavailable.')
+          with Path('docs/configuration.md').open('a') as f:
+              f.write('''
+
+          ## Governed workspace and profiling configuration
+
+          `uploads.enabled` and `profiling.enabled` default to false and require
+          `sources.enabled`. A managed source alias requires an isolated `cw_` schema name
+          (at most 30 characters), no declared ordinary relations, and separate `env:` read
+          and write references. Actual workspace identity/ownership is verified at runtime;
+          config-check is not a connectivity or permission test.
+
+          Upload defaults: formats CSV/XLSX/Parquet; max_bytes 100 MiB; max_rows 1,000,000;
+          max_columns 256; max_cells 4,000,000; max_cell_bytes 64 KiB; max_expanded_bytes
+          256 MiB; max_archive_entries 1,024; max_sheets 32; max_expansion_ratio 100;
+          max_page_bytes 8 MiB; max_row_group_bytes 64 MiB; max_per_tenant 32;
+          max_tenant_bytes 1 GiB; concurrency 2; timeout 60s; staging_ttl 24h. These are
+          bounded parsing/reservation/work settings, not a physical disk quota.
+
+          Profiling defaults: sample_rows 1,000; sample_bytes 1 MiB; planner_cost_ceiling
+          10,000,000; timeout 30s; fresh_for 24h; stale_after 168h; summaries false;
+          max_versions 32 (valid range 2–1,000); policies empty. Policy entries contain
+          `id`, `tenant`, `source`, `range_columns`; they minimize retained evidence and
+          never replace signed access scopes. Row/response bounds are not scan budgets.
+          Source binding, selected policy, sample bounds and skip_llm are immutable for
+          the accepted version. Changing configuration does not rewrite an accepted retry.
+
+          Engineering requires at least `uploads.concurrency + exec.execution_concurrency
+          + 2` metadata connections at service construction. Explicit request work shares
+          the existing job ledger and capacity settings, independently of `jobs.enabled`.
+          Optional summaries additionally use the configured gateway/profile_summary role.
+          See the [operator contract](contracts/uploads-profiling.md) and the tested
+          [configuration example](../examples/chartworks.engineering.json).
+          ''')
+          files = subprocess.check_output(['git','ls-files','-z','*.go']).decode().split('\0')
+          subprocess.run(['gofmt','-s','-w',*[p for p in files if p]],check=True)
           subprocess.run(['git','diff','--check'],check=True)
           PY
-      - name: Focused attachment and admission regressions
+      - name: Operator example and source/admission/health regressions
         id: focused
         run: |
-          go test -race -count=1 -timeout=3m ./test/acceptance -run '^Test(ProfileAttachment|UploadAttachment|UploadErasureAttachment|ProfileSummaryAdmission)' > /tmp/focused.log 2>&1 || { cat /tmp/focused.log; exit 1; }
+          go test -race -count=1 -timeout=3m ./internal/config > /tmp/focused.log 2>&1
+          go test -race -count=1 -timeout=4m ./test/acceptance -run '^Test(ProfileReservationRejects|EngineeringRequestClaims|EngineeringRequestRetention|ProfileHealthDistinguishes|ProfileAttachment|UploadAttachment|UploadErasureAttachment|ProfileSummaryAdmission)' >> /tmp/focused.log 2>&1
           cat /tmp/focused.log
       - name: PostgreSQL 17 recovery client
         run: |
@@ -60,18 +137,159 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client-17 > /tmp/pg-client.log
           echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
-      - name: Full uncached race suite and unchanged coverage thresholds
+      - name: Full uncached race suite and original package coverage gates
         id: coverage
         run: |
-          make coverage > /tmp/coverage.log 2>&1 || { tail -60 /tmp/coverage.log; exit 1; }
+          make coverage > /tmp/coverage.log 2>&1 || { tail -35 /tmp/coverage.log; exit 1; }
           tail -25 /tmp/coverage.log
-      - name: Both phase acceptance contracts
+      - name: All 76 implemented acceptance criteria
         id: acceptance
         run: |
-          python3 scripts/run_phase_acceptance.py --phase 11 > /tmp/acceptance.log 2>&1
-          python3 scripts/run_phase_acceptance.py --phase 12 >> /tmp/acceptance.log 2>&1
+          for phase in 01 02 03 04 05 06 07 08 09 10 11 12; do
+            python3 scripts/run_phase_acceptance.py --phase "$phase" >> /tmp/acceptance.log 2>&1 || { tail -80 /tmp/acceptance.log; exit 1; }
+          done
           cat /tmp/acceptance.log
-      - name: Retain candidate and compact verification evidence without moving refs
+      - name: Record completion only after executed race and acceptance evidence
+        id: completion
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os
+          def replace(path, before, after):
+              p = Path(path)
+              text = p.read_text()
+              assert text.count(before) == 1, (path,before,text.count(before))
+              p.write_text(text.replace(before,after))
+          registry = Path('docs/plans/phase-registry.json')
+          data = json.loads(registry.read_text())
+          for phase in ['11','12']:
+              assert data['phases'][phase]['status'] == 'in_progress'
+              data['phases'][phase]['status'] = 'shipped'
+          registry.write_text(json.dumps(data,indent=2)+'\n')
+          for path in ['docs/plans/phase-11-uploads-workspace.md','docs/plans/phase-12-engineering-profiling.md']:
+              replace(path,'Status: in_progress.','Status: shipped.')
+              replace(path,'No runtime completion is claimed.','Executed acceptance and race evidence is recorded in the [completion review](../reviews/phase-11-12-completion.md).')
+          p = Path('docs/plans/phase-11-uploads-workspace.md')
+          text = p.read_text()
+          start = text.index('The recovered branch contains the six named tests,')
+          end = text.index('\n\n## Glossary',start)
+          text = text[:start]+'''All six named criteria pass against real PostgreSQL, alongside HTTP/SDK/binary,
+          exact-value, parser-budget, publication-lock, replacement-race and cross-actor
+          erasure regressions. The full uncached race suite and all 76 implemented criteria
+          are executed with the unchanged package coverage thresholds. The [completion
+          review](../reviews/phase-11-12-completion.md) supersedes the earlier environment
+          blocker and distinguishes injected interruption from an OS process-kill claim.
+          Readiness additionally requires the permanent read-only CI on the final PR head.
+          The [operator contract](../contracts/uploads-profiling.md) documents deployment
+          and recovery. AC05 uses the common real validator/executor/source contract now;
+          later report consumers retain their own integration obligations.''' + text[end:]
+          p.write_text(text)
+          p = Path('docs/plans/phase-12-engineering-profiling.md')
+          text = p.read_text()
+          start = text.index('The recovered branch contains named acceptance tests')
+          end = text.index('\n\n## Glossary',start)
+          text = text[:start]+'''All six named criteria pass, with real source profiling, limits, freshness,
+          schema-health, cancellation/checkpoint recovery and protected HTTP/SDK inspection.
+          AC06 measures actual execution duration and returned rows/bytes; recorded gateway
+          fixtures verify model-token/cost attribution without claiming paid live-provider
+          latency. Unknown scanned bytes and missing model cost remain unknown. Inspection
+          works without warehouse/model credentials and does not publish semantic meaning.
+
+          The full uncached race suite and all 76 implemented criteria pass the unchanged
+          package coverage gates. See the [completion review](../reviews/phase-11-12-completion.md)
+          and [operator contract](../contracts/uploads-profiling.md). Permanent read-only CI
+          must still pass on the final PR head before it is marked ready. Later semantic
+          generation/report publication remain the obligations of their actual phases.''' + text[end:]
+          text = text.replace('This phase remains in progress until current-source verification and the required consumer evidence are recorded.','The concrete inspection consumer is verified; this does not complete later semantic-generation or publishing work.')
+          p.write_text(text)
+          replace('README.md','Status: the Go foundation verified operational authority, remote Bifrost gateway and durable maintenance scheduling (phases 01–09) are implemented with real PostgreSQL acceptance tests. Analytics/reporting implementation and full source migration remain in the subsequent phases.','Status: phases 01–12 implement the Go foundation, verified authority, remote Bifrost gateway, durable maintenance, vector generations, qualified PostgreSQL sources, validated read execution, governed uploads and deterministic profiling. Real PostgreSQL acceptance and exact-source CI establish readiness. Later NLQ, semantic/report publication, full MCP and migration work remain planned.')
+          with Path('README.md').open('a') as f:
+              f.write('\n\n## Governed uploads and profiling (phases 11/12)\n\nBounded CSV/XLSX/Parquet uploads become ordinary governed sources in a separately\nowned PostgreSQL workspace. Deterministic profile versions retain explicit sampling,\nfreshness and schema/dependency-health evidence; optional summaries use only the\nexisting redacted gateway path. Shared-ledger recovery preserves identity and\nrequires native reconciliation rather than guessing external completion.\n\nSee the [operator contract](docs/contracts/uploads-profiling.md), the tested\n[configuration example](examples/chartworks.engineering.json) and the\n[completion/adversarial verification record](docs/reviews/phase-11-12-completion.md).\n')
+          replace('docs/plans/README.md','Phase 10 supplies bounded validated read execution; twenty-four later workstreams remain planned.','Phase 10 supplies bounded validated read execution; phases 11/12 add governed uploads and deterministic profiling. Twenty-two later workstreams remain planned.')
+          replace('docs/plans/README.md','Phases01–10 are implemented, and the remaining twenty-four are planned.','Phases01–12 are implemented, and the remaining twenty-two are planned.')
+          with Path('docs/plans/README.md').open('a') as f:
+              f.write('\n\nUploads/profiling now use the existing source, executor, gateway and operation\nledger. See the [operator contract](../contracts/uploads-profiling.md) and\n[executed completion review](../reviews/phase-11-12-completion.md). These do not\nclose the later semantic, report, MCP or migration acceptance obligations.\n')
+          replace('RFC-001-Chartworks.md','Phases 01–10 have runtime implementations; twenty-four later workstreams remain planned.','Phases 01–12 have runtime implementations, including governed uploads and deterministic profiling; twenty-two later workstreams remain planned.')
+          link = 'https://github.com/hurtener/chartworks/actions/runs/'+os.environ['GITHUB_RUN_ID']
+          coverage = '\n'.join(line for line in Path('/tmp/coverage.log').read_text().splitlines() if line.startswith(('OK:','FAIL:')))
+          assert 'FAIL:' not in coverage and 'internal/store/postgres' in coverage
+          review = '''# Phases 11/12: completion and adversarial verification
+
+          ## Scope and preserved contracts
+
+          This continues PR #9 without replacing phases 01–10, changing migrations 001–006,
+          relaxing coverage, enabling local identity/model systems or claiming a deployment.
+          Governed uploads, deterministic versioned profiling, optional redacted summaries,
+          shared-ledger recovery and protected HTTP/SDK consumers are implemented. Later
+          semantics, reporting, full MCP and migration remain their owning phases' work.
+
+          ## Findings closed during executed verification
+
+          * Repaired child-test ownership and exercised the valid minimum profile cap with
+            two real publications followed by rejection of a third. No production limit changed.
+          * Preserved deferred native PostgreSQL failures before interpreting absent result
+            metadata; native timeouts no longer masquerade as schema/row-limit failures.
+          * Tested exact Parquet values, compact integers/checksums, decompression/RLE/delta
+            boundaries, ZIP64 declarations and normalization expansion without weakening gates.
+          * Verified real audit rollback for staging, publication, erasure, checkpoints,
+            dependencies and health; explicit retries reconcile one original logical operation.
+          * Confirmed absent/lost native receipts require deadline/remote-stop reconciliation,
+            never invented no-dispatch proof or fabricated result values.
+          * Checked actual stored task manifests, live-owner attachments, source revisions,
+            shared concurrency, pinned queue settings and retained cancelled-receipt capacity.
+          * Fixed a summary-admission receipt that could return true after its audit rolled
+            back. The boolean now clears on error; deterministic checkpoints remain recoverable.
+          * Verified unchanged versus stale profile-health evidence without rewriting approved
+            consumer definitions or repeating native queries on inspection.
+          * Added a tested isolated-workspace configuration and operator/API/recovery guidance.
+
+          These are adversarial self-review and executed regressions, not independent external
+          certification. Process interruption fixtures inject precise failures; they are not an
+          OS-kill campaign. Recorded provider fixtures are not paid live-provider qualification.
+
+          ## Executed evidence
+
+          The preparation run below executes the full uncached race-enabled suite and strict
+          phase 01–12 acceptance, requiring all 76 named criteria without missing/skipped
+          children. It also loads the published configuration example without resolving any
+          workspace/model secret. Its tests run in disposable PostgreSQL 17 databases.
+
+          RUN_LINK
+
+          Actual production-package coverage from that race run:
+
+          ```text
+          COVERAGE
+          ```
+
+          The candidate is formatted and dependency-locked. Final PR readiness additionally
+          requires the permanent **read-only CI on its exact final head/merge tree**, including
+          build/vet/lint, CGo-free cross-builds, compiled lifecycle/protected-surface smoke,
+          bounded fuzzing, planning/drift/mirror checks, cumulative preflight and clean-tree
+          checks. The temporary preparation workflow must be removed before readiness.
+
+          ## Honest interpretation of evidence
+
+          Phase 11 AC05 exercises the real common source/validator/executor path. Phase 12
+          AC06 exercises scoped HTTP/SDK inspection with actual execution duration and returned
+          rows/bytes; recorded gateway receipts account for available token/cost evidence.
+          Neither inspection nor an activated upload constitutes approved semantic/report
+          publication. Prefix samples are not random; actual scanned bytes remain unknown.
+          Metadata publication is atomic locally, not a distributed exactly-once transaction.
+          Erasure removes live rows/staging and derived values while retaining minimal safety
+          manifests/tombstones; it does not overwrite backups or WAL. Back up both databases.
+          '''
+          review = '\n'.join(line[10:] if line.startswith('          ') else line for line in review.splitlines())+'\n'
+          review = review.replace('RUN_LINK','[Executed candidate verification]('+link+')').replace('COVERAGE',coverage)
+          Path('docs/reviews/phase-11-12-completion.md').write_text(review)
+          for path in ['docs/reviews/phase-11-12-adversarial.md','docs/reviews/phase-11-12-request-recovery.md']:
+              p = Path(path)
+              text = p.read_text()
+              p.write_text(text+'\n\n## Subsequent executed completion\n\nThe environment blockers above describe the earlier recovery session, not the\ncurrent verification status. See the [completion review](phase-11-12-completion.md)\nfor the executed regression/acceptance/coverage record and final read-only CI gate.\n')
+          PY
+          make planning-check > /tmp/planning.log 2>&1 || { tail -80 /tmp/planning.log; exit 1; }
+          git diff --check
+      - name: Retain source candidate and compact evidence without moving refs
         id: store
         if: always() && steps.edit.outcome == 'success'
         env:
@@ -79,6 +297,7 @@ jobs:
           FOCUSED_RESULT: ${{ steps.focused.outcome }}
           COVERAGE_RESULT: ${{ steps.coverage.outcome }}
           ACCEPTANCE_RESULT: ${{ steps.acceptance.outcome }}
+          COMPLETION_RESULT: ${{ steps.completion.outcome }}
         run: |
           python3 - <<'PY'
           import json, os, urllib.request, subprocess
@@ -90,15 +309,23 @@ jobs:
               request = urllib.request.Request('https://api.github.com/repos/'+repo+'/git/'+route, data=None if value is None else json.dumps(value).encode(), method='GET' if value is None else 'POST', headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
               with urllib.request.urlopen(request,timeout=30) as response:
                   return json.load(response)
-          paths = ['internal/store/postgres/profiles.go','test/acceptance/engineering_attachment_fences_test.go']
+          paths = ['internal/store/postgres/profiles.go','test/acceptance/engineering_attachment_fences_test.go','test/acceptance/engineering_source_admission_test.go','test/acceptance/engineering_freshness_health_test.go','internal/config/engineering_example_test.go','examples/chartworks.engineering.json','docs/contracts/uploads-profiling.md','GETTING-STARTED.md','docs/configuration.md','README.md','RFC-001-Chartworks.md','docs/plans/README.md','docs/plans/phase-registry.json','docs/plans/phase-11-uploads-workspace.md','docs/plans/phase-12-engineering-profiling.md','docs/reviews/phase-11-12-adversarial.md','docs/reviews/phase-11-12-request-recovery.md']
+          if Path('docs/reviews/phase-11-12-completion.md').exists():
+              paths.append('docs/reviews/phase-11-12-completion.md')
           tree = api('commits/'+parent)['tree']['sha']
           entries = [{'path':p,'mode':'100644','type':'blob','content':Path(p).read_text()} for p in paths]
           tree = api('trees', {'base_tree':tree,'tree':entries})['sha']
-          commit = api('commits', {'tree':tree,'parents':[parent],'message':'fix(engineering): require audited summary admission and verify stored attachment fences'})['sha']
-          report = {'parent':parent,'tree':tree,'commit':commit,'focused':os.environ['FOCUSED_RESULT'],'coverage':os.environ['COVERAGE_RESULT'],'acceptance':os.environ['ACCEPTANCE_RESULT']}
-          for name in ['focused','coverage','acceptance']:
+          commit = api('commits', {'tree':tree,'parents':[parent],'message':'fix(engineering): finish audited recovery verification and operator contracts'})['sha']
+          report = {'parent':parent,'tree':tree,'commit':commit}
+          for name in ['focused','coverage','acceptance','completion']:
+              report[name] = os.environ[name.upper()+'_RESULT']
+          for name in ['focused','coverage','acceptance','planning']:
               p = Path('/tmp/'+name+'.log')
-              report[name+'_log'] = p.read_text()[-14000:] if p.exists() else 'not executed'
+              text = p.read_text() if p.exists() else 'not executed'
+              if name == 'coverage':
+                  report[name+'_log'] = '\n'.join(line for line in text.splitlines() if '--- FAIL:' in line or line.startswith(('OK:','FAIL:','make:')) or '_test.go:' in line)[-24000:]
+              else:
+                  report[name+'_log'] = text[-24000:]
           p = Path('/tmp/chartworks-coverage.out')
           if p.exists():
               result = subprocess.run(['go','tool','cover','-func='+str(p)],capture_output=True,text=True)
@@ -106,11 +333,11 @@ jobs:
           blob = api('blobs', {'content':json.dumps(report,indent=2),'encoding':'utf-8'})['sha']
           with open(os.environ['GITHUB_OUTPUT'],'a') as out:
               out.write('commit='+commit+'\ntree='+tree+'\nreport='+blob+'\n')
-          print('Prepared source-only candidate. No branch or PR state was changed.')
+          print('No branch ref, workflow or PR state was changed by this job.')
           PY
       - name: Candidate ${{ steps.store.outputs.commit }}
         if: always() && steps.store.outcome == 'success'
-        run: echo 'Candidate requires connector review and a clean permanent CI run.'
+        run: echo 'Review candidate and require permanent exact-source CI before readiness.'
       - name: Tree ${{ steps.store.outputs.tree }} report ${{ steps.store.outputs.report }}
         if: always() && steps.store.outcome == 'success'
-        run: echo 'Workflow files were not modified by this job.'
+        run: echo 'Preparation workflow deletion remains an authorized connector action.'
