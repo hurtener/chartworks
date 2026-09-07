@@ -3,7 +3,6 @@ package engineering
 import (
 	"context"
 	"errors"
-	"github.com/hurtener/chartworks/internal/store"
 	"reflect"
 	"sort"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/sources"
+	"github.com/hurtener/chartworks/internal/store"
 )
 
 func (s *PipelineService) InspectRun(ctx context.Context, e identity.Envelope, id string) (PipelineRun, error) {
