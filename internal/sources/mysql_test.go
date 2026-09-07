@@ -1,23 +1,71 @@
 package sources
 
 import (
+	"context"
+	"crypto/rand"
+	dbsql "database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
+	mysql "github.com/go-sql-driver/mysql"
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 )
 
 func TestMySQLSourceProbeLocal(t *testing.T) {
-	dsn := os.Getenv("CHARTWORKS_TEST_MYSQL_DSN")
-	if dsn == "" {
+	adminDSN := os.Getenv("CHARTWORKS_TEST_MYSQL_DSN")
+	if adminDSN == "" {
 		t.Skip("CHARTWORKS_TEST_MYSQL_DSN is not set")
 	}
+	cfg, err := mysql.ParseDSN(adminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nonce [8]byte
+	if _, err = rand.Read(nonce[:]); err != nil {
+		t.Fatal(err)
+	}
+	name := "cw_probe_" + hex.EncodeToString(nonce[:])
+	password := "SYNTHETIC_probe_Password9!"
+	admin, err := dbsql.Open("mysql", adminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, cleanupErr := admin.ExecContext(ctx, "DROP DATABASE IF EXISTS "+name); cleanupErr != nil {
+			t.Errorf("drop synthetic MySQL database: %v", cleanupErr)
+		}
+		if _, cleanupErr := admin.ExecContext(ctx, "DROP USER IF EXISTS '"+name+"'@'%'"); cleanupErr != nil {
+			t.Errorf("drop synthetic MySQL reader: %v", cleanupErr)
+		}
+		if cleanupErr := admin.Close(); cleanupErr != nil {
+			t.Errorf("close synthetic MySQL administrator: %v", cleanupErr)
+		}
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	exec := func(statement string) {
+		t.Helper()
+		if _, execErr := admin.ExecContext(ctx, statement); execErr != nil {
+			t.Fatal("synthetic MySQL probe setup", execErr)
+		}
+	}
+	exec("CREATE DATABASE " + name)
+	exec("CREATE TABLE " + name + ".sales(id BIGINT PRIMARY KEY,amount DECIMAL(30,9),payload VARBINARY(32))")
+	exec("INSERT INTO " + name + ".sales VALUES(1,9007199254740993.125,X'00ff')")
+	exec("CREATE USER '" + name + "'@'%' IDENTIFIED BY '" + password + "'")
+	exec("GRANT SELECT ON " + name + ".* TO '" + name + "'@'%'")
+	cfg.User, cfg.Passwd, cfg.DBName = name, password, name
+	readerDSN := cfg.FormatDSN()
 	settings := config.DefaultSources()
-	service := &Service{settings: settings, lookup: func(name string) (string, bool) { return dsn, name == "MYSQL_READ_DSN" }, pools: map[string]poolEntry{}, mysqlPools: map[string]mysqlPoolEntry{}, retiring: map[string]bool{}}
+	service := &Service{settings: settings, lookup: func(name string) (string, bool) { return readerDSN, name == "MYSQL_READ_DSN" }, pools: map[string]poolEntry{}, mysqlPools: map[string]mysqlPoolEntry{}, retiring: map[string]bool{}}
 	t.Cleanup(service.Close)
-	connection := config.SourceConnection{Dialect: "mysql", AllowInsecureLocal: true, Tenant: "tenant", ID: "mysql", Version: "v1", ReadDSN: "env:MYSQL_READ_DSN", Relations: []config.SourceRelation{{Schema: "cw_bruin_probe", Name: "cw_chartworks_fixture", Columns: []string{"id", "amount", "payload"}}}}
+	connection := config.SourceConnection{Dialect: "mysql", AllowInsecureLocal: true, Tenant: "tenant", ID: "mysql", Version: "v1", ReadDSN: "env:MYSQL_READ_DSN", Relations: []config.SourceRelation{{Schema: name, Name: "sales", Columns: []string{"id", "amount", "payload"}}}}
 	binding, err := service.probe(t.Context(), connection, "source", 1, nil)
 	if err != nil {
 		t.Fatal(err)
