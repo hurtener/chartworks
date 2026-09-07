@@ -6,8 +6,6 @@ import (
 	dbsql "database/sql"
 	"encoding/hex"
 	"errors"
-	bruinmssql "github.com/bruin-data/bruin/pkg/mssql"
-	bruinquery "github.com/bruin-data/bruin/pkg/query"
 	"net/url"
 	"os"
 	"strconv"
@@ -15,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	bruinmssql "github.com/bruin-data/bruin/pkg/mssql"
+	bruinquery "github.com/bruin-data/bruin/pkg/query"
 	mysql "github.com/go-sql-driver/mysql"
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
@@ -135,9 +135,10 @@ func warehouseReadOnly(t *testing.T, f *sourceFixture, relation, dialect string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// #nosec G202 -- relation is the fixture-owned schema/table with a fixed prefix and random hex suffix.
 	if _, err = db.ExecContext(ctx, "UPDATE "+relation+" SET id=id"); err == nil {
 		t.Fatal("synthetic reader has write permission")
 	}
@@ -163,7 +164,7 @@ func warehouseSQLServerActiveCancel(t *testing.T, f *sourceFixture) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	var nonce [16]byte
 	if _, err = rand.Read(nonce[:]); err != nil {
 		t.Fatal(err)
@@ -182,7 +183,7 @@ func warehouseSQLServerActiveCancel(t *testing.T, f *sourceFixture) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
+	defer func() { _ = admin.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(20 * time.Millisecond)

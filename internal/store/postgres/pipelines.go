@@ -41,6 +41,8 @@ func pipelineVersionTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id s
 	}
 	return out, out.Require(e, action, permission)
 }
+
+// SavePipeline appends an immutable draft under the expected head revision.
 func (d *DB) SavePipeline(ctx context.Context, e identity.Envelope, def engineering.PipelineDefinition, expected int64) (out engineering.PipelineRecord, err error) {
 	if expected < 0 || expected >= 1<<62 || !pipelineDefinitionValid(def) {
 		return out, engineering.ErrInvalid
@@ -60,16 +62,17 @@ func (d *DB) SavePipeline(ctx context.Context, e identity.Envelope, def engineer
 		var current int64
 		var actor, session string
 		err := tx.QueryRow(ctx, `SELECT draft_version,actor_id,session_id FROM chartworks.pipeline_heads WHERE tenant_id=$1 AND pipeline_id=$2 FOR UPDATE`, e.Tenant(), def.ID).Scan(&current, &actor, &session)
-		if errors.Is(err, pgx.ErrNoRows) {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
 			if expected != 0 {
 				return store.ErrConflict
 			}
 			if _, err = tx.Exec(ctx, `INSERT INTO chartworks.pipeline_heads(tenant_id,pipeline_id,actor_id,session_id,draft_version) VALUES($1,$2,$3,$4,1)`, e.Tenant(), def.ID, e.User(), e.Session()); err != nil {
 				return err
 			}
-		} else if err != nil {
+		case err != nil:
 			return err
-		} else {
+		default:
 			if current != expected {
 				return store.ErrConflict
 			}
@@ -96,6 +99,8 @@ func (d *DB) SavePipeline(ctx context.Context, e identity.Envelope, def engineer
 	}
 	return out, nil
 }
+
+// ReadPipeline returns an immutable version after signed action and resource checks.
 func (d *DB) ReadPipeline(ctx context.Context, e identity.Envelope, id string, version int64, action, permission string) (out engineering.PipelineRecord, err error) {
 	ctx, stop, err := requestContext(ctx, e)
 	if err != nil {
@@ -112,6 +117,8 @@ func (d *DB) ReadPipeline(ctx context.Context, e identity.Envelope, id string, v
 	}
 	return out, nil
 }
+
+// PublishPipeline atomically publishes the exact current draft version.
 func (d *DB) PublishPipeline(ctx context.Context, e identity.Envelope, id string, version int64) (out engineering.PipelineRecord, err error) {
 	ctx, stop, err := requestContext(ctx, e)
 	if err != nil {

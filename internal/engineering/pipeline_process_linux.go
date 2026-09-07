@@ -19,7 +19,16 @@ func configurePipelineProcess(cmd *exec.Cmd) error {
 }
 func validatePipelineTempFS(path string) error {
 	var stat syscall.Statfs_t
-	if syscall.Statfs(path, &stat) != nil || stat.Type != 0x01021994 || stat.Flags&8 != 0 || uint64(stat.Blocks)*uint64(stat.Bsize) < 512<<20 || uint64(stat.Bavail)*uint64(stat.Bsize) < 384<<20 {
+	if syscall.Statfs(path, &stat) != nil || stat.Type != 0x01021994 || stat.Flags&8 != 0 {
+		return ErrInvalid
+	}
+	blockSize := stat.Bsize
+	if blockSize <= 0 {
+		return ErrInvalid
+	}
+	bytesPerBlock := uint64(blockSize)
+	// Compare required block counts without overflowing filesystem byte totals.
+	if stat.Blocks < (512<<20+bytesPerBlock-1)/bytesPerBlock || stat.Bavail < (384<<20+bytesPerBlock-1)/bytesPerBlock {
 		return ErrInvalid
 	}
 	return nil

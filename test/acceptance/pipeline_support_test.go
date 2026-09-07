@@ -27,6 +27,7 @@ func newPipelineFixture(t *testing.T, model gateway.Engine, change func(*config.
 	if !filepath.IsAbs(runner) {
 		t.Fatal("CHARTWORKS_TEST_BRUIN_PATH must name the absolute pinned Bruin executable")
 	}
+	// #nosec G304 G703 -- acceptance explicitly selects the absolute operator-provided runner artifact.
 	artifact, err := os.ReadFile(runner)
 	if err != nil {
 		t.Fatal("read pinned Bruin executable", err)

@@ -70,16 +70,21 @@ type RemoteQuery struct {
 	Databricks *DatabricksRemoteQuery `json:"databricks,omitempty"`
 }
 
+// PostgresRemoteQuery identifies an owned backend by PID and start time.
 type PostgresRemoteQuery struct {
 	PID     uint32    `json:"pid"`
 	Started time.Time `json:"backend_started"`
 }
+
+// MySQLRemoteQuery identifies a connection in its server and account context.
 type MySQLRemoteQuery struct {
 	ConnectionID uint64 `json:"connection_id"`
 	Account      string `json:"account"`
 	Database     string `json:"database"`
 	ServerUUID   string `json:"server_uuid"`
 }
+
+// SQLServerRemoteQuery identifies an owned session and request with its start time.
 type SQLServerRemoteQuery struct {
 	SessionID int32     `json:"session_id"`
 	RequestID int32     `json:"request_id"`
@@ -88,11 +93,15 @@ type SQLServerRemoteQuery struct {
 	Account   string    `json:"account"`
 	Database  string    `json:"database"`
 }
+
+// BigQueryRemoteQuery identifies a job in its project and location.
 type BigQueryRemoteQuery struct {
 	Project  string `json:"project"`
 	Location string `json:"location"`
 	JobID    string `json:"job_id"`
 }
+
+// SnowflakeRemoteQuery retains observed request, session and query coordinates.
 type SnowflakeRemoteQuery struct {
 	RequestID string `json:"request_id,omitempty"`
 	QueryTag  string `json:"query_tag,omitempty"`
@@ -101,6 +110,8 @@ type SnowflakeRemoteQuery struct {
 	SessionID int64  `json:"session_id,omitempty"`
 	QueryID   string `json:"query_id,omitempty"`
 }
+
+// DatabricksRemoteQuery identifies a statement within its workspace and warehouse.
 type DatabricksRemoteQuery struct {
 	Workspace   string `json:"workspace"`
 	Warehouse   string `json:"warehouse_id"`

@@ -155,7 +155,7 @@ func (s *Service) explainDatabricks(ctx context.Context, e identity.Envelope, ca
 	if err != nil {
 		return safe(err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	if !stream.Next() {
 		return readexec.ErrUnsafe
 	}
@@ -183,7 +183,7 @@ func (s *Service) executeDatabricks(ctx context.Context, e identity.Envelope, p 
 	if err != nil {
 		return out, cloudReadFailure(ctx, err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	out.RemoteState = "running"
 	out.Result, err = collectCloudRows(ctx, stream, l, observer)
 	if err != nil {

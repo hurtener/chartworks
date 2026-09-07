@@ -58,7 +58,7 @@ func verifyPipelineRunner(v config.Pipelines) error {
 	if err != nil {
 		return ErrUnavailable
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > 512<<20 {
 		return ErrInvalid
@@ -78,6 +78,7 @@ func verifyPipelineRunner(v config.Pipelines) error {
 func runnerCommand(ctx context.Context, v config.Pipelines, dir string, env []string, args ...string) ([]byte, error) {
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// #nosec G204 -- operator-selected, digest-verified runner; fixed argv construction and no shell.
 	cmd := exec.CommandContext(work, v.RunnerPath, args...)
 	cmd.Dir = dir
 	cmd.Env = env
@@ -154,7 +155,8 @@ func runPipelineAsset(ctx context.Context, v config.Pipelines, step PipelineStep
 	if err != nil {
 		return receipt, ErrUnavailable
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
+	// #nosec G302 -- this is a private directory; owner traversal is required for runner assets.
 	if err = os.Chmod(dir, 0700); err != nil {
 		return receipt, ErrUnavailable
 	}
@@ -172,6 +174,7 @@ func runPipelineAsset(ctx context.Context, v config.Pipelines, step PipelineStep
 	}
 	// Only the transient environment has the credential. The generated config
 	// contains references and is deleted with its private memory-backed directory.
+	// #nosec G101 -- the password value is an environment reference, never a stored credential.
 	conf := map[string]any{"default_environment": "managed", "environments": map[string]any{"managed": map[string]any{"connections": map[string]any{"postgres": []any{map[string]any{"name": "managed", "host": writer.Host, "port": writer.Port, "database": writer.Database, "username": writer.User, "password": "${CW_PIPELINE_PASSWORD}", "ssl_mode": "disable", "pool_max_conns": 1, "schema": "pg_catalog"}}}}}}
 	tlsEnv, mode, tlsErr := pipelineTLSFiles(dir, writer)
 	if tlsErr != nil {
@@ -294,6 +297,7 @@ func pipelineTLSFiles(dir string, writer *pgx.ConnConfig) ([]string, string, err
 			env = append(env, name+"=system")
 			continue
 		}
+		// #nosec G304 -- certificate path comes from the approved operator DSN, not request input.
 		file, err := os.Open(path)
 		if err != nil {
 			return nil, "", ErrUnavailable

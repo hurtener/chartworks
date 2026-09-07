@@ -16,7 +16,10 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
+// ErrPipelineQuality reports a blocking quality check failure before activation.
 var ErrPipelineQuality = errors.New("pipeline quality check failed")
+
+// ErrPipelineUncertain requires observation before retrying an external effect.
 var ErrPipelineUncertain = errors.New("pipeline external effect requires reconciliation")
 
 // PipelineColumn is a declared output contract, never an arbitrary SQL fragment.
@@ -25,6 +28,8 @@ type PipelineColumn struct {
 	Type       string `json:"type"`
 	PrimaryKey bool   `json:"primary_key"`
 }
+
+// PipelineCheck declares a bounded blocking quality assertion for one output.
 type PipelineCheck struct {
 	Kind    string `json:"kind"`
 	Column  string `json:"column,omitempty"`
@@ -50,12 +55,16 @@ type PipelineStep struct {
 	End        string           `json:"end,omitempty"`
 	Checks     []PipelineCheck  `json:"checks"`
 }
+
+// PipelineDefinition declares the SQL graph and its managed destination.
 type PipelineDefinition struct {
 	ID         string         `json:"id"`
 	Name       string         `json:"name"`
 	Connection string         `json:"connection"`
 	Steps      []PipelineStep `json:"steps"`
 }
+
+// PipelineVersion is an immutable definition with its lifecycle evidence.
 type PipelineVersion struct {
 	Definition PipelineDefinition `json:"definition"`
 	Version    int64              `json:"version"`
@@ -64,6 +73,8 @@ type PipelineVersion struct {
 	Created    time.Time          `json:"created_at"`
 	Published  *time.Time         `json:"published_at,omitempty"`
 }
+
+// PipelineEffect exposes a stage outcome without private execution metadata.
 type PipelineEffect struct {
 	Step    string `json:"step"`
 	State   string `json:"state"`
@@ -73,6 +84,8 @@ type PipelineEffect struct {
 	Digest  string `json:"digest"`
 	Code    string `json:"code,omitempty"`
 }
+
+// PipelineRun is the public receipt of one accepted pipeline operation.
 type PipelineRun struct {
 	Pipeline  string           `json:"pipeline"`
 	Version   int64            `json:"version"`
@@ -80,11 +93,14 @@ type PipelineRun struct {
 	Effects   []PipelineEffect `json:"effects"`
 	Operation jobs.RequestTask `json:"operation"`
 }
+
+// PipelineRecord binds an immutable version to its tenant and audit attribution.
 type PipelineRecord struct {
 	Tenant, Actor, Session string
 	PipelineVersion
 }
 
+// Require enforces signed reach to the pipeline within its recorded tenant.
 func (p PipelineRecord) Require(e identity.Envelope, action, permission string) error {
 	if p.Tenant != e.Tenant() {
 		return store.ErrNotFound
@@ -246,6 +262,8 @@ type PipelineStageState struct {
 	Compensated                               bool
 	Code                                      string
 }
+
+// PipelineExecution retains the accepted operation and private stage evidence.
 type PipelineExecution struct {
 	Pipeline  string
 	Version   int64
@@ -255,6 +273,7 @@ type PipelineExecution struct {
 	Stages    []PipelineStageState
 }
 
+// Public returns a detached receipt and exposes source coordinates only after publication.
 func (x PipelineExecution) Public() PipelineRun {
 	out := PipelineRun{Pipeline: x.Pipeline, Version: x.Version, State: x.State, Operation: x.Operation, Effects: make([]PipelineEffect, len(x.Stages))}
 	for n, s := range x.Stages {
@@ -267,6 +286,7 @@ func (x PipelineExecution) Public() PipelineRun {
 	return out
 }
 
+// Valid checks coherent phase-specific stage evidence and accepted dependencies.
 func (s PipelineStageState) Valid() bool {
 	stage := s.Stage
 	stage.State = "checked"

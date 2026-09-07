@@ -73,6 +73,7 @@ func (*snowflakeFixtureClient) CancelRead(context.Context, bruinsnowflake.ReadId
 func (c *snowflakeFixtureClient) Close() error { c.closed = true; return nil }
 
 func TestSnowflakeSourceLifecycleInjected(t *testing.T) {
+	// #nosec G117 -- serializer input uses an inert synthetic token, not a live credential.
 	raw, _ := json.Marshal(bruinsnowflake.Config{Account: "account", Database: "database", Schema: "analytics", Token: "token"})
 	repo := &cloudMemoryRepository{records: map[string]Record{}}
 	service, err := New(repo, cloudSettings("snowflake", "SF_CONFIG"), func(name string) (string, bool) { return string(raw), name == "SF_CONFIG" })

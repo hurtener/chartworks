@@ -54,6 +54,8 @@ func readPipelineExecutionTx(ctx context.Context, tx pgx.Tx, e identity.Envelope
 	}
 	return out, nil
 }
+
+// ReadPipelineExecution returns an authorized actor/session-private operation receipt.
 func (d *DB) ReadPipelineExecution(ctx context.Context, e identity.Envelope, operation string) (out engineering.PipelineExecution, err error) {
 	ctx, stop, err := requestContext(ctx, e)
 	if err != nil {
@@ -70,6 +72,8 @@ func (d *DB) ReadPipelineExecution(ctx context.Context, e identity.Envelope, ope
 	}
 	return out, nil
 }
+
+// ReservePipelineExecution records the immutable accepted manifest and prepared stages.
 func (d *DB) ReservePipelineExecution(ctx context.Context, e identity.Envelope, r engineering.PipelineRecord, task jobs.RequestTask, schema string) (out engineering.PipelineExecution, err error) {
 	if task.Require(e) != nil || r.Published == nil || r.Digest != task.Input.InputHash || r.Definition.ID != task.Input.Target || task.Input.Kind != "pipeline.run" || !readexec.SQLIdentifier(schema) {
 		return out, jobs.ErrAuthority
@@ -146,6 +150,8 @@ func (d *DB) ReservePipelineExecution(ctx context.Context, e identity.Envelope, 
 	}
 	return out, nil
 }
+
+// MutatePipelineStage persists stage evidence under the live operation fence.
 func (d *DB) MutatePipelineStage(ctx context.Context, i jobs.Invocation, r engineering.PipelineRecord, next engineering.PipelineStageState) (out engineering.PipelineExecution, err error) {
 	e, err := i.Current("pipeline.run", r.Definition.ID, r.Digest)
 	if err != nil {
@@ -229,6 +235,8 @@ func (d *DB) MutatePipelineStage(ctx context.Context, i jobs.Invocation, r engin
 	}
 	return out, nil
 }
+
+// ReadPipelineStage returns an authorized checked stage for a private pipeline input.
 func (d *DB) ReadPipelineStage(ctx context.Context, e identity.Envelope, operation, step string) (sources.PipelineStage, error) {
 	x, err := d.ReadPipelineExecution(ctx, e, operation)
 	if err != nil {
@@ -241,6 +249,8 @@ func (d *DB) ReadPipelineStage(ctx context.Context, e identity.Envelope, operati
 	}
 	return sources.PipelineStage{}, store.ErrNotFound
 }
+
+// CompletePipelineExecution atomically activates the complete manifest under the live fence.
 func (d *DB) CompletePipelineExecution(ctx context.Context, i jobs.Invocation, r engineering.PipelineRecord, records []sources.Record) error {
 	e, err := i.Current("pipeline.run", r.Definition.ID, r.Digest)
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
+// InspectRun returns the authorized public receipt of a durable pipeline operation.
 func (s *PipelineService) InspectRun(ctx context.Context, e identity.Envelope, id string) (PipelineRun, error) {
 	stop, err := s.begin(ctx, false)
 	if err != nil {
@@ -27,6 +28,8 @@ func (s *PipelineService) InspectRun(ctx context.Context, e identity.Envelope, i
 	}
 	return run.Public(), nil
 }
+
+// Cancel records cancellation intent for an authorized pipeline operation.
 func (s *PipelineService) Cancel(ctx context.Context, e identity.Envelope, id string) (jobs.RequestTask, error) {
 	stop, err := s.begin(ctx, false)
 	if err != nil {
@@ -38,6 +41,8 @@ func (s *PipelineService) Cancel(ctx context.Context, e identity.Envelope, id st
 	}
 	return s.runner.Cancel(ctx, e, id)
 }
+
+// Run admits or resumes an exact published version and executes its bounded stages.
 func (s *PipelineService) Run(ctx context.Context, e identity.Envelope, id string, version int64, key string, resume bool) (PipelineRun, error) {
 	stop, err := s.begin(ctx, true)
 	if err != nil {

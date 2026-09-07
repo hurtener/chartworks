@@ -49,7 +49,7 @@ func TestPipelineRunnerArtifactAndOutputCaps(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "runner")
 	data := []byte("synthetic artifact")
-	if err := os.WriteFile(path, data, 0700); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	hash := sha256.Sum256(data)

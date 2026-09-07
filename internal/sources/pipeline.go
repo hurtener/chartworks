@@ -30,6 +30,7 @@ type PipelineStage struct {
 	Digest                 string
 }
 
+// PipelineLocation seals the exact physical output and its publication lineage.
 type PipelineLocation struct {
 	Pipeline, Operation, Step, Alias, Schema, Table string
 	Version                                         int64
@@ -41,11 +42,15 @@ func pipelineStageDigest(s PipelineStage) string {
 	s.Digest = ""
 	return readexec.Hash(s)
 }
+
+// SealPipelineStage detaches columns and hashes the complete checked stage evidence.
 func SealPipelineStage(s PipelineStage) PipelineStage {
 	s.Columns = append([]string(nil), s.Columns...)
 	s.Digest = pipelineStageDigest(s)
 	return s
 }
+
+// Valid checks the complete tenant-bound and sealed checked-stage manifest.
 func (s PipelineStage) Valid() bool {
 	if !identity.Identifier(s.Tenant) || !identity.Identifier(s.Actor) || !identity.Identifier(s.Session) || !identity.Identifier(s.Pipeline) || s.Version < 1 || s.Revision < 1 || !identity.Identifier(s.Operation) || !readexec.SQLIdentifier(s.Step) || !identity.Identifier(s.Alias) || !readexec.SQLIdentifier(s.Schema) || !readexec.SQLIdentifier(s.Table) || s.OID <= 0 || len(s.Columns) < 1 || len(s.Columns) > 256 || !identity.Identifier(s.Source) || s.Context != contextID(s.Source, s.Revision) || s.State != "checked" {
 		return false
@@ -59,10 +64,14 @@ func (s PipelineStage) Valid() bool {
 	}
 	return s.Digest == pipelineStageDigest(s)
 }
+
+// Valid checks canonical output coordinates and their sealed lineage digest.
 func (l PipelineLocation) Valid() bool {
 	digest, err := hex.DecodeString(l.Digest)
 	return err == nil && len(digest) == 32 && l.Digest == pipelineLocationDigest(l) && identity.Identifier(l.Pipeline) && l.Version > 0 && identity.Identifier(l.Operation) && readexec.SQLIdentifier(l.Step) && identity.Identifier(l.Alias) && readexec.SQLIdentifier(l.Schema) && readexec.SQLIdentifier(l.Table) && l.OID > 0 && l.Revision > 0 && identity.Identifier(l.Source) && l.Context == contextID(l.Source, l.Revision)
 }
+
+// Location projects checked stage evidence into a sealed publication location.
 func (s PipelineStage) Location() PipelineLocation {
 	l := PipelineLocation{Pipeline: s.Pipeline, Version: s.Version, Operation: s.Operation, Step: s.Step, Alias: s.Alias, Schema: s.Schema, Table: s.Table, OID: s.OID, Revision: s.Revision, Source: s.Source, Context: s.Context}
 	l.Digest = pipelineLocationDigest(l)
@@ -80,6 +89,7 @@ type pipelineInput struct {
 	binding readexec.Binding
 }
 
+// PipelinePlanAdapter holds a validated private stage binding through managed work.
 type PipelinePlanAdapter interface {
 	readexec.ReadAdapter
 	WithPlan(context.Context, identity.Envelope, readexec.Plan, func(context.Context, string, []readexec.Parameter, readexec.Binding) error) error

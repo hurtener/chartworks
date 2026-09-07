@@ -79,6 +79,7 @@ func (*databricksFixtureClient) CancelRead(context.Context, bruindatabricks.Read
 }
 func (c *databricksFixtureClient) Close() error { c.closed = true; return nil }
 func TestDatabricksSourceLifecycleInjected(t *testing.T) {
+	// #nosec G117 -- serializer input uses an inert synthetic token, not a live credential.
 	raw, _ := json.Marshal(bruindatabricks.Config{Host: "workspace.example", Port: 443, Path: "/sql/1.0/warehouses/warehouse", Catalog: "catalog", Schema: "analytics", Token: "token"})
 	repo := &cloudMemoryRepository{records: map[string]Record{}}
 	service, err := New(repo, cloudSettings("databricks", "DBX_CONFIG"), func(name string) (string, bool) { return string(raw), name == "DBX_CONFIG" })

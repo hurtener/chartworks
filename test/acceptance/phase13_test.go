@@ -171,7 +171,7 @@ func TestPhase13(t *testing.T) {
 		if err != nil {
 			t.Fatal("managed writer fixture", err)
 		}
-		defer writer.Close(context.Background())
+		defer func() { _ = writer.Close(context.Background()) }()
 		if _, err = writer.Exec(context.Background(), "UPDATE analytics.sales SET id=id"); err == nil {
 			t.Fatal("managed writer credential modified a baseline object")
 		}
@@ -259,7 +259,8 @@ func TestPhase13(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.RemoveAll(caseDir)
+		// #nosec G703 -- cleanup targets exactly the private directory created above by this test.
+		defer func() { _ = os.RemoveAll(caseDir) }()
 		mode, capture, runner := filepath.Join(caseDir, "mode"), filepath.Join(caseDir, "capture"), filepath.Join(caseDir, "runner")
 		quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 		script := "#!/bin/sh\n" +
@@ -270,6 +271,7 @@ func TestPhase13(t *testing.T) {
 			"timeout) sleep 5; exit 0;;\n" +
 			"crash) exit 17;;\n" +
 			"esac\n"
+		// #nosec G306 G703 -- fixed basename in the test-created private directory; fixture requires owner execution.
 		if err = os.WriteFile(runner, []byte(script), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -301,6 +303,7 @@ func TestPhase13(t *testing.T) {
 		if _, err = f.pipelines.Run(context.Background(), f.e, "cancel-before-dispatch", cancelVersion, "cancel-before-dispatch-key", false); err == nil {
 			t.Fatal("cancelled operation dispatched")
 		}
+		// #nosec G304 G703 -- capture is a fixed basename in the test-created private temporary directory.
 		if raw, readErr := os.ReadFile(capture); readErr == nil && len(raw) != 0 {
 			t.Fatal("cancel-before-dispatch invoked runner", string(raw))
 		}
@@ -308,6 +311,7 @@ func TestPhase13(t *testing.T) {
 			mode, id string
 			want     error
 		}{{"critical", "critical-output", engineering.ErrInvalid}, {"timeout", "runner-timeout", context.DeadlineExceeded}, {"crash", "runner-crash", engineering.ErrUnavailable}} {
+			// #nosec G703 -- mode is a fixed basename in the test-created private temporary directory.
 			if err = os.WriteFile(mode, []byte(tc.mode), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -317,6 +321,7 @@ func TestPhase13(t *testing.T) {
 				t.Fatal("invalid runner outcome activated an output", tc.mode, runErr, run)
 			}
 		}
+		// #nosec G304 G703 -- capture is a fixed basename in the test-created private temporary directory.
 		raw, err := os.ReadFile(capture)
 		if err != nil {
 			t.Fatal("runner invocation capture", err)

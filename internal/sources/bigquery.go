@@ -200,7 +200,7 @@ func (s *Service) executeBigQuery(ctx context.Context, e identity.Envelope, p re
 	if err != nil {
 		return out, cloudReadFailure(ctx, err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	out.RemoteState = "running"
 	result, err := collectCloudRows(ctx, stream, l, observer)
 	if err != nil {
@@ -318,7 +318,7 @@ func catalogColumns(stream query.RowStream, declared []string, category func(str
 }
 
 func catalogTableType(stream query.RowStream, allowed map[string]bool) (string, error) {
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	if !stream.Next() {
 		if err := stream.Err(); err != nil {
 			return "", safe(err)

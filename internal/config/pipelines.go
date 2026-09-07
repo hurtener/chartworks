@@ -21,9 +21,12 @@ type Pipelines struct {
 	MaxOutputBytes int      `json:"max_output_bytes"`
 }
 
+// DefaultPipelines returns disabled runner settings with bounded resource defaults.
 func DefaultPipelines() Pipelines {
 	return Pipelines{RunnerVersion: "v0.11.749", Timeout: Duration(45 * time.Second), Concurrency: 1, MaxSteps: 8, MaxSQLBytes: 65536, MaxOutputBytes: 1 << 20}
 }
+
+// ValidatePipelines checks runner limits and enabled artifact coordinates.
 func ValidatePipelines(v Pipelines) error {
 	if v.Timeout < Duration(time.Second) || v.Timeout > Duration(time.Minute) || v.Concurrency < 1 || v.Concurrency > 8 || v.MaxSteps < 1 || v.MaxSteps > 32 || v.MaxSQLBytes < 256 || v.MaxSQLBytes > 1<<20 || v.MaxOutputBytes < 1024 || v.MaxOutputBytes > 4<<20 {
 		return invalid("pipelines", "invalid bounded runner limits")

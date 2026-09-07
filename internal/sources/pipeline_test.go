@@ -75,7 +75,11 @@ func TestPipelineReadLocationUsesHeldPhysicalDatabase(t *testing.T) {
 			t.Fatal("different physical location admitted")
 		}
 	}
-	if !errors.Is(RequirePipelineReadLocation(context.Background(), writer), readexec.ErrBinding) || !errors.Is(RequirePipelineReadLocation(nil, writer), readexec.ErrBinding) {
+	if !errors.Is(RequirePipelineReadLocation(context.Background(), writer), readexec.ErrBinding) {
 		t.Fatal("missing held native proof admitted")
+	}
+	//nolint:staticcheck // Deliberately verifies rejection of a nil authority context.
+	if !errors.Is(RequirePipelineReadLocation(nil, writer), readexec.ErrBinding) {
+		t.Fatal("nil context admitted")
 	}
 }

@@ -140,7 +140,8 @@ func (s *PipelineService) preparePipelineStage(ctx context.Context, c config.Sou
 		var hash, name string
 		var recorded *int64
 		err := tx.QueryRow(ctx, "SELECT manifest_hash,table_name,table_oid FROM "+registry+" WHERE operation_id=$1 AND step_id=$2 FOR UPDATE", stage.Operation, stage.Step).Scan(&hash, &name, &recorded)
-		if errors.Is(err, pgx.ErrNoRows) {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
 			var exists bool
 			if err = tx.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, target).Scan(&exists); err != nil {
 				return err
@@ -151,9 +152,9 @@ func (s *PipelineService) preparePipelineStage(ctx context.Context, c config.Sou
 			if _, err = tx.Exec(ctx, "INSERT INTO "+registry+" (operation_id,step_id,manifest_hash,table_name) VALUES($1,$2,$3,$4)", stage.Operation, stage.Step, record.Digest, stage.Table); err != nil {
 				return err
 			}
-		} else if err != nil {
+		case err != nil:
 			return err
-		} else {
+		default:
 			if hash != record.Digest || name != stage.Table {
 				return ErrOwnership
 			}

@@ -255,7 +255,7 @@ func sqlServerRows(ctx context.Context, session bruinmssql.ReadSession, statemen
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := [][]any{}
 	size := 0
 	for rows.Next() {
@@ -738,7 +738,7 @@ func (s *Service) controlSQLServer(ctx context.Context, e identity.Envelope, con
 	}
 	native := bruinmssql.ReadIdentity{SessionID: remote.SQLServer.SessionID, LoginTime: remote.SQLServer.Started, Server: remote.SQLServer.Server, Account: remote.SQLServer.Account, Database: remote.SQLServer.Database, AttemptTag: remote.Tag}
 	options := bruinmssql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, Timeout: time.Duration(s.settings.QueryTimeout), CancelTimeout: time.Duration(s.settings.QueryTimeout)}
-	state := bruinmssql.ReadStateIndeterminate
+	var state bruinmssql.ReadState
 	if cancel {
 		state, err = client.CancelRead(ctx, native, options)
 	} else {

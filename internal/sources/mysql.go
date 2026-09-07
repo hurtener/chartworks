@@ -100,7 +100,7 @@ func (s *Service) probe(ctx context.Context, c config.SourceConnection, id strin
 	if err != nil {
 		return readexec.Binding{}, safe(err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	return binding, nil
 }
 
@@ -150,7 +150,7 @@ func inspectMySQLContext(ctx context.Context, session bruinmysql.ReadSession, c 
 }
 
 func oneMySQLRow(rows query.RowStream, width int) ([]any, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return nil, err
@@ -168,7 +168,7 @@ func oneMySQLRow(rows query.RowStream, width int) ([]any, error) {
 }
 
 func mysqlColumns(rows query.RowStream, declared []string) ([]readexec.Column, []any, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	columns := make([]readexec.Column, 0, len(declared))
 	evidence := make([]any, 0, len(declared))
 	for rows.Next() {
@@ -255,7 +255,7 @@ func (s *Service) explainMySQL(ctx context.Context, e identity.Envelope, candida
 	if err != nil {
 		return safe(err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	if !stream.Next() {
 		return readexec.ErrUnsafe
 	}

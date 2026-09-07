@@ -11,6 +11,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 )
 
+// PipelineProposalRequest identifies governed inputs for a bounded draft proposal.
 type PipelineProposalRequest struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`

@@ -149,7 +149,7 @@ func (s *Service) explainSnowflake(ctx context.Context, e identity.Envelope, can
 	if err != nil {
 		return safe(err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	if !stream.Next() {
 		return readexec.ErrUnsafe
 	}
@@ -177,7 +177,7 @@ func (s *Service) executeSnowflake(ctx context.Context, e identity.Envelope, p r
 	if err != nil {
 		return out, cloudReadFailure(ctx, err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	out.RemoteState = "running"
 	out.Result, err = collectCloudRows(ctx, stream, l, observer)
 	if err != nil {

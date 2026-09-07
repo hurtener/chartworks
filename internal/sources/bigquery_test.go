@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"math/big"
 	"strings"
@@ -177,10 +176,10 @@ func (*bigQueryFixtureClient) CancelRead(context.Context, bruinbigquery.ReadIden
 func (c *bigQueryFixtureClient) Close() error { c.closed = true; return nil }
 
 func TestBigQuerySourceLifecycleInjected(t *testing.T) {
-	raw, _ := json.Marshal(bruinbigquery.Config{ProjectID: "synthetic-project", Location: "US", UseApplicationDefaultCredentials: true})
+	raw := `{"ProjectID":"synthetic-project","Location":"US","UseApplicationDefaultCredentials":true}`
 	repo := &cloudMemoryRepository{records: map[string]Record{}}
 	settings := cloudSettings("bigquery", "BQ_CONFIG")
-	service, err := New(repo, settings, func(name string) (string, bool) { return string(raw), name == "BQ_CONFIG" })
+	service, err := New(repo, settings, func(name string) (string, bool) { return raw, name == "BQ_CONFIG" })
 	if err != nil {
 		t.Fatal(err)
 	}

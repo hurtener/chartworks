@@ -6,17 +6,22 @@ import (
 	"time"
 )
 
+// PipelineColumn declares a managed output column and its key status.
 type PipelineColumn struct {
 	Name       string `json:"name"`
 	Type       string `json:"type"`
 	PrimaryKey bool   `json:"primary_key"`
 }
+
+// PipelineCheck declares a bounded blocking output quality assertion.
 type PipelineCheck struct {
 	Kind    string `json:"kind"`
 	Column  string `json:"column,omitempty"`
 	Minimum int64  `json:"minimum,omitempty"`
 	Maximum int64  `json:"maximum,omitempty"`
 }
+
+// PipelineStep declares SQL inputs, predecessors and one managed materialization.
 type PipelineStep struct {
 	ID         string           `json:"id"`
 	Source     string           `json:"source,omitempty"`
@@ -33,12 +38,16 @@ type PipelineStep struct {
 	End        string           `json:"end,omitempty"`
 	Checks     []PipelineCheck  `json:"checks"`
 }
+
+// PipelineDefinition declares a versioned SQL graph and its managed connection.
 type PipelineDefinition struct {
 	ID         string         `json:"id"`
 	Name       string         `json:"name"`
 	Connection string         `json:"connection"`
 	Steps      []PipelineStep `json:"steps"`
 }
+
+// PipelineProposalRequest identifies governed inputs for a bounded model draft.
 type PipelineProposalRequest struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -47,6 +56,8 @@ type PipelineProposalRequest struct {
 	Context     string `json:"context"`
 	Instruction string `json:"instruction"`
 }
+
+// PipelineVersion contains an immutable definition and its lifecycle evidence.
 type PipelineVersion struct {
 	Definition PipelineDefinition `json:"definition"`
 	Version    int64              `json:"version"`
@@ -55,6 +66,8 @@ type PipelineVersion struct {
 	Created    time.Time          `json:"created_at"`
 	Published  *time.Time         `json:"published_at,omitempty"`
 }
+
+// PipelineEffect exposes a stage outcome and any published source coordinates.
 type PipelineEffect struct {
 	Step    string `json:"step"`
 	State   string `json:"state"`
@@ -64,6 +77,8 @@ type PipelineEffect struct {
 	Digest  string `json:"digest"`
 	Code    string `json:"code,omitempty"`
 }
+
+// PipelineRun is the public receipt of an accepted pipeline operation.
 type PipelineRun struct {
 	Pipeline  string               `json:"pipeline"`
 	Version   int64                `json:"version"`
@@ -112,6 +127,7 @@ func (c *Client) DraftPipeline(ctx context.Context, definition PipelineDefinitio
 	return out, err
 }
 
+// PublishPipeline publishes the addressed immutable draft version.
 func (c *Client) PublishPipeline(ctx context.Context, id string, version int64) (out PipelineVersion, err error) {
 	if !wireID(id) || version < 1 {
 		return out, errors.New("chartworks: invalid pipeline version")
@@ -166,6 +182,7 @@ func (c *Client) AdmitPipelineRun(ctx context.Context, id string, version int64,
 	return out, err
 }
 
+// PipelineRun reads the authorized receipt of a durable operation.
 func (c *Client) PipelineRun(ctx context.Context, operation string) (out PipelineRun, err error) {
 	if !wireID(operation) {
 		return out, errors.New("chartworks: invalid pipeline operation")
