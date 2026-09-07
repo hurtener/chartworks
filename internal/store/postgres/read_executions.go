@@ -124,6 +124,9 @@ func (d *DB) DispatchRead(ctx context.Context, s store.Scope, id string, q reade
 			from, to = "dispatching", "running"
 			var dialect string
 			if err := tx.QueryRow(ctx, `SELECT remote_query,COALESCE(manifest#>>'{validation,dialect}','postgres') FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status='dispatching' FOR UPDATE`, s.Tenant(), s.Actor(), id).Scan(&previous, &dialect); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return readexec.ErrCancelled
+				}
 				return err
 			}
 			var submitted readexec.RemoteQuery
