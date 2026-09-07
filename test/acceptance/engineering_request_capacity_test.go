@@ -102,11 +102,12 @@ func TestRequestCancelledResumeSharesConcurrentAdmissionCapacity(t *testing.T) {
 	winners, denied := 0, 0
 	for range 2 {
 		r := <-results
-		if r.err == nil {
+		switch {
+		case r.err == nil:
 			winners++
-		} else if errors.Is(rejectedEngineeringValue(t, r.task, r.err), jobs.ErrBusy) {
+		case errors.Is(rejectedEngineeringValue(t, r.task, r.err), jobs.ErrBusy):
 			denied++
-		} else {
+		default:
 			t.Fatal(r.err)
 		}
 	}
