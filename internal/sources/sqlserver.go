@@ -140,7 +140,7 @@ func (s *Service) probeSQLServer(ctx context.Context, c config.SourceConnection,
 		binding, err = inspectSQLServerContext(ctx, session, c, id, revision, location)
 		return err
 	}
-	rows, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "SELECT 1 AS chartworks_probe"}, tag, discardSQLServerObserver{}, bruinmssql.ReadOptions{Timeout: time.Duration(s.settings.QueryTimeout)}, verifier)
+	rows, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "SELECT 1 AS chartworks_probe"}, tag, discardSQLServerObserver{}, bruinmssql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, Timeout: time.Duration(s.settings.QueryTimeout)}, verifier)
 	if err != nil {
 		return readexec.Binding{}, safe(err)
 	}
@@ -510,7 +510,7 @@ func (s *Service) explainSQLServer(ctx context.Context, e identity.Envelope, can
 		_, err = sqlServerExplain(ctx, session, statement, args, actual)
 		return err
 	}
-	rows, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "SELECT 1 AS chartworks_explain"}, tag, discardSQLServerObserver{}, bruinmssql.ReadOptions{Timeout: time.Duration(s.settings.QueryTimeout)}, verifier)
+	rows, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "SELECT 1 AS chartworks_explain"}, tag, discardSQLServerObserver{}, bruinmssql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, Timeout: time.Duration(s.settings.QueryTimeout)}, verifier)
 	if err != nil {
 		return safe(err)
 	}
@@ -577,7 +577,7 @@ func (s *Service) executeSQLServer(ctx context.Context, e identity.Envelope, p r
 		return nil
 	}
 	issued := false
-	rows, _, err := client.OpenReadVerified(ctx, &query.Query{Query: statement, Args: args}, "cw-read:"+id, sqlServerObserver{observer: observer, issued: &issued}, bruinmssql.ReadOptions{Timeout: l.Timeout, CancelTimeout: l.CancelGrace}, verifier)
+	rows, _, err := client.OpenReadVerified(ctx, &query.Query{Query: statement, Args: args}, "cw-read:"+id, sqlServerObserver{observer: observer, issued: &issued}, bruinmssql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, Timeout: l.Timeout, CancelTimeout: l.CancelGrace}, verifier)
 	if err != nil {
 		if issued {
 			out.RemoteState = "unknown"
@@ -737,7 +737,7 @@ func (s *Service) controlSQLServer(ctx context.Context, e identity.Envelope, con
 		return "unknown", err
 	}
 	native := bruinmssql.ReadIdentity{SessionID: remote.SQLServer.SessionID, LoginTime: remote.SQLServer.Started, Server: remote.SQLServer.Server, Account: remote.SQLServer.Account, Database: remote.SQLServer.Database, AttemptTag: remote.Tag}
-	options := bruinmssql.ReadOptions{Timeout: time.Duration(s.settings.QueryTimeout), CancelTimeout: time.Duration(s.settings.QueryTimeout)}
+	options := bruinmssql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, Timeout: time.Duration(s.settings.QueryTimeout), CancelTimeout: time.Duration(s.settings.QueryTimeout)}
 	state := bruinmssql.ReadStateIndeterminate
 	if cancel {
 		state, err = client.CancelRead(ctx, native, options)
