@@ -1,0 +1,32 @@
+name: Temporary verification source recovery
+on:
+  push:
+    branches: [feat/phase-11-12-uploads-profiling]
+    paths: [.github/workflows/verification-source.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Preserve committed history only
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verification-source
+          git bundle create /tmp/verification-source/source.bundle --all
+          git rev-parse HEAD > /tmp/verification-source/HEAD
+          git rev-parse HEAD^{tree} > /tmp/verification-source/TREE
+          git diff --exit-code
+          cd /tmp/verification-source
+          sha256sum source.bundle > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verification-source
+          path: /tmp/verification-source
+          retention-days: 1
+          if-no-files-found: error
