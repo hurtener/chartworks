@@ -128,13 +128,12 @@ func (s *Service) explainBigQuery(ctx context.Context, e identity.Envelope, cand
 	if err != nil {
 		return err
 	}
-	// Bruin's current dry-run path does not bind Query.Args. Deny parameterized
-	// plans here rather than executing user SQL as a validation side effect.
-	if len(parameters) != 0 {
-		return readexec.ErrUnsupported
+	args, err := bigQueryArguments(parameters)
+	if err != nil {
+		return err
 	}
-	result, err := client.DryRunQuery(ctx, &query.Query{Query: statement})
-	if err != nil || result == nil || !result.Valid || result.StatementType != "SELECT" {
+	result, err := client.DryRunRead(ctx, &query.Query{Query: statement, Args: args}, int64(1e12))
+	if err != nil || result.StatementType != "SELECT" {
 		return readexec.ErrUnsafe
 	}
 	allowed := map[string]bool{}
@@ -150,11 +149,11 @@ func (s *Service) explainBigQuery(ctx context.Context, e identity.Envelope, cand
 			return readexec.ErrUnsafe
 		}
 	}
-	if len(result.Schema) == 0 {
+	if len(result.Columns) == 0 {
 		return readexec.ErrUnsafe
 	}
-	for _, column := range result.Schema {
-		if column.Name == "" || bigQueryCategory(column.Type) == "" {
+	for _, column := range result.Columns {
+		if column.Name == "" || bigQueryCategory(column.DatabaseType) == "" {
 			return readexec.ErrUnsupported
 		}
 	}
