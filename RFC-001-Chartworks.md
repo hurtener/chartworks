@@ -1,6 +1,6 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-07 after phase 11/12 acceptance. Phases 01–12 are shipped; twenty-two later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
+Status: implementation design, revised 2026-09-07 for the phase 13 acceptance candidate. Phases 01–12 are shipped; phase 13 is in progress and twenty-one later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 
@@ -64,7 +64,11 @@ CSV/XLSX/Parquet uploads enter managed PostgreSQL workspace tables separate from
 
 Profiles record sampling method, type/null/distinct/range/value-family summaries, quality findings, freshness and observation time. Sampling caps do not guarantee that the engine scanned no pages; expose actual adapter cost controls. Profile generation is bounded/resumable; model-generated descriptions use the same remote Bifrost gateway.
 
-Pipelines are versioned SQL-only steps with declared inputs/output/destination, strategy and blocking checks. Bruin remains behind `PipelineRunner`, not a recreated Go orchestration platform. Preserve applicable create/replace, append, merge/incremental, interval and scd2 strategies via tested per-engine support. Pin the runner and prove telemetry disabled, secret-safe argv/environment, bounded resources and machine-readable validate/lineage. No Python/R assets, ingestr or arbitrary shell execution.
+Pipelines are versioned SQL-only steps with declared inputs/output/destination, strategy and blocking checks. Bruin remains behind `PipelineRunner`, not a recreated Go orchestration platform. Preserve applicable create/replace, append, merge/incremental, interval and scd2 strategies via tested per-engine support. Pin the runner and prove telemetry disabled, secret-safe argv/environment, bounded resources and strict machine-readable validate/lineage. Bruin v0.11.749's embedded Python parser/runtime is a supervised deployment dependency with private bounded cache/scratch; it does not widen the accepted asset contract to user Python/R, ingestr or arbitrary shell execution.
+
+The phase 13 candidate pins Bruin v0.11.749 by executable digest and registers distinct draft, publication, run and read actions. Its [managed-pipeline contract](docs/contracts/managed-pipelines.md) keeps authority, validation, destination ownership, quality activation and reconciliation in Chartworks. Phase status remains in progress until the [current evidence ledger](docs/reviews/phase-13-current-evidence.md) closes on exact committed source.
+
+For new phase-14 warehouse reads, [D-067](docs/decisions/2026-09-07-bruin-read-adoption.md) adopts selective in-process leaf clients from a pinned minimal Bruin fork based on v0.11.749. The universal manager and stock query CLI are outside that read path. Chartworks retains authority, opaque plan admission, positive safety proof, limits, attempts and reconciliation. Native PostgreSQL remains the qualified baseline until the forked path passes parity; recorded cloud tests do not claim live-cloud cutover evidence.
 
 Writes target only registered Chartworks-managed objects/schemas, checked independently at definition and execution rendering, backed by scoped write credentials. A name prefix is not ownership. Customer baseline data is inputs-only. Failed checks never silently publish partially valid outputs. Local metadata publication is transactional; external DDL requires durable steps, reconciliation and honest compensation/partial states.
 

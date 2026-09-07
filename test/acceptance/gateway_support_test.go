@@ -152,6 +152,9 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		default:
 			content := `{"summary":"fixture result"}`
 			finish := "stop"
+			if strings.Contains(model, "pipeline_draft") {
+				content = `{"sql":"SELECT id::bigint AS id FROM analytics.sales","columns":[{"name":"id","type":"bigint","primary_key":true}]}`
+			}
 			if mode == "echo" {
 				messages, _ := input["messages"].([]any)
 				last, _ := messages[len(messages)-1].(map[string]any)

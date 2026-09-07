@@ -1,6 +1,6 @@
 # Phase 13 — engineering-pipelines
 
-Status: planned. Owner: internal/engineering. Hard dependencies: 06, 09, 10, 12.
+Status: in_progress. Owner: internal/engineering. Hard dependencies: 06, 09, 10, 12.
 
 ## Authority and design
 
@@ -28,6 +28,8 @@ No new pipeline engine, unrestricted scripts, automatic semantic publication or 
 
 Pipeline runner path/version, strategy allowlist, timeout/concurrency, managed-object registry, telemetry disabled and quality policy; no arbitrary shell/Python assets. Persist definition versions, declared dependencies, staged effects, completion/compensation records and dataset publication pointer. Secret material is never a durable pipeline payload.
 
+The current candidate uses the D-067 minimal fork derived from Bruin `v0.11.749`; its reviewed source baseline is `dfbfa1746e7064b91de3066df152a19cc553377b`; the final qualified source commit, build version and executable SHA-256 remain acceptance evidence rather than an unmodified-stock qualification. Defaults are disabled, 45-second timeout, concurrency 1, eight steps, 64 KiB SQL per step and 1 MiB runner output. Enabling requires absolute runner/private temporary paths. Definitions support only SQL steps, declared predecessor placeholders, bounded schemas/checks and the six named strategy contracts. Bruin's validator invokes its embedded Python parser/runtime for SQL-only assets; deployment therefore supplies 512 MiB of executable private tmpfs per configured worker while the public asset contract still rejects user Python/R assets. The measured cold fixture wrote 228,013,251 runtime bytes in 1.297 seconds. Exit zero is insufficient: the complete payload must deny malformed/multiple JSON, any critical issue and overflow. The phase's first `pipeline_draft` gateway consumer receives governed schema and a bounded instruction without source rows or secrets; valid output enters the same draft-only validation path and has no publication or execution side effect. See the [candidate runtime contract](../contracts/managed-pipelines.md) and [current evidence ledger](../reviews/phase-13-current-evidence.md).
+
 ## Acceptance criteria
 
 1. **AC01** — Undeclared inputs/outputs or invalid/cyclic pipelines fail before execution; all supported strategies have declared per-engine capability tests.
@@ -40,6 +42,8 @@ Pipeline runner path/version, strategy allowlist, timeout/concurrency, managed-o
 ## Tests, coverage and smoke
 
 Implement `TestPhase13/AC01` through `TestPhase13/AC06` against the real pinned runner and managed PostgreSQL fixture. Observe rendered config, process environment/output handling, blocked baseline targets and failed-check activation. Driver support claims need their strategy tests. COMMON.md supplies coverage; `scripts/smoke/phase-13.sh` requires all six results.
+
+Implementation has been submitted for acceptance. The phase remains in progress until all named criteria, real runner/workspace boundaries, race/coverage and cumulative exact-head gates pass without skips.
 
 ## Glossary, decisions and deviations
 

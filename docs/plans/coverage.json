@@ -712,6 +712,11 @@
     }
   },
   "implementation_evidence": {
+    "13": [
+      "docs/contracts/managed-pipelines.md",
+      "docs/reviews/phase-13-current-evidence.md",
+      "test/acceptance/phase13_test.go"
+    ],
     "05": "test/acceptance/phase05_test.go; docs/reviews/phase-05-06-adversarial.md",
     "06": "test/acceptance/phase06_test.go; docs/contracts/execution-authority-v1.md",
     "07": [

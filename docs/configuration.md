@@ -136,3 +136,24 @@ Both blocks default to `enabled=false`. Disabling new work removes upload/profil
 | `profiling.policies` | empty | At most 128 tenant/source policies and 256 unique declared range columns each. Policies minimize retained values; they grant no authority. |
 
 CSV uses the standard-library decoder; XLSX uses the pinned Excelize dependency and requires an explicit sheet; Parquet uses the pinned parquet-go dependency and the bounded supported encodings. Every activated upload is a normal PostgreSQL 17 managed source consumed through the same validated-read path. Other warehouse engines remain phase 14 work and are not implied by upload format support.
+
+## Managed pipeline configuration
+
+The `pipelines` block defaults to disabled. New pipeline draft/publication/run routes are registered only when enabled; immutable definition reads and retained run controls remain available. The runner is an operator-pinned executable, never selected by a request or definition.
+
+| Key | Default | Bounds and behavior |
+|---|---:|---|
+| `pipelines.enabled` | false | Requires enabled sources/validator plus all runner coordinates below. |
+| `pipelines.runner_path` | empty | Absolute path when enabled; startup verifies the executable digest. |
+| `pipelines.runner_version` | `v0.11.749` | Exact supported Bruin runner version. |
+| `pipelines.runner_sha256` | empty | Exact lowercase SHA-256 of the executable when enabled. |
+| `pipelines.temp_dir` | empty | Absolute operator-owned private ephemeral directory when enabled. |
+| `pipelines.timeout` | 45s | 1 second–1 minute. |
+| `pipelines.concurrency` | 1 | 1–8. |
+| `pipelines.max_steps` | 8 | 1–32. |
+| `pipelines.max_sql_bytes` | 65536 | 256 bytes–1 MiB per step. |
+| `pipelines.max_output_bytes` | 1 MiB | 1 KiB–4 MiB runner output. |
+
+These settings bound the supervised process and definition decoder. They do not grant source reach, prove a managed destination, make external writes transactional, or turn process termination into warehouse cancellation evidence.
+
+The reference CI build checks out the exact D-067 fork commit, uses Go 1.26.4 and locked Rust 1.98.1, builds the parser static library, then builds the runner with `CGO_ENABLED=1` and the `bruin_no_duckdb` tag. The ordinary Chartworks service binary retains its CGo-free build. Phase-14 builds that import the forked parser/leaf packages are an explicit CGo exception and must receive the immutable parser-library directory through the build environment; generated libraries are build artifacts and are not written into the module cache or repository. Linux acceptance supplies 2 GiB of private executable tmpfs for runner workers. SQL Server qualification uses the Linux-amd64 fixture; cloud connectors retain recorded-only status until their separately stated live cutover evidence exists.

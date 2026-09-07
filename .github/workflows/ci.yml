@@ -28,10 +28,15 @@ jobs:
 
   build-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       CGO_ENABLED: 1
+      CGO_LDFLAGS: -L/tmp/chartworks-bruin-source/pkg/sqlparser/rustffi/target/release
       CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
+      CHARTWORKS_BRUIN_COMMIT: dfbfa1746e7064b91de3066df152a19cc553377b
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
       # Synthetic disposable PostgreSQL fixture, never a production credential.
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
     services:
@@ -52,6 +57,34 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - name: Build the immutable phase-13 Bruin fork artifact
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          git init /tmp/chartworks-bruin-source
+          git -C /tmp/chartworks-bruin-source remote add origin https://github.com/hurtener/bruin.git
+          git -C /tmp/chartworks-bruin-source fetch --depth=1 origin "$CHARTWORKS_BRUIN_COMMIT"
+          git -C /tmp/chartworks-bruin-source checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/chartworks-bruin-source rev-parse HEAD)" = "$CHARTWORKS_BRUIN_COMMIT"
+          cargo +1.98.1 build --release --locked --manifest-path /tmp/chartworks-bruin-source/pkg/sqlparser/rustffi/Cargo.toml
+          CGO_ENABLED=1 go -C /tmp/chartworks-bruin-source build -tags=bruin_no_duckdb -ldflags "-s -w -X main.version=v0.11.749(${CHARTWORKS_BRUIN_COMMIT}) -X main.commit=${CHARTWORKS_BRUIN_COMMIT}" -o "$CHARTWORKS_TEST_BRUIN_PATH" .
+          "$CHARTWORKS_TEST_BRUIN_PATH" --version
+          sha256sum "$CHARTWORKS_TEST_BRUIN_PATH"
+      - name: Prepare private executable pipeline scratch and verify-full PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container="$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')"
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+          test "$(psql "postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=verify-full&sslrootcert=$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" -v ON_ERROR_STOP=1 -tAc 'SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()')" = t
       - name: PostgreSQL 17 client tools for actual recovery tests
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -78,7 +111,7 @@ jobs:
           if test -s "$CHARTWORKS_COVERAGE_OUTPUT"; then
             go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(engineering|store/postgres)/|total:'
           fi
-      - name: All seventy-six implemented phase criteria, no missing/skipped tests
+      - name: All eighty-two implemented phase criteria, no missing/skipped tests
         run: |
           python3 scripts/run_phase_acceptance.py --phase 01
           python3 scripts/run_phase_acceptance.py --phase 02
@@ -92,6 +125,7 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 10
           python3 scripts/run_phase_acceptance.py --phase 11
           python3 scripts/run_phase_acceptance.py --phase 12
+          python3 scripts/run_phase_acceptance.py --phase 13
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns

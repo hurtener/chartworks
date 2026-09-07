@@ -29,6 +29,7 @@ import (
 type work struct {
 	sourceService *sources.Service
 	engineering   *engineering.Service
+	pipelines     *engineering.PipelineService
 	handler       http.Handler
 	engine        gateway.Engine
 	queue         *jobs.Service
@@ -116,9 +117,15 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+	w.pipelines, err = engineering.NewPipelineService(db, w.sourceService, validator, w.engine, v, lookup)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
 	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
 	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
 	w.handler = sourceapi.EngineeringHandler(verifier, w.engineering, w.handler)
+	w.handler = sourceapi.PipelineHandler(verifier, w.pipelines, w.handler)
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {
@@ -145,6 +152,9 @@ func (w *work) close() {
 		w.wait.Wait()
 		if w.engineering != nil {
 			w.engineering.Close()
+		}
+		if w.pipelines != nil {
+			w.pipelines.Close()
 		}
 		if w.sourceService != nil {
 			w.sourceService.Close()

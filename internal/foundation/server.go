@@ -221,5 +221,8 @@ func (s *Server) implemented() []string {
 	if s.values.Profiling.Enabled {
 		out = append(out, "versioned_profile_evidence")
 	}
+	if s.values.Pipelines.Enabled {
+		out = append(out, "managed_sql_pipelines")
+	}
 	return out
 }

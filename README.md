@@ -2,7 +2,7 @@
 
 **Governed analytics and publishing for Pengui.** Go services for semantic data access, NLQ/BYO SQL, reusable approved reporting blocks, reports/dashboards, scheduled runs and portable retained results.
 
-Status: phases 01–12 are shipped, including the qualified PostgreSQL 17 validated-read path, managed CSV/XLSX/Parquet uploads and versioned profiling. NLQ/reporting and full source migration remain in subsequent phases. The final cloud CI rerun for the documentation status commit remains tracked separately from the accepted local runtime evidence.
+Status: phases 01–12 are shipped, including the qualified PostgreSQL 17 validated-read path, managed CSV/XLSX/Parquet uploads and versioned profiling. Phase 13 managed SQL pipelines are an in-progress acceptance candidate. NLQ/reporting and full source migration remain in subsequent phases.
 
 ## Start here
 

@@ -1,0 +1,35 @@
+# Managed SQL pipelines — phase 13 candidate
+
+Status: implementation submitted for acceptance. This contract does not mark phase 13 shipped and does not change the separately qualified read-source matrix.
+
+## Boundary and authority
+
+Chartworks owns immutable pipeline definitions, validation, signed authority, managed-object ownership, accepted operation manifests, staged effects and publication. The candidate runner is the D-067 minimal fork derived from Bruin v0.11.749; its current reviewed source baseline is `dfbfa1746e7064b91de3066df152a19cc553377b`, while the final qualified source commit, build version and executable digest remain pending artifact evidence. It is a supervised SQL-asset execution dependency behind `PipelineRunner`; it does not receive authority, choose SQL or destinations, publish datasets, or accept user Python/R/ingestr assets. The v0.11.749-derived validator invokes an embedded Python parser/runtime even for SQL-only validation, so the process build and its private runtime cache are explicit deployment dependencies rather than a CGo-free-core claim.
+
+The newly consumed Pengui action strings are `engineering.pipeline.write`, `engineering.pipeline.publish`, `engineering.pipeline.run` and `engineering.pipeline.read`. Pengui's existing minter transports these opaque operator-approved strings without an issuer change. They are newly registered Chartworks consumer actions, not evidence that a deployed policy already grants them. Addressed reach reuses existing kinds only: draft, proposal, publication and run require `cw.source.write:<pipeline-id>`, while an immutable definition read requires `cw.source.read:<pipeline-id>`. Every external step additionally requires its exact `cw.source.query:<id>` and `cw.execution_context.use:<id>` reach. Run inspection/cancellation require `jobs.read`/`jobs.cancel` plus the original domain reach. No pipeline resource kind or local grant is introduced.
+
+`POST /v1/pipeline-proposals` is the bounded model-assisted authoring consumer for phase 13. The request names the pipeline, connection, source, execution context and a bounded instruction. Chartworks authorizes write/source/context reach and reads governed source schema before calling the configured gateway. It sends no result rows or warehouse secrets. Valid structured output passes the same closed definition and native plan checks as an ordinary draft and can only create a new immutable draft; it cannot publish or run it. Missing model configuration fails unavailable rather than falling back to local inference.
+
+Definitions are tenant-shared under explicit signed reach. Actor/session fields are audit attribution, not a permanent creator ACL. Individual durable run receipts remain actor/session private through the shared operation ledger.
+
+## Definitions and lifecycle
+
+A definition has a bounded ID/name, one configured managed connection and 1–32 SQL steps (default maximum 8). Each step declares exact external source/context/input dependencies or exact preceding step IDs, an output schema, one supported materialization strategy and bounded quality checks. SQL allows only the declared `{{step.ID}}` predecessor placeholders; no general template context or executable asset type is accepted.
+
+Draft creation uses `expected_revision=0`; later drafts require the exact current revision and append an immutable version. Publication names one exact draft head. Repeating publication of that version is idempotent; stale supersession conflicts. Runs name one exact published version and one explicit operation key. `admit_only=true` reserves the durable operation without dispatch so an authorized caller can inspect or cancel it; executing the same accepted key preserves the manifest. No operation silently selects latest, rewrites an accepted definition or treats HTTP acceptance as completed external work.
+
+Supported candidate strategies are `replace`, `append`, `incremental`, `merge`, `interval` and `scd2`. Strategy availability still depends on actual engine evidence. Checks are bounded `row_count`, `not_null` and `unique`. A failed blocking check leaves explicit staged/failed evidence and does not activate the output. External work is not transactionally atomic with metadata: interrupted or uncertain effects require observation/reconciliation and never blind replay.
+
+An explicit fresh resume may drop and rebuild only an exact registered output OID after every persisted prior application name is proven absent from live warehouse sessions and the caller holds a new ledger fence. A first-create operation whose reply is lost before OID registration remains uncertain; the service does not guess or drop by name prefix. A publication CAS conflict requires a new accepted operation and never silently rebases. These are bounded recovery rules, not automatic compensation or cross-warehouse rollback.
+
+## Runner and custody
+
+The enabled configuration pins an absolute executable path, exact lowercase SHA-256, a supported fork build version, an absolute private temporary directory, timeout, concurrency and output bounds. Startup verifies the artifact. Invocation is argv-only with telemetry disabled and a minimal bounded environment. Executable scratch, embedded-parser cache/runtime files and credentials use a private bounded ephemeral directory; they must not share a host cache, exhaust the secret-bearing tmpfs, or persist Bruin's ordinary query logs. The reference allocation is 512 MiB of executable private tmpfs per configured worker: a measured cold SQL-only `validate --fast` wrote 228,013,251 bytes and completed in 1.297 seconds on the recorded Linux fixture. These are capacity inputs, not universal performance claims. The runner parses the complete validation payload and treats non-JSON, multiple JSON documents, any reported critical issue and output beyond the cap as failure even when Bruin exits zero. Baseline objects are inputs only; every write destination is derived from the registered managed workspace and independently proven before execution.
+
+Disabling pipelines removes draft, publish and new-run operations. Exact immutable definition reads and retained run inspection/cancellation remain available without resolving runner/source credentials. Cancellation intent does not claim the subprocess or warehouse effect stopped. Uncertain work retains no fabricated success and must reconcile before an explicit retry.
+
+## Public surface
+
+The checked [operation manifest](chartworks-pipeline-operations.json) is the HTTP/SDK inventory. Bodies are closed JSON, reject alternate tenant/authority coordinates and never accept a runner path, credential, arbitrary environment, asset type or destination name. The Go SDK obtains a current Pengui bearer for every call and never retries a managed write automatically.
+
+The exact-head acceptance ledger is [phase-13-current-evidence.md](../reviews/phase-13-current-evidence.md). Planned tests or a successful runner invocation alone do not establish phase completion.

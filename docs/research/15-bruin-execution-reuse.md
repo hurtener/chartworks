@@ -1,6 +1,6 @@
 # Bruin reuse for warehouse execution
 
-Status: exploration draft, 2026-09-07. This report does not supersede D-036, change an active phase, or authorize implementation. Phase 13/14 production work remains held while the adoption boundary is evaluated.
+Status: completed exploration evidence, 2026-09-07. [D-067](../decisions/2026-09-07-bruin-read-adoption.md) subsequently adopts a pinned minimal Bruin leaf-client fork for new warehouse reads. This report preserves the evidence available before that decision; its earlier recommendation/status language is historical rather than current implementation direction.
 
 ## Question and current boundary
 
@@ -91,4 +91,4 @@ Host-local evidence checksums at report time:
 | `inprocess-unmodified.log` | `2c7a2022e8c18ed0c885d382564f316a550720210964b864632c8f4cdf4b296b` |
 | `inprocess-patched.log` | `5197b3c719e575055a183278c780d0a90585af774d92504b04ffa9dbd0ea587d` |
 
-This draft makes no adoption decision. D-036 remains the active write-path-only Bruin boundary while the narrow-extension comparison is incomplete. Any broadening requires completed evidence, an explicit superseding decision and coordinated updates to RFC-001, phases 13/14, configuration/build matrices and acceptance criteria.
+At the exploration boundary this report made no adoption decision. D-067 now selects the narrow leaf-client fork for new warehouse reads while preserving native PostgreSQL until parity and retaining the D-036 CLI boundary for managed writes. The fork's exact commit and per-engine qualification remain implementation evidence, not findings retroactively supplied by this investigation.
