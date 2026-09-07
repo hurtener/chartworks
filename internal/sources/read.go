@@ -215,7 +215,10 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 		if queryErr != nil {
 			return out, queryErr
 		}
-		fields := rows.FieldDescriptions()
+		fields, fieldErr := readResultFields(rows)
+		if fieldErr != nil {
+			return out, fieldErr
+		}
 		if collector == nil {
 			schema := make([]readexec.Field, len(fields))
 			for i, f := range fields {
