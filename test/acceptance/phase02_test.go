@@ -76,7 +76,11 @@ func TestPhase02(t *testing.T) {
 		}
 		wg.Wait()
 		c := support.Raw(t, dsn)
-		if count(t, c, `SELECT count(*) FROM chartworks.schema_migrations`) != 10 {
+		manifest, err := postgres.Migrations()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count(t, c, `SELECT count(*) FROM chartworks.schema_migrations`) != int64(len(manifest)) {
 			t.Fatal("migrations not exactly once")
 		}
 		db := support.Open(t, dsn)

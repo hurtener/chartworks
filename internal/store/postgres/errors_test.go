@@ -24,15 +24,15 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "10" || len(manifest) != 10 {
+	if err != nil || SchemaVersion() != "11" || len(manifest) != 11 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	latest := manifest[len(manifest)-1]
-	if latest.Version != 10 || latest.Name != "migrations/010_warehouse_source_dialects.sql" || len(latest.Checksum) != 64 {
+	if latest.Version != 11 || latest.Name != "migrations/011_read_acknowledgments.sql" || len(latest.Checksum) != 64 {
 		t.Fatal("latest embedded migration identity", latest.Version, latest.Name, latest.Checksum)
 	}
 	for _, dialect := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
-		if !strings.Contains(latest.SQL, "'"+dialect+"'") {
+		if !strings.Contains(manifest[9].SQL, "'"+dialect+"'") {
 			t.Fatal("warehouse dialect migration missing closed variant", dialect)
 		}
 	}
