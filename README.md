@@ -2,7 +2,7 @@
 
 **Governed analytics and publishing for Pengui.** Go services for semantic data access, NLQ/BYO SQL, reusable approved reporting blocks, reports/dashboards, scheduled runs and portable retained results.
 
-Status: phases 01–10 are shipped with the qualified PostgreSQL 17 validated-read path. Uploads and profiling (phases 11–12) are implemented on the current acceptance candidate and remain in progress until exact-head acceptance, race, coverage and applicable integration evidence pass. NLQ/reporting and full source migration remain in subsequent phases.
+Status: phases 01–12 are shipped, including the qualified PostgreSQL 17 validated-read path, managed CSV/XLSX/Parquet uploads and versioned profiling. NLQ/reporting and full source migration remain in subsequent phases. The final cloud CI rerun for the documentation status commit remains tracked separately from the accepted local runtime evidence.
 
 ## Start here
 
@@ -40,6 +40,6 @@ See [setup](GETTING-STARTED.md) and the [adversarial review and verification rec
 
 Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](docs/contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.
 
-## Uploads and profiling (phases 11/12 candidate)
+## Uploads and profiling (phases 11/12)
 
-The candidate accepts bounded CSV, XLSX and Parquet files into a tenant-scoped managed PostgreSQL workspace, then exposes the activated dataset through the ordinary source, validation and read-execution path. Deterministic versioned profiles retain sampling provenance, freshness, quality findings and schema-drift evidence; optional summaries use only the existing Bifrost gateway over sanitized aggregates. See [setup](GETTING-STARTED.md), [configuration](docs/configuration.md) and the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json). These phases remain in progress pending final exact-head evidence.
+The service accepts bounded CSV, XLSX and Parquet files into a tenant-scoped managed PostgreSQL workspace, then exposes the activated dataset through the ordinary source, validation and read-execution path. Deterministic versioned profiles retain sampling provenance, freshness, quality findings and schema-drift evidence; optional summaries use only the existing Bifrost gateway over sanitized aggregates. See [setup](GETTING-STARTED.md), [configuration](docs/configuration.md), the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json) and [acceptance evidence](docs/reviews/phase-11-12-current-evidence.md).

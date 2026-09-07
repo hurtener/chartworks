@@ -1,6 +1,6 @@
 # Running the current Chartworks build
 
-This build includes the shipped phases 01–10 and the phase 11/12 acceptance candidate: configuration, identity enforcement, remote Bifrost inference, durable work, PostgreSQL sources, validated reads, managed uploads and profiling. It does **not** implement NLQ, reporting, the full MCP server or rendering yet. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
+This build includes shipped phases 01–12: configuration, identity enforcement, remote Bifrost inference, durable work, PostgreSQL sources, validated reads, managed uploads and profiling. It does **not** implement NLQ, reporting, the full MCP server or rendering yet. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
 
 ## Requirements
 
@@ -63,7 +63,7 @@ make preflight-full
 
 Real-store tests create unique `cw_test_*` databases on the explicit test server and remove them afterward. Missing PostgreSQL/client tools, a missing acceptance child, or a skipped runtime test is a failure, not a pass. Coverage instruments production packages across the full test suite, including integration callers; thresholds remain 85% for store, 80% for other internal code and 70% for CLI.
 
-Phases 11–12 remain in progress and the other 22 phases remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [current phase 11/12 evidence ledger](docs/reviews/phase-11-12-current-evidence.md).
+The other 22 phases remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [phase 11/12 evidence ledger](docs/reviews/phase-11-12-current-evidence.md).
 
 ## Backup, restore and rollback
 
@@ -144,7 +144,7 @@ Read the complete [read contract](docs/contracts/read-execution.md) before enabl
 execution. Actual scan bytes remain unknown; row/response-byte caps are not scan
 budgets. The 24-hour content-free receipt window is not phase-28 result retention.
 
-## Managed uploads and profiling (phases 11/12 candidate)
+## Managed uploads and profiling (phases 11/12)
 
 Configure one tenant-bound `sources.connections[]` alias for the managed workspace with independent `env:` read/write DSN references. It must be a PostgreSQL 17 database distinct from the metadata-store database. Set `uploads.enabled=true` only after that alias and the shared durable worker are ready; set `profiling.enabled=true` only with the validated-read source/context declarations required for its sample. Optional `profiling.summaries=true` also requires the configured Bifrost `profile_summary` role.
 
@@ -159,4 +159,4 @@ The implemented support boundary is:
 | PostgreSQL 17 source | deterministic profile plus optional sanitized summary | returned row/byte and planner-cost bounds do not prove scan bytes |
 | Other warehouse engines | unavailable | phase 14 qualification remains required |
 
-The sequence is reserve `POST /v1/uploads`, send the exact binary body to `PUT /v1/uploads/{id}/content` with `application/octet-stream`, then start or explicitly resume `POST /v1/uploads/{id}/load`. Build a profile with `POST /v1/profiles`; inspect retained state/evidence/history and dependency health without a source/model call. Every work request uses an explicit operation key, and a lost response is recovered through `/v1/engineering-operations/{id}` rather than silently creating another attempt. Use the [manifest](docs/contracts/chartworks-engineering-operations.json) and [provider registration contract](docs/contracts/pengui-provider-registration.md) for the exact actions. Phase 11/12 status remains in progress until current-head gates pass.
+The sequence is reserve `POST /v1/uploads`, send the exact binary body to `PUT /v1/uploads/{id}/content` with `application/octet-stream`, then start or explicitly resume `POST /v1/uploads/{id}/load`. Build a profile with `POST /v1/profiles`; inspect retained state/evidence/history and dependency health without a source/model call. Every work request uses an explicit operation key, and a lost response is recovered through `/v1/engineering-operations/{id}` rather than silently creating another attempt. Use the [manifest](docs/contracts/chartworks-engineering-operations.json) and [provider registration contract](docs/contracts/pengui-provider-registration.md) for the exact actions.

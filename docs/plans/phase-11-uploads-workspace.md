@@ -1,6 +1,6 @@
 # Phase 11 — uploads-workspace
 
-Status: in_progress. Owner: internal/engineering, internal/sources. Hard dependencies: 06, 08.
+Status: shipped. Owner: internal/engineering, internal/sources. Hard dependencies: 06, 08.
 
 ## Authority and design
 
@@ -51,8 +51,8 @@ An upload's final erasure transaction also removes complete and checkpoint profi
 
 Implement `TestPhase11/AC01` through `TestPhase11/AC06`; malformed/archive/cell fuzz seeds, real workspace load and kill/retry/cleanup tests are required. AC05 closes with the common execution/report consumer before migration acceptance. COMMON.md supplies coverage; `scripts/smoke/phase-11.sh` requires all six results.
 
-The current candidate contains the six named tests, HTTP/SDK/binary integration fixtures, a checked [engineering operation manifest](../contracts/chartworks-engineering-operations.json), and exact-value, normalization-budget, publication-lock, replacement-race and derived-erasure regressions. Historical failures remain in the [adversarial review](../reviews/phase-11-12-adversarial.md) and [request-recovery record](../reviews/phase-11-12-request-recovery.md). The [current evidence ledger](../reviews/phase-11-12-current-evidence.md) owns exact-head gate results. Missing evidence keeps this phase in progress.
+The shipped implementation contains the six named tests, HTTP/SDK/binary integration fixtures, a checked [engineering operation manifest](../contracts/chartworks-engineering-operations.json), and exact-value, normalization-budget, publication-lock, replacement-race and derived-erasure regressions. Historical failures remain in the [adversarial review](../reviews/phase-11-12-adversarial.md) and [request-recovery record](../reviews/phase-11-12-request-recovery.md). The [current evidence ledger](../reviews/phase-11-12-current-evidence.md) records the accepted local gates and pending final cloud rerun.
 
 ## Glossary, decisions and deviations
 
-Managed upload workspace is customer data, not metadata-store data. D-052 applies. No runtime completion is claimed. Later reporting/semantic integration and final migration acceptance remain obligations of their actual owning phases, not satisfied by declaring an upload active.
+Managed upload workspace is customer data, not metadata-store data. D-052 applies. Later reporting/semantic integration and final migration acceptance remain obligations of their actual owning phases, not satisfied by declaring an upload active.

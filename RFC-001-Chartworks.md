@@ -1,6 +1,6 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-07 for the phase 11/12 acceptance candidate. Phases 01–10 are shipped; uploads and profiling are implemented and remain in progress pending exact-head verification; twenty-two later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
+Status: implementation design, revised 2026-09-07 after phase 11/12 acceptance. Phases 01–12 are shipped; twenty-two later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 
@@ -181,6 +181,6 @@ Read execution now extends the merged phase-09 validator on the existing source/
 
 ## Phases 11/12 implementation addendum (2026-09-07)
 
-The current acceptance candidate adds bounded CSV/XLSX/Parquet ingestion into the managed PostgreSQL workspace and versioned deterministic profiling through the existing validator, executor, operation ledger, source registry and optional Bifrost `profile_summary` role. The executable HTTP and SDK surface is recorded in the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json); mutation registration follows `uploads.enabled` and `profiling.enabled`, while retained reads and cancellation remain available.
+The shipped implementation adds bounded CSV/XLSX/Parquet ingestion into the managed PostgreSQL workspace and versioned deterministic profiling through the existing validator, executor, operation ledger, source registry and optional Bifrost `profile_summary` role. The executable HTTP and SDK surface is recorded in the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json); mutation registration follows `uploads.enabled` and `profiling.enabled`, while retained reads and cancellation remain available.
 
-This does not qualify MySQL, SQL Server, BigQuery, Snowflake or Databricks, publish semantics, or claim live model/deployment evidence. The phase registry remains `in_progress` until the exact candidate passes its required acceptance, race, coverage and applicable source/provider gates.
+This does not qualify MySQL, SQL Server, BigQuery, Snowflake or Databricks, publish semantics, or claim live model/deployment evidence. The [phase evidence ledger](docs/reviews/phase-11-12-current-evidence.md) separates accepted local runtime evidence from the pending final cloud rerun.

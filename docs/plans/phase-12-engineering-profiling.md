@@ -1,6 +1,6 @@
 # Phase 12 — engineering-profiling
 
-Status: in_progress. Owner: internal/engineering. Hard dependencies: 05, 06, 08, 10.
+Status: shipped. Owner: internal/engineering. Hard dependencies: 05, 06, 08, 10.
 
 ## Authority and design
 
@@ -49,10 +49,10 @@ Uploaded-source erasure now clears both complete profile results and unpublished
 
 Implement `TestPhase12/AC01` through `TestPhase12/AC06`. Real source profiling/limits and source-change fixtures supplement pure summary/freshness tests; semantic consumers close the boundary before their phase closure. COMMON.md supplies coverage; `scripts/smoke/phase-12.sh` requires all six results.
 
-The current candidate contains named acceptance tests plus source-backed checkpoint, cancellation, provider-redaction, schema-diff and inspection fixtures. `TestUploadErasureRemovesDerivedProfileValuesAcrossActors` covers complete and unpublished evidence, another actor, interrupted erasure, same-operation resume and an unrelated surviving source. Historical failures remain in the [adversarial review](../reviews/phase-11-12-adversarial.md) and [request-recovery record](../reviews/phase-11-12-request-recovery.md). The [current evidence ledger](../reviews/phase-11-12-current-evidence.md) owns exact-head gate results; test presence does not establish acceptance.
+The shipped implementation contains named acceptance tests plus source-backed checkpoint, cancellation, provider-redaction, schema-diff and inspection fixtures. `TestUploadErasureRemovesDerivedProfileValuesAcrossActors` covers complete and unpublished evidence, another actor, interrupted erasure, same-operation resume and an unrelated surviving source. Historical failures remain in the [adversarial review](../reviews/phase-11-12-adversarial.md) and [request-recovery record](../reviews/phase-11-12-request-recovery.md). The [current evidence ledger](../reviews/phase-11-12-current-evidence.md) records the accepted local gates and pending final cloud rerun.
 
 Permanent read-only CI requires all 76 implemented criteria, the full race-enabled coverage suite and bounded engineering/parser fuzz checks without reducing earlier gates. AC06 still requires actual measured source/service/model attribution as applicable; an inspection seam does not finish the later semantic-generation or publishing phases.
 
 ## Glossary, decisions and deviations
 
-Observation time, freshness and sampling provenance are distinct. D-049/D-052 apply. No runtime completion is claimed. This phase remains in progress until current-source verification and the required consumer evidence are recorded.
+Observation time, freshness and sampling provenance are distinct. D-049/D-052 apply. Later semantic generation/publication and live provider quality remain obligations of their owning phases.
