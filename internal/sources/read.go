@@ -121,7 +121,7 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 			// operation's bounded cleanup allowance; never signal a reusable PID.
 			if remote.Valid() && out.RemoteState == "unknown" {
 				var active bool
-				observeErr := pool.QueryRow(cleanup, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, remote.PID, remote.Started, remote.Tag).Scan(&active)
+				observeErr := pool.QueryRow(cleanup, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, remote.Postgres.PID, remote.Postgres.Started, remote.Tag).Scan(&active)
 				if observeErr == nil && !active {
 					out.RemoteState = "stopped"
 					if queryErr != nil {
@@ -161,10 +161,12 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 	if cost > l.PlannerCost {
 		return out, readexec.ErrLimit
 	}
-	remote = readexec.RemoteQuery{Tag: "cw-read:" + id}
-	if err = tx.QueryRow(ctx, `SELECT pg_backend_pid(),backend_start FROM pg_catalog.pg_stat_activity WHERE pid=pg_backend_pid()`).Scan(&remote.PID, &remote.Started); err != nil {
+	var pid uint32
+	var started time.Time
+	if err = tx.QueryRow(ctx, `SELECT pg_backend_pid(),backend_start FROM pg_catalog.pg_stat_activity WHERE pid=pg_backend_pid()`).Scan(&pid, &started); err != nil {
 		return out, err
 	}
+	remote = readexec.NewPostgresRemoteQuery(pid, started, "cw-read:"+id)
 	if !remote.Valid() {
 		return out, readexec.ErrBinding
 	}
@@ -438,7 +440,7 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 					return err
 				}
 				var exists bool
-				if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, q.PID, q.Started, q.Tag).Scan(&exists); err != nil {
+				if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, q.Postgres.PID, q.Postgres.Started, q.Tag).Scan(&exists); err != nil {
 					return safe(err)
 				}
 				state = "stopped"

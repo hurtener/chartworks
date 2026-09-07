@@ -105,7 +105,7 @@ func TestReadLimitsAndQueryIdentity(t *testing.T) {
 			t.Fatal("invalid limits accepted")
 		}
 	}
-	q := RemoteQuery{PID: 1, Started: time.Now(), Tag: "cw-read:" + strings.Repeat("a", 32)}
+	q := NewPostgresRemoteQuery(1, time.Now(), "cw-read:"+strings.Repeat("a", 32))
 	if !q.Valid() {
 		t.Fatal("valid query identity")
 	}

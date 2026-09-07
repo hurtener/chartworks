@@ -201,6 +201,7 @@ type Receipt struct {
 	Validated    bool     `json:"validated"`
 	Source       string   `json:"source"`
 	Context      string   `json:"context"`
+	Dialect      string   `json:"dialect,omitempty"`
 	Contract     string   `json:"contract"`
 	Dependencies []string `json:"dependencies"`
 	Columns      []string `json:"columns"`
@@ -213,7 +214,7 @@ func (p Plan) Receipt() Receipt {
 		return Receipt{}
 	}
 	c := p.candidate
-	return Receipt{Validated: true, Source: c.binding.Source, Context: c.binding.Context, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash([]any{c.binding, c.statement, c.parameters, c.dependencies, c.authority})}
+	return Receipt{Validated: true, Source: c.binding.Source, Context: c.binding.Context, Dialect: c.binding.Dialect, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash([]any{c.binding, c.statement, c.parameters, c.dependencies, c.authority})}
 }
 
 // String prevents accidental SQL disclosure through ordinary logging.

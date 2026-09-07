@@ -54,7 +54,7 @@ func TestReadOldCancellationCannotSignalReusedBackend(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("new query did not dispatch")
 	}
-	if next.PID != old.Attempt.Remote.PID {
+	if next.Driver != "postgres" || next.Postgres.PID != old.Attempt.Remote.Postgres.PID {
 		stop()
 		<-done
 		t.Fatal("fixture did not actually reuse the backend PID")
@@ -71,7 +71,7 @@ func TestReadOldCancellationCannotSignalReusedBackend(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 	var active bool
-	if err = f.admin.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND application_name=$2)`, next.PID, next.Tag).Scan(&active); err != nil || !active {
+	if err = f.admin.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND application_name=$2)`, next.Postgres.PID, next.Tag).Scan(&active); err != nil || !active {
 		stop()
 		<-done
 		t.Fatal("new transaction disappeared", err)
