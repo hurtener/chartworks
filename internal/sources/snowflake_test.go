@@ -202,7 +202,7 @@ func TestSnowflakeExecutionFailurePreservesRemoteState(t *testing.T) {
 	}
 }
 
-func TestSnowflakeExecutionRevalidatesReplacementAndKeepsCapturedClient(t *testing.T) {
+func TestSnowflakeExecutionRequiresRotationAfterCredentialReplacement(t *testing.T) {
 	marshal := func(c bruinsnowflake.Config) string {
 		raw, err := json.Marshal(c)
 		if err != nil {
@@ -210,30 +210,32 @@ func TestSnowflakeExecutionRevalidatesReplacementAndKeepsCapturedClient(t *testi
 		}
 		return string(raw)
 	}
-	raw := marshal(bruinsnowflake.Config{Account: "account", Database: "database", Schema: "analytics", Token: "token"})
+	raw := marshal(bruinsnowflake.Config{Account: "account", Username: "reader", Password: "first", Region: "region", Database: "database", Schema: "analytics"})
 	var clients []*snowflakeFixtureClient
 	factory := func(native *bruinsnowflake.Config) (snowflakeClient, error) {
 		client := &snowflakeFixtureClient{database: native.Database}
-		if native.Token == "rotated" {
-			client.onCatalogRead = func() {
-				raw = marshal(bruinsnowflake.Config{Account: "account", Database: "third_database", Schema: "analytics", Token: "third"})
-			}
-		}
 		clients = append(clients, client)
 		return client, nil
 	}
 	service, e, plan := validatedSnowflakePlan(t, func(name string) (string, bool) { return raw, name == "SF_CONFIG" }, factory)
 	t.Cleanup(service.Close)
+	clients[0].onCatalogRead = func() {
+		raw = marshal(bruinsnowflake.Config{Account: "third_account", Username: "third", Password: "third", Region: "region", Database: "third_database", Schema: "analytics"})
+	}
+	result, err := service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "32323232323232323232323232323232", &cloudObserverCapture{})
+	if err != nil || result.RemoteState != "stopped" || len(clients) != 1 || clients[0].userReads != 1 {
+		t.Fatalf("captured client was replaced between probe and dispatch: result=%#v err=%v clients=%d", result, err, len(clients))
+	}
 
-	raw = marshal(bruinsnowflake.Config{Account: "account", Database: "replacement_database", Schema: "analytics", Token: "token"})
-	result, err := service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "33333333333333333333333333333333", &cloudObserverCapture{})
+	raw = marshal(bruinsnowflake.Config{Account: "account", Username: "reader", Password: "first", Region: "region", Database: "replacement_database", Schema: "analytics"})
+	result, err = service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "33333333333333333333333333333333", &cloudObserverCapture{})
 	if !errors.Is(err, readexec.ErrBinding) || result.RemoteState != "not_issued" || len(clients) != 2 || clients[1].userReads != 0 {
 		t.Fatalf("replacement context was not denied before dispatch: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
 	}
 
-	raw = marshal(bruinsnowflake.Config{Account: "account", Database: "database", Schema: "analytics", Token: "rotated"})
+	raw = marshal(bruinsnowflake.Config{Account: "account", Username: "replacement_reader", Password: "second", Region: "region", Database: "database", Schema: "analytics"})
 	result, err = service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "44444444444444444444444444444444", &cloudObserverCapture{})
-	if err != nil || result.RemoteState != "stopped" || len(clients) != 3 || clients[2].userReads != 1 {
-		t.Fatalf("captured client was not retained through dispatch: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
+	if !errors.Is(err, readexec.ErrBinding) || result.RemoteState != "not_issued" || len(clients) != 3 || clients[2].userReads != 0 {
+		t.Fatalf("credential replacement executed before rotation: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
 	}
 }

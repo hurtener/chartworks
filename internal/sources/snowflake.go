@@ -59,21 +59,21 @@ func (o snowflakeObserver) record(ctx context.Context, id bruinsnowflake.ReadIde
 	return o.observer.Dispatch(ctx, readexec.RemoteQuery{Driver: "snowflake", Tag: o.tag, Snowflake: &readexec.SnowflakeRemoteQuery{RequestID: id.RequestID, QueryID: id.QueryID, QueryTag: id.QueryTag, Account: id.Account, Database: id.Database, SessionID: id.SessionID}}, accepted)
 }
 
-func (s *Service) snowflakeClient(c config.SourceConnection) (snowflakeClient, *bruinsnowflake.Config, error) {
+func (s *Service) snowflakeClient(c config.SourceConnection) (snowflakeClient, *bruinsnowflake.Config, string, error) {
 	raw, ok := s.lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
 	if !ok || len(raw) == 0 || len(raw) > 1<<20 {
-		return nil, nil, store.ErrUnavailable
+		return nil, nil, "", store.ErrUnavailable
 	}
 	var native bruinsnowflake.Config
 	if json.Unmarshal([]byte(raw), &native) != nil || !native.IsValid() || native.Database == "" || native.Schema == "" {
-		return nil, nil, store.ErrInvalid
+		return nil, nil, "", store.ErrInvalid
 	}
 	key := c.Tenant + "/" + c.ID
 	material := readexec.Hash([]any{raw, c.Version})
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry, ok := s.snowflakePools[key]; ok && entry.material == material {
-		return entry.client, &native, nil
+		return entry.client, &native, material, nil
 	}
 	create := s.newSnowflake
 	if create == nil {
@@ -84,14 +84,14 @@ func (s *Service) snowflakeClient(c config.SourceConnection) (snowflakeClient, *
 	}
 	client, err := create(&native)
 	if err != nil {
-		return nil, nil, safe(err)
+		return nil, nil, "", safe(err)
 	}
 	old := s.snowflakePools[key]
 	s.snowflakePools[key] = snowflakePoolEntry{material: material, client: client}
 	if old.client != nil {
 		_ = old.client.Close()
 	}
-	return client, &native, nil
+	return client, &native, material, nil
 }
 func (s *Service) closeSnowflake() {
 	for key, entry := range s.snowflakePools {
@@ -101,16 +101,16 @@ func (s *Service) closeSnowflake() {
 }
 
 func (s *Service) probeSnowflake(ctx context.Context, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
-	client, native, err := s.snowflakeClient(c)
+	client, native, material, err := s.snowflakeClient(c)
 	if err != nil {
 		return readexec.Binding{}, err
 	}
-	return probeSnowflakeClient(ctx, client, native, c, id, revision)
+	return probeSnowflakeClient(ctx, client, native, material, c, id, revision)
 }
 
-func probeSnowflakeClient(ctx context.Context, client snowflakeClient, native *bruinsnowflake.Config, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
+func probeSnowflakeClient(ctx context.Context, client snowflakeClient, native *bruinsnowflake.Config, material string, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
 	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "snowflake", Catalog: native.Database}
-	evidence := []any{native.Account, native.Database, native.Schema, native.Role, native.Warehouse, c.Version}
+	evidence := []any{native.Account, native.Database, native.Schema, native.Role, native.Warehouse, c.Version, material}
 	for _, relation := range c.Relations {
 		tableSQL := "SELECT table_type FROM " + snowflakeName(native.Database) + ".information_schema.tables WHERE table_schema=? AND table_name=?"
 		tableStream, _, tableErr := client.OpenRead(ctx, &query.Query{Query: tableSQL, Args: []any{relation.Schema, relation.Name}}, "probe-table:"+readexec.Hash([]any{id, revision, relation.Schema, relation.Name})[:24], snowflakeObserver{})
@@ -146,11 +146,11 @@ func probeSnowflakeClient(ctx context.Context, client snowflakeClient, native *b
 func snowflakeName(value string) string { return `"` + strings.ReplaceAll(value, `"`, `""`) + `"` }
 
 func (s *Service) explainSnowflake(ctx context.Context, e identity.Envelope, candidate readexec.Candidate, c config.SourceConnection, expected readexec.Binding) error {
-	client, native, err := s.snowflakeClient(c)
+	client, native, material, err := s.snowflakeClient(c)
 	if err != nil {
 		return err
 	}
-	actual, err := probeSnowflakeClient(ctx, client, native, c, expected.Source, expected.Revision)
+	actual, err := probeSnowflakeClient(ctx, client, native, material, c, expected.Source, expected.Revision)
 	if err != nil {
 		return err
 	}
@@ -181,11 +181,11 @@ func (s *Service) explainSnowflake(ctx context.Context, e identity.Envelope, can
 }
 func (s *Service) executeSnowflake(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (readexec.NativeResult, error) {
 	out := readexec.NativeResult{RemoteState: "not_issued"}
-	client, native, err := s.snowflakeClient(c)
+	client, native, material, err := s.snowflakeClient(c)
 	if err != nil {
 		return out, err
 	}
-	actual, err := probeSnowflakeClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	actual, err := probeSnowflakeClient(ctx, client, native, material, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return out, err
 	}
@@ -217,11 +217,11 @@ func (s *Service) executeSnowflake(ctx context.Context, e identity.Envelope, p r
 	return out, nil
 }
 func (s *Service) controlSnowflake(ctx context.Context, e identity.Envelope, control readexec.Control, record Record, c config.SourceConnection, cancel bool) (string, error) {
-	client, native, err := s.snowflakeClient(c)
+	client, native, material, err := s.snowflakeClient(c)
 	if err != nil {
 		return "unknown", err
 	}
-	actual, err := probeSnowflakeClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	actual, err := probeSnowflakeClient(ctx, client, native, material, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return "unknown", err
 	}

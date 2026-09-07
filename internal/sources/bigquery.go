@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -75,21 +77,24 @@ func (s *cloudDispatchState) failureState() string {
 	return "not_issued"
 }
 
-func (s *Service) bigQueryClient(c config.SourceConnection) (bigQueryClient, *bruinbigquery.Config, error) {
+func (s *Service) bigQueryClient(c config.SourceConnection) (bigQueryClient, *bruinbigquery.Config, string, error) {
 	raw, ok := s.lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
 	if !ok || len(raw) == 0 || len(raw) > 1<<20 {
-		return nil, nil, store.ErrUnavailable
+		return nil, nil, "", store.ErrUnavailable
 	}
 	var native bruinbigquery.Config
 	if json.Unmarshal([]byte(raw), &native) != nil || !native.IsValid() || native.Location == "" {
-		return nil, nil, store.ErrInvalid
+		return nil, nil, "", store.ErrInvalid
+	}
+	material, err := captureBigQueryMaterial(&native, raw, c.Version)
+	if err != nil {
+		return nil, nil, "", err
 	}
 	key := c.Tenant + "/" + c.ID
-	material := readexec.Hash([]any{raw, c.Version})
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry, ok := s.bigQueryPools[key]; ok && entry.material == material {
-		return entry.client, &native, nil
+		return entry.client, &native, material, nil
 	}
 	create := s.newBigQuery
 	if create == nil {
@@ -100,14 +105,48 @@ func (s *Service) bigQueryClient(c config.SourceConnection) (bigQueryClient, *br
 	}
 	client, err := create(&native)
 	if err != nil {
-		return nil, nil, safe(err)
+		return nil, nil, "", safe(err)
 	}
 	old := s.bigQueryPools[key]
 	s.bigQueryPools[key] = bigQueryPoolEntry{material: material, client: client}
 	if old.client != nil {
 		_ = old.client.Close()
 	}
-	return client, &native, nil
+	return client, &native, material, nil
+}
+
+func captureBigQueryMaterial(native *bruinbigquery.Config, raw, version string) (string, error) {
+	// Governed contexts require a credential value whose exact bytes can be
+	// captured with the client. ADC and opaque credential providers can select a
+	// different principal after restart without changing source configuration.
+	if native.UseApplicationDefaultCredentials || native.Credentials != nil {
+		return "", readexec.ErrUnsupported
+	}
+	credential := native.CredentialsJSON
+	if credential == "" && native.CredentialsFilePath != "" {
+		file, err := os.Open(native.CredentialsFilePath)
+		if err != nil {
+			return "", store.ErrUnavailable
+		}
+		defer func() { _ = file.Close() }()
+		contents, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+		if err != nil {
+			return "", store.ErrUnavailable
+		}
+		if len(contents) > 1<<20 {
+			return "", store.ErrInvalid
+		}
+		credential = string(contents)
+		native.CredentialsJSON = credential
+		native.CredentialsFilePath = ""
+	}
+	if credential == "" {
+		credential = native.AccessToken
+	}
+	if credential == "" {
+		return "", store.ErrInvalid
+	}
+	return readexec.Hash([]any{"bigquery-credential-v1", raw, version, credential}), nil
 }
 
 func (s *Service) closeBigQuery() {
@@ -118,11 +157,11 @@ func (s *Service) closeBigQuery() {
 }
 
 func (s *Service) probeBigQuery(ctx context.Context, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
-	client, native, err := s.bigQueryClient(c)
+	client, native, material, err := s.bigQueryClient(c)
 	if err != nil {
 		return readexec.Binding{}, err
 	}
-	return probeBigQueryClient(ctx, client, native, c, id, revision)
+	return probeBigQueryClient(ctx, client, native, material, c, id, revision)
 }
 
 func probeBigQueryTag(prefix string) (string, error) {
@@ -133,9 +172,9 @@ func probeBigQueryTag(prefix string) (string, error) {
 	return prefix + hex.EncodeToString(value[:]), nil
 }
 
-func probeBigQueryClient(ctx context.Context, client bigQueryClient, native *bruinbigquery.Config, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
+func probeBigQueryClient(ctx context.Context, client bigQueryClient, native *bruinbigquery.Config, material string, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
 	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "bigquery", Catalog: native.ProjectID}
-	evidence := []any{native.ProjectID, native.Location, c.Version}
+	evidence := []any{native.ProjectID, native.Location, c.Version, material}
 	for _, relation := range c.Relations {
 		tableTag, err := probeBigQueryTag("probe-table:")
 		if err != nil {
@@ -180,11 +219,11 @@ func probeBigQueryClient(ctx context.Context, client bigQueryClient, native *bru
 }
 
 func (s *Service) explainBigQuery(ctx context.Context, e identity.Envelope, candidate readexec.Candidate, c config.SourceConnection, expected readexec.Binding) error {
-	client, native, err := s.bigQueryClient(c)
+	client, native, material, err := s.bigQueryClient(c)
 	if err != nil {
 		return err
 	}
-	actual, err := probeBigQueryClient(ctx, client, native, c, expected.Source, expected.Revision)
+	actual, err := probeBigQueryClient(ctx, client, native, material, c, expected.Source, expected.Revision)
 	if err != nil {
 		return err
 	}
@@ -229,11 +268,11 @@ func (s *Service) explainBigQuery(ctx context.Context, e identity.Envelope, cand
 
 func (s *Service) executeBigQuery(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (readexec.NativeResult, error) {
 	out := readexec.NativeResult{RemoteState: "not_issued"}
-	client, native, err := s.bigQueryClient(c)
+	client, native, material, err := s.bigQueryClient(c)
 	if err != nil {
 		return out, err
 	}
-	actual, err := probeBigQueryClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	actual, err := probeBigQueryClient(ctx, client, native, material, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return out, err
 	}
@@ -268,11 +307,11 @@ func (s *Service) executeBigQuery(ctx context.Context, e identity.Envelope, p re
 }
 
 func (s *Service) controlBigQuery(ctx context.Context, e identity.Envelope, control readexec.Control, record Record, c config.SourceConnection, cancel bool) (string, error) {
-	client, native, err := s.bigQueryClient(c)
+	client, native, material, err := s.bigQueryClient(c)
 	if err != nil {
 		return "unknown", err
 	}
-	actual, err := probeBigQueryClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	actual, err := probeBigQueryClient(ctx, client, native, material, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return "unknown", err
 	}

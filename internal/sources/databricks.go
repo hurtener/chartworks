@@ -60,21 +60,21 @@ func (o databricksObserver) record(ctx context.Context, id bruindatabricks.ReadI
 	return o.observer.Dispatch(ctx, readexec.RemoteQuery{Driver: "databricks", Tag: o.tag, Databricks: &readexec.DatabricksRemoteQuery{Workspace: id.Workspace, Warehouse: id.WarehouseID, StatementID: id.StatementID}}, accepted)
 }
 
-func (s *Service) databricksClient(c config.SourceConnection) (databricksClient, *bruindatabricks.Config, error) {
+func (s *Service) databricksClient(c config.SourceConnection) (databricksClient, *bruindatabricks.Config, string, error) {
 	raw, ok := s.lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
 	if !ok || len(raw) == 0 || len(raw) > 1<<20 {
-		return nil, nil, store.ErrUnavailable
+		return nil, nil, "", store.ErrUnavailable
 	}
 	var native bruindatabricks.Config
 	if json.Unmarshal([]byte(raw), &native) != nil || native.Host == "" || native.Path == "" || native.Catalog == "" || (!native.UseOAuthM2M() && native.Token == "") {
-		return nil, nil, store.ErrInvalid
+		return nil, nil, "", store.ErrInvalid
 	}
 	key := c.Tenant + "/" + c.ID
 	material := readexec.Hash([]any{raw, c.Version})
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry, ok := s.databricksPools[key]; ok && entry.material == material {
-		return entry.client, &native, nil
+		return entry.client, &native, material, nil
 	}
 	create := s.newDatabricks
 	if create == nil {
@@ -85,14 +85,14 @@ func (s *Service) databricksClient(c config.SourceConnection) (databricksClient,
 	}
 	client, err := create(&native)
 	if err != nil {
-		return nil, nil, safe(err)
+		return nil, nil, "", safe(err)
 	}
 	old := s.databricksPools[key]
 	s.databricksPools[key] = databricksPoolEntry{material: material, client: client}
 	if old.client != nil {
 		_ = old.client.Close()
 	}
-	return client, &native, nil
+	return client, &native, material, nil
 }
 func (s *Service) closeDatabricks() {
 	for key, entry := range s.databricksPools {
@@ -105,16 +105,16 @@ func databricksOptions(l readexec.Limits) bruindatabricks.ReadOptions {
 }
 
 func (s *Service) probeDatabricks(ctx context.Context, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
-	client, native, err := s.databricksClient(c)
+	client, native, material, err := s.databricksClient(c)
 	if err != nil {
 		return readexec.Binding{}, err
 	}
-	return probeDatabricksClient(ctx, client, native, c, id, revision)
+	return probeDatabricksClient(ctx, client, native, material, c, id, revision)
 }
 
-func probeDatabricksClient(ctx context.Context, client databricksClient, native *bruindatabricks.Config, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
+func probeDatabricksClient(ctx context.Context, client databricksClient, native *bruindatabricks.Config, material string, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
 	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "databricks", Catalog: native.Catalog}
-	evidence := []any{native.Host, native.Path, native.Catalog, native.Schema, c.Version}
+	evidence := []any{native.Host, native.Path, native.Catalog, native.Schema, c.Version, material}
 	options := bruindatabricks.ReadOptions{MaxRows: 257, MaxBytes: 1 << 20, MaxResponseBytes: 2 << 20, PollInterval: 25 * time.Millisecond, CancelTimeout: time.Second, Timeout: time.Minute}
 	for _, relation := range c.Relations {
 		tableSQL := "SELECT table_type FROM information_schema.tables WHERE table_schema=:schema AND table_name=:table"
@@ -151,11 +151,11 @@ func probeDatabricksClient(ctx context.Context, client databricksClient, native 
 	return out, nil
 }
 func (s *Service) explainDatabricks(ctx context.Context, e identity.Envelope, candidate readexec.Candidate, c config.SourceConnection, expected readexec.Binding) error {
-	client, native, err := s.databricksClient(c)
+	client, native, material, err := s.databricksClient(c)
 	if err != nil {
 		return err
 	}
-	actual, err := probeDatabricksClient(ctx, client, native, c, expected.Source, expected.Revision)
+	actual, err := probeDatabricksClient(ctx, client, native, material, c, expected.Source, expected.Revision)
 	if err != nil {
 		return err
 	}
@@ -187,11 +187,11 @@ func (s *Service) explainDatabricks(ctx context.Context, e identity.Envelope, ca
 }
 func (s *Service) executeDatabricks(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (readexec.NativeResult, error) {
 	out := readexec.NativeResult{RemoteState: "not_issued"}
-	client, native, err := s.databricksClient(c)
+	client, native, material, err := s.databricksClient(c)
 	if err != nil {
 		return out, err
 	}
-	actual, err := probeDatabricksClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	actual, err := probeDatabricksClient(ctx, client, native, material, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return out, err
 	}
@@ -223,11 +223,11 @@ func (s *Service) executeDatabricks(ctx context.Context, e identity.Envelope, p 
 	return out, nil
 }
 func (s *Service) controlDatabricks(ctx context.Context, e identity.Envelope, control readexec.Control, record Record, c config.SourceConnection, cancel bool) (string, error) {
-	client, native, err := s.databricksClient(c)
+	client, native, material, err := s.databricksClient(c)
 	if err != nil {
 		return "unknown", err
 	}
-	actual, err := probeDatabricksClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	actual, err := probeDatabricksClient(ctx, client, native, material, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return "unknown", err
 	}

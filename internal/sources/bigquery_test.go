@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -128,7 +130,7 @@ func cloudEnvelope(t *testing.T, id string) identity.Envelope {
 	t.Helper()
 	contextID := id + ":v1"
 	dataset := "ds:" + readexec.Hash([]string{id, "analytics", "sales"})[:32]
-	e, err := identity.FromVerified("tenant", "actor", "session", []string{"sources.write", "sources.read", "sources.rotate", "sources.query", "cw.tenant.write:tenant", "cw.source.read:" + id, "cw.source.write:" + id, "cw.source.query:" + id, "cw.execution_context.use:" + contextID, "cw.dataset.query:" + dataset}, time.Now().Add(time.Hour), time.Now)
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"sources.write", "sources.read", "sources.rotate", "sources.query", "cw.tenant.write:tenant", "cw.source.read:" + id, "cw.source.write:" + id, "cw.source.query:" + id, "cw.execution_context.use:" + contextID, "cw.execution_context.use:" + id + ":v2", "cw.dataset.query:" + dataset}, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +220,7 @@ func (*bigQueryFixtureClient) CancelRead(context.Context, bruinbigquery.ReadIden
 func (c *bigQueryFixtureClient) Close() error { c.closed = true; return nil }
 
 func TestBigQuerySourceLifecycleInjected(t *testing.T) {
-	raw := `{"ProjectID":"synthetic-project","Location":"US","UseApplicationDefaultCredentials":true}`
+	raw := `{"ProjectID":"synthetic-project","Location":"US","AccessToken":"token"}`
 	repo := &cloudMemoryRepository{records: map[string]Record{}}
 	settings := cloudSettings("bigquery", "BQ_CONFIG")
 	service, err := New(repo, settings, func(name string) (string, bool) { return raw, name == "BQ_CONFIG" })
@@ -290,7 +292,7 @@ func validatedBigQueryPlan(t *testing.T, lookup func(string) (string, bool), fac
 }
 
 func TestBigQueryExecutionFailurePreservesRemoteState(t *testing.T) {
-	raw := `{"ProjectID":"synthetic-project","Location":"US","UseApplicationDefaultCredentials":true}`
+	raw := `{"ProjectID":"synthetic-project","Location":"US","AccessToken":"token"}`
 	client := &bigQueryFixtureClient{}
 	service, e, plan := validatedBigQueryPlan(t, func(name string) (string, bool) { return raw, name == "BQ_CONFIG" }, func(*bruinbigquery.Config) (bigQueryClient, error) { return client, nil })
 	t.Cleanup(service.Close)
@@ -325,23 +327,18 @@ func TestBigQueryExecutionFailurePreservesRemoteState(t *testing.T) {
 	}
 }
 
-func TestBigQueryExecutionRevalidatesReplacementAndKeepsCapturedClient(t *testing.T) {
-	raw := `{"ProjectID":"synthetic-project","Location":"US","UseApplicationDefaultCredentials":true}`
+func TestBigQueryExecutionRequiresRotationAfterCredentialReplacement(t *testing.T) {
+	raw := `{"ProjectID":"synthetic-project","Location":"US","AccessToken":"token"}`
 	var clients []*bigQueryFixtureClient
 	factory := func(native *bruinbigquery.Config) (bigQueryClient, error) {
 		client := &bigQueryFixtureClient{project: native.ProjectID, location: native.Location}
-		if native.AccessToken == "rotated" {
-			client.onCatalogRead = func() {
-				raw = `{"ProjectID":"third-project","Location":"US","UseApplicationDefaultCredentials":true}`
-			}
-		}
 		clients = append(clients, client)
 		return client, nil
 	}
 	service, e, plan := validatedBigQueryPlan(t, func(name string) (string, bool) { return raw, name == "BQ_CONFIG" }, factory)
 	t.Cleanup(service.Close)
 
-	raw = `{"ProjectID":"replacement-project","Location":"US","UseApplicationDefaultCredentials":true}`
+	raw = `{"ProjectID":"replacement-project","Location":"US","AccessToken":"token"}`
 	validator, err := readexec.NewValidator(service, config.DefaultReadValidation())
 	if err != nil {
 		t.Fatal(err)
@@ -354,15 +351,70 @@ func TestBigQueryExecutionRevalidatesReplacementAndKeepsCapturedClient(t *testin
 		t.Fatalf("replacement context was not denied before dispatch: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
 	}
 
-	raw = `{"ProjectID":"synthetic-project","Location":"US","AccessToken":"rotated","UseApplicationDefaultCredentials":true}`
+	raw = `{"ProjectID":"synthetic-project","Location":"US","AccessToken":"rotated"}`
 	result, err = service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "22222222222222222222222222222222", &cloudObserverCapture{})
-	if err != nil || result.RemoteState != "stopped" || len(clients) != 3 || clients[2].userReads != 1 {
-		t.Fatalf("captured client was not retained through dispatch: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
+	if !errors.Is(err, readexec.ErrBinding) || result.RemoteState != "not_issued" || len(clients) != 3 || clients[2].userReads != 0 {
+		t.Fatalf("credential replacement executed before rotation: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
+	}
+	rotated, err := service.Rotate(t.Context(), e, "source", 1)
+	if err != nil || rotated.Revision != 2 {
+		t.Fatalf("credential rotation: %#v %v", rotated, err)
+	}
+	plan, err = validator.Validate(t.Context(), e, readexec.Request{Source: "source", Context: rotated.ContextID, SQL: "SELECT id FROM `synthetic-project.analytics.sales`"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "23232323232323232323232323232323", &cloudObserverCapture{})
+	if err != nil || result.RemoteState != "stopped" || clients[2].userReads != 1 {
+		t.Fatalf("rotated credential did not execute: result=%#v err=%v reads=%d", result, err, clients[2].userReads)
+	}
+}
+
+func TestBigQueryExecutionKeepsCapturedClientWhenLookupChanges(t *testing.T) {
+	raw := `{"ProjectID":"synthetic-project","Location":"US","AccessToken":"token"}`
+	var clients []*bigQueryFixtureClient
+	service, e, plan := validatedBigQueryPlan(t, func(name string) (string, bool) { return raw, name == "BQ_CONFIG" }, func(native *bruinbigquery.Config) (bigQueryClient, error) {
+		client := &bigQueryFixtureClient{project: native.ProjectID, location: native.Location}
+		clients = append(clients, client)
+		return client, nil
+	})
+	t.Cleanup(service.Close)
+	clients[0].onCatalogRead = func() {
+		raw = `{"ProjectID":"third-project","Location":"US","AccessToken":"third"}`
+	}
+	result, err := service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "24242424242424242424242424242424", &cloudObserverCapture{})
+	if err != nil || result.RemoteState != "stopped" || len(clients) != 1 || clients[0].userReads != 1 {
+		t.Fatalf("captured client was replaced between probe and dispatch: result=%#v err=%v clients=%d", result, err, len(clients))
+	}
+}
+
+func TestBigQueryCredentialMaterialModes(t *testing.T) {
+	adc := bruinbigquery.Config{ProjectID: "synthetic-project", Location: "US", UseApplicationDefaultCredentials: true}
+	if _, err := captureBigQueryMaterial(&adc, "adc", "v1"); !errors.Is(err, readexec.ErrUnsupported) {
+		t.Fatalf("unbound default credentials accepted: %v", err)
+	}
+	directory := t.TempDir()
+	path := filepath.Join(directory, "credentials.json")
+	if err := os.WriteFile(path, []byte(`{"client_email":"first@example.invalid"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first := bruinbigquery.Config{ProjectID: "synthetic-project", Location: "US", CredentialsFilePath: path}
+	firstMaterial, err := captureBigQueryMaterial(&first, path, "v1")
+	if err != nil || first.CredentialsFilePath != "" || first.CredentialsJSON == "" {
+		t.Fatalf("credential file was not captured once: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(`{"client_email":"second@example.invalid"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second := bruinbigquery.Config{ProjectID: "synthetic-project", Location: "US", CredentialsFilePath: path}
+	secondMaterial, err := captureBigQueryMaterial(&second, path, "v1")
+	if err != nil || firstMaterial == secondMaterial {
+		t.Fatalf("same-path credential replacement was not detected: %v", err)
 	}
 }
 
 func TestBigQueryProbeUsesFreshAttemptTags(t *testing.T) {
-	raw := `{"ProjectID":"synthetic-project","Location":"US","UseApplicationDefaultCredentials":true}`
+	raw := `{"ProjectID":"synthetic-project","Location":"US","AccessToken":"token"}`
 	client := &bigQueryFixtureClient{}
 	service, e, _ := validatedBigQueryPlan(t, func(name string) (string, bool) { return raw, name == "BQ_CONFIG" }, func(*bruinbigquery.Config) (bigQueryClient, error) { return client, nil })
 	t.Cleanup(service.Close)

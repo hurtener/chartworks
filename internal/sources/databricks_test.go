@@ -208,7 +208,7 @@ func TestDatabricksExecutionFailurePreservesRemoteState(t *testing.T) {
 	}
 }
 
-func TestDatabricksExecutionRevalidatesReplacementAndKeepsCapturedClient(t *testing.T) {
+func TestDatabricksExecutionRequiresRotationAfterCredentialReplacement(t *testing.T) {
 	marshal := func(c bruindatabricks.Config) string {
 		raw, err := json.Marshal(c)
 		if err != nil {
@@ -220,26 +220,28 @@ func TestDatabricksExecutionRevalidatesReplacementAndKeepsCapturedClient(t *test
 	var clients []*databricksFixtureClient
 	factory := func(native *bruindatabricks.Config) (databricksClient, error) {
 		client := &databricksFixtureClient{workspace: "https://" + native.Host}
-		if native.Token == "rotated" {
-			client.onCatalogRead = func() {
-				raw = marshal(bruindatabricks.Config{Host: "third.example", Port: 443, Path: "/sql/1.0/warehouses/warehouse", Catalog: "third_catalog", Schema: "analytics", Token: "third"})
-			}
-		}
 		clients = append(clients, client)
 		return client, nil
 	}
 	service, e, plan := validatedDatabricksPlan(t, func(name string) (string, bool) { return raw, name == "DBX_CONFIG" }, factory)
 	t.Cleanup(service.Close)
+	clients[0].onCatalogRead = func() {
+		raw = marshal(bruindatabricks.Config{Host: "third.example", Port: 443, Path: "/sql/1.0/warehouses/warehouse", Catalog: "third_catalog", Schema: "analytics", Token: "third"})
+	}
+	result, err := service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "54545454545454545454545454545454", &cloudObserverCapture{})
+	if err != nil || result.RemoteState != "stopped" || len(clients) != 1 || clients[0].userReads != 1 {
+		t.Fatalf("captured client was replaced between probe and dispatch: result=%#v err=%v clients=%d", result, err, len(clients))
+	}
 
 	raw = marshal(bruindatabricks.Config{Host: "replacement.example", Port: 443, Path: "/sql/1.0/warehouses/warehouse", Catalog: "replacement_catalog", Schema: "analytics", Token: "token"})
-	result, err := service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "55555555555555555555555555555555", &cloudObserverCapture{})
+	result, err = service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "55555555555555555555555555555555", &cloudObserverCapture{})
 	if !errors.Is(err, readexec.ErrBinding) || result.RemoteState != "not_issued" || len(clients) != 2 || clients[1].userReads != 0 {
 		t.Fatalf("replacement context was not denied before dispatch: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
 	}
 
 	raw = marshal(bruindatabricks.Config{Host: "workspace.example", Port: 443, Path: "/sql/1.0/warehouses/warehouse", Catalog: "catalog", Schema: "analytics", Token: "rotated"})
 	result, err = service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 1024}, "66666666666666666666666666666666", &cloudObserverCapture{})
-	if err != nil || result.RemoteState != "stopped" || len(clients) != 3 || clients[2].userReads != 1 {
-		t.Fatalf("captured client was not retained through dispatch: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
+	if !errors.Is(err, readexec.ErrBinding) || result.RemoteState != "not_issued" || len(clients) != 3 || clients[2].userReads != 0 {
+		t.Fatalf("credential replacement executed before rotation: result=%#v err=%v clients=%d reads=%d", result, err, len(clients), clients[len(clients)-1].userReads)
 	}
 }
