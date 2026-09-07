@@ -76,7 +76,7 @@ func TestPhase02(t *testing.T) {
 		}
 		wg.Wait()
 		c := support.Raw(t, dsn)
-		if count(t, c, `SELECT count(*) FROM chartworks.schema_migrations`) != 8 {
+		if count(t, c, `SELECT count(*) FROM chartworks.schema_migrations`) != 9 {
 			t.Fatal("migrations not exactly once")
 		}
 		db := support.Open(t, dsn)
@@ -242,7 +242,7 @@ func TestPhase02(t *testing.T) {
 		if rows.Err() != nil {
 			t.Fatal("schema rows failed")
 		}
-		expected := []string{"audit_events", "job_occurrences", "job_schedules", "operation_attempts", "operations", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "uploads", "vector_facets", "vector_generations", "vector_heads"}
+		expected := []string{"audit_events", "job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs", "pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "uploads", "vector_facets", "vector_generations", "vector_heads"}
 		sort.Strings(expected)
 		if strings.Join(names, ",") != strings.Join(expected, ",") {
 			t.Fatalf("unexpected foundation schema: %v", names)

@@ -249,7 +249,7 @@ func TestPhase13(t *testing.T) {
 		for _, tc := range []struct {
 			mode, id string
 			want     error
-		}{{"critical", "critical-output", engineering.ErrInvalid}, {"timeout", "runner-timeout", context.DeadlineExceeded}, {"crash", "runner-crash", engineering.ErrPipelineUncertain}} {
+		}{{"critical", "critical-output", engineering.ErrInvalid}, {"timeout", "runner-timeout", context.DeadlineExceeded}, {"crash", "runner-crash", engineering.ErrUnavailable}} {
 			if err = os.WriteFile(mode, []byte(tc.mode), 0600); err != nil {
 				t.Fatal(err)
 			}
