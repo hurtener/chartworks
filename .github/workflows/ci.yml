@@ -72,6 +72,12 @@ jobs:
       - run: make vet
       - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
+      - name: Per-function diagnostics from actual race instrumentation
+        if: always()
+        run: |
+          if test -s "$CHARTWORKS_COVERAGE_OUTPUT"; then
+            go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(engineering|store/postgres)/|total:'
+          fi
       - name: All seventy-six implemented phase criteria, no missing/skipped tests
         run: |
           python3 scripts/run_phase_acceptance.py --phase 01
@@ -121,6 +127,7 @@ jobs:
           test ! -f .github/workflows/phase-11-12-edit.yml
           test ! -f .github/workflows/phase-11-12-development.yml
           test ! -f .github/workflows/phase-11-12-workspace.yml
+          test ! -f .github/workflows/verification-source.yml
       - name: Working tree must remain unchanged
         run: |
           git diff --exit-code
