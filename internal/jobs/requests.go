@@ -74,7 +74,7 @@ func (t RequestTask) Digest() string {
 
 // Valid rejects incomplete or tampered retained manifests.
 func (t RequestTask) Valid() bool {
-	return identity.Identifier(t.ID) && identity.Identifier(t.Tenant) && identity.Identifier(t.Actor) && identity.Identifier(t.Session) && t.Input.Valid() &&
+	return identity.Identifier(t.Tenant) && identity.Identifier(t.ID) && identity.Identifier(t.Actor) && identity.Identifier(t.Session) && t.Input.Valid() &&
 		t.MaxAttempts >= 1 && t.MaxAttempts <= 8 && t.Attempts >= 0 && t.Attempts <= t.MaxAttempts && !t.Created.IsZero() && t.Expires.After(t.Created) && t.ManifestHash == t.Digest()
 }
 
@@ -280,7 +280,13 @@ func (r *RequestRunner) Run(ctx context.Context, e identity.Envelope, task Reque
 	if err != nil {
 		return RequestTask{}, err
 	}
-	if runErr == nil && out.State != "succeeded" {
+	if out.State == "succeeded" {
+		// A lost commit reply or late observer failure cannot overturn the
+		// domain's atomic publication. Only this authorized durable receipt
+		// resolves success; absent or unreadable evidence remains an error.
+		return out, nil
+	}
+	if runErr == nil {
 		return out, store.ErrConflict
 	}
 	return out, runErr

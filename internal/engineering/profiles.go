@@ -199,16 +199,7 @@ func (s *Service) Build(ctx context.Context, e identity.Envelope, spec ProfileSp
 					return err
 				}
 				if report.Result == nil {
-					switch report.Attempt.Status {
-					case "uncertain":
-						return ErrState
-					case "cancelled":
-						return context.Canceled
-					case "timed_out":
-						return context.DeadlineExceeded
-					default:
-						return ErrUnavailable
-					}
+					return profileReadFailure(report.Attempt)
 				}
 				profile, err = BuildProfile(ctx, current, report, time.Since(start), time.Now().UTC())
 				if err != nil {
@@ -251,7 +242,7 @@ func (s *Service) Build(ctx context.Context, e identity.Envelope, spec ProfileSp
 		}
 		out = ProfileRun{Profile: current.Public(), Operation: task}
 		if runErr != nil {
-			out.Code = engineeringCode(runErr)
+			out.Code = profileFailureCode(runErr)
 		}
 		return nil
 	})

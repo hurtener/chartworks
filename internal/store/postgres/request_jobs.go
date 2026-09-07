@@ -151,7 +151,8 @@ func (d *DB) ReadRequest(ctx context.Context, e identity.Envelope, id string) (o
 }
 
 // ResumeRequest requires new supplied authority and preserves the accepted
-// manifest/version. It does not reset attempts, timestamps or expiry.
+// manifest/version. It does not reset attempts, timestamps or expiry. An expired
+// running owner is recovered by the existing claim fence, not declared stopped.
 func (d *DB) ResumeRequest(ctx context.Context, e identity.Envelope, id string) (out jobs.RequestTask, err error) {
 	ctx, stop, err := requestContext(ctx, e)
 	if err != nil {
@@ -168,11 +169,27 @@ func (d *DB) ResumeRequest(ctx context.Context, e identity.Envelope, id string) 
 		if out.State == "succeeded" {
 			return nil
 		}
-		if (out.State != "cancelled" && out.State != "retry" && out.State != "pending") || out.Attempts >= out.MaxAttempts {
+		if out.Attempts >= out.MaxAttempts {
 			return store.ErrConflict
 		}
 		if !time.Now().Before(out.Expires) {
 			return store.ErrExpired
+		}
+		if out.State == "running" {
+			var expired bool
+			if err = tx.QueryRow(ctx, `SELECT COALESCE(lease_until<=clock_timestamp(),false) FROM chartworks.operations WHERE tenant_id=$1 AND operation_id=$2`, e.Tenant(), id).Scan(&expired); err != nil {
+				return err
+			}
+			if !expired {
+				return store.ErrConflict
+			}
+			// Keep the old lease and acquiring attempt intact. ClaimRequest
+			// alone abandons that attempt and increments the fence atomically.
+			// Domain reconciliation still decides whether native work stopped.
+			return auditJob(ctx, tx, scope, "request.resumed", id)
+		}
+		if out.State != "cancelled" && out.State != "retry" && out.State != "pending" {
+			return store.ErrConflict
 		}
 		if _, err = tx.Exec(ctx, `UPDATE chartworks.operations SET status='pending',finished_at=NULL,error_code='',next_attempt_at=clock_timestamp() WHERE tenant_id=$1 AND operation_id=$2`, e.Tenant(), id); err != nil {
 			return err

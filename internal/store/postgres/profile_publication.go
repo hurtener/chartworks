@@ -231,6 +231,13 @@ func (d *DB) RegisterDependency(ctx context.Context, e identity.Envelope, id str
 		if r.State != "complete" || r.Result == nil || dep.Source != r.Spec.Source || dep.Context != r.Spec.Context || dep.Dataset != r.Spec.Dataset {
 			return store.ErrConflict
 		}
+		// The head advisory lock excludes publication, not source deletion.
+		// Lock the live source first, as profile publication does, so erasure
+		// cannot finish between this proof and insertion of a new reference.
+		var liveSource string
+		if err = tx.QueryRow(ctx, `SELECT source_id FROM chartworks.sources WHERE tenant_id=$1 AND source_id=$2 AND NOT deleted FOR SHARE`, r.Tenant, r.Spec.Source).Scan(&liveSource); err != nil {
+			return err
+		}
 		if err = profileHeadLock(ctx, tx, r); err != nil {
 			return err
 		}

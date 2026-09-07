@@ -256,6 +256,11 @@ func (p *parser) row(cells []Cell) error {
 		if err != nil {
 			return &ParseError{Code: "cell_type", Row: p.receipt.Rows + 2, Column: i + 1}
 		}
+		// Canonical numeric/temporal text can be longer than the input cell.
+		// Enforce both representations before handing the row to the writer.
+		if len(v.Text) > p.limits.MaxCellBytes {
+			return ErrLimit
+		}
 		cells[i] = v
 		p.receipt.DecodedBytes += int64(len(v.Text))
 		if p.receipt.DecodedBytes > p.limits.MaxExpandedBytes {
