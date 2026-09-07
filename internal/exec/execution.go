@@ -9,7 +9,9 @@ import (
 	"errors"
 	"io"
 	"math"
+	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -87,14 +89,15 @@ type BigQueryRemoteQuery struct {
 }
 type SnowflakeRemoteQuery struct {
 	RequestID string `json:"request_id,omitempty"`
+	QueryTag  string `json:"query_tag,omitempty"`
 	Account   string `json:"account,omitempty"`
 	Database  string `json:"database,omitempty"`
+	SessionID int64  `json:"session_id,omitempty"`
 	QueryID   string `json:"query_id,omitempty"`
 }
 type DatabricksRemoteQuery struct {
-	RequestID   string `json:"request_id,omitempty"`
-	Workspace   string `json:"workspace,omitempty"`
-	Warehouse   string `json:"warehouse,omitempty"`
+	Workspace   string `json:"workspace"`
+	Warehouse   string `json:"warehouse_id"`
 	StatementID string `json:"statement_id,omitempty"`
 }
 
@@ -127,11 +130,20 @@ func (q RemoteQuery) Valid() bool {
 	case "bigquery":
 		return q.BigQuery != nil && remoteCoordinate(q.BigQuery.Project, 128) && remoteCoordinate(q.BigQuery.Location, 64) && remoteCoordinate(q.BigQuery.JobID, 256)
 	case "snowflake":
-		return q.Snowflake != nil && (remoteCoordinate(q.Snowflake.QueryID, 128) || q.Snowflake.QueryID == "" && remoteCoordinate(q.Snowflake.RequestID, 128) && remoteCoordinate(q.Snowflake.Account, 128) && remoteCoordinate(q.Snowflake.Database, 128))
+		return q.Snowflake != nil && remoteCoordinate(q.Snowflake.RequestID, 128) && remoteCoordinate(q.Snowflake.QueryTag, 128) && remoteText(q.Snowflake.Account, 128) && remoteText(q.Snowflake.Database, 128) && q.Snowflake.SessionID > 0 && (q.Snowflake.QueryID == "" || remoteCoordinate(q.Snowflake.QueryID, 128))
 	case "databricks":
-		return q.Databricks != nil && (remoteCoordinate(q.Databricks.StatementID, 128) || q.Databricks.StatementID == "" && remoteCoordinate(q.Databricks.RequestID, 128) && remoteCoordinate(q.Databricks.Workspace, 256) && remoteCoordinate(q.Databricks.Warehouse, 128))
+		return q.Databricks != nil && remoteHTTPSOrigin(q.Databricks.Workspace) && remoteCoordinate(q.Databricks.Warehouse, 128) && (q.Databricks.StatementID == "" || remoteCoordinate(q.Databricks.StatementID, 128))
 	}
 	return false
+}
+
+func remoteText(s string, maximum int) bool {
+	return len(s) > 0 && len(s) <= maximum && !strings.ContainsAny(s, "\x00\r\n\t")
+}
+
+func remoteHTTPSOrigin(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.Path == "" && u.RawQuery == "" && u.Fragment == ""
 }
 
 // Controllable reports whether this identity already contains the native
@@ -162,9 +174,9 @@ func (q RemoteQuery) Acknowledges(next RemoteQuery) bool {
 	}
 	switch q.Driver {
 	case "snowflake":
-		return q.Snowflake.RequestID == next.Snowflake.RequestID && q.Snowflake.Account == next.Snowflake.Account && q.Snowflake.Database == next.Snowflake.Database
+		return q.Snowflake.RequestID == next.Snowflake.RequestID && q.Snowflake.QueryTag == next.Snowflake.QueryTag && q.Snowflake.Account == next.Snowflake.Account && q.Snowflake.Database == next.Snowflake.Database && q.Snowflake.SessionID == next.Snowflake.SessionID
 	case "databricks":
-		return q.Databricks.RequestID == next.Databricks.RequestID && q.Databricks.Workspace == next.Databricks.Workspace && q.Databricks.Warehouse == next.Databricks.Warehouse
+		return q.Databricks.Workspace == next.Databricks.Workspace && q.Databricks.Warehouse == next.Databricks.Warehouse
 	}
 	return false
 }

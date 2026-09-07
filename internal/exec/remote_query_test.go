@@ -39,8 +39,8 @@ func TestRemoteQueryClosedVariantsAndLegacyPostgres(t *testing.T) {
 		{Driver: "mysql", Tag: tag, MySQL: &MySQLRemoteQuery{ConnectionID: 7}},
 		{Driver: "sqlserver", Tag: tag, SQLServer: &SQLServerRemoteQuery{SessionID: 8, RequestID: 0, Started: started}},
 		{Driver: "bigquery", Tag: tag, BigQuery: &BigQueryRemoteQuery{Project: "project-1", Location: "us-central1", JobID: "job_1"}},
-		{Driver: "snowflake", Tag: tag, Snowflake: &SnowflakeRemoteQuery{QueryID: "01b2-ABC"}},
-		{Driver: "databricks", Tag: tag, Databricks: &DatabricksRemoteQuery{StatementID: "01b2-abc"}},
+		{Driver: "snowflake", Tag: tag, Snowflake: &SnowflakeRemoteQuery{RequestID: "request-1", QueryTag: "tag-1", Account: "account", Database: "database", SessionID: 1, QueryID: "01b2-ABC"}},
+		{Driver: "databricks", Tag: tag, Databricks: &DatabricksRemoteQuery{Workspace: "https://workspace.example", Warehouse: "warehouse", StatementID: "01b2-abc"}},
 	}
 	for _, q := range valid {
 		if !q.Valid() {
@@ -81,25 +81,25 @@ func TestReceiptDialectCompatibility(t *testing.T) {
 
 func TestRemoteQueryAcknowledgementIsMonotonic(t *testing.T) {
 	tag := "cw-read:" + strings.Repeat("b", 32)
-	pending := RemoteQuery{Driver: "snowflake", Tag: tag, Snowflake: &SnowflakeRemoteQuery{RequestID: "request-1", Account: "account", Database: "analytics"}}
+	pending := RemoteQuery{Driver: "snowflake", Tag: tag, Snowflake: &SnowflakeRemoteQuery{RequestID: "request-1", QueryTag: "tag-1", Account: "account", Database: "analytics", SessionID: 7}}
 	accepted := pending
-	accepted.Snowflake = &SnowflakeRemoteQuery{RequestID: "request-1", Account: "account", Database: "analytics", QueryID: "query-1"}
+	accepted.Snowflake = &SnowflakeRemoteQuery{RequestID: "request-1", QueryTag: "tag-1", Account: "account", Database: "analytics", SessionID: 7, QueryID: "query-1"}
 	if !pending.Valid() || pending.Controllable() || !pending.Acknowledges(accepted) || !accepted.Controllable() {
 		t.Fatal("valid pending identity did not admit exact native acknowledgement")
 	}
 	replaced := accepted
-	replaced.Snowflake = &SnowflakeRemoteQuery{RequestID: "request-1", Account: "account", Database: "analytics", QueryID: "query-2"}
+	replaced.Snowflake = &SnowflakeRemoteQuery{RequestID: "request-1", QueryTag: "tag-1", Account: "account", Database: "analytics", SessionID: 7, QueryID: "query-2"}
 	if accepted.Acknowledges(replaced) {
 		t.Fatal("accepted native identity was replaceable")
 	}
 	wrong := accepted
-	wrong.Snowflake = &SnowflakeRemoteQuery{RequestID: "request-2", Account: "account", Database: "analytics", QueryID: "query-1"}
+	wrong.Snowflake = &SnowflakeRemoteQuery{RequestID: "request-2", QueryTag: "tag-1", Account: "account", Database: "analytics", SessionID: 7, QueryID: "query-1"}
 	if pending.Acknowledges(wrong) {
 		t.Fatal("acknowledgement changed immutable submission coordinates")
 	}
-	dbPending := RemoteQuery{Driver: "databricks", Tag: tag, Databricks: &DatabricksRemoteQuery{RequestID: "request-1", Workspace: "workspace", Warehouse: "warehouse"}}
+	dbPending := RemoteQuery{Driver: "databricks", Tag: tag, Databricks: &DatabricksRemoteQuery{Workspace: "https://workspace.example", Warehouse: "warehouse"}}
 	dbAccepted := dbPending
-	dbAccepted.Databricks = &DatabricksRemoteQuery{RequestID: "request-1", Workspace: "workspace", Warehouse: "warehouse", StatementID: "statement-1"}
+	dbAccepted.Databricks = &DatabricksRemoteQuery{Workspace: "https://workspace.example", Warehouse: "warehouse", StatementID: "statement-1"}
 	if !dbPending.Valid() || dbPending.Controllable() || !dbPending.Acknowledges(dbAccepted) {
 		t.Fatal("Databricks pending identity did not require its native statement ID")
 	}
