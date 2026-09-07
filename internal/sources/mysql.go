@@ -349,10 +349,11 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 		return out, safe(err)
 	}
 	defer func() {
-		if closeErr := stream.Close(); closeErr != nil && err == nil {
-			err = safe(closeErr)
-		}
-		if err == nil {
+		if closeErr := stream.Close(); closeErr != nil {
+			if err == nil {
+				err = safe(closeErr)
+			}
+		} else {
 			out.RemoteState = "stopped"
 		}
 	}()
