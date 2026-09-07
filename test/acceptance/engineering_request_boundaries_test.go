@@ -28,7 +28,7 @@ func TestExpiredRequestResumeCannotResetAttemptBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitExpiredRequestLease(t, f, task.ID)
-	if _, err = f.db.ResumeRequest(ctx, f.e, task.ID); !errors.Is(err, store.ErrConflict) {
+	if _, err = f.db.ResumeRequest(ctx, f.e, task.ID, limits); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("expired-owner recovery reset the accepted attempt ceiling", err)
 	}
 	current, err := f.db.ReadRequest(ctx, f.e, task.ID)

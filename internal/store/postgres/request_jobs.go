@@ -91,15 +91,7 @@ func (d *DB) AdmitRequest(ctx context.Context, e identity.Envelope, key string, 
 		if err = queueCapacity(ctx, tx, e.Tenant(), l); err != nil {
 			return err
 		}
-		// Terminal receipts are bounded too. Erasure/retention is explicit; a
-		// completed key cannot disappear merely because it is inconvenient.
-		var retained int
-		if err = tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.operations WHERE tenant_id=$1 AND actor_id=$2 AND dispatch_mode='request'`, e.Tenant(), e.User()).Scan(&retained); err != nil {
-			return err
-		}
-		if retained >= l.MaxPendingPerTenant {
-			return jobs.ErrBusy
-		}
+		// Retained terminal receipts preserve replay identity, but consume no pending slot.
 		var now time.Time
 		var revision int64
 		var hours int
@@ -153,7 +145,10 @@ func (d *DB) ReadRequest(ctx context.Context, e identity.Envelope, id string) (o
 // ResumeRequest requires new supplied authority and preserves the accepted
 // manifest/version. It does not reset attempts, timestamps or expiry. An expired
 // running owner is recovered by the existing claim fence, not declared stopped.
-func (d *DB) ResumeRequest(ctx context.Context, e identity.Envelope, id string) (out jobs.RequestTask, err error) {
+func (d *DB) ResumeRequest(ctx context.Context, e identity.Envelope, id string, l jobs.Limits) (out jobs.RequestTask, err error) {
+	if l.Validate() != nil {
+		return out, jobs.ErrInvalid
+	}
 	ctx, stop, err := requestContext(ctx, e)
 	if err != nil {
 		return out, err
@@ -161,6 +156,10 @@ func (d *DB) ResumeRequest(ctx context.Context, e identity.Envelope, id string) 
 	defer stop()
 	scope, _ := store.NewScope(e.Tenant(), e.User())
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		// Serialize cancelled re-admission with ordinary request/queued admission.
+		if err := queueLock(ctx, tx, l); err != nil {
+			return err
+		}
 		var err error
 		out, err = readRequestTx(ctx, tx, e, id, true)
 		if err != nil {
@@ -190,6 +189,11 @@ func (d *DB) ResumeRequest(ctx context.Context, e identity.Envelope, id string) 
 		}
 		if out.State != "cancelled" && out.State != "retry" && out.State != "pending" {
 			return store.ErrConflict
+		}
+		if out.State == "cancelled" {
+			if err = queueCapacity(ctx, tx, e.Tenant(), l); err != nil {
+				return err
+			}
 		}
 		if _, err = tx.Exec(ctx, `UPDATE chartworks.operations SET status='pending',finished_at=NULL,error_code='',next_attempt_at=clock_timestamp() WHERE tenant_id=$1 AND operation_id=$2`, e.Tenant(), id); err != nil {
 			return err

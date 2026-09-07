@@ -112,7 +112,7 @@ func TestEngineeringRepositoriesDenyBeforeEffectsAndClearFailedResults(t *testin
 			return rejectedEngineeringValue(t, out, err)
 		}},
 		{"resume-request", func(ctx context.Context, t *testing.T, e identity.Envelope) error {
-			out, err := f.db.ResumeRequest(ctx, e, profile.Operation.ID)
+			out, err := f.db.ResumeRequest(ctx, e, profile.Operation.ID, limits)
 			return rejectedEngineeringValue(t, out, err)
 		}},
 		{"cancel-request", func(ctx context.Context, t *testing.T, e identity.Envelope) error {

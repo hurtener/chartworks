@@ -76,11 +76,11 @@ func TestUploadExplicitResumeReclaimsExpiredOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := f.lookups.Load()
-	if _, err = f.db.ResumeRequest(ctx, f.e, task.ID); !errors.Is(err, store.ErrConflict) {
+	if _, err = f.db.ResumeRequest(ctx, f.e, task.ID, limits); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("explicit resume displaced a live owner", err)
 	}
 	for _, caller := range []identity.Envelope{{}, f.actor(t, "source-b", f.e.User()), f.actor(t, f.e.Tenant(), "unrelated-profiler")} {
-		if _, err = f.db.ResumeRequest(ctx, caller, task.ID); err == nil {
+		if _, err = f.db.ResumeRequest(ctx, caller, task.ID, limits); err == nil {
 			t.Fatal("request resume accepted foreign authority")
 		}
 	}
@@ -88,7 +88,7 @@ func TestUploadExplicitResumeReclaimsExpiredOwner(t *testing.T) {
 		t.Fatal("resume denial resolved workspace credentials")
 	}
 	awaitExpiredRequestLease(t, f, task.ID)
-	resumable, err := f.db.ResumeRequest(ctx, f.e, task.ID)
+	resumable, err := f.db.ResumeRequest(ctx, f.e, task.ID, limits)
 	if err != nil || resumable.State != "running" || resumable.Attempts != 1 || resumable.ManifestHash != task.ManifestHash || !resumable.Created.Equal(task.Created) || !resumable.Expires.Equal(task.Expires) {
 		t.Fatal("resume did not preserve the crashed owner's manifest and evidence", err, resumable)
 	}

@@ -128,7 +128,7 @@ func (i Invocation) Current(kind, target, hash string) (identity.Envelope, error
 type RequestRepository interface {
 	AdmitRequest(context.Context, identity.Envelope, string, RequestInput, Limits) (RequestTask, error)
 	ReadRequest(context.Context, identity.Envelope, string) (RequestTask, error)
-	ResumeRequest(context.Context, identity.Envelope, string) (RequestTask, error)
+	ResumeRequest(context.Context, identity.Envelope, string, Limits) (RequestTask, error)
 	CancelRequest(context.Context, identity.Envelope, string) (RequestTask, error)
 	ClaimRequest(context.Context, identity.Envelope, string, string, Limits) (RequestLease, error)
 	PulseRequest(context.Context, Invocation, bool, time.Duration) (string, error)
@@ -185,7 +185,7 @@ func (r *RequestRunner) Resume(ctx context.Context, e identity.Envelope, id stri
 	if _, err := r.Inspect(ctx, e, id); err != nil {
 		return RequestTask{}, err
 	}
-	return r.repo.ResumeRequest(ctx, e, id)
+	return r.repo.ResumeRequest(ctx, e, id, r.limits)
 }
 
 // Run executes exactly one physical attempt and joins its cancellation/heartbeat
