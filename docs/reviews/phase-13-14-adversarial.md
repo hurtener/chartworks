@@ -26,16 +26,26 @@ The final fixes retained these required properties:
 - an enabled service verifies its configured runner at startup, while disabled
   deployments retain metadata access;
 - cloud lifecycle state is fenced to the verified execution context, and fork
-  fixtures remain distinct from live cloud qualification; and
+  fixtures remain distinct from live cloud qualification;
 - SQL Server parameter declarations and cancellation start from the actual
   dispatched operation without broadening supported syntax or claiming cleanup
-  that the driver did not acknowledge.
+  that the driver did not acknowledge; and
+- MySQL acknowledged cancellation reports `stopped` only after the original
+  owned transaction returns an explicit rollback acknowledgement. A bare
+  `ErrTxDone`, socket loss or bounded grace fallback remains `unknown` and
+  exposes no partial result.
 
 The last SQL Server fixes were
 `d54573d5aebc116fec5ab7216a7c518d4a6f8bb4` and
 `71b9bd6a872ccf70426c7013fe1c3d345fe8eb35`. Reviewer B's narrow diff-only
 rereview passed with no P0/P1 finding. Earlier P1 fixes received their permitted
 narrow rereviews; no full review round was reopened.
+
+The later MySQL cleanup correction is Chartworks
+`6ff29d9bf30fab3bc433019b6131c7ab72a686a4` with fork
+`5f562c2959496a04d57f5f199f5e3ad22159fa9f`. The narrow review accepted its
+explicit rollback receipt, caller-cancellation handoff and bounded slow-drain
+fallback without reopening the full review cycle.
 
 ## Verification boundary
 

@@ -190,6 +190,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/bruin-data/bruin => github.com/hurtener/bruin v0.11.750-0.20260907221849-02638a8f0534
+replace github.com/bruin-data/bruin => github.com/hurtener/bruin v0.11.750-0.20260907231440-5f562c295949
 
-replace github.com/bruin-data/bruin/semantic-engine => github.com/hurtener/bruin/semantic-engine v0.0.0-20260907221849-02638a8f0534
+replace github.com/bruin-data/bruin/semantic-engine => github.com/hurtener/bruin/semantic-engine v0.0.0-20260907231440-5f562c295949

@@ -341,7 +341,7 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 		return nil
 	}
 	journal := &mysqlReadObserver{observer: observer, id: id}
-	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: statement, Args: args}, "cw-read:"+id, journal, bruinmysql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, MaxRows: limits.Rows + 1}, verify)
+	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: statement, Args: args}, "cw-read:"+id, journal, bruinmysql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, MaxRows: limits.Rows + 1, CancelTimeout: limits.CancelGrace}, verify)
 	if journal.issued {
 		out.RemoteState = "running"
 	}
