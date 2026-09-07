@@ -81,7 +81,8 @@ func parquetCell(v parquet.Value, c parquetColumn, declared UploadColumn) (Cell,
 		return Cell{}, ErrFormat
 	}
 	var s string
-	if c.decimal {
+	switch {
+	case c.decimal:
 		var n *big.Int
 		switch c.physical {
 		case 1:
@@ -101,14 +102,14 @@ func parquetCell(v parquet.Value, c parquetColumn, declared UploadColumn) (Cell,
 			return Cell{}, ErrFormat
 		}
 		s = scaledInteger(n, c.scale)
-	} else if c.date {
+	case c.date:
 		n := int64(v.Int32())
 		date := time.Unix(n*86400, 0).UTC()
 		if date.Year() < 0 || date.Year() > 9999 {
 			return Cell{}, ErrFormat
 		}
 		s = date.Format("2006-01-02")
-	} else if c.timestamp != 0 {
+	case c.timestamp != 0:
 		n := v.Int64()
 		unit := int64(c.timestamp)
 		stamp := time.Unix(n/unit, (n%unit)*(1000000000/unit)).UTC()
@@ -116,7 +117,7 @@ func parquetCell(v parquet.Value, c parquetColumn, declared UploadColumn) (Cell,
 			return Cell{}, ErrFormat
 		}
 		s = stamp.Format(time.RFC3339Nano)
-	} else {
+	default:
 		switch c.physical {
 		case 0:
 			if declared.Type != "boolean" {
@@ -146,11 +147,12 @@ func parquetCell(v parquet.Value, c parquetColumn, declared UploadColumn) (Cell,
 			}
 			s = strconv.FormatFloat(v.Double(), 'g', -1, 64)
 		case 6, 7:
-			if declared.Type == "binary" {
+			switch declared.Type {
+			case "binary":
 				s = hex.EncodeToString(v.ByteArray())
-			} else if declared.Type == "text" || declared.Type == "json" || declared.Type == "decimal" || declared.Type == "date" || declared.Type == "timestamp" {
+			case "text", "json", "decimal", "date", "timestamp":
 				s = string(v.ByteArray())
-			} else {
+			default:
 				return Cell{}, ErrFormat
 			}
 		default:

@@ -277,13 +277,14 @@ func (d *DB) StartProfileRead(ctx context.Context, i jobs.Invocation, r engineer
 		}
 		if current.LastReadOperation != "" && current.LastReadOperation != operation {
 			old, err := scanRead(tx.QueryRow(ctx, `SELECT `+readAttemptColumns+` FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 ORDER BY attempt_number DESC LIMIT 1`, r.Tenant, r.Actor, current.LastReadOperation))
-			if errors.Is(err, pgx.ErrNoRows) {
+			switch {
+			case errors.Is(err, pgx.ErrNoRows):
 				if time.Now().Before(current.LastReadDeadline) {
 					return engineering.ErrState
 				}
-			} else if err != nil {
+			case err != nil:
 				return err
-			} else if old.Finished == nil || old.RemoteState != "stopped" && old.RemoteState != "not_issued" {
+			case old.Finished == nil || old.RemoteState != "stopped" && old.RemoteState != "not_issued":
 				return engineering.ErrState
 			}
 		}

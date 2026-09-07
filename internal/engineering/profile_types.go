@@ -28,6 +28,7 @@ type ProfileSpec struct {
 	Previous   string   `json:"previous"`
 }
 
+// Valid checks the closed immutable profiling request.
 func (s ProfileSpec) Valid() bool {
 	if !identity.Identifier(s.ID) || !identity.Identifier(s.Source) || !identity.Identifier(s.Context) || !identity.Identifier(s.Dataset) || (s.Policy != "" && !identity.Identifier(s.Policy)) || (s.Previous != "" && !identity.Identifier(s.Previous)) || len(s.Columns) > 256 || s.TimeColumn != "" && !readexec.SQLIdentifier(s.TimeColumn) {
 		return false
@@ -41,6 +42,8 @@ func (s ProfileSpec) Valid() bool {
 	}
 	return true
 }
+
+// Require enforces signed source, dataset and execution-context reach.
 func (s ProfileSpec) Require(e identity.Envelope, write bool) error {
 	action, permission := "engineering.read", "read"
 	if write {
@@ -70,12 +73,17 @@ type ProfileRecord struct {
 	LastReadDeadline  time.Time
 }
 
+// Digest binds accepted inputs and bounds, excluding mutable stage progress.
 func (r ProfileRecord) Digest() string {
 	return readexec.Hash([]any{"profile-v1", r.Tenant, r.Actor, r.Session, r.Spec, r.Binding, r.Policy, r.Settings})
 }
+
+// Valid verifies retained identity, source binding and immutable input integrity.
 func (r ProfileRecord) Valid() bool {
 	return identity.Identifier(r.Tenant) && identity.Identifier(r.Actor) && identity.Identifier(r.Session) && r.Spec.Valid() && r.Binding.Valid() && r.Binding.Tenant == r.Tenant && r.Binding.Source == r.Spec.Source && r.Binding.Context == r.Spec.Context && config.ValidateProfiling(r.Settings) == nil && r.SpecHash == r.Digest() && !r.Created.IsZero()
 }
+
+// Require preserves private actor/session provenance and current signed reach.
 func (r ProfileRecord) Require(e identity.Envelope, write bool) error {
 	if !r.Valid() || r.Tenant != e.Tenant() || r.Actor != e.User() || r.Session != e.Session() {
 		return store.ErrNotFound
@@ -159,7 +167,10 @@ type Profile struct {
 	Summary        ProfileSummary    `json:"summary"`
 }
 
+// DeterministicHash excludes optional model commentary from evidence identity.
 func (p Profile) DeterministicHash() string { p.Summary = ProfileSummary{}; return readexec.Hash(p) }
+
+// Valid checks the bounded evidence against its accepted source and policy.
 func (p Profile) Valid(r ProfileRecord) bool {
 	if p.Version != r.Spec.ID || p.Source != r.Spec.Source || p.Context != r.Spec.Context || p.Dataset != r.Spec.Dataset || p.SourceRevision != r.Binding.Revision || p.ObservedAt.IsZero() || p.ExecutionNS < 0 || p.ReadAttempt == "" || p.ReadOperation == "" || len(p.Columns) < 1 || len(p.Columns) > 256 || len(p.Schema) < 1 || len(p.Schema) > 256 || len(p.Findings) > 1024 || len(p.Summary.Text) > 2048 || p.PolicyHash != readexec.Hash(r.Policy) || p.Sampling.Rows < 0 || p.Sampling.Rows > r.Settings.SampleRows || p.Sampling.Bytes < 0 || p.Sampling.Bytes > r.Settings.SampleBytes || p.Sampling.ScanBounded || p.Cost.ScannedBytes != nil {
 		return false
@@ -186,6 +197,7 @@ type ProfileStatus struct {
 	Profile        *Profile  `json:"profile"`
 }
 
+// Public exposes status without revealing unpublished checkpoint findings.
 func (r ProfileRecord) Public() ProfileStatus {
 	p := ProfileStatus{Version: r.Spec.ID, Source: r.Spec.Source, Context: r.Spec.Context, Dataset: r.Spec.Dataset, State: r.State, Operation: r.Operation, SummaryStarted: r.SummaryStarted, Created: r.Created}
 	if r.State == "complete" {
@@ -209,6 +221,7 @@ type SchemaChange struct {
 	After  string `json:"after"`
 }
 
+// SchemaDiff reports structural drift without proposing SQL or definition edits.
 func SchemaDiff(before, after []readexec.Column) []SchemaChange {
 	old, next := map[string]readexec.Column{}, map[string]readexec.Column{}
 	for _, c := range before {
@@ -260,6 +273,7 @@ type Dependency struct {
 	Columns []string `json:"columns"`
 }
 
+// Valid checks an immutable consumer reference and its declared columns.
 func (d Dependency) Valid() bool {
 	if !identity.Identifier(d.ID) || !validHash(d.Version) || !identity.Identifier(d.Source) || !identity.Identifier(d.Context) || !identity.Identifier(d.Dataset) || len(d.Columns) < 1 || len(d.Columns) > 256 {
 		return false
@@ -278,6 +292,8 @@ func (d Dependency) Valid() bool {
 	}
 	return true
 }
+
+// Require checks the consumer and all referenced data resources.
 func (d Dependency) Require(e identity.Envelope, write bool) error {
 	permission, action := "read", "engineering.read"
 	if write {

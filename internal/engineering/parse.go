@@ -26,13 +26,20 @@ import (
 )
 
 var (
-	ErrInvalid     = errors.New("engineering: invalid request")
-	ErrLimit       = errors.New("engineering: configured limit exceeded")
-	ErrFormat      = errors.New("engineering: unsupported or unsafe file")
-	ErrChecksum    = errors.New("engineering: content checksum mismatch")
-	ErrOwnership   = errors.New("engineering: workspace ownership not proven")
+	// ErrInvalid rejects malformed engineering requests.
+	ErrInvalid = errors.New("engineering: invalid request")
+	// ErrLimit reports a configured work or decoded-data ceiling.
+	ErrLimit = errors.New("engineering: configured limit exceeded")
+	// ErrFormat rejects unsupported or unsafe uploaded data.
+	ErrFormat = errors.New("engineering: unsupported or unsafe file")
+	// ErrChecksum rejects content that differs from its accepted manifest.
+	ErrChecksum = errors.New("engineering: content checksum mismatch")
+	// ErrOwnership denies a write without proven managed-object ownership.
+	ErrOwnership = errors.New("engineering: workspace ownership not proven")
+	// ErrUnavailable reports an unavailable engineering dependency.
 	ErrUnavailable = errors.New("engineering: dependency unavailable")
-	ErrState       = errors.New("engineering: operation state requires reconciliation")
+	// ErrState requires explicit reconciliation before another effect.
+	ErrState = errors.New("engineering: operation state requires reconciliation")
 )
 
 // ParseError identifies only fixed rules and numeric positions, never cell data.
@@ -144,7 +151,7 @@ func NormalizeHeader(s string) (string, error) {
 			}
 			continue
 		}
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9') {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
 			return "", ErrFormat
 		}
 		if out.Len() == 0 && r >= '0' && r <= '9' {

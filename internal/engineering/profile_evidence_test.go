@@ -185,6 +185,7 @@ func TestProfileRejectsInvalidResultAndSelection(t *testing.T) {
 	if _, err := BuildProfile(ctx, record, report, time.Millisecond, record.Created); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled aggregation continued", err)
 	}
+	//nolint:staticcheck // Deliberately exercise the nil-context rejection boundary.
 	if _, err := BuildProfile(nil, record, report, time.Millisecond, record.Created); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nil aggregation context accepted", err)
 	}

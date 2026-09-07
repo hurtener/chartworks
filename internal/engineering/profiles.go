@@ -213,11 +213,12 @@ func (s *Service) Build(ctx context.Context, e identity.Envelope, spec ProfileSp
 			if err = ctx.Err(); err != nil {
 				return err
 			}
-			if current.Spec.SkipLLM {
+			switch {
+			case current.Spec.SkipLLM:
 				profile.Summary = ProfileSummary{Status: "skipped", Receipt: emptyModelReceipt()}
-			} else if !current.Settings.Summaries || s.gateway == nil {
+			case !current.Settings.Summaries || s.gateway == nil:
 				profile.Summary = ProfileSummary{Status: "disabled", Receipt: emptyModelReceipt()}
-			} else {
+			default:
 				started, err := repo.StartProfileSummary(ctx, i, current)
 				if err != nil {
 					return err

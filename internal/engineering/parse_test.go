@@ -44,7 +44,8 @@ func TestCSVDeclaredTypes(t *testing.T) {
 	if r.Rows != 2 || r.Cells != 18 || values[0].Text != "9007199254740993" || values[1].Text != "9007199254740993.125" || values[3].Null || values[3].Text != "" || !values[12].Null || values[5].Text != "2026-01-01T00:00:00Z" || values[7].Text != "{\"n\":9007199254740993}" {
 		t.Fatal("exact types or NULL distinction lost", r, values)
 	}
-	for input, want := range map[string]string{"  Año de Venta ": "ano_de_venta", "\ufeffID": "id", "123": "c_123", "Nombre-Apellido": "nombre_apellido"} {
+	for _, tc := range []struct{ input, want string }{{"  Año de Venta ", "ano_de_venta"}, {"\ufeffID", "id"}, {"123", "c_123"}, {"Nombre-Apellido", "nombre_apellido"}} {
+		input, want := tc.input, tc.want
 		got, e := NormalizeHeader(input)
 		if e != nil || got != want {
 			t.Fatal("header normalization", input, got, e)
@@ -227,6 +228,7 @@ func TestUploadParserAdversarial(t *testing.T) {
 	if _, e := Parse(context.Background(), raw, s, config.DefaultUploads(), func([]Cell) error { return ErrUnavailable }); !errors.Is(e, ErrUnavailable) {
 		t.Fatal("consumer failure lost", e)
 	}
+	//nolint:staticcheck // Deliberately verify that nil authority context is rejected.
 	if _, e := Parse(nil, raw, s, l, func([]Cell) error { return nil }); !errors.Is(e, ErrInvalid) {
 		t.Fatal("nil context", e)
 	}

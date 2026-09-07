@@ -28,13 +28,13 @@ func TestPhase12(t *testing.T) {
 			v.Features.Gateway = true
 			v.Gateway = model.cfg
 			v.Profiling.Summaries = true
-			v.Profiling.Policies = []config.ProfilePolicy{{ID: "permitted-ranges", Tenant: "source-a", Source: "sensitive", RangeColumns: []string{"amount", "created_at"}}}
+			v.Profiling.Policies = []config.ProfilePolicy{{ID: "permitted-ranges", Tenant: "source-a", Source: "private-source-canary-79c21", RangeColumns: []string{"amount", "created_at"}}}
 		}, model.engine)
 		ctx := context.Background()
 		if _, err := f.admin.Exec(ctx, `UPDATE analytics.sales SET name=CASE WHEN id=1 THEN 'PRIVATE_PERSON_CANARY@example.test' ELSE '' END`); err != nil {
 			t.Fatal(err)
 		}
-		source := f.create(t, "sensitive")
+		source := f.create(t, "private-source-canary-79c21")
 		spec := f.profileSpec(t, source, "golden-profile", []string{"id", "amount", "active", "name", "payload", "created_at"}, "created_at")
 		spec.Policy, spec.SkipLLM = "permitted-ranges", false
 		p := f.profile(t, spec).Profile.Profile
@@ -99,7 +99,7 @@ func TestPhase12(t *testing.T) {
 		if len(payloads) != 1 {
 			t.Fatal("missing actual provider-input capture")
 		}
-		for _, forbidden := range []string{"PRIVATE_PERSON_CANARY", "PRIVATE_COLUMN_CANARY", "9007199254740993", "2026-01-02", "created_at", "analytics", "sensitive", "source-a", "operator", "test-session"} {
+		for _, forbidden := range []string{"PRIVATE_PERSON_CANARY", "PRIVATE_COLUMN_CANARY", "9007199254740993", "2026-01-02", "created_at", "analytics", "private-source-canary-79c21", "source-a", "operator", "test-session"} {
 			if strings.Contains(payloads[0], forbidden) {
 				t.Fatal("private values or identity reached the provider", forbidden)
 			}
@@ -340,7 +340,7 @@ func TestPhase12(t *testing.T) {
 		if err != nil || operation.ID != run.Operation.ID || operation.Input.Kind != "profile.build" {
 			t.Fatal("shared operation inspection missing", err, operation)
 		}
-		for _, e := range []identity.Envelope{identity.Envelope{}, f.actor(t, "source-b", "operator"), f.actor(t, "source-a", "different-user"), f.token.envelope(t, "source-a", "operator", "engineering.read", "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:unrelated")} {
+		for _, e := range []identity.Envelope{{}, f.actor(t, "source-b", "operator"), f.actor(t, "source-a", "different-user"), f.token.envelope(t, "source-a", "operator", "engineering.read", "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:unrelated")} {
 			if _, err = f.service.Evidence(ctx, e, input.ID); err == nil {
 				t.Fatal("inspection crossed signed/private reach")
 			}

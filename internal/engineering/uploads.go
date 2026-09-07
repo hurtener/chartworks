@@ -71,6 +71,7 @@ type UploadStatus struct {
 	Source    *sources.Source `json:"source"`
 }
 
+// Public returns content-free upload status without warehouse coordinates.
 func (r UploadRecord) Public() UploadStatus {
 	out := UploadStatus{ID: r.Spec.ID, Name: r.Spec.Name, Format: r.Spec.Format, State: r.State, Columns: append([]UploadColumn(nil), r.Spec.Columns...), Created: r.Created, Expires: r.Expires, Operation: r.Operation}
 	if r.Receipt != nil {

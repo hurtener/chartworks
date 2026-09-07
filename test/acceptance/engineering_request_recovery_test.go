@@ -79,7 +79,7 @@ func TestUploadExplicitResumeReclaimsExpiredOwner(t *testing.T) {
 	if _, err = f.db.ResumeRequest(ctx, f.e, task.ID); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("explicit resume displaced a live owner", err)
 	}
-	for _, caller := range []identity.Envelope{identity.Envelope{}, f.actor(t, "source-b", f.e.User()), f.actor(t, f.e.Tenant(), "unrelated-profiler")} {
+	for _, caller := range []identity.Envelope{{}, f.actor(t, "source-b", f.e.User()), f.actor(t, f.e.Tenant(), "unrelated-profiler")} {
 		if _, err = f.db.ResumeRequest(ctx, caller, task.ID); err == nil {
 			t.Fatal("request resume accepted foreign authority")
 		}

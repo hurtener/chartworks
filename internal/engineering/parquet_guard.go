@@ -77,7 +77,10 @@ func (r *compactReader) value(kind byte, depth int, element bool) (compactValue,
 		if e != nil {
 			return v, e
 		}
-		v.n = int64(int8(b[0]))
+		v.n = int64(b[0])
+		if v.n >= 128 {
+			v.n -= 256
+		}
 	case 4, 5, 6:
 		n, e := r.unsigned()
 		if e != nil {
@@ -416,8 +419,8 @@ func (p *parser) parquetPages(raw []byte, column parquetColumn, codec int, expec
 		if expanded > expectedBytes {
 			return ErrFormat
 		}
-		if header.has(4) && crc32.ChecksumIEEE(body) != uint32(header.number(4)) {
-			return ErrFormat
+		if err = parquetChecksum(header, body); err != nil {
+			return err
 		}
 		kind := header.number(1)
 		if kind == 2 {
@@ -638,7 +641,7 @@ func guardRLE(data []byte, width, n, ceiling int, ones bool) (int64, error) {
 				return 0, ErrFormat
 			}
 			if ones {
-				sum += int64(value * count)
+				sum += int64(value) * int64(count)
 			}
 			produced += int(count)
 		} else {
@@ -673,4 +676,24 @@ func guardRLE(data []byte, width, n, ceiling int, ones bool) (int64, error) {
 		return 0, ErrFormat
 	}
 	return sum, nil
+}
+
+// parquetChecksum compares the CRC32 bit pattern in its signed Thrift
+// i32 representation without a narrowing or overflowing conversion.
+func parquetChecksum(header compactValue, body []byte) error {
+	if !header.has(4) {
+		return nil
+	}
+	value := header.fields[4]
+	if value.kind != 5 || value.n < math.MinInt32 || value.n > math.MaxInt32 {
+		return ErrFormat
+	}
+	want := int64(crc32.ChecksumIEEE(body))
+	if want > math.MaxInt32 {
+		want -= 1 << 32
+	}
+	if value.n != want {
+		return ErrFormat
+	}
+	return nil
 }

@@ -62,7 +62,8 @@ func TestPhase11(t *testing.T) {
 				}
 			}
 		}
-		for header, want := range map[string]string{"  Año de Venta ": "ano_de_venta", "\ufeffID": "id", "Nombre-Apellido": "nombre_apellido", "123": "c_123"} {
+		for _, tc := range []struct{ header, want string }{{"  Año de Venta ", "ano_de_venta"}, {"\ufeffID", "id"}, {"Nombre-Apellido", "nombre_apellido"}, {"123", "c_123"}} {
+			header, want := tc.header, tc.want
 			if got, err := engineering.NormalizeHeader(header); err != nil || got != want {
 				t.Fatal("unstable header normalization", got, err)
 			}
@@ -131,7 +132,7 @@ func TestPhase11(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, e := range []identity.Envelope{identity.Envelope{}, f.actor(t, "source-b", "operator"), f.actor(t, "source-a", "other-user"), otherSession, f.token.envelope(t, "source-a", "operator", "sources.upload")} {
+		for _, e := range []identity.Envelope{{}, f.actor(t, "source-b", "operator"), f.actor(t, "source-a", "other-user"), otherSession, f.token.envelope(t, "source-a", "operator", "sources.upload")} {
 			before := f.lookups.Load()
 			body := &unreadUploadBody{}
 			if _, err := f.service.StageUpload(context.Background(), e, spec.ID, body); err == nil || body.reads.Load() != 0 || f.lookups.Load() != before {

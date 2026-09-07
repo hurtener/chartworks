@@ -43,11 +43,20 @@ func (p *parser) xlsxParts(raw []byte) (map[string][]byte, error) {
 			return nil, ErrFormat
 		}
 		lower := strings.ToLower(n)
-		if !(strings.HasSuffix(lower, ".xml") || strings.HasSuffix(lower, ".rels")) ||
+		if (!strings.HasSuffix(lower, ".xml") && !strings.HasSuffix(lower, ".rels")) ||
 			strings.Contains(lower, "externallink") || strings.Contains(lower, "embedding") || strings.Contains(lower, "vbaproject") || strings.Contains(lower, "connections") || strings.Contains(lower, "ctrlprop") || strings.Contains(lower, "printersetting") {
 			return nil, ErrFormat
 		}
 		left := p.limits.MaxExpandedBytes - expanded
+		if left < 0 {
+			return nil, ErrLimit
+		}
+		compressed := f.CompressedSize64
+		// An entry cannot span more bytes than the admitted archive. Check
+		// the ZIP64 declaration before narrowing it or adding ratio slack.
+		if compressed > uint64(len(raw)) || compressed > 100<<20 {
+			return nil, ErrFormat
+		}
 		if f.UncompressedSize64 > uint64(left) {
 			return nil, ErrLimit
 		}
@@ -61,7 +70,7 @@ func (p *parser) xlsxParts(raw []byte) (map[string][]byte, error) {
 			return nil, ErrFormat
 		}
 		expanded += int64(len(body))
-		if expanded > p.limits.MaxExpandedBytes || int64(len(body)) > int64(f.CompressedSize64+1)*p.limits.MaxExpansionRatio {
+		if expanded > p.limits.MaxExpandedBytes || int64(len(body)) > (int64(compressed)+1)*p.limits.MaxExpansionRatio {
 			return nil, ErrLimit
 		}
 		if e = p.safeXML(body); e != nil {
@@ -461,11 +470,12 @@ func (p *parser) worksheet(body []byte, shared []string, date1904 bool) error {
 					}
 					s = shared[index]
 				case "b":
-					if s == "1" {
+					switch s {
+					case "1":
 						s = "true"
-					} else if s == "0" {
+					case "0":
 						s = "false"
-					} else {
+					default:
 						return ErrFormat
 					}
 				case "", "n":

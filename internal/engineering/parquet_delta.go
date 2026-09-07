@@ -35,7 +35,7 @@ func guardDeltaLengths(data []byte, count, maxCell int) error {
 		size = current
 		produced = 1
 	}
-	valuesPerMini := int(block / mini)
+	valuesPerMini := int(block) / int(mini)
 	for produced < count {
 		encoded, e := r.unsigned()
 		if e != nil {
