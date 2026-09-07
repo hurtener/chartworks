@@ -1,4 +1,4 @@
-name: Temporary reviewed patch preparation
+name: Temporary reviewed source candidate
 on:
   push:
     branches: [feat/phase-11-12-uploads-profiling]
@@ -13,239 +13,56 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Apply inspected repairs and format without updating any branch
+      - name: Recover the exact reviewed replacements and preserve workflow files
         run: |
           python3 - <<'PY'
-          from pathlib import Path
           import subprocess
-
-          def replace(path, before, after):
-              p = Path(path)
-              text = p.read_text()
-              if text.count(before) != 1:
-                  raise RuntimeError(f'{path}: reviewed anchor count {text.count(before)}')
-              p.write_text(text.replace(before, after))
-
-          p = 'internal/engineering/parquet_delta.go'
-          replace(p, 'valuesPerMini := int(block / mini)', 'valuesPerMini := int(block) / int(mini)')
-          p = 'internal/engineering/parquet_guard.go'
-          replace(p, 'v.n = int64(int8(b[0]))', '''v.n = int64(b[0])
-          		if v.n >= 128 {
-          			v.n -= 256
-          		}''')
-          replace(p, '''if header.has(4) && crc32.ChecksumIEEE(body) != uint32(header.number(4)) {
-          			return ErrFormat
-          		}''', '''if err = parquetChecksum(header, body); err != nil {
-          			return err
-          		}''')
-          replace(p, 'sum += int64(value * count)', 'sum += int64(value) * int64(count)')
-          with Path(p).open('a') as f:
-              f.write('''
-
-          // parquetChecksum compares the CRC32 bit pattern in its signed Thrift
-          // i32 representation without a narrowing or overflowing conversion.
-          func parquetChecksum(header compactValue, body []byte) error {
-          	if !header.has(4) {
-          		return nil
-          	}
-          	value := header.fields[4]
-          	if value.kind != 5 || value.n < math.MinInt32 || value.n > math.MaxInt32 {
-          		return ErrFormat
-          	}
-          	want := int64(crc32.ChecksumIEEE(body))
-          	if want > math.MaxInt32 {
-          		want -= 1 << 32
-          	}
-          	if value.n != want {
-          		return ErrFormat
-          	}
-          	return nil
-          }
-          ''')
-
-          p = 'internal/engineering/parse_xlsx.go'
-          replace(p, '!(strings.HasSuffix(lower, ".xml") || strings.HasSuffix(lower, ".rels"))', '(!strings.HasSuffix(lower, ".xml") && !strings.HasSuffix(lower, ".rels"))')
-          replace(p, '''left := p.limits.MaxExpandedBytes - expanded
-          		if f.UncompressedSize64 > uint64(left) {''', '''left := p.limits.MaxExpandedBytes - expanded
-          		if left < 0 {
-          			return nil, ErrLimit
-          		}
-          		compressed := f.CompressedSize64
-          		// An entry cannot span more bytes than the admitted archive. Check
-          		// the ZIP64 declaration before narrowing it or adding ratio slack.
-          		if compressed > uint64(len(raw)) || compressed > 100<<20 {
-          			return nil, ErrFormat
-          		}
-          		if f.UncompressedSize64 > uint64(left) {''')
-          replace(p, 'int64(f.CompressedSize64+1)*p.limits.MaxExpansionRatio', '(int64(compressed)+1)*p.limits.MaxExpansionRatio')
-          replace(p, '''if s == "1" {
-          						s = "true"
-          					} else if s == "0" {
-          						s = "false"
-          					} else {
-          						return ErrFormat
-          					}''', '''switch s {
-          					case "1":
-          						s = "true"
-          					case "0":
-          						s = "false"
-          					default:
-          						return ErrFormat
-          					}''')
-
-          p = 'internal/engineering/parse_parquet.go'
-          replace(p, 'if c.decimal {', 'switch {\n\tcase c.decimal:')
-          replace(p, '} else if c.date {', 'case c.date:')
-          replace(p, '} else if c.timestamp != 0 {', 'case c.timestamp != 0:')
-          replace(p, '''} else {
-          		switch c.physical {''', '''default:
-          		switch c.physical {''')
-          replace(p, '''if declared.Type == "binary" {
-          				s = hex.EncodeToString(v.ByteArray())
-          			} else if declared.Type == "text" || declared.Type == "json" || declared.Type == "decimal" || declared.Type == "date" || declared.Type == "timestamp" {
-          				s = string(v.ByteArray())
-          			} else {
-          				return Cell{}, ErrFormat
-          			}''', '''switch declared.Type {
-          			case "binary":
-          				s = hex.EncodeToString(v.ByteArray())
-          			case "text", "json", "decimal", "date", "timestamp":
-          				s = string(v.ByteArray())
-          			default:
-          				return Cell{}, ErrFormat
-          			}''')
-
-          p = 'internal/engineering/profiles.go'
-          replace(p, 'if current.Spec.SkipLLM {', 'switch {\n\t\t\tcase current.Spec.SkipLLM:')
-          replace(p, '} else if !current.Settings.Summaries || s.gateway == nil {', 'case !current.Settings.Summaries || s.gateway == nil:')
-          replace(p, '''} else {
-          				started, err := repo.StartProfileSummary''', '''default:
-          				started, err := repo.StartProfileSummary''')
-          p = 'internal/store/postgres/profiles.go'
-          replace(p, '''if errors.Is(err, pgx.ErrNoRows) {
-          				if time.Now().Before(current.LastReadDeadline) {
-          					return engineering.ErrState
-          				}
-          			} else if err != nil {
-          				return err
-          			} else if old.Finished == nil || old.RemoteState != "stopped" && old.RemoteState != "not_issued" {
-          				return engineering.ErrState
-          			}''', '''switch {
-          			case errors.Is(err, pgx.ErrNoRows):
-          				if time.Now().Before(current.LastReadDeadline) {
-          					return engineering.ErrState
-          				}
-          			case err != nil:
-          				return err
-          			case old.Finished == nil || old.RemoteState != "stopped" && old.RemoteState != "not_issued":
-          				return engineering.ErrState
-          			}''')
-
-          p = 'internal/engineering/parse.go'
-          replace(p, "!(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')", "(r < 'a' || r > 'z') && (r < '0' || r > '9')")
-          docs = {
-              'ErrInvalid': 'rejects malformed engineering requests.',
-              'ErrLimit': 'reports a configured work or decoded-data ceiling.',
-              'ErrFormat': 'rejects unsupported or unsafe uploaded data.',
-              'ErrChecksum': 'rejects content that differs from its accepted manifest.',
-              'ErrOwnership': 'denies a write without proven managed-object ownership.',
-              'ErrUnavailable': 'reports an unavailable engineering dependency.',
-              'ErrState': 'requires explicit reconciliation before another effect.',
-          }
-          import re
-          text = Path(p).read_text()
-          for name, doc in docs.items():
-              text, n = re.subn(r'(?m)^(\t'+name+r'\s*=)', '\t// '+name+' '+doc+'\n\\1', text)
-              assert n == 1, name
-          Path(p).write_text(text)
-          p = 'internal/engineering/profile_types.go'
-          comments = {
-              'func (s ProfileSpec) Valid() bool {': 'Valid checks the closed immutable profiling request.',
-              'func (s ProfileSpec) Require(e identity.Envelope, write bool) error {': 'Require enforces signed source, dataset and execution-context reach.',
-              'func (r ProfileRecord) Digest() string {': 'Digest binds accepted inputs and bounds, excluding mutable stage progress.',
-              'func (r ProfileRecord) Valid() bool {': 'Valid verifies retained identity, source binding and immutable input integrity.',
-              'func (r ProfileRecord) Require(e identity.Envelope, write bool) error {': 'Require preserves private actor/session provenance and current signed reach.',
-              'func (p Profile) DeterministicHash() string {': 'DeterministicHash excludes optional model commentary from evidence identity.',
-              'func (p Profile) Valid(r ProfileRecord) bool {': 'Valid checks the bounded evidence against its accepted source and policy.',
-              'func (r ProfileRecord) Public() ProfileStatus {': 'Public exposes status without revealing unpublished checkpoint findings.',
-              'func SchemaDiff(before, after []readexec.Column) []SchemaChange {': 'SchemaDiff reports structural drift without proposing SQL or definition edits.',
-              'func (d Dependency) Valid() bool {': 'Valid checks an immutable consumer reference and its declared columns.',
-              'func (d Dependency) Require(e identity.Envelope, write bool) error {': 'Require checks the consumer and all referenced data resources.',
-          }
-          for signature, comment in comments.items():
-              replace(p, signature, '// '+comment+'\n'+signature)
-          replace('internal/engineering/uploads.go', 'func (r UploadRecord) Public() UploadStatus {', '// Public returns content-free upload status without warehouse coordinates.\nfunc (r UploadRecord) Public() UploadStatus {')
-
-          p = 'internal/engineering/parse_test.go'
-          replace(p, r'for input, want := range map[string]string{"  Año de Venta ": "ano_de_venta", "\ufeffID": "id", "123": "c_123", "Nombre-Apellido": "nombre_apellido"} {', r'''for _, tc := range []struct { input, want string }{{"  Año de Venta ", "ano_de_venta"}, {"\ufeffID", "id"}, {"123", "c_123"}, {"Nombre-Apellido", "nombre_apellido"}} {
-          		input, want := tc.input, tc.want''')
-          replace(p, 'if _, e := Parse(nil, raw, s, l, func([]Cell) error { return nil });', '//nolint:staticcheck // Deliberately verify that nil authority context is rejected.\n\tif _, e := Parse(nil, raw, s, l, func([]Cell) error { return nil });')
-          p = 'internal/engineering/profile_evidence_test.go'
-          replace(p, 'if _, err := BuildProfile(nil, record, report, time.Millisecond, record.Created);', '//nolint:staticcheck // Deliberately exercise the nil-context rejection boundary.\n\tif _, err := BuildProfile(nil, record, report, time.Millisecond, record.Created);')
-          p = 'test/acceptance/phase11_test.go'
-          replace(p, r'for header, want := range map[string]string{"  Año de Venta ": "ano_de_venta", "\ufeffID": "id", "Nombre-Apellido": "nombre_apellido", "123": "c_123"} {', r'''for _, tc := range []struct { header, want string }{{"  Año de Venta ", "ano_de_venta"}, {"\ufeffID", "id"}, {"Nombre-Apellido", "nombre_apellido"}, {"123", "c_123"}} {
-          			header, want := tc.header, tc.want''')
-          # The source canary must not collide with the fixed safety instructions.
-          p = 'test/acceptance/phase12_test.go'
-          text = Path(p).read_text()
-          assert text.count('"sensitive"') == 3
-          Path(p).write_text(text.replace('"sensitive"', '"private-source-canary-79c21"'))
-          # Python raw strings above preserve Go's escape sequences; only the
-          # newly inserted indentation markers need conversion to actual tabs.
-          for p in ['internal/engineering/parse_test.go', 'test/acceptance/phase11_test.go']:
-              text = Path(p).read_text()
-              text = re.sub(r'(?m)^(?:\\t)+', lambda m: '\t'*(len(m[0])//2), text)
-              Path(p).write_text(text)
-          p = '.github/workflows/ci.yml'
-          replace(p, '''      - name: All seventy-six implemented phase criteria, no missing/skipped tests''', '''      - name: Per-function diagnostics from actual race instrumentation
-                  if: always()
-                  run: |
-                    if test -s "$CHARTWORKS_COVERAGE_OUTPUT"; then
-                      go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(engineering|store/postgres)/|total:'
-                    fi
-                - name: All seventy-six implemented phase criteria, no missing/skipped tests'''.replace('\n          ', '\n'))
-          replace(p, '          test ! -f .github/workflows/phase-11-12-workspace.yml', '          test ! -f .github/workflows/phase-11-12-workspace.yml\n          test ! -f .github/workflows/verification-source.yml')
-          # Candidate source removes this temporary preparation capability.
-          Path('.github/workflows/verification-source.yml').unlink()
+          source = subprocess.check_output(['git','show','bc73a73dc737b4b660794cda5ee80a0e9a09aec0:.github/workflows/verification-source.yml'], text=True)
+          start = source.index('          from pathlib import Path\n')
+          end = source.index('          PY\n', start)
+          program = '\n'.join(line[10:] if line.startswith('          ') else line for line in source[start:end].splitlines())
+          # Workflow administration is performed by the authorized connector,
+          # not by this job's contents-only token. Prepare only source edits.
+          program = program[:program.index("p = '.github/workflows/ci.yml'")]
+          exec(compile(program, '<reviewed-replacements-bc73a73>', 'exec'))
           files = subprocess.check_output(['git','ls-files','-z','*.go']).decode().split('\0')
-          subprocess.run(['gofmt','-s','-w',*[p for p in files if p]],check=True)
-          subprocess.run(['git','diff','--check'],check=True)
-          subprocess.run(['git','diff','--stat'],check=True)
+          subprocess.run(['gofmt','-s','-w',*[p for p in files if p]], check=True)
+          subprocess.run(['git','diff','--check'], check=True)
+          subprocess.run(['git','diff','--stat'], check=True)
           PY
-      - name: Store candidate Git objects for connector review; never move a ref
+      - name: Store source-only candidate for review without moving any ref
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          import json, os, subprocess, urllib.request
+          import json, os, subprocess, urllib.request, urllib.error
           from pathlib import Path
           repo = os.environ['GITHUB_REPOSITORY']
           assert repo == 'hurtener/chartworks'
-          parent = subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          tree = subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+          parent = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
+          tree = subprocess.check_output(['git','rev-parse','HEAD^{tree}'], text=True).strip()
           paths = subprocess.check_output(['git','diff','--name-only','-z']).decode().split('\0')
-          paths += subprocess.check_output(['git','ls-files','--others','--exclude-standard','-z']).decode().split('\0')
           entries = []
           for path in sorted(set(paths)-{''}):
-              assert path.startswith(('internal/engineering/','internal/store/postgres/','test/acceptance/','.github/workflows/')), path
-              item = {'path':path,'mode':'100644','type':'blob'}
-              if Path(path).exists():
-                  item['content'] = Path(path).read_text()
-              else:
-                  item['sha'] = None
-              entries.append(item)
+              assert path.startswith(('internal/engineering/','internal/store/postgres/','test/acceptance/')), path
+              entries.append({'path':path,'mode':'100644','type':'blob','content':Path(path).read_text()})
           def post(route, value):
               request = urllib.request.Request('https://api.github.com/repos/'+repo+'/git/'+route, data=json.dumps(value).encode(), method='POST', headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  return json.load(response)
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  print(error.code, error.read().decode())
+                  raise
           candidate_tree = post('trees', {'base_tree':tree,'tree':entries})['sha']
           candidate = post('commits', {'message':'fix(engineering): resolve executed CI lint findings and privacy canary collision','tree':candidate_tree,'parents':[parent]})['sha']
           print('PREPARED_PARENT='+parent)
           print('PREPARED_TREE='+candidate_tree)
           print('PREPARED_COMMIT='+candidate)
-          print('No branch or pull-request state was changed by this job.')
+          print('No branch or PR state was changed; workflow files are unchanged.')
           PY
