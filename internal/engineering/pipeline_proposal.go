@@ -42,6 +42,9 @@ func (s *PipelineService) Propose(ctx context.Context, e identity.Envelope, r Pi
 	if err = s.validatePipelineDestination(ctx, e, r.Connection); err != nil {
 		return PipelineVersion{}, err
 	}
+	if err = s.source.ValidatePipelineInputLocation(ctx, e, r.Source, r.Context, r.Connection); err != nil {
+		return PipelineVersion{}, err
+	}
 	binding, err := s.source.Binding(ctx, e, r.Source, r.Context)
 	if err != nil {
 		return PipelineVersion{}, err
@@ -52,6 +55,9 @@ func (s *PipelineService) Propose(ctx context.Context, e identity.Envelope, r Pi
 	}
 	if err = readexec.Require(e, binding, dependencies); err != nil {
 		return PipelineVersion{}, err
+	}
+	for _, dependency := range dependencies {
+		refs = append(refs, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: dependency})
 	}
 	input, err := json.Marshal(struct {
 		Instruction string              `json:"instruction"`

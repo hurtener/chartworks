@@ -84,9 +84,12 @@ type pipelineStageRepository interface {
 }
 
 type pipelineInput struct {
-	service *Service
-	stages  []PipelineStage
-	binding readexec.Binding
+	service       *Service
+	operation     string
+	targetSource  string
+	targetContext string
+	stages        []PipelineStage
+	binding       readexec.Binding
 }
 
 // PipelinePlanAdapter holds a validated private stage binding through managed work.
@@ -96,6 +99,7 @@ type PipelinePlanAdapter interface {
 }
 
 var _ PipelinePlanAdapter = (*pipelineInput)(nil)
+var _ readexec.PrivatePipelineValidationAdapter = (*pipelineInput)(nil)
 
 func (s *Service) pipelineStages(ctx context.Context, e identity.Envelope, operation string, steps []string) ([]PipelineStage, error) {
 	repo, ok := s.repo.(pipelineStageRepository)
@@ -116,9 +120,6 @@ func (s *Service) pipelineStages(ctx context.Context, e identity.Envelope, opera
 		if !stage.Valid() || stage.Tenant != e.Tenant() || stage.Actor != e.User() || stage.Session != e.Session() || stage.Operation != operation || stage.Step != step {
 			return nil, readexec.ErrBinding
 		}
-		if err = access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: stage.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: stage.Context}); err != nil {
-			return nil, err
-		}
 		out = append(out, stage)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Step < out[j].Step })
@@ -126,6 +127,9 @@ func (s *Service) pipelineStages(ctx context.Context, e identity.Envelope, opera
 		if stage.Pipeline != out[0].Pipeline || stage.Version != out[0].Version || stage.Alias != out[0].Alias {
 			return nil, readexec.ErrBinding
 		}
+	}
+	if err := access.Require(e, "engineering.pipeline.run", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "write", ID: out[0].Pipeline}); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -135,14 +139,17 @@ func (s *Service) NewPipelineInput(ctx context.Context, e identity.Envelope, ope
 	if !identity.Identifier(sourceID) || !identity.Identifier(contextID) {
 		return nil, store.ErrInvalid
 	}
-	if err := access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: sourceID}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: contextID}); err != nil {
-		return nil, err
-	}
 	stages, err := s.pipelineStages(ctx, e, operation, steps)
 	if err != nil {
 		return nil, err
 	}
-	adapter := &pipelineInput{service: s, stages: stages}
+	step := strings.TrimPrefix(sourceID, stages[0].Pipeline+".")
+	prefix := sourceID + ":v"
+	revision, parseErr := strconv.ParseInt(strings.TrimPrefix(contextID, prefix), 10, 64)
+	if !readexec.SQLIdentifier(step) || !strings.HasPrefix(sourceID, stages[0].Pipeline+".") || !strings.HasPrefix(contextID, prefix) || parseErr != nil || revision < 1 {
+		return nil, readexec.ErrBinding
+	}
+	adapter := &pipelineInput{service: s, operation: operation, targetSource: sourceID, targetContext: contextID, stages: stages}
 	var binding readexec.Binding
 	err = s.call(ctx, e, true, func(ctx context.Context) error {
 		var resolveErr error
@@ -154,6 +161,39 @@ func (s *Service) NewPipelineInput(ctx context.Context, e identity.Envelope, ope
 	}
 	adapter.binding = binding
 	return adapter, nil
+}
+
+// AuthorizePrivatePipeline binds validator use to the exact checked-stage
+// manifest and current pipeline-run authority. It never creates ordinary source
+// query authority for the private coordinates.
+func (p *pipelineInput) AuthorizePrivatePipeline(e identity.Envelope, binding readexec.Binding, dependencies []string) (string, error) {
+	if p == nil || len(p.stages) == 0 || !binding.Valid() || readexec.Hash(binding) != readexec.Hash(p.binding) || binding.Source != p.targetSource || binding.Context != p.targetContext {
+		return "", readexec.ErrBinding
+	}
+	first := p.stages[0]
+	if !first.Valid() || first.Operation != p.operation || first.Tenant != e.Tenant() || first.Actor != e.User() || first.Session != e.Session() {
+		return "", readexec.ErrBinding
+	}
+	if err := access.Require(e, "engineering.pipeline.run", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "write", ID: first.Pipeline}); err != nil {
+		return "", err
+	}
+	for _, stage := range p.stages[1:] {
+		if !stage.Valid() || stage.Operation != p.operation || stage.Tenant != first.Tenant || stage.Actor != first.Actor || stage.Session != first.Session || stage.Pipeline != first.Pipeline || stage.Version != first.Version || stage.Alias != first.Alias {
+			return "", readexec.ErrBinding
+		}
+	}
+	allowed := make(map[string]bool, len(binding.Relations))
+	for _, relation := range binding.Relations {
+		allowed[relation.ID] = true
+	}
+	seen := map[string]bool{}
+	for _, dependency := range dependencies {
+		if seen[dependency] || !allowed[dependency] {
+			return "", readexec.ErrBinding
+		}
+		seen[dependency] = true
+	}
+	return readexec.Hash([]any{"chartworks-private-pipeline-validation-v1", p.operation, p.targetSource, p.targetContext, p.stages, p.binding}), nil
 }
 
 func (p *pipelineInput) WithPlan(ctx context.Context, e identity.Envelope, plan readexec.Plan, run func(context.Context, string, []readexec.Parameter, readexec.Binding) error) error {
@@ -179,14 +219,10 @@ func (p *pipelineInput) WithPlan(ctx context.Context, e identity.Envelope, plan 
 }
 
 func (p *pipelineInput) Binding(_ context.Context, e identity.Envelope, id, context string) (readexec.Binding, error) {
-	if !e.Valid() || e.Tenant() != p.stages[0].Tenant || e.User() != p.stages[0].Actor || e.Session() != p.stages[0].Session || id != p.binding.Source || context != p.binding.Context {
+	if p == nil || len(p.stages) == 0 || !e.Valid() || e.Tenant() != p.stages[0].Tenant || e.User() != p.stages[0].Actor || e.Session() != p.stages[0].Session || id != p.binding.Source || context != p.binding.Context {
 		return readexec.Binding{}, readexec.ErrBinding
 	}
-	refs := []access.Resource{{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: id}, {Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: context}}
-	for _, stage := range p.stages {
-		refs = append(refs, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: stage.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: stage.Context})
-	}
-	if err := access.Require(e, "sources.query", refs...); err != nil {
+	if _, err := p.AuthorizePrivatePipeline(e, p.binding, nil); err != nil {
 		return readexec.Binding{}, err
 	}
 	return p.binding.Clone(), nil

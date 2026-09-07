@@ -35,7 +35,7 @@ func requestContext(ctx context.Context, e identity.Envelope) (context.Context, 
 	child, stop := context.WithDeadline(ctx, e.Deadline())
 	return child, stop, nil
 }
-func readRequestTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, lock bool) (jobs.RequestTask, error) {
+func readOwnedRequestTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, lock bool) (jobs.RequestTask, error) {
 	if !e.Valid() || !identity.Identifier(id) {
 		return jobs.RequestTask{}, access.ErrUnauthenticated
 	}
@@ -47,7 +47,37 @@ func readRequestTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id strin
 	if err != nil {
 		return jobs.RequestTask{}, err
 	}
+	return task, nil
+}
+
+func readRequestTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, lock bool) (jobs.RequestTask, error) {
+	task, err := readOwnedRequestTx(ctx, tx, e, id, lock)
+	if err != nil {
+		return jobs.RequestTask{}, err
+	}
 	if err = task.Require(e); err != nil {
+		return jobs.RequestTask{}, err
+	}
+	return task, nil
+}
+
+func cancelRequestTaskTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, task jobs.RequestTask) (jobs.RequestTask, error) {
+	if task.State == "cancelled" || task.State == "succeeded" {
+		return task, nil
+	}
+	if task.State != "pending" && task.State != "retry" && task.State != "running" {
+		return jobs.RequestTask{}, store.ErrConflict
+	}
+	if _, err := tx.Exec(ctx, `UPDATE chartworks.operation_attempts SET state='cancelled',error_code='cancelled',finished_at=clock_timestamp() WHERE tenant_id=$1 AND operation_id=$2 AND state='acquiring'`, e.Tenant(), task.ID); err != nil {
+		return jobs.RequestTask{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE chartworks.operations SET status='cancelled',error_code='cancelled',finished_at=clock_timestamp(),lease_owner=NULL,lease_until=NULL WHERE tenant_id=$1 AND operation_id=$2`, e.Tenant(), task.ID); err != nil {
+		return jobs.RequestTask{}, err
+	}
+	task.State = "cancelled"
+	task.Code = "cancelled"
+	scope, _ := store.NewScope(e.Tenant(), e.User())
+	if err := auditJob(ctx, tx, scope, "request.cancelled", task.ID); err != nil {
 		return jobs.RequestTask{}, err
 	}
 	return task, nil
@@ -215,28 +245,14 @@ func (d *DB) CancelRequest(ctx context.Context, e identity.Envelope, id string) 
 		return out, err
 	}
 	defer stop()
-	scope, _ := store.NewScope(e.Tenant(), e.User())
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		out, err = readRequestTx(ctx, tx, e, id, true)
 		if err != nil {
 			return err
 		}
-		if out.State == "cancelled" || out.State == "succeeded" {
-			return nil
-		}
-		if out.State != "pending" && out.State != "retry" && out.State != "running" {
-			return store.ErrConflict
-		}
-		if _, err = tx.Exec(ctx, `UPDATE chartworks.operation_attempts SET state='cancelled',error_code='cancelled',finished_at=clock_timestamp() WHERE tenant_id=$1 AND operation_id=$2 AND state='acquiring'`, e.Tenant(), id); err != nil {
-			return err
-		}
-		if _, err = tx.Exec(ctx, `UPDATE chartworks.operations SET status='cancelled',error_code='cancelled',finished_at=clock_timestamp(),lease_owner=NULL,lease_until=NULL WHERE tenant_id=$1 AND operation_id=$2`, e.Tenant(), id); err != nil {
-			return err
-		}
-		out.State = "cancelled"
-		out.Code = "cancelled"
-		return auditJob(ctx, tx, scope, "request.cancelled", id)
+		out, err = cancelRequestTaskTx(ctx, tx, e, out)
+		return err
 	})
 	if err != nil {
 		return jobs.RequestTask{}, err

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/sources"
@@ -37,7 +38,8 @@ func rebuildPipelineSources(t *testing.T, f *pipelineFixture) {
 }
 
 func TestPipelineRejectsDifferentInputDatabase(t *testing.T) {
-	f := newPipelineFixture(t, nil, nil)
+	model := newGatewayFixture(t, nil)
+	f := newPipelineFixture(t, model.engine, nil)
 	ctx := context.Background()
 	// Separate read references permit the managed destination to move without
 	// changing the registered source's accepted database or native binding.
@@ -109,6 +111,10 @@ func TestPipelineRejectsDifferentInputDatabase(t *testing.T) {
 		t.Fatal("execution accepted a writer outside the destination read database", err)
 	}
 	moveReference("CHARTWORKS_PIPELINE_READ")
+	modelCalls := model.requests.Load()
+	if _, err = f.pipelines.Propose(ctx, f.e, engineering.PipelineProposalRequest{ID: "proposal-other-db", Name: "Cross database proposal", Connection: definition.Connection, Source: source.ID, Context: source.ContextID, Instruction: "Select the identifier"}); !errors.Is(err, readexec.ErrBinding) || model.requests.Load() != modelCalls {
+		t.Fatal("cross-database proposal reached the model", err, model.requests.Load()-modelCalls)
+	}
 	rejected := definition
 	rejected.ID = "rejected-other-db"
 	if _, err = f.pipelines.Draft(ctx, f.e, rejected, 0); !errors.Is(err, readexec.ErrBinding) {
@@ -137,6 +143,107 @@ func TestPipelineRejectsDifferentInputDatabase(t *testing.T) {
 			t.Fatal("rejection created a managed namespace", err, namespaces)
 		}
 	}
+}
+
+func TestPipelineExactRunAuthorityCoversPrivateStagesAndJobControls(t *testing.T) {
+	f := newPipelineFixture(t, nil, nil)
+	ctx := context.Background()
+	source := f.create(t, "exact-authority-source")
+	definition := f.definition(t, source, "exact-authority-pipeline")
+	second := definition.Steps[0]
+	second.ID = "second"
+	second.Source = ""
+	second.Context = ""
+	second.Inputs = nil
+	second.SQL = "SELECT id FROM {{step.output}}"
+	second.DependsOn = []string{"output"}
+	second.FromSteps = []string{"output"}
+	definition.Steps = append(definition.Steps, second)
+	externalReach := []string{
+		"sources.query",
+		"cw.source.write:" + definition.ID,
+		"cw.source.query:" + source.ID,
+		"cw.execution_context.use:" + source.ContextID,
+		"cw.dataset.query:" + definition.Steps[0].Inputs[0],
+	}
+	draftAuthority := f.token.envelope(t, f.e.Tenant(), f.e.User(), append([]string{"engineering.pipeline.write"}, externalReach...)...)
+	draft, err := f.pipelines.Draft(ctx, draftAuthority, definition, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishAuthority := f.token.envelope(t, f.e.Tenant(), f.e.User(), append([]string{"engineering.pipeline.publish"}, externalReach...)...)
+	if _, err = f.pipelines.Publish(ctx, publishAuthority, definition.ID, draft.Version); err != nil {
+		t.Fatal(err)
+	}
+
+	runAuthority := f.token.envelope(t, f.e.Tenant(), f.e.User(), append([]string{"engineering.pipeline.run"}, externalReach...)...)
+	admitted, err := f.pipelines.AdmitRun(ctx, runAuthority, definition.ID, draft.Version, "exact-authority-control")
+	if err != nil || admitted.Operation.State != "pending" {
+		t.Fatal("exact run authority did not admit", err, admitted)
+	}
+	missingJobAction := f.token.envelope(t, f.e.Tenant(), f.e.User(),
+		"engineering.pipeline.run", "cw.source.write:"+definition.ID,
+		"cw.source.query:"+source.ID, "cw.execution_context.use:"+source.ContextID,
+		"cw.dataset.query:"+definition.Steps[0].Inputs[0],
+	)
+	if _, err = f.pipelines.InspectRun(ctx, missingJobAction, admitted.Operation.ID); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("pipeline run action substituted for jobs.read", err)
+	}
+	readAuthority := f.token.envelope(t, f.e.Tenant(), f.e.User(),
+		"jobs.read", "cw.source.write:"+definition.ID,
+		"cw.source.query:"+source.ID, "cw.execution_context.use:"+source.ContextID,
+		"cw.dataset.query:"+definition.Steps[0].Inputs[0],
+	)
+	if inspected, inspectErr := f.pipelines.InspectRun(ctx, readAuthority, admitted.Operation.ID); inspectErr != nil || inspected.Operation.ID != admitted.Operation.ID {
+		t.Fatal("jobs.read plus original reach rejected", inspectErr, inspected)
+	}
+	missingDependency := f.token.envelope(t, f.e.Tenant(), f.e.User(),
+		"jobs.cancel", "cw.source.write:"+definition.ID, "cw.source.query:"+source.ID,
+		"cw.dataset.query:"+definition.Steps[0].Inputs[0],
+	)
+	if _, err = f.pipelines.Cancel(ctx, missingDependency, admitted.Operation.ID); !errors.Is(err, access.ErrNotFound) {
+		t.Fatal("jobs.cancel omitted original context reach", err)
+	}
+	cancelAuthority := f.token.envelope(t, f.e.Tenant(), f.e.User(),
+		"jobs.cancel", "cw.source.write:"+definition.ID,
+		"cw.source.query:"+source.ID, "cw.execution_context.use:"+source.ContextID,
+		"cw.dataset.query:"+definition.Steps[0].Inputs[0],
+	)
+	cancelled, err := f.pipelines.Cancel(ctx, cancelAuthority, admitted.Operation.ID)
+	if err != nil || cancelled.State != "cancelled" {
+		t.Fatal("jobs.cancel plus original reach rejected", err, cancelled)
+	}
+
+	run, err := f.pipelines.Run(ctx, runAuthority, definition.ID, draft.Version, "exact-authority-execute", false)
+	if err != nil || run.State != "published" || len(run.Effects) != 2 {
+		t.Fatal("exact run authority could not execute private stages", err, run)
+	}
+	for _, effect := range run.Effects {
+		if _, bindingErr := f.s.Binding(ctx, runAuthority, effect.Source, effect.Context); !errors.Is(bindingErr, access.ErrNotFound) {
+			t.Fatal("pipeline execution authority became ordinary output-read authority", bindingErr)
+		}
+	}
+}
+
+func TestPipelineServiceVerifiesEnabledRunnerAtConstruction(t *testing.T) {
+	f := newPipelineFixture(t, nil, nil)
+	changed := f.values
+	changed.Pipelines.RunnerSHA256 = strings.Repeat("0", 64)
+	if _, err := engineering.NewPipelineService(f.db, f.s, f.validator, nil, changed, f.lookup); !errors.Is(err, engineering.ErrInvalid) {
+		t.Fatal("enabled service accepted changed runner digest", err)
+	}
+	changed = f.values
+	changed.Pipelines.RunnerPath = "/missing/chartworks-pipeline-runner"
+	if _, err := engineering.NewPipelineService(f.db, f.s, f.validator, nil, changed, f.lookup); !errors.Is(err, engineering.ErrUnavailable) {
+		t.Fatal("enabled service accepted missing runner", err)
+	}
+	changed.Pipelines.Enabled = false
+	changed.Pipelines.RunnerSHA256 = ""
+	disabled, err := engineering.NewPipelineService(f.db, f.s, f.validator, nil, changed, f.lookup)
+	if err != nil {
+		t.Fatal("disabled retained service resolved runner", err)
+	}
+	disabled.Close()
 }
 
 func TestPipelinePublishesTwoOutputsWithOneReadConnection(t *testing.T) {

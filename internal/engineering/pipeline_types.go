@@ -198,10 +198,12 @@ func ValidatePipelineDefinition(d PipelineDefinition, l config.Pipelines) error 
 			}
 			deps[id] = true
 		}
+		from := map[string]bool{}
 		for _, id := range s.FromSteps {
-			if !deps[id] {
+			if from[id] || !deps[id] {
 				return ErrInvalid
 			}
+			from[id] = true
 		}
 		edges[s.ID] = s.DependsOn
 	}
@@ -236,6 +238,8 @@ func ValidatePipelineDefinition(d PipelineDefinition, l config.Pipelines) error 
 type PipelineRepository interface {
 	ReservePipelineExecution(context.Context, identity.Envelope, PipelineRecord, jobs.RequestTask, string) (PipelineExecution, error)
 	ReadPipelineExecution(context.Context, identity.Envelope, string) (PipelineExecution, error)
+	ReadPipelineExecutionControl(context.Context, identity.Envelope, string, string) (PipelineExecution, error)
+	CancelPipelineExecution(context.Context, identity.Envelope, string) (jobs.RequestTask, error)
 	MutatePipelineStage(context.Context, jobs.Invocation, PipelineRecord, PipelineStageState) (PipelineExecution, error)
 	CompletePipelineExecution(context.Context, jobs.Invocation, PipelineRecord, []sources.Record) error
 	ReadPipelineStage(context.Context, identity.Envelope, string, string) (sources.PipelineStage, error)

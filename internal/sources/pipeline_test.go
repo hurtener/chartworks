@@ -5,14 +5,46 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/jackc/pgx/v5"
 )
 
 func pipelineFixture() PipelineStage {
 	return SealPipelineStage(PipelineStage{Tenant: "tenant", Actor: "actor", Session: "session", Pipeline: "pipeline", Version: 3, Revision: 2, Operation: "operation", Step: "clean", Alias: "managed", Schema: "cw_stage", Table: "cw_p_table", OID: 42, Columns: []string{"id", "value"}, Source: "pipeline.clean", Context: "pipeline.clean:v2", State: "checked"})
+}
+
+func TestPrivatePipelineValidationAuthorityIsManifestBound(t *testing.T) {
+	stage := pipelineFixture()
+	binding := readexec.Binding{
+		Tenant: stage.Tenant, Source: "pipeline.next", Context: "pipeline.next:v1", Revision: 1, Dialect: "postgres",
+		Contract: "pipeline-contract", Fingerprint: strings.Repeat("a", 64),
+		Relations: []readexec.Relation{{ID: "private-dataset", Schema: stage.Schema, Name: stage.Table, Columns: []readexec.Column{{Name: "id", NativeType: "int8", Category: "numeric", Safe: true}}}},
+	}
+	adapter := &pipelineInput{operation: stage.Operation, targetSource: binding.Source, targetContext: binding.Context, stages: []PipelineStage{stage}, binding: binding}
+	e, err := identity.FromVerified(stage.Tenant, stage.Actor, stage.Session, []string{"engineering.pipeline.run", "cw.source.write:" + stage.Pipeline}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := adapter.AuthorizePrivatePipeline(e, binding, []string{"private-dataset"})
+	if err != nil || len(proof) != 64 {
+		t.Fatal("exact private pipeline manifest rejected", err)
+	}
+	other, err := identity.FromVerified(stage.Tenant, stage.Actor, stage.Session, []string{"engineering.pipeline.run", "cw.source.write:other-pipeline"}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = adapter.AuthorizePrivatePipeline(other, binding, []string{"private-dataset"}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatal("cross-pipeline authority admitted", err)
+	}
+	adapter.operation = "other-operation"
+	if _, err = adapter.AuthorizePrivatePipeline(e, binding, []string{"private-dataset"}); !errors.Is(err, readexec.ErrBinding) {
+		t.Fatal("wrong operation admitted", err)
+	}
 }
 
 func TestPipelineStageAndPrivateRecordBinding(t *testing.T) {

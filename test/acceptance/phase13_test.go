@@ -51,6 +51,13 @@ func TestPhase13(t *testing.T) {
 		if !errors.Is(engineering.ValidatePipelineDefinition(cyclic, limits), engineering.ErrInvalid) {
 			t.Fatal("cyclic graph accepted")
 		}
+		duplicateInput := base
+		duplicateInput.Steps = append(append([]engineering.PipelineStep(nil), base.Steps...), engineering.PipelineStep{
+			ID: "two", SQL: "SELECT id FROM {{step.one}}", DependsOn: []string{"one"}, FromSteps: []string{"one", "one"}, Strategy: "replace", Columns: base.Steps[0].Columns, Checks: []engineering.PipelineCheck{},
+		})
+		if !errors.Is(engineering.ValidatePipelineDefinition(duplicateInput, limits), engineering.ErrInvalid) {
+			t.Fatal("duplicate derived input accepted")
+		}
 	})
 
 	t.Run("AC02", func(t *testing.T) {

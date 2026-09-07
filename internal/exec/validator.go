@@ -30,6 +30,21 @@ type Validator struct {
 	warehouseParser *bruinsql.RustSQLParser
 }
 
+func validationAuthority(adapter ReadAdapter, e identity.Envelope, binding Binding, dependencies []string) (PrivatePipelineValidationAdapter, string, error) {
+	private, ok := adapter.(PrivatePipelineValidationAdapter)
+	if !ok {
+		return nil, "", Require(e, binding, dependencies)
+	}
+	proof, err := private.AuthorizePrivatePipeline(e, binding, dependencies)
+	if err != nil {
+		return nil, "", err
+	}
+	if !validPrivatePipelineProof(proof) {
+		return nil, "", ErrBinding
+	}
+	return private, proof, nil
+}
+
 // NewValidator uses the pinned native PostgreSQL parser compiled to WASM, not a keyword filter.
 func NewValidator(adapter ReadAdapter, limits config.ReadValidation) (*Validator, error) {
 	if adapter == nil || reflect.ValueOf(adapter).Kind() == reflect.Pointer && reflect.ValueOf(adapter).IsNil() || config.ValidateReadValidation(limits) != nil {
@@ -82,7 +97,8 @@ func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request
 	if binding.Dialect != "postgres" {
 		return v.validateWarehouse(ctx, e, r, binding)
 	}
-	if err = Require(e, binding, nil); err != nil {
+	private, initialProof, err := validationAuthority(v.adapter, e, binding, nil)
+	if err != nil {
 		return Plan{}, err
 	}
 	select {
@@ -124,10 +140,14 @@ func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request
 		deps = append(deps, id)
 	}
 	sort.Strings(deps)
-	if err = Require(e, binding, deps); err != nil {
+	private, proof, err := validationAuthority(v.adapter, e, binding, deps)
+	if err != nil {
 		return Plan{}, err
 	}
-	candidate := Candidate{binding: binding.Clone(), owner: e, authority: authority(e), statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: deps, columns: append([]string(nil), columns...), checked: true}
+	if proof != initialProof {
+		return Plan{}, ErrBinding
+	}
+	candidate := Candidate{binding: binding.Clone(), owner: e, authority: authority(e), private: private, privateProof: proof, statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: deps, columns: append([]string(nil), columns...), checked: true}
 	if err = v.adapter.Explain(ctx, e, candidate); err != nil {
 		return Plan{}, err
 	}

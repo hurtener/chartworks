@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -360,15 +359,12 @@ func (s *PipelineService) executePipelineStage(ctx context.Context, inv jobs.Inv
 	if err != nil {
 		return err
 	}
-	if err = access.Require(e, "engineering.pipeline.run", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "write", ID: state.Stage.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: state.Stage.Context}); err != nil {
+	if err = pipelineAuthority(e, record.Definition, "engineering.pipeline.run", "write"); err != nil {
 		return err
 	}
 	if previous := state.Previous; previous != nil && step.Strategy != "replace" {
 		if !previous.Valid() || previous.Tenant != e.Tenant() || previous.Pipeline != record.Definition.ID || previous.Step != step.ID || previous.Alias != c.ID || previous.Schema != state.Stage.Schema {
 			return ErrOwnership
-		}
-		if err = access.Require(e, "engineering.pipeline.run", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: previous.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: previous.Context}); err != nil {
-			return err
 		}
 	}
 	w, _, err := managedWriterConfig(s.values, s.lookup, s.repo.DatabaseName(), c)

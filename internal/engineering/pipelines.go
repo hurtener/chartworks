@@ -37,6 +37,11 @@ func NewPipelineService(repo PipelineRepository, source *sources.Service, valida
 	if repo == nil || source == nil || lookup == nil || config.ValidatePipelines(values.Pipelines) != nil || (values.Pipelines.Enabled && (validator == nil || !values.Sources.Enabled)) {
 		return nil, ErrInvalid
 	}
+	if values.Pipelines.Enabled {
+		if err := verifyPipelineRunner(values.Pipelines); err != nil {
+			return nil, err
+		}
+	}
 	limits := jobs.Defaults()
 	limits.GlobalConcurrency = values.Jobs.GlobalConcurrency
 	limits.TenantConcurrency = values.Jobs.TenantConcurrency
@@ -77,6 +82,9 @@ func pipelineAuthority(e identity.Envelope, d PipelineDefinition, action, permis
 	for _, step := range d.Steps {
 		if step.Source != "" {
 			refs = append(refs, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: step.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: step.Context})
+			for _, input := range step.Inputs {
+				refs = append(refs, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: input})
+			}
 		}
 	}
 	return access.Require(e, action, refs...)

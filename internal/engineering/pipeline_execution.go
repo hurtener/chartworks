@@ -8,12 +8,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
 )
+
+func (s *PipelineService) authorizePipelineControl(ctx context.Context, e identity.Envelope, run PipelineExecution, action string) error {
+	record, err := s.repo.ReadPipeline(ctx, e, run.Pipeline, run.Version, action, "write")
+	if err != nil {
+		return err
+	}
+	if record.Digest != run.Digest {
+		return store.ErrInvalid
+	}
+	return pipelineAuthority(e, record.Definition, action, "write")
+}
 
 // InspectRun returns the authorized public receipt of a durable pipeline operation.
 func (s *PipelineService) InspectRun(ctx context.Context, e identity.Envelope, id string) (PipelineRun, error) {
@@ -22,8 +34,17 @@ func (s *PipelineService) InspectRun(ctx context.Context, e identity.Envelope, i
 		return PipelineRun{}, err
 	}
 	defer stop()
-	run, err := s.repo.ReadPipelineExecution(ctx, e, id)
+	if !e.Valid() {
+		return PipelineRun{}, access.ErrUnauthenticated
+	}
+	if !e.Has("jobs.read") {
+		return PipelineRun{}, access.ErrForbidden
+	}
+	run, err := s.repo.ReadPipelineExecutionControl(ctx, e, id, "jobs.read")
 	if err != nil {
+		return PipelineRun{}, err
+	}
+	if err = s.authorizePipelineControl(ctx, e, run, "jobs.read"); err != nil {
 		return PipelineRun{}, err
 	}
 	return run.Public(), nil
@@ -36,10 +57,20 @@ func (s *PipelineService) Cancel(ctx context.Context, e identity.Envelope, id st
 		return jobs.RequestTask{}, err
 	}
 	defer stop()
-	if _, err = s.repo.ReadPipelineExecution(ctx, e, id); err != nil {
+	if !e.Valid() {
+		return jobs.RequestTask{}, access.ErrUnauthenticated
+	}
+	if !e.Has("jobs.cancel") {
+		return jobs.RequestTask{}, access.ErrForbidden
+	}
+	run, err := s.repo.ReadPipelineExecutionControl(ctx, e, id, "jobs.cancel")
+	if err != nil {
 		return jobs.RequestTask{}, err
 	}
-	return s.runner.Cancel(ctx, e, id)
+	if err = s.authorizePipelineControl(ctx, e, run, "jobs.cancel"); err != nil {
+		return jobs.RequestTask{}, err
+	}
+	return s.repo.CancelPipelineExecution(ctx, e, id)
 }
 
 // Run admits or resumes an exact published version and executes its bounded stages.

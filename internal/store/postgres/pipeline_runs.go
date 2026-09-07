@@ -16,11 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func readPipelineExecutionTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, operation string) (out engineering.PipelineExecution, err error) {
-	task, err := readRequestTx(ctx, tx, e, operation, false)
-	if err != nil {
-		return out, err
-	}
+func readPipelineExecutionDataTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, operation string, task jobs.RequestTask) (out engineering.PipelineExecution, err error) {
 	if task.Input.Kind != "pipeline.run" {
 		return out, store.ErrNotFound
 	}
@@ -55,6 +51,34 @@ func readPipelineExecutionTx(ctx context.Context, tx pgx.Tx, e identity.Envelope
 	return out, nil
 }
 
+func readPipelineExecutionTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, operation string) (engineering.PipelineExecution, error) {
+	task, err := readRequestTx(ctx, tx, e, operation, false)
+	if err != nil {
+		return engineering.PipelineExecution{}, err
+	}
+	return readPipelineExecutionDataTx(ctx, tx, e, operation, task)
+}
+
+func readPipelineExecutionControlTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, operation, action string, lock bool) (engineering.PipelineExecution, error) {
+	if action != "jobs.read" && action != "jobs.cancel" {
+		return engineering.PipelineExecution{}, jobs.ErrAuthority
+	}
+	if !e.Has(action) {
+		return engineering.PipelineExecution{}, access.ErrForbidden
+	}
+	task, err := readOwnedRequestTx(ctx, tx, e, operation, lock)
+	if err != nil {
+		return engineering.PipelineExecution{}, err
+	}
+	if task.Input.Kind != "pipeline.run" {
+		return engineering.PipelineExecution{}, store.ErrNotFound
+	}
+	if err = access.Require(e, action, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "write", ID: task.Input.Target}); err != nil {
+		return engineering.PipelineExecution{}, err
+	}
+	return readPipelineExecutionDataTx(ctx, tx, e, operation, task)
+}
+
 // ReadPipelineExecution returns an authorized actor/session-private operation receipt.
 func (d *DB) ReadPipelineExecution(ctx context.Context, e identity.Envelope, operation string) (out engineering.PipelineExecution, err error) {
 	ctx, stop, err := requestContext(ctx, e)
@@ -69,6 +93,47 @@ func (d *DB) ReadPipelineExecution(ctx context.Context, e identity.Envelope, ope
 	})
 	if err != nil {
 		return engineering.PipelineExecution{}, err
+	}
+	return out, nil
+}
+
+// ReadPipelineExecutionControl reads an actor/session-private run under the
+// registered jobs action and exact pipeline reach, without requiring run action.
+func (d *DB) ReadPipelineExecutionControl(ctx context.Context, e identity.Envelope, operation, action string) (out engineering.PipelineExecution, err error) {
+	ctx, stop, err := requestContext(ctx, e)
+	if err != nil {
+		return out, err
+	}
+	defer stop()
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var readErr error
+		out, readErr = readPipelineExecutionControlTx(ctx, tx, e, operation, action, false)
+		return readErr
+	})
+	if err != nil {
+		return engineering.PipelineExecution{}, err
+	}
+	return out, nil
+}
+
+// CancelPipelineExecution records durable cancellation after pipeline-specific
+// jobs.cancel authorization. Generic request-job authorization is unchanged.
+func (d *DB) CancelPipelineExecution(ctx context.Context, e identity.Envelope, operation string) (out jobs.RequestTask, err error) {
+	ctx, stop, err := requestContext(ctx, e)
+	if err != nil {
+		return out, err
+	}
+	defer stop()
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		execution, readErr := readPipelineExecutionControlTx(ctx, tx, e, operation, "jobs.cancel", true)
+		if readErr != nil {
+			return readErr
+		}
+		out, readErr = cancelRequestTaskTx(ctx, tx, e, execution.Operation)
+		return readErr
+	})
+	if err != nil {
+		return jobs.RequestTask{}, err
 	}
 	return out, nil
 }
@@ -293,9 +358,6 @@ func (d *DB) CompletePipelineExecution(ctx context.Context, i jobs.Invocation, r
 			record, ok := byID[s.Stage.Source]
 			if !ok || s.State != "checked" || !s.Stage.Valid() || record.Pipeline == nil || *record.Pipeline != s.Stage.Location() || record.Source.Revision != s.Stage.Revision {
 				return store.ErrInvalid
-			}
-			if err = access.Require(e, "engineering.pipeline.run", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "write", ID: s.Stage.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: s.Stage.Context}); err != nil {
-				return err
 			}
 			if err = putSourceTx(ctx, tx, scope, s.Stage.Revision-1, record, true); err != nil {
 				return err

@@ -135,6 +135,10 @@ func Hash(v any) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
+func validPrivatePipelineProof(proof string) bool {
+	raw, err := hex.DecodeString(proof)
+	return err == nil && len(raw) == sha256.Size && hex.EncodeToString(raw) == proof
+}
 func authority(e identity.Envelope) string {
 	scopes := e.Scopes()
 	sort.Strings(scopes)
@@ -175,12 +179,22 @@ type ReadAdapter interface {
 	Explain(context.Context, identity.Envelope, Candidate) error
 }
 
+// PrivatePipelineValidationAdapter is the narrow managed-pipeline exception to
+// ordinary source-query authority. Implementations must bind the returned proof
+// to one exact private checked-stage manifest and pipeline operation.
+type PrivatePipelineValidationAdapter interface {
+	ReadAdapter
+	AuthorizePrivatePipeline(identity.Envelope, Binding, []string) (string, error)
+}
+
 // Candidate can only be constructed by the validator after whole-tree safety checks.
 // It is not executable: only native dry planning may consume this type.
 type Candidate struct {
 	binding      Binding
 	owner        identity.Envelope
 	authority    string
+	private      PrivatePipelineValidationAdapter
+	privateProof string
 	statement    string
 	parameters   []Parameter
 	dependencies []string
@@ -196,8 +210,21 @@ func (c Candidate) SQL(e identity.Envelope, current Binding) (string, []Paramete
 	if !c.checked || !c.owner.Valid() || !current.Valid() || Hash(c.binding) != Hash(current) || c.authority != authority(e) {
 		return "", nil, ErrBinding
 	}
-	if err := Require(e, current, c.dependencies); err != nil {
-		return "", nil, err
+	if c.private != nil {
+		proof, err := c.private.AuthorizePrivatePipeline(e, current, c.dependencies)
+		if err != nil {
+			return "", nil, err
+		}
+		if !validPrivatePipelineProof(proof) || proof != c.privateProof {
+			return "", nil, ErrBinding
+		}
+	} else {
+		if c.privateProof != "" {
+			return "", nil, ErrBinding
+		}
+		if err := Require(e, current, c.dependencies); err != nil {
+			return "", nil, err
+		}
 	}
 	return c.statement, append([]Parameter(nil), c.parameters...), nil
 }
@@ -237,7 +264,11 @@ func (p Plan) Receipt() Receipt {
 		return Receipt{}
 	}
 	c := p.candidate
-	return Receipt{Validated: true, Source: c.binding.Source, Context: c.binding.Context, Dialect: c.binding.Dialect, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash([]any{c.binding, c.statement, c.parameters, c.dependencies, c.authority})}
+	manifest := []any{c.binding, c.statement, c.parameters, c.dependencies, c.authority}
+	if c.privateProof != "" {
+		manifest = append(manifest, c.privateProof)
+	}
+	return Receipt{Validated: true, Source: c.binding.Source, Context: c.binding.Context, Dialect: c.binding.Dialect, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash(manifest)}
 }
 
 // String prevents accidental SQL disclosure through ordinary logging.
