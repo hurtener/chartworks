@@ -24,16 +24,16 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "9" || len(manifest) != 9 {
+	if err != nil || SchemaVersion() != "10" || len(manifest) != 10 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	latest := manifest[len(manifest)-1]
-	if latest.Version != 9 || latest.Name != "migrations/009_pipelines.sql" || len(latest.Checksum) != 64 {
+	if latest.Version != 10 || latest.Name != "migrations/010_warehouse_source_dialects.sql" || len(latest.Checksum) != 64 {
 		t.Fatal("latest embedded migration identity", latest.Version, latest.Name, latest.Checksum)
 	}
-	for _, relation := range []string{"pipeline_heads", "pipeline_versions", "pipeline_runs", "pipeline_stages", "pipeline_outputs"} {
-		if !strings.Contains(latest.SQL, "chartworks."+relation) {
-			t.Fatal("pipeline migration missing required relation", relation)
+	for _, dialect := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
+		if !strings.Contains(latest.SQL, "'"+dialect+"'") {
+			t.Fatal("warehouse dialect migration missing closed variant", dialect)
 		}
 	}
 }
