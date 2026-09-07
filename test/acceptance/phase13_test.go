@@ -16,7 +16,10 @@ import (
 
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
+	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
 	"github.com/jackc/pgx/v5"
@@ -407,4 +410,122 @@ func TestPhase13(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestPhase13PipelineStoreTransitions(t *testing.T) {
+	f := newPipelineFixture(t, nil, nil)
+	source := f.create(t, "store-transition-source")
+	definition := f.definition(t, source, "store-transition-pipeline")
+	draft, err := f.pipelines.Draft(context.Background(), f.e, definition, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.pipelines.Publish(context.Background(), f.e, definition.ID, draft.Version); err != nil {
+		t.Fatal(err)
+	}
+	record, err := f.db.ReadPipeline(context.Background(), f.e, definition.ID, draft.Version, "engineering.pipeline.run", "write")
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := jobs.Defaults()
+	limits.Workers, limits.GlobalConcurrency, limits.TenantConcurrency = 1, 2, 1
+	limits.Lease, limits.Heartbeat, limits.Poll, limits.AttemptTimeout, limits.Backoff = 2*time.Second, 50*time.Millisecond, 20*time.Millisecond, time.Second, 20*time.Millisecond
+	runner, err := jobs.NewRequestRunner(f.db, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := jobs.RequestInput{Kind: "pipeline.run", Target: definition.ID, InputHash: record.Digest}
+
+	failed, err := runner.Admit(context.Background(), f.e, "store-transition-invalid", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := errors.New("synthetic transition rollback")
+	_, err = runner.Run(context.Background(), f.e, failed, time.Second, func(ctx context.Context, invocation jobs.Invocation) error {
+		execution, reserveErr := f.db.ReservePipelineExecution(ctx, f.e, record, invocation.Lease().Task, "cw_stage")
+		if reserveErr != nil || len(execution.Stages) != 1 {
+			t.Fatalf("reserve: %#v %v", execution, reserveErr)
+		}
+		replay, reserveErr := f.db.ReservePipelineExecution(ctx, f.e, record, invocation.Lease().Task, "cw_stage")
+		if reserveErr != nil || replay.Operation != execution.Operation {
+			t.Fatalf("reserve replay: %#v %v", replay, reserveErr)
+		}
+		if _, readErr := f.db.ReadPipelineStage(ctx, f.e, execution.Operation.ID, "output"); !errors.Is(readErr, store.ErrNotFound) {
+			t.Fatalf("prepared stage projected: %v", readErr)
+		}
+		invalid := execution.Stages[0]
+		invalid.State = "invented"
+		if _, mutateErr := f.db.MutatePipelineStage(ctx, invocation, record, invalid); !errors.Is(mutateErr, store.ErrInvalid) {
+			t.Fatalf("unknown transition: %v", mutateErr)
+		}
+		changed := execution.Stages[0]
+		changed.Stage.Table = "other"
+		if _, mutateErr := f.db.MutatePipelineStage(ctx, invocation, record, changed); !errors.Is(mutateErr, store.ErrConflict) {
+			t.Fatalf("changed identity: %v", mutateErr)
+		}
+		dispatch := execution.Stages[0]
+		dispatch.State, dispatch.Stage.State, dispatch.Fence = "dispatching", "dispatching", invocation.Lease().Fence+1
+		if _, mutateErr := f.db.MutatePipelineStage(ctx, invocation, record, dispatch); !errors.Is(mutateErr, store.ErrConflict) {
+			t.Fatalf("foreign fence: %v", mutateErr)
+		}
+		if completeErr := f.db.CompletePipelineExecution(ctx, invocation, record, nil); !errors.Is(completeErr, store.ErrInvalid) {
+			t.Fatalf("incomplete publication: %v", completeErr)
+		}
+		return sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("failed lifecycle: %v", err)
+	}
+	failedExecution, err := f.db.ReadPipelineExecution(context.Background(), f.e, failed.ID)
+	if err != nil || failedExecution.State == "published" {
+		t.Fatalf("rollback published state: %#v %v", failedExecution, err)
+	}
+
+	accepted, err := runner.Admit(context.Background(), f.e, "store-transition-success", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := runner.Run(context.Background(), f.e, accepted, time.Second, func(ctx context.Context, invocation jobs.Invocation) error {
+		execution, reserveErr := f.db.ReservePipelineExecution(ctx, f.e, record, invocation.Lease().Task, "cw_stage")
+		if reserveErr != nil {
+			return reserveErr
+		}
+		state := execution.Stages[0]
+		binding, bindErr := f.s.Binding(ctx, f.e, source.ID, source.ContextID)
+		if bindErr != nil {
+			return bindErr
+		}
+		state.State, state.Stage.State, state.Fence = "dispatching", "dispatching", invocation.Lease().Fence
+		state.Application, state.Input, state.Dependencies = "cw-pipeline-transition", binding, append([]string(nil), definition.Steps[0].Inputs...)
+		if _, mutateErr := f.db.MutatePipelineStage(ctx, invocation, record, state); mutateErr != nil {
+			return mutateErr
+		}
+		if _, mutateErr := f.db.MutatePipelineStage(ctx, invocation, record, state); !errors.Is(mutateErr, store.ErrConflict) {
+			return fmt.Errorf("same-fence redispatch: %w", mutateErr)
+		}
+		state.State, state.Stage.State, state.Stage.OID, state.Rows = "applied", "applied", 4242, 1
+		state.RenderedHash, state.ValidationHash, state.LineageHash = readexec.Hash("rendered"), readexec.Hash("validated"), readexec.Hash("lineage")
+		if _, mutateErr := f.db.MutatePipelineStage(ctx, invocation, record, state); mutateErr != nil {
+			return mutateErr
+		}
+		state.State, state.Stage.State = "checked", "checked"
+		state.Stage = sources.SealPipelineStage(state.Stage)
+		if _, mutateErr := f.db.MutatePipelineStage(ctx, invocation, record, state); mutateErr != nil {
+			return mutateErr
+		}
+		if _, readErr := f.db.ReadPipelineStage(ctx, f.e, execution.Operation.ID, "output"); readErr != nil {
+			return readErr
+		}
+		location := state.Stage.Location()
+		outputBinding := readexec.Binding{Tenant: f.e.Tenant(), Source: state.Stage.Source, Context: state.Stage.Context, Revision: state.Stage.Revision, Dialect: "postgres", Contract: "source-contract:" + readexec.Hash(location)[:32], Fingerprint: readexec.Hash([]any{location, state.Stage.Columns}), Relations: []readexec.Relation{{ID: "ds:" + readexec.Hash(location)[:32], Schema: state.Stage.Schema, Name: state.Stage.Table, Columns: []readexec.Column{{Name: "id", NativeType: "int8", Category: "integer", Safe: true}}}}}
+		output := sources.Record{Source: sources.Source{ID: state.Stage.Source, Name: "Managed output", Dialect: "postgres", Revision: state.Stage.Revision, ContextID: state.Stage.Context, Status: "registered"}, Connection: state.Stage.Alias, Binding: outputBinding, Pipeline: &location}
+		return f.db.CompletePipelineExecution(ctx, invocation, record, []sources.Record{output})
+	})
+	if err != nil || completed.State != "succeeded" {
+		t.Fatalf("completed lifecycle: %#v %v", completed, err)
+	}
+	publishedExecution, err := f.db.ReadPipelineExecution(context.Background(), f.e, accepted.ID)
+	if err != nil || publishedExecution.State != "published" {
+		t.Fatalf("published store execution: %#v %v", publishedExecution, err)
+	}
 }
