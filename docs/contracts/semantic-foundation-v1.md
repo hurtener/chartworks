@@ -38,6 +38,50 @@ and source revision on both sides; profiles can have different observation versi
 Canonical key references preserve their declared order within each dataset. They
 are identity metadata and do not themselves declare a join or prove key uniqueness.
 
+## Portable authoring definitions and version diff
+
+`ExportPortable` consumes a compiled model plus complete explicit dataset and column
+logical-slot mappings. Its `PortablePack` DTO structurally excludes installation
+topic/version IDs, source/context/profile coordinates, physical column names and
+native types. It has no actor, session, credentials, authority, or lifecycle fields.
+Semantic names, descriptions, units, expressions, stable measure/dimension/KPI/join
+IDs, and exact canonical-entity revisions are retained. Dataset/column references
+are rewritten to the supplied logical slots everywhere, including join endpoints
+and ordered canonical keys. Collection order is deterministic and the result is
+detached from the model. Free authoring text is preserved; this is a structural
+projection, not automatic detection or removal of confidential text.
+
+`ImportDraftCandidate` requires a destination topic/version and complete explicit
+`DraftBindings`. Every logical dataset/column slot must map once to concrete source
+and profile provenance plus column identity, physical name, native type, category,
+and nullability. It rejects missing/duplicate mappings and category/nullability
+mismatches, preserves semantic names and exact canonical revisions, rewrites every
+column reference, then invokes the existing `Compile` function. The normal cycle,
+join-context, source-revision, duplicate, and reference checks therefore also apply
+to imported candidates. Portable JSON and the resulting compiled pack each have
+the existing 1 MiB ceiling; structural and text bounds apply before deep copying.
+
+The result type is deliberately `DraftCandidate`: an untrusted authoring candidate,
+with detached pack/digest access and no publication or execution API. Supplied
+`SourceReference` values are not verified-binding proofs. The future service must
+revalidate the entire mapping against actual source/profile health and current
+Pengui reach before storing a draft. It must also resolve canonical registry
+collisions and validate exact revision meaning; carrying a revision number does not
+approve a registry entry in the destination. No destination ID is allocated, no
+profile is refreshed, and no rule-set/pattern lifecycle bundle is imported by this
+pure helper. Topic export authorization and persisted draft review remain service
+work through the phase 21 registration contract.
+
+`DiffModels` compares two compiled versions of the same topic and reports their
+exact version/digest pins, topic metadata changes, ordered entity changes, and
+per-kind added/removed/modified counts. Dataset metadata/provenance is compared
+separately from columns, avoiding double-counting a column-only edit. Canonical
+revision changes are modifications of the same stable entity. Changed values are
+represented by content hashes; raw source names and authoring text are not included
+in the diff. Version-only changes retain the different version/digest pins with
+zero entity changes. This helper neither infers renames/moves nor supplies persisted
+history, actor audit evidence, or lifecycle transitions.
+
 ## Phase 21 prerequisite assessment
 
 The repository has useful early HTTP pieces but not the full phase 21 prerequisite:
@@ -87,7 +131,7 @@ version in one PostgreSQL transaction that locks both heads in a fixed order, or
 the prior version usable. Calling the existing self-transactional vector publication
 method followed by a separate topic pointer update is insufficient. Current source health stays a
 separate observation checked when contracts are read. Archive, rollback, source
-recheck, portability, onboarding profiles, authorization, domain registration, SDK,
+recheck, service-backed portability, onboarding profiles, authorization, domain registration, SDK,
 and all six named phase acceptance tests remain required.
 
 ## Phase 16 integration contract
@@ -234,3 +278,13 @@ The 2026-09-07 combined compiler run passed with race detection and 91.9% statem
 coverage (`/tmp/chartworks-semantics-rules-final.cover`); focused `go vet`, planning,
 diff, and mirrored-rule checks also passed. Independent review and cloud acceptance
 remain separate gates.
+
+Portable mapping and diff tests are in `internal/semantics/portable_test.go` and
+`internal/semantics/diff_test.go`. Synthetic round trips cover every reference-bearing
+entity, destination names/types, exact canonical revision/key order, structural DTO
+exclusions, deterministic output, missing/duplicate mappings, type/nullability
+mismatches, invalid references/cycles, mutation isolation, concurrent reuse, and
+entity-level changes/counts. The 2026-09-07 combined race run passed with 93.9%
+statement coverage (`/tmp/chartworks-semantics-portable-final.cover`); focused `go vet`,
+planning, diff, and mirror checks also passed. These are pure compiler/projection checks, not phase 15
+AC06, stateful import, source-health verification, or export authorization evidence.

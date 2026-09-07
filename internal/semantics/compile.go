@@ -128,6 +128,10 @@ func validateShape(p TopicPack) error {
 			}
 		}
 	}
+	return validateEntities(p)
+}
+
+func validateEntities(p TopicPack) error {
 	for i, v := range p.Measures {
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Aggregation.valid() || !validOptionalLine(v.Unit, 64) {
 			return invalid(CodeInvalidValue, "measures["+itoa(i)+"]")
