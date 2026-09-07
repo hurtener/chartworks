@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/sources"
@@ -39,7 +40,10 @@ func rebuildPipelineSources(t *testing.T, f *pipelineFixture) {
 
 func TestPipelineRejectsDifferentInputDatabase(t *testing.T) {
 	model := newGatewayFixture(t, nil)
-	f := newPipelineFixture(t, model.engine, nil)
+	f := newPipelineFixture(t, model.engine, func(v *config.Values) {
+		v.Features.Gateway = true
+		v.Gateway = model.cfg
+	})
 	ctx := context.Background()
 	// Separate read references permit the managed destination to move without
 	// changing the registered source's accepted database or native binding.
