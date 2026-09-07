@@ -18,6 +18,22 @@ using Rust 1.98.1 through rustup, while the reference-container job failed becau
 the configured `rust:1.98.1-bookworm` image tag does not exist. The run predates the
 current source fixes and cannot qualify the final head.
 
+## Owner-approved package coverage band
+
+On 2026-09-07 the owner explicitly approved: "84.5% is approved by my standards".
+The configured exception is exactly **84.5% for `internal/store/postgres` only**;
+all other package thresholds and the default coverage policy remain unchanged.
+The gate compares integer statement counts against exact basis points, so a
+lower value that merely displays as 84.50% cannot pass this threshold.
+
+The supporting measurement was **1974/2336 statements (84.50% displayed)** from
+the partial cumulative race suite at
+`4ace97e1471643f2de0fad7df111249f57041975`. Phase 14 native acceptance was excluded,
+and the run failed an outdated phase 09 assertion that expected MySQL to remain
+unsupported. This is measured coverage evidence, not a full-suite pass. The
+exception changes only the package minimum; the complete native CI and
+race-enabled coverage execution must still pass on the final committed source.
+
 Do not change the phase registry to shipped until current committed source supplies
 every required named result, coverage band and repository gate. Local runner
 evidence must retain the exact executable SHA, embedded parser/runtime dependency

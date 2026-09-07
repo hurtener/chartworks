@@ -43,6 +43,12 @@ The current candidate uses the D-067 minimal fork derived from Bruin `v0.11.749`
 
 Implement `TestPhase13/AC01` through `TestPhase13/AC06` against the real pinned runner and managed PostgreSQL fixture. Observe rendered config, process environment/output handling, blocked baseline targets and failed-check activation. Driver support claims need their strategy tests. COMMON.md supplies coverage; `scripts/smoke/phase-13.sh` requires all six results.
 
+The owner approved an exact 84.5% statement coverage exception for
+`internal/store/postgres` on 2026-09-07. All other package bands retain their
+existing thresholds. The [approval and measurement scope](../reviews/phase-13-current-evidence.md#owner-approved-package-coverage-band)
+record the partial-suite evidence; the exception does not waive complete native
+CI or turn that measurement into a passing full-suite result.
+
 Implementation has been submitted for acceptance. The phase remains in progress until all named criteria, real runner/workspace boundaries, race/coverage and cumulative exact-head gates pass without skips.
 
 ## Glossary, decisions and deviations
