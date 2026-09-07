@@ -80,6 +80,13 @@ func validateRuleShape(p RuleSetDefinition) error {
 		} else if rule.Scope.Kind != RuleScopeEntities || len(rule.Scope.Targets) < 1 || len(rule.Scope.Targets) > 32 {
 			return invalid(CodeInvalidValue, path+".scope")
 		}
+		// These targets are sorted before reference lookup; bound their
+		// coordinates here so sorting never builds keys from unbounded input.
+		for _, ref := range rule.Scope.Targets {
+			if !ref.Valid() {
+				return invalid(CodeInvalidReference, path+".scope.targets")
+			}
+		}
 		switch rule.Class {
 		case RuleExecutionConstraint:
 			if rule.Constraint == nil || rule.Guidance != nil {
@@ -100,6 +107,11 @@ func validateRuleShape(p RuleSetDefinition) error {
 		path := "patterns[" + itoa(i) + "]"
 		if !identity.Identifier(pattern.ID) || !identity.Identifier(pattern.Version) || !validProvenance(pattern.Provenance) || len(pattern.Targets) < 1 || len(pattern.Targets) > 32 || len(pattern.Slots) < 1 || len(pattern.Slots) > 16 {
 			return invalid(CodeInvalidValue, path)
+		}
+		for _, ref := range pattern.Targets {
+			if !ref.Valid() {
+				return invalid(CodeInvalidReference, path+".targets")
+			}
 		}
 		for j, slot := range pattern.Slots {
 			path := path + ".slots[" + itoa(j) + "]"

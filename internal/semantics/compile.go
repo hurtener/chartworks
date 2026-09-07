@@ -146,6 +146,13 @@ func validateEntities(p TopicPack) error {
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !validLine(v.Expression, 4096) || len(v.Inputs) < 1 || len(v.Inputs) > 32 {
 			return invalid(CodeInvalidValue, "kpis["+itoa(i)+"]")
 		}
+		// canonicalOrder builds sort keys from these coordinates. Reject
+		// malformed/oversized references before copying or constructing keys.
+		for j, ref := range v.Inputs {
+			if !ref.Valid() {
+				return invalid(CodeInvalidReference, "kpis["+itoa(i)+"].inputs["+itoa(j)+"]")
+			}
+		}
 	}
 	for i, v := range p.Joins {
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !v.Type.valid() || !v.Cardinality.valid() {
