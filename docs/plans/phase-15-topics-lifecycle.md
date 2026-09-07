@@ -4,7 +4,7 @@ Status: planned. Owner: internal/semantics. Hard dependencies: 04, 05, 07, 12, 2
 
 ## Authority and design
 
-RFC-001 §8, D-045/D-049/D-052 and [COMMON.md](COMMON.md) apply. Published semantic meaning and matching facets become active together; a failed background step leaves the prior publication usable. All permissions are Pengui-signed.
+RFC-001 §8, D-045/D-049/D-052, the bounded [semantic foundation contract](../contracts/semantic-foundation-v1.md), and [COMMON.md](COMMON.md) apply. Published semantic meaning and matching facets become active together; a failed background step leaves the prior publication usable. All permissions are Pengui-signed.
 
 ## Brief findings incorporated
 

@@ -4,7 +4,7 @@ Status: planned. Owner: internal/semantics, internal/nlq. Hard dependencies: 05,
 
 ## Authority and design
 
-RFC-001 §8/9, D-049 and [COMMON.md](COMMON.md) apply. Separate hard execution constraints from advisory language. Rule evaluation is business reasoning under signed authority, not an access-policy issuer.
+RFC-001 §8/9, D-049, the typed [phase 16 integration contract](../contracts/semantic-foundation-v1.md#phase-16-integration-contract), and [COMMON.md](COMMON.md) apply. Separate hard execution constraints from advisory language. Rule evaluation is business reasoning under signed authority, not an access-policy issuer.
 
 ## Brief findings incorporated
 
