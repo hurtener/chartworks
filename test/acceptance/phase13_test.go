@@ -96,6 +96,9 @@ func TestPhase13(t *testing.T) {
 		if err != nil || published.State != "published" || published.Published == nil {
 			t.Fatal("authorized publication", err, published)
 		}
+		if replay, publishErr := f.pipelines.Publish(context.Background(), f.e, definition.ID, draft.Version); publishErr != nil || replay.Digest != published.Digest || replay.Published == nil || !replay.Published.Equal(*published.Published) {
+			t.Fatal("idempotent publication replay changed immutable version", publishErr, replay)
+		}
 		reviewer := f.actor(t, f.e.Tenant(), "reviewer")
 		read, err := f.pipelines.Get(context.Background(), reviewer, definition.ID, draft.Version)
 		if err != nil || read.Digest != published.Digest {
@@ -186,6 +189,14 @@ func TestPhase13(t *testing.T) {
 		if err != nil || active.State != "published" || len(active.Effects) != 1 || active.Effects[0].Source == "" || active.Effects[0].Digest == "" {
 			t.Fatal("quality baseline activation", err, active)
 		}
+		replay, err := f.pipelines.Run(context.Background(), f.e, definition.ID, draft.Version, "quality-baseline", false)
+		if err != nil || replay.Operation.ID != active.Operation.ID || replay.State != "published" || replay.Effects[0].Digest != active.Effects[0].Digest {
+			t.Fatal("completed run replay created a different effect", err, replay)
+		}
+		terminal, err := f.pipelines.Cancel(context.Background(), f.e, active.Operation.ID)
+		if err != nil || terminal.ID != active.Operation.ID || terminal.State != "succeeded" {
+			t.Fatal("terminal cancellation replay changed completed operation", err, terminal)
+		}
 		oldBinding, err := f.s.Binding(context.Background(), f.e, active.Effects[0].Source, active.Effects[0].Context)
 		if err != nil || len(oldBinding.Relations) != 1 {
 			t.Fatal("active baseline binding", err, oldBinding)
@@ -202,6 +213,9 @@ func TestPhase13(t *testing.T) {
 		}
 		if _, err = f.pipelines.Publish(context.Background(), f.e, definition.ID, next.Version); err != nil {
 			t.Fatal("late quality publication", err)
+		}
+		if _, err = f.pipelines.Run(context.Background(), f.e, definition.ID, next.Version, "quality-baseline", false); !errors.Is(err, store.ErrConflict) {
+			t.Fatal("operation key was rebound to a different published manifest", err)
 		}
 		run, err := f.pipelines.Run(context.Background(), f.e, definition.ID, next.Version, "quality-failure", false)
 		effects := map[string]engineering.PipelineEffect{}
