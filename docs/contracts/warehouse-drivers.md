@@ -7,7 +7,7 @@ context reach, source revision fence, typed result collector and operation journ
 An operator connection alias is not caller-selected connection information.
 
 The implementation dependency is the selective Bruin fork at
-`1fad0ffbf27b9ec1349c6a9859fb3e5d55107333` (upstream v0.11.749 ancestry).
+`cbde66f665090a2848f583f9d1043d3299d5363d` (upstream v0.11.749 ancestry).
 Chartworks imports leaf packages and the native parser, not the universal manager.
 The supervised managed-write runner remains separate from read execution.
 

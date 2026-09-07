@@ -5,8 +5,12 @@ import (
 	"crypto/rand"
 	dbsql "database/sql"
 	"encoding/hex"
+	"errors"
+	bruinmssql "github.com/bruin-data/bruin/pkg/mssql"
+	bruinquery "github.com/bruin-data/bruin/pkg/query"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -140,4 +144,75 @@ func warehouseReadOnly(t *testing.T, f *sourceFixture, relation, dialect string)
 	if strings.Contains(err.Error(), sourcePassword) {
 		t.Fatal("driver exposed synthetic password")
 	}
+}
+
+// This controlled native leaf fixture exercises cancellation while the server is
+// still waiting; public SQL admission is tested separately by TestPhase14.
+func warehouseSQLServerActiveCancel(t *testing.T, f *sourceFixture) {
+	t.Helper()
+	u, err := url.Parse(f.readDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	password, _ := u.User.Password()
+	client, err := bruinmssql.NewDB(&bruinmssql.Config{Host: u.Hostname(), Port: port, Username: u.User.Username(), Password: password, Database: u.Query().Get("database"), Query: u.RawQuery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	var nonce [16]byte
+	if _, err = rand.Read(nonce[:]); err != nil {
+		t.Fatal(err)
+	}
+	observer := &warehouseSQLServerObserver{}
+	started := time.Now()
+	rows, _, err := client.OpenRead(context.Background(), &bruinquery.Query{Query: "WAITFOR DELAY '00:00:05'; SELECT 1 AS completed"}, "fixture-"+hex.EncodeToString(nonce[:]), observer, bruinmssql.ReadOptions{Timeout: 100 * time.Millisecond, CancelTimeout: time.Second})
+	if rows != nil {
+		_ = rows.Close()
+	}
+	var failure *bruinmssql.ReadFailure
+	if !observer.dispatched || !errors.As(err, &failure) || !failure.Stopped || time.Since(started) > 4*time.Second {
+		t.Fatal("native wait cancellation/cleanup was not confirmed", err)
+	}
+	admin, err := dbsql.Open("sqlserver", os.Getenv("CHARTWORKS_TEST_SQLSERVER_DSN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var count int
+		if err = admin.QueryRowContext(ctx, "SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE session_id=@p1 AND context_info=@p2", observer.identity.SessionID, []byte(observer.identity.AttemptTag)).Scan(&count); err != nil {
+			t.Fatal("native cancellation reconciliation", err)
+		}
+		if count == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("cancelled native session remained active")
+		case <-ticker.C:
+		}
+	}
+}
+
+type warehouseSQLServerObserver struct {
+	identity   bruinmssql.ReadIdentity
+	dispatched bool
+}
+
+func (o *warehouseSQLServerObserver) OnDispatch(_ context.Context, id bruinmssql.ReadIdentity) error {
+	o.identity = id
+	o.dispatched = true
+	return nil
+}
+func (o *warehouseSQLServerObserver) OnAcknowledged(context.Context, bruinmssql.ReadIdentity) error {
+	return nil
 }

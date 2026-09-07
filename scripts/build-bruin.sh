@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the immutable native dependency outside the checkout/module cache.
 set -euo pipefail
-commit=1fad0ffbf27b9ec1349c6a9859fb3e5d55107333
+commit=cbde66f665090a2848f583f9d1043d3299d5363d
 root="${CHARTWORKS_BRUIN_BUILD_DIR:?set an absolute private build directory}"
 case "$root" in /*) ;; *) echo 'absolute build directory required' >&2; exit 1;; esac
 mkdir -p "$root"
