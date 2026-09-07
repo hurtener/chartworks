@@ -156,4 +156,15 @@ The `pipelines` block defaults to disabled. New pipeline draft/publication/run r
 
 These settings bound the supervised process and definition decoder. They do not grant source reach, prove a managed destination, make external writes transactional, or turn process termination into warehouse cancellation evidence.
 
-The reference CI build checks out the exact D-067 fork commit, uses Go 1.26.4 and locked Rust 1.98.1, builds the parser static library, then builds the runner with `CGO_ENABLED=1` and the `bruin_no_duckdb` tag. The ordinary Chartworks service binary retains its CGo-free build. Phase-14 builds that import the forked parser/leaf packages are an explicit CGo exception and must receive the immutable parser-library directory through the build environment; generated libraries are build artifacts and are not written into the module cache or repository. Linux acceptance supplies 2 GiB of private executable tmpfs for runner workers. SQL Server qualification uses the Linux-amd64 fixture; cloud connectors retain recorded-only status until their separately stated live cutover evidence exists.
+The reference CI build checks out the exact D-067 fork commit, uses Go 1.26.4 and locked Rust 1.98.1, builds the parser static library, then builds the runner with `CGO_ENABLED=1` and the `bruin_no_duckdb` tag. The phase-14 Chartworks service imports the forked native parser and leaf packages: its shipping build now requires CGo under D-067 and must receive the immutable parser-library directory through the build environment; generated libraries are build artifacts and are not written into the module cache or repository. Linux acceptance supplies 2 GiB of private executable tmpfs for runner workers. SQL Server qualification uses the Linux-amd64 fixture; cloud connectors retain recorded-only status until their separately stated live cutover evidence exists.
+
+Phase-14 per-engine support and native build instructions are in [warehouse drivers](contracts/warehouse-drivers.md).
+
+Each `sources.connections` entry may set `dialect` to `postgres`, `mysql`,
+`sqlserver`, `bigquery`, `snowflake` or `databricks`; omission preserves PostgreSQL.
+`allow_insecure_local` defaults to false and applies only to explicitly configured
+loopback MySQL/SQL Server development fixtures. Other endpoints require verified
+TLS. It does not change signed source/context authorization or grant write access.
+Cloud connection material remains an operator-only `read_dsn` environment reference,
+with engine-specific fields validated by the leaf adapter; public source models
+never include these bytes. Managed-write aliases remain PostgreSQL-only in phase13.

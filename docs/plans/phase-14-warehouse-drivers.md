@@ -1,6 +1,6 @@
 # Phase 14 — warehouse-drivers
 
-Status: planned. Owner: internal/sources. Hard dependencies: 08, 09, 10.
+Status: in_progress. Owner: internal/sources. Hard dependencies: 08, 09, 10.
 
 ## Authority and design
 
@@ -43,4 +43,23 @@ Implement `TestPhase14/AC01` through `TestPhase14/AC06`. Offline recorded eviden
 
 ## Glossary, decisions and deviations
 
-The capability/support matrix records the tested boundary. Under the accepted no-live-cloud boundary, recorded cloud protocol tests establish implementation behavior but do not qualify live cutover/support. Unknown per-engine capabilities deny explicitly. D-051/D-067 apply. No runtime completion is claimed.
+The [capability/support matrix](../contracts/warehouse-drivers.md) records the implemented subset and pending qualification boundary. Under the accepted no-live-cloud boundary, recorded cloud protocol tests establish implementation behavior but do not qualify live cutover/support. Unknown per-engine capabilities deny explicitly. D-051/D-067 apply. No runtime completion is claimed.
+
+## Current implementation and verification mapping
+
+The phase is in progress until final native CI and review complete. The
+[driver contract](../contracts/warehouse-drivers.md) fixes the current supported
+subset and the explicit recorded-only cloud boundary.
+
+| Criterion | Mandatory runtime evidence |
+| --- | --- |
+| AC01 | `TestPhase14/AC01` native discovery and exact values; recorded cloud source lifecycle/type tests and fork SDK protocol tests |
+| AC02 | `TestPhase14/AC02` validator/native planning success and rejection; parser dialect tests and cloud native metadata lifecycle fixtures |
+| AC03 | `TestPhase14/AC03` real SELECT-only account and context isolation; recorded cloud effective-context negatives |
+| AC04 | `TestPhase14/AC04` binding, serialized caps, acknowledged cancellation and rotation; fork owned-cancel/indeterminate protocol tests |
+| AC05 | `TestPhase14/AC05` repeatable real fixtures and separate registry identities; SQL Server Developer test-only container; no cloud cutover qualification |
+| AC06 | `TestPhase14/AC06` closed/unknown driver behavior and retained metadata without credentials; native shipping builds and documented support limits |
+
+CI runs the actual source test package and pinned fork cloud/owned-session suites,
+not a filename inventory. The native Linux amd64 SQL Server fixture is required;
+a successful Mac mock or emulated container is not substituted for it.
