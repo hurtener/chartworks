@@ -75,6 +75,13 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 			return err
 		}
 		out, err = s.executeNative(ctx, e, p, record, connection, l, id, observer)
+		if err == nil && ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				err = readexec.ErrTimeout
+			} else {
+				err = readexec.ErrCancelled
+			}
+		}
 		return err
 	})
 	if err != nil {
