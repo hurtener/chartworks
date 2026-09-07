@@ -176,7 +176,7 @@ func (*bigQueryFixtureClient) CancelRead(context.Context, bruinbigquery.ReadIden
 }
 func (c *bigQueryFixtureClient) Close() error { c.closed = true; return nil }
 
-func TestBigQuerySourceLifecycleRecorded(t *testing.T) {
+func TestBigQuerySourceLifecycleInjected(t *testing.T) {
 	raw, _ := json.Marshal(bruinbigquery.Config{ProjectID: "synthetic-project", Location: "US", UseApplicationDefaultCredentials: true})
 	repo := &cloudMemoryRepository{records: map[string]Record{}}
 	settings := cloudSettings("bigquery", "BQ_CONFIG")
