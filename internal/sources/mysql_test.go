@@ -56,3 +56,13 @@ func TestMySQLResultTypesStayExact(t *testing.T) {
 		t.Fatalf("binary changed: %q %v", encoded, err)
 	}
 }
+
+func TestMySQLSourceRejectsPlaintextRemoteDSN(t *testing.T) {
+	service := &Service{settings: config.DefaultSources(), lookup: func(string) (string, bool) {
+		return "reader:secret@tcp(db.example:3306)/analytics", true
+	}, mysqlPools: map[string]mysqlPoolEntry{}}
+	_, _, err := service.mysqlClient(t.Context(), config.SourceConnection{Dialect: "mysql", Tenant: "tenant", ID: "mysql", Version: "v1", ReadDSN: "env:MYSQL_READ_DSN"})
+	if err != readexec.ErrUnsafe {
+		t.Fatalf("plaintext remote DSN was not denied: %v", err)
+	}
+}
