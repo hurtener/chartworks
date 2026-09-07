@@ -436,10 +436,62 @@ func TestPhase13PipelineStoreTransitions(t *testing.T) {
 	}
 	input := jobs.RequestInput{Kind: "pipeline.run", Target: definition.ID, InputHash: record.Digest}
 
+	t.Run("guarded shapes leave no partial state", func(t *testing.T) {
+		invalidDefinition := definition
+		invalidDefinition.Steps = nil
+		if _, saveErr := f.db.SavePipeline(context.Background(), f.e, invalidDefinition, 0); !errors.Is(saveErr, engineering.ErrInvalid) {
+			t.Fatalf("invalid definition: %v", saveErr)
+		}
+		if _, saveErr := f.db.SavePipeline(context.Background(), f.e, definition, -1); !errors.Is(saveErr, engineering.ErrInvalid) {
+			t.Fatalf("negative revision: %v", saveErr)
+		}
+		limited := f.token.envelope(t, f.e.Tenant(), "limited", "engineering.pipeline.read", "cw.source.read:"+definition.ID)
+		if _, saveErr := f.db.SavePipeline(context.Background(), limited, definition, 0); saveErr == nil {
+			t.Fatal("unsigned draft write accepted")
+		}
+		if _, readErr := f.db.ReadPipeline(context.Background(), limited, definition.ID, draft.Version, "engineering.pipeline.run", "write"); readErr == nil {
+			t.Fatal("unsigned run read accepted")
+		}
+		if _, readErr := f.db.ReadPipeline(context.Background(), f.e, "missing-pipeline", 1, "engineering.pipeline.read", "read"); !errors.Is(readErr, store.ErrNotFound) {
+			t.Fatalf("missing definition disclosed: %v", readErr)
+		}
+		if _, publishErr := f.db.PublishPipeline(context.Background(), f.e, "missing-pipeline", 1); !errors.Is(publishErr, store.ErrNotFound) {
+			t.Fatalf("missing publication disclosed: %v", publishErr)
+		}
+		if _, readErr := f.db.ReadPipelineExecution(context.Background(), f.e, "missing-operation"); !errors.Is(readErr, store.ErrNotFound) {
+			t.Fatalf("missing execution disclosed: %v", readErr)
+		}
+		if _, readErr := f.db.ReadPipelineStage(context.Background(), f.e, "missing-operation", "output"); !errors.Is(readErr, store.ErrNotFound) {
+			t.Fatalf("missing stage disclosed: %v", readErr)
+		}
+		zeroInvocation := jobs.Invocation{}
+		if _, mutateErr := f.db.MutatePipelineStage(context.Background(), zeroInvocation, record, engineering.PipelineStageState{}); !errors.Is(mutateErr, jobs.ErrAuthority) {
+			t.Fatalf("unclaimed stage mutation: %v", mutateErr)
+		}
+		if completeErr := f.db.CompletePipelineExecution(context.Background(), zeroInvocation, record, nil); !errors.Is(completeErr, jobs.ErrAuthority) {
+			t.Fatalf("unclaimed completion: %v", completeErr)
+		}
+	})
+
 	failed, err := runner.Admit(context.Background(), f.e, "store-transition-invalid", input)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("reservation authority is exact", func(t *testing.T) {
+		unpublished := record
+		unpublished.Published = nil
+		if _, reserveErr := f.db.ReservePipelineExecution(context.Background(), f.e, unpublished, failed, "cw_stage"); !errors.Is(reserveErr, jobs.ErrAuthority) {
+			t.Fatalf("unpublished definition reserved: %v", reserveErr)
+		}
+		if _, reserveErr := f.db.ReservePipelineExecution(context.Background(), f.e, record, failed, "INVALID-SCHEMA"); !errors.Is(reserveErr, jobs.ErrAuthority) {
+			t.Fatalf("invalid managed schema reserved: %v", reserveErr)
+		}
+		tampered := failed
+		tampered.Input.InputHash = readexec.Hash("other")
+		if _, reserveErr := f.db.ReservePipelineExecution(context.Background(), f.e, record, tampered, "cw_stage"); !errors.Is(reserveErr, jobs.ErrAuthority) {
+			t.Fatalf("tampered task reserved: %v", reserveErr)
+		}
+	})
 	sentinel := errors.New("synthetic transition rollback")
 	_, err = runner.Run(context.Background(), f.e, failed, time.Second, func(ctx context.Context, invocation jobs.Invocation) error {
 		execution, reserveErr := f.db.ReservePipelineExecution(ctx, f.e, record, invocation.Lease().Task, "cw_stage")
