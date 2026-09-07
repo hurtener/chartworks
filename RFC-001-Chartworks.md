@@ -1,6 +1,6 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-07 for the phase 13 acceptance candidate. Phases 01–12 are shipped; phases 13–16 are in progress and eighteen later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
+Status: implementation design, revised 2026-09-07 for the phase 13 acceptance candidate. Phases 01–12 are shipped; phases 13–16 and 21 are in progress and seventeen later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 

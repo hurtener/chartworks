@@ -1,8 +1,9 @@
 # Phase 15/16 bounded foundation evidence
 
 Code reviewed: `2c149674b88a7c4d029e853f5f548a946afd4d9c`.
-Phases 15/16 are `in_progress`; phase 21 remains planned. This is unfinished
-implementation, not full-phase acceptance or a shipped lifecycle capability.
+The foundation handoff marked phases 15/16 `in_progress` while phase 21 remained
+planned. The later [phase 21 source registry slice](phase-21-source-registry.md) is
+now in progress. This is unfinished implementation, not full-phase acceptance or a shipped lifecycle capability.
 
 The bounded slice contains the typed topic-pack compiler, version-pinned rule and
 clarification authoring compiler, neutral logical-slot export, untrusted draft

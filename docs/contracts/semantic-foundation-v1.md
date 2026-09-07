@@ -1,7 +1,8 @@
 # Semantic foundation v1
 
 Status: bounded phase 15/16 implementation foundations, 2026-09-07. Phases 15/16 are
-`in_progress`; phase 21 remains planned. This contract records implemented behavior only where it points
+`in_progress`; phase 21 now has a bounded source HTTP registry consumer and is also
+`in_progress`. This contract records implemented behavior only where it points
 to executable code and tests; the later-state sections are implementation inputs,
 not runtime claims.
 
@@ -88,29 +89,28 @@ history, actor audit evidence, or lifecycle transitions.
 
 ## Phase 21 prerequisite assessment
 
-The repository has useful early HTTP pieces but not the full phase 21 prerequisite:
+The first shared consumer now exists: `internal/api` owns immutable registration
+metadata, DTO-derived wire schemas, exact source-style route matching and OpenAPI
+3.1.1 generation. `internal/sourceapi.SourceRegistry` supplies the seven existing
+source registration/catalog/validation routes to the actual router, legacy manifest
+and generated document. Existing Pengui verification, domain resource checks,
+transport limits, error mapping and audit behavior are preserved. Resource-loader
+and audit labels describe the existing service paths, not new enforcement callbacks.
 
-- `internal/foundation` serves health, readiness, and capability metadata and can
-  delegate to one protected handler chain.
-- `internal/securityapi`, `internal/sourceapi`, and `internal/workapi` each expose
-  real protected operations with local registration metadata. Their handlers call
-  existing domain services, and disabled capabilities do not register placeholders.
-- separate checked JSON manifests cover the currently implemented operational,
-  source, engineering, read-execution, gateway, and durable-work routes.
+The [source registry evidence](../reviews/phase-21-source-registry.md) records actual
+HTTP/SDK/PostgreSQL schema checks. This replaces that consumer's independent route
+inventory; it does not introduce another parallel business API. Other source API
+families (execution, engineering and pipeline), foundation health/capabilities,
+security and work adapters still require migration. `/capabilities` continues to
+report `business_api: false`; no topic operation is registered. Public document
+delivery, cumulative generated SDK/isolation/audit checks and all six named phase
+21 criteria remain incomplete.
 
-Phase 21 still lacks the shared domain-registration type that unifies public schema,
-resource loading, audit semantics, side-effect classification, and error mapping.
-There is no generated OpenAPI contract or cumulative generated OpenAPI/SDK/isolation/
-audit check driven by one registration set. `/capabilities` still truthfully reports
-`business_api: false`, and no topic operation is registered. The existing handlers
-also use separate `Operation` types and separate matching/error helpers, so their
-presence is real foundation evidence but not phase 21 AC04/AC06 completion.
-
-Phase 15 keeps its hard dependency on phase 21. The semantic compiler can land as an
-independently useful domain foundation, but topic lifecycle operations must wait for
-the shared registration contract or implement that actual phase 21 prerequisite in
-the same reviewed change. No placeholder topic route, invented Pengui operation, or
-status change is part of this slice.
+Phase 15 keeps its hard dependency on phase 21. The semantic compiler remains an
+independently useful domain foundation. Topic lifecycle operations must register
+their concrete schemas and authority/resource paths through the shared contract as
+those services land; this bounded source adapter does not establish full phase 21
+acceptance or satisfy the missing topic service work.
 
 ## Required phase 15 continuation
 

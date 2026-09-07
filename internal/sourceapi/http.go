@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
@@ -19,26 +20,6 @@ import (
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
 )
-
-// Operation is the executable route inventory and its fixed side-effect classification.
-type Operation struct {
-	Method string `json:"method"`
-	Path   string `json:"path"`
-	Action string `json:"action"`
-	Effect string `json:"effect"`
-}
-
-// Registry keeps metadata reads independent from warehouse access and native planning.
-func Registry(warehouse, validation bool) []Operation {
-	out := []Operation{{Method: "GET", Path: "/v1/sources", Action: "sources.read", Effect: "metadata_read"}, {Method: "GET", Path: "/v1/sources/{id}", Action: "sources.read", Effect: "metadata_read"}}
-	if warehouse {
-		out = append(out, Operation{Method: "POST", Path: "/v1/sources", Action: "sources.write", Effect: "source_registration"}, Operation{Method: "POST", Path: "/v1/sources/{id}/test", Action: "sources.read", Effect: "warehouse_catalog_read"}, Operation{Method: "GET", Path: "/v1/sources/{id}/schema", Action: "sources.read", Effect: "warehouse_catalog_read"}, Operation{Method: "POST", Path: "/v1/sources/{id}/rotate", Action: "sources.rotate", Effect: "context_rotation"})
-		if validation {
-			out = append(out, Operation{Method: "POST", Path: "/v1/sources/{id}/validate", Action: "sources.query", Effect: "bounded_native_planning"})
-		}
-	}
-	return out
-}
 
 // ValidationRequest never accepts a caller-issued plan, tenant, dialect or safety override.
 type ValidationRequest struct {
@@ -56,22 +37,17 @@ func Handler(verifier *auth.Verifier, service *sources.Service, validator *reade
 	if service == nil {
 		return next
 	}
-	registry := Registry(service.Enabled(), validator != nil)
+	registry, registrationErr := SourceRegistry(service.Enabled(), validator != nil)
+	if registrationErr != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { failure(w, registrationErr) })
+	}
 	protected := verifier.Middleware(auth.HTTP, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		e, err := identity.FromContext(r.Context())
 		if err != nil {
 			failure(w, access.ErrUnauthenticated)
 			return
 		}
-		var selected Operation
-		id := ""
-		for _, op := range registry {
-			if candidate, ok := match(op.Path, r.URL.Path); ok && op.Method == r.Method {
-				selected = op
-				id = candidate
-				break
-			}
-		}
+		selected, id, _ := registry.Match(r.Method, r.URL.Path)
 		if selected.Path == "" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -105,9 +81,7 @@ func Handler(verifier *auth.Verifier, service *sources.Service, validator *reade
 		case "/v1/sources/{id}/schema":
 			out, err = service.Discover(r.Context(), e, id)
 		case "/v1/sources/{id}/rotate":
-			var input struct {
-				Expected int64 `json:"expected_revision"`
-			}
+			var input rotateRequest
 			if err = body(w, r, &input); err == nil {
 				out, err = service.Rotate(r.Context(), e, id, input.Expected)
 			}
@@ -126,13 +100,7 @@ func Handler(verifier *auth.Verifier, service *sources.Service, validator *reade
 		_ = json.NewEncoder(w).Encode(out)
 	}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		found := false
-		for _, op := range registry {
-			if _, ok := match(op.Path, r.URL.Path); ok {
-				found = true
-				break
-			}
-		}
+		_, _, found := registry.Match(r.Method, r.URL.Path)
 		if !found {
 			next.ServeHTTP(w, r)
 			return
@@ -143,34 +111,17 @@ func Handler(verifier *auth.Verifier, service *sources.Service, validator *reade
 		protected.ServeHTTP(w, r)
 	})
 }
-func match(pattern, path string) (string, bool) {
-	want, got := strings.Split(pattern, "/"), strings.Split(path, "/")
-	if len(want) != len(got) {
-		return "", false
-	}
-	id := ""
-	for i, part := range want {
-		if part == "{id}" {
-			if !identity.Identifier(got[i]) {
-				return "", false
-			}
-			id = got[i]
-		} else if got[i] != part {
-			return "", false
-		}
-	}
-	return id, true
-}
+func match(pattern, path string) (string, bool) { return api.MatchPath(pattern, path) }
 func body(w http.ResponseWriter, r *http.Request, out any) error {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
 		return store.ErrInvalid
 	}
-	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 65536))
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, sourceRequestMaxBytes))
 	if err != nil {
 		return store.ErrInvalid
 	}
-	if _, err = gateway.DecodeJSON(data, 65536); err != nil {
+	if _, err = gateway.DecodeJSON(data, sourceRequestMaxBytes); err != nil {
 		return store.ErrInvalid
 	}
 	if err = shape(data, reflect.TypeOf(out).Elem()); err != nil {
@@ -200,7 +151,7 @@ func shape(data []byte, typ reflect.Type) error {
 	if typ.Kind() != reflect.Struct {
 		return nil
 	}
-	object, err := auth.Object(data, 65536)
+	object, err := auth.Object(data, sourceRequestMaxBytes)
 	if err != nil {
 		return store.ErrInvalid
 	}
