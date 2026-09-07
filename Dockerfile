@@ -1,5 +1,9 @@
 # Native Rust/CGo build: use the same Debian ABI for build and runtime.
-FROM rust:1.98.1-bookworm AS rust
+# The official image has no 1.98.1-bookworm tag, so use a verified bookworm
+# bootstrap image and install the accepted toolchain explicitly.
+FROM rust:bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS rust
+RUN rustup set auto-self-update disable \
+    && rustup toolchain install 1.98.1 --profile minimal
 FROM golang:1.26.4-bookworm AS build
 COPY --from=rust /usr/local/cargo /usr/local/cargo
 COPY --from=rust /usr/local/rustup /usr/local/rustup
