@@ -190,7 +190,7 @@ func TestPhase13(t *testing.T) {
 			t.Fatal("quality baseline activation", err, active)
 		}
 		replay, err := f.pipelines.Run(context.Background(), f.e, definition.ID, draft.Version, "quality-baseline", false)
-		if err != nil || replay.Operation.ID != active.Operation.ID || replay.State != "published" || replay.Effects[0].Digest != active.Effects[0].Digest {
+		if err != nil || replay.Operation.ID != active.Operation.ID || replay.State != "published" || len(replay.Effects) != 1 || replay.Effects[0].Digest != active.Effects[0].Digest {
 			t.Fatal("completed run replay created a different effect", err, replay)
 		}
 		terminal, err := f.pipelines.Cancel(context.Background(), f.e, active.Operation.ID)
