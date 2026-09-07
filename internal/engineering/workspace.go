@@ -22,14 +22,18 @@ import (
 )
 
 func (s *Service) writerConfig(c config.SourceConnection) (*pgx.ConnConfig, *pgx.ConnConfig, error) {
+	return managedWriterConfig(s.values, s.lookup, s.repo.DatabaseName(), c)
+}
+
+func managedWriterConfig(values config.Values, lookup func(string) (string, bool), metadata string, c config.SourceConnection) (*pgx.ConnConfig, *pgx.ConnConfig, error) {
 	if !strings.HasPrefix(c.ReadDSN, "env:") || !strings.HasPrefix(c.WriteDSN, "env:") {
 		return nil, nil, ErrOwnership
 	}
-	read, ok := s.lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
+	read, ok := lookup(strings.TrimPrefix(c.ReadDSN, "env:"))
 	if !ok {
 		return nil, nil, ErrUnavailable
 	}
-	write, ok := s.lookup(strings.TrimPrefix(c.WriteDSN, "env:"))
+	write, ok := lookup(strings.TrimPrefix(c.WriteDSN, "env:"))
 	if !ok {
 		return nil, nil, ErrUnavailable
 	}
@@ -43,17 +47,17 @@ func (s *Service) writerConfig(c config.SourceConnection) (*pgx.ConnConfig, *pgx
 	}
 	// Deliberately conservative: even different hosts cannot reuse the metadata
 	// database name. Customer work must be explicitly deployed separately.
-	if r.Host != w.Host || r.Port != w.Port || r.Database != w.Database || r.User == w.User || w.Database == s.repo.DatabaseName() {
+	if r.Host != w.Host || r.Port != w.Port || r.Database != w.Database || r.User == w.User || w.Database == metadata {
 		return nil, nil, ErrOwnership
 	}
-	w.ConnectTimeout = time.Duration(s.values.Sources.ConnectTimeout)
+	w.ConnectTimeout = time.Duration(values.Sources.ConnectTimeout)
 	w.Fallbacks = nil
 	w.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
 		return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, CancelRequestDelay: 0, DeadlineDelay: 2 * time.Second}
 	}
 	w.BuildFrontend = func(reader io.Reader, writer io.Writer) *pgproto3.Frontend {
 		frontend := pgproto3.NewFrontend(reader, writer)
-		frontend.SetMaxBodyLen(int(s.values.Uploads.MaxBytes) + (1 << 20))
+		frontend.SetMaxBodyLen(int(values.Uploads.MaxBytes) + (1 << 20))
 		return frontend
 	}
 	w.OnNotice = nil

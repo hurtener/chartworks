@@ -132,6 +132,7 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
+	Pipelines Pipelines      `json:"pipelines"`
 	Uploads   Uploads        `json:"uploads"`
 	Profiling Profiling      `json:"profiling"`
 	Sources   Sources        `json:"sources"`
@@ -181,6 +182,7 @@ func (c Config) StoreDSN() string { return c.dsn }
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
 	v := Values{
+		Pipelines: DefaultPipelines(),
 		Uploads:   DefaultUploads(),
 		Profiling: DefaultProfiling(),
 		Sources:   DefaultSources(),
@@ -383,6 +385,9 @@ func validate(v Values) error {
 		return err
 	}
 	if err := ValidateUploads(v.Uploads); err != nil {
+		return err
+	}
+	if err := ValidatePipelines(v.Pipelines); err != nil {
 		return err
 	}
 	if err := ValidateProfiling(v.Profiling); err != nil {
