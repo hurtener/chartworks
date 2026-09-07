@@ -42,6 +42,7 @@ compatibility check before adopting the new visual-delivery requirements. See th
 | 12 | `12-genbi-landscape.md` | Historical web landscape: capability bar, semantic-layer primitives, evaluation reality and profiling-check families; public positioning is not proof of internal architecture |
 | 13 | `13-dockyard-mcp-surface.md` | Historical MCP runtime/library decision and middleware seam; ordinary MCP support is not proof of Apps interoperability |
 | 14 | `14-reporting-parity-audit.md` | Current selected-source reporting audit: blocks, revisions, outputs, certification, reports/dashboards, hybrid widgets, schedules/artifacts, source debt, NLQ continuity, security integration and closure ledger |
+| 15 | `15-bruin-execution-reuse.md` | Evidence comparison of native adapters, stock Bruin CLI, leaf APIs and a narrow worker extension for governed multi-warehouse reads; exploration only |
 
 ## Subsystem → briefs
 
