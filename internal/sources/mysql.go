@@ -369,6 +369,9 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 		return out, err
 	}
 	for stream.Next() {
+		if err = ctx.Err(); err != nil {
+			return out, readFailure(ctx, err)
+		}
 		if observer != nil {
 			if err = observer.Check(ctx); err != nil {
 				return out, err
@@ -395,6 +398,9 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 	}
 	if err = stream.Err(); err != nil {
 		return out, safe(err)
+	}
+	if err = ctx.Err(); err != nil {
+		return out, readFailure(ctx, err)
 	}
 	out.Result = collector.Result()
 	return out, nil
