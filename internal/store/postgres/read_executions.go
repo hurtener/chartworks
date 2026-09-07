@@ -118,10 +118,19 @@ func (d *DB) DispatchRead(ctx context.Context, s store.Scope, id string, q reade
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		remote, _ := json.Marshal(q)
 		from, to := "accepted", "dispatching"
+		var previous []byte
 		if accepted {
 			from, to = "dispatching", "running"
+			var dialect string
+			if err := tx.QueryRow(ctx, `SELECT remote_query,COALESCE(manifest#>>'{validation,dialect}','postgres') FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status='dispatching' FOR UPDATE`, s.Tenant(), s.Actor(), id).Scan(&previous, &dialect); err != nil {
+				return err
+			}
+			var submitted readexec.RemoteQuery
+			if json.Unmarshal(previous, &submitted) != nil || dialect != q.Driver || !submitted.Acknowledges(q) {
+				return store.ErrInvalid
+			}
 		}
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND (remote_query IS NULL OR remote_query=$5::jsonb) AND (manifest#>>'{validation,dialect}'=$7 OR manifest#>>'{validation,dialect}' IS NULL AND $7='postgres')`, s.Tenant(), s.Actor(), id, to, remote, from, q.Driver)
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND (($8::jsonb IS NULL AND remote_query IS NULL) OR remote_query=$8::jsonb) AND (manifest#>>'{validation,dialect}'=$7 OR manifest#>>'{validation,dialect}' IS NULL AND $7='postgres')`, s.Tenant(), s.Actor(), id, to, remote, from, q.Driver, previous)
 		if err != nil {
 			return err
 		}

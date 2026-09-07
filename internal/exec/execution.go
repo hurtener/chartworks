@@ -86,10 +86,16 @@ type BigQueryRemoteQuery struct {
 	JobID    string `json:"job_id"`
 }
 type SnowflakeRemoteQuery struct {
-	QueryID string `json:"query_id"`
+	RequestID string `json:"request_id,omitempty"`
+	Account   string `json:"account,omitempty"`
+	Database  string `json:"database,omitempty"`
+	QueryID   string `json:"query_id,omitempty"`
 }
 type DatabricksRemoteQuery struct {
-	StatementID string `json:"statement_id"`
+	RequestID   string `json:"request_id,omitempty"`
+	Workspace   string `json:"workspace,omitempty"`
+	Warehouse   string `json:"warehouse,omitempty"`
+	StatementID string `json:"statement_id,omitempty"`
 }
 
 // NewPostgresRemoteQuery constructs the only currently executable variant.
@@ -121,9 +127,44 @@ func (q RemoteQuery) Valid() bool {
 	case "bigquery":
 		return q.BigQuery != nil && remoteCoordinate(q.BigQuery.Project, 128) && remoteCoordinate(q.BigQuery.Location, 64) && remoteCoordinate(q.BigQuery.JobID, 256)
 	case "snowflake":
-		return q.Snowflake != nil && remoteCoordinate(q.Snowflake.QueryID, 128)
+		return q.Snowflake != nil && (remoteCoordinate(q.Snowflake.QueryID, 128) || q.Snowflake.QueryID == "" && remoteCoordinate(q.Snowflake.RequestID, 128) && remoteCoordinate(q.Snowflake.Account, 128) && remoteCoordinate(q.Snowflake.Database, 128))
 	case "databricks":
-		return q.Databricks != nil && remoteCoordinate(q.Databricks.StatementID, 128)
+		return q.Databricks != nil && (remoteCoordinate(q.Databricks.StatementID, 128) || q.Databricks.StatementID == "" && remoteCoordinate(q.Databricks.RequestID, 128) && remoteCoordinate(q.Databricks.Workspace, 256) && remoteCoordinate(q.Databricks.Warehouse, 128))
+	}
+	return false
+}
+
+// Controllable reports whether this identity already contains the native
+// coordinate required to observe or interrupt the submitted operation. Some
+// APIs disclose that coordinate only in the server acknowledgement.
+func (q RemoteQuery) Controllable() bool {
+	if !q.Valid() {
+		return false
+	}
+	switch q.Driver {
+	case "snowflake":
+		return q.Snowflake.QueryID != ""
+	case "databricks":
+		return q.Databricks.StatementID != ""
+	default:
+		return true
+	}
+}
+
+// Acknowledges permits only a monotonic enrichment of one pre-dispatch
+// identity. Native identifiers cannot be replaced after they are known.
+func (q RemoteQuery) Acknowledges(next RemoteQuery) bool {
+	if !q.Valid() || !next.Valid() || q.Driver != next.Driver || q.Tag != next.Tag || !next.Controllable() {
+		return false
+	}
+	if q.Controllable() {
+		return reflect.DeepEqual(q, next)
+	}
+	switch q.Driver {
+	case "snowflake":
+		return q.Snowflake.RequestID == next.Snowflake.RequestID && q.Snowflake.Account == next.Snowflake.Account && q.Snowflake.Database == next.Snowflake.Database
+	case "databricks":
+		return q.Databricks.RequestID == next.Databricks.RequestID && q.Databricks.Workspace == next.Databricks.Workspace && q.Databricks.Warehouse == next.Databricks.Warehouse
 	}
 	return false
 }
@@ -297,6 +338,9 @@ func (c Control) Target(e identity.Envelope, b Binding) (RemoteQuery, error) {
 	}
 	if c.actor != e.User() || c.tenant != e.Tenant() || a.Manifest.Session != e.Session() || a.Remote == nil || !a.Remote.Valid() || a.Remote.Driver != dialect || b.Dialect != dialect || a.Manifest.Receipt.Source != b.Source || a.Manifest.Receipt.Context != b.Context {
 		return RemoteQuery{}, ErrBinding
+	}
+	if !a.Remote.Controllable() {
+		return RemoteQuery{}, ErrUncertain
 	}
 	if err := Require(e, b, a.Manifest.Receipt.Dependencies); err != nil {
 		return RemoteQuery{}, err
