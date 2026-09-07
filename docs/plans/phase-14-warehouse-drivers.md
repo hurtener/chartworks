@@ -17,7 +17,7 @@ No universal EXPLAIN dependency-coverage or CGo-free assertion based only on old
 ## Scope and implementation tasks
 
 1. Add MySQL, SQL Server, BigQuery, Snowflake and Databricks through selective in-process leaf clients from the D-067 minimal Bruin fork. Record its exact immutable commit before qualification; do not import the universal manager or use the stock query CLI. Preserve the native PostgreSQL baseline until forked PostgreSQL parity passes.
-2. Run real container fixtures for self-hosted engines and recorded plus live suites for cloud engines; include bind syntax, decimals, paging and cancellation.
+2. Run real container fixtures for self-hosted engines plus fork SDK/HTTP fixtures and injected Chartworks Service lifecycle tests for cloud engines; include bind syntax, decimals, paging and cancellation. Keep owner-run live cloud evidence as a separate future cutover qualification.
 3. Publish a capability/support matrix separating tested/read-only/snapshot/parameter/managed-write coverage; unknown behavior denies execution.
 
 ## Non-goals
