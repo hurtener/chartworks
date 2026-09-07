@@ -342,5 +342,8 @@ func (d *DB) StartProfileSummary(ctx context.Context, i jobs.Invocation, r engin
 		scope, _ := store.NewScope(r.Tenant, r.Actor)
 		return auditJob(ctx, tx, scope, "profile.summary_started", r.Spec.ID)
 	})
-	return admitted, err
+	if err != nil {
+		return false, err
+	}
+	return admitted, nil
 }
