@@ -398,7 +398,51 @@ func sqlServerSet(ctx context.Context, session bruinmssql.ReadSession, statement
 	}
 	return rows.Err()
 }
+
+// SHOWPLAN_XML does not produce a plan for the driver's parameter RPC. Supply
+// only its native parameter declarations in the planning batch. Values stay in
+// the original execution arguments; this produces a generic optimizer estimate.
+func sqlServerPlanningSQL(statement string, args []any) (string, error) {
+	if len(args) == 0 {
+		return statement, nil
+	}
+	declarations := make([]string, len(args))
+	for i, arg := range args {
+		var native string
+		switch value := arg.(type) {
+		case nil:
+			native = "nvarchar(1)"
+		case int64:
+			native = "bigint"
+		case bool:
+			native = "bit"
+		case string:
+			// Match the pinned driver's UTF-16 parameter width, including its
+			// nvarchar(max) representation for empty and long strings.
+			width := 0
+			for _, r := range value {
+				width++
+				if r > 0xffff {
+					width++
+				}
+			}
+			native = "nvarchar(max)"
+			if width > 0 && width <= 4000 {
+				native = "nvarchar(" + strconv.Itoa(width) + ")"
+			}
+		default:
+			return "", readexec.ErrBinding
+		}
+		declarations[i] = "@p" + strconv.Itoa(i+1) + " " + native
+	}
+	return "DECLARE " + strings.Join(declarations, ", ") + ";\n" + statement, nil
+}
+
 func sqlServerExplain(ctx context.Context, session bruinmssql.ReadSession, statement string, args []any, binding readexec.Binding) (cost float64, err error) {
+	planningSQL, err := sqlServerPlanningSQL(statement, args)
+	if err != nil {
+		return 0, err
+	}
 	databaseRows, databaseErr := sqlServerRows(ctx, session, "SELECT DB_NAME()", nil, 1)
 	if databaseErr != nil || len(databaseRows) != 1 || len(databaseRows[0]) != 1 {
 		return 0, readexec.ErrBinding
@@ -412,7 +456,7 @@ func sqlServerExplain(ctx context.Context, session bruinmssql.ReadSession, state
 			err = offErr
 		}
 	}()
-	rows, err := sqlServerRows(ctx, session, statement, args, 1)
+	rows, err := sqlServerRows(ctx, session, planningSQL, nil, 1)
 	if err != nil || len(rows) != 1 || len(rows[0]) != 1 {
 		return 0, readexec.ErrUnsafe
 	}

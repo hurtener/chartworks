@@ -44,7 +44,11 @@ are explicitly outside this subset. Native table metadata is rechecked under a
 retained table lock. The configured reader must have SELECT plus metadata visibility
 on declared schemas and SHOWPLAN, without effective write/control permissions.
 SHOWPLAN supplies native planning evidence for the admitted subset, not a universal
-function/dependency safety theorem. Native server name is not a boot epoch.
+function/dependency safety theorem. Parameterized planning prepends generated
+`@p1` through `@pN` native type declarations to the unchanged validated query;
+parameter values remain bound through the driver only at execution. This avoids
+SQL Server suppressing SHOWPLAN for parameter RPCs and yields a generic optimizer
+estimate, not a value-specific cost guarantee. Native server name is not a boot epoch.
 
 Result row and byte caps count the serialized schema and rows in the shared
 collector. They do not assert a bounded wire allocation inside every SDK, nor a

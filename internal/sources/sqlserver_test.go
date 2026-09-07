@@ -135,6 +135,35 @@ func TestSQLServerNativePlan(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLServerPlanningSQL(t *testing.T) {
+	statement := "SELECT id FROM analytics.sales WHERE id > @p1"
+	if got, err := sqlServerPlanningSQL(statement, nil); err != nil || got != statement {
+		t.Fatal("unparameterized SQL changed", err)
+	}
+	for _, test := range []struct {
+		value  any
+		native string
+	}{
+		{nil, "nvarchar(1)"}, {int64(3), "bigint"}, {true, "bit"},
+		{"text", "nvarchar(4)"}, {"a😀", "nvarchar(3)"}, {"", "nvarchar(max)"},
+		{strings.Repeat("x", 4001), "nvarchar(max)"},
+	} {
+		got, err := sqlServerPlanningSQL(statement, []any{test.value})
+		if err != nil || got != "DECLARE @p1 "+test.native+";\n"+statement {
+			t.Fatal("native parameter declaration changed", err)
+		}
+	}
+	value := "synthetic'; DELETE FROM analytics.sales; --"
+	got, err := sqlServerPlanningSQL(statement, []any{int64(0), value, false})
+	if err != nil || !strings.HasPrefix(got, "DECLARE @p1 bigint, @p2 nvarchar(") || !strings.HasSuffix(got, ", @p3 bit;\n"+statement) || strings.Contains(got, value) {
+		t.Fatal("planning lost parameter order or interpolated a value", err)
+	}
+	if _, err := sqlServerPlanningSQL(statement, []any{float64(1)}); !errors.Is(err, readexec.ErrBinding) {
+		t.Fatal("unregistered native parameter type admitted", err)
+	}
+}
+
 func TestSQLServerValues(t *testing.T) {
 	columns := []query.Column{{Name: "n", DatabaseType: "BIGINT"}, {Name: "d", DatabaseType: "DECIMAL"}, {Name: "b", DatabaseType: "VARBINARY"}, {Name: "t", DatabaseType: "DATETIME2"}, {Name: "offset", DatabaseType: "DATETIMEOFFSET"}, {Name: "z", DatabaseType: "BIT"}}
 	timestamp := time.Date(2026, 9, 7, 12, 13, 14, 123456700, time.FixedZone("synthetic", -3*3600))
