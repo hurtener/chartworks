@@ -114,6 +114,8 @@ a replay returns its original accepted receipt.
 
 The typed `sources` block defaults to disabled. Bounds: max_conns 1–16 (default 4), max_rows 1–1000 (256), max_bytes 1 KiB–4 MiB (1 MiB), connect_timeout and query_timeout 1 ms–4 s (1 s and 2 s). Connection aliases are tenant-bound and carry version, declared relations/columns and independent env: read/write references; the reader never resolves write credentials.
 
+Cloud source contexts bind a non-secret digest of the exact resolved credential material. Changing that material requires `Source.Rotate`, including when the warehouse coordinates are unchanged. Governed BigQuery accepts explicit inline credential material in the resolved JSON or a credential file captured once up to 1 MiB; Application Default Credentials and opaque credential providers are unsupported because their effective principal cannot be pinned across restart. Pre-release cloud bindings whose fingerprints predate credential binding also require rotation.
+
 The typed `exec` block bounds SQL bytes 128–65536 (32768), parameters 1–64 (64), AST depth 4–64 (64), AST nodes 32–16384 (8192) and concurrent validations 1–8 (2). Unknown/retired keys fail. These limits are not skip-validation settings. See `../examples/chartworks.sources.json` and `contracts/vector-sources-validation.md` for enforced fixed vector bounds, credential custody, PostgreSQL qualification and operational behavior.
 
 ## Upload and profiling configuration

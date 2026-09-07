@@ -25,6 +25,18 @@ qualification. No live cloud credentials were requested or used. Cloud migration
 cutover requires separately approved evidence; recorded fixtures do not establish
 cloud latency, account policy, availability or transport behavior in production.
 
+Cloud context fingerprints include a non-secret digest of the exact credential
+material captured with the leaf client. Replacing Snowflake credentials, a
+Databricks token/client secret or BigQuery credential material invalidates the
+current context even when warehouse coordinates and discovered metadata are
+unchanged; the operator must call `Source.Rotate` before new SQL can use it.
+Governed BigQuery accepts explicit inline credential material from the resolved
+JSON configuration or a credential file read once with a 1 MiB bound and supplied
+to the same client as those captured bytes. Application Default Credentials and
+opaque credential providers are unsupported because their effective principal
+cannot be pinned across process restart. Pre-release cloud bindings created before
+credential material entered the fingerprint likewise require `Source.Rotate`.
+
 SQL Server source discovery currently supports ordinary base tables on versions
 16/17, with exact native column metadata. Views, temporal/memory-optimized/file
 tables, computed/generated/encrypted/custom/CLR columns and enabled row policies
