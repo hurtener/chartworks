@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +40,13 @@ func (s *Service) mysqlClient(ctx context.Context, c config.SourceConnection) (*
 	parsed, err := mysqldriver.ParseDSN(raw)
 	if err != nil || parsed.Net != "tcp" || parsed.Addr == "" || parsed.DBName == "" {
 		return nil, "", store.ErrInvalid
+	}
+	if parsed.TLSConfig == "" || parsed.TLSConfig == "false" {
+		host, _, splitErr := net.SplitHostPort(parsed.Addr)
+		ip := net.ParseIP(host)
+		if !c.AllowInsecureLocal || host != "localhost" && (ip == nil || !ip.IsLoopback()) || splitErr != nil {
+			return nil, "", readexec.ErrUnsafe
+		}
 	}
 	key := c.Tenant + "/" + c.ID
 	material := readexec.Hash([]any{raw, c.Version})
@@ -88,7 +96,7 @@ func (s *Service) probe(ctx context.Context, c config.SourceConnection, id strin
 		binding, err = inspectMySQLContext(ctx, session, c, id, revision, location)
 		return err
 	}
-	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "SELECT 1 AS chartworks_probe"}, "probe-"+readexec.Hash([]any{id, revision})[:24], discardMySQLObserver{}, bruinmysql.ReadOptions{}, verify)
+	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "SELECT 1 AS chartworks_probe"}, "probe-"+readexec.Hash([]any{id, revision})[:24], discardMySQLObserver{}, bruinmysql.ReadOptions{RequireTLS: !c.AllowInsecureLocal}, verify)
 	if err != nil {
 		return readexec.Binding{}, safe(err)
 	}
@@ -243,7 +251,7 @@ func (s *Service) explainMySQL(ctx context.Context, e identity.Envelope, candida
 		}
 		return nil
 	}
-	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "EXPLAIN FORMAT=JSON " + statement, Args: args}, "explain-"+readexec.Hash(statement)[:24], discardMySQLObserver{}, bruinmysql.ReadOptions{}, verify)
+	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: "EXPLAIN FORMAT=JSON " + statement, Args: args}, "explain-"+readexec.Hash(statement)[:24], discardMySQLObserver{}, bruinmysql.ReadOptions{RequireTLS: !c.AllowInsecureLocal}, verify)
 	if err != nil {
 		return safe(err)
 	}
@@ -333,7 +341,7 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 		return nil
 	}
 	journal := &mysqlReadObserver{observer: observer, id: id}
-	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: statement, Args: args}, "cw-read:"+id, journal, bruinmysql.ReadOptions{MaxRows: limits.Rows + 1}, verify)
+	stream, _, err := client.OpenReadVerified(ctx, &query.Query{Query: statement, Args: args}, "cw-read:"+id, journal, bruinmysql.ReadOptions{RequireTLS: !c.AllowInsecureLocal, MaxRows: limits.Rows + 1}, verify)
 	if journal.issued {
 		out.RemoteState = "running"
 	}
@@ -458,7 +466,7 @@ func (s *Service) controlMySQL(ctx context.Context, e identity.Envelope, control
 	}
 	identity := bruinmysql.ReadIdentity{ConnectionID: remote.MySQL.ConnectionID, AttemptTag: remote.Tag, Account: remote.MySQL.Account, Database: remote.MySQL.Database, ServerUUID: remote.MySQL.ServerUUID}
 	if cancel {
-		if err := client.CancelRead(ctx, identity, bruinmysql.ReadOptions{}); err != nil {
+		if err := client.CancelRead(ctx, identity, bruinmysql.ReadOptions{RequireTLS: !c.AllowInsecureLocal}); err != nil {
 			if errors.Is(err, bruinmysql.ErrReadNotActive) {
 				return "unknown", readexec.ErrUncertain
 			}
@@ -466,7 +474,7 @@ func (s *Service) controlMySQL(ctx context.Context, e identity.Envelope, control
 		}
 		return "running", nil
 	}
-	state, err := client.ReadStatus(ctx, identity, bruinmysql.ReadOptions{})
+	state, err := client.ReadStatus(ctx, identity, bruinmysql.ReadOptions{RequireTLS: !c.AllowInsecureLocal})
 	if err != nil {
 		return "unknown", safe(err)
 	}

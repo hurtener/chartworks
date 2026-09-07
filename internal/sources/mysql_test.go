@@ -17,7 +17,7 @@ func TestMySQLSourceProbeLocal(t *testing.T) {
 	settings := config.DefaultSources()
 	service := &Service{settings: settings, lookup: func(name string) (string, bool) { return dsn, name == "MYSQL_READ_DSN" }, pools: map[string]poolEntry{}, mysqlPools: map[string]mysqlPoolEntry{}, retiring: map[string]bool{}}
 	t.Cleanup(service.Close)
-	connection := config.SourceConnection{Dialect: "mysql", Tenant: "tenant", ID: "mysql", Version: "v1", ReadDSN: "env:MYSQL_READ_DSN", Relations: []config.SourceRelation{{Schema: "cw_bruin_probe", Name: "cw_chartworks_fixture", Columns: []string{"id", "amount", "payload"}}}}
+	connection := config.SourceConnection{Dialect: "mysql", AllowInsecureLocal: true, Tenant: "tenant", ID: "mysql", Version: "v1", ReadDSN: "env:MYSQL_READ_DSN", Relations: []config.SourceRelation{{Schema: "cw_bruin_probe", Name: "cw_chartworks_fixture", Columns: []string{"id", "amount", "payload"}}}}
 	binding, err := service.probe(t.Context(), connection, "source", 1, nil)
 	if err != nil {
 		t.Fatal(err)
