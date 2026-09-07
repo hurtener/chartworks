@@ -31,7 +31,7 @@ func TestSafeErrors(t *testing.T) {
 	if latest.Version != 9 || latest.Name != "migrations/009_pipelines.sql" || len(latest.Checksum) != 64 {
 		t.Fatal("latest embedded migration identity", latest.Version, latest.Name, latest.Checksum)
 	}
-	for _, relation := range []string{"pipeline_definitions", "pipeline_runs", "pipeline_stages", "pipeline_outputs"} {
+	for _, relation := range []string{"pipeline_heads", "pipeline_versions", "pipeline_runs", "pipeline_stages", "pipeline_outputs"} {
 		if !strings.Contains(latest.SQL, "chartworks."+relation) {
 			t.Fatal("pipeline migration missing required relation", relation)
 		}
