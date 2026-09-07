@@ -181,6 +181,10 @@ func TestPipelinePublishesTwoOutputsWithOneReadConnection(t *testing.T) {
 		if err != nil || len(binding.Relations) != 1 {
 			t.Fatal("published output binding", err)
 		}
+		discovery, err := f.s.Discover(ctx, f.e, effect.Source)
+		if err != nil || discovery.ContextID != effect.Context || readexec.Hash(discovery.Relations) != readexec.Hash(binding.Relations) {
+			t.Fatal("published output native discovery", err)
+		}
 		relation := binding.Relations[0]
 		plan := f.plan(t, sources.Source{ID: effect.Source, ContextID: effect.Context}, "SELECT id FROM "+pgx.Identifier{relation.Schema, relation.Name}.Sanitize()+" ORDER BY id")
 		rows, err := f.s.Read(ctx, f.e, plan)

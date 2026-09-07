@@ -281,8 +281,9 @@ func (s *Service) WithPipelineOutputs(ctx context.Context, e identity.Envelope, 
 				if err := tx.QueryRow(ctx, `SELECT c.oid::bigint FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2`, stage.Schema, stage.Table).Scan(&oid); err != nil || oid != stage.OID {
 					return readexec.ErrBinding
 				}
-				b.Contract = "pipeline-contract:" + stage.Digest[:32]
-				b.Fingerprint = readexec.Hash([]any{b.Fingerprint, stage})
+				// Published outputs become ordinary sources. Preserve the native
+				// binding that later discovery, validation and reads will reproduce;
+				// exact stage lineage remains sealed in the separate location.
 				record := Record{Source: Source{ID: stage.Source, Name: stage.Pipeline + " " + stage.Step, Dialect: "postgres", Revision: stage.Revision, ContextID: stage.Context, Status: "registered"}, Connection: stage.Alias, Binding: b, Pipeline: ptrLocation(stage.Location())}
 				if !record.Valid() {
 					return store.ErrInvalid
