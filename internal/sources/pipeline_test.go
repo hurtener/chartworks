@@ -1,11 +1,14 @@
 package sources
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
+	"github.com/jackc/pgx/v5"
 )
 
 func pipelineFixture() PipelineStage {
@@ -50,5 +53,29 @@ func TestPipelineStageAndPrivateRecordBinding(t *testing.T) {
 	record.Pipeline.Table = "replacement"
 	if record.Valid() {
 		t.Fatal("location detached from bound relation")
+	}
+}
+
+func TestPipelineReadLocationUsesHeldPhysicalDatabase(t *testing.T) {
+	read, location, err := ParseApprovedDSN("postgres://reader:synthetic@localhost:5432/first?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := read.Copy()
+	writer.User = "writer"
+	writer.Password = "different"
+	held := withPipelineReadLocation(context.Background(), read, location)
+	if err = RequirePipelineReadLocation(held, writer); err != nil {
+		t.Fatal("same database separate writer rejected", err)
+	}
+	for _, change := range []func(*pgx.ConnConfig){func(c *pgx.ConnConfig) { c.Database = "second" }, func(c *pgx.ConnConfig) { c.Host = "other" }, func(c *pgx.ConnConfig) { c.Port++ }} {
+		changed := writer.Copy()
+		change(changed)
+		if !errors.Is(RequirePipelineReadLocation(held, changed), readexec.ErrBinding) {
+			t.Fatal("different physical location admitted")
+		}
+	}
+	if !errors.Is(RequirePipelineReadLocation(context.Background(), writer), readexec.ErrBinding) || !errors.Is(RequirePipelineReadLocation(nil, writer), readexec.ErrBinding) {
+		t.Fatal("missing held native proof admitted")
 	}
 }

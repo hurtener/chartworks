@@ -76,11 +76,33 @@ func pipelineAuthority(e identity.Envelope, d PipelineDefinition, action, permis
 	}
 	return access.Require(e, action, refs...)
 }
+func (s *PipelineService) validateInputLocations(ctx context.Context, e identity.Envelope, d PipelineDefinition) error {
+	c, err := s.connection(e, d.Connection)
+	if err != nil {
+		return err
+	}
+	// Admission must also reject a writer reference that has moved independently
+	// from the destination reader. Dispatch repeats this against the held pool.
+	if _, _, err = managedWriterConfig(s.values, s.lookup, s.repo.DatabaseName(), c); err != nil {
+		return err
+	}
+	for _, step := range d.Steps {
+		if len(step.FromSteps) == 0 {
+			if err := s.source.ValidatePipelineInputLocation(ctx, e, step.Source, step.Context, d.Connection); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 func (s *PipelineService) validateInputs(ctx context.Context, e identity.Envelope, d PipelineDefinition) error {
 	if err := s.validatePipelineDestination(ctx, e, d.Connection); err != nil {
 		return err
 	}
 	if err := ValidatePipelineDefinition(d, s.values.Pipelines); err != nil {
+		return err
+	}
+	if err := s.validateInputLocations(ctx, e, d); err != nil {
 		return err
 	}
 	for _, step := range d.Steps {

@@ -69,6 +69,9 @@ func (s *PipelineService) Run(ctx context.Context, e identity.Envelope, id strin
 	if err != nil {
 		return PipelineRun{}, err
 	}
+	if err = s.validateInputLocations(ctx, e, record.Definition); err != nil {
+		return PipelineRun{}, err
+	}
 	schema, _, err := sources.ManagedLocation(c, id)
 	if err != nil {
 		return PipelineRun{}, ErrOwnership
@@ -179,20 +182,15 @@ func (s *PipelineService) Run(ctx context.Context, e identity.Envelope, id strin
 				return ErrInvalid
 			}
 		}
-		// Every exact physical output lock remains held through the single local
-		// metadata publication transaction. This is not a warehouse transaction.
-		records := make([]sources.Record, 0, len(record.Definition.Steps))
-		var publish func(context.Context, int) error
-		publish = func(held context.Context, index int) error {
-			if index == len(record.Definition.Steps) {
-				return s.repo.CompletePipelineExecution(held, inv, record, records)
-			}
-			return s.source.WithPipelineOutput(held, e, task.ID, record.Definition.Steps[index].ID, func(next context.Context, r sources.Record) error {
-				records = append(records, r)
-				return publish(next, index+1)
-			})
+		// One native transaction holds all exact output locks through the single
+		// local metadata publication; it does not borrow once per output.
+		steps := make([]string, 0, len(record.Definition.Steps))
+		for _, step := range record.Definition.Steps {
+			steps = append(steps, step.ID)
 		}
-		return publish(work, 0)
+		return s.source.WithPipelineOutputs(work, e, task.ID, steps, func(held context.Context, records []sources.Record) error {
+			return s.repo.CompletePipelineExecution(held, inv, record, records)
+		})
 	})
 	current, err := s.repo.ReadPipelineExecution(ctx, e, task.ID)
 	if err != nil {
@@ -222,6 +220,9 @@ func (s *PipelineService) AdmitRun(ctx context.Context, e identity.Envelope, id 
 	}
 	c, err := s.connection(e, record.Definition.Connection)
 	if err != nil {
+		return PipelineRun{}, err
+	}
+	if err = s.validateInputLocations(ctx, e, record.Definition); err != nil {
 		return PipelineRun{}, err
 	}
 	schema, _, err := sources.ManagedLocation(c, id)

@@ -13,6 +13,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 // PipelineStage is protected execution evidence for one physical managed table.
@@ -239,44 +240,137 @@ func (p *pipelineInput) resolveDuration(ctx context.Context, e identity.Envelope
 	return result, err
 }
 
-// WithPipelineOutput proves a checked exact-OID table before publication.
-func (s *Service) WithPipelineOutput(ctx context.Context, e identity.Envelope, operation, step string, publish func(context.Context, Record) error) error {
+// WithPipelineOutputs proves the complete output manifest under one native
+// read transaction. Its pool use is constant even when outputs exceed MaxConns.
+func (s *Service) WithPipelineOutputs(ctx context.Context, e identity.Envelope, operation string, steps []string, publish func(context.Context, []Record) error) error {
 	if publish == nil {
 		return store.ErrInvalid
 	}
-	stages, err := s.pipelineStages(ctx, e, operation, []string{step})
+	stages, err := s.pipelineStages(ctx, e, operation, steps)
 	if err != nil {
 		return err
 	}
-	stage := stages[0]
-	c, err := s.connection(e.Tenant(), stage.Alias)
+	first := stages[0]
+	c, err := s.connection(e.Tenant(), first.Alias)
 	if err != nil {
 		return err
 	}
 	if c.ManagedSchema == "" {
 		return readexec.ErrBinding
 	}
-	c.Relations = []config.SourceRelation{{Schema: stage.Schema, Name: stage.Table, Columns: append([]string(nil), stage.Columns...)}}
-	return s.call(ctx, e, true, func(ctx context.Context) error {
+	c.Relations = make([]config.SourceRelation, 0, len(stages))
+	for _, stage := range stages {
+		c.Relations = append(c.Relations, config.SourceRelation{Schema: stage.Schema, Name: stage.Table, Columns: append([]string(nil), stage.Columns...)})
+	}
+	return s.managedPipelineCall(ctx, e, func(ctx context.Context) error {
 		var callbackErr error
-		_, err := s.probe(ctx, c, stage.Source, stage.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
-			var oid int64
-			if err := tx.QueryRow(ctx, `SELECT c.oid::bigint FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2`, stage.Schema, stage.Table).Scan(&oid); err != nil || oid != stage.OID {
+		_, err := s.probeDuration(ctx, c, first.Source, first.Revision, managedProbeTimeout(ctx), func(ctx context.Context, tx readTransaction, _ readexec.Binding) error {
+			records := make([]Record, 0, len(stages))
+			location, ok := ctx.Value(pipelineReadLocationKey{}).(pipelineReadLocation)
+			if !ok {
 				return readexec.ErrBinding
 			}
-			b.Contract = "pipeline-contract:" + stage.Digest[:32]
-			b.Fingerprint = readexec.Hash([]any{b.Fingerprint, stage})
-			record := Record{Source: Source{ID: stage.Source, Name: stage.Pipeline + " " + stage.Step, Dialect: "postgres", Revision: stage.Revision, ContextID: stage.Context, Status: "registered"}, Connection: stage.Alias, Binding: b, Pipeline: ptrLocation(stage.Location())}
-			if !record.Valid() {
-				return store.ErrInvalid
+			for _, stage := range stages {
+				single := c
+				single.Relations = []config.SourceRelation{{Schema: stage.Schema, Name: stage.Table, Columns: append([]string(nil), stage.Columns...)}}
+				b, err := s.inspectReadContext(ctx, tx, single, stage.Source, stage.Revision, location.fingerprintLocation)
+				if err != nil {
+					return err
+				}
+				var oid int64
+				if err := tx.QueryRow(ctx, `SELECT c.oid::bigint FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2`, stage.Schema, stage.Table).Scan(&oid); err != nil || oid != stage.OID {
+					return readexec.ErrBinding
+				}
+				b.Contract = "pipeline-contract:" + stage.Digest[:32]
+				b.Fingerprint = readexec.Hash([]any{b.Fingerprint, stage})
+				record := Record{Source: Source{ID: stage.Source, Name: stage.Pipeline + " " + stage.Step, Dialect: "postgres", Revision: stage.Revision, ContextID: stage.Context, Status: "registered"}, Connection: stage.Alias, Binding: b, Pipeline: ptrLocation(stage.Location())}
+				if !record.Valid() {
+					return store.ErrInvalid
+				}
+				records = append(records, record)
 			}
-			callbackErr = publish(ctx, record)
+			callbackErr = publish(ctx, records)
 			return callbackErr
 		})
 		if callbackErr != nil {
 			return callbackErr
 		}
 		return err
+	})
+}
+
+// A location proof is request-private evidence from the actual read pool, not an
+// authority grant. Managed writes must use that same physical PostgreSQL endpoint.
+type pipelineReadLocationKey struct{}
+type pipelineReadLocation struct {
+	host, database, fingerprintLocation string
+	port                                uint16
+}
+
+func withPipelineReadLocation(ctx context.Context, c *pgx.ConnConfig, location string) context.Context {
+	return context.WithValue(ctx, pipelineReadLocationKey{}, pipelineReadLocation{host: c.Host, port: c.Port, database: c.Database, fingerprintLocation: location})
+}
+
+// RequirePipelineReadLocation binds managed writes to the held read endpoint.
+func RequirePipelineReadLocation(ctx context.Context, c *pgx.ConnConfig) error {
+	if ctx == nil {
+		return readexec.ErrBinding
+	}
+	location, ok := ctx.Value(pipelineReadLocationKey{}).(pipelineReadLocation)
+	if !ok || c == nil || location.host != c.Host || location.port != c.Port || location.database != c.Database {
+		return readexec.ErrBinding
+	}
+	return nil
+}
+
+// ValidatePipelineInputLocation rejects unsupported cross-database execution
+// before any operation is admitted. Dispatch repeats the proof against the held
+// read connection and actual writer configuration.
+func (s *Service) ValidatePipelineInputLocation(ctx context.Context, e identity.Envelope, id, partition, destination string) error {
+	scope, err := sourceScope(e, "sources.query", "query", id)
+	if err != nil {
+		return err
+	}
+	return s.call(ctx, e, true, func(ctx context.Context) error {
+		return s.repo.WithSource(ctx, scope, id, func(ctx context.Context, record Record) error {
+			if record.Source.ContextID != partition {
+				return readexec.ErrBinding
+			}
+			if err := actualContext(e, "sources.query", record); err != nil {
+				return err
+			}
+			input, err := s.recordConnection(record)
+			if err != nil {
+				return err
+			}
+			target, err := s.connection(e.Tenant(), destination)
+			if err != nil {
+				return err
+			}
+			if input.Dialect != "postgres" || target.Dialect != "postgres" || target.ManagedSchema == "" {
+				return readexec.ErrBinding
+			}
+			inputDSN, ok := s.lookup(strings.TrimPrefix(input.ReadDSN, "env:"))
+			if !ok {
+				return store.ErrUnavailable
+			}
+			targetDSN, ok := s.lookup(strings.TrimPrefix(target.ReadDSN, "env:"))
+			if !ok {
+				return store.ErrUnavailable
+			}
+			a, _, err := ParseApprovedDSN(inputDSN)
+			if err != nil {
+				return err
+			}
+			b, _, err := ParseApprovedDSN(targetDSN)
+			if err != nil {
+				return err
+			}
+			if a.Host != b.Host || a.Port != b.Port || a.Database != b.Database {
+				return readexec.ErrBinding
+			}
+			return nil
+		})
 	})
 }
 func ptrLocation(l PipelineLocation) *PipelineLocation { return &l }

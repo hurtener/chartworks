@@ -33,6 +33,9 @@ func (s *PipelineService) pipelineTx(ctx context.Context, c config.SourceConnect
 	if err != nil {
 		return err
 	}
+	if err = sources.RequirePipelineReadLocation(ctx, w); err != nil {
+		return err
+	}
 	conn, err := pgx.ConnectConfig(ctx, w)
 	if err != nil {
 		return ErrUnavailable
@@ -367,6 +370,13 @@ func (s *PipelineService) executePipelineStage(ctx context.Context, inv jobs.Inv
 			return err
 		}
 	}
+	w, _, err := managedWriterConfig(s.values, s.lookup, s.repo.DatabaseName(), c)
+	if err != nil {
+		return err
+	}
+	if err = sources.RequirePipelineReadLocation(ctx, w); err != nil {
+		return err
+	}
 	prior := state
 	if state.Application != "" {
 		state.PriorApplications = append(append([]string(nil), state.PriorApplications...), state.Application)
@@ -386,10 +396,6 @@ func (s *PipelineService) executePipelineStage(ctx context.Context, inv jobs.Inv
 		return err
 	}
 	state.Compensated = compensated
-	w, _, err := managedWriterConfig(s.values, s.lookup, s.repo.DatabaseName(), c)
-	if err != nil {
-		return err
-	}
 	inputs := []readexec.Relation{}
 	for _, id := range step.Inputs {
 		for _, relation := range b.Relations {

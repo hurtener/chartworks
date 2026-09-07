@@ -152,7 +152,7 @@ func (s *Service) probeDuration(ctx context.Context, c config.SourceConnection, 
 		return readexec.Binding{}, err
 	}
 	if consume != nil {
-		if err = consume(ctx, tx, out.Clone()); err != nil {
+		if err = consume(withPipelineReadLocation(ctx, pool.Config().ConnConfig, location), tx, out.Clone()); err != nil {
 			return readexec.Binding{}, safe(err)
 		}
 	}
