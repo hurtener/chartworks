@@ -44,6 +44,7 @@ require (
 	github.com/aws/smithy-go v1.27.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bruin-data/bruin v0.11.749
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.1 // indirect
@@ -95,3 +96,7 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/bruin-data/bruin => github.com/hurtener/bruin v0.11.750-0.20260907195737-cbde66f66509
+
+replace github.com/bruin-data/bruin/semantic-engine => github.com/hurtener/bruin/semantic-engine v0.0.0-20260907195737-cbde66f66509
