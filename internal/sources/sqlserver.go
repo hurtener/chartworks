@@ -243,6 +243,10 @@ func sqlServerPermissions(rows [][]any, kind string) bool {
 		case "SELECT":
 			selected = true
 		case "CONNECT", "CONNECT SQL", "VIEW DEFINITION", "VIEW ANY DEFINITION", "VIEW ANY DATABASE", "VIEW DATABASE STATE", "VIEW DATABASE PERFORMANCE STATE", "VIEW SERVER STATE", "VIEW SERVER PERFORMANCE STATE", "SHOWPLAN":
+		case "VIEW ANY COLUMN MASTER KEY DEFINITION", "VIEW ANY COLUMN ENCRYPTION KEY DEFINITION":
+			if kind != "DATABASE" {
+				return false
+			}
 		default:
 			return false
 		}

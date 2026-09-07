@@ -51,6 +51,9 @@ func (s *sqlServerFixtureSession) Query(_ context.Context, q *query.Query) (quer
 		rows = [][]any{{"16.0.1000.6", "synthetic-reader", "synthetic-reader", "analytics"}}
 	case strings.Contains(q.Query, "fn_my_permissions"):
 		rows = [][]any{{"SELECT"}, {"VIEW DEFINITION"}}
+		if len(q.Args) == 1 && q.Args[0] == "DATABASE" {
+			rows = append(rows, []any{"VIEW ANY COLUMN MASTER KEY DEFINITION"}, []any{"VIEW ANY COLUMN ENCRYPTION KEY DEFINITION"})
+		}
 		if s.mutate == "writer" {
 			rows = append(rows, []any{"INSERT"})
 		}
@@ -105,6 +108,16 @@ func TestSQLServerContext(t *testing.T) {
 				t.Fatalf("unsupported context admitted: %s %v", mutation, err)
 			}
 		})
+	}
+}
+
+func TestSQLServerPermissionsAllowDefaultDatabaseKeyMetadata(t *testing.T) {
+	defaults := [][]any{{"CONNECT"}, {"VIEW ANY COLUMN MASTER KEY DEFINITION"}, {"VIEW ANY COLUMN ENCRYPTION KEY DEFINITION"}}
+	if !sqlServerPermissions(defaults, "DATABASE") {
+		t.Fatal("SQL Server default database key-metadata permissions were rejected")
+	}
+	if sqlServerPermissions(defaults, "SERVER") || sqlServerPermissions(append(defaults, []any{"ALTER ANY COLUMN MASTER KEY"}), "DATABASE") {
+		t.Fatal("database metadata permissions widened another permission scope")
 	}
 }
 
