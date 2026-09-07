@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -116,6 +118,45 @@ func TestPhase13(t *testing.T) {
 		}
 		if _, err = f.pipelines.Get(context.Background(), f.e, unowned.ID, 1); !errors.Is(err, store.ErrNotFound) {
 			t.Fatal("rejected destination left a definition", err)
+		}
+		stale := f.definition(t, source, "stale-publication")
+		first, err := f.db.SavePipeline(context.Background(), f.e, stale, 0)
+		if err != nil {
+			t.Fatal("first immutable draft", err)
+		}
+		stale.Name = "Reviewed revision"
+		second, err := f.db.SavePipeline(context.Background(), f.e, stale, first.Version)
+		if err != nil || second.Version != 2 {
+			t.Fatal("second immutable draft", err, second)
+		}
+		if _, err = f.db.PublishPipeline(context.Background(), f.e, stale.ID, first.Version); !errors.Is(err, store.ErrConflict) {
+			t.Fatal("stale draft superseded the reviewed head", err)
+		}
+		stillDraft, err := f.db.ReadPipeline(context.Background(), f.e, stale.ID, first.Version, "engineering.pipeline.read", "read")
+		if err != nil || stillDraft.State != "draft" || stillDraft.Published != nil {
+			t.Fatal("rejected stale publication mutated immutable version", err, stillDraft)
+		}
+		if accepted, publishErr := f.db.PublishPipeline(context.Background(), f.e, stale.ID, second.Version); publishErr != nil || accepted.State != "published" {
+			t.Fatal("current reviewed head publication", publishErr, accepted)
+		}
+
+		concurrent := f.definition(t, source, "concurrent-draft")
+		var winners atomic.Int64
+		var group sync.WaitGroup
+		for range 8 {
+			group.Add(1)
+			go func() {
+				defer group.Done()
+				if _, saveErr := f.db.SavePipeline(context.Background(), f.e, concurrent, 0); saveErr == nil {
+					winners.Add(1)
+				} else if !errors.Is(saveErr, store.ErrConflict) {
+					t.Error("concurrent draft", saveErr)
+				}
+			}()
+		}
+		group.Wait()
+		if winners.Load() != 1 {
+			t.Fatalf("draft CAS admitted %d creators", winners.Load())
 		}
 		f.mu.Lock()
 		writerDSN := f.sourceFixture.values["CHARTWORKS_SOURCE_WRITE"]
