@@ -2,12 +2,14 @@ package sources
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"cloud.google.com/go/civil"
@@ -41,19 +43,36 @@ type bigQueryFactory func(*bruinbigquery.Config) (bigQueryClient, error)
 type bigQueryObserver struct {
 	observer readexec.Observer
 	tag      string
+	dispatch *cloudDispatchState
 }
 
 func (o bigQueryObserver) OnDispatch(ctx context.Context, id bruinbigquery.ReadIdentity) error {
-	return o.dispatch(ctx, id, false)
+	err := o.record(ctx, id, false)
+	if err == nil && o.dispatch != nil {
+		o.dispatch.issued.Store(true)
+	}
+	return err
 }
 func (o bigQueryObserver) OnAcknowledged(ctx context.Context, id bruinbigquery.ReadIdentity) error {
-	return o.dispatch(ctx, id, true)
+	if o.dispatch != nil {
+		o.dispatch.issued.Store(true)
+	}
+	return o.record(ctx, id, true)
 }
-func (o bigQueryObserver) dispatch(ctx context.Context, id bruinbigquery.ReadIdentity, accepted bool) error {
+func (o bigQueryObserver) record(ctx context.Context, id bruinbigquery.ReadIdentity, accepted bool) error {
 	if o.observer == nil {
 		return nil
 	}
 	return o.observer.Dispatch(ctx, readexec.RemoteQuery{Driver: "bigquery", Tag: o.tag, BigQuery: &readexec.BigQueryRemoteQuery{Project: id.ProjectID, Location: id.Location, JobID: id.JobID}}, accepted)
+}
+
+type cloudDispatchState struct{ issued atomic.Bool }
+
+func (s *cloudDispatchState) failureState() string {
+	if s != nil && s.issued.Load() {
+		return "unknown"
+	}
+	return "not_issued"
 }
 
 func (s *Service) bigQueryClient(c config.SourceConnection) (bigQueryClient, *bruinbigquery.Config, error) {
@@ -103,12 +122,28 @@ func (s *Service) probeBigQuery(ctx context.Context, c config.SourceConnection, 
 	if err != nil {
 		return readexec.Binding{}, err
 	}
+	return probeBigQueryClient(ctx, client, native, c, id, revision)
+}
+
+func probeBigQueryTag(prefix string) (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", store.ErrUnavailable
+	}
+	return prefix + hex.EncodeToString(value[:]), nil
+}
+
+func probeBigQueryClient(ctx context.Context, client bigQueryClient, native *bruinbigquery.Config, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
 	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "bigquery", Catalog: native.ProjectID}
 	evidence := []any{native.ProjectID, native.Location, c.Version}
 	for _, relation := range c.Relations {
+		tableTag, err := probeBigQueryTag("probe-table:")
+		if err != nil {
+			return readexec.Binding{}, err
+		}
 		tableSQL := fmt.Sprintf("SELECT table_type FROM `%s.%s.INFORMATION_SCHEMA.TABLES` WHERE table_name=@table", native.ProjectID, relation.Schema)
 		tableArgs := []any{bruinbigquery.ReadParameter{Name: "table", Type: "STRING", Value: relation.Name}}
-		tableStream, _, tableErr := client.OpenRead(ctx, &query.Query{Query: tableSQL, Args: tableArgs}, "probe-table:"+readexec.Hash([]any{id, revision, relation.Schema, relation.Name})[:24], bigQueryObserver{}, bruinbigquery.ReadOptions{MaxBytesBilled: 1 << 30, JobTimeout: time.Minute, CancelTimeout: time.Second})
+		tableStream, _, tableErr := client.OpenRead(ctx, &query.Query{Query: tableSQL, Args: tableArgs}, tableTag, bigQueryObserver{}, bruinbigquery.ReadOptions{MaxBytesBilled: 1 << 30, JobTimeout: time.Minute, CancelTimeout: time.Second})
 		if tableErr != nil {
 			return readexec.Binding{}, safe(tableErr)
 		}
@@ -119,7 +154,11 @@ func (s *Service) probeBigQuery(ctx context.Context, c config.SourceConnection, 
 		}
 		statement := fmt.Sprintf("SELECT column_name,data_type,is_nullable,ordinal_position FROM `%s.%s.INFORMATION_SCHEMA.COLUMNS` WHERE table_name=@table ORDER BY ordinal_position", native.ProjectID, relation.Schema)
 		args := []any{bruinbigquery.ReadParameter{Name: "table", Type: "STRING", Value: relation.Name}}
-		stream, _, openErr := client.OpenRead(ctx, &query.Query{Query: statement, Args: args}, "probe:"+readexec.Hash([]any{id, revision, relation.Schema, relation.Name})[:24], bigQueryObserver{}, bruinbigquery.ReadOptions{MaxBytesBilled: 1 << 30, JobTimeout: time.Minute, CancelTimeout: time.Second})
+		columnsTag, err := probeBigQueryTag("probe:")
+		if err != nil {
+			return readexec.Binding{}, err
+		}
+		stream, _, openErr := client.OpenRead(ctx, &query.Query{Query: statement, Args: args}, columnsTag, bigQueryObserver{}, bruinbigquery.ReadOptions{MaxBytesBilled: 1 << 30, JobTimeout: time.Minute, CancelTimeout: time.Second})
 		if openErr != nil {
 			return readexec.Binding{}, safe(openErr)
 		}
@@ -144,6 +183,13 @@ func (s *Service) explainBigQuery(ctx context.Context, e identity.Envelope, cand
 	client, native, err := s.bigQueryClient(c)
 	if err != nil {
 		return err
+	}
+	actual, err := probeBigQueryClient(ctx, client, native, c, expected.Source, expected.Revision)
+	if err != nil {
+		return err
+	}
+	if !observedBindingMatches(expected, actual) {
+		return readexec.ErrBinding
 	}
 	statement, parameters, err := candidate.SQL(e, expected)
 	if err != nil {
@@ -183,9 +229,16 @@ func (s *Service) explainBigQuery(ctx context.Context, e identity.Envelope, cand
 
 func (s *Service) executeBigQuery(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (readexec.NativeResult, error) {
 	out := readexec.NativeResult{RemoteState: "not_issued"}
-	client, _, err := s.bigQueryClient(c)
+	client, native, err := s.bigQueryClient(c)
 	if err != nil {
 		return out, err
+	}
+	actual, err := probeBigQueryClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	if err != nil {
+		return out, err
+	}
+	if !observedBindingMatches(record.Binding, actual) {
+		return out, readexec.ErrBinding
 	}
 	statement, parameters, err := p.SQL(e, record.Binding)
 	if err != nil {
@@ -196,14 +249,17 @@ func (s *Service) executeBigQuery(ctx context.Context, e identity.Envelope, p re
 		return out, err
 	}
 	tag := "cw-read:" + id
-	stream, _, err := client.OpenRead(ctx, &query.Query{Query: statement, Args: args}, id, bigQueryObserver{observer: observer, tag: tag}, bruinbigquery.ReadOptions{MaxBytesBilled: int64(l.PlannerCost), JobTimeout: l.Timeout, CancelTimeout: l.CancelGrace})
+	dispatch := &cloudDispatchState{}
+	stream, _, err := client.OpenRead(ctx, &query.Query{Query: statement, Args: args}, id, bigQueryObserver{observer: observer, tag: tag, dispatch: dispatch}, bruinbigquery.ReadOptions{MaxBytesBilled: int64(l.PlannerCost), JobTimeout: l.Timeout, CancelTimeout: l.CancelGrace})
 	if err != nil {
+		out.RemoteState = dispatch.failureState()
 		return out, cloudReadFailure(ctx, err)
 	}
 	defer func() { _ = stream.Close() }()
 	out.RemoteState = "running"
 	result, err := collectCloudRows(ctx, stream, l, observer)
 	if err != nil {
+		out.RemoteState = "unknown"
 		return out, cloudReadFailure(ctx, err)
 	}
 	out.Result = result
@@ -212,7 +268,11 @@ func (s *Service) executeBigQuery(ctx context.Context, e identity.Envelope, p re
 }
 
 func (s *Service) controlBigQuery(ctx context.Context, e identity.Envelope, control readexec.Control, record Record, c config.SourceConnection, cancel bool) (string, error) {
-	actual, err := s.probeBigQuery(ctx, c, record.Source.ID, record.Source.Revision)
+	client, native, err := s.bigQueryClient(c)
+	if err != nil {
+		return "unknown", err
+	}
+	actual, err := probeBigQueryClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return "unknown", err
 	}
@@ -225,10 +285,6 @@ func (s *Service) controlBigQuery(ctx context.Context, e identity.Envelope, cont
 	}
 	if target.BigQuery == nil {
 		return "unknown", readexec.ErrBinding
-	}
-	client, _, err := s.bigQueryClient(c)
-	if err != nil {
-		return "unknown", err
 	}
 	id := bruinbigquery.ReadIdentity{ProjectID: target.BigQuery.Project, Location: target.BigQuery.Location, JobID: target.BigQuery.JobID}
 	var state bruinbigquery.ReadState

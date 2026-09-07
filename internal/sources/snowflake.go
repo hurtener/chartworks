@@ -36,15 +36,23 @@ type snowflakeFactory func(*bruinsnowflake.Config) (snowflakeClient, error)
 type snowflakeObserver struct {
 	observer readexec.Observer
 	tag      string
+	dispatch *cloudDispatchState
 }
 
 func (o snowflakeObserver) OnDispatch(ctx context.Context, id bruinsnowflake.ReadIdentity) error {
-	return o.dispatch(ctx, id, false)
+	err := o.record(ctx, id, false)
+	if err == nil && o.dispatch != nil {
+		o.dispatch.issued.Store(true)
+	}
+	return err
 }
 func (o snowflakeObserver) OnAcknowledged(ctx context.Context, id bruinsnowflake.ReadIdentity) error {
-	return o.dispatch(ctx, id, true)
+	if o.dispatch != nil {
+		o.dispatch.issued.Store(true)
+	}
+	return o.record(ctx, id, true)
 }
-func (o snowflakeObserver) dispatch(ctx context.Context, id bruinsnowflake.ReadIdentity, accepted bool) error {
+func (o snowflakeObserver) record(ctx context.Context, id bruinsnowflake.ReadIdentity, accepted bool) error {
 	if o.observer == nil {
 		return nil
 	}
@@ -97,6 +105,10 @@ func (s *Service) probeSnowflake(ctx context.Context, c config.SourceConnection,
 	if err != nil {
 		return readexec.Binding{}, err
 	}
+	return probeSnowflakeClient(ctx, client, native, c, id, revision)
+}
+
+func probeSnowflakeClient(ctx context.Context, client snowflakeClient, native *bruinsnowflake.Config, c config.SourceConnection, id string, revision int64) (readexec.Binding, error) {
 	out := readexec.Binding{Tenant: c.Tenant, Source: id, Context: contextID(id, revision), Revision: revision, Dialect: "snowflake", Catalog: native.Database}
 	evidence := []any{native.Account, native.Database, native.Schema, native.Role, native.Warehouse, c.Version}
 	for _, relation := range c.Relations {
@@ -106,6 +118,7 @@ func (s *Service) probeSnowflake(ctx context.Context, c config.SourceConnection,
 			return readexec.Binding{}, safe(tableErr)
 		}
 		tableType, tableErr := catalogTableType(tableStream, map[string]bool{"BASE TABLE": true})
+		_ = tableStream.Close()
 		if tableErr != nil {
 			return readexec.Binding{}, tableErr
 		}
@@ -133,9 +146,16 @@ func (s *Service) probeSnowflake(ctx context.Context, c config.SourceConnection,
 func snowflakeName(value string) string { return `"` + strings.ReplaceAll(value, `"`, `""`) + `"` }
 
 func (s *Service) explainSnowflake(ctx context.Context, e identity.Envelope, candidate readexec.Candidate, c config.SourceConnection, expected readexec.Binding) error {
-	client, _, err := s.snowflakeClient(c)
+	client, native, err := s.snowflakeClient(c)
 	if err != nil {
 		return err
+	}
+	actual, err := probeSnowflakeClient(ctx, client, native, c, expected.Source, expected.Revision)
+	if err != nil {
+		return err
+	}
+	if !observedBindingMatches(expected, actual) {
+		return readexec.ErrBinding
 	}
 	statement, parameters, err := candidate.SQL(e, expected)
 	if err != nil {
@@ -161,9 +181,16 @@ func (s *Service) explainSnowflake(ctx context.Context, e identity.Envelope, can
 }
 func (s *Service) executeSnowflake(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (readexec.NativeResult, error) {
 	out := readexec.NativeResult{RemoteState: "not_issued"}
-	client, _, err := s.snowflakeClient(c)
+	client, native, err := s.snowflakeClient(c)
 	if err != nil {
 		return out, err
+	}
+	actual, err := probeSnowflakeClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
+	if err != nil {
+		return out, err
+	}
+	if !observedBindingMatches(record.Binding, actual) {
+		return out, readexec.ErrBinding
 	}
 	statement, parameters, err := p.SQL(e, record.Binding)
 	if err != nil {
@@ -173,21 +200,28 @@ func (s *Service) executeSnowflake(ctx context.Context, e identity.Envelope, p r
 	if err != nil {
 		return out, err
 	}
-	stream, _, err := client.OpenRead(ctx, &query.Query{Query: statement, Args: args}, id, snowflakeObserver{observer: observer, tag: "cw-read:" + id})
+	dispatch := &cloudDispatchState{}
+	stream, _, err := client.OpenRead(ctx, &query.Query{Query: statement, Args: args}, id, snowflakeObserver{observer: observer, tag: "cw-read:" + id, dispatch: dispatch})
 	if err != nil {
+		out.RemoteState = dispatch.failureState()
 		return out, cloudReadFailure(ctx, err)
 	}
 	defer func() { _ = stream.Close() }()
 	out.RemoteState = "running"
 	out.Result, err = collectCloudRows(ctx, stream, l, observer)
 	if err != nil {
+		out.RemoteState = "unknown"
 		return out, cloudReadFailure(ctx, err)
 	}
 	out.RemoteState = "stopped"
 	return out, nil
 }
 func (s *Service) controlSnowflake(ctx context.Context, e identity.Envelope, control readexec.Control, record Record, c config.SourceConnection, cancel bool) (string, error) {
-	actual, err := s.probeSnowflake(ctx, c, record.Source.ID, record.Source.Revision)
+	client, native, err := s.snowflakeClient(c)
+	if err != nil {
+		return "unknown", err
+	}
+	actual, err := probeSnowflakeClient(ctx, client, native, c, record.Source.ID, record.Source.Revision)
 	if err != nil {
 		return "unknown", err
 	}
@@ -197,10 +231,6 @@ func (s *Service) controlSnowflake(ctx context.Context, e identity.Envelope, con
 	target, err := control.Target(e, actual)
 	if err != nil || target.Snowflake == nil {
 		return "unknown", readexec.ErrBinding
-	}
-	client, _, err := s.snowflakeClient(c)
-	if err != nil {
-		return "unknown", err
 	}
 	id := bruinsnowflake.ReadIdentity{RequestID: target.Snowflake.RequestID, QueryID: target.Snowflake.QueryID, QueryTag: target.Snowflake.QueryTag, Account: target.Snowflake.Account, Database: target.Snowflake.Database, SessionID: target.Snowflake.SessionID}
 	if cancel {
