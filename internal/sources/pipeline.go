@@ -151,13 +151,18 @@ func (p *pipelineInput) WithPlan(ctx context.Context, e identity.Envelope, plan 
 	}
 	id, partition := plan.Coordinates()
 	return p.service.managedPipelineCall(ctx, e, func(ctx context.Context) error {
+		var callbackErr error
 		_, err := p.resolveDuration(ctx, e, id, partition, managedProbeTimeout(ctx), func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
 			statement, parameters, err := plan.SQL(e, b)
 			if err != nil {
 				return err
 			}
-			return run(ctx, statement, parameters, b.Clone())
+			callbackErr = run(ctx, statement, parameters, b.Clone())
+			return callbackErr
 		})
+		if callbackErr != nil {
+			return callbackErr
+		}
 		return err
 	})
 }
@@ -253,6 +258,7 @@ func (s *Service) WithPipelineOutput(ctx context.Context, e identity.Envelope, o
 	}
 	c.Relations = []config.SourceRelation{{Schema: stage.Schema, Name: stage.Table, Columns: append([]string(nil), stage.Columns...)}}
 	return s.call(ctx, e, true, func(ctx context.Context) error {
+		var callbackErr error
 		_, err := s.probe(ctx, c, stage.Source, stage.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
 			var oid int64
 			if err := tx.QueryRow(ctx, `SELECT c.oid::bigint FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2`, stage.Schema, stage.Table).Scan(&oid); err != nil || oid != stage.OID {
@@ -264,8 +270,12 @@ func (s *Service) WithPipelineOutput(ctx context.Context, e identity.Envelope, o
 			if !record.Valid() {
 				return store.ErrInvalid
 			}
-			return publish(ctx, record)
+			callbackErr = publish(ctx, record)
+			return callbackErr
 		})
+		if callbackErr != nil {
+			return callbackErr
+		}
 		return err
 	})
 }
@@ -321,13 +331,18 @@ func (s *Service) WithValidatedPipelineRead(ctx context.Context, e identity.Enve
 		if err != nil {
 			return err
 		}
+		var callbackErr error
 		_, err = s.probeDuration(ctx, connection, id, record.Source.Revision, managedProbeTimeout(ctx), func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
 			statement, parameters, err := plan.SQL(e, b)
 			if err != nil {
 				return err
 			}
-			return run(ctx, statement, parameters, b.Clone())
+			callbackErr = run(ctx, statement, parameters, b.Clone())
+			return callbackErr
 		})
+		if callbackErr != nil {
+			return callbackErr
+		}
 		return err
 	})
 }
