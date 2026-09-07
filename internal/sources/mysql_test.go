@@ -6,6 +6,7 @@ import (
 	dbsql "database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -112,5 +113,38 @@ func TestMySQLSourceRejectsPlaintextRemoteDSN(t *testing.T) {
 	_, _, err := service.mysqlClient(t.Context(), config.SourceConnection{Dialect: "mysql", Tenant: "tenant", ID: "mysql", Version: "v1", ReadDSN: "env:MYSQL_READ_DSN"})
 	if err != readexec.ErrUnsafe {
 		t.Fatalf("plaintext remote DSN was not denied: %v", err)
+	}
+}
+
+type mysqlCleanupReceipt struct {
+	cause   error
+	stopped bool
+}
+
+func (e *mysqlCleanupReceipt) Error() string     { return e.cause.Error() }
+func (e *mysqlCleanupReceipt) Unwrap() error     { return e.cause }
+func (e *mysqlCleanupReceipt) ReadStopped() bool { return e.stopped }
+
+func TestMySQLReadCleanupStateRequiresReceipt(t *testing.T) {
+	t.Parallel()
+	if state, ok := mysqlReadCleanupState(nil); !ok || state != "stopped" {
+		t.Fatalf("successful cleanup state=%q known=%t", state, ok)
+	}
+	if state, ok := mysqlReadCleanupState(context.Canceled); ok || state != "" {
+		t.Fatalf("request cancellation alone claimed cleanup state=%q known=%t", state, ok)
+	}
+	for _, stopped := range []bool{false, true} {
+		receipt := &mysqlCleanupReceipt{cause: context.Canceled, stopped: stopped}
+		state, ok := mysqlReadCleanupState(receipt)
+		want := "unknown"
+		if stopped {
+			want = "stopped"
+		}
+		if !ok || state != want {
+			t.Fatalf("cleanup receipt stopped=%t, state=%q known=%t", stopped, state, ok)
+		}
+		if !errors.Is(receipt, context.Canceled) {
+			t.Fatal("cleanup receipt lost the request failure")
+		}
 	}
 }

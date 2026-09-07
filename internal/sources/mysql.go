@@ -346,15 +346,20 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 		out.RemoteState = "running"
 	}
 	if err != nil {
+		if state, ok := mysqlReadCleanupState(err); ok {
+			out.RemoteState = state
+		}
 		return out, safe(err)
 	}
 	defer func() {
-		if closeErr := stream.Close(); closeErr != nil {
+		closeErr := stream.Close()
+		if state, ok := mysqlReadCleanupState(closeErr); ok {
+			out.RemoteState = state
+		}
+		if closeErr != nil {
 			if err == nil {
 				err = safe(closeErr)
 			}
-		} else {
-			out.RemoteState = "stopped"
 		}
 	}()
 	schema := make([]readexec.Field, len(stream.Columns()))
@@ -404,6 +409,24 @@ func (s *Service) executeMySQL(ctx context.Context, e identity.Envelope, p reade
 	}
 	out.Result = collector.Result()
 	return out, nil
+}
+
+type mysqlReadStopReceipt interface {
+	ReadStopped() bool
+}
+
+func mysqlReadCleanupState(err error) (string, bool) {
+	if err == nil {
+		return "stopped", true
+	}
+	var receipt mysqlReadStopReceipt
+	if !errors.As(err, &receipt) {
+		return "", false
+	}
+	if receipt.ReadStopped() {
+		return "stopped", true
+	}
+	return "unknown", true
 }
 
 func mysqlResultField(name, native string) (readexec.Field, error) {
