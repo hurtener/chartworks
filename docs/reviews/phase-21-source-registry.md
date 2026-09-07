@@ -41,6 +41,16 @@ These focused checks are not full sourceapi package coverage, cumulative preflig
 cloud CI, browser acceptance, or `TestPhase21/AC01`–`AC06`. No placeholder phase test
 was introduced. Full phase acceptance remains unavailable.
 
+Two independent reviewers of `dae6bdb` found no P0/P1 and the same local P2:
+caller-owned schema wrapper pointers could overwrite the registry's schemas.
+`cloneDefinition` now copies both nonnil wrappers at input and return boundaries;
+their private immutable backing remains shared. The focused regression reproduced
+request/response validation and OpenAPI corruption through constructor input,
+`Definitions`, and `Match` before the fix. It now passes, including concurrent
+returned-wrapper mutation during document generation, under the API race suite
+with **96.6%** coverage. Narrow re-review and the owner's fixed-head HTTP/SDK
+verification remain separate from these focused checks.
+
 ## Remaining implementation
 
 Execution/engineering/pipeline source routes, foundation health/capabilities,

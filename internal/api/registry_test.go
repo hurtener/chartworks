@@ -96,6 +96,43 @@ func TestRegistryRequiresCompleteUniqueDefinitions(t *testing.T) {
 	}
 }
 
+func TestRegistryDetachesSchemaWrappersAtEveryBoundary(t *testing.T) {
+	for _, boundary := range []string{"constructor", "definitions", "match"} {
+		t.Run(boundary, func(t *testing.T) {
+			input := definition(t)
+			r, err := New([]Definition{input})
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := r.OpenAPI("Sources", "1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			exposed := input
+			switch boundary {
+			case "definitions":
+				exposed = r.Definitions()[0]
+			case "match":
+				exposed, _, _ = r.Match("POST", "/v1/sources/source1/test")
+			}
+			// Schema's fields are private, but callers can overwrite its wrapper.
+			*exposed.Request = gateway.Schema{}
+			*exposed.Response = gateway.Schema{}
+			retained := r.Definitions()[0]
+			if err := retained.Request.Validate([]byte(`{"name":"x","values":[]}`), 65536); err != nil {
+				t.Errorf("request schema corrupted through %s: %v", boundary, err)
+			}
+			if err := retained.Response.Validate([]byte(`{"values":null,"observed":"2026-09-07T12:00:00Z"}`), 65536); err != nil {
+				t.Errorf("response schema corrupted through %s: %v", boundary, err)
+			}
+			after, err := r.OpenAPI("Sources", "1")
+			if err != nil || string(after) != string(before) {
+				t.Errorf("OpenAPI changed through %s: %v", boundary, err)
+			}
+		})
+	}
+}
+
 func TestRegistryRoutingAndOpenAPIUseSameDetachedDefinitions(t *testing.T) {
 	d := definition(t)
 	get := d
@@ -172,6 +209,8 @@ func TestRegistryRoutingAndOpenAPIUseSameDetachedDefinitions(t *testing.T) {
 				}
 				defs := r.Definitions()
 				defs[0].Errors[0].Code = "mutated"
+				*defs[1].Request = gateway.Schema{}
+				*defs[1].Response = gateway.Schema{}
 			}
 		}()
 	}

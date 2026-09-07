@@ -169,6 +169,16 @@ func line(s string) bool {
 }
 func cloneDefinition(d Definition) Definition {
 	d.Errors = append([]ErrorResponse(nil), d.Errors...)
+	// The private schema backing is immutable, but the exported wrapper can be
+	// overwritten by callers. Detach it at both input and output boundaries.
+	if d.Request != nil {
+		request := *d.Request
+		d.Request = &request
+	}
+	if d.Response != nil {
+		response := *d.Response
+		d.Response = &response
+	}
 	return d
 }
 
