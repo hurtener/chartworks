@@ -464,6 +464,9 @@ func collectCloudRows(ctx context.Context, stream query.RowStream, l readexec.Li
 		if err != nil {
 			return readexec.Result{}, err
 		}
+		if len(values) != len(columns) {
+			return readexec.Result{}, readexec.ErrType
+		}
 		raw := make([][]byte, len(values))
 		for i, value := range values {
 			raw[i], err = cloudValue(schema[i], columns[i], value)

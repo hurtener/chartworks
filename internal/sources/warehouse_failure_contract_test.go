@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -70,12 +71,26 @@ func TestCloudRowCollectionFailsClosed(t *testing.T) {
 			want:   readexec.ErrUnsupported,
 		},
 		{
-			name: "row width differs from schema",
+			name: "row is shorter than schema",
 			ctx:  t.Context(),
 			rows: &failureContractRows{
 				columns: []query.Column{validColumn, {Name: "other", DatabaseType: "VARCHAR"}},
 				rows:    [][]any{{"only one value"}},
 			},
+			limits: limits,
+			want:   readexec.ErrType,
+		},
+		{
+			name:   "row is longer than schema",
+			ctx:    t.Context(),
+			rows:   &failureContractRows{columns: []query.Column{validColumn}, rows: [][]any{{"first", "unexpected"}}},
+			limits: limits,
+			want:   readexec.ErrType,
+		},
+		{
+			name:   "nonfinite number",
+			ctx:    t.Context(),
+			rows:   &failureContractRows{columns: []query.Column{{Name: "value", DatabaseType: "FLOAT64"}}, rows: [][]any{{math.NaN()}}},
 			limits: limits,
 			want:   readexec.ErrType,
 		},
