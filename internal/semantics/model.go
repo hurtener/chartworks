@@ -32,6 +32,7 @@ const (
 	CodeReferenceCycle   ValidationCode = "reference_cycle"
 	CodeAmbiguousTerm    ValidationCode = "ambiguous_canonical_term"
 	CodeEvidenceMismatch ValidationCode = "evidence_mismatch"
+	CodeRuleConflict     ValidationCode = "rule_conflict"
 )
 
 // ValidationError keeps invalid definitions observable without echoing their content.

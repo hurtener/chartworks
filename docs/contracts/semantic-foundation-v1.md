@@ -1,6 +1,6 @@
 # Semantic foundation v1
 
-Status: bounded phase 15 implementation foundation, 2026-09-07. Phases 15, 16,
+Status: bounded phase 15/16 implementation foundations, 2026-09-07. Phases 15, 16,
 and 21 remain planned. This contract records implemented behavior only where it points
 to executable code and tests; the later-state sections are implementation inputs,
 not runtime claims.
@@ -92,6 +92,53 @@ and all six named phase acceptance tests remain required.
 
 ## Phase 16 integration contract
 
+### Implemented authoring compiler
+
+`semantics.CompileRules` consumes a nonzero compiled semantic `Model` and a
+`RuleSetDefinition` pinned to its exact topic, topic version, and pack digest. It
+returns a detached `RuleModel` with a deterministic digest. Rules and patterns have
+stable IDs and explicit versions. Duplicate stable IDs, including duplicates at a
+different version, are rejected within each definition namespace. Rules, patterns,
+and target sets are canonically ordered; slot and choice order is preserved as
+author-selected presentation order.
+
+The closed rule categories are computation, semantic, and structural. A rule has
+either an execution constraint or advisory guidance, never both. Scope is the whole
+topic or an explicit set of exact references; it identifies the objects governed
+by the rule and is not a query-matching predicate. Priority is retained in the
+bounded range -1000 through 1000. Provenance identifies human/model/feedback/import
+authoring evidence and grants no authority or review approval.
+
+The initial constraint vocabulary is `require_reference` and `exclude_reference`.
+These describe presence in a semantic dependency graph, not visible output columns,
+SQL predicates, row restrictions, or data permissions. The compiler follows existing
+measure/dimension/KPI/join-to-column/dataset references and rejects a requirement
+whose direct or transitive dependency is excluded. It reports a bounded typed
+`RuleConflictError` with the two rule IDs and conflicting reference; the error string
+contains no definition content. Priority cannot suppress mandatory constraints.
+Canonical registry references are allowed in scopes and choices with exact revision
+pins, but cannot stand for one executable dependency because their keys may span
+datasets. This does not implement general business-expression satisfiability or query
+execution enforcement; additional constraint kinds require their actual consumers.
+
+Clarification patterns carry exact target references and ordered typed slots for
+choice, text, number, boolean, or date. Choices have unique stable IDs, labels, and
+optional exact targets restricted to the pattern's declared targets. Labels never
+become guessed references. Advisory text and slots require explicit `non_sensitive`
+or `sensitive` declarations. The compiler checks declarations, not whether natural
+language has been truthfully classified; literal detection and supplied-value
+validation remain runtime work.
+
+Bounds are 256 rules, 128 patterns, 32 entity targets per rule/pattern, 16 slots per
+pattern, and 2–32 choices for a choice slot; non-choice slots cannot contain choices.
+Advisory text is limited to 4096 bytes, slot prompts to 1024 bytes, and choice labels
+to 256 bytes. Accepted canonical rule-set JSON is limited to 1 MiB. The compiler
+does no prompt trimming, token estimation, model/source I/O, pattern matching, rule
+activation, or query execution. Its authoring definition has no lifecycle stage or
+review claim. These remain obligations of the service described below.
+
+### Remaining service integration
+
 Phase 16 builds rule and clarification types on `semantics.Reference`. It must not add
 a second string-addressed entity namespace or resolve rule targets by display name.
 The initial persisted rule definition is:
@@ -143,9 +190,9 @@ active rule set or widen its source/context reach.
 
 ## Phase 16 implementation sequence and evidence
 
-1. Add the closed rule, constraint, provenance, pattern, slot, and evaluation result
-   types under `internal/semantics`, reusing `semantics.Reference` and canonical pack
-   digests.
+1. Extend the implemented authoring types and compiler with additional actual
+   execution-constraint consumers and the immutable evaluation-result contract,
+   reusing `semantics.Reference` and canonical pack digests.
 2. Add PostgreSQL immutable rule-set/pattern versions, reviewed lifecycle transitions,
    CAS active pointers, and affected-evidence invalidation with their first service
    consumer.
@@ -176,3 +223,14 @@ passed with 87.8% statement coverage against the 80% package band. Focused `go v
 These are compiler and documentation checks. No phase 15/16 acceptance criterion,
 PostgreSQL lifecycle/publication path, HTTP/SDK operation, browser interaction, live
 provider run, or cloud CI result is claimed by this foundation.
+
+The rule compiler adds focused tests in `internal/semantics/rules_test.go` for stale
+semantic and canonical-revision pins, nested mutation/concurrent reuse, closed unions,
+scope containment, unmarked sensitivity declarations, direct/transitive conflicts,
+priority preservation, ordered choices, and structural/serialized size bounds. They
+do not establish required-slot gating, real-token advisory injection, reviewed
+activation, replay/shadow execution, or cache invalidation.
+The 2026-09-07 combined compiler run passed with race detection and 91.9% statement
+coverage (`/tmp/chartworks-semantics-rules-final.cover`); focused `go vet`, planning,
+diff, and mirrored-rule checks also passed. Independent review and cloud acceptance
+remain separate gates.
