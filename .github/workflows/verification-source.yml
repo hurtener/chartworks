@@ -1,0 +1,116 @@
+name: Temporary reviewed attachment verification
+on:
+  push:
+    branches: [feat/phase-11-12-uploads-profiling]
+    paths: [.github/workflows/verification-source.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
+      # Disposable test database; not a production credential.
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0a761ddb4568ad06b93369cbdbce5a9245af827f
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Apply inspected receipt correction and format
+        id: edit
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          p = Path('internal/store/postgres/profiles.go')
+          text = p.read_text()
+          before = '\treturn admitted, err\n'
+          assert text.count(before) == 1
+          p.write_text(text.replace(before, '\tif err != nil {\n\t\treturn false, err\n\t}\n\treturn admitted, nil\n'))
+          subprocess.run(['gofmt','-s','-w',str(p),'test/acceptance/engineering_attachment_fences_test.go'],check=True)
+          subprocess.run(['git','diff','--check'],check=True)
+          PY
+      - name: Focused attachment and admission regressions
+        id: focused
+        run: |
+          go test -race -count=1 -timeout=3m ./test/acceptance -run '^Test(ProfileAttachment|UploadAttachment|UploadErasureAttachment|ProfileSummaryAdmission)' > /tmp/focused.log 2>&1 || { cat /tmp/focused.log; exit 1; }
+          cat /tmp/focused.log
+      - name: PostgreSQL 17 recovery client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17 > /tmp/pg-client.log
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Full uncached race suite and unchanged coverage thresholds
+        id: coverage
+        run: |
+          make coverage > /tmp/coverage.log 2>&1 || { tail -60 /tmp/coverage.log; exit 1; }
+          tail -25 /tmp/coverage.log
+      - name: Both phase acceptance contracts
+        id: acceptance
+        run: |
+          python3 scripts/run_phase_acceptance.py --phase 11 > /tmp/acceptance.log 2>&1
+          python3 scripts/run_phase_acceptance.py --phase 12 >> /tmp/acceptance.log 2>&1
+          cat /tmp/acceptance.log
+      - name: Retain candidate and compact verification evidence without moving refs
+        id: store
+        if: always() && steps.edit.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOCUSED_RESULT: ${{ steps.focused.outcome }}
+          COVERAGE_RESULT: ${{ steps.coverage.outcome }}
+          ACCEPTANCE_RESULT: ${{ steps.acceptance.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, subprocess
+          from pathlib import Path
+          repo = os.environ['GITHUB_REPOSITORY']
+          assert repo == 'hurtener/chartworks'
+          parent = os.environ['GITHUB_SHA']
+          def api(route, value=None):
+              request = urllib.request.Request('https://api.github.com/repos/'+repo+'/git/'+route, data=None if value is None else json.dumps(value).encode(), method='GET' if value is None else 'POST', headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(request,timeout=30) as response:
+                  return json.load(response)
+          paths = ['internal/store/postgres/profiles.go','test/acceptance/engineering_attachment_fences_test.go']
+          tree = api('commits/'+parent)['tree']['sha']
+          entries = [{'path':p,'mode':'100644','type':'blob','content':Path(p).read_text()} for p in paths]
+          tree = api('trees', {'base_tree':tree,'tree':entries})['sha']
+          commit = api('commits', {'tree':tree,'parents':[parent],'message':'fix(engineering): require audited summary admission and verify stored attachment fences'})['sha']
+          report = {'parent':parent,'tree':tree,'commit':commit,'focused':os.environ['FOCUSED_RESULT'],'coverage':os.environ['COVERAGE_RESULT'],'acceptance':os.environ['ACCEPTANCE_RESULT']}
+          for name in ['focused','coverage','acceptance']:
+              p = Path('/tmp/'+name+'.log')
+              report[name+'_log'] = p.read_text()[-14000:] if p.exists() else 'not executed'
+          p = Path('/tmp/chartworks-coverage.out')
+          if p.exists():
+              result = subprocess.run(['go','tool','cover','-func='+str(p)],capture_output=True,text=True)
+              report['storage_functions'] = '\n'.join(line for line in result.stdout.splitlines() if 'internal/store/postgres/' in line)
+          blob = api('blobs', {'content':json.dumps(report,indent=2),'encoding':'utf-8'})['sha']
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('commit='+commit+'\ntree='+tree+'\nreport='+blob+'\n')
+          print('Prepared source-only candidate. No branch or PR state was changed.')
+          PY
+      - name: Candidate ${{ steps.store.outputs.commit }}
+        if: always() && steps.store.outcome == 'success'
+        run: echo 'Candidate requires connector review and a clean permanent CI run.'
+      - name: Tree ${{ steps.store.outputs.tree }} report ${{ steps.store.outputs.report }}
+        if: always() && steps.store.outcome == 'success'
+        run: echo 'Workflow files were not modified by this job.'
