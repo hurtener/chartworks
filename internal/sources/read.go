@@ -70,7 +70,7 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 				return err
 			}
 		}
-		connection, err := s.connection(e.Tenant(), record.Connection)
+		connection, err := s.recordConnection(record)
 		if err != nil {
 			return err
 		}
@@ -215,7 +215,10 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 		if queryErr != nil {
 			return out, queryErr
 		}
-		fields := rows.FieldDescriptions()
+		fields, fieldErr := readResultFields(rows)
+		if fieldErr != nil {
+			return out, fieldErr
+		}
 		if collector == nil {
 			schema := make([]readexec.Field, len(fields))
 			for i, f := range fields {
@@ -420,7 +423,7 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 			if _, err := control.Target(e, record.Binding); err != nil {
 				return err
 			}
-			c, err := s.connection(e.Tenant(), record.Connection)
+			c, err := s.recordConnection(record)
 			if err != nil {
 				return err
 			}

@@ -1,6 +1,6 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-04 after owner feedback on reporting, Pengui authority, established MCP Apps and Bifrost-only remote inference. Phases 01–10 have runtime implementations; twenty-four later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
+Status: implementation design, revised 2026-09-07 after phase 11/12 acceptance. Phases 01–12 are shipped; twenty-two later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. Named tests and exact-source verification, not design acceptance alone, establish completion.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 
@@ -178,3 +178,9 @@ Broader analytic/reporting targets and external-effect reconciliation remain own
 by their later phases; this is not a reporting release or live provider acceptance.
 
 Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](docs/contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.
+
+## Phases 11/12 implementation addendum (2026-09-07)
+
+The shipped implementation adds bounded CSV/XLSX/Parquet ingestion into the managed PostgreSQL workspace and versioned deterministic profiling through the existing validator, executor, operation ledger, source registry and optional Bifrost `profile_summary` role. The executable HTTP and SDK surface is recorded in the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json); mutation registration follows `uploads.enabled` and `profiling.enabled`, while retained reads and cancellation remain available.
+
+This does not qualify MySQL, SQL Server, BigQuery, Snowflake or Databricks, publish semantics, or claim live model/deployment evidence. The [phase evidence ledger](docs/reviews/phase-11-12-current-evidence.md) separates accepted local runtime evidence from the pending final cloud rerun.

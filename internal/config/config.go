@@ -132,6 +132,8 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
+	Uploads   Uploads        `json:"uploads"`
+	Profiling Profiling      `json:"profiling"`
 	Sources   Sources        `json:"sources"`
 	Exec      ReadValidation `json:"exec"`
 	Jobs      Jobs           `json:"jobs"`
@@ -161,9 +163,11 @@ func (c Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.values) }
 func (c Config) Values() Values {
 	v := c.values
 	v.Sources = c.values.Sources.Clone()
-	v.Jobs.Credentials = append([]BrokerCredential(nil), v.Jobs.Credentials...)
+	v.Uploads = c.values.Uploads.Clone()
+	v.Profiling = c.values.Profiling.Clone()
+	v.Jobs.Credentials = append([]BrokerCredential{}, v.Jobs.Credentials...)
 	v.Auth.Algorithms = append([]string(nil), v.Auth.Algorithms...)
-	v.Gateway.Bifrost.Providers = append([]Provider(nil), v.Gateway.Bifrost.Providers...)
+	v.Gateway.Bifrost.Providers = append([]Provider{}, v.Gateway.Bifrost.Providers...)
 	v.Gateway.Roles = make(map[string]Role, len(c.values.Gateway.Roles))
 	for k, r := range c.values.Gateway.Roles {
 		v.Gateway.Roles[k] = r
@@ -176,7 +180,9 @@ func (c Config) StoreDSN() string { return c.dsn }
 
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
-	return Values{
+	v := Values{
+		Uploads:   DefaultUploads(),
+		Profiling: DefaultProfiling(),
 		Sources:   DefaultSources(),
 		Exec:      DefaultReadValidation(),
 		Server:    Server{Listen: "127.0.0.1:8080", ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(75 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
@@ -186,6 +192,9 @@ func Defaults() Values {
 		Telemetry: Telemetry{LogFormat: "json", Metrics: true},
 		Gateway:   Gateway{Limits: DefaultGatewayLimits(), Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
 	}
+	v.Gateway.Bifrost.Providers = []Provider{}
+	v.Jobs.Credentials = []BrokerCredential{}
+	return v
 }
 
 // Overrides are explicit CLI overrides, applied after defaults, file, and env references.
@@ -372,6 +381,15 @@ func validate(v Values) error {
 	}
 	if err := ValidateReadValidation(v.Exec); err != nil {
 		return err
+	}
+	if err := ValidateUploads(v.Uploads); err != nil {
+		return err
+	}
+	if err := ValidateProfiling(v.Profiling); err != nil {
+		return err
+	}
+	if (v.Uploads.Enabled || v.Profiling.Enabled) && !v.Sources.Enabled {
+		return invalid("engineering", "source access must be explicitly enabled")
 	}
 	return ValidateGateway(v.Gateway, v.Features.Gateway)
 }

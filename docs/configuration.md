@@ -1,6 +1,6 @@
 # Implemented configuration and authority
 
-Source of truth: `internal/config.Values`, `Defaults()` and validation. JSON only; unknown, retired, duplicate, null and trailing documents are rejected. Document size is at most 1 MiB and nesting at most 32 levels. Errors identify a safe known field/container and fixed rule, never a rejected value or secret environment contents. Operational APIs now require verified Pengui authority; analytics and full MCP transports remain in their owning phases.
+Source of truth: `internal/config.Values`, `Defaults()` and validation. JSON only; unknown, retired, duplicate, null and trailing documents are rejected. Document size is at most 1 MiB and nesting at most 32 levels. Errors identify a safe known field/container and fixed rule, never a rejected value or secret environment contents. Operational, source, validated-read, upload and profiling APIs require verified Pengui authority; NLQ, reporting and full MCP transports remain in their owning phases.
 
 Use `chartworks config-check --defaults` for a machine-readable defaults snapshot. Required blanks deliberately do not form a runnable development-authority configuration. The example `examples/chartworks.foundation.json` supplies references for the required deployment-specific values.
 
@@ -89,7 +89,10 @@ concurrency1–128 (at least workers), tenant concurrency1–global, pending1–
 per-tenant pending1–global pending, attempts1–8, batch1–1000. Lease1s–1m,
 heartbeat10ms–less-than-half-lease, poll10ms–5s, timeout100ms–1m, backoff10ms–30s;
 retry backoff is capped at1m. The queued operation lifetime snapshots the current
-retention policy's `operation_hours`, not a hardcoded 24h.
+retention policy's `operation_hours`, not a hardcoded 24h. Pending limits count
+only pending, retry and running requests. Terminal receipts remain available for
+idempotent replay without consuming live capacity; explicitly resuming a cancelled
+request must reacquire capacity under the same admission lock.
 
 `jobs.broker_url` is the trusted HTTPS Pengui `/exchange/execution-authority`
 endpoint. `jobs.credentials[]` contains up to128 unique tenant partitions plus
@@ -112,3 +115,24 @@ a replay returns its original accepted receipt.
 The typed `sources` block defaults to disabled. Bounds: max_conns 1–16 (default 4), max_rows 1–1000 (256), max_bytes 1 KiB–4 MiB (1 MiB), connect_timeout and query_timeout 1 ms–4 s (1 s and 2 s). Connection aliases are tenant-bound and carry version, declared relations/columns and independent env: read/write references; the reader never resolves write credentials.
 
 The typed `exec` block bounds SQL bytes 128–65536 (32768), parameters 1–64 (64), AST depth 4–64 (64), AST nodes 32–16384 (8192) and concurrent validations 1–8 (2). Unknown/retired keys fail. These limits are not skip-validation settings. See `../examples/chartworks.sources.json` and `contracts/vector-sources-validation.md` for enforced fixed vector bounds, credential custody, PostgreSQL qualification and operational behavior.
+
+## Upload and profiling configuration
+
+Both blocks default to `enabled=false`. Disabling new work removes upload/profile mutation routes while retained upload status, profile evidence/history/health and engineering operation read/cancel routes remain registered and authorized. The upload workspace uses a configured `sources.connections[]` alias with separate `read_dsn` and `write_dsn` references; the metadata-store database name is rejected as the workspace target.
+
+| Key | Default | Accepted bounds / behavior |
+|---|---:|---|
+| `uploads.formats` | `csv,xlsx,parquet` | Unique nonempty subset of those three qualified formats. |
+| `uploads.max_bytes` / `max_rows` / `max_columns` / `max_cells` | 100 MiB / 1,000,000 / 256 / 4,000,000 | Positive ceilings; these defaults are also their maximums. |
+| `uploads.max_cell_bytes` / `max_expanded_bytes` | 64 KiB / 256 MiB | Expanded bytes must be at least `max_bytes`; limits apply before activation. |
+| `uploads.max_archive_entries` / `max_sheets` / `max_expansion_ratio` | 1,024 / 32 / 100 | Positive, with the displayed defaults as maximums. |
+| `uploads.max_page_bytes` / `max_row_group_bytes` | 8 MiB / 64 MiB | Page 1 KiB–8 MiB; row group at least page size and at most 64 MiB. |
+| `uploads.max_per_tenant` / `max_tenant_bytes` | 32 / 1 GiB | Count 1–1,000; bytes at least `max_bytes` and at most 10 TiB. |
+| `uploads.concurrency` / `timeout` / `staging_ttl` | 2 / 1m / 24h | Concurrency 1–8; timeout 1 ms–1m; staging TTL 1m–7d. |
+| `profiling.sample_rows` / `sample_bytes` | 1,000 / 1 MiB | Rows 1–100,000; returned evidence 1 KiB–16 MiB. These do not prove a physical scan-byte ceiling. |
+| `profiling.planner_cost_ceiling` / `timeout` | 10,000,000 / 30s | Positive cost at most 1e12; timeout 1 ms–1m. |
+| `profiling.fresh_for` / `stale_after` | 24h / 7d | Fresh-for 0–365d; stale-after must be greater and at most 10 years. |
+| `profiling.summaries` / `max_versions` | false / 32 | Summaries use the existing optional `profile_summary` gateway role; versions 2–1,000. |
+| `profiling.policies` | empty | At most 128 tenant/source policies and 256 unique declared range columns each. Policies minimize retained values; they grant no authority. |
+
+CSV uses the standard-library decoder; XLSX uses the pinned Excelize dependency and requires an explicit sheet; Parquet uses the pinned parquet-go dependency and the bounded supported encodings. Every activated upload is a normal PostgreSQL 17 managed source consumed through the same validated-read path. Other warehouse engines remain phase 14 work and are not implied by upload format support.

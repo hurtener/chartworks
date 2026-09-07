@@ -38,35 +38,47 @@ func (d *DB) PutSource(ctx context.Context, s store.Scope, expected int64, r sou
 	if !r.Valid() || expected < 0 || r.Source.Revision != expected+1 {
 		return store.ErrInvalid
 	}
-	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if expected > 0 {
-			tag, err := tx.Exec(ctx, `UPDATE chartworks.sources SET current_revision=$4 WHERE tenant_id=$1 AND source_id=$2 AND current_revision=$3`, s.Tenant(), r.Source.ID, expected, r.Source.Revision)
-			if err != nil {
-				return err
-			}
-			if tag.RowsAffected() != 1 {
-				return store.ErrConflict
-			}
+	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error { return putSourceTx(ctx, tx, s, expected, r, false) })
+}
+
+func putSourceTx(ctx context.Context, tx pgx.Tx, s store.Scope, expected int64, r sources.Record, managed bool) error {
+	if expected == 0 && !managed {
+		var reserved bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.uploads WHERE tenant_id=$1 AND source_id=$2)`, s.Tenant(), r.Source.ID).Scan(&reserved); err != nil {
+			return err
 		}
-		binding, err := json.Marshal(r.Binding)
-		if err != nil {
-			return store.ErrInvalid
+		if reserved {
+			return store.ErrConflict
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO chartworks.source_revisions(tenant_id,source_id,revision,context_id,name,connection_alias,binding,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, s.Tenant(), r.Source.ID, r.Source.Revision, r.Source.ContextID, r.Source.Name, r.Connection, binding, s.Actor())
+	}
+
+	if expected > 0 {
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.sources SET current_revision=$4 WHERE tenant_id=$1 AND source_id=$2 AND current_revision=$3 AND NOT deleted`, s.Tenant(), r.Source.ID, expected, r.Source.Revision)
 		if err != nil {
 			return err
 		}
-		if expected == 0 {
-			if _, err = tx.Exec(ctx, `INSERT INTO chartworks.sources(tenant_id,source_id,current_revision) VALUES($1,$2,$3)`, s.Tenant(), r.Source.ID, r.Source.Revision); err != nil {
-				return err
-			}
+		if tag.RowsAffected() != 1 {
+			return store.ErrConflict
 		}
-		action := "source.created"
-		if expected > 0 {
-			action = "source.rotated"
+	}
+	binding, err := json.Marshal(r.Binding)
+	if err != nil {
+		return store.ErrInvalid
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO chartworks.source_revisions(tenant_id,source_id,revision,context_id,name,connection_alias,binding,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, s.Tenant(), r.Source.ID, r.Source.Revision, r.Source.ContextID, r.Source.Name, r.Connection, binding, s.Actor())
+	if err != nil {
+		return err
+	}
+	if expected == 0 {
+		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.sources(tenant_id,source_id,current_revision) VALUES($1,$2,$3)`, s.Tenant(), r.Source.ID, r.Source.Revision); err != nil {
+			return err
 		}
-		return auditJob(ctx, tx, s, action, r.Source.ID)
-	})
+	}
+	action := "source.created"
+	if expected > 0 {
+		action = "source.rotated"
+	}
+	return auditJob(ctx, tx, s, action, r.Source.ID)
 }
 
 // ReadSource returns internal technical metadata in the exact tenant partition.
@@ -76,7 +88,7 @@ func (d *DB) ReadSource(ctx context.Context, s store.Scope, id string) (out sour
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var e error
-		out, e = scanSource(tx.QueryRow(ctx, `SELECT `+sourceColumns+` FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE s.tenant_id=$1 AND s.source_id=$2`, s.Tenant(), id))
+		out, e = scanSource(tx.QueryRow(ctx, `SELECT `+sourceColumns+` FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND s.source_id=$2`, s.Tenant(), id))
 		return e
 	})
 	if err != nil {
@@ -95,7 +107,7 @@ func (d *DB) ListSources(ctx context.Context, s store.Scope, selection access.Se
 	}
 	out = []sources.Source{}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) ORDER BY s.source_id LIMIT $4`, s.Tenant(), selection.All(), selection.IDs(), limit)
+		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) ORDER BY s.source_id LIMIT $4`, s.Tenant(), selection.All(), selection.IDs(), limit)
 		if e != nil {
 			return e
 		}
@@ -132,7 +144,7 @@ func (d *DB) WithSource(ctx context.Context, s store.Scope, id string, fn func(c
 		}
 	}
 	return d.transactionDuration(ctx, pgx.TxOptions{}, timeout, func(ctx context.Context, tx pgx.Tx) error {
-		r, err := scanSource(tx.QueryRow(ctx, `SELECT `+sourceColumns+` FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE s.tenant_id=$1 AND s.source_id=$2 FOR SHARE OF s`, s.Tenant(), id))
+		r, err := scanSource(tx.QueryRow(ctx, `SELECT `+sourceColumns+` FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND s.source_id=$2 FOR SHARE OF s`, s.Tenant(), id))
 		if err != nil {
 			return err
 		}

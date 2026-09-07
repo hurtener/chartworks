@@ -31,6 +31,7 @@ type gatewayFixture struct {
 	requests            atomic.Int64
 	mu                  sync.Mutex
 	models, keys, paths []string
+	requestBodies       []string
 	ca                  string
 	server              *httptest.Server
 }
@@ -57,6 +58,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		f.models = append(f.models, model)
 		f.keys = append(f.keys, r.Header.Get("Authorization"))
 		f.paths = append(f.paths, r.URL.Path)
+		f.requestBodies = append(f.requestBodies, string(data))
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		mode := f.mode.Load().(string)

@@ -1,0 +1,16 @@
+[
+  {"method":"GET","path":"/v1/uploads/{id}","action":"sources.read","effect":"private_metadata_read"},
+  {"method":"GET","path":"/v1/profiles/{id}","action":"engineering.read","effect":"private_metadata_read"},
+  {"method":"GET","path":"/v1/profiles/{id}/evidence","action":"engineering.read","effect":"private_evidence_read"},
+  {"method":"POST","path":"/v1/profile-history","action":"engineering.read","effect":"private_metadata_read"},
+  {"method":"POST","path":"/v1/profile-dependency-health","action":"engineering.read","effect":"private_metadata_read"},
+  {"method":"GET","path":"/v1/engineering-operations/{id}","action":"jobs.read","effect":"private_metadata_read"},
+  {"method":"POST","path":"/v1/engineering-operations/{id}/cancel","action":"jobs.cancel","effect":"durable_cancellation_intent"},
+  {"method":"POST","path":"/v1/uploads","action":"sources.upload","effect":"upload_reservation"},
+  {"method":"PUT","path":"/v1/uploads/{id}/content","action":"sources.upload","effect":"workspace_staging_write"},
+  {"method":"POST","path":"/v1/uploads/{id}/load","action":"sources.upload","effect":"managed_source_activation"},
+  {"method":"POST","path":"/v1/uploads/{id}/erase","action":"sources.erase","effect":"owned_workspace_erasure"},
+  {"method":"POST","path":"/v1/upload-sweeps","action":"sources.erase","effect":"expired_staging_erasure"},
+  {"method":"POST","path":"/v1/profiles","action":"engineering.profile","effect":"bounded_source_profile_and_optional_model"},
+  {"method":"POST","path":"/v1/profiles/{id}/dependencies","action":"engineering.profile","effect":"versioned_dependency_registration"}
+]
