@@ -23,6 +23,11 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	v.Auth.Issuer = "https://issuer.example.test"
 	v.Auth.JWKSURL = "https://issuer.example.test/jwks"
 	v.Auth.Audiences = config.Audiences{HTTP: "chartworks:http", MCP: "chartworks:mcp", Jobs: "chartworks:execution"}
+	v.Sources.Enabled = true
+	v.Sources.Connections = []config.SourceConnection{{
+		Tenant: "tenant", ID: "sales", Version: "v1", ReadDSN: "env:SOURCE_TEST_DSN",
+		Relations: []config.SourceRelation{{Schema: "analytics", Name: "sales", Columns: []string{"id", "amount"}}},
+	}}
 	verifier, err := auth.New(v.Auth, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +46,12 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	v.Jobs.BrokerURL = "https://issuer.example.test/exchange/execution-authority"
 	// #nosec G101 -- environment-variable references only; synthetic test credentials are resolved separately.
 	v.Jobs.Credentials = []config.BrokerCredential{{Tenant: "tenant", ClientID: "env:CLIENT_TEST_ID", ClientSecret: "env:CLIENT_TEST_SECRET"}}
-	lookup := func(string) (string, bool) { return "SYNTHETIC_ASSEMBLY_ONLY_NOT_A_LIVE_CREDENTIAL", true }
+	lookup := func(key string) (string, bool) {
+		if key == "SOURCE_TEST_DSN" {
+			return support.Database(t), true
+		}
+		return "SYNTHETIC_ASSEMBLY_ONLY_NOT_A_LIVE_CREDENTIAL", true
+	}
 	w, err := setupWork(ctx, v, db, verifier, http.NotFoundHandler(), lookup, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +60,9 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 		t.Fatalf("gateway-enabled work omitted NLQ registry entry: %#v", definition)
 	}
 	serverDSN := support.Database(t)
+	if definition, _, ok := w.registry.Match(http.MethodPost, "/v1/nlq/plans"); !ok || definition.ID != "planNLQ" {
+		t.Fatalf("gateway-enabled work omitted NLQ execution entry: %#v", definition)
+	}
 	cfg, err := config.Load(bytes.NewBufferString(`{"auth":{"issuer":"https://issuer.example.test","jwks_url":"https://issuer.example.test/jwks","audience":"chartworks:http"}}`), func(key string) (string, bool) {
 		if key == "CHARTWORKS_STORE_URL" {
 			return serverDSN, true
@@ -89,6 +102,9 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	}
 	if operation := document.Paths["/v1/nlq/routes"]["post"]; operation == nil || operation["operationId"] != "routeNLQ" {
 		t.Fatalf("runtime OpenAPI omitted executable NLQ route: %#v", document.Paths["/v1/nlq/routes"])
+	}
+	if operation := document.Paths["/v1/nlq/plans"]["post"]; operation == nil || operation["operationId"] != "planNLQ" {
+		t.Fatalf("runtime OpenAPI omitted executable NLQ plan: %#v", document.Paths["/v1/nlq/plans"])
 	}
 	// SDK construction makes no model request; an empty durable queue makes no broker pull.
 	w.run(ctx)

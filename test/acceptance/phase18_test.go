@@ -4,18 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/auth"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/vindex"
+	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 )
 
 func phase18Scopes(tenant string, sqlInspection bool) []string {
@@ -29,14 +33,19 @@ func phase18Scopes(tenant string, sqlInspection bool) []string {
 
 func phase18Envelope(t *testing.T, fixture *phase17Fixture, user, session string, sqlInspection bool) identity.Envelope {
 	t.Helper()
-	claims := fixture.model.token.claims(fixture.f.e.Tenant(), user, phase18Scopes(fixture.f.e.Tenant(), sqlInspection))
-	claims["session"] = session
-	token := fixture.model.token.sign(t, claims, nil)
+	token := phase18Token(t, fixture, user, session, sqlInspection)
 	e, err := fixture.model.token.verifier.Verify(context.Background(), token, auth.HTTP)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return e
+}
+
+func phase18Token(t *testing.T, fixture *phase17Fixture, user, session string, sqlInspection bool) string {
+	t.Helper()
+	claims := fixture.model.token.claims(fixture.f.e.Tenant(), user, phase18Scopes(fixture.f.e.Tenant(), sqlInspection))
+	claims["session"] = session
+	return fixture.model.token.sign(t, claims, nil)
 }
 
 func phase18RawResponse(t *testing.T, sql string) string {
@@ -244,6 +253,61 @@ func TestPhase18(t *testing.T) {
 		}
 		if _, err = query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{Topic: fixture.pack.Topic, Context: "missing-context", Locale: nlq.LanguageEnglish, Question: "bad context"}}); !errors.Is(err, nlqexec.ErrInvalid) {
 			t.Fatalf("invalid context did not return structured error: %v", err)
+		}
+
+		fixture.model.mode.Store(phase18RawResponse(t, salesSQL))
+		handler := nlqapi.ExecutionHandler(fixture.model.token.verifier, query, http.NotFoundHandler())
+		server := httptest.NewServer(handler)
+		defer server.Close()
+		token := phase18Token(t, fixture, fixture.f.e.User(), "phase18-http", true)
+		client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		question := phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)
+		preflight, err := client.PreflightNLQ(ctx, sdk.NLQPreflightRequest{QuestionRequest: question})
+		if err != nil || preflight.QueryID == "" || preflight.Route.Context == nil {
+			var statusErr *sdk.StatusError
+			if errors.As(err, &statusErr) {
+				t.Fatalf("HTTP preflight failed: out=%#v status=%d", preflight, statusErr.Status)
+			}
+			t.Fatalf("HTTP preflight failed: out=%#v err=%v", preflight, err)
+		}
+		planned, err = client.PlanNLQ(ctx, sdk.NLQPlanRequest{QuestionRequest: question, Operation: "phase18-http-plan"})
+		if err != nil || planned.Status != "planned" || planned.SQL != salesSQL {
+			t.Fatalf("HTTP plan failed: out=%#v err=%v", planned, err)
+		}
+		run, err := client.RunNLQ(ctx, sdk.NLQRunRequest{QueryID: planned.QueryID, Operation: "phase18-http-run", Rows: 10, Bytes: 4096})
+		if err != nil || run.Status != "succeeded" || run.Execution.Result == nil {
+			t.Fatalf("HTTP run failed: out=%#v err=%v", run, err)
+		}
+		refined, err := client.RefineNLQ(ctx, sdk.NLQRefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Show revenue by id", Kinds: question.Kinds, LimitPerKind: question.LimitPerKind}})
+		if err != nil || refined.Status != "planned" || refined.QueryID == planned.QueryID {
+			t.Fatalf("HTTP refine failed: out=%#v err=%v", refined, err)
+		}
+		feedback, err := client.FeedbackNLQ(ctx, sdk.NLQFeedbackRequest{QueryID: planned.QueryID, Verdict: "positive", Note: "HTTP round trip"})
+		if err != nil || !feedback.Accepted {
+			t.Fatalf("HTTP feedback failed: out=%#v err=%v", feedback, err)
+		}
+
+		noInspectionToken := phase18Token(t, fixture, fixture.f.e.User(), "phase18-http-no-sql", false)
+		noInspection, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return noInspectionToken, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		withoutSQL, err := noInspection.PlanNLQ(ctx, sdk.NLQPlanRequest{QuestionRequest: question})
+		if err != nil || withoutSQL.SQL != "" || withoutSQL.Route.Context == nil {
+			t.Fatalf("HTTP SQL inspection boundary failed: out=%#v err=%v", withoutSQL, err)
+		}
+		foreignToken := phase18Token(t, fixture, fixture.f.e.User(), "phase18-http-foreign", true)
+		foreignClient, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return foreignToken, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = foreignClient.RefineNLQ(ctx, sdk.NLQRefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "foreign refine"}})
+		var statusErr *sdk.StatusError
+		if !errors.As(err, &statusErr) || statusErr.Status != http.StatusConflict {
+			t.Fatalf("foreign HTTP refine was not denied without disclosure: err=%v", err)
 		}
 	})
 }

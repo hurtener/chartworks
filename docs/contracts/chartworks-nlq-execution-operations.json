@@ -1,0 +1,9 @@
+[
+  {"method":"POST","path":"/v1/nlq/preflight","action":"query.preflight","effect":"nlq_preflight_metadata"},
+  {"method":"POST","path":"/v1/nlq/plans","action":"query.plan","effect":"nlq_generation_and_plan_commit"},
+  {"method":"POST","path":"/v1/nlq/runs","action":"query.execute","effect":"nlq_validated_read_execution"},
+  {"method":"POST","path":"/v1/nlq/refinements","action":"query.execute","effect":"nlq_refine_generation_and_plan_commit"},
+  {"method":"POST","path":"/v1/nlq/feedback","action":"feedback.write","effect":"nlq_feedback_commit"},
+  {"method":"POST","path":"/v1/nlq/examples/state","action":"feedback.write","effect":"nlq_example_state_commit"},
+  {"method":"POST","path":"/v1/nlq/examples/read","action":"query.plan","effect":"nlq_examples_read"}
+]

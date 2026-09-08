@@ -19,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
@@ -144,7 +145,25 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = http.StatusForbidden, "forbidden"
 	case errors.Is(err, access.ErrNotFound), errors.Is(err, store.ErrNotFound):
 		status, code = http.StatusNotFound, "not_found"
-	case errors.Is(err, store.ErrInvalid), errors.Is(err, semantics.ErrInvalid), errors.Is(err, nlqroute.ErrInvalid):
+	case errors.Is(err, nlqexec.ErrForeignSession):
+		status, code = http.StatusConflict, "foreign_session"
+	case errors.Is(err, nlqexec.ErrNoPlan):
+		status, code = http.StatusConflict, "no_plan"
+	case errors.Is(err, nlqexec.ErrValidationBudget):
+		status, code = http.StatusUnprocessableEntity, "validation_budget_exhausted"
+	case errors.Is(err, nlqexec.ErrExecutionBudget):
+		status, code = http.StatusUnprocessableEntity, "execution_budget_exhausted"
+	case errors.Is(err, nlqexec.ErrUnsafeCorrection), errors.Is(err, readexec.ErrUnsafe):
+		status, code = http.StatusUnprocessableEntity, "sql_unsafe"
+	case errors.Is(err, readexec.ErrUnsupported), errors.Is(err, readexec.ErrType):
+		status, code = http.StatusUnprocessableEntity, "unsupported"
+	case errors.Is(err, nlqexec.ErrExecutionFailed):
+		status, code = http.StatusBadGateway, "execution_failed"
+	case errors.Is(err, nlqexec.ErrGeneration):
+		status, code = http.StatusServiceUnavailable, "generation_failed"
+	case errors.Is(err, nlqexec.ErrInspectionRequired):
+		status, code = http.StatusForbidden, "forbidden"
+	case errors.Is(err, store.ErrInvalid), errors.Is(err, semantics.ErrInvalid), errors.Is(err, nlqexec.ErrInvalid), errors.Is(err, nlqroute.ErrInvalid):
 		status, code = http.StatusBadRequest, "invalid_request"
 	case errors.Is(err, store.ErrConflict):
 		status, code = http.StatusConflict, "conflict"
@@ -152,7 +171,7 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "context_changed"
 	case errors.Is(err, readexec.ErrLimit):
 		status, code = http.StatusRequestEntityTooLarge, "limit_exceeded"
-	case errors.Is(err, nlq.ErrInsufficient):
+	case errors.Is(err, nlq.ErrInsufficient), errors.Is(err, nlqroute.ErrNoRoute), isClarification(err):
 		status, code = http.StatusUnprocessableEntity, "insufficient_context"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status, code = http.StatusGatewayTimeout, "cancelled_or_timed_out"
@@ -165,4 +184,9 @@ func failure(w http.ResponseWriter, err error) {
 	_ = json.NewEncoder(w).Encode(struct {
 		Error string `json:"error"`
 	}{code})
+}
+
+func isClarification(err error) bool {
+	var clarification *nlqroute.Clarification
+	return errors.As(err, &clarification)
 }

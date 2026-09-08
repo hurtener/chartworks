@@ -78,7 +78,19 @@ func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, respo
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
 			name := strings.Split(field.Tag.Get("json"), ",")[0]
-			if !field.IsExported() || field.Anonymous || name == "" || name == "-" || !supportedType(field.Type, stack, depth+1, response, optional) {
+			if !field.IsExported() || name == "-" {
+				if response {
+					continue
+				}
+				return false
+			}
+			if field.Anonymous {
+				if !supportedType(field.Type, stack, depth+1, response, optional) {
+					return false
+				}
+				continue
+			}
+			if name == "" || !supportedType(field.Type, stack, depth+1, response, optional) {
 				return false
 			}
 		}

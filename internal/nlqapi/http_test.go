@@ -69,6 +69,44 @@ func TestRegistryIncludesNLQRoute(t *testing.T) {
 	}
 }
 
+func TestExecutionRegistryManifestSchemasAndOpenAPI(t *testing.T) {
+	r, err := ExecutionRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Definitions()) != 7 {
+		t.Fatalf("execution operation inventory=%d", len(r.Definitions()))
+	}
+	raw, err := os.ReadFile("../../docs/contracts/chartworks-nlq-execution-operations.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest []api.Operation
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(manifest, r.Operations()) {
+		t.Fatalf("execution manifest differs: manifest=%#v actual=%#v", manifest, r.Operations())
+	}
+	doc, err := r.OpenAPI("Chartworks NLQ execution", "18")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, definition := range r.Definitions() {
+		if !strings.Contains(string(doc), definition.ID) || definition.Request == nil || definition.Response == nil {
+			t.Fatalf("OpenAPI omitted concrete execution operation %s", definition.ID)
+		}
+		if definition.Request.Validate([]byte(`{"tenant":"foreign"}`), MaxBodyBytes) == nil {
+			t.Fatalf("%s accepted an identity field", definition.ID)
+		}
+	}
+	for _, path := range []string{"/v1/nlq/preflight", "/v1/nlq/plans", "/v1/nlq/runs", "/v1/nlq/refinements", "/v1/nlq/feedback", "/v1/nlq/examples/state", "/v1/nlq/examples/read"} {
+		if _, _, ok := r.Match(http.MethodPost, path); !ok {
+			t.Fatalf("execution route not registered: %s", path)
+		}
+	}
+}
+
 func TestFailureMapsPublicErrors(t *testing.T) {
 	cases := []struct {
 		name   string

@@ -160,6 +160,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 	}
 	w.handler = topicapi.Handler(verifier, topics, published, rules, w.handler)
 	var nlqRegistry *api.Registry
+	var nlqExecutionRegistry *api.Registry
 	if w.engine != nil {
 		routing, routeErr := nlqroute.New(published, rules, index, w.engine)
 		if routeErr != nil {
@@ -179,6 +180,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 				return nil, queryErr
 			}
 			w.nlq = queryService
+			w.handler = nlqapi.ExecutionHandler(verifier, queryService, w.handler)
+			nlqExecutionRegistry, err = nlqapi.ExecutionRegistry()
+			if err != nil {
+				w.close()
+				return nil, err
+			}
 		}
 	}
 	publicRegistry, err := PublicRegistry()
@@ -224,7 +231,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry)
 	if err != nil {
 		w.close()
 		return nil, err
