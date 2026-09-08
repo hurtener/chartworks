@@ -106,8 +106,26 @@ The first acceptance run exposed the observer's old 1 MiB response cap on the
 existing larger read-result fixture. The observer now permits the established
 16 MiB result plus 128 KiB receipt ceiling while individual SDK calls retain their
 own caps; no production limit changed. These checks do not retroactively extend
-the frozen `81e0d6b` evidence or mark phase 21 complete. The next review is scoped
-to this continuation.
+the frozen `81e0d6b` evidence or mark phase 21 complete.
+
+## Reviewed continuation and owner verification
+
+Two independent Astra reviewers cleared `81e0d6b..002a012` with no P0/P1 or
+actionable local P2 findings. The owner then verified frozen code at exact commit
+`002a012aa3633afda9c44b6030f34a546802b7eb` in Go 1.26.4/Linux with the pinned native
+dependencies and real PostgreSQL/Bruin boundaries:
+
+- Full `internal/api` and `internal/sourceapi` race suites passed in 1.488s and
+  3.393s respectively.
+- Eight actual HTTP/SDK/manifest/denial/cancel-resume fixtures passed in 43.874s.
+- Selected phase 11/12 AC05/AC06 fixtures, including binary upload and profile
+  paths, passed in 47.357s.
+
+This closes review and focused verification of the bounded source-family registry
+continuation. It is not full phase 21/15/16 acceptance, cumulative preflight,
+full-package sourceapi coverage, cloud CI, browser or live-provider evidence.
+The branch is held here pending integration of the earlier phases; no additional
+adapter or lifecycle implementation is included in this closure.
 
 ## Remaining implementation
 
