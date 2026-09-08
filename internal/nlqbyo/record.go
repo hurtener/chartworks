@@ -73,8 +73,10 @@ func parameterStyle(dialect string) string {
 	switch dialect {
 	case "postgres":
 		return "$1, $2, ..."
-	case "sqlserver":
+	case "sqlserver", "bigquery":
 		return "@p1, @p2, ..."
+	case "databricks":
+		return ":p1, :p2, ..."
 	default:
 		return "? (positional)"
 	}
