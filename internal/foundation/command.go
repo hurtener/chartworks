@@ -141,7 +141,7 @@ func Start(ctx context.Context, cfg config.Config, log io.Writer) error {
 		return err
 	}
 	defer active.close()
-	s, err := NewServer(cfg, r, func(ctx context.Context) Dependency { return Dependency{Ready: db.Check(ctx) == nil} }, keyProbe.Check, active.handler)
+	s, err := NewServerWithRegistry(cfg, r, func(ctx context.Context) Dependency { return Dependency{Ready: db.Check(ctx) == nil} }, keyProbe.Check, active.registry, active.handler)
 	if err != nil {
 		return err
 	}

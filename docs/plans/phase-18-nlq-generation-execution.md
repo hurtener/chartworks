@@ -1,6 +1,31 @@
 # Phase 18 — nlq-generation-execution
 
-Status: planned. Owner: internal/nlq. Hard dependencies: 09, 10, 17.
+Status: shipped. Owner: internal/nlq. Hard dependencies: 09, 10, 17. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+
+Proposed PR #11 delivery; this status becomes effective after every required hosted
+check passes and the PR merges.
+
+The integrated core now supplies a durable first consumer for
+`edit_base > hints > examples > default`: it admits the sealed phase-17
+context, persists sessions and protected query evidence, generates and
+revalidates one opaque read plan through the existing validator, executes it
+through the existing executor, and records bounded correction, refinement,
+feedback, and learning state. PostgreSQL query reads consume the phase-16 rule
+publish/retire invalidation ledger. An invalidated query keeps its immutable
+topic/version and rule pins and replays through the retained topic reader rather
+than silently using the current publication. The current core evidence is in
+[phase 18 NLQ runtime evidence](../reviews/phase-18-nlq-runtime.md).
+
+The public HTTP/SDK operation surface and real invalidation consumer are integrated,
+the strict six-child check passed, and the two complete review rounds are clear. PR
+#11 records this phase as shipped conditionally; that status becomes effective after
+every required hosted check passes and the PR merges. The bounded corrections preserve the
+existing Bruin validator/executor path: every dialect retains exact SQL, bound
+parameters, plan coordinates and source/context revision; PostgreSQL may also
+accept an AST-equivalent statement when only locations or formatting differ.
+Any other SQL change returns `ErrUnsafeCorrection` without a second execution,
+and every attempt records a receipt. Hosted CI and release gates still belong to
+the integration head. This plan does not claim live provider quality.
 
 ## Authority and design
 
@@ -35,11 +60,11 @@ NLQ validation/execution correction ceilings, self-curation policy, template wei
 3. **AC03** — At most one validation correction and one execution correction occur within global budgets; every candidate is revalidated.
 4. **AC04** — Zero-row self-curation never silently changes time ranges/permissions/required filters; unsafe semantic changes are proposed, not executed.
 5. **AC05** — Feedback/corrected SQL and candidate/active/retired examples survive restart with DB-first weights, deduplication and provenance.
-6. **AC06** — Public routes return structured confidence/assumptions/ambiguities/errors and hide SQL where inspection is unauthorized; current actor cannot refine a foreign session.
+6. **AC06** — Public routes return structured confidence/assumptions/ambiguities/errors and hide SQL where inspection is unauthorized; current actor cannot refine a foreign session. The core lifecycle also proves activation after an unruled query, publish/retire invalidation, ordered multi-topic pins, and retained stale replay through the real PostgreSQL/native read seams.
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase18/AC01` through `TestPhase18/AC06` with real semantic/source boundaries, recorded generator responses and failure/correction-budget cases. Preserve source behavioral fixtures using newly authored neutral tests. COMMON.md sets coverage; `scripts/smoke/phase-18.sh` requires all six results.
+Implement `TestPhase18/AC01` through `TestPhase18/AC06` with real semantic/source boundaries, recorded generator responses, failure/correction-budget cases, and the rule-evidence invalidation/replay regression nested under AC06. Preserve source behavioral fixtures using newly authored neutral tests. COMMON.md sets coverage; `scripts/smoke/phase-18.sh` requires all six results.
 
 ## Glossary, decisions and deviations
 

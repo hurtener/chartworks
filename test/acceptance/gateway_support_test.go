@@ -28,6 +28,9 @@ type gatewayFixture struct {
 	candidates          gateway.Candidates
 	schema              *gateway.Schema
 	mode                atomic.Value
+	embeddingMode       atomic.Value
+	rerankMode          atomic.Value
+	embeddingOverride   atomic.Value
 	requests            atomic.Int64
 	mu                  sync.Mutex
 	models, keys, paths []string
@@ -40,6 +43,9 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 	t.Helper()
 	f := &gatewayFixture{token: newTokenFixture(t)}
 	f.mode.Store("normal")
+	f.embeddingMode.Store("normal")
+	f.rerankMode.Store("normal")
+	f.embeddingOverride.Store([]float64{})
 	f.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.requests.Add(1)
 		defer func() { _ = r.Body.Close() }()
@@ -62,6 +68,18 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		mode := f.mode.Load().(string)
+		embeddingMode := f.embeddingMode.Load().(string)
+		if embeddingMode == "normal" {
+			embeddingMode = mode
+		}
+		rerankMode := f.rerankMode.Load().(string)
+		if rerankMode == "normal" {
+			rerankMode = mode
+		}
+		if strings.HasPrefix(mode, "chat_raw:") && !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") {
+			_, _ = io.WriteString(w, strings.TrimPrefix(mode, "chat_raw:"))
+			return
+		}
 		if strings.HasPrefix(mode, "raw:") {
 			_, _ = io.WriteString(w, strings.TrimPrefix(mode, "raw:"))
 			return
@@ -95,7 +113,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 				w.WriteHeader(400)
 				return
 			}
-			switch mode {
+			switch embeddingMode {
 			case "reversed":
 				for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
 					result[i], result[j] = result[j], result[i]
@@ -120,18 +138,25 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 				_, _ = io.WriteString(w, `{"model":"embedding-model","data":[{"index":0,"embedding":[1e400,2]}]}`)
 				return
 			}
+			if override := f.embeddingOverride.Load().([]float64); len(texts) == 1 && len(override) > 0 {
+				result[0]["embedding"] = append([]float64(nil), override...)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "model": model, "data": result, "usage": map[string]any{"prompt_tokens": 3, "total_tokens": 3}})
 		case strings.Contains(r.URL.Path, "rerank"):
 			documents, _ := input["documents"].([]any)
 			results := []map[string]any{}
 			for i := range documents {
 				score := float64(len(documents) - i)
-				if mode == "ties" {
+				if rerankMode == "ties" {
 					score = 1
 				}
 				results = append(results, map[string]any{"index": i, "relevance_score": score})
 			}
-			switch mode {
+			switch rerankMode {
+			case "error":
+				w.WriteHeader(503)
+				_, _ = io.WriteString(w, `{"error":{"message":"RERANK_FAILURE_CANARY"}}`)
+				return
 			case "missing":
 				if len(results) > 0 {
 					results = results[:len(results)-1]

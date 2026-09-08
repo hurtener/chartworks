@@ -40,7 +40,7 @@ func TestProtectedRequestNegatives(t *testing.T) {
 			t.Fatal("invalid query accepted")
 		}
 	}
-	if callProtected(t, h, "DELETE", "/v1/retention-policy", token, "", nil).Code != 404 {
+	if response := callProtected(t, h, "DELETE", "/v1/retention-policy", token, "", nil); response.Code != 405 || response.Header().Get("Allow") != "GET, PUT" {
 		t.Fatal("unregistered method")
 	}
 	if callProtected(t, h, "GET", "/metrics", token, "", nil).Code != 200 {

@@ -1,6 +1,9 @@
 # Phase 21 — http-api
 
-Status: planned. Owner: internal/api. Hard dependencies: 01, 02, 03, 04.
+Status: shipped. Owner: internal/api. Hard dependencies: 01, 02, 03, 04. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+
+Proposed PR #11 delivery; this status becomes effective after every required hosted
+check passes and the PR merges.
 
 ## Authority and design
 
@@ -19,6 +22,42 @@ No all-at-once late API phase and no local IAM/admin-issuance or embed-auth rout
 1. Land the authenticated HTTP shell early with health/capabilities, registration metadata, typed error mapping and hardened request handling.
 2. Require each domain phase to register concrete endpoints, scopes, dependency loaders, audit semantics and public schemas in the same feature change.
 3. Generate the OpenAPI contract and isolation/audit coverage from real registration; do not implement a parallel business service in handlers.
+
+## Bounded implementation, 2026-09-07
+
+`internal/api` now owns immutable registration metadata, DTO-derived closed wire
+schemas, route matching and OpenAPI 3.1.1 generation. Its real consumers are all 33
+existing source catalog, validation, execution, engineering and pipeline routes in
+`internal/sourceapi`. The router, legacy manifest and generated document use the same definitions;
+existing Pengui verification, resource loading, service enforcement, body limits,
+error mapping and audit behavior remain in their existing handlers/services.
+Resource-loader and audit labels describe those existing paths; they do not replace
+execution callbacks or prove exhaustive isolation/audit coverage.
+
+The [bounded evidence note](../reviews/phase-21-source-registry.md) records focused
+HTTP/SDK/PostgreSQL and schema checks. Foundation, security and work adapters are
+covered by the HTTP prerequisite continuation below; later domain phases continue
+to extend the same registry. The continuation adds the actual acceptance parent
+below; the earlier source slice did not use a placeholder parent.
+
+## HTTP prerequisite continuation, 2026-09-08
+
+The shared registry now composes the foundation health/readiness/capabilities and
+OpenAPI routes with the existing security, gateway/work, source, engineering,
+execution, pipeline and topic registries. Public operations are explicitly marked
+unauthenticated; every protected definition carries its existing Pengui action,
+resource-loader description, audit classification, closed request/response schema,
+error mapping and body/query/header bounds. `GET` and `HEAD /openapi.json` are
+served by the foundation handler from this immutable composition. The typed server
+configuration defaults to `/` with an empty CORS allowlist; non-root prefixes are
+rejected until route, OpenAPI and SDK joining can be delivered together.
+
+`TestPhase21/AC01` through `AC06` exercise the actual composed registration, real
+source HTTP/SDK/PostgreSQL behavior, security denial ordering, transport limits and
+CORS, generated OpenAPI parity, absence of identity/reporting placeholders, and
+concurrent public HTTP requests. The pinned Linux/native-parser race run and phase
+acceptance runner passed all six children. This closes the HTTP prerequisite slice
+while later domain phases continue to add their concrete registered operations.
 
 ## Non-goals
 
@@ -43,4 +82,14 @@ Implement `TestPhase21/AC01` through `TestPhase21/AC06`. Registration tests enum
 
 ## Glossary, decisions and deviations
 
-D-050 changes execution order, not phase IDs. No runtime completion is claimed.
+D-050 changes execution order, not phase IDs. The HTTP prerequisite runtime is
+verified. PR #11 records this prerequisite as shipped conditionally; that status
+becomes effective after every required hosted check passes and the PR merges.
+Later domain consumers and release gates remain outside this prerequisite.
+
+The phase 15 [private draft consumer](../contracts/topic-drafts-v1.md) and
+[publication lifecycle](../contracts/topic-publication-v1.md) add fourteen concrete
+operations through the same shared registry and generated schemas, with actual
+HTTP/SDK/PostgreSQL/pgvector fixtures. These domain consumers extend the completed
+HTTP prerequisite and do not by themselves close the remaining phase/release
+criteria.

@@ -142,6 +142,43 @@ func TestDecodeEdges(t *testing.T) {
 	}
 }
 
+func TestServerBasePathAndCORSConfiguration(t *testing.T) {
+	v := good()
+	if v.Server.BasePath != "/" || v.Server.CORSAllowlist == nil || len(v.Server.CORSAllowlist) != 0 {
+		t.Fatalf("unexpected defaults: %#v", v.Server)
+	}
+	v.Server.CORSAllowlist = []string{"https://app.example", "http://localhost:3000"}
+	if err := validate(v); err != nil {
+		t.Fatal(err)
+	}
+	for _, edit := range []func(*Values){
+		func(v *Values) { v.Server.BasePath = "/api" },
+		func(v *Values) { v.Server.CORSAllowlist = []string{"https://app.example/path"} },
+		func(v *Values) { v.Server.CORSAllowlist = []string{"https://app.example", "https://app.example"} },
+		func(v *Values) { v.Server.CORSAllowlist = []string{"https://user:secret@app.example"} },
+	} {
+		bad := v
+		bad.Server.CORSAllowlist = append([]string(nil), v.Server.CORSAllowlist...)
+		edit(&bad)
+		if err := validate(bad); err == nil {
+			t.Fatalf("invalid server transport accepted: %#v", bad.Server)
+		}
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(bytes.NewReader(data), func(string) (string, bool) { return "fixture", true }, Overrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy := cfg.Values()
+	copy.Server.CORSAllowlist[0] = "https://changed.example"
+	if cfg.Values().Server.CORSAllowlist[0] != "https://app.example" {
+		t.Fatal("CORS allowlist was not detached")
+	}
+}
+
 type errorWriter struct{}
 
 func (errorWriter) Write([]byte) (int, error) { return 0, errors.New("CANARY") }

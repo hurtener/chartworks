@@ -19,7 +19,7 @@ A signed MCP registration envelope with `tenant_id`, `user_id`, `session_id` and
 1. Register the Chartworks issuer/JWKS and intended HTTP/MCP audience from trusted deployment configuration. Chartworks never reads private issuer keys.
 2. Derive the tenant/user/session principal through Pengui's normal verified session path. Choose destination and provider scopes from operator-approved capability policy, not user or model arguments.
 3. Pass the approved scope strings through `MintCapabilityUserToken` (or the corresponding already-approved platform delivery path). Send the resulting bearer only in `Authorization` to Chartworks.
-4. Use the executable manifests for [operations](chartworks-operations.json), [sources](chartworks-source-operations.json), [validated reads](chartworks-read-operations.json), [durable work](chartworks-work-operations.json), [uploads/profiling](chartworks-engineering-operations.json) and [managed pipelines](chartworks-pipeline-operations.json) to select the minimum action and addressed reach needed by the consumer. The [read-only example](../../examples/pengui-chartworks-scopes.json) is illustrative, not an API request that authenticates a tenant.
+4. Use the executable manifests for [operations](chartworks-operations.json), [sources](chartworks-source-operations.json), [validated reads](chartworks-read-operations.json), [durable work](chartworks-work-operations.json), [uploads/profiling](chartworks-engineering-operations.json), [managed pipelines](chartworks-pipeline-operations.json), and [NLQ routing](chartworks-nlq-operations.json) to select the minimum action and addressed reach needed by the consumer. The [read-only example](../../examples/pengui-chartworks-scopes.json) is illustrative, not an API request that authenticates a tenant.
 5. Consume the real operation through `sdk/chartworks` or HTTP. The SDK's token provider supplies a current Pengui bearer for each request. It never mints, stores for unattended replay, or upgrades credentials.
 
 There are no default operator-wide scopes. In particular, `ops.metrics` is deployment-level aggregate observability permission and `ops.inspect` exposes enforcement diagnostics. Pengui should authorize those for intended operators separately from normal tenant analytical access. Neither is inferred from a user's name, service prefix, creator status, or tenant read scope alone.
@@ -54,3 +54,50 @@ Phase 13 newly consumes four opaque action strings through the existing Pengui m
 `TestPhase03/AC04` uses a synthetic signed fixture matching the inspected issuer serialization; `TestProviderRegistrationManifest` pins the published manifest/example to the actual registry and decoder. `TestPhase04` exercises the real PostgreSQL consumer through HTTP and the public SDK; `TestCompiledAuthorityLifecycle` builds and starts the actual binary with an ephemeral trusted TLS issuer, runs permitted operations, denies unsigned/foreign calls, and joins SIGTERM shutdown.
 
 These tests establish consumer and serializer conformance. The phase 11/12 manifest parity check pins the published engineering inventory to `sourceapi.EngineeringRegistry(true, true)`; those phases are shipped. The phase 13/14 pipeline and source registrations are accepted at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41` by [qualifying hosted CI run 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766). These tests do not claim a deployed Pengui session, production signing key, customer connection or live model was used. No external platform deployment or new platform API was created. MCP transport/tools remain phase 22; both intended-audience verifier paths use the same verification core. Later reporting and source adapters must supply complete, server-resolved dependency/context metadata and apply selections before their own data access.
+
+## Private topic draft consumer
+
+The private draft operations in the [actual shared topic operation manifest](chartworks-topic-draft-operations.json) register `topics.write`, `topics.read` and `topics.export` through the existing opaque Pengui action seam. Operators must deliberately enable appropriate capability policies; this document creates no deployed grant. `topics.write` requires topic write and every source read, dataset query and execution-context use reach; creation also requires tenant write. Save, import, onboarding, entity mutation, dataset rebind and enhancement use existing secondary `sources.read` and `engineering.read` actions when they consult the actual source and private profile services. Enhancement uses the already configured `enhance` gateway role and introduces no action. Retained read/history/diff use `topics.read` plus topic read and the persisted dependency reaches. Export uses `topics.export` plus topic export and those same dependencies. Every draft revision remains private to its originating actor/session; the [draft service contract](topic-drafts-v1.md) defines its limits.
+
+The bounded NLQ route in [its operation manifest](chartworks-nlq-operations.json) uses the existing `topics.read` action. Its service resolves every current topic dependency and execution context before Bifrost embedding or reranking; the route accepts no client-supplied DSN, source, or authority coordinate.
+
+### Topic review and publication operations
+
+The same manifest registers the new opaque actions `topics.review` and
+`topics.publish`. Review requires topic publish reach plus every dependency reach
+of the exact private draft revision. Publication requires topic publish, source
+read, dataset query and execution-context use reach; live source discovery also
+uses the existing `sources.read` action. Facet staging inside that operation uses
+the publication action and cannot activate a generation independently. When reviewed
+publication creates a new canonical entity revision, the same `topics.publish` action
+also requires `cw.tenant.write:<signed-tenant>`; exact immutable revision reuse does
+not. Draft/import preflight creates no registry state. Rollback
+uses registered primary action `topics.publish` plus secondary action `sources.read`
+for its live source discovery. Archive uses `topics.publish` and deliberately makes
+no source discovery. Retained current/exact reads use `topics.read`; the current
+source contract uses primary `topics.read` plus secondary `sources.read`. Public
+publication DTOs exclude draft profile, actor and session provenance. The
+[publication contract](topic-publication-v1.md) defines the atomic activation and
+current-health boundaries. Retained health uses `topics.read` without discovery;
+explicit recheck uses primary `topics.read` plus secondary `sources.read` and commits
+only while the observed publication remains current. No issuer, local grant,
+certification or execution
+authority is introduced.
+
+### Rule lifecycle operations
+
+The same shared manifest registers rule draft, review, publication, current/exact
+read, deterministic hard-constraint evaluation and retirement. These operations
+reuse `topics.write`, `topics.review`, `topics.publish` and `topics.read`; no new
+action is introduced. Each route requires its action-specific topic reach and all
+source-read, dataset-query and execution-context-use reaches persisted by the exact
+published topic before selecting or mutating rule payload. Rule publication
+rechecks the current topic version in its transaction. Retirement validates the
+retained pinned topic and active rule CAS so it remains available after topic
+transition or archive. The
+[rule lifecycle contract](rule-lifecycle-v1.md) defines the bounded evaluator and
+its retained-topic/dependency fences. PR #11 records the consuming phases as shipped
+conditionally; that status becomes effective after every required hosted check in
+the [PR #11 checks](https://github.com/hurtener/chartworks/pull/11/checks) passes and
+the PR merges. The remaining boundary is hosted CI and release integration rather
+than an unimplemented authority seam.

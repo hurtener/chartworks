@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
@@ -47,16 +48,25 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 			return
 		}
 		var op Operation
-		found := false
+		found, knownPath := false, false
 		for _, candidate := range Operations() {
-			if candidate.Path == req.URL.Path && candidate.Method == req.Method {
+			if candidate.Path != req.URL.Path || (!metrics && candidate.Path == "/metrics") {
+				continue
+			}
+			knownPath = true
+			if candidate.Method == req.Method {
 				op = candidate
 				found = true
 				break
 			}
 		}
-		if !found || (!metrics && op.Path == "/metrics") {
-			failure(w, access.ErrNotFound)
+		if !found {
+			if knownPath {
+				w.Header().Set("Allow", allowedMethods(req.URL.Path, metrics))
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			} else {
+				failure(w, access.ErrNotFound)
+			}
 			return
 		}
 		if err = access.Require(e, op.Action, access.Tenant(e, op.Permission)); err != nil {
@@ -79,16 +89,12 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 		case "/metrics":
 			r.Handler().ServeHTTP(w, req)
 		case "/v1/access/diagnostics":
-			type check struct {
-				Operation Operation `json:"operation"`
-				Allowed   bool      `json:"allowed"`
-			}
-			checks := []check{}
+			checks := []DiagnosticCheck{}
 			for _, item := range Operations() {
 				if !metrics && item.Path == "/metrics" {
 					continue
 				}
-				checks = append(checks, check{item, access.Require(e, item.Action, access.Tenant(e, item.Permission)) == nil})
+				checks = append(checks, DiagnosticCheck{Operation: item, Allowed: access.Require(e, item.Action, access.Tenant(e, item.Permission)) == nil})
 			}
 			respond(w, checks)
 		case "/v1/retention-policy":
@@ -101,11 +107,7 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 				respond(w, cw.Policy{Revision: p.Revision, AuditDays: p.AuditDays, OperationHours: p.OperationHours})
 				return
 			}
-			var body struct {
-				Expected       int64 `json:"expected_revision"`
-				AuditDays      int   `json:"audit_days"`
-				OperationHours int   `json:"operation_hours"`
-			}
+			var body RetentionPolicyRequest
 			if !bodyDecode(w, req, &body, "expected_revision", "audit_days", "operation_hours") {
 				return
 			}
@@ -153,6 +155,16 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 			failure(w, access.ErrNotFound)
 		}
 	}))
+}
+
+func allowedMethods(path string, metrics bool) string {
+	methods := []string{}
+	for _, operation := range Operations() {
+		if operation.Path == path && (metrics || path != "/metrics") {
+			methods = append(methods, operation.Method)
+		}
+	}
+	return strings.Join(methods, ", ")
 }
 func parseQuery(req *http.Request, path string) (string, error) {
 	q, err := req.URL.Query(), error(nil)

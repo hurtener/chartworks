@@ -1,6 +1,6 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-08 for phase 13/14 closure. Phases 01–14 are shipped; twenty later workstreams remain planned. Exact-source CI, not the status alone, establishes readiness. The qualifying hosted run is [CI 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766) at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41`. The phase 25 full-release gate remains unimplemented, and recorded cloud fixtures do not claim live-cloud qualification.
+Status: implementation design, revised 2026-09-08 for phase 13/14 closure and proposed PR #11 delivery for phases 15–18 and 21. Phases 01–14 are shipped; PR #11 proposes the next five phases as shipped. If every required check in the [PR #11 checks](https://github.com/hurtener/chartworks/pull/11/checks) passes and the PR merges, 19 phases will be shipped and fifteen later workstreams will remain planned; this proposal does not claim those checks or the merge yet. Exact-source CI, not the status alone, establishes readiness. The qualifying hosted run is [CI 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766) at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41`. The phase 25 full-release gate remains unimplemented, and recorded cloud fixtures do not claim live-cloud qualification.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 
@@ -80,13 +80,20 @@ Retain draft -> review -> published -> deprecated versions and active/archived t
 
 Preserve entity CRUD/moves, table rename/reference rewrites across measures/dimensions/KPIs/joins, source-health recheck, archive exclusion, onboarding profiles, canonical registry and neutral export/import. Pengui decides sharing; imported role/header/token material never becomes authority.
 
+D-068 defines the first registry consumer: tenant-wide canonical meaning is the
+immutable ID/revision/name/alias tuple, while physical key mappings remain local to
+the reviewed topic. Private drafts may propose meaning; only explicit reviewed topic
+publication approves a new sequential revision, atomically with the publication and
+its context-local facets. Normalized terms remain reserved to their original entity
+ID so retained and portable exact revisions cannot later acquire a different meaning.
+
 Topic generation uses remote Bifrost structured calls in bounded batches with stable IDs. Rich authoring packs project to compact published capability cards. One ContextAssembler owns runtime pruning, uses one tokenizer-backed budget, per-request copies and explicit provenance, preserves pinned metrics/hard constraints and reports insufficiency rather than silently dropping mandatory rules. Rules/examples have separate declared budgets and confidence/prior meaning.
 
 ## 9. NLQ, BYO and read safety
 
 Preserve deterministic span hints, remote query embeddings, typed/batched authorized retrieval, published/healthy eligibility, optional Bifrost reranking, calibrated confidence and explicit no-route/clarify outcomes. Reranking sees only already authorized candidates. Retain English/Spanish fixtures, prior context/SQL and session-scoped follow-up deltas. Confirmed same-source multi-topic joins/cardinality and all-resource restrictions are migration scope; arbitrary federation is not implied.
 
-Generation uses `edit_base > hints > examples > default`, native dialect and validated structured output. Exploration may perform at most one validation correction and one execution correction within the shared operation attempt/token/time budget. Every correction is revalidated. Zero rows do not authorize broader filters or time ranges. Semantic corrections remain reviewed proposals.
+Generation uses `edit_base > hints > examples > default`, native dialect and validated structured output. Exploration may perform at most one validation correction and one execution correction within the shared operation attempt/token/time budget. Each correction is revalidated. A validation correction must produce a newly validated plan through the normal authority, source and context checks. The separate execution correction preserves exact SQL, bound parameters, plan coordinates and source/context revision for every dialect; PostgreSQL may additionally accept the same AST when only locations or formatting differ. Any other execution SQL change fails closed with `ErrUnsafeCorrection` and cannot trigger a second execution. Every attempt retains a receipt. Zero rows do not authorize broader filters or time ranges. Semantic corrections remain reviewed proposals.
 
 BYO bundles restate constraints and provenance, stored behind opaque expiring references bound to caller/tenant/session/context. References confer no authority and are reauthorized using Pengui JWTs, replacing local signed handles. External SQL receives identical validation/execution gates; context-only permission cannot submit or execute.
 

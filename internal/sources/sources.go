@@ -445,7 +445,7 @@ func safe(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, known := range []error{readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
+	for _, known := range []error{readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, readexec.ErrQuery, context.Canceled, context.DeadlineExceeded, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, store.ErrInvalid, store.ErrNotFound, store.ErrConflict, store.ErrUnavailable, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound} {
 		if errors.Is(err, known) {
 			return known
 		}

@@ -16,23 +16,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
 // Space includes every input and route property that can change vector meaning.
 // Endpoint is a non-secret canonical provider endpoint, or the literal "default".
-type Space struct {
-	Provider      string `json:"provider"`
-	Route         string `json:"route"`
-	Endpoint      string `json:"endpoint"`
-	Model         string `json:"model"`
-	Revision      string `json:"revision"`
-	Dimensions    int    `json:"dimensions"`
-	Preprocessing string `json:"preprocessing"`
-	InputType     string `json:"input_type"`
-	Normalization string `json:"normalization"`
-}
+type Space gateway.EmbeddingSpace
 
 // Valid rejects incomplete identities and dimensions unsupported by pgvector.
 func (s Space) Valid() bool {
@@ -46,7 +37,7 @@ func (s Space) Valid() bool {
 }
 
 // Key is the full descriptor identity, not merely the model name or dimensions.
-func (s Space) Key() string { return Digest(s) }
+func (s Space) Key() string { return gateway.EmbeddingSpace(s).Key() }
 
 // Digest fingerprints canonical typed metadata. Callers validate before persistence.
 func Digest(v any) string {
@@ -241,7 +232,7 @@ type Repository interface {
 	UpsertFacets(context.Context, store.Scope, Generation, []Facet) error
 	PublishGeneration(context.Context, store.Scope, Generation, int64) (Publication, error)
 	ArchiveGeneration(context.Context, store.Scope, string, string, int64) (Publication, error)
-	SearchFacets(context.Context, store.Scope, []Query) ([]Result, error)
+	SearchFacets(context.Context, identity.Envelope, store.Scope, []Query) ([]Result, error)
 	DeleteFacets(context.Context, store.Scope, Removal) error
 	ExplainFacets(context.Context, store.Scope, Query) (json.RawMessage, error)
 }
@@ -274,7 +265,17 @@ func deadline(ctx context.Context, e identity.Envelope) (context.Context, contex
 
 // Begin creates or idempotently replays the same staging manifest.
 func (s *Service) Begin(ctx context.Context, e identity.Envelope, g Generation) error {
-	scope, err := coordinate(e, "topics.write", "write", g.Topic, g.Context)
+	return s.begin(ctx, e, g, "topics.write", "write")
+}
+
+// BeginPublication stages an invisible generation under the publication action.
+// It cannot switch a vector or semantic head.
+func (s *Service) BeginPublication(ctx context.Context, e identity.Envelope, g Generation) error {
+	return s.begin(ctx, e, g, "topics.publish", "publish")
+}
+
+func (s *Service) begin(ctx context.Context, e identity.Envelope, g Generation, action, permission string) error {
+	scope, err := coordinate(e, action, permission, g.Topic, g.Context)
 	if err != nil {
 		return err
 	}
@@ -288,7 +289,17 @@ func (s *Service) Begin(ctx context.Context, e identity.Envelope, g Generation) 
 
 // Upsert accepts only exact expected origins into an unpublished generation.
 func (s *Service) Upsert(ctx context.Context, e identity.Envelope, g Generation, batch []Facet) error {
-	scope, err := coordinate(e, "topics.write", "write", g.Topic, g.Context)
+	return s.upsert(ctx, e, g, batch, "topics.write", "write")
+}
+
+// UpsertPublication writes only to the exact unpublished generation admitted by
+// BeginPublication; final activation remains repository-owned and atomic.
+func (s *Service) UpsertPublication(ctx context.Context, e identity.Envelope, g Generation, batch []Facet) error {
+	return s.upsert(ctx, e, g, batch, "topics.publish", "publish")
+}
+
+func (s *Service) upsert(ctx context.Context, e identity.Envelope, g Generation, batch []Facet, action, permission string) error {
+	scope, err := coordinate(e, action, permission, g.Topic, g.Context)
 	if err != nil {
 		return err
 	}
@@ -356,7 +367,7 @@ func (s *Service) Search(ctx context.Context, e identity.Envelope, queries []Que
 	}
 	ctx, cancel := deadline(ctx, e)
 	defer cancel()
-	out, err := s.repo.SearchFacets(ctx, scope, copyQueries)
+	out, err := s.repo.SearchFacets(ctx, e, scope, copyQueries)
 	if err != nil {
 		return nil, err
 	}

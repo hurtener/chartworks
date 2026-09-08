@@ -74,7 +74,7 @@ def main() -> int:
             if code != 503 or body.get("ready") is not False:
                 raise RuntimeError("unavailable verification keys incorrectly reported ready")
             code, body = request("http://" + address + "/capabilities")
-            if code != 200 or body.get("business_api") is not False or body.get("authentication") is not True:
+            if code != 200 or body.get("business_api") is not True or body.get("authentication") is not True:
                 raise RuntimeError("incorrect implemented authority capability")
             for path in ("/metrics", "/mcp", "/v1/admin/keys", "/v1/reports"):
                 if request("http://" + address + path)[0] != 401:

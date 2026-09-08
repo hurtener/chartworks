@@ -31,19 +31,20 @@ type route struct {
 
 // Engine reuses only exact immutable route configurations and never shares request contexts.
 type Engine struct {
-	cfg     config.Gateway
-	routes  map[string]route
-	clients []*core.Bifrost
-	space   string
-	cache   *gateway.Cache
-	mu      sync.Mutex
-	closed  bool
-	active  int
-	tenants map[string]int
-	wg      sync.WaitGroup
-	cancel  context.CancelFunc
-	done    <-chan struct{}
-	once    sync.Once
+	cfg       config.Gateway
+	routes    map[string]route
+	clients   []*core.Bifrost
+	space     string
+	embedding gateway.EmbeddingSpace
+	cache     *gateway.Cache
+	mu        sync.Mutex
+	closed    bool
+	active    int
+	tenants   map[string]int
+	wg        sync.WaitGroup
+	cancel    context.CancelFunc
+	done      <-chan struct{}
+	once      sync.Once
 }
 
 // New constructs the real pinned Bifrost SDK clients without performing inference.
@@ -113,14 +114,20 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 			p = v
 		}
 	}
-	material, _ := json.Marshal([]any{"chartworks-embedding-space-v1", p.Name, config.NativeProvider(p), p.BaseURL, r.Model, r.ModelRevision, r.Dimensions, "utf8-exact", "float32-finite", "no-normalization", "text"})
-	hash := sha256.Sum256(material)
-	e.space = hex.EncodeToString(hash[:])
+	endpoint := p.BaseURL
+	if endpoint == "" {
+		endpoint = "default"
+	}
+	e.embedding = gateway.EmbeddingSpace{Provider: config.NativeProvider(p), Route: p.Name, Endpoint: endpoint, Model: r.Model, Revision: r.ModelRevision, Dimensions: r.Dimensions, Preprocessing: "utf8-exact;float32-finite", InputType: "text", Normalization: "no-normalization"}
+	e.space = e.embedding.Key()
 	return e, nil
 }
 
 // Space returns the complete immutable embedding-space identifier.
 func (e *Engine) Space() string { return e.space }
+
+// EmbeddingSpace returns the exact descriptor used by this immutable engine.
+func (e *Engine) EmbeddingSpace() gateway.EmbeddingSpace { return e.embedding }
 
 // Close cancels and joins active calls and closes each owned SDK client once.
 func (e *Engine) Close() {
@@ -302,7 +309,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 
 // Embed batches and validates finite indexed embeddings without changing generation identity.
 func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget, expectedSpace string, texts []string) (gateway.Embedded, error) {
-	out := gateway.Embedded{Space: e.space}
+	out := gateway.Embedded{Space: e.space, Descriptor: e.embedding}
 	r, p, err := e.role("embedding")
 	if err != nil {
 		return out, err

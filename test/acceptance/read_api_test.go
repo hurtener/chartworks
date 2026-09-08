@@ -22,6 +22,11 @@ func TestReadAPIAndSDK(t *testing.T) {
 	ctx := context.Background()
 	token := f.token.sign(t, f.token.claims(f.e.Tenant(), f.e.User(), f.e.Scopes()), nil)
 	h := sourceapi.ExecutionHandler(f.token.verifier, f.validator, x, sourceapi.Handler(f.token.verifier, f.s, f.validator, http.NotFoundHandler()))
+	registry, registrationErr := sourceapi.ExecutionAPIRegistry()
+	if registrationErr != nil {
+		t.Fatal(registrationErr)
+	}
+	h = assertRegisteredWireSchemas(t, registry, h)
 	server := httptest.NewServer(h)
 	defer server.Close()
 	client, err := cw.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })

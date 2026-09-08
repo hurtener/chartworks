@@ -514,6 +514,8 @@ func (x *Executor) execute(ctx context.Context, e identity.Envelope, p Plan, o O
 			code = "result_type_unsupported"
 		case errors.Is(runErr, ErrLimit):
 			code = "limit_exceeded"
+		case errors.Is(runErr, ErrQuery):
+			code = "query_error"
 		case errors.Is(runErr, ErrBinding):
 			code = "context_changed"
 		case errors.Is(runErr, ErrUnsupported):

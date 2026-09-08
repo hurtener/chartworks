@@ -15,6 +15,7 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | Managed object | An output whose ownership is verified in the managed registry and database privileges; a name prefix is not proof. |
 | Profile | Versioned sampled data/schema/quality/freshness evidence with its method and observation time. |
 | Topic / topic pack | Versioned business semantic contract containing tables, measures, dimensions, KPIs, joins, rules and routing context. |
+| Canonical entity | Tenant-wide stable business ID with immutable sequential meaning revisions. Names and aliases are global meaning; physical keys remain in each reviewed topic. |
 | Capability card | Compact published semantic projection used by routing/context, distinct from full authoring metadata. |
 | Facet | Typed semantic retrieval unit scoped to tenant/topic/version/embedding generation. |
 | Embedding space | Provider/model revision, dimensions and preprocessing/input/normalization contract; same dimensions do not imply compatibility. |

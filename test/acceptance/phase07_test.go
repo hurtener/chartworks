@@ -130,6 +130,14 @@ func TestPhase07(t *testing.T) {
 		g, b := vectorGeneration("v1", "credential:v1", 1024, 2)
 		f.stage(t, f.e, g, b)
 		f.publish(t, f.e, g, 0)
+		const legacyKey = "829aab48534d3913a21ba49d3555bd45b6fca31976c8172d1c546921fe562e30"
+		var storedKey string
+		if err := support.Raw(t, f.dsn).QueryRow(context.Background(), `SELECT space_key FROM chartworks.vector_generations WHERE tenant_id=$1 AND topic_id=$2 AND context_id=$3 AND generation_id=$4`, f.e.Tenant(), g.Topic, g.Context, g.ID).Scan(&storedKey); err != nil || storedKey != legacyKey || g.Space.Key() != legacyKey {
+			t.Fatal("preexisting phase 07 embedding space key changed", storedKey, g.Space.Key(), err)
+		}
+		if got := f.search(t, f.e, vectorQuery(g)); len(got) != 1 || got[0].Publication.Generation != g.ID || len(got[0].Hits) != len(b) {
+			t.Fatal("preexisting ready generation became unreadable", got)
+		}
 		for _, change := range []func(*vindex.Space){func(s *vindex.Space) { s.Revision = "r2" }, func(s *vindex.Space) { s.Preprocessing = "different" }, func(s *vindex.Space) { s.InputType = "query" }, func(s *vindex.Space) { s.Normalization = "l2" }, func(s *vindex.Space) { s.Route = "other" }, func(s *vindex.Space) { s.Endpoint = "https://provider.example/v2" }} {
 			bad := g.Clone()
 			change(&bad.Space)

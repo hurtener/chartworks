@@ -757,3 +757,5 @@ numbered D-043+.*
 Read execution continuation: [bounded plan-only reads and attempt uncertainty](decisions/2026-09-06-read-execution.md).
 
 Warehouse read substrate continuation: [D-067 pinned minimal Bruin leaf-client fork](decisions/2026-09-07-bruin-read-adoption.md).
+
+Canonical registry continuation: [D-068 reviewed publication approves exact canonical meaning](decisions/2026-09-08-canonical-registry.md).

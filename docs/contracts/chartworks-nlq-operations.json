@@ -1,0 +1,3 @@
+[
+  {"method":"POST","path":"/v1/nlq/routes","action":"topics.read","effect":"gateway_retrieval_context"}
+]

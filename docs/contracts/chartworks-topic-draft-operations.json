@@ -1,0 +1,188 @@
+[
+  {
+    "method": "POST",
+    "path": "/v1/topic-drafts",
+    "action": "topics.write",
+    "effect": "source_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topic-onboarding",
+    "action": "topics.write",
+    "effect": "profile_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topic-draft-imports",
+    "action": "topics.write",
+    "effect": "source_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/draft",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-versions/read",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-history",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-diff",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-entities",
+    "action": "topics.write",
+    "effect": "source_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-rebind",
+    "action": "topics.write",
+    "effect": "profile_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-enhancements",
+    "action": "topics.write",
+    "effect": "bounded_gateway_and_draft_checkpoint"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-export",
+    "action": "topics.export",
+    "effect": "metadata_export"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/reviews",
+    "action": "topics.review",
+    "effect": "review_receipt_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/publications",
+    "action": "topics.publish",
+    "effect": "gateway_and_atomic_publication"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/published",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/published-versions/read",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/contract",
+    "action": "topics.read",
+    "effect": "source_catalog_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/health",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/recheck",
+    "action": "topics.read",
+    "effect": "source_catalog_read_and_health_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rollbacks",
+    "action": "topics.publish",
+    "effect": "atomic_publication_rollback"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/archive",
+    "action": "topics.publish",
+    "effect": "atomic_publication_archive"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-drafts",
+    "action": "topics.write",
+    "effect": "rule_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-reviews",
+    "action": "topics.review",
+    "effect": "rule_review_receipt_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-publications",
+    "action": "topics.publish",
+    "effect": "atomic_rule_publication"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/rules",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-versions/read",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/evaluate",
+    "action": "topics.read",
+    "effect": "deterministic_constraint_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-patterns/read",
+    "action": "topics.read",
+    "effect": "clarification_pattern_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/replay",
+    "action": "topics.read",
+    "effect": "retained_rule_replay"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/shadow",
+    "action": "topics.read",
+    "effect": "rule_shadow_comparison"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-invalidations/read",
+    "action": "topics.read",
+    "effect": "rule_evidence_invalidation_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/retire",
+    "action": "topics.publish",
+    "effect": "atomic_rule_retirement"
+  }
+]

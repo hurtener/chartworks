@@ -9,6 +9,8 @@ Use `chartworks config-check --defaults` for a machine-readable defaults snapsho
 | Key | Type / units | Default | Bounds and behavior |
 |---|---|---|---|
 | `server.listen` | host:port string | `127.0.0.1:8080` | Explicit loopback IP only in this foundation; numeric port 0–65535. Port 0 is useful for isolated tests. |
+| `server.base_path` | path string | `/` | The public HTTP mount; this slice supports the root mount so generated OpenAPI and SDK paths cannot drift. |
+| `server.cors_allowlist` | string array | `[]` | Empty means same-origin only. Entries must be unique absolute `http`/`https` origins; no credentials or wildcard is accepted. |
 | `server.read_header_timeout` | duration string | `5s` | Positive, at most 1 minute. |
 | `server.read_timeout` | duration string | `15s` | Positive, at most 5 minutes. |
 | `server.write_timeout` | duration string | `30s` | Positive, at most 5 minutes. |
@@ -57,7 +59,7 @@ The real verifier and readiness share one bounded public-key cache. It rejects d
 | `features.reporting` | boolean | false | True rejected until reporting phases are implemented. |
 | `features.renderer` | boolean | false | True rejected until rendering is implemented. |
 
-`/capabilities` reports verified authentication, signed-scope enforcement and operational APIs as implemented, with analytical business APIs still unavailable. It never returns tokens, source IDs or DSNs. Health is public; the [registered operational routes](contracts/chartworks-operations.json) require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
+`/capabilities` reports verified authentication, signed-scope enforcement, the composed HTTP route registry and generated OpenAPI as implemented. It never returns tokens, source IDs or DSNs; later reporting, rendering and MCP surfaces remain unavailable until their owning phases. Health and `/openapi.json` are public; the composed domain and operational routes require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
 
 ## Bifrost configuration and inactive excerpts
 

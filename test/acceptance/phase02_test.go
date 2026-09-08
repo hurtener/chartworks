@@ -246,7 +246,7 @@ func TestPhase02(t *testing.T) {
 		if rows.Err() != nil {
 			t.Fatal("schema rows failed")
 		}
-		expected := []string{"audit_events", "job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs", "pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "uploads", "vector_facets", "vector_generations", "vector_heads"}
+		expected := []string{"audit_events", "nlq_examples", "nlq_feedback", "nlq_queries", "nlq_sessions", "canonical_entity_heads", "canonical_entity_revisions", "canonical_entity_terms", "job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs", "pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "topic_draft_dependencies", "topic_draft_heads", "topic_draft_versions", "topic_generation_checkpoints", "topic_health", "topic_publication_events", "topic_publication_heads", "topic_published_canonical_refs", "topic_published_dependencies", "topic_published_generations", "topic_published_versions", "topic_reviews", "topic_rule_draft_heads", "topic_rule_comparison_evidence", "topic_rule_draft_versions", "topic_rule_evidence_invalidations", "topic_rule_publication_events", "topic_rule_publication_heads", "topic_rule_published_versions", "topic_rule_reviews", "uploads", "vector_facets", "vector_generations", "vector_heads"}
 		sort.Strings(expected)
 		if strings.Join(names, ",") != strings.Join(expected, ",") {
 			t.Fatalf("unexpected foundation schema: %v", names)
@@ -254,6 +254,19 @@ func TestPhase02(t *testing.T) {
 		if count(t, c, `SELECT count(*) FROM information_schema.columns WHERE table_schema='chartworks' AND (column_name LIKE '%password%' OR column_name LIKE '%secret%' OR column_name LIKE '%token%' OR column_name LIKE '%role%' OR column_name LIKE '%grant%')`) != 0 {
 			t.Fatal("local IAM/issuer material in schema")
 		}
+		tx, e := c.Begin(ctx)
+		if e != nil {
+			t.Fatal("begin audit allowlist check", e)
+		}
+		if _, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES('migration-audit',repeat('c',32),'actor','topic.health_rechecked','topic')`); e != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal("topic health audit action missing after full migration chain", e)
+		}
+		if _, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES('migration-audit',repeat('d',32),'actor','unknown.action','topic')`); e == nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal("unknown audit action accepted")
+		}
+		_ = tx.Rollback(ctx)
 		opts := postgres.Defaults()
 		opts.MaxConns = 0
 		if _, e = postgres.Open(ctx, dsn, opts); !errors.Is(e, store.ErrInvalid) {

@@ -1,8 +1,10 @@
 package acceptance
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/sourceapi"
 	"github.com/hurtener/chartworks/internal/sources"
 	cw "github.com/hurtener/chartworks/sdk/chartworks"
@@ -21,6 +24,11 @@ func TestSourceAPIAndSDK(t *testing.T) {
 	ctx := context.Background()
 	token := f.token.sign(t, f.token.claims(f.e.Tenant(), f.e.User(), f.e.Scopes()), nil)
 	h := sourceapi.Handler(f.token.verifier, f.s, f.validator, http.NotFoundHandler())
+	registry, err := sourceapi.SourceRegistry(true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h = assertRegisteredWireSchemas(t, registry, h)
 	server := httptest.NewServer(h)
 	defer server.Close()
 	client, err := cw.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
@@ -185,4 +193,71 @@ func TestSourceAPIAndSDK(t *testing.T) {
 			t.Fatal("unsafe SDK create path")
 		}
 	}
+}
+
+// The existing real PostgreSQL/SDK flow validates successful request/response
+// bytes against the same registered schemas consumed by OpenAPI generation.
+func assertRegisteredWireSchemas(t *testing.T, registry *api.Registry, next http.Handler) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		definition, _, _ := registry.Match(r.Method, r.URL.Path)
+		var observed *observedRequestBody
+		if r.Body != nil {
+			observed = &observedRequestBody{ReadCloser: r.Body}
+			r.Body = observed
+		}
+		response := httptest.NewRecorder()
+		next.ServeHTTP(response, r)
+		if response.Code == http.StatusOK && definition.ID != "" {
+			var request []byte
+			if observed != nil {
+				request = observed.data.Bytes()
+			}
+			if definition.RequestContentType == "application/octet-stream" {
+				if len(request) > definition.MaxBodyBytes || r.Header.Get("Content-Type") != definition.RequestContentType {
+					t.Errorf("accepted binary upload violates registered media/limit")
+				}
+			} else if definition.Request != nil {
+				if err := definition.Request.Validate(request, definition.MaxBodyBytes); err != nil {
+					t.Errorf("accepted %s request violates its registered wire schema: %v", definition.ID, err)
+				}
+			}
+			// The common read SDK permits 16 MiB of values plus bounded receipts.
+			// Individual SDK calls continue enforcing their own response limits.
+			if err := definition.Response.Validate(response.Body.Bytes(), (16<<20)+(128<<10)); err != nil {
+				t.Errorf("actual %s response violates its registered wire schema: %v", definition.ID, err)
+			}
+		}
+		if response.Code >= 400 && definition.ID != "" && response.Body.Len() != 0 {
+			var payload struct {
+				Error string `json:"error"`
+			}
+			registered := false
+			if json.Unmarshal(response.Body.Bytes(), &payload) == nil {
+				for _, expected := range definition.Errors {
+					registered = registered || (expected.Status == response.Code && expected.Code == payload.Error)
+				}
+			}
+			if !registered {
+				t.Errorf("actual %s error %d/%s absent from registration", definition.ID, response.Code, payload.Error)
+			}
+		}
+		for key, values := range response.Header() {
+			w.Header()[key] = append([]string(nil), values...)
+		}
+		w.WriteHeader(response.Code)
+		_, _ = w.Write(response.Body.Bytes())
+	})
+}
+
+// Observe only bytes the real handler consumes, preserving deny-before-read tests.
+type observedRequestBody struct {
+	io.ReadCloser
+	data bytes.Buffer
+}
+
+func (b *observedRequestBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	_, _ = b.data.Write(p[:n])
+	return n, err
 }

@@ -45,6 +45,8 @@ func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(time.Durat
 // Server contains only implemented transport controls.
 type Server struct {
 	Listen            string   `json:"listen"`
+	BasePath          string   `json:"base_path"`
+	CORSAllowlist     []string `json:"cors_allowlist"`
 	ReadHeaderTimeout Duration `json:"read_header_timeout"`
 	ReadTimeout       Duration `json:"read_timeout"`
 	WriteTimeout      Duration `json:"write_timeout"`
@@ -163,6 +165,7 @@ func (c Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.values) }
 // Values returns a deep copy, so consumers cannot race by mutating the live snapshot.
 func (c Config) Values() Values {
 	v := c.values
+	v.Server.CORSAllowlist = append([]string{}, c.values.Server.CORSAllowlist...)
 	v.Sources = c.values.Sources.Clone()
 	v.Uploads = c.values.Uploads.Clone()
 	v.Profiling = c.values.Profiling.Clone()
@@ -187,7 +190,7 @@ func Defaults() Values {
 		Profiling: DefaultProfiling(),
 		Sources:   DefaultSources(),
 		Exec:      DefaultReadValidation(),
-		Server:    Server{Listen: "127.0.0.1:8080", ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(75 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
+		Server:    Server{Listen: "127.0.0.1:8080", BasePath: "/", CORSAllowlist: []string{}, ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(75 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
 		Auth:      Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
 		Store:     Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
 		Jobs:      DefaultJobs(),
@@ -338,6 +341,12 @@ func validate(v Values) error {
 	if v.Server.MaxBodyBytes < 1 || v.Server.MaxBodyBytes > 100<<20 || v.Server.MaxHeaderBytes < 1024 || v.Server.MaxHeaderBytes > 1<<20 {
 		return invalid("server", "byte limit out of bounds")
 	}
+	if !validBasePath(v.Server.BasePath) {
+		return invalid("server.base_path", "root path required")
+	}
+	if err := validateCORS(v.Server.CORSAllowlist); err != nil {
+		return err
+	}
 	if !secureURL(v.Auth.Issuer) {
 		return invalid("auth.issuer", "HTTPS issuer without credentials, query or fragment required")
 	}
@@ -397,6 +406,25 @@ func validate(v Values) error {
 		return invalid("engineering", "source access must be explicitly enabled")
 	}
 	return ValidateGateway(v.Gateway, v.Features.Gateway)
+}
+
+func validBasePath(path string) bool {
+	// The first public transport slice uses the root mount. Keeping this typed
+	// and explicit prevents a partial prefix rollout from drifting from SDK
+	// paths or generated OpenAPI servers.
+	return path == "/"
+}
+
+func validateCORS(origins []string) error {
+	seen := map[string]bool{}
+	for _, origin := range origins {
+		u, err := url.Parse(origin)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || seen[origin] {
+			return invalid("server.cors_allowlist", "absolute unique HTTP origins required")
+		}
+		seen[origin] = true
+	}
+	return nil
 }
 
 func checkJSON(d *json.Decoder, depth int) error {

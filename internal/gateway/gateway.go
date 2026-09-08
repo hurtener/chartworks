@@ -152,9 +152,10 @@ type Generated struct {
 
 // Embedded preserves input order and identifies the entire embedding generation.
 type Embedded struct {
-	Vectors [][]float32
-	Space   string
-	Receipt Receipt
+	Vectors    [][]float32
+	Space      string
+	Descriptor EmbeddingSpace
+	Receipt    Receipt
 }
 
 // RankedItem preserves stable caller IDs. A nil Score means unchanged order, not an invented zero.
@@ -196,5 +197,6 @@ type Engine interface {
 	Rerank(context.Context, Call, *Budget, string, Candidates) (Ranked, error)
 	VisualRank(context.Context, Call, *Budget, string, Candidates) (Ranked, error)
 	Space() string
+	EmbeddingSpace() EmbeddingSpace
 	Close()
 }
