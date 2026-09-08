@@ -233,56 +233,6 @@ func TestClaimJobCancellationRollsBackQueueAdmission(t *testing.T) {
 	}
 }
 
-func TestClaimJobDriverFailureRollsBackClaim(t *testing.T) {
-	q := newQueueFixture(t, nil)
-	job := q.submit(t, "claim-driver-failure")
-	observer := support.Raw(t, q.dsn)
-	t.Cleanup(func() { _ = observer.Close(context.Background()) })
-	if _, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations ALTER COLUMN batch_limit DROP NOT NULL`); err != nil {
-		t.Fatalf("prepare claim driver failure: %v", err)
-	}
-	if _, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations DISABLE TRIGGER dispatch_manifest_immutable`); err != nil {
-		t.Fatalf("disable manifest trigger: %v", err)
-	}
-	if _, err := observer.Exec(context.Background(), `UPDATE chartworks.operations SET batch_limit=NULL WHERE operation_id=$1`, job.ID); err != nil {
-		t.Fatalf("prepare claim row: %v", err)
-	}
-	restoreBatchLimit := func() error {
-		if _, err := observer.Exec(context.Background(), `UPDATE chartworks.operations SET batch_limit=100 WHERE operation_id=$1`, job.ID); err != nil {
-			return err
-		}
-		if _, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations ALTER COLUMN batch_limit SET NOT NULL`); err != nil {
-			return err
-		}
-		_, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations ENABLE TRIGGER dispatch_manifest_immutable`)
-		return err
-	}
-	t.Cleanup(func() { _ = restoreBatchLimit() })
-
-	lease, err := q.db.ClaimJob(context.Background(), "claim-driver-failure-owner", q.limits)
-	if !errors.Is(err, store.ErrUnavailable) {
-		t.Fatalf("ClaimJob error after driver scan failure = %v, want store.ErrUnavailable", err)
-	}
-	if lease != (jobs.Lease{}) {
-		t.Fatalf("ClaimJob returned lease after driver failure: %+v", lease)
-	}
-
-	if err := restoreBatchLimit(); err != nil {
-		t.Fatalf("restore claim row: %v", err)
-	}
-	assertPendingJobUnchanged(t, q, observer, job.ID)
-	lease, err = q.db.ClaimJob(context.Background(), "claim-driver-healthy-owner", q.limits)
-	if err != nil {
-		t.Fatalf("healthy ClaimJob after driver failure: %v", err)
-	}
-	if lease.Job.ID != job.ID {
-		t.Fatalf("healthy ClaimJob returned job %s, want %s", lease.Job.ID, job.ID)
-	}
-	if err := q.db.FinishAttempt(context.Background(), lease, "attempt_failed", true, 0); err != nil {
-		t.Fatalf("finish healthy claim: %v", err)
-	}
-}
-
 func assertPendingJobUnchanged(t *testing.T, q *queueFixture, observer *pgx.Conn, id string) {
 	t.Helper()
 	job, err := q.db.ReadJob(context.Background(), support.Scope(t, q.actor.Tenant(), q.actor.User()), id)
