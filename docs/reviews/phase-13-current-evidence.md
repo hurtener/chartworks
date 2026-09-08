@@ -93,7 +93,8 @@ Exact `6883bc2103b2b870595222e623cd4d79bc01bc41` then passed the full Linux Go
 **2035/2534 (80.31%)** and `internal/engineering` at **2681/3330 (80.51%)**;
 all configured bands passed. The profile is
 `/tmp/chartworks-phase13-gates-2cdf7ef/coverage-6883bc2.out`. This local pass
-does not replace the remaining hosted completion gates.
+is distinct from, and is corroborated by, the qualifying hosted run recorded
+below.
 
 The exact-head `make preflight-full` run also passed with exit zero. Its strict
 acceptance runner reported all **88** named criteria across implemented phases
@@ -121,8 +122,9 @@ validates the existing positive pipeline graph query during deterministic fuzz
 setup, before the timed input callback. It retains both seeds, the callback and
 its 65,536-byte input limit. The loaded frozen-source check above showed the cold
 setup itself can exceed the worker watchdog while both callbacks remain
-immediate, supporting the initialization-timeout diagnosis. The unchanged hosted
-gate has not yet passed on this commit.
+immediate, supporting the initialization-timeout diagnosis. That hosted gate was
+later superseded by the qualifying exact-head run below, which passed the
+corrected harness.
 
 The later hosted run `34174537836` tested exact
 `811c7b47ed193d30be35a86b2ecc13c65693fe01`. Runtime acceptance passed in
@@ -131,8 +133,9 @@ SDK fixtures were green, but `internal/store/postgres` was **2010/2379
 (84.49%)**, below the exact 84.5% threshold. Later named, fuzz, preflight,
 benchmark and hygiene gates were skipped. The follow-up test-only commits
 `fcf57f2` and `6883bc2` retain the deterministic advisory-lock cancellation
-coverage correction and remove the artificial scan-error fixture. The final
-coverage artifact for that committed source is still required.
+coverage correction and remove the artificial scan-error fixture. Its historical
+coverage result was superseded by the qualifying exact-head coverage recorded
+below.
 
 The qualifying hosted run
 [`34182486766`](https://github.com/hurtener/chartworks/actions/runs/34182486766)
