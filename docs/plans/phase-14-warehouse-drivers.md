@@ -1,6 +1,6 @@
 # Phase 14 — warehouse-drivers
 
-Status: in_progress. Owner: internal/sources. Hard dependencies: 08, 09, 10.
+Status: shipped. Owner: internal/sources. Hard dependencies: 08, 09, 10.
 
 ## Authority and design
 
@@ -43,13 +43,13 @@ Implement `TestPhase14/AC01` through `TestPhase14/AC06`. Fork leaf-client protoc
 
 ## Glossary, decisions and deviations
 
-The [capability/support matrix](../contracts/warehouse-drivers.md) records the implemented subset and pending qualification boundary. Under the accepted no-live-cloud boundary, recorded cloud protocol tests establish implementation behavior but do not qualify live cutover/support. Unknown per-engine capabilities deny explicitly. D-051/D-067 apply. No runtime completion is claimed.
+The [capability/support matrix](../contracts/warehouse-drivers.md) records the implemented subset and permanent live-cloud qualification boundary. Under the accepted no-live-cloud boundary, recorded cloud protocol tests establish implementation behavior but do not qualify live cutover/support. Unknown per-engine capabilities deny explicitly. D-051/D-067 apply. Phase 14 shipped at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41` after [qualifying hosted CI run 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766); no live-cloud qualification is claimed.
 
 ## Current implementation and verification mapping
 
-The phase is in progress until final native CI and review complete. The
-[driver contract](../contracts/warehouse-drivers.md) fixes the current supported
-subset and the explicit recorded-only cloud boundary.
+The phase is shipped after final native CI and review completed at exact head
+`6883bc2103b2b870595222e623cd4d79bc01bc41`. The [driver contract](../contracts/warehouse-drivers.md)
+fixes the current supported subset and the explicit recorded-only cloud boundary.
 
 | Criterion | Mandatory runtime evidence |
 | --- | --- |
