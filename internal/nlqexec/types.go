@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -36,14 +35,22 @@ const (
 
 var (
 	// ErrInvalid identifies a malformed question, session, or lifecycle request.
-	ErrInvalid            = errors.New("nlqexec: invalid request")
-	ErrGeneration         = errors.New("nlqexec: SQL generation failed")
-	ErrValidationBudget   = errors.New("nlqexec: validation correction budget exhausted")
-	ErrExecutionBudget    = errors.New("nlqexec: execution correction budget exhausted")
-	ErrExecutionFailed    = errors.New("nlqexec: execution failed")
-	ErrForeignSession     = errors.New("nlqexec: session is not accessible")
-	ErrNoPlan             = errors.New("nlqexec: query is not planned")
-	ErrUnsafeCorrection   = errors.New("nlqexec: correction cannot change governed semantics")
+	ErrInvalid = errors.New("nlqexec: invalid request")
+	// ErrGeneration identifies an unusable or unavailable SQL generation response.
+	ErrGeneration = errors.New("nlqexec: SQL generation failed")
+	// ErrValidationBudget identifies an exhausted validation correction budget.
+	ErrValidationBudget = errors.New("nlqexec: validation correction budget exhausted")
+	// ErrExecutionBudget identifies an exhausted execution correction budget.
+	ErrExecutionBudget = errors.New("nlqexec: execution correction budget exhausted")
+	// ErrExecutionFailed identifies a terminal execution failure.
+	ErrExecutionFailed = errors.New("nlqexec: execution failed")
+	// ErrForeignSession identifies a query or example from another signed session.
+	ErrForeignSession = errors.New("nlqexec: session is not accessible")
+	// ErrNoPlan identifies a query that has not reached a planned state.
+	ErrNoPlan = errors.New("nlqexec: query is not planned")
+	// ErrUnsafeCorrection identifies a correction that changes governed semantics.
+	ErrUnsafeCorrection = errors.New("nlqexec: correction cannot change governed semantics")
+	// ErrInspectionRequired identifies SQL hidden by the inspection boundary.
 	ErrInspectionRequired = errors.New("nlqexec: SQL inspection is not authorized")
 )
 
@@ -137,11 +144,6 @@ type QueryRecord struct {
 	Revision        int64                 `json:"revision"`
 	Created         time.Time             `json:"created_at"`
 	Updated         time.Time             `json:"updated_at"`
-}
-
-func (q QueryRecord) valid() bool {
-	return identity.Identifier(q.ID) && identity.Identifier(q.Session) && identity.Identifier(q.Context) &&
-		(q.Locale == nlq.LanguageEnglish || q.Locale == nlq.LanguageSpanish)
 }
 
 // FeedbackRecord is a reviewable correction. Recording it never publishes a
@@ -329,11 +331,4 @@ func instructionValid(items []nlq.Instruction) bool {
 		seen[item.Key] = true
 	}
 	return true
-}
-
-func cloneJSON[T any](value T) T {
-	encoded, _ := json.Marshal(value)
-	var out T
-	_ = json.Unmarshal(encoded, &out)
-	return out
 }

@@ -444,16 +444,8 @@ func TestServiceValidationAndMetadataBoundaries(t *testing.T) {
 	if _, err := New(nil, nil, nil, nil, nil, nil, nil); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("nil production dependencies accepted")
 	}
-	validRecord := QueryRecord{ID: "q", Session: "s", Context: "ctx", Locale: nlq.LanguageEnglish}
-	invalidRecord := QueryRecord{ID: "q", Session: "s", Context: "ctx", Locale: "fr"}
-	if !validRecord.valid() || invalidRecord.valid() {
-		t.Fatal("query validity boundary changed")
-	}
 	if !canInspect(e) || canInspect(testEnvelope(t)) {
 		t.Fatal("inspection scope was not isolated")
-	}
-	if cloneJSON(map[string]string{"key": "value"})["key"] != "value" {
-		t.Fatal("JSON metadata clone failed")
 	}
 	for _, item := range []struct {
 		name string
@@ -557,7 +549,8 @@ func TestServiceValidationAndMetadataBoundaries(t *testing.T) {
 func TestServicePublicBoundaryValidation(t *testing.T) {
 	service := &Service{}
 	question := QuestionRequest{Topic: "topic", Context: "context", Locale: nlq.LanguageEnglish, Question: "show revenue"}
-	if _, err := service.Preflight(nil, identity.Envelope{}, PreflightRequest{QuestionRequest: question}); !errors.Is(err, access.ErrUnauthenticated) {
+	var nilContext context.Context
+	if _, err := service.Preflight(nilContext, identity.Envelope{}, PreflightRequest{QuestionRequest: question}); !errors.Is(err, access.ErrUnauthenticated) {
 		t.Fatal("nil preflight context was accepted")
 	}
 	if _, err := service.Preflight(context.Background(), testEnvelope(t), PreflightRequest{QuestionRequest: question}); !errors.Is(err, access.ErrForbidden) {
@@ -572,7 +565,7 @@ func TestServicePublicBoundaryValidation(t *testing.T) {
 	if _, err := service.Run(context.Background(), testEnvelope(t), RunRequest{}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("malformed run was accepted")
 	}
-	if err := service.Feedback(nil, testEnvelope(t), FeedbackRequest{QueryID: "query", Verdict: "positive"}); !errors.Is(err, ErrInvalid) {
+	if err := service.Feedback(nilContext, testEnvelope(t), FeedbackRequest{QueryID: "query", Verdict: "positive"}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nil feedback context was accepted")
 	}
 	withoutFeedback, err := identity.FromVerified("tenant", "actor", "session", []string{"query.plan", "cw.topic.read:topic"}, time.Now().Add(time.Hour), nil)
