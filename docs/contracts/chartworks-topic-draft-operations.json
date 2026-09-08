@@ -55,6 +55,12 @@
   },
   {
     "method": "POST",
+    "path": "/v1/topics/{id}/draft-enhancements",
+    "action": "topics.write",
+    "effect": "bounded_gateway_and_draft_checkpoint"
+  },
+  {
+    "method": "POST",
     "path": "/v1/topics/{id}/draft-export",
     "action": "topics.export",
     "effect": "metadata_export"
@@ -88,6 +94,18 @@
     "path": "/v1/topics/{id}/contract",
     "action": "topics.read",
     "effect": "source_catalog_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/health",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/recheck",
+    "action": "topics.read",
+    "effect": "source_catalog_read_and_health_commit"
   },
   {
     "method": "POST",

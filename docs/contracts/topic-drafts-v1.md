@@ -121,12 +121,12 @@ Each successful operation creates one immutable CAS revision; failures leave the
 head unchanged. These operations add no migration and reuse primary `topics.write`
 plus the established secondary `engineering.read` and `sources.read` actions.
 
-The separate [publication contract](topic-publication-v1.md) now owns review,
+The separate [publication contract](topic-publication-v1.md) owns review,
 publication/facet activation, retained publication reads, rollback/archive and the
-current published-topic source contract. Public source-health/recheck, bounded
-resumable gateway generation, retention and full lifecycle bundle portability remain
-pending. Onboarding evidence stays private; published health continues to use source
-discovery and exposes no profile ID. Phase 16
-execution/replay/shadow/provider quality remains pending. Phase 21 still needs
-foundation/work/security adapters, public document delivery and cumulative
-acceptance. No full `TestPhase15`, `TestPhase16` or `TestPhase21` pass is claimed.
+current published-topic source contract. Public health is a retained snapshot;
+explicit recheck uses source discovery and exposes no profile ID. The bounded
+enhancement operation classifies at most 32 stable column coordinates per request,
+persists its cursor and gateway receipt with the resulting immutable draft revision,
+and retains unresolved outcomes through publication projection and neutral
+portability. Phase 16 execution/replay/shadow/provider quality remains separately
+owned. Live provider quality is not inferred from recorded gateway fixtures.

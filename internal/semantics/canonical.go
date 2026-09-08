@@ -69,4 +69,5 @@ func (m CanonicalMeaning) Terms() []string {
 	return out
 }
 
+// Valid reports whether the canonical meaning has valid normalized terms.
 func (m CanonicalMeaning) Valid() bool { return len(m.Terms()) != 0 }

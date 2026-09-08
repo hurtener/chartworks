@@ -77,7 +77,7 @@ func TestVersionDiffEmptyRevisionAndInvalidComparisons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, right := range []Model{Model{}, other} {
+	for _, right := range []Model{{}, other} {
 		if _, err := DiffModels(before, right); validationCode(t, err) != CodeEvidenceMismatch {
 			t.Fatal(err)
 		}

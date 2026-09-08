@@ -117,6 +117,7 @@ func checkCanonicalMeaningsTx(ctx context.Context, tx pgx.Tx, tenant string, mea
 	return changes, nil
 }
 
+// CheckCanonicalMeanings validates draft proposals without reserving terms.
 func (d *DB) CheckCanonicalMeanings(ctx context.Context, e identity.Envelope, topic string, a drafts.Access, meanings []semantics.CanonicalMeaning) (changes bool, err error) {
 	if a != drafts.Write && a != drafts.Publish {
 		return false, store.ErrInvalid

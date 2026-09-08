@@ -114,7 +114,7 @@ func validateShape(p TopicPack) error {
 	if p.SchemaVersion != SchemaVersion || !identity.Identifier(p.Topic) || !identity.Identifier(p.Version) || !validLine(p.Name, 256) || !validText(p.Description, 4096) {
 		return invalid(CodeInvalidValue, "pack")
 	}
-	if len(p.Datasets) < 1 || len(p.Datasets) > 32 || len(p.Measures) > 1024 || len(p.Dimensions) > 1024 || len(p.KPIs) > 512 || len(p.Joins) > 256 || len(p.CanonicalEntities) > 256 {
+	if len(p.Datasets) < 1 || len(p.Datasets) > 32 || len(p.Measures) > 1024 || len(p.Dimensions) > 1024 || len(p.KPIs) > 512 || len(p.Joins) > 256 || len(p.CanonicalEntities) > 256 || len(p.Unresolved) > 4096 {
 		return invalid(CodeLimit, "pack")
 	}
 	for i, d := range p.Datasets {
@@ -170,6 +170,11 @@ func validateEntities(p TopicPack) error {
 			if !validLine(alias, 256) {
 				return invalid(CodeInvalidValue, "canonical_entities["+itoa(i)+"].aliases["+itoa(j)+"]")
 			}
+		}
+	}
+	for i, v := range p.Unresolved {
+		if !identity.Identifier(v.ID) || !identity.Identifier(v.Dataset) || !identity.Identifier(v.Column) || !validLine(v.Reason, 256) {
+			return invalid(CodeInvalidValue, "unresolved["+itoa(i)+"]")
 		}
 	}
 	return nil
@@ -319,6 +324,18 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 			seen[ref.key()] = true
 		}
 	}
+	seenUnresolved := map[string]bool{}
+	for i, v := range p.Unresolved {
+		path := "unresolved[" + itoa(i) + "]"
+		ref := Reference{Kind: KindColumn, Dataset: v.Dataset, ID: v.Column}
+		if err := require(ref, []Kind{KindColumn}, path+".column"); err != nil {
+			return err
+		}
+		if seenUnresolved[v.ID] {
+			return invalid(CodeDuplicateID, path+".id")
+		}
+		seenUnresolved[v.ID] = true
+	}
 	return nil
 }
 
@@ -419,6 +436,7 @@ func canonicalOrder(p *TopicPack) {
 			return left < right
 		})
 	}
+	sort.Slice(p.Unresolved, func(i, j int) bool { return p.Unresolved[i].ID < p.Unresolved[j].ID })
 }
 
 func clonePack(p TopicPack) TopicPack {
@@ -434,6 +452,7 @@ func clonePack(p TopicPack) TopicPack {
 	}
 	p.Joins = append([]Join(nil), p.Joins...)
 	p.CanonicalEntities = append([]CanonicalEntity(nil), p.CanonicalEntities...)
+	p.Unresolved = append([]UnresolvedSemantic(nil), p.Unresolved...)
 	for i := range p.CanonicalEntities {
 		p.CanonicalEntities[i].Aliases = append([]string(nil), p.CanonicalEntities[i].Aliases...)
 		p.CanonicalEntities[i].Keys = append([]Reference(nil), p.CanonicalEntities[i].Keys...)

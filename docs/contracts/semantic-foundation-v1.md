@@ -125,7 +125,8 @@ The bounded [publication service](topic-publication-v1.md) now supplies the immu
 review/publication model, Bifrost embedding generation, current source contract and
 version-fenced facet activation using `internal/vindex`, including atomic approval of
 new canonical meaning and context-local canonical facets. Reviewed source-reference
-rewrite operations and additional compact capability consumers remain pending.
+rewrite, entity/onboarding, retained public health and bounded resumable enhancement
+are now service-backed consumers.
 Phase 12 profile records are private to their originating actor/session. Their
 retained evidence can seed an authorized draft, but published-topic readers cannot
 use that private profile lookup as the current-health service. A topic consumer
@@ -143,8 +144,11 @@ the prior version usable. Calling the existing self-transactional vector publica
 method followed by a separate topic pointer update is insufficient. Current source health stays a
 separate observation checked when contracts are read. Archive, rollback, current
 source recheck, Pengui authorization, shared domain registration and SDK paths are
-implemented by that bounded consumer. Service-backed portability, onboarding profiles
-and all six named cumulative phase acceptance tests remain required.
+implemented by that bounded consumer. The phase 15 service also owns profile-backed
+onboarding, reviewed source rebinding, durable public health observations and bounded
+resumable enhancement checkpoints. Recorded gateway and real PostgreSQL fixtures
+exercise all six named cumulative phase acceptance criteria; live provider quality
+remains a separately measured deployment concern.
 
 ## Phase 16 integration contract
 

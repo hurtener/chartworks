@@ -518,6 +518,35 @@ func TestCanonicalRegistryReviewedPublicationAndCollisionFences(t *testing.T) {
 	if err != nil {
 		t.Fatal("review next revision", err)
 	}
+	if _, err = metadata.Exec(ctx, `CREATE FUNCTION chartworks.reject_canonical_term_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected canonical term failure'; END; $$; CREATE TRIGGER reject_canonical_term_test BEFORE INSERT ON chartworks.canonical_entity_terms FOR EACH ROW EXECUTE FUNCTION chartworks.reject_canonical_term_test()`); err != nil {
+		t.Fatal("install canonical-term atomicity fixture", err)
+	}
+	if _, err = service.Publish(ctx, e, pack.Topic, topics.PublishRequest{Review: review3.ID, Expected: 2}); err == nil {
+		t.Fatal("canonical-term failure published revision")
+	}
+	var earlyRegistryHead, earlyTopicHead, earlyRevisions, earlyVersion, earlyRefs int64
+	if err = metadata.QueryRow(ctx, `SELECT current_revision FROM chartworks.canonical_entity_heads WHERE tenant_id=$1 AND entity_id='customer'`, e.Tenant()).Scan(&earlyRegistryHead); err != nil {
+		t.Fatal(err)
+	}
+	if err = metadata.QueryRow(ctx, `SELECT revision FROM chartworks.topic_publication_heads WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic).Scan(&earlyTopicHead); err != nil {
+		t.Fatal(err)
+	}
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.canonical_entity_revisions WHERE tenant_id=$1 AND entity_id='customer' AND revision=2`, e.Tenant()).Scan(&earlyRevisions); err != nil {
+		t.Fatal(err)
+	}
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.topic_published_versions WHERE tenant_id=$1 AND topic_id=$2 AND version_id='v3'`, e.Tenant(), pack.Topic).Scan(&earlyVersion); err != nil {
+		t.Fatal(err)
+	}
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.topic_published_canonical_refs WHERE tenant_id=$1 AND topic_id=$2 AND version_id='v3'`, e.Tenant(), pack.Topic).Scan(&earlyRefs); err != nil {
+		t.Fatal(err)
+	}
+	prior, readErr := service.Read(ctx, e, pack.Topic, "")
+	if readErr != nil || prior.State.Version != "v2" || earlyRegistryHead != 1 || earlyTopicHead != 2 || earlyRevisions != 0 || earlyVersion != 0 || earlyRefs != 0 {
+		t.Fatal("canonical-term failure changed active state", earlyRegistryHead, earlyTopicHead, earlyRevisions, earlyVersion, earlyRefs, prior.State.Version, readErr)
+	}
+	if _, err = metadata.Exec(ctx, `DROP TRIGGER reject_canonical_term_test ON chartworks.canonical_entity_terms; DROP FUNCTION chartworks.reject_canonical_term_test()`); err != nil {
+		t.Fatal("remove canonical-term atomicity fixture", err)
+	}
 	if _, err = metadata.Exec(ctx, `CREATE FUNCTION chartworks.reject_canonical_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected canonical publication failure'; END; $$; CREATE TRIGGER reject_canonical_test BEFORE INSERT ON chartworks.topic_published_dependencies FOR EACH ROW EXECUTE FUNCTION chartworks.reject_canonical_test()`); err != nil {
 		t.Fatal("install atomicity fixture", err)
 	}

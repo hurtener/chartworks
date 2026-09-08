@@ -95,6 +95,32 @@ transaction fences. These operations reuse `topics.write` with the existing
 secondary `engineering.read` and `sources.read` actions and require no migration.
 
 Focused pure and real PostgreSQL HTTP/SDK lifecycle tests provide additional partial
-AC03/AC06 evidence. Public source-health/recheck, bounded resumable gateway topic
-generation with unresolved semantics, retention and full lifecycle portability
-remain pending, so this stage does not complete Phase 15.
+AC03/AC06 evidence.
+
+## Health, generation and cumulative acceptance candidate
+
+Migration 016 adds current topic-health snapshots and immutable generation
+checkpoints. Publication and rollback establish a healthy observation inside the
+same transaction as their source-revision fence. A recheck observes every public
+source/dataset binding without consulting private profiles, then replaces the
+snapshot only while the same publication remains current. An unhealthy observation
+records drift; clearing issues additionally locks and verifies every current source
+revision. Archive removes the current snapshot while retaining immutable topic
+versions and events.
+
+The draft enhancement operation sends at most 32 stable dataset/column coordinates
+through the existing Bifrost `enhance` role. The closed output classifies each input
+exactly once as a measure, dimension or unresolved authoring gap. Entity IDs are
+server-derived from stable coordinates. Every successful step is a normal immutable
+draft revision with an atomically stored cursor, completion bit and gateway receipt;
+the next step must match that persisted cursor, while skips, rewinds, completed
+checkpoints and stale heads fail before a model request. Unresolved gaps survive later steps,
+publication projection and neutral export/import remapping without becoming
+executable entities.
+
+`TestPhase15/AC01` through `AC06` now compose the real publication race/failure,
+immutable lifecycle, draft mutation/rebind, durable health, recorded Bifrost
+generation and neutral portability consumers. The pinned Linux/native-parser,
+PostgreSQL/pgvector race run passed all six children. Final cumulative coverage,
+independent review and release integration remain separate gates, so the phase stays
+`in_progress` in this implementation handoff.

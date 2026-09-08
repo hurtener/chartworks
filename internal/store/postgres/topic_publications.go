@@ -25,6 +25,8 @@ func scanTopicReview(row pgx.Row) (out topics.Review, err error) {
 	err = row.Scan(&out.ID, &out.Topic, &out.DraftRevision, &out.Digest, &out.Decision, &out.Note, &actor, &out.Created)
 	return
 }
+
+// ReviewTopic stores an immutable decision for one private draft revision.
 func (d *DB) ReviewTopic(ctx context.Context, e identity.Envelope, id string, in topics.ReviewRequest) (out topics.Review, err error) {
 	if in.DraftRevision < 1 || in.DraftRevision > drafts.MaxRevisions || !topics.DigestValid(in.Digest) || !topics.NoteValid(in.Note) || (in.Decision != "approve" && in.Decision != "reject") {
 		return out, store.ErrInvalid
@@ -89,6 +91,8 @@ func reviewedTopicTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, re
 	}
 	return review, draft, nil
 }
+
+// ReviewedTopic loads an approved review with its exact private draft.
 func (d *DB) ReviewedTopic(ctx context.Context, e identity.Envelope, id, reviewID string) (review topics.Review, draft drafts.Version, err error) {
 	if !identity.Identifier(reviewID) {
 		return review, draft, store.ErrInvalid
@@ -215,6 +219,8 @@ func readPublishedTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, ve
 	}
 	return out, nil
 }
+
+// ReadPublishedTopic returns the active or an exact retained public version.
 func (d *DB) ReadPublishedTopic(ctx context.Context, e identity.Envelope, id, version string, a drafts.Access) (out topics.Published, err error) {
 	if a != drafts.Read && a != drafts.Write && a != drafts.Review && a != drafts.Publish {
 		return out, store.ErrInvalid
@@ -316,6 +322,8 @@ func publicationEvent(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, v
 	scope, _ := store.NewScope(e.Tenant(), e.User())
 	return auditJob(ctx, tx, scope, action, id)
 }
+
+// PublishTopic atomically commits canonical meaning, definition and facet activation.
 func (d *DB) PublishTopic(ctx context.Context, e identity.Envelope, proof topics.Prepared, generations []vindex.Generation, receipt gateway.Receipt, expected int64) (out topics.Published, err error) {
 	if expected < 0 || expected >= 1<<62 {
 		return out, store.ErrInvalid
@@ -394,10 +402,16 @@ func (d *DB) PublishTopic(ctx context.Context, e identity.Envelope, proof topics
 			return err
 		}
 		out, err = readPublishedTx(ctx, tx, e, pack.Topic, "", drafts.Publish)
+		if err != nil {
+			return err
+		}
+		_, err = saveTopicHealthTx(ctx, tx, e, out, nil)
 		return err
 	})
 	return
 }
+
+// RollbackTopic atomically reactivates a retained definition and facet set.
 func (d *DB) RollbackTopic(ctx context.Context, e identity.Envelope, id string, in topics.TransitionRequest) (out topics.Published, err error) {
 	if in.Expected < 1 || in.Expected >= 1<<62 || !identity.Identifier(in.Version) || !topics.NoteValid(in.Note) {
 		return out, store.ErrInvalid
@@ -437,10 +451,16 @@ func (d *DB) RollbackTopic(ctx context.Context, e identity.Envelope, id string, 
 			return err
 		}
 		out, err = readPublishedTx(ctx, tx, e, id, "", drafts.Publish)
+		if err != nil {
+			return err
+		}
+		_, err = saveTopicHealthTx(ctx, tx, e, out, nil)
 		return err
 	})
 	return
 }
+
+// ArchiveTopic retires the active topic, facets and current health snapshot.
 func (d *DB) ArchiveTopic(ctx context.Context, e identity.Envelope, id string, expected int64, note string) (out topics.State, err error) {
 	if expected < 1 || expected >= 1<<62 || !topics.NoteValid(note) {
 		return out, store.ErrInvalid
@@ -473,6 +493,9 @@ func (d *DB) ArchiveTopic(ctx context.Context, e identity.Envelope, id string, e
 		if err = publicationEvent(ctx, tx, e, id, old, "archive", note, expected, true); err != nil {
 			return err
 		}
+		if _, err = tx.Exec(ctx, `DELETE FROM chartworks.topic_health WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), id); err != nil {
+			return err
+		}
 		if err = auditJob(ctx, tx, scope, "facets.archived", id); err != nil {
 			return err
 		}
@@ -484,6 +507,8 @@ func (d *DB) ArchiveTopic(ctx context.Context, e identity.Envelope, id string, e
 	})
 	return
 }
+
+// ConfirmTopicContract fences retained output against current source revisions.
 func (d *DB) ConfirmTopicContract(ctx context.Context, e identity.Envelope, id string, expected int64) (out topics.Published, err error) {
 	ctx, cancel, err := requestContext(ctx, e)
 	if err != nil {

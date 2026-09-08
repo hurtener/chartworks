@@ -10,8 +10,13 @@ import (
 	"github.com/hurtener/chartworks/internal/vindex"
 )
 
+// MaxFacets bounds one topic publication generation.
 const MaxFacets = 4096
+
+// MaxFacetBytes bounds one serialized facet body.
 const MaxFacetBytes = 256 << 10
+
+// MaxVectorValues bounds one publication's embedded values.
 const MaxVectorValues = 4 << 20
 
 type facetGroup struct {

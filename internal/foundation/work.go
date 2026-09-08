@@ -136,7 +136,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
 	w.handler = sourceapi.EngineeringHandler(verifier, w.engineering, w.handler)
 	w.handler = sourceapi.PipelineHandler(verifier, w.pipelines, w.handler)
-	topics, err := drafts.New(db, w.sourceService, w.engineering)
+	topics, err := drafts.NewWithEngine(db, w.sourceService, w.engineering, w.engine)
 	if err != nil {
 		w.close()
 		return nil, err

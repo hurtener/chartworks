@@ -24,33 +24,41 @@ type Binding struct {
 	Dataset        string `json:"dataset"`
 	SourceRevision int64  `json:"source_revision"`
 }
+
+// Dataset is the public projection of one reviewed source binding.
 type Dataset struct {
 	ID      string             `json:"id"`
 	Name    string             `json:"name"`
 	Source  Binding            `json:"source"`
 	Columns []semantics.Column `json:"columns"`
 }
+
+// Definition is an immutable public semantic topic payload.
 type Definition struct {
-	SchemaVersion     int                         `json:"schema_version"`
-	Topic             string                      `json:"topic"`
-	Version           string                      `json:"version"`
-	Name              string                      `json:"name"`
-	Description       string                      `json:"description"`
-	Datasets          []Dataset                   `json:"datasets"`
-	Measures          []semantics.Measure         `json:"measures"`
-	Dimensions        []semantics.Dimension       `json:"dimensions"`
-	KPIs              []semantics.KPI             `json:"kpis"`
-	Joins             []semantics.Join            `json:"joins"`
-	CanonicalEntities []semantics.CanonicalEntity `json:"canonical_entities"`
+	SchemaVersion     int                            `json:"schema_version"`
+	Topic             string                         `json:"topic"`
+	Version           string                         `json:"version"`
+	Name              string                         `json:"name"`
+	Description       string                         `json:"description"`
+	Datasets          []Dataset                      `json:"datasets"`
+	Measures          []semantics.Measure            `json:"measures"`
+	Dimensions        []semantics.Dimension          `json:"dimensions"`
+	KPIs              []semantics.KPI                `json:"kpis"`
+	Joins             []semantics.Join               `json:"joins"`
+	CanonicalEntities []semantics.CanonicalEntity    `json:"canonical_entities"`
+	Unresolved        []semantics.UnresolvedSemantic `json:"unresolved,omitempty"`
 }
 
+// Project removes private profile provenance from a compiled pack.
 func Project(p semantics.TopicPack) Definition {
-	out := Definition{SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, CanonicalEntities: p.CanonicalEntities}
+	out := Definition{SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved}
 	for _, d := range p.Datasets {
 		out.Datasets = append(out.Datasets, Dataset{d.ID, d.Name, Binding{d.Source.Source, d.Source.Context, d.ID, d.Source.SourceRevision}, d.Columns})
 	}
 	return out
 }
+
+// Require enforces topic and every persisted public dependency reach.
 func Require(e identity.Envelope, d Definition, a drafts.Access) error {
 	if err := drafts.Require(e, d.Topic, a); err != nil {
 		return err
@@ -65,12 +73,15 @@ func Require(e identity.Envelope, d Definition, a drafts.Access) error {
 	return nil
 }
 
+// ReviewRequest records a decision for one exact private draft digest.
 type ReviewRequest struct {
 	DraftRevision int64  `json:"draft_revision"`
 	Digest        string `json:"digest"`
 	Decision      string `json:"decision"`
 	Note          string `json:"note"`
 }
+
+// Review is an immutable publication approval receipt.
 type Review struct {
 	ID            string    `json:"id"`
 	Topic         string    `json:"topic"`
@@ -81,26 +92,34 @@ type Review struct {
 	Created       time.Time `json:"created_at"`
 }
 
+// DigestValid reports whether value is a lowercase SHA-256 hex digest.
 func DigestValid(value string) bool {
 	decoded, err := hex.DecodeString(value)
 	return err == nil && len(decoded) == 32 && strings.ToLower(value) == value
 }
 
+// PublishRequest activates an approved draft behind publication CAS.
 type PublishRequest struct {
 	Review   string `json:"review"`
 	Expected int64  `json:"expected_revision"`
 }
+
+// TransitionRequest describes a rollback to a retained version.
 type TransitionRequest struct {
 	Version  string `json:"version"`
 	Expected int64  `json:"expected_revision"`
 	Note     string `json:"note"`
 }
+
+// FacetGeneration identifies one active context-local vector generation.
 type FacetGeneration struct {
 	Context    string `json:"context"`
 	Generation string `json:"generation"`
 	Space      string `json:"space"`
 	Facets     int    `json:"facets"`
 }
+
+// State is the current durable topic lifecycle pointer.
 type State struct {
 	Topic       string            `json:"topic"`
 	Revision    int64             `json:"revision"`
@@ -109,15 +128,37 @@ type State struct {
 	Active      bool              `json:"active"`
 	Generations []FacetGeneration `json:"generations"`
 }
+
+// Published contains one retained immutable public definition and state.
 type Published struct {
 	State       State      `json:"state"`
 	Definition  Definition `json:"definition"`
 	Digest      string     `json:"digest"`
 	PublishedAt time.Time  `json:"published_at"`
 }
+
+// Contract is a current-source-confirmed published definition.
 type Contract struct {
 	Publication Published `json:"publication"`
 	ObservedAt  time.Time `json:"observed_at"`
+}
+
+// HealthIssue is a content-free current source continuity observation.
+type HealthIssue struct {
+	Source  string `json:"source"`
+	Context string `json:"context"`
+	Dataset string `json:"dataset"`
+	Code    string `json:"code"`
+}
+
+// Health is the latest retained recheck for one exact publication revision.
+type Health struct {
+	Topic      string        `json:"topic"`
+	Version    string        `json:"version"`
+	Revision   int64         `json:"revision"`
+	Healthy    bool          `json:"healthy"`
+	ObservedAt time.Time     `json:"observed_at"`
+	Issues     []HealthIssue `json:"issues"`
 }
 
 // Prepared seals the reviewed model after live source checks. Only this service
@@ -130,6 +171,7 @@ type Prepared struct {
 	descriptor             gateway.EmbeddingSpace
 }
 
+// Checked returns the reviewed pack only to the original authority.
 func (p Prepared) Checked(e identity.Envelope) (semantics.TopicPack, Review, error) {
 	if p.model.Digest() == "" || !e.Valid() || e.Tenant() != p.tenant || e.User() != p.actor || e.Session() != p.session || !time.Now().Before(p.deadline) {
 		return semantics.TopicPack{}, Review{}, access.ErrUnauthenticated
@@ -144,6 +186,7 @@ func (p Prepared) Checked(e identity.Envelope) (semantics.TopicPack, Review, err
 	return pack, p.review, nil
 }
 
+// CanonicalMeanings returns detached registry proposals after proof validation.
 func (p Prepared) CanonicalMeanings(e identity.Envelope) ([]semantics.CanonicalMeaning, error) {
 	if _, _, err := p.Checked(e); err != nil {
 		return nil, err
@@ -151,6 +194,7 @@ func (p Prepared) CanonicalMeanings(e identity.Envelope) ([]semantics.CanonicalM
 	return p.model.CanonicalMeanings(), nil
 }
 
+// Repository persists topic review, publication, health and lifecycle state.
 type Repository interface {
 	CheckCanonicalMeanings(context.Context, identity.Envelope, string, drafts.Access, []semantics.CanonicalMeaning) (bool, error)
 	ReviewTopic(context.Context, identity.Envelope, string, ReviewRequest) (Review, error)
@@ -160,6 +204,8 @@ type Repository interface {
 	ReadPublishedTopic(context.Context, identity.Envelope, string, string, drafts.Access) (Published, error)
 	RollbackTopic(context.Context, identity.Envelope, string, TransitionRequest) (Published, error)
 	ArchiveTopic(context.Context, identity.Envelope, string, int64, string) (State, error)
+	ReadTopicHealth(context.Context, identity.Envelope, Published) (Health, error)
+	SaveTopicHealth(context.Context, identity.Envelope, Published, []HealthIssue) (Health, error)
 }
 
 // CheckGenerations compares supplied staging manifests to the exact gateway

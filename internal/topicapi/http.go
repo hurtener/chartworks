@@ -24,34 +24,49 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
+// MaxBodyBytes bounds authoring and lifecycle request bodies.
 const MaxBodyBytes = 2 << 20
 
+// RevisionRequest selects one exact private draft revision.
 type RevisionRequest struct {
 	Revision int64 `json:"revision"`
 }
+
+// HistoryRequest selects a bounded descending draft history page.
 type HistoryRequest struct {
 	Before int64 `json:"before"`
 	Limit  int   `json:"limit"`
 }
+
+// DiffRequest selects two exact revisions for comparison.
 type DiffRequest struct {
 	Before int64 `json:"before"`
 	After  int64 `json:"after"`
 }
+
+// ExportRequest supplies exact logical slots for neutral export.
 type ExportRequest struct {
 	Revision int64                          `json:"revision"`
 	Mapping  []semantics.ExportDatasetSlots `json:"mapping"`
 }
+
+// PublishedVersionRequest selects one retained published version.
 type PublishedVersionRequest struct {
 	Version string `json:"version"`
 }
+
+// ArchiveRequest CAS-fences a topic archive transition.
 type ArchiveRequest struct {
 	Expected int64  `json:"expected_revision"`
 	Note     string `json:"note"`
 }
+
+// RuleVersionRequest selects one retained published rules version.
 type RuleVersionRequest struct {
 	Version string `json:"version"`
 }
 
+// Registry returns the concrete topic operation definitions.
 func Registry() (*api.Registry, error) {
 	type route struct {
 		method, path, id, action, effect, owner, audit string
@@ -64,6 +79,7 @@ func Registry() (*api.Registry, error) {
 		{"GET", "/v1/topics/{id}/draft", "getTopicDraft", "topics.read", "metadata_read", "drafts.Service.Read", "read_only_no_domain_audit", nil, reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topics/{id}/draft-entities", "mutateTopicEntities", "topics.write", "source_catalog_read_and_draft_commit", "drafts.Service.MutateEntities", "topic.drafted", reflect.TypeFor[drafts.EntityMutationRequest](), reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topics/{id}/draft-rebind", "rebindTopicDataset", "topics.write", "profile_catalog_read_and_draft_commit", "drafts.Service.RebindDataset", "topic.drafted", reflect.TypeFor[drafts.RebindRequest](), reflect.TypeFor[drafts.Version]()},
+		{"POST", "/v1/topics/{id}/draft-enhancements", "enhanceTopicDraft", "topics.write", "bounded_gateway_and_draft_checkpoint", "drafts.Service.Enhance", "topic.drafted", reflect.TypeFor[drafts.EnhanceRequest](), reflect.TypeFor[drafts.EnhanceResult]()},
 		{"POST", "/v1/topics/{id}/draft-versions/read", "getTopicDraftVersion", "topics.read", "metadata_read", "drafts.Service.Read", "read_only_no_domain_audit", reflect.TypeFor[RevisionRequest](), reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topics/{id}/draft-history", "getTopicDraftHistory", "topics.read", "metadata_read", "drafts.Service.History", "read_only_no_domain_audit", reflect.TypeFor[HistoryRequest](), reflect.TypeFor[[]drafts.Revision]()},
 		{"POST", "/v1/topics/{id}/draft-diff", "diffTopicDraft", "topics.read", "metadata_read", "drafts.Service.Diff", "read_only_no_domain_audit", reflect.TypeFor[DiffRequest](), reflect.TypeFor[semantics.VersionDiff]()},
@@ -73,6 +89,8 @@ func Registry() (*api.Registry, error) {
 		{"GET", "/v1/topics/{id}/published", "getPublishedTopic", "topics.read", "retained_metadata_read", "topics.Service.Read", "read_only_no_domain_audit", nil, reflect.TypeFor[topics.Published]()},
 		{"POST", "/v1/topics/{id}/published-versions/read", "getPublishedTopicVersion", "topics.read", "retained_metadata_read", "topics.Service.Read", "read_only_no_domain_audit", reflect.TypeFor[PublishedVersionRequest](), reflect.TypeFor[topics.Published]()},
 		{"GET", "/v1/topics/{id}/contract", "getTopicContract", "topics.read", "source_catalog_read", "topics.Service.Contract", "read_only_no_domain_audit", nil, reflect.TypeFor[topics.Contract]()},
+		{"GET", "/v1/topics/{id}/health", "getTopicHealth", "topics.read", "retained_metadata_read", "topics.Service.Health", "read_only_no_domain_audit", nil, reflect.TypeFor[topics.Health]()},
+		{"POST", "/v1/topics/{id}/recheck", "recheckTopicHealth", "topics.read", "source_catalog_read_and_health_commit", "topics.Service.Recheck", "topic.health_rechecked", reflect.TypeFor[struct{}](), reflect.TypeFor[topics.Health]()},
 		{"POST", "/v1/topics/{id}/rollbacks", "rollbackTopic", "topics.publish", "atomic_publication_rollback", "topics.Service.Rollback", "topic.rolled_back", reflect.TypeFor[topics.TransitionRequest](), reflect.TypeFor[topics.Published]()},
 		{"POST", "/v1/topics/{id}/archive", "archiveTopic", "topics.publish", "atomic_publication_archive", "topics.Service.Archive", "topic.archived", reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[topics.State]()},
 		{"POST", "/v1/topics/{id}/rule-drafts", "saveRuleDraft", "topics.write", "rule_draft_commit", "rulesets.Service.Save", "rules.drafted", reflect.TypeFor[rulesets.SaveRequest](), reflect.TypeFor[rulesets.Draft]()},
@@ -98,6 +116,7 @@ func Registry() (*api.Registry, error) {
 				"getTopicDraft":            "Read the current private draft",
 				"mutateTopicEntities":      "Apply atomic entity CRUD to a new private draft revision",
 				"rebindTopicDataset":       "Move a dataset to active profile evidence and rewrite references",
+				"enhanceTopicDraft":        "Advance one bounded resumable semantic generation step",
 				"getTopicDraftVersion":     "Read an exact private draft revision",
 				"getTopicDraftHistory":     "List scoped private draft revision metadata",
 				"diffTopicDraft":           "Compare two exact private draft revisions",
@@ -107,6 +126,8 @@ func Registry() (*api.Registry, error) {
 				"getPublishedTopic":        "Read the retained active published topic",
 				"getPublishedTopicVersion": "Read an exact retained published topic version",
 				"getTopicContract":         "Read a published topic after current source validation",
+				"getTopicHealth":           "Read the retained current-source health observation",
+				"recheckTopicHealth":       "Recheck public source continuity and commit a complete observation",
 				"rollbackTopic":            "Restore an exact retained topic version and facet set",
 				"archiveTopic":             "Archive the active topic and every matching facet head",
 				"saveRuleDraft":            "Create or edit an immutable proposed ruleset",
@@ -138,6 +159,8 @@ func Registry() (*api.Registry, error) {
 	}
 	return api.New(defs)
 }
+
+// Handler serves the registered topic routes through shared verification.
 func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics.Service, rules *rulesets.Service, next http.Handler) http.Handler {
 	if verifier == nil || next == nil {
 		return http.NotFoundHandler()
@@ -170,7 +193,7 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 		}
 		if service == nil {
 			switch selected.ID {
-			case "saveTopicDraft", "importTopicDraft", "onboardTopicProfile", "getTopicDraft", "getTopicDraftVersion", "getTopicDraftHistory", "diffTopicDraft", "exportTopicDraft", "mutateTopicEntities", "rebindTopicDataset":
+			case "saveTopicDraft", "importTopicDraft", "onboardTopicProfile", "getTopicDraft", "getTopicDraftVersion", "getTopicDraftHistory", "diffTopicDraft", "exportTopicDraft", "mutateTopicEntities", "rebindTopicDataset", "enhanceTopicDraft":
 				failure(w, store.ErrNotFound)
 				return
 			}
@@ -211,6 +234,11 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 			var in drafts.RebindRequest
 			if err = decode(&in); err == nil {
 				out, err = service.RebindDataset(r.Context(), e, id, in)
+			}
+		case "enhanceTopicDraft":
+			var in drafts.EnhanceRequest
+			if err = decode(&in); err == nil {
+				out, err = service.Enhance(r.Context(), e, id, in)
 			}
 		case "getTopicDraftVersion":
 			var in RevisionRequest
@@ -274,6 +302,21 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 				err = store.ErrNotFound
 			} else {
 				out, err = published.Contract(r.Context(), e, id)
+			}
+		case "getTopicHealth":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				out, err = published.Health(r.Context(), e, id)
+			}
+		case "recheckTopicHealth":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				var in struct{}
+				if err = decode(&in); err == nil {
+					out, err = published.Recheck(r.Context(), e, id)
+				}
 			}
 		case "rollbackTopic":
 			if published == nil {

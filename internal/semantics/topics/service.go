@@ -2,6 +2,7 @@ package topics
 
 import (
 	"context"
+	"errors"
 	"time"
 	"unicode/utf8"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/hurtener/chartworks/internal/vindex"
 )
 
+// Service coordinates reviewed topic publication and current health.
 type Service struct {
 	repo   Repository
 	source *sources.Service
@@ -23,13 +25,18 @@ type Service struct {
 	engine gateway.Engine
 }
 
+// New constructs the reviewed publication service.
 func New(repo Repository, source *sources.Service, index *vindex.Service, engine gateway.Engine) (*Service, error) {
 	if repo == nil || source == nil || index == nil {
 		return nil, store.ErrInvalid
 	}
 	return &Service{repo, source, index, engine}, nil
 }
+
+// NoteValid reports whether lifecycle evidence is bounded valid UTF-8.
 func NoteValid(note string) bool { return len(note) > 0 && len(note) <= 1024 && utf8.ValidString(note) }
+
+// Review records a decision for one exact private draft revision.
 func (s *Service) Review(ctx context.Context, e identity.Envelope, topic string, in ReviewRequest) (Review, error) {
 	if ctx == nil || in.DraftRevision < 1 || in.DraftRevision > drafts.MaxRevisions || !DigestValid(in.Digest) || !NoteValid(in.Note) || (in.Decision != "approve" && in.Decision != "reject") {
 		return Review{}, store.ErrInvalid
@@ -80,6 +87,8 @@ func (s *Service) currentSources(ctx context.Context, e identity.Envelope, d Def
 	}
 	return nil
 }
+
+// Publish stages facets and atomically activates one reviewed definition.
 func (s *Service) Publish(ctx context.Context, e identity.Envelope, topic string, in PublishRequest) (Published, error) {
 	if ctx == nil || !identity.Identifier(in.Review) || in.Expected < 0 || in.Expected >= 1<<62 {
 		return Published{}, store.ErrInvalid
@@ -183,9 +192,13 @@ func (s *Service) Publish(ctx context.Context, e identity.Envelope, topic string
 	}
 	return s.repo.PublishTopic(ctx, e, Prepared{model: model, review: review, tenant: e.Tenant(), actor: e.User(), session: e.Session(), deadline: deadline, descriptor: descriptor}, generations, embedded.Receipt, in.Expected)
 }
+
+// Read returns the active or an exact retained published version.
 func (s *Service) Read(ctx context.Context, e identity.Envelope, topic, version string) (Published, error) {
 	return s.repo.ReadPublishedTopic(ctx, e, topic, version, drafts.Read)
 }
+
+// Contract verifies live source continuity before returning a definition.
 func (s *Service) Contract(ctx context.Context, e identity.Envelope, topic string) (Contract, error) {
 	if ctx == nil {
 		return Contract{}, store.ErrInvalid
@@ -208,6 +221,92 @@ func (s *Service) Contract(ctx context.Context, e identity.Envelope, topic strin
 	}
 	return Contract{after, time.Now().UTC()}, nil
 }
+
+// Health reads the latest retained observation without consulting private profiles
+// or making a source/model request.
+func (s *Service) Health(ctx context.Context, e identity.Envelope, topic string) (Health, error) {
+	if ctx == nil || !identity.Identifier(topic) {
+		return Health{}, store.ErrInvalid
+	}
+	current, err := s.Read(ctx, e, topic, "")
+	if err != nil {
+		return Health{}, err
+	}
+	return s.repo.ReadTopicHealth(ctx, e, current)
+}
+
+func healthAuthorization(err error) bool {
+	return errors.Is(err, access.ErrUnauthenticated) || errors.Is(err, access.ErrForbidden)
+}
+
+// Recheck observes every current public source binding and atomically replaces the
+// retained health snapshot only after the complete bounded observation finishes.
+func (s *Service) Recheck(ctx context.Context, e identity.Envelope, topic string) (Health, error) {
+	if ctx == nil || !identity.Identifier(topic) {
+		return Health{}, store.ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	current, err := s.Read(ctx, e, topic, "")
+	if err != nil {
+		return Health{}, err
+	}
+	issues := make([]HealthIssue, 0)
+	catalogs := map[string]sources.Discovery{}
+	failed := map[string]bool{}
+	for _, dataset := range current.Definition.Datasets {
+		binding := dataset.Source
+		catalog, ok := catalogs[binding.Source]
+		if !ok && !failed[binding.Source] {
+			catalog, err = s.source.Discover(ctx, e, binding.Source)
+			if err != nil {
+				if healthAuthorization(err) {
+					return Health{}, err
+				}
+				failed[binding.Source] = true
+			}
+			catalogs[binding.Source] = catalog
+		}
+		code := ""
+		switch {
+		case failed[binding.Source]:
+			code = "source_unavailable"
+		case catalog.ContextID != binding.Context || catalog.Revision != binding.SourceRevision:
+			code = "source_revision_changed"
+		default:
+			var columns []readexec.Column
+			for _, relation := range catalog.Relations {
+				if relation.ID == dataset.ID {
+					columns = relation.Columns
+					break
+				}
+			}
+			if len(columns) == 0 {
+				code = "dataset_missing"
+			} else {
+				for _, expected := range dataset.Columns {
+					matched := false
+					for _, actual := range columns {
+						if actual.Name == expected.SourceName && actual.NativeType == expected.NativeType && actual.Category == expected.Category && actual.Nullable == expected.Nullable && actual.Safe {
+							matched = true
+							break
+						}
+					}
+					if !matched {
+						code = "schema_changed"
+						break
+					}
+				}
+			}
+		}
+		if code != "" {
+			issues = append(issues, HealthIssue{Source: binding.Source, Context: binding.Context, Dataset: dataset.ID, Code: code})
+		}
+	}
+	return s.repo.SaveTopicHealth(ctx, e, current, issues)
+}
+
+// Rollback reactivates one exact retained version without gateway work.
 func (s *Service) Rollback(ctx context.Context, e identity.Envelope, topic string, in TransitionRequest) (Published, error) {
 	if ctx == nil || !identity.Identifier(in.Version) || in.Expected < 1 || in.Expected >= 1<<62 || !NoteValid(in.Note) {
 		return Published{}, store.ErrInvalid
@@ -223,6 +322,8 @@ func (s *Service) Rollback(ctx context.Context, e identity.Envelope, topic strin
 	}
 	return s.repo.RollbackTopic(ctx, e, topic, in)
 }
+
+// Archive makes the current topic and matching facet heads unavailable.
 func (s *Service) Archive(ctx context.Context, e identity.Envelope, topic string, expected int64, note string) (State, error) {
 	if ctx == nil || expected < 1 || expected >= 1<<62 || !NoteValid(note) {
 		return State{}, store.ErrInvalid

@@ -267,6 +267,7 @@ func managedFacetSearch(ctx context.Context, tx pgx.Tx, e identity.Envelope, ten
 	return generation, err
 }
 
+// SearchFacets reads managed facets only after persisted authority and source fences.
 func (d *DB) SearchFacets(ctx context.Context, e identity.Envelope, s store.Scope, queries []vindex.Query) (out []vindex.Result, err error) {
 	if !s.Valid() {
 		return nil, store.ErrScope

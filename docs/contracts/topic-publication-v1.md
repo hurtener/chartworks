@@ -1,8 +1,8 @@
 # Topic publication lifecycle v1
 
-Status: bounded phase 15 implementation, 2026-09-07. This contract adds a real
-publication consumer without claiming the remaining phase 15 capabilities or the
-cumulative phase acceptance suite.
+Status: phase 15 implementation candidate, 2026-09-08. This contract includes the
+real publication, retained-health and explicit recheck consumers. Exact-head review,
+cumulative coverage and release integration remain separate gates.
 
 The exact-head review and root verification for this bounded slice are recorded
 in the [phase 15 publication evidence](../reviews/phase-15-topic-publication.md).
@@ -76,12 +76,15 @@ new evidence.
 ## Registered surface and remaining scope
 
 The shared topic registry and Go SDK expose review, publish, retained current/exact
-read, current contract, rollback and archive alongside the seven private draft
+read, retained health, explicit current-source recheck, current contract, rollback
+and archive alongside the private draft
 operations. Unknown or inaccessible coordinates remain nondisclosing; action and
 resource failures happen before gateway or facet payload access. Gateway failure,
 manifest failure, CAS contention and deferred consistency failure cannot expose a
 partly active version.
 
-Source-reference rewrite workflows, entity/onboarding APIs and full lifecycle
-portability remain pending. Phase 16
-activation/evaluation and the cumulative `TestPhase15` criteria are not claimed.
+Draft source-reference rewrite, entity/onboarding APIs and neutral lifecycle
+portability are concrete consumers. Health reads use only the retained public
+snapshot; recheck performs source discovery and commits a complete replacement for
+the same publication revision. Private profile IDs and evidence never enter the
+public health DTO. Phase 16 activation/evaluation remains separately owned.

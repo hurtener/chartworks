@@ -104,6 +104,24 @@ func TestPortableDraftRoundTripRemapsEveryColumnReference(t *testing.T) {
 	}
 }
 
+func TestPortableRoundTripRetainsUnresolvedWithoutPhysicalCoordinates(t *testing.T) {
+	pack := testPack()
+	pack.Unresolved = []UnresolvedSemantic{{ID: GeneratedEntityID(EnhancementUnresolved, "orders", "amount"), Dataset: "orders", Column: "amount", Reason: "Aggregation needs review"}}
+	model, err := Compile(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, mapping, _, bindings := portableFixture(t)
+	portable, err := ExportPortable(model, mapping)
+	if err != nil || len(portable.Unresolved) != 1 || portable.Unresolved[0].Dataset != "purchases" || portable.Unresolved[0].Column != "value" {
+		t.Fatal("logical unresolved export", portable.Unresolved, err)
+	}
+	candidate, err := ImportDraftCandidate(portable, bindings)
+	if err != nil || len(candidate.Pack().Unresolved) != 1 || candidate.Pack().Unresolved[0].Dataset != "purchases_data" || candidate.Pack().Unresolved[0].Column != "total" {
+		t.Fatal("destination unresolved import", err)
+	}
+}
+
 func TestPortableExportRequiresCompleteExplicitMapping(t *testing.T) {
 	for _, tc := range []struct {
 		name string

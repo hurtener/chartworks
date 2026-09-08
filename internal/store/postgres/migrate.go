@@ -128,7 +128,7 @@ func requiredRelations(ctx context.Context, tx pgx.Tx) error {
 		"profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations",
 		"source_revisions", "sources", "topic_draft_dependencies", "topic_draft_heads", "topic_draft_versions",
 		"topic_publication_events", "topic_publication_heads", "topic_published_canonical_refs", "topic_published_dependencies",
-		"topic_published_generations", "topic_published_versions", "topic_reviews", "topic_rule_draft_heads",
+		"topic_generation_checkpoints", "topic_health", "topic_published_generations", "topic_published_versions", "topic_reviews", "topic_rule_draft_heads",
 		"topic_rule_draft_versions", "topic_rule_publication_events", "topic_rule_publication_heads",
 		"topic_rule_published_versions", "topic_rule_reviews", "uploads", "vector_facets", "vector_generations", "vector_heads",
 	}

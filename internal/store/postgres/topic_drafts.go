@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"unicode/utf8"
 
@@ -77,6 +78,8 @@ func topicTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, rev
 	args = append(args, revision)
 	return scanTopic(tx.QueryRow(ctx, `SELECT `+topicMetadata+`,v.manifest`+topicFrom+topicEligibility+` AND v.revision=CASE WHEN $11::bigint=0 THEN h.current_revision ELSE $11 END`, args...))
 }
+
+// ReadTopicDraft returns the current or an exact scoped immutable draft revision.
 func (d *DB) ReadTopicDraft(ctx context.Context, e identity.Envelope, id string, revision int64, a drafts.Access) (out drafts.Version, err error) {
 	if revision < 0 || revision > drafts.MaxRevisions {
 		return out, store.ErrInvalid
@@ -93,6 +96,39 @@ func (d *DB) ReadTopicDraft(ctx context.Context, e identity.Envelope, id string,
 	})
 	return out, err
 }
+
+// TopicGenerationCheckpoint returns the immutable cursor sealed with one draft revision.
+func (d *DB) TopicGenerationCheckpoint(ctx context.Context, e identity.Envelope, id string, revision int64) (out drafts.GenerationCheckpoint, exists bool, err error) {
+	if revision < 1 || revision > drafts.MaxRevisions {
+		return out, false, store.ErrInvalid
+	}
+	ctx, cancel, err := requestContext(ctx, e)
+	if err != nil {
+		return out, false, err
+	}
+	defer cancel()
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := topicTx(ctx, tx, e, id, revision, drafts.Write); err != nil {
+			return err
+		}
+		var raw []byte
+		err := tx.QueryRow(ctx, `SELECT cursor,complete,receipt FROM chartworks.topic_generation_checkpoints WHERE tenant_id=$1 AND topic_id=$2 AND actor_id=$3 AND session_id=$4 AND draft_revision=$5`, e.Tenant(), id, e.User(), e.Session(), revision).Scan(&out.Cursor, &out.Complete, &raw)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if json.Unmarshal(raw, &out.Receipt) != nil || out.Cursor < 1 || out.Cursor > 8192 || len(out.Receipt.Calls) == 0 {
+			return store.ErrInvalid
+		}
+		exists = true
+		return nil
+	})
+	return out, exists, err
+}
+
+// TopicDraftHistory returns bounded descending revision metadata.
 func (d *DB) TopicDraftHistory(ctx context.Context, e identity.Envelope, id string, before int64, limit int) (out []drafts.Revision, err error) {
 	if before < 0 || before > drafts.MaxRevisions+1 || limit < 1 || limit > 32 {
 		return nil, store.ErrInvalid
@@ -125,6 +161,8 @@ func (d *DB) TopicDraftHistory(ctx context.Context, e identity.Envelope, id stri
 	})
 	return out, err
 }
+
+// SaveTopicDraft commits an admitted immutable revision, dependencies and audit atomically.
 func (d *DB) SaveTopicDraft(ctx context.Context, e identity.Envelope, prepared drafts.Prepared, expected int64, change string) (out drafts.Version, err error) {
 	if expected < 0 || expected >= drafts.MaxRevisions || len(change) < 1 || len(change) > 1024 || !utf8.ValidString(change) {
 		return out, store.ErrInvalid
@@ -151,6 +189,10 @@ func (d *DB) SaveTopicDraft(ctx context.Context, e identity.Envelope, prepared d
 		return out, err
 	}
 	defer cancel()
+	generation, generated, err := prepared.Generation(e)
+	if err != nil {
+		return out, err
+	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		// One tenant lock also makes the fixed registration cap race-safe. Draft
 		// editing is metadata-only; warehouse I/O has already finished above.
@@ -228,6 +270,15 @@ func (d *DB) SaveTopicDraft(ctx context.Context, e identity.Envelope, prepared d
 			r := dataset.Source
 			_, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_draft_dependencies(tenant_id,topic_id,revision,dataset_id,source_id,context_id,source_revision,profile_id,profile_digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, e.Tenant(), pack.Topic, expected+1, dataset.ID, r.Source, r.Context, r.SourceRevision, r.ProfileVersion, r.ProfileDigest)
 			if err != nil {
+				return err
+			}
+		}
+		if generated {
+			receipt, marshalErr := json.Marshal(generation.Receipt)
+			if marshalErr != nil || generation.Cursor < 1 || generation.Cursor > 8192 {
+				return store.ErrInvalid
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_generation_checkpoints(tenant_id,topic_id,actor_id,session_id,draft_revision,cursor,complete,receipt) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, e.Tenant(), pack.Topic, e.User(), e.Session(), expected+1, generation.Cursor, generation.Complete, receipt); err != nil {
 				return err
 			}
 		}

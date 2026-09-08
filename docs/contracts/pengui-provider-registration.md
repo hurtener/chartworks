@@ -57,7 +57,7 @@ These tests establish consumer and serializer conformance. The phase 11/12 manif
 
 ## Private topic draft consumer
 
-The ten draft operations in the [actual shared topic operation manifest](chartworks-topic-draft-operations.json) register `topics.write`, `topics.read` and `topics.export` through the existing opaque Pengui action seam. Operators must deliberately enable appropriate capability policies; this document creates no deployed grant. `topics.write` requires topic write and every source read, dataset query and execution-context use reach; creation also requires tenant write. Save, import, onboarding, entity mutation and dataset rebind use existing secondary `sources.read` and `engineering.read` actions when they consult the actual source and private profile services. No new action is introduced. Retained read/history/diff use `topics.read` plus topic read and the persisted dependency reaches. Export uses `topics.export` plus topic export and those same dependencies. Every draft revision remains private to its originating actor/session; the [draft service contract](topic-drafts-v1.md) defines its limits and remaining work.
+The private draft operations in the [actual shared topic operation manifest](chartworks-topic-draft-operations.json) register `topics.write`, `topics.read` and `topics.export` through the existing opaque Pengui action seam. Operators must deliberately enable appropriate capability policies; this document creates no deployed grant. `topics.write` requires topic write and every source read, dataset query and execution-context use reach; creation also requires tenant write. Save, import, onboarding, entity mutation, dataset rebind and enhancement use existing secondary `sources.read` and `engineering.read` actions when they consult the actual source and private profile services. Enhancement uses the already configured `enhance` gateway role and introduces no action. Retained read/history/diff use `topics.read` plus topic read and the persisted dependency reaches. Export uses `topics.export` plus topic export and those same dependencies. Every draft revision remains private to its originating actor/session; the [draft service contract](topic-drafts-v1.md) defines its limits.
 
 The bounded NLQ route in [its operation manifest](chartworks-nlq-operations.json) uses the existing `topics.read` action. Its service resolves every current topic dependency and execution context before Bifrost embedding or reranking; the route accepts no client-supplied DSN, source, or authority coordinate.
 
@@ -78,7 +78,10 @@ no source discovery. Retained current/exact reads use `topics.read`; the current
 source contract uses primary `topics.read` plus secondary `sources.read`. Public
 publication DTOs exclude draft profile, actor and session provenance. The
 [publication contract](topic-publication-v1.md) defines the atomic activation and
-current-health boundaries. No issuer, local grant, certification or execution
+current-health boundaries. Retained health uses `topics.read` without discovery;
+explicit recheck uses primary `topics.read` plus secondary `sources.read` and commits
+only while the observed publication remains current. No issuer, local grant,
+certification or execution
 authority is introduced.
 
 ### Rule lifecycle operations

@@ -7,11 +7,15 @@ import (
 	"sort"
 )
 
+// ChangeKind describes how one stable entity changed between revisions.
 type ChangeKind string
 
 const (
-	ChangeAdded    ChangeKind = "added"
-	ChangeRemoved  ChangeKind = "removed"
+	// ChangeAdded identifies an entity present only in the later revision.
+	ChangeAdded ChangeKind = "added"
+	// ChangeRemoved identifies an entity present only in the earlier revision.
+	ChangeRemoved ChangeKind = "removed"
+	// ChangeModified identifies an entity whose content changed.
 	ChangeModified ChangeKind = "modified"
 )
 
@@ -27,6 +31,7 @@ type EntityChange struct {
 	AfterDigest  string     `json:"after_digest,omitempty"`
 }
 
+// ChangeCount summarizes changes for one semantic entity kind.
 type ChangeCount struct {
 	Kind     Kind `json:"kind"`
 	Added    int  `json:"added"`
