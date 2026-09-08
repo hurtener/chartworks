@@ -1,6 +1,7 @@
 # Phase 15 private draft stage evidence
 
-Status: bounded implementation awaiting independent review and root verification.
+Status: bounded implementation independently reviewed and verified at
+`c7bf66a1fe4f4de78eabcd7dc8f98bd84ca61e77`.
 Based on clean source-registry handoff `37f3a1c004f14ab78eebc3a1d67d053ef95209fc`.
 No remote push, PR, merge, deployment or whole-phase acceptance is claimed.
 
@@ -75,6 +76,35 @@ The full unit run preceded only the SDK diff-cap correction, keyed struct litera
 and added focused tests;
 the final frozen run covers those changes. Source-registry/full phase acceptance,
 whole-suite coverage and independent review are not inferred from this evidence.
+
+## Independent review and root verification closure
+
+Two independent first-round reviews covered only
+`37f3a1c004f14ab78eebc3a1d67d053ef95209fc..c7bf66a1fe4f4de78eabcd7dc8f98bd84ca61e77`:
+
+- Astra high found no actionable P0/P1 or local P2. Its independent race checks
+  passed for semantics (2.965s) and SDK `TestTopic|TestPortable` (6.074s), and its
+  diff check passed. Topicapi dependency resolution was interrupted, so no
+  topicapi test pass is attributed to that reviewer.
+- Astra medium reported no actionable findings. Its SDK tests passed with
+  `GOMAXPROCS=2` and `-p=2`, and its diff check passed. Topicapi dependencies were
+  unavailable in that reviewer environment; that attempt is not a test pass.
+
+No implementation findings required a fix or a second full review. The root
+independently tested an exact frozen copy of
+`c7bf66a1fe4f4de78eabcd7dc8f98bd84ca61e77` using Linux Go 1.26.4, race detection,
+`GOMAXPROCS=2`, `-p=2`, the pinned native dependencies and real PostgreSQL fixtures:
+
+```sh
+go test -race -count=1 -p=2 ./internal/semantics/... ./internal/api ./internal/topicapi ./internal/store/postgres ./sdk/chartworks ./internal/foundation
+go test -race -count=1 -p=2 -v ./test/acceptance -run '^(TestTopic|TestSourceAPIAndSDK)'
+```
+
+All focused unit packages passed: semantics 1.487s, api 1.330s, topicapi 1.596s,
+store/postgres 1.111s, SDK 4.600s and foundation 1.880s. The draft service is
+exercised by acceptance. All six topic PostgreSQL groups and the existing source
+HTTP/SDK regression passed in 15.997s. This closes review and root verification of
+this bounded slice only; it supplies no whole-phase acceptance or cloud CI claim.
 
 ## Explicit remaining work
 
