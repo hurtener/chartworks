@@ -1,6 +1,6 @@
 # Chartworks — actionable implementation plan
 
-Current implementation status: phases 01–14 are shipped. Phases 15–18 have bounded semantic/NLQ foundations and phase 21 has its first shared source HTTP registry consumer; phases 15–18 and 21 remain in progress, with sixteen later workstreams remaining planned, including the phase 25 full-release gate. The registry records status; actual named tests and reviewed execution evidence establish acceptance, not this paragraph or a green documentation check. Historical superseded plans remain under `docs/archive/phase0-plans/`.
+Current implementation status: phases 01–14 are shipped. Phases 15–18 have bounded semantic/NLQ foundations, including a bounded phase 17 routing/context consumer, and phase 21 has its first shared source HTTP registry consumer; phases 15–18 and 21 remain in progress, with sixteen later workstreams remaining planned, including the phase 25 full-release gate. The registry records status; actual named tests and reviewed execution evidence establish acceptance, not this paragraph or a green documentation check. Historical superseded plans remain under `docs/archive/phase0-plans/`.
 
 ## Fixed decisions
 

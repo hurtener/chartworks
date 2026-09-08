@@ -19,6 +19,8 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/internal/nlqapi"
+	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
@@ -155,6 +157,20 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = topicapi.Handler(verifier, topics, published, rules, w.handler)
+	var nlqRegistry *api.Registry
+	if w.engine != nil {
+		routing, routeErr := nlqroute.New(published, rules, index, w.engine)
+		if routeErr != nil {
+			w.close()
+			return nil, routeErr
+		}
+		w.handler = nlqapi.Handler(verifier, routing, w.handler)
+		nlqRegistry, err = nlqapi.Registry()
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
 	publicRegistry, err := PublicRegistry()
 	if err != nil {
 		w.close()
@@ -198,7 +214,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry)
 	if err != nil {
 		w.close()
 		return nil, err

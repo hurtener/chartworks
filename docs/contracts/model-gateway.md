@@ -74,4 +74,4 @@ Successful SDK responses are validated using its internal raw-response observati
 
 The authority/cache key includes tenant, user, session, action, sorted signed scopes, resolved resources, caller context and the full embedding space. Changing model revision, provider/model/endpoint, dimensions or preprocessing changes that space; later published-index consumers must perform fenced reindexing (phase07), not silently replace a same-dimensional model.
 
-SDK retries are disabled; the adapter owns the only 1–4 attempt ceiling. Structured output validation failures are not retried as free text. The first consumer is the fixed-input `/v1/gateway/probes` operator endpoint; domain semantic/NLQ/artifact consumers arrive in their owning phases.
+SDK retries are disabled; the adapter owns the only 1–4 attempt ceiling. The fixed-input `/v1/gateway/probes` operator endpoint remains the gateway diagnostic consumer, while the phase-17 NLQ route is the first domain consumer of embedding and optional reranking. Each later semantic or artifact consumer still uses its owning phase contract.

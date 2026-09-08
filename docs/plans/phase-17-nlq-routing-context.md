@@ -2,13 +2,16 @@
 
 Status: in_progress. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16.
 
-The current bounded foundation implements only the deterministic context seam:
-the pinned `cl100k_base` tokenizer, 1500/3000/6500 tiers, mandatory-lane
-preservation or typed insufficiency, bounded omission audit, detached English
-and Spanish inputs, and immutable caller boundaries. Remote retrieval,
-reranking, calibrated routing, signed reach, and confirmed multi-topic joins
-remain unimplemented; no phase acceptance criterion is claimed by this slice.
-The bounded verification record is [phase 17/18 foundation evidence](../reviews/phase-17-18-foundation.md).
+The current slice combines the deterministic context seam with a first routing
+consumer: current topic/source contract admission, reviewed rule and slot
+evaluation, Bifrost query embeddings, authorized batched facet retrieval,
+optional candidate reranking, calibrated outcomes, and a typed same-source
+one-to-one multi-topic join check. The pinned `cl100k_base` tokenizer,
+1500/3000/6500 tiers, mandatory-lane preservation or typed insufficiency,
+bounded omission audit, detached English and Spanish inputs, and immutable
+caller boundaries remain owned by `internal/nlq`. Phase 17 closes against its
+named real PostgreSQL/Bifrost AC01–AC06 routing/context fixtures; phase 18
+separately verifies the downstream generation/execution consumers.
 
 ## Authority and design
 
@@ -24,10 +27,10 @@ Similarity is not calibrated confidence. No local learned models, duplicate char
 
 ## Scope and implementation tasks
 
-1. Implement light deterministic span hints, Bifrost-computed query embeddings, signed-authorized batched facet retrieval, per-kind limits, confidence calibration and typed routing outcomes.
-2. Assemble cards, rules, examples, pinned metrics and provenance under one tokenizer-backed tier budget without shared mutation.
-3. Preserve confirmed same-source multi-topic eligibility. When enabled, submit only already authorized candidates to Bifrost reranking, validate the permutation, then let the context owner apply top-k/budget reduction.
-4. Cache under exact facet/embedding/context/authority semantics. On explicit `preserve_candidates`, keep the original authorized order and emit a typed warning; on `fail`, stop. Disabled rerank makes zero calls. Neither path starts a local model.
+1. The routing service performs deterministic bounded question admission, Bifrost query embeddings, signed-authorized batched facet retrieval, per-kind limits, confidence calibration, and typed routing outcomes.
+2. It assembles retrieved evidence, reviewed advisory rules, mandatory constraint results, examples, pinned metrics, and provenance under the one tokenizer-backed tier budget without shared mutation.
+3. Confirmed same-source one-to-one multi-topic joins are admitted only from published definitions. When reranking is enabled, only already authorized candidates enter Bifrost; the complete permutation is validated before the context owner applies budget reduction.
+4. The vector service remains an explicit no-evidence-cache boundary. Bifrost cache identity includes the full authority call and embedding space. Disabled rerank makes zero calls; provider preserve/fail behavior remains owned by gateway configuration. Neither path starts a local model.
 
 ## Non-goals
 
@@ -35,7 +38,7 @@ No federation engine, semantic publication during routing, local embedding/cross
 
 ## Config and persistence
 
-Context tiers, confidence bands, k-per-kind, max_examples=7 and advisory-rule budgets remain domain settings. Gateway owns remote model/provider/timeout/batch settings; routing only selects optional rerank and its declared failure behavior. Cache by full context/facet/embedding identity rather than tenant/question alone. Record reductions, confidence, priors, excluded advisory evidence, stage timing and fallback attribution independently.
+Context tiers, confidence bands, k-per-kind, max_examples=7 and advisory-rule budgets remain domain settings. Gateway owns remote model/provider/timeout/batch settings; routing only selects optional rerank and its declared failure behavior. This slice has no vector evidence cache; if a later consumer adds one, its key must include the full authority, context, facet and embedding identity. Record reductions, confidence, priors, excluded advisory evidence, stage timing and fallback attribution independently.
 
 ## Acceptance criteria
 
