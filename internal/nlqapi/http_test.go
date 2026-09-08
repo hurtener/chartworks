@@ -161,6 +161,8 @@ func TestHandlerNilBoundariesRemainSafe(t *testing.T) {
 	cfg := config.Defaults().Auth
 	cfg.Issuer = "https://issuer.example.test"
 	cfg.JWKSURL = "https://issuer.example.test/jwks"
+	cfg.Audience = ""
+	cfg.Audiences = config.Audiences{HTTP: "chartworks:http", MCP: "chartworks:mcp"}
 	verifier, err := auth.New(cfg, nil, nil)
 	if err != nil {
 		t.Fatal(err)

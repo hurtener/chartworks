@@ -48,7 +48,7 @@ func Registry() (*api.Registry, error) {
 		Request:        request,
 		Response:       response,
 		Errors: []api.ErrorResponse{
-			{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthenticated"},
+			{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthenticated"}, {Status: 401, Code: "unauthorized"},
 			{Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"},
 			{Status: 409, Code: "conflict"}, {Status: 409, Code: "context_changed"},
 			{Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "insufficient_context"},
