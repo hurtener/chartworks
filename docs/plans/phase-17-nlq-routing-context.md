@@ -8,6 +8,7 @@ preservation or typed insufficiency, bounded omission audit, detached English
 and Spanish inputs, and immutable caller boundaries. Remote retrieval,
 reranking, calibrated routing, signed reach, and confirmed multi-topic joins
 remain unimplemented; no phase acceptance criterion is claimed by this slice.
+The bounded verification record is [phase 17/18 foundation evidence](../reviews/phase-17-18-foundation.md).
 
 ## Authority and design
 

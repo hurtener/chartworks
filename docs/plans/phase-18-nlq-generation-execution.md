@@ -8,6 +8,7 @@ constraints and pinned metrics, counts the exact final serialized payload with
 the phase-17 tokenizer, and stops clarify/no-route outcomes. Preflight, plan,
 source execution, correction, templates, refinement, feedback, and learning
 remain unimplemented; no phase acceptance criterion is claimed by this slice.
+The bounded verification record is [phase 17/18 foundation evidence](../reviews/phase-17-18-foundation.md).
 
 ## Authority and design
 
