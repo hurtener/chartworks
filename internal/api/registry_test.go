@@ -216,3 +216,73 @@ func TestRegistryRoutingAndOpenAPIUseSameDetachedDefinitions(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestSchemaPreservesNullablePointersCountsAndExactScalarCells(t *testing.T) {
+	type evidence struct {
+		Cells    []json.RawMessage `json:"cells"`
+		Counts   map[string]int    `json:"counts"`
+		Estimate *float64          `json:"estimate"`
+		Finished *time.Time        `json:"finished"`
+		Nested   *requestDTO       `json:"nested,omitempty"`
+	}
+	schema, err := SchemaFor("evidence", reflect.TypeFor[evidence](), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wire := range []string{
+		`{"cells":["9007199254740993.125",true,null,1.25],"counts":{"numeric":2},"estimate":null,"finished":null}`,
+		`{"cells":null,"counts":null,"estimate":1.5,"finished":"2026-09-07T12:00:00Z","nested":{"name":"x","values":null}}`,
+	} {
+		if err := schema.Validate([]byte(wire), 65536); err != nil {
+			t.Fatal("valid nullable evidence rejected", err)
+		}
+	}
+	for _, wire := range []string{
+		`{"cells":[{"arbitrary":"object"}],"counts":{},"estimate":null,"finished":null}`,
+		`{"cells":[[]],"counts":{},"estimate":null,"finished":null}`,
+		`{"cells":[],"counts":{"numeric":"two"},"estimate":null,"finished":null}`,
+	} {
+		if schema.Validate([]byte(wire), 65536) == nil {
+			t.Fatal("unqualified evidence admitted", wire)
+		}
+	}
+	if _, err := SchemaFor("input", reflect.TypeFor[evidence](), false); err == nil {
+		t.Fatal("response-only types admitted in request")
+	}
+	if _, err := SchemaFor("bad", reflect.TypeFor[requestDTO](), true, OptionalJSONFields); err == nil {
+		t.Fatal("request decoder option applied to response")
+	}
+	if _, err := SchemaFor("bad", reflect.TypeFor[requestDTO](), false, SchemaOption(99)); err == nil {
+		t.Fatal("unknown schema option")
+	}
+	if _, err := SchemaFor("bad", reflect.TypeFor[requestDTO](), false, OptionalJSONFields, OptionalJSONFields); err == nil {
+		t.Fatal("duplicate schema options")
+	}
+}
+
+func TestBinaryRegistrationUsesItsActualContentTypeAndCap(t *testing.T) {
+	d := definition(t)
+	d.Method = "PUT"
+	d.RequestContentType = "application/octet-stream"
+	d.MaxBodyBytes = 100 << 20
+	binary, err := gateway.NewSchema("binary", []byte(`{"type":"string","format":"binary"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Request = binary
+	r, err := New([]Definition{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := r.OpenAPI("Upload", "1")
+	if err != nil || !strings.Contains(string(wire), `"application/octet-stream"`) {
+		t.Fatal("binary body metadata lost", err)
+	}
+	for _, edit := range []func(*Definition){func(d *Definition) { d.RequestContentType = "text/plain" }, func(d *Definition) { d.MaxBodyBytes++ }, func(d *Definition) { d.Method = "GET"; d.Request = nil; d.MaxBodyBytes = 0 }} {
+		bad := d
+		edit(&bad)
+		if _, err := New([]Definition{bad}); err == nil {
+			t.Fatal("invalid binary registration accepted")
+		}
+	}
+}

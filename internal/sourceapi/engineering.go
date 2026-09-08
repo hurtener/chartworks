@@ -8,6 +8,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
@@ -17,31 +18,11 @@ import (
 // EngineeringRegistry is the executable operation inventory. Retained reads and
 // cancellation remain available when new upload/profile work is disabled.
 func EngineeringRegistry(uploads, profiles bool) []Operation {
-	out := []Operation{
-		{Method: "GET", Path: "/v1/uploads/{id}", Action: "sources.read", Effect: "private_metadata_read"},
-		{Method: "GET", Path: "/v1/profiles/{id}", Action: "engineering.read", Effect: "private_metadata_read"},
-		{Method: "GET", Path: "/v1/profiles/{id}/evidence", Action: "engineering.read", Effect: "private_evidence_read"},
-		{Method: "POST", Path: "/v1/profile-history", Action: "engineering.read", Effect: "private_metadata_read"},
-		{Method: "POST", Path: "/v1/profile-dependency-health", Action: "engineering.read", Effect: "private_metadata_read"},
-		{Method: "GET", Path: "/v1/engineering-operations/{id}", Action: "jobs.read", Effect: "private_metadata_read"},
-		{Method: "POST", Path: "/v1/engineering-operations/{id}/cancel", Action: "jobs.cancel", Effect: "durable_cancellation_intent"},
+	r, err := EngineeringAPIRegistry(uploads, profiles, config.DefaultUploads().MaxBytes)
+	if err != nil {
+		return nil
 	}
-	if uploads {
-		out = append(out,
-			Operation{Method: "POST", Path: "/v1/uploads", Action: "sources.upload", Effect: "upload_reservation"},
-			Operation{Method: "PUT", Path: "/v1/uploads/{id}/content", Action: "sources.upload", Effect: "workspace_staging_write"},
-			Operation{Method: "POST", Path: "/v1/uploads/{id}/load", Action: "sources.upload", Effect: "managed_source_activation"},
-			Operation{Method: "POST", Path: "/v1/uploads/{id}/erase", Action: "sources.erase", Effect: "owned_workspace_erasure"},
-			Operation{Method: "POST", Path: "/v1/upload-sweeps", Action: "sources.erase", Effect: "expired_staging_erasure"},
-		)
-	}
-	if profiles {
-		out = append(out,
-			Operation{Method: "POST", Path: "/v1/profiles", Action: "engineering.profile", Effect: "bounded_source_profile_and_optional_model"},
-			Operation{Method: "POST", Path: "/v1/profiles/{id}/dependencies", Action: "engineering.profile", Effect: "versioned_dependency_registration"},
-		)
-	}
-	return out
+	return r.Operations()
 }
 
 // UploadAction preserves an explicit operation key and resume decision. A failed
@@ -75,21 +56,17 @@ func EngineeringHandler(verifier *auth.Verifier, service *engineering.Service, n
 	if service == nil {
 		return next
 	}
-	registry := EngineeringRegistry(service.UploadsEnabled(), service.ProfilingEnabled())
+	registry, registrationErr := EngineeringAPIRegistry(service.UploadsEnabled(), service.ProfilingEnabled(), service.UploadByteLimit())
+	if registrationErr != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { failure(w, registrationErr) })
+	}
 	protected := verifier.Middleware(auth.HTTP, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		e, err := identity.FromContext(r.Context())
 		if err != nil {
 			failure(w, access.ErrUnauthenticated)
 			return
 		}
-		var selected Operation
-		id := ""
-		for _, op := range registry {
-			if candidate, ok := match(op.Path, r.URL.Path); ok && op.Method == r.Method {
-				selected, id = op, candidate
-				break
-			}
-		}
+		selected, id, _ := registry.Match(r.Method, r.URL.Path)
 		if selected.Path == "" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -130,9 +107,7 @@ func EngineeringHandler(verifier *auth.Verifier, service *engineering.Service, n
 				}
 			}
 		case "/v1/upload-sweeps":
-			var input struct {
-				Limit int `json:"limit"`
-			}
+			var input uploadSweepRequest
 			if err = body(w, r, &input); err == nil {
 				out, err = service.SweepUploads(r.Context(), e, input.Limit)
 			}
@@ -155,9 +130,7 @@ func EngineeringHandler(verifier *auth.Verifier, service *engineering.Service, n
 			if err = body(w, r, &input); err == nil {
 				err = service.RegisterDependency(r.Context(), e, id, input)
 				if err == nil {
-					out = struct {
-						Registered bool `json:"registered"`
-					}{true}
+					out = dependencyRegistered{true}
 				}
 			}
 		case "/v1/profile-dependency-health":
@@ -180,14 +153,12 @@ func EngineeringHandler(verifier *auth.Verifier, service *engineering.Service, n
 		_ = json.NewEncoder(w).Encode(out)
 	}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, op := range registry {
-			if _, ok := match(op.Path, r.URL.Path); ok {
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Cache-Control", "no-store")
-				w.Header().Set("X-Content-Type-Options", "nosniff")
-				protected.ServeHTTP(w, r)
-				return
-			}
+		if _, _, known := registry.Match(r.Method, r.URL.Path); known {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			protected.ServeHTTP(w, r)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})

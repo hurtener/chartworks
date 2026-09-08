@@ -27,6 +27,11 @@ import (
 func TestEngineeringRegisteredSurfaces(t *testing.T) {
 	f := newEngineeringFixture(t, nil, nil)
 	handler := sourceapi.EngineeringHandler(f.token.verifier, f.service, http.NotFoundHandler())
+	shared, registrationErr := sourceapi.EngineeringAPIRegistry(true, true, f.service.UploadByteLimit())
+	if registrationErr != nil {
+		t.Fatal(registrationErr)
+	}
+	handler = assertRegisteredWireSchemas(t, shared, handler)
 	registry := sourceapi.EngineeringRegistry(true, true)
 	if len(registry) != 14 {
 		t.Fatal("unexpected implemented engineering operation inventory", registry)
@@ -94,6 +99,11 @@ func TestEngineeringRegisteredSurfaces(t *testing.T) {
 func TestEngineeringRejectsAmbiguousBodiesBeforeSourceAccess(t *testing.T) {
 	f := newEngineeringFixture(t, nil, nil)
 	handler := sourceapi.EngineeringHandler(f.token.verifier, f.service, http.NotFoundHandler())
+	shared, registrationErr := sourceapi.EngineeringAPIRegistry(true, true, f.service.UploadByteLimit())
+	if registrationErr != nil {
+		t.Fatal(registrationErr)
+	}
+	handler = assertRegisteredWireSchemas(t, shared, handler)
 	token := f.token.sign(t, f.token.claims(f.e.Tenant(), f.e.User(), f.e.Scopes()), nil)
 	for _, body := range []string{"null", `{}`, `[]`, `{"id":"one","id":"two"}`, `{"filename":"../../PRIVATE_CANARY"}`, `{} {}`, strings.Repeat(" ", 65537)} {
 		request := httptest.NewRequest(http.MethodPost, "/v1/uploads", strings.NewReader(body))
@@ -172,7 +182,11 @@ func TestEngineeringHTTPCheckpointCancellationAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer owner.Close()
-	server := httptest.NewServer(sourceapi.EngineeringHandler(f.token.verifier, owner, http.NotFoundHandler()))
+	registry, registrationErr := sourceapi.EngineeringAPIRegistry(true, true, owner.UploadByteLimit())
+	if registrationErr != nil {
+		t.Fatal(registrationErr)
+	}
+	server := httptest.NewServer(assertRegisteredWireSchemas(t, registry, sourceapi.EngineeringHandler(f.token.verifier, owner, http.NotFoundHandler())))
 	defer func() { owner.Close(); server.Close() }()
 	token := f.token.sign(t, f.token.claims(f.e.Tenant(), f.e.User(), f.e.Scopes()), nil)
 	client, err := sdk.New(server.URL, &http.Client{Timeout: 10 * time.Second}, func(context.Context) (string, error) { return token, nil })

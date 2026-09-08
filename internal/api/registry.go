@@ -38,10 +38,12 @@ type Definition struct {
 	Summary        string
 	ResourceLoader string
 	Audit          string
-	MaxBodyBytes   int
-	Request        *gateway.Schema
-	Response       *gateway.Schema
-	Errors         []ErrorResponse
+	// RequestContentType defaults to JSON; raw uploads use application/octet-stream.
+	RequestContentType string
+	MaxBodyBytes       int
+	Request            *gateway.Schema
+	Response           *gateway.Schema
+	Errors             []ErrorResponse
 }
 
 type Registry struct{ definitions []Definition }
@@ -60,11 +62,17 @@ func New(definitions []Definition) (*Registry, error) {
 		}
 		switch d.Method {
 		case http.MethodGet:
-			if d.Request != nil || d.MaxBodyBytes != 0 {
+			if d.Request != nil || d.MaxBodyBytes != 0 || d.RequestContentType != "" {
 				return nil, ErrRegistration
 			}
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			if d.Request == nil || d.Request.Name() == "" || d.MaxBodyBytes < 1 || d.MaxBodyBytes > 10<<20 {
+			maxBody := 10 << 20
+			if d.RequestContentType == "application/octet-stream" {
+				maxBody = 100 << 20
+			} else if d.RequestContentType != "" && d.RequestContentType != "application/json" {
+				return nil, ErrRegistration
+			}
+			if d.Request == nil || d.Request.Name() == "" || d.MaxBodyBytes < 1 || d.MaxBodyBytes > maxBody {
 				return nil, ErrRegistration
 			}
 		default:
@@ -210,7 +218,11 @@ func (r *Registry) OpenAPI(title, version string) ([]byte, error) {
 			op["parameters"] = []any{map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]+$"}}}
 		}
 		if d.Request != nil {
-			op["requestBody"] = map[string]any{"required": true, "content": content(d.Request.Document())}
+			media := d.RequestContentType
+			if media == "" {
+				media = "application/json"
+			}
+			op["requestBody"] = map[string]any{"required": true, "content": map[string]any{media: map[string]any{"schema": d.Request.Document()}}}
 			op["x-chartworks-max-body-bytes"] = d.MaxBodyBytes
 		}
 		paths[d.Path][strings.ToLower(d.Method)] = op

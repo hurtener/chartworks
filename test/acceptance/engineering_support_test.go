@@ -200,6 +200,11 @@ func (f *engineeringFixture) client(t *testing.T) *sdk.Client {
 	h := sourceapi.Handler(f.token.verifier, f.s, f.validator, http.NotFoundHandler())
 	h = sourceapi.ExecutionHandler(f.token.verifier, f.validator, f.executor, h)
 	h = sourceapi.EngineeringHandler(f.token.verifier, f.service, h)
+	registry, registrationErr := sourceapi.EngineeringAPIRegistry(f.service.UploadsEnabled(), f.service.ProfilingEnabled(), f.service.UploadByteLimit())
+	if registrationErr != nil {
+		t.Fatal(registrationErr)
+	}
+	h = assertRegisteredWireSchemas(t, registry, h)
 	server := httptest.NewServer(h)
 	t.Cleanup(server.Close)
 	client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) {

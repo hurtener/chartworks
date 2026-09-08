@@ -49,6 +49,11 @@ func TestPipelineSDKLifecycle(t *testing.T) {
 	token := f.token.sign(t, f.token.claims(f.e.Tenant(), f.e.User(), f.e.Scopes()), nil)
 	var tokenCalls atomic.Int64
 	handler := sourceapi.PipelineHandler(f.token.verifier, f.pipelines, http.NotFoundHandler())
+	registry, registrationErr := sourceapi.PipelineAPIRegistry(true)
+	if registrationErr != nil {
+		t.Fatal(registrationErr)
+	}
+	handler = assertRegisteredWireSchemas(t, registry, handler)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	client, err := cw.New(server.URL, server.Client(), func(context.Context) (string, error) {

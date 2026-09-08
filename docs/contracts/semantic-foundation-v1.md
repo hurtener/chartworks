@@ -91,17 +91,17 @@ history, actor audit evidence, or lifecycle transitions.
 
 The first shared consumer now exists: `internal/api` owns immutable registration
 metadata, DTO-derived wire schemas, exact source-style route matching and OpenAPI
-3.1.1 generation. `internal/sourceapi.SourceRegistry` supplies the seven existing
-source registration/catalog/validation routes to the actual router, legacy manifest
-and generated document. Existing Pengui verification, domain resource checks,
-transport limits, error mapping and audit behavior are preserved. Resource-loader
+3.1.1 generation. The source API registries supply all 33 existing catalog/validation,
+execution, engineering and pipeline operations to their actual routers, legacy
+manifests and generated documents. Existing Pengui verification, domain resource
+checks, transport limits, error mapping and audit behavior are preserved. Resource-loader
 and audit labels describe the existing service paths, not new enforcement callbacks.
 
 The [source registry evidence](../reviews/phase-21-source-registry.md) records actual
 HTTP/SDK/PostgreSQL schema checks. This replaces that consumer's independent route
-inventory; it does not introduce another parallel business API. Other source API
-families (execution, engineering and pipeline), foundation health/capabilities,
-security and work adapters still require migration. `/capabilities` continues to
+inventory; it does not introduce another parallel business API. Foundation
+health/capabilities, security and work adapters still require migration.
+`/capabilities` continues to
 report `business_api: false`; no topic operation is registered. Public document
 delivery, cumulative generated SDK/isolation/audit checks and all six named phase
 21 criteria remain incomplete.

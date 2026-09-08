@@ -19,20 +19,11 @@ import (
 // PipelineRegistry is the executable action/effect inventory. Disabling new
 // pipeline work preserves immutable definition reads and retained run controls.
 func PipelineRegistry(enabled bool) []Operation {
-	out := []Operation{
-		{Method: "POST", Path: "/v1/pipeline-versions/read", Action: "engineering.pipeline.read", Effect: "private_definition_read"},
-		{Method: "GET", Path: "/v1/pipeline-runs/{id}", Action: "jobs.read", Effect: "private_run_metadata_read"},
-		{Method: "POST", Path: "/v1/pipeline-runs/{id}/cancel", Action: "jobs.cancel", Effect: "durable_cancellation_intent"},
+	r, err := PipelineAPIRegistry(enabled)
+	if err != nil {
+		return nil
 	}
-	if enabled {
-		out = append(out,
-			Operation{Method: "POST", Path: "/v1/pipeline-proposals", Action: "engineering.pipeline.write", Effect: "model_assisted_pipeline_draft"},
-			Operation{Method: "POST", Path: "/v1/pipelines", Action: "engineering.pipeline.write", Effect: "versioned_pipeline_draft"},
-			Operation{Method: "POST", Path: "/v1/pipelines/{id}/publish", Action: "engineering.pipeline.publish", Effect: "immutable_pipeline_publication"},
-			Operation{Method: "POST", Path: "/v1/pipelines/{id}/runs", Action: "engineering.pipeline.run", Effect: "managed_warehouse_write"},
-		)
-	}
-	return out
+	return r.Operations()
 }
 
 type pipelineDraftRequest struct {
@@ -59,21 +50,17 @@ func PipelineHandler(verifier *auth.Verifier, service *engineering.PipelineServi
 	if service == nil {
 		return next
 	}
-	registry := PipelineRegistry(service.Enabled())
+	registry, registrationErr := PipelineAPIRegistry(service.Enabled())
+	if registrationErr != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { failure(w, registrationErr) })
+	}
 	protected := verifier.Middleware(auth.HTTP, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		e, err := identity.FromContext(r.Context())
 		if err != nil {
 			failure(w, access.ErrUnauthenticated)
 			return
 		}
-		var selected Operation
-		id := ""
-		for _, op := range registry {
-			if candidate, ok := match(op.Path, r.URL.Path); ok && op.Method == r.Method {
-				selected, id = op, candidate
-				break
-			}
-		}
+		selected, id, _ := registry.Match(r.Method, r.URL.Path)
 		if selected.Path == "" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -99,9 +86,7 @@ func PipelineHandler(verifier *auth.Verifier, service *engineering.PipelineServi
 				out, err = service.Draft(r.Context(), e, input.Definition, input.ExpectedRevision)
 			}
 		case "/v1/pipelines/{id}/publish":
-			var input struct {
-				Version int64 `json:"version"`
-			}
+			var input pipelinePublishRequest
 			if err = pipelineBody(w, r, &input); err == nil {
 				out, err = service.Publish(r.Context(), e, id, input.Version)
 			}
@@ -134,14 +119,12 @@ func PipelineHandler(verifier *auth.Verifier, service *engineering.PipelineServi
 		_ = json.NewEncoder(w).Encode(out)
 	}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, op := range registry {
-			if _, ok := match(op.Path, r.URL.Path); ok {
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Cache-Control", "no-store")
-				w.Header().Set("X-Content-Type-Options", "nosniff")
-				protected.ServeHTTP(w, r)
-				return
-			}
+		if _, _, known := registry.Match(r.Method, r.URL.Path); known {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			protected.ServeHTTP(w, r)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -154,11 +137,11 @@ func pipelineBody(w http.ResponseWriter, r *http.Request, out any) error {
 	if err != nil || media != "application/json" || len(parameters) != 0 {
 		return store.ErrInvalid
 	}
-	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, pipelineRequestMaxBytes))
 	if err != nil || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return store.ErrInvalid
 	}
-	if _, err = gateway.DecodeJSON(data, 1<<20); err != nil {
+	if _, err = gateway.DecodeJSON(data, pipelineRequestMaxBytes); err != nil {
 		return store.ErrInvalid
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))

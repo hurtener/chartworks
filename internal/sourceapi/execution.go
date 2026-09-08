@@ -21,13 +21,11 @@ type ExecutionRequest struct {
 
 // ExecutionRegistry is the actual route/action/effect inventory for the read core.
 func ExecutionRegistry() []Operation {
-	return []Operation{
-		{Method: "GET", Path: "/v1/read-operations/{id}", Action: "sources.query", Effect: "attempt_metadata_read"},
-		{Method: "POST", Path: "/v1/sources/{id}/execute", Action: "sources.query", Effect: "bounded_warehouse_read"},
-		{Method: "GET", Path: "/v1/read-executions/{id}", Action: "sources.query", Effect: "attempt_metadata_read"},
-		{Method: "POST", Path: "/v1/read-executions/{id}/cancel", Action: "sources.query", Effect: "cancel_intent_and_backend_signal"},
-		{Method: "POST", Path: "/v1/read-executions/{id}/reconcile", Action: "sources.query", Effect: "remote_observation_and_attempt_reconciliation"},
+	r, err := ExecutionAPIRegistry()
+	if err != nil {
+		return nil
 	}
+	return r.Operations()
 }
 
 // ExecutionHandler adds thin execution/attempt operations to the existing surface.
@@ -39,22 +37,17 @@ func ExecutionHandler(verifier *auth.Verifier, validator *readexec.Validator, ex
 	if validator == nil || executor == nil {
 		return next
 	}
-	registry := ExecutionRegistry()
+	registry, registrationErr := ExecutionAPIRegistry()
+	if registrationErr != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { failure(w, registrationErr) })
+	}
 	protected := verifier.Middleware(auth.HTTP, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		e, err := identity.FromContext(r.Context())
 		if err != nil {
 			failure(w, access.ErrUnauthenticated)
 			return
 		}
-		var op Operation
-		id := ""
-		for _, candidate := range registry {
-			if value, ok := match(candidate.Path, r.URL.Path); ok && candidate.Method == r.Method {
-				op = candidate
-				id = value
-				break
-			}
-		}
+		op, id, _ := registry.Match(r.Method, r.URL.Path)
 		if op.Path == "" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -98,13 +91,7 @@ func ExecutionHandler(verifier *auth.Verifier, validator *readexec.Validator, ex
 		_ = json.NewEncoder(w).Encode(out)
 	}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		found := false
-		for _, op := range registry {
-			if _, ok := match(op.Path, r.URL.Path); ok {
-				found = true
-				break
-			}
-		}
+		_, _, found := registry.Match(r.Method, r.URL.Path)
 		if !found {
 			next.ServeHTTP(w, r)
 			return

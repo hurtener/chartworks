@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/hurtener/chartworks/internal/access"
-	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
@@ -111,7 +110,6 @@ func Handler(verifier *auth.Verifier, service *sources.Service, validator *reade
 		protected.ServeHTTP(w, r)
 	})
 }
-func match(pattern, path string) (string, bool) { return api.MatchPath(pattern, path) }
 func body(w http.ResponseWriter, r *http.Request, out any) error {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {

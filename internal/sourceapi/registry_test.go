@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/api"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -95,6 +97,115 @@ func TestSourceRegistryDescribesExistingErrorCodes(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("unregistered actual error %d/%s", w.Code, payload.Error)
+		}
+	}
+}
+
+func TestFamilyRegistriesGenerateExistingManifests(t *testing.T) {
+	for _, family := range []struct {
+		name, manifest string
+		build          func() (*api.Registry, error)
+		projection     func() []Operation
+		count          int
+	}{
+		{"execution", "chartworks-read-operations.json", ExecutionAPIRegistry, ExecutionRegistry, 5},
+		{"engineering", "chartworks-engineering-operations.json", func() (*api.Registry, error) { return EngineeringAPIRegistry(true, true, 100<<20) }, func() []Operation { return EngineeringRegistry(true, true) }, 14},
+		{"pipeline", "chartworks-pipeline-operations.json", func() (*api.Registry, error) { return PipelineAPIRegistry(true) }, func() []Operation { return PipelineRegistry(true) }, 7},
+	} {
+		t.Run(family.name, func(t *testing.T) {
+			registry, err := family.build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile("../../docs/contracts/" + family.manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want []Operation
+			if json.Unmarshal(raw, &want) != nil || !reflect.DeepEqual(want, registry.Operations()) || !reflect.DeepEqual(want, family.projection()) {
+				t.Fatal("legacy/registered manifest drift")
+			}
+			doc, err := registry.OpenAPI("Source families", "1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var parsed struct {
+				Paths map[string]map[string]struct {
+					ID      string `json:"operationId"`
+					Action  string `json:"x-chartworks-action"`
+					Request struct {
+						Content map[string]json.RawMessage `json:"content"`
+					} `json:"requestBody"`
+				} `json:"paths"`
+			}
+			if json.Unmarshal(doc, &parsed) != nil {
+				t.Fatal("invalid OpenAPI")
+			}
+			count := 0
+			for _, path := range parsed.Paths {
+				count += len(path)
+			}
+			if count != family.count {
+				t.Fatal("OpenAPI operation drift", count)
+			}
+			for _, d := range registry.Definitions() {
+				generated := parsed.Paths[d.Path][strings.ToLower(d.Method)]
+				if generated.ID != d.ID || generated.Action != d.Action {
+					t.Fatal("OpenAPI metadata drift", d.ID)
+				}
+				if d.RequestContentType == "application/octet-stream" {
+					if d.MaxBodyBytes != 100<<20 || len(generated.Request.Content["application/octet-stream"]) == 0 || len(generated.Request.Content["application/json"]) != 0 {
+						t.Fatal("binary upload described as JSON or wrong cap")
+					}
+				}
+			}
+		})
+	}
+	for _, setting := range []struct {
+		uploads, profiles bool
+		count             int
+	}{{false, false, 7}, {true, false, 12}, {false, true, 9}, {true, true, 14}} {
+		r, err := EngineeringAPIRegistry(setting.uploads, setting.profiles, 4096)
+		if err != nil || len(r.Operations()) != setting.count {
+			t.Fatal("engineering capability registration", err)
+		}
+		for _, d := range r.Definitions() {
+			if d.ID == "stageUpload" && d.MaxBodyBytes != 4096 {
+				t.Fatal("configured upload cap lost")
+			}
+		}
+	}
+	for _, limit := range []int64{0, -1, 100<<20 + 1} {
+		if _, err := EngineeringAPIRegistry(true, false, limit); err == nil {
+			t.Fatal("invalid upload cap accepted")
+		}
+	}
+	off, err := PipelineAPIRegistry(false)
+	if err != nil || len(off.Operations()) != 3 {
+		t.Fatal("retained pipeline registry", err)
+	}
+}
+
+func TestPipelineSchemaPreservesExistingOptionalDecoderFields(t *testing.T) {
+	registry, err := PipelineAPIRegistry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _, _ := registry.Match("POST", "/v1/pipelines")
+	for _, body := range []string{`{}`, `{"definition":{"steps":null},"expected_revision":null}`, `{"definition":{"steps":[{"depends_on":null,"checks":null}]}}`} {
+		var input pipelineDraftRequest
+		request := httptest.NewRequest("POST", "/v1/pipelines", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		if err := pipelineBody(httptest.NewRecorder(), request, &input); err != nil {
+			t.Fatal("existing decoder rejected fixture", err)
+		}
+		if err := d.Request.Validate([]byte(body), d.MaxBodyBytes); err != nil {
+			t.Fatal("schema narrowed existing decoder", err)
+		}
+	}
+	for _, body := range []string{`null`, `{"tenant":"foreign"}`, `{"definition":{"steps":[{"secret":"x"}]}}`} {
+		if d.Request.Validate([]byte(body), d.MaxBodyBytes) == nil {
+			t.Fatal("schema lost closed shape", body)
 		}
 	}
 }

@@ -28,7 +28,7 @@ func TestSourceAPIAndSDK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h = assertSourceWireSchemas(t, registry, h)
+	h = assertRegisteredWireSchemas(t, registry, h)
 	server := httptest.NewServer(h)
 	defer server.Close()
 	client, err := cw.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
@@ -197,24 +197,34 @@ func TestSourceAPIAndSDK(t *testing.T) {
 
 // The existing real PostgreSQL/SDK flow validates successful request/response
 // bytes against the same registered schemas consumed by OpenAPI generation.
-func assertSourceWireSchemas(t *testing.T, registry *api.Registry, next http.Handler) http.Handler {
+func assertRegisteredWireSchemas(t *testing.T, registry *api.Registry, next http.Handler) http.Handler {
 	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		definition, _, _ := registry.Match(r.Method, r.URL.Path)
-		var request []byte
+		var observed *observedRequestBody
 		if r.Body != nil {
-			request, _ = io.ReadAll(r.Body)
-			r.Body = io.NopCloser(bytes.NewReader(request))
+			observed = &observedRequestBody{ReadCloser: r.Body}
+			r.Body = observed
 		}
 		response := httptest.NewRecorder()
 		next.ServeHTTP(response, r)
 		if response.Code == http.StatusOK && definition.ID != "" {
-			if definition.Request != nil {
+			var request []byte
+			if observed != nil {
+				request = observed.data.Bytes()
+			}
+			if definition.RequestContentType == "application/octet-stream" {
+				if len(request) > definition.MaxBodyBytes || r.Header.Get("Content-Type") != definition.RequestContentType {
+					t.Errorf("accepted binary upload violates registered media/limit")
+				}
+			} else if definition.Request != nil {
 				if err := definition.Request.Validate(request, definition.MaxBodyBytes); err != nil {
 					t.Errorf("accepted %s request violates its registered wire schema: %v", definition.ID, err)
 				}
 			}
-			if err := definition.Response.Validate(response.Body.Bytes(), 1<<20); err != nil {
+			// The common read SDK permits 16 MiB of values plus bounded receipts.
+			// Individual SDK calls continue enforcing their own response limits.
+			if err := definition.Response.Validate(response.Body.Bytes(), (16<<20)+(128<<10)); err != nil {
 				t.Errorf("actual %s response violates its registered wire schema: %v", definition.ID, err)
 			}
 		}
@@ -238,4 +248,16 @@ func assertSourceWireSchemas(t *testing.T, registry *api.Registry, next http.Han
 		w.WriteHeader(response.Code)
 		_, _ = w.Write(response.Body.Bytes())
 	})
+}
+
+// Observe only bytes the real handler consumes, preserving deny-before-read tests.
+type observedRequestBody struct {
+	io.ReadCloser
+	data bytes.Buffer
+}
+
+func (b *observedRequestBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	_, _ = b.data.Write(p[:n])
+	return n, err
 }

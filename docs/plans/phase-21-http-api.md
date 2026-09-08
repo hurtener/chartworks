@@ -23,18 +23,18 @@ No all-at-once late API phase and no local IAM/admin-issuance or embed-auth rout
 ## Bounded implementation, 2026-09-07
 
 `internal/api` now owns immutable registration metadata, DTO-derived closed wire
-schemas, route matching and OpenAPI 3.1.1 generation. Its first real consumer is the
-seven existing source registration/catalog/validation routes in `internal/sourceapi`.
-The router, legacy manifest and generated document use the same definitions;
+schemas, route matching and OpenAPI 3.1.1 generation. Its real consumers are all 33
+existing source catalog, validation, execution, engineering and pipeline routes in
+`internal/sourceapi`. The router, legacy manifest and generated document use the same definitions;
 existing Pengui verification, resource loading, service enforcement, body limits,
 error mapping and audit behavior remain in their existing handlers/services.
 Resource-loader and audit labels describe those existing paths; they do not replace
 execution callbacks or prove exhaustive isolation/audit coverage.
 
 The [bounded evidence note](../reviews/phase-21-source-registry.md) records focused
-HTTP/SDK/PostgreSQL and schema checks. Other source API families, foundation,
-security and work adapters still need migration, followed by cumulative generated
-coverage and public document delivery. None of AC01–AC06 is claimed complete;
+HTTP/SDK/PostgreSQL and schema checks. Foundation, security and work adapters still
+need migration, followed by cumulative generated coverage and public document
+delivery. None of AC01–AC06 is claimed complete;
 `TestPhase21/AC01`–`AC06` remain required. No placeholder acceptance parent was added.
 
 ## Non-goals

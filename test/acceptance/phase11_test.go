@@ -262,6 +262,14 @@ func TestPhase11(t *testing.T) {
 		if err != nil || receipt.Manifest.Receipt.Context != source.ContextID || receipt.Status != "succeeded" {
 			t.Fatal("ordinary retained execution receipt", err, receipt)
 		}
+		erased, err := client.EraseUpload(context.Background(), spec.ID, "sdk-erase", false)
+		if err != nil || erased.Upload.State != "erased" {
+			t.Fatal("SDK erasure receipt", err, erased)
+		}
+		swept, err := client.SweepUploads(context.Background(), 2)
+		if err != nil || len(swept) != 0 {
+			t.Fatal("SDK empty staging sweep", err, swept)
+		}
 	})
 	t.Run("AC06", func(t *testing.T) {
 		f := newEngineeringFixture(t, nil, nil)
