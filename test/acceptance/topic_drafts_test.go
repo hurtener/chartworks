@@ -216,6 +216,19 @@ func TestTopicDraftOnboardingEntityMutationAndRebind(t *testing.T) {
 	if err != nil || current.Metadata.Revision != 2 {
 		t.Fatal("failed mutation moved draft head", current.Metadata, err)
 	}
+	model, err := semantics.Compile(current.Pack)
+	if err != nil {
+		t.Fatal("compile enhanced rebind candidate", err)
+	}
+	enhanced, err := semantics.ApplyEnhancements(model, "v3", []semantics.Enhancement{{Dataset: dataset.ID, Column: "id", Kind: semantics.EnhancementUnresolved, Reason: "Identifier meaning requires review"}})
+	if err != nil {
+		t.Fatal("create unresolved enhancement", err)
+	}
+	enhancedDraft, err := c.SaveTopicDraft(ctx, sdk.SaveTopicDraftRequest{Expected: 2, Pack: enhanced.Pack(), Change: "Preserve unresolved authoring gap"})
+	if err != nil || enhancedDraft.Metadata.Revision != 3 || len(enhancedDraft.Pack.Unresolved) != 1 {
+		t.Fatal("save unresolved enhancement", enhancedDraft, err)
+	}
+	unresolved := enhancedDraft.Pack.Unresolved[0]
 
 	targetSource := f.create(t, "rebind-source")
 	target := f.profile(t, f.profileSpec(t, targetSource, "rebind-profile", []string{"id", "amount"}, "")).Profile.Profile
@@ -223,15 +236,15 @@ func TestTopicDraftOnboardingEntityMutationAndRebind(t *testing.T) {
 	for _, column := range dataset.Columns {
 		mappings = append(mappings, sdk.TopicColumnRebinding{Column: column.ID, SourceName: column.SourceName})
 	}
-	if _, err = c.RebindTopicDataset(ctx, onboarded.Pack.Topic, sdk.RebindTopicDatasetRequest{Expected: 2, Version: "v3-incomplete", Dataset: dataset.ID, Profile: target.Version, Columns: mappings[:len(mappings)-1], Change: "Incomplete move"}); err == nil {
+	if _, err = c.RebindTopicDataset(ctx, onboarded.Pack.Topic, sdk.RebindTopicDatasetRequest{Expected: 3, Version: "v4-incomplete", Dataset: dataset.ID, Profile: target.Version, Columns: mappings[:len(mappings)-1], Change: "Incomplete move"}); err == nil {
 		t.Fatal("incomplete stable column mapping accepted")
 	}
 	rebind := sdk.RebindTopicDatasetRequest{
-		Expected: 2, Version: "v3", Dataset: dataset.ID, Profile: target.Version, Change: "Move to reviewed source profile",
+		Expected: 3, Version: "v4", Dataset: dataset.ID, Profile: target.Version, Change: "Move to reviewed source profile",
 		Columns: mappings,
 	}
 	rebound, err := c.RebindTopicDataset(ctx, onboarded.Pack.Topic, rebind)
-	if err != nil || rebound.Metadata.Revision != 3 || len(rebound.Pack.Datasets) != 1 {
+	if err != nil || rebound.Metadata.Revision != 4 || len(rebound.Pack.Datasets) != 1 {
 		_, directErr := s.RebindDataset(ctx, e, onboarded.Pack.Topic, rebind)
 		t.Fatal("reviewed dataset rebind", rebound, err, directErr)
 	}
@@ -241,6 +254,9 @@ func TestTopicDraftOnboardingEntityMutationAndRebind(t *testing.T) {
 	}
 	if rebound.Pack.Measures[0].Field.Dataset != target.Dataset || rebound.Pack.Measures[0].Field.ID != "amount" {
 		t.Fatal("stable semantic reference was not rewritten", rebound.Pack.Measures[0].Field)
+	}
+	if len(rebound.Pack.Unresolved) != 1 || rebound.Pack.Unresolved[0].ID != unresolved.ID || rebound.Pack.Unresolved[0].Dataset != target.Dataset || rebound.Pack.Unresolved[0].Column != unresolved.Column || rebound.Pack.Unresolved[0].Reason != unresolved.Reason {
+		t.Fatal("unresolved semantic reference was not rewritten", rebound.Pack.Unresolved)
 	}
 	if !reflect.DeepEqual(moved.Columns, dataset.Columns) {
 		t.Fatal("stable semantic columns changed during source move", moved.Columns)

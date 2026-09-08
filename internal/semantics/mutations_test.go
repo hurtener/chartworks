@@ -1,6 +1,9 @@
 package semantics
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestEntityMutationAndDatasetReplacementRewriteAllReferences(t *testing.T) {
 	model, _ := testRules(t)
@@ -65,5 +68,33 @@ func TestEntityMutationAndDatasetReplacementRewriteAllReferences(t *testing.T) {
 	columns[0].ID = "unknown"
 	if _, err = ReplaceDataset(model, "v3", old.ID, DatasetReplacement{Dataset: "orders_v3", Source: replacement.Source, Columns: columns}); err == nil {
 		t.Fatal("incomplete semantic column mapping accepted")
+	}
+}
+
+func TestDatasetReplacementRewritesEnhancedUnresolvedReference(t *testing.T) {
+	model, _ := testRules(t)
+	old := model.Pack().Datasets[0]
+	enhanced, err := ApplyEnhancements(model, "v2", []Enhancement{{
+		Dataset: old.ID,
+		Column:  old.Columns[0].ID,
+		Kind:    EnhancementUnresolved,
+		Reason:  "Business meaning requires review",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unresolved := enhanced.Pack().Unresolved[0]
+	columns := append([]Column(nil), old.Columns...)
+	source := old.Source
+	source.Dataset = "orders_v2"
+	source.ProfileVersion = "profile_v2"
+	source.ProfileDigest = strings.Repeat("c", 64)
+	rebound, err := ReplaceDataset(enhanced, "v3", old.ID, DatasetReplacement{Dataset: source.Dataset, Source: source, Columns: columns})
+	if err != nil {
+		t.Fatal("enhanced draft rebind", err)
+	}
+	got := rebound.Pack().Unresolved
+	if len(got) != 1 || got[0].ID != unresolved.ID || got[0].Dataset != source.Dataset || got[0].Column != unresolved.Column || got[0].Reason != unresolved.Reason {
+		t.Fatalf("unresolved mapping changed during rebind: %#v", got)
 	}
 }

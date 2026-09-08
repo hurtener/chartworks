@@ -172,5 +172,10 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 			rewrite(&pack.CanonicalEntities[i].Keys[j])
 		}
 	}
+	for i := range pack.Unresolved {
+		if pack.Unresolved[i].Dataset == oldDataset {
+			pack.Unresolved[i].Dataset = replacement.Dataset
+		}
+	}
 	return Compile(pack)
 }
