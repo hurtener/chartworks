@@ -8,9 +8,7 @@ permissions:
 jobs:
   toolkit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    env:
-      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,24 +21,22 @@ jobs:
           go mod download
           go mod verify
           tar -czf /tmp/chartworks-modules.tar.gz -C "$(go env GOMODCACHE)" --exclude='cache/download/*/@v/*.zip' .
+          split -b 200M /tmp/chartworks-modules.tar.gz /tmp/chartworks-modules.part-
       - uses: actions/upload-artifact@v4
         with:
-          name: phase-20-modules
-          path: /tmp/chartworks-modules.tar.gz
+          name: phase-20-modules-a
+          path: /tmp/chartworks-modules.part-aa
           compression-level: 0
           retention-days: 2
-      - name: Build pinned native parser
-        run: bash scripts/build-bruin.sh
-      - name: Archive native link inputs
-        run: |
-          cd /tmp/chartworks-bruin
-          find source/pkg/sqlparser/rustffi/target/release -maxdepth 1 -type f \( -name '*.a' -o -name '*.so' \) -print > /tmp/native-inputs.txt
-          test -s /tmp/native-inputs.txt
-          printf 'bruin\n' >> /tmp/native-inputs.txt
-          tar -czf /tmp/chartworks-native.tar.gz -T /tmp/native-inputs.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: phase-20-native
-          path: /tmp/chartworks-native.tar.gz
+          name: phase-20-modules-b
+          path: /tmp/chartworks-modules.part-ab
+          compression-level: 0
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-20-modules-c
+          path: /tmp/chartworks-modules.part-ac
           compression-level: 0
           retention-days: 2
