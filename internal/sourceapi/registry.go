@@ -25,24 +25,28 @@ type registration struct {
 	request, response          reflect.Type
 }
 
+func operation(method, path, action, effect string) Operation {
+	return Operation{Method: method, Path: path, Action: action, Effect: effect}
+}
+
 // SourceRegistry is the sole inventory for the seven existing source routes.
 // The router, legacy manifest projection, and OpenAPI use these same definitions.
 // Resource loader/audit labels identify existing domain/store behavior; they do
 // not move authorization or transaction boundaries into this metadata package.
 func SourceRegistry(warehouse, validation bool) (*api.Registry, error) {
 	definitions := []registration{
-		{Operation{"GET", "/v1/sources", "sources.read", "metadata_read"}, "listSources", "List authorized retained source registrations", "sources.Service.List", "read_only_no_domain_audit", nil, reflect.TypeFor[[]sources.Source]()},
-		{Operation{"GET", "/v1/sources/{id}", "sources.read", "metadata_read"}, "getSource", "Read a retained source registration", "sources.Service.Get", "read_only_no_domain_audit", nil, reflect.TypeFor[sources.Source]()},
+		{operation("GET", "/v1/sources", "sources.read", "metadata_read"), "listSources", "List authorized retained source registrations", "sources.Service.List", "read_only_no_domain_audit", nil, reflect.TypeFor[[]sources.Source]()},
+		{operation("GET", "/v1/sources/{id}", "sources.read", "metadata_read"), "getSource", "Read a retained source registration", "sources.Service.Get", "read_only_no_domain_audit", nil, reflect.TypeFor[sources.Source]()},
 	}
 	if warehouse {
 		definitions = append(definitions,
-			registration{Operation{"POST", "/v1/sources", "sources.write", "source_registration"}, "createSource", "Register an approved source alias", "sources.Service.Create", "source.created", reflect.TypeFor[sources.CreateRequest](), reflect.TypeFor[sources.Source]()},
-			registration{Operation{"POST", "/v1/sources/{id}/test", "sources.read", "warehouse_catalog_read"}, "testSource", "Probe the current read-only source context", "sources.Service.Test", "read_only_no_domain_audit", reflect.TypeFor[struct{}](), reflect.TypeFor[sources.Status]()},
-			registration{Operation{"GET", "/v1/sources/{id}/schema", "sources.read", "warehouse_catalog_read"}, "discoverSource", "Discover the configured source relations", "sources.Service.Discover", "read_only_no_domain_audit", nil, reflect.TypeFor[sources.Discovery]()},
-			registration{Operation{"POST", "/v1/sources/{id}/rotate", "sources.rotate", "context_rotation"}, "rotateSource", "Rotate a source at its expected revision", "sources.Service.Rotate", "source.rotated", reflect.TypeFor[rotateRequest](), reflect.TypeFor[sources.Source]()},
+			registration{operation("POST", "/v1/sources", "sources.write", "source_registration"), "createSource", "Register an approved source alias", "sources.Service.Create", "source.created", reflect.TypeFor[sources.CreateRequest](), reflect.TypeFor[sources.Source]()},
+			registration{operation("POST", "/v1/sources/{id}/test", "sources.read", "warehouse_catalog_read"), "testSource", "Probe the current read-only source context", "sources.Service.Test", "read_only_no_domain_audit", reflect.TypeFor[struct{}](), reflect.TypeFor[sources.Status]()},
+			registration{operation("GET", "/v1/sources/{id}/schema", "sources.read", "warehouse_catalog_read"), "discoverSource", "Discover the configured source relations", "sources.Service.Discover", "read_only_no_domain_audit", nil, reflect.TypeFor[sources.Discovery]()},
+			registration{operation("POST", "/v1/sources/{id}/rotate", "sources.rotate", "context_rotation"), "rotateSource", "Rotate a source at its expected revision", "sources.Service.Rotate", "source.rotated", reflect.TypeFor[rotateRequest](), reflect.TypeFor[sources.Source]()},
 		)
 		if validation {
-			definitions = append(definitions, registration{Operation{"POST", "/v1/sources/{id}/validate", "sources.query", "bounded_native_planning"}, "validateRead", "Validate a read without executing result work", "exec.Validator.Validate", "read_only_no_domain_audit", reflect.TypeFor[ValidationRequest](), reflect.TypeFor[readexec.Receipt]()})
+			definitions = append(definitions, registration{operation("POST", "/v1/sources/{id}/validate", "sources.query", "bounded_native_planning"), "validateRead", "Validate a read without executing result work", "exec.Validator.Validate", "read_only_no_domain_audit", reflect.TypeFor[ValidationRequest](), reflect.TypeFor[readexec.Receipt]()})
 		}
 	}
 	return compileRegistrations(definitions, sourceErrors(), sourceRequestMaxBytes, false, 0)
@@ -58,7 +62,7 @@ func Registry(warehouse, validation bool) []Operation {
 }
 
 func sourceErrors() []api.ErrorResponse {
-	return []api.ErrorResponse{{400, "invalid_request"}, {401, "unauthenticated"}, {401, "unauthorized"}, {403, "forbidden"}, {404, "not_found"}, {409, "conflict"}, {409, "context_changed"}, {413, "limit_exceeded"}, {422, "sql_unsafe"}, {422, "unsupported"}, {503, "unavailable"}, {504, "cancelled_or_timed_out"}}
+	return []api.ErrorResponse{{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthenticated"}, {Status: 401, Code: "unauthorized"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "context_changed"}, {Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "sql_unsafe"}, {Status: 422, Code: "unsupported"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}
 }
 
 // uploadContent is a registration marker for the existing raw binary body.

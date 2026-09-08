@@ -127,18 +127,53 @@ full-package sourceapi coverage, cloud CI, browser or live-provider evidence.
 The branch is held here pending integration of the earlier phases; no additional
 adapter or lifecycle implementation is included in this closure.
 
+## HTTP prerequisite continuation
+
+The follow-on implementation composes `PublicRegistry`, the exact security and
+work operation adapters, all existing source-family registries, and the topic
+registry through `api.Compose`. Foundation serves `GET` and `HEAD /openapi.json`
+from that immutable inventory and keeps health/readiness/capabilities truthful to
+the running protected handler. The generated document includes explicit bearer or
+public classification, action/effect/resource-loader/audit metadata, closed body
+schemas and limits, existing error codes, and actual query/header parameters.
+Metrics remains bearer-protected and disappears from the registry when telemetry
+export is disabled; disabled work admission routes likewise remain absent.
+
+The typed transport configuration now owns the `/` base path and an empty CORS
+allowlist default. Origins are validated as unique absolute HTTP(S) origins, and
+the handler rejects disallowed origins, ambiguous public requests, and oversized
+bodies before delegation. No identity, session, credentials, reporting, renderer,
+or placeholder route was added.
+
+The pinned Linux/native-parser verification image ran:
+
+- `go test -race -count=1 -p=2 ./internal/api ./internal/securityapi ./internal/workapi ./internal/config` — passed.
+- `go test -race -count=1 -p=2 ./internal/foundation ./internal/sourceapi ./internal/topicapi` — passed.
+- `go test -race -count=1 -p=2 ./test/acceptance -run '^TestPhase21$'` — passed in 15.805s against real PostgreSQL, including the SDK/source path.
+- `python3 scripts/run_phase_acceptance.py --root /Volumes/m2-extended-disk/Repos/chartworks-phase21-http --phase 21` — passed `TestPhase21/AC01` through `AC06`, with no unimplemented skips.
+
+The requested scoped lint log is `/tmp/chartworks-canonical-lint-741d7a1.log`.
+The shared API/source registry findings (unsafe status conversion and unkeyed
+external literals) are cleared. The scoped lint command still reports five
+pre-existing gocritic/staticcheck findings in unrelated acceptance files; no
+Phase21 file is listed. This is prerequisite evidence, not a claim that the full
+repository lint or release gate is green.
+
 ## Remaining implementation
 
-Foundation health/capabilities, security and work operations still need shared
-definition adapters. Public OpenAPI delivery and cumulative generated SDK/isolation/audit coverage remain outstanding.
-Existing local registries for those consumers are not represented as migrated.
+The foundation health/capabilities, security and work adapters and public OpenAPI
+delivery are implemented in this prerequisite slice. Later domain phases must
+continue registering each concrete operation and extend the cumulative generated
+SDK/isolation/audit coverage; this phase remains in progress until those owning
+consumers and the release gates are complete.
 
 Phase 15 still needs persisted draft/review/publication/rollback/archive, atomic
 topic/facet activation, current source/profile health and Pengui revalidation,
 canonical-registry collision handling, generation/onboarding and service-backed
 portability. Phase 16 still needs lifecycle and constraint/slot runtime consumers,
 advisory injection, replay/shadow and cache invalidation. This source adapter does
-not complete their hard phase 21 prerequisite or their named acceptance criteria.
+not complete those domain criteria; the HTTP prerequisite is now independently
+verified while their owning consumers continue to extend the registry.
 
 The prior bounded semantic foundation was rebased from `aca185a` onto exact PR10
 source `62f0362d458e46e697b638ff916c47759020f55b`, producing `fd9b519` before this

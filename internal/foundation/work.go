@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
@@ -18,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	semantictopics "github.com/hurtener/chartworks/internal/semantics/topics"
@@ -39,6 +41,7 @@ type work struct {
 	engine        gateway.Engine
 	queue         *jobs.Service
 	broker        *broker.Provider
+	registry      *api.Registry
 	cancel        context.CancelFunc
 	wait          sync.WaitGroup
 	once          sync.Once
@@ -152,6 +155,54 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = topicapi.Handler(verifier, topics, published, rules, w.handler)
+	publicRegistry, err := PublicRegistry()
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	securityRegistry, err := securityapi.APIRegistry(v.Telemetry.Metrics)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	workRegistry, err := workapi.APIRegistry(w.engine, w.queue)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	sourceRegistry, err := sourceapi.SourceRegistry(w.sourceService.Enabled(), validator != nil)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	engineeringRegistry, err := sourceapi.EngineeringAPIRegistry(w.engineering.UploadsEnabled(), w.engineering.ProfilingEnabled(), w.engineering.UploadByteLimit())
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	var executionRegistry *api.Registry
+	if validator != nil && executor != nil {
+		executionRegistry, err = sourceapi.ExecutionAPIRegistry()
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
+	pipelineRegistry, err := sourceapi.PipelineAPIRegistry(w.pipelines.Enabled())
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	topicRegistry, err := topicapi.Registry()
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {

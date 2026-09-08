@@ -79,16 +79,12 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 		case "/metrics":
 			r.Handler().ServeHTTP(w, req)
 		case "/v1/access/diagnostics":
-			type check struct {
-				Operation Operation `json:"operation"`
-				Allowed   bool      `json:"allowed"`
-			}
-			checks := []check{}
+			checks := []DiagnosticCheck{}
 			for _, item := range Operations() {
 				if !metrics && item.Path == "/metrics" {
 					continue
 				}
-				checks = append(checks, check{item, access.Require(e, item.Action, access.Tenant(e, item.Permission)) == nil})
+				checks = append(checks, DiagnosticCheck{Operation: item, Allowed: access.Require(e, item.Action, access.Tenant(e, item.Permission)) == nil})
 			}
 			respond(w, checks)
 		case "/v1/retention-policy":
@@ -101,11 +97,7 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 				respond(w, cw.Policy{Revision: p.Revision, AuditDays: p.AuditDays, OperationHours: p.OperationHours})
 				return
 			}
-			var body struct {
-				Expected       int64 `json:"expected_revision"`
-				AuditDays      int   `json:"audit_days"`
-				OperationHours int   `json:"operation_hours"`
-			}
+			var body RetentionPolicyRequest
 			if !bodyDecode(w, req, &body, "expected_revision", "audit_days", "operation_hours") {
 				return
 			}

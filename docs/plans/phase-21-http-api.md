@@ -32,10 +32,29 @@ Resource-loader and audit labels describe those existing paths; they do not repl
 execution callbacks or prove exhaustive isolation/audit coverage.
 
 The [bounded evidence note](../reviews/phase-21-source-registry.md) records focused
-HTTP/SDK/PostgreSQL and schema checks. Foundation, security and work adapters still
-need migration, followed by cumulative generated coverage and public document
-delivery. None of AC01–AC06 is claimed complete;
-`TestPhase21/AC01`–`AC06` remain required. No placeholder acceptance parent was added.
+HTTP/SDK/PostgreSQL and schema checks. Foundation, security and work adapters are
+covered by the HTTP prerequisite continuation below; later domain phases continue
+to extend the same registry. The continuation adds the actual acceptance parent
+below; the earlier source slice did not use a placeholder parent.
+
+## HTTP prerequisite continuation, 2026-09-08
+
+The shared registry now composes the foundation health/readiness/capabilities and
+OpenAPI routes with the existing security, gateway/work, source, engineering,
+execution, pipeline and topic registries. Public operations are explicitly marked
+unauthenticated; every protected definition carries its existing Pengui action,
+resource-loader description, audit classification, closed request/response schema,
+error mapping and body/query/header bounds. `GET` and `HEAD /openapi.json` are
+served by the foundation handler from this immutable composition. The typed server
+configuration defaults to `/` with an empty CORS allowlist; non-root prefixes are
+rejected until route, OpenAPI and SDK joining can be delivered together.
+
+`TestPhase21/AC01` through `AC06` exercise the actual composed registration, real
+source HTTP/SDK/PostgreSQL behavior, security denial ordering, transport limits and
+CORS, generated OpenAPI parity, absence of identity/reporting placeholders, and
+concurrent public HTTP requests. The pinned Linux/native-parser race run and phase
+acceptance runner passed all six children. This closes the HTTP prerequisite slice
+while later domain phases continue to add their concrete registered operations.
 
 ## Non-goals
 
@@ -60,11 +79,13 @@ Implement `TestPhase21/AC01` through `TestPhase21/AC06`. Registration tests enum
 
 ## Glossary, decisions and deviations
 
-D-050 changes execution order, not phase IDs. No runtime completion is claimed.
+D-050 changes execution order, not phase IDs. The HTTP prerequisite runtime is
+verified; the phase remains in progress while later domain consumers and release
+gates land.
 
 The phase 15 [private draft consumer](../contracts/topic-drafts-v1.md) and
 [publication lifecycle](../contracts/topic-publication-v1.md) add fourteen concrete
 operations through the same shared registry and generated schemas, with actual
-HTTP/SDK/PostgreSQL/pgvector fixtures. These domain consumers do not complete
-foundation/work/security adapter migration, public document delivery or the
-cumulative phase 21 acceptance criteria.
+HTTP/SDK/PostgreSQL/pgvector fixtures. These domain consumers extend the completed
+HTTP prerequisite and do not by themselves close the remaining phase/release
+criteria.

@@ -286,3 +286,89 @@ func TestBinaryRegistrationUsesItsActualContentTypeAndCap(t *testing.T) {
 		}
 	}
 }
+
+func TestRegistryCompositionAndParameterMetadata(t *testing.T) {
+	protected := definition(t)
+	protected.ID = "writeSource"
+	protected.Query = []Parameter{{Name: "limit", In: "query", Description: "Bounded result count", Type: "integer", Min: 1, Max: 100}}
+	protected.Headers = []Parameter{{Name: "Idempotency-Key", In: "header", Description: "Replay key", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}
+	publicSchema, err := SchemaFor("publicResponse", reflect.TypeFor[responseDTO](), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := Definition{
+		Operation:      Operation{Method: "GET", Path: "/healthz", Effect: "public_read"},
+		ID:             "health",
+		Summary:        "Read liveness",
+		ResourceLoader: "foundation.Server.Handler",
+		Audit:          "read_only_no_domain_audit",
+		Public:         true,
+		Response:       publicSchema,
+		Errors:         []ErrorResponse{{Status: 503, Code: "unavailable"}},
+	}
+	left, err := New([]Definition{public})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := New([]Definition{protected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := Compose(left, nil, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(composed.Definitions()) != 2 {
+		t.Fatalf("composed definitions=%d", len(composed.Definitions()))
+	}
+	wire, err := composed.OpenAPIAt("Chartworks", "21", "/api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(wire, &document); err != nil {
+		t.Fatal(err)
+	}
+	if got := document["servers"].([]any)[0].(map[string]any)["url"]; got != "/api" {
+		t.Fatalf("server=%v", got)
+	}
+	paths := document["paths"].(map[string]any)
+	publicOp := paths["/healthz"].(map[string]any)["get"].(map[string]any)
+	if publicOp["x-chartworks-auth"] != "none" {
+		t.Fatalf("public auth=%v", publicOp["x-chartworks-auth"])
+	}
+	if _, ok := publicOp["security"]; ok {
+		t.Fatal("public endpoint has bearer security")
+	}
+	protectedOp := paths[protected.Path].(map[string]any)["post"].(map[string]any)
+	if protectedOp["x-chartworks-auth"] != "bearer" || protectedOp["x-chartworks-action"] != protected.Action {
+		t.Fatalf("protected auth metadata=%v", protectedOp)
+	}
+	parameters := protectedOp["parameters"].([]any)
+	if len(parameters) != 3 {
+		t.Fatalf("parameters=%d", len(parameters))
+	}
+	if _, ok := protectedOp["requestBody"]; !ok {
+		t.Fatal("request body omitted")
+	}
+	if _, ok := protectedOp["x-chartworks-max-body-bytes"]; !ok {
+		t.Fatal("body limit omitted")
+	}
+
+	for _, edit := range []func(*Definition){
+		func(d *Definition) { d.Query[0].In = "header" },
+		func(d *Definition) { d.Query[0].Name = "" },
+		func(d *Definition) { d.Query[0].Type = "array" },
+		func(d *Definition) { d.Query[0].Min = 101 },
+		func(d *Definition) { d.Query = append(d.Query, d.Query[0]) },
+		func(d *Definition) { d.ResponseContentType = "text/plain\n" },
+	} {
+		bad := protected
+		bad.Query = append([]Parameter(nil), protected.Query...)
+		bad.Headers = append([]Parameter(nil), protected.Headers...)
+		edit(&bad)
+		if _, err := New([]Definition{bad}); err == nil {
+			t.Fatalf("invalid metadata accepted: %#v", bad)
+		}
+	}
+}

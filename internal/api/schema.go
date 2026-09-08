@@ -69,7 +69,7 @@ func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, respo
 	case reflect.Pointer:
 		return (response || optional) && supportedType(t.Elem(), stack, depth+1, response, optional)
 	case reflect.Map:
-		return response && t.Key().Kind() == reflect.String && t.Elem().Kind() == reflect.Int
+		return response && t.Key().Kind() == reflect.String && responseMapValue(t.Elem())
 	case reflect.Bool, reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
 		return true
 	case reflect.Slice:
@@ -85,6 +85,15 @@ func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, respo
 		return true
 	}
 	return false
+}
+
+func responseMapValue(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Bool, reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		return true
+	default:
+		return false
+	}
 }
 
 func adjustWireSchema(schema map[string]any, t reflect.Type, optional, root bool) {
