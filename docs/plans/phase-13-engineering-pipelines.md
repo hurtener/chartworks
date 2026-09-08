@@ -1,6 +1,6 @@
 # Phase 13 — engineering-pipelines
 
-Status: planned. Owner: internal/engineering. Hard dependencies: 06, 09, 10, 12.
+Status: shipped. Owner: internal/engineering. Hard dependencies: 06, 09, 10, 12.
 
 ## Authority and design
 
@@ -28,6 +28,8 @@ No new pipeline engine, unrestricted scripts, automatic semantic publication or 
 
 Pipeline runner path/version, strategy allowlist, timeout/concurrency, managed-object registry, telemetry disabled and quality policy; no arbitrary shell/Python assets. Persist definition versions, declared dependencies, staged effects, completion/compensation records and dataset publication pointer. Secret material is never a durable pipeline payload.
 
+The accepted implementation uses the D-067 minimal fork derived from Bruin `v0.11.749`; its current source baseline is `5f562c2959496a04d57f5f199f5e3ad22159fa9f`; the qualified Linux arm64 Go 1.26.4 executable has SHA-256 `4fb5c4f12057c3240b7a641f408a329b15d0b2c938b786ba978938196cee5405`. This remains a qualified fork rather than an unmodified-stock dependency. Defaults are disabled, 45-second timeout, concurrency 1, eight steps, 64 KiB SQL per step and 1 MiB runner output. Enabling requires absolute runner/private temporary paths. Definitions support only SQL steps, declared predecessor placeholders, bounded schemas/checks and the six named strategy contracts. Bruin's validator invokes its embedded Python parser/runtime even for SQL-only assets; deployment therefore supplies 512 MiB of executable private tmpfs per configured worker while the public asset contract still rejects user Python/R assets. The measured cold fixture wrote 228,013,251 runtime bytes in 1.297 seconds. Exit zero is insufficient: the complete payload must deny malformed/multiple JSON, any critical issue and overflow. The phase's first `pipeline_draft` gateway consumer receives governed schema and a bounded instruction without source rows or secrets; valid output enters the same draft-only validation path and has no publication or execution side effect. See the [runtime contract](../contracts/managed-pipelines.md) and [current evidence ledger](../reviews/phase-13-current-evidence.md).
+
 ## Acceptance criteria
 
 1. **AC01** — Undeclared inputs/outputs or invalid/cyclic pipelines fail before execution; all supported strategies have declared per-engine capability tests.
@@ -41,6 +43,22 @@ Pipeline runner path/version, strategy allowlist, timeout/concurrency, managed-o
 
 Implement `TestPhase13/AC01` through `TestPhase13/AC06` against the real pinned runner and managed PostgreSQL fixture. Observe rendered config, process environment/output handling, blocked baseline targets and failed-check activation. Driver support claims need their strategy tests. COMMON.md supplies coverage; `scripts/smoke/phase-13.sh` requires all six results.
 
+The owner approved an exact 84.5% statement coverage exception for
+`internal/store/postgres` on 2026-09-07. All other package bands retain their
+existing thresholds. The [approval and measurement scope](../reviews/phase-13-current-evidence.md#owner-approved-package-coverage-band)
+record the partial-suite evidence; the exception does not waive complete native
+CI or turn that measurement into a passing full-suite result.
+
+The phase shipped at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41` after all named criteria, real runner/workspace boundaries, race/coverage and cumulative exact-head hosted gates passed in [CI 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766). The phase 25 full-release gate remains unimplemented.
+
 ## Glossary, decisions and deviations
 
-Managed object, staged effect and compensation are not universal rollback. D-051/D-052 apply. Record the actually adopted runner version and license/build evidence in the implementation PR; no runtime completion is claimed here.
+Managed object, staged effect and compensation are not universal rollback. D-051/D-052 apply. The adopted runner version and license/build evidence are recorded in the implementation and [final evidence ledger](../reviews/phase-13-current-evidence.md); the phase 25 full-release gate remains unimplemented.
+
+The round-one pipeline fixes retain a same-physical-database execution boundary:
+`TestPipelineRejectsDifferentInputDatabase` uses two real databases with the same
+relation name and distinct rows, and requires rejection without execution effects.
+No cross-database transfer is implemented. `TestPipelinePublishesTwoOutputsWithOneReadConnection`
+uses the real runner with a single read pool connection and requires the complete
+two-step output manifest and actual retained values. Publication holds all exact
+output locks in one native transaction through the existing atomic metadata commit.

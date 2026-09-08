@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/store"
@@ -22,7 +23,17 @@ func TestSafeErrors(t *testing.T) {
 			t.Fatal("unsafe database error")
 		}
 	}
-	if SchemaVersion() != "8" {
-		t.Fatal("schema version")
+	manifest, err := Migrations()
+	if err != nil || SchemaVersion() != "11" || len(manifest) != 11 {
+		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
+	}
+	latest := manifest[len(manifest)-1]
+	if latest.Version != 11 || latest.Name != "migrations/011_read_acknowledgments.sql" || len(latest.Checksum) != 64 {
+		t.Fatal("latest embedded migration identity", latest.Version, latest.Name, latest.Checksum)
+	}
+	for _, dialect := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
+		if !strings.Contains(manifest[9].SQL, "'"+dialect+"'") {
+			t.Fatal("warehouse dialect migration missing closed variant", dialect)
+		}
 	}
 }

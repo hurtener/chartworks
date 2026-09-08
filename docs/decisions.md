@@ -755,3 +755,5 @@ during the planning review. Further product decisions land here as phases ship,
 numbered D-043+.*
 
 Read execution continuation: [bounded plan-only reads and attempt uncertainty](decisions/2026-09-06-read-execution.md).
+
+Warehouse read substrate continuation: [D-067 pinned minimal Bruin leaf-client fork](decisions/2026-09-07-bruin-read-adoption.md).

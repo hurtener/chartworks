@@ -1,0 +1,9 @@
+[
+  {"method":"POST","path":"/v1/pipeline-versions/read","action":"engineering.pipeline.read","effect":"private_definition_read"},
+  {"method":"GET","path":"/v1/pipeline-runs/{id}","action":"jobs.read","effect":"private_run_metadata_read"},
+  {"method":"POST","path":"/v1/pipeline-runs/{id}/cancel","action":"jobs.cancel","effect":"durable_cancellation_intent"},
+  {"method":"POST","path":"/v1/pipeline-proposals","action":"engineering.pipeline.write","effect":"model_assisted_pipeline_draft"},
+  {"method":"POST","path":"/v1/pipelines","action":"engineering.pipeline.write","effect":"versioned_pipeline_draft"},
+  {"method":"POST","path":"/v1/pipelines/{id}/publish","action":"engineering.pipeline.publish","effect":"immutable_pipeline_publication"},
+  {"method":"POST","path":"/v1/pipelines/{id}/runs","action":"engineering.pipeline.run","effect":"managed_warehouse_write"}
+]

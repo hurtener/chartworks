@@ -27,7 +27,7 @@ type RequestInput struct {
 func (r RequestInput) Valid() bool {
 	b, e := hex.DecodeString(r.InputHash)
 	return identity.Identifier(r.Target) && (r.Context == "" || identity.Identifier(r.Context)) &&
-		(r.Kind == "upload.load" || r.Kind == "upload.erase" || r.Kind == "profile.build") &&
+		(r.Kind == "upload.load" || r.Kind == "upload.erase" || r.Kind == "profile.build" || r.Kind == "pipeline.run") &&
 		e == nil && len(b) == 32 && hex.EncodeToString(b) == r.InputHash && (r.Kind != "profile.build" || r.Context != "")
 }
 
@@ -39,6 +39,9 @@ func (r RequestInput) Require(e identity.Envelope) error {
 	action, permission := "sources.upload", "write"
 	if r.Kind == "upload.erase" {
 		action, permission = "sources.erase", "erase"
+	}
+	if r.Kind == "pipeline.run" {
+		action, permission = "engineering.pipeline.run", "write"
 	}
 	if r.Kind == "profile.build" {
 		action, permission = "engineering.profile", "write"

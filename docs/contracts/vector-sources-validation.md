@@ -68,7 +68,9 @@ bindings are checked again at execution. Its zero value and forged/stale/narrowe
 bindings fail. Parameters have explicit canonical types and bounded shapes.
 
 The pinned `github.com/wasilibs/go-pgquery` module uses PostgreSQL grammar through
-WASM while retaining the CGo-free shipping build. The exact pin remains in go.mod
+WASM without a native CGo dependency for this PostgreSQL path. Phase 14 adds the
+separately accepted native Bruin parser build; the overall shipping binary now
+requires CGo. The exact PostgreSQL parser pin remains in go.mod
 and go.sum. Whole-tree positive AST checks resolve relation/column/function reach;
 unknown syntax or dependency visibility fails closed. Parsing and native
 `EXPLAIN (FORMAT JSON)` are complementary checks, never independent authorization.

@@ -13,6 +13,7 @@ import tempfile
 
 
 def bands(text: str) -> dict[str, int]:
+    """Parse percentages with at most two decimal places into exact basis points."""
     result = {}
     for line in text.splitlines():
         line = line.split("#", 1)[0].strip()
@@ -21,13 +22,26 @@ def bands(text: str) -> dict[str, int]:
         parts = line.split()
         if len(parts) != 2 or not re.fullmatch(r"(?:internal|cmd|sdk|eval)(?:/[A-Za-z0-9_-]+)+", parts[0]):
             raise ValueError("invalid coverage band")
-        name, minimum = parts[0], int(parts[1])
-        if name in result or not 1 <= minimum <= 100:
+        if not re.fullmatch(r"[0-9]+(?:\.[0-9]{1,2})?", parts[1]):
+            raise ValueError("invalid coverage threshold precision")
+        whole, _, fraction = parts[1].partition(".")
+        name, minimum = parts[0], int(whole) * 100 + int(fraction.ljust(2, "0"))
+        if name in result or not 100 <= minimum <= 10000:
             raise ValueError("duplicate or invalid coverage threshold")
         result[name] = minimum
     if not result:
         raise ValueError("implemented code requires coverage bands")
     return result
+
+
+def passes_band(covered: int, total: int, minimum: int) -> bool:
+    """Compare statement counts against basis points without rounding either side."""
+    return covered * 10000 >= minimum * total
+
+
+def band_percentage(minimum: int) -> str:
+    whole, fraction = divmod(minimum, 100)
+    return str(whole) if fraction == 0 else f"{whole}.{fraction:02d}".rstrip("0")
 
 
 def measure(text: str, module: str, packages: set[str]) -> dict[str, tuple[int, int]]:
@@ -94,9 +108,9 @@ def main() -> int:
         failed = False
         for name in sorted(packages):
             covered, total = totals[name]
-            passed = covered * 100 >= limits[name] * total
+            passed = passes_band(covered, total, limits[name])
             failed |= not passed
-            print(f"{'OK' if passed else 'FAIL'}: {name} {100 * covered / total:.2f}% ({covered}/{total}), required {limits[name]}%")
+            print(f"{'OK' if passed else 'FAIL'}: {name} {100 * covered / total:.2f}% ({covered}/{total}), required {band_percentage(limits[name])}%")
         return int(failed)
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         print(f"FAIL: coverage: {type(error).__name__}: coverage unavailable or invalid", file=sys.stderr)

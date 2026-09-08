@@ -75,6 +75,13 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 			return err
 		}
 		out, err = s.executeNative(ctx, e, p, record, connection, l, id, observer)
+		if err == nil && ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				err = readexec.ErrTimeout
+			} else {
+				err = readexec.ErrCancelled
+			}
+		}
 		return err
 	})
 	if err != nil {
@@ -84,6 +91,18 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 }
 
 func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (out readexec.NativeResult, err error) {
+	switch c.Dialect {
+	case "mysql":
+		return s.executeMySQL(ctx, e, p, record, c, l, id, observer)
+	case "bigquery":
+		return s.executeBigQuery(ctx, e, p, record, c, l, id, observer)
+	case "snowflake":
+		return s.executeSnowflake(ctx, e, p, record, c, l, id, observer)
+	case "databricks":
+		return s.executeDatabricks(ctx, e, p, record, c, l, id, observer)
+	case "sqlserver":
+		return s.executeSQLServer(ctx, e, p, record, c, l, id, observer)
+	}
 	out.RemoteState = "not_issued"
 	var remote readexec.RemoteQuery
 	pool, location, err := s.pool(ctx, c)
@@ -121,7 +140,7 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 			// operation's bounded cleanup allowance; never signal a reusable PID.
 			if remote.Valid() && out.RemoteState == "unknown" {
 				var active bool
-				observeErr := pool.QueryRow(cleanup, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, remote.PID, remote.Started, remote.Tag).Scan(&active)
+				observeErr := pool.QueryRow(cleanup, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, remote.Postgres.PID, remote.Postgres.Started, remote.Tag).Scan(&active)
 				if observeErr == nil && !active {
 					out.RemoteState = "stopped"
 					if queryErr != nil {
@@ -161,10 +180,12 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 	if cost > l.PlannerCost {
 		return out, readexec.ErrLimit
 	}
-	remote = readexec.RemoteQuery{Tag: "cw-read:" + id}
-	if err = tx.QueryRow(ctx, `SELECT pg_backend_pid(),backend_start FROM pg_catalog.pg_stat_activity WHERE pid=pg_backend_pid()`).Scan(&remote.PID, &remote.Started); err != nil {
+	var pid uint32
+	var started time.Time
+	if err = tx.QueryRow(ctx, `SELECT pg_backend_pid(),backend_start FROM pg_catalog.pg_stat_activity WHERE pid=pg_backend_pid()`).Scan(&pid, &started); err != nil {
 		return out, err
 	}
+	remote = readexec.NewPostgresRemoteQuery(pid, started, "cw-read:"+id)
 	if !remote.Valid() {
 		return out, readexec.ErrBinding
 	}
@@ -408,7 +429,7 @@ func moneyDecimal(raw []byte) ([]byte, error) {
 // ControlRead only controls a verified, journal-backed tagged backend transaction.
 // Cancellation signals are sent only by the live owner using its original connection secret.
 // ControlRead itself only observes; it cannot accidentally cancel a reused backend PID.
-func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control readexec.Control, _ bool) (string, error) {
+func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control readexec.Control, cancel bool) (string, error) {
 	id, partition := control.Coordinates()
 	scope, err := sourceScope(e, "sources.query", "query", id)
 	if err != nil {
@@ -427,6 +448,24 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 			if err != nil {
 				return err
 			}
+			switch c.Dialect {
+			case "mysql":
+				var e2 error
+				state, e2 = s.controlMySQL(ctx, e, control, record, c, cancel)
+				return e2
+			case "bigquery":
+				state, err = s.controlBigQuery(ctx, e, control, record, c, cancel)
+				return err
+			case "snowflake":
+				state, err = s.controlSnowflake(ctx, e, control, record, c, cancel)
+				return err
+			case "databricks":
+				state, err = s.controlDatabricks(ctx, e, control, record, c, cancel)
+				return err
+			case "sqlserver":
+				state, err = s.controlSQLServer(ctx, e, control, c, cancel)
+				return err
+			}
 			// Prove actual credentials/catalog context before observing a native identity;
 			// a replacement database cannot falsely prove an old backend stopped.
 			_, err = s.probe(ctx, c, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
@@ -438,7 +477,7 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 					return err
 				}
 				var exists bool
-				if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, q.PID, q.Started, q.Tag).Scan(&exists); err != nil {
+				if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start=$2 AND application_name=$3 AND usename=current_user AND datname=current_database())`, q.Postgres.PID, q.Postgres.Started, q.Tag).Scan(&exists); err != nil {
 					return safe(err)
 				}
 				state = "stopped"

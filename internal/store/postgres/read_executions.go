@@ -10,6 +10,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var _ readexec.AttemptStore = (*DB)(nil)
@@ -48,7 +49,7 @@ func (d *DB) BeginRead(ctx context.Context, s store.Scope, a readexec.Attempt, m
 	if !s.Valid() {
 		return store.ErrScope
 	}
-	if !identity.Identifier(a.ID) || len(a.ID) != 32 || !a.Manifest.Valid() || a.Number < 1 || maximum < 1 || maximum > 3 || a.Number > maximum || a.Created.IsZero() || !a.Deadline.After(a.Created) || a.Deadline.Sub(a.Created) > time.Minute+time.Second {
+	if !identity.Identifier(a.ID) || len(a.ID) != 32 || !a.Manifest.Valid() || a.Manifest.Receipt.Dialect == "" || a.Number < 1 || maximum < 1 || maximum > 3 || a.Number > maximum || a.Created.IsZero() || !a.Deadline.After(a.Created) || a.Deadline.Sub(a.Created) > time.Minute+time.Second {
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -63,7 +64,7 @@ func (d *DB) BeginRead(ctx context.Context, s store.Scope, a readexec.Attempt, m
 		previous, err := scanRead(tx.QueryRow(ctx, `SELECT `+readAttemptColumns+` FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$3 ORDER BY attempt_number DESC LIMIT 1`, s.Tenant(), s.Actor(), a.Manifest.Operation))
 		switch {
 		case err == nil:
-			if readexec.Hash(previous.Manifest) != readexec.Hash(a.Manifest) {
+			if comparableManifest(previous.Manifest) != comparableManifest(a.Manifest) {
 				return store.ErrConflict
 			}
 			if a.Number <= previous.Number {
@@ -98,6 +99,15 @@ func (d *DB) BeginRead(ctx context.Context, s store.Scope, a readexec.Attempt, m
 	})
 }
 
+// comparableManifest treats a retained pre-phase-14 receipt as PostgreSQL. The
+// stored manifest itself remains byte-for-byte immutable and keeps its original hash.
+func comparableManifest(m readexec.Manifest) string {
+	if m.Receipt.Dialect == "postgres" {
+		m.Receipt.Dialect = ""
+	}
+	return readexec.Hash(m)
+}
+
 // DispatchRead persists a stable native identity before SQL, then its acknowledgment.
 func (d *DB) DispatchRead(ctx context.Context, s store.Scope, id string, q readexec.RemoteQuery, accepted bool) error {
 	if !s.Valid() {
@@ -109,10 +119,28 @@ func (d *DB) DispatchRead(ctx context.Context, s store.Scope, id string, q reade
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		remote, _ := json.Marshal(q)
 		from, to := "accepted", "dispatching"
+		var previous []byte
 		if accepted {
 			from, to = "dispatching", "running"
+			var dialect string
+			if err := tx.QueryRow(ctx, `SELECT remote_query,COALESCE(manifest#>>'{validation,dialect}','postgres') FROM chartworks.read_attempts WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status='dispatching' FOR UPDATE`, s.Tenant(), s.Actor(), id).Scan(&previous, &dialect); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return readexec.ErrCancelled
+				}
+				return err
+			}
+			var submitted readexec.RemoteQuery
+			if json.Unmarshal(previous, &submitted) != nil || dialect != q.Driver || !submitted.Acknowledges(q) {
+				return store.ErrInvalid
+			}
 		}
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND (remote_query IS NULL OR remote_query=$5::jsonb)`, s.Tenant(), s.Actor(), id, to, remote, from)
+		var tag pgconn.CommandTag
+		var err error
+		if accepted {
+			tag, err = tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND remote_query=$8::jsonb AND (manifest#>>'{validation,dialect}'=$7 OR manifest#>>'{validation,dialect}' IS NULL AND $7='postgres')`, s.Tenant(), s.Actor(), id, to, remote, from, q.Driver, previous)
+		} else {
+			tag, err = tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=$4,remote_query=$5,remote_state='running' WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND status=$6 AND NOT cancel_requested AND deadline>clock_timestamp() AND remote_query IS NULL AND (manifest#>>'{validation,dialect}'=$7 OR manifest#>>'{validation,dialect}' IS NULL AND $7='postgres')`, s.Tenant(), s.Actor(), id, to, remote, from, q.Driver)
+		}
 		if err != nil {
 			return err
 		}

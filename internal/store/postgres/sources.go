@@ -14,17 +14,25 @@ import (
 
 var _ sources.Repository = (*DB)(nil)
 
-const sourceColumns = `r.source_id,r.name,r.revision,r.context_id,r.connection_alias,r.binding`
+const sourceColumns = `r.source_id,r.name,r.revision,r.context_id,r.connection_alias,r.binding,r.pipeline`
 
 func scanSource(row pgx.Row) (out sources.Record, err error) {
-	var binding []byte
-	err = row.Scan(&out.Source.ID, &out.Source.Name, &out.Source.Revision, &out.Source.ContextID, &out.Connection, &binding)
+	var binding, pipeline []byte
+	err = row.Scan(&out.Source.ID, &out.Source.Name, &out.Source.Revision, &out.Source.ContextID, &out.Connection, &binding, &pipeline)
 	if err != nil {
 		return out, err
 	}
-	out.Source.Dialect = "postgres"
 	out.Source.Status = "registered"
-	if json.Unmarshal(binding, &out.Binding) != nil || !out.Valid() {
+	if pipeline != nil {
+		if json.Unmarshal(pipeline, &out.Pipeline) != nil {
+			return sources.Record{}, store.ErrInvalid
+		}
+	}
+	if json.Unmarshal(binding, &out.Binding) != nil {
+		return sources.Record{}, store.ErrInvalid
+	}
+	out.Source.Dialect = out.Binding.Dialect
+	if !out.Valid() {
 		return sources.Record{}, store.ErrInvalid
 	}
 	return out, nil
@@ -42,6 +50,18 @@ func (d *DB) PutSource(ctx context.Context, s store.Scope, expected int64, r sou
 }
 
 func putSourceTx(ctx context.Context, tx pgx.Tx, s store.Scope, expected int64, r sources.Record, managed bool) error {
+	if !managed && r.Pipeline != nil {
+		return store.ErrInvalid
+	}
+	if !managed && expected > 0 {
+		var pipeline bool
+		if err := tx.QueryRow(ctx, `SELECT pipeline IS NOT NULL FROM chartworks.source_revisions WHERE tenant_id=$1 AND source_id=$2 AND revision=$3`, s.Tenant(), r.Source.ID, expected).Scan(&pipeline); err != nil {
+			return err
+		}
+		if pipeline {
+			return store.ErrConflict
+		}
+	}
 	if expected == 0 && !managed {
 		var reserved bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.uploads WHERE tenant_id=$1 AND source_id=$2)`, s.Tenant(), r.Source.ID).Scan(&reserved); err != nil {
@@ -65,7 +85,14 @@ func putSourceTx(ctx context.Context, tx pgx.Tx, s store.Scope, expected int64, 
 	if err != nil {
 		return store.ErrInvalid
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO chartworks.source_revisions(tenant_id,source_id,revision,context_id,name,connection_alias,binding,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, s.Tenant(), r.Source.ID, r.Source.Revision, r.Source.ContextID, r.Source.Name, r.Connection, binding, s.Actor())
+	var pipeline []byte
+	if r.Pipeline != nil {
+		pipeline, err = json.Marshal(r.Pipeline)
+		if err != nil {
+			return store.ErrInvalid
+		}
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO chartworks.source_revisions(tenant_id,source_id,revision,context_id,name,connection_alias,binding,created_by,pipeline) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, s.Tenant(), r.Source.ID, r.Source.Revision, r.Source.ContextID, r.Source.Name, r.Connection, binding, s.Actor(), pipeline)
 	if err != nil {
 		return err
 	}
@@ -107,14 +134,14 @@ func (d *DB) ListSources(ctx context.Context, s store.Scope, selection access.Se
 	}
 	out = []sources.Source{}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) ORDER BY s.source_id LIMIT $4`, s.Tenant(), selection.All(), selection.IDs(), limit)
+		rows, e := tx.Query(ctx, `SELECT r.source_id,r.name,r.revision,r.context_id,r.binding#>>'{dialect}' FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE NOT s.deleted AND s.tenant_id=$1 AND ($2 OR s.source_id=ANY($3::text[])) ORDER BY s.source_id LIMIT $4`, s.Tenant(), selection.All(), selection.IDs(), limit)
 		if e != nil {
 			return e
 		}
 		defer rows.Close()
 		for rows.Next() {
-			item := sources.Source{Dialect: "postgres", Status: "registered"}
-			if e = rows.Scan(&item.ID, &item.Name, &item.Revision, &item.ContextID); e != nil {
+			item := sources.Source{Status: "registered"}
+			if e = rows.Scan(&item.ID, &item.Name, &item.Revision, &item.ContextID, &item.Dialect); e != nil {
 				return e
 			}
 			out = append(out, item)

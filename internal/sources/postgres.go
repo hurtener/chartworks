@@ -122,12 +122,21 @@ func (s *Service) pool(ctx context.Context, c config.SourceConnection) (*pgxpool
 // probe locks registered base tables before inspecting their effective role and
 // schema. READ COMMITTED sees the post-lock catalog state; ACCESS SHARE prevents
 // concurrent DDL from changing those objects through EXPLAIN/read completion.
-func (s *Service) probe(ctx context.Context, c config.SourceConnection, id string, revision int64, consume func(context.Context, readTransaction, readexec.Binding) error) (out readexec.Binding, err error) {
+func (s *Service) probePostgres(ctx context.Context, c config.SourceConnection, id string, revision int64, consume func(context.Context, readTransaction, readexec.Binding) error) (out readexec.Binding, err error) {
+	return s.probeDuration(ctx, c, id, revision, time.Duration(s.settings.QueryTimeout), consume)
+}
+
+// probeDuration is reserved for managed operations whose accepted execution
+// deadline exceeds ordinary source metadata timeouts.
+func (s *Service) probeDuration(ctx context.Context, c config.SourceConnection, id string, revision int64, timeout time.Duration, consume func(context.Context, readTransaction, readexec.Binding) error) (out readexec.Binding, err error) {
 	pool, location, err := s.pool(ctx, c)
 	if err != nil {
 		return out, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(s.settings.QueryTimeout))
+	if timeout < time.Millisecond || timeout > time.Minute {
+		return out, readexec.ErrLimit
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -143,7 +152,7 @@ func (s *Service) probe(ctx context.Context, c config.SourceConnection, id strin
 		return readexec.Binding{}, err
 	}
 	if consume != nil {
-		if err = consume(ctx, tx, out.Clone()); err != nil {
+		if err = consume(withPipelineReadLocation(ctx, pool.Config().ConnConfig, location), tx, out.Clone()); err != nil {
 			return readexec.Binding{}, safe(err)
 		}
 	}

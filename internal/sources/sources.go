@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	bruinmysql "github.com/bruin-data/bruin/pkg/mysql"
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
@@ -43,11 +44,23 @@ type Record struct {
 	Source     Source
 	Connection string
 	Binding    readexec.Binding
+	Pipeline   *PipelineLocation
 }
 
 // Valid checks coherent immutable source/context coordinates before a store accepts them.
 func (r Record) Valid() bool {
-	return identity.Identifier(r.Source.ID) && len(r.Source.ID) <= 80 && len(r.Source.Name) > 0 && len(r.Source.Name) <= 128 && !strings.ContainsAny(r.Source.Name, "\x00\r\n\t") && r.Source.Dialect == "postgres" && r.Source.Revision > 0 && r.Source.Revision < 1<<62 && r.Source.ContextID == contextID(r.Source.ID, r.Source.Revision) && r.Source.Status == "registered" && identity.Identifier(r.Connection) && r.Binding.Valid() && r.Binding.Source == r.Source.ID && r.Binding.Context == r.Source.ContextID && r.Binding.Revision == r.Source.Revision && r.Binding.Dialect == r.Source.Dialect
+	valid := identity.Identifier(r.Source.ID) && len(r.Source.ID) <= 80 && len(r.Source.Name) > 0 && len(r.Source.Name) <= 128 && !strings.ContainsAny(r.Source.Name, "\x00\r\n\t") && sourceDialect(r.Source.Dialect) && r.Source.Revision > 0 && r.Source.Revision < 1<<62 && r.Source.ContextID == contextID(r.Source.ID, r.Source.Revision) && r.Source.Status == "registered" && identity.Identifier(r.Connection) && r.Binding.Valid() && r.Binding.Source == r.Source.ID && r.Binding.Context == r.Source.ContextID && r.Binding.Revision == r.Source.Revision && r.Binding.Dialect == r.Source.Dialect
+	if !valid || r.Pipeline == nil {
+		return valid
+	}
+	return r.Source.Dialect == "postgres" && r.Pipeline.Valid() && r.Pipeline.Source == r.Source.ID && r.Pipeline.Context == r.Source.ContextID && r.Pipeline.Revision == r.Source.Revision && r.Pipeline.Alias == r.Connection && len(r.Binding.Relations) == 1 && r.Binding.Relations[0].Schema == r.Pipeline.Schema && r.Binding.Relations[0].Name == r.Pipeline.Table
+}
+func sourceDialect(dialect string) bool {
+	switch dialect {
+	case "postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks":
+		return true
+	}
+	return false
 }
 
 // Repository applies tenant selections in SQL and holds a shared current-revision
@@ -86,19 +99,31 @@ type poolEntry struct {
 	material string
 	pool     *pgxpool.Pool
 }
+type mysqlPoolEntry struct {
+	material string
+	client   *bruinmysql.Client
+}
 
 // Service shares immutable configuration and bounded credential-specific pools.
 // Lifecycle locks join all in-flight work before releasing connection pools.
 type Service struct {
-	repo      Repository
-	settings  config.Sources
-	lookup    func(string) (string, bool)
-	lifecycle sync.RWMutex
-	closed    bool
-	mu        sync.Mutex
-	pools     map[string]poolEntry
-	retiring  map[string]bool
-	reap      sync.WaitGroup
+	repo            Repository
+	settings        config.Sources
+	lookup          func(string) (string, bool)
+	lifecycle       sync.RWMutex
+	closed          bool
+	mu              sync.Mutex
+	pools           map[string]poolEntry
+	mysqlPools      map[string]mysqlPoolEntry
+	bigQueryPools   map[string]bigQueryPoolEntry
+	snowflakePools  map[string]snowflakePoolEntry
+	databricksPools map[string]databricksPoolEntry
+	sqlserverPools  map[string]sqlServerPoolEntry
+	newBigQuery     bigQueryFactory
+	newSnowflake    snowflakeFactory
+	newDatabricks   databricksFactory
+	retiring        map[string]bool
+	reap            sync.WaitGroup
 }
 
 var _ readexec.ReadAdapter = (*Service)(nil)
@@ -108,7 +133,7 @@ func New(repo Repository, settings config.Sources, lookup func(string) (string, 
 	if repo == nil || reflect.ValueOf(repo).Kind() == reflect.Pointer && reflect.ValueOf(repo).IsNil() || lookup == nil || config.ValidateSources(settings) != nil {
 		return nil, store.ErrInvalid
 	}
-	return &Service{repo: repo, settings: settings.Clone(), lookup: lookup, pools: map[string]poolEntry{}, retiring: map[string]bool{}}, nil
+	return &Service{repo: repo, settings: settings.Clone(), lookup: lookup, pools: map[string]poolEntry{}, mysqlPools: map[string]mysqlPoolEntry{}, bigQueryPools: map[string]bigQueryPoolEntry{}, snowflakePools: map[string]snowflakePoolEntry{}, databricksPools: map[string]databricksPoolEntry{}, sqlserverPools: map[string]sqlServerPoolEntry{}, retiring: map[string]bool{}}, nil
 }
 
 // Enabled reports execution capability, not the availability of retained metadata.
@@ -127,7 +152,15 @@ func (s *Service) Close() {
 		entry.pool.Close()
 		delete(s.pools, key)
 	}
+	for key, entry := range s.mysqlPools {
+		_ = entry.client.Close()
+		delete(s.mysqlPools, key)
+	}
 	s.mu.Unlock()
+	s.closeBigQuery()
+	s.closeSnowflake()
+	s.closeDatabricks()
+	s.closeSQLServer()
 	s.reap.Wait()
 }
 func (s *Service) call(ctx context.Context, e identity.Envelope, warehouse bool, fn func(context.Context) error) error {
@@ -158,6 +191,9 @@ func actualContext(e identity.Envelope, action string, record Record) error {
 func (s *Service) connection(tenant, id string) (config.SourceConnection, error) {
 	for _, c := range s.settings.Connections {
 		if c.Tenant == tenant && c.ID == id {
+			if c.Dialect == "" {
+				c.Dialect = "postgres"
+			}
 			return c, nil
 		}
 	}
@@ -185,7 +221,7 @@ func (s *Service) Create(ctx context.Context, e identity.Envelope, r CreateReque
 		if e2 != nil {
 			return e2
 		}
-		record := Record{Source: Source{ID: r.ID, Name: r.Name, Dialect: "postgres", Revision: 1, ContextID: contextID(r.ID, 1), Status: "registered"}, Connection: r.Connection, Binding: binding}
+		record := Record{Source: Source{ID: r.ID, Name: r.Name, Dialect: connection.Dialect, Revision: 1, ContextID: contextID(r.ID, 1), Status: "registered"}, Connection: r.Connection, Binding: binding}
 		if e2 = s.repo.PutSource(ctx, scope, 0, record); e2 != nil {
 			return e2
 		}
@@ -296,12 +332,22 @@ func (s *Service) observed(ctx context.Context, e identity.Envelope, id string, 
 			if err != nil {
 				return err
 			}
-			if readexec.Hash(binding) != readexec.Hash(record.Binding) {
+			if !observedBindingMatches(record.Binding, binding) {
 				return readexec.ErrBinding
 			}
 			return fn(record, binding)
 		})
 	})
+}
+
+// observedBindingMatches preserves reads for bindings persisted before catalog
+// coordinates were recorded. The existing fingerprint still binds the native
+// database/project/catalog; only the newly added structural field is normalized.
+func observedBindingMatches(stored, observed readexec.Binding) bool {
+	if stored.Catalog == "" {
+		observed.Catalog = ""
+	}
+	return readexec.Hash(stored) == readexec.Hash(observed)
 }
 
 // Test returns successful health only after a real read-only context probe.
@@ -364,6 +410,18 @@ func (s *Service) Explain(ctx context.Context, e identity.Envelope, candidate re
 			connection, err := s.recordConnection(record)
 			if err != nil {
 				return err
+			}
+			switch connection.Dialect {
+			case "mysql":
+				return s.explainMySQL(ctx, e, candidate, connection, record.Binding)
+			case "bigquery":
+				return s.explainBigQuery(ctx, e, candidate, connection, record.Binding)
+			case "snowflake":
+				return s.explainSnowflake(ctx, e, candidate, connection, record.Binding)
+			case "databricks":
+				return s.explainDatabricks(ctx, e, candidate, connection, record.Binding)
+			case "sqlserver":
+				return s.explainSQLServer(ctx, e, candidate, connection, record.Binding)
 			}
 			_, err = s.probe(ctx, connection, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
 				statement, parameters, err := candidate.SQL(e, b)

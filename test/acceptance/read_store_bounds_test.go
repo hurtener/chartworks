@@ -23,7 +23,7 @@ func TestReadStoreBoundsAndAtomicAdmission(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	a := readexec.Attempt{ID: strings.Repeat("c", 32), Number: 1, Manifest: readexec.Manifest{Operation: "store-bounds", Session: f.e.Session(), Receipt: p.Receipt(), Limits: readexec.Limits{Rows: 10, Bytes: 4096, Timeout: time.Second, CancelGrace: time.Second, PlannerCost: 100000}}, Created: now, Deadline: now.Add(time.Second)}
-	q := readexec.RemoteQuery{PID: 1, Started: now, Tag: "cw-read:" + a.ID}
+	q := readexec.NewPostgresRemoteQuery(1, now, "cw-read:"+a.ID)
 	for _, call := range []func() error{
 		func() error { return f.db.BeginRead(ctx, store.Scope{}, a, 3) }, func() error { return f.db.DispatchRead(ctx, store.Scope{}, a.ID, q, false) }, func() error { _, e := f.db.GetRead(ctx, store.Scope{}, a.ID); return e }, func() error { _, e := f.db.GetReadOperation(ctx, store.Scope{}, "store-bounds"); return e }, func() error { return f.db.CancelRead(ctx, store.Scope{}, a.ID) }, func() error { return f.db.FinishRead(ctx, store.Scope{}, a, false) },
 	} {

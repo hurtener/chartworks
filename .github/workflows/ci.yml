@@ -28,12 +28,18 @@ jobs:
 
   build-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 90
     env:
       CGO_ENABLED: 1
       CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
       # Synthetic disposable PostgreSQL fixture, never a production credential.
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_MYSQL_DSN: root:chartworks-fixture-root@tcp(localhost:13306)/mysql
+      CHARTWORKS_TEST_SQLSERVER_DSN: sqlserver://sa:SYNTHETIC_fixture_Password9!@localhost:11433?database=master&encrypt=disable
     services:
       postgres:
         image: pgvector/pgvector:0.8.2-pg17
@@ -45,6 +51,25 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U chartworks -d chartworks"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        ports: [13306:3306]
+        env:
+          MYSQL_ROOT_PASSWORD: chartworks-fixture-root
+          MYSQL_ROOT_HOST: '%'
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -pchartworks-fixture-root"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-CU23-ubuntu-22.04
+        ports: [11433:1433]
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: SYNTHETIC_fixture_Password9!
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SYNTHETIC_fixture_Password9!' -C -Q 'SELECT 1' -b"
+          --health-interval 10s --health-timeout 5s --health-retries 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +77,27 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - name: Build pinned native parser and managed SQL runner
+        run: bash scripts/build-bruin.sh
+      - name: Recorded cloud SDK/HTTP and owned-session leaf lifecycle contracts
+        run: |
+          go -C "$CHARTWORKS_BRUIN_BUILD_DIR/source" test -race -count=1 ./pkg/bigquery ./pkg/snowflake ./pkg/databricks ./pkg/mysql ./pkg/mssql
+      - name: Prepare private executable pipeline scratch and verify-full PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container="$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')"
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+          test "$(psql "postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=verify-full&sslrootcert=$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" -v ON_ERROR_STOP=1 -tAc 'SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()')" = t
       - name: PostgreSQL 17 client tools for actual recovery tests
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -69,6 +115,10 @@ jobs:
           test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
           test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' -o -name '_phase_11_12*' \) -print)"
       - run: make build
+      - name: Build and execute the reference native container
+        run: |
+          docker build -t chartworks-reference:ci .
+          docker run --rm --network none --read-only chartworks-reference:ci version
       - run: make vet
       - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
@@ -78,7 +128,7 @@ jobs:
           if test -s "$CHARTWORKS_COVERAGE_OUTPUT"; then
             go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(engineering|store/postgres)/|total:'
           fi
-      - name: All seventy-six implemented phase criteria, no missing/skipped tests
+      - name: Implemented phase criteria, no missing/skipped tests
         run: |
           python3 scripts/run_phase_acceptance.py --phase 01
           python3 scripts/run_phase_acceptance.py --phase 02
@@ -92,6 +142,8 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 10
           python3 scripts/run_phase_acceptance.py --phase 11
           python3 scripts/run_phase_acceptance.py --phase 12
+          python3 scripts/run_phase_acceptance.py --phase 13
+          python3 scripts/run_phase_acceptance.py --phase 14
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
@@ -142,19 +194,26 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - name: Build native parser for typed lint analysis
+        env:
+          CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+        run: bash scripts/build-bruin.sh
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
 
-  cross-build:
-    runs-on: ubuntu-24.04
+  native-build:
     strategy:
       matrix:
         include:
-          - goos: linux
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
+          - runner: ubuntu-24.04
+            platform: linux-amd64
+          - runner: macos-14
+            platform: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
     steps:
       - uses: actions/checkout@v4
         with:
@@ -162,9 +221,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Compile shipping core without CGo
-        env:
-          CGO_ENABLED: 0
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go build -o "/tmp/chartworks-${{ matrix.goos }}-${{ matrix.goarch }}" ./cmd/chartworks
+      - name: Build pinned native dependency on the shipping platform
+        run: bash scripts/build-bruin.sh
+      - name: Compile and execute native shipping binary
+        run: |
+          make build
+          ./bin/chartworks version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chartworks-${{ matrix.platform }}
+          path: bin/chartworks
+          retention-days: 14

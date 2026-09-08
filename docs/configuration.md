@@ -114,6 +114,8 @@ a replay returns its original accepted receipt.
 
 The typed `sources` block defaults to disabled. Bounds: max_conns 1–16 (default 4), max_rows 1–1000 (256), max_bytes 1 KiB–4 MiB (1 MiB), connect_timeout and query_timeout 1 ms–4 s (1 s and 2 s). Connection aliases are tenant-bound and carry version, declared relations/columns and independent env: read/write references; the reader never resolves write credentials.
 
+Cloud source contexts bind a non-secret digest of the exact resolved credential material. Changing that material requires `Source.Rotate`, including when the warehouse coordinates are unchanged. Governed BigQuery accepts explicit inline credential material in the resolved JSON or a credential file captured once up to 1 MiB; Application Default Credentials and opaque credential providers are unsupported because their effective principal cannot be pinned across restart. Pre-release cloud bindings whose fingerprints predate credential binding also require rotation.
+
 The typed `exec` block bounds SQL bytes 128–65536 (32768), parameters 1–64 (64), AST depth 4–64 (64), AST nodes 32–16384 (8192) and concurrent validations 1–8 (2). Unknown/retired keys fail. These limits are not skip-validation settings. See `../examples/chartworks.sources.json` and `contracts/vector-sources-validation.md` for enforced fixed vector bounds, credential custody, PostgreSQL qualification and operational behavior.
 
 ## Upload and profiling configuration
@@ -135,4 +137,36 @@ Both blocks default to `enabled=false`. Disabling new work removes upload/profil
 | `profiling.summaries` / `max_versions` | false / 32 | Summaries use the existing optional `profile_summary` gateway role; versions 2–1,000. |
 | `profiling.policies` | empty | At most 128 tenant/source policies and 256 unique declared range columns each. Policies minimize retained values; they grant no authority. |
 
-CSV uses the standard-library decoder; XLSX uses the pinned Excelize dependency and requires an explicit sheet; Parquet uses the pinned parquet-go dependency and the bounded supported encodings. Every activated upload is a normal PostgreSQL 17 managed source consumed through the same validated-read path. Other warehouse engines remain phase 14 work and are not implied by upload format support.
+CSV uses the standard-library decoder; XLSX uses the pinned Excelize dependency and requires an explicit sheet; Parquet uses the pinned parquet-go dependency and the bounded supported encodings. Every activated upload is a normal PostgreSQL 17 managed source consumed through the same validated-read path. Other warehouse engines use the accepted phase 14 source matrix; upload format support remains PostgreSQL-only and does not turn recorded cloud fixtures into live qualification.
+
+## Managed pipeline configuration
+
+The `pipelines` block defaults to disabled. New pipeline draft/publication/run routes are registered only when enabled; immutable definition reads and retained run controls remain available. The runner is an operator-pinned executable, never selected by a request or definition.
+
+| Key | Default | Bounds and behavior |
+|---|---:|---|
+| `pipelines.enabled` | false | Requires enabled sources/validator plus all runner coordinates below. |
+| `pipelines.runner_path` | empty | Absolute path when enabled; startup verifies the executable digest. |
+| `pipelines.runner_version` | `v0.11.749` | Exact supported Bruin runner version. |
+| `pipelines.runner_sha256` | empty | Exact lowercase SHA-256 of the executable when enabled. |
+| `pipelines.temp_dir` | empty | Absolute operator-owned private ephemeral directory when enabled. |
+| `pipelines.timeout` | 45s | 1 second–1 minute. |
+| `pipelines.concurrency` | 1 | 1–8. |
+| `pipelines.max_steps` | 8 | 1–32. |
+| `pipelines.max_sql_bytes` | 65536 | 256 bytes–1 MiB per step. |
+| `pipelines.max_output_bytes` | 1 MiB | 1 KiB–4 MiB runner output. |
+
+These settings bound the supervised process and definition decoder. They do not grant source reach, prove a managed destination, make external writes transactional, or turn process termination into warehouse cancellation evidence.
+
+The reference CI build checks out the exact D-067 fork commit, uses Go 1.26.4 and locked Rust 1.98.1, builds the parser static library, then builds the runner with `CGO_ENABLED=1` and the `bruin_no_duckdb` tag. The phase-14 Chartworks service imports the forked native parser and leaf packages: its shipping build now requires CGo under D-067 and must receive the immutable parser-library directory through the build environment; generated libraries are build artifacts and are not written into the module cache or repository. Linux acceptance supplies 2 GiB of private executable tmpfs for runner workers. SQL Server qualification uses the Linux-amd64 fixture; cloud connectors retain recorded-only status until their separately stated live cutover evidence exists.
+
+Phase-14 per-engine support and native build instructions are in [warehouse drivers](contracts/warehouse-drivers.md).
+
+Each `sources.connections` entry may set `dialect` to `postgres`, `mysql`,
+`sqlserver`, `bigquery`, `snowflake` or `databricks`; omission preserves PostgreSQL.
+`allow_insecure_local` defaults to false and applies only to explicitly configured
+loopback MySQL/SQL Server development fixtures. Other endpoints require verified
+TLS. It does not change signed source/context authorization or grant write access.
+Cloud connection material remains an operator-only `read_dsn` environment reference,
+with engine-specific fields validated by the leaf adapter; public source models
+never include these bytes. Managed-write aliases remain PostgreSQL-only in phase13.

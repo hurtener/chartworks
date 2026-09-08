@@ -1,12 +1,17 @@
 package exec
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"math"
+	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -50,17 +55,216 @@ type Options struct {
 	Bytes     int    `json:"bytes"`
 }
 
-// RemoteQuery identifies one tagged PostgreSQL transaction, not an arbitrary PID.
-// The backend secret used by PostgreSQL CancelRequest is never retained.
+// RemoteQuery is a closed, engine-tagged native control identity. It contains no
+// credential and cannot be constructed from request input. Only PostgreSQL is
+// currently executable; the remaining variants reserve exact native coordinates
+// without introducing a generic, forgeable handle.
 type RemoteQuery struct {
+	Driver     string                 `json:"driver"`
+	Tag        string                 `json:"tag"`
+	Postgres   *PostgresRemoteQuery   `json:"postgres,omitempty"`
+	MySQL      *MySQLRemoteQuery      `json:"mysql,omitempty"`
+	SQLServer  *SQLServerRemoteQuery  `json:"sqlserver,omitempty"`
+	BigQuery   *BigQueryRemoteQuery   `json:"bigquery,omitempty"`
+	Snowflake  *SnowflakeRemoteQuery  `json:"snowflake,omitempty"`
+	Databricks *DatabricksRemoteQuery `json:"databricks,omitempty"`
+}
+
+// PostgresRemoteQuery identifies an owned backend by PID and start time.
+type PostgresRemoteQuery struct {
 	PID     uint32    `json:"pid"`
 	Started time.Time `json:"backend_started"`
-	Tag     string    `json:"tag"`
+}
+
+// MySQLRemoteQuery identifies a connection in its server and account context.
+type MySQLRemoteQuery struct {
+	ConnectionID uint64 `json:"connection_id"`
+	Account      string `json:"account"`
+	Database     string `json:"database"`
+	ServerUUID   string `json:"server_uuid"`
+}
+
+// SQLServerRemoteQuery identifies an owned session and request with its start time.
+type SQLServerRemoteQuery struct {
+	SessionID int32     `json:"session_id"`
+	RequestID int32     `json:"request_id"`
+	Started   time.Time `json:"started_at"`
+	Server    string    `json:"server"`
+	Account   string    `json:"account"`
+	Database  string    `json:"database"`
+}
+
+// BigQueryRemoteQuery identifies a job in its project and location.
+type BigQueryRemoteQuery struct {
+	Project  string `json:"project"`
+	Location string `json:"location"`
+	JobID    string `json:"job_id"`
+}
+
+// SnowflakeRemoteQuery retains observed request, session and query coordinates.
+type SnowflakeRemoteQuery struct {
+	RequestID string `json:"request_id,omitempty"`
+	QueryTag  string `json:"query_tag,omitempty"`
+	Account   string `json:"account,omitempty"`
+	Database  string `json:"database,omitempty"`
+	SessionID int64  `json:"session_id,omitempty"`
+	QueryID   string `json:"query_id,omitempty"`
+}
+
+// DatabricksRemoteQuery identifies a statement within its workspace and warehouse.
+type DatabricksRemoteQuery struct {
+	Workspace   string `json:"workspace"`
+	Warehouse   string `json:"warehouse_id"`
+	StatementID string `json:"statement_id,omitempty"`
+}
+
+// NewPostgresRemoteQuery constructs the only currently executable variant.
+func NewPostgresRemoteQuery(pid uint32, started time.Time, tag string) RemoteQuery {
+	return RemoteQuery{Driver: "postgres", Tag: tag, Postgres: &PostgresRemoteQuery{PID: pid, Started: started}}
 }
 
 // Valid checks a canonical native backend identity without exposing its secret.
 func (q RemoteQuery) Valid() bool {
-	return q.PID > 0 && !q.Started.IsZero() && len(q.Tag) == 40 && q.Tag[:8] == "cw-read:" && hashID(q.Tag[8:])
+	if len(q.Tag) != 40 || q.Tag[:8] != "cw-read:" || !hashID(q.Tag[8:]) {
+		return false
+	}
+	variants := 0
+	for _, present := range []bool{q.Postgres != nil, q.MySQL != nil, q.SQLServer != nil, q.BigQuery != nil, q.Snowflake != nil, q.Databricks != nil} {
+		if present {
+			variants++
+		}
+	}
+	if variants != 1 {
+		return false
+	}
+	switch q.Driver {
+	case "postgres":
+		return q.Postgres != nil && q.Postgres.PID > 0 && !q.Postgres.Started.IsZero()
+	case "mysql":
+		return q.MySQL != nil && q.MySQL.ConnectionID > 0 && remoteText(q.MySQL.Account, 256) && remoteText(q.MySQL.Database, 128) && remoteCoordinate(q.MySQL.ServerUUID, 128)
+	case "sqlserver":
+		return q.SQLServer != nil && q.SQLServer.SessionID > 0 && q.SQLServer.RequestID >= 0 && !q.SQLServer.Started.IsZero() && remoteText(q.SQLServer.Server, 256) && remoteText(q.SQLServer.Account, 256) && remoteText(q.SQLServer.Database, 128)
+	case "bigquery":
+		return q.BigQuery != nil && remoteCoordinate(q.BigQuery.Project, 128) && remoteCoordinate(q.BigQuery.Location, 64) && remoteCoordinate(q.BigQuery.JobID, 256)
+	case "snowflake":
+		return q.Snowflake != nil && remoteCoordinate(q.Snowflake.RequestID, 128) && remoteCoordinate(q.Snowflake.QueryTag, 128) && remoteText(q.Snowflake.Account, 128) && remoteText(q.Snowflake.Database, 128) && q.Snowflake.SessionID > 0 && (q.Snowflake.QueryID == "" || remoteCoordinate(q.Snowflake.QueryID, 128))
+	case "databricks":
+		return q.Databricks != nil && remoteHTTPSOrigin(q.Databricks.Workspace) && remoteCoordinate(q.Databricks.Warehouse, 128) && (q.Databricks.StatementID == "" || remoteCoordinate(q.Databricks.StatementID, 128))
+	}
+	return false
+}
+
+func remoteText(s string, maximum int) bool {
+	return len(s) > 0 && len(s) <= maximum && !strings.ContainsAny(s, "\x00\r\n\t")
+}
+
+func remoteHTTPSOrigin(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.Path == "" && u.RawQuery == "" && u.Fragment == ""
+}
+
+// Controllable reports whether this identity already contains the native
+// coordinate required to observe or interrupt the submitted operation. Some
+// APIs disclose that coordinate only in the server acknowledgement.
+func (q RemoteQuery) Controllable() bool {
+	if !q.Valid() {
+		return false
+	}
+	switch q.Driver {
+	case "snowflake":
+		return q.Snowflake.QueryID != ""
+	case "databricks":
+		return q.Databricks.StatementID != ""
+	default:
+		return true
+	}
+}
+
+// Acknowledges permits only a monotonic enrichment of one pre-dispatch
+// identity. Native identifiers cannot be replaced after they are known.
+func (q RemoteQuery) Acknowledges(next RemoteQuery) bool {
+	if !q.Valid() || !next.Valid() || q.Driver != next.Driver || q.Tag != next.Tag || !next.Controllable() {
+		return false
+	}
+	if q.Controllable() {
+		switch q.Driver {
+		case "postgres":
+			return q.Postgres.PID == next.Postgres.PID && q.Postgres.Started.Equal(next.Postgres.Started)
+		case "mysql":
+			return *q.MySQL == *next.MySQL
+		case "sqlserver":
+			return q.SQLServer.SessionID == next.SQLServer.SessionID && q.SQLServer.RequestID == next.SQLServer.RequestID && q.SQLServer.Started.Equal(next.SQLServer.Started) && q.SQLServer.Server == next.SQLServer.Server && q.SQLServer.Account == next.SQLServer.Account && q.SQLServer.Database == next.SQLServer.Database
+		case "bigquery":
+			return *q.BigQuery == *next.BigQuery
+		case "snowflake":
+			return *q.Snowflake == *next.Snowflake
+		case "databricks":
+			return *q.Databricks == *next.Databricks
+		}
+		return false
+	}
+	switch q.Driver {
+	case "snowflake":
+		return q.Snowflake.RequestID == next.Snowflake.RequestID && q.Snowflake.QueryTag == next.Snowflake.QueryTag && q.Snowflake.Account == next.Snowflake.Account && q.Snowflake.Database == next.Snowflake.Database && q.Snowflake.SessionID == next.Snowflake.SessionID
+	case "databricks":
+		return q.Databricks.Workspace == next.Databricks.Workspace && q.Databricks.Warehouse == next.Databricks.Warehouse
+	}
+	return false
+}
+
+func remoteCoordinate(s string, maximum int) bool {
+	if len(s) < 1 || len(s) > maximum {
+		return false
+	}
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.' || r == ':' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// UnmarshalJSON accepts the phase-10 PostgreSQL shape so retained attempts remain
+// inspectable and reconcilable after the tagged-union migration.
+func (q *RemoteQuery) UnmarshalJSON(data []byte) error {
+	type wire RemoteQuery
+	var current wire
+	if err := decodeRemote(data, &current); err == nil && current.Driver != "" {
+		*q = RemoteQuery(current)
+		if !q.Valid() {
+			return ErrBinding
+		}
+		return nil
+	}
+	var legacy struct {
+		PID     uint32    `json:"pid"`
+		Started time.Time `json:"backend_started"`
+		Tag     string    `json:"tag"`
+	}
+	if err := decodeRemote(data, &legacy); err != nil {
+		return err
+	}
+	*q = NewPostgresRemoteQuery(legacy.PID, legacy.Started, legacy.Tag)
+	if !q.Valid() {
+		return ErrBinding
+	}
+	return nil
+}
+func decodeRemote(data []byte, out any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err != nil {
+			return err
+		}
+		return ErrBinding
+	}
+	return nil
 }
 func hashID(s string) bool {
 	b, e := hex.DecodeString(s)
@@ -80,7 +284,7 @@ type Manifest struct {
 // Valid checks bounded retained coordinates and exact validation metadata.
 func (m Manifest) Valid() bool {
 	r := m.Receipt
-	if !identity.Identifier(m.Operation) || !identity.Identifier(m.Session) || !r.Validated || !identity.Identifier(r.Source) || !identity.Identifier(r.Context) || !identity.Identifier(r.Contract) || len(r.Dependencies) > 32 || len(r.Columns) < 1 || len(r.Columns) > 256 || !m.Limits.Valid() {
+	if !identity.Identifier(m.Operation) || !identity.Identifier(m.Session) || !r.Validated || !identity.Identifier(r.Source) || !identity.Identifier(r.Context) || r.Dialect != "" && !remoteDialect(r.Dialect) || !identity.Identifier(r.Contract) || len(r.Dependencies) > 32 || len(r.Columns) < 1 || len(r.Columns) > 256 || !m.Limits.Valid() {
 		return false
 	}
 	hash, err := hex.DecodeString(r.Manifest)
@@ -100,6 +304,13 @@ func (m Manifest) Valid() bool {
 		}
 	}
 	return true
+}
+func remoteDialect(s string) bool {
+	switch s {
+	case "postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks":
+		return true
+	}
+	return false
 }
 
 // Attempt is protected, content-free execution evidence; active receipts expire
@@ -164,8 +375,15 @@ type Control struct {
 // Target checks the current signed reach and exact source context before control I/O.
 func (c Control) Target(e identity.Envelope, b Binding) (RemoteQuery, error) {
 	a := c.attempt
-	if c.actor != e.User() || c.tenant != e.Tenant() || a.Manifest.Session != e.Session() || a.Remote == nil || !a.Remote.Valid() || a.Manifest.Receipt.Source != b.Source || a.Manifest.Receipt.Context != b.Context {
+	dialect := a.Manifest.Receipt.Dialect
+	if dialect == "" {
+		dialect = "postgres"
+	}
+	if c.actor != e.User() || c.tenant != e.Tenant() || a.Manifest.Session != e.Session() || a.Remote == nil || !a.Remote.Valid() || a.Remote.Driver != dialect || b.Dialect != dialect || a.Manifest.Receipt.Source != b.Source || a.Manifest.Receipt.Context != b.Context {
 		return RemoteQuery{}, ErrBinding
+	}
+	if !a.Remote.Controllable() {
+		return RemoteQuery{}, ErrUncertain
 	}
 	if err := Require(e, b, a.Manifest.Receipt.Dependencies); err != nil {
 		return RemoteQuery{}, err

@@ -53,6 +53,7 @@ type Binding struct {
 	Context     string     `json:"context"`
 	Revision    int64      `json:"revision"`
 	Dialect     string     `json:"dialect"`
+	Catalog     string     `json:"catalog,omitempty"`
 	Contract    string     `json:"contract"`
 	Fingerprint string     `json:"fingerprint"`
 	Relations   []Relation `json:"relations"`
@@ -63,18 +64,21 @@ func (b Binding) Valid() bool {
 	if !identity.Identifier(b.Tenant) || !identity.Identifier(b.Source) || !identity.Identifier(b.Context) || !identity.Identifier(b.Contract) || b.Revision < 1 || len(b.Fingerprint) != 64 || len(b.Relations) < 1 || len(b.Relations) > 32 {
 		return false
 	}
+	if b.Catalog != "" && (!identity.Identifier(b.Catalog) || strings.Contains(b.Catalog, ".")) {
+		return false
+	}
 	if _, err := hex.DecodeString(b.Fingerprint); err != nil {
 		return false
 	}
 	seen := map[string]bool{}
 	for _, r := range b.Relations {
-		if !identity.Identifier(r.ID) || !SQLIdentifier(r.Schema) || !SQLIdentifier(r.Name) || seen[r.Schema+"."+r.Name] || len(r.Columns) < 1 || len(r.Columns) > 256 {
+		if !identity.Identifier(r.ID) || !SQLIdentifierForDialect(b.Dialect, r.Schema) || !SQLIdentifierForDialect(b.Dialect, r.Name) || seen[r.Schema+"."+r.Name] || len(r.Columns) < 1 || len(r.Columns) > 256 {
 			return false
 		}
 		seen[r.Schema+"."+r.Name] = true
 		columns := map[string]bool{}
 		for _, c := range r.Columns {
-			if !SQLIdentifier(c.Name) || columns[c.Name] || len(c.NativeType) < 1 || len(c.NativeType) > 128 {
+			if !SQLIdentifierForDialect(b.Dialect, c.Name) || columns[c.Name] || len(c.NativeType) < 1 || len(c.NativeType) > 128 {
 				return false
 			}
 			columns[c.Name] = true
@@ -97,6 +101,25 @@ func SQLIdentifier(s string) bool {
 	return true
 }
 
+// SQLIdentifierForDialect is a closed connector-name subset. PostgreSQL and
+// MySQL retain the initial lowercase contract; case-preserving warehouses also
+// admit ASCII uppercase without silently folding configured native names.
+func SQLIdentifierForDialect(dialect, s string) bool {
+	if dialect == "postgres" || dialect == "mysql" || dialect == "" {
+		return SQLIdentifier(s)
+	}
+	if len(s) < 1 || len(s) > 128 {
+		return false
+	}
+	for i, c := range s {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // Clone detaches discovered relation and column state for each request.
 func (b Binding) Clone() Binding {
 	b.Relations = append([]Relation(nil), b.Relations...)
@@ -111,6 +134,10 @@ func Hash(v any) string {
 	b, _ := json.Marshal(v)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
+}
+func validPrivatePipelineProof(proof string) bool {
+	raw, err := hex.DecodeString(proof)
+	return err == nil && len(raw) == sha256.Size && hex.EncodeToString(raw) == proof
 }
 func authority(e identity.Envelope) string {
 	scopes := e.Scopes()
@@ -152,12 +179,22 @@ type ReadAdapter interface {
 	Explain(context.Context, identity.Envelope, Candidate) error
 }
 
+// PrivatePipelineValidationAdapter is the narrow managed-pipeline exception to
+// ordinary source-query authority. Implementations must bind the returned proof
+// to one exact private checked-stage manifest and pipeline operation.
+type PrivatePipelineValidationAdapter interface {
+	ReadAdapter
+	AuthorizePrivatePipeline(identity.Envelope, Binding, []string) (string, error)
+}
+
 // Candidate can only be constructed by the validator after whole-tree safety checks.
 // It is not executable: only native dry planning may consume this type.
 type Candidate struct {
 	binding      Binding
 	owner        identity.Envelope
 	authority    string
+	private      PrivatePipelineValidationAdapter
+	privateProof string
 	statement    string
 	parameters   []Parameter
 	dependencies []string
@@ -173,8 +210,21 @@ func (c Candidate) SQL(e identity.Envelope, current Binding) (string, []Paramete
 	if !c.checked || !c.owner.Valid() || !current.Valid() || Hash(c.binding) != Hash(current) || c.authority != authority(e) {
 		return "", nil, ErrBinding
 	}
-	if err := Require(e, current, c.dependencies); err != nil {
-		return "", nil, err
+	if c.private != nil {
+		proof, err := c.private.AuthorizePrivatePipeline(e, current, c.dependencies)
+		if err != nil {
+			return "", nil, err
+		}
+		if !validPrivatePipelineProof(proof) || proof != c.privateProof {
+			return "", nil, ErrBinding
+		}
+	} else {
+		if c.privateProof != "" {
+			return "", nil, ErrBinding
+		}
+		if err := Require(e, current, c.dependencies); err != nil {
+			return "", nil, err
+		}
 	}
 	return c.statement, append([]Parameter(nil), c.parameters...), nil
 }
@@ -201,6 +251,7 @@ type Receipt struct {
 	Validated    bool     `json:"validated"`
 	Source       string   `json:"source"`
 	Context      string   `json:"context"`
+	Dialect      string   `json:"dialect,omitempty"`
 	Contract     string   `json:"contract"`
 	Dependencies []string `json:"dependencies"`
 	Columns      []string `json:"columns"`
@@ -213,7 +264,11 @@ func (p Plan) Receipt() Receipt {
 		return Receipt{}
 	}
 	c := p.candidate
-	return Receipt{Validated: true, Source: c.binding.Source, Context: c.binding.Context, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash([]any{c.binding, c.statement, c.parameters, c.dependencies, c.authority})}
+	manifest := []any{c.binding, c.statement, c.parameters, c.dependencies, c.authority}
+	if c.privateProof != "" {
+		manifest = append(manifest, c.privateProof)
+	}
+	return Receipt{Validated: true, Source: c.binding.Source, Context: c.binding.Context, Dialect: c.binding.Dialect, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash(manifest)}
 }
 
 // String prevents accidental SQL disclosure through ordinary logging.

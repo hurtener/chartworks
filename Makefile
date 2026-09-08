@@ -7,11 +7,11 @@ LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate
 
 .PHONY: build test coverage bench vet lint pg-up pg-down planning-check drift-audit check-mirror preflight preflight-full release-check install-hooks e2e foundation-smoke
 
-# The shipping core and race-instrumented tests are separate build profiles.
+# D-067: the pinned in-process Bruin parser requires its native Rust library.
 # Once code exists, missing tooling/source is failure, not planning-only success.
 build:
-	CGO_ENABLED=0 $(GO) build ./...
-	CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o bin/chartworks ./cmd/chartworks
+	CGO_ENABLED=1 $(GO) build ./...
+	CGO_ENABLED=1 $(GO) build -ldflags "$(LDFLAGS)" -o bin/chartworks ./cmd/chartworks
 
 test:
 	CGO_ENABLED=1 $(GO) test -race -count=1 -timeout=10m ./...

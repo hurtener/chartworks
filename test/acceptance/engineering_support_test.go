@@ -104,6 +104,7 @@ func (f *engineeringFixture) actor(t *testing.T, tenant, user string) identity.E
 	return f.token.envelope(t, tenant, user,
 		"sources.write", "sources.read", "sources.rotate", "sources.query", "sources.upload", "sources.erase",
 		"engineering.profile", "engineering.read", "jobs.read", "jobs.cancel",
+		"engineering.pipeline.write", "engineering.pipeline.publish", "engineering.pipeline.run", "engineering.pipeline.read",
 		"cw.tenant.write:"+tenant, "cw.tenant.erase:"+tenant,
 		"cw.source.read:*", "cw.source.write:*", "cw.source.query:*", "cw.source.erase:*",
 		"cw.execution_context.use:*", "cw.dataset.query:*",

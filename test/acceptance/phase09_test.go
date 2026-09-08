@@ -172,7 +172,7 @@ func TestPhase09(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, dialect := range []string{"mysql", "sqlserver", "duckdb", "unknown"} {
+		for _, dialect := range []string{"duckdb", "unknown"} {
 			changed := binding.Clone()
 			changed.Dialect = dialect
 			adapter := &unsupportedReadAdapter{binding: changed}
