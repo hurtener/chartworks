@@ -9,6 +9,8 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqroute"
 )
 
+const nlqRunResponseLimit = (16 << 20) + (128 << 10)
+
 // NLQRouteRequest mirrors the registered NLQ route request. The SDK forwards
 // the current Pengui bearer through Client; it does not derive topic reach or rule state.
 type NLQRouteRequest = nlqroute.RouteRequest
@@ -105,7 +107,7 @@ func (c *Client) RunNLQ(ctx context.Context, in NLQRunRequest) (out NLQRunResult
 	if !wireID(in.QueryID) || !wireID(in.Operation) {
 		return out, errors.New("chartworks: invalid query operation")
 	}
-	err = c.callLimit(ctx, "POST", "/v1/nlq/runs", "", in, &out, 2<<20)
+	err = c.callLimit(ctx, "POST", "/v1/nlq/runs", "", in, &out, nlqRunResponseLimit)
 	return
 }
 

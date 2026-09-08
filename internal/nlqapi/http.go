@@ -173,7 +173,7 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = http.StatusRequestEntityTooLarge, "limit_exceeded"
 	case errors.Is(err, nlq.ErrInsufficient), errors.Is(err, nlqroute.ErrNoRoute), isClarification(err):
 		status, code = http.StatusUnprocessableEntity, "insufficient_context"
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, readexec.ErrCancelled), errors.Is(err, readexec.ErrTimeout), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status, code = http.StatusGatewayTimeout, "cancelled_or_timed_out"
 	case errors.Is(err, gateway.ErrSpace):
 		status, code = http.StatusConflict, "context_changed"

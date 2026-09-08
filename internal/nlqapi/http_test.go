@@ -124,6 +124,8 @@ func TestFailureMapsPublicErrors(t *testing.T) {
 		{"binding", readexec.ErrBinding, http.StatusConflict, "context_changed"},
 		{"limit", readexec.ErrLimit, http.StatusRequestEntityTooLarge, "limit_exceeded"},
 		{"insufficient", nlq.ErrInsufficient, http.StatusUnprocessableEntity, "insufficient_context"},
+		{"execution cancelled", readexec.ErrCancelled, http.StatusGatewayTimeout, "cancelled_or_timed_out"},
+		{"execution timeout", readexec.ErrTimeout, http.StatusGatewayTimeout, "cancelled_or_timed_out"},
 		{"cancelled", context.Canceled, http.StatusGatewayTimeout, "cancelled_or_timed_out"},
 		{"deadline", context.DeadlineExceeded, http.StatusGatewayTimeout, "cancelled_or_timed_out"},
 		{"space", gateway.ErrSpace, http.StatusConflict, "context_changed"},
