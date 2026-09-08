@@ -201,11 +201,13 @@ review claim. These remain obligations of the service described below.
 
 The [rule lifecycle v1 contract](rule-lifecycle-v1.md) now supplies immutable
 private draft revisions, explicit review receipts, CAS publication/retirement,
-retained exact reads, and deterministic hard-constraint evaluation over explicit
-semantic references. It uses the existing topic actions and persisted dependency
-reaches through the shared HTTP/SDK consumer. Evaluation is neither execution
-authority nor a validated query plan. Clarification matching, real-token advisory
-assembly, replay/shadow comparison and affected-evidence invalidation remain open.
+retained exact reads, deterministic hard-constraint evaluation, detached pattern
+reads, exact replay/shadow comparison evidence and ordered publish/retire invalidation
+fences. It uses the existing topic actions and persisted dependency reaches through
+the shared HTTP/SDK consumer. Evaluation and comparison evidence are neither execution
+authority nor a validated query plan. Phase 17 provides the first required-slot and
+real-token advisory consumer; phase 18 remains responsible for shared-reader query and
+evidence consumption of invalidation fences.
 
 Phase 16 builds rule and clarification types on `semantics.Reference`. It must not add
 a second string-addressed entity namespace or resolve rule targets by display name.
@@ -274,7 +276,9 @@ active rule set or widen its source/context reach.
    platform registration; this document does not invent deployed action strings.
 6. Implement `TestPhase16/AC01` through `AC06` with real versioned PostgreSQL state,
    deterministic multilingual fixtures, zero-call assertions for deterministic paths,
-   current-authority negatives, and immutable shadow evidence.
+   current-authority negatives, immutable shadow evidence, and invalidation cursor
+   coverage. Leave shared-reader stale-evidence consumption to phase 18 without adding
+   a second executor.
 
 Until those steps and their named tests pass, phase 16 remains `in_progress`, not shipped.
 

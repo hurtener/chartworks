@@ -65,6 +65,10 @@ type ArchiveRequest struct {
 type RuleVersionRequest struct {
 	Version string `json:"version"`
 }
+type InvalidationRequest struct {
+	After int64 `json:"after_revision"`
+	Limit int   `json:"limit"`
+}
 
 // Registry returns the concrete topic operation definitions.
 func Registry() (*api.Registry, error) {
@@ -99,6 +103,10 @@ func Registry() (*api.Registry, error) {
 		{"GET", "/v1/topics/{id}/rules", "getPublishedRules", "topics.read", "retained_metadata_read", "rulesets.Service.Read", "read_only_no_domain_audit", nil, reflect.TypeFor[rulesets.Published]()},
 		{"POST", "/v1/topics/{id}/rule-versions/read", "getPublishedRuleVersion", "topics.read", "retained_metadata_read", "rulesets.Service.Read", "read_only_no_domain_audit", reflect.TypeFor[RuleVersionRequest](), reflect.TypeFor[rulesets.Published]()},
 		{"POST", "/v1/topics/{id}/rules/evaluate", "evaluateRules", "topics.read", "deterministic_constraint_read", "rulesets.Service.Evaluate", "read_only_no_domain_audit", reflect.TypeFor[rulesets.EvaluateRequest](), reflect.TypeFor[rulesets.Evaluation]()},
+		{"POST", "/v1/topics/{id}/rule-patterns/read", "getPublishedRulePatterns", "topics.read", "clarification_pattern_read", "rulesets.Service.Patterns", "read_only_no_domain_audit", reflect.TypeFor[RuleVersionRequest](), reflect.TypeFor[[]semantics.ClarificationPattern]()},
+		{"POST", "/v1/topics/{id}/rules/replay", "replayRules", "topics.read", "retained_rule_replay", "rulesets.Service.Replay", "read_only_no_domain_audit", reflect.TypeFor[rulesets.ReplayRequest](), reflect.TypeFor[rulesets.Comparison]()},
+		{"POST", "/v1/topics/{id}/rules/shadow", "shadowRules", "topics.read", "rule_shadow_comparison", "rulesets.Service.Shadow", "read_only_no_domain_audit", reflect.TypeFor[rulesets.ShadowRequest](), reflect.TypeFor[rulesets.Comparison]()},
+		{"POST", "/v1/topics/{id}/rule-invalidations/read", "readRuleInvalidations", "topics.read", "rule_evidence_invalidation_read", "rulesets.Service.Invalidations", "read_only_no_domain_audit", reflect.TypeFor[InvalidationRequest](), reflect.TypeFor[[]rulesets.Invalidation]()},
 		{"POST", "/v1/topics/{id}/rules/retire", "retireRules", "topics.publish", "atomic_rule_retirement", "rulesets.Service.Retire", "rules.retired", reflect.TypeFor[rulesets.RetireRequest](), reflect.TypeFor[rulesets.State]()},
 	}
 	defs := make([]api.Definition, 0, len(routes))
@@ -136,6 +144,10 @@ func Registry() (*api.Registry, error) {
 				"getPublishedRules":        "Read the active published ruleset",
 				"getPublishedRuleVersion":  "Read an exact retained ruleset version",
 				"evaluateRules":            "Evaluate active hard constraints over explicit semantic references",
+				"getPublishedRulePatterns": "Read detached clarification patterns from a retained ruleset",
+				"replayRules":              "Replay deterministic constraints against exact retained rule pins",
+				"shadowRules":              "Compare deterministic constraints across retained rule pins",
+				"readRuleInvalidations":    "Read rule lifecycle fences for dependent evidence consumers",
 				"retireRules":              "Retire the active ruleset with revision CAS",
 			}[r.id],
 			ResourceLoader: r.owner, Audit: r.audit, Response: response,
@@ -200,7 +212,7 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 		}
 		if rules == nil {
 			switch selected.ID {
-			case "saveRuleDraft", "reviewRules", "publishRules", "getPublishedRules", "getPublishedRuleVersion", "evaluateRules", "retireRules":
+				case "saveRuleDraft", "reviewRules", "publishRules", "getPublishedRules", "getPublishedRuleVersion", "evaluateRules", "getPublishedRulePatterns", "replayRules", "shadowRules", "readRuleInvalidations", "retireRules":
 				failure(w, store.ErrNotFound)
 				return
 			}
@@ -366,6 +378,26 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 			var in rulesets.EvaluateRequest
 			if err = decode(&in); err == nil {
 				out, err = rules.Evaluate(r.Context(), e, id, in)
+			}
+		case "getPublishedRulePatterns":
+			var in RuleVersionRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Patterns(r.Context(), e, id, in.Version)
+			}
+		case "replayRules":
+			var in rulesets.ReplayRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Replay(r.Context(), e, id, in)
+			}
+		case "shadowRules":
+			var in rulesets.ShadowRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Shadow(r.Context(), e, id, in)
+			}
+		case "readRuleInvalidations":
+			var in InvalidationRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Invalidations(r.Context(), e, id, in.After, in.Limit)
 			}
 		case "retireRules":
 			var in rulesets.RetireRequest

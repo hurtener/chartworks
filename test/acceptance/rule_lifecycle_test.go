@@ -71,6 +71,15 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 			Priority: 100, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceFeedback, Evidence: "feedback-1"},
 			Constraint: &semantics.Constraint{Kind: semantics.ConstraintRequireReference, Target: semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}},
 		}},
+		Patterns: []semantics.ClarificationPattern{{
+			ID: "metric-choice", Version: "v1",
+			Targets:    []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}, {Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "amount"}},
+			Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "review-1"},
+			Slots: []semantics.ClarificationSlot{{
+				ID: "metric", Prompt: "Choose a metric", Required: true, Kind: semantics.SlotChoice, Sensitivity: semantics.LiteralNonSensitive,
+				Choices: []semantics.ClarificationChoice{{ID: "revenue", Label: "Revenue", Target: &semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}}, {ID: "amount", Label: "Amount", Target: &semantics.Reference{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "amount"}}},
+			}},
+		}},
 	}
 	publicPack := semantics.TopicPack{SchemaVersion: publishedTopic.Definition.SchemaVersion, Topic: publishedTopic.Definition.Topic, Version: publishedTopic.Definition.Version, Name: publishedTopic.Definition.Name, Description: publishedTopic.Definition.Description, Measures: publishedTopic.Definition.Measures, Dimensions: publishedTopic.Definition.Dimensions, KPIs: publishedTopic.Definition.KPIs, Joins: publishedTopic.Definition.Joins, CanonicalEntities: publishedTopic.Definition.CanonicalEntities}
 	for _, dataset := range publishedTopic.Definition.Datasets {
@@ -169,6 +178,12 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 
 	rules.Version = "rules-v2"
 	rules.Rules[0].Priority = 200
+	rules.Rules = append(rules.Rules, semantics.RuleDefinition{
+		ID: "exclude-row-id", Version: "v1", Category: semantics.RuleStructural,
+		Class: semantics.RuleExecutionConstraint, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTopic},
+		Priority: 50, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "review-2"},
+		Constraint: &semantics.Constraint{Kind: semantics.ConstraintExcludeReference, Target: semantics.Reference{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "id"}},
+	})
 	secondDraft, err := client.SaveRuleDraft(ctx, pack.Topic, sdk.SaveRuleDraftRequest{Expected: 1, Definition: rules, Change: "Raise explicit priority"})
 	if err != nil || secondDraft.Revision != 2 {
 		t.Fatal("second draft", secondDraft, err)
@@ -181,6 +196,22 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 	if err != nil || second.State.Revision != 2 || second.State.Version != rules.Version {
 		t.Fatal("second publish", second.State, err)
 	}
+	shadow, err := client.ShadowRules(ctx, pack.Topic, sdk.RuleShadowRequest{BaselineRuleVersion: "rules-v1", CandidateRuleVersion: rules.Version, TopicVersion: pack.Version,
+		References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}, {Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "id"}},
+	})
+	if err != nil || shadow.Candidate == nil || !shadow.Changed || !shadow.Baseline.Result.Allowed || shadow.Candidate.Result.Allowed {
+		t.Fatal("changed retained rule shadow", shadow, err)
+	}
+	replay, err := client.ReplayRules(ctx, pack.Topic, sdk.RuleReplayRequest{RuleVersion: "rules-v1", TopicVersion: pack.Version,
+		References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}},
+	})
+	if err != nil || !replay.Baseline.Result.Allowed || replay.Baseline.RuleVersion != "rules-v1" {
+		t.Fatal("historical rule replay after replacement", replay, err)
+	}
+	invalidations, err := client.RuleInvalidations(ctx, pack.Topic, sdk.RuleInvalidationRequest{Limit: 8})
+	if err != nil || len(invalidations) != 2 || invalidations[1].Revision != 2 || invalidations[1].OldRuleVersion != "rules-v1" || invalidations[1].NewRuleVersion != rules.Version {
+		t.Fatal("second rule invalidation", invalidations, err)
+	}
 	firstExact, err := client.PublishedRuleVersion(ctx, pack.Topic, "rules-v1")
 	if err != nil || firstExact.State.Active || !firstExact.State.Retired || firstExact.State.Revision != 2 {
 		t.Fatal("prior version was not retired", firstExact.State, err)
@@ -190,6 +221,28 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 	}
 	if gatewayFixture.requests.Load() != gatewayRequests {
 		t.Fatal("rule lifecycle or evaluation called model gateway")
+	}
+	patterns, err := client.PublishedRulePatterns(ctx, pack.Topic, rules.Version)
+	if err != nil || len(patterns) != 1 || patterns[0].ID != "metric-choice" || len(patterns[0].Slots) != 1 {
+		t.Fatal("published clarification pattern", patterns, err)
+	}
+	replay, err = client.ReplayRules(ctx, pack.Topic, sdk.RuleReplayRequest{
+		RuleVersion: rules.Version, TopicVersion: pack.Version,
+		References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}},
+	})
+	if err != nil || replay.Mode != "replay" || replay.Candidate != nil || replay.Changed || replay.Baseline.RuleVersion != rules.Version || !replay.Baseline.Result.Allowed {
+		t.Fatal("retained rule replay", replay, err)
+	}
+	shadow, err = client.ShadowRules(ctx, pack.Topic, sdk.RuleShadowRequest{
+		BaselineRuleVersion: rules.Version, TopicVersion: pack.Version,
+		References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}},
+	})
+	if err != nil || shadow.Mode != "shadow" || shadow.Candidate == nil || shadow.Changed {
+		t.Fatal("same-version rule shadow", shadow, err)
+	}
+	invalidations, err = client.RuleInvalidations(ctx, pack.Topic, sdk.RuleInvalidationRequest{Limit: 8})
+	if err != nil || len(invalidations) != 1 || invalidations[0].Kind != "publish" || invalidations[0].NewRuleVersion != rules.Version || invalidations[0].OldRuleVersion != "" {
+		t.Fatal("first rule invalidation", invalidations, err)
 	}
 
 	pack.Version = "v2"

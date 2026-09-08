@@ -131,10 +131,31 @@ type RuleEvaluationRequest = rulesets.EvaluateRequest
 // RuleEvaluation contains deterministic hard-constraint results.
 type RuleEvaluation = rulesets.Evaluation
 
+// RuleReplayRequest evaluates one exact retained rules version.
+type RuleReplayRequest = rulesets.ReplayRequest
+
+// RuleShadowRequest compares exact retained rule versions.
+type RuleShadowRequest = rulesets.ShadowRequest
+
+// RuleComparison is immutable replay/shadow evidence.
+type RuleComparison = rulesets.Comparison
+
+// RuleInvalidation is an immutable downstream evidence fence.
+type RuleInvalidation = rulesets.Invalidation
+
+// RuleClarificationPattern describes a published required-choice pattern.
+type RuleClarificationPattern = semantics.ClarificationPattern
+
 // ArchiveTopicRequest CAS-fences a topic archive transition.
 type ArchiveTopicRequest struct {
 	Expected int64  `json:"expected_revision"`
 	Note     string `json:"note"`
+}
+
+// RuleInvalidationRequest reads lifecycle fences after an exact revision.
+type RuleInvalidationRequest struct {
+	After int64 `json:"after_revision"`
+	Limit int   `json:"limit"`
 }
 
 // TopicDraftRevision is retained private revision metadata.
@@ -428,6 +449,44 @@ func (c *Client) EvaluateRules(ctx context.Context, id string, in RuleEvaluation
 		return out, errors.New("chartworks: invalid topic identifier")
 	}
 	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rules/evaluate", "", in, &out, 2<<20)
+	return
+}
+
+// PublishedRulePatterns reads detached clarification patterns from one retained rules version.
+func (c *Client) PublishedRulePatterns(ctx context.Context, id, version string) (out []RuleClarificationPattern, err error) {
+	if !wireID(id) || version != "" && !wireID(version) {
+		return nil, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rule-patterns/read", "", struct {
+		Version string `json:"version"`
+	}{version}, &out, 2<<20)
+	return
+}
+
+// ReplayRules evaluates and records one exact retained rules version.
+func (c *Client) ReplayRules(ctx context.Context, id string, in RuleReplayRequest) (out RuleComparison, err error) {
+	if !wireID(id) || !wireID(in.RuleVersion) || in.TopicVersion != "" && !wireID(in.TopicVersion) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rules/replay", "", in, &out, 2<<20)
+	return
+}
+
+// ShadowRules compares exact retained baseline and candidate rules.
+func (c *Client) ShadowRules(ctx context.Context, id string, in RuleShadowRequest) (out RuleComparison, err error) {
+	if !wireID(id) || !wireID(in.BaselineRuleVersion) || in.CandidateRuleVersion != "" && !wireID(in.CandidateRuleVersion) || in.TopicVersion != "" && !wireID(in.TopicVersion) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rules/shadow", "", in, &out, 2<<20)
+	return
+}
+
+// RuleInvalidations reads immutable rule lifecycle fences for evidence consumers.
+func (c *Client) RuleInvalidations(ctx context.Context, id string, in RuleInvalidationRequest) (out []RuleInvalidation, err error) {
+	if !wireID(id) || in.After < 0 || in.Limit < 1 || in.Limit > 128 {
+		return nil, errors.New("chartworks: invalid invalidation request")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rule-invalidations/read", "", in, &out, 2<<20)
 	return
 }
 

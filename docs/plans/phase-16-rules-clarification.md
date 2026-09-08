@@ -31,12 +31,14 @@ Rules advisory token budget, sensitivity policy and bounded replay case/call/tim
 ## Bounded runtime stage
 
 The [rule lifecycle v1 contract](../contracts/rule-lifecycle-v1.md) implements the
-reviewed immutable lifecycle and deterministic evaluation of closed hard constraints
-over explicit semantic references. It reuses the published topic dependency fence,
-shared HTTP registry and SDK. This stage supplies part of AC01 and AC02. It does not
-claim question matching, required-slot handling, advisory token accounting,
-clarification generation, replay/shadow execution, or affected-evidence invalidation;
-AC03 through AC06 and cumulative phase acceptance remain required.
+reviewed immutable lifecycle, deterministic evaluation of closed hard constraints,
+detached pattern reads, exact replay/shadow comparison evidence, and ordered
+publish/retire invalidation fences. It reuses the published topic dependency fence,
+shared HTTP registry and SDK. The phase 17 routing consumer supplies the first real
+required-slot and real-token advisory consumer over these seams. Phase 18 still owns
+shared-reader query/evidence consumption of invalidation fences and downstream
+generation/execution integration; those dependent gates are not circular prerequisites
+for phase 16's own routing-rule acceptance.
 
 ## Acceptance criteria
 
@@ -49,7 +51,12 @@ AC03 through AC06 and cumulative phase acceptance remain required.
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase16/AC01` through `TestPhase16/AC06` using rule/conflict/clarification goldens and real versioned state. Query/replay integration uses the shared reader once available; no separate executor. COMMON.md sets coverage; `scripts/smoke/phase-16.sh` requires all six results for full rule parity.
+`TestPhase16/AC01` through `TestPhase16/AC06` exercises signed lifecycle, conflict and
+mandatory preservation, the real phase 17 clarification/token consumer, exact replay and
+shadow pins, and immutable invalidation cursors against real PostgreSQL state. Query and
+evidence consumption of those fences remains on the phase 18 shared reader; no separate
+executor is introduced. COMMON.md sets coverage; `scripts/smoke/phase-16.sh` requires
+all six results for full rule parity.
 
 ## Glossary, decisions and deviations
 

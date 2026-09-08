@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
@@ -15,6 +16,7 @@ import (
 )
 
 var _ rulesets.Repository = (*DB)(nil)
+var _ rulesets.EvidenceRepository = (*DB)(nil)
 
 func requireRuleAccess(e identity.Envelope, topic string, access drafts.Access) error {
 	return drafts.Require(e, topic, access)
@@ -158,7 +160,8 @@ func (d *DB) PublishRules(ctx context.Context, e identity.Envelope, published to
 			}
 		}
 		var current int64
-		if err = tx.QueryRow(ctx, `SELECT revision FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 FOR UPDATE`, e.Tenant(), published.State.Topic).Scan(&current); err != nil {
+		var oldVersion *string
+		if err = tx.QueryRow(ctx, `SELECT revision,active_version FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 FOR UPDATE`, e.Tenant(), published.State.Topic).Scan(&current, &oldVersion); err != nil {
 			return err
 		}
 		if current != expected {
@@ -171,6 +174,13 @@ func (d *DB) PublishRules(ctx context.Context, e identity.Envelope, published to
 			return err
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_publication_events(tenant_id,topic_id,revision,version_id,kind,actor_id,session_id,note) VALUES($1,$2,$3,$4,'publish',$5,$6,$7)`, e.Tenant(), published.State.Topic, expected+1, version, e.User(), e.Session(), review.Note); err != nil {
+			return err
+		}
+		invalidationID, err := newID()
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_evidence_invalidations(tenant_id,invalidation_id,topic_id,revision,kind,old_rule_version,new_rule_version,topic_version,pack_digest) VALUES($1,$2,$3,$4,'publish',$5,$6,$7,$8)`, e.Tenant(), invalidationID, published.State.Topic, expected+1, oldVersion, version, published.State.Version, published.Digest); err != nil {
 			return err
 		}
 		scope, _ := store.NewScope(e.Tenant(), e.User())
@@ -259,6 +269,13 @@ func (d *DB) RetireRules(ctx context.Context, e identity.Envelope, published top
 		if _, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_publication_events(tenant_id,topic_id,revision,version_id,kind,actor_id,session_id,note) VALUES($1,$2,$3,$4,'retire',$5,$6,$7)`, e.Tenant(), published.State.Topic, expected+1, *active, e.User(), e.Session(), note); err != nil {
 			return err
 		}
+		invalidationID, err := newID()
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_evidence_invalidations(tenant_id,invalidation_id,topic_id,revision,kind,old_rule_version,new_rule_version,topic_version,pack_digest) VALUES($1,$2,$3,$4,'retire',$5,NULL,$6,$7)`, e.Tenant(), invalidationID, published.State.Topic, expected+1, *active, published.State.Version, published.Digest); err != nil {
+			return err
+		}
 		scope, _ := store.NewScope(e.Tenant(), e.User())
 		if err := auditJob(ctx, tx, scope, "rules.retired", published.State.Topic); err != nil {
 			return err
@@ -267,4 +284,83 @@ func (d *DB) RetireRules(ctx context.Context, e identity.Envelope, published top
 		return nil
 	})
 	return
+}
+
+func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparison rulesets.Comparison) (rulesets.Comparison, error) {
+	if !identity.Identifier(comparison.ID) || (comparison.Mode != "replay" && comparison.Mode != "shadow") || !identity.Identifier(comparison.Topic) || len(comparison.References) < 1 || len(comparison.References) > 256 || !identity.Identifier(comparison.Baseline.RuleVersion) || !identity.Identifier(comparison.Baseline.TopicVersion) {
+		return rulesets.Comparison{}, store.ErrInvalid
+	}
+	if comparison.Mode == "replay" && comparison.Candidate != nil || comparison.Mode == "shadow" && (comparison.Candidate == nil || !identity.Identifier(comparison.Candidate.RuleVersion)) {
+		return rulesets.Comparison{}, store.ErrInvalid
+	}
+	if err := requireRuleAccess(e, comparison.Topic, drafts.Read); err != nil {
+		return rulesets.Comparison{}, err
+	}
+	references, err := json.Marshal(comparison.References)
+	if err != nil {
+		return rulesets.Comparison{}, store.ErrInvalid
+	}
+	baseline, err := json.Marshal(comparison.Baseline.Result)
+	if err != nil {
+		return rulesets.Comparison{}, store.ErrInvalid
+	}
+	var candidateVersion, candidateResult any
+	if comparison.Candidate != nil {
+		candidateVersion = comparison.Candidate.RuleVersion
+		candidateResult, err = json.Marshal(comparison.Candidate.Result)
+		if err != nil {
+			return rulesets.Comparison{}, store.ErrInvalid
+		}
+	}
+	ctx, cancel, err := requestContext(ctx, e)
+	if err != nil {
+		return rulesets.Comparison{}, err
+	}
+	defer cancel()
+	created := comparison.CreatedAt
+	if created.IsZero() {
+		created = time.Now().UTC()
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_comparison_evidence(tenant_id,comparison_id,actor_id,session_id,topic_id,mode,topic_version,pack_digest,references_json,baseline_rule_version,baseline_result,candidate_rule_version,candidate_result,changed,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb,$14,$15)`, e.Tenant(), comparison.ID, e.User(), e.Session(), comparison.Topic, comparison.Mode, comparison.Baseline.TopicVersion, comparison.Baseline.PackDigest, references, comparison.Baseline.RuleVersion, baseline, candidateVersion, candidateResult, comparison.Changed, created)
+		return err
+	})
+	if err != nil {
+		return rulesets.Comparison{}, safe(err)
+	}
+	comparison.CreatedAt = created
+	return comparison, nil
+}
+
+func (d *DB) ReadInvalidations(ctx context.Context, e identity.Envelope, topic string, after int64, limit int) (out []rulesets.Invalidation, err error) {
+	if !identity.Identifier(topic) || after < 0 || limit < 1 || limit > 128 {
+		return nil, store.ErrInvalid
+	}
+	if err = requireRuleAccess(e, topic, drafts.Read); err != nil {
+		return nil, err
+	}
+	ctx, cancel, err := requestContext(ctx, e)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT invalidation_id,topic_id,revision,kind,COALESCE(old_rule_version,''),COALESCE(new_rule_version,''),topic_version,pack_digest,created_at FROM chartworks.topic_rule_evidence_invalidations WHERE tenant_id=$1 AND topic_id=$2 AND revision>$3 ORDER BY revision,invalidation_id LIMIT $4`, e.Tenant(), topic, after, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var item rulesets.Invalidation
+			if err = rows.Scan(&item.ID, &item.Topic, &item.Revision, &item.Kind, &item.OldRuleVersion, &item.NewRuleVersion, &item.TopicVersion, &item.PackDigest, &item.CreatedAt); err != nil {
+				return err
+			}
+			out = append(out, item)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, safe(err)
+	}
+	return out, nil
 }

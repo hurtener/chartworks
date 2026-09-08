@@ -84,14 +84,63 @@ type EvaluateRequest struct {
 	References []semantics.Reference `json:"references"`
 }
 
+// ReplayRequest evaluates one retained ruleset against one exact topic
+// version. The retained pins remain usable after a later publication or
+// retirement, subject to the caller's current signed read reach.
+type ReplayRequest struct {
+	RuleVersion  string                `json:"rule_version"`
+	TopicVersion string                `json:"topic_version,omitempty"`
+	References   []semantics.Reference `json:"references"`
+}
+
+// ShadowRequest compares a retained baseline with a retained candidate. An
+// empty candidate version selects the current published rule pointer; an
+// explicit candidate remains an exact retained read.
+type ShadowRequest struct {
+	BaselineRuleVersion  string                `json:"baseline_rule_version"`
+	CandidateRuleVersion string                `json:"candidate_rule_version,omitempty"`
+	TopicVersion         string                `json:"topic_version,omitempty"`
+	References           []semantics.Reference `json:"references"`
+}
+
 // Evaluation is deterministic hard-constraint evidence tied to exact versions.
 type Evaluation struct {
 	Topic        string                         `json:"topic"`
 	TopicVersion string                         `json:"topic_version"`
 	RuleVersion  string                         `json:"rule_version"`
+	PackDigest   string                         `json:"pack_digest"`
 	RuleDigest   string                         `json:"rule_digest"`
 	Result       semantics.ConstraintEvaluation `json:"result"`
 	EvaluatedAt  time.Time                      `json:"evaluated_at"`
+}
+
+// Comparison is immutable evidence about deterministic rule evaluation. A
+// shadow comparison has both sides; a replay has only Baseline and Changed is
+// false. It is not query execution evidence or a source-authority decision.
+type Comparison struct {
+	ID         string                `json:"id"`
+	Mode       string                `json:"mode"`
+	Topic      string                `json:"topic"`
+	References []semantics.Reference `json:"references"`
+	Baseline   Evaluation            `json:"baseline"`
+	Candidate  *Evaluation           `json:"candidate,omitempty"`
+	Changed    bool                  `json:"changed"`
+	CreatedAt  time.Time             `json:"created_at"`
+}
+
+// Invalidation is an immutable fence consumed by query/evidence stores. It
+// never rewrites a published block or ruleset; consumers mark dependent
+// evidence stale using the exact old rule and topic pins.
+type Invalidation struct {
+	ID             string    `json:"id"`
+	Topic          string    `json:"topic"`
+	Revision       int64     `json:"revision"`
+	Kind           string    `json:"kind"`
+	OldRuleVersion string    `json:"old_rule_version,omitempty"`
+	NewRuleVersion string    `json:"new_rule_version,omitempty"`
+	TopicVersion   string    `json:"topic_version"`
+	PackDigest     string    `json:"pack_digest"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // Pin identifies the rule and topic revisions required for a retained read.
@@ -118,6 +167,14 @@ type Repository interface {
 	RuleVersionPin(context.Context, identity.Envelope, string, string, drafts.Access) (Pin, error)
 	ReadPublishedRules(context.Context, identity.Envelope, string, string, drafts.Access, bool) (Published, error)
 	RetireRules(context.Context, identity.Envelope, topics.Published, string, int64) (State, error)
+}
+
+// EvidenceRepository persists comparison evidence and reads the atomic
+// invalidation ledger. Implementations must retain exact pins and scope every
+// operation by the verified tenant and actor.
+type EvidenceRepository interface {
+	RecordComparison(context.Context, identity.Envelope, Comparison) (Comparison, error)
+	ReadInvalidations(context.Context, identity.Envelope, string, int64, int) ([]Invalidation, error)
 }
 
 // TopicRepository reads the published topic projection used by rule lifecycle operations.

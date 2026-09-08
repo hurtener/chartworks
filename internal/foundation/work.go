@@ -151,7 +151,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	rules, err := rulesets.New(db, db)
+	rules, err := rulesets.New(db, db, db)
 	if err != nil {
 		w.close()
 		return nil, err

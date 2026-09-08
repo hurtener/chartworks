@@ -2,6 +2,9 @@ package rulesets
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/identity"
@@ -11,18 +14,75 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
-// Service coordinates rule lifecycle operations with topic and rule repositories.
 type Service struct {
-	repo   Repository
-	topics TopicRepository
+	repo     Repository
+	topics   TopicRepository
+	evidence EvidenceRepository
 }
 
-// New constructs a rule lifecycle service with both required repositories.
-func New(repo Repository, topicRepo TopicRepository) (*Service, error) {
+// Service coordinates reviewed rule lifecycle with exact pinned evidence.
+
+func New(repo Repository, topicRepo TopicRepository, evidence ...EvidenceRepository) (*Service, error) {
 	if repo == nil || topicRepo == nil {
 		return nil, store.ErrInvalid
 	}
-	return &Service{repo: repo, topics: topicRepo}, nil
+	var evidenceRepo EvidenceRepository
+	if len(evidence) > 1 {
+		return nil, store.ErrInvalid
+	}
+	if len(evidence) == 1 {
+		evidenceRepo = evidence[0]
+	}
+	return &Service{repo: repo, topics: topicRepo, evidence: evidenceRepo}, nil
+}
+
+const (
+	comparisonReplay = "replay"
+	comparisonShadow = "shadow"
+)
+
+func newComparisonID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", store.ErrUnavailable
+	}
+	return hex.EncodeToString(raw[:]), nil
+}
+
+func validReferences(refs []semantics.Reference) error {
+	if len(refs) < 1 || len(refs) > 256 {
+		return store.ErrInvalid
+	}
+	seen := make(map[semantics.Reference]bool, len(refs))
+	for _, ref := range refs {
+		if !ref.Valid() || seen[ref] {
+			return store.ErrInvalid
+		}
+		seen[ref] = true
+	}
+	return nil
+}
+
+func sameConstraintEvaluation(a, b semantics.ConstraintEvaluation) bool {
+	if a.Allowed != b.Allowed || len(a.Required) != len(b.Required) || len(a.Excluded) != len(b.Excluded) || len(a.Violations) != len(b.Violations) {
+		return false
+	}
+	for i := range a.Required {
+		if a.Required[i] != b.Required[i] {
+			return false
+		}
+	}
+	for i := range a.Excluded {
+		if a.Excluded[i] != b.Excluded[i] {
+			return false
+		}
+	}
+	for i := range a.Violations {
+		if a.Violations[i].Rule != b.Violations[i].Rule || a.Violations[i].Kind != b.Violations[i].Kind || a.Violations[i].Target != b.Violations[i].Target {
+			return false
+		}
+	}
+	return true
 }
 
 func publishedSubject(p topics.Published) (semantics.RuleSubject, error) {
@@ -87,6 +147,11 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, topic, version 
 	}
 	pin, err := s.repo.RuleVersionPin(ctx, e, topic, version, drafts.Read)
 	if err != nil {
+		// A current read with no active pointer is a lifecycle conflict. Keep
+		// retained-version absence as the ordinary not-found result.
+		if version == "" && errors.Is(err, store.ErrNotFound) {
+			return Published{}, store.ErrConflict
+		}
 		return Published{}, err
 	}
 	topicVersion, err := s.topics.ReadPublishedTopic(ctx, e, topic, pin.TopicVersion, drafts.Read)
@@ -141,5 +206,145 @@ func (s *Service) Evaluate(ctx context.Context, e identity.Envelope, topic strin
 	if err != nil {
 		return Evaluation{}, err
 	}
-	return Evaluation{Topic: topic, TopicVersion: pin.TopicVersion, RuleVersion: pin.Version, RuleDigest: published.Digest, Result: result, EvaluatedAt: time.Now().UTC()}, nil
+	return Evaluation{Topic: topic, TopicVersion: pin.TopicVersion, PackDigest: topicVersion.Digest, RuleVersion: pin.Version, RuleDigest: published.Digest, Result: result, EvaluatedAt: time.Now().UTC()}, nil
+}
+
+// readPinned performs the shared non-payload pin, exact topic read, and exact
+// ruleset read ordering. Historical reads remain available after replacement;
+// current=true additionally requires both pointers and the topic to be active.
+func (s *Service) readPinned(ctx context.Context, e identity.Envelope, topic, topicVersion, ruleVersion string, current bool) (Evaluation, semantics.RuleSubject, semantics.RuleModel, error) {
+	if ctx == nil || !identity.Identifier(topic) || ruleVersion != "" && !identity.Identifier(ruleVersion) || topicVersion != "" && !identity.Identifier(topicVersion) {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, store.ErrInvalid
+	}
+	pin, err := s.repo.RuleVersionPin(ctx, e, topic, ruleVersion, drafts.Read)
+	if err != nil {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, err
+	}
+	if topicVersion != "" && pin.TopicVersion != topicVersion {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, store.ErrConflict
+	}
+	publishedTopic, err := s.topics.ReadPublishedTopic(ctx, e, topic, pin.TopicVersion, drafts.Read)
+	if err != nil {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, err
+	}
+	if publishedTopic.State.Version != pin.TopicVersion || publishedTopic.Digest != pin.PackDigest || current && !publishedTopic.State.Active {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, store.ErrConflict
+	}
+	publishedRules, err := s.repo.ReadPublishedRules(ctx, e, topic, pin.RuleVersion, drafts.Read, current)
+	if err != nil {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, err
+	}
+	if publishedRules.State.Version != pin.RuleVersion || publishedRules.Definition.TopicVersion != publishedTopic.State.Version || publishedRules.Definition.PackDigest != publishedTopic.Digest {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, store.ErrConflict
+	}
+	subject, err := publishedSubject(publishedTopic)
+	if err != nil {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, err
+	}
+	model, err := semantics.CompilePublishedRules(subject, publishedRules.Definition)
+	if err != nil {
+		return Evaluation{}, semantics.RuleSubject{}, semantics.RuleModel{}, err
+	}
+	return Evaluation{Topic: topic, TopicVersion: pin.TopicVersion, PackDigest: pin.PackDigest, RuleVersion: pin.RuleVersion, RuleDigest: publishedRules.Digest}, subject, model, nil
+}
+
+func (s *Service) recordComparison(ctx context.Context, e identity.Envelope, comparison Comparison) (Comparison, error) {
+	if s.evidence == nil {
+		return Comparison{}, store.ErrUnavailable
+	}
+	return s.evidence.RecordComparison(ctx, e, comparison)
+}
+
+// Replay evaluates an exact retained ruleset/topic pair and persists the
+// result for later query/evidence replay. It does not execute a query.
+func (s *Service) Replay(ctx context.Context, e identity.Envelope, topic string, in ReplayRequest) (Comparison, error) {
+	if ctx == nil || !e.Valid() || !identity.Identifier(topic) || !identity.Identifier(in.RuleVersion) || in.TopicVersion != "" && !identity.Identifier(in.TopicVersion) {
+		return Comparison{}, store.ErrInvalid
+	}
+	if err := validReferences(in.References); err != nil {
+		return Comparison{}, err
+	}
+	base, subject, model, err := s.readPinned(ctx, e, topic, in.TopicVersion, in.RuleVersion, false)
+	if err != nil {
+		return Comparison{}, err
+	}
+	base.Result, err = semantics.EvaluateConstraints(subject, model, in.References)
+	if err != nil {
+		return Comparison{}, err
+	}
+	base.EvaluatedAt = time.Now().UTC()
+	id, err := newComparisonID()
+	if err != nil {
+		return Comparison{}, err
+	}
+	return s.recordComparison(ctx, e, Comparison{ID: id, Mode: comparisonReplay, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: base, Changed: false, CreatedAt: time.Now().UTC()})
+}
+
+// Shadow compares a retained baseline with either an exact retained candidate
+// or the current active ruleset. Both sides must describe the same published
+// topic version and pack digest; a comparison never changes active state.
+func (s *Service) Shadow(ctx context.Context, e identity.Envelope, topic string, in ShadowRequest) (Comparison, error) {
+	if ctx == nil || !e.Valid() || !identity.Identifier(topic) || !identity.Identifier(in.BaselineRuleVersion) || in.CandidateRuleVersion != "" && !identity.Identifier(in.CandidateRuleVersion) || in.TopicVersion != "" && !identity.Identifier(in.TopicVersion) {
+		return Comparison{}, store.ErrInvalid
+	}
+	if err := validReferences(in.References); err != nil {
+		return Comparison{}, err
+	}
+	baseline, baselineSubject, baselineModel, err := s.readPinned(ctx, e, topic, in.TopicVersion, in.BaselineRuleVersion, false)
+	if err != nil {
+		return Comparison{}, err
+	}
+	baseline.Result, err = semantics.EvaluateConstraints(baselineSubject, baselineModel, in.References)
+	if err != nil {
+		return Comparison{}, err
+	}
+	baseline.EvaluatedAt = time.Now().UTC()
+	candidateTopicVersion := baseline.TopicVersion
+	candidate, candidateSubject, candidateModel, err := s.readPinned(ctx, e, topic, candidateTopicVersion, in.CandidateRuleVersion, in.CandidateRuleVersion == "")
+	if err != nil {
+		return Comparison{}, err
+	}
+	candidate.Result, err = semantics.EvaluateConstraints(candidateSubject, candidateModel, in.References)
+	if err != nil {
+		return Comparison{}, err
+	}
+	candidate.EvaluatedAt = time.Now().UTC()
+	if baseline.PackDigest != candidate.PackDigest || baseline.TopicVersion != candidate.TopicVersion {
+		return Comparison{}, store.ErrConflict
+	}
+	id, err := newComparisonID()
+	if err != nil {
+		return Comparison{}, err
+	}
+	return s.recordComparison(ctx, e, Comparison{ID: id, Mode: comparisonShadow, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: baseline, Candidate: &candidate, Changed: !sameConstraintEvaluation(baseline.Result, candidate.Result), CreatedAt: time.Now().UTC()})
+}
+
+// Patterns returns detached clarification patterns from the exact or current
+// published ruleset. Matching and value validation remain query consumers.
+func (s *Service) Patterns(ctx context.Context, e identity.Envelope, topic, version string) ([]semantics.ClarificationPattern, error) {
+	published, err := s.Read(ctx, e, topic, version)
+	if err != nil {
+		return nil, err
+	}
+	out := append([]semantics.ClarificationPattern(nil), published.Definition.Patterns...)
+	for i := range out {
+		out[i].Targets = append([]semantics.Reference(nil), out[i].Targets...)
+		out[i].Slots = append([]semantics.ClarificationSlot(nil), out[i].Slots...)
+		for j := range out[i].Slots {
+			out[i].Slots[j].Choices = append([]semantics.ClarificationChoice(nil), out[i].Slots[j].Choices...)
+		}
+	}
+	return out, nil
+}
+
+// Invalidations reads atomic lifecycle fences for downstream query/evidence
+// consumers. It is intentionally metadata-only and never rewrites artifacts.
+func (s *Service) Invalidations(ctx context.Context, e identity.Envelope, topic string, after int64, limit int) ([]Invalidation, error) {
+	if ctx == nil || !e.Valid() || !identity.Identifier(topic) || after < 0 || limit < 1 || limit > 128 {
+		return nil, store.ErrInvalid
+	}
+	if s.evidence == nil {
+		return nil, store.ErrUnavailable
+	}
+	return s.evidence.ReadInvalidations(ctx, e, topic, after, limit)
 }

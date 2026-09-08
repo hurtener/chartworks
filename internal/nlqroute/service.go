@@ -28,10 +28,12 @@ import (
 )
 
 const (
-	maxTopics       = 4
-	maxReferences   = 256
-	maxKinds        = 8
-	maxExamples     = nlq.MaxExamples
+	maxTopics     = 4
+	maxReferences = 256
+	maxKinds      = 8
+	// The request may carry a bounded candidate set. The assembler applies
+	// the smaller seven-item retained-context bound and records omissions.
+	maxExamples     = 256
 	maxMetricIDs    = 32
 	maxQuestionSize = 16 << 10
 )
