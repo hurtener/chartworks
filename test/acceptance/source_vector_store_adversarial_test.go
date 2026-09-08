@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/vindex"
@@ -103,13 +104,13 @@ func TestVindexRepositoryBoundsAndAtomicFailure(t *testing.T) {
 	if _, err := f.db.ArchiveGeneration(ctx, scope, g.Topic, g.Context, 0); err == nil {
 		t.Fatal("unversioned archive")
 	}
-	if _, err := f.db.SearchFacets(ctx, store.Scope{}, []vindex.Query{q}); err == nil {
+	if _, err := f.db.SearchFacets(ctx, identity.Envelope{}, store.Scope{}, []vindex.Query{q}); err == nil {
 		t.Fatal("unscoped vector query")
 	}
-	if _, err := f.db.SearchFacets(ctx, scope, nil); err == nil {
+	if _, err := f.db.SearchFacets(ctx, identity.Envelope{}, scope, nil); err == nil {
 		t.Fatal("empty vector query")
 	}
-	if _, err := f.db.SearchFacets(ctx, scope, []vindex.Query{{}}); err == nil {
+	if _, err := f.db.SearchFacets(ctx, identity.Envelope{}, scope, []vindex.Query{{}}); err == nil {
 		t.Fatal("invalid vector query")
 	}
 	if f.db.DeleteFacets(ctx, store.Scope{}, vindex.Removal{}) == nil || f.db.DeleteFacets(ctx, scope, vindex.Removal{Version: "partial"}) == nil {

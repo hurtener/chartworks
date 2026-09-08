@@ -57,4 +57,18 @@ These tests establish consumer and serializer conformance. The phase 11/12 manif
 
 ## Private topic draft consumer
 
-The [actual draft operation manifest](chartworks-topic-draft-operations.json) registers `topics.write`, `topics.read` and `topics.export` through the existing opaque Pengui action seam. Operators must deliberately enable appropriate capability policies; this document creates no deployed grant. `topics.write` requires topic write and every source read, dataset query and execution-context use reach; creation also requires tenant write. Admission uses existing `sources.read` and `engineering.read` actions to consult the actual source and private profile services. Retained read/history/diff use `topics.read` plus topic read and the persisted dependency reaches. Export uses `topics.export` plus topic export and those same dependencies. Every revision remains private to its originating actor/session. No topic publication, certification, execution, policy or issuer operation is introduced; [draft service contract](topic-drafts-v1.md) defines limits and remaining work.
+The first seven draft operations in the [actual shared topic operation manifest](chartworks-topic-draft-operations.json) register `topics.write`, `topics.read` and `topics.export` through the existing opaque Pengui action seam. Operators must deliberately enable appropriate capability policies; this document creates no deployed grant. `topics.write` requires topic write and every source read, dataset query and execution-context use reach; creation also requires tenant write. Admission uses existing `sources.read` and `engineering.read` actions to consult the actual source and private profile services. Retained read/history/diff use `topics.read` plus topic read and the persisted dependency reaches. Export uses `topics.export` plus topic export and those same dependencies. Every draft revision remains private to its originating actor/session; the [draft service contract](topic-drafts-v1.md) defines its limits and remaining work.
+
+### Topic review and publication operations
+
+The same manifest registers the new opaque actions `topics.review` and
+`topics.publish`. Review requires topic publish reach plus every dependency reach
+of the exact private draft revision. Publication requires topic publish, source
+read, dataset query and execution-context use reach; live source discovery also
+uses the existing `sources.read` action. Facet staging inside that operation uses
+the publication action and cannot activate a generation independently. Rollback
+and archive use `topics.publish`; retained current/exact reads and the current
+source contract use `topics.read`. Public publication DTOs exclude draft profile,
+actor and session provenance. The [publication contract](topic-publication-v1.md)
+defines the atomic activation and current-health boundaries. No issuer, local grant,
+certification or execution authority is introduced.

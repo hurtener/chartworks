@@ -1,4 +1,5 @@
-// Package topicapi is the thin shared-registry HTTP consumer for private drafts.
+// Package topicapi is the thin shared-registry HTTP consumer for topic authoring
+// and publication lifecycle operations.
 package topicapi
 
 import (
@@ -18,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -38,6 +40,13 @@ type ExportRequest struct {
 	Revision int64                          `json:"revision"`
 	Mapping  []semantics.ExportDatasetSlots `json:"mapping"`
 }
+type PublishedVersionRequest struct {
+	Version string `json:"version"`
+}
+type ArchiveRequest struct {
+	Expected int64  `json:"expected_revision"`
+	Note     string `json:"note"`
+}
 
 func Registry() (*api.Registry, error) {
 	type route struct {
@@ -52,6 +61,13 @@ func Registry() (*api.Registry, error) {
 		{"POST", "/v1/topics/{id}/draft-history", "getTopicDraftHistory", "topics.read", "metadata_read", "drafts.Service.History", "read_only_no_domain_audit", reflect.TypeFor[HistoryRequest](), reflect.TypeFor[[]drafts.Revision]()},
 		{"POST", "/v1/topics/{id}/draft-diff", "diffTopicDraft", "topics.read", "metadata_read", "drafts.Service.Diff", "read_only_no_domain_audit", reflect.TypeFor[DiffRequest](), reflect.TypeFor[semantics.VersionDiff]()},
 		{"POST", "/v1/topics/{id}/draft-export", "exportTopicDraft", "topics.export", "metadata_export", "drafts.Service.Export", "read_only_no_domain_audit", reflect.TypeFor[ExportRequest](), reflect.TypeFor[semantics.PortablePack]()},
+		{"POST", "/v1/topics/{id}/reviews", "reviewTopic", "topics.review", "review_receipt_commit", "topics.Service.Review", "topic.reviewed", reflect.TypeFor[topics.ReviewRequest](), reflect.TypeFor[topics.Review]()},
+		{"POST", "/v1/topics/{id}/publications", "publishTopic", "topics.publish", "gateway_and_atomic_publication", "topics.Service.Publish", "topic.published", reflect.TypeFor[topics.PublishRequest](), reflect.TypeFor[topics.Published]()},
+		{"GET", "/v1/topics/{id}/published", "getPublishedTopic", "topics.read", "retained_metadata_read", "topics.Service.Read", "read_only_no_domain_audit", nil, reflect.TypeFor[topics.Published]()},
+		{"POST", "/v1/topics/{id}/published-versions/read", "getPublishedTopicVersion", "topics.read", "retained_metadata_read", "topics.Service.Read", "read_only_no_domain_audit", reflect.TypeFor[PublishedVersionRequest](), reflect.TypeFor[topics.Published]()},
+		{"GET", "/v1/topics/{id}/contract", "getTopicContract", "topics.read", "source_catalog_read", "topics.Service.Contract", "read_only_no_domain_audit", nil, reflect.TypeFor[topics.Contract]()},
+		{"POST", "/v1/topics/{id}/rollbacks", "rollbackTopic", "topics.publish", "atomic_publication_rollback", "topics.Service.Rollback", "topic.rolled_back", reflect.TypeFor[topics.TransitionRequest](), reflect.TypeFor[topics.Published]()},
+		{"POST", "/v1/topics/{id}/archive", "archiveTopic", "topics.publish", "atomic_publication_archive", "topics.Service.Archive", "topic.archived", reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[topics.State]()},
 	}
 	defs := make([]api.Definition, 0, len(routes))
 	for _, r := range routes {
@@ -62,13 +78,20 @@ func Registry() (*api.Registry, error) {
 		d := api.Definition{
 			Operation: api.Operation{Method: r.method, Path: r.path, Action: r.action, Effect: r.effect}, ID: r.id,
 			Summary: map[string]string{
-				"saveTopicDraft":       "Create or edit an immutable private topic draft",
-				"importTopicDraft":     "Map and admit a portable topic draft",
-				"getTopicDraft":        "Read the current private draft",
-				"getTopicDraftVersion": "Read an exact private draft revision",
-				"getTopicDraftHistory": "List scoped private draft revision metadata",
-				"diffTopicDraft":       "Compare two exact private draft revisions",
-				"exportTopicDraft":     "Export a scoped draft through logical binding slots",
+				"saveTopicDraft":           "Create or edit an immutable private topic draft",
+				"importTopicDraft":         "Map and admit a portable topic draft",
+				"getTopicDraft":            "Read the current private draft",
+				"getTopicDraftVersion":     "Read an exact private draft revision",
+				"getTopicDraftHistory":     "List scoped private draft revision metadata",
+				"diffTopicDraft":           "Compare two exact private draft revisions",
+				"exportTopicDraft":         "Export a scoped draft through logical binding slots",
+				"reviewTopic":              "Record an immutable review of an exact draft digest",
+				"publishTopic":             "Publish a reviewed topic with all matching facet generations",
+				"getPublishedTopic":        "Read the retained active published topic",
+				"getPublishedTopicVersion": "Read an exact retained published topic version",
+				"getTopicContract":         "Read a published topic after current source validation",
+				"rollbackTopic":            "Restore an exact retained topic version and facet set",
+				"archiveTopic":             "Archive the active topic and every matching facet head",
 			}[r.id],
 			ResourceLoader: r.owner, Audit: r.audit, Response: response,
 			Errors: []api.ErrorResponse{
@@ -91,11 +114,11 @@ func Registry() (*api.Registry, error) {
 	}
 	return api.New(defs)
 }
-func Handler(verifier *auth.Verifier, service *drafts.Service, next http.Handler) http.Handler {
+func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics.Service, next http.Handler) http.Handler {
 	if verifier == nil || next == nil {
 		return http.NotFoundHandler()
 	}
-	if service == nil {
+	if service == nil && published == nil {
 		return next
 	}
 	registry, err := Registry()
@@ -120,6 +143,13 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, next http.Handler
 		if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.Header.Get("Content-Encoding") != "" || r.Method == "GET" && (r.ContentLength != 0 || len(r.TransferEncoding) != 0) {
 			failure(w, store.ErrInvalid)
 			return
+		}
+		if service == nil {
+			switch selected.ID {
+			case "saveTopicDraft", "importTopicDraft", "getTopicDraft", "getTopicDraftVersion", "getTopicDraftHistory", "diffTopicDraft", "exportTopicDraft":
+				failure(w, store.ErrNotFound)
+				return
+			}
 		}
 		decode := func(out any) error { return body(w, r, selected.Request, out) }
 		var out any
@@ -159,6 +189,63 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, next http.Handler
 			var in ExportRequest
 			if err = decode(&in); err == nil {
 				out, err = service.Export(r.Context(), e, id, in.Revision, in.Mapping)
+			}
+		case "reviewTopic":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				var in topics.ReviewRequest
+				if err = decode(&in); err == nil {
+					out, err = published.Review(r.Context(), e, id, in)
+				}
+			}
+		case "publishTopic":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				var in topics.PublishRequest
+				if err = decode(&in); err == nil {
+					out, err = published.Publish(r.Context(), e, id, in)
+				}
+			}
+		case "getPublishedTopic":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				out, err = published.Read(r.Context(), e, id, "")
+			}
+		case "getPublishedTopicVersion":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				var in PublishedVersionRequest
+				if err = decode(&in); err == nil {
+					out, err = published.Read(r.Context(), e, id, in.Version)
+				}
+			}
+		case "getTopicContract":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				out, err = published.Contract(r.Context(), e, id)
+			}
+		case "rollbackTopic":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				var in topics.TransitionRequest
+				if err = decode(&in); err == nil {
+					out, err = published.Rollback(r.Context(), e, id, in)
+				}
+			}
+		case "archiveTopic":
+			if published == nil {
+				err = store.ErrNotFound
+			} else {
+				var in ArchiveRequest
+				if err = decode(&in); err == nil {
+					out, err = published.Archive(r.Context(), e, id, in.Expected, in.Note)
+				}
 			}
 		}
 		if err != nil {

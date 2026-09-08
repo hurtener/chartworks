@@ -49,4 +49,26 @@ D-045/D-049/D-052 preserve lifecycle outcomes but remove local policy decisions.
 
 `internal/semantics/drafts`, PostgreSQL migration 012, `internal/topicapi` and the Go SDK now provide private draft creation, exact CAS revisions, scoped reads/history/diff and neutral mapped export/import. Admission consumes real source discovery and active private profile evidence; storage fences them at commit. The [draft service contract](../contracts/topic-drafts-v1.md) defines authority, limits and typed failure behavior. `TestTopicDraftAPIAndSDK`, `TestTopicDraftCASAndScopeFences`, `TestTopicDraftCommitFencesAndErasure`, `TestTopicDraftProfileHeadAndAuditFences` `TestTopicDraftAdmissionLimitsAndIndependentActions` and `TestTopicDraftMultipleDatasetScopeAndAdmissionBounds` exercise this partial AC02/AC03/AC06 consumer against real PostgreSQL and HTTP/SDK schemas. They do not satisfy the six cumulative `TestPhase15` criteria.
 
-Publication/facet activation, published-topic health, review/rollback/archive, entity/onboarding APIs, approved canonical registry, generation and full lifecycle portability remain unimplemented. Drafts containing canonical registry entries are explicitly unsupported until approved revision meaning can be resolved; numeric authoring pins alone are not accepted approval proof. No phase acceptance stub or completed-phase claim is added.
+## Bounded publication lifecycle stage
+
+The [publication contract](../contracts/topic-publication-v1.md) adds immutable
+review receipts, explicit publication, retained current/exact reads, rollback,
+archive and a separate current source contract read. Publication obtains the full
+embedding-space descriptor from the active Bifrost route, stages complete
+per-context facet generations invisibly, then commits the semantic head and every
+old/new context vector head in one PostgreSQL transaction. Rollback restores the
+retained exact generation set without a gateway call. Managed facet search resolves
+the verified Pengui envelope and every persisted source/dataset/context dependency
+inside the same repeatable-read snapshot before selecting facet bodies.
+
+The registered HTTP and Go SDK operations are exercised by focused real PostgreSQL,
+pgvector and recorded gateway fixtures, including concurrent publication, gateway
+failure, multi-context retirement/restoration, archive and current-health boundaries.
+This is bounded AC01/AC02/AC04/AC05 evidence; it is not a substitute for the six
+cumulative `TestPhase15` criteria.
+
+Entity/onboarding APIs, approved canonical registry, source-reference rewrite
+workflows and full lifecycle portability remain unimplemented. Drafts containing
+canonical registry entries are explicitly unsupported until approved revision
+meaning exists; numeric authoring pins alone are not accepted approval proof. No
+phase acceptance stub or completed-phase claim is added.

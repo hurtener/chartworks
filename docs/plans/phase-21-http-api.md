@@ -62,4 +62,9 @@ Implement `TestPhase21/AC01` through `TestPhase21/AC06`. Registration tests enum
 
 D-050 changes execution order, not phase IDs. No runtime completion is claimed.
 
-The phase 15 [private draft consumer](../contracts/topic-drafts-v1.md) adds seven concrete operations through the same shared registry and generated schemas, with actual HTTP/SDK/PostgreSQL fixtures. This domain consumer does not complete foundation/work/security adapter migration, public document delivery or the cumulative phase 21 acceptance criteria.
+The phase 15 [private draft consumer](../contracts/topic-drafts-v1.md) and
+[publication lifecycle](../contracts/topic-publication-v1.md) add fourteen concrete
+operations through the same shared registry and generated schemas, with actual
+HTTP/SDK/PostgreSQL/pgvector fixtures. These domain consumers do not complete
+foundation/work/security adapter migration, public document delivery or the
+cumulative phase 21 acceptance criteria.

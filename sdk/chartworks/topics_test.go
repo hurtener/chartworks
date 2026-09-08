@@ -80,5 +80,29 @@ func TestTopicSDKRejectsUnsafePathIDs(t *testing.T) {
 		if _, err = c.ExportTopicDraft(ctx, id, 1, nil); err == nil {
 			t.Fatal("export path")
 		}
+		if _, err = c.ReviewTopic(ctx, id, TopicReviewRequest{}); err == nil {
+			t.Fatal("review path")
+		}
+		if _, err = c.PublishTopic(ctx, id, PublishTopicRequest{}); err == nil {
+			t.Fatal("publication path")
+		}
+		if _, err = c.PublishedTopic(ctx, id); err == nil {
+			t.Fatal("published path")
+		}
+		if _, err = c.PublishedTopicVersion(ctx, id, "v1"); err == nil {
+			t.Fatal("published version path")
+		}
+		if _, err = c.TopicContract(ctx, id); err == nil {
+			t.Fatal("contract path")
+		}
+		if _, err = c.RollbackTopic(ctx, id, TopicTransitionRequest{}); err == nil {
+			t.Fatal("rollback path")
+		}
+		if _, err = c.ArchiveTopic(ctx, id, ArchiveTopicRequest{}); err == nil {
+			t.Fatal("archive path")
+		}
+	}
+	if _, err = c.PublishedTopicVersion(ctx, "topic", "../version"); err == nil {
+		t.Fatal("unsafe publication version")
 	}
 }

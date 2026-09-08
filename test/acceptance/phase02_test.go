@@ -246,7 +246,7 @@ func TestPhase02(t *testing.T) {
 		if rows.Err() != nil {
 			t.Fatal("schema rows failed")
 		}
-		expected := []string{"audit_events", "job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs", "pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "uploads", "vector_facets", "vector_generations", "vector_heads"}
+		expected := []string{"audit_events", "job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs", "pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "topic_draft_dependencies", "topic_draft_heads", "topic_draft_versions", "topic_publication_events", "topic_publication_heads", "topic_published_dependencies", "topic_published_generations", "topic_published_versions", "topic_reviews", "uploads", "vector_facets", "vector_generations", "vector_heads"}
 		sort.Strings(expected)
 		if strings.Join(names, ",") != strings.Join(expected, ",") {
 			t.Fatalf("unexpected foundation schema: %v", names)

@@ -26,7 +26,7 @@ import (
 )
 
 func topicScopes(tenant string) []string {
-	return []string{"topics.write", "topics.read", "topics.export", "sources.read", "engineering.read", "cw.tenant.write:" + tenant, "cw.topic.write:*", "cw.topic.read:*", "cw.topic.export:*", "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"}
+	return []string{"topics.write", "topics.read", "topics.export", "topics.review", "topics.publish", "sources.read", "engineering.read", "cw.tenant.write:" + tenant, "cw.topic.write:*", "cw.topic.read:*", "cw.topic.export:*", "cw.topic.publish:*", "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"}
 }
 func topicFixture(t *testing.T) (*engineeringFixture, *drafts.Service, identity.Envelope, semantics.TopicPack) {
 	t.Helper()
@@ -53,7 +53,7 @@ func topicClient(t *testing.T, f *engineeringFixture, s *drafts.Service, e ident
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := assertRegisteredWireSchemas(t, registry, topicapi.Handler(f.token.verifier, s, http.NotFoundHandler()))
+	h := assertRegisteredWireSchemas(t, registry, topicapi.Handler(f.token.verifier, s, nil, http.NotFoundHandler()))
 	server := httptest.NewServer(h)
 	t.Cleanup(server.Close)
 	c, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) {

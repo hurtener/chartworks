@@ -32,7 +32,7 @@ dependency update/delete. There are no published pointers or facet writes.
 
 ## Signed authority and privacy
 
-The [registered operations](chartworks-topic-draft-operations.json) use the existing
+The first seven draft operations in the [shared topic operation manifest](chartworks-topic-draft-operations.json) use the existing
 Pengui verifier and signed action/resource model. The provider-registration contract
 lists their exact action strings. Creation requires tenant write, topic write and
 all source read, dataset query and execution-context use reaches. Editing requires
@@ -56,7 +56,7 @@ access fence does not claim to implement topic erasure/retention or publication.
 
 ## Wire behavior and limits
 
-Seven actual routes use `internal/api.Registry`, `SchemaFor`, the same generated
+Seven draft routes use `internal/api.Registry`, `SchemaFor`, the same generated
 OpenAPI data and the Go SDK: save, import, current draft, exact revision, history,
 diff and export. The runtime composition root installs `topicapi.Handler`. Request
 DTOs have lower-snake-case JSON fields; absent fields take their Go zero values and
@@ -103,9 +103,10 @@ entities therefore fail explicitly instead of treating supplied revision numbers
 approved evidence. The pure compiler/portable representation continues to preserve
 exact canonical references for that future consumer.
 
-Review, publication/facet activation, rollback/archive, canonical registry,
-onboarding/entity APIs, generation, current published-topic health, source rename
-workflows, retention and full lifecycle bundle portability remain pending. Phase 16
+The separate [publication contract](topic-publication-v1.md) now owns review,
+publication/facet activation, retained publication reads, rollback/archive and the
+current published-topic source contract. Canonical registry, onboarding/entity APIs,
+source rename workflows, retention and full lifecycle bundle portability remain pending. Phase 16
 execution/replay/shadow/provider quality remains pending. Phase 21 still needs
 foundation/work/security adapters, public document delivery and cumulative
 acceptance. No full `TestPhase15`, `TestPhase16` or `TestPhase21` pass is claimed.

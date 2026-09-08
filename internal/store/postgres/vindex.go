@@ -6,6 +6,8 @@ import (
 	"errors"
 	"math"
 
+	"github.com/hurtener/chartworks/internal/access"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/vindex"
@@ -111,20 +113,7 @@ func (d *DB) PublishGeneration(ctx context.Context, s store.Scope, g vindex.Gene
 		if e := vectorHeadLock(ctx, tx, s.Tenant(), g.Topic, g.Context); e != nil {
 			return e
 		}
-		if _, e := checkedGeneration(ctx, tx, s.Tenant(), g); e != nil {
-			return e
-		}
-		var count, missing int
-		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.vector_facets WHERE tenant_id=$1 AND topic_id=$2 AND context_id=$3 AND generation_id=$4`, s.Tenant(), g.Topic, g.Context, g.ID).Scan(&count); e != nil {
-			return e
-		}
-		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.vector_generations g CROSS JOIN LATERAL jsonb_to_recordset(g.manifest) AS m(id text,kind text,source_id text,text_hash text) LEFT JOIN chartworks.vector_facets f ON (f.tenant_id,f.topic_id,f.context_id,f.generation_id,f.facet_id)=(g.tenant_id,g.topic_id,g.context_id,g.generation_id,m.id) WHERE g.tenant_id=$1 AND g.topic_id=$2 AND g.context_id=$3 AND g.generation_id=$4 AND (f.facet_id IS NULL OR f.kind<>m.kind OR f.source_id<>m.source_id OR encode(sha256(convert_to(f.body,'UTF8')),'hex')<>m.text_hash)`, s.Tenant(), g.Topic, g.Context, g.ID).Scan(&missing); e != nil {
-			return e
-		}
-		if count != len(g.Expected) || missing != 0 {
-			return store.ErrConflict
-		}
-		if _, e := tx.Exec(ctx, `UPDATE chartworks.vector_generations SET state='ready' WHERE tenant_id=$1 AND topic_id=$2 AND context_id=$3 AND generation_id=$4`, s.Tenant(), g.Topic, g.Context, g.ID); e != nil {
+		if e := sealVectorGeneration(ctx, tx, s, g); e != nil {
 			return e
 		}
 		tag, e := tx.Exec(ctx, `UPDATE chartworks.vector_heads SET revision=revision+1,active_generation=$5,archived=false WHERE tenant_id=$1 AND topic_id=$2 AND context_id=$3 AND revision=$4`, s.Tenant(), g.Topic, g.Context, expected, g.ID)
@@ -141,6 +130,28 @@ func (d *DB) PublishGeneration(ctx context.Context, s store.Scope, g vindex.Gene
 		return vindex.Publication{}, err
 	}
 	return out, nil
+}
+
+// sealVectorGeneration is shared by the standalone index and the semantic
+// publication transaction. The caller holds the matching vector-head lock.
+func sealVectorGeneration(ctx context.Context, tx pgx.Tx, s store.Scope, g vindex.Generation) error {
+	if _, e := checkedGeneration(ctx, tx, s.Tenant(), g); e != nil {
+		return e
+	}
+	var count, missing int
+	if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.vector_facets WHERE tenant_id=$1 AND topic_id=$2 AND context_id=$3 AND generation_id=$4`, s.Tenant(), g.Topic, g.Context, g.ID).Scan(&count); e != nil {
+		return e
+	}
+	if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.vector_generations g CROSS JOIN LATERAL jsonb_to_recordset(g.manifest) AS m(id text,kind text,source_id text,text_hash text) LEFT JOIN chartworks.vector_facets f ON (f.tenant_id,f.topic_id,f.context_id,f.generation_id,f.facet_id)=(g.tenant_id,g.topic_id,g.context_id,g.generation_id,m.id) WHERE g.tenant_id=$1 AND g.topic_id=$2 AND g.context_id=$3 AND g.generation_id=$4 AND (f.facet_id IS NULL OR f.kind<>m.kind OR f.source_id<>m.source_id OR encode(sha256(convert_to(f.body,'UTF8')),'hex')<>m.text_hash)`, s.Tenant(), g.Topic, g.Context, g.ID).Scan(&missing); e != nil {
+		return e
+	}
+	if count != len(g.Expected) || missing != 0 {
+		return store.ErrConflict
+	}
+	if _, e := tx.Exec(ctx, `UPDATE chartworks.vector_generations SET state='ready' WHERE tenant_id=$1 AND topic_id=$2 AND context_id=$3 AND generation_id=$4`, s.Tenant(), g.Topic, g.Context, g.ID); e != nil {
+		return e
+	}
+	return nil
 }
 
 // ArchiveGeneration keeps retained immutable facets but immediately excludes the pointer.
@@ -196,7 +207,67 @@ func vectorPublication(ctx context.Context, tx pgx.Tx, tenant string, q vindex.Q
 
 // SearchFacets applies all tenant/topic/context/generation restrictions inside SQL.
 // Repeatable read makes an entire batch observe one immutable publication snapshot.
-func (d *DB) SearchFacets(ctx context.Context, s store.Scope, queries []vindex.Query) (out []vindex.Result, err error) {
+func managedFacetSearch(ctx context.Context, tx pgx.Tx, e identity.Envelope, tenant string, q vindex.Query) (string, error) {
+	var version string
+	var archived bool
+	err := tx.QueryRow(ctx, `SELECT COALESCE(active_version,''),archived FROM chartworks.topic_publication_heads WHERE tenant_id=$1 AND topic_id=$2`, tenant, q.Topic).Scan(&version, &archived)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if err = access.Require(e, "topics.read", access.Resource{Tenant: tenant, Kind: "topic", Permission: "read", ID: q.Topic}); err != nil {
+		return "", err
+	}
+	if archived || version == "" {
+		return "", access.ErrNotFound
+	}
+	rows, err := tx.Query(ctx, `SELECT d.source_id,d.dataset_id,d.context_id,d.source_revision,s.current_revision,s.deleted
+	 FROM chartworks.topic_published_dependencies d
+	 JOIN chartworks.sources s ON(s.tenant_id,s.source_id)=(d.tenant_id,d.source_id)
+	 WHERE(d.tenant_id,d.topic_id,d.version_id)=($1,$2,$3)
+	 ORDER BY d.source_id,d.dataset_id,d.context_id`, tenant, q.Topic, version)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	found, contextFound := false, false
+	for rows.Next() {
+		var source, dataset, partition string
+		var pinned, current int64
+		var deleted bool
+		if err = rows.Scan(&source, &dataset, &partition, &pinned, &current, &deleted); err != nil {
+			return "", err
+		}
+		found = true
+		contextFound = contextFound || partition == q.Context
+		if err = access.Require(e, "topics.read",
+			access.Resource{Tenant: tenant, Kind: "source", Permission: "read", ID: source},
+			access.Resource{Tenant: tenant, Kind: "dataset", Permission: "query", ID: dataset},
+			access.Resource{Tenant: tenant, Kind: "execution_context", Permission: "use", ID: partition},
+		); err != nil {
+			return "", err
+		}
+		if deleted || pinned != current {
+			return "", readexec.ErrBinding
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return "", err
+	}
+	if !found || !contextFound {
+		return "", access.ErrNotFound
+	}
+	var generation string
+	err = tx.QueryRow(ctx, `SELECT generation_id FROM chartworks.topic_published_generations WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3 AND context_id=$4`, tenant, q.Topic, version, q.Context).Scan(&generation)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", access.ErrNotFound
+	}
+	return generation, err
+}
+
+func (d *DB) SearchFacets(ctx context.Context, e identity.Envelope, s store.Scope, queries []vindex.Query) (out []vindex.Result, err error) {
 	if !s.Valid() {
 		return nil, store.ErrScope
 	}
@@ -212,9 +283,16 @@ func (d *DB) SearchFacets(ctx context.Context, s store.Scope, queries []vindex.Q
 	err = d.transactionOptions(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(ctx context.Context, tx pgx.Tx) error {
 		bytes := 0
 		for _, q := range queries {
+			managedGeneration, e := managedFacetSearch(ctx, tx, e, s.Tenant(), q)
+			if e != nil {
+				return e
+			}
 			p, source, e := vectorPublication(ctx, tx, s.Tenant(), q)
 			if e != nil {
 				return e
+			}
+			if managedGeneration != "" && p.Generation != managedGeneration {
+				return store.ErrConflict
 			}
 			r := vindex.Result{ID: q.ID, Publication: p, Hits: []vindex.Hit{}}
 			if p.Archived || p.Generation == "" {

@@ -40,5 +40,47 @@
     "path": "/v1/topics/{id}/draft-export",
     "action": "topics.export",
     "effect": "metadata_export"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/reviews",
+    "action": "topics.review",
+    "effect": "review_receipt_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/publications",
+    "action": "topics.publish",
+    "effect": "gateway_and_atomic_publication"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/published",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/published-versions/read",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/contract",
+    "action": "topics.read",
+    "effect": "source_catalog_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rollbacks",
+    "action": "topics.publish",
+    "effect": "atomic_publication_rollback"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/archive",
+    "action": "topics.publish",
+    "effect": "atomic_publication_archive"
   }
 ]

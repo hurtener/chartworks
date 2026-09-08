@@ -25,7 +25,7 @@ func TestRegistryManifestAndConcreteSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Definitions()) != 7 {
+	if len(r.Definitions()) != 14 {
 		t.Fatal("operation inventory")
 	}
 	raw, err := os.ReadFile("../../docs/contracts/chartworks-topic-draft-operations.json")
@@ -98,7 +98,7 @@ func TestFailureClassifications(t *testing.T) {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
-	if Handler(nil, nil, http.NotFoundHandler()) == nil {
+	if Handler(nil, nil, nil, http.NotFoundHandler()) == nil {
 		t.Fatal("nil dependencies")
 	}
 }

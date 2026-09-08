@@ -26,6 +26,8 @@ const (
 	Read Access = iota + 1
 	Write
 	Export
+	Review
+	Publish
 )
 
 func (a Access) Action() string {
@@ -36,6 +38,10 @@ func (a Access) Action() string {
 		return "topics.write"
 	case Export:
 		return "topics.export"
+	case Review:
+		return "topics.review"
+	case Publish:
+		return "topics.publish"
 	}
 	return ""
 }
@@ -47,6 +53,8 @@ func (a Access) Permission() string {
 		return "write"
 	case Export:
 		return "export"
+	case Review, Publish:
+		return "publish"
 	}
 	return ""
 }

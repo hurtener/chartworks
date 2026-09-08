@@ -101,7 +101,8 @@ HTTP/SDK/PostgreSQL schema checks. This replaces that consumer's independent rou
 inventory; it does not introduce another parallel business API. Foundation
 health/capabilities, security and work adapters still require migration.
 `/capabilities` continues to
-report `business_api: false`; seven concrete private topic draft operations are now registered separately through the same shared contract. Public document
+report `business_api: false`; fourteen concrete topic draft/lifecycle operations are
+now registered separately through the same shared contract. Public document
 delivery, cumulative generated SDK/isolation/audit checks and all six named phase
 21 criteria remain incomplete.
 
@@ -117,9 +118,10 @@ The private draft service now consumes current phase 12 profile evidence, verifi
 dataset provenance against source discovery and commits immutable CAS revisions with
 audit and dependency fences. This supplies draft mutation, scoped history/diff and
 neutral mapped import/export, while approved canonical entities remain unsupported.
-The next phase 15 implementation adds the immutable publication model, reviewed
-source-reference rewrite operations, bounded Bifrost generation, compact capability
-contracts, and version-fenced facet preparation/publication using `internal/vindex`.
+The bounded [publication service](topic-publication-v1.md) now supplies the immutable
+review/publication model, Bifrost embedding generation, current source contract and
+version-fenced facet activation using `internal/vindex`. Reviewed source-reference
+rewrite operations and additional compact capability consumers remain pending.
 Phase 12 profile records are private to their originating actor/session. Their
 retained evidence can seed an authorized draft, but published-topic readers cannot
 use that private profile lookup as the current-health service. A topic consumer
@@ -131,13 +133,14 @@ descriptor. `internal/vindex` requires the full provider/route/endpoint/model/re
 dimension/preprocessing/input/normalization identity; reconstructing it independently
 from configuration can drift from the actual Bifrost response.
 
-Publication must finalize the complete ready facet generation and active semantic
+Publication finalizes the complete ready facet generation and active semantic
 version in one PostgreSQL transaction that locks both heads in a fixed order, or leave
 the prior version usable. Calling the existing self-transactional vector publication
 method followed by a separate topic pointer update is insufficient. Current source health stays a
-separate observation checked when contracts are read. Archive, rollback, source
-recheck, service-backed portability, onboarding profiles, authorization, domain registration, SDK,
-and all six named phase acceptance tests remain required.
+separate observation checked when contracts are read. Archive, rollback, current
+source recheck, Pengui authorization, shared domain registration and SDK paths are
+implemented by that bounded consumer. Service-backed portability, onboarding profiles
+and all six named cumulative phase acceptance tests remain required.
 
 ## Phase 16 integration contract
 
