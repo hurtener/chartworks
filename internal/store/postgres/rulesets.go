@@ -372,7 +372,34 @@ func (d *DB) ReadInvalidations(ctx context.Context, e identity.Envelope, topic s
 			}
 			out = append(out, item)
 		}
-		return rows.Err()
+		if err = rows.Err(); err != nil {
+			return err
+		}
+		rows.Close()
+		// Invalidation rows retain an exact topic version. Re-read each pin
+		// through the existing retained-topic seam before returning it so the
+		// caller still has every persisted source, dataset, and context reach.
+		// This is metadata-only; the retained read does not consult a source or
+		// model service.
+		checked := make(map[string]string, len(out))
+		for _, item := range out {
+			digest, ok := checked[item.TopicVersion]
+			if !ok {
+				published, readErr := readPublishedTx(ctx, tx, e, topic, item.TopicVersion, drafts.Read)
+				if readErr != nil {
+					return readErr
+				}
+				if published.State.Topic != topic || published.State.Version != item.TopicVersion {
+					return store.ErrConflict
+				}
+				digest = published.Digest
+				checked[item.TopicVersion] = digest
+			}
+			if digest != item.PackDigest {
+				return store.ErrConflict
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, safe(err)

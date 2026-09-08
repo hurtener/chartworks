@@ -128,6 +128,30 @@ func evidenceBoundaryFixture(t *testing.T) (*Service, *evidenceBoundaryRepositor
 	return service, repo, evidence, e
 }
 
+func TestPatternsDetachChoiceTargets(t *testing.T) {
+	service, repo, _, e := evidenceBoundaryFixture(t)
+	target := semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}
+	repo.rules.Definition.Patterns = []semantics.ClarificationPattern{{
+		ID: "metric-choice", Version: "v1", Targets: []semantics.Reference{target},
+		Slots: []semantics.ClarificationSlot{{
+			ID: "metric", Prompt: "Choose a metric", Required: true, Kind: semantics.SlotChoice,
+			Choices: []semantics.ClarificationChoice{{ID: "revenue", Label: "Revenue", Target: &target}},
+		}},
+	}}
+	patterns, err := service.Patterns(context.Background(), e, "commerce", "rules-v1")
+	if err != nil || len(patterns) != 1 || len(patterns[0].Slots) != 1 || len(patterns[0].Slots[0].Choices) != 1 || patterns[0].Slots[0].Choices[0].Target == nil {
+		t.Fatalf("patterns: %#v err=%v", patterns, err)
+	}
+	patterns[0].Slots[0].Choices[0].Target.ID = "mutated"
+	if got := repo.rules.Definition.Patterns[0].Slots[0].Choices[0].Target.ID; got != target.ID {
+		t.Fatalf("pattern target mutation reached retained rules: %q", got)
+	}
+	again, err := service.Patterns(context.Background(), e, "commerce", "rules-v1")
+	if err != nil || again[0].Slots[0].Choices[0].Target.ID != target.ID {
+		t.Fatalf("pattern target was not detached across reads: %#v err=%v", again, err)
+	}
+}
+
 func TestEvidenceServiceBoundariesPreservePins(t *testing.T) {
 	service, repo, evidence, e := evidenceBoundaryFixture(t)
 	ctx := context.Background()

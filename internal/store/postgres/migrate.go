@@ -130,7 +130,8 @@ func requiredRelations(ctx context.Context, tx pgx.Tx) error {
 		"topic_publication_events", "topic_publication_heads", "topic_published_canonical_refs", "topic_published_dependencies",
 		"topic_generation_checkpoints", "topic_health", "topic_published_generations", "topic_published_versions", "topic_reviews", "topic_rule_draft_heads",
 		"topic_rule_draft_versions", "topic_rule_publication_events", "topic_rule_publication_heads",
-		"topic_rule_published_versions", "topic_rule_reviews", "uploads", "vector_facets", "vector_generations", "vector_heads",
+		"topic_rule_published_versions", "topic_rule_reviews", "topic_rule_comparison_evidence", "topic_rule_evidence_invalidations",
+		"uploads", "vector_facets", "vector_generations", "vector_heads",
 		"nlq_examples", "nlq_feedback", "nlq_queries", "nlq_sessions",
 	}
 	var count int

@@ -326,6 +326,12 @@ func (s *Service) Patterns(ctx context.Context, e identity.Envelope, topic, vers
 		out[i].Slots = append([]semantics.ClarificationSlot(nil), out[i].Slots...)
 		for j := range out[i].Slots {
 			out[i].Slots[j].Choices = append([]semantics.ClarificationChoice(nil), out[i].Slots[j].Choices...)
+			for k := range out[i].Slots[j].Choices {
+				if target := out[i].Slots[j].Choices[k].Target; target != nil {
+					copy := *target
+					out[i].Slots[j].Choices[k].Target = &copy
+				}
+			}
 		}
 	}
 	return out, nil

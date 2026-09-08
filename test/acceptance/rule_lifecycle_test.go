@@ -92,7 +92,7 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 	if _, err = semantics.CompilePublishedRules(subject, rules); err != nil {
 		t.Fatal("public rule compile", err)
 	}
-	narrowScopes := []string{"topics.write", "cw.topic.write:" + pack.Topic, "cw.source.read:*", "cw.execution_context.use:*"}
+	narrowScopes := []string{"topics.write", "cw.topic.write:" + pack.Topic, "topics.read", "cw.topic.read:" + pack.Topic, "cw.source.read:*", "cw.execution_context.use:*"}
 	narrowEnvelope := f.token.envelope(t, f.e.Tenant(), f.e.User(), narrowScopes...)
 	if _, err = f.db.ReadPublishedTopic(ctx, narrowEnvelope, pack.Topic, pack.Version, drafts.Write); !errors.Is(err, access.ErrNotFound) {
 		t.Fatal("published topic dependency reach widened", err)
@@ -154,6 +154,9 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 	}
 	if successes != 1 || conflicts != 1 || active.State.Revision != 1 || !active.State.Active || active.State.Retired {
 		t.Fatal("publication CAS race", successes, conflicts, active.State)
+	}
+	if _, err = narrowClient.RuleInvalidations(ctx, pack.Topic, sdk.RuleInvalidationRequest{Limit: 8}); err == nil {
+		t.Fatal("rule invalidation read ignored persisted dataset dependency reach")
 	}
 
 	missing, err := client.EvaluateRules(ctx, pack.Topic, sdk.RuleEvaluationRequest{References: []semantics.Reference{{Kind: semantics.KindDataset, ID: pack.Datasets[0].ID}}})
@@ -223,8 +226,17 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 		t.Fatal("rule lifecycle or evaluation called model gateway")
 	}
 	patterns, err := client.PublishedRulePatterns(ctx, pack.Topic, rules.Version)
-	if err != nil || len(patterns) != 1 || patterns[0].ID != "metric-choice" || len(patterns[0].Slots) != 1 {
+	if err != nil || len(patterns) != 1 || patterns[0].ID != "metric-choice" || len(patterns[0].Slots) != 1 || len(patterns[0].Slots[0].Choices) != 2 {
 		t.Fatal("published clarification pattern", patterns, err)
+	}
+	if patterns[0].Slots[0].Choices[0].Target == nil {
+		t.Fatal("published clarification choice lost target")
+	}
+	originalTarget := *patterns[0].Slots[0].Choices[0].Target
+	patterns[0].Slots[0].Choices[0].Target.ID = "mutated"
+	patternsAgain, err := client.PublishedRulePatterns(ctx, pack.Topic, rules.Version)
+	if err != nil || len(patternsAgain) != 1 || len(patternsAgain[0].Slots) != 1 || len(patternsAgain[0].Slots[0].Choices) != 2 || patternsAgain[0].Slots[0].Choices[0].Target == nil || *patternsAgain[0].Slots[0].Choices[0].Target != originalTarget {
+		t.Fatal("published clarification target was not detached", patternsAgain, err)
 	}
 	replay, err = client.ReplayRules(ctx, pack.Topic, sdk.RuleReplayRequest{
 		RuleVersion: rules.Version, TopicVersion: pack.Version,
