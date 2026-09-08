@@ -28,6 +28,16 @@ No autonomous rule approval, second query engine or unlimited replay under a bro
 
 Rules advisory token budget, sensitivity policy and bounded replay case/call/time limits; no silent constraint truncation. Version rules and comparison inputs/results; production state remains unchanged by a shadow run. Register rule lifecycle, pattern editing and comparison operations with the shared HTTP/SDK surfaces.
 
+## Bounded runtime stage
+
+The [rule lifecycle v1 contract](../contracts/rule-lifecycle-v1.md) implements the
+reviewed immutable lifecycle and deterministic evaluation of closed hard constraints
+over explicit semantic references. It reuses the published topic dependency fence,
+shared HTTP registry and SDK. This stage supplies part of AC01 and AC02. It does not
+claim question matching, required-slot handling, advisory token accounting,
+clarification generation, replay/shadow execution, or affected-evidence invalidation;
+AC03 through AC06 and cumulative phase acceptance remain required.
+
 ## Acceptance criteria
 
 1. **AC01** — Rules CRUD/activation honors signed scope and exact resource reach; no feedback or draft can self-approve.

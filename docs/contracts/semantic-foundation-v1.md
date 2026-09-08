@@ -193,7 +193,15 @@ does no prompt trimming, token estimation, model/source I/O, pattern matching, r
 activation, or query execution. Its authoring definition has no lifecycle stage or
 review claim. These remain obligations of the service described below.
 
-### Remaining service integration
+### Implemented bounded lifecycle and remaining integration
+
+The [rule lifecycle v1 contract](rule-lifecycle-v1.md) now supplies immutable
+private draft revisions, explicit review receipts, CAS publication/retirement,
+retained exact reads, and deterministic hard-constraint evaluation over explicit
+semantic references. It uses the existing topic actions and persisted dependency
+reaches through the shared HTTP/SDK consumer. Evaluation is neither execution
+authority nor a validated query plan. Clarification matching, real-token advisory
+assembly, replay/shadow comparison and affected-evidence invalidation remain open.
 
 Phase 16 builds rule and clarification types on `semantics.Reference`. It must not add
 a second string-addressed entity namespace or resolve rule targets by display name.

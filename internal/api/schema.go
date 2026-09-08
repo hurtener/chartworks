@@ -22,7 +22,7 @@ const OptionalJSONFields SchemaOption = 1
 // values; default request schemas retain required, non-null fields.
 func SchemaFor(name string, typ reflect.Type, response bool, options ...SchemaOption) (*gateway.Schema, error) {
 	optional := len(options) == 1 && options[0] == OptionalJSONFields && !response
-	if len(options) > 0 && !optional || !supportedType(typ, map[reflect.Type]bool{}, 0, response) {
+	if len(options) > 0 && !optional || !supportedType(typ, map[reflect.Type]bool{}, 0, response, optional) {
 		return nil, ErrRegistration
 	}
 	r := jsonschema.Reflector{Anonymous: true, DoNotReference: true, RequiredFromJSONSchemaTags: optional}
@@ -56,7 +56,7 @@ func SchemaFor(name string, typ reflect.Type, response bool, options ...SchemaOp
 	return compiled, nil
 }
 
-func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, response bool) bool {
+func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, response, optional bool) bool {
 	if t == nil || depth > 16 || stack[t] {
 		return false
 	}
@@ -67,18 +67,18 @@ func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, respo
 	defer delete(stack, t)
 	switch t.Kind() {
 	case reflect.Pointer:
-		return response && supportedType(t.Elem(), stack, depth+1, response)
+		return (response || optional) && supportedType(t.Elem(), stack, depth+1, response, optional)
 	case reflect.Map:
 		return response && t.Key().Kind() == reflect.String && t.Elem().Kind() == reflect.Int
 	case reflect.Bool, reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
 		return true
 	case reflect.Slice:
-		return t.Elem().Kind() != reflect.Uint8 && supportedType(t.Elem(), stack, depth+1, response)
+		return t.Elem().Kind() != reflect.Uint8 && supportedType(t.Elem(), stack, depth+1, response, optional)
 	case reflect.Struct:
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
 			name := strings.Split(field.Tag.Get("json"), ",")[0]
-			if !field.IsExported() || field.Anonymous || name == "" || name == "-" || !supportedType(field.Type, stack, depth+1, response) {
+			if !field.IsExported() || field.Anonymous || name == "" || name == "-" || !supportedType(field.Type, stack, depth+1, response, optional) {
 				return false
 			}
 		}

@@ -78,6 +78,46 @@ func TestRuleCompilationPinsSemanticsAndDetachesAllNestedState(t *testing.T) {
 	}
 }
 
+func TestPublishedRuleSubjectAndDeterministicConstraintEvaluation(t *testing.T) {
+	model, definition := testRules(t)
+	pack := model.Pack()
+	for i := range pack.Datasets {
+		pack.Datasets[i].Source = SourceReference{}
+	}
+	subject, err := NewRuleSubject(pack, model.Digest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	revenue := Reference{Kind: KindMeasure, ID: "revenue"}
+	orders := Reference{Kind: KindDataset, ID: "orders"}
+	definition.Patterns = nil
+	definition.Rules = []RuleDefinition{{
+		ID: "require_revenue", Version: "v1", Category: RuleComputation, Class: RuleExecutionConstraint,
+		Scope: RuleScope{Kind: RuleScopeTopic}, Provenance: RuleProvenance{Kind: ProvenanceHuman, Evidence: "review:1"},
+		Constraint: &Constraint{Kind: ConstraintRequireReference, Target: revenue},
+	}}
+	compiled, err := CompilePublishedRules(subject, definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing, err := EvaluateConstraints(subject, compiled, []Reference{orders})
+	if err != nil || missing.Allowed || len(missing.Violations) != 1 || missing.Violations[0].Kind != ViolationMissingRequired || !slices.Equal(missing.Required, []Reference{revenue}) {
+		t.Fatal("missing requirement", missing, err)
+	}
+	allowed, err := EvaluateConstraints(subject, compiled, []Reference{revenue})
+	if err != nil || !allowed.Allowed || len(allowed.Violations) != 0 {
+		t.Fatal("allowed references", allowed, err)
+	}
+	for _, refs := range [][]Reference{nil, {revenue, revenue}, {{Kind: KindMeasure, ID: "unknown"}}} {
+		if _, err = EvaluateConstraints(subject, compiled, refs); err == nil {
+			t.Fatal("invalid candidate references accepted", refs)
+		}
+	}
+	if _, err = NewRuleSubject(pack, strings.Repeat("A", 64)); err == nil {
+		t.Fatal("noncanonical topic digest accepted")
+	}
+}
+
 func TestRuleCompilationRejectsStaleAndMalformedDefinitions(t *testing.T) {
 	tests := []struct {
 		name string

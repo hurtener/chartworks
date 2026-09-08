@@ -19,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	semantictopics "github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/sourceapi"
 	"github.com/hurtener/chartworks/internal/sources"
@@ -145,7 +146,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.handler = topicapi.Handler(verifier, topics, published, w.handler)
+	rules, err := rulesets.New(db, db)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = topicapi.Handler(verifier, topics, published, rules, w.handler)
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {

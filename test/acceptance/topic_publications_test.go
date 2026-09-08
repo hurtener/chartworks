@@ -53,7 +53,7 @@ func publicationClient(t *testing.T, f *engineeringFixture, draftsService *draft
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := assertRegisteredWireSchemas(t, registry, topicapi.Handler(f.token.verifier, draftsService, service, http.NotFoundHandler()))
+	handler := assertRegisteredWireSchemas(t, registry, topicapi.Handler(f.token.verifier, draftsService, service, nil, http.NotFoundHandler()))
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) {
@@ -91,7 +91,7 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	if _, err := f.db.ReadPublishedTopic(ctx, identity.Envelope{}, pack.Topic, "", drafts.Read); !errors.Is(err, access.ErrUnauthenticated) {
 		t.Fatal("invalid publication envelope accepted", err)
 	}
-	if _, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, "", drafts.Write); !errors.Is(err, store.ErrInvalid) {
+	if _, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, "", drafts.Export); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("invalid publication access accepted", err)
 	}
 	if _, err := f.db.RollbackTopic(ctx, e, pack.Topic, topics.TransitionRequest{}); !errors.Is(err, store.ErrInvalid) {

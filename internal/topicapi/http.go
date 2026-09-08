@@ -19,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -47,6 +48,9 @@ type ArchiveRequest struct {
 	Expected int64  `json:"expected_revision"`
 	Note     string `json:"note"`
 }
+type RuleVersionRequest struct {
+	Version string `json:"version"`
+}
 
 func Registry() (*api.Registry, error) {
 	type route struct {
@@ -68,6 +72,13 @@ func Registry() (*api.Registry, error) {
 		{"GET", "/v1/topics/{id}/contract", "getTopicContract", "topics.read", "source_catalog_read", "topics.Service.Contract", "read_only_no_domain_audit", nil, reflect.TypeFor[topics.Contract]()},
 		{"POST", "/v1/topics/{id}/rollbacks", "rollbackTopic", "topics.publish", "atomic_publication_rollback", "topics.Service.Rollback", "topic.rolled_back", reflect.TypeFor[topics.TransitionRequest](), reflect.TypeFor[topics.Published]()},
 		{"POST", "/v1/topics/{id}/archive", "archiveTopic", "topics.publish", "atomic_publication_archive", "topics.Service.Archive", "topic.archived", reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[topics.State]()},
+		{"POST", "/v1/topics/{id}/rule-drafts", "saveRuleDraft", "topics.write", "rule_draft_commit", "rulesets.Service.Save", "rules.drafted", reflect.TypeFor[rulesets.SaveRequest](), reflect.TypeFor[rulesets.Draft]()},
+		{"POST", "/v1/topics/{id}/rule-reviews", "reviewRules", "topics.review", "rule_review_receipt_commit", "rulesets.Service.Review", "rules.reviewed", reflect.TypeFor[rulesets.ReviewRequest](), reflect.TypeFor[rulesets.Review]()},
+		{"POST", "/v1/topics/{id}/rule-publications", "publishRules", "topics.publish", "atomic_rule_publication", "rulesets.Service.Publish", "rules.published", reflect.TypeFor[rulesets.PublishRequest](), reflect.TypeFor[rulesets.Published]()},
+		{"GET", "/v1/topics/{id}/rules", "getPublishedRules", "topics.read", "retained_metadata_read", "rulesets.Service.Read", "read_only_no_domain_audit", nil, reflect.TypeFor[rulesets.Published]()},
+		{"POST", "/v1/topics/{id}/rule-versions/read", "getPublishedRuleVersion", "topics.read", "retained_metadata_read", "rulesets.Service.Read", "read_only_no_domain_audit", reflect.TypeFor[RuleVersionRequest](), reflect.TypeFor[rulesets.Published]()},
+		{"POST", "/v1/topics/{id}/rules/evaluate", "evaluateRules", "topics.read", "deterministic_constraint_read", "rulesets.Service.Evaluate", "read_only_no_domain_audit", reflect.TypeFor[rulesets.EvaluateRequest](), reflect.TypeFor[rulesets.Evaluation]()},
+		{"POST", "/v1/topics/{id}/rules/retire", "retireRules", "topics.publish", "atomic_rule_retirement", "rulesets.Service.Retire", "rules.retired", reflect.TypeFor[rulesets.RetireRequest](), reflect.TypeFor[rulesets.State]()},
 	}
 	defs := make([]api.Definition, 0, len(routes))
 	for _, r := range routes {
@@ -92,6 +103,13 @@ func Registry() (*api.Registry, error) {
 				"getTopicContract":         "Read a published topic after current source validation",
 				"rollbackTopic":            "Restore an exact retained topic version and facet set",
 				"archiveTopic":             "Archive the active topic and every matching facet head",
+				"saveRuleDraft":            "Create or edit an immutable proposed ruleset",
+				"reviewRules":              "Record an immutable review of an exact ruleset draft",
+				"publishRules":             "Activate an approved ruleset for the current topic version",
+				"getPublishedRules":        "Read the active published ruleset",
+				"getPublishedRuleVersion":  "Read an exact retained ruleset version",
+				"evaluateRules":            "Evaluate active hard constraints over explicit semantic references",
+				"retireRules":              "Retire the active ruleset with revision CAS",
 			}[r.id],
 			ResourceLoader: r.owner, Audit: r.audit, Response: response,
 			Errors: []api.ErrorResponse{
@@ -114,11 +132,11 @@ func Registry() (*api.Registry, error) {
 	}
 	return api.New(defs)
 }
-func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics.Service, next http.Handler) http.Handler {
+func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics.Service, rules *rulesets.Service, next http.Handler) http.Handler {
 	if verifier == nil || next == nil {
 		return http.NotFoundHandler()
 	}
-	if service == nil && published == nil {
+	if service == nil && published == nil && rules == nil {
 		return next
 	}
 	registry, err := Registry()
@@ -147,6 +165,13 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 		if service == nil {
 			switch selected.ID {
 			case "saveTopicDraft", "importTopicDraft", "getTopicDraft", "getTopicDraftVersion", "getTopicDraftHistory", "diffTopicDraft", "exportTopicDraft":
+				failure(w, store.ErrNotFound)
+				return
+			}
+		}
+		if rules == nil {
+			switch selected.ID {
+			case "saveRuleDraft", "reviewRules", "publishRules", "getPublishedRules", "getPublishedRuleVersion", "evaluateRules", "retireRules":
 				failure(w, store.ErrNotFound)
 				return
 			}
@@ -246,6 +271,42 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 				if err = decode(&in); err == nil {
 					out, err = published.Archive(r.Context(), e, id, in.Expected, in.Note)
 				}
+			}
+		case "saveRuleDraft":
+			var in rulesets.SaveRequest
+			if err = decode(&in); err == nil {
+				if in.Definition.Topic != id {
+					err = store.ErrInvalid
+				} else {
+					out, err = rules.Save(r.Context(), e, in)
+				}
+			}
+		case "reviewRules":
+			var in rulesets.ReviewRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Review(r.Context(), e, id, in)
+			}
+		case "publishRules":
+			var in rulesets.PublishRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Publish(r.Context(), e, id, in)
+			}
+		case "getPublishedRules":
+			out, err = rules.Read(r.Context(), e, id, "")
+		case "getPublishedRuleVersion":
+			var in RuleVersionRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Read(r.Context(), e, id, in.Version)
+			}
+		case "evaluateRules":
+			var in rulesets.EvaluateRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Evaluate(r.Context(), e, id, in)
+			}
+		case "retireRules":
+			var in rulesets.RetireRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.Retire(r.Context(), e, id, in)
 			}
 		}
 		if err != nil {

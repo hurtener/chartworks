@@ -53,7 +53,7 @@ func topicClient(t *testing.T, f *engineeringFixture, s *drafts.Service, e ident
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := assertRegisteredWireSchemas(t, registry, topicapi.Handler(f.token.verifier, s, nil, http.NotFoundHandler()))
+	h := assertRegisteredWireSchemas(t, registry, topicapi.Handler(f.token.verifier, s, nil, nil, http.NotFoundHandler()))
 	server := httptest.NewServer(h)
 	t.Cleanup(server.Close)
 	c, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) {

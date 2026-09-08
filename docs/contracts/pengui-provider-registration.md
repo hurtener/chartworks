@@ -78,3 +78,15 @@ publication DTOs exclude draft profile, actor and session provenance. The
 [publication contract](topic-publication-v1.md) defines the atomic activation and
 current-health boundaries. No issuer, local grant, certification or execution
 authority is introduced.
+
+### Rule lifecycle operations
+
+The same shared manifest registers rule draft, review, publication, current/exact
+read, deterministic hard-constraint evaluation and retirement. These operations
+reuse `topics.write`, `topics.review`, `topics.publish` and `topics.read`; no new
+action is introduced. Each route requires its action-specific topic reach and all
+source-read, dataset-query and execution-context-use reaches persisted by the exact
+published topic before selecting or mutating rule payload. Rule publication and
+retirement recheck the current topic version in their transaction. The
+[rule lifecycle contract](rule-lifecycle-v1.md) defines the bounded evaluator and
+remaining cumulative phase 16 work.

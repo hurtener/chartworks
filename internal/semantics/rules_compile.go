@@ -17,6 +17,33 @@ type RuleModel struct {
 	digest     string
 }
 
+// RuleSubject is the public semantic reference graph needed to compile rules.
+// Its digest is the reviewed topic-pack digest; source profile evidence remains
+// private to topic authoring and is neither reconstructed nor exposed here.
+type RuleSubject struct {
+	topic, version, digest string
+	refs                   map[string]struct{}
+	graph                  map[Reference][]Reference
+}
+
+// NewRuleSubject validates the retained public topic projection used by rules.
+func NewRuleSubject(pack TopicPack, digest string) (RuleSubject, error) {
+	if !identity.Identifier(pack.Topic) || !identity.Identifier(pack.Version) || len(digest) != 64 {
+		return RuleSubject{}, invalid(CodeEvidenceMismatch, "ruleset.pack")
+	}
+	if _, err := hex.DecodeString(digest); err != nil || strings.ToLower(digest) != digest {
+		return RuleSubject{}, invalid(CodeEvidenceMismatch, "ruleset.pack")
+	}
+	refs, err := referenceIndex(pack)
+	if err != nil {
+		return RuleSubject{}, err
+	}
+	if err = validateReferences(pack, refs); err != nil {
+		return RuleSubject{}, err
+	}
+	return RuleSubject{topic: pack.Topic, version: pack.Version, digest: digest, refs: refs, graph: dependencyGraphPack(pack)}, nil
+}
+
 func (m RuleModel) Definition() RuleSetDefinition { return cloneRules(m.definition) }
 func (m RuleModel) Digest() string                { return m.digest }
 
@@ -24,7 +51,19 @@ func (m RuleModel) Digest() string                { return m.digest }
 // rejecting stale references and contradictory mandatory dependency requirements.
 // Priority never suppresses a hard constraint to hide a contradiction.
 func CompileRules(model Model, input RuleSetDefinition) (RuleModel, error) {
-	if model.Digest() == "" || input.Topic != model.pack.Topic || input.TopicVersion != model.pack.Version || input.PackDigest != model.Digest() {
+	if model.Digest() == "" {
+		return RuleModel{}, invalid(CodeEvidenceMismatch, "ruleset.pack")
+	}
+	return compileRules(RuleSubject{topic: model.pack.Topic, version: model.pack.Version, digest: model.Digest(), refs: model.refs, graph: dependencyGraphPack(model.pack)}, input)
+}
+
+// CompilePublishedRules binds rules to an immutable published topic projection.
+func CompilePublishedRules(subject RuleSubject, input RuleSetDefinition) (RuleModel, error) {
+	return compileRules(subject, input)
+}
+
+func compileRules(subject RuleSubject, input RuleSetDefinition) (RuleModel, error) {
+	if subject.digest == "" || input.Topic != subject.topic || input.TopicVersion != subject.version || input.PackDigest != subject.digest {
 		return RuleModel{}, invalid(CodeEvidenceMismatch, "ruleset.pack")
 	}
 	if err := validateRuleShape(input); err != nil {
@@ -39,10 +78,10 @@ func CompileRules(model Model, input RuleSetDefinition) (RuleModel, error) {
 	for i := range p.Patterns {
 		sortReferences(p.Patterns[i].Targets)
 	}
-	if err := validateRuleReferences(model, p); err != nil {
+	if err := validateRuleReferences(subject, p); err != nil {
 		return RuleModel{}, err
 	}
-	if err := ruleConflicts(model, p); err != nil {
+	if err := ruleConflicts(subject, p); err != nil {
 		return RuleModel{}, err
 	}
 	raw, err := json.Marshal(p)
@@ -155,14 +194,14 @@ func validSensitivity(s LiteralSensitivity) bool {
 	return s == LiteralNonSensitive || s == LiteralSensitive
 }
 
-func validateRuleReferences(model Model, p RuleSetDefinition) error {
+func validateRuleReferences(subject RuleSubject, p RuleSetDefinition) error {
 	checkTargets := func(refs []Reference, path string) error {
 		seen := map[Reference]bool{}
 		for _, ref := range refs {
 			if !ref.Valid() || seen[ref] {
 				return invalid(CodeInvalidReference, path)
 			}
-			if !model.Contains(ref) {
+			if _, ok := subject.refs[ref.key()]; !ok {
 				return invalid(CodeMissingReference, path)
 			}
 			seen[ref] = true
@@ -243,29 +282,29 @@ func hasReference(refs []Reference, target Reference) bool {
 
 // dependencyGraph deliberately models only the existing exact reference graph.
 // It never infers joins, parses KPI expression text, or treats column names as IDs.
-func dependencyGraph(model Model) map[Reference][]Reference {
+func dependencyGraphPack(pack TopicPack) map[Reference][]Reference {
 	graph := map[Reference][]Reference{}
-	for _, dataset := range model.pack.Datasets {
+	for _, dataset := range pack.Datasets {
 		for _, column := range dataset.Columns {
 			graph[Reference{Kind: KindColumn, Dataset: dataset.ID, ID: column.ID}] = []Reference{{Kind: KindDataset, ID: dataset.ID}}
 		}
 	}
-	for _, measure := range model.pack.Measures {
+	for _, measure := range pack.Measures {
 		graph[Reference{Kind: KindMeasure, ID: measure.ID}] = []Reference{measure.Field}
 	}
-	for _, dimension := range model.pack.Dimensions {
+	for _, dimension := range pack.Dimensions {
 		graph[Reference{Kind: KindDimension, ID: dimension.ID}] = []Reference{dimension.Field}
 	}
-	for _, kpi := range model.pack.KPIs {
+	for _, kpi := range pack.KPIs {
 		graph[Reference{Kind: KindKPI, ID: kpi.ID}] = kpi.Inputs
 	}
-	for _, join := range model.pack.Joins {
+	for _, join := range pack.Joins {
 		graph[Reference{Kind: KindJoin, ID: join.ID}] = []Reference{join.Left, join.Right}
 	}
 	return graph
 }
 
-func ruleConflicts(model Model, p RuleSetDefinition) error {
+func ruleConflicts(subject RuleSubject, p RuleSetDefinition) error {
 	excluded := map[Reference]string{}
 	for _, rule := range p.Rules {
 		if rule.Constraint != nil && rule.Constraint.Kind == ConstraintExcludeReference {
@@ -274,7 +313,7 @@ func ruleConflicts(model Model, p RuleSetDefinition) error {
 			}
 		}
 	}
-	graph := dependencyGraph(model)
+	graph := subject.graph
 	for _, rule := range p.Rules {
 		if rule.Constraint == nil || rule.Constraint.Kind != ConstraintRequireReference {
 			continue

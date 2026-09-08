@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	semantictopics "github.com/hurtener/chartworks/internal/semantics/topics"
 )
 
@@ -35,6 +36,20 @@ type PublishedTopic = semantictopics.Published
 type PublishedTopicState = semantictopics.State
 type TopicContract = semantictopics.Contract
 type TopicTransitionRequest = semantictopics.TransitionRequest
+type RuleSetDefinition = semantics.RuleSetDefinition
+type RuleDefinition = semantics.RuleDefinition
+type RuleScope = semantics.RuleScope
+type RuleProvenance = semantics.RuleProvenance
+type RuleConstraint = semantics.Constraint
+type RuleDraft = rulesets.Draft
+type SaveRuleDraftRequest = rulesets.SaveRequest
+type RuleReviewRequest = rulesets.ReviewRequest
+type RuleReview = rulesets.Review
+type PublishRulesRequest = rulesets.PublishRequest
+type PublishedRules = rulesets.Published
+type RetireRulesRequest = rulesets.RetireRequest
+type RuleEvaluationRequest = rulesets.EvaluateRequest
+type RuleEvaluation = rulesets.Evaluation
 
 type ArchiveTopicRequest struct {
 	Expected int64  `json:"expected_revision"`
@@ -177,5 +192,63 @@ func (c *Client) ArchiveTopic(ctx context.Context, id string, in ArchiveTopicReq
 		return out, errors.New("chartworks: invalid topic identifier")
 	}
 	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/archive", "", in, &out, 2<<20)
+	return
+}
+
+func (c *Client) SaveRuleDraft(ctx context.Context, id string, in SaveRuleDraftRequest) (out RuleDraft, err error) {
+	if !wireID(id) || in.Definition.Topic != id {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rule-drafts", "", in, &out, 2<<20)
+	return
+}
+
+func (c *Client) ReviewRules(ctx context.Context, id string, in RuleReviewRequest) (out RuleReview, err error) {
+	if !wireID(id) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rule-reviews", "", in, &out, 2<<20)
+	return
+}
+
+func (c *Client) PublishRules(ctx context.Context, id string, in PublishRulesRequest) (out PublishedRules, err error) {
+	if !wireID(id) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rule-publications", "", in, &out, 2<<20)
+	return
+}
+
+func (c *Client) PublishedRules(ctx context.Context, id string) (out PublishedRules, err error) {
+	if !wireID(id) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "GET", "/v1/topics/"+id+"/rules", "", nil, &out, 2<<20)
+	return
+}
+
+func (c *Client) PublishedRuleVersion(ctx context.Context, id, version string) (out PublishedRules, err error) {
+	if !wireID(id) || !wireID(version) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rule-versions/read", "", struct {
+		Version string `json:"version"`
+	}{version}, &out, 2<<20)
+	return
+}
+
+func (c *Client) EvaluateRules(ctx context.Context, id string, in RuleEvaluationRequest) (out RuleEvaluation, err error) {
+	if !wireID(id) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rules/evaluate", "", in, &out, 2<<20)
+	return
+}
+
+func (c *Client) RetireRules(ctx context.Context, id string, in RetireRulesRequest) (out rulesets.State, err error) {
+	if !wireID(id) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/rules/retire", "", in, &out, 2<<20)
 	return
 }

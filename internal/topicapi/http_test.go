@@ -25,7 +25,7 @@ func TestRegistryManifestAndConcreteSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Definitions()) != 14 {
+	if len(r.Definitions()) != 21 {
 		t.Fatal("operation inventory")
 	}
 	raw, err := os.ReadFile("../../docs/contracts/chartworks-topic-draft-operations.json")
@@ -65,6 +65,43 @@ func TestRegistryManifestAndConcreteSchemas(t *testing.T) {
 		}
 	}
 }
+
+func TestRuleDraftSchemaAcceptsClosedOptionalConstraintShape(t *testing.T) {
+	r, err := Registry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _, known := r.Match("POST", "/v1/topics/commerce/rule-drafts")
+	if !known || d.ID != "saveRuleDraft" {
+		t.Fatal("rule draft route")
+	}
+	request := struct {
+		Expected   int64                       `json:"expected_revision"`
+		Definition semantics.RuleSetDefinition `json:"definition"`
+		Change     string                      `json:"change"`
+	}{Definition: semantics.RuleSetDefinition{
+		SchemaVersion: semantics.SchemaVersion,
+		ID:            "commerce-rules",
+		Version:       "rules-v1",
+		Topic:         "commerce",
+		TopicVersion:  "topic-v1",
+		PackDigest:    strings.Repeat("a", 64),
+		Rules: []semantics.RuleDefinition{{
+			ID: "require-revenue", Version: "v1", Category: semantics.RuleComputation,
+			Class: semantics.RuleExecutionConstraint, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTopic},
+			Priority: 100, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceFeedback, Evidence: "feedback-1"},
+			Constraint: &semantics.Constraint{Kind: semantics.ConstraintRequireReference, Target: semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}},
+		}},
+		Patterns: []semantics.ClarificationPattern{},
+	}, Change: "Propose required revenue"}
+	raw, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = d.Request.Validate(raw, MaxBodyBytes); err != nil {
+		t.Fatal("valid rule draft rejected", err, string(raw))
+	}
+}
 func TestBodyRejectsMalformedAndOversizedRequests(t *testing.T) {
 	r, err := Registry()
 	if err != nil {
@@ -98,7 +135,7 @@ func TestFailureClassifications(t *testing.T) {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
-	if Handler(nil, nil, nil, http.NotFoundHandler()) == nil {
+	if Handler(nil, nil, nil, nil, http.NotFoundHandler()) == nil {
 		t.Fatal("nil dependencies")
 	}
 }

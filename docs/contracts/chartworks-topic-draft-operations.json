@@ -82,5 +82,47 @@
     "path": "/v1/topics/{id}/archive",
     "action": "topics.publish",
     "effect": "atomic_publication_archive"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-drafts",
+    "action": "topics.write",
+    "effect": "rule_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-reviews",
+    "action": "topics.review",
+    "effect": "rule_review_receipt_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-publications",
+    "action": "topics.publish",
+    "effect": "atomic_rule_publication"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/rules",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-versions/read",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/evaluate",
+    "action": "topics.read",
+    "effect": "deterministic_constraint_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/retire",
+    "action": "topics.publish",
+    "effect": "atomic_rule_retirement"
   }
 ]
