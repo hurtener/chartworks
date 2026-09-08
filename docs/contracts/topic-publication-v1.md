@@ -35,21 +35,26 @@ metadata. They make no source or model request and do not expose private profile
 actor or session provenance. They still require current `topics.read` plus the topic
 and every persisted source/dataset/context reach.
 
-The separate contract operation performs current source discovery, checks exact
-revision/context/dataset/column evidence, then confirms the same publication revision
-inside PostgreSQL. It returns either the retained publication with an observation
-time or a typed context change/conflict; published state alone is not a health claim.
+The separate contract operation requires both its registered primary `topics.read`
+action and the existing secondary `sources.read` action. It performs current source
+discovery, checks exact revision/context/dataset/column evidence, then confirms the
+same publication revision inside PostgreSQL. It returns either the retained
+publication with an observation time or a typed context change/conflict; published
+state alone is not a health claim.
 Managed facet search similarly threads the verified envelope into the repository and
 checks all dependencies and current source revisions in the same repeatable-read
 snapshot before selecting facet bodies. Legacy unmanaged vector fixtures retain their
 scope-only behavior; raw coordinates cannot read a managed topic.
 
-Rollback reactivates one exact retained semantic version and its complete original
-context/generation set without a gateway call. It rechecks current source evidence
-and authority, retires contexts absent from the target, and commits one new lifecycle
-revision. Archive atomically marks the topic and all active facet heads unavailable;
-it remains possible when a source is unhealthy. No-op rollback/archive transitions
-are conflicts rather than new evidence.
+Rollback requires both its registered primary `topics.publish` action and the
+existing secondary `sources.read` action. It reactivates one exact retained semantic
+version and its complete original context/generation set without a gateway call,
+rechecks current source evidence and authority, retires contexts absent from the
+target, and commits one new lifecycle revision. Archive requires `topics.publish`
+and the persisted resource reaches but performs no source discovery; it atomically
+marks the topic and all active facet heads unavailable and remains possible when a
+source is unhealthy. No-op rollback/archive transitions are conflicts rather than
+new evidence.
 
 ## Registered surface and remaining scope
 

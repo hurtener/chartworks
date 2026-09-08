@@ -5,7 +5,8 @@ import "testing"
 func TestEmbeddingSpaceKeyBindsCompleteDescriptor(t *testing.T) {
 	base := EmbeddingSpace{Provider: "openrouter", Route: "primary", Endpoint: "https://gateway.example.test/v1", Model: "embed", Revision: "r1", Dimensions: 2, Preprocessing: "utf8-exact;float32-finite", InputType: "text", Normalization: "no-normalization"}
 	key := base.Key()
-	if len(key) != 64 || key != base.Key() {
+	const golden = "e1ab7dbdeafcd3b41a050be1bae4250a9ea843ae0e2077afafc86f1597837bba"
+	if key != golden || key != base.Key() {
 		t.Fatal("unstable embedding space key")
 	}
 	variants := []EmbeddingSpace{base, base, base, base, base, base, base, base, base}

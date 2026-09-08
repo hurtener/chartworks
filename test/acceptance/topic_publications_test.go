@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
@@ -70,10 +71,63 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	scopes := topicScopes(f.e.Tenant())
 	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), scopes...)
 	client := publicationClient(t, f, draftsService, service, scopes)
+	validDigest := strings.Repeat("0", 64)
+	if _, err := f.db.ReviewTopic(ctx, e, pack.Topic, topics.ReviewRequest{}); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("invalid store review accepted", err)
+	}
+	unauthorized := f.token.envelope(t, f.e.Tenant(), f.e.User(), "topics.read", "cw.topic.read:"+pack.Topic)
+	if _, err := f.db.ReviewTopic(ctx, unauthorized, pack.Topic, topics.ReviewRequest{DraftRevision: 1, Digest: validDigest, Decision: "approve", Note: "Valid note"}); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("store review action was not enforced", err)
+	}
+	if _, _, err := f.db.ReviewedTopic(ctx, e, pack.Topic, "bad/review"); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("invalid review identifier accepted", err)
+	}
+	if _, _, err := f.db.ReviewedTopic(ctx, identity.Envelope{}, pack.Topic, "valid-review"); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("invalid reviewed-topic envelope accepted", err)
+	}
+	if _, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, "bad/version", drafts.Read); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("invalid publication version accepted", err)
+	}
+	if _, err := f.db.ReadPublishedTopic(ctx, identity.Envelope{}, pack.Topic, "", drafts.Read); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("invalid publication envelope accepted", err)
+	}
+	if _, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, "", drafts.Write); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("invalid publication access accepted", err)
+	}
+	if _, err := f.db.RollbackTopic(ctx, e, pack.Topic, topics.TransitionRequest{}); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("invalid store rollback accepted", err)
+	}
+	if _, err := f.db.RollbackTopic(ctx, identity.Envelope{}, pack.Topic, topics.TransitionRequest{Version: "valid-version", Expected: 1, Note: "Valid note"}); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("invalid rollback envelope accepted", err)
+	}
+	if _, err := f.db.ArchiveTopic(ctx, e, pack.Topic, 0, "Valid note"); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("invalid store archive accepted", err)
+	}
+	if _, err := f.db.ArchiveTopic(ctx, identity.Envelope{}, pack.Topic, 1, "Valid note"); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("invalid archive envelope accepted", err)
+	}
+	if _, err := f.db.ConfirmTopicContract(ctx, identity.Envelope{}, pack.Topic, 1); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("invalid contract envelope accepted", err)
+	}
+	if _, err := f.db.ConfirmTopicContract(ctx, e, "unknown-topic", 1); err == nil {
+		t.Fatal("missing publication contract accepted")
+	}
+	if _, err := f.db.ReviewTopic(ctx, e, pack.Topic, topics.ReviewRequest{DraftRevision: 1, Digest: validDigest, Decision: "approve", Note: "No draft"}); err == nil {
+		t.Fatal("review without draft accepted")
+	}
 
 	draft, err := client.SaveTopicDraft(ctx, sdk.SaveTopicDraftRequest{Pack: pack, Change: "Publication candidate"})
 	if err != nil {
 		t.Fatal("save", err)
+	}
+	if _, err = f.db.ReviewTopic(ctx, e, pack.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: validDigest, Decision: "approve", Note: "Wrong digest"}); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("mismatched review digest accepted", err)
+	}
+	if _, _, err = f.db.ReviewedTopic(ctx, e, pack.Topic, "unknown-review"); err == nil {
+		t.Fatal("missing review returned")
+	}
+	if _, err = f.db.ReadPublishedTopic(ctx, e, pack.Topic, "unknown-version", drafts.Read); err == nil {
+		t.Fatal("missing publication returned")
 	}
 	if _, err = service.Review(ctx, e, pack.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: strings.ToUpper(draft.Metadata.Digest), Decision: "approve", Note: "Invalid digest"}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("noncanonical review digest accepted", err)
@@ -89,6 +143,21 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	review, err := client.ReviewTopic(ctx, pack.Topic, sdk.TopicReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Reviewed synthetic definition"})
 	if err != nil || review.Digest != draft.Metadata.Digest || review.ID == "" {
 		t.Fatal("review", review, err)
+	}
+	if _, _, err = f.db.ReviewedTopic(ctx, unauthorized, pack.Topic, review.ID); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("reviewed topic omitted publish action", err)
+	}
+	index, _ := vindex.New(f.db)
+	space := vindex.Space(gatewayFixture.engine.EmbeddingSpace())
+	query := vindex.Query{ID: "published-search", Topic: pack.Topic, Context: pack.Datasets[0].Source.Context, Space: space, Vector: []float32{1, 2}, Kinds: []string{"topic", "entity", "measure"}, LimitPerKind: 10}
+	if _, err = index.Search(ctx, e, []vindex.Query{query}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatal("reviewed topic without publication became searchable", err)
+	}
+	if _, err = f.db.PublishTopic(ctx, e, topics.Prepared{}, nil, gateway.Receipt{}, -1); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("invalid publication revision accepted", err)
+	}
+	if _, err = f.db.PublishTopic(ctx, e, topics.Prepared{}, nil, gateway.Receipt{}, 0); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("unprepared publication accepted", err)
 	}
 	raw, _ := json.Marshal(review)
 	if string(raw) == "" || containsAny(string(raw), "actor", "session", "profile") {
@@ -125,10 +194,39 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	if err != nil || contract.Publication.State.Version != pack.Version || contract.ObservedAt.IsZero() {
 		t.Fatal("current contract", err)
 	}
-
-	index, _ := vindex.New(f.db)
-	space := vindex.Space(gatewayFixture.engine.EmbeddingSpace())
-	query := vindex.Query{ID: "published-search", Topic: pack.Topic, Context: pack.Datasets[0].Source.Context, Space: space, Vector: []float32{1, 2}, Kinds: []string{"topic", "entity", "measure"}, LimitPerKind: 10}
+	withoutSourceAction := []string{"topics.read", "topics.publish", "cw.topic.read:" + pack.Topic, "cw.topic.publish:" + pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"}
+	noSourceEnvelope := f.token.envelope(t, f.e.Tenant(), f.e.User(), withoutSourceAction...)
+	withoutTopicActions := f.token.envelope(t, f.e.Tenant(), f.e.User(), "sources.read", "cw.topic.read:"+pack.Topic, "cw.topic.publish:"+pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*")
+	if _, err = service.Contract(ctx, noSourceEnvelope, pack.Topic); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("contract omitted secondary sources.read action", err)
+	}
+	if _, err = f.db.ReadPublishedTopic(ctx, withoutTopicActions, pack.Topic, "", drafts.Read); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("publication read omitted topic action", err)
+	}
+	if _, err = f.db.ConfirmTopicContract(ctx, e, pack.Topic, 99); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("contract revision conflict was not enforced", err)
+	}
+	if _, err = f.db.RollbackTopic(ctx, e, pack.Topic, topics.TransitionRequest{Version: pack.Version, Expected: 1, Note: "Already active"}); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("active target rollback accepted", err)
+	}
+	if _, err = f.db.RollbackTopic(ctx, e, pack.Topic, topics.TransitionRequest{Version: "unknown-version", Expected: 1, Note: "Missing target"}); err == nil {
+		t.Fatal("missing rollback target accepted")
+	}
+	if _, err = f.db.RollbackTopic(ctx, e, "unknown-topic", topics.TransitionRequest{Version: pack.Version, Expected: 1, Note: "Missing topic"}); err == nil {
+		t.Fatal("missing rollback topic accepted")
+	}
+	if _, err = f.db.RollbackTopic(ctx, withoutTopicActions, pack.Topic, topics.TransitionRequest{Version: pack.Version, Expected: 1, Note: "Missing topic action"}); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("rollback omitted topic action", err)
+	}
+	if _, err = f.db.ArchiveTopic(ctx, e, pack.Topic, 99, "Wrong revision"); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("archive revision conflict was not enforced", err)
+	}
+	if _, err = f.db.ArchiveTopic(ctx, withoutTopicActions, pack.Topic, 1, "Missing topic action"); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("archive omitted topic action", err)
+	}
+	if _, err = f.db.ConfirmTopicContract(ctx, withoutTopicActions, pack.Topic, 1); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("contract store omitted topic action", err)
+	}
 	results, err := index.Search(ctx, e, []vindex.Query{query})
 	if err != nil || len(results) != 1 || len(results[0].Hits) == 0 || results[0].Publication.Version != pack.Version {
 		t.Fatal("managed facet search", results, err)
@@ -154,17 +252,24 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 		t.Fatal("active publication accepted unmatched context generation")
 	}
 
-	archived, err := client.ArchiveTopic(ctx, pack.Topic, sdk.ArchiveTopicRequest{Expected: 1, Note: "Archive synthetic topic"})
+	archiveClient := publicationClient(t, f, draftsService, service, []string{"topics.publish", "cw.topic.publish:" + pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"})
+	archived, err := archiveClient.ArchiveTopic(ctx, pack.Topic, sdk.ArchiveTopicRequest{Expected: 1, Note: "Archive synthetic topic"})
 	if err != nil || archived.Revision != 2 || !archived.Archived || archived.Active {
 		t.Fatal("archive", archived, err)
 	}
 	if _, err = service.Archive(ctx, e, pack.Topic, 2, "Repeated archive"); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("no-op archive created evidence", err)
 	}
+	if _, err = f.db.ConfirmTopicContract(ctx, e, pack.Topic, 2); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("archived publication reported healthy", err)
+	}
 	if _, err = index.Search(ctx, e, []vindex.Query{query}); !errors.Is(err, access.ErrNotFound) {
 		t.Fatal("archived managed facets searchable", err)
 	}
 	beforeRollback := gatewayFixture.requests.Load()
+	if _, err = service.Rollback(ctx, noSourceEnvelope, pack.Topic, topics.TransitionRequest{Version: pack.Version, Expected: 2, Note: "Missing source action"}); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("rollback omitted secondary sources.read action", err)
+	}
 	restored, err := client.RollbackTopic(ctx, pack.Topic, sdk.TopicTransitionRequest{Version: pack.Version, Expected: 2, Note: "Restore reviewed version"})
 	if err != nil || restored.State.Revision != 3 || !restored.State.Active || gatewayFixture.requests.Load() != beforeRollback {
 		t.Fatal("gateway-free rollback", restored.State, err)
@@ -189,6 +294,9 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	}
 	if _, err = client.TopicContract(ctx, pack.Topic); err == nil {
 		t.Fatal("stale source reported healthy")
+	}
+	if _, err = f.db.ConfirmTopicContract(ctx, e, pack.Topic, 3); err == nil {
+		t.Fatal("store contract ignored changed source revision", err)
 	}
 	if _, err = index.Search(ctx, e, []vindex.Query{query}); !errors.Is(err, readexec.ErrBinding) {
 		t.Fatal("managed search ignored current dependency fence", err)

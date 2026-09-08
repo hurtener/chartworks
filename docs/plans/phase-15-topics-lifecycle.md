@@ -57,7 +57,9 @@ archive and a separate current source contract read. Publication obtains the ful
 embedding-space descriptor from the active Bifrost route, stages complete
 per-context facet generations invisibly, then commits the semantic head and every
 old/new context vector head in one PostgreSQL transaction. Rollback restores the
-retained exact generation set without a gateway call. Managed facet search resolves
+retained exact generation set without a gateway call. Contract and rollback compose
+their registered topic action with the existing `sources.read` action required by
+live discovery; archive performs no discovery. Managed facet search resolves
 the verified Pengui envelope and every persisted source/dataset/context dependency
 inside the same repeatable-read snapshot before selecting facet bodies.
 

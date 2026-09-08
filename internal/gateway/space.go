@@ -22,7 +22,10 @@ type EmbeddingSpace struct {
 }
 
 func (s EmbeddingSpace) Key() string {
-	raw, _ := json.Marshal([]any{"chartworks-embedding-space-v1", s.Provider, s.Route, s.Endpoint, s.Model, s.Revision, s.Dimensions, s.Preprocessing, s.InputType, s.Normalization})
+	// Preserve the phase 07 persisted key format. EmbeddingSpace has the exact
+	// field order and JSON tags of the original vindex.Space value, so the full
+	// descriptor remains bound without invalidating ready stored generations.
+	raw, _ := json.Marshal(s)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }

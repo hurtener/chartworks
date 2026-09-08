@@ -67,8 +67,11 @@ of the exact private draft revision. Publication requires topic publish, source
 read, dataset query and execution-context use reach; live source discovery also
 uses the existing `sources.read` action. Facet staging inside that operation uses
 the publication action and cannot activate a generation independently. Rollback
-and archive use `topics.publish`; retained current/exact reads and the current
-source contract use `topics.read`. Public publication DTOs exclude draft profile,
-actor and session provenance. The [publication contract](topic-publication-v1.md)
-defines the atomic activation and current-health boundaries. No issuer, local grant,
-certification or execution authority is introduced.
+uses registered primary action `topics.publish` plus secondary action `sources.read`
+for its live source discovery. Archive uses `topics.publish` and deliberately makes
+no source discovery. Retained current/exact reads use `topics.read`; the current
+source contract uses primary `topics.read` plus secondary `sources.read`. Public
+publication DTOs exclude draft profile, actor and session provenance. The
+[publication contract](topic-publication-v1.md) defines the atomic activation and
+current-health boundaries. No issuer, local grant, certification or execution
+authority is introduced.
