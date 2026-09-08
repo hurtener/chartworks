@@ -403,9 +403,11 @@ func (v *unitValidator) Validate(_ context.Context, _ identity.Envelope, request
 type unitExecutor struct {
 	reports []exec.ExecutionReport
 	errors  []error
+	calls   int
 }
 
 func (x *unitExecutor) Execute(_ context.Context, _ identity.Envelope, _ exec.Plan, _ exec.Options) (exec.ExecutionReport, error) {
+	x.calls++
 	var report exec.ExecutionReport
 	if len(x.reports) > 0 {
 		report = x.reports[0]
@@ -870,6 +872,8 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	}
 	admitted, _, _, _ := testGeneration(t, e)
 	query := unitQuery(e, "query-repair", "topic", "v1", "context", false)
+	query.SQL = "SELECT id, amount FROM analytics.sales WHERE created_at >= $1 ORDER BY id"
+	query.Parameters = []exec.Parameter{{Kind: "text", Value: "2026-01-01"}}
 	query.Generation.Context = admitted.assembled
 	repo := newUnitRepository()
 	repo.queries[query.ID] = query
@@ -881,10 +885,14 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 		},
 		errors: []error{exec.ErrQuery},
 	}
-	engine := &sequenceGateway{responses: []gateway.Generated{{JSON: json.RawMessage(`{"sql":"SELECT id FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`)}}}
+	inputTokens, outputTokens := 17, 9
+	cost := 0.01
+	engine := &sequenceGateway{responses: []gateway.Generated{
+		{JSON: json.RawMessage(`{"sql":"SELECT id, amount FROM analytics.sales WHERE created_at >= $1  ORDER BY id","parameters":[{"kind":"text","value":"2026-01-01"}],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix", Attempts: 1, InputTokens: &inputTokens, OutputTokens: &outputTokens, CostUSD: &cost}}}},
+	}}
 	service := &Service{topics: reader, sources: retainedSourceReader{}, validator: validator, executor: executor, engine: engine, repo: repo}
 	result, err := service.Run(context.Background(), e, RunRequest{QueryID: query.ID, Operation: "operation-repair"})
-	if err != nil || result.Status != "succeeded" || result.ExecutionFixes != 1 || result.SQL != "SELECT id FROM analytics.sales" {
+	if err != nil || result.Status != "succeeded" || result.ExecutionFixes != 1 || result.SQL != "SELECT id, amount FROM analytics.sales WHERE created_at >= $1  ORDER BY id" {
 		t.Fatalf("execution repair did not complete through Run: result=%#v err=%v", result, err)
 	}
 	if len(validator.requests) != 2 || engine.calls != 1 {
@@ -896,6 +904,78 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	}
 	if stored.Generation.Context.Topic != "topic" || stored.Generation.Context.TopicVersion != "v1" || len(stored.Generation.PinnedMetrics) != 1 || stored.Generation.PinnedMetrics[0].ID != "revenue" {
 		t.Fatalf("repair rebuilt an incomplete governed context: %#v", stored.Generation)
+	}
+	if len(stored.Receipt.Calls) != 1 || stored.Receipt.Calls[0].Role != "sqlfix" || stored.Receipt.Calls[0].Attempts != 1 || stored.Receipt.Calls[0].InputTokens == nil || *stored.Receipt.Calls[0].InputTokens != inputTokens || stored.Receipt.Calls[0].OutputTokens == nil || *stored.Receipt.Calls[0].OutputTokens != outputTokens || stored.Receipt.Calls[0].CostUSD == nil || *stored.Receipt.Calls[0].CostUSD != cost {
+		t.Fatalf("repair receipt was not durably preserved: %#v", stored.Receipt)
+	}
+}
+
+func TestRunRepairRejectsUnsafeSemanticChanges(t *testing.T) {
+	e := unitEnvelope(t)
+	reader := &unitTopicReader{
+		current:  map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)},
+		retained: map[string]topics.Contract{"topic/v1": unitContract("topic", "v1", "source", "context", "dataset", true, true)},
+	}
+	admitted, _, _, _ := testGeneration(t, e)
+	oldSQL := "SELECT id, amount FROM analytics.sales WHERE created_at >= $1 ORDER BY id"
+	cases := []struct {
+		name      string
+		candidate string
+	}{
+		{name: "dropped-required-filter", candidate: "SELECT id, amount FROM analytics.sales ORDER BY id"},
+		{name: "changed-governed-metric", candidate: "SELECT id, revenue FROM analytics.sales WHERE created_at >= $1 ORDER BY id"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			query := unitQuery(e, "query-unsafe-"+tc.name, "topic", "v1", "context", false)
+			query.SQL = oldSQL
+			query.Parameters = []exec.Parameter{{Kind: "text", Value: "2026-01-01"}}
+			query.Generation.Context = admitted.assembled
+			repo := newUnitRepository()
+			repo.queries[query.ID] = query
+			executor := &unitExecutor{reports: []exec.ExecutionReport{{Attempt: exec.Attempt{Status: "failed", Code: "query_error"}}, unitResult("succeeded")}, errors: []error{exec.ErrQuery}}
+			engine := &sequenceGateway{responses: []gateway.Generated{
+				{JSON: json.RawMessage(`{"sql":"` + tc.candidate + `","parameters":[{"kind":"text","value":"2026-01-01"}],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix", Attempts: 1}}}},
+			}}
+			service := &Service{topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, executor: executor, engine: engine, repo: repo}
+			_, err := service.Run(context.Background(), e, RunRequest{QueryID: query.ID, Operation: "operation-unsafe-" + tc.name})
+			if !errors.Is(err, ErrUnsafeCorrection) {
+				t.Fatalf("unsafe correction returned %v", err)
+			}
+			if executor.calls != 1 {
+				t.Fatalf("unsafe correction reached second execution: calls=%d", executor.calls)
+			}
+			stored := repo.queries[query.ID]
+			if stored.SQL != oldSQL || len(stored.Receipt.Calls) != 1 || stored.Receipt.Calls[0].Role != "sqlfix" {
+				t.Fatalf("unsafe correction lost protected query or receipt: %#v", stored)
+			}
+		})
+	}
+}
+
+func TestRunRepairPersistsFailedCorrectionReceipt(t *testing.T) {
+	e := unitEnvelope(t)
+	reader := &unitTopicReader{
+		current:  map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)},
+		retained: map[string]topics.Contract{"topic/v1": unitContract("topic", "v1", "source", "context", "dataset", true, true)},
+	}
+	admitted, _, _, _ := testGeneration(t, e)
+	query := unitQuery(e, "query-failed-correction", "topic", "v1", "context", false)
+	query.Generation.Context = admitted.assembled
+	repo := newUnitRepository()
+	repo.queries[query.ID] = query
+	executor := &unitExecutor{reports: []exec.ExecutionReport{{Attempt: exec.Attempt{Status: "failed", Code: "query_error"}}}, errors: []error{exec.ErrQuery}}
+	inputTokens := 23
+	cost := 0.02
+	engine := &sequenceGateway{responses: []gateway.Generated{{JSON: json.RawMessage(`{"sql":`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix", Attempts: 1, InputTokens: &inputTokens, CostUSD: &cost}}}}}}
+	service := &Service{topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, executor: executor, engine: engine, repo: repo}
+	_, err := service.Run(context.Background(), e, RunRequest{QueryID: query.ID, Operation: "operation-failed-correction"})
+	if !errors.Is(err, ErrGeneration) {
+		t.Fatalf("failed correction returned %v", err)
+	}
+	stored := repo.queries[query.ID]
+	if executor.calls != 1 || len(stored.Receipt.Calls) != 1 || stored.Receipt.Calls[0].Role != "sqlfix" || stored.Receipt.Calls[0].InputTokens == nil || *stored.Receipt.Calls[0].InputTokens != inputTokens || stored.Receipt.Calls[0].CostUSD == nil || *stored.Receipt.Calls[0].CostUSD != cost {
+		t.Fatalf("failed correction receipt was not durably preserved: calls=%d receipt=%#v", executor.calls, stored.Receipt)
 	}
 }
 
@@ -956,7 +1036,7 @@ func TestServiceGenerationFailureBranches(t *testing.T) {
 		})
 	}
 	service := &Service{engine: &sequenceGateway{responses: []gateway.Generated{{JSON: validJSON}}}, validator: &unitValidator{errors: []error{exec.ErrUnsafe, nil}}}
-	if candidate, _, err := service.fixCandidate(context.Background(), e, admitted, call, budget, "SELECT bad", "validation_unsafe"); err != nil || candidate.SQL == "" {
+	if candidate, _, _, err := service.fixCandidate(context.Background(), e, admitted, call, budget, "SELECT bad", "validation_unsafe"); err != nil || candidate.SQL == "" {
 		t.Fatalf("fix candidate failed: %#v %v", candidate, err)
 	}
 	for _, tc := range []struct {

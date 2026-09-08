@@ -17,6 +17,7 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
+	pgquery "github.com/wasilibs/go-pgquery"
 )
 
 type admission struct {
@@ -196,6 +197,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if err != nil {
 		return RunResult{}, err
 	}
+	originalPlan := plan
 	call, err := gateway.Authorize(e, "query.execute", executionPartition(record), current.resources...)
 	if err != nil {
 		return RunResult{}, err
@@ -213,14 +215,19 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		if err != nil {
 			return RunResult{}, err
 		}
-		candidate, gen, genErr := s.fixCandidate(ctx, e, current, call, budget, record.SQL, executionErrorCode(report, runErr))
+		candidate, gen, correctionReceipt, genErr := s.fixCandidate(ctx, e, current, call, budget, record.SQL, executionErrorCode(report, runErr))
+		record.Receipt = appendReceipts(record.Receipt, correctionReceipt)
 		if genErr != nil {
 			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, genErr))
 		}
-		plan, err = s.validator.Validate(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: candidate.SQL, Parameters: candidate.Parameters})
-		if err != nil {
-			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, err))
+		candidatePlan, validateErr := s.validator.Validate(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: candidate.SQL, Parameters: candidate.Parameters})
+		if validateErr != nil {
+			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, validateErr))
 		}
+		if !correctionEquivalent(record.SQL, record.Parameters, candidate, current.binding, originalPlan, candidatePlan) {
+			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, ErrUnsafeCorrection))
+		}
+		plan = candidatePlan
 		record.SQL, record.Parameters, record.Generation = candidate.SQL, candidate.Parameters, gen
 		report, runErr = s.executor.Execute(ctx, e, plan, exec.Options{Operation: in.Operation, Number: 2, Preview: in.Preview, Rows: in.Rows, Bytes: in.Bytes})
 		if runErr != nil || report.Result == nil || report.Attempt.Status == "failed" {
@@ -869,21 +876,20 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	return candidate, generated.Receipt, nil
 }
 
-func (s *Service) fixCandidate(ctx context.Context, e identity.Envelope, a admission, call gateway.Call, budget *gateway.Budget, oldSQL, reason string) (generatedCandidate, nlq.GenerationContext, error) {
+func (s *Service) fixCandidate(ctx context.Context, e identity.Envelope, a admission, call gateway.Call, budget *gateway.Budget, oldSQL, reason string) (generatedCandidate, nlq.GenerationContext, gateway.Receipt, error) {
 	assembler, err := nlq.NewDefaultContextAssembler()
 	if err != nil {
-		return generatedCandidate{}, nlq.GenerationContext{}, err
+		return generatedCandidate{}, nlq.GenerationContext{}, gateway.Receipt{}, err
 	}
 	generation, err := assembler.ResolvePrecedence(ctx, nlq.GenerationInput{Context: a.assembled, EditBase: []nlq.Instruction{{Key: "previous_sql", Text: oldSQL}}, Default: []nlq.Instruction{{Key: "repair", Text: "Preserve all required filters, metric pins, source, context, and permissions while correcting the statement."}}})
 	if err != nil {
-		return generatedCandidate{}, nlq.GenerationContext{}, err
+		return generatedCandidate{}, nlq.GenerationContext{}, gateway.Receipt{}, err
 	}
 	candidate, receipt, err := s.generate(ctx, e, a, generation, call, budget, "sqlfix", reason)
 	if err != nil {
-		return generatedCandidate{}, generation, err
+		return generatedCandidate{}, generation, receipt, err
 	}
-	_ = receipt
-	return candidate, generation, nil
+	return candidate, generation, receipt, nil
 }
 
 func (s *Service) finishRun(ctx context.Context, e identity.Envelope, q QueryRecord, report exec.ExecutionReport, fixes int, runErr error) (RunResult, error) {
@@ -1091,6 +1097,101 @@ func appendReceipts(a, b gateway.Receipt) gateway.Receipt {
 		a.Warning = b.Warning
 	}
 	return a
+}
+
+// correctionEquivalent applies the narrow proof available to execution
+// repair. Native validation proves that a candidate is safe to read, but it
+// does not prove that the candidate still answers the governed question. The
+// PostgreSQL parse tree therefore has to retain every projection, filter,
+// relation, join, grouping, limit and expression, while parameter bindings
+// and validated plan coordinates must remain identical. Parse locations are
+// formatting metadata and are removed before comparing the trees.
+func correctionEquivalent(oldSQL string, oldParameters []exec.Parameter, candidate generatedCandidate, binding exec.Binding, oldPlan, candidatePlan exec.Plan) bool {
+	if !sameParameters(oldParameters, candidate.Parameters) {
+		return false
+	}
+	oldReceipt, candidateReceipt := oldPlan.Receipt(), candidatePlan.Receipt()
+	if oldReceipt.Validated != candidateReceipt.Validated {
+		return false
+	}
+	if oldReceipt.Validated && (oldReceipt.Source != candidateReceipt.Source || oldReceipt.Context != candidateReceipt.Context || oldReceipt.Dialect != candidateReceipt.Dialect || oldReceipt.Contract != candidateReceipt.Contract || !sameStrings(oldReceipt.Dependencies, candidateReceipt.Dependencies) || !sameStrings(oldReceipt.Columns, candidateReceipt.Columns)) {
+		return false
+	}
+	if oldSQL == candidate.SQL {
+		return true
+	}
+	if binding.Dialect != "postgres" {
+		return false
+	}
+	oldTree, ok := normalizedPostgresTree(oldSQL)
+	if !ok {
+		return false
+	}
+	candidateTree, ok := normalizedPostgresTree(candidate.SQL)
+	return ok && oldTree == candidateTree
+}
+
+func sameParameters(a, b []exec.Parameter) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizedPostgresTree(sql string) (string, bool) {
+	raw, err := pgquery.ParseToJSON(sql)
+	if err != nil {
+		return "", false
+	}
+	var tree any
+	if err := json.Unmarshal([]byte(raw), &tree); err != nil {
+		return "", false
+	}
+	normalized, err := json.Marshal(normalizePostgresTree(tree))
+	if err != nil {
+		return "", false
+	}
+	return string(normalized), true
+}
+
+func normalizePostgresTree(value any) any {
+	switch value := value.(type) {
+	case []any:
+		out := make([]any, len(value))
+		for i, item := range value {
+			out[i] = normalizePostgresTree(item)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(value))
+		for key, item := range value {
+			switch key {
+			case "location", "stmt_location", "stmt_len":
+				continue
+			}
+			out[key] = normalizePostgresTree(item)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 func assumptions(route nlqroute.RouteResult) []string {
