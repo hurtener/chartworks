@@ -130,7 +130,10 @@ func removeProcessedUnresolved(values []UnresolvedSemantic, processed map[Refere
 	out := values[:0]
 	for _, value := range values {
 		ref := Reference{Kind: KindColumn, Dataset: value.Dataset, ID: value.Column}
-		if !processed[ref] || value.ID != GeneratedEntityID(EnhancementUnresolved, value.Dataset, value.Column) {
+		// The stable unresolved ID records its original enhancement identity and
+		// intentionally survives dataset replacement. Resolution follows the
+		// rewritten semantic column coordinate instead of regenerating that ID.
+		if !processed[ref] {
 			out = append(out, value)
 		}
 	}

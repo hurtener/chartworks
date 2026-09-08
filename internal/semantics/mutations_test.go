@@ -97,4 +97,32 @@ func TestDatasetReplacementRewritesEnhancedUnresolvedReference(t *testing.T) {
 	if len(got) != 1 || got[0].ID != unresolved.ID || got[0].Dataset != source.Dataset || got[0].Column != unresolved.Column || got[0].Reason != unresolved.Reason {
 		t.Fatalf("unresolved mapping changed during rebind: %#v", got)
 	}
+	if got[0].ID == GeneratedEntityID(EnhancementUnresolved, source.Dataset, got[0].Column) {
+		t.Fatal("rebound unresolved ID lost its stable origin", got[0].ID)
+	}
+	resolved, err := ApplyEnhancements(rebound, "v4", []Enhancement{{
+		Dataset:     source.Dataset,
+		Column:      unresolved.Column,
+		Kind:        EnhancementMeasure,
+		Name:        "Reviewed amount",
+		Aggregation: AggregationSum,
+	}})
+	if err != nil {
+		t.Fatal("resolve rebound semantic", err)
+	}
+	resolvedPack := resolved.Pack()
+	if len(resolvedPack.Unresolved) != 0 {
+		t.Fatalf("resolved semantic retained unresolved origin: %#v", resolvedPack.Unresolved)
+	}
+	wantField := Reference{Kind: KindColumn, Dataset: source.Dataset, ID: unresolved.Column}
+	wantID := GeneratedEntityID(EnhancementMeasure, source.Dataset, unresolved.Column)
+	found := false
+	for _, measure := range resolvedPack.Measures {
+		if measure.ID == wantID && measure.Field == wantField {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("resolved semantic missing executable measure", wantID, wantField)
+	}
 }
