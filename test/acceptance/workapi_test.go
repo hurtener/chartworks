@@ -36,6 +36,9 @@ func TestWorkAPIAndSDK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got := callProtected(t, h, "POST", "/v1/jobs", token, `{"kind":"retention.sweep","binding_id":"maintenance"}`, map[string]string{"Idempotency-Key": strings.Repeat("a", 129)}); got.Code != http.StatusBadRequest {
+		t.Fatalf("otherwise-valid oversized idempotency key accepted: %d", got.Code)
+	}
 	for _, role := range config.RoleNames() {
 		p, err := client.ProbeGateway(ctx, role)
 		if err != nil || !p.OK || p.Role != role {
@@ -204,7 +207,11 @@ func TestWorkAPIAndSDK(t *testing.T) {
 	}
 	f.mode.Store("error")
 	out := callProtected(t, h, "POST", "/v1/gateway/probes", token, `{"role":"enhance"}`, nil)
-	if out.Code != 503 || strings.Contains(out.Body.String(), "CANARY") {
+	var failedProbe struct {
+		Error   string           `json:"error"`
+		Receipt *json.RawMessage `json:"receipt"`
+	}
+	if json.Unmarshal(out.Body.Bytes(), &failedProbe) != nil || out.Code != 503 || failedProbe.Error != "unavailable" || failedProbe.Receipt == nil || strings.Contains(out.Body.String(), "CANARY") {
 		t.Fatal("unsafe error projection")
 	}
 	f.mode.Store("schema")

@@ -32,7 +32,7 @@ func definition(t *testing.T) Definition {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Definition{Operation: Operation{"POST", "/v1/sources/{id}/test", "sources.read", "warehouse_catalog_read"}, ID: "testSource", Summary: "Test source", ResourceLoader: "sources.Service.Test", Audit: "read_only_no_domain_audit", MaxBodyBytes: 65536, Request: req, Response: res, Errors: []ErrorResponse{{401, "unauthenticated"}, {503, "unavailable"}, {409, "conflict"}, {409, "context_changed"}}}
+	return Definition{Operation: Operation{"POST", "/v1/sources/{id}/test", "sources.read", "warehouse_catalog_read"}, ID: "testSource", Summary: "Test source", ResourceLoader: "sources.Service.Test", Audit: "read_only_no_domain_audit", MaxBodyBytes: 65536, Request: req, Response: res, Errors: []ErrorResponse{{Status: 401, Code: "unauthenticated"}, {Status: 503, Code: "unavailable"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "context_changed"}}}
 }
 
 func TestSchemaTracksClosedRequestAndNullableResponseShapes(t *testing.T) {
@@ -291,7 +291,7 @@ func TestRegistryCompositionAndParameterMetadata(t *testing.T) {
 	protected := definition(t)
 	protected.ID = "writeSource"
 	protected.Query = []Parameter{{Name: "limit", In: "query", Description: "Bounded result count", Type: "integer", Min: 1, Max: 100}}
-	protected.Headers = []Parameter{{Name: "Idempotency-Key", In: "header", Description: "Replay key", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}
+	protected.Headers = []Parameter{{Name: "Idempotency-Key", In: "header", Description: "Replay key", Type: "string", Required: true, Min: 1, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}
 	publicSchema, err := SchemaFor("publicResponse", reflect.TypeFor[responseDTO](), true)
 	if err != nil {
 		t.Fatal(err)
@@ -347,6 +347,41 @@ func TestRegistryCompositionAndParameterMetadata(t *testing.T) {
 	parameters := protectedOp["parameters"].([]any)
 	if len(parameters) != 3 {
 		t.Fatalf("parameters=%d", len(parameters))
+	}
+	parameterSchemas := map[string]map[string]any{}
+	for _, raw := range parameters {
+		parameter := raw.(map[string]any)
+		parameterSchemas[parameter["name"].(string)] = parameter["schema"].(map[string]any)
+	}
+	stringSchema := parameterSchemas["Idempotency-Key"]
+	if stringSchema["type"] != "string" || stringSchema["minLength"] != float64(1) || stringSchema["maxLength"] != float64(128) || stringSchema["minimum"] != nil || stringSchema["maximum"] != nil {
+		t.Fatalf("string bounds used numeric schema keywords: %#v", stringSchema)
+	}
+	stringDocument, err := json.Marshal(stringSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stringValidator, err := gateway.NewSchema("idempotencyParameter", stringDocument)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stringValidator.Validate([]byte(`"`+strings.Repeat("a", 128)+`"`), 1024) != nil || stringValidator.Validate([]byte(`"`+strings.Repeat("a", 129)+`"`), 1024) == nil {
+		t.Fatal("generated string parameter schema does not enforce its declared bound")
+	}
+	integerSchema := parameterSchemas["limit"]
+	if integerSchema["type"] != "integer" || integerSchema["minimum"] != float64(1) || integerSchema["maximum"] != float64(100) || integerSchema["minLength"] != nil || integerSchema["maxLength"] != nil {
+		t.Fatalf("numeric bounds used string schema keywords: %#v", integerSchema)
+	}
+	integerDocument, err := json.Marshal(integerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	integerValidator, err := gateway.NewSchema("limitParameter", integerDocument)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if integerValidator.Validate([]byte("1"), 1024) != nil || integerValidator.Validate([]byte("101"), 1024) == nil {
+		t.Fatal("generated numeric parameter schema does not enforce its declared bound")
 	}
 	if _, ok := protectedOp["requestBody"]; !ok {
 		t.Fatal("request body omitted")

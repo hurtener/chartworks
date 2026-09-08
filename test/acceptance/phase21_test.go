@@ -251,6 +251,15 @@ func TestPhase21(t *testing.T) {
 				t.Fatalf("ambiguous public request status=%d", response.Code)
 			}
 		}
+		for _, path := range []string{"/healthz", "/readyz", "/capabilities"} {
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				response = httptest.NewRecorder()
+				h.ServeHTTP(response, httptest.NewRequest(method, path+"?extra=1", nil))
+				if response.Code != http.StatusBadRequest {
+					t.Fatalf("undeclared public query accepted for %s %s: %d", method, path, response.Code)
+				}
+			}
+		}
 		large := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		large.ContentLength = 100 << 20
 		response = httptest.NewRecorder()

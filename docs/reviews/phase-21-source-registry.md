@@ -152,7 +152,7 @@ The pinned Linux/native-parser verification image ran:
 - `go test -race -count=1 -p=2 ./test/acceptance -run '^TestPhase21$'` — passed in 15.805s against real PostgreSQL, including the SDK/source path.
 - `python3 scripts/run_phase_acceptance.py --root /Volumes/m2-extended-disk/Repos/chartworks-phase21-http --phase 21` — passed `TestPhase21/AC01` through `AC06`, with no unimplemented skips.
 
-The requested scoped lint log is `/tmp/chartworks-canonical-lint-741d7a1.log`.
+The requested scoped lint log is `/tmp/chartworks-http-scoped-lint-be083ba.log`.
 The shared API/source registry findings (unsafe status conversion and unkeyed
 external literals) are cleared. The scoped lint command still reports five
 pre-existing gocritic/staticcheck findings in unrelated acceptance files; no
@@ -162,10 +162,12 @@ repository lint or release gate is green.
 ## Remaining implementation
 
 The foundation health/capabilities, security and work adapters and public OpenAPI
-delivery are implemented in this prerequisite slice. Later domain phases must
-continue registering each concrete operation and extend the cumulative generated
-SDK/isolation/audit coverage; this phase remains in progress until those owning
-consumers and the release gates are complete.
+delivery are implemented in this prerequisite slice. This bounded HTTP
+prerequisite is complete for its currently registered operations, named tests,
+focused review, and CI checks. Later domain phases add their concrete operations
+and extend cumulative generated SDK/isolation/audit coverage; they do not reopen
+this prerequisite. The wider Phase 21 and release program remains in progress
+while those owning consumers and release gates land.
 
 Phase 15 still needs persisted draft/review/publication/rollback/archive, atomic
 topic/facet activation, current source/profile health and Pengui revalidation,

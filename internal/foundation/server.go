@@ -176,7 +176,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
+	if r.ContentLength != 0 || len(r.TransferEncoding) != 0 || r.URL.RawQuery != "" {
 		w.Header().Set("Connection", "close")
 		if r.ContentLength > s.values.Server.MaxBodyBytes {
 			w.WriteHeader(http.StatusRequestEntityTooLarge)

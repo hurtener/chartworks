@@ -49,4 +49,13 @@ func TestAPIRegistryAdvertisesOnlySelectedCapabilities(t *testing.T) {
 	if probe["x-chartworks-action"] != "ops.model" || probe["requestBody"] == nil || probe["x-chartworks-max-body-bytes"] != float64(workRequestMaxBytes) {
 		t.Fatalf("probe metadata=%#v", probe)
 	}
+	probeResponses := probe["responses"].(map[string]any)
+	unauthorized := probeResponses["401"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	properties := unauthorized["properties"].(map[string]any)
+	if _, ok := properties["receipt"]; !ok {
+		t.Fatal("gateway probe error metadata omitted bounded receipt")
+	}
+	if got := properties["error"].(map[string]any)["enum"].([]any); len(got) != 2 {
+		t.Fatalf("gateway probe 401 errors=%v", got)
+	}
 }

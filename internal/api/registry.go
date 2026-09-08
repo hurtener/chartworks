@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,9 @@ type Operation struct {
 type ErrorResponse struct {
 	Status int
 	Code   string
+	// Receipt marks an error response that includes the bounded gateway attempt
+	// receipt alongside its stable error code.
+	Receipt bool
 }
 
 // Parameter describes a bounded path, query or header value in the public
@@ -285,12 +289,29 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 		}
 		responses[statusString(defaultStatus(d))] = response
 		byStatus := map[int][]string{}
+		receiptByStatus := map[int]bool{}
 		for _, e := range d.Errors {
 			byStatus[e.Status] = append(byStatus[e.Status], e.Code)
+			receiptByStatus[e.Status] = receiptByStatus[e.Status] || e.Receipt
+		}
+		var receiptDocument any
+		for status := range receiptByStatus {
+			if !receiptByStatus[status] {
+				continue
+			}
+			receipt, err := SchemaFor("gatewayErrorReceipt", reflect.TypeFor[gateway.Receipt](), true)
+			if err != nil || json.Unmarshal(receipt.Document(), &receiptDocument) != nil {
+				return nil, ErrRegistration
+			}
+			break
 		}
 		for status, codes := range byStatus {
 			sort.Strings(codes)
-			schema := map[string]any{"type": "object", "properties": map[string]any{"error": map[string]any{"type": "string", "enum": codes}}, "required": []string{"error"}, "additionalProperties": false}
+			properties := map[string]any{"error": map[string]any{"type": "string", "enum": codes}}
+			if receiptByStatus[status] {
+				properties["receipt"] = receiptDocument
+			}
+			schema := map[string]any{"type": "object", "properties": properties, "required": []string{"error"}, "additionalProperties": false}
 			responses[statusString(status)] = map[string]any{"description": http.StatusText(status), "content": content(schema)}
 		}
 		// The existing router's authenticated wrong-method response has no body.
@@ -343,11 +364,20 @@ func appendParameter(existing any, parameter Parameter) any {
 	if parameter.Format != "" {
 		schema["format"] = parameter.Format
 	}
-	if parameter.Min > 0 {
-		schema["minimum"] = parameter.Min
-	}
-	if parameter.Max > 0 {
-		schema["maximum"] = parameter.Max
+	if parameter.Type == "string" {
+		if parameter.Min > 0 {
+			schema["minLength"] = parameter.Min
+		}
+		if parameter.Max > 0 {
+			schema["maxLength"] = parameter.Max
+		}
+	} else {
+		if parameter.Min > 0 {
+			schema["minimum"] = parameter.Min
+		}
+		if parameter.Max > 0 {
+			schema["maximum"] = parameter.Max
+		}
 	}
 	if parameter.Pattern != "" {
 		schema["pattern"] = parameter.Pattern

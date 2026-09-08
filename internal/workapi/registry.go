@@ -16,10 +16,11 @@ type ScheduleStateRequest struct {
 	Enabled  bool  `json:"enabled"`
 }
 
-func workErrors() []api.ErrorResponse {
-	return []api.ErrorResponse{
+func workErrors(receipt bool) []api.ErrorResponse {
+	errors := []api.ErrorResponse{
 		{Status: 400, Code: "invalid_request"},
 		{Status: 401, Code: "unauthenticated"},
+		{Status: 401, Code: "unauthorized"},
 		{Status: 403, Code: "forbidden"},
 		{Status: 404, Code: "not_found"},
 		{Status: 409, Code: "conflict"},
@@ -29,6 +30,12 @@ func workErrors() []api.ErrorResponse {
 		{Status: 503, Code: "unavailable"},
 		{Status: 504, Code: "cancelled_or_timed_out"},
 	}
+	if receipt {
+		for i := range errors {
+			errors[i].Receipt = true
+		}
+	}
+	return errors
 }
 
 // APIRegistry describes the actual gateway and durable-work routes selected by
@@ -71,12 +78,13 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 	if err != nil {
 		return nil, err
 	}
-	errors := workErrors()
+	probeErrors := workErrors(true)
+	workErrors := workErrors(false)
 	definitions := make([]api.Definition, 0, 9)
 	if engine != nil {
 		definitions = append(definitions, api.Definition{
 			Operation: api.Operation{Method: "POST", Path: "/v1/gateway/probes", Action: "ops.model", Effect: "paid_model_call"},
-			ID:        "gatewayProbe", Summary: "Probe one configured remote model role", ResourceLoader: "workapi.Probe", Audit: "gateway.probe", Request: probeRequest, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: probeResponse, Errors: errors,
+			ID:        "gatewayProbe", Summary: "Probe one configured remote model role", ResourceLoader: "workapi.Probe", Audit: "gateway.probe", Request: probeRequest, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: probeResponse, Errors: probeErrors,
 		})
 	}
 	if queue == nil {
@@ -93,35 +101,35 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 	}
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "GET", Path: "/v1/jobs", Action: "scheduling.read", Effect: "metadata_read"},
-		ID:        "listJobs", Summary: "List retained durable operation metadata", ResourceLoader: "jobs.Service.List", Audit: "read_only_no_domain_audit", Response: jobsResponse, Errors: errors,
+		ID:        "listJobs", Summary: "List retained durable operation metadata", ResourceLoader: "jobs.Service.List", Audit: "read_only_no_domain_audit", Response: jobsResponse, Errors: workErrors,
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "GET", Path: "/v1/jobs/{id}", Action: "scheduling.read", Effect: "metadata_read"},
-		ID:        "getJob", Summary: "Read one retained durable operation", ResourceLoader: "jobs.Service.Get", Audit: "read_only_no_domain_audit", Response: jobResponse, Errors: errors,
+		ID:        "getJob", Summary: "Read one retained durable operation", ResourceLoader: "jobs.Service.Get", Audit: "read_only_no_domain_audit", Response: jobResponse, Errors: workErrors,
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/jobs", Action: "scheduling.write", Effect: "durable_admission"},
-		ID:        "submitJob", Summary: "Admit one bounded durable operation", ResourceLoader: "jobs.Service.Submit", Audit: "job.admitted", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical operation", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: submission, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: errors,
+		ID:        "submitJob", Summary: "Admit one bounded durable operation", ResourceLoader: "jobs.Service.Submit", Audit: "job.admitted", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical operation", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: submission, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
 	}, dispatch)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/jobs/{id}/cancel", Action: "scheduling.cancel", Effect: "durable_cancellation"},
-		ID:        "cancelJob", Summary: "Record cancellation for one durable operation", ResourceLoader: "jobs.Service.Cancel", Audit: "job.cancelled", Request: empty, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: errors,
+		ID:        "cancelJob", Summary: "Record cancellation for one durable operation", ResourceLoader: "jobs.Service.Cancel", Audit: "job.cancelled", Request: empty, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "GET", Path: "/v1/schedules/{id}", Action: "scheduling.read", Effect: "metadata_read"},
-		ID:        "getSchedule", Summary: "Read one retained schedule", ResourceLoader: "jobs.Service.GetSchedule", Audit: "read_only_no_domain_audit", Response: scheduleResponse, Errors: errors,
+		ID:        "getSchedule", Summary: "Read one retained schedule", ResourceLoader: "jobs.Service.GetSchedule", Audit: "read_only_no_domain_audit", Response: scheduleResponse, Errors: workErrors,
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/schedules", Action: "scheduling.write", Effect: "schedule_creation"},
-		ID:        "createSchedule", Summary: "Create one bounded schedule", ResourceLoader: "jobs.Service.CreateSchedule", Audit: "schedule.created", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: schedule, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: scheduleResponse, Errors: errors,
+		ID:        "createSchedule", Summary: "Create one bounded schedule", ResourceLoader: "jobs.Service.CreateSchedule", Audit: "schedule.created", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: schedule, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: scheduleResponse, Errors: workErrors,
 	}, dispatch)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "PUT", Path: "/v1/schedules/{id}/state", Action: "scheduling.write", Effect: "schedule_state"},
-		ID:        "setScheduleState", Summary: "Change one schedule with revision CAS", ResourceLoader: "jobs.Service.SetSchedule", Audit: "schedule.state_changed", Request: scheduleState, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: scheduleResponse, Errors: errors,
+		ID:        "setScheduleState", Summary: "Change one schedule with revision CAS", ResourceLoader: "jobs.Service.SetSchedule", Audit: "schedule.state_changed", Request: scheduleState, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: scheduleResponse, Errors: workErrors,
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/schedules/{id}/runs", Action: "scheduling.execute", Effect: "durable_admission"},
-		ID:        "fireSchedule", Summary: "Admit one manual schedule run", ResourceLoader: "jobs.Service.Fire", Audit: "schedule.run_requested", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule run", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: empty, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: errors,
+		ID:        "fireSchedule", Summary: "Admit one manual schedule run", ResourceLoader: "jobs.Service.Fire", Audit: "schedule.run_requested", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule run", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: empty, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
 	}, dispatch)
 	if len(definitions) == 0 {
 		return nil, nil

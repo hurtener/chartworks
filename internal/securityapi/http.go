@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
@@ -47,16 +48,25 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 			return
 		}
 		var op Operation
-		found := false
+		found, knownPath := false, false
 		for _, candidate := range Operations() {
-			if candidate.Path == req.URL.Path && candidate.Method == req.Method {
+			if candidate.Path != req.URL.Path || (!metrics && candidate.Path == "/metrics") {
+				continue
+			}
+			knownPath = true
+			if candidate.Method == req.Method {
 				op = candidate
 				found = true
 				break
 			}
 		}
-		if !found || (!metrics && op.Path == "/metrics") {
-			failure(w, access.ErrNotFound)
+		if !found {
+			if knownPath {
+				w.Header().Set("Allow", allowedMethods(req.URL.Path, metrics))
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			} else {
+				failure(w, access.ErrNotFound)
+			}
 			return
 		}
 		if err = access.Require(e, op.Action, access.Tenant(e, op.Permission)); err != nil {
@@ -145,6 +155,16 @@ func Handler(v *auth.Verifier, s *Service, r *telemetry.Reporter, metrics bool) 
 			failure(w, access.ErrNotFound)
 		}
 	}))
+}
+
+func allowedMethods(path string, metrics bool) string {
+	methods := []string{}
+	for _, operation := range Operations() {
+		if operation.Path == path && (metrics || path != "/metrics") {
+			methods = append(methods, operation.Method)
+		}
+	}
+	return strings.Join(methods, ", ")
 }
 func parseQuery(req *http.Request, path string) (string, error) {
 	q, err := req.URL.Query(), error(nil)
