@@ -1,6 +1,13 @@
 # Phase 17 — nlq-routing-context
 
-Status: planned. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16.
+Status: in_progress. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16.
+
+The current bounded foundation implements only the deterministic context seam:
+the pinned `cl100k_base` tokenizer, 1500/3000/6500 tiers, mandatory-lane
+preservation or typed insufficiency, bounded omission audit, detached English
+and Spanish inputs, and immutable caller boundaries. Remote retrieval,
+reranking, calibrated routing, signed reach, and confirmed multi-topic joins
+remain unimplemented; no phase acceptance criterion is claimed by this slice.
 
 ## Authority and design
 

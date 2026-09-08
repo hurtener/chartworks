@@ -4,6 +4,8 @@ package nlq
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -245,10 +247,19 @@ type AssembledContext struct {
 	Metrics      []PinnedMetric   `json:"metrics"`
 	Advisory     []OptionalItem   `json:"advisory"`
 	Examples     []OptionalItem   `json:"examples"`
-	Omitted      []Omission       `json:"omitted"`
-	OmittedCount int              `json:"omitted_count"`
-	Usage        []LaneUsage      `json:"usage"`
-	Unpruned     ContextInput     `json:"unpruned"`
+	// Audit is retained for bounded service metadata and deliberately stays out
+	// of the model input wire. Callers that need audit evidence can inspect it
+	// before handing the assembled context to a model adapter.
+	Audit AssemblyAudit `json:"-"`
+	seal  [32]byte
+}
+
+// AssemblyAudit is metadata about pruning. It deliberately carries no text
+// from omitted inputs, so it can be returned alongside the model context.
+type AssemblyAudit struct {
+	Omitted      []Omission  `json:"omitted"`
+	OmittedCount int         `json:"omitted_count"`
+	Usage        []LaneUsage `json:"usage"`
 }
 
 type ContextAssembler struct {
@@ -330,7 +341,7 @@ func (a *ContextAssembler) Assemble(ctx context.Context, input ContextInput, tie
 	assembled := AssembledContext{
 		Tier: tier, Budget: budget, Locale: copyInput.Locale, Strategy: copyInput.Strategy,
 		Topic: copyInput.Topic, TopicVersion: copyInput.TopicVersion, Question: copyInput.Question,
-		Constraints: cloneConstraintState(copyInput.Constraints), Metrics: cloneMetrics(copyInput.Metrics), Unpruned: cloneInput(copyInput),
+		Constraints: cloneConstraintState(copyInput.Constraints), Metrics: cloneMetrics(copyInput.Metrics),
 	}
 	if len(examples) > MaxExamples {
 		for _, item := range examples[MaxExamples:] {
@@ -359,7 +370,11 @@ func (a *ContextAssembler) Assemble(ctx context.Context, input ContextInput, tie
 	if err != nil {
 		return AssembledContext{}, err
 	}
-	assembled.Usage = a.usage(copyInput, assembled)
+	assembled.Audit.Usage, err = a.usage(copyInput, assembled)
+	if err != nil {
+		return AssembledContext{}, err
+	}
+	assembled.seal = sealAssembledContext(assembled)
 	return assembled, nil
 }
 
@@ -369,6 +384,43 @@ func (a *ContextAssembler) AssembleForConfidence(ctx context.Context, input Cont
 		return AssembledContext{}, err
 	}
 	return a.Assemble(ctx, input, tier)
+}
+
+// validateAssembledContext accepts only an assembler-produced value whose
+// canonical prompt, budget and tokenizer count still agree. The deep copy
+// prevents later caller mutation from reaching a generation consumer.
+func (a *ContextAssembler) validateAssembledContext(input AssembledContext) (AssembledContext, error) {
+	if a == nil || a.counter == nil {
+		return AssembledContext{}, ErrInvalid
+	}
+	if !input.Tier.valid() || input.Budget != input.Tier.Budget() {
+		return AssembledContext{}, &ValidationError{Code: CodeInvalidValue, Path: "context.budget"}
+	}
+	if input.seal != sealAssembledContext(input) {
+		return AssembledContext{}, &ValidationError{Code: CodeInvalidValue, Path: "context.seal"}
+	}
+	if len(input.Examples) > MaxExamples {
+		return AssembledContext{}, &ValidationError{Code: CodeLimit, Path: "context.examples"}
+	}
+	canonicalInput, err := cloneAndValidateInput(outputInput(input))
+	if err != nil {
+		return AssembledContext{}, err
+	}
+	if canonicalInput.Constraints != nil && !canonicalInput.Constraints.Allowed {
+		return AssembledContext{}, ErrConstraintConflict
+	}
+	canonicalPrompt := renderAssembledPrompt(canonicalInput)
+	if input.Prompt != canonicalPrompt {
+		return AssembledContext{}, &ValidationError{Code: CodeInvalidValue, Path: "context.prompt"}
+	}
+	count, err := a.counter.Count(input.Prompt)
+	if err != nil {
+		return AssembledContext{}, err
+	}
+	if count != input.Tokens || count > input.Budget {
+		return AssembledContext{}, &ValidationError{Code: CodeInvalidValue, Path: "context.tokens"}
+	}
+	return cloneAssembled(input), nil
 }
 
 type optionalCandidate struct {
@@ -421,29 +473,38 @@ func (a *AssembledContext) add(candidate optionalCandidate) {
 }
 
 func (a *AssembledContext) addOmission(omission Omission) {
-	a.OmittedCount++
-	if len(a.Omitted) < MaxOmissions {
-		a.Omitted = append(a.Omitted, omission)
+	a.Audit.OmittedCount++
+	if len(a.Audit.Omitted) < MaxOmissions {
+		a.Audit.Omitted = append(a.Audit.Omitted, omission)
 	}
 }
 
-func (a *ContextAssembler) usage(input ContextInput, output AssembledContext) []LaneUsage {
-	return []LaneUsage{
-		{Lane: LaneHeader, OriginalTokens: a.count(renderHeader(input)), IncludedTokens: a.count(renderHeader(outputInput(output)))},
-		{Lane: LaneEvidence, OriginalTokens: a.count(renderEvidence(input.Evidence)), IncludedTokens: a.count(renderEvidence(output.Evidence))},
-		{Lane: LaneConstraints, OriginalTokens: a.count(renderConstraints(flattenConstraints(input.Constraints))), IncludedTokens: a.count(renderConstraints(flattenConstraints(output.Constraints)))},
-		{Lane: LaneMetrics, OriginalTokens: a.count(renderMetrics(input.Metrics)), IncludedTokens: a.count(renderMetrics(output.Metrics))},
-		{Lane: LaneAdvisory, OriginalTokens: a.count(renderOptional(LaneAdvisory, input.Advisory)), IncludedTokens: a.count(renderOptional(LaneAdvisory, output.Advisory))},
-		{Lane: LaneExamples, OriginalTokens: a.count(renderOptional(LaneExamples, input.Examples)), IncludedTokens: a.count(renderOptional(LaneExamples, output.Examples))},
+func (a *ContextAssembler) usage(input ContextInput, output AssembledContext) ([]LaneUsage, error) {
+	values := []struct {
+		lane     Lane
+		original string
+		included string
+	}{
+		{LaneHeader, renderHeader(input), renderHeader(outputInput(output))},
+		{LaneEvidence, renderEvidence(input.Evidence), renderEvidence(output.Evidence)},
+		{LaneConstraints, renderConstraints(flattenConstraints(input.Constraints)), renderConstraints(flattenConstraints(output.Constraints))},
+		{LaneMetrics, renderMetrics(input.Metrics), renderMetrics(output.Metrics)},
+		{LaneAdvisory, renderOptional(LaneAdvisory, input.Advisory), renderOptional(LaneAdvisory, output.Advisory)},
+		{LaneExamples, renderOptional(LaneExamples, input.Examples), renderOptional(LaneExamples, output.Examples)},
 	}
-}
-
-func (a *ContextAssembler) count(text string) int {
-	n, err := a.counter.Count(text)
-	if err != nil {
-		return 0
+	usage := make([]LaneUsage, 0, len(values))
+	for _, value := range values {
+		original, err := a.counter.Count(value.original)
+		if err != nil {
+			return nil, err
+		}
+		included, err := a.counter.Count(value.included)
+		if err != nil {
+			return nil, err
+		}
+		usage = append(usage, LaneUsage{Lane: value.lane, OriginalTokens: original, IncludedTokens: included})
 	}
-	return n
+	return usage, nil
 }
 
 func renderWithCandidate(base string, candidate optionalCandidate) string {
@@ -496,6 +557,38 @@ func renderItem(lane Lane, id, text string) string {
 
 func outputInput(output AssembledContext) ContextInput {
 	return ContextInput{Locale: output.Locale, Strategy: output.Strategy, Topic: output.Topic, TopicVersion: output.TopicVersion, Question: output.Question, Evidence: cloneEvidence(output.Evidence), Constraints: cloneConstraintState(output.Constraints), Metrics: cloneMetrics(output.Metrics), Advisory: cloneOptional(output.Advisory), Examples: cloneOptional(output.Examples)}
+}
+
+func renderAssembledPrompt(input ContextInput) string {
+	base := renderBase(input, flattenConstraints(input.Constraints))
+	selected := optionalCandidates(input)
+	for _, item := range selected {
+		base = renderWithCandidate(base, item)
+	}
+	return base
+}
+
+func optionalCandidates(input ContextInput) []optionalCandidate {
+	selected := make([]optionalCandidate, 0, len(input.Evidence)+len(input.Advisory)+len(input.Examples))
+	for _, item := range input.Evidence {
+		selected = append(selected, optionalCandidate{lane: LaneEvidence, id: item.ID, priority: item.Priority, evidence: item})
+	}
+	for _, item := range input.Advisory {
+		selected = append(selected, optionalCandidate{lane: LaneAdvisory, id: item.ID, priority: item.Priority, advisory: item})
+	}
+	for _, item := range input.Examples {
+		selected = append(selected, optionalCandidate{lane: LaneExamples, id: item.ID, priority: item.Priority, example: item})
+	}
+	sort.SliceStable(selected, func(i, j int) bool {
+		if selected[i].priority != selected[j].priority {
+			return selected[i].priority > selected[j].priority
+		}
+		if selected[i].lane != selected[j].lane {
+			return selected[i].lane < selected[j].lane
+		}
+		return selected[i].id < selected[j].id
+	})
+	return selected
 }
 
 func flattenConstraints(state *ConstraintState) []MandatoryConstraint {
@@ -687,4 +780,21 @@ func cloneFloat(value *float64) *float64 {
 	}
 	copy := *value
 	return &copy
+}
+
+func cloneAudit(a AssemblyAudit) AssemblyAudit {
+	return AssemblyAudit{Omitted: append([]Omission(nil), a.Omitted...), OmittedCount: a.OmittedCount, Usage: append([]LaneUsage(nil), a.Usage...)}
+}
+
+func sealAssembledContext(input AssembledContext) [32]byte {
+	input.seal = [32]byte{}
+	return sealBytes(struct {
+		Context AssembledContext `json:"context"`
+		Audit   AssemblyAudit    `json:"audit"`
+	}{Context: input, Audit: input.Audit})
+}
+
+func sealBytes(input any) [32]byte {
+	raw, _ := json.Marshal(input)
+	return sha256.Sum256(raw)
 }

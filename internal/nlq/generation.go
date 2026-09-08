@@ -2,7 +2,14 @@ package nlq
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sort"
+	"strings"
+)
+
+var (
+	ErrGenerationStopped = errors.New("nlq: generation is not permitted for this strategy")
 )
 
 type GenerationStrategy string
@@ -34,22 +41,30 @@ type GenerationContext struct {
 	Selected             []Instruction      `json:"selected"`
 	MandatoryConstraints *ConstraintState   `json:"mandatory_constraints,omitempty"`
 	PinnedMetrics        []PinnedMetric     `json:"pinned_metrics"`
+	Prompt               string             `json:"prompt"`
+	Tokens               int                `json:"tokens"`
+	Budget               int                `json:"budget"`
 	Context              AssembledContext   `json:"context"`
+	seal                 [32]byte
 }
 
 // ResolvePrecedence is the first phase-18 generation-context consumer. It
-// chooses one detached source in the documented order and carries the already
-// evaluated mandatory lanes forward unchanged. It never evaluates a rule,
-// widens authority, calls a model, or executes a query.
-func ResolvePrecedence(ctx context.Context, input GenerationInput) (GenerationContext, error) {
+// chooses one detached source in the documented order, serializes it with the
+// assembled context and counts that exact final payload. It never evaluates a
+// rule, widens authority, calls a model, or executes a query.
+func (a *ContextAssembler) ResolvePrecedence(ctx context.Context, input GenerationInput) (GenerationContext, error) {
 	if ctx == nil {
 		return GenerationContext{}, &ValidationError{Code: CodeInvalidValue, Path: "context"}
 	}
 	if err := ctx.Err(); err != nil {
 		return GenerationContext{}, err
 	}
-	if input.Context.Prompt == "" || !input.Context.Tier.valid() || input.Context.Budget <= 0 || input.Context.Tokens < 0 || input.Context.Tokens > input.Context.Budget {
-		return GenerationContext{}, &ValidationError{Code: CodeInvalidValue, Path: "context"}
+	assembled, err := a.validateAssembledContext(input.Context)
+	if err != nil {
+		return GenerationContext{}, err
+	}
+	if assembled.Strategy == StrategyClarify || assembled.Strategy == StrategyNoRoute {
+		return GenerationContext{}, ErrGenerationStopped
 	}
 	editBase, err := cloneInstructions(input.EditBase, "edit_base")
 	if err != nil {
@@ -68,9 +83,9 @@ func ResolvePrecedence(ctx context.Context, input GenerationInput) (GenerationCo
 		return GenerationContext{}, err
 	}
 	result := GenerationContext{
-		MandatoryConstraints: cloneConstraintState(input.Context.Constraints),
-		PinnedMetrics:        cloneMetrics(input.Context.Metrics),
-		Context:              cloneAssembled(input.Context),
+		MandatoryConstraints: cloneConstraintState(assembled.Constraints),
+		PinnedMetrics:        cloneMetrics(assembled.Metrics),
+		Context:              assembled,
 	}
 	switch {
 	case len(editBase) > 0:
@@ -82,7 +97,52 @@ func ResolvePrecedence(ctx context.Context, input GenerationInput) (GenerationCo
 	default:
 		result.Strategy, result.Selected = GenerationDefault, defaults
 	}
+	result.Prompt = renderGenerationPrompt(assembled.Prompt, result.Selected)
+	result.Tokens, err = a.counter.Count(result.Prompt)
+	if err != nil {
+		return GenerationContext{}, err
+	}
+	result.Budget = assembled.Budget
+	if result.Tokens > result.Budget {
+		return GenerationContext{}, &GenerationBudgetError{Tier: assembled.Tier, Budget: result.Budget, RequiredTokens: result.Tokens}
+	}
+	result.seal = sealGenerationContext(result)
 	return result, nil
+}
+
+// ResolvePrecedence uses the pinned default tokenizer for callers that do not
+// retain the assembler. Consumers that assembled with an injected counter must
+// call the method on that same assembler so both stages share one currency.
+func ResolvePrecedence(ctx context.Context, input GenerationInput) (GenerationContext, error) {
+	a, err := NewDefaultContextAssembler()
+	if err != nil {
+		return GenerationContext{}, err
+	}
+	return a.ResolvePrecedence(ctx, input)
+}
+
+type GenerationBudgetError struct {
+	Tier           Tier
+	Budget         int
+	RequiredTokens int
+}
+
+func (e *GenerationBudgetError) Error() string {
+	return fmt.Sprintf("nlq: final generation context exceeds %d-token budget", e.Budget)
+}
+func (e *GenerationBudgetError) Unwrap() error { return ErrInsufficient }
+
+func renderGenerationPrompt(base string, selected []Instruction) string {
+	var b strings.Builder
+	b.WriteString(base)
+	for _, item := range selected {
+		b.WriteString("instruction[")
+		b.WriteString(item.Key)
+		b.WriteString("]:")
+		b.WriteString(item.Text)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func cloneInstructions(items []Instruction, path string) ([]Instruction, error) {
@@ -111,9 +171,7 @@ func cloneAssembled(input AssembledContext) AssembledContext {
 	out.Metrics = cloneMetrics(input.Metrics)
 	out.Advisory = cloneOptional(input.Advisory)
 	out.Examples = cloneOptional(input.Examples)
-	out.Omitted = append([]Omission(nil), input.Omitted...)
-	out.Usage = append([]LaneUsage(nil), input.Usage...)
-	out.Unpruned = cloneInput(input.Unpruned)
+	out.Audit = cloneAudit(input.Audit)
 	return out
 }
 
@@ -127,4 +185,9 @@ func cloneInput(input ContextInput) ContextInput {
 		out.Constraints = &ConstraintState{Allowed: input.Constraints.Allowed, Required: cloneConstraints(input.Constraints.Required), Excluded: cloneConstraints(input.Constraints.Excluded)}
 	}
 	return out
+}
+
+func sealGenerationContext(input GenerationContext) [32]byte {
+	input.seal = [32]byte{}
+	return sealBytes(input)
 }

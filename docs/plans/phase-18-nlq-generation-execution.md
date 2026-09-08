@@ -1,6 +1,13 @@
 # Phase 18 — nlq-generation-execution
 
-Status: planned. Owner: internal/nlq. Hard dependencies: 09, 10, 17.
+Status: in_progress. Owner: internal/nlq. Hard dependencies: 09, 10, 17.
+
+The current bounded foundation supplies the first internal consumer for
+`edit_base > hints > examples > default`: it carries evaluated mandatory
+constraints and pinned metrics, counts the exact final serialized payload with
+the phase-17 tokenizer, and stops clarify/no-route outcomes. Preflight, plan,
+source execution, correction, templates, refinement, feedback, and learning
+remain unimplemented; no phase acceptance criterion is claimed by this slice.
 
 ## Authority and design
 
