@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -349,6 +350,13 @@ func readFailure(ctx context.Context, err error) error {
 	var pg *pgconn.PgError
 	if errors.As(err, &pg) && (pg.Code == "57014" || pg.Code == "25P03" || pg.Code == "25P04") {
 		return readexec.ErrTimeout
+	}
+	// A validated read can still fail at execution for a data-dependent
+	// PostgreSQL condition such as division by zero. Preserve only a typed,
+	// detail-free rejection so an owning consumer may spend one correction
+	// attempt; native SQLSTATE/message text never crosses this boundary.
+	if errors.As(err, &pg) && (strings.HasPrefix(pg.Code, "22") || pg.Code == "21000") {
+		return readexec.ErrQuery
 	}
 	return safe(err)
 }

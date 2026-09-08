@@ -168,6 +168,20 @@ type RouteResult struct {
 	RemoteCalls   []gateway.Usage   `json:"remote_calls,omitempty"`
 	Stages        []Stage           `json:"stages"`
 	Clarification *Clarification    `json:"clarification,omitempty"`
+	// assembled is an in-process sealed context. It deliberately has no JSON
+	// representation: generation must consume the context produced by this
+	// route, never a caller-provided ContextView.
+	assembled *nlq.AssembledContext
+}
+
+// GenerationContext returns the detached sealed context for the internal
+// generation consumer. A caller cannot construct this value from the public
+// response because the assembler seal is private to nlq.
+func (r RouteResult) GenerationContext() (nlq.AssembledContext, error) {
+	if r.assembled == nil || r.Context == nil || (r.Outcome != nlq.StrategySingleTopic && r.Outcome != nlq.StrategyMultiTopic) {
+		return nlq.AssembledContext{}, ErrNoRoute
+	}
+	return *r.assembled, nil
 }
 
 // Service coordinates current topic admission, reviewed constraints, one
@@ -418,6 +432,7 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		return RouteResult{}, err
 	}
 	result.Context = contextView(assembled)
+	result.assembled = &assembled
 	result.Audit = assembled.Audit
 	result.Tier = assembled.Tier
 	result.Evidence = make([]vindex.Hit, len(hits))

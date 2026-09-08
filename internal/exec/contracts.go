@@ -26,6 +26,10 @@ var (
 	ErrBinding = errors.New("exec: validated binding required")
 	// ErrLimit rejects resource bounds before returning partial evidence.
 	ErrLimit = errors.New("exec: bounded work limit exceeded")
+	// ErrQuery is a typed, detail-free source rejection for a validated read.
+	// It permits a consumer with an explicit correction budget to make one
+	// governed retry without exposing native driver diagnostics.
+	ErrQuery = errors.New("exec: source rejected read query")
 )
 
 // Column is a discovered, versioned database column, not a caller assertion.

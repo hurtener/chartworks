@@ -20,6 +20,7 @@ import (
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
 	"github.com/hurtener/chartworks/internal/nlqapi"
+	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
@@ -41,6 +42,7 @@ type work struct {
 	pipelines     *engineering.PipelineService
 	handler       http.Handler
 	engine        gateway.Engine
+	nlq           *nlqexec.Service
 	queue         *jobs.Service
 	broker        *broker.Provider
 	registry      *api.Registry
@@ -169,6 +171,14 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		if err != nil {
 			w.close()
 			return nil, err
+		}
+		if validator != nil && executor != nil {
+			queryService, queryErr := nlqexec.New(routing, published, w.sourceService, validator, executor, w.engine, db)
+			if queryErr != nil {
+				w.close()
+				return nil, queryErr
+			}
+			w.nlq = queryService
 		}
 	}
 	publicRegistry, err := PublicRegistry()

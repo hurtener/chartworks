@@ -76,6 +76,10 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		if rerankMode == "normal" {
 			rerankMode = mode
 		}
+		if strings.HasPrefix(mode, "chat_raw:") && !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") {
+			_, _ = io.WriteString(w, strings.TrimPrefix(mode, "chat_raw:"))
+			return
+		}
 		if strings.HasPrefix(mode, "raw:") {
 			_, _ = io.WriteString(w, strings.TrimPrefix(mode, "raw:"))
 			return
