@@ -34,14 +34,15 @@ func NewRuleSubject(pack TopicPack, digest string) (RuleSubject, error) {
 	if _, err := hex.DecodeString(digest); err != nil || strings.ToLower(digest) != digest {
 		return RuleSubject{}, invalid(CodeEvidenceMismatch, "ruleset.pack")
 	}
-	refs, err := referenceIndex(pack)
+	p := clonePack(pack)
+	refs, err := referenceIndex(p)
 	if err != nil {
 		return RuleSubject{}, err
 	}
-	if err = validateReferences(pack, refs); err != nil {
+	if err = validateReferences(p, refs); err != nil {
 		return RuleSubject{}, err
 	}
-	return RuleSubject{topic: pack.Topic, version: pack.Version, digest: digest, refs: refs, graph: dependencyGraphPack(pack)}, nil
+	return RuleSubject{topic: p.Topic, version: p.Version, digest: digest, refs: refs, graph: dependencyGraphPack(p)}, nil
 }
 
 func (m RuleModel) Definition() RuleSetDefinition { return cloneRules(m.definition) }

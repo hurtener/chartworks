@@ -88,6 +88,7 @@ func TestPublishedRuleSubjectAndDeterministicConstraintEvaluation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	pack.Measures[0].Field.ID = "changed"
 	revenue := Reference{Kind: KindMeasure, ID: "revenue"}
 	orders := Reference{Kind: KindDataset, ID: "orders"}
 	definition.Patterns = nil
