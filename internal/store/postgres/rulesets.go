@@ -205,6 +205,19 @@ func (d *DB) RuleVersionPin(ctx context.Context, e identity.Envelope, topic, ver
 	}
 	defer cancel()
 	err = d.transactionOptions(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(ctx context.Context, tx pgx.Tx) error {
+		if version == "" {
+			// Distinguish a topic with no ruleset head from an existing head
+			// whose active pointer was retired. The router treats the former as
+			// an optional no-rule topic, while the latter is a lifecycle conflict.
+			var active *string
+			if err := tx.QueryRow(ctx, `SELECT active_version FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), topic).Scan(&active); err != nil {
+				return err
+			}
+			if active == nil || *active == "" {
+				return store.ErrConflict
+			}
+			return tx.QueryRow(ctx, `SELECT version_id,topic_version,pack_digest FROM chartworks.topic_rule_published_versions WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3`, e.Tenant(), topic, *active).Scan(&out.RuleVersion, &out.TopicVersion, &out.PackDigest)
+		}
 		return tx.QueryRow(ctx, `SELECT v.version_id,v.topic_version,v.pack_digest FROM chartworks.topic_rule_publication_heads h JOIN chartworks.topic_rule_published_versions v ON(v.tenant_id,v.topic_id)=(h.tenant_id,h.topic_id) WHERE h.tenant_id=$1 AND h.topic_id=$2 AND v.version_id=CASE WHEN $3::text='' THEN h.active_version ELSE $3 END`, e.Tenant(), topic, version).Scan(&out.RuleVersion, &out.TopicVersion, &out.PackDigest)
 	})
 	return

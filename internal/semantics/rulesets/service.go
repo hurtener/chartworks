@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/identity"
@@ -147,11 +146,6 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, topic, version 
 	}
 	pin, err := s.repo.RuleVersionPin(ctx, e, topic, version, drafts.Read)
 	if err != nil {
-		// A current read with no active pointer is a lifecycle conflict. Keep
-		// retained-version absence as the ordinary not-found result.
-		if version == "" && errors.Is(err, store.ErrNotFound) {
-			return Published{}, store.ErrConflict
-		}
 		return Published{}, err
 	}
 	topicVersion, err := s.topics.ReadPublishedTopic(ctx, e, topic, pin.TopicVersion, drafts.Read)
