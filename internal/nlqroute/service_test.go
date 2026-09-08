@@ -193,6 +193,60 @@ func TestRouteClarifiesRequiredRuleSlotBeforeGateway(t *testing.T) {
 	}
 }
 
+func TestRouteEvaluatesChoiceTargetsAndRejectsUnknownChoices(t *testing.T) {
+	choiceRules := rulesets.Published{
+		State:  rulesets.State{Topic: "topic", Version: "rules-v1", Active: true},
+		Digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Definition: semantics.RuleSetDefinition{
+			SchemaVersion: 1, ID: "rules", Version: "rules-v1", Topic: "topic", TopicVersion: "v1", PackDigest: testPublication().Digest,
+			Patterns: []semantics.ClarificationPattern{{
+				ID: "metric-choice", Version: "pattern-v1",
+				Slots: []semantics.ClarificationSlot{{
+					ID: "metric", Prompt: "Choose a metric", Required: true, Kind: semantics.SlotChoice,
+					Sensitivity: semantics.LiteralNonSensitive,
+					Choices: []semantics.ClarificationChoice{
+						{ID: "revenue", Label: "Revenue", Target: &semantics.Reference{Kind: semantics.KindDataset, ID: "dataset"}},
+						{ID: "orders", Label: "Orders"},
+					},
+				}},
+			}},
+		},
+	}
+
+	t.Run("target choice is evaluated", func(t *testing.T) {
+		service, engine, _ := newTestService(t, testRules{published: choiceRules})
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{
+			Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
+			Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "revenue"}},
+		})
+		if err != nil || out.Context == nil || engine.embeds != 1 {
+			t.Fatalf("target choice did not reach evaluated route: out=%#v err=%v embeds=%d", out, err, engine.embeds)
+		}
+	})
+
+	t.Run("known choice without target uses default reference", func(t *testing.T) {
+		service, engine, _ := newTestService(t, testRules{published: choiceRules})
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{
+			Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
+			Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "orders"}},
+		})
+		if err != nil || out.Context == nil || engine.embeds != 1 {
+			t.Fatalf("known choice without target did not use default reference: out=%#v err=%v embeds=%d", out, err, engine.embeds)
+		}
+	})
+
+	t.Run("unknown choice returns detached clarification", func(t *testing.T) {
+		service, engine, _ := newTestService(t, testRules{published: choiceRules})
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{
+			Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
+			Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "missing"}},
+		})
+		if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "invalid_choice" || len(out.Clarification.Choices) != 2 || engine.embeds != 0 {
+			t.Fatalf("unknown choice was not rejected before gateway: out=%#v err=%v embeds=%d", out, err, engine.embeds)
+		}
+	})
+}
+
 func TestConfirmJoinsRequiresPublishedSameSourceOneToOne(t *testing.T) {
 	definition := topics.Definition{
 		Datasets: []topics.Dataset{

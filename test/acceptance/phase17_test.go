@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -12,8 +13,10 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/internal/foundation"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
@@ -23,6 +26,7 @@ import (
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
+	"github.com/hurtener/chartworks/internal/topicapi"
 	"github.com/hurtener/chartworks/internal/vindex"
 	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 	"github.com/hurtener/chartworks/test/support"
@@ -588,9 +592,53 @@ func TestPhase17(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		public, err := foundation.PublicRegistry()
+		if err != nil {
+			t.Fatal(err)
+		}
+		topics, err := topicapi.Registry()
+		if err != nil {
+			t.Fatal(err)
+		}
+		aggregate, err := api.Compose(public, topics, registry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := aggregate.OpenAPI("Chartworks HTTP API", "17")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document struct {
+			Paths map[string]map[string]map[string]any `json:"paths"`
+		}
+		if err := json.Unmarshal(wire, &document); err != nil {
+			t.Fatal(err)
+		}
+		operation := document.Paths["/v1/nlq/routes"]["post"]
+		if operation == nil || operation["operationId"] != "routeNLQ" {
+			t.Fatalf("aggregate OpenAPI omitted executable NLQ route: %#v", document.Paths["/v1/nlq/routes"])
+		}
 		handler := assertRegisteredWireSchemas(t, registry, nlqapi.Handler(fixture.f.token.verifier, fixture.service, http.NotFoundHandler()))
 		server := httptest.NewServer(handler)
 		defer server.Close()
+		payload := `{"topic":"` + fixture.pack.Topic + `","context":"` + fixture.context + `","locale":"en","question":"What is revenue?"}`
+		if got := callProtected(t, handler, http.MethodPost, "/v1/nlq/routes", "", payload, nil); got.Code != http.StatusUnauthorized {
+			t.Fatalf("missing bearer route status=%d body=%s", got.Code, got.Body.String())
+		}
+		narrowToken := fixture.f.token.sign(t, fixture.f.token.claims(fixture.e.Tenant(), fixture.e.User(), []string{"topics.read"}), nil)
+		if got := callProtected(t, handler, http.MethodPost, "/v1/nlq/routes", narrowToken, payload, nil); got.Code != http.StatusForbidden && got.Code != http.StatusNotFound {
+			t.Fatalf("narrow authority route status=%d body=%s", got.Code, got.Body.String())
+		}
+		validToken := fixture.f.token.sign(t, fixture.f.token.claims(fixture.e.Tenant(), fixture.e.User(), fixture.e.Scopes()), nil)
+		if got := callProtected(t, handler, http.MethodGet, "/v1/nlq/routes", validToken, "", nil); got.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("wrong method route status=%d body=%s", got.Code, got.Body.String())
+		}
+		if got := callProtected(t, handler, http.MethodPost, "/v1/nlq/routes?extra=1", validToken, payload, nil); got.Code != http.StatusBadRequest {
+			t.Fatalf("query-bearing route status=%d body=%s", got.Code, got.Body.String())
+		}
+		if got := callProtected(t, handler, http.MethodPost, "/v1/nlq/routes", validToken, "{", nil); got.Code != http.StatusBadRequest {
+			t.Fatalf("malformed route status=%d body=%s", got.Code, got.Body.String())
+		}
 		client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) {
 			return fixture.f.token.sign(t, fixture.f.token.claims(fixture.e.Tenant(), fixture.e.User(), fixture.e.Scopes()), nil), nil
 		})
