@@ -443,7 +443,7 @@ func TestCanonicalRegistryReviewedPublicationAndCollisionFences(t *testing.T) {
 	}
 	withoutTenant := f.token.envelope(t, f.e.Tenant(), f.e.User(), withoutTenantScopes...)
 	before := gatewayFixture.requests.Load()
-	if _, err = service.Publish(ctx, withoutTenant, pack.Topic, topics.PublishRequest{Review: review.ID}); !errors.Is(err, access.ErrForbidden) || gatewayFixture.requests.Load() != before {
+	if _, err = service.Publish(ctx, withoutTenant, pack.Topic, topics.PublishRequest{Review: review.ID}); !errors.Is(err, access.ErrNotFound) || gatewayFixture.requests.Load() != before {
 		t.Fatal("registry-changing publication lacked early tenant-write fence", err)
 	}
 	published, err := client.PublishTopic(ctx, pack.Topic, sdk.PublishTopicRequest{Review: review.ID})
@@ -460,6 +460,12 @@ func TestCanonicalRegistryReviewedPublicationAndCollisionFences(t *testing.T) {
 	}
 	if revisions != 1 || terms != 2 {
 		t.Fatal("canonical meaning or normalized terms not retained")
+	}
+	if _, err = metadata.Exec(ctx, `UPDATE chartworks.canonical_entity_revisions SET meaning='{}' WHERE tenant_id=$1 AND entity_id='customer' AND revision=1`, e.Tenant()); err == nil {
+		t.Fatal("canonical meaning revision mutated")
+	}
+	if _, err = metadata.Exec(ctx, `UPDATE chartworks.canonical_entity_heads SET current_revision=3 WHERE tenant_id=$1 AND entity_id='customer'`, e.Tenant()); err == nil {
+		t.Fatal("canonical head skipped a revision")
 	}
 
 	for _, tc := range []struct {

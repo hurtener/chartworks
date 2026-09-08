@@ -27,5 +27,7 @@ a final check under the publication transaction lock.
 Canonical facets contain only key references from their own source and execution
 context. A canonical entity spanning contexts produces separate local facets, while
 retained published definitions preserve the exact global revision and all reviewed
-topic-local keys. Entity CRUD/move, onboarding and source-rewrite APIs remain later
-phase 15 work.
+topic-local keys. Forward-only migration 015 adds the registry heads, immutable
+revisions, append-only term reservations and exact published-topic reference rows;
+migration 014 remains owned by the preceding rule-lifecycle slice. Entity CRUD/move,
+onboarding and source-rewrite APIs remain later phase 15 work.

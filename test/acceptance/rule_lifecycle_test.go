@@ -72,7 +72,7 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 			Constraint: &semantics.Constraint{Kind: semantics.ConstraintRequireReference, Target: semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}},
 		}},
 	}
-	publicPack := semantics.TopicPack{SchemaVersion: publishedTopic.Definition.SchemaVersion, Topic: publishedTopic.Definition.Topic, Version: publishedTopic.Definition.Version, Name: publishedTopic.Definition.Name, Description: publishedTopic.Definition.Description, Measures: publishedTopic.Definition.Measures, Dimensions: publishedTopic.Definition.Dimensions, KPIs: publishedTopic.Definition.KPIs, Joins: publishedTopic.Definition.Joins}
+	publicPack := semantics.TopicPack{SchemaVersion: publishedTopic.Definition.SchemaVersion, Topic: publishedTopic.Definition.Topic, Version: publishedTopic.Definition.Version, Name: publishedTopic.Definition.Name, Description: publishedTopic.Definition.Description, Measures: publishedTopic.Definition.Measures, Dimensions: publishedTopic.Definition.Dimensions, KPIs: publishedTopic.Definition.KPIs, Joins: publishedTopic.Definition.Joins, CanonicalEntities: publishedTopic.Definition.CanonicalEntities}
 	for _, dataset := range publishedTopic.Definition.Datasets {
 		publicPack.Datasets = append(publicPack.Datasets, semantics.Dataset{ID: dataset.ID, Name: dataset.Name, Columns: dataset.Columns})
 	}

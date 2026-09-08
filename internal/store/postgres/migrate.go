@@ -121,11 +121,22 @@ func SchemaVersion() string {
 
 // Required relation presence complements history checks, without claiming a superuser-tamper sandbox.
 func requiredRelations(ctx context.Context, tx pgx.Tx) error {
+	relations := []string{
+		"audit_events", "canonical_entity_heads", "canonical_entity_revisions", "canonical_entity_terms",
+		"job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs",
+		"pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies",
+		"profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations",
+		"source_revisions", "sources", "topic_draft_dependencies", "topic_draft_heads", "topic_draft_versions",
+		"topic_publication_events", "topic_publication_heads", "topic_published_canonical_refs", "topic_published_dependencies",
+		"topic_published_generations", "topic_published_versions", "topic_reviews", "topic_rule_draft_heads",
+		"topic_rule_draft_versions", "topic_rule_publication_events", "topic_rule_publication_heads",
+		"topic_rule_published_versions", "topic_rule_reviews", "uploads", "vector_facets", "vector_generations", "vector_heads",
+	}
 	var count int
-	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname IN ('schema_migrations','policies','policy_revisions','audit_events','operations','queue_limits','operation_attempts','job_schedules','job_occurrences','pipeline_heads','pipeline_versions','pipeline_runs','pipeline_stages','pipeline_outputs','topic_draft_heads','topic_draft_versions','topic_draft_dependencies')`).Scan(&count); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname=ANY($1::text[])`, relations).Scan(&count); e != nil {
 		return e
 	}
-	if count != 17 {
+	if count != len(relations) {
 		return store.ErrMigration
 	}
 	return nil

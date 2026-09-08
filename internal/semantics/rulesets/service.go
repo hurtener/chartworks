@@ -24,7 +24,7 @@ func New(repo Repository, topicRepo TopicRepository) (*Service, error) {
 }
 
 func publishedSubject(p topics.Published) (semantics.RuleSubject, error) {
-	pack := semantics.TopicPack{SchemaVersion: p.Definition.SchemaVersion, Topic: p.Definition.Topic, Version: p.Definition.Version, Name: p.Definition.Name, Description: p.Definition.Description, Measures: p.Definition.Measures, Dimensions: p.Definition.Dimensions, KPIs: p.Definition.KPIs, Joins: p.Definition.Joins}
+	pack := semantics.TopicPack{SchemaVersion: p.Definition.SchemaVersion, Topic: p.Definition.Topic, Version: p.Definition.Version, Name: p.Definition.Name, Description: p.Definition.Description, Measures: p.Definition.Measures, Dimensions: p.Definition.Dimensions, KPIs: p.Definition.KPIs, Joins: p.Definition.Joins, CanonicalEntities: p.Definition.CanonicalEntities}
 	for _, dataset := range p.Definition.Datasets {
 		pack.Datasets = append(pack.Datasets, semantics.Dataset{ID: dataset.ID, Name: dataset.Name, Columns: append([]semantics.Column(nil), dataset.Columns...)})
 	}

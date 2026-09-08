@@ -50,7 +50,7 @@ func checkCanonicalMeaningsTx(ctx context.Context, tx pgx.Tx, tenant string, mea
 		digest string
 	}
 	states := map[string]registryState{}
-	rows, err := tx.Query(ctx, `SELECT p.entity_id,COALESCE(h.current_revision,0),COALESCE(r.digest,'') FROM jsonb_to_recordset($2::jsonb) AS p(entity_id text,revision bigint) LEFT JOIN chartworks.canonical_entity_heads h ON(h.tenant_id=$1 AND h.entity_id=p.entity_id) LEFT JOIN chartworks.canonical_entity_revisions r ON(r.tenant_id=$1 AND r.entity_id=p.entity_id AND r.revision=p.revision)`, tenant, raw)
+	rows, err := tx.Query(ctx, `SELECT p.id,COALESCE(h.current_revision,0),COALESCE(r.digest,'') FROM jsonb_to_recordset($2::jsonb) AS p(id text,revision bigint) LEFT JOIN chartworks.canonical_entity_heads h ON(h.tenant_id=$1 AND h.entity_id=p.id) LEFT JOIN chartworks.canonical_entity_revisions r ON(r.tenant_id=$1 AND r.entity_id=p.id AND r.revision=p.revision)`, tenant, raw)
 	if err != nil {
 		return false, err
 	}
