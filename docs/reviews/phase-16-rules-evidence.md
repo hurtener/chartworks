@@ -39,10 +39,14 @@ The earlier host limitation above remains historical. Root's committed-source st
 Phase 16 run at `cdbafc35e905597052da88518ee6717baa4d3396` passed all six children
 with zero skips, including readiness and lifecycle checks; the narrow follow-up review
 of the Phase 16 fixes is clear. The test-only PostgreSQL coverage addition
-`192a8bb508197b06f0693bf5d2b8ba6590e2ee20`, integrated at the current cross-phase
-head, passed the native real-PG race check in 9.340 seconds. The cumulative profile
-still needs the final exact-head verification because the `internal/store/postgres`
-band measured 3010/3588 (83.89%) in the current full suite, below the approved 84.5%
-exception; the other bands, including `internal/semantics/rulesets` at 153/190
-(80.53%), passed. Phase 18 remains the real invalidation consumer, and no shipped or
-release status is claimed.
+`192a8bb508197b06f0693bf5d2b8ba6590e2ee20`, integrated at the cross-phase head,
+passed the native real-PG race check in 9.340 seconds. The later Phase 18 store
+boundary tests `9422ee3fbdf07f3ae7da3939da2aa49f7c763338` are integrated as
+`513a3be15eb07e48e3c5cb7bc31818848cd7275a`.
+
+Root's exact 513 Linux/native race and coverage run passed every configured band;
+`internal/store/postgres` measured 3039/3593 (84.58%), above the approved 84.5%
+exception, and `internal/nlqexec` measured 579/711 (81.43%). The acceptance portion
+completed in 161.492 seconds, with full lint, vet and build also passing. Phase 18
+remains the real invalidation consumer. No shipped or release status is claimed;
+hosted CI and the final release gates remain open.

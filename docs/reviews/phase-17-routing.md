@@ -44,17 +44,16 @@ HTTP/SDK/runtime-OpenAPI checks also passed after the concrete route and auth me
 were integrated, and targeted package coverage was 82.85% for `internal/nlqroute` and
 83.33% for `internal/nlqapi`.
 
-Phase 17 remains `in_progress` pending exact final combined coverage, full
-lint/preflight, hosted CI and dependent phase 18/release integration. Its acceptance
-uses recorded Bifrost responses; live semantic quality has not been measured and is
-not claimed here.
+Phase 17 remains `in_progress` pending hosted CI and dependent release integration.
+Its acceptance uses recorded Bifrost responses; live semantic quality has not been
+measured and is not claimed here.
 
 ## Current integrated disposition
 
 The routing review round remains clear: the two P1 fixes are recorded at
 `ba65fa7b731a69182a8d93be86d5c5b86130b93f`, and root's strict cumulative routing
-check at `492c9fbf6f7fc7f6fe2f5659d2499afdbb3409b` passed all six Phase 17 children
-with zero skips. This updates the earlier bounded wording without changing the
-phase's `in_progress` status. Final integrated coverage, lint/preflight, hosted CI,
-the Phase 18 core review and release integration remain open; recorded gateway
-fixtures do not establish live semantic quality.
+check at `492c9fbf6f7fc7f6fe2f5659d2499afdbb3409b3` passed all six Phase 17 children
+with zero skips. The exact 513 cumulative race/coverage run passed every configured
+band, and full lint, vet and build passed. This updates the earlier bounded wording
+without changing the phase's `in_progress` status; hosted CI and release integration
+remain open. Recorded gateway fixtures do not establish live semantic quality.

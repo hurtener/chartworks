@@ -154,10 +154,9 @@ The pinned Linux/native-parser verification image ran:
 
 The requested scoped lint log is `/tmp/chartworks-http-scoped-lint-be083ba.log`.
 The shared API/source registry findings (unsafe status conversion and unkeyed
-external literals) are cleared. The scoped lint command still reports five
-pre-existing gocritic/staticcheck findings in unrelated acceptance files; no
-Phase21 file is listed. This is prerequisite evidence, not a claim that the full
-repository lint or release gate is green.
+external literals) are cleared. The later exact 513 full-repository lint passed
+with zero issues; this remains prerequisite evidence rather than a shipped-phase
+or release claim.
 
 ## Remaining implementation
 
@@ -169,13 +168,11 @@ and extend cumulative generated SDK/isolation/audit coverage; they do not reopen
 this prerequisite. The wider Phase 21 and release program remains in progress
 while those owning consumers and release gates land.
 
-Phase 15 still needs persisted draft/review/publication/rollback/archive, atomic
-topic/facet activation, current source/profile health and Pengui revalidation,
-canonical-registry collision handling, generation/onboarding and service-backed
-portability. Phase 16 still needs lifecycle and constraint/slot runtime consumers,
-advisory injection, replay/shadow and cache invalidation. This source adapter does
-not complete those domain criteria; the HTTP prerequisite is now independently
-verified while their owning consumers continue to extend the registry.
+The owning Phase 15–18 consumers now extend this registry in the integrated 513
+head, including topic lifecycle, rule/slot evaluation, routing, generation and
+retained evidence invalidation. This source adapter remains a prerequisite slice:
+it does not by itself close those domain criteria, and the Phase 21 workstream
+stays `in_progress` while later consumers, hosted CI and release gates continue.
 
 The prior bounded semantic foundation was rebased from `aca185a` onto exact PR10
 source `62f0362d458e46e697b638ff916c47759020f55b`, producing `fd9b519` before this
@@ -185,8 +182,9 @@ is preserved at local branch `codex/phase-15-16-foundation-backup`.
 ## Current integrated disposition
 
 The narrow Phase 21 fix at `2395f8cd15a2bf6f23c78ee512c81810c8a1226d` is clear in
-follow-up review. Root's strict committed-source verification at
-`95e3be00df6efa36af076532aa455e6b978a4c3f` passed `TestPhase21/AC01` through
+follow-up review. Root's strict committed-source verification of integrated head
+`513a3be15eb07e48e3c5cb7bc31818848cd7275a` passed `TestPhase21/AC01` through
 `AC06` with zero skips, including the composed OpenAPI registry and actual HTTP/SDK
-boundaries. The prerequisite remains `in_progress` while later domain consumers,
-cumulative coverage, hosted CI and release gates continue.
+boundaries. The exact 513 coverage, lint, vet and build checks also passed. The
+prerequisite remains `in_progress` while hosted CI, later domain consumers and
+release gates continue.

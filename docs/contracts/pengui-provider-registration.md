@@ -96,4 +96,5 @@ rechecks the current topic version in its transaction. Retirement validates the
 retained pinned topic and active rule CAS so it remains available after topic
 transition or archive. The
 [rule lifecycle contract](rule-lifecycle-v1.md) defines the bounded evaluator and
-remaining cumulative phase 16 work.
+its retained-topic/dependency fences; the remaining status boundary is cumulative
+hosted CI and release integration rather than an unimplemented authority seam.

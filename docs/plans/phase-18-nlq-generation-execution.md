@@ -13,11 +13,15 @@ topic/version and rule pins and replays through the retained topic reader rather
 than silently using the current publication. The current core evidence is in
 [phase 18 NLQ runtime evidence](../reviews/phase-18-nlq-runtime.md).
 
-The phase remains `in_progress`: the public HTTP/SDK operation surface is now
-integrated and its strict six-child check passed, and the real invalidation consumer
-has its author and root full-suite evidence. The final review findings, remaining
-core fixes, cumulative coverage and release gates still belong to the integration
-head. This plan does not claim live provider quality.
+The phase remains `in_progress`: the public HTTP/SDK operation surface and real
+invalidation consumer are integrated, the strict six-child check passed, and the
+two complete review rounds are clear. The bounded corrections preserve the
+existing Bruin validator/executor path: every dialect retains exact SQL, bound
+parameters, plan coordinates and source/context revision; PostgreSQL may also
+accept an AST-equivalent statement when only locations or formatting differ.
+Any other SQL change returns `ErrUnsafeCorrection` without a second execution,
+and every attempt records a receipt. Hosted CI and release gates still belong to
+the integration head. This plan does not claim live provider quality.
 
 ## Authority and design
 

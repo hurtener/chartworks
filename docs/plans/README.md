@@ -1,6 +1,15 @@
 # Chartworks — actionable implementation plan
 
-Current implementation status: phases 01–14 are shipped. Phases 15–18 have bounded semantic/NLQ foundations, including a bounded phase 17 routing/context consumer, and phase 21 has its first shared source HTTP registry consumer; phases 15–18 and 21 remain in progress, with sixteen later workstreams remaining planned, including the phase 25 full-release gate. The [current cumulative delivery evidence](../reviews/phase-15-18-current-evidence.md) records the exact reviewed slices, current dispositions and remaining gates. The registry records status; actual named tests and reviewed execution evidence establish acceptance, not this paragraph or a green documentation check. Historical superseded plans remain under `docs/archive/phase0-plans/`.
+Current implementation status: phases 01–14 are shipped. Phases 15–18 have
+integrated semantic/NLQ consumers, including the phase 17 routing/context and
+phase 18 generation/execution paths, and phase 21 has its shared HTTP registry
+consumer; phases 15–18 and 21 remain in progress, with fifteen later workstreams
+remaining planned, including the phase 25 full-release gate. The [current
+cumulative delivery evidence](../reviews/phase-15-18-current-evidence.md) records
+the exact reviewed slices, current dispositions and remaining gates. The registry
+records status; actual named tests and reviewed execution evidence establish
+acceptance, not this paragraph or a green documentation check. Historical
+superseded plans remain under `docs/archive/phase0-plans/`.
 
 ## Fixed decisions
 
@@ -16,7 +25,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–14 are shipped, phases15–18 and21 are in progress, and the remaining sixteen are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented.
+There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–14 are shipped, phases15–18 and21 are in progress, and the remaining fifteen are planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 

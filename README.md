@@ -2,7 +2,7 @@
 
 **Governed analytics and publishing for Pengui.** Go services for semantic data access, NLQ/BYO SQL, reusable approved reporting blocks, reports/dashboards, scheduled runs and portable retained results.
 
-Status: phases 01–14 are shipped, including the qualified PostgreSQL 17 validated-read path, managed CSV/XLSX/Parquet uploads, versioned profiling, managed SQL pipelines and the phase 14 warehouse-driver subset. The qualifying exact-head hosted run is [CI 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766) at `6883bc2103b2b870595222e623cd4d79bc01bc41`. NLQ/reporting work is in progress across phases 15–18 and later reporting workstreams; full source migration and the phase 25 release gate remain planned. Recorded cloud fixtures do not claim live-cloud qualification.
+Status: phases 01–14 are shipped, including the qualified PostgreSQL 17 validated-read path, managed CSV/XLSX/Parquet uploads, versioned profiling, managed SQL pipelines and the phase 14 warehouse-driver subset. The qualifying exact-head hosted run is [CI 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766) at `6883bc2103b2b870595222e623cd4d79bc01bc41`. Phases 15–18 and 21 have integrated consumers and remain in progress; later reporting/source-migration work and the phase 25 release gate remain planned. Recorded cloud fixtures do not claim live-cloud qualification.
 
 ## Start here
 

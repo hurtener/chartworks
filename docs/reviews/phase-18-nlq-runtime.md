@@ -1,10 +1,11 @@
 # Phase 18 NLQ runtime evidence
 
-Status: core delivery evidence based on integration `47345c47aedc9a5de13b35a95106de4afbfdebd7`,
-2026-09-08. Phase 18 remains `in_progress`. This record covers the durable
+Status: core delivery evidence based on the historical integration
+`47345c47aedc9a5de13b35a95106de4afbfdebd7`, 2026-09-08. Phase 18 remains
+`in_progress`. This record covers the durable
 internal query consumer and its Phase 16 invalidation seam. The later public
-HTTP/SDK surface is recorded below; neither record claims final dual review, live
-provider quality, or release readiness.
+HTTP/SDK surface is recorded below; this historical record does not by itself
+claim live provider quality or release readiness.
 
 ## Implemented boundary
 
@@ -65,7 +66,23 @@ The public Phase 18 HTTP/SDK operations landed at
 all six children. The invalidation consumer landed at `c88dbcc`, and its author
 acceptance plus the root full suite at `37f713c` passed all six Phase 18 criteria.
 Public transport fixes at `459b91d6990fca2d0676bae6d5e0a76bdc81c3be` integrated as
-`ecd08fa`. The final review still has six P1 and two P2 findings, with core fixes
-ongoing, so Phase 18 remains `in_progress` pending final review, cumulative
-coverage, hosted CI and release gates. Recorded model fixtures establish
-deterministic service behavior only; they are not live provider measurements.
+`ecd08fa`.
+
+The first complete Phase 18 review was `37f713c2ee492536ed15086ecd5e7afa53a364e1`;
+the second complete review was `4efbb5a4b4fe61eda20ddf0efe488385660916bd`. The
+bounded corrections are integrated as `7493899338f646382a219d336dd272258619a42f`
+(unsafe correction rejection), `7bd27f16cf3885ff792ecc76d9053a51fc185efc`
+(detached route requests), and `bef6cae` (detached confidence pointer). The
+final narrow review found no P0/P1; the PostgreSQL boundary tests
+`9422ee3fbdf07f3ae7da3939da2aa49f7c763338` are integrated in `513a3be`.
+
+Correction remains bounded to the existing Bruin validator/executor path. Every
+attempt retains exact SQL, bound parameters, plan coordinates and source/context
+revision; PostgreSQL may additionally accept the same AST when only locations or
+formatting differ. Any other SQL change returns `ErrUnsafeCorrection` without a
+second execution, and every attempt has a receipt. Root's exact 513 cumulative
+coverage run passed all configured bands, with `internal/store/postgres` at
+3039/3593 (84.58%) and `internal/nlqexec` at 579/711 (81.43%); full lint, vet and
+build passed. Phase 18 remains `in_progress` pending hosted CI and release gates.
+Recorded model fixtures establish deterministic service behavior only; they are not
+live provider measurements.

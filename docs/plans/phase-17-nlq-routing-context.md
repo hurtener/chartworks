@@ -55,4 +55,4 @@ Context tiers, confidence bands, k-per-kind, max_examples=7 and advisory-rule bu
 
 ## Glossary, decisions and deviations
 
-Calibrated confidence, retrieval similarity, deterministic fallback and remote inference are distinct. D-049/D-053 apply. The reviewed runtime candidate is recorded in [phase 17 routing evidence](../reviews/phase-17-routing.md). Status remains `in_progress` until final combined coverage, lint/preflight, hosted CI and dependent release integration pass. Recorded Bifrost fixtures establish reproducible behavior; live semantic quality remains unmeasured.
+Calibrated confidence, retrieval similarity, deterministic fallback and remote inference are distinct. D-049/D-053 apply. The reviewed runtime candidate is recorded in [phase 17 routing evidence](../reviews/phase-17-routing.md). Coverage, lint, preflight and the local combined acceptance have passed; status remains `in_progress` until hosted CI and dependent release integration pass. Recorded Bifrost fixtures establish reproducible behavior; live semantic quality remains unmeasured.

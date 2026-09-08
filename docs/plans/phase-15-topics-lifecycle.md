@@ -138,7 +138,7 @@ author's strict Phase 02 and Phase 15 runs passed all six children with zero ski
 the repair integrated as `dd6f79e`. Root then verified the committed-source archive
 (SHA-256 `6801a28f69d6179e7c3e3bee7c32e7949c194f1fdafba0dac110cf255d5d9aba`):
 strict Phase 02 and Phase 15 each passed all six children with zero skips, and the native
-race `TestSafeErrors` passed. The final exact integrated-head coverage, full lint/preflight,
-hosted CI and release integration remain
-gates, so the phase stays `in_progress`. The approved 84.5% coverage exception applies only to
-`internal/store/postgres`; no other phase 15 package inherits it.
+race `TestSafeErrors` passed. The exact 513 integrated-head coverage, strict phase
+checks and full lint/vet/build checks pass. Hosted CI and release integration remain
+gates, so the phase stays `in_progress`. The approved 84.5% coverage exception
+applies only to `internal/store/postgres`; no other phase 15 package inherits it.

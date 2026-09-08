@@ -30,10 +30,12 @@ Migration 014 adds actor/session-scoped rule draft heads and immutable versions,
 Two independent initial reviews identified the stale current-read/evaluation and
 non-retirable post-transition state. Both narrow post-fix reviews of
 `673fc0f..279b137` reported no remaining finding in that lifecycle correction,
-schema inventory update or SDK alias. This closes the bounded review finding only;
-cumulative Phase 16 acceptance and final integrated-head verification remain separate.
+schema inventory update or SDK alias. This closes the bounded review finding. The
+exact integrated-head acceptance and coverage evidence are recorded in the
+cumulative delivery record; hosted CI and release integration remain separate
+gates.
 
-## Remaining phase 16 work
+## Downstream integration boundary
 
 The first real consumer for required-slot gating and real-token advisory assembly is the
 phase 17 routing service. It resolves published patterns and hard constraints before
@@ -42,8 +44,8 @@ uses the pinned `cl100k_base` assembler for the final context budget. Phase 16 o
 rule/pattern and deterministic evaluation seams used by that consumer.
 
 The comparison service and migration 018 provide exact retained replay/shadow evidence
-and ordered publish/retire invalidation fences. Phase 18 must consume those fences from
-the shared reader/query evidence path and prove stale-result handling, feedback and
-generation integration. This contract does not claim that downstream query execution,
-correction, or cache/evidence consumption is complete. Phase 16 remains `in_progress`
-until its named acceptance and the dependent integration gates pass.
+and ordered publish/retire invalidation fences. The integrated Phase 18 consumer uses
+those fences from the shared reader/query evidence path and proves stale-result
+handling, feedback and generation integration. This contract does not claim live
+provider quality or release readiness. Phase 16 remains `in_progress` pending hosted
+CI and release integration.

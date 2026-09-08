@@ -138,8 +138,8 @@ integrated as `dd6f79e`. Root verified its SHA-256-checked committed-source arch
 strict Phase 02 and Phase 15 each passed all six children with zero skips, including
 AC04 health and enhanced rebind, and native race `TestSafeErrors` passed.
 
-Phase 15 therefore remains `in_progress`. Remaining delivery gates are exact final
-integrated-head coverage, full lint/preflight, hosted CI and release integration. The owner-approved 84.5%
-exception remains limited to
+Phase 15 therefore remains `in_progress`. Exact 513 integrated-head coverage,
+strict phase checks and full lint/vet/build checks pass; hosted CI and release
+integration remain. The owner-approved 84.5% exception remains limited to
 `internal/store/postgres`. Recorded model fixtures are not a live semantic-quality
 measurement, and no such live result is claimed.
