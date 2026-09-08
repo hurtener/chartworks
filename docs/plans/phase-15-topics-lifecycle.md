@@ -67,7 +67,8 @@ The registered HTTP and Go SDK operations are exercised by focused real PostgreS
 pgvector and recorded gateway fixtures, including concurrent publication, gateway
 failure, multi-context retirement/restoration, archive and current-health boundaries.
 This is bounded AC01/AC02/AC04/AC05 evidence; it is not a substitute for the six
-cumulative `TestPhase15` criteria.
+cumulative `TestPhase15` criteria. The exact-head review and root verification are
+recorded in the [bounded publication evidence](../reviews/phase-15-topic-publication.md).
 
 Entity/onboarding APIs, approved canonical registry, source-reference rewrite
 workflows and full lifecycle portability remain unimplemented. Drafts containing

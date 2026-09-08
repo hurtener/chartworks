@@ -4,6 +4,9 @@ Status: bounded phase 15 implementation, 2026-09-07. This contract adds a real
 publication consumer without claiming the remaining phase 15 capabilities or the
 cumulative phase acceptance suite.
 
+The exact-head review and root verification for this bounded slice are recorded
+in the [phase 15 publication evidence](../reviews/phase-15-topic-publication.md).
+
 ## Review and publication
 
 An explicit review records an immutable approve/reject receipt for one exact private
