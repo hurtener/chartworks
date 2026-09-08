@@ -73,7 +73,11 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	t.Cleanup(func() {
+		if err := response.Body.Close(); err != nil {
+			t.Error("close OpenAPI response", err)
+		}
+	})
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("runtime OpenAPI status=%d", response.StatusCode)
 	}
