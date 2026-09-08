@@ -26,7 +26,25 @@ The vector service remains a deliberate no-evidence-cache boundary. The only
 embedding cache available to this slice is the gateway cache keyed by the full
 verified call, embedding-space descriptor, and exact input text.
 
-The six named `TestPhase17/AC01`–`AC06` real PostgreSQL/Bifrost acceptance
-subtests and Linux race/coverage evidence remain required before this phase can
-move from `in_progress` to `shipped`. Phase 18 generation/execution remains a
-separate in-progress dependency.
+The initial full review found two reachable P1 defects: multi-topic join admission did
+not prove the same relationship across every selected topic, and unqualified duplicate
+metric IDs could resolve by topic order while the model context exposed only a singular
+topic/version projection. Checkpoint
+`ba65fa7b731a69182a8d93be86d5c5b86130b93f` requires independently authored matching
+relationships, rejects unrelated same-source joins before Bifrost, rejects ambiguous
+unqualified metrics, and seals the complete ordered topic/version set inside the
+token-budgeted model context. Focused multi-topic, duplicate-metric and actual prompt
+assertions cover those corrections.
+
+Root independently verified `ba65fa7`: all `internal/nlq`, `internal/nlqroute` and
+`internal/nlqapi` race tests passed, and strict `TestPhase17/AC01` through `AC06` passed
+with zero skips. The second independent review of the corrected head reported no open
+P0/P1 or actionable local P2, closing the bounded routing review round. Earlier root
+HTTP/SDK/runtime-OpenAPI checks also passed after the concrete route and auth metadata
+were integrated, and targeted package coverage was 82.85% for `internal/nlqroute` and
+83.33% for `internal/nlqapi`.
+
+Phase 17 remains `in_progress` pending exact final combined coverage, full
+lint/preflight, hosted CI and dependent phase 18/release integration. Its acceptance
+uses recorded Bifrost responses; live semantic quality has not been measured and is
+not claimed here.

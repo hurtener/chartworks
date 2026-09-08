@@ -106,13 +106,39 @@ exercised by acceptance. All six topic PostgreSQL groups and the existing source
 HTTP/SDK regression passed in 15.997s. This closes review and root verification of
 this bounded slice only; it supplies no whole-phase acceptance or cloud CI claim.
 
-## Explicit remaining work
+## Current delivery disposition
 
-This is partial phase 15 AC02/AC03/AC06 evidence only. No success-returning
-`TestPhase15` parent was added. Publication/facet activation, review/rollback/archive,
-canonical registry, onboarding/entity APIs, source rewrite/current published health,
-generation and full lifecycle portability remain pending. Canonical entities in
-persisted draft input return unsupported until approved revision meaning exists.
-Phases 15, 16 and 21 remain `in_progress`; foundation/work/security API adapters,
-public document delivery, phase 16 runtime and full cumulative acceptance remain
-unimplemented. Full preflight/release and cloud CI are not claimed.
+This section supersedes only the old remaining-work description; the bounded
+`c7bf66a` evidence above remains historical and exact. The current phase 15 candidate
+now includes publication/facet activation, review/rollback/archive, canonical registry,
+onboarding/entity and reviewed source-rebind APIs, durable public health/recheck,
+bounded resumable generation and lifecycle portability through the shared HTTP/SDK
+surface. `TestPhase15/AC01` through `AC06` exist with real assertions and recorded
+PostgreSQL/pgvector/Bifrost-fixture evidence.
+
+Independent review A was clear at `e90ac24e173a8e6750d84b632b89a70f03b8fa33`.
+Review B found one reachable rebind defect: enhanced drafts retained unresolved
+references to the old dataset. Author fix
+`8291e84cf5bcb04c16ecbbae6cbf3d8e561d9d43`, integrated as
+`39bc68c753ff65e1d382102dcd6bcfdd0ea8387b`, rewrites that dataset coordinate while
+preserving the stable unresolved ID, column and reason. Its pure regression, real
+HTTP/SDK AC03 path and full six-child Phase 15 run passed; the required narrow
+independent review is pending.
+
+The first exact `39bc68c` full-chain run then exposed a separate migration interaction:
+migration 017's replacement audit constraint omitted the `topic.health_rechecked`
+action introduced by migration 016, so a valid source-drift observation rolled back at
+its audit insert and the HTTP operation returned 400. Forward migration 019 at
+`d103ba95af8a4f951b0a4d2589292ec269905a67` preserves the complete closed action union,
+restores the health action and continues to reject an unknown action. Author strict
+Phase 02 and Phase 15 runs passed all six children with zero skips, and the repair
+integrated as `dd6f79e`. Root verified its SHA-256-checked committed-source archive:
+strict Phase 02 and Phase 15 each passed all six children with zero skips, including
+AC04 health and enhanced rebind, and native race `TestSafeErrors` passed.
+
+Phase 15 therefore remains `in_progress`. Remaining delivery gates are the independent
+narrow review of fixes `8291e84` and `d103ba9`, exact final integrated-head coverage,
+full lint/preflight, hosted CI and release integration. The owner-approved 84.5%
+exception remains limited to
+`internal/store/postgres`. Recorded model fixtures are not a live semantic-quality
+measurement, and no such live result is claimed.

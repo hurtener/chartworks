@@ -51,8 +51,8 @@ Context tiers, confidence bands, k-per-kind, max_examples=7 and advisory-rule bu
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase17/AC01` through `TestPhase17/AC06` with real facet retrieval and the real Bifrost adapter over recorded response fixtures. Spy on candidate payloads to prove authorization happened before external transmission. Cover missing/duplicate rerank indices, same-dimension embedding mismatch, timeout, visible fallback and immutable caller context. COMMON.md sets coverage; `scripts/smoke/phase-17.sh` requires all six results. G41 includes this consumer, not only gateway unit tests.
+`TestPhase17/AC01` through `TestPhase17/AC06` exercise real facet retrieval and the real Bifrost adapter over recorded response fixtures. Candidate-payload spies prove authorization happens before external transmission. The suite covers missing/duplicate rerank indices, same-dimension embedding mismatch, timeout, visible fallback and immutable caller context. The HTTP/SDK acceptance uses the registered `POST /v1/nlq/routes` operation and `RouteNLQ`, including runtime OpenAPI composition. COMMON.md sets coverage; `scripts/smoke/phase-17.sh` requires all six results. G41 includes this consumer, not only gateway unit tests.
 
 ## Glossary, decisions and deviations
 
-Calibrated confidence, retrieval similarity, deterministic fallback and remote inference are distinct. D-049/D-053 apply. No runtime completion is claimed.
+Calibrated confidence, retrieval similarity, deterministic fallback and remote inference are distinct. D-049/D-053 apply. The reviewed runtime candidate is recorded in [phase 17 routing evidence](../reviews/phase-17-routing.md). Status remains `in_progress` until final combined coverage, lint/preflight, hosted CI and dependent release integration pass. Recorded Bifrost fixtures establish reproducible behavior; live semantic quality remains unmeasured.

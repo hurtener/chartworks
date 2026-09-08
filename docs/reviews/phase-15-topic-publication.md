@@ -60,11 +60,31 @@ Two independent narrow post-fix reviews of `a3708ab` inspected only those
 closures and the new ordinary tests. Both found no actionable P0, P1 or P2
 issue. No further review round was required.
 
-## Remaining boundary
+## Current delivery disposition
 
-The six cumulative `TestPhase15/AC01`–`AC06` criteria remain unclaimed. Canonical
-registry entities, onboarding/entity APIs, source-reference rewrite workflows,
-generation and full lifecycle portability remain pending, as do phase 16 rules
-and phase 21's broader HTTP/API work. Phases 15, 16 and 21 remain `in_progress`.
-This document records a bounded publication consumer and its exact-head evidence;
-it does not change the phase registry or imply shipped status.
+The bounded `a3708ab` publication evidence above remains exact historical evidence.
+The current phase 15 candidate now composes this publication boundary with canonical
+registry, onboarding/entity and source-rebind operations, durable health/recheck,
+bounded resumable generation, portability and the cumulative
+`TestPhase15/AC01`–`AC06` suite. Root's pinned Linux/native/PostgreSQL cumulative run at
+`c3ccd730ac6537c65f3d439aa9b9564c982f0289` passed all packages and acceptance in
+173.985 seconds. Author fix `8291e84cf5bcb04c16ecbbae6cbf3d8e561d9d43`
+added the unresolved-rebind regression and passed all six Phase 15 children in 14.491
+seconds before integration as `39bc68c753ff65e1d382102dcd6bcfdd0ea8387b`.
+
+Exact full-chain testing at `39bc68c` found that migration 017 had replaced the audit
+action constraint without preserving migration 016's `topic.health_rechecked` action.
+The resulting audit rejection atomically rolled back a correct source-drift health
+observation and returned HTTP 400. Forward migration 019 at
+`d103ba95af8a4f951b0a4d2589292ec269905a67` restores the complete closed action union,
+including the health action, while retaining unknown-action rejection. Its author
+strict Phase 02 and Phase 15 runs passed all six children with zero skips, and the
+repair integrated as `dd6f79e`. Root verified its SHA-256-checked committed-source
+archive: strict Phase 02 and Phase 15 each passed all six children with zero skips,
+including AC04 health and enhanced rebind, and native race `TestSafeErrors` passed.
+
+Phase 15 remains `in_progress` pending the independent narrow review of fixes `8291e84`
+and `d103ba9`, exact final integrated-head coverage, full lint/preflight, hosted CI and
+release integration. The 84.5% coverage exception applies only to
+`internal/store/postgres`; recorded Bifrost fixtures do not measure live semantic
+quality. This document does not change the phase registry or imply shipped status.

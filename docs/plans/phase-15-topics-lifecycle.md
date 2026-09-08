@@ -39,15 +39,15 @@ Semantics batch/token/concurrency limits, compact-card caps, supported locale li
 
 ## Tests, coverage and smoke
 
-Implement `TestPhase15/AC01` through `TestPhase15/AC06` with real PostgreSQL/pgvector publication races, source changes, draft mutations and neutral portability goldens. Use recorded gateway fixtures and a separately reported live semantic-quality run. COMMON.md sets coverage; `scripts/smoke/phase-15.sh` requires all six results.
+`TestPhase15/AC01` through `TestPhase15/AC06` exercise real PostgreSQL/pgvector publication races, source changes, draft mutations and neutral portability goldens. Recorded gateway fixtures are the reproducible acceptance path; live semantic quality has not been measured and is not inferred from those fixtures. COMMON.md sets coverage; `scripts/smoke/phase-15.sh` requires all six results.
 
 ## Glossary, decisions and deviations
 
-D-045/D-049/D-052 preserve lifecycle outcomes but remove local policy decisions. No runtime completion is claimed.
+D-045/D-049/D-052 preserve lifecycle outcomes but remove local policy decisions. The current runtime candidate and its remaining release gates are recorded below.
 
 ## Bounded draft service stage
 
-`internal/semantics/drafts`, PostgreSQL migration 012, `internal/topicapi` and the Go SDK now provide private draft creation, exact CAS revisions, scoped reads/history/diff and neutral mapped export/import. Admission consumes real source discovery and active private profile evidence; storage fences them at commit. The [draft service contract](../contracts/topic-drafts-v1.md) defines authority, limits and typed failure behavior. `TestTopicDraftAPIAndSDK`, `TestTopicDraftCASAndScopeFences`, `TestTopicDraftCommitFencesAndErasure`, `TestTopicDraftProfileHeadAndAuditFences` `TestTopicDraftAdmissionLimitsAndIndependentActions` and `TestTopicDraftMultipleDatasetScopeAndAdmissionBounds` exercise this partial AC02/AC03/AC06 consumer against real PostgreSQL and HTTP/SDK schemas. They do not satisfy the six cumulative `TestPhase15` criteria.
+`internal/semantics/drafts`, PostgreSQL migration 012, `internal/topicapi` and the Go SDK provide private draft creation, exact CAS revisions, scoped reads/history/diff and neutral mapped export/import. Admission consumes real source discovery and active private profile evidence; storage fences them at commit. The [draft service contract](../contracts/topic-drafts-v1.md) defines authority, limits and typed failure behavior. `TestTopicDraftAPIAndSDK`, `TestTopicDraftCASAndScopeFences`, `TestTopicDraftCommitFencesAndErasure`, `TestTopicDraftProfileHeadAndAuditFences`, `TestTopicDraftAdmissionLimitsAndIndependentActions` and `TestTopicDraftMultipleDatasetScopeAndAdmissionBounds` exercise the real PostgreSQL and HTTP/SDK consumer. Their earlier bounded evidence is now supplemented by the cumulative `TestPhase15` acceptance described below.
 
 ## Bounded publication lifecycle stage
 
@@ -94,8 +94,9 @@ rewrites all dataset-qualified references and uses the existing Save admission a
 transaction fences. These operations reuse `topics.write` with the existing
 secondary `engineering.read` and `sources.read` actions and require no migration.
 
-Focused pure and real PostgreSQL HTTP/SDK lifecycle tests provide additional partial
-AC03/AC06 evidence.
+Focused pure and real PostgreSQL HTTP/SDK lifecycle tests cover these AC03/AC06
+operations, including an enhanced draft whose unresolved semantic reference survives
+a reviewed dataset rebind with its stable ID and logical column unchanged.
 
 ## Health, generation and cumulative acceptance candidate
 
@@ -118,9 +119,24 @@ checkpoints and stale heads fail before a model request. Unresolved gaps survive
 publication projection and neutral export/import remapping without becoming
 executable entities.
 
-`TestPhase15/AC01` through `AC06` now compose the real publication race/failure,
+`TestPhase15/AC01` through `AC06` compose the real publication race/failure,
 immutable lifecycle, draft mutation/rebind, durable health, recorded Bifrost
 generation and neutral portability consumers. The pinned Linux/native-parser,
-PostgreSQL/pgvector race run passed all six children. Final cumulative coverage,
-independent review and release integration remain separate gates, so the phase stays
-`in_progress` in this implementation handoff.
+PostgreSQL/pgvector race run at `c3ccd730ac6537c65f3d439aa9b9564c982f0289`
+passed all six children; the root cumulative race run also passed all packages and
+acceptance in 173.985 seconds. The author fix `8291e84cf5bcb04c16ecbbae6cbf3d8e561d9d43`
+then added the unresolved-rebind regression and passed the full six-child phase run in
+14.491 seconds before integration as `39bc68c753ff65e1d382102dcd6bcfdd0ea8387b`.
+One independent review was clear at `e90ac24`; the second found that rebind defect, and
+its required narrow review of `8291e84` is pending. Exact testing at `39bc68c` also
+found that migration 017 had replaced the audit-action constraint without preserving
+the migration 016 `topic.health_rechecked` action. Forward migration 019 in
+`d103ba95af8a4f951b0a4d2589292ec269905a67` restores the complete closed union; the
+author's strict Phase 02 and Phase 15 runs passed all six children with zero skips, and
+the repair integrated as `dd6f79e`. Root then verified the committed-source archive
+(SHA-256 `6801a28f69d6179e7c3e3bee7c32e7949c194f1fdafba0dac110cf255d5d9aba`):
+strict Phase 02 and Phase 15 each passed all six children with zero skips, and the native
+race `TestSafeErrors` passed. The independent narrow fix review, final exact
+integrated-head coverage, full lint/preflight, hosted CI and release integration remain
+gates, so the phase stays `in_progress`. The approved 84.5% coverage exception applies only to
+`internal/store/postgres`; no other phase 15 package inherits it.
