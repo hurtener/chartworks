@@ -254,6 +254,19 @@ func TestPhase02(t *testing.T) {
 		if count(t, c, `SELECT count(*) FROM information_schema.columns WHERE table_schema='chartworks' AND (column_name LIKE '%password%' OR column_name LIKE '%secret%' OR column_name LIKE '%token%' OR column_name LIKE '%role%' OR column_name LIKE '%grant%')`) != 0 {
 			t.Fatal("local IAM/issuer material in schema")
 		}
+		tx, e := c.Begin(ctx)
+		if e != nil {
+			t.Fatal("begin audit allowlist check", e)
+		}
+		if _, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES('migration-audit',repeat('c',32),'actor','topic.health_rechecked','topic')`); e != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal("topic health audit action missing after full migration chain", e)
+		}
+		if _, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES('migration-audit',repeat('d',32),'actor','unknown.action','topic')`); e == nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal("unknown audit action accepted")
+		}
+		_ = tx.Rollback(ctx)
 		opts := postgres.Defaults()
 		opts.MaxConns = 0
 		if _, e = postgres.Open(ctx, dsn, opts); !errors.Is(e, store.ErrInvalid) {
