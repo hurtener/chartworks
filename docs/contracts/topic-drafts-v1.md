@@ -84,8 +84,9 @@ bounded stage offers no deletion to reclaim those limits.
 Malformed definitions/mappings return `invalid_request`; missing/inaccessible
 coordinates return `not_found` (history can return an empty list). Missing actions
 return `forbidden`; source evidence mismatch returns `context_changed`; CAS/version
-reuse returns `conflict`; limits return `limit_exceeded`; unsupported canonical
-registry entries return `unsupported`. Unknown dependency failures expose only
+reuse returns `conflict`; limits return `limit_exceeded`. Canonical proposals with
+a skipped revision, changed meaning at an existing revision, or a normalized term
+reserved to another entity return `conflict`. Unknown dependency failures expose only
 `unavailable`; cancellation/timeout has a typed response. Audit failure rolls back
 all draft writes.
 
@@ -98,15 +99,17 @@ not automatically sanitized content. Import invokes `ImportDraftCandidate`, then
 the same complete admission and persistence path as ordinary save; it creates only
 a private draft. Synthetic round trips preserve semantic meaning and exact bindings.
 
-The approved canonical registry is not implemented. Persisted drafts with canonical
-entities therefore fail explicitly instead of treating supplied revision numbers as
-approved evidence. The pure compiler/portable representation continues to preserve
-exact canonical references for that future consumer.
+Canonical entries in a private draft remain proposals. Admission checks them against
+the tenant registry but neither creates a registry row nor treats the supplied revision
+as approved. Revision one for a new ID, the exact next revision, and exact immutable
+revision reuse are admissible proposals; reviewed publication owns approval. Physical
+keys remain in the topic and mapped import may rewrite them without changing the global
+meaning digest.
 
 The separate [publication contract](topic-publication-v1.md) now owns review,
 publication/facet activation, retained publication reads, rollback/archive and the
-current published-topic source contract. Canonical registry, onboarding/entity APIs,
-source rename workflows, retention and full lifecycle bundle portability remain pending. Phase 16
+current published-topic source contract. Onboarding/entity APIs, source rename
+workflows, retention and full lifecycle bundle portability remain pending. Phase 16
 execution/replay/shadow/provider quality remains pending. Phase 21 still needs
 foundation/work/security adapters, public document delivery and cumulative
 acceptance. No full `TestPhase15`, `TestPhase16` or `TestPhase21` pass is claimed.

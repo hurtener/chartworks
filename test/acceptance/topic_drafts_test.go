@@ -267,9 +267,6 @@ func TestTopicDraftCASAndScopeFences(t *testing.T) {
 		{"source context", func(p *semantics.TopicPack) { p.Datasets[0].Source.Context = "topic-source:v99" }},
 		{"source column", func(p *semantics.TopicPack) { p.Datasets[0].Columns[0].SourceName = "missing" }},
 		{"column type", func(p *semantics.TopicPack) { p.Datasets[0].Columns[0].NativeType = "fake" }},
-		{"canonical registry", func(p *semantics.TopicPack) {
-			p.CanonicalEntities = []semantics.CanonicalEntity{{ID: "entity", Revision: 1, Name: "Entity", Keys: []semantics.Reference{{Kind: semantics.KindColumn, Dataset: p.Datasets[0].ID, ID: "id"}}}}
-		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			candidate := cloneTopic(t, current.Pack)

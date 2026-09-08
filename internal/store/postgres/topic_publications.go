@@ -8,6 +8,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
@@ -136,6 +137,38 @@ func publishedGenerations(ctx context.Context, tx pgx.Tx, tenant, id, version st
 	}
 	return out, rows.Err()
 }
+
+func publishedCanonicalFence(ctx context.Context, tx pgx.Tx, tenant, topic, version string, entities []semantics.CanonicalEntity) error {
+	rows, err := tx.Query(ctx, `SELECT entity_id,revision,digest FROM chartworks.topic_published_canonical_refs WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3 ORDER BY entity_id`, tenant, topic, version)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	i := 0
+	for rows.Next() {
+		var id, digest string
+		var revision int64
+		if err = rows.Scan(&id, &revision, &digest); err != nil {
+			return err
+		}
+		if i >= len(entities) {
+			return store.ErrInvalid
+		}
+		meaning := entities[i].Meaning()
+		if id != meaning.ID || revision != meaning.Revision || digest != meaning.Digest() {
+			return store.ErrInvalid
+		}
+		i++
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if i != len(entities) {
+		return store.ErrInvalid
+	}
+	return nil
+}
+
 func readPublishedTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, version string, a drafts.Access) (out topics.Published, err error) {
 	if version != "" && !identity.Identifier(version) {
 		return out, store.ErrInvalid
@@ -153,6 +186,9 @@ func readPublishedTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, ve
 	}
 	if json.Unmarshal(raw, &out.Definition) != nil || out.Definition.Topic != id || out.Definition.Version != out.State.Version {
 		return topics.Published{}, store.ErrInvalid
+	}
+	if err = publishedCanonicalFence(ctx, tx, e.Tenant(), id, out.State.Version, out.Definition.CanonicalEntities); err != nil {
+		return topics.Published{}, err
 	}
 	out.State.Topic = id
 	out.State.Active = active == out.State.Version && !out.State.Archived
@@ -301,10 +337,17 @@ func (d *DB) PublishTopic(ctx context.Context, e identity.Envelope, proof topics
 		if actual != review || actual.Decision != "approve" || draft.Metadata.Digest != review.Digest {
 			return store.ErrConflict
 		}
+		meanings, checkErr := proof.CanonicalMeanings(e)
+		if checkErr != nil {
+			return checkErr
+		}
 		raw, _ := json.Marshal(definition)
 		usage, _ := json.Marshal(receipt)
 		_, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_published_versions(tenant_id,topic_id,version_id,draft_revision,review_id,digest,definition,receipt) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, e.Tenant(), pack.Topic, pack.Version, review.DraftRevision, review.ID, review.Digest, raw, usage)
 		if err != nil {
+			return err
+		}
+		if err = approveCanonicalMeaningsTx(ctx, tx, e, pack.Topic, pack.Version, review.ID, meanings); err != nil {
 			return err
 		}
 		for _, dataset := range definition.Datasets {

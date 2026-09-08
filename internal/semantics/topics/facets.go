@@ -24,7 +24,7 @@ type facetGroup struct {
 // context. Same-context multi-source KPIs get an origin for each dependency source.
 func facetPlan(model semantics.Model, space gateway.EmbeddingSpace) ([]facetGroup, error) {
 	p := model.Pack()
-	if model.Digest() == "" || len(p.CanonicalEntities) > 0 || !vindex.Space(space).Valid() {
+	if model.Digest() == "" || !vindex.Space(space).Valid() {
 		return nil, readexec.ErrUnsupported
 	}
 	groups := map[string]*facetGroup{}
@@ -71,6 +71,38 @@ func facetPlan(model semantics.Model, space gateway.EmbeddingSpace) ([]facetGrou
 				Dataset string
 				Column  semantics.Column
 			}{d.ID, c}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// Canonical identity and vocabulary are global, while physical keys remain
+	// local to the source/context that can actually use them. A multi-context
+	// entity therefore yields one independently bounded facet per source.
+	for _, entity := range p.CanonicalEntities {
+		type origin struct{ context, source string }
+		keys := map[origin][]semantics.Reference{}
+		for _, key := range entity.Keys {
+			dataset, ok := datasets[key.Dataset]
+			if !ok {
+				return nil, readexec.ErrUnsupported
+			}
+			where := origin{dataset.Source.Context, dataset.Source.Source}
+			keys[where] = append(keys[where], key)
+		}
+		origins := make([]origin, 0, len(keys))
+		for where := range keys {
+			origins = append(origins, where)
+		}
+		sort.Slice(origins, func(i, j int) bool {
+			if origins[i].context != origins[j].context {
+				return origins[i].context < origins[j].context
+			}
+			return origins[i].source < origins[j].source
+		})
+		for _, where := range origins {
+			local := semantics.CanonicalEntity{ID: entity.ID, Revision: entity.Revision, Name: entity.Name, Aliases: append([]string(nil), entity.Aliases...), Keys: append([]semantics.Reference(nil), keys[where]...)}
+			id := vindex.Digest([]any{"canonical", entity.ID, entity.Revision})
+			if err := add(where.context, where.source, "entity", id, local); err != nil {
 				return nil, err
 			}
 		}

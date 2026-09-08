@@ -416,6 +416,134 @@ func TestTopicPublicationRaceFailureAndContextTransition(t *testing.T) {
 	}
 }
 
+func TestCanonicalRegistryReviewedPublicationAndCollisionFences(t *testing.T) {
+	f, draftsService, service, gatewayFixture, pack := publicationFixture(t)
+	ctx := context.Background()
+	fullScopes := topicScopes(f.e.Tenant())
+	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), fullScopes...)
+	client := publicationClient(t, f, draftsService, service, fullScopes)
+	pack.CanonicalEntities = []semantics.CanonicalEntity{{
+		ID: "customer", Revision: 1, Name: "Customer", Aliases: []string{"Buyer"},
+		Keys: []semantics.Reference{{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "id"}},
+	}}
+
+	draft, err := client.SaveTopicDraft(ctx, sdk.SaveTopicDraftRequest{Pack: pack, Change: "Propose customer meaning"})
+	if err != nil {
+		t.Fatal("canonical draft proposal", err)
+	}
+	review, err := client.ReviewTopic(ctx, pack.Topic, sdk.TopicReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Approve customer meaning"})
+	if err != nil {
+		t.Fatal("canonical review", err)
+	}
+	withoutTenantScopes := make([]string, 0, len(fullScopes))
+	for _, scope := range fullScopes {
+		if scope != "cw.tenant.write:"+f.e.Tenant() {
+			withoutTenantScopes = append(withoutTenantScopes, scope)
+		}
+	}
+	withoutTenant := f.token.envelope(t, f.e.Tenant(), f.e.User(), withoutTenantScopes...)
+	before := gatewayFixture.requests.Load()
+	if _, err = service.Publish(ctx, withoutTenant, pack.Topic, topics.PublishRequest{Review: review.ID}); !errors.Is(err, access.ErrForbidden) || gatewayFixture.requests.Load() != before {
+		t.Fatal("registry-changing publication lacked early tenant-write fence", err)
+	}
+	published, err := client.PublishTopic(ctx, pack.Topic, sdk.PublishTopicRequest{Review: review.ID})
+	if err != nil || len(published.Definition.CanonicalEntities) != 1 || published.Definition.CanonicalEntities[0].Revision != 1 {
+		t.Fatal("reviewed canonical publication", published.Definition.CanonicalEntities, err)
+	}
+	metadata := support.Raw(t, f.dsn)
+	var revisions, terms int
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.canonical_entity_revisions WHERE tenant_id=$1 AND entity_id='customer'`, e.Tenant()).Scan(&revisions); err != nil {
+		t.Fatal(err)
+	}
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.canonical_entity_terms WHERE tenant_id=$1 AND entity_id='customer'`, e.Tenant()).Scan(&terms); err != nil {
+		t.Fatal(err)
+	}
+	if revisions != 1 || terms != 2 {
+		t.Fatal("canonical meaning or normalized terms not retained")
+	}
+
+	for _, tc := range []struct {
+		name    string
+		meaning semantics.CanonicalMeaning
+	}{
+		{"same revision different meaning", semantics.CanonicalMeaning{ID: "customer", Revision: 1, Name: "Client"}},
+		{"revision gap", semantics.CanonicalMeaning{ID: "customer", Revision: 3, Name: "Customer"}},
+		{"reserved normalized term", semantics.CanonicalMeaning{ID: "account", Revision: 1, Name: "ＢＵＹＥＲ"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, checkErr := f.db.CheckCanonicalMeanings(ctx, e, pack.Topic, drafts.Publish, []semantics.CanonicalMeaning{tc.meaning}); !errors.Is(checkErr, store.ErrConflict) {
+				t.Fatal("canonical collision accepted", checkErr)
+			}
+		})
+	}
+	if changes, checkErr := f.db.CheckCanonicalMeanings(ctx, e, pack.Topic, drafts.Publish, []semantics.CanonicalMeaning{pack.CanonicalEntities[0].Meaning()}); checkErr != nil || changes {
+		t.Fatal("exact revision reuse treated as mutation", changes, checkErr)
+	}
+	otherTenant := f.token.envelope(t, "tenant-canonical-other", f.e.User(), "topics.publish", "cw.topic.publish:"+pack.Topic)
+	if changes, checkErr := f.db.CheckCanonicalMeanings(ctx, otherTenant, pack.Topic, drafts.Publish, []semantics.CanonicalMeaning{pack.CanonicalEntities[0].Meaning()}); checkErr != nil || !changes {
+		t.Fatal("tenant registry boundary changed", changes, checkErr)
+	}
+
+	// Remapping a physical key changes the topic digest but reuses exact global
+	// meaning without tenant-write authority.
+	pack.Version = "v2"
+	pack.CanonicalEntities[0].Keys[0].ID = "amount"
+	second, err := draftsService.Save(ctx, withoutTenant, drafts.SaveRequest{Expected: 1, Pack: pack, Change: "Remap local customer key"})
+	if err != nil || second.Metadata.Digest == draft.Metadata.Digest {
+		t.Fatal("topic-local key remap", second.Metadata.Digest, err)
+	}
+	review2, err := service.Review(ctx, withoutTenant, pack.Topic, topics.ReviewRequest{DraftRevision: 2, Digest: second.Metadata.Digest, Decision: "approve", Note: "Approve local remap"})
+	if err != nil {
+		t.Fatal("review exact reuse", err)
+	}
+	if _, err = service.Publish(ctx, withoutTenant, pack.Topic, topics.PublishRequest{Review: review2.ID, Expected: 1}); err != nil {
+		t.Fatal("exact canonical revision reuse", err)
+	}
+
+	pack.Version = "v3"
+	pack.CanonicalEntities[0].Revision = 2
+	pack.CanonicalEntities[0].Name = "Customer account"
+	pack.CanonicalEntities[0].Aliases = []string{"Buyer", "Customer"}
+	third, err := draftsService.Save(ctx, withoutTenant, drafts.SaveRequest{Expected: 2, Pack: pack, Change: "Propose customer revision two"})
+	if err != nil {
+		t.Fatal("next revision proposal", err)
+	}
+	review3, err := service.Review(ctx, withoutTenant, pack.Topic, topics.ReviewRequest{DraftRevision: 3, Digest: third.Metadata.Digest, Decision: "approve", Note: "Approve customer revision two"})
+	if err != nil {
+		t.Fatal("review next revision", err)
+	}
+	if _, err = metadata.Exec(ctx, `CREATE FUNCTION chartworks.reject_canonical_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected canonical publication failure'; END; $$; CREATE TRIGGER reject_canonical_test BEFORE INSERT ON chartworks.topic_published_dependencies FOR EACH ROW EXECUTE FUNCTION chartworks.reject_canonical_test()`); err != nil {
+		t.Fatal("install atomicity fixture", err)
+	}
+	if _, err = service.Publish(ctx, e, pack.Topic, topics.PublishRequest{Review: review3.ID, Expected: 2}); err == nil {
+		t.Fatal("injected failure published canonical revision")
+	}
+	var registryHead, topicHead int64
+	if err = metadata.QueryRow(ctx, `SELECT current_revision FROM chartworks.canonical_entity_heads WHERE tenant_id=$1 AND entity_id='customer'`, e.Tenant()).Scan(&registryHead); err != nil {
+		t.Fatal(err)
+	}
+	if err = metadata.QueryRow(ctx, `SELECT revision FROM chartworks.topic_publication_heads WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic).Scan(&topicHead); err != nil {
+		t.Fatal(err)
+	}
+	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.canonical_entity_revisions WHERE tenant_id=$1 AND entity_id='customer' AND revision=2`, e.Tenant()).Scan(&revisions); err != nil {
+		t.Fatal(err)
+	}
+	if registryHead != 1 || topicHead != 2 || revisions != 0 {
+		t.Fatal("failed publication left canonical or topic state", registryHead, topicHead)
+	}
+	if _, err = metadata.Exec(ctx, `DROP TRIGGER reject_canonical_test ON chartworks.topic_published_dependencies; DROP FUNCTION chartworks.reject_canonical_test()`); err != nil {
+		t.Fatal("remove atomicity fixture", err)
+	}
+	thirdPublished, err := service.Publish(ctx, e, pack.Topic, topics.PublishRequest{Review: review3.ID, Expected: 2})
+	if err != nil || thirdPublished.Definition.CanonicalEntities[0].Revision != 2 {
+		t.Fatal("retry canonical publication", thirdPublished.Definition.CanonicalEntities, err)
+	}
+	rolledBack, err := service.Rollback(ctx, withoutTenant, pack.Topic, topics.TransitionRequest{Version: "v1", Expected: 3, Note: "Restore exact canonical revision one"})
+	if err != nil || rolledBack.Definition.CanonicalEntities[0].Revision != 1 {
+		t.Fatal("exact canonical rollback", rolledBack.Definition.CanonicalEntities, err)
+	}
+}
+
 func containsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
 		if strings.Contains(value, needle) {

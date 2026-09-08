@@ -31,20 +31,21 @@ type Dataset struct {
 	Columns []semantics.Column `json:"columns"`
 }
 type Definition struct {
-	SchemaVersion int                   `json:"schema_version"`
-	Topic         string                `json:"topic"`
-	Version       string                `json:"version"`
-	Name          string                `json:"name"`
-	Description   string                `json:"description"`
-	Datasets      []Dataset             `json:"datasets"`
-	Measures      []semantics.Measure   `json:"measures"`
-	Dimensions    []semantics.Dimension `json:"dimensions"`
-	KPIs          []semantics.KPI       `json:"kpis"`
-	Joins         []semantics.Join      `json:"joins"`
+	SchemaVersion     int                         `json:"schema_version"`
+	Topic             string                      `json:"topic"`
+	Version           string                      `json:"version"`
+	Name              string                      `json:"name"`
+	Description       string                      `json:"description"`
+	Datasets          []Dataset                   `json:"datasets"`
+	Measures          []semantics.Measure         `json:"measures"`
+	Dimensions        []semantics.Dimension       `json:"dimensions"`
+	KPIs              []semantics.KPI             `json:"kpis"`
+	Joins             []semantics.Join            `json:"joins"`
+	CanonicalEntities []semantics.CanonicalEntity `json:"canonical_entities"`
 }
 
 func Project(p semantics.TopicPack) Definition {
-	out := Definition{SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins}
+	out := Definition{SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, CanonicalEntities: p.CanonicalEntities}
 	for _, d := range p.Datasets {
 		out.Datasets = append(out.Datasets, Dataset{d.ID, d.Name, Binding{d.Source.Source, d.Source.Context, d.ID, d.Source.SourceRevision}, d.Columns})
 	}
@@ -143,7 +144,15 @@ func (p Prepared) Checked(e identity.Envelope) (semantics.TopicPack, Review, err
 	return pack, p.review, nil
 }
 
+func (p Prepared) CanonicalMeanings(e identity.Envelope) ([]semantics.CanonicalMeaning, error) {
+	if _, _, err := p.Checked(e); err != nil {
+		return nil, err
+	}
+	return p.model.CanonicalMeanings(), nil
+}
+
 type Repository interface {
+	CheckCanonicalMeanings(context.Context, identity.Envelope, string, drafts.Access, []semantics.CanonicalMeaning) (bool, error)
 	ReviewTopic(context.Context, identity.Envelope, string, ReviewRequest) (Review, error)
 	ReviewedTopic(context.Context, identity.Envelope, string, string) (Review, drafts.Version, error)
 	PublishTopic(context.Context, identity.Envelope, Prepared, []vindex.Generation, gateway.Receipt, int64) (Published, error)

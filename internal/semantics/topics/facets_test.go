@@ -81,13 +81,29 @@ func TestFacetPlanRejectsCrossContextAndBoundOverflow(t *testing.T) {
 	}
 
 	pack = topicTestPack()
-	pack.CanonicalEntities = []semantics.CanonicalEntity{{ID: "entity", Revision: 1, Name: "Entity", Aliases: []string{"registry entity"}, Keys: []semantics.Reference{{Kind: semantics.KindColumn, Dataset: "orders", ID: "amount"}}}}
+	pack.CanonicalEntities = []semantics.CanonicalEntity{{ID: "entity", Revision: 1, Name: "Entity", Aliases: []string{"registry entity"}, Keys: []semantics.Reference{{Kind: semantics.KindColumn, Dataset: "orders", ID: "amount"}, {Kind: semantics.KindColumn, Dataset: "items", ID: "quantity"}}}}
 	model, err = semantics.Compile(pack)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = facetPlan(model, topicTestSpace()); !errors.Is(err, readexec.ErrUnsupported) {
-		t.Fatal("unapproved canonical entity accepted", err)
+	groups, err := facetPlan(model, topicTestSpace())
+	if err != nil || len(groups) != 2 {
+		t.Fatal("context-local canonical facets", len(groups), err)
+	}
+	for _, group := range groups {
+		found := false
+		for _, facet := range group.facets {
+			if !strings.Contains(facet.Text, `"revision":1`) {
+				continue
+			}
+			found = true
+			if group.generation.Context == "context-a" && strings.Contains(facet.Text, "quantity") || group.generation.Context == "context-b" && strings.Contains(facet.Text, "amount") {
+				t.Fatal("canonical key crossed context", group.generation.Context, facet.Text)
+			}
+		}
+		if !found {
+			t.Fatal("missing canonical facet", group.generation.Context)
+		}
 	}
 
 	pack = topicTestPack()

@@ -31,6 +31,20 @@ leaves the previous publication usable. Deferred database constraints reject a
 standalone vector publish, archive or cleanup that would desynchronize a managed
 topic head.
 
+Canonical entity meaning is the tenant-wide stable ID, exact revision, name and
+normalized aliases; physical key references remain part of the reviewed topic. Drafts
+may propose exact reuse, a new ID at revision one, or the next revision. Publication
+checks collisions before gateway work and again under a tenant registry lock. Creating
+a revision requires the existing tenant-write resource under `topics.publish`; exact
+revision reuse does not. The new immutable revision, append-only term reservations,
+topic-local reference rows, published definition and facet/head transition commit or
+roll back together. A same revision with different meaning, a revision gap, or a term
+reserved to another ID is a conflict.
+
+Canonical facets are split by actual source and execution context and contain only
+that origin's key references. Global vocabulary may repeat in those local facets; no
+facet carries another context's physical keys.
+
 ## Read, health, rollback and archive
 
 Retained current and exact-version reads use only stored public definition and facet
@@ -68,6 +82,6 @@ resource failures happen before gateway or facet payload access. Gateway failure
 manifest failure, CAS contention and deferred consistency failure cannot expose a
 partly active version.
 
-Approved canonical registry entities, source-reference rewrite workflows,
-entity/onboarding APIs and full lifecycle portability remain pending. Phase 16
+Source-reference rewrite workflows, entity/onboarding APIs and full lifecycle
+portability remain pending. Phase 16
 activation/evaluation and the cumulative `TestPhase15` criteria are not claimed.

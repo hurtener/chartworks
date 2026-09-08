@@ -70,8 +70,16 @@ This is bounded AC01/AC02/AC04/AC05 evidence; it is not a substitute for the six
 cumulative `TestPhase15` criteria. The exact-head review and root verification are
 recorded in the [bounded publication evidence](../reviews/phase-15-topic-publication.md).
 
-Entity/onboarding APIs, approved canonical registry, source-reference rewrite
-workflows and full lifecycle portability remain unimplemented. Drafts containing
-canonical registry entries are explicitly unsupported until approved revision
-meaning exists; numeric authoring pins alone are not accepted approval proof. No
-phase acceptance stub or completed-phase claim is added.
+## Bounded canonical registry stage
+
+D-068 and the publication contract define global canonical meaning separately from
+topic-local physical keys. Existing draft/import operations accept collision-checked
+proposals, and existing reviewed publication atomically approves a new ID at revision
+one or the exact next revision. Exact immutable revision reuse needs no registry write.
+New normalized terms remain reserved to their first entity ID, and canonical facets
+are split by their actual source/context. This is partial AC01/AC02/AC06 evidence and
+adds no route or action.
+
+Entity/onboarding APIs, source-reference rewrite workflows and full lifecycle
+portability remain unimplemented. No phase acceptance stub or completed-phase claim
+is added.

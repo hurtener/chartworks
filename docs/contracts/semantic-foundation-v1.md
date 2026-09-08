@@ -74,7 +74,10 @@ Pengui reach before storing a draft. It must also resolve canonical registry
 collisions and validate exact revision meaning; carrying a revision number does not
 approve a registry entry in the destination. No destination ID is allocated, no
 profile is refreshed, and no rule-set/pattern lifecycle bundle is imported by this
-pure helper. The [private draft service](topic-drafts-v1.md) now supplies mapped import admission, export authorization and immutable private revision history through the phase 21 registry. Reviewed publication and canonical registry resolution remain service work.
+pure helper. The [private draft service](topic-drafts-v1.md) now supplies mapped import
+admission, export authorization, immutable private revision history and canonical
+collision preflight through the phase 21 registry. Reviewed publication owns registry
+approval.
 
 `DiffModels` compares two compiled versions of the same topic and reports their
 exact version/digest pins, topic metadata changes, ordered entity changes, and
@@ -116,11 +119,12 @@ acceptance or satisfy the missing topic service work.
 
 The private draft service now consumes current phase 12 profile evidence, verifies
 dataset provenance against source discovery and commits immutable CAS revisions with
-audit and dependency fences. This supplies draft mutation, scoped history/diff and
-neutral mapped import/export, while approved canonical entities remain unsupported.
+audit and dependency fences. This supplies draft mutation, scoped history/diff,
+neutral mapped import/export and unapproved canonical proposals.
 The bounded [publication service](topic-publication-v1.md) now supplies the immutable
 review/publication model, Bifrost embedding generation, current source contract and
-version-fenced facet activation using `internal/vindex`. Reviewed source-reference
+version-fenced facet activation using `internal/vindex`, including atomic approval of
+new canonical meaning and context-local canonical facets. Reviewed source-reference
 rewrite operations and additional compact capability consumers remain pending.
 Phase 12 profile records are private to their originating actor/session. Their
 retained evidence can seed an authorized draft, but published-topic readers cannot

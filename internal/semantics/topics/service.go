@@ -101,6 +101,15 @@ func (s *Service) Publish(ctx context.Context, e identity.Envelope, topic string
 	if err = drafts.RequirePack(e, model.Pack(), drafts.Publish); err != nil {
 		return Published{}, err
 	}
+	changesRegistry, err := s.repo.CheckCanonicalMeanings(ctx, e, topic, drafts.Publish, model.CanonicalMeanings())
+	if err != nil {
+		return Published{}, err
+	}
+	if changesRegistry {
+		if err = access.Require(e, "topics.publish", access.Tenant(e, "write")); err != nil {
+			return Published{}, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if err = s.currentSources(ctx, e, Project(model.Pack())); err != nil {

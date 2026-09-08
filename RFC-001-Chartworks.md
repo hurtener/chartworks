@@ -80,6 +80,13 @@ Retain draft -> review -> published -> deprecated versions and active/archived t
 
 Preserve entity CRUD/moves, table rename/reference rewrites across measures/dimensions/KPIs/joins, source-health recheck, archive exclusion, onboarding profiles, canonical registry and neutral export/import. Pengui decides sharing; imported role/header/token material never becomes authority.
 
+D-068 defines the first registry consumer: tenant-wide canonical meaning is the
+immutable ID/revision/name/alias tuple, while physical key mappings remain local to
+the reviewed topic. Private drafts may propose meaning; only explicit reviewed topic
+publication approves a new sequential revision, atomically with the publication and
+its context-local facets. Normalized terms remain reserved to their original entity
+ID so retained and portable exact revisions cannot later acquire a different meaning.
+
 Topic generation uses remote Bifrost structured calls in bounded batches with stable IDs. Rich authoring packs project to compact published capability cards. One ContextAssembler owns runtime pruning, uses one tokenizer-backed budget, per-request copies and explicit provenance, preserves pinned metrics/hard constraints and reports insufficiency rather than silently dropping mandatory rules. Rules/examples have separate declared budgets and confidence/prior meaning.
 
 ## 9. NLQ, BYO and read safety

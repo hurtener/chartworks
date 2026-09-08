@@ -66,7 +66,10 @@ The same manifest registers the new opaque actions `topics.review` and
 of the exact private draft revision. Publication requires topic publish, source
 read, dataset query and execution-context use reach; live source discovery also
 uses the existing `sources.read` action. Facet staging inside that operation uses
-the publication action and cannot activate a generation independently. Rollback
+the publication action and cannot activate a generation independently. When reviewed
+publication creates a new canonical entity revision, the same `topics.publish` action
+also requires `cw.tenant.write:<signed-tenant>`; exact immutable revision reuse does
+not. Draft/import preflight creates no registry state. Rollback
 uses registered primary action `topics.publish` plus secondary action `sources.read`
 for its live source discovery. Archive uses `topics.publish` and deliberately makes
 no source discovery. Retained current/exact reads use `topics.read`; the current

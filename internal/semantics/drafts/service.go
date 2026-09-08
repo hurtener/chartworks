@@ -126,6 +126,7 @@ func (p Prepared) Pack(e identity.Envelope) (semantics.TopicPack, error) {
 // Repository owns tenant-composite identity, pre-query scope restrictions, CAS,
 // immutable snapshots and an audit event in the same transaction.
 type Repository interface {
+	CheckCanonicalMeanings(context.Context, identity.Envelope, string, Access, []semantics.CanonicalMeaning) (bool, error)
 	SaveTopicDraft(context.Context, identity.Envelope, Prepared, int64, string) (Version, error)
 	ReadTopicDraft(context.Context, identity.Envelope, string, int64, Access) (Version, error)
 	TopicDraftHistory(context.Context, identity.Envelope, string, int64, int) ([]Revision, error)
@@ -163,10 +164,10 @@ func (s *Service) Save(ctx context.Context, e identity.Envelope, in SaveRequest)
 			return Version{}, err
 		}
 	}
-	// The approved canonical registry has no runtime yet. Exact numeric pins in
-	// authoring input are not approved provenance; reject them explicitly.
-	if len(p.CanonicalEntities) != 0 {
-		return Version{}, readexec.ErrUnsupported
+	// Drafts carry proposals only. This preflight rejects impossible revision
+	// sequences and already-reserved terms without approving new meaning.
+	if _, err = s.repo.CheckCanonicalMeanings(ctx, e, p.Topic, Write, model.CanonicalMeanings()); err != nil {
+		return Version{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
