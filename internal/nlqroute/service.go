@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hurtener/chartworks/internal/access"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
@@ -269,6 +270,9 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 			result.Clarification = clarification
 			return result, nil
 		}
+	}
+	if !contextMatches(admitted, in.Context) {
+		return RouteResult{}, readexec.ErrBinding
 	}
 
 	resources := routeResources(e, admitted)
@@ -756,6 +760,23 @@ func sameJoinSource(def topics.Definition, join semantics.Join) bool {
 	left, lok := datasetForReference(def, join.Left)
 	right, rok := datasetForReference(def, join.Right)
 	return lok && rok && left.Source.Source == right.Source.Source && left.Source.Context == right.Source.Context
+}
+
+func contextMatches(admitted []admittedTopic, contextID string) bool {
+	if !identity.Identifier(contextID) {
+		return false
+	}
+	for _, item := range admitted {
+		if len(item.publication.Definition.Datasets) == 0 {
+			return false
+		}
+		for _, dataset := range item.publication.Definition.Datasets {
+			if dataset.Source.Context != contextID {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func datasetForReference(def topics.Definition, ref semantics.Reference) (topics.Dataset, bool) {

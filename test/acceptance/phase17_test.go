@@ -33,23 +33,66 @@ type phase17Fixture struct {
 	e       identity.Envelope
 	pack    semantics.TopicPack
 	related semantics.TopicPack
+	many    semantics.TopicPack
 	other   semantics.TopicPack
 	service *nlqroute.Service
 	model   *gatewayFixture
 	context string
 }
 
+// phase17RerankFallbackEngine keeps the published embedding space while using a
+// separately configured rerank role for the preserve-candidates acceptance path.
+type phase17RerankFallbackEngine struct {
+	embedding gateway.Engine
+	reranker  gateway.Engine
+}
+
+func (e phase17RerankFallbackEngine) Generate(ctx context.Context, call gateway.Call, budget *gateway.Budget, role, instructions, input string, schema *gateway.Schema) (gateway.Generated, error) {
+	return e.embedding.Generate(ctx, call, budget, role, instructions, input, schema)
+}
+
+func (e phase17RerankFallbackEngine) Embed(ctx context.Context, call gateway.Call, budget *gateway.Budget, space string, texts []string) (gateway.Embedded, error) {
+	return e.embedding.Embed(ctx, call, budget, space, texts)
+}
+
+func (e phase17RerankFallbackEngine) Rerank(ctx context.Context, call gateway.Call, budget *gateway.Budget, query string, candidates gateway.Candidates) (gateway.Ranked, error) {
+	return e.reranker.Rerank(ctx, call, budget, query, candidates)
+}
+
+func (e phase17RerankFallbackEngine) VisualRank(ctx context.Context, call gateway.Call, budget *gateway.Budget, query string, candidates gateway.Candidates) (gateway.Ranked, error) {
+	return e.reranker.VisualRank(ctx, call, budget, query, candidates)
+}
+
+func (e phase17RerankFallbackEngine) Space() string { return e.embedding.Space() }
+
+func (e phase17RerankFallbackEngine) EmbeddingSpace() gateway.EmbeddingSpace {
+	return e.embedding.EmbeddingSpace()
+}
+
+func (phase17RerankFallbackEngine) Close() {}
+
 func phase17SalesDataset(t *testing.T, f *engineeringFixture, sourceID, contextID, profileID string) semantics.Dataset {
 	t.Helper()
-	run := f.profile(t, engineering.ProfileSpec{ID: profileID, Source: sourceID, Context: contextID, Dataset: "analytics.sales", Columns: []string{"id", "amount"}, SkipLLM: true})
-	evidence := run.Profile.Profile
-	dataset := semantics.Dataset{ID: evidence.Dataset, Name: "Sales", Source: semantics.SourceReference{Source: sourceID, Context: contextID, Dataset: evidence.Dataset, SourceRevision: evidence.SourceRevision, ProfileVersion: evidence.Version, ProfileDigest: evidence.DeterministicHash()}}
-	for _, column := range evidence.Schema {
-		if column.Name == "id" || column.Name == "amount" {
-			dataset.Columns = append(dataset.Columns, semantics.Column{ID: column.Name, SourceName: column.Name, Name: column.Name, NativeType: column.NativeType, Category: column.Category, Nullable: column.Nullable})
-		}
+	binding, err := f.s.Binding(context.Background(), f.e, sourceID, contextID)
+	if err != nil {
+		t.Fatal("sales binding", err)
 	}
-	return dataset
+	for _, relation := range binding.Relations {
+		if relation.Name != "sales" {
+			continue
+		}
+		run := f.profile(t, engineering.ProfileSpec{ID: profileID, Source: sourceID, Context: contextID, Dataset: relation.ID, Columns: []string{"id", "amount"}, SkipLLM: true})
+		evidence := run.Profile.Profile
+		dataset := semantics.Dataset{ID: evidence.Dataset, Name: "Sales", Source: semantics.SourceReference{Source: sourceID, Context: contextID, Dataset: evidence.Dataset, SourceRevision: evidence.SourceRevision, ProfileVersion: evidence.Version, ProfileDigest: evidence.DeterministicHash()}}
+		for _, column := range evidence.Schema {
+			if column.Name == "id" || column.Name == "amount" {
+				dataset.Columns = append(dataset.Columns, semantics.Column{ID: column.Name, SourceName: column.Name, Name: column.Name, NativeType: column.NativeType, Category: column.Category, Nullable: column.Nullable})
+			}
+		}
+		return dataset
+	}
+	t.Fatal("sales relation missing")
+	return semantics.Dataset{}
 }
 
 func phase17ItemsDataset(t *testing.T, f *engineeringFixture, sourceID, contextID, profileID string) semantics.Dataset {
@@ -83,9 +126,20 @@ func phase17EnrichPack(t *testing.T, f *engineeringFixture, pack semantics.Topic
 	salesID, itemsID := pack.Datasets[0].ID, items.ID
 	pack.Joins = []semantics.Join{
 		{ID: "sales-items", Name: "Sales to items", Left: semantics.Reference{Kind: semantics.KindColumn, Dataset: salesID, ID: "id"}, Right: semantics.Reference{Kind: semantics.KindColumn, Dataset: itemsID, ID: "sale_id"}, Type: semantics.JoinInner, Cardinality: semantics.CardinalityOneToOne},
-		{ID: "sales-items-many", Name: "Sales to items many", Left: semantics.Reference{Kind: semantics.KindColumn, Dataset: salesID, ID: "id"}, Right: semantics.Reference{Kind: semantics.KindColumn, Dataset: itemsID, ID: "sale_id"}, Type: semantics.JoinInner, Cardinality: semantics.CardinalityManyToOne},
 	}
-	return pack
+	return cloneTopic(t, pack)
+}
+
+func phase17ManyPack(t *testing.T, base semantics.TopicPack) semantics.TopicPack {
+	t.Helper()
+	out := cloneTopic(t, base)
+	out.Topic = "commerce-many"
+	out.Name = "Commerce many"
+	out.Description = "Synthetic same-source cardinality fixture"
+	out.Joins[0].ID = "sales-items-many"
+	out.Joins[0].Name = "Sales to items many"
+	out.Joins[0].Cardinality = semantics.CardinalityManyToOne
+	return out
 }
 
 func phase17PublishTopic(t *testing.T, draftsService *drafts.Service, topicsService *topics.Service, e identity.Envelope, pack semantics.TopicPack) topics.Published {
@@ -142,12 +196,61 @@ func phase17OtherPack(t *testing.T, f *engineeringFixture, base semantics.TopicP
 	out.Description = "Synthetic second source routing fixture"
 	sales := phase17SalesDataset(t, f, otherSource.ID, otherSource.ContextID, "phase17-other-sales-profile")
 	items := phase17ItemsDataset(t, f, otherSource.ID, otherSource.ContextID, "phase17-other-items-profile")
+	var salesID, itemsID string
+	for _, dataset := range out.Datasets {
+		switch dataset.Name {
+		case "Sales":
+			salesID = dataset.ID
+		case "Items":
+			itemsID = dataset.ID
+		}
+	}
+	if salesID == "" || itemsID == "" {
+		t.Fatal("base topic fixture datasets missing")
+	}
 	for i := range out.Datasets {
 		switch out.Datasets[i].ID {
-		case sales.ID:
+		case salesID:
 			out.Datasets[i] = sales
-		case items.ID:
+		case itemsID:
 			out.Datasets[i] = items
+		}
+	}
+	remap := func(ref *semantics.Reference) {
+		if ref.Kind == semantics.KindColumn {
+			switch ref.Dataset {
+			case salesID:
+				ref.Dataset = sales.ID
+			case itemsID:
+				ref.Dataset = items.ID
+			}
+			return
+		}
+		switch ref.ID {
+		case salesID:
+			ref.ID = sales.ID
+		case itemsID:
+			ref.ID = items.ID
+		}
+	}
+	for i := range out.Measures {
+		remap(&out.Measures[i].Field)
+	}
+	for i := range out.Dimensions {
+		remap(&out.Dimensions[i].Field)
+	}
+	for i := range out.KPIs {
+		for j := range out.KPIs[i].Inputs {
+			remap(&out.KPIs[i].Inputs[j])
+		}
+	}
+	for i := range out.Joins {
+		remap(&out.Joins[i].Left)
+		remap(&out.Joins[i].Right)
+	}
+	for i := range out.CanonicalEntities {
+		for j := range out.CanonicalEntities[i].Keys {
+			remap(&out.CanonicalEntities[i].Keys[j])
 		}
 	}
 	return out
@@ -173,13 +276,15 @@ func newPhase17Fixture(t *testing.T) *phase17Fixture {
 	related.Name = "Commerce related"
 	related.Description = "Synthetic same-source routing fixture"
 	phase17PublishTopic(t, draftsService, topicsService, e, related)
+	many := phase17ManyPack(t, pack)
+	phase17PublishTopic(t, draftsService, topicsService, e, many)
 	other := phase17OtherPack(t, f, pack)
 	phase17PublishTopic(t, draftsService, topicsService, e, other)
 	route, err := nlqroute.New(topicsService, rules, index, model.engine)
 	if err != nil {
 		t.Fatal("route", err)
 	}
-	return &phase17Fixture{f: f, e: e, pack: pack, related: related, other: other, service: route, model: model, context: pack.Datasets[0].Source.Context}
+	return &phase17Fixture{f: f, e: e, pack: pack, related: related, many: many, other: other, service: route, model: model, context: pack.Datasets[0].Source.Context}
 }
 
 func phase17Paths(f *gatewayFixture) []string {
@@ -338,7 +443,8 @@ func TestPhase17(t *testing.T) {
 		if preserveErr != nil {
 			t.Fatal(preserveErr)
 		}
-		preserveRoute, preserveErr := nlqroute.New(preserveTopics, preserveRules, preserveIndex, preserveModel.engine)
+		preserveEngine := phase17RerankFallbackEngine{embedding: fixture.model.engine, reranker: preserveModel.engine}
+		preserveRoute, preserveErr := nlqroute.New(preserveTopics, preserveRules, preserveIndex, preserveEngine)
 		if preserveErr != nil {
 			t.Fatal(preserveErr)
 		}
@@ -441,9 +547,10 @@ func TestPhase17(t *testing.T) {
 
 		before = fixture.model.requests.Load()
 		ambiguous := valid
+		ambiguous.Topics = []string{fixture.pack.Topic, fixture.many.Topic}
 		ambiguous.Question = "Compare revenue with ambiguous grain."
 		ambiguous.Rerank = false
-		ambiguous.JoinChoices = []nlqroute.JoinChoice{{Topic: fixture.pack.Topic, JoinID: "sales-items-many"}, {Topic: fixture.related.Topic, JoinID: "sales-items"}}
+		ambiguous.JoinChoices = []nlqroute.JoinChoice{{Topic: fixture.pack.Topic, JoinID: "sales-items"}, {Topic: fixture.many.Topic, JoinID: "sales-items-many"}}
 		ambiguousOut, ambiguousErr := fixture.service.Route(ctx, fixture.e, ambiguous)
 		if ambiguousErr != nil || ambiguousOut.Outcome != nlq.StrategyClarify || ambiguousOut.Clarification == nil || ambiguousOut.Clarification.Reason != "ambiguous_cardinality" {
 			t.Fatalf("ambiguous cardinality was not clarified: out=%#v err=%v", ambiguousOut, ambiguousErr)
@@ -465,7 +572,7 @@ func TestPhase17(t *testing.T) {
 			t.Fatal("cross-source join reached Bifrost")
 		}
 
-		limitedScopes := []string{"topics.read", "sources.read", "cw.topic.read:" + fixture.pack.Topic, "cw.topic.read:" + fixture.related.Topic, "cw.source.read:" + fixture.pack.Datasets[0].Source.Source, "cw.dataset.query:" + fixture.pack.Datasets[0].ID, "cw.execution_context.use:" + fixture.context}
+		limitedScopes := []string{"topics.read", "sources.read", "cw.topic.read:" + fixture.pack.Topic, "cw.topic.read:" + fixture.related.Topic, "cw.source.read:" + fixture.pack.Datasets[0].Source.Source, "cw.execution_context.use:" + fixture.context}
 		limited := fixture.f.token.envelope(t, fixture.e.Tenant(), fixture.e.User(), limitedScopes...)
 		before = fixture.model.requests.Load()
 		if _, err = fixture.service.Route(ctx, limited, valid); !errors.Is(err, access.ErrForbidden) && !errors.Is(err, access.ErrNotFound) {
