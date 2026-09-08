@@ -12,9 +12,13 @@ It then uses
 the existing `rulesets.Service` read/evaluate seam, the Bifrost `gateway.Engine`
 for one query embedding and optional reranking, and the existing `vindex.Service`
 for one repeatable-read batched search. Candidates are copied and admitted by
-the gateway before reranking. Multi-topic requests require one published
-one-to-one join per topic with the same source and execution context; other
-cardinality or unconfirmed joins return typed clarification.
+the gateway before reranking. Multi-topic requests require every selected
+publication to independently confirm the same normalized one-to-one relationship
+with the same source and execution context; unrelated same-source joins, other
+cardinality, or unconfirmed joins return typed clarification. The sealed,
+token-budgeted context records the full ordered topic/version set. An unqualified
+metric ID shared by multiple selected topics is rejected before Bifrost instead
+of being resolved by topic order.
 
 The HTTP registry is `POST /v1/nlq/routes` with the existing `topics.read`
 action, and the SDK forwards the current Pengui bearer through `RouteNLQ`.

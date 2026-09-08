@@ -260,6 +260,22 @@ func TestConfirmJoinsRequiresPublishedSameSourceOneToOne(t *testing.T) {
 	if got := confirmJoins(admitted, choices); got != nil {
 		t.Fatalf("confirmed join rejected: %#v", got)
 	}
+	reversed := definition
+	reversed.Joins = append([]semantics.Join(nil), definition.Joins...)
+	reversed.Joins[0].Left, reversed.Joins[0].Right = reversed.Joins[0].Right, reversed.Joins[0].Left
+	admitted[1].publication.Definition = reversed
+	if got := confirmJoins(admitted, choices); got != nil {
+		t.Fatalf("symmetric inner relationship rejected: %#v", got)
+	}
+	reversed.Joins[0].Type = semantics.JoinLeft
+	definition.Joins[0].Type = semantics.JoinLeft
+	admitted[0].publication.Definition = definition
+	admitted[1].publication.Definition = reversed
+	if got := confirmJoins(admitted, choices); got == nil || got.Reason != "unconfirmed_relationship" {
+		t.Fatalf("directionally different left joins were admitted: %#v", got)
+	}
+	definition.Joins[0].Type = semantics.JoinInner
+	admitted[0].publication.Definition = definition
 	definition.Joins[0].Cardinality = semantics.CardinalityManyToOne
 	admitted[0].publication.Definition = definition
 	if got := confirmJoins(admitted, choices); got == nil || got.Reason != "ambiguous_cardinality" {

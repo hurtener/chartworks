@@ -29,7 +29,7 @@ Similarity is not calibrated confidence. No local learned models, duplicate char
 
 1. The routing service performs deterministic bounded question admission, Bifrost query embeddings, signed-authorized batched facet retrieval, per-kind limits, confidence calibration, and typed routing outcomes.
 2. It assembles retrieved evidence, reviewed advisory rules, mandatory constraint results, examples, pinned metrics, and provenance under the one tokenizer-backed tier budget without shared mutation.
-3. Confirmed same-source one-to-one multi-topic joins are admitted only from published definitions. When reranking is enabled, only already authorized candidates enter Bifrost; the complete permutation is validated before the context owner applies budget reduction.
+3. Confirmed same-source one-to-one multi-topic joins are admitted only when every selected published definition independently confirms the same normalized relationship. The sealed, budgeted model header carries the complete ordered topic/version set; its singular topic fields remain a compatible first-topic projection and cannot disagree with that set. Unqualified metric IDs that match multiple selected topics return a typed invalid request instead of choosing one topic by order. When reranking is enabled, only already authorized candidates enter Bifrost; the complete permutation is validated before the context owner applies budget reduction.
 4. The vector service remains an explicit no-evidence-cache boundary. Bifrost cache identity includes the full authority call and embedding space. Disabled rerank makes zero calls; provider preserve/fail behavior remains owned by gateway configuration. Neither path starts a local model.
 
 ## Non-goals
@@ -46,7 +46,7 @@ Context tiers, confidence bands, k-per-kind, max_examples=7 and advisory-rule bu
 2. **AC02** — Batched origins/per-kind limits are correct; Bifrost reranking preserves permitted IDs and validates complete scores; disabled and explicit failure modes have the documented calls, order and warnings.
 3. **AC03** — Tiers 1500/3000/6500 and example/rule bounds use one tokenizer currency, not a character estimate or locally inferred substitute.
 4. **AC04** — Pinned metrics and mandatory constraints survive; impossible budgets yield typed insufficiency rather than a changed question.
-5. **AC05** — Multi-topic choices require confirmed same-source joins and all-resource reach; ambiguous grain/cardinality triggers clarification.
+5. **AC05** — Multi-topic choices require the same confirmed same-source join and all-resource reach; unrelated same-source joins and ambiguous grain/cardinality trigger clarification, exact ordered topic versions reach the model context, and duplicate unqualified metric IDs fail before Bifrost.
 6. **AC06** — English/Spanish, source-copy immutability, full-space/context cache isolation and concurrent-user fixtures pass with stage and remote-call attribution.
 
 ## Tests, coverage and smoke

@@ -170,6 +170,9 @@ func TestResolvePrecedenceRejectsUnsafeOrStoppedContext(t *testing.T) {
 		{name: "wrong budget", edit: func(c *AssembledContext) { c.Budget = MediumBudget }},
 		{name: "wrong token count", edit: func(c *AssembledContext) { c.Tokens++ }},
 		{name: "prompt mismatch", edit: func(c *AssembledContext) { c.Prompt += "tampered" }},
+		{name: "topic revision mismatch", edit: func(c *AssembledContext) {
+			c.Topics = []TopicRevision{{Topic: "other", Version: "v2"}}
+		}},
 	}
 	for _, tt := range mutations {
 		t.Run(tt.name, func(t *testing.T) {

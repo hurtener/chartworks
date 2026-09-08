@@ -67,6 +67,7 @@ func TestAssemblerPreservesMandatoryLanesAndDetachesInput(t *testing.T) {
 		Strategy:     StrategyMultiTopic,
 		Topic:        "sales",
 		TopicVersion: "v3",
+		Topics:       []TopicRevision{{Topic: "sales", Version: "v3"}, {Topic: "returns", Version: "v7"}},
 		Question:     "Compare revenue by month for both approved topics",
 		Constraints: &ConstraintState{
 			Allowed:  true,
@@ -97,8 +98,12 @@ func TestAssemblerPreservesMandatoryLanesAndDetachesInput(t *testing.T) {
 	if assembled.Evidence[0].Source != "catalog" {
 		t.Fatalf("evidence provenance was not retained: %#v", assembled.Evidence[0])
 	}
+	if !strings.Contains(assembled.Prompt, "topic[0]:sales\nversion[0]:v3\ntopic[1]:returns\nversion[1]:v7") || len(assembled.Topics) != 2 {
+		t.Fatalf("ordered exact topic revisions were not sealed into the prompt: %#v", assembled.Topics)
+	}
 
 	input.Question = "mutated after assembly"
+	input.Topics[1].Version = "mutated"
 	input.Constraints.Required[0].Text = "mutated required constraint"
 	input.Evidence[0].Text = "mutated evidence"
 	if assembled.Question == input.Question {
@@ -109,6 +114,9 @@ func TestAssemblerPreservesMandatoryLanesAndDetachesInput(t *testing.T) {
 	}
 	if assembled.Evidence[0].Text == input.Evidence[0].Text {
 		t.Fatal("assembled evidence aliases caller input")
+	}
+	if assembled.Topics[1].Version == input.Topics[1].Version {
+		t.Fatal("assembled topic revisions alias caller input")
 	}
 }
 
@@ -302,6 +310,13 @@ func TestAssemblerRejectsInvalidInputsAndCounterValues(t *testing.T) {
 		{name: "question", mutate: func(input *ContextInput) { input.Question = "" }, code: CodeInvalidValue},
 		{name: "topic", mutate: func(input *ContextInput) { input.Topic = "sales/topic" }, code: CodeInvalidValue},
 		{name: "topic version", mutate: func(input *ContextInput) { input.TopicVersion = "v/1" }, code: CodeInvalidValue},
+		{name: "multi-topic revisions missing", mutate: func(input *ContextInput) {
+			input.Strategy, input.Topic, input.TopicVersion = StrategyMultiTopic, "sales", "v1"
+		}, code: CodeInvalidValue},
+		{name: "multi-topic singular mismatch", mutate: func(input *ContextInput) {
+			input.Strategy, input.Topic, input.TopicVersion = StrategyMultiTopic, "other", "v1"
+			input.Topics = []TopicRevision{{Topic: "sales", Version: "v1"}, {Topic: "returns", Version: "v2"}}
+		}, code: CodeInvalidValue},
 		{name: "evidence", mutate: func(input *ContextInput) { input.Evidence = []Evidence{{ID: "", Text: "evidence"}} }, code: CodeInvalidValue},
 		{name: "evidence source", mutate: func(input *ContextInput) {
 			input.Evidence = []Evidence{{ID: "evidence", Text: "evidence", Source: "catalog/source"}}

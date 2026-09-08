@@ -33,15 +33,16 @@ import (
 )
 
 type phase17Fixture struct {
-	f       *engineeringFixture
-	e       identity.Envelope
-	pack    semantics.TopicPack
-	related semantics.TopicPack
-	many    semantics.TopicPack
-	other   semantics.TopicPack
-	service *nlqroute.Service
-	model   *gatewayFixture
-	context string
+	f         *engineeringFixture
+	e         identity.Envelope
+	pack      semantics.TopicPack
+	related   semantics.TopicPack
+	unrelated semantics.TopicPack
+	many      semantics.TopicPack
+	other     semantics.TopicPack
+	service   *nlqroute.Service
+	model     *gatewayFixture
+	context   string
 }
 
 // phase17RerankFallbackEngine keeps the published embedding space while using a
@@ -146,12 +147,63 @@ func phase17ManyPack(t *testing.T, base semantics.TopicPack) semantics.TopicPack
 	return out
 }
 
+func phase17RelatedPack(t *testing.T, base semantics.TopicPack) semantics.TopicPack {
+	t.Helper()
+	if len(base.Datasets) != 2 || len(base.Measures) == 0 || len(base.Joins) != 1 {
+		t.Fatal("base topic fixture is incomplete")
+	}
+	datasets := make([]semantics.Dataset, len(base.Datasets))
+	for i, dataset := range base.Datasets {
+		datasets[i] = dataset
+		datasets[i].Columns = append([]semantics.Column(nil), dataset.Columns...)
+	}
+	revenue := base.Measures[0]
+	revenue.Name = "Related revenue"
+	join := semantics.Join{
+		ID: "related-sales-items", Name: "Independently reviewed sales to items",
+		Left: base.Joins[0].Left, Right: base.Joins[0].Right,
+		Type: semantics.JoinInner, Cardinality: semantics.CardinalityOneToOne,
+	}
+	return semantics.TopicPack{
+		SchemaVersion: semantics.SchemaVersion, Topic: "commerce-related", Version: "v1",
+		Name: "Commerce related", Description: "Independently authored same-relationship routing fixture",
+		Datasets: datasets, Measures: []semantics.Measure{revenue}, Joins: []semantics.Join{join},
+	}
+}
+
+func phase17UnrelatedPack(t *testing.T, base semantics.TopicPack) semantics.TopicPack {
+	t.Helper()
+	out := phase17RelatedPack(t, base)
+	out.Topic = "commerce-unrelated"
+	out.Name = "Commerce unrelated"
+	out.Description = "Independent same-source topic with a different relationship"
+	var salesID, itemsID string
+	for _, dataset := range out.Datasets {
+		switch dataset.Name {
+		case "Sales":
+			salesID = dataset.ID
+		case "Items":
+			itemsID = dataset.ID
+		}
+	}
+	if salesID == "" || itemsID == "" {
+		t.Fatal("independent relationship datasets are missing")
+	}
+	out.Joins[0] = semantics.Join{
+		ID: "amount-quantity", Name: "Amount to quantity",
+		Left:  semantics.Reference{Kind: semantics.KindColumn, Dataset: salesID, ID: "amount"},
+		Right: semantics.Reference{Kind: semantics.KindColumn, Dataset: itemsID, ID: "quantity"},
+		Type:  semantics.JoinInner, Cardinality: semantics.CardinalityOneToOne,
+	}
+	return out
+}
+
 func phase17PublishTopic(t *testing.T, draftsService *drafts.Service, topicsService *topics.Service, e identity.Envelope, pack semantics.TopicPack) topics.Published {
 	t.Helper()
 	ctx := context.Background()
 	draft, err := draftsService.Save(ctx, e, drafts.SaveRequest{Pack: pack, Change: "Phase 17 routing fixture"})
 	if err != nil {
-		t.Fatal("save topic", err)
+		t.Fatal("save topic", pack.Topic, err)
 	}
 	review, err := topicsService.Review(ctx, e, pack.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Phase 17 routing fixture"})
 	if err != nil {
@@ -275,11 +327,10 @@ func newPhase17Fixture(t *testing.T) *phase17Fixture {
 		t.Fatal("rules", err)
 	}
 	phase17PublishRules(t, rules, e, published)
-	related := cloneTopic(t, pack)
-	related.Topic = "commerce-related"
-	related.Name = "Commerce related"
-	related.Description = "Synthetic same-source routing fixture"
+	related := phase17RelatedPack(t, pack)
 	phase17PublishTopic(t, draftsService, topicsService, e, related)
+	unrelated := phase17UnrelatedPack(t, pack)
+	phase17PublishTopic(t, draftsService, topicsService, e, unrelated)
 	many := phase17ManyPack(t, pack)
 	phase17PublishTopic(t, draftsService, topicsService, e, many)
 	other := phase17OtherPack(t, f, pack)
@@ -288,7 +339,7 @@ func newPhase17Fixture(t *testing.T) *phase17Fixture {
 	if err != nil {
 		t.Fatal("route", err)
 	}
-	return &phase17Fixture{f: f, e: e, pack: pack, related: related, many: many, other: other, service: route, model: model, context: pack.Datasets[0].Source.Context}
+	return &phase17Fixture{f: f, e: e, pack: pack, related: related, unrelated: unrelated, many: many, other: other, service: route, model: model, context: pack.Datasets[0].Source.Context}
 }
 
 func phase17Paths(f *gatewayFixture) []string {
@@ -536,7 +587,7 @@ func TestPhase17(t *testing.T) {
 			t.Fatal("invalid multi-topic selection reached Bifrost")
 		}
 
-		valid := nlqroute.RouteRequest{Topics: []string{fixture.pack.Topic, fixture.related.Topic}, Context: fixture.context, Locale: nlq.LanguageEnglish, Question: "Compare revenue across confirmed topics.", Kinds: []string{"measure"}, LimitPerKind: 1, Rerank: true, JoinChoices: []nlqroute.JoinChoice{{Topic: fixture.pack.Topic, JoinID: "sales-items"}, {Topic: fixture.related.Topic, JoinID: "sales-items"}}}
+		valid := nlqroute.RouteRequest{Topics: []string{fixture.pack.Topic, fixture.related.Topic}, Context: fixture.context, Locale: nlq.LanguageEnglish, Question: "Compare revenue across confirmed topics.", Kinds: []string{"measure"}, LimitPerKind: 1, Rerank: true, JoinChoices: []nlqroute.JoinChoice{{Topic: fixture.pack.Topic, JoinID: "sales-items"}, {Topic: fixture.related.Topic, JoinID: "related-sales-items"}}}
 		out, err := fixture.service.Route(ctx, fixture.e, valid)
 		if err != nil || out.Context == nil || out.Outcome != nlq.StrategyMultiTopic || out.Context.Strategy != nlq.StrategyMultiTopic || len(out.Topics) != 2 || len(out.TopicVersions) != 2 {
 			t.Fatalf("confirmed same-source join was not routed: out=%#v err=%v", out, err)
@@ -547,6 +598,35 @@ func TestPhase17(t *testing.T) {
 		}
 		if !seenTopics[fixture.pack.Topic] || !seenTopics[fixture.related.Topic] {
 			t.Fatalf("multi-topic evidence lost a topic: %#v", out.Context.Evidence)
+		}
+		if len(out.Context.Topics) != 2 || out.Context.Topics[0].Topic != fixture.pack.Topic || out.Context.Topics[0].Version != fixture.pack.Version || out.Context.Topics[1].Topic != fixture.related.Topic || out.Context.Topics[1].Version != fixture.related.Version {
+			t.Fatalf("model context lost ordered exact topic revisions: %#v", out.Context.Topics)
+		}
+		if !strings.Contains(out.Context.Prompt, "topic[0]:"+fixture.pack.Topic+"\nversion[0]:"+fixture.pack.Version) || !strings.Contains(out.Context.Prompt, "topic[1]:"+fixture.related.Topic+"\nversion[1]:"+fixture.related.Version) {
+			t.Fatalf("model prompt lost exact multi-topic versions: %q", out.Context.Prompt)
+		}
+
+		before = fixture.model.requests.Load()
+		unrelated := valid
+		unrelated.Rerank = false
+		unrelated.Topics = []string{fixture.pack.Topic, fixture.unrelated.Topic}
+		unrelated.JoinChoices = []nlqroute.JoinChoice{{Topic: fixture.pack.Topic, JoinID: "sales-items"}, {Topic: fixture.unrelated.Topic, JoinID: "amount-quantity"}}
+		unrelatedOut, unrelatedErr := fixture.service.Route(ctx, fixture.e, unrelated)
+		if unrelatedErr != nil || unrelatedOut.Outcome != nlq.StrategyClarify || unrelatedOut.Clarification == nil || unrelatedOut.Clarification.Reason != "unconfirmed_relationship" {
+			t.Fatalf("unrelated same-source joins were admitted: out=%#v err=%v", unrelatedOut, unrelatedErr)
+		}
+		if fixture.model.requests.Load() != before {
+			t.Fatal("unrelated same-source joins reached Bifrost")
+		}
+
+		ambiguousMetric := valid
+		ambiguousMetric.Rerank = false
+		ambiguousMetric.MetricIDs = []string{"revenue"}
+		if _, err = fixture.service.Route(ctx, fixture.e, ambiguousMetric); !errors.Is(err, nlqroute.ErrInvalid) {
+			t.Fatalf("duplicate cross-topic metric ID did not return typed ambiguity: %v", err)
+		}
+		if fixture.model.requests.Load() != before {
+			t.Fatal("ambiguous cross-topic metric reached Bifrost")
 		}
 
 		before = fixture.model.requests.Load()

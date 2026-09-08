@@ -139,6 +139,7 @@ type ContextView struct {
 	Strategy     nlq.Strategy         `json:"strategy"`
 	Topic        string               `json:"topic,omitempty"`
 	TopicVersion string               `json:"topic_version,omitempty"`
+	Topics       []nlq.TopicRevision  `json:"topics,omitempty"`
 	Question     string               `json:"question"`
 	Prompt       string               `json:"prompt"`
 	Evidence     []nlq.Evidence       `json:"evidence"`
@@ -402,6 +403,7 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		Strategy:     result.Outcome,
 		Topic:        admitted[0].id,
 		TopicVersion: admitted[0].publication.State.Version,
+		Topics:       topicRevisions(admitted),
 		Question:     in.Question,
 		Evidence:     makeEvidence(hits),
 		Constraints:  mergeConstraints(admitted),
@@ -740,6 +742,7 @@ func confirmJoins(admitted []admittedTopic, choices []JoinChoice) *Clarification
 		return &Clarification{Reason: "ambiguous_join", Prompt: "Choose one join for each topic."}
 	}
 	var source, contextID string
+	var relationship joinRelationship
 	for _, item := range admitted {
 		join := selected[item.id]
 		left, lok := datasetForReference(item.publication.Definition, join.Left)
@@ -752,8 +755,30 @@ func confirmJoins(admitted []admittedTopic, choices []JoinChoice) *Clarification
 		} else if source != left.Source.Source || contextID != left.Source.Context {
 			return &Clarification{Reason: "unconfirmed_source", Prompt: "The selected relationships must share one source and execution context."}
 		}
+		candidate := normalizedRelationship(join)
+		if relationship == (joinRelationship{}) {
+			relationship = candidate
+		} else if relationship != candidate {
+			return &Clarification{Reason: "unconfirmed_relationship", Prompt: "Each topic must independently confirm the same relationship before they can be combined."}
+		}
 	}
 	return nil
+}
+
+type joinRelationship struct {
+	left, right semantics.Reference
+	typeName    semantics.JoinType
+	cardinality semantics.Cardinality
+}
+
+func normalizedRelationship(join semantics.Join) joinRelationship {
+	left, right := join.Left, join.Right
+	// Inner equality is symmetric. A left join is directional even at one-to-one
+	// cardinality because it retains unmatched rows from its left endpoint.
+	if join.Type == semantics.JoinInner && referenceID(right) < referenceID(left) {
+		left, right = right, left
+	}
+	return joinRelationship{left: left, right: right, typeName: join.Type, cardinality: join.Cardinality}
 }
 
 func sameJoinSource(def topics.Definition, join semantics.Join) bool {
@@ -954,20 +979,18 @@ func resolveMetrics(admitted []admittedTopic, ids []string) ([]nlq.PinnedMetric,
 	out := make([]nlq.PinnedMetric, 0, len(ids))
 	seen := map[string]bool{}
 	for _, id := range ids {
-		found := false
+		var matches []nlq.PinnedMetric
 		for _, item := range admitted {
 			if metric, ok := findMetric(item.publication.Definition, id); ok {
-				found = true
-				key := item.id + ":" + id
-				if !seen[key] {
-					seen[key] = true
-					out = append(out, nlq.PinnedMetric{ID: key, Text: metric})
-				}
-				break
+				matches = append(matches, nlq.PinnedMetric{ID: item.id + ":" + id, Text: metric})
 			}
 		}
-		if !found {
+		if len(matches) != 1 {
 			return nil, ErrInvalid
+		}
+		if !seen[matches[0].ID] {
+			seen[matches[0].ID] = true
+			out = append(out, matches[0])
 		}
 	}
 	return out, nil
@@ -1000,7 +1023,7 @@ func stageFromReceipt(name string, started time.Time, receipt gateway.Receipt) S
 func contextView(input nlq.AssembledContext) *ContextView {
 	out := &ContextView{
 		Tier: input.Tier, Budget: input.Budget, Tokens: input.Tokens, Locale: input.Locale,
-		Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion,
+		Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: append([]nlq.TopicRevision(nil), input.Topics...),
 		Question: input.Question, Prompt: input.Prompt, Evidence: append([]nlq.Evidence(nil), input.Evidence...),
 		Metrics: append([]nlq.PinnedMetric(nil), input.Metrics...), Advisory: append([]nlq.OptionalItem(nil), input.Advisory...),
 		Examples: append([]nlq.OptionalItem(nil), input.Examples...),
@@ -1010,6 +1033,14 @@ func contextView(input nlq.AssembledContext) *ContextView {
 		constraints.Required = append([]nlq.MandatoryConstraint(nil), input.Constraints.Required...)
 		constraints.Excluded = append([]nlq.MandatoryConstraint(nil), input.Constraints.Excluded...)
 		out.Constraints = constraints
+	}
+	return out
+}
+
+func topicRevisions(admitted []admittedTopic) []nlq.TopicRevision {
+	out := make([]nlq.TopicRevision, len(admitted))
+	for i, item := range admitted {
+		out[i] = nlq.TopicRevision{Topic: item.id, Version: item.publication.State.Version}
 	}
 	return out
 }

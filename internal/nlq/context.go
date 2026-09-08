@@ -233,12 +233,20 @@ type OptionalItem struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
+// TopicRevision pins one routed topic to the exact published version used to
+// assemble model context. The slice order is the route's deterministic order.
+type TopicRevision struct {
+	Topic   string `json:"topic"`
+	Version string `json:"version"`
+}
+
 // ContextInput is detached, validated input for context assembly.
 type ContextInput struct {
 	Locale       Language         `json:"locale"`
 	Strategy     Strategy         `json:"strategy"`
 	Topic        string           `json:"topic,omitempty"`
 	TopicVersion string           `json:"topic_version,omitempty"`
+	Topics       []TopicRevision  `json:"topics,omitempty"`
 	Question     string           `json:"question"`
 	Evidence     []Evidence       `json:"evidence"`
 	Constraints  *ConstraintState `json:"constraints,omitempty"`
@@ -288,6 +296,7 @@ type AssembledContext struct {
 	Strategy     Strategy         `json:"strategy"`
 	Topic        string           `json:"topic,omitempty"`
 	TopicVersion string           `json:"topic_version,omitempty"`
+	Topics       []TopicRevision  `json:"topics,omitempty"`
 	Question     string           `json:"question"`
 	Prompt       string           `json:"prompt"`
 	Evidence     []Evidence       `json:"evidence"`
@@ -392,7 +401,7 @@ func (a *ContextAssembler) Assemble(ctx context.Context, input ContextInput, tie
 
 	assembled := AssembledContext{
 		Tier: tier, Budget: budget, Locale: copyInput.Locale, Strategy: copyInput.Strategy,
-		Topic: copyInput.Topic, TopicVersion: copyInput.TopicVersion, Question: copyInput.Question,
+		Topic: copyInput.Topic, TopicVersion: copyInput.TopicVersion, Topics: cloneTopicRevisions(copyInput.Topics), Question: copyInput.Question,
 		Constraints: cloneConstraintState(copyInput.Constraints), Metrics: cloneMetrics(copyInput.Metrics),
 	}
 	if len(examples) > MaxExamples {
@@ -569,6 +578,15 @@ func renderBase(input ContextInput, constraints []MandatoryConstraint) string {
 }
 
 func renderHeader(input ContextInput) string {
+	if len(input.Topics) > 1 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "strategy:%s\nlocale:%s\n", input.Strategy, input.Locale)
+		for i, topic := range input.Topics {
+			fmt.Fprintf(&b, "topic[%d]:%s\nversion[%d]:%s\n", i, topic.Topic, i, topic.Version)
+		}
+		fmt.Fprintf(&b, "question:%s\n", input.Question)
+		return b.String()
+	}
 	return fmt.Sprintf("strategy:%s\nlocale:%s\ntopic:%s\nversion:%s\nquestion:%s\n", input.Strategy, input.Locale, input.Topic, input.TopicVersion, input.Question)
 }
 
@@ -609,7 +627,7 @@ func renderItem(lane Lane, id, text string) string {
 }
 
 func outputInput(output AssembledContext) ContextInput {
-	return ContextInput{Locale: output.Locale, Strategy: output.Strategy, Topic: output.Topic, TopicVersion: output.TopicVersion, Question: output.Question, Evidence: cloneEvidence(output.Evidence), Constraints: cloneConstraintState(output.Constraints), Metrics: cloneMetrics(output.Metrics), Advisory: cloneOptional(output.Advisory), Examples: cloneOptional(output.Examples)}
+	return ContextInput{Locale: output.Locale, Strategy: output.Strategy, Topic: output.Topic, TopicVersion: output.TopicVersion, Topics: cloneTopicRevisions(output.Topics), Question: output.Question, Evidence: cloneEvidence(output.Evidence), Constraints: cloneConstraintState(output.Constraints), Metrics: cloneMetrics(output.Metrics), Advisory: cloneOptional(output.Advisory), Examples: cloneOptional(output.Examples)}
 }
 
 func renderAssembledPrompt(input ContextInput) string {
@@ -672,13 +690,30 @@ func cloneAndValidateInput(input ContextInput) (ContextInput, error) {
 	if input.Topic != "" && !identity.Identifier(input.Topic) || input.TopicVersion != "" && !identity.Identifier(input.TopicVersion) {
 		return ContextInput{}, &ValidationError{Code: CodeInvalidValue, Path: "topic"}
 	}
+	if len(input.Topics) > 8 {
+		return ContextInput{}, &ValidationError{Code: CodeLimit, Path: "topics"}
+	}
+	seenTopics := map[string]bool{}
+	for _, topic := range input.Topics {
+		if !identity.Identifier(topic.Topic) || !identity.Identifier(topic.Version) || seenTopics[topic.Topic] {
+			return ContextInput{}, &ValidationError{Code: CodeInvalidValue, Path: "topics"}
+		}
+		seenTopics[topic.Topic] = true
+	}
+	if input.Strategy == StrategyMultiTopic {
+		if len(input.Topics) < 2 || input.Topic != input.Topics[0].Topic || input.TopicVersion != input.Topics[0].Version {
+			return ContextInput{}, &ValidationError{Code: CodeInvalidValue, Path: "topics"}
+		}
+	} else if len(input.Topics) > 1 || len(input.Topics) == 1 && (input.Topic != input.Topics[0].Topic || input.TopicVersion != input.Topics[0].Version) {
+		return ContextInput{}, &ValidationError{Code: CodeInvalidValue, Path: "topics"}
+	}
 	if len(input.Evidence) > 256 || len(input.Metrics) > 128 || len(input.Advisory) > 256 || len(input.Examples) > 256 {
 		return ContextInput{}, &ValidationError{Code: CodeLimit, Path: "lanes"}
 	}
 	if input.Constraints != nil && len(input.Constraints.Required)+len(input.Constraints.Excluded) > MaxConstraints {
 		return ContextInput{}, &ValidationError{Code: CodeLimit, Path: "constraints"}
 	}
-	out := ContextInput{Locale: input.Locale, Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Question: input.Question}
+	out := ContextInput{Locale: input.Locale, Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: cloneTopicRevisions(input.Topics), Question: input.Question}
 	seen := map[string]bool{}
 	var err error
 	out.Evidence, err = cloneEvidenceChecked(input.Evidence, seen, "evidence")
@@ -811,6 +846,10 @@ func cloneEvidence(items []Evidence) []Evidence {
 	return out
 }
 func cloneMetrics(items []PinnedMetric) []PinnedMetric { return append([]PinnedMetric(nil), items...) }
+
+func cloneTopicRevisions(items []TopicRevision) []TopicRevision {
+	return append([]TopicRevision(nil), items...)
+}
 func cloneOptional(items []OptionalItem) []OptionalItem {
 	out := append([]OptionalItem(nil), items...)
 	for i := range out {

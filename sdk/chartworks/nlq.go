@@ -3,6 +3,7 @@ package chartworks
 import (
 	"context"
 
+	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 )
 
@@ -27,6 +28,9 @@ type NLQRouteResult = nlqroute.RouteResult
 
 // NLQContextView is the detached model-context projection in a route result.
 type NLQContextView = nlqroute.ContextView
+
+// NLQTopicRevision is one exact topic/version binding in ordered model context.
+type NLQTopicRevision = nlq.TopicRevision
 
 // NLQRouteStage records one bounded routing stage and its remote attribution.
 type NLQRouteStage = nlqroute.Stage

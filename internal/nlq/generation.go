@@ -177,6 +177,7 @@ func cloneInstructions(items []Instruction, path string) ([]Instruction, error) 
 
 func cloneAssembled(input AssembledContext) AssembledContext {
 	out := input
+	out.Topics = cloneTopicRevisions(input.Topics)
 	out.Evidence = cloneEvidence(input.Evidence)
 	out.Constraints = cloneConstraintState(input.Constraints)
 	out.Metrics = cloneMetrics(input.Metrics)
