@@ -2,13 +2,8 @@ package nlqbyo
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"reflect"
-	"sort"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -17,8 +12,6 @@ import (
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
-	"github.com/hurtener/chartworks/internal/nlqroute"
-	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -174,6 +167,9 @@ func (s *Service) Lookup(ctx context.Context, e identity.Envelope, in Reference)
 	if err != nil {
 		return View{}, err
 	}
+	if err = ctx.Err(); err != nil {
+		return View{}, err
+	}
 	if !e.Valid() {
 		return View{}, access.ErrUnauthenticated
 	}
@@ -242,6 +238,11 @@ func (s *Service) Submit(ctx context.Context, e identity.Envelope, in SubmitRequ
 		// newer binding and silently replacing the captured data partition.
 		_, _, runErr = plan.SQL(e, record.Binding)
 	}
+	if runErr == nil {
+		// Native planning can outlive an intervening publication or retirement.
+		// Recheck exact pins before dispatch; never replace them with current ones.
+		_, _, runErr = s.load(ctx, e, in.Reference, "query.submit")
+	}
 	if runErr != nil {
 		step.Status, step.Code = "rejected", errorCode(runErr)
 	} else {
@@ -283,277 +284,4 @@ func (s *Service) Submit(ctx context.Context, e identity.Envelope, in SubmitRequ
 		return SubmitResult{}, err
 	}
 	return out, nil
-}
-
-func admit(ctx context.Context, e identity.Envelope, action string) error {
-	if ctx == nil {
-		return ErrInvalid
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if !e.Valid() {
-		return access.ErrUnauthenticated
-	}
-	if !e.Has(action) {
-		return access.ErrForbidden
-	}
-	return nil
-}
-
-func (s *Service) load(ctx context.Context, e identity.Envelope, in Reference, action string) (Record, store.Scope, error) {
-	var zero Record
-	var scope store.Scope
-	if err := admit(ctx, e, action); err != nil {
-		return zero, scope, err
-	}
-	if in.SchemaVersion != Version {
-		return zero, scope, ErrInvalid
-	}
-	if !ReferenceValid(in) {
-		return zero, scope, ErrReplan
-	}
-	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
-	defer cancel()
-	scope, err := store.NewScope(e.Tenant(), e.User())
-	if err != nil {
-		return zero, scope, err
-	}
-	record, err := s.repo.ReadBYOBundle(ctx, scope, in, e.Session(), s.now())
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			err = ErrReplan
-		}
-		return zero, scope, err
-	}
-	if record.DataReach != dataReach(e) || !RecordValid(record, scope, s.limits) || !s.now().Before(record.Bundle.ExpiresAt) || record.Session != e.Session() || record.Bundle.Reference != in {
-		return zero, scope, ErrReplan
-	}
-	// Complete dependency reach is rechecked before any current-source lookup.
-	resources := []access.Resource{{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: record.Bundle.Source}, {Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: in.Context}}
-	ids := make([]string, len(record.Bundle.Semantics))
-	for i, pin := range record.Bundle.Semantics {
-		ids[i] = pin.Topic
-		resources = append(resources, access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: pin.Topic})
-	}
-	for _, r := range record.Bundle.Requirements.Relations {
-		resources = append(resources, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: r.ID})
-	}
-	if err = access.Require(e, action, resources...); err != nil {
-		return zero, scope, ErrReplan
-	}
-	if action == "query.submit" {
-		// Context-only authority must not even reach native discovery/planning.
-		if err = exec.Require(e, record.Binding, datasetIDs(record.Bundle.Requirements.Relations)); err != nil {
-			return zero, scope, err
-		}
-	}
-	pins, _, err := s.current(ctx, e, ids)
-	if err != nil {
-		return zero, scope, replanError(err)
-	}
-	if exec.Hash(pins) != exec.Hash(record.Bundle.Semantics) {
-		return zero, scope, ErrReplan
-	}
-	binding, err := s.sources.Binding(ctx, e, record.Bundle.Source, in.Context)
-	if err != nil {
-		return zero, scope, replanError(err)
-	}
-	if exec.Hash(binding) != exec.Hash(record.Binding) {
-		return zero, scope, ErrReplan
-	}
-	r := record.Bundle.Requirements
-	if r.MaxSQLBytes > s.read.MaxSQLBytes || r.MaxParameters > s.read.MaxParameters || r.Rows > s.read.RowsCeiling || r.Bytes > s.read.BytesCeiling || r.TimeoutMillis > min(time.Duration(s.limits.StepTimeout), time.Duration(s.read.Timeout)).Milliseconds() {
-		return zero, scope, ErrReplan
-	}
-	return record, scope, nil
-}
-
-func (s *Service) current(ctx context.Context, e identity.Envelope, ids []string) ([]SemanticPin, []topics.Definition, error) {
-	if len(ids) == 0 || len(ids) > 4 {
-		return nil, nil, ErrReplan
-	}
-	pins := make([]SemanticPin, 0, len(ids))
-	definitions := make([]topics.Definition, 0, len(ids))
-	for _, id := range ids {
-		contract, err := s.topics.Contract(ctx, e, id)
-		if err != nil {
-			return nil, nil, err
-		}
-		p := contract.Publication
-		pin := SemanticPin{Topic: id, Version: p.State.Version, Digest: p.Digest}
-		if !p.State.Active || p.State.Archived || p.Definition.Topic != id || p.Definition.Version != pin.Version || !topics.DigestValid(pin.Digest) {
-			return nil, nil, ErrReplan
-		}
-		rules, err := s.rules.Read(ctx, e, id, "")
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			return nil, nil, err
-		}
-		if err == nil {
-			if !rules.State.Active || rules.Definition.Topic != id || rules.Definition.TopicVersion != pin.Version || rules.Definition.PackDigest != pin.Digest {
-				return nil, nil, ErrReplan
-			}
-			pin.RuleVersion, pin.RuleDigest = rules.State.Version, rules.Digest
-		}
-		pins = append(pins, pin)
-		definitions = append(definitions, p.Definition)
-	}
-	return pins, definitions, nil
-}
-
-func semanticRelations(binding exec.Binding, definitions []topics.Definition) ([]exec.Relation, error) {
-	if !binding.Valid() {
-		return nil, ErrReplan
-	}
-	allowed := map[string]map[string]bool{}
-	for _, definition := range definitions {
-		for _, dataset := range definition.Datasets {
-			if dataset.Source.Source != binding.Source || dataset.Source.Context != binding.Context || dataset.Source.SourceRevision != binding.Revision {
-				return nil, ErrReplan
-			}
-			if allowed[dataset.ID] == nil {
-				allowed[dataset.ID] = map[string]bool{}
-			}
-			for _, column := range dataset.Columns {
-				allowed[dataset.ID][column.SourceName] = true
-			}
-		}
-	}
-	out := make([]exec.Relation, 0, len(allowed))
-	for _, relation := range binding.Relations {
-		columns, ok := allowed[relation.ID]
-		if !ok {
-			continue
-		}
-		r := relation
-		r.Columns = nil
-		for _, c := range relation.Columns {
-			if columns[c.Name] && c.Safe {
-				r.Columns = append(r.Columns, c)
-			}
-		}
-		if len(r.Columns) != len(columns) || len(r.Columns) == 0 {
-			return nil, ErrReplan
-		}
-		sort.Slice(r.Columns, func(i, j int) bool { return r.Columns[i].Name < r.Columns[j].Name })
-		out = append(out, r)
-	}
-	if len(out) == 0 || len(out) != len(allowed) {
-		return nil, ErrReplan
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
-}
-
-func relationScope(relations []exec.Relation) []exec.RelationScope {
-	out := make([]exec.RelationScope, len(relations))
-	for i, r := range relations {
-		out[i].Dataset = r.ID
-		for _, c := range r.Columns {
-			out[i].Columns = append(out[i].Columns, c.Name)
-		}
-	}
-	return out
-}
-
-func datasetIDs(relations []exec.Relation) []string {
-	out := make([]string, len(relations))
-	for i, r := range relations {
-		out[i] = r.ID
-	}
-	return out
-}
-
-func opaqueID() (string, error) {
-	var value [32]byte
-	if _, err := rand.Read(value[:]); err != nil {
-		return "", ErrUnavailable
-	}
-	return hex.EncodeToString(value[:]), nil
-}
-
-// ReferenceValid checks only syntax; no caller may use it as authorization.
-func ReferenceValid(in Reference) bool {
-	b, err := hex.DecodeString(in.ID)
-	return in.SchemaVersion == Version && identity.Identifier(in.Context) && err == nil && len(b) == 32 && hex.EncodeToString(b) == in.ID
-}
-
-// RecordValid defends the storage seam without manufacturing caller authority.
-func RecordValid(r Record, scope store.Scope, limits config.QueryBundles) bool {
-	b := r.Bundle
-	if !scope.Valid() || !ReferenceValid(b.Reference) || !identity.Identifier(r.Session) || !r.Binding.Valid() || r.Binding.Tenant != scope.Tenant() || r.Binding.Source != b.Source || r.Binding.Context != b.Reference.Context || r.Digest != exec.Hash(b) || !topics.DigestValid(r.DataReach) || b.CreatedAt.IsZero() || !b.ExpiresAt.After(b.CreatedAt) || b.ExpiresAt.Sub(b.CreatedAt) > time.Hour || r.RetainUntil.Before(b.ExpiresAt) || r.RetainUntil.Sub(b.CreatedAt) > 7*24*time.Hour || b.MaxSteps < 1 || b.MaxSteps > limits.MaxSteps || len(b.Semantics) < 1 || len(b.Semantics) > 4 {
-		return false
-	}
-	seen := map[string]bool{}
-	for _, pin := range b.Semantics {
-		if seen[pin.Topic] || !identity.Identifier(pin.Topic) || !identity.Identifier(pin.Version) || !topics.DigestValid(pin.Digest) || (pin.RuleVersion == "") != (pin.RuleDigest == "") || pin.RuleVersion != "" && (!identity.Identifier(pin.RuleVersion) || !topics.DigestValid(pin.RuleDigest)) {
-			return false
-		}
-		seen[pin.Topic] = true
-	}
-	raw, err := json.Marshal(r)
-	return err == nil && len(raw) <= limits.MaxBytes
-}
-
-// dataReach pins data-reading reach, not operation permissions. A separately
-// granted query.submit/sources.query action and cw.source.query reach may enable
-// submission, but changing topic/dataset/partition reach requires new context.
-func dataReach(e identity.Envelope) string {
-	var values []string
-	for _, r := range e.Reach() {
-		if r.Kind == "topic" && r.Permission == "read" || r.Kind == "dataset" && r.Permission == "query" || r.Kind == "source" && r.Permission == "read" || r.Kind == "execution_context" && r.Permission == "use" {
-			values = append(values, r.Kind+"."+r.Permission+":"+r.ID)
-		}
-	}
-	sort.Strings(values)
-	return exec.Hash(values)
-}
-
-func replanError(err error) error {
-	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrConflict) || errors.Is(err, exec.ErrBinding) || errors.Is(err, access.ErrForbidden) || errors.Is(err, access.ErrNotFound) {
-		return ErrReplan
-	}
-	return err
-}
-
-func parameterStyle(dialect string) string {
-	switch dialect {
-	case "postgres":
-		return "$1, $2, ..."
-	case "sqlserver":
-		return "@p1, @p2, ..."
-	default:
-		return "? (positional)"
-	}
-}
-
-func errorCode(err error) string {
-	switch {
-	case errors.Is(err, exec.ErrUnsafe):
-		return "sql_unsafe"
-	case errors.Is(err, exec.ErrUnsupported), errors.Is(err, exec.ErrType):
-		return "unsupported"
-	case errors.Is(err, exec.ErrLimit):
-		return "limit_exceeded"
-	case errors.Is(err, exec.ErrBinding), errors.Is(err, ErrReplan):
-		return "replan_required"
-	case errors.Is(err, access.ErrForbidden), errors.Is(err, access.ErrUnauthenticated):
-		return "forbidden"
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded), errors.Is(err, exec.ErrCancelled), errors.Is(err, exec.ErrTimeout):
-		return "cancelled_or_timed_out"
-	default:
-		return "execution_outcome_unknown"
-	}
-}
-
-// StepValid restricts receipt payloads to the fixed content-free durable contract.
-func StepValid(s Step) bool {
-	if !identity.Identifier(s.Operation) || s.Number < 0 || s.Number > 32 || !topics.DigestValid(s.InputDigest) || !topics.DigestValid(s.BundleDigest) || len(s.Semantics) < 1 || len(s.Semantics) > 4 || s.ModelCalls != 0 || s.CreatedAt.IsZero() || !s.Deadline.After(s.CreatedAt) || s.Deadline.Sub(s.CreatedAt) > time.Minute {
-		return false
-	}
-	if !strings.Contains("|accepted|rejected|succeeded|empty|truncated|failed|uncertain|cancelled|timed_out|interrupted|", "|"+s.Status+"|") || len(s.Code) == 0 || len(s.Code) > 64 {
-		return false
-	}
-	raw, err := json.Marshal(s)
-	return err == nil && len(raw) <= 32<<10
 }
