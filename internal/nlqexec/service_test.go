@@ -40,6 +40,16 @@ type sequenceGateway struct {
 	calls     int
 }
 
+type preflightRouter struct {
+	result  nlqroute.RouteResult
+	request nlqroute.RouteRequest
+}
+
+func (r *preflightRouter) Route(_ context.Context, _ identity.Envelope, request nlqroute.RouteRequest) (nlqroute.RouteResult, error) {
+	r.request = request
+	return r.result, nil
+}
+
 func (g *sequenceGateway) Generate(context.Context, gateway.Call, *gateway.Budget, string, string, string, *gateway.Schema) (gateway.Generated, error) {
 	g.calls++
 	if len(g.responses) == 0 {
@@ -593,6 +603,51 @@ func TestServicePublicBoundaryValidation(t *testing.T) {
 	if _, err = service.Examples(context.Background(), withoutActions, "topic", 1); !errors.Is(err, access.ErrForbidden) {
 		t.Fatal("example read without an action was accepted")
 	}
+}
+
+func TestPreflightDetachesRouteExampleConfidence(t *testing.T) {
+	confidence := 0.73
+	request := QuestionRequest{
+		Topic: "topic", Context: "context", Locale: nlq.LanguageEnglish, Question: "show revenue",
+		Examples: []nlq.OptionalItem{{ID: "example", Text: "approved comparison", Priority: 1, Confidence: &confidence}},
+	}
+	router := &preflightRouter{result: nlqroute.RouteResult{
+		Outcome:       nlq.StrategyClarify,
+		Topic:         "topic",
+		Topics:        []string{"topic"},
+		TopicVersions: []string{"v1"},
+		Clarification: &nlqroute.Clarification{Reason: "choose_metric"},
+	}}
+	repo := newUnitRepository()
+	service := &Service{router: router, repo: repo}
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"query.preflight", "cw.topic.read:topic"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Preflight(context.Background(), e, PreflightRequest{QuestionRequest: request})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confidence = 0.11
+	check := func(label string, item nlq.OptionalItem) {
+		t.Helper()
+		if item.Confidence == nil || *item.Confidence != 0.73 {
+			t.Fatalf("%s route example confidence changed through caller mutation: %#v", label, item.Confidence)
+		}
+	}
+	if len(router.request.Examples) != 1 {
+		t.Fatalf("router received unexpected examples: %#v", router.request.Examples)
+	}
+	check("router", router.request.Examples[0])
+	if len(result.Route.Request.Examples) != 1 {
+		t.Fatalf("preflight returned unexpected examples: %#v", result.Route.Request.Examples)
+	}
+	check("returned", result.Route.Request.Examples[0])
+	stored, ok := repo.queries[result.QueryID]
+	if !ok || len(stored.Route.Request.Examples) != 1 {
+		t.Fatalf("preflight did not persist route examples: %#v", stored.Route.Request.Examples)
+	}
+	check("persisted", stored.Route.Request.Examples[0])
 }
 
 func TestServiceDurableFailureBoundaries(t *testing.T) {

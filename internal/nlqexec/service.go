@@ -967,7 +967,19 @@ func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequ
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {
-	return nlqroute.RouteRequest{Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: append([]nlq.OptionalItem(nil), r.Examples...), Rerank: r.Rerank}
+	return nlqroute.RouteRequest{Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank}
+}
+
+func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
+	out := append([]nlq.OptionalItem(nil), items...)
+	for i := range out {
+		if out[i].Confidence == nil {
+			continue
+		}
+		confidence := *out[i].Confidence
+		out[i].Confidence = &confidence
+	}
+	return out
 }
 
 func validateQuestion(in QuestionRequest) error {
