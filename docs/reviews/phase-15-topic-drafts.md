@@ -122,8 +122,10 @@ references to the old dataset. Author fix
 `8291e84cf5bcb04c16ecbbae6cbf3d8e561d9d43`, integrated as
 `39bc68c753ff65e1d382102dcd6bcfdd0ea8387b`, rewrites that dataset coordinate while
 preserving the stable unresolved ID, column and reason. Its pure regression, real
-HTTP/SDK AC03 path and full six-child Phase 15 run passed; the required narrow
-independent review is pending.
+HTTP/SDK AC03 path and full six-child Phase 15 run passed. Its required narrow
+independent follow-up review cleared the fix; the later unresolved-rebind correction
+`6884f23126dbf01e45c2d799e8f10dfee03c2955` is integrated and root's semantic checks
+passed.
 
 The first exact `39bc68c` full-chain run then exposed a separate migration interaction:
 migration 017's replacement audit constraint omitted the `topic.health_rechecked`
@@ -136,9 +138,8 @@ integrated as `dd6f79e`. Root verified its SHA-256-checked committed-source arch
 strict Phase 02 and Phase 15 each passed all six children with zero skips, including
 AC04 health and enhanced rebind, and native race `TestSafeErrors` passed.
 
-Phase 15 therefore remains `in_progress`. Remaining delivery gates are the independent
-narrow review of fixes `8291e84` and `d103ba9`, exact final integrated-head coverage,
-full lint/preflight, hosted CI and release integration. The owner-approved 84.5%
+Phase 15 therefore remains `in_progress`. Remaining delivery gates are exact final
+integrated-head coverage, full lint/preflight, hosted CI and release integration. The owner-approved 84.5%
 exception remains limited to
 `internal/store/postgres`. Recorded model fixtures are not a live semantic-quality
 measurement, and no such live result is claimed.

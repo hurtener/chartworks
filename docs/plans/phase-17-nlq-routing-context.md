@@ -1,6 +1,6 @@
 # Phase 17 — nlq-routing-context
 
-Status: in_progress. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16.
+Status: in_progress. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 The current slice combines the deterministic context seam with a first routing
 consumer: current topic/source contract admission, reviewed rule and slot

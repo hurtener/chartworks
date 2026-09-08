@@ -124,7 +124,7 @@ dependencies and real PostgreSQL/Bruin boundaries:
 This closes review and focused verification of the bounded source-family registry
 continuation. It is not full phase 21/15/16 acceptance, cumulative preflight,
 full-package sourceapi coverage, cloud CI, browser or live-provider evidence.
-The branch is held here pending integration of the earlier phases; no additional
+This bounded continuation is now integrated with the earlier phases; no additional
 adapter or lifecycle implementation is included in this closure.
 
 ## HTTP prerequisite continuation
@@ -181,3 +181,12 @@ The prior bounded semantic foundation was rebased from `aca185a` onto exact PR10
 source `62f0362d458e46e697b638ff916c47759020f55b`, producing `fd9b519` before this
 slice. Its `internal/semantics` bytes are unchanged; the original reviewed history
 is preserved at local branch `codex/phase-15-16-foundation-backup`.
+
+## Current integrated disposition
+
+The narrow Phase 21 fix at `2395f8cd15a2bf6f23c78ee512c81810c8a1226d` is clear in
+follow-up review. Root's strict committed-source verification at
+`95e3be00df6efa36af076532aa455e6b978a4c3f` passed `TestPhase21/AC01` through
+`AC06` with zero skips, including the composed OpenAPI registry and actual HTTP/SDK
+boundaries. The prerequisite remains `in_progress` while later domain consumers,
+cumulative coverage, hosted CI and release gates continue.

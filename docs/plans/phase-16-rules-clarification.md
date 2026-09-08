@@ -1,6 +1,6 @@
 # Phase 16 — rules-clarification
 
-Status: in_progress. Owner: internal/semantics, internal/nlq. Hard dependencies: 05, 15.
+Status: in_progress. Owner: internal/semantics, internal/nlq. Hard dependencies: 05, 15. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 ## Authority and design
 

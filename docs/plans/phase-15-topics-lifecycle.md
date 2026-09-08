@@ -1,6 +1,6 @@
 # Phase 15 — topics-lifecycle
 
-Status: in_progress. Owner: internal/semantics. Hard dependencies: 04, 05, 07, 12, 21.
+Status: in_progress. Owner: internal/semantics. Hard dependencies: 04, 05, 07, 12, 21. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 ## Authority and design
 
@@ -127,8 +127,10 @@ passed all six children; the root cumulative race run also passed all packages a
 acceptance in 173.985 seconds. The author fix `8291e84cf5bcb04c16ecbbae6cbf3d8e561d9d43`
 then added the unresolved-rebind regression and passed the full six-child phase run in
 14.491 seconds before integration as `39bc68c753ff65e1d382102dcd6bcfdd0ea8387b`.
-One independent review was clear at `e90ac24`; the second found that rebind defect, and
-its required narrow review of `8291e84` is pending. Exact testing at `39bc68c` also
+One independent review was clear at `e90ac24`; the second found that rebind defect,
+and its required narrow follow-up review cleared the fix. The later unresolved-rebind
+correction `6884f23126dbf01e45c2d799e8f10dfee03c2955` is integrated and root's
+semantic checks passed. Exact testing at `39bc68c` also
 found that migration 017 had replaced the audit-action constraint without preserving
 the migration 016 `topic.health_rechecked` action. Forward migration 019 in
 `d103ba95af8a4f951b0a4d2589292ec269905a67` restores the complete closed union; the
@@ -136,7 +138,7 @@ author's strict Phase 02 and Phase 15 runs passed all six children with zero ski
 the repair integrated as `dd6f79e`. Root then verified the committed-source archive
 (SHA-256 `6801a28f69d6179e7c3e3bee7c32e7949c194f1fdafba0dac110cf255d5d9aba`):
 strict Phase 02 and Phase 15 each passed all six children with zero skips, and the native
-race `TestSafeErrors` passed. The independent narrow fix review, final exact
-integrated-head coverage, full lint/preflight, hosted CI and release integration remain
+race `TestSafeErrors` passed. The final exact integrated-head coverage, full lint/preflight,
+hosted CI and release integration remain
 gates, so the phase stays `in_progress`. The approved 84.5% coverage exception applies only to
 `internal/store/postgres`; no other phase 15 package inherits it.

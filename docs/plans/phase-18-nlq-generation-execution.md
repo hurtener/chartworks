@@ -1,6 +1,6 @@
 # Phase 18 — nlq-generation-execution
 
-Status: in_progress. Owner: internal/nlq. Hard dependencies: 09, 10, 17.
+Status: in_progress. Owner: internal/nlq. Hard dependencies: 09, 10, 17. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 The integrated core now supplies a durable first consumer for
 `edit_base > hints > examples > default`: it admits the sealed phase-17
@@ -13,9 +13,11 @@ topic/version and rule pins and replays through the retained topic reader rather
 than silently using the current publication. The current core evidence is in
 [phase 18 NLQ runtime evidence](../reviews/phase-18-nlq-runtime.md).
 
-The phase remains `in_progress`: the public HTTP/SDK operation surface, final
-dual review, cumulative coverage, and release gates still belong to the
-integration head. This plan does not claim live provider quality.
+The phase remains `in_progress`: the public HTTP/SDK operation surface is now
+integrated and its strict six-child check passed, and the real invalidation consumer
+has its author and root full-suite evidence. The final review findings, remaining
+core fixes, cumulative coverage and release gates still belong to the integration
+head. This plan does not claim live provider quality.
 
 ## Authority and design
 

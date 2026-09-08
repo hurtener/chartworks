@@ -1,6 +1,6 @@
 # Phase 21 — http-api
 
-Status: in_progress. Owner: internal/api. Hard dependencies: 01, 02, 03, 04.
+Status: in_progress. Owner: internal/api. Hard dependencies: 01, 02, 03, 04. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 ## Authority and design
 

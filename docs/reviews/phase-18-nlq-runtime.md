@@ -2,9 +2,9 @@
 
 Status: core delivery evidence based on integration `47345c47aedc9a5de13b35a95106de4afbfdebd7`,
 2026-09-08. Phase 18 remains `in_progress`. This record covers the durable
-internal query consumer and its Phase 16 invalidation seam; it does not claim
-the final public HTTP/SDK integration, dual review, live provider quality, or
-release readiness.
+internal query consumer and its Phase 16 invalidation seam. The later public
+HTTP/SDK surface is recorded below; neither record claims final dual review, live
+provider quality, or release readiness.
 
 ## Implemented boundary
 
@@ -60,9 +60,12 @@ focused run in `/tmp/chartworks-phase18-delivery-acceptance-47345c4.log`.
 
 ## Remaining integration boundary
 
-The public Phase 18 HTTP/SDK operations and their actual registered schemas are
-owned by the separate public-surface handoff and must be verified together with
-this core at the integration head. Phase 16 and Phase 18 retain `in_progress`
-status until their cumulative named acceptance, coverage, independent review,
-and final CI gates pass. Recorded model fixtures establish deterministic service
-behavior only; they are not live provider measurements.
+The public Phase 18 HTTP/SDK operations landed at
+`6801a28acbd728578ab1f3329a06bff4fc830f76`; root's strict Phase 18 check passed
+all six children. The invalidation consumer landed at `c88dbcc`, and its author
+acceptance plus the root full suite at `37f713c` passed all six Phase 18 criteria.
+Public transport fixes at `459b91d6990fca2d0676bae6d5e0a76bdc81c3be` integrated as
+`ecd08fa`. The final review still has six P1 and two P2 findings, with core fixes
+ongoing, so Phase 18 remains `in_progress` pending final review, cumulative
+coverage, hosted CI and release gates. Recorded model fixtures establish
+deterministic service behavior only; they are not live provider measurements.

@@ -32,3 +32,17 @@ module cache, so no local runtime pass is claimed here. Root must run the commit
 head with the Linux/native image, real PostgreSQL, race detection and the dependent
 phase 18 consumer before changing phase status or calling the work complete. No live
 cloud provider or release gate is claimed.
+
+## Current integrated verification
+
+The earlier host limitation above remains historical. Root's committed-source strict
+Phase 16 run at `cdbafc35e905597052da88518ee6717baa4d3396` passed all six children
+with zero skips, including readiness and lifecycle checks; the narrow follow-up review
+of the Phase 16 fixes is clear. The test-only PostgreSQL coverage addition
+`192a8bb508197b06f0693bf5d2b8ba6590e2ee20`, integrated at the current cross-phase
+head, passed the native real-PG race check in 9.340 seconds. The cumulative profile
+still needs the final exact-head verification because the `internal/store/postgres`
+band measured 3010/3588 (83.89%) in the current full suite, below the approved 84.5%
+exception; the other bands, including `internal/semantics/rulesets` at 153/190
+(80.53%), passed. Phase 18 remains the real invalidation consumer, and no shipped or
+release status is claimed.
