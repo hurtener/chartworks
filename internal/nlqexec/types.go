@@ -27,6 +27,11 @@ const (
 	maxInstructionText = 16 << 10
 	maxSQLBytes        = 32 << 10
 	maxFeedbackNote    = 4096
+	// maxExampleResults lets the durable review endpoint return one more
+	// candidate than the seven-item model-context cap. The extra row is
+	// inspectable learning state and is never admitted into generation by
+	// default.
+	maxExampleResults = nlq.MaxExamples + 1
 )
 
 var (

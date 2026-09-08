@@ -235,7 +235,7 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 }
 
 func (s *Service) Examples(ctx context.Context, e identity.Envelope, topic string, limit int) ([]ExampleRecord, error) {
-	if ctx == nil || !e.Valid() || !identity.Identifier(topic) || limit < 1 || limit > nlq.MaxExamples {
+	if ctx == nil || !e.Valid() || !identity.Identifier(topic) || limit < 1 || limit > maxExampleResults {
 		return nil, ErrInvalid
 	}
 	if !e.Has("query.plan") && !e.Has("feedback.write") {
@@ -314,6 +314,13 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionRequest, withBinding bool) (admission, error) {
 	route, err := s.router.Route(ctx, e, in.routeRequest())
 	if err != nil {
+		// Routing evaluates the request against the current publication. Its
+		// only binding failure is a caller-supplied context that does not
+		// match that publication, so expose the NLQ request error at this
+		// boundary rather than leaking the execution seam's classification.
+		if errors.Is(err, exec.ErrBinding) {
+			return admission{}, ErrInvalid
+		}
 		return admission{}, err
 	}
 	assembled, err := route.GenerationContext()
@@ -335,7 +342,11 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 		}
 		for _, dataset := range publication.Definition.Datasets {
 			if in.Context != dataset.Source.Context {
-				return admission{}, exec.ErrBinding
+				// The publication/version was just confirmed against the route, so
+				// a context that does not match it is a malformed caller request.
+				// Retained-query checks below still use ErrBinding for source
+				// rotation or other current-state drift.
+				return admission{}, ErrInvalid
 			}
 			if result.source == "" {
 				result.source, result.context = dataset.Source.Source, dataset.Source.Context
