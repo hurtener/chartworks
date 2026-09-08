@@ -367,6 +367,20 @@ func scanExample(row pgx.Row, out *nlqexec.ExampleRecord) error {
 	return row.Scan(&out.ID, &out.Topic, &out.Question, &out.SQL, &out.Digest, &out.State, &out.Weight, &out.EvidenceCount, &out.Provenance, &out.Created, &out.Updated)
 }
 
+// ReadExample loads one exact tenant-scoped learning row for a state change.
+// The caller must still reauthorize its resolved topic and dependencies before
+// invoking any mutation; this method never exposes an unscoped list as a
+// substitute for exact identity.
+func (d *DB) ReadExample(ctx context.Context, scope store.Scope, id string) (out nlqexec.ExampleRecord, err error) {
+	if err = checkScope(scope); err != nil || id == "" {
+		return out, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return scanExample(tx.QueryRow(ctx, `SELECT example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at FROM chartworks.nlq_examples WHERE tenant_id=$1 AND example_id=$2`, scope.Tenant(), id), &out)
+	})
+	return out, err
+}
+
 // ListExamples returns bounded candidate and active examples for one topic.
 func (d *DB) ListExamples(ctx context.Context, scope store.Scope, topic string, limit int) (out []nlqexec.ExampleRecord, err error) {
 	if err = checkScope(scope); err != nil || topic == "" || limit < 1 || limit > 64 {

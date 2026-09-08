@@ -95,11 +95,23 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	if old.Session != e.Session() || old.Status == "preflight" {
 		return PlanResult{}, ErrForeignSession
 	}
-	question := in.QuestionRequest
-	question.Topic, question.Topics, question.Context, question.Locale = old.Topic, append([]string(nil), old.Topics...), old.Context, old.Locale
+	if old.SQL == "" {
+		return PlanResult{}, ErrNoPlan
+	}
+	parent, err := s.admissionForQuery(ctx, e, old)
+	if err != nil {
+		return PlanResult{}, err
+	}
+	if err := gatewayRequirement(e, "query.execute", parent.resources); err != nil {
+		return PlanResult{}, err
+	}
+	question := refinementQuestion(old, in.QuestionRequest)
 	if question.Question == "" {
 		return PlanResult{}, ErrInvalid
 	}
+	// The parent SQL is a protected generation base. It is injected only into
+	// the in-process edit lane; the request/response types never carry it.
+	question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: old.SQL})
 	return s.plan(ctx, e, question, "", in.QueryID, "query.execute")
 }
 
@@ -115,19 +127,49 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if err != nil {
 		return RunResult{}, err
 	}
+	var record QueryRecord
 	if replay, replayErr := s.repo.ReadOperation(ctx, scopeValue, in.Operation); replayErr == nil {
 		if replay.ID != in.QueryID {
 			return RunResult{}, store.ErrConflict
 		}
-		if terminalQueryStatus(replay.Status) {
-			return s.runResult(replay, exec.ExecutionReport{}, canInspect(e)), replayError(replay.Status)
+		if replay.Session != e.Session() {
+			return RunResult{}, ErrForeignSession
+		}
+		// ReadOperation is only an idempotency index. Re-read the query under
+		// the actor/session scope before deciding whether the terminal receipt
+		// is replayable, so a stale index cannot bypass current metadata.
+		record, err = s.repo.ReadQuery(ctx, scopeValue, replay.ID)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if record.ID != in.QueryID || record.Session != e.Session() {
+			return RunResult{}, ErrForeignSession
+		}
+		if record.Operation != in.Operation {
+			return RunResult{}, store.ErrConflict
+		}
+		if terminalQueryStatus(record.Status) {
+			// Terminal rows and SQL are retained evidence. Reauthorize every
+			// exact topic/version, source, dataset and context dependency before
+			// exposing the stored result, even when current publication state has
+			// moved on.
+			admitted, admissionErr := s.retainedAdmission(ctx, e, record)
+			if admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if admissionErr = gatewayRequirement(e, "query.execute", admitted.resources); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
 		}
 	} else if !errors.Is(replayErr, store.ErrNotFound) {
 		return RunResult{}, replayErr
 	}
-	record, err := s.repo.ReadQuery(ctx, scopeValue, in.QueryID)
-	if err != nil {
-		return RunResult{}, err
+	if record.ID == "" {
+		record, err = s.repo.ReadQuery(ctx, scopeValue, in.QueryID)
+		if err != nil {
+			return RunResult{}, err
+		}
 	}
 	if record.Session != e.Session() || record.Status == "preflight" || record.SQL == "" {
 		return RunResult{}, ErrNoPlan
@@ -166,6 +208,10 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if runErr != nil || report.Result == nil || report.Attempt.Status == "failed" {
 		if !executionRepairable(report, runErr) {
 			return s.finishRun(ctx, e, record, report, 0, runErr)
+		}
+		current.assembled, err = s.resealQueryContext(ctx, record)
+		if err != nil {
+			return RunResult{}, err
 		}
 		candidate, gen, genErr := s.fixCandidate(ctx, e, current, call, budget, record.SQL, executionErrorCode(report, runErr))
 		if genErr != nil {
@@ -231,12 +277,15 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	if q.Status == "preflight" || q.SQL == "" {
 		return ErrNoPlan
 	}
+	admitted, admissionErr := s.currentAdmission(ctx, e, q)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	if err = gatewayRequirement(e, "feedback.write", admitted.resources); err != nil {
+		return err
+	}
 	correction := strings.TrimSpace(in.Correction)
 	if correction != "" {
-		admitted, admissionErr := s.currentAdmission(ctx, e, q)
-		if admissionErr != nil {
-			return admissionErr
-		}
 		if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: correction, Parameters: q.Parameters}); err != nil {
 			return err
 		}
@@ -274,7 +323,26 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	if err != nil {
 		return ExampleRecord{}, err
 	}
-	return s.repo.SetExampleState(ctx, sc, in.ExampleID, in.State)
+	example, err := s.repo.ReadExample(ctx, sc, in.ExampleID)
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	q, err := s.learningQuery(ctx, e, example.Topic)
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	admitted, err := s.currentAdmission(ctx, e, q)
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	if err = gatewayRequirement(e, "feedback.write", admitted.resources); err != nil {
+		return ExampleRecord{}, err
+	}
+	updated, err := s.repo.SetExampleState(ctx, sc, in.ExampleID, in.State)
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	return redactExample(updated, canInspect(e)), nil
 }
 
 // Examples reads bounded DB-first learning examples for an authorized topic.
@@ -296,7 +364,16 @@ func (s *Service) Examples(ctx context.Context, e identity.Envelope, topic strin
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListExamples(ctx, sc, topic, limit)
+	examples, err := s.repo.ListExamples(ctx, sc, topic, limit)
+	if err != nil {
+		return nil, err
+	}
+	if !canInspect(e) {
+		for i := range examples {
+			examples[i].SQL = ""
+		}
+	}
+	return examples, nil
 }
 
 func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent, action string) (PlanResult, error) {
@@ -374,6 +451,10 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 		}
 		return admission{}, err
 	}
+	// RouteResult is persisted as the semantic base for later refinement. The
+	// request contains only bounded caller selections; authority and SQL remain
+	// resolved from the current/retained domain seams below.
+	route.Request = in.routeRequest()
 	assembled, err := route.GenerationContext()
 	if err != nil {
 		if route.Outcome == nlq.StrategyClarify || route.Outcome == nlq.StrategyNoRoute {
@@ -420,6 +501,218 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 		}
 	}
 	return result, nil
+}
+
+// admissionForQuery selects the same exact/current publication boundary used
+// by execution. It is shared by refinement and terminal replay so neither can
+// use the repository projection as a substitute for addressed-resource checks.
+func (s *Service) admissionForQuery(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	if q.EvidenceStale {
+		return s.retainedAdmission(ctx, e, q)
+	}
+	return s.currentAdmission(ctx, e, q)
+}
+
+func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest {
+	request := old.Route.Request
+	base := QuestionRequest{
+		Topic: request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
+		Question: request.Question, Kinds: append([]string(nil), request.Kinds...), LimitPerKind: request.LimitPerKind,
+		References: append([]semantics.Reference(nil), request.References...), Choices: append([]nlqroute.ChoiceSelection(nil), request.Choices...),
+		Joins: append([]nlqroute.JoinChoice(nil), request.JoinChoices...), MetricIDs: append([]string(nil), request.MetricIDs...),
+		Examples: append([]nlq.OptionalItem(nil), request.Examples...), Rerank: request.Rerank,
+	}
+	base.Topic = old.Topic
+	base.Topics = append([]string(nil), old.Topics...)
+	base.Context = old.Context
+	base.Locale = old.Locale
+	base.Question = old.Question
+	base.Kinds = append([]string(nil), base.Kinds...)
+	base.References = append([]semantics.Reference(nil), base.References...)
+	base.Choices = append([]nlqroute.ChoiceSelection(nil), base.Choices...)
+	base.MetricIDs = append([]string(nil), base.MetricIDs...)
+	base.Examples = append([]nlq.OptionalItem(nil), base.Examples...)
+	if delta.Question != "" {
+		base.Question = delta.Question
+	}
+	base.Kinds = mergeStrings(base.Kinds, delta.Kinds)
+	if delta.LimitPerKind != 0 {
+		base.LimitPerKind = delta.LimitPerKind
+	}
+	base.References = mergeReferences(base.References, delta.References)
+	base.Choices = mergeChoices(base.Choices, delta.Choices)
+	base.Joins = mergeJoins(base.Joins, delta.Joins)
+	base.MetricIDs = mergeStrings(base.MetricIDs, delta.MetricIDs)
+	base.Examples = append(base.Examples, delta.Examples...)
+	base.Rerank = base.Rerank || delta.Rerank
+	base.EditBase = append(base.EditBase, delta.EditBase...)
+	base.Hints = append(base.Hints, delta.Hints...)
+	base.ExampleInput = append(base.ExampleInput, delta.ExampleInput...)
+	base.Default = append(base.Default, delta.Default...)
+	return base
+}
+
+func mergeStrings(base, delta []string) []string {
+	out := append([]string(nil), base...)
+	seen := make(map[string]bool, len(out))
+	for _, value := range out {
+		seen[value] = true
+	}
+	for _, value := range delta {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func mergeReferences(base, delta []semantics.Reference) []semantics.Reference {
+	out := append([]semantics.Reference(nil), base...)
+	for _, value := range delta {
+		found := false
+		for _, existing := range out {
+			if existing == value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func mergeChoices(base, delta []nlqroute.ChoiceSelection) []nlqroute.ChoiceSelection {
+	out := append([]nlqroute.ChoiceSelection(nil), base...)
+	for _, value := range delta {
+		key := value.Pattern + "\x00" + value.Slot
+		for i := range out {
+			if out[i].Pattern+"\x00"+out[i].Slot == key {
+				out[i] = value
+				key = ""
+				break
+			}
+		}
+		if key != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func mergeJoins(base, delta []nlqroute.JoinChoice) []nlqroute.JoinChoice {
+	out := append([]nlqroute.JoinChoice(nil), base...)
+	for _, value := range delta {
+		for i := range out {
+			if out[i].Topic == value.Topic {
+				out[i] = value
+				value.Topic = ""
+				break
+			}
+		}
+		if value.Topic != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func replaceInstruction(items []nlq.Instruction, replacement nlq.Instruction) []nlq.Instruction {
+	out := make([]nlq.Instruction, 0, len(items)+1)
+	for _, item := range items {
+		if item.Key != replacement.Key {
+			out = append(out, item)
+		}
+	}
+	return append(out, replacement)
+}
+
+func (s *Service) learningQuery(ctx context.Context, e identity.Envelope, topic string) (QueryRecord, error) {
+	if !identity.Identifier(topic) {
+		return QueryRecord{}, store.ErrNotFound
+	}
+	contract, err := s.topics.Contract(ctx, e, topic)
+	if err != nil {
+		return QueryRecord{}, err
+	}
+	publication := contract.Publication
+	if publication.State.Topic != topic || publication.State.Archived || !publication.State.Active || publication.State.Version == "" {
+		return QueryRecord{}, exec.ErrBinding
+	}
+	if len(publication.Definition.Datasets) == 0 {
+		return QueryRecord{}, exec.ErrBinding
+	}
+	contextID := publication.Definition.Datasets[0].Source.Context
+	return QueryRecord{Topic: topic, Topics: []string{topic}, TopicVersions: []string{publication.State.Version}, Context: contextID}, nil
+}
+
+func redactExample(value ExampleRecord, inspect bool) ExampleRecord {
+	if !inspect {
+		value.SQL = ""
+	}
+	return value
+}
+
+func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord) (nlq.AssembledContext, error) {
+	if len(q.Topics) == 0 || len(q.Topics) != len(q.TopicVersions) {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	persisted := q.Generation.Context
+	if persisted.Tier == "" || persisted.Question == "" {
+		if q.Route.Context == nil {
+			return nlq.AssembledContext{}, exec.ErrBinding
+		}
+		view := q.Route.Context
+		persisted = nlq.AssembledContext{
+			Tier: view.Tier, Budget: view.Budget, Tokens: view.Tokens, Locale: view.Locale, Strategy: view.Strategy,
+			Topic: view.Topic, TopicVersion: view.TopicVersion, Topics: append([]nlq.TopicRevision(nil), view.Topics...),
+			Question: view.Question, Evidence: append([]nlq.Evidence(nil), view.Evidence...), Constraints: view.Constraints,
+			Metrics: append([]nlq.PinnedMetric(nil), view.Metrics...), Advisory: append([]nlq.OptionalItem(nil), view.Advisory...), Examples: append([]nlq.OptionalItem(nil), view.Examples...),
+		}
+	}
+	if persisted.Tier == "" {
+		var err error
+		persisted.Tier, err = nlq.TierForConfidence(q.Route.Confidence)
+		if err != nil {
+			return nlq.AssembledContext{}, exec.ErrBinding
+		}
+	}
+	if len(persisted.Topics) == 0 {
+		if len(q.Topics) != 1 || persisted.Topic != q.Topics[0] || persisted.TopicVersion != q.TopicVersions[0] {
+			return nlq.AssembledContext{}, exec.ErrBinding
+		}
+		persisted.Topics = []nlq.TopicRevision{{Topic: q.Topics[0], Version: q.TopicVersions[0]}}
+	}
+	assembler, err := nlq.NewDefaultContextAssembler()
+	if err != nil {
+		return nlq.AssembledContext{}, err
+	}
+	assembled, err := assembler.Assemble(ctx, nlq.ContextInput{
+		Locale: persisted.Locale, Strategy: persisted.Strategy, Topic: persisted.Topic, TopicVersion: persisted.TopicVersion,
+		Topics: append([]nlq.TopicRevision(nil), persisted.Topics...), Question: persisted.Question,
+		Evidence: append([]nlq.Evidence(nil), persisted.Evidence...), Constraints: persisted.Constraints,
+		Metrics: append([]nlq.PinnedMetric(nil), persisted.Metrics...), Advisory: append([]nlq.OptionalItem(nil), persisted.Advisory...), Examples: append([]nlq.OptionalItem(nil), persisted.Examples...),
+	}, persisted.Tier)
+	if err != nil || assembled.Question != q.Question || assembled.Strategy != q.Route.Outcome {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	if len(q.Topics) != len(q.TopicVersions) {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	if len(q.Topics) > 0 && len(assembled.Topics) != len(q.Topics) {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	if len(q.Topics) == 1 && (assembled.Topic != q.Topics[0] || assembled.TopicVersion != q.TopicVersions[0]) {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	for i, topic := range q.Topics {
+		if i >= len(assembled.Topics) || assembled.Topics[i].Topic != topic || assembled.Topics[i].Version != q.TopicVersions[i] {
+			return nlq.AssembledContext{}, exec.ErrBinding
+		}
+	}
+	return assembled, nil
 }
 
 func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {

@@ -95,6 +95,7 @@ type Repository interface {
 	CreateQuery(context.Context, store.Scope, QueryRecord) error
 	ReadQuery(context.Context, store.Scope, string) (QueryRecord, error)
 	ReadOperation(context.Context, store.Scope, string) (QueryRecord, error)
+	ReadExample(context.Context, store.Scope, string) (ExampleRecord, error)
 	UpdateQuery(context.Context, store.Scope, QueryRecord, int64) error
 	RecordFeedback(context.Context, store.Scope, FeedbackRecord) error
 	UpsertExample(context.Context, store.Scope, ExampleRecord) (ExampleRecord, error)

@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -153,9 +155,18 @@ func TestPhase18(t *testing.T) {
 		if err != nil || spanishPlan.Route.Context == nil || spanishPlan.Generation == "" {
 			t.Fatalf("Spanish plan failed: out=%#v err=%v", spanishPlan, err)
 		}
-		refined, err := query.Refine(ctx, e, nlqexec.RefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Show revenue by id", Kinds: question.Kinds, LimitPerKind: question.LimitPerKind}})
+		question.MetricIDs = []string{"revenue"}
+		refined, err := query.Refine(ctx, e, nlqexec.RefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Show revenue by id", Kinds: question.Kinds, LimitPerKind: question.LimitPerKind, MetricIDs: question.MetricIDs}})
 		if err != nil || refined.Status != "planned" || refined.QueryID == planned.QueryID {
 			t.Fatalf("refine failed: out=%#v err=%v", refined, err)
+		}
+		scope, err := store.NewScope(e.Tenant(), e.User())
+		if err != nil {
+			t.Fatal(err)
+		}
+		refinedRecord, err := fixture.f.db.ReadQuery(ctx, scope, refined.QueryID)
+		if err != nil || !reflect.DeepEqual(refinedRecord.Route.Request.MetricIDs, []string{"revenue"}) || !reflect.DeepEqual(refinedRecord.Route.Request.Kinds, question.Kinds) {
+			t.Fatalf("refinement discarded the parent governed route selections: %#v %v", refinedRecord.Route.Request, err)
 		}
 		multi := phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic, fixture.related.Topic)
 		multi.Question = "What is revenue across the confirmed topics?"
@@ -317,6 +328,83 @@ func TestPhase18(t *testing.T) {
 				t.Fatalf("foreign HTTP refine was not denied without disclosure: err=%v", err)
 			}
 		})
+	})
+
+	t.Run("AC06/terminal-replay-and-result-envelope", func(t *testing.T) {
+		fixture := newPhase18Fixture(t)
+		query, _ := newPhase18Service(t, fixture)
+		e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-terminal", true)
+		fixture.model.embeddingMode.Store("fixed")
+		fixture.model.rerankMode.Store("fixed")
+		fixture.model.mode.Store(phase18RawResponse(t, salesSQL))
+		ctx := context.Background()
+		scope, err := store.NewScope(e.Tenant(), e.User())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			status string
+			want   error
+		}{
+			{status: "cancelled", want: readexec.ErrCancelled},
+			{status: "timed_out", want: readexec.ErrTimeout},
+			{status: "interrupted", want: readexec.ErrUncertain},
+		} {
+			t.Run(tc.status, func(t *testing.T) {
+				planned, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				record, err := fixture.f.db.ReadQuery(ctx, scope, planned.QueryID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				record.Operation = "phase18-terminal-" + tc.status
+				record.Status = tc.status
+				record.Result = &readexec.Result{Schema: []readexec.Field{{Name: "id", Type: "integer", Encoding: "string", NativeType: "integer"}}, Rows: [][]json.RawMessage{{json.RawMessage(`1`)}}, Outcome: "complete", Bytes: 1}
+				record.Revision++
+				if err = fixture.f.db.UpdateQuery(ctx, scope, record, record.Revision-1); err != nil {
+					t.Fatal("persist terminal status", err)
+				}
+				replay, err := query.Run(ctx, e, nlqexec.RunRequest{QueryID: planned.QueryID, Operation: record.Operation})
+				if !errors.Is(err, tc.want) || replay.Execution.Result == nil || replay.SQL != salesSQL {
+					t.Fatalf("terminal replay was not authorized/persisted: status=%#v err=%v want=%v", replay, err, tc.want)
+				}
+			})
+		}
+		planned, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		near, err := fixture.f.db.ReadQuery(ctx, scope, planned.QueryID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		near.Operation = "phase18-terminal-near-cap"
+		near.Status = "succeeded"
+		payload, err := json.Marshal(strings.Repeat("x", 16<<20))
+		if err != nil {
+			t.Fatal(err)
+		}
+		near.Result = &readexec.Result{Schema: []readexec.Field{{Name: "payload", Type: "text", Encoding: "string", NativeType: "text"}}, Rows: [][]json.RawMessage{{payload}}, Outcome: "succeeded", Bytes: len(payload)}
+		near.Revision++
+		if err = fixture.f.db.UpdateQuery(ctx, scope, near, near.Revision-1); err != nil {
+			t.Fatal("persist near-cap result envelope", err)
+		}
+		readBack, err := fixture.f.db.ReadQuery(ctx, scope, planned.QueryID)
+		if err != nil || readBack.Result == nil || len(readBack.Result.Rows) != 1 || len(readBack.Result.Rows[0][0]) != len(payload) {
+			t.Fatalf("durable result envelope headroom rejected a valid executor result: result=%#v err=%v", readBack.Result, err)
+		}
+		limitedClaims := fixture.model.token.claims(e.Tenant(), e.User(), []string{"query.execute"})
+		limitedClaims["session"] = e.Session()
+		limitedToken := fixture.model.token.sign(t, limitedClaims, nil)
+		limited, err := fixture.model.token.verifier.Verify(ctx, limitedToken, auth.HTTP)
+		if err != nil {
+			t.Fatal("limited terminal authority", err)
+		}
+		if _, err = query.Run(ctx, limited, nlqexec.RunRequest{QueryID: near.ID, Operation: near.Operation}); !errors.Is(err, access.ErrNotFound) && !errors.Is(err, access.ErrForbidden) {
+			t.Fatalf("terminal replay crossed retained resource authority: %v", err)
+		}
 	})
 
 	t.Run("AC06/rule-evidence-invalidation", func(t *testing.T) {

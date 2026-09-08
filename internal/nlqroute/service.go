@@ -154,7 +154,11 @@ type ContextView struct {
 // RouteResult is a detached routing and context result. A Clarification or
 // StrategyNoRoute result has no Context and therefore cannot reach generation.
 type RouteResult struct {
-	Outcome       nlq.Strategy      `json:"outcome"`
+	Outcome nlq.Strategy `json:"outcome"`
+	// Request is the bounded, caller-selected routing input that was admitted
+	// for this result. Persisted refinements use it as their semantic base; it
+	// contains no SQL or authority material.
+	Request       RouteRequest      `json:"request,omitempty"`
 	Topic         string            `json:"topic"`
 	Topics        []string          `json:"topics"`
 	TopicVersions []string          `json:"topic_versions"`
@@ -232,7 +236,7 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 	if err != nil {
 		return RouteResult{}, err
 	}
-	result := RouteResult{Outcome: nlq.StrategySingleTopic, Topic: topicsIDs[0], Topics: append([]string(nil), topicsIDs...), Stages: []Stage{}}
+	result := RouteResult{Outcome: nlq.StrategySingleTopic, Request: in, Topic: topicsIDs[0], Topics: append([]string(nil), topicsIDs...), Stages: []Stage{}}
 	if len(topicsIDs) > 1 {
 		result.Outcome = nlq.StrategyMultiTopic
 	}

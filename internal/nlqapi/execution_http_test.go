@@ -160,6 +160,9 @@ func (executionRepository) ReadQuery(context.Context, store.Scope, string) (nlqe
 func (executionRepository) ReadOperation(context.Context, store.Scope, string) (nlqexec.QueryRecord, error) {
 	return nlqexec.QueryRecord{}, store.ErrNotFound
 }
+func (executionRepository) ReadExample(context.Context, store.Scope, string) (nlqexec.ExampleRecord, error) {
+	return nlqexec.ExampleRecord{}, store.ErrNotFound
+}
 func (executionRepository) UpdateQuery(context.Context, store.Scope, nlqexec.QueryRecord, int64) error {
 	return nil
 }

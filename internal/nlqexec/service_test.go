@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -295,6 +296,14 @@ func (r *unitRepository) ReadOperation(_ context.Context, _ store.Scope, operati
 	value, ok := r.operations[operation]
 	if !ok {
 		return QueryRecord{}, store.ErrNotFound
+	}
+	return value, nil
+}
+
+func (r *unitRepository) ReadExample(_ context.Context, _ store.Scope, id string) (ExampleRecord, error) {
+	value, ok := r.examples[id]
+	if !ok {
+		return ExampleRecord{}, store.ErrNotFound
 	}
 	return value, nil
 }
@@ -640,6 +649,17 @@ func TestServiceDurableFailureBoundaries(t *testing.T) {
 	if len(repo.feedback) != 2 || len(repo.examples) != 1 {
 		t.Fatal("negative feedback unexpectedly created an example")
 	}
+	withoutResources, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	feedbackCount := len(repo.feedback)
+	if err = service.Feedback(context.Background(), withoutResources, FeedbackRequest{QueryID: feedbackQuery.ID, Verdict: "positive"}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatalf("feedback crossed addressed-resource authority: %v", err)
+	}
+	if len(repo.feedback) != feedbackCount {
+		t.Fatal("unauthorized feedback mutated the learning receipt")
+	}
 	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: feedbackQuery.ID, Verdict: "positive", Correction: "SELECT id FROM analytics.sales"}); err != nil {
 		t.Fatal("validated correction feedback", err)
 	}
@@ -723,11 +743,24 @@ func TestServiceRunFailureAndAdmissionBranches(t *testing.T) {
 	terminalQuery := unitQuery(e, "query-terminal", "topic", "v1", "context", false)
 	terminalRepo.operations["operation-terminal"] = func() QueryRecord {
 		value := terminalQuery
-		value.Status = "failed"
+		value.Status, value.Operation = "failed", "operation-terminal"
 		return value
 	}()
+	terminalRepo.queries[terminalQuery.ID] = terminalRepo.operations["operation-terminal"]
 	if _, err := newService(terminalRepo, &unitValidator{}, &unitExecutor{}).Run(ctx, e, RunRequest{QueryID: terminalQuery.ID, Operation: "operation-terminal"}); !errors.Is(err, ErrExecutionFailed) {
 		t.Fatalf("terminal replay returned %v", err)
+	}
+	noResourceTerminal, err := identity.FromVerified("tenant", "actor", "session", []string{"query.execute"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deniedTerminal := unitQuery(noResourceTerminal, "query-terminal-denied", "topic", "v1", "context", false)
+	deniedTerminal.Status, deniedTerminal.Operation = "cancelled", "operation-terminal-denied"
+	terminalDeniedRepo := newUnitRepository()
+	terminalDeniedRepo.queries[deniedTerminal.ID] = deniedTerminal
+	terminalDeniedRepo.operations["operation-terminal-denied"] = deniedTerminal
+	if _, err = newService(terminalDeniedRepo, &unitValidator{}, &unitExecutor{}).Run(ctx, noResourceTerminal, RunRequest{QueryID: deniedTerminal.ID, Operation: "operation-terminal-denied"}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatalf("terminal replay exposed rows without retained resource authority: %v", err)
 	}
 
 	operationError := &errorUnitRepository{unitRepository: newUnitRepository(), operationErr: store.ErrUnavailable}
@@ -792,6 +825,112 @@ func TestServiceRunFailureAndAdmissionBranches(t *testing.T) {
 	updateErrorExecutor := &unitExecutor{reports: []exec.ExecutionReport{unitResult("succeeded")}}
 	if _, err := newService(updateErrorRepo, &unitValidator{}, updateErrorExecutor).Run(ctx, e, RunRequest{QueryID: updateErrorQuery.ID, Operation: "operation-update-error"}); !errors.Is(err, store.ErrUnavailable) {
 		t.Fatalf("query update error returned %v", err)
+	}
+}
+
+func TestRefinementPreservesGovernedRouteSelections(t *testing.T) {
+	e := unitEnvelope(t)
+	old := unitQuery(e, "query-refine", "topic", "v1", "context", false)
+	old.Route.Request = nlqroute.RouteRequest{
+		Topic: "topic", Topics: []string{"topic"}, Context: "context", Locale: nlq.LanguageEnglish,
+		Question: "What is revenue?", Kinds: []string{"measure"}, LimitPerKind: 2,
+		References:  []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}},
+		Choices:     []nlqroute.ChoiceSelection{{Pattern: "sales", Slot: "period", Value: "month"}},
+		JoinChoices: []nlqroute.JoinChoice{{Topic: "topic", JoinID: "sales-items"}},
+		MetricIDs:   []string{"revenue"}, Rerank: true,
+	}
+	question := refinementQuestion(old, QuestionRequest{
+		Question: "Show revenue by month", References: []semantics.Reference{{Kind: semantics.KindDimension, ID: "month"}},
+		Choices: []nlqroute.ChoiceSelection{{Pattern: "sales", Slot: "region", Value: "west"}},
+		Joins:   []nlqroute.JoinChoice{{Topic: "topic-two", JoinID: "related-sales"}}, MetricIDs: []string{"margin"},
+	})
+	if question.Topic != old.Topic || !reflect.DeepEqual(question.Topics, old.Topics) || question.Context != old.Context || question.Locale != old.Locale || question.Question != "Show revenue by month" {
+		t.Fatalf("refinement changed the signed session anchor: %#v", question)
+	}
+	if !reflect.DeepEqual(question.References, []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}, {Kind: semantics.KindDimension, ID: "month"}}) {
+		t.Fatalf("reference base+delta was not retained: %#v", question.References)
+	}
+	if !reflect.DeepEqual(question.Choices, []nlqroute.ChoiceSelection{{Pattern: "sales", Slot: "period", Value: "month"}, {Pattern: "sales", Slot: "region", Value: "west"}}) {
+		t.Fatalf("choice base+delta was not retained: %#v", question.Choices)
+	}
+	if !reflect.DeepEqual(question.Joins, []nlqroute.JoinChoice{{Topic: "topic", JoinID: "sales-items"}, {Topic: "topic-two", JoinID: "related-sales"}}) || !reflect.DeepEqual(question.MetricIDs, []string{"revenue", "margin"}) || !question.Rerank {
+		t.Fatalf("governed route selections were not retained: %#v", question)
+	}
+	question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: old.SQL})
+	if len(question.EditBase) != 1 || question.EditBase[0].Text != old.SQL {
+		t.Fatal("refinement did not retain the protected parent SQL base")
+	}
+}
+
+func TestRunRepairRebuildsSealedContext(t *testing.T) {
+	e := unitEnvelope(t)
+	reader := &unitTopicReader{
+		current:  map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)},
+		retained: map[string]topics.Contract{"topic/v1": unitContract("topic", "v1", "source", "context", "dataset", true, true)},
+	}
+	admitted, _, _, _ := testGeneration(t, e)
+	query := unitQuery(e, "query-repair", "topic", "v1", "context", false)
+	query.Generation.Context = admitted.assembled
+	repo := newUnitRepository()
+	repo.queries[query.ID] = query
+	validator := &unitValidator{}
+	executor := &unitExecutor{
+		reports: []exec.ExecutionReport{
+			{Attempt: exec.Attempt{Status: "failed", Code: "query_error"}},
+			unitResult("succeeded"),
+		},
+		errors: []error{exec.ErrQuery},
+	}
+	engine := &sequenceGateway{responses: []gateway.Generated{{JSON: json.RawMessage(`{"sql":"SELECT id FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`)}}}
+	service := &Service{topics: reader, sources: retainedSourceReader{}, validator: validator, executor: executor, engine: engine, repo: repo}
+	result, err := service.Run(context.Background(), e, RunRequest{QueryID: query.ID, Operation: "operation-repair"})
+	if err != nil || result.Status != "succeeded" || result.ExecutionFixes != 1 || result.SQL != "SELECT id FROM analytics.sales" {
+		t.Fatalf("execution repair did not complete through Run: result=%#v err=%v", result, err)
+	}
+	if len(validator.requests) != 2 || engine.calls != 1 {
+		t.Fatalf("repair path did not validate/repair exactly once: validations=%d gateway_calls=%d", len(validator.requests), engine.calls)
+	}
+	stored := repo.queries[query.ID]
+	if stored.ExecutionFixes != 1 || stored.Operation != "operation-repair" || stored.Generation.Strategy != nlq.GenerationEditBase || len(stored.Generation.Selected) != 1 || stored.Generation.Selected[0].Key != "previous_sql" || stored.Generation.Selected[0].Text != query.SQL {
+		t.Fatalf("repair lost protected SQL delta or receipt metadata: %#v", stored)
+	}
+	if stored.Generation.Context.Topic != "topic" || stored.Generation.Context.TopicVersion != "v1" || len(stored.Generation.PinnedMetrics) != 1 || stored.Generation.PinnedMetrics[0].ID != "revenue" {
+		t.Fatalf("repair rebuilt an incomplete governed context: %#v", stored.Generation)
+	}
+}
+
+func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
+	e := unitEnvelope(t)
+	reader := &unitTopicReader{current: map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)}}
+	repo := newUnitRepository()
+	repo.examples["example-1"] = ExampleRecord{ID: "example-1", Topic: "topic", Question: "What is revenue?", SQL: "SELECT secret", State: "candidate", Digest: strings.Repeat("a", 64), EvidenceCount: 1}
+	service := &Service{topics: reader, sources: retainedSourceReader{}, repo: repo}
+	noInspection, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := service.ExampleState(context.Background(), noInspection, ExampleStateRequest{ExampleID: "example-1", State: "active"})
+	if err != nil || updated.SQL != "" || updated.State != "active" {
+		t.Fatalf("example state leaked protected SQL or failed: %#v %v", updated, err)
+	}
+	listed, err := service.Examples(context.Background(), noInspection, "topic", 1)
+	if err != nil || len(listed) != 1 || listed[0].SQL != "" {
+		t.Fatalf("example listing leaked protected SQL: %#v %v", listed, err)
+	}
+	denied, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "cw.topic.read:topic"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.ExampleState(context.Background(), denied, ExampleStateRequest{ExampleID: "example-1", State: "retired"}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatalf("example state crossed dependency authority: %v", err)
+	}
+	if repo.examples["example-1"].State != "active" {
+		t.Fatal("denied example state mutated the learning row")
+	}
+	inspect := e
+	inspected, err := service.Examples(context.Background(), inspect, "topic", 1)
+	if err != nil || len(inspected) != 1 || inspected[0].SQL != "SELECT secret" {
+		t.Fatalf("authorized SQL inspection was not preserved: %#v %v", inspected, err)
 	}
 }
 
