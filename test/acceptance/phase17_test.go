@@ -311,6 +311,7 @@ func TestPhase17(t *testing.T) {
 		beforePaths = phase17Paths(fixture.model)
 		noRerank := rerankRequest
 		noRerank.Question = "What is revenue with rerank disabled?"
+		noRerank.Kinds = append([]string(nil), question.Kinds...)
 		noRerank.Rerank = false
 		if disabled, disabledErr := fixture.service.Route(ctx, fixture.e, noRerank); disabledErr != nil || disabled.Context == nil {
 			t.Fatalf("disabled rerank route failed: out=%#v err=%v", disabled, disabledErr)
