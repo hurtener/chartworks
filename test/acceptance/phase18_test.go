@@ -118,7 +118,7 @@ func phase18Question(fixture *phase17Fixture, locale nlq.Language, topicsList ..
 
 func TestPhase18(t *testing.T) {
 	fixture := newPhase18Fixture(t)
-	query, publishedTopics := newPhase18Service(t, fixture)
+	query, _ := newPhase18Service(t, fixture)
 	ctx := context.Background()
 	e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-session", true)
 	salesSQL := "SELECT id, amount FROM analytics.sales ORDER BY id"
