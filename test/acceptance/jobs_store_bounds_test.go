@@ -11,6 +11,7 @@ import (
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestJobStoreRejectsInvalidWork(t *testing.T) {
@@ -140,6 +141,181 @@ func TestJobStoreRejectsInvalidWork(t *testing.T) {
 	unknown := support.Scope(t, "unconfigured-tenant", "operator")
 	if _, err := q.db.AdmitJob(ctx, unknown, "s", "unknown", target, q.limits); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("job invented retention policy", err)
+	}
+}
+
+func TestClaimJobCancellationRollsBackQueueAdmission(t *testing.T) {
+	q := newQueueFixture(t, nil)
+	job := q.submit(t, "queue-admission-cancel")
+
+	observer := support.Raw(t, q.dsn)
+	holder := support.Raw(t, q.dsn)
+	t.Cleanup(func() {
+		_ = holder.Close(context.Background())
+		_ = observer.Close(context.Background())
+	})
+
+	holderTx, err := holder.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = holderTx.Rollback(context.Background()) })
+	if _, err := holderTx.Exec(context.Background(), `SELECT pg_advisory_xact_lock(7214060601)`); err != nil {
+		t.Fatal(err)
+	}
+
+	claimCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type claimResult struct {
+		lease jobs.Lease
+		err   error
+	}
+	resultCh := make(chan claimResult, 1)
+	go func() {
+		lease, claimErr := q.db.ClaimJob(claimCtx, "queue-admission-cancel-owner", q.limits)
+		resultCh <- claimResult{lease: lease, err: claimErr}
+	}()
+
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer waitCancel()
+	for {
+		var waiting bool
+		err := observer.QueryRow(waitCtx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_stat_activity
+				WHERE datname = current_database()
+				  AND application_name = 'chartworks'
+				  AND wait_event_type = 'Lock'
+				  AND position('7214060601' IN query) > 0
+			)`).Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			cancel()
+			break
+		}
+		select {
+		case <-waitCtx.Done():
+			t.Fatalf("claim did not reach the advisory lock: %v", waitCtx.Err())
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	select {
+	case result := <-resultCh:
+		if !errors.Is(result.err, context.Canceled) {
+			t.Fatalf("ClaimJob error = %v, want context cancellation", result.err)
+		}
+		if result.lease != (jobs.Lease{}) {
+			t.Fatalf("ClaimJob returned lease after cancellation: %+v", result.lease)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ClaimJob did not return after cancellation")
+	}
+
+	assertPendingJobUnchanged(t, q, observer, job.ID)
+	if err := holderTx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	lease, err := q.db.ClaimJob(context.Background(), "queue-admission-healthy-owner", q.limits)
+	if err != nil {
+		t.Fatalf("healthy ClaimJob after cancellation: %v", err)
+	}
+	if lease.Job.ID != job.ID {
+		t.Fatalf("healthy ClaimJob returned job %s, want %s", lease.Job.ID, job.ID)
+	}
+	if err := q.db.FinishAttempt(context.Background(), lease, "attempt_failed", true, 0); err != nil {
+		t.Fatalf("finish healthy claim: %v", err)
+	}
+}
+
+func TestClaimJobDriverFailureRollsBackClaim(t *testing.T) {
+	q := newQueueFixture(t, nil)
+	job := q.submit(t, "claim-driver-failure")
+	observer := support.Raw(t, q.dsn)
+	t.Cleanup(func() { _ = observer.Close(context.Background()) })
+	if _, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations ALTER COLUMN batch_limit DROP NOT NULL`); err != nil {
+		t.Fatalf("prepare claim driver failure: %v", err)
+	}
+	if _, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations DISABLE TRIGGER dispatch_manifest_immutable`); err != nil {
+		t.Fatalf("disable manifest trigger: %v", err)
+	}
+	if _, err := observer.Exec(context.Background(), `UPDATE chartworks.operations SET batch_limit=NULL WHERE operation_id=$1`, job.ID); err != nil {
+		t.Fatalf("prepare claim row: %v", err)
+	}
+	restoreBatchLimit := func() error {
+		if _, err := observer.Exec(context.Background(), `UPDATE chartworks.operations SET batch_limit=100 WHERE operation_id=$1`, job.ID); err != nil {
+			return err
+		}
+		if _, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations ALTER COLUMN batch_limit SET NOT NULL`); err != nil {
+			return err
+		}
+		_, err := observer.Exec(context.Background(), `ALTER TABLE chartworks.operations ENABLE TRIGGER dispatch_manifest_immutable`)
+		return err
+	}
+	t.Cleanup(func() { _ = restoreBatchLimit() })
+
+	lease, err := q.db.ClaimJob(context.Background(), "claim-driver-failure-owner", q.limits)
+	if !errors.Is(err, store.ErrUnavailable) {
+		t.Fatalf("ClaimJob error after driver scan failure = %v, want store.ErrUnavailable", err)
+	}
+	if lease != (jobs.Lease{}) {
+		t.Fatalf("ClaimJob returned lease after driver failure: %+v", lease)
+	}
+
+	if err := restoreBatchLimit(); err != nil {
+		t.Fatalf("restore claim row: %v", err)
+	}
+	assertPendingJobUnchanged(t, q, observer, job.ID)
+	lease, err = q.db.ClaimJob(context.Background(), "claim-driver-healthy-owner", q.limits)
+	if err != nil {
+		t.Fatalf("healthy ClaimJob after driver failure: %v", err)
+	}
+	if lease.Job.ID != job.ID {
+		t.Fatalf("healthy ClaimJob returned job %s, want %s", lease.Job.ID, job.ID)
+	}
+	if err := q.db.FinishAttempt(context.Background(), lease, "attempt_failed", true, 0); err != nil {
+		t.Fatalf("finish healthy claim: %v", err)
+	}
+}
+
+func assertPendingJobUnchanged(t *testing.T, q *queueFixture, observer *pgx.Conn, id string) {
+	t.Helper()
+	job, err := q.db.ReadJob(context.Background(), support.Scope(t, q.actor.Tenant(), q.actor.User()), id)
+	if err != nil {
+		t.Fatalf("read job after failed claim: %v", err)
+	}
+	if job.State != "pending" {
+		t.Fatalf("job state after failed claim = %s, want pending", job.State)
+	}
+	if job.Attempts != 0 {
+		t.Fatalf("job attempt count after failed claim = %d, want 0", job.Attempts)
+	}
+
+	var attempts int
+	if err := observer.QueryRow(context.Background(), `
+		SELECT count(*)
+		FROM chartworks.operation_attempts
+		WHERE tenant_id = $1 AND operation_id = $2`, q.actor.Tenant(), id).Scan(&attempts); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 {
+		t.Fatalf("operation attempts after failed claim = %d, want 0", attempts)
+	}
+
+	var auditEvents int
+	if err := observer.QueryRow(context.Background(), `
+		SELECT count(*)
+		FROM chartworks.audit_events
+		WHERE tenant_id = $1 AND resource_id = $2`, q.actor.Tenant(), id).Scan(&auditEvents); err != nil {
+		t.Fatal(err)
+	}
+	if auditEvents != 1 {
+		t.Fatalf("audit events after failed claim = %d, want accepted event only", auditEvents)
 	}
 }
 
