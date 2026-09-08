@@ -49,6 +49,7 @@ type RuleReview = rulesets.Review
 type PublishRulesRequest = rulesets.PublishRequest
 type PublishedRules = rulesets.Published
 type RetireRulesRequest = rulesets.RetireRequest
+type RuleState = rulesets.State
 type RuleEvaluationRequest = rulesets.EvaluateRequest
 type RuleEvaluation = rulesets.Evaluation
 
@@ -285,7 +286,7 @@ func (c *Client) EvaluateRules(ctx context.Context, id string, in RuleEvaluation
 	return
 }
 
-func (c *Client) RetireRules(ctx context.Context, id string, in RetireRulesRequest) (out rulesets.State, err error) {
+func (c *Client) RetireRules(ctx context.Context, id string, in RetireRulesRequest) (out RuleState, err error) {
 	if !wireID(id) {
 		return out, errors.New("chartworks: invalid topic identifier")
 	}

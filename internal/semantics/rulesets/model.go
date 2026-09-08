@@ -104,7 +104,7 @@ type Repository interface {
 	ReviewRuleDraft(context.Context, identity.Envelope, topics.Published, string, ReviewRequest) (Review, error)
 	PublishRules(context.Context, identity.Envelope, topics.Published, string, int64) (Published, error)
 	RuleVersionPin(context.Context, identity.Envelope, string, string, drafts.Access) (Pin, error)
-	ReadPublishedRules(context.Context, identity.Envelope, string, string, drafts.Access) (Published, error)
+	ReadPublishedRules(context.Context, identity.Envelope, string, string, drafts.Access, bool) (Published, error)
 	RetireRules(context.Context, identity.Envelope, topics.Published, string, int64) (State, error)
 }
 

@@ -83,10 +83,14 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, topic, version 
 	if err != nil {
 		return Published{}, err
 	}
-	if _, err = s.topics.ReadPublishedTopic(ctx, e, topic, pin.TopicVersion, drafts.Read); err != nil {
+	topicVersion, err := s.topics.ReadPublishedTopic(ctx, e, topic, pin.TopicVersion, drafts.Read)
+	if err != nil {
 		return Published{}, err
 	}
-	return s.repo.ReadPublishedRules(ctx, e, topic, pin.RuleVersion, drafts.Read)
+	if version == "" && !topicVersion.State.Active {
+		return Published{}, store.ErrConflict
+	}
+	return s.repo.ReadPublishedRules(ctx, e, topic, pin.RuleVersion, drafts.Read, version == "")
 }
 
 func (s *Service) Retire(ctx context.Context, e identity.Envelope, topic string, in RetireRequest) (State, error) {
@@ -113,6 +117,9 @@ func (s *Service) Evaluate(ctx context.Context, e identity.Envelope, topic strin
 	topicVersion, err := s.topics.ReadPublishedTopic(ctx, e, topic, pin.TopicVersion, drafts.Read)
 	if err != nil {
 		return Evaluation{}, err
+	}
+	if !topicVersion.State.Active || topicVersion.State.Version != pin.TopicVersion {
+		return Evaluation{}, store.ErrConflict
 	}
 	subject, err := publishedSubject(topicVersion)
 	if err != nil {

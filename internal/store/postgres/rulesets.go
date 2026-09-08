@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
@@ -28,6 +29,18 @@ func lockPublishedTopic(ctx context.Context, tx pgx.Tx, tenant string, expected 
 		return err
 	}
 	if revision != expected.State.Revision || version != expected.State.Version || archived || digest != expected.Digest {
+		return store.ErrConflict
+	}
+	return nil
+}
+
+func lockRetainedTopic(ctx context.Context, tx pgx.Tx, tenant string, expected topics.Published) error {
+	var digest string
+	err := tx.QueryRow(ctx, `SELECT v.digest FROM chartworks.topic_publication_heads h JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id)=(h.tenant_id,h.topic_id) WHERE h.tenant_id=$1 AND h.topic_id=$2 AND v.version_id=$3 FOR SHARE OF h`, tenant, expected.State.Topic, expected.State.Version).Scan(&digest)
+	if err != nil {
+		return err
+	}
+	if digest != expected.Digest {
 		return store.ErrConflict
 	}
 	return nil
@@ -183,7 +196,7 @@ func (d *DB) RuleVersionPin(ctx context.Context, e identity.Envelope, topic, ver
 	return
 }
 
-func (d *DB) ReadPublishedRules(ctx context.Context, e identity.Envelope, topic, version string, access drafts.Access) (out rulesets.Published, err error) {
+func (d *DB) ReadPublishedRules(ctx context.Context, e identity.Envelope, topic, version string, access drafts.Access, current bool) (out rulesets.Published, err error) {
 	if err = requireRuleAccess(e, topic, access); err != nil {
 		return out, err
 	}
@@ -195,7 +208,11 @@ func (d *DB) ReadPublishedRules(ctx context.Context, e identity.Envelope, topic,
 	err = d.transactionOptions(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(ctx context.Context, tx pgx.Tx) error {
 		var raw []byte
 		var active string
-		if err := tx.QueryRow(ctx, `SELECT h.revision,COALESCE(h.active_version,''),v.version_id,v.digest,v.definition,v.published_at FROM chartworks.topic_rule_publication_heads h JOIN chartworks.topic_rule_published_versions v ON(v.tenant_id,v.topic_id)=(h.tenant_id,h.topic_id) WHERE h.tenant_id=$1 AND h.topic_id=$2 AND v.version_id=$3`, e.Tenant(), topic, version).Scan(&out.State.Revision, &active, &out.State.Version, &out.Digest, &raw, &out.PublishedAt); err != nil {
+		err := tx.QueryRow(ctx, `SELECT h.revision,COALESCE(h.active_version,''),v.version_id,v.digest,v.definition,v.published_at FROM chartworks.topic_rule_publication_heads h JOIN chartworks.topic_rule_published_versions v ON(v.tenant_id,v.topic_id)=(h.tenant_id,h.topic_id) JOIN chartworks.topic_publication_heads th ON(th.tenant_id,th.topic_id)=(h.tenant_id,h.topic_id) WHERE h.tenant_id=$1 AND h.topic_id=$2 AND v.version_id=$3 AND (NOT $4 OR (h.active_version=v.version_id AND NOT th.archived AND th.active_version=v.topic_version))`, e.Tenant(), topic, version, current).Scan(&out.State.Revision, &active, &out.State.Version, &out.Digest, &raw, &out.PublishedAt)
+		if err != nil {
+			if current && errors.Is(err, pgx.ErrNoRows) {
+				return store.ErrConflict
+			}
 			return err
 		}
 		if json.Unmarshal(raw, &out.Definition) != nil || out.Definition.Topic != topic || out.Definition.Version != out.State.Version || out.Digest == "" {
@@ -219,7 +236,7 @@ func (d *DB) RetireRules(ctx context.Context, e identity.Envelope, published top
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if err := lockPublishedTopic(ctx, tx, e.Tenant(), published); err != nil {
+		if err := lockRetainedTopic(ctx, tx, e.Tenant(), published); err != nil {
 			return err
 		}
 		var revision int64

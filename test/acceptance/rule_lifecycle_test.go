@@ -187,22 +187,95 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 	if _, err = client.RetireRules(ctx, pack.Topic, sdk.RetireRulesRequest{Expected: 1, Note: "Wrong revision"}); !sdkConflict(err) {
 		t.Fatal("retirement CAS not enforced", err)
 	}
-	retired, err := client.RetireRules(ctx, pack.Topic, sdk.RetireRulesRequest{Expected: 2, Note: "Retire current rules"})
-	if err != nil || retired.Revision != 3 || !retired.Retired || retired.Active {
-		t.Fatal("retire", retired, err)
+	if gatewayFixture.requests.Load() != gatewayRequests {
+		t.Fatal("rule lifecycle or evaluation called model gateway")
+	}
+
+	pack.Version = "v2"
+	pack.Description = "Synthetic rule subject replacement"
+	topicDraftV2, err := client.SaveTopicDraft(ctx, sdk.SaveTopicDraftRequest{Expected: 1, Pack: pack, Change: "Replace the published rule subject"})
+	if err != nil || topicDraftV2.Metadata.Revision != 2 {
+		t.Fatal("replacement topic draft", topicDraftV2.Metadata, err)
+	}
+	topicReviewV2, err := client.ReviewTopic(ctx, pack.Topic, sdk.TopicReviewRequest{DraftRevision: 2, Digest: topicDraftV2.Metadata.Digest, Decision: "approve", Note: "Approve replacement topic"})
+	if err != nil {
+		t.Fatal("replacement topic review", err)
+	}
+	topicV2, err := client.PublishTopic(ctx, pack.Topic, sdk.PublishTopicRequest{Review: topicReviewV2.ID, Expected: 1})
+	if err != nil || topicV2.State.Revision != 2 || topicV2.State.Version != "v2" || !topicV2.State.Active {
+		t.Fatal("replacement topic publish", topicV2.State, err)
+	}
+	topicTransitionRequests := gatewayFixture.requests.Load()
+	if _, err = client.PublishedRules(ctx, pack.Topic); !sdkConflict(err) {
+		t.Fatal("stale current rules remained readable", err)
+	}
+	if _, err = client.EvaluateRules(ctx, pack.Topic, sdk.RuleEvaluationRequest{References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}}); !sdkConflict(err) {
+		t.Fatal("stale current rules remained evaluable", err)
+	}
+	secondExact, err := client.PublishedRuleVersion(ctx, pack.Topic, "rules-v2")
+	if err != nil || !secondExact.State.Active || secondExact.State.Retired || secondExact.Definition.TopicVersion != "v1" {
+		t.Fatal("retained rules unavailable after topic replacement", secondExact.State, err)
+	}
+	restored, err := client.RollbackTopic(ctx, pack.Topic, sdk.TopicTransitionRequest{Version: "v1", Expected: 2, Note: "Restore the pinned rule subject"})
+	if err != nil || restored.State.Revision != 3 || restored.State.Version != "v1" || !restored.State.Active {
+		t.Fatal("restore pinned topic", restored.State, err)
+	}
+	allowed, err = client.EvaluateRules(ctx, pack.Topic, sdk.RuleEvaluationRequest{References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}})
+	if err != nil || !allowed.Result.Allowed || allowed.TopicVersion != "v1" || allowed.RuleVersion != "rules-v2" {
+		t.Fatal("restored topic did not reactivate evaluation", allowed, err)
+	}
+	archived, err := client.ArchiveTopic(ctx, pack.Topic, sdk.ArchiveTopicRequest{Expected: 3, Note: "Archive the rule subject"})
+	if err != nil || archived.Revision != 4 || !archived.Archived || archived.Active {
+		t.Fatal("archive rule subject", archived, err)
+	}
+	if _, err = client.PublishedRules(ctx, pack.Topic); !sdkConflict(err) {
+		t.Fatal("archived current rules remained readable", err)
+	}
+	if _, err = client.EvaluateRules(ctx, pack.Topic, sdk.RuleEvaluationRequest{References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}}); !sdkConflict(err) {
+		t.Fatal("archived current rules remained evaluable", err)
+	}
+	if _, err = client.PublishedRuleVersion(ctx, pack.Topic, "rules-v2"); err != nil {
+		t.Fatal("retained rules unavailable after archive", err)
+	}
+
+	type retireResult struct {
+		state sdk.RuleState
+		err   error
+	}
+	type topicResult struct {
+		published sdk.PublishedTopic
+		err       error
+	}
+	retireResults := make(chan retireResult, 1)
+	topicResults := make(chan topicResult, 1)
+	go func() {
+		state, retireErr := client.RetireRules(ctx, pack.Topic, sdk.RetireRulesRequest{Expected: 2, Note: "Retire rules after archive"})
+		retireResults <- retireResult{state: state, err: retireErr}
+	}()
+	go func() {
+		published, rollbackErr := client.RollbackTopic(ctx, pack.Topic, sdk.TopicTransitionRequest{Version: "v1", Expected: 4, Note: "Restore archived topic"})
+		topicResults <- topicResult{published: published, err: rollbackErr}
+	}()
+	retired := <-retireResults
+	rolledBack := <-topicResults
+	if retired.err != nil || retired.state.Revision != 3 || retired.state.Version != "rules-v2" || !retired.state.Retired || retired.state.Active {
+		t.Fatal("retire after archive", retired.state, retired.err)
+	}
+	if rolledBack.err != nil || rolledBack.published.State.Revision != 5 || rolledBack.published.State.Version != "v1" || !rolledBack.published.State.Active || rolledBack.published.State.Archived {
+		t.Fatal("concurrent topic rollback", rolledBack.published.State, rolledBack.err)
 	}
 	if _, err = client.PublishedRules(ctx, pack.Topic); err == nil {
 		t.Fatal("retired rules remained active")
 	}
-	secondExact, err := client.PublishedRuleVersion(ctx, pack.Topic, "rules-v2")
+	secondExact, err = client.PublishedRuleVersion(ctx, pack.Topic, "rules-v2")
 	if err != nil || secondExact.State.Active || !secondExact.State.Retired || secondExact.State.Revision != 3 {
 		t.Fatal("retired exact read", secondExact.State, err)
 	}
 	if _, err = client.EvaluateRules(ctx, pack.Topic, sdk.RuleEvaluationRequest{References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}}); err == nil {
 		t.Fatal("retired rules evaluated as active")
 	}
-	if gatewayFixture.requests.Load() != gatewayRequests {
-		t.Fatal("rule lifecycle or evaluation called model gateway")
+	if gatewayFixture.requests.Load() != topicTransitionRequests {
+		t.Fatal("rule reads, evaluation, retirement, or topic transitions called model gateway")
 	}
 }
 
