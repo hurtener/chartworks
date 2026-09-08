@@ -149,6 +149,49 @@ func TestRouteAdmitsCurrentTopicBeforeEmbeddingAndAssemblesContext(t *testing.T)
 	}
 }
 
+func TestRouteResultRequestIsDetachedFromCaller(t *testing.T) {
+	service, _, _ := newTestService(t, testRules{err: store.ErrNotFound})
+	confidence := 0.75
+	request := RouteRequest{
+		Topic: "topic", Topics: []string{"topic"}, Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
+		Kinds: []string{"measure"}, Examples: []nlq.OptionalItem{{ID: "example", Text: "Use the reviewed monthly example", Confidence: &confidence}},
+	}
+	result, err := service.Route(context.Background(), testEnvelope(t, true), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Topics[0] = "mutated-topic"
+	request.Kinds[0] = "dimension"
+	request.Examples[0].Text = "mutated example"
+	*request.Examples[0].Confidence = 0.1
+	if result.Request.Topics[0] != "topic" || result.Request.Kinds[0] != "measure" || result.Request.Examples[0].Text != "Use the reviewed monthly example" || result.Request.Examples[0].Confidence == nil || *result.Request.Examples[0].Confidence != 0.75 {
+		t.Fatalf("route result retained caller-owned request memory: %#v", result.Request)
+	}
+
+	allConfidence := 0.9
+	all := RouteRequest{
+		Topics:      []string{"topic", "topic-two"},
+		Kinds:       []string{"measure"},
+		References:  []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}},
+		Choices:     []ChoiceSelection{{Pattern: "pattern", Slot: "metric", Value: "revenue"}},
+		JoinChoices: []JoinChoice{{Topic: "topic", JoinID: "sales-items"}},
+		MetricIDs:   []string{"revenue"},
+		Examples:    []nlq.OptionalItem{{ID: "example", Text: "reviewed example", Confidence: &allConfidence}},
+	}
+	cloned := cloneRouteRequest(all)
+	all.Topics[0] = "changed"
+	all.Kinds[0] = "dimension"
+	all.References[0].ID = "margin"
+	all.Choices[0].Value = "margin"
+	all.JoinChoices[0].JoinID = "other-join"
+	all.MetricIDs[0] = "margin"
+	all.Examples[0].Text = "changed"
+	*all.Examples[0].Confidence = 0.2
+	if cloned.Topics[0] != "topic" || cloned.Kinds[0] != "measure" || cloned.References[0].ID != "revenue" || cloned.Choices[0].Value != "revenue" || cloned.JoinChoices[0].JoinID != "sales-items" || cloned.MetricIDs[0] != "revenue" || cloned.Examples[0].Text != "reviewed example" || cloned.Examples[0].Confidence == nil || *cloned.Examples[0].Confidence != 0.9 {
+		t.Fatalf("request clone retained mutable aliases: %#v", cloned)
+	}
+}
+
 func TestRouteDeniesBeforeGatewayWhenDependencyReachIsMissing(t *testing.T) {
 	service, engine, _ := newTestService(t, testRules{err: store.ErrNotFound})
 	_, err := service.Route(context.Background(), testEnvelope(t, false), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?"})

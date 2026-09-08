@@ -236,7 +236,7 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 	if err != nil {
 		return RouteResult{}, err
 	}
-	result := RouteResult{Outcome: nlq.StrategySingleTopic, Request: in, Topic: topicsIDs[0], Topics: append([]string(nil), topicsIDs...), Stages: []Stage{}}
+	result := RouteResult{Outcome: nlq.StrategySingleTopic, Request: cloneRouteRequest(in), Topic: topicsIDs[0], Topics: append([]string(nil), topicsIDs...), Stages: []Stage{}}
 	if len(topicsIDs) > 1 {
 		result.Outcome = nlq.StrategyMultiTopic
 	}
@@ -543,6 +543,24 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		}
 	}
 	return topicsIDs, nil
+}
+
+func cloneRouteRequest(in RouteRequest) RouteRequest {
+	out := in
+	out.Topics = append([]string(nil), in.Topics...)
+	out.Kinds = append([]string(nil), in.Kinds...)
+	out.References = append([]semantics.Reference(nil), in.References...)
+	out.Choices = append([]ChoiceSelection(nil), in.Choices...)
+	out.JoinChoices = append([]JoinChoice(nil), in.JoinChoices...)
+	out.MetricIDs = append([]string(nil), in.MetricIDs...)
+	out.Examples = append([]nlq.OptionalItem(nil), in.Examples...)
+	for i := range out.Examples {
+		if out.Examples[i].Confidence != nil {
+			confidence := *out.Examples[i].Confidence
+			out.Examples[i].Confidence = &confidence
+		}
+	}
+	return out
 }
 
 func validQuestion(value string) bool {
