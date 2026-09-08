@@ -49,9 +49,10 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	if definition, _, ok := w.registry.Match(http.MethodPost, "/v1/nlq/routes"); !ok || definition.ID != "routeNLQ" {
 		t.Fatalf("gateway-enabled work omitted NLQ registry entry: %#v", definition)
 	}
+	serverDSN := support.Database(t)
 	cfg, err := config.Load(bytes.NewBufferString(`{"auth":{"issuer":"https://issuer.example.test","jwks_url":"https://issuer.example.test/jwks","audience":"chartworks:http"}}`), func(key string) (string, bool) {
 		if key == "CHARTWORKS_STORE_URL" {
-			return support.Database(t), true
+			return serverDSN, true
 		}
 		return "", false
 	}, config.Overrides{})
