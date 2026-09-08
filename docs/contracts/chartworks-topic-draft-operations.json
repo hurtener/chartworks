@@ -157,6 +157,30 @@
   },
   {
     "method": "POST",
+    "path": "/v1/topics/{id}/rule-patterns/read",
+    "action": "topics.read",
+    "effect": "clarification_pattern_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/replay",
+    "action": "topics.read",
+    "effect": "retained_rule_replay"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rules/shadow",
+    "action": "topics.read",
+    "effect": "rule_shadow_comparison"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/rule-invalidations/read",
+    "action": "topics.read",
+    "effect": "rule_evidence_invalidation_read"
+  },
+  {
+    "method": "POST",
     "path": "/v1/topics/{id}/rules/retire",
     "action": "topics.publish",
     "effect": "atomic_rule_retirement"

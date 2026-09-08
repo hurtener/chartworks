@@ -42,7 +42,7 @@ func ExecutionHandler(verifier *auth.Verifier, service *nlqexec.Service, next ht
 		}
 		// Examples are intentionally readable by either planning or feedback
 		// callers, matching nlqexec.Service.Examples' least-privilege contract.
-		if !e.Has(selected.Action) && !(selected.ID == "examplesNLQ" && e.Has("feedback.write")) {
+		if !(e.Has(selected.Action) || selected.ID == "examplesNLQ" && e.Has("feedback.write")) {
 			failure(w, access.ErrForbidden)
 			return
 		}
