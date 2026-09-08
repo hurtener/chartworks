@@ -80,6 +80,21 @@ New normalized terms remain reserved to their first entity ID, and canonical fac
 are split by their actual source/context. This is partial AC01/AC02/AC06 evidence and
 adds no route or action.
 
-Entity/onboarding APIs, source-reference rewrite workflows and full lifecycle
-portability remain unimplemented. No phase acceptance stub or completed-phase claim
-is added.
+No phase acceptance stub or completed-phase claim is added.
+
+## Bounded draft consumer operations stage
+
+The draft service, HTTP registry and Go SDK now expose deterministic onboarding,
+atomic entity CRUD and reviewed dataset rebind operations. Onboarding creates an
+unresolved one-dataset scaffold from active private profile evidence without model
+generation. Entity batches compile as one new revision, so deletes cannot strand
+measure, dimension, KPI, join or canonical references. Rebind preserves stable
+semantic column IDs, derives every physical/source coordinate from active evidence,
+rewrites all dataset-qualified references and uses the existing Save admission and
+transaction fences. These operations reuse `topics.write` with the existing
+secondary `engineering.read` and `sources.read` actions and require no migration.
+
+Focused pure and real PostgreSQL HTTP/SDK lifecycle tests provide additional partial
+AC03/AC06 evidence. Public source-health/recheck, bounded resumable gateway topic
+generation with unresolved semantics, retention and full lifecycle portability
+remain pending, so this stage does not complete Phase 15.

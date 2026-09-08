@@ -32,7 +32,7 @@ dependency update/delete. There are no published pointers or facet writes.
 
 ## Signed authority and privacy
 
-The first seven draft operations in the [shared topic operation manifest](chartworks-topic-draft-operations.json) use the existing
+The ten draft operations in the [shared topic operation manifest](chartworks-topic-draft-operations.json) use the existing
 Pengui verifier and signed action/resource model. The provider-registration contract
 lists their exact action strings. Creation requires tenant write, topic write and
 all source read, dataset query and execution-context use reaches. Editing requires
@@ -56,9 +56,10 @@ access fence does not claim to implement topic erasure/retention or publication.
 
 ## Wire behavior and limits
 
-Seven draft routes use `internal/api.Registry`, `SchemaFor`, the same generated
-OpenAPI data and the Go SDK: save, import, current draft, exact revision, history,
-diff and export. The runtime composition root installs `topicapi.Handler`. Request
+Ten draft routes use `internal/api.Registry`, `SchemaFor`, the same generated
+OpenAPI data and the Go SDK: save, import, onboarding, entity mutation, dataset
+rebind, current draft, exact revision, history, diff and export. The runtime
+composition root installs `topicapi.Handler`. Request
 DTOs have lower-snake-case JSON fields; absent fields take their Go zero values and
 then undergo domain validation. Unknown/duplicate fields, trailing JSON, wrong
 scalar types, query strings, content encoding and bodies on GET are rejected.
@@ -106,10 +107,26 @@ revision reuse are admissible proposals; reviewed publication owns approval. Phy
 keys remain in the topic and mapped import may rewrite them without changing the global
 meaning digest.
 
+Profile onboarding derives one unresolved dataset scaffold from exact active private
+profile evidence. It copies safe discovered columns into stable semantic column IDs
+and proposes no measures, dimensions, KPIs, joins, rules or canonical meanings.
+Entity mutation applies a bounded batch of puts/deletes to a detached prior model;
+the compiler rejects duplicate IDs and any deletion or update that strands a
+reference. Dataset rebind requires an explicit complete mapping from every stable
+semantic column ID to a safe physical column in one active target profile. The
+service derives source, context, dataset, source revision, profile digest, physical
+type, category and nullability, rewrites all dataset-qualified references, and saves
+the result through the same prior/new reach checks, discovery and commit fences.
+Each successful operation creates one immutable CAS revision; failures leave the
+head unchanged. These operations add no migration and reuse primary `topics.write`
+plus the established secondary `engineering.read` and `sources.read` actions.
+
 The separate [publication contract](topic-publication-v1.md) now owns review,
 publication/facet activation, retained publication reads, rollback/archive and the
-current published-topic source contract. Onboarding/entity APIs, source rename
-workflows, retention and full lifecycle bundle portability remain pending. Phase 16
+current published-topic source contract. Public source-health/recheck, bounded
+resumable gateway generation, retention and full lifecycle bundle portability remain
+pending. Onboarding evidence stays private; published health continues to use source
+discovery and exposes no profile ID. Phase 16
 execution/replay/shadow/provider quality remains pending. Phase 21 still needs
 foundation/work/security adapters, public document delivery and cumulative
 acceptance. No full `TestPhase15`, `TestPhase16` or `TestPhase21` pass is claimed.

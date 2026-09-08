@@ -182,6 +182,85 @@ func TestTopicDraftAPIAndSDK(t *testing.T) {
 	}
 }
 
+func TestTopicDraftOnboardingEntityMutationAndRebind(t *testing.T) {
+	f, s, e, seed := topicFixture(t)
+	ctx := context.Background()
+	c, _ := topicClient(t, f, s, e)
+
+	onboarded, err := c.OnboardTopicProfile(ctx, sdk.OnboardTopicProfileRequest{
+		Topic: "onboarded-commerce", Version: "v1", Name: "Onboarded commerce",
+		Description: "Unresolved profile scaffold", Profile: seed.Datasets[0].Source.ProfileVersion,
+		Change: "Create unresolved scaffold",
+	})
+	if err != nil || onboarded.Metadata.Revision != 1 || len(onboarded.Pack.Datasets) != 1 || len(onboarded.Pack.Measures) != 0 || len(onboarded.Pack.Dimensions) != 0 || len(onboarded.Pack.KPIs) != 0 || len(onboarded.Pack.Joins) != 0 {
+		t.Fatal("deterministic unresolved onboarding", onboarded, err)
+	}
+	dataset := onboarded.Pack.Datasets[0]
+	measure := semantics.Measure{ID: "revenue", Name: "Revenue", Description: "Reviewed amount", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: dataset.ID, ID: "amount"}, Aggregation: semantics.AggregationSum, Unit: "currency"}
+	kpi := semantics.KPI{ID: "revenue_index", Name: "Revenue index", Description: "Reviewed revenue signal", Expression: "reviewed revenue", Inputs: []semantics.Reference{{Kind: semantics.KindMeasure, ID: measure.ID}}}
+	mutated, err := c.MutateTopicEntities(ctx, onboarded.Pack.Topic, sdk.MutateTopicEntitiesRequest{
+		Expected: 1, Version: "v2", Change: "Add reviewed entities",
+		Mutations: []sdk.TopicEntityMutation{{Operation: "put", Kind: semantics.KindMeasure, ID: measure.ID, Measure: &measure}, {Operation: "put", Kind: semantics.KindKPI, ID: kpi.ID, KPI: &kpi}},
+	})
+	if err != nil || mutated.Metadata.Revision != 2 || len(mutated.Pack.Measures) != 1 || len(mutated.Pack.KPIs) != 1 {
+		t.Fatal("atomic entity mutation", mutated, err)
+	}
+	retained, err := c.TopicDraftVersion(ctx, onboarded.Pack.Topic, 1)
+	if err != nil || len(retained.Pack.Measures) != 0 || retained.Metadata.Digest != onboarded.Metadata.Digest {
+		t.Fatal("entity mutation changed prior revision", retained, err)
+	}
+	if _, err = c.MutateTopicEntities(ctx, onboarded.Pack.Topic, sdk.MutateTopicEntitiesRequest{Expected: 2, Version: "v3-invalid", Change: "Strand KPI", Mutations: []sdk.TopicEntityMutation{{Operation: "delete", Kind: semantics.KindMeasure, ID: measure.ID}}}); err == nil {
+		t.Fatal("stranded entity reference accepted")
+	}
+	current, err := c.TopicDraft(ctx, onboarded.Pack.Topic)
+	if err != nil || current.Metadata.Revision != 2 {
+		t.Fatal("failed mutation moved draft head", current.Metadata, err)
+	}
+
+	source, err := f.s.Get(ctx, f.e, seed.Datasets[0].Source.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := f.s.Binding(ctx, f.e, source.ID, source.ContextID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var items readexec.Relation
+	for _, relation := range binding.Relations {
+		if relation.Name == "items" {
+			items = relation
+		}
+	}
+	if items.ID == "" {
+		t.Fatal("fixture items relation missing")
+	}
+	target := f.profile(t, engineering.ProfileSpec{ID: "items-rebind-profile", Source: source.ID, Context: source.ContextID, Dataset: items.ID, Columns: []string{"sale_id", "quantity"}, SkipLLM: true}).Profile.Profile
+	if _, err = c.RebindTopicDataset(ctx, onboarded.Pack.Topic, sdk.RebindTopicDatasetRequest{Expected: 2, Version: "v3-incomplete", Dataset: dataset.ID, Profile: target.Version, Columns: []sdk.TopicColumnRebinding{{Column: "amount", SourceName: "quantity"}}, Change: "Incomplete move"}); err == nil {
+		t.Fatal("incomplete stable column mapping accepted")
+	}
+	rebound, err := c.RebindTopicDataset(ctx, onboarded.Pack.Topic, sdk.RebindTopicDatasetRequest{
+		Expected: 2, Version: "v3", Dataset: dataset.ID, Profile: target.Version, Change: "Move to reviewed items profile",
+		Columns: []sdk.TopicColumnRebinding{{Column: "id", SourceName: "sale_id"}, {Column: "amount", SourceName: "quantity"}},
+	})
+	if err != nil || rebound.Metadata.Revision != 3 || len(rebound.Pack.Datasets) != 1 {
+		t.Fatal("reviewed dataset rebind", rebound, err)
+	}
+	moved := rebound.Pack.Datasets[0]
+	if moved.ID != target.Dataset || moved.Source.Source != target.Source || moved.Source.Context != target.Context || moved.Source.ProfileVersion != target.Version || moved.Source.SourceRevision != target.SourceRevision || moved.Source.ProfileDigest != target.DeterministicHash() {
+		t.Fatal("rebind did not derive target profile evidence", moved.Source)
+	}
+	if rebound.Pack.Measures[0].Field.Dataset != target.Dataset || rebound.Pack.Measures[0].Field.ID != "amount" {
+		t.Fatal("stable semantic reference was not rewritten", rebound.Pack.Measures[0].Field)
+	}
+	physical := map[string]string{}
+	for _, column := range moved.Columns {
+		physical[column.ID] = column.SourceName
+	}
+	if physical["id"] != "sale_id" || physical["amount"] != "quantity" {
+		t.Fatal("physical mapping lost", physical)
+	}
+}
+
 func TestTopicDraftCASAndScopeFences(t *testing.T) {
 	f, s, e, p := topicFixture(t)
 	ctx := context.Background()

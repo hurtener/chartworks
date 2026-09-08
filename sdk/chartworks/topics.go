@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	semantictopics "github.com/hurtener/chartworks/internal/semantics/topics"
 )
@@ -82,12 +83,33 @@ type ImportTopicDraftRequest struct {
 	Change   string             `json:"change"`
 }
 
+// OnboardTopicProfileRequest creates an unresolved topic draft from a private profile.
+type OnboardTopicProfileRequest = drafts.OnboardRequest
+
+// MutateTopicEntitiesRequest applies atomic CRUD to an exact draft revision.
+type MutateTopicEntitiesRequest = drafts.EntityMutationRequest
+
+// RebindTopicDatasetRequest moves a draft dataset to active profile evidence.
+type RebindTopicDatasetRequest = drafts.RebindRequest
+
+// TopicEntityMutation is one closed entity put or delete operation.
+type TopicEntityMutation = semantics.EntityMutation
+
+// TopicColumnRebinding maps a stable semantic column ID to a physical source name.
+type TopicColumnRebinding = drafts.ColumnRebinding
+
 func (c *Client) SaveTopicDraft(ctx context.Context, in SaveTopicDraftRequest) (out TopicDraft, err error) {
 	err = c.callLimit(ctx, "POST", "/v1/topic-drafts", "", in, &out, 2<<20)
 	return
 }
 func (c *Client) ImportTopicDraft(ctx context.Context, in ImportTopicDraftRequest) (out TopicDraft, err error) {
 	err = c.callLimit(ctx, "POST", "/v1/topic-draft-imports", "", in, &out, 2<<20)
+	return
+}
+
+// OnboardTopicProfile creates an unresolved draft from active private profile evidence.
+func (c *Client) OnboardTopicProfile(ctx context.Context, in OnboardTopicProfileRequest) (out TopicDraft, err error) {
+	err = c.callLimit(ctx, "POST", "/v1/topic-onboarding", "", in, &out, 2<<20)
 	return
 }
 func (c *Client) TopicDraft(ctx context.Context, id string) (out TopicDraft, err error) {
@@ -134,6 +156,24 @@ func (c *Client) ExportTopicDraft(ctx context.Context, id string, revision int64
 		Revision int64                     `json:"revision"`
 		Mapping  []TopicExportDatasetSlots `json:"mapping"`
 	}{revision, mapping}, &out, 2<<20)
+	return
+}
+
+// MutateTopicEntities applies one atomic entity CRUD batch to a new draft revision.
+func (c *Client) MutateTopicEntities(ctx context.Context, id string, in MutateTopicEntitiesRequest) (out TopicDraft, err error) {
+	if !wireID(id) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/draft-entities", "", in, &out, 2<<20)
+	return
+}
+
+// RebindTopicDataset maps stable column IDs to active target profile evidence.
+func (c *Client) RebindTopicDataset(ctx context.Context, id string, in RebindTopicDatasetRequest) (out TopicDraft, err error) {
+	if !wireID(id) {
+		return out, errors.New("chartworks: invalid topic identifier")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/topics/"+id+"/draft-rebind", "", in, &out, 2<<20)
 	return
 }
 

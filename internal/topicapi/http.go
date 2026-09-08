@@ -60,7 +60,10 @@ func Registry() (*api.Registry, error) {
 	routes := []route{
 		{"POST", "/v1/topic-drafts", "saveTopicDraft", "topics.write", "source_catalog_read_and_draft_commit", "drafts.Service.Save", "topic.drafted", reflect.TypeFor[drafts.SaveRequest](), reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topic-draft-imports", "importTopicDraft", "topics.write", "source_catalog_read_and_draft_commit", "drafts.Service.Import", "topic.drafted", reflect.TypeFor[drafts.ImportRequest](), reflect.TypeFor[drafts.Version]()},
+		{"POST", "/v1/topic-onboarding", "onboardTopicProfile", "topics.write", "profile_catalog_read_and_draft_commit", "drafts.Service.OnboardProfile", "topic.drafted", reflect.TypeFor[drafts.OnboardRequest](), reflect.TypeFor[drafts.Version]()},
 		{"GET", "/v1/topics/{id}/draft", "getTopicDraft", "topics.read", "metadata_read", "drafts.Service.Read", "read_only_no_domain_audit", nil, reflect.TypeFor[drafts.Version]()},
+		{"POST", "/v1/topics/{id}/draft-entities", "mutateTopicEntities", "topics.write", "source_catalog_read_and_draft_commit", "drafts.Service.MutateEntities", "topic.drafted", reflect.TypeFor[drafts.EntityMutationRequest](), reflect.TypeFor[drafts.Version]()},
+		{"POST", "/v1/topics/{id}/draft-rebind", "rebindTopicDataset", "topics.write", "profile_catalog_read_and_draft_commit", "drafts.Service.RebindDataset", "topic.drafted", reflect.TypeFor[drafts.RebindRequest](), reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topics/{id}/draft-versions/read", "getTopicDraftVersion", "topics.read", "metadata_read", "drafts.Service.Read", "read_only_no_domain_audit", reflect.TypeFor[RevisionRequest](), reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topics/{id}/draft-history", "getTopicDraftHistory", "topics.read", "metadata_read", "drafts.Service.History", "read_only_no_domain_audit", reflect.TypeFor[HistoryRequest](), reflect.TypeFor[[]drafts.Revision]()},
 		{"POST", "/v1/topics/{id}/draft-diff", "diffTopicDraft", "topics.read", "metadata_read", "drafts.Service.Diff", "read_only_no_domain_audit", reflect.TypeFor[DiffRequest](), reflect.TypeFor[semantics.VersionDiff]()},
@@ -91,7 +94,10 @@ func Registry() (*api.Registry, error) {
 			Summary: map[string]string{
 				"saveTopicDraft":           "Create or edit an immutable private topic draft",
 				"importTopicDraft":         "Map and admit a portable topic draft",
+				"onboardTopicProfile":      "Create an unresolved topic draft from active profile evidence",
 				"getTopicDraft":            "Read the current private draft",
+				"mutateTopicEntities":      "Apply atomic entity CRUD to a new private draft revision",
+				"rebindTopicDataset":       "Move a dataset to active profile evidence and rewrite references",
 				"getTopicDraftVersion":     "Read an exact private draft revision",
 				"getTopicDraftHistory":     "List scoped private draft revision metadata",
 				"diffTopicDraft":           "Compare two exact private draft revisions",
@@ -164,7 +170,7 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 		}
 		if service == nil {
 			switch selected.ID {
-			case "saveTopicDraft", "importTopicDraft", "getTopicDraft", "getTopicDraftVersion", "getTopicDraftHistory", "diffTopicDraft", "exportTopicDraft":
+			case "saveTopicDraft", "importTopicDraft", "onboardTopicProfile", "getTopicDraft", "getTopicDraftVersion", "getTopicDraftHistory", "diffTopicDraft", "exportTopicDraft", "mutateTopicEntities", "rebindTopicDataset":
 				failure(w, store.ErrNotFound)
 				return
 			}
@@ -189,8 +195,23 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 			if err = decode(&in); err == nil {
 				out, err = service.Import(r.Context(), e, in)
 			}
+		case "onboardTopicProfile":
+			var in drafts.OnboardRequest
+			if err = decode(&in); err == nil {
+				out, err = service.OnboardProfile(r.Context(), e, in)
+			}
 		case "getTopicDraft":
 			out, err = service.Read(r.Context(), e, id, 0)
+		case "mutateTopicEntities":
+			var in drafts.EntityMutationRequest
+			if err = decode(&in); err == nil {
+				out, err = service.MutateEntities(r.Context(), e, id, in)
+			}
+		case "rebindTopicDataset":
+			var in drafts.RebindRequest
+			if err = decode(&in); err == nil {
+				out, err = service.RebindDataset(r.Context(), e, id, in)
+			}
 		case "getTopicDraftVersion":
 			var in RevisionRequest
 			if err = decode(&in); err == nil {

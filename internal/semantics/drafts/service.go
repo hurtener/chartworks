@@ -104,6 +104,40 @@ type ImportRequest struct {
 	Change   string                  `json:"change"`
 }
 
+// ColumnRebinding maps one stable semantic column ID to a discovered source name.
+type ColumnRebinding struct {
+	Column     string `json:"column"`
+	SourceName string `json:"source_name"`
+}
+
+// RebindRequest creates a new draft revision against one active target profile.
+type RebindRequest struct {
+	Expected int64             `json:"expected_revision"`
+	Version  string            `json:"version"`
+	Dataset  string            `json:"dataset"`
+	Profile  string            `json:"profile"`
+	Columns  []ColumnRebinding `json:"columns"`
+	Change   string            `json:"change"`
+}
+
+// EntityMutationRequest applies a bounded atomic entity batch to an exact draft head.
+type EntityMutationRequest struct {
+	Expected  int64                      `json:"expected_revision"`
+	Version   string                     `json:"version"`
+	Mutations []semantics.EntityMutation `json:"mutations"`
+	Change    string                     `json:"change"`
+}
+
+// OnboardRequest creates an unresolved draft scaffold from private profile evidence.
+type OnboardRequest struct {
+	Topic       string `json:"topic"`
+	Version     string `json:"version"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Profile     string `json:"profile"`
+	Change      string `json:"change"`
+}
+
 // Prepared is an ephemeral admission proof issued only after public source/profile
 // checks. The database still fences source revisions and retained evidence at commit.
 type Prepared struct {
@@ -269,4 +303,111 @@ func (s *Service) Import(ctx context.Context, e identity.Envelope, in ImportRequ
 		return Version{}, err
 	}
 	return s.Save(ctx, e, SaveRequest{in.Expected, candidate.Pack(), in.Change})
+}
+
+func validEditRequest(ctx context.Context, expected int64, version, change string) bool {
+	return ctx != nil && expected > 0 && expected < MaxRevisions && identity.Identifier(version) && len(change) >= 1 && len(change) <= 1024 && utf8.ValidString(change)
+}
+
+// MutateEntities creates one new immutable draft revision from a bounded atomic
+// entity batch. It never edits the retained prior revision in place.
+func (s *Service) MutateEntities(ctx context.Context, e identity.Envelope, topic string, in EntityMutationRequest) (Version, error) {
+	if !identity.Identifier(topic) || !validEditRequest(ctx, in.Expected, in.Version, in.Change) {
+		return Version{}, store.ErrInvalid
+	}
+	current, err := s.repo.ReadTopicDraft(ctx, e, topic, in.Expected, Write)
+	if err != nil {
+		return Version{}, err
+	}
+	model, err := semantics.Compile(current.Pack)
+	if err != nil {
+		return Version{}, err
+	}
+	changed, err := semantics.MutateEntities(model, in.Version, in.Mutations)
+	if err != nil {
+		return Version{}, err
+	}
+	return s.Save(ctx, e, SaveRequest{Expected: in.Expected, Pack: changed.Pack(), Change: in.Change})
+}
+
+// RebindDataset moves a logical dataset to exact active profile evidence. The
+// caller maps stable semantic column IDs to discovered physical names; source,
+// context, dataset, revision, type, category, and nullability come from evidence.
+func (s *Service) RebindDataset(ctx context.Context, e identity.Envelope, topic string, in RebindRequest) (Version, error) {
+	if !identity.Identifier(topic) || !validEditRequest(ctx, in.Expected, in.Version, in.Change) || !identity.Identifier(in.Dataset) || !identity.Identifier(in.Profile) || len(in.Columns) < 1 || len(in.Columns) > 256 {
+		return Version{}, store.ErrInvalid
+	}
+	current, err := s.repo.ReadTopicDraft(ctx, e, topic, in.Expected, Write)
+	if err != nil {
+		return Version{}, err
+	}
+	model, err := semantics.Compile(current.Pack)
+	if err != nil {
+		return Version{}, err
+	}
+	evidence, err := s.profiles.Evidence(ctx, e, in.Profile)
+	if err != nil {
+		return Version{}, err
+	}
+	if !evidence.Active || evidence.Profile.Version != in.Profile {
+		return Version{}, readexec.ErrBinding
+	}
+	oldColumns := map[string]semantics.Column{}
+	for _, dataset := range current.Pack.Datasets {
+		if dataset.ID == in.Dataset {
+			for _, column := range dataset.Columns {
+				oldColumns[column.ID] = column
+			}
+		}
+	}
+	actual := map[string]readexec.Column{}
+	for _, column := range evidence.Profile.Schema {
+		actual[column.Name] = column
+	}
+	columns := make([]semantics.Column, 0, len(in.Columns))
+	seenPhysical := map[string]bool{}
+	for _, mapping := range in.Columns {
+		old, ok := oldColumns[mapping.Column]
+		discovered, found := actual[mapping.SourceName]
+		if !ok || !found || !discovered.Safe || seenPhysical[mapping.SourceName] {
+			return Version{}, readexec.ErrBinding
+		}
+		seenPhysical[mapping.SourceName] = true
+		columns = append(columns, semantics.Column{ID: old.ID, SourceName: discovered.Name, Name: old.Name, NativeType: discovered.NativeType, Category: discovered.Category, Nullable: discovered.Nullable})
+	}
+	replacement := semantics.DatasetReplacement{Dataset: evidence.Profile.Dataset, Source: semantics.SourceReference{Source: evidence.Profile.Source, Context: evidence.Profile.Context, Dataset: evidence.Profile.Dataset, ProfileVersion: evidence.Profile.Version, ProfileDigest: evidence.Profile.DeterministicHash(), SourceRevision: evidence.Profile.SourceRevision}, Columns: columns}
+	changed, err := semantics.ReplaceDataset(model, in.Version, in.Dataset, replacement)
+	if err != nil {
+		return Version{}, err
+	}
+	return s.Save(ctx, e, SaveRequest{Expected: in.Expected, Pack: changed.Pack(), Change: in.Change})
+}
+
+// OnboardProfile creates a deterministic unresolved topic scaffold from one
+// active private profile. It invents no measures, dimensions, joins, or rules.
+func (s *Service) OnboardProfile(ctx context.Context, e identity.Envelope, in OnboardRequest) (Version, error) {
+	if ctx == nil || !identity.Identifier(in.Topic) || !identity.Identifier(in.Version) || !identity.Identifier(in.Profile) || len(in.Change) < 1 || len(in.Change) > 1024 || !utf8.ValidString(in.Change) {
+		return Version{}, store.ErrInvalid
+	}
+	if err := Require(e, in.Topic, Write); err != nil {
+		return Version{}, err
+	}
+	if err := access.Require(e, "topics.write", access.Tenant(e, "write")); err != nil {
+		return Version{}, err
+	}
+	evidence, err := s.profiles.Evidence(ctx, e, in.Profile)
+	if err != nil {
+		return Version{}, err
+	}
+	if !evidence.Active || evidence.Profile.Version != in.Profile {
+		return Version{}, readexec.ErrBinding
+	}
+	columns := make([]semantics.Column, 0, len(evidence.Profile.Schema))
+	for _, column := range evidence.Profile.Schema {
+		if column.Safe {
+			columns = append(columns, semantics.Column{ID: column.Name, SourceName: column.Name, Name: column.Name, NativeType: column.NativeType, Category: column.Category, Nullable: column.Nullable})
+		}
+	}
+	pack := semantics.TopicPack{SchemaVersion: semantics.SchemaVersion, Topic: in.Topic, Version: in.Version, Name: in.Name, Description: in.Description, Datasets: []semantics.Dataset{{ID: evidence.Profile.Dataset, Name: evidence.Profile.Dataset, Source: semantics.SourceReference{Source: evidence.Profile.Source, Context: evidence.Profile.Context, Dataset: evidence.Profile.Dataset, ProfileVersion: evidence.Profile.Version, ProfileDigest: evidence.Profile.DeterministicHash(), SourceRevision: evidence.Profile.SourceRevision}, Columns: columns}}}
+	return s.Save(ctx, e, SaveRequest{Pack: pack, Change: in.Change})
 }

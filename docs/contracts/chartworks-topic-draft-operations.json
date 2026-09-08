@@ -7,6 +7,12 @@
   },
   {
     "method": "POST",
+    "path": "/v1/topic-onboarding",
+    "action": "topics.write",
+    "effect": "profile_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "POST",
     "path": "/v1/topic-draft-imports",
     "action": "topics.write",
     "effect": "source_catalog_read_and_draft_commit"
@@ -34,6 +40,18 @@
     "path": "/v1/topics/{id}/draft-diff",
     "action": "topics.read",
     "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-entities",
+    "action": "topics.write",
+    "effect": "source_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-rebind",
+    "action": "topics.write",
+    "effect": "profile_catalog_read_and_draft_commit"
   },
   {
     "method": "POST",
