@@ -65,6 +65,8 @@ type ArchiveRequest struct {
 type RuleVersionRequest struct {
 	Version string `json:"version"`
 }
+
+// InvalidationRequest reads ordered rule lifecycle fences after a cursor.
 type InvalidationRequest struct {
 	After int64 `json:"after_revision"`
 	Limit int   `json:"limit"`
@@ -212,7 +214,7 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 		}
 		if rules == nil {
 			switch selected.ID {
-				case "saveRuleDraft", "reviewRules", "publishRules", "getPublishedRules", "getPublishedRuleVersion", "evaluateRules", "getPublishedRulePatterns", "replayRules", "shadowRules", "readRuleInvalidations", "retireRules":
+			case "saveRuleDraft", "reviewRules", "publishRules", "getPublishedRules", "getPublishedRuleVersion", "evaluateRules", "getPublishedRulePatterns", "replayRules", "shadowRules", "readRuleInvalidations", "retireRules":
 				failure(w, store.ErrNotFound)
 				return
 			}

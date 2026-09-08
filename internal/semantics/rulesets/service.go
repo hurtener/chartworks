@@ -13,14 +13,14 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
+// Service coordinates reviewed rule lifecycle with exact pinned evidence.
 type Service struct {
 	repo     Repository
 	topics   TopicRepository
 	evidence EvidenceRepository
 }
 
-// Service coordinates reviewed rule lifecycle with exact pinned evidence.
-
+// New constructs a rule lifecycle service with topic, rule and optional evidence repositories.
 func New(repo Repository, topicRepo TopicRepository, evidence ...EvidenceRepository) (*Service, error) {
 	if repo == nil || topicRepo == nil {
 		return nil, store.ErrInvalid

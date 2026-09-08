@@ -299,6 +299,7 @@ func (d *DB) RetireRules(ctx context.Context, e identity.Envelope, published top
 	return
 }
 
+// RecordComparison persists immutable deterministic replay or shadow evidence.
 func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparison rulesets.Comparison) (rulesets.Comparison, error) {
 	if !identity.Identifier(comparison.ID) || (comparison.Mode != "replay" && comparison.Mode != "shadow") || !identity.Identifier(comparison.Topic) || len(comparison.References) < 1 || len(comparison.References) > 256 || !identity.Identifier(comparison.Baseline.RuleVersion) || !identity.Identifier(comparison.Baseline.TopicVersion) {
 		return rulesets.Comparison{}, store.ErrInvalid
@@ -345,6 +346,7 @@ func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparis
 	return comparison, nil
 }
 
+// ReadInvalidations returns ordered publish and retire fences after a cursor.
 func (d *DB) ReadInvalidations(ctx context.Context, e identity.Envelope, topic string, after int64, limit int) (out []rulesets.Invalidation, err error) {
 	if !identity.Identifier(topic) || after < 0 || limit < 1 || limit > 128 {
 		return nil, store.ErrInvalid
