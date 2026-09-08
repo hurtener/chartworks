@@ -43,3 +43,16 @@ Read execution now extends the merged phase-09 validator on the existing source/
 ## Uploads and profiling (phases 11/12)
 
 The service accepts bounded CSV, XLSX and Parquet files into a tenant-scoped managed PostgreSQL workspace, then exposes the activated dataset through the ordinary source, validation and read-execution path. Deterministic versioned profiles retain sampling provenance, freshness, quality findings and schema-drift evidence; optional summaries use only the existing Bifrost gateway over sanitized aggregates. See [setup](GETTING-STARTED.md), [configuration](docs/configuration.md), the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json) and [acceptance evidence](docs/reviews/phase-11-12-current-evidence.md).
+
+## External-agent context and SQL (phase 19)
+
+PR #12 adds versioned opaque context references and explicit SQL submissions on
+the existing router/validator/reader. Context-only authority cannot execute SQL;
+lookup/submission recheck current Pengui authority and exact semantic/source pins.
+Multi-step analysis remains caller-driven, with bounded idempotent steps and
+content-free receipts rather than another agent loop or a result cache. See the
+[wire and retry contract](docs/contracts/byo-sql.md),
+[configuration excerpt](examples/chartworks.byo.json) and
+[review/verification record](docs/reviews/phase-19-byo-mode.md). Phase 19 remains
+in progress until its required checks and review complete; this is not the
+phase-25 full-release qualification.

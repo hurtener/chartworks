@@ -172,3 +172,27 @@ TLS. It does not change signed source/context authorization or grant write acces
 Cloud connection material remains an operator-only `read_dsn` environment reference,
 with engine-specific fields validated by the leaf adapter; public source models
 never include these bytes. Managed-write aliases remain PostgreSQL-only in phase13.
+
+## External-agent query bundles (phase 19)
+
+`query_bundles` bounds the opaque context/explicit SQL-step service. It grants no
+permissions and defines no signing key or alternate authentication mode. The
+[BYO SQL contract](contracts/byo-sql.md) describes the separate context and submit
+permissions and the [example excerpt](../examples/chartworks.byo.json) supplies
+explicit defaults to merge into a deployment configuration.
+
+| Key | Type / units | Default | Bounds and behavior |
+|---|---|---|---|
+| `query_bundles.ttl` | duration string | `15m` | 1 second–1 hour; fixed lifetime from creation, not extended by JWT refresh or lookup. |
+| `query_bundles.retention` | duration string | `24h` | At least TTL and at most 7 days from creation; retains bounded context/step evidence, not query result rows. |
+| `query_bundles.max_bytes` | integer bytes | 262144 | 4096–1048576; bounds both public context and complete stored record. |
+| `query_bundles.per_session` | integer count | 16 | 1–64 retained bundles per tenant/user/session. |
+| `query_bundles.per_tenant` | integer count | 1024 | At least per-session ceiling, at most 4096 retained bundles per tenant. |
+| `query_bundles.max_steps` | integer count | 8 | 1–32 distinct operations per bundle; validation rejection consumes a step, identical replay does not. |
+| `query_bundles.step_timeout` | duration string | `1m` | 1 second–1 minute; also bounded by current JWT/request deadlines, bundle expiry and reader limits. |
+
+Retained expired evidence counts against quotas until cleanup. Admission removes
+at most 64 due records in its own tenant before checking quotas; the existing
+retention sweep also deletes due evidence. Source and semantic pins are immutable.
+A restarted process can serve stored references without a router/model, but still
+requires current signed authority and the same source/validator/reader services.

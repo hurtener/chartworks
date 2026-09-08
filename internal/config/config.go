@@ -134,18 +134,19 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
-	Pipelines Pipelines      `json:"pipelines"`
-	Uploads   Uploads        `json:"uploads"`
-	Profiling Profiling      `json:"profiling"`
-	Sources   Sources        `json:"sources"`
-	Exec      ReadValidation `json:"exec"`
-	Jobs      Jobs           `json:"jobs"`
-	Server    Server         `json:"server"`
-	Auth      Auth           `json:"auth"`
-	Store     Store          `json:"store"`
-	Telemetry Telemetry      `json:"telemetry"`
-	Features  Features       `json:"features"`
-	Gateway   Gateway        `json:"gateway"`
+	QueryBundles QueryBundles   `json:"query_bundles"`
+	Pipelines    Pipelines      `json:"pipelines"`
+	Uploads      Uploads        `json:"uploads"`
+	Profiling    Profiling      `json:"profiling"`
+	Sources      Sources        `json:"sources"`
+	Exec         ReadValidation `json:"exec"`
+	Jobs         Jobs           `json:"jobs"`
+	Server       Server         `json:"server"`
+	Auth         Auth           `json:"auth"`
+	Store        Store          `json:"store"`
+	Telemetry    Telemetry      `json:"telemetry"`
+	Features     Features       `json:"features"`
+	Gateway      Gateway        `json:"gateway"`
 }
 
 // Config is immutable after Load. Its resolved credential has no printable projection.
@@ -185,17 +186,18 @@ func (c Config) StoreDSN() string { return c.dsn }
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
 	v := Values{
-		Pipelines: DefaultPipelines(),
-		Uploads:   DefaultUploads(),
-		Profiling: DefaultProfiling(),
-		Sources:   DefaultSources(),
-		Exec:      DefaultReadValidation(),
-		Server:    Server{Listen: "127.0.0.1:8080", BasePath: "/", CORSAllowlist: []string{}, ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(75 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
-		Auth:      Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
-		Store:     Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
-		Jobs:      DefaultJobs(),
-		Telemetry: Telemetry{LogFormat: "json", Metrics: true},
-		Gateway:   Gateway{Limits: DefaultGatewayLimits(), Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
+		Pipelines:    DefaultPipelines(),
+		Uploads:      DefaultUploads(),
+		Profiling:    DefaultProfiling(),
+		Sources:      DefaultSources(),
+		Exec:         DefaultReadValidation(),
+		QueryBundles: DefaultQueryBundles(),
+		Server:       Server{Listen: "127.0.0.1:8080", BasePath: "/", CORSAllowlist: []string{}, ReadHeaderTimeout: Duration(5 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(75 * time.Second), IdleTimeout: Duration(time.Minute), ShutdownGrace: Duration(10 * time.Second), MaxBodyBytes: 10 << 20, MaxHeaderBytes: 32 << 10},
+		Auth:         Auth{MaxTokenBytes: 32768, MaxClaimBytes: 24576, MaxScopes: 32, MaxScopeBytes: 4096, Algorithms: []string{"RS256", "ES256"}, JWKSMaxStale: Duration(5 * time.Minute), RefreshInterval: Duration(time.Minute), RequestTimeout: Duration(3 * time.Second), ClockSkew: Duration(30 * time.Second), MaxTokenLifetime: Duration(15 * time.Minute)},
+		Store:        Store{DSN: "env:CHARTWORKS_STORE_URL", MaxConns: 10, ConnectTimeout: Duration(5 * time.Second), TransactionTimeout: Duration(5 * time.Second), MigrationPolicy: "apply"},
+		Jobs:         DefaultJobs(),
+		Telemetry:    Telemetry{LogFormat: "json", Metrics: true},
+		Gateway:      Gateway{Limits: DefaultGatewayLimits(), Driver: "bifrost", MaxAttemptsPerCall: 2, Roles: map[string]Role{}},
 	}
 	v.Gateway.Bifrost.Providers = []Provider{}
 	v.Jobs.Credentials = []BrokerCredential{}
@@ -388,6 +390,9 @@ func validate(v Values) error {
 		return err
 	}
 	if err := ValidateSources(v.Sources); err != nil {
+		return err
+	}
+	if err := ValidateQueryBundles(v.QueryBundles); err != nil {
 		return err
 	}
 	if err := ValidateReadValidation(v.Exec); err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -99,7 +100,7 @@ func safe(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	for _, e := range []error{engineering.ErrInvalid, engineering.ErrLimit, engineering.ErrFormat, engineering.ErrChecksum, engineering.ErrOwnership, engineering.ErrUnavailable, engineering.ErrState, readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound, jobs.ErrInvalid, jobs.ErrBusy, jobs.ErrEmpty, jobs.ErrAuthority, jobs.ErrTransient, store.ErrScope, store.ErrInvalid, store.ErrConflict, store.ErrMigration, store.ErrNotFound, store.ErrUnavailable, store.ErrExpired} {
+	for _, e := range []error{nlqbyo.ErrBudget, engineering.ErrInvalid, engineering.ErrLimit, engineering.ErrFormat, engineering.ErrChecksum, engineering.ErrOwnership, engineering.ErrUnavailable, engineering.ErrState, readexec.ErrType, readexec.ErrCancelled, readexec.ErrTimeout, readexec.ErrUncertain, readexec.ErrReplay, readexec.ErrUnsafe, readexec.ErrUnsupported, readexec.ErrBinding, readexec.ErrLimit, access.ErrUnauthenticated, access.ErrForbidden, access.ErrNotFound, jobs.ErrInvalid, jobs.ErrBusy, jobs.ErrEmpty, jobs.ErrAuthority, jobs.ErrTransient, store.ErrScope, store.ErrInvalid, store.ErrConflict, store.ErrMigration, store.ErrNotFound, store.ErrUnavailable, store.ErrExpired} {
 		if errors.Is(err, e) {
 			return e
 		}

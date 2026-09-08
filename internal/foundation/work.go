@@ -20,6 +20,7 @@ import (
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
 	"github.com/hurtener/chartworks/internal/nlqapi"
+	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/securityapi"
@@ -161,8 +162,11 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 	w.handler = topicapi.Handler(verifier, topics, published, rules, w.handler)
 	var nlqRegistry *api.Registry
 	var nlqExecutionRegistry *api.Registry
+	var byoRegistry *api.Registry
+	var routing *nlqroute.Service
 	if w.engine != nil {
-		routing, routeErr := nlqroute.New(published, rules, index, w.engine)
+		var routeErr error
+		routing, routeErr = nlqroute.New(published, rules, index, w.engine)
 		if routeErr != nil {
 			w.close()
 			return nil, routeErr
@@ -186,6 +190,19 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 				w.close()
 				return nil, err
 			}
+		}
+	}
+	if validator != nil && executor != nil {
+		byo, byoErr := nlqbyo.New(routing, published, rules, w.sourceService, validator, executor, db, v.QueryBundles, v.Exec, nil)
+		if byoErr != nil {
+			w.close()
+			return nil, byoErr
+		}
+		w.handler = nlqapi.BYOHandler(verifier, byo, w.handler)
+		byoRegistry, err = nlqapi.BYORegistry(byo.CanCreate())
+		if err != nil {
+			w.close()
+			return nil, err
 		}
 	}
 	publicRegistry, err := PublicRegistry()
@@ -231,7 +248,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry)
 	if err != nil {
 		w.close()
 		return nil, err

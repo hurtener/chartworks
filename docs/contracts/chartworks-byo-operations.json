@@ -1,0 +1,20 @@
+[
+  {
+    "method": "POST",
+    "path": "/v1/nlq/contexts/read",
+    "action": "query.context",
+    "effect": "byo_context_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/nlq/sql",
+    "action": "query.submit",
+    "effect": "byo_validated_read_and_receipt"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/nlq/contexts",
+    "action": "query.context",
+    "effect": "byo_context_retrieval_and_commit"
+  }
+]

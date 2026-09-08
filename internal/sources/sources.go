@@ -370,12 +370,23 @@ func (s *Service) Discover(ctx context.Context, e identity.Envelope, id string) 
 
 // Binding is the pre-parse metadata seam. Missing source/context reach fails before
 // any warehouse connection or dependency discovery occurs.
-func (s *Service) Binding(ctx context.Context, e identity.Envelope, id, partition string) (out readexec.Binding, err error) {
-	scope, err := sourceScope(e, "sources.query", "query", id)
+func (s *Service) Binding(ctx context.Context, e identity.Envelope, id, partition string) (readexec.Binding, error) {
+	return s.metadataBinding(ctx, e, id, partition, "sources.query", "query")
+}
+
+// ContextBinding supplies the immutable source metadata needed to construct and
+// reauthorize BYO context. It never plans or executes SQL and requires source-read
+// and exact execution-context reach. Binding remains the query-only validator seam.
+func (s *Service) ContextBinding(ctx context.Context, e identity.Envelope, id, partition string) (readexec.Binding, error) {
+	return s.metadataBinding(ctx, e, id, partition, "sources.read", "read")
+}
+
+func (s *Service) metadataBinding(ctx context.Context, e identity.Envelope, id, partition, action, permission string) (out readexec.Binding, err error) {
+	scope, err := sourceScope(e, action, permission, id)
 	if err != nil {
 		return out, err
 	}
-	if err = access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: partition}); err != nil {
+	if err = access.Require(e, action, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: partition}); err != nil {
 		return out, err
 	}
 	err = s.call(ctx, e, false, func(ctx context.Context) error {

@@ -133,6 +133,7 @@ func requiredRelations(ctx context.Context, tx pgx.Tx) error {
 		"topic_rule_published_versions", "topic_rule_reviews", "topic_rule_comparison_evidence", "topic_rule_evidence_invalidations",
 		"uploads", "vector_facets", "vector_generations", "vector_heads",
 		"nlq_examples", "nlq_feedback", "nlq_queries", "nlq_sessions",
+		"byo_context_bundles", "byo_steps",
 	}
 	var count int
 	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname=ANY($1::text[])`, relations).Scan(&count); e != nil {
