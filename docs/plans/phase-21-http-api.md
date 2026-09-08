@@ -1,6 +1,9 @@
 # Phase 21 — http-api
 
-Status: in_progress. Owner: internal/api. Hard dependencies: 01, 02, 03, 04. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+Status: shipped. Owner: internal/api. Hard dependencies: 01, 02, 03, 04. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+
+Proposed PR #11 delivery; this status becomes effective after every required hosted
+check passes and the PR merges.
 
 ## Authority and design
 
@@ -80,8 +83,9 @@ Implement `TestPhase21/AC01` through `TestPhase21/AC06`. Registration tests enum
 ## Glossary, decisions and deviations
 
 D-050 changes execution order, not phase IDs. The HTTP prerequisite runtime is
-verified; the phase remains in progress while later domain consumers and release
-gates land.
+verified. PR #11 records this prerequisite as shipped conditionally; that status
+becomes effective after every required hosted check passes and the PR merges.
+Later domain consumers and release gates remain outside this prerequisite.
 
 The phase 15 [private draft consumer](../contracts/topic-drafts-v1.md) and
 [publication lifecycle](../contracts/topic-publication-v1.md) add fourteen concrete

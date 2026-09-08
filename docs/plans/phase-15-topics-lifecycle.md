@@ -1,6 +1,9 @@
 # Phase 15 — topics-lifecycle
 
-Status: in_progress. Owner: internal/semantics. Hard dependencies: 04, 05, 07, 12, 21. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+Status: shipped. Owner: internal/semantics. Hard dependencies: 04, 05, 07, 12, 21. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+
+Proposed PR #11 delivery; this status becomes effective after every required hosted
+check passes and the PR merges.
 
 ## Authority and design
 
@@ -140,5 +143,7 @@ the repair integrated as `dd6f79e`. Root then verified the committed-source arch
 strict Phase 02 and Phase 15 each passed all six children with zero skips, and the native
 race `TestSafeErrors` passed. The exact 513 integrated-head coverage, strict phase
 checks and full lint/vet/build checks pass. Hosted CI and release integration remain
-gates, so the phase stays `in_progress`. The approved 84.5% coverage exception
+gates; PR #11 records this phase as shipped only conditionally, becoming effective
+after every required hosted check passes and the PR merges. The approved 84.5%
+coverage exception
 applies only to `internal/store/postgres`; no other phase 15 package inherits it.

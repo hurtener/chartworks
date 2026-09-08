@@ -1,7 +1,8 @@
 # Phase 17 routing slice evidence
 
-Status remains `in_progress`. This record covers the bounded routing consumer
-introduced on the phase-17 branch; it is not a phase closure claim.
+Status: proposed shipped delivery for PR #11. This record covers the bounded routing consumer
+introduced on the phase-17 branch; the proposed shipped status remains conditional on
+hosted checks and merge.
 
 The consumer admits each current topic through `topics.Service.Contract`,
 which rechecks source discovery, source revision, dataset bindings, current
@@ -44,9 +45,10 @@ HTTP/SDK/runtime-OpenAPI checks also passed after the concrete route and auth me
 were integrated, and targeted package coverage was 82.85% for `internal/nlqroute` and
 83.33% for `internal/nlqapi`.
 
-Phase 17 remains `in_progress` pending hosted CI and dependent release integration.
-Its acceptance uses recorded Bifrost responses; live semantic quality has not been
-measured and is not claimed here.
+PR #11 records Phase 17 as shipped conditionally; that status becomes effective
+after every required hosted check passes and the PR merges. Its acceptance uses
+recorded Bifrost responses; live semantic quality has not been measured and is not
+claimed here.
 
 ## Current integrated disposition
 
@@ -54,6 +56,7 @@ The routing review round remains clear: the two P1 fixes are recorded at
 `ba65fa7b731a69182a8d93be86d5c5b86130b93f`, and root's strict cumulative routing
 check at `492c9fbf6f7fc7f6fe2f5659d2499afdbb3409b3` passed all six Phase 17 children
 with zero skips. The exact 513 cumulative race/coverage run passed every configured
-band, and full lint, vet and build passed. This updates the earlier bounded wording
-without changing the phase's `in_progress` status; hosted CI and release integration
-remain open. Recorded gateway fixtures do not establish live semantic quality.
+band, and full lint, vet and build passed. This updates the earlier bounded wording;
+the proposed PR #11 shipped status remains conditional on every required hosted
+check passing and the PR merging. Recorded gateway fixtures do not establish live
+semantic quality.

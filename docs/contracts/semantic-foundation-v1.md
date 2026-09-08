@@ -1,14 +1,15 @@
 # Semantic foundation v1
 
-Status: bounded phase 15/16 implementation foundations, 2026-09-07. Phases 15/16 are
-`in_progress`; phase 21 now has a bounded source HTTP registry consumer and is also
-`in_progress`. This contract records implemented behavior only where it points
-to executable code and tests; the later-state sections are implementation inputs,
-not runtime claims.
+Status: proposed shipped delivery for PR #11, 2026-09-07. Phases 15/16 and the
+phase 21 prerequisite are recorded as shipped for this proposal; those statuses
+become effective after every required hosted check passes and PR #11 merges. This
+contract records behavior only where it points to executable code and tests; the
+historical sequence below does not replace the cumulative evidence record.
 
 The [bounded review evidence](../reviews/phase-15-16-foundation.md) pins the reviewed
-code and focused checks. Full phase acceptance remains unavailable until the
-remaining service work is implemented.
+code and focused checks. The exact local cumulative acceptance and coverage are
+recorded in [current delivery evidence](../reviews/phase-15-18-current-evidence.md);
+hosted CI and the merge remain conditional gates.
 
 ## Implemented boundary
 
@@ -291,12 +292,11 @@ active rule set or widen its source/context reach.
    coverage. Leave shared-reader stale-evidence consumption to phase 18 without adding
    a second executor.
 
-Until those steps and their named tests pass, phase 16 remains `in_progress`, not shipped.
-
-The shared-reader invalidation consumer described above is now present in the
-integrated Phase 18 core. Phase 16 remains `in_progress` for its own cumulative
-acceptance and final release review; later consumers must continue using the
-same invalidation and retained-read contracts.
+The steps above and their named tests are implemented in the integrated delivery
+head. The shared-reader invalidation consumer is present in the integrated Phase 18
+core. PR #11 records Phase 16 as shipped conditionally; that status becomes effective
+after every required hosted check passes and the PR merges. Later consumers must
+continue using the same invalidation and retained-read contracts.
 
 ## Foundation verification
 

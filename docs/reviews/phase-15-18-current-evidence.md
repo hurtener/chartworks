@@ -1,14 +1,17 @@
 # Phases 15–18 and 21 — current delivery evidence
 
-Status snapshot: 2026-09-08, integration head `513a3be15eb07e48e3c5cb7bc31818848cd7275a`.
-This is the current cross-phase evidence index for the active plans. It records
-verified slices and remaining gates; it does not change the registry, mark any
-phase shipped, or claim final CI, merge, live provider quality, or release
-readiness. Historical bounded evidence keeps its original date and exact head.
+Status snapshot: 2026-09-08, proposed PR #11 delivery at documentation head
+`17969f15c2dc09c19863aca85be3c5df1c2fbbbb`, with runtime evidence from exact head
+`513a3be15eb07e48e3c5cb7bc31818848cd7275a`. This is the current cross-phase
+evidence index for the proposed delivery. It records reviewed completion slices and
+the remaining hosted gate; it does not claim that hosted CI passed or that the PR
+merged. Historical bounded evidence keeps its original date and exact head. Required
+hosted evidence is tracked at the [PR #11 checks](https://github.com/hurtener/chartworks/pull/11/checks).
 
-The registry correctly keeps phases 15, 16, 17, 18 and 21 `in_progress`. Fifteen
-later workstreams remain planned, including the unimplemented phase 25 full-release
-gate.
+The proposed delivery registry records phases 15, 16, 17, 18 and 21 as `shipped`.
+Those statuses become effective only if every required hosted check passes and PR
+#11 merges. Fifteen later workstreams remain planned, including the unimplemented
+phase 25 full-release gate.
 
 ## Current dispositions
 
@@ -24,9 +27,10 @@ rebind. The bounded evidence remains in [the topic draft record](phase-15-topic-
 and [the publication record](phase-15-topic-publication.md).
 
 Phase 15's exact 513 integrated coverage, strict acceptance and full lint/vet/build
-checks pass; hosted CI and release integration remain. Recorded Bifrost fixtures do
-not measure live semantic quality. Its approved 84.5% exception remains limited to
-`internal/store/postgres`.
+checks pass. The proposed PR #11 delivery records Phase 15 as shipped conditionally;
+that status becomes effective after every required hosted check passes and the PR
+merges. Recorded Bifrost fixtures do not measure live semantic quality. Its approved
+84.5% exception remains limited to `internal/store/postgres`.
 
 ### Phase 16 — rules and clarification
 
@@ -45,9 +49,10 @@ The exact 513 Linux/native race and coverage run passed every configured band:
 `internal/nlqexec` measured **579/711 (81.43%)**. The profile is
 `/tmp/chartworks-phase13-gates-2cdf7ef/coverage-integration-513a3be.out`, and the
 acceptance portion completed in 161.492 seconds. Full lint, vet and build also
-passed at 513. Phase 18 remains the real consumer of invalidation effects; Phase
-16 stays `in_progress` pending hosted CI and release gates. See [phase 16
-evidence](phase-16-rules-evidence.md).
+passed at 513. Phase 18 remains the real consumer of invalidation effects. The
+proposed PR #11 delivery records Phase 16 as shipped conditionally; that status
+becomes effective after every required hosted check passes and the PR merges. See
+[phase 16 evidence](phase-16-rules-evidence.md).
 
 ### Phase 17 — routing and context
 
@@ -58,7 +63,8 @@ passed all six children with zero skips. The actual route, HTTP/SDK and runtime
 OpenAPI checks are included in that disposition. The [routing evidence](phase-17-routing.md)
 retains the exact relationship, metric ambiguity and sealed-context assertions.
 
-Phase 17 remains `in_progress` for hosted CI and the downstream release gates.
+The proposed PR #11 delivery records Phase 17 as shipped conditionally; that status
+becomes effective after every required hosted check passes and the PR merges.
 Recorded Bifrost responses are deterministic fixtures, not live semantic-quality
 measurements.
 
@@ -84,10 +90,10 @@ executor path: every dialect retains the exact validated SQL, bound parameters,
 plan coordinates and source/context revision; PostgreSQL may additionally accept
 the same AST while ignoring only locations and formatting. Any other SQL change
 fails closed with `ErrUnsafeCorrection` and does not execute a second candidate.
-Receipts are recorded for every attempt. Phase 18 remains `in_progress` pending
-hosted CI and release gates. The [runtime
-evidence](phase-18-nlq-runtime.md) records the retained-pin and stale-evidence
-behavior.
+Receipts are recorded for every attempt. The proposed PR #11 delivery records Phase
+18 as shipped conditionally; that status becomes effective after every required
+hosted check passes and the PR merges. The [runtime evidence](phase-18-nlq-runtime.md)
+records the retained-pin and stale-evidence behavior.
 
 ### Phase 21 — HTTP prerequisite
 
@@ -95,17 +101,20 @@ The Phase 21 narrow fix at `2395f8cd15a2bf6f23c78ee512c81810c8a1226d` is clear i
 follow-up review. Root's strict verification of the integrated source at
 `513a3be15eb07e48e3c5cb7bc31818848cd7275a` passed all six Phase 21 criteria with
 zero skips, including composed registry/OpenAPI and actual HTTP/SDK boundaries.
-This closes the bounded prerequisite slice while the phase remains `in_progress`
-with later domain consumers, cumulative coverage, hosted CI and release gates
-still pending. See [Phase 21 evidence](phase-21-source-registry.md).
+This closes the bounded prerequisite slice. The proposed PR #11 delivery records
+Phase 21 as shipped conditionally; that status becomes effective after every
+required hosted check passes and the PR merges. Later domain consumers remain
+outside this prerequisite. See [Phase 21 evidence](phase-21-source-registry.md).
 
 ## Cumulative gate boundary
 
-The current integration contains the reviewed Phase 15–18 and 21 slices, but no
-phase is marked shipped. Root's exact 513 archive run passed every configured
-coverage band and full lint, vet and build; the one-line foundation-smoke contract
-correction at `d6f19db5397b2aab6d2772c3de02aec52c4bafdb` then passed the compiled
-binary smoke, planning checks and mirror check without runtime changes. Hosted CI
-remains the final external gate. No threshold is rounded or lowered. No merge,
-live-cloud qualification, or live semantic-quality claim is made by this document,
-and the phase 25 full-release gate remains unimplemented.
+The proposed delivery contains the reviewed Phase 15–18 and 21 slices. Root's exact
+513 archive run passed every configured coverage band and full lint, vet and build;
+the one-line foundation-smoke contract correction at
+`d6f19db5397b2aab6d2772c3de02aec52c4bafdb` then passed the compiled binary smoke,
+planning checks and mirror check without runtime changes. The [PR #11 checks](https://github.com/hurtener/chartworks/pull/11/checks)
+remain the final hosted gate. No threshold is rounded or lowered. This document
+does not claim hosted CI passed, a merge, live-cloud qualification or live
+semantic quality. After a green hosted run and merge, the registry count will be
+19 shipped phases and 15 planned workstreams; the phase 25 full-release gate
+remains planned.

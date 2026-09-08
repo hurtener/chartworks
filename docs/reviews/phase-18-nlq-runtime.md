@@ -1,8 +1,7 @@
 # Phase 18 NLQ runtime evidence
 
-Status: core delivery evidence based on the historical integration
-`47345c47aedc9a5de13b35a95106de4afbfdebd7`, 2026-09-08. Phase 18 remains
-`in_progress`. This record covers the durable
+Status: proposed shipped delivery for PR #11, based on the historical integration
+`47345c47aedc9a5de13b35a95106de4afbfdebd7`, 2026-09-08. This record covers the durable
 internal query consumer and its Phase 16 invalidation seam. The later public
 HTTP/SDK surface is recorded below; this historical record does not by itself
 claim live provider quality or release readiness.
@@ -83,6 +82,7 @@ formatting differ. Any other SQL change returns `ErrUnsafeCorrection` without a
 second execution, and every attempt has a receipt. Root's exact 513 cumulative
 coverage run passed all configured bands, with `internal/store/postgres` at
 3039/3593 (84.58%) and `internal/nlqexec` at 579/711 (81.43%); full lint, vet and
-build passed. Phase 18 remains `in_progress` pending hosted CI and release gates.
-Recorded model fixtures establish deterministic service behavior only; they are not
-live provider measurements.
+build passed. PR #11 records Phase 18 as shipped conditionally; that status becomes
+effective after every required hosted check passes and the PR merges. Recorded model
+fixtures establish deterministic service behavior only; they are not live provider
+measurements.

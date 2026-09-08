@@ -1,6 +1,9 @@
 # Phase 17 — nlq-routing-context
 
-Status: in_progress. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+Status: shipped. Owner: internal/nlq. Hard dependencies: 05, 07, 15, 16. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
+
+Proposed PR #11 delivery; this status becomes effective after every required hosted
+check passes and the PR merges.
 
 The current slice combines the deterministic context seam with a first routing
 consumer: current topic/source contract admission, reviewed rule and slot
@@ -55,4 +58,4 @@ Context tiers, confidence bands, k-per-kind, max_examples=7 and advisory-rule bu
 
 ## Glossary, decisions and deviations
 
-Calibrated confidence, retrieval similarity, deterministic fallback and remote inference are distinct. D-049/D-053 apply. The reviewed runtime candidate is recorded in [phase 17 routing evidence](../reviews/phase-17-routing.md). Coverage, lint, preflight and the local combined acceptance have passed; status remains `in_progress` until hosted CI and dependent release integration pass. Recorded Bifrost fixtures establish reproducible behavior; live semantic quality remains unmeasured.
+Calibrated confidence, retrieval similarity, deterministic fallback and remote inference are distinct. D-049/D-053 apply. The reviewed runtime candidate is recorded in [phase 17 routing evidence](../reviews/phase-17-routing.md). Coverage, lint, preflight and the local combined acceptance have passed. PR #11 records this phase as shipped conditionally; that status becomes effective after every required hosted check passes and the PR merges. Recorded Bifrost fixtures establish reproducible behavior; live semantic quality remains unmeasured.

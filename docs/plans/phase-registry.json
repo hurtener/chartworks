@@ -137,7 +137,7 @@
         "12",
         "21"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "16": {
@@ -146,7 +146,7 @@
         "05",
         "15"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "17": {
@@ -157,7 +157,7 @@
         "15",
         "16"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "18": {
@@ -167,7 +167,7 @@
         "10",
         "17"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "19": {
@@ -197,7 +197,7 @@
         "03",
         "04"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "22": {

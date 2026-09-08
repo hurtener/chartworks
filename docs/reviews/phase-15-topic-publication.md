@@ -83,11 +83,12 @@ repair integrated as `dd6f79e`. Root verified its SHA-256-checked committed-sour
 archive: strict Phase 02 and Phase 15 each passed all six children with zero skips,
 including AC04 health and enhanced rebind, and native race `TestSafeErrors` passed.
 
-Phase 15 remains `in_progress` after the narrow follow-up review of fixes `8291e84`
-and `d103ba9` cleared. The later unresolved-rebind correction
+The narrow follow-up review of fixes `8291e84` and `d103ba9` cleared. The later
+unresolved-rebind correction
 `6884f23126dbf01e45c2d799e8f10dfee03c2955` is integrated and root's semantic checks
 passed. Exact 513 integrated-head coverage, strict phase checks and full lint/vet/build
-checks pass; hosted CI and release integration remain. The 84.5% coverage exception
-applies only to `internal/store/postgres`; recorded Bifrost fixtures do not measure
-live semantic quality. This document does not change the phase registry or imply
-shipped status.
+checks pass. The proposed PR #11 delivery records Phase 15 as shipped conditionally;
+that status becomes effective after every required hosted check passes and the PR
+merges. The 84.5% coverage exception applies only to `internal/store/postgres`;
+recorded Bifrost fixtures do not measure live semantic quality. This bounded record
+does not claim hosted CI or a merge.

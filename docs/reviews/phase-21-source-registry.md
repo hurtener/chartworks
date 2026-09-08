@@ -1,8 +1,8 @@
 # Phase 21 bounded source registry evidence
 
-Phase 21 is `in_progress`. The shared registration now covers 33 existing source
+Phase 21 is a proposed shipped prerequisite in PR #11. The shared registration now covers 33 existing source
 operations: seven catalog/validation, five execution, fourteen engineering and
-seven pipeline operations. It is not full phase acceptance. Each source-family
+seven pipeline operations. The cumulative phase acceptance is recorded below. Each source-family
 registry supplies its actual handler's route/action selection, existing checked
 operation manifest, and generated OpenAPI from one concrete definition set. Disabled warehouse/native-validation
 capabilities remain absent. No endpoint, authority model or migration was added.
@@ -165,14 +165,15 @@ delivery are implemented in this prerequisite slice. This bounded HTTP
 prerequisite is complete for its currently registered operations, named tests,
 focused review, and CI checks. Later domain phases add their concrete operations
 and extend cumulative generated SDK/isolation/audit coverage; they do not reopen
-this prerequisite. The wider Phase 21 and release program remains in progress
-while those owning consumers and release gates land.
+this prerequisite. Later owning consumers and release gates remain outside this
+prerequisite.
 
 The owning Phase 15–18 consumers now extend this registry in the integrated 513
 head, including topic lifecycle, rule/slot evaluation, routing, generation and
 retained evidence invalidation. This source adapter remains a prerequisite slice:
-it does not by itself close those domain criteria, and the Phase 21 workstream
-stays `in_progress` while later consumers, hosted CI and release gates continue.
+it does not by itself close those domain criteria. PR #11 records Phase 21 as
+shipped conditionally; that status becomes effective after every required hosted
+check passes and the PR merges.
 
 The prior bounded semantic foundation was rebased from `aca185a` onto exact PR10
 source `62f0362d458e46e697b638ff916c47759020f55b`, producing `fd9b519` before this
@@ -185,6 +186,7 @@ The narrow Phase 21 fix at `2395f8cd15a2bf6f23c78ee512c81810c8a1226d` is clear i
 follow-up review. Root's strict committed-source verification of integrated head
 `513a3be15eb07e48e3c5cb7bc31818848cd7275a` passed `TestPhase21/AC01` through
 `AC06` with zero skips, including the composed OpenAPI registry and actual HTTP/SDK
-boundaries. The exact 513 coverage, lint, vet and build checks also passed. The
-prerequisite remains `in_progress` while hosted CI, later domain consumers and
-release gates continue.
+boundaries. The exact 513 coverage, lint, vet and build checks also passed. PR #11
+records the prerequisite as shipped conditionally; that status becomes effective
+after every required hosted check passes and the PR merges. This record does not
+claim hosted CI or release completion.

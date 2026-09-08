@@ -1,6 +1,8 @@
 # Rule lifecycle v1
 
-Status: bounded phase 16 runtime contract, 2026-09-08. Phase 16 remains `in_progress`.
+Status: proposed shipped Phase 16 runtime contract for PR #11, 2026-09-08. The
+proposed shipped status becomes effective after every required hosted check passes
+and PR #11 merges.
 
 ## Implemented lifecycle
 
@@ -47,5 +49,6 @@ The comparison service and migration 018 provide exact retained replay/shadow ev
 and ordered publish/retire invalidation fences. The integrated Phase 18 consumer uses
 those fences from the shared reader/query evidence path and proves stale-result
 handling, feedback and generation integration. This contract does not claim live
-provider quality or release readiness. Phase 16 remains `in_progress` pending hosted
-CI and release integration.
+provider quality or release readiness. PR #11 records Phase 16 as shipped
+conditionally; that status becomes effective after every required hosted check
+passes and the PR merges.

@@ -96,5 +96,8 @@ rechecks the current topic version in its transaction. Retirement validates the
 retained pinned topic and active rule CAS so it remains available after topic
 transition or archive. The
 [rule lifecycle contract](rule-lifecycle-v1.md) defines the bounded evaluator and
-its retained-topic/dependency fences; the remaining status boundary is cumulative
-hosted CI and release integration rather than an unimplemented authority seam.
+its retained-topic/dependency fences. PR #11 records the consuming phases as shipped
+conditionally; that status becomes effective after every required hosted check in
+the [PR #11 checks](https://github.com/hurtener/chartworks/pull/11/checks) passes and
+the PR merges. The remaining boundary is hosted CI and release integration rather
+than an unimplemented authority seam.
