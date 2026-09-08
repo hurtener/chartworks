@@ -1,0 +1,29 @@
+name: Phase 19 source snapshot
+on:
+  push:
+    branches: [feat/phase-19-byo-mode]
+    paths: [.github/workflows/phase-19-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Export committed source and history without credentials
+        run: |
+          git bundle create /tmp/chartworks-source.bundle HEAD refs/remotes/origin/main
+          git archive --format=tar.gz -o /tmp/chartworks-source.tar.gz HEAD
+          git rev-parse HEAD > /tmp/chartworks-source.sha
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-19-source-snapshot
+          path: |
+            /tmp/chartworks-source.bundle
+            /tmp/chartworks-source.tar.gz
+            /tmp/chartworks-source.sha
+          retention-days: 1
