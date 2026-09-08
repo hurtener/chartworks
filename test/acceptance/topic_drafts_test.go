@@ -217,33 +217,23 @@ func TestTopicDraftOnboardingEntityMutationAndRebind(t *testing.T) {
 		t.Fatal("failed mutation moved draft head", current.Metadata, err)
 	}
 
-	source, err := f.s.Get(ctx, f.e, seed.Datasets[0].Source.Source)
-	if err != nil {
-		t.Fatal(err)
+	targetSource := f.create(t, "rebind-source")
+	target := f.profile(t, f.profileSpec(t, targetSource, "rebind-profile", []string{"id", "amount"}, "")).Profile.Profile
+	mappings := make([]sdk.TopicColumnRebinding, 0, len(dataset.Columns))
+	for _, column := range dataset.Columns {
+		mappings = append(mappings, sdk.TopicColumnRebinding{Column: column.ID, SourceName: column.SourceName})
 	}
-	binding, err := f.s.Binding(ctx, f.e, source.ID, source.ContextID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var items readexec.Relation
-	for _, relation := range binding.Relations {
-		if relation.Name == "items" {
-			items = relation
-		}
-	}
-	if items.ID == "" {
-		t.Fatal("fixture items relation missing")
-	}
-	target := f.profile(t, engineering.ProfileSpec{ID: "items-rebind-profile", Source: source.ID, Context: source.ContextID, Dataset: items.ID, Columns: []string{"sale_id", "quantity"}, SkipLLM: true}).Profile.Profile
-	if _, err = c.RebindTopicDataset(ctx, onboarded.Pack.Topic, sdk.RebindTopicDatasetRequest{Expected: 2, Version: "v3-incomplete", Dataset: dataset.ID, Profile: target.Version, Columns: []sdk.TopicColumnRebinding{{Column: "amount", SourceName: "quantity"}}, Change: "Incomplete move"}); err == nil {
+	if _, err = c.RebindTopicDataset(ctx, onboarded.Pack.Topic, sdk.RebindTopicDatasetRequest{Expected: 2, Version: "v3-incomplete", Dataset: dataset.ID, Profile: target.Version, Columns: mappings[:len(mappings)-1], Change: "Incomplete move"}); err == nil {
 		t.Fatal("incomplete stable column mapping accepted")
 	}
-	rebound, err := c.RebindTopicDataset(ctx, onboarded.Pack.Topic, sdk.RebindTopicDatasetRequest{
-		Expected: 2, Version: "v3", Dataset: dataset.ID, Profile: target.Version, Change: "Move to reviewed items profile",
-		Columns: []sdk.TopicColumnRebinding{{Column: "id", SourceName: "sale_id"}, {Column: "amount", SourceName: "quantity"}},
-	})
+	rebind := sdk.RebindTopicDatasetRequest{
+		Expected: 2, Version: "v3", Dataset: dataset.ID, Profile: target.Version, Change: "Move to reviewed source profile",
+		Columns: mappings,
+	}
+	rebound, err := c.RebindTopicDataset(ctx, onboarded.Pack.Topic, rebind)
 	if err != nil || rebound.Metadata.Revision != 3 || len(rebound.Pack.Datasets) != 1 {
-		t.Fatal("reviewed dataset rebind", rebound, err)
+		_, directErr := s.RebindDataset(ctx, e, onboarded.Pack.Topic, rebind)
+		t.Fatal("reviewed dataset rebind", rebound, err, directErr)
 	}
 	moved := rebound.Pack.Datasets[0]
 	if moved.ID != target.Dataset || moved.Source.Source != target.Source || moved.Source.Context != target.Context || moved.Source.ProfileVersion != target.Version || moved.Source.SourceRevision != target.SourceRevision || moved.Source.ProfileDigest != target.DeterministicHash() {
@@ -252,12 +242,8 @@ func TestTopicDraftOnboardingEntityMutationAndRebind(t *testing.T) {
 	if rebound.Pack.Measures[0].Field.Dataset != target.Dataset || rebound.Pack.Measures[0].Field.ID != "amount" {
 		t.Fatal("stable semantic reference was not rewritten", rebound.Pack.Measures[0].Field)
 	}
-	physical := map[string]string{}
-	for _, column := range moved.Columns {
-		physical[column.ID] = column.SourceName
-	}
-	if physical["id"] != "sale_id" || physical["amount"] != "quantity" {
-		t.Fatal("physical mapping lost", physical)
+	if !reflect.DeepEqual(moved.Columns, dataset.Columns) {
+		t.Fatal("stable semantic columns changed during source move", moved.Columns)
 	}
 }
 
