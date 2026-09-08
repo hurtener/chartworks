@@ -1,0 +1,11 @@
+{
+  "query_bundles": {
+    "ttl": "15m",
+    "retention": "24h",
+    "max_bytes": 262144,
+    "per_session": 16,
+    "per_tenant": 1024,
+    "max_steps": 8,
+    "step_timeout": "1m"
+  }
+}

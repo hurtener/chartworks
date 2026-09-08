@@ -49,9 +49,10 @@ type RuleReader interface {
 	Read(context.Context, identity.Envelope, string, string) (rulesets.Published, error)
 }
 
-// SourceReader resolves the actual immutable credential/data partition.
+// SourceReader resolves metadata under source-read authority, without granting
+// query execution. The common validator/reader independently requires query reach.
 type SourceReader interface {
-	Binding(context.Context, identity.Envelope, string, string) (exec.Binding, error)
+	ContextBinding(context.Context, identity.Envelope, string, string) (exec.Binding, error)
 }
 
 // Validator is the common read validator, restricted to captured semantic data.

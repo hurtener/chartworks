@@ -110,7 +110,7 @@ func (s *Service) Create(ctx context.Context, e identity.Envelope, in CreateRequ
 			source = dataset.Source.Source
 		}
 	}
-	binding, err := s.sources.Binding(ctx, e, source, in.Route.Context)
+	binding, err := s.sources.ContextBinding(ctx, e, source, in.Route.Context)
 	if err != nil {
 		return out, err
 	}

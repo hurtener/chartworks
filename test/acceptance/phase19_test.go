@@ -231,6 +231,8 @@ func TestPhase19(t *testing.T) {
 		}{
 			{"WITH selected AS (SELECT id, amount FROM analytics.sales WHERE id>$1) SELECT id, amount FROM selected ORDER BY id", []readexec.Parameter{{Kind: "integer", Value: "0"}}},
 			{"SELECT sum(amount) AS total FROM analytics.sales", nil},
+			{"SELECT id, row_number() OVER (ORDER BY amount) AS position FROM analytics.sales", nil},
+			{"SELECT id FROM analytics.sales UNION ALL SELECT id FROM analytics.sales ORDER BY id", nil},
 			{"SELECT id FROM analytics.sales WHERE id=999", nil},
 		}
 		for i, tc := range valid {
@@ -255,6 +257,15 @@ func TestPhase19(t *testing.T) {
 		contextOnly, _ := phase19Authority(t, f, e.Tenant(), e.User(), "context-only", contextScopes)
 		b := phase19Create(t, s, f, contextOnly)
 		before := counter.calls.Load()
+		if _, err := s.Lookup(ctx, contextOnly, b.Reference); err != nil {
+			t.Fatal("context-only lookup required query authority", err)
+		}
+		if _, err := f.f.s.Binding(ctx, contextOnly, b.Source, b.Reference.Context); !errors.Is(err, access.ErrForbidden) {
+			t.Fatal("metadata permission widened the query binding seam", err)
+		}
+		if _, err := f.f.validator.Validate(ctx, contextOnly, readexec.Request{Source: b.Source, Context: b.Reference.Context, SQL: "SELECT id FROM analytics.sales"}); !errors.Is(err, access.ErrForbidden) {
+			t.Fatal("context-only caller reached native SQL planning", err)
+		}
 		if _, err := s.Submit(ctx, contextOnly, nlqbyo.SubmitRequest{Reference: b.Reference, Operation: "no-action", SQL: "SELECT id FROM analytics.sales"}); !errors.Is(err, access.ErrForbidden) {
 			t.Fatal("context executed", err)
 		}
@@ -415,15 +426,26 @@ func TestPhase19(t *testing.T) {
 		if _, err := s.Lookup(ctx, e, b.Reference); !errors.Is(err, nlqbyo.ErrReplan) {
 			t.Fatal("rule pin substituted", err)
 		}
-		b = phase19Create(t, s, f, e)
-		state, err := published.Read(ctx, f.e, f.pack.Topic, "")
+		// Retired mandatory rules deliberately block new routing. Use an independent
+		// healthy publication so archive rejection cannot pass for the wrong reason.
+		archivedFixture := newPhase18Fixture(t)
+		archivedFixture.model.embeddingMode.Store("fixed")
+		archivedFixture.model.rerankMode.Store("fixed")
+		archiveCounter := &phase19CountingExecutor{delegate: archivedFixture.f.executor}
+		archiveService, archiveTopics, _ := phase19Service(t, archivedFixture, limits, nil, archivedFixture.service, archiveCounter)
+		archiveAuthority, _ := phase19Authority(t, archivedFixture, archivedFixture.e.Tenant(), archivedFixture.e.User(), "archive-session", phase19Scopes())
+		b = phase19Create(t, archiveService, archivedFixture, archiveAuthority)
+		state, err := archiveTopics.Read(ctx, archivedFixture.e, archivedFixture.pack.Topic, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = published.Archive(ctx, f.e, f.pack.Topic, state.State.Revision, "Synthetic phase 19 archive"); err != nil {
+		if _, err = archiveTopics.Archive(ctx, archivedFixture.e, archivedFixture.pack.Topic, state.State.Revision, "Synthetic phase 19 archive"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = s.Submit(ctx, e, nlqbyo.SubmitRequest{Reference: b.Reference, Operation: "archived", SQL: "SELECT id FROM analytics.sales"}); !errors.Is(err, nlqbyo.ErrReplan) {
+		if _, err = archiveService.Lookup(ctx, archiveAuthority, b.Reference); !errors.Is(err, nlqbyo.ErrReplan) {
+			t.Fatal("archived pin remained readable", err)
+		}
+		if _, err = archiveService.Submit(ctx, archiveAuthority, nlqbyo.SubmitRequest{Reference: b.Reference, Operation: "archived", SQL: "SELECT id FROM analytics.sales"}); !errors.Is(err, nlqbyo.ErrReplan) || archiveCounter.calls.Load() != 0 {
 			t.Fatal("archived pin executed", err)
 		}
 	})

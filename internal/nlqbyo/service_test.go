@@ -44,7 +44,7 @@ func (f *fixture) Contract(context.Context, identity.Envelope, string) (topics.C
 func (f *fixture) Read(context.Context, identity.Envelope, string, string) (rulesets.Published, error) {
 	return f.rules, f.ruleErr
 }
-func (f *fixture) Binding(context.Context, identity.Envelope, string, string) (exec.Binding, error) {
+func (f *fixture) ContextBinding(context.Context, identity.Envelope, string, string) (exec.Binding, error) {
 	f.calls++
 	return f.record.Binding.Clone(), f.sourceErr
 }
@@ -129,6 +129,7 @@ func TestConstructorAndAdmission(t *testing.T) {
 	if _, err = offline.Create(ctx, e, in); !errors.Is(err, ErrUnavailable) {
 		t.Fatal(err)
 	}
+	//lint:ignore SA1012 Deliberately test fail-closed rejection of a nil context.
 	if _, err = s.Create(nil, e, in); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "outcome": "single_topic",
+  "bundle": {
+    "schema_version": 1,
+    "bundle_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "context": "source:v1",
+    "created_at": "2026-09-08T12:00:00Z",
+    "expires_at": "2026-09-08T12:15:00Z",
+    "source": "source",
+    "semantics": [
+      {
+        "topic": "sales",
+        "version": "v1",
+        "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "rule_version": "rules-v1",
+        "rule_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
+    "semantic_context": {
+      "tier": "high",
+      "budget": 6500,
+      "tokens": 250,
+      "locale": "en",
+      "strategy": "single_topic",
+      "topic": "sales",
+      "topic_version": "v1",
+      "question": "What is revenue?",
+      "prompt": "Synthetic reviewed context. Require positive amounts; exclude cancelled orders.",
+      "evidence": [],
+      "constraints": {
+        "allowed": true,
+        "required": [
+          {
+            "id": "positive",
+            "kind": "require",
+            "text": "Require positive amounts."
+          }
+        ],
+        "excluded": [
+          {
+            "id": "cancelled",
+            "kind": "exclude",
+            "text": "Exclude cancelled orders."
+          }
+        ]
+      },
+      "metrics": [
+        {
+          "id": "revenue",
+          "text": "Sum of approved sales amounts."
+        }
+      ],
+      "advisory": [],
+      "examples": [
+        {
+          "id": "external",
+          "text": "Synthetic external example.",
+          "priority": 1,
+          "source": "external_input_unreviewed"
+        }
+      ]
+    },
+    "sql_requirements": {
+      "dialect": "postgres",
+      "parameter_style": "$1, $2, ...",
+      "parameter_kinds": [
+        "null",
+        "text",
+        "boolean",
+        "integer",
+        "number"
+      ],
+      "max_sql_bytes": 4096,
+      "max_parameters": 8,
+      "relations": [
+        {
+          "id": "sales",
+          "schema": "analytics",
+          "name": "sales",
+          "columns": [
+            {
+              "name": "amount",
+              "native_type": "numeric",
+              "category": "numeric",
+              "nullable": false,
+              "safe_for_validation": true
+            }
+          ]
+        }
+      ],
+      "read_only": true,
+      "rows": 100,
+      "bytes": 4096,
+      "timeout_ms": 1000
+    },
+    "max_steps": 8,
+    "context_usage": [],
+    "warnings": [],
+    "provenance": "reviewed_topics_and_rules; external_examples_unreviewed; external_sql_not_certified"
+  }
+}

@@ -83,7 +83,7 @@ func (s *Service) load(ctx context.Context, e identity.Envelope, in Reference, a
 	if exec.Hash(pins) != exec.Hash(record.Bundle.Semantics) {
 		return zero, scope, ErrReplan
 	}
-	binding, err := s.sources.Binding(ctx, e, record.Bundle.Source, in.Context)
+	binding, err := s.sources.ContextBinding(ctx, e, record.Bundle.Source, in.Context)
 	if err != nil {
 		return zero, scope, replanError(err)
 	}

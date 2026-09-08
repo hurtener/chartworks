@@ -149,6 +149,7 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 16
           python3 scripts/run_phase_acceptance.py --phase 17
           python3 scripts/run_phase_acceptance.py --phase 18
+          python3 scripts/run_phase_acceptance.py --phase 19
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
@@ -165,6 +166,7 @@ jobs:
           for name in $names; do
             go test -race ./internal/engineering -run '^$' -fuzz "^${name}$" -fuzztime=64x -timeout=3m -parallel=2
           done
+          go test -race ./internal/nlqbyo -run '^$' -fuzz '^FuzzReferenceAndReceipt$' -fuzztime=64x -timeout=3m -parallel=2
       - name: Full cumulative development preflight
         run: make preflight-full
       - name: Microbenchmark baseline (not warehouse or end-user latency)
