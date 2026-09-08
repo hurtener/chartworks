@@ -13,7 +13,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-const maximumPackBytes = 1 << 20
+const (
+	maximumPackBytes          = 1 << 20
+	maximumCanonicalTermBytes = 1024
+)
 
 // Model is a detached, canonical, immutable-by-API topic definition with lookup indexes.
 type Model struct {
@@ -388,12 +391,12 @@ func validDigest(s string) bool {
 }
 
 func normalizeTerm(s string) (string, bool) {
-	if !utf8.ValidString(s) || len(s) < 1 || len(s) > 256 || containsControl(s) {
+	if !utf8.ValidString(s) || len(s) < 1 || len(s) > maximumCanonicalTermBytes || containsControl(s) {
 		return "", false
 	}
 	value := cases.Fold().String(norm.NFKC.String(s))
 	value = strings.Join(strings.Fields(value), " ")
-	return value, value != ""
+	return value, value != "" && len(value) <= maximumCanonicalTermBytes
 }
 
 func canonicalOrder(p *TopicPack) {

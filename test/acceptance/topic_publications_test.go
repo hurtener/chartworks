@@ -550,6 +550,85 @@ func TestCanonicalRegistryReviewedPublicationAndCollisionFences(t *testing.T) {
 	}
 }
 
+func TestCanonicalPublicationFenceUsesExactEntityIDs(t *testing.T) {
+	f, draftsService, service, gatewayFixture, pack := publicationFixture(t)
+	ctx := context.Background()
+	scopes := topicScopes(f.e.Tenant())
+	client := publicationClient(t, f, draftsService, service, scopes)
+	column := func(id string) semantics.Reference {
+		return semantics.Reference{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: id}
+	}
+	// PostgreSQL's en_US.utf8 ordering differs from Go byte ordering for this
+	// mixed-case/punctuation set. Retained fences must therefore match by ID.
+	pack.CanonicalEntities = []semantics.CanonicalEntity{
+		{ID: "alpha", Revision: 1, Name: "Alpha meaning", Keys: []semantics.Reference{column("id")}},
+		{ID: "Beta", Revision: 1, Name: "Beta meaning", Keys: []semantics.Reference{column("amount")}},
+		{ID: "_lead", Revision: 1, Name: "Lead meaning", Keys: []semantics.Reference{column("id")}},
+		{ID: "entity-2", Revision: 1, Name: "Entity two meaning", Keys: []semantics.Reference{column("amount")}},
+	}
+	draft, err := client.SaveTopicDraft(ctx, sdk.SaveTopicDraftRequest{Pack: pack, Change: "Publish mixed canonical IDs"})
+	if err != nil {
+		t.Fatal("save mixed canonical draft", err)
+	}
+	review, err := client.ReviewTopic(ctx, pack.Topic, sdk.TopicReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Approve mixed canonical IDs"})
+	if err != nil {
+		t.Fatal("review mixed canonical draft", err)
+	}
+	first, err := client.PublishTopic(ctx, pack.Topic, sdk.PublishTopicRequest{Review: review.ID})
+	if err != nil || first.State.Version != "v1" || len(first.Definition.CanonicalEntities) != 4 {
+		t.Fatal("publish mixed canonical IDs", first.State, err)
+	}
+	retained, err := client.PublishedTopic(ctx, pack.Topic)
+	if err != nil || retained.State.Version != "v1" || len(retained.Definition.CanonicalEntities) != 4 {
+		t.Fatal("retained mixed canonical read", retained.State, err)
+	}
+
+	pack.Version = "v2"
+	pack.Name = "Commerce v2"
+	second, err := client.SaveTopicDraft(ctx, sdk.SaveTopicDraftRequest{Expected: 1, Pack: pack, Change: "Publish second mixed canonical version"})
+	if err != nil {
+		t.Fatal("save second mixed canonical draft", err)
+	}
+	review2, err := client.ReviewTopic(ctx, pack.Topic, sdk.TopicReviewRequest{DraftRevision: second.Metadata.Revision, Digest: second.Metadata.Digest, Decision: "approve", Note: "Approve second mixed canonical version"})
+	if err != nil {
+		t.Fatal("review second mixed canonical draft", err)
+	}
+	current, err := client.PublishTopic(ctx, pack.Topic, sdk.PublishTopicRequest{Review: review2.ID, Expected: 1})
+	if err != nil || current.State.Version != "v2" || current.State.Revision != 2 {
+		t.Fatal("publish second mixed canonical version", current.State, err)
+	}
+	beforeGateway := gatewayFixture.requests.Load()
+	rolledBack, err := client.RollbackTopic(ctx, pack.Topic, sdk.TopicTransitionRequest{Version: "v1", Expected: 2, Note: "Restore mixed canonical version"})
+	if err != nil || rolledBack.State.Version != "v1" || rolledBack.State.Revision != 3 || gatewayFixture.requests.Load() != beforeGateway {
+		t.Fatal("rollback mixed canonical version", rolledBack.State, err)
+	}
+	exact, err := client.PublishedTopicVersion(ctx, pack.Topic, "v1")
+	if err != nil || exact.State.Version != "v1" || len(exact.Definition.CanonicalEntities) != 4 {
+		t.Fatal("exact mixed canonical read", exact.State, err)
+	}
+}
+
+func TestCanonicalTermCompatibilityExpansionStopsBeforeGateway(t *testing.T) {
+	f, draftsService, _, gatewayFixture, pack := publicationFixture(t)
+	ctx := context.Background()
+	// U+FDFA expands from three source bytes to 33 normalized bytes. The raw
+	// name stays below the authoring field bound while the canonical term exceeds
+	// the downstream 1024-byte limit.
+	pack.CanonicalEntities = []semantics.CanonicalEntity{{
+		ID: "expanded", Revision: 1, Name: strings.Repeat("\ufdfa", 64),
+		Keys: []semantics.Reference{{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "id"}},
+	}}
+	beforeGateway := gatewayFixture.requests.Load()
+	beforeLookups := f.lookups.Load()
+	_, err := draftsService.Save(ctx, f.e, drafts.SaveRequest{Pack: pack, Change: "Reject expanded canonical term"})
+	if !errors.Is(err, semantics.ErrInvalid) {
+		t.Fatalf("compatibility-expanded term accepted: %v", err)
+	}
+	if gatewayFixture.requests.Load() != beforeGateway || f.lookups.Load() != beforeLookups {
+		t.Fatalf("invalid canonical term reached source/gateway: gateway=%d/%d lookups=%d/%d", gatewayFixture.requests.Load(), beforeGateway, f.lookups.Load(), beforeLookups)
+	}
+}
+
 func containsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
 		if strings.Contains(value, needle) {

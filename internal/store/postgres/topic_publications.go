@@ -139,31 +139,45 @@ func publishedGenerations(ctx context.Context, tx pgx.Tx, tenant, id, version st
 }
 
 func publishedCanonicalFence(ctx context.Context, tx pgx.Tx, tenant, topic, version string, entities []semantics.CanonicalEntity) error {
-	rows, err := tx.Query(ctx, `SELECT entity_id,revision,digest FROM chartworks.topic_published_canonical_refs WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3 ORDER BY entity_id`, tenant, topic, version)
+	expected := make(map[string]semantics.CanonicalMeaning, len(entities))
+	for _, entity := range entities {
+		meaning := entity.Meaning()
+		if meaning.Digest() == "" {
+			return store.ErrInvalid
+		}
+		if _, exists := expected[meaning.ID]; exists {
+			return store.ErrInvalid
+		}
+		expected[meaning.ID] = meaning
+	}
+	rows, err := tx.Query(ctx, `SELECT entity_id,version_id,revision,digest FROM chartworks.topic_published_canonical_refs WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3`, tenant, topic, version)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	i := 0
+	seen := make(map[string]struct{}, len(expected))
 	for rows.Next() {
-		var id, digest string
+		var id, persistedVersion, digest string
 		var revision int64
-		if err = rows.Scan(&id, &revision, &digest); err != nil {
+		if err = rows.Scan(&id, &persistedVersion, &revision, &digest); err != nil {
 			return err
 		}
-		if i >= len(entities) {
+		if persistedVersion != version {
 			return store.ErrInvalid
 		}
-		meaning := entities[i].Meaning()
-		if id != meaning.ID || revision != meaning.Revision || digest != meaning.Digest() {
+		meaning, ok := expected[id]
+		if !ok {
 			return store.ErrInvalid
 		}
-		i++
+		if _, duplicate := seen[id]; duplicate || revision != meaning.Revision || digest != meaning.Digest() {
+			return store.ErrInvalid
+		}
+		seen[id] = struct{}{}
 	}
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	if i != len(entities) {
+	if len(seen) != len(expected) {
 		return store.ErrInvalid
 	}
 	return nil

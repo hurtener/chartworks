@@ -2,6 +2,7 @@ package semantics
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -32,5 +33,16 @@ func TestCanonicalMeaningExcludesLocalKeysAndNormalizesTerms(t *testing.T) {
 	fullWidth.Name = "ＣＵＳＴＯＭＥＲ"
 	if !slices.Equal(fullWidth.Terms()[:1], []string{"customer"}) {
 		t.Fatal("NFKC/case-fold normalization changed")
+	}
+}
+
+func TestCanonicalTermBoundAppliesAfterCompatibilityExpansion(t *testing.T) {
+	pack := testPack()
+	// U+FDFA has a three-byte source form but expands to 33 bytes under NFKC.
+	// The raw value remains inside the authoring field bound while its normalized
+	// term exceeds the 1024-byte downstream registry/input bound.
+	pack.CanonicalEntities[0].Name = strings.Repeat("\ufdfa", 64)
+	if _, err := Compile(pack); validationCode(t, err) != CodeInvalidValue {
+		t.Fatalf("compatibility-expanded canonical term accepted: %v", err)
 	}
 }
