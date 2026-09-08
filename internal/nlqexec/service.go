@@ -46,6 +46,7 @@ var generationSchema, generationSchemaErr = gateway.NewSchema("nlq_sql_candidate
   }
 }`))
 
+// Preflight admits a question and persists routing evidence without generation or execution.
 func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in PreflightRequest) (PreflightResult, error) {
 	if ctx == nil || !e.Valid() {
 		return PreflightResult{}, access.ErrUnauthenticated
@@ -74,10 +75,12 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	return PreflightResult{QueryID: id, SessionID: e.Session(), Route: admitted.route, Confidence: admitted.route.Confidence, Assumptions: assumptions(admitted.route), Ambiguities: ambiguities(admitted.route)}, nil
 }
 
+// Plan generates one bounded candidate and validates it through the existing read core.
 func (s *Service) Plan(ctx context.Context, e identity.Envelope, in PlanRequest) (PlanResult, error) {
 	return s.plan(ctx, e, in.QuestionRequest, in.Operation, "", "query.plan")
 }
 
+// Refine creates a child plan anchored to the original query's signed session and topics.
 func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequest) (PlanResult, error) {
 	if ctx == nil || !e.Valid() || !identity.Identifier(in.QueryID) {
 		return PlanResult{}, ErrInvalid
@@ -100,6 +103,7 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	return s.plan(ctx, e, question, "", in.QueryID, "query.execute")
 }
 
+// Run revalidates and executes one previously planned query with idempotent operation handling.
 func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (RunResult, error) {
 	if ctx == nil || !e.Valid() || !identity.Identifier(in.QueryID) || !identity.Identifier(in.Operation) {
 		return RunResult{}, ErrInvalid
@@ -205,6 +209,7 @@ func replayError(status string) error {
 	}
 }
 
+// Feedback records a governed review and optionally validates a corrected query candidate.
 func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in FeedbackRequest) error {
 	if ctx == nil || !e.Valid() || !identity.Identifier(in.QueryID) || (in.Verdict != "positive" && in.Verdict != "negative") || len(in.Note) > maxFeedbackNote || strings.ContainsRune(in.Note, 0) {
 		return ErrInvalid
@@ -257,6 +262,7 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	return err
 }
 
+// ExampleState advances one retained learning example through its explicit review state.
 func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in ExampleStateRequest) (ExampleRecord, error) {
 	if ctx == nil || !e.Valid() || !identity.Identifier(in.ExampleID) || (in.State != "candidate" && in.State != "active" && in.State != "retired") {
 		return ExampleRecord{}, ErrInvalid
@@ -271,6 +277,7 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	return s.repo.SetExampleState(ctx, sc, in.ExampleID, in.State)
 }
 
+// Examples reads bounded DB-first learning examples for an authorized topic.
 func (s *Service) Examples(ctx context.Context, e identity.Envelope, topic string, limit int) ([]ExampleRecord, error) {
 	if ctx == nil || !e.Valid() || !identity.Identifier(topic) || limit < 1 || limit > maxExampleResults {
 		return nil, ErrInvalid

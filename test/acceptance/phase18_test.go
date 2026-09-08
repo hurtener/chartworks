@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/auth"
@@ -117,7 +118,7 @@ func phase18Question(fixture *phase17Fixture, locale nlq.Language, topicsList ..
 
 func TestPhase18(t *testing.T) {
 	fixture := newPhase18Fixture(t)
-	query, _ := newPhase18Service(t, fixture)
+	query, publishedTopics := newPhase18Service(t, fixture)
 	ctx := context.Background()
 	e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-session", true)
 	salesSQL := "SELECT id, amount FROM analytics.sales ORDER BY id"
@@ -255,59 +256,190 @@ func TestPhase18(t *testing.T) {
 			t.Fatalf("invalid context did not return structured error: %v", err)
 		}
 
-		fixture.model.mode.Store(phase18RawResponse(t, salesSQL))
-		handler := nlqapi.ExecutionHandler(fixture.model.token.verifier, query, http.NotFoundHandler())
-		server := httptest.NewServer(handler)
-		defer server.Close()
-		token := phase18Token(t, fixture, fixture.f.e.User(), "phase18-http", true)
-		client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
-		if err != nil {
-			t.Fatal(err)
-		}
-		question := phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)
-		preflight, err := client.PreflightNLQ(ctx, sdk.NLQPreflightRequest{QuestionRequest: question})
-		if err != nil || preflight.QueryID == "" || preflight.Route.Context == nil {
-			var statusErr *sdk.StatusError
-			if errors.As(err, &statusErr) {
-				t.Fatalf("HTTP preflight failed: out=%#v status=%d", preflight, statusErr.Status)
+		t.Run("http-sdk", func(t *testing.T) {
+			httpFixture := newPhase18Fixture(t)
+			httpQuery, _ := newPhase18Service(t, httpFixture)
+			httpFixture.model.embeddingMode.Store("fixed")
+			httpFixture.model.rerankMode.Store("fixed")
+			httpCtx := context.Background()
+			httpFixture.model.mode.Store(phase18RawResponse(t, salesSQL))
+			handler := nlqapi.ExecutionHandler(httpFixture.model.token.verifier, httpQuery, http.NotFoundHandler())
+			server := httptest.NewServer(handler)
+			defer server.Close()
+			token := phase18Token(t, httpFixture, httpFixture.f.e.User(), "phase18-http", true)
+			client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
+			if err != nil {
+				t.Fatal(err)
 			}
-			t.Fatalf("HTTP preflight failed: out=%#v err=%v", preflight, err)
+			question := phase18Question(httpFixture, nlq.LanguageEnglish, httpFixture.pack.Topic)
+			preflight, err := client.PreflightNLQ(httpCtx, sdk.NLQPreflightRequest{QuestionRequest: question})
+			if err != nil || preflight.QueryID == "" || preflight.Route.Context == nil {
+				var statusErr *sdk.StatusError
+				if errors.As(err, &statusErr) {
+					t.Fatalf("HTTP preflight failed: out=%#v status=%d", preflight, statusErr.Status)
+				}
+				t.Fatalf("HTTP preflight failed: out=%#v err=%v", preflight, err)
+			}
+			planned, err := client.PlanNLQ(httpCtx, sdk.NLQPlanRequest{QuestionRequest: question, Operation: "phase18-http-plan"})
+			if err != nil || planned.Status != "planned" || planned.SQL != salesSQL {
+				t.Fatalf("HTTP plan failed: out=%#v err=%v", planned, err)
+			}
+			run, err := client.RunNLQ(httpCtx, sdk.NLQRunRequest{QueryID: planned.QueryID, Operation: "phase18-http-run", Rows: 10, Bytes: 4096})
+			if err != nil || run.Status != "succeeded" || run.Execution.Result == nil {
+				t.Fatalf("HTTP run failed: out=%#v err=%v", run, err)
+			}
+			refined, err := client.RefineNLQ(httpCtx, sdk.NLQRefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Show revenue by id", Kinds: question.Kinds, LimitPerKind: question.LimitPerKind}})
+			if err != nil || refined.Status != "planned" || refined.QueryID == planned.QueryID {
+				t.Fatalf("HTTP refine failed: out=%#v err=%v", refined, err)
+			}
+			feedback, err := client.FeedbackNLQ(httpCtx, sdk.NLQFeedbackRequest{QueryID: planned.QueryID, Verdict: "positive", Note: "HTTP round trip"})
+			if err != nil || !feedback.Accepted {
+				t.Fatalf("HTTP feedback failed: out=%#v err=%v", feedback, err)
+			}
+
+			noInspectionToken := phase18Token(t, httpFixture, httpFixture.f.e.User(), "phase18-http-no-sql", false)
+			noInspection, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return noInspectionToken, nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			withoutSQL, err := noInspection.PlanNLQ(httpCtx, sdk.NLQPlanRequest{QuestionRequest: question})
+			if err != nil || withoutSQL.SQL != "" || withoutSQL.Route.Context == nil {
+				t.Fatalf("HTTP SQL inspection boundary failed: out=%#v err=%v", withoutSQL, err)
+			}
+			foreignToken := phase18Token(t, httpFixture, httpFixture.f.e.User(), "phase18-http-foreign", true)
+			foreignClient, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return foreignToken, nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = foreignClient.RefineNLQ(httpCtx, sdk.NLQRefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "foreign refine"}})
+			var statusErr *sdk.StatusError
+			if !errors.As(err, &statusErr) || statusErr.Status != http.StatusConflict {
+				t.Fatalf("foreign HTTP refine was not denied without disclosure: err=%v", err)
+			}
+		})
+	})
+
+	t.Run("AC06/rule-evidence-invalidation", func(t *testing.T) {
+		fixture := newPhase18Fixture(t)
+		query, publishedTopics := newPhase18Service(t, fixture)
+		ctx := context.Background()
+		e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-rule-evidence", true)
+		fixture.model.embeddingMode.Store("fixed")
+		fixture.model.rerankMode.Store("fixed")
+		fixture.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
+		rules, err := rulesets.New(fixture.f.db, fixture.f.db, fixture.f.db)
+		if err != nil {
+			t.Fatal("rules service", err)
 		}
-		planned, err = client.PlanNLQ(ctx, sdk.NLQPlanRequest{QuestionRequest: question, Operation: "phase18-http-plan"})
-		if err != nil || planned.Status != "planned" || planned.SQL != salesSQL {
-			t.Fatalf("HTTP plan failed: out=%#v err=%v", planned, err)
+		publishedTopic, err := publishedTopics.Read(ctx, e, fixture.pack.Topic, "")
+		if err != nil {
+			t.Fatal("published topic", err)
 		}
-		run, err := client.RunNLQ(ctx, sdk.NLQRunRequest{QueryID: planned.QueryID, Operation: "phase18-http-run", Rows: 10, Bytes: 4096})
-		if err != nil || run.Status != "succeeded" || run.Execution.Result == nil {
-			t.Fatalf("HTTP run failed: out=%#v err=%v", run, err)
+		topicDigest := publishedTopic.Digest
+		question := phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)
+		question.Question = "What is revenue before rules are active?"
+		beforeRules, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: question})
+		if err != nil {
+			t.Fatal("plan without active rules", err)
 		}
-		refined, err := client.RefineNLQ(ctx, sdk.NLQRefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Show revenue by id", Kinds: question.Kinds, LimitPerKind: question.LimitPerKind}})
-		if err != nil || refined.Status != "planned" || refined.QueryID == planned.QueryID {
-			t.Fatalf("HTTP refine failed: out=%#v err=%v", refined, err)
+		scope, err := store.NewScope(e.Tenant(), e.User())
+		if err != nil {
+			t.Fatal("query scope", err)
 		}
-		feedback, err := client.FeedbackNLQ(ctx, sdk.NLQFeedbackRequest{QueryID: planned.QueryID, Verdict: "positive", Note: "HTTP round trip"})
-		if err != nil || !feedback.Accepted {
-			t.Fatalf("HTTP feedback failed: out=%#v err=%v", feedback, err)
+		beforeRecord, err := fixture.f.db.ReadQuery(ctx, scope, beforeRules.QueryID)
+		if err != nil || len(beforeRecord.RuleVersions) != 1 || beforeRecord.RuleVersions[0] != "" {
+			t.Fatalf("query without active rules was not pinned explicitly: %#v %v", beforeRecord.RuleVersions, err)
 		}
 
-		noInspectionToken := phase18Token(t, fixture, fixture.f.e.User(), "phase18-http-no-sql", false)
-		noInspection, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return noInspectionToken, nil })
+		phase17PublishRules(t, rules, e, publishedTopic)
+		activeV1, err := rules.Read(ctx, e, fixture.pack.Topic, "")
+		if err != nil || activeV1.State.Version != "rules-v1" || !activeV1.State.Active {
+			t.Fatalf("initial rule activation: %#v %v", activeV1, err)
+		}
+		activatedRun, err := query.Run(ctx, e, nlqexec.RunRequest{QueryID: beforeRules.QueryID, Operation: "phase18-rule-activation"})
+		if err != nil || activatedRun.Status != "succeeded" || activatedRun.EvidenceStale {
+			t.Fatalf("query planned before rule activation did not replay against its unruled pin: %#v %v", activatedRun, err)
+		}
+
+		ruleQuestion := phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)
+		ruleQuestion.Question = "What is revenue under rules v1?"
+		underV1, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: ruleQuestion})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatal("plan under rules v1", err)
 		}
-		withoutSQL, err := noInspection.PlanNLQ(ctx, sdk.NLQPlanRequest{QuestionRequest: question})
-		if err != nil || withoutSQL.SQL != "" || withoutSQL.Route.Context == nil {
-			t.Fatalf("HTTP SQL inspection boundary failed: out=%#v err=%v", withoutSQL, err)
+		underV1Record, err := fixture.f.db.ReadQuery(ctx, scope, underV1.QueryID)
+		if err != nil || len(underV1Record.RuleVersions) != 1 || underV1Record.RuleVersions[0] != "rules-v1" {
+			t.Fatalf("rule v1 pin was not retained: %#v %v", underV1Record.RuleVersions, err)
 		}
-		foreignToken := phase18Token(t, fixture, fixture.f.e.User(), "phase18-http-foreign", true)
-		foreignClient, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return foreignToken, nil })
+
+		multiQuestion := phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic, fixture.related.Topic)
+		multiQuestion.Question = "What is revenue across the retained topics?"
+		multiQuestion.Joins = []nlqroute.JoinChoice{{Topic: fixture.pack.Topic, JoinID: "sales-items"}, {Topic: fixture.related.Topic, JoinID: "sales-items"}}
+		multiQuestion.Rerank = true
+		multiPlan, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: multiQuestion})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatal("multi-topic plan under rules v1", err)
 		}
-		_, err = foreignClient.RefineNLQ(ctx, sdk.NLQRefineRequest{QueryID: planned.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "foreign refine"}})
-		var statusErr *sdk.StatusError
-		if !errors.As(err, &statusErr) || statusErr.Status != http.StatusConflict {
-			t.Fatalf("foreign HTTP refine was not denied without disclosure: err=%v", err)
+		multiRecord, err := fixture.f.db.ReadQuery(ctx, scope, multiPlan.QueryID)
+		if err != nil || !reflect.DeepEqual(multiRecord.RuleVersions, []string{"rules-v1", ""}) || !reflect.DeepEqual(multiRecord.Topics, []string{fixture.pack.Topic, fixture.related.Topic}) {
+			t.Fatalf("multi-topic rule/topic pins were not aligned: %#v %v", multiRecord, err)
+		}
+
+		definition := activeV1.Definition
+		definition.Version = "rules-v2"
+		candidate, err := rules.Save(ctx, e, rulesets.SaveRequest{Expected: 1, Definition: definition, Change: "Phase 18 invalidation replay candidate"})
+		if err != nil {
+			t.Fatal("save rules v2", err)
+		}
+		review, err := rules.Review(ctx, e, fixture.pack.Topic, rulesets.ReviewRequest{DraftRevision: candidate.Revision, Digest: candidate.Digest, Decision: "approve", Note: "Phase 18 invalidation replay candidate"})
+		if err != nil {
+			t.Fatal("review rules v2", err)
+		}
+		activeV2, err := rules.Publish(ctx, e, fixture.pack.Topic, rulesets.PublishRequest{Review: review.ID, Expected: 1})
+		if err != nil || activeV2.State.Version != "rules-v2" {
+			t.Fatalf("publish rules v2: %#v %v", activeV2, err)
+		}
+
+		staleRun, err := query.Run(ctx, e, nlqexec.RunRequest{QueryID: underV1.QueryID, Operation: "phase18-rule-publish-replay"})
+		if err != nil || staleRun.Status != "succeeded" || !staleRun.EvidenceStale {
+			t.Fatalf("rule publication did not invalidate retained query evidence: %#v %v", staleRun, err)
+		}
+		multiStale, err := query.Run(ctx, e, nlqexec.RunRequest{QueryID: multiPlan.QueryID, Operation: "phase18-multi-rule-publish-replay"})
+		if err != nil || multiStale.Status != "succeeded" || !multiStale.EvidenceStale {
+			t.Fatalf("multi-topic invalidation lost ordered rule pin: %#v %v", multiStale, err)
+		}
+
+		historicalV1, err := rules.Read(ctx, e, fixture.pack.Topic, "rules-v1")
+		if err != nil || historicalV1.State.Version != "rules-v1" || historicalV1.Digest != activeV1.Digest {
+			t.Fatalf("historical v1 rules mutated after publication: %#v %v", historicalV1, err)
+		}
+		historicalTopic, err := publishedTopics.Read(ctx, e, fixture.pack.Topic, publishedTopic.State.Version)
+		if err != nil || historicalTopic.Digest != topicDigest || historicalTopic.State.Version != publishedTopic.State.Version {
+			t.Fatalf("historical topic pin changed during rule replay: %#v %v", historicalTopic, err)
+		}
+
+		underV2, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: ruleQuestion})
+		if err != nil {
+			t.Fatal("plan under rules v2", err)
+		}
+		underV2Record, err := fixture.f.db.ReadQuery(ctx, scope, underV2.QueryID)
+		if err != nil || len(underV2Record.RuleVersions) != 1 || underV2Record.RuleVersions[0] != "rules-v2" {
+			t.Fatalf("rule v2 pin was not retained: %#v %v", underV2Record.RuleVersions, err)
+		}
+		retired, err := rules.Retire(ctx, e, fixture.pack.Topic, rulesets.RetireRequest{Expected: 2, Note: "Phase 18 invalidation replay retirement"})
+		if err != nil || !retired.Retired || retired.Version != "rules-v2" {
+			t.Fatalf("retire rules v2: %#v %v", retired, err)
+		}
+		retiredRun, err := query.Run(ctx, e, nlqexec.RunRequest{QueryID: underV2.QueryID, Operation: "phase18-rule-retire-replay"})
+		if err != nil || retiredRun.Status != "succeeded" || !retiredRun.EvidenceStale {
+			t.Fatalf("rule retirement did not invalidate retained query evidence: %#v %v", retiredRun, err)
+		}
+		if _, err = rules.Read(ctx, e, fixture.pack.Topic, ""); !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("retired rules remained current: %v", err)
+		}
+		historicalV2, err := rules.Read(ctx, e, fixture.pack.Topic, "rules-v2")
+		if err != nil || historicalV2.State.Version != "rules-v2" || historicalV2.Digest != activeV2.Digest {
+			t.Fatalf("historical v2 rules mutated after retirement: %#v %v", historicalV2, err)
 		}
 	})
 }

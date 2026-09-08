@@ -35,6 +35,7 @@ const (
 )
 
 var (
+	// ErrInvalid identifies a malformed question, session, or lifecycle request.
 	ErrInvalid            = errors.New("nlqexec: invalid request")
 	ErrGeneration         = errors.New("nlqexec: SQL generation failed")
 	ErrValidationBudget   = errors.New("nlqexec: validation correction budget exhausted")
@@ -73,6 +74,7 @@ type PlanValidator interface {
 	Validate(context.Context, identity.Envelope, exec.Request) (exec.Plan, error)
 }
 
+// PlanExecutor executes only opaque plans issued by the existing read core.
 type PlanExecutor interface {
 	Execute(context.Context, identity.Envelope, exec.Plan, exec.Options) (exec.ExecutionReport, error)
 }
@@ -193,7 +195,7 @@ type QuestionRequest struct {
 	Default      []nlq.Instruction          `json:"default_instructions,omitempty"`
 }
 
-// References are accepted through the semantic package's typed value. This
+// SemanticReference is accepted through the semantic package's typed value. This
 // alias keeps the public request independent from rule internals.
 type SemanticReference = semantics.Reference
 
@@ -293,6 +295,7 @@ type Service struct {
 	repo      Repository
 }
 
+// New composes the routed context, topic/source readers, gateway, read core, and durable repository.
 func New(router Router, topicsReader TopicReader, sourcesReader SourceReader, validator PlanValidator, executor PlanExecutor, engine gateway.Engine, repo Repository) (*Service, error) {
 	if router == nil || topicsReader == nil || sourcesReader == nil || validator == nil || executor == nil || engine == nil || repo == nil {
 		return nil, store.ErrInvalid

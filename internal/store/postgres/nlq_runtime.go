@@ -25,6 +25,7 @@ func marshalNLQ(value any) ([]byte, error) {
 	return b, nil
 }
 
+// CreateSession persists one tenant- and actor-scoped NLQ session anchor.
 func (d *DB) CreateSession(ctx context.Context, scope store.Scope, s nlqexec.SessionRecord) error {
 	if err := checkScope(scope); err != nil || !identity.Identifier(s.ID) || s.Tenant != scope.Tenant() || s.Actor != scope.Actor() || !identity.Identifier(s.Context) || len(s.Topics) < 1 || len(s.Topics) > 4 || (s.Locale != "en" && s.Locale != "es") {
 		return store.ErrInvalid
@@ -45,6 +46,7 @@ func (d *DB) CreateSession(ctx context.Context, scope store.Scope, s nlqexec.Ses
 	})
 }
 
+// ReadSession returns one tenant- and actor-scoped NLQ session anchor.
 func (d *DB) ReadSession(ctx context.Context, scope store.Scope, id string) (out nlqexec.SessionRecord, err error) {
 	if err = checkScope(scope); err != nil || id == "" {
 		return out, store.ErrInvalid
@@ -62,6 +64,7 @@ func (d *DB) ReadSession(ctx context.Context, scope store.Scope, id string) (out
 	return out, err
 }
 
+// CreateQuery persists protected generation evidence for one planned query.
 func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord) error {
 	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" {
 		return store.ErrInvalid
@@ -164,6 +167,7 @@ func nullableString(value string) any {
 
 const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at`
 
+// ReadQuery returns protected query metadata and consumes rule invalidation fences.
 func (d *DB) ReadQuery(ctx context.Context, scope store.Scope, id string) (out nlqexec.QueryRecord, err error) {
 	if err = checkScope(scope); err != nil || id == "" {
 		return out, store.ErrInvalid
@@ -177,6 +181,7 @@ func (d *DB) ReadQuery(ctx context.Context, scope store.Scope, id string) (out n
 	return out, err
 }
 
+// ReadOperation returns the durable query receipt bound to an operation key.
 func (d *DB) ReadOperation(ctx context.Context, scope store.Scope, operation string) (out nlqexec.QueryRecord, err error) {
 	if err = checkScope(scope); err != nil || operation == "" {
 		return out, store.ErrInvalid
@@ -267,6 +272,7 @@ func stringValue(value *string) string {
 	return *value
 }
 
+// UpdateQuery advances mutable execution metadata under a query revision CAS.
 func (d *DB) UpdateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord, expected int64) error {
 	if err := checkScope(scope); err != nil || q.ID == "" || q.Session == "" || expected < 1 || q.Revision != expected+1 {
 		return store.ErrInvalid
@@ -323,6 +329,7 @@ func (d *DB) UpdateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 	return err
 }
 
+// RecordFeedback stores one scoped review receipt without changing a publication.
 func (d *DB) RecordFeedback(ctx context.Context, scope store.Scope, f nlqexec.FeedbackRecord) error {
 	if err := checkScope(scope); err != nil || f.ID == "" || f.Session == "" || f.QueryID == "" || (f.Verdict != "positive" && f.Verdict != "negative") {
 		return store.ErrInvalid
@@ -344,6 +351,7 @@ func (d *DB) RecordFeedback(ctx context.Context, scope store.Scope, f nlqexec.Fe
 	})
 }
 
+// UpsertExample deduplicates one candidate learning example by topic and digest.
 func (d *DB) UpsertExample(ctx context.Context, scope store.Scope, x nlqexec.ExampleRecord) (out nlqexec.ExampleRecord, err error) {
 	if err = checkScope(scope); err != nil || x.ID == "" || x.Topic == "" || x.Question == "" || x.SQL == "" || x.Digest == "" || x.State != "candidate" {
 		return out, store.ErrInvalid
@@ -359,6 +367,7 @@ func scanExample(row pgx.Row, out *nlqexec.ExampleRecord) error {
 	return row.Scan(&out.ID, &out.Topic, &out.Question, &out.SQL, &out.Digest, &out.State, &out.Weight, &out.EvidenceCount, &out.Provenance, &out.Created, &out.Updated)
 }
 
+// ListExamples returns bounded candidate and active examples for one topic.
 func (d *DB) ListExamples(ctx context.Context, scope store.Scope, topic string, limit int) (out []nlqexec.ExampleRecord, err error) {
 	if err = checkScope(scope); err != nil || topic == "" || limit < 1 || limit > 64 {
 		return nil, store.ErrInvalid
@@ -382,6 +391,7 @@ func (d *DB) ListExamples(ctx context.Context, scope store.Scope, topic string, 
 	return out, err
 }
 
+// SetExampleState advances one candidate example through its explicit review state.
 func (d *DB) SetExampleState(ctx context.Context, scope store.Scope, id, state string) (out nlqexec.ExampleRecord, err error) {
 	if err = checkScope(scope); err != nil || id == "" || (state != "candidate" && state != "active" && state != "retired") {
 		return out, store.ErrInvalid

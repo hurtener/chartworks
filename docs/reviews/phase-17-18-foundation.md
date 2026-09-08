@@ -5,6 +5,11 @@ Status: bounded foundation verified at `3b008ca` on 2026-09-08. Phases 17 and
 `TestPhase17/AC01`–`AC06` or `TestPhase18/AC01`–`AC06` acceptance parents,
 release readiness, or a hosted/cloud qualification.
 
+This document records the earlier context-only foundation. The subsequent
+durable Phase 18 core and its Phase 16 invalidation-ledger consumer are recorded
+separately in [phase 18 NLQ runtime evidence](phase-18-nlq-runtime.md); the
+historical boundary and checks below remain unchanged.
+
 ## Implemented boundary
 
 The phase 17 slice now has one deterministic `ContextAssembler` using the

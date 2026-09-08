@@ -14,6 +14,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -215,5 +216,637 @@ func TestRetainedAdmissionUsesExactTopicPins(t *testing.T) {
 	}
 	if admitted.source != "source" || admitted.context != "context" || admitted.binding.Context != "context" || len(admitted.resources) != 6 {
 		t.Fatalf("retained admission lost exact source/resource pins: %#v", admitted)
+	}
+}
+
+type unitRepository struct {
+	sessions   map[string]SessionRecord
+	queries    map[string]QueryRecord
+	operations map[string]QueryRecord
+	examples   map[string]ExampleRecord
+	feedback   []FeedbackRecord
+}
+
+type errorUnitRepository struct {
+	*unitRepository
+	operationErr error
+	queryErr     error
+	updateErr    error
+}
+
+func (r *errorUnitRepository) ReadOperation(ctx context.Context, scope store.Scope, operation string) (QueryRecord, error) {
+	if r.operationErr != nil {
+		return QueryRecord{}, r.operationErr
+	}
+	return r.unitRepository.ReadOperation(ctx, scope, operation)
+}
+
+func (r *errorUnitRepository) ReadQuery(ctx context.Context, scope store.Scope, id string) (QueryRecord, error) {
+	if r.queryErr != nil {
+		return QueryRecord{}, r.queryErr
+	}
+	return r.unitRepository.ReadQuery(ctx, scope, id)
+}
+
+func (r *errorUnitRepository) UpdateQuery(ctx context.Context, scope store.Scope, value QueryRecord, expected int64) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
+	return r.unitRepository.UpdateQuery(ctx, scope, value, expected)
+}
+
+func newUnitRepository() *unitRepository {
+	return &unitRepository{sessions: map[string]SessionRecord{}, queries: map[string]QueryRecord{}, operations: map[string]QueryRecord{}, examples: map[string]ExampleRecord{}}
+}
+
+func (r *unitRepository) CreateSession(_ context.Context, _ store.Scope, value SessionRecord) error {
+	if _, exists := r.sessions[value.ID]; exists {
+		return store.ErrConflict
+	}
+	r.sessions[value.ID] = value
+	return nil
+}
+
+func (r *unitRepository) ReadSession(_ context.Context, _ store.Scope, id string) (SessionRecord, error) {
+	value, ok := r.sessions[id]
+	if !ok {
+		return SessionRecord{}, store.ErrNotFound
+	}
+	return value, nil
+}
+
+func (r *unitRepository) CreateQuery(_ context.Context, _ store.Scope, value QueryRecord) error {
+	if _, exists := r.queries[value.ID]; exists {
+		return store.ErrConflict
+	}
+	r.queries[value.ID] = value
+	return nil
+}
+
+func (r *unitRepository) ReadQuery(_ context.Context, _ store.Scope, id string) (QueryRecord, error) {
+	value, ok := r.queries[id]
+	if !ok {
+		return QueryRecord{}, store.ErrNotFound
+	}
+	return value, nil
+}
+
+func (r *unitRepository) ReadOperation(_ context.Context, _ store.Scope, operation string) (QueryRecord, error) {
+	value, ok := r.operations[operation]
+	if !ok {
+		return QueryRecord{}, store.ErrNotFound
+	}
+	return value, nil
+}
+
+func (r *unitRepository) UpdateQuery(_ context.Context, _ store.Scope, value QueryRecord, expected int64) error {
+	current, ok := r.queries[value.ID]
+	if !ok {
+		return store.ErrNotFound
+	}
+	if current.Revision != expected {
+		return store.ErrConflict
+	}
+	r.queries[value.ID] = value
+	if value.Operation != "" {
+		r.operations[value.Operation] = value
+	}
+	return nil
+}
+
+func (r *unitRepository) RecordFeedback(_ context.Context, _ store.Scope, value FeedbackRecord) error {
+	r.feedback = append(r.feedback, value)
+	return nil
+}
+
+func (r *unitRepository) UpsertExample(_ context.Context, _ store.Scope, value ExampleRecord) (ExampleRecord, error) {
+	for id, existing := range r.examples {
+		if existing.Topic == value.Topic && existing.Digest == value.Digest {
+			existing.EvidenceCount++
+			existing.Weight += 0.05
+			r.examples[id] = existing
+			return existing, nil
+		}
+	}
+	r.examples[value.ID] = value
+	return value, nil
+}
+
+func (r *unitRepository) ListExamples(_ context.Context, _ store.Scope, topic string, limit int) ([]ExampleRecord, error) {
+	out := make([]ExampleRecord, 0, len(r.examples))
+	for _, value := range r.examples {
+		if value.Topic == topic && (value.State == "candidate" || value.State == "active") {
+			out = append(out, value)
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (r *unitRepository) SetExampleState(_ context.Context, _ store.Scope, id, state string) (ExampleRecord, error) {
+	value, ok := r.examples[id]
+	if !ok {
+		return ExampleRecord{}, store.ErrNotFound
+	}
+	value.State = state
+	r.examples[id] = value
+	return value, nil
+}
+
+type unitTopicReader struct {
+	current  map[string]topics.Contract
+	retained map[string]topics.Contract
+}
+
+func (r *unitTopicReader) Contract(_ context.Context, _ identity.Envelope, topic string) (topics.Contract, error) {
+	value, ok := r.current[topic]
+	if !ok {
+		return topics.Contract{}, store.ErrNotFound
+	}
+	return value, nil
+}
+
+func (r *unitTopicReader) RetainedContract(_ context.Context, _ identity.Envelope, topic, version string) (topics.Contract, error) {
+	value, ok := r.retained[topic+"/"+version]
+	if !ok {
+		return topics.Contract{}, store.ErrNotFound
+	}
+	return value, nil
+}
+
+type unitValidator struct {
+	errors   []error
+	requests []exec.Request
+}
+
+func (v *unitValidator) Validate(_ context.Context, _ identity.Envelope, request exec.Request) (exec.Plan, error) {
+	v.requests = append(v.requests, request)
+	if len(v.errors) == 0 {
+		return exec.Plan{}, nil
+	}
+	err := v.errors[0]
+	v.errors = v.errors[1:]
+	return exec.Plan{}, err
+}
+
+type unitExecutor struct {
+	reports []exec.ExecutionReport
+	errors  []error
+}
+
+func (x *unitExecutor) Execute(_ context.Context, _ identity.Envelope, _ exec.Plan, _ exec.Options) (exec.ExecutionReport, error) {
+	var report exec.ExecutionReport
+	if len(x.reports) > 0 {
+		report = x.reports[0]
+		x.reports = x.reports[1:]
+	}
+	if len(x.errors) == 0 {
+		return report, nil
+	}
+	err := x.errors[0]
+	x.errors = x.errors[1:]
+	return report, err
+}
+
+func unitEnvelope(t *testing.T) identity.Envelope {
+	t.Helper()
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{
+		"query.plan", "query.execute", "feedback.write", "reporting.sql.read",
+		"cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context",
+	}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func unitContract(topic, version, source, contextID, dataset string, active, archived bool) topics.Contract {
+	return topics.Contract{Publication: topics.Published{
+		State: topics.State{Topic: topic, Version: version, Active: active, Archived: archived},
+		Definition: topics.Definition{Topic: topic, Version: version, Datasets: []topics.Dataset{{
+			ID: dataset, Source: topics.Binding{Source: source, Context: contextID, Dataset: dataset, SourceRevision: 1},
+		}}},
+	}}
+}
+
+func unitQuery(e identity.Envelope, id, topic, version, contextID string, stale bool) QueryRecord {
+	return QueryRecord{ID: id, Session: e.Session(), Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Context: contextID, Locale: nlq.LanguageEnglish, Question: "What is revenue?", SQL: "SELECT id FROM analytics.sales", Status: "planned", EvidenceStale: stale, Route: nlqroute.RouteResult{Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Outcome: nlq.StrategySingleTopic}, Revision: 1}
+}
+
+func unitResult(status string) exec.ExecutionReport {
+	return exec.ExecutionReport{Attempt: exec.Attempt{Status: status}, Result: &exec.Result{Outcome: "complete", Schema: []exec.Field{{Name: "id", Type: "integer"}}, Rows: [][]json.RawMessage{{json.RawMessage(`1`)}}, Bytes: 1}}
+}
+
+func TestServiceValidationAndMetadataBoundaries(t *testing.T) {
+	e := unitEnvelope(t)
+	if _, err := New(nil, nil, nil, nil, nil, nil, nil); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("nil production dependencies accepted")
+	}
+	validRecord := QueryRecord{ID: "q", Session: "s", Context: "ctx", Locale: nlq.LanguageEnglish}
+	invalidRecord := QueryRecord{ID: "q", Session: "s", Context: "ctx", Locale: "fr"}
+	if !validRecord.valid() || invalidRecord.valid() {
+		t.Fatal("query validity boundary changed")
+	}
+	if !canInspect(e) || canInspect(testEnvelope(t)) {
+		t.Fatal("inspection scope was not isolated")
+	}
+	if cloneJSON(map[string]string{"key": "value"})["key"] != "value" {
+		t.Fatal("JSON metadata clone failed")
+	}
+	for _, item := range []struct {
+		name string
+		in   []nlq.Instruction
+		want bool
+	}{
+		{name: "valid", in: []nlq.Instruction{{Key: "hint", Text: "Use revenue"}}, want: true},
+		{name: "duplicate", in: []nlq.Instruction{{Key: "hint", Text: "one"}, {Key: "hint", Text: "two"}}},
+		{name: "invalid-key", in: []nlq.Instruction{{Key: "bad key", Text: "one"}}},
+		{name: "empty", in: []nlq.Instruction{{Key: "hint"}}},
+		{name: "nul", in: []nlq.Instruction{{Key: "hint", Text: "bad\x00text"}}},
+		{name: "too-long", in: []nlq.Instruction{{Key: "hint", Text: strings.Repeat("x", maxInstructionText+1)}}},
+	} {
+		t.Run("instruction-"+item.name, func(t *testing.T) {
+			if got := instructionValid(item.in); got != item.want {
+				t.Fatalf("instruction validity=%v want %v", got, item.want)
+			}
+		})
+	}
+	validQuestion := QuestionRequest{Topic: "topic", Context: "context", Locale: nlq.LanguageEnglish, Question: "show revenue", EditBase: []nlq.Instruction{{Key: "edit", Text: "preserve filters"}}}
+	if err := validateQuestion(validQuestion); err != nil {
+		t.Fatal("valid question rejected", err)
+	}
+	for _, question := range []QuestionRequest{
+		{Topic: "topic", Context: "context", Locale: nlq.LanguageEnglish, Question: " leading"},
+		{Topic: "topic", Context: "context", Locale: nlq.LanguageEnglish, Question: "line\nfeed"},
+		{Topic: "topic", Context: "context", Locale: "fr", Question: "question"},
+		{Topic: "topic", Context: "bad context", Locale: nlq.LanguageEnglish, Question: "question"},
+	} {
+		if !errors.Is(validateQuestion(question), ErrInvalid) {
+			t.Fatalf("invalid question accepted: %#v", question)
+		}
+	}
+	if !errors.Is(requireQuestionAction(identity.Envelope{}, "query.plan", validQuestion), access.ErrForbidden) {
+		t.Fatal("unauthorized question action accepted")
+	}
+	if !errors.Is(requireQuestionAction(e, "query.plan", QuestionRequest{Context: "context", Locale: nlq.LanguageEnglish, Question: "question"}), ErrInvalid) {
+		t.Fatal("question without topic accepted")
+	}
+	if err := requireQuestionAction(e, "query.plan", QuestionRequest{Topic: "topic", Topics: []string{"topic", "topic"}, Context: "context"}); err != nil {
+		t.Fatal("duplicate topic reach rejected", err)
+	}
+	for _, candidate := range []struct {
+		name  string
+		value generatedCandidate
+		want  bool
+	}{
+		{name: "valid", value: generatedCandidate{SQL: "SELECT 1"}, want: true},
+		{name: "trim", value: generatedCandidate{SQL: " SELECT 1"}},
+		{name: "nul", value: generatedCandidate{SQL: "SELECT\x001"}},
+		{name: "long-assumption", value: generatedCandidate{SQL: "SELECT 1", Assumptions: []string{strings.Repeat("x", 1025)}}},
+	} {
+		t.Run("candidate-"+candidate.name, func(t *testing.T) {
+			if got := validCandidate(candidate.value); got != candidate.want {
+				t.Fatalf("candidate validity=%v want %v", got, candidate.want)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "unsafe", err: exec.ErrUnsafe, want: "validation_unsafe"},
+		{name: "limit", err: exec.ErrLimit, want: "validation_limit"},
+		{name: "unsupported", err: exec.ErrUnsupported, want: "validation_unsupported"},
+		{name: "other", err: errors.New("validation"), want: "validation_failed"},
+		{name: "nil", want: ""},
+	} {
+		t.Run("validation-code-"+tc.name, func(t *testing.T) {
+			if got := validationCode(tc.err, "SELECT 1"); got != tc.want {
+				t.Fatalf("validation code=%q want %q", got, tc.want)
+			}
+		})
+	}
+	for status, want := range map[string]error{"failed": ErrExecutionFailed, "uncertain": exec.ErrUncertain, "interrupted": exec.ErrUncertain, "cancelled": exec.ErrCancelled, "timed_out": exec.ErrTimeout, "succeeded": nil} {
+		if !errors.Is(replayError(status), want) {
+			t.Fatalf("replay status %s: got %v want %v", status, replayError(status), want)
+		}
+	}
+	if executionErrorCode(exec.ExecutionReport{Attempt: exec.Attempt{Code: "registered"}}, nil) != "registered" || executionErrorCode(exec.ExecutionReport{}, exec.ErrBinding) != "context_changed" || executionErrorCode(exec.ExecutionReport{}, exec.ErrLimit) != "limit_exceeded" || executionErrorCode(exec.ExecutionReport{}, errors.New("other")) != "execution_failed" {
+		t.Fatal("execution error code classification changed")
+	}
+	joined := appendReceipts(gateway.Receipt{Calls: []gateway.Usage{{Role: "first"}}}, gateway.Receipt{Calls: []gateway.Usage{{Role: "second"}}, Warning: "degraded"})
+	if len(joined.Calls) != 2 || joined.Warning != "degraded" {
+		t.Fatalf("receipt append lost observed calls: %#v", joined)
+	}
+	route := nlqroute.RouteResult{Topic: "topic", Topics: []string{"topic", "topic-two"}, TopicVersions: []string{"v1", "v2"}, Context: nil}
+	if routeVersion(route, "topic-two") != "v2" || routeVersion(route, "missing") != "" || assumptions(route) != nil || ambiguities(route) != nil {
+		t.Fatal("route metadata helpers changed")
+	}
+	if routeDigest(route) != "topic:topic,topic-two:v1,v2" || executionPartition(unitQuery(e, "query-partition", "topic", "v1", "context", false)) == "" {
+		t.Fatal("route/execution partitions lost stable identity")
+	}
+	route.Clarification = &nlqroute.Clarification{Reason: "choose"}
+	if len(ambiguities(route)) != 1 || ambiguities(route)[0] != "choose" {
+		t.Fatal("clarification metadata was not retained")
+	}
+}
+
+func TestServicePublicBoundaryValidation(t *testing.T) {
+	service := &Service{}
+	question := QuestionRequest{Topic: "topic", Context: "context", Locale: nlq.LanguageEnglish, Question: "show revenue"}
+	if _, err := service.Preflight(nil, identity.Envelope{}, PreflightRequest{QuestionRequest: question}); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("nil preflight context was accepted")
+	}
+	if _, err := service.Preflight(context.Background(), testEnvelope(t), PreflightRequest{QuestionRequest: question}); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("preflight without its action was accepted")
+	}
+	if _, err := service.Plan(context.Background(), identity.Envelope{}, PlanRequest{QuestionRequest: question}); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("unauthenticated plan was accepted")
+	}
+	if _, err := service.Refine(context.Background(), testEnvelope(t), RefineRequest{}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("malformed refinement was accepted")
+	}
+	if _, err := service.Run(context.Background(), testEnvelope(t), RunRequest{}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("malformed run was accepted")
+	}
+	if err := service.Feedback(nil, testEnvelope(t), FeedbackRequest{QueryID: "query", Verdict: "positive"}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("nil feedback context was accepted")
+	}
+	withoutFeedback, err := identity.FromVerified("tenant", "actor", "session", []string{"query.plan", "cw.topic.read:topic"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.ExampleState(context.Background(), withoutFeedback, ExampleStateRequest{ExampleID: "example", State: "active"}); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("example state without feedback authority was accepted")
+	}
+	withoutActions, err := identity.FromVerified("tenant", "actor", "session", nil, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Examples(context.Background(), withoutActions, "topic", 1); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("example read without an action was accepted")
+	}
+}
+
+func TestServiceDurableFailureBoundaries(t *testing.T) {
+	e := unitEnvelope(t)
+	repo := newUnitRepository()
+	current := unitContract("topic", "v1", "source", "context", "dataset", true, false)
+	reader := &unitTopicReader{current: map[string]topics.Contract{"topic": current}, retained: map[string]topics.Contract{"topic/v1": current}}
+	validator := &unitValidator{}
+	executor := &unitExecutor{reports: []exec.ExecutionReport{unitResult("succeeded")}}
+	service := &Service{topics: reader, sources: retainedSourceReader{}, validator: validator, executor: executor, engine: &sequenceGateway{}, repo: repo}
+	q := unitQuery(e, "query-1", "topic", "v1", "context", false)
+	repo.queries[q.ID] = q
+	if err := service.ensureSession(context.Background(), e, QuestionRequest{Context: "context", Locale: nlq.LanguageEnglish}, []string{"topic"}); err != nil {
+		t.Fatal("session creation", err)
+	}
+	if err := service.ensureSession(context.Background(), e, QuestionRequest{Context: "context", Locale: nlq.LanguageSpanish}, []string{"topic"}); err != nil {
+		t.Fatal("session conflict read", err)
+	}
+	if err := service.ensureSession(context.Background(), e, QuestionRequest{Context: "other-context", Locale: nlq.LanguageEnglish}, []string{"topic"}); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("session context changed without conflict")
+	}
+	admitted, err := service.currentAdmission(context.Background(), e, q)
+	if err != nil || admitted.source != "source" || admitted.binding.Context != "context" {
+		t.Fatalf("current admission: %#v %v", admitted, err)
+	}
+	q.EvidenceStale = true
+	retained, err := service.retainedAdmission(context.Background(), e, q)
+	if err != nil || retained.source != "source" {
+		t.Fatalf("retained admission: %#v %v", retained, err)
+	}
+	result, err := service.Run(context.Background(), e, RunRequest{QueryID: q.ID, Operation: "run-1", Rows: 10, Bytes: 4096})
+	if err != nil || result.Status != "succeeded" || result.Execution.Result == nil || result.SQL == "" {
+		t.Fatalf("successful run boundary: %#v %v", result, err)
+	}
+	replayed, err := service.Run(context.Background(), e, RunRequest{QueryID: q.ID, Operation: "run-1"})
+	if err != nil || replayed.Status != "succeeded" {
+		t.Fatalf("idempotent run replay: %#v %v", replayed, err)
+	}
+	other := unitQuery(e, "query-other", "topic", "v1", "context", false)
+	repo.operations["run-other"] = other
+	if _, err = service.Run(context.Background(), e, RunRequest{QueryID: q.ID, Operation: "run-other"}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("operation key was reused for another query: %v", err)
+	}
+
+	feedbackQuery := unitQuery(e, "query-feedback", "topic", "v1", "context", false)
+	repo.queries[feedbackQuery.ID] = feedbackQuery
+	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: feedbackQuery.ID, Verdict: "positive", Note: "accepted"}); err != nil {
+		t.Fatal("positive feedback", err)
+	}
+	if len(repo.feedback) != 1 || len(repo.examples) != 1 {
+		t.Fatalf("positive feedback did not persist learning state: feedback=%d examples=%d", len(repo.feedback), len(repo.examples))
+	}
+	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: feedbackQuery.ID, Verdict: "negative", Note: "rejected"}); err != nil {
+		t.Fatal("negative feedback", err)
+	}
+	if len(repo.feedback) != 2 || len(repo.examples) != 1 {
+		t.Fatal("negative feedback unexpectedly created an example")
+	}
+	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: feedbackQuery.ID, Verdict: "positive", Correction: "SELECT id FROM analytics.sales"}); err != nil {
+		t.Fatal("validated correction feedback", err)
+	}
+	for _, in := range []FeedbackRequest{{QueryID: "missing", Verdict: "positive"}, {QueryID: feedbackQuery.ID, Verdict: "bad"}, {QueryID: feedbackQuery.ID, Verdict: "positive", Note: string([]byte{0})}} {
+		if err = service.Feedback(context.Background(), e, in); !errors.Is(err, ErrInvalid) && !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("invalid feedback result: %v", err)
+		}
+	}
+	foreign := feedbackQuery
+	foreign.ID = "query-foreign"
+	foreign.Session = "other-session"
+	repo.queries[foreign.ID] = foreign
+	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: foreign.ID, Verdict: "positive"}); !errors.Is(err, ErrForeignSession) {
+		t.Fatal("foreign feedback accepted")
+	}
+	preflight := feedbackQuery
+	preflight.ID, preflight.Status, preflight.SQL = "query-preflight", "preflight", ""
+	repo.queries[preflight.ID] = preflight
+	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: preflight.ID, Verdict: "positive"}); !errors.Is(err, ErrNoPlan) {
+		t.Fatal("preflight feedback accepted")
+	}
+
+	var exampleID string
+	for id := range repo.examples {
+		exampleID = id
+	}
+	active, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: exampleID, State: "active"})
+	if err != nil || active.State != "active" {
+		t.Fatalf("example state transition: %#v %v", active, err)
+	}
+	if listed, listErr := service.Examples(context.Background(), e, "topic", 2); listErr != nil || len(listed) != 1 || listed[0].State != "active" {
+		t.Fatalf("example listing: %#v %v", listed, listErr)
+	}
+	if _, err = service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "missing", State: "active"}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("missing example state did not remain non-disclosing")
+	}
+	if _, err = service.Examples(context.Background(), e, "topic", 0); !errors.Is(err, ErrInvalid) {
+		t.Fatal("invalid example limit accepted")
+	}
+
+	failedRepo := newUnitRepository()
+	failedRepo.queries["failed"] = unitQuery(e, "failed", "topic", "v1", "context", false)
+	failedRepo.queries["failed"] = func() QueryRecord { value := failedRepo.queries["failed"]; value.Status = "planned"; return value }()
+	failedService := &Service{topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, executor: &unitExecutor{}, engine: &sequenceGateway{}, repo: failedRepo}
+	if _, err = failedService.finishRun(context.Background(), e, failedRepo.queries["failed"], exec.ExecutionReport{Attempt: exec.Attempt{Status: "failed"}}, 0, nil); !errors.Is(err, ErrExecutionFailed) {
+		t.Fatal("failed execution did not return typed error")
+	}
+	if _, err = failedService.finishRun(context.Background(), e, failedRepo.queries["failed"], exec.ExecutionReport{Attempt: exec.Attempt{Status: "uncertain"}}, 0, nil); !errors.Is(err, exec.ErrUncertain) {
+		t.Fatal("uncertain execution did not remain uncertain")
+	}
+}
+
+func TestServiceRunFailureAndAdmissionBranches(t *testing.T) {
+	ctx := context.Background()
+	e := unitEnvelope(t)
+	reader := &unitTopicReader{
+		current:  map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)},
+		retained: map[string]topics.Contract{"topic/v1": unitContract("topic", "v1", "source", "context", "dataset", true, true)},
+	}
+
+	newService := func(repo Repository, validator PlanValidator, executor PlanExecutor) *Service {
+		return &Service{topics: reader, sources: retainedSourceReader{}, validator: validator, executor: executor, repo: repo}
+	}
+	newRepo := func(query QueryRecord) *unitRepository {
+		repo := newUnitRepository()
+		repo.queries[query.ID] = query
+		return repo
+	}
+
+	if _, err := newService(newUnitRepository(), &unitValidator{}, &unitExecutor{}).Run(ctx, func() identity.Envelope {
+		value, err := identity.FromVerified("tenant", "actor", "session", []string{"query.plan"}, time.Now().Add(time.Hour), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}(), RunRequest{QueryID: "query", Operation: "operation"}); !errors.Is(err, access.ErrForbidden) {
+		t.Fatalf("run without execute authority returned %v", err)
+	}
+
+	terminalRepo := newUnitRepository()
+	terminalQuery := unitQuery(e, "query-terminal", "topic", "v1", "context", false)
+	terminalRepo.operations["operation-terminal"] = func() QueryRecord {
+		value := terminalQuery
+		value.Status = "failed"
+		return value
+	}()
+	if _, err := newService(terminalRepo, &unitValidator{}, &unitExecutor{}).Run(ctx, e, RunRequest{QueryID: terminalQuery.ID, Operation: "operation-terminal"}); !errors.Is(err, ErrExecutionFailed) {
+		t.Fatalf("terminal replay returned %v", err)
+	}
+
+	operationError := &errorUnitRepository{unitRepository: newUnitRepository(), operationErr: store.ErrUnavailable}
+	if _, err := newService(operationError, &unitValidator{}, &unitExecutor{}).Run(ctx, e, RunRequest{QueryID: "query-operation-error", Operation: "operation"}); !errors.Is(err, store.ErrUnavailable) {
+		t.Fatalf("operation read error returned %v", err)
+	}
+	queryError := &errorUnitRepository{unitRepository: newUnitRepository(), queryErr: store.ErrUnavailable}
+	if _, err := newService(queryError, &unitValidator{}, &unitExecutor{}).Run(ctx, e, RunRequest{QueryID: "query-read-error", Operation: "operation"}); !errors.Is(err, store.ErrUnavailable) {
+		t.Fatalf("query read error returned %v", err)
+	}
+
+	for name, mutate := range map[string]func(*QueryRecord){
+		"foreign-session": func(value *QueryRecord) { value.Session = "other-session" },
+		"preflight":       func(value *QueryRecord) { value.Status, value.SQL = "preflight", "" },
+		"missing-sql":     func(value *QueryRecord) { value.SQL = "" },
+	} {
+		t.Run("no-plan-"+name, func(t *testing.T) {
+			value := unitQuery(e, "query-"+name, "topic", "v1", "context", false)
+			mutate(&value)
+			repo := newRepo(value)
+			if _, err := newService(repo, &unitValidator{}, &unitExecutor{}).Run(ctx, e, RunRequest{QueryID: value.ID, Operation: "operation-" + name}); !errors.Is(err, ErrNoPlan) {
+				t.Fatalf("no-plan branch returned %v", err)
+			}
+		})
+	}
+
+	missingTopic := unitQuery(e, "query-missing-topic", "missing", "v1", "context", false)
+	if _, err := newService(newRepo(missingTopic), &unitValidator{}, &unitExecutor{}).Run(ctx, e, RunRequest{QueryID: missingTopic.ID, Operation: "operation-missing-topic"}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing current topic returned %v", err)
+	}
+
+	noResources, err := identity.FromVerified("tenant", "actor", "session", []string{"query.execute"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthorizedQuery := unitQuery(noResources, "query-no-resources", "topic", "v1", "context", false)
+	if _, err := newService(newRepo(unauthorizedQuery), &unitValidator{}, &unitExecutor{}).Run(ctx, noResources, RunRequest{QueryID: unauthorizedQuery.ID, Operation: "operation-no-resources"}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatalf("missing resource authority returned %v", err)
+	}
+
+	validatorError := unitQuery(e, "query-validator-error", "topic", "v1", "context", false)
+	if _, err := newService(newRepo(validatorError), &unitValidator{errors: []error{exec.ErrUnsafe}}, &unitExecutor{}).Run(ctx, e, RunRequest{QueryID: validatorError.ID, Operation: "operation-validator-error"}); !errors.Is(err, exec.ErrUnsafe) {
+		t.Fatalf("validator error returned %v", err)
+	}
+
+	stale := unitQuery(e, "query-stale", "topic", "v1", "context", true)
+	staleRepo := newRepo(stale)
+	staleExecutor := &unitExecutor{reports: []exec.ExecutionReport{unitResult("succeeded")}}
+	if result, err := newService(staleRepo, &unitValidator{}, staleExecutor).Run(ctx, e, RunRequest{QueryID: stale.ID, Operation: "operation-stale"}); err != nil || !result.EvidenceStale {
+		t.Fatalf("stale retained replay returned %#v %v", result, err)
+	}
+
+	failed := unitQuery(e, "query-executor-failure", "topic", "v1", "context", false)
+	failedRepo := newRepo(failed)
+	failedExecutor := &unitExecutor{reports: []exec.ExecutionReport{{Attempt: exec.Attempt{Status: "uncertain"}}}, errors: []error{exec.ErrUncertain}}
+	if _, err := newService(failedRepo, &unitValidator{}, failedExecutor).Run(ctx, e, RunRequest{QueryID: failed.ID, Operation: "operation-executor-failure"}); !errors.Is(err, exec.ErrUncertain) {
+		t.Fatalf("uncertain executor outcome returned %v", err)
+	}
+
+	updateErrorQuery := unitQuery(e, "query-update-error", "topic", "v1", "context", false)
+	updateErrorRepo := &errorUnitRepository{unitRepository: newRepo(updateErrorQuery), updateErr: store.ErrUnavailable}
+	updateErrorExecutor := &unitExecutor{reports: []exec.ExecutionReport{unitResult("succeeded")}}
+	if _, err := newService(updateErrorRepo, &unitValidator{}, updateErrorExecutor).Run(ctx, e, RunRequest{QueryID: updateErrorQuery.ID, Operation: "operation-update-error"}); !errors.Is(err, store.ErrUnavailable) {
+		t.Fatalf("query update error returned %v", err)
+	}
+}
+
+func TestServiceGenerationFailureBranches(t *testing.T) {
+	e := unitEnvelope(t)
+	admitted, generation, call, budget := testGeneration(t, e)
+	validJSON := json.RawMessage(`{"sql":"SELECT id FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`)
+	for _, tc := range []struct {
+		name     string
+		response gateway.Generated
+		wantErr  error
+	}{
+		{name: "malformed", response: gateway.Generated{JSON: json.RawMessage(`{"sql":`)}, wantErr: ErrGeneration},
+		{name: "invalid-candidate", response: gateway.Generated{JSON: json.RawMessage(`{"sql":" SELECT 1","parameters":[],"assumptions":[],"ambiguities":[]}`)}, wantErr: ErrGeneration},
+		{name: "provider-output", response: gateway.Generated{}, wantErr: ErrGeneration},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := &Service{engine: &sequenceGateway{responses: []gateway.Generated{tc.response}}}
+			_, _, err := service.generate(context.Background(), e, admitted, generation, call, budget, "sqlgen", "")
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("generate error=%v want %v", err, tc.wantErr)
+			}
+		})
+	}
+	service := &Service{engine: &sequenceGateway{responses: []gateway.Generated{{JSON: validJSON}}}, validator: &unitValidator{errors: []error{exec.ErrUnsafe, nil}}}
+	if candidate, _, err := service.fixCandidate(context.Background(), e, admitted, call, budget, "SELECT bad", "validation_unsafe"); err != nil || candidate.SQL == "" {
+		t.Fatalf("fix candidate failed: %#v %v", candidate, err)
+	}
+	for _, tc := range []struct {
+		name   string
+		errors []error
+		want   error
+	}{
+		{name: "forbidden", errors: []error{access.ErrForbidden}, want: access.ErrForbidden},
+		{name: "binding", errors: []error{exec.ErrBinding}, want: exec.ErrBinding},
+		{name: "fix-generation", errors: []error{exec.ErrUnsafe}, want: ErrValidationBudget},
+		{name: "fix-validation", errors: []error{exec.ErrUnsafe, exec.ErrUnsafe}, want: ErrValidationBudget},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			responses := []gateway.Generated{{JSON: validJSON}, {JSON: validJSON}}
+			if tc.name == "fix-generation" {
+				responses[1] = gateway.Generated{}
+			}
+			service := &Service{engine: &sequenceGateway{responses: responses}, validator: &unitValidator{errors: append([]error(nil), tc.errors...)}}
+			_, _, _, _, err := service.generateAndValidate(context.Background(), e, admitted, generation, call, budget, "")
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("generate/validate error=%v want %v", err, tc.want)
+			}
+		})
 	}
 }

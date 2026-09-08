@@ -209,6 +209,17 @@ authority nor a validated query plan. Phase 17 provides the first required-slot 
 real-token advisory consumer; phase 18 remains responsible for shared-reader query and
 evidence consumption of invalidation fences.
 
+The current Phase 18 core consumer fulfills that boundary through the durable NLQ
+repository: PostgreSQL query and operation reads match ordered topic/rule pins
+against the publish/retire invalidation ledger and mark matching evidence stale.
+Execution then resolves each exact retained topic version and the current signed
+source binding before sending the unchanged validated candidate through the
+existing reader. This preserves historical topic and rule definitions while
+making publication and retirement observable to query replay. The real
+PostgreSQL/native regression is recorded in
+[phase 18 NLQ runtime evidence](../reviews/phase-18-nlq-runtime.md); it does not
+create a second rule evaluator, executor, or authority path.
+
 Phase 16 builds rule and clarification types on `semantics.Reference`. It must not add
 a second string-addressed entity namespace or resolve rule targets by display name.
 The initial persisted rule definition is:
@@ -281,6 +292,11 @@ active rule set or widen its source/context reach.
    a second executor.
 
 Until those steps and their named tests pass, phase 16 remains `in_progress`, not shipped.
+
+The shared-reader invalidation consumer described above is now present in the
+integrated Phase 18 core. Phase 16 remains `in_progress` for its own cumulative
+acceptance and final release review; later consumers must continue using the
+same invalidation and retained-read contracts.
 
 ## Foundation verification
 
