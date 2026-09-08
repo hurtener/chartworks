@@ -222,6 +222,25 @@ func (s *Service) Contract(ctx context.Context, e identity.Envelope, topic strin
 	return Contract{after, time.Now().UTC()}, nil
 }
 
+// RetainedContract returns one exact immutable publication without consulting
+// the current publication pointer or current source catalog. Callers that
+// execute against the retained definition must still resolve the live source
+// binding before touching the warehouse. This is the historical-read seam for
+// governed query replay after a topic transition or archive.
+func (s *Service) RetainedContract(ctx context.Context, e identity.Envelope, topic, version string) (Contract, error) {
+	if ctx == nil || !identity.Identifier(topic) || !identity.Identifier(version) {
+		return Contract{}, store.ErrInvalid
+	}
+	published, err := s.Read(ctx, e, topic, version)
+	if err != nil {
+		return Contract{}, err
+	}
+	if published.State.Topic != topic || published.State.Version != version || published.Definition.Topic != topic || published.Definition.Version != version {
+		return Contract{}, store.ErrConflict
+	}
+	return Contract{Publication: published, ObservedAt: time.Now().UTC()}, nil
+}
+
 // Health reads the latest retained observation without consulting private profiles
 // or making a source/model request.
 func (s *Service) Health(ctx context.Context, e identity.Envelope, topic string) (Health, error) {

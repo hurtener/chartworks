@@ -41,7 +41,7 @@ func (d *DB) CreateSession(ctx context.Context, scope store.Scope, s nlqexec.Ses
 		if tag.RowsAffected() != 1 {
 			return store.ErrConflict
 		}
-		return nil
+		return auditJob(ctx, tx, scope, "nlq.session_created", s.ID)
 	})
 }
 
@@ -67,7 +67,10 @@ func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return insertNLQQuery(ctx, tx, scope, q)
+		if err := insertNLQQuery(ctx, tx, scope, q); err != nil {
+			return err
+		}
+		return auditJob(ctx, tx, scope, "nlq.query_planned", q.ID)
 	})
 }
 
@@ -166,7 +169,10 @@ func (d *DB) ReadQuery(ctx context.Context, scope store.Scope, id string) (out n
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return scanNLQQuery(tx.QueryRow(ctx, `SELECT `+nlqQueryColumns+` FROM chartworks.nlq_queries WHERE tenant_id=$1 AND actor_id=$2 AND query_id=$3`, scope.Tenant(), scope.Actor(), id), &out)
+		if err := scanNLQQuery(tx.QueryRow(ctx, `SELECT `+nlqQueryColumns+` FROM chartworks.nlq_queries WHERE tenant_id=$1 AND actor_id=$2 AND query_id=$3`, scope.Tenant(), scope.Actor(), id), &out); err != nil {
+			return err
+		}
+		return markRuleEvidenceStale(ctx, tx, scope.Tenant(), &out)
 	})
 	return out, err
 }
@@ -176,9 +182,51 @@ func (d *DB) ReadOperation(ctx context.Context, scope store.Scope, operation str
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return scanNLQQuery(tx.QueryRow(ctx, `SELECT `+nlqQueryColumns+` FROM chartworks.nlq_queries WHERE tenant_id=$1 AND actor_id=$2 AND operation=$3`, scope.Tenant(), scope.Actor(), operation), &out)
+		if err := scanNLQQuery(tx.QueryRow(ctx, `SELECT `+nlqQueryColumns+` FROM chartworks.nlq_queries WHERE tenant_id=$1 AND actor_id=$2 AND operation=$3`, scope.Tenant(), scope.Actor(), operation), &out); err != nil {
+			return err
+		}
+		return markRuleEvidenceStale(ctx, tx, scope.Tenant(), &out)
 	})
 	return out, err
+}
+
+// markRuleEvidenceStale is a read-side consumer of the atomic Phase 16
+// invalidation ledger. The relation is optional while a Phase 18-only schema
+// is bootstrapped; once migration 018 is present, every matching topic/rule
+// pin marks the retained query evidence stale without rewriting immutable
+// query fields. The marker is surfaced on the shared query projection and is
+// preserved if a subsequent replay updates the mutable execution metadata.
+func markRuleEvidenceStale(ctx context.Context, tx pgx.Tx, tenant string, out *nlqexec.QueryRecord) error {
+	if out == nil || len(out.Topics) == 0 || len(out.RuleVersions) == 0 {
+		return nil
+	}
+	var available bool
+	if err := tx.QueryRow(ctx, `SELECT to_regclass('chartworks.topic_rule_evidence_invalidations') IS NOT NULL`).Scan(&available); err != nil {
+		return err
+	}
+	if !available {
+		return nil
+	}
+	var stale bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1
+		FROM unnest($1::text[]) WITH ORDINALITY AS t(topic_id,ordinal)
+		JOIN unnest($2::text[]) WITH ORDINALITY AS r(rule_version,ordinal) USING (ordinal)
+		JOIN chartworks.topic_rule_evidence_invalidations i
+		  ON i.tenant_id=$3 AND i.topic_id=t.topic_id AND i.old_rule_version=r.rule_version
+	)`, out.Topics, out.RuleVersions, tenant).Scan(&stale); err != nil {
+		return err
+	}
+	if stale {
+		out.EvidenceStale = true
+		for _, code := range out.Errors {
+			if code == "rule_evidence_stale" {
+				return nil
+			}
+		}
+		out.Errors = append(out.Errors, "rule_evidence_stale")
+	}
+	return nil
 }
 
 func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
@@ -270,7 +318,7 @@ func (d *DB) UpdateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 		if tag.RowsAffected() != 1 {
 			return store.ErrConflict
 		}
-		return nil
+		return auditJob(ctx, tx, scope, "nlq.query_executed", q.ID)
 	})
 	return err
 }

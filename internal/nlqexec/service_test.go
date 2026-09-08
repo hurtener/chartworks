@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -160,5 +163,57 @@ func TestExecutionRepairableOnlyAcceptsRegisteredQueryError(t *testing.T) {
 	}
 	if executionRepairable(exec.ExecutionReport{Attempt: exec.Attempt{Status: "uncertain", Code: "query_error"}}, nil) {
 		t.Fatal("uncertain remote outcome must never be corrected")
+	}
+}
+
+type retainedTopicReader struct {
+	publications map[string]topics.Contract
+	versions     []string
+}
+
+func (r *retainedTopicReader) Contract(context.Context, identity.Envelope, string) (topics.Contract, error) {
+	return topics.Contract{}, store.ErrNotFound
+}
+
+func (r *retainedTopicReader) RetainedContract(_ context.Context, _ identity.Envelope, topic, version string) (topics.Contract, error) {
+	r.versions = append(r.versions, topic+"/"+version)
+	publication, ok := r.publications[topic+"/"+version]
+	if !ok {
+		return topics.Contract{}, store.ErrNotFound
+	}
+	return publication, nil
+}
+
+type retainedSourceReader struct{}
+
+func (retainedSourceReader) Binding(context.Context, identity.Envelope, string, string) (exec.Binding, error) {
+	return exec.Binding{Tenant: "tenant", Source: "source", Context: "context", Revision: 1, Dialect: "postgres", Contract: "contract", Fingerprint: strings.Repeat("a", 64), Relations: []exec.Relation{{ID: "dataset", Schema: "analytics", Name: "sales", Columns: []exec.Column{{Name: "id", NativeType: "integer"}}}}}, nil
+}
+
+func TestRetainedAdmissionUsesExactTopicPins(t *testing.T) {
+	e := testEnvelope(t)
+	published := func(topic, version, dataset string) topics.Contract {
+		return topics.Contract{Publication: topics.Published{
+			State: topics.State{Topic: topic, Version: version, Archived: true},
+			Definition: topics.Definition{Topic: topic, Version: version, Datasets: []topics.Dataset{{
+				ID: dataset, Source: topics.Binding{Source: "source", Context: "context", Dataset: dataset, SourceRevision: 1},
+			}}},
+		}}
+	}
+	reader := &retainedTopicReader{publications: map[string]topics.Contract{
+		"topic/v1":     published("topic", "v1", "dataset"),
+		"topic-two/v2": published("topic-two", "v2", "dataset-two"),
+	}}
+	service := &Service{topics: reader, sources: retainedSourceReader{}}
+	query := QueryRecord{Topics: []string{"topic", "topic-two"}, TopicVersions: []string{"v1", "v2"}, Context: "context"}
+	admitted, err := service.retainedAdmission(context.Background(), e, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(reader.versions, []string{"topic/v1", "topic-two/v2"}) {
+		t.Fatalf("retained versions were not read in query order: %#v", reader.versions)
+	}
+	if admitted.source != "source" || admitted.context != "context" || admitted.binding.Context != "context" || len(admitted.resources) != 6 {
+		t.Fatalf("retained admission lost exact source/resource pins: %#v", admitted)
 	}
 }

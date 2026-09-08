@@ -56,6 +56,7 @@ type Router interface {
 // service reads current publications again before generation and execution.
 type TopicReader interface {
 	Contract(context.Context, identity.Envelope, string) (topics.Contract, error)
+	RetainedContract(context.Context, identity.Envelope, string, string) (topics.Contract, error)
 }
 
 // SourceReader resolves the actual connector binding used by the validator.
@@ -124,6 +125,7 @@ type QueryRecord struct {
 	Parameters      []exec.Parameter      `json:"-"`
 	Receipt         gateway.Receipt       `json:"receipt"`
 	Status          string                `json:"status"`
+	EvidenceStale   bool                  `json:"evidence_stale,omitempty"`
 	Result          *exec.Result          `json:"result,omitempty"`
 	Assumptions     []string              `json:"assumptions,omitempty"`
 	Ambiguities     []string              `json:"ambiguities,omitempty"`
@@ -269,6 +271,7 @@ type RunResult struct {
 	QueryID         string               `json:"query_id"`
 	SessionID       string               `json:"session_id"`
 	Status          string               `json:"status"`
+	EvidenceStale   bool                 `json:"evidence_stale,omitempty"`
 	Route           nlqroute.RouteResult `json:"route"`
 	Confidence      float64              `json:"confidence"`
 	Assumptions     []string             `json:"assumptions,omitempty"`

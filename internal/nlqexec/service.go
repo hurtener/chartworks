@@ -115,8 +115,8 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		if replay.ID != in.QueryID {
 			return RunResult{}, store.ErrConflict
 		}
-		if replay.Result != nil || replay.Status == "failed" {
-			return s.runResult(replay, exec.ExecutionReport{}, canInspect(e)), nil
+		if terminalQueryStatus(replay.Status) {
+			return s.runResult(replay, exec.ExecutionReport{}, canInspect(e)), replayError(replay.Status)
 		}
 	} else if !errors.Is(replayErr, store.ErrNotFound) {
 		return RunResult{}, replayErr
@@ -129,7 +129,17 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		return RunResult{}, ErrNoPlan
 	}
 	record.Operation = in.Operation
-	current, err := s.currentAdmission(ctx, e, record)
+	var current admission
+	if record.EvidenceStale {
+		// A rules publication/retirement invalidation makes the retained query
+		// evidence stale, but it does not erase the immutable query pins. Replay
+		// through the exact retained topic revisions and the same validator/
+		// executor seams; never silently reinterpret it against the new current
+		// publication.
+		current, err = s.retainedAdmission(ctx, e, record)
+	} else {
+		current, err = s.currentAdmission(ctx, e, record)
+	}
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -171,6 +181,30 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	return s.finishRun(ctx, e, record, report, record.ExecutionFixes, runErr)
 }
 
+func terminalQueryStatus(status string) bool {
+	switch status {
+	case "succeeded", "empty", "truncated", "failed", "uncertain", "cancelled", "timed_out", "interrupted":
+		return true
+	default:
+		return false
+	}
+}
+
+func replayError(status string) error {
+	switch status {
+	case "failed":
+		return ErrExecutionFailed
+	case "uncertain", "interrupted":
+		return exec.ErrUncertain
+	case "cancelled":
+		return exec.ErrCancelled
+	case "timed_out":
+		return exec.ErrTimeout
+	default:
+		return nil
+	}
+}
+
 func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in FeedbackRequest) error {
 	if ctx == nil || !e.Valid() || !identity.Identifier(in.QueryID) || (in.Verdict != "positive" && in.Verdict != "negative") || len(in.Note) > maxFeedbackNote || strings.ContainsRune(in.Note, 0) {
 		return ErrInvalid
@@ -188,6 +222,9 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	}
 	if q.Session != e.Session() {
 		return ErrForeignSession
+	}
+	if q.Status == "preflight" || q.SQL == "" {
+		return ErrNoPlan
 	}
 	correction := strings.TrimSpace(in.Correction)
 	if correction != "" {
@@ -240,6 +277,13 @@ func (s *Service) Examples(ctx context.Context, e identity.Envelope, topic strin
 	}
 	if !e.Has("query.plan") && !e.Has("feedback.write") {
 		return nil, access.ErrForbidden
+	}
+	action := "query.plan"
+	if !e.Has(action) {
+		action = "feedback.write"
+	}
+	if err := access.Require(e, action, access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: topic}); err != nil {
+		return nil, err
 	}
 	sc, err := scope(e)
 	if err != nil {
@@ -408,6 +452,53 @@ func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q Q
 	return result, nil
 }
 
+// retainedAdmission resolves the exact topic versions captured with a query.
+// It is intentionally separate from currentAdmission: current reads require
+// active pointers, while a query whose rule evidence was invalidated must
+// replay only against the immutable retained definitions it originally used.
+func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	if len(q.Topics) == 0 || len(q.Topics) != len(q.TopicVersions) {
+		return admission{}, exec.ErrBinding
+	}
+	result := admission{route: q.Route}
+	for i, topicID := range q.Topics {
+		if !identity.Identifier(topicID) || !identity.Identifier(q.TopicVersions[i]) {
+			return admission{}, exec.ErrBinding
+		}
+		contract, err := s.topics.RetainedContract(ctx, e, topicID, q.TopicVersions[i])
+		if err != nil {
+			return admission{}, err
+		}
+		publication := contract.Publication
+		if publication.State.Topic != topicID || publication.State.Version != q.TopicVersions[i] || publication.Definition.Topic != topicID || publication.Definition.Version != q.TopicVersions[i] {
+			return admission{}, exec.ErrBinding
+		}
+		for _, dataset := range publication.Definition.Datasets {
+			if dataset.Source.Context != q.Context {
+				return admission{}, exec.ErrBinding
+			}
+			if result.source == "" {
+				result.source, result.context = dataset.Source.Source, dataset.Source.Context
+			} else if result.source != dataset.Source.Source || result.context != dataset.Source.Context {
+				return admission{}, store.ErrConflict
+			}
+			result.resources = appendResource(result.resources, access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: topicID})
+			result.resources = appendResource(result.resources, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: dataset.Source.Source})
+			result.resources = appendResource(result.resources, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: dataset.ID})
+			result.resources = appendResource(result.resources, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: dataset.Source.Context})
+		}
+	}
+	if result.source == "" || result.context == "" {
+		return admission{}, exec.ErrBinding
+	}
+	var err error
+	result.binding, err = s.sources.Binding(ctx, e, result.source, result.context)
+	if err != nil {
+		return admission{}, err
+	}
+	return result, nil
+}
+
 func (s *Service) ensureSession(ctx context.Context, e identity.Envelope, in QuestionRequest, topics []string) error {
 	now := time.Now().UTC()
 	record := SessionRecord{ID: e.Session(), Tenant: e.Tenant(), Actor: e.User(), Context: in.Context, Topics: append([]string(nil), topics...), Locale: in.Locale, Created: now, Updated: now}
@@ -424,6 +515,9 @@ func (s *Service) ensureSession(ctx context.Context, e identity.Envelope, in Que
 	if readErr != nil {
 		return readErr
 	}
+	// The session anchors tenant/actor/context scope. Locale and topic sets are
+	// per-question choices; every request still rechecks signed topic reach and
+	// current publication admission before generation or execution.
 	if existing.Context != in.Context || existing.Actor != e.User() || existing.Tenant != e.Tenant() {
 		return store.ErrConflict
 	}
@@ -533,7 +627,7 @@ func (s *Service) finishRun(ctx context.Context, e identity.Envelope, q QueryRec
 }
 
 func (s *Service) runResult(q QueryRecord, report exec.ExecutionReport, inspect bool) RunResult {
-	out := RunResult{QueryID: q.ID, SessionID: q.Session, Status: q.Status, Route: q.Route, Confidence: q.Route.Confidence, Assumptions: append([]string(nil), q.Assumptions...), Ambiguities: append([]string(nil), q.Ambiguities...), ValidationFixes: q.ValidationFixes, ExecutionFixes: q.ExecutionFixes, Execution: report}
+	out := RunResult{QueryID: q.ID, SessionID: q.Session, Status: q.Status, EvidenceStale: q.EvidenceStale, Route: q.Route, Confidence: q.Route.Confidence, Assumptions: append([]string(nil), q.Assumptions...), Ambiguities: append([]string(nil), q.Ambiguities...), ValidationFixes: q.ValidationFixes, ExecutionFixes: q.ExecutionFixes, Execution: report}
 	if q.Result != nil && out.Execution.Result == nil {
 		out.Execution.Result = q.Result
 	}
@@ -598,11 +692,7 @@ func requireQuestionAction(e identity.Envelope, action string, in QuestionReques
 		}
 		seen[id] = true
 		if err := access.Require(e, action, access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: id}); err != nil {
-			// Topic routing owns the exact topic reach. This check only ensures
-			// that phase-18 never turns an action-only bearer into a query.
-			if errors.Is(err, access.ErrNotFound) {
-				return err
-			}
+			return err
 		}
 	}
 	return nil
