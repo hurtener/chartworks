@@ -65,6 +65,10 @@ func NewValidator(adapter ReadAdapter, limits config.ReadValidation) (*Validator
 // Validate constructs the only nonzero executable Plan after authority, whole-tree
 // resolution and constrained native EXPLAIN have all succeeded.
 func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request) (Plan, error) {
+	return v.validate(ctx, e, r, nil)
+}
+
+func (v *Validator) validate(ctx context.Context, e identity.Envelope, r Request, scope []RelationScope) (Plan, error) {
 	if ctx == nil {
 		return Plan{}, ErrBinding
 	}
@@ -94,8 +98,16 @@ func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request
 	if !binding.Valid() || binding.Source != r.Source || binding.Context != r.Context {
 		return Plan{}, ErrBinding
 	}
+	scoped, err := narrowBinding(binding, scope)
+	if err != nil {
+		return Plan{}, err
+	}
+	scopeDigest := ""
+	if scope != nil {
+		scopeDigest = Hash(scoped.Relations)
+	}
 	if binding.Dialect != "postgres" {
-		return v.validateWarehouse(ctx, e, r, binding)
+		return v.validateWarehouse(ctx, e, r, binding, scoped, scopeDigest)
 	}
 	_, initialProof, err := validationAuthority(v.adapter, e, binding, nil)
 	if err != nil {
@@ -127,7 +139,7 @@ func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request
 		return Plan{}, ErrUnsafe
 	}
 	statement := object(stmts[0])["stmt"]
-	resolver := sqlResolver{binding: binding.Clone(), dependencies: map[string]bool{}, parameters: map[int]bool{}, parameterCount: len(r.Parameters)}
+	resolver := sqlResolver{binding: scoped, dependencies: map[string]bool{}, parameters: map[int]bool{}, parameterCount: len(r.Parameters)}
 	columns, err := resolver.selectStatement(statement, nil)
 	if err != nil {
 		return Plan{}, err
@@ -147,7 +159,7 @@ func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request
 	if proof != initialProof {
 		return Plan{}, ErrBinding
 	}
-	candidate := Candidate{binding: binding.Clone(), owner: e, authority: authority(e), private: private, privateProof: proof, statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: deps, columns: append([]string(nil), columns...), checked: true}
+	candidate := Candidate{binding: binding.Clone(), semanticScope: scopeDigest, owner: e, authority: authority(e), private: private, privateProof: proof, statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: deps, columns: append([]string(nil), columns...), checked: true}
 	if err = v.adapter.Explain(ctx, e, candidate); err != nil {
 		return Plan{}, err
 	}
@@ -157,7 +169,7 @@ func (v *Validator) Validate(ctx context.Context, e identity.Envelope, r Request
 	return Plan{candidate: candidate, nativeChecked: true}, nil
 }
 
-func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, r Request, binding Binding) (Plan, error) {
+func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, r Request, binding, scoped Binding, scopeDigest string) (Plan, error) {
 	dialects := map[string]string{"mysql": "mysql", "sqlserver": "tsql", "bigquery": "bigquery", "snowflake": "snowflake", "databricks": "databricks"}
 	dialect, ok := dialects[binding.Dialect]
 	if !ok {
@@ -181,7 +193,7 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	for _, table := range inspection.Tables {
 		var relation Relation
 		matches := 0
-		for _, candidate := range binding.Relations {
+		for _, candidate := range scoped.Relations {
 			if warehouseRelationMatches(binding, candidate, table, false) {
 				relation, matches = candidate, matches+1
 			}
@@ -226,7 +238,7 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	if err = Require(e, binding, dependencies); err != nil {
 		return Plan{}, err
 	}
-	candidate := Candidate{binding: binding.Clone(), owner: e, authority: authority(e), statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: dependencies, columns: append([]string(nil), inspection.Outputs...), checked: true}
+	candidate := Candidate{binding: binding.Clone(), semanticScope: scopeDigest, owner: e, authority: authority(e), statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: dependencies, columns: append([]string(nil), inspection.Outputs...), checked: true}
 	if err = v.adapter.Explain(ctx, e, candidate); err != nil {
 		return Plan{}, err
 	}

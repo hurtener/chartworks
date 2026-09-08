@@ -1,6 +1,6 @@
 # Phase 19 — byo-mode
 
-Status: planned. Owner: internal/nlq. Hard dependencies: 02, 10, 17.
+Status: in_progress. Owner: internal/nlq. Hard dependencies: 02, 10, 17.
 
 ## Authority and design
 

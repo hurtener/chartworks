@@ -194,16 +194,17 @@ type PrivatePipelineValidationAdapter interface {
 // Candidate can only be constructed by the validator after whole-tree safety checks.
 // It is not executable: only native dry planning may consume this type.
 type Candidate struct {
-	binding      Binding
-	owner        identity.Envelope
-	authority    string
-	private      PrivatePipelineValidationAdapter
-	privateProof string
-	statement    string
-	parameters   []Parameter
-	dependencies []string
-	columns      []string
-	checked      bool
+	semanticScope string
+	binding       Binding
+	owner         identity.Envelope
+	authority     string
+	private       PrivatePipelineValidationAdapter
+	privateProof  string
+	statement     string
+	parameters    []Parameter
+	dependencies  []string
+	columns       []string
+	checked       bool
 }
 
 // Coordinates reveals only addressed metadata for an adapter's current-state lookup.
@@ -269,6 +270,9 @@ func (p Plan) Receipt() Receipt {
 	}
 	c := p.candidate
 	manifest := []any{c.binding, c.statement, c.parameters, c.dependencies, c.authority}
+	if c.semanticScope != "" {
+		manifest = append(manifest, c.semanticScope)
+	}
 	if c.privateProof != "" {
 		manifest = append(manifest, c.privateProof)
 	}

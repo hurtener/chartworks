@@ -23,5 +23,8 @@ func sweepRows(ctx context.Context, tx pgx.Tx, scope store.Scope, out *store.Ope
 		return err
 	}
 	out.DeletedOperations = tag.RowsAffected()
-	return nil
+	// Bundle values expire at lookup; this existing bounded retention worker
+	// removes the exact snapshot and its content-free steps after retention.
+	_, err = tx.Exec(ctx, `DELETE FROM chartworks.byo_context_bundles WHERE (tenant_id,actor_id,session_id,bundle_id) IN (SELECT tenant_id,actor_id,session_id,bundle_id FROM chartworks.byo_context_bundles WHERE tenant_id=$1 AND retain_until<=$2 ORDER BY retain_until,bundle_id LIMIT $3 FOR UPDATE SKIP LOCKED)`, scope.Tenant(), asOf, out.Limit)
+	return err
 }

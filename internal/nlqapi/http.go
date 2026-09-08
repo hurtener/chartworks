@@ -19,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
@@ -139,6 +140,12 @@ func decodeBody(w http.ResponseWriter, r *http.Request, schema interface{ Valida
 func failure(w http.ResponseWriter, err error) {
 	status, code := http.StatusServiceUnavailable, "unavailable"
 	switch {
+	case errors.Is(err, nlqbyo.ErrReplan):
+		status, code = http.StatusConflict, "replan_required"
+	case errors.Is(err, nlqbyo.ErrBudget):
+		status, code = http.StatusTooManyRequests, "bundle_budget_exhausted"
+	case errors.Is(err, nlqbyo.ErrInvalid):
+		status, code = http.StatusBadRequest, "invalid_request"
 	case errors.Is(err, access.ErrUnauthenticated):
 		status, code = http.StatusUnauthorized, "unauthenticated"
 	case errors.Is(err, access.ErrForbidden):
