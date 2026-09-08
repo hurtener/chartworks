@@ -1,0 +1,24 @@
+name: Phase 20 source snapshot
+on:
+  push:
+    branches: [feat/phase-20-21-chart-spec-http]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive exact committed source
+        run: |
+          git rev-parse HEAD > /tmp/source-sha.txt
+          git archive --format=tar.gz HEAD > /tmp/chartworks-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-20-source-snapshot
+          path: |
+            /tmp/chartworks-source.tar.gz
+            /tmp/source-sha.txt
+          retention-days: 2
