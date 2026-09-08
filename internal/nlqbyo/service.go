@@ -163,6 +163,8 @@ func (s *Service) Lookup(ctx context.Context, e identity.Envelope, in Reference)
 	if err != nil {
 		return View{}, err
 	}
+	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
+	defer cancel()
 	steps, err := s.repo.ReadBYOSteps(ctx, scope, in, e.Session())
 	if err != nil {
 		return View{}, err
@@ -187,6 +189,8 @@ func (s *Service) Submit(ctx context.Context, e identity.Envelope, in SubmitRequ
 	if err := admit(ctx, e, "query.submit"); err != nil {
 		return out, err
 	}
+	ctx, authorityCancel := context.WithDeadline(ctx, e.Deadline())
+	defer authorityCancel()
 	if !identity.Identifier(in.Operation) || !utf8.ValidString(in.SQL) || len(in.SQL) < 1 || len(in.SQL) > s.read.MaxSQLBytes || len(in.Parameters) > s.read.MaxParameters {
 		return out, ErrInvalid
 	}
@@ -222,6 +226,15 @@ func (s *Service) Submit(ctx context.Context, e identity.Envelope, in SubmitRequ
 	}
 	out.Step = step
 	if !fresh {
+		if !e.Valid() {
+			return SubmitResult{}, access.ErrUnauthenticated
+		}
+		if !s.now().Before(b.ExpiresAt) {
+			return SubmitResult{}, ErrReplan
+		}
+		if err = ctx.Err(); err != nil {
+			return SubmitResult{}, err
+		}
 		out.Replayed = true
 		if step.Status == "accepted" && !s.now().Before(step.Deadline) {
 			// A process may have died before or after a physical dispatch. Never
