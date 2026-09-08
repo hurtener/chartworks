@@ -129,7 +129,7 @@ func TestConstructorAndAdmission(t *testing.T) {
 	if _, err = offline.Create(ctx, e, in); !errors.Is(err, ErrUnavailable) {
 		t.Fatal(err)
 	}
-	//lint:ignore SA1012 Deliberately test fail-closed rejection of a nil context.
+	//nolint:staticcheck // SA1012: deliberately verify fail-closed rejection of a nil context.
 	if _, err = s.Create(nil, e, in); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
