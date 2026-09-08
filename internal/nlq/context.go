@@ -18,31 +18,48 @@ import (
 )
 
 const (
-	LowBudget         = 1500
-	MediumBudget      = 3000
-	HighBudget        = 6500
-	MaxExamples       = 7
-	MaxOmissions      = 7
-	MaxConstraints    = 256
+	// LowBudget is the token ceiling for low-confidence context assembly.
+	LowBudget = 1500
+	// MediumBudget is the token ceiling for medium-confidence context assembly.
+	MediumBudget = 3000
+	// HighBudget is the token ceiling for high-confidence context assembly.
+	HighBudget = 6500
+	// MaxExamples bounds examples retained in an assembled context.
+	MaxExamples = 7
+	// MaxOmissions bounds omission descriptors retained in the audit.
+	MaxOmissions = 7
+	// MaxConstraints bounds mandatory constraints accepted by the assembler.
+	MaxConstraints = 256
+	// TokenizerEncoding names the pinned tokenizer encoding.
 	TokenizerEncoding = "cl100k_base"
 )
 
 var (
-	ErrInvalid            = errors.New("nlq: invalid context")
-	ErrInsufficient       = errors.New("nlq: insufficient context budget")
+	// ErrInvalid identifies malformed or unsupported NLQ context data.
+	ErrInvalid = errors.New("nlq: invalid context")
+	// ErrInsufficient identifies a context that cannot fit its selected budget.
+	ErrInsufficient = errors.New("nlq: insufficient context budget")
+	// ErrConstraintConflict identifies denied mandatory constraints.
 	ErrConstraintConflict = errors.New("nlq: mandatory constraints are not satisfied")
 )
 
+// ValidationCode identifies the class of an invalid context field.
 type ValidationCode string
 
 const (
+	// CodeInvalidValue identifies a malformed value or field.
 	CodeInvalidValue ValidationCode = "invalid_value"
-	CodeLimit        ValidationCode = "limit_exceeded"
-	CodeDuplicateID  ValidationCode = "duplicate_id"
+	// CodeLimit identifies a bounded collection or text limit violation.
+	CodeLimit ValidationCode = "limit_exceeded"
+	// CodeDuplicateID identifies a repeated item identifier.
+	CodeDuplicateID ValidationCode = "duplicate_id"
+	// CodeDuplicateKey identifies a repeated instruction key.
 	CodeDuplicateKey ValidationCode = "duplicate_key"
-	CodeUnsupported  ValidationCode = "unsupported"
+	// CodeUnsupported identifies an unsupported enum or mode.
+	CodeUnsupported ValidationCode = "unsupported"
 )
 
+// ValidationError reports a typed context validation failure.
 type ValidationError struct {
 	Code ValidationCode
 	Path string
@@ -51,6 +68,7 @@ type ValidationError struct {
 func (e *ValidationError) Error() string { return fmt.Sprintf("nlq: %s at %s", e.Code, e.Path) }
 func (e *ValidationError) Unwrap() error { return ErrInvalid }
 
+// BudgetError reports that mandatory context cannot fit in the selected tier.
 type BudgetError struct {
 	Tier           Tier
 	Budget         int
@@ -62,14 +80,19 @@ func (e *BudgetError) Error() string {
 }
 func (e *BudgetError) Unwrap() error { return ErrInsufficient }
 
+// Tier identifies one of the supported context budgets.
 type Tier string
 
 const (
-	TierLow    Tier = "low"
+	// TierLow is the smallest context budget.
+	TierLow Tier = "low"
+	// TierMedium is the intermediate context budget.
 	TierMedium Tier = "medium"
-	TierHigh   Tier = "high"
+	// TierHigh is the largest context budget.
+	TierHigh Tier = "high"
 )
 
+// Budget returns the token ceiling associated with the tier.
 func (t Tier) Budget() int {
 	switch t {
 	case TierLow:
@@ -85,6 +108,7 @@ func (t Tier) Budget() int {
 
 func (t Tier) valid() bool { return t.Budget() > 0 }
 
+// TierForConfidence maps a bounded confidence value to a context tier.
 func TierForConfidence(confidence float64) (Tier, error) {
 	if math.IsNaN(confidence) || math.IsInf(confidence, 0) || confidence < 0 || confidence > 1 {
 		return "", &ValidationError{Code: CodeInvalidValue, Path: "confidence"}
@@ -98,22 +122,30 @@ func TierForConfidence(confidence float64) (Tier, error) {
 	return TierHigh, nil
 }
 
+// Language identifies the detached input language used by the context.
 type Language string
 
 const (
+	// LanguageEnglish selects the English detached-input fixture language.
 	LanguageEnglish Language = "en"
+	// LanguageSpanish selects the Spanish detached-input fixture language.
 	LanguageSpanish Language = "es"
 )
 
 func (l Language) valid() bool { return l == LanguageEnglish || l == LanguageSpanish }
 
+// Strategy identifies the routing outcome represented by a context.
 type Strategy string
 
 const (
+	// StrategySingleTopic selects one resolved topic for generation.
 	StrategySingleTopic Strategy = "single_topic"
-	StrategyMultiTopic  Strategy = "multi_topic"
-	StrategyClarify     Strategy = "clarify"
-	StrategyNoRoute     Strategy = "no_route"
+	// StrategyMultiTopic selects multiple confirmed topics for generation.
+	StrategyMultiTopic Strategy = "multi_topic"
+	// StrategyClarify stops before generation and requests clarification.
+	StrategyClarify Strategy = "clarify"
+	// StrategyNoRoute stops before generation when no route is available.
+	StrategyNoRoute Strategy = "no_route"
 )
 
 func (s Strategy) valid() bool {
@@ -138,6 +170,7 @@ type TiktokenCounter struct {
 	codec tokenizer.Codec
 }
 
+// NewTiktokenCounter constructs the pinned cl100k_base token counter.
 func NewTiktokenCounter() (*TiktokenCounter, error) {
 	codec, err := tokenizer.Get(tokenizer.Cl100kBase)
 	if err != nil {
@@ -146,6 +179,7 @@ func NewTiktokenCounter() (*TiktokenCounter, error) {
 	return &TiktokenCounter{codec: codec}, nil
 }
 
+// Count returns the cl100k_base token count for text.
 func (c *TiktokenCounter) Count(text string) (int, error) {
 	if c == nil || c.codec == nil || !utf8.ValidString(text) {
 		return 0, ErrInvalid
@@ -175,11 +209,13 @@ type ConstraintState struct {
 	Excluded []MandatoryConstraint `json:"excluded"`
 }
 
+// PinnedMetric is a metric choice that must remain in the assembled context.
 type PinnedMetric struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
 }
 
+// Evidence is a bounded retrieved evidence item.
 type Evidence struct {
 	ID         string   `json:"id"`
 	Text       string   `json:"text"`
@@ -188,6 +224,7 @@ type Evidence struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
+// OptionalItem is a bounded advisory or example item.
 type OptionalItem struct {
 	ID         string   `json:"id"`
 	Text       string   `json:"text"`
@@ -196,6 +233,7 @@ type OptionalItem struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
+// ContextInput is detached, validated input for context assembly.
 type ContextInput struct {
 	Locale       Language         `json:"locale"`
 	Strategy     Strategy         `json:"strategy"`
@@ -209,29 +247,39 @@ type ContextInput struct {
 	Examples     []OptionalItem   `json:"examples"`
 }
 
+// Lane identifies the context input lane used for accounting and omissions.
 type Lane string
 
 const (
-	LaneHeader      Lane = "header"
-	LaneEvidence    Lane = "evidence"
+	// LaneHeader identifies the required serialized context header.
+	LaneHeader Lane = "header"
+	// LaneEvidence identifies optional evidence items.
+	LaneEvidence Lane = "evidence"
+	// LaneConstraints identifies mandatory constraint text.
 	LaneConstraints Lane = "constraints"
-	LaneMetrics     Lane = "metrics"
-	LaneAdvisory    Lane = "advisory"
-	LaneExamples    Lane = "examples"
+	// LaneMetrics identifies pinned metric text.
+	LaneMetrics Lane = "metrics"
+	// LaneAdvisory identifies optional advisory text.
+	LaneAdvisory Lane = "advisory"
+	// LaneExamples identifies optional example text.
+	LaneExamples Lane = "examples"
 )
 
+// LaneUsage records original and included token counts for one lane.
 type LaneUsage struct {
 	Lane           Lane `json:"lane"`
 	OriginalTokens int  `json:"original_tokens"`
 	IncludedTokens int  `json:"included_tokens"`
 }
 
+// Omission records why a bounded optional item was left out.
 type Omission struct {
 	Lane   Lane   `json:"lane"`
 	ID     string `json:"id"`
 	Reason string `json:"reason"`
 }
 
+// AssembledContext is the sealed model-facing context and its bounded audit.
 type AssembledContext struct {
 	Tier         Tier             `json:"tier"`
 	Budget       int              `json:"budget"`
@@ -262,10 +310,12 @@ type AssemblyAudit struct {
 	Usage        []LaneUsage `json:"usage"`
 }
 
+// ContextAssembler builds sealed contexts with one tokenizer budget currency.
 type ContextAssembler struct {
 	counter TokenCounter
 }
 
+// NewContextAssembler constructs an assembler with the supplied token counter.
 func NewContextAssembler(counter TokenCounter) (*ContextAssembler, error) {
 	if counter == nil {
 		return nil, ErrInvalid
@@ -273,6 +323,7 @@ func NewContextAssembler(counter TokenCounter) (*ContextAssembler, error) {
 	return &ContextAssembler{counter: counter}, nil
 }
 
+// NewDefaultContextAssembler constructs an assembler using cl100k_base.
 func NewDefaultContextAssembler() (*ContextAssembler, error) {
 	counter, err := NewTiktokenCounter()
 	if err != nil {
@@ -281,6 +332,7 @@ func NewDefaultContextAssembler() (*ContextAssembler, error) {
 	return NewContextAssembler(counter)
 }
 
+// Assemble validates and fits detached input into the selected context tier.
 func (a *ContextAssembler) Assemble(ctx context.Context, input ContextInput, tier Tier) (AssembledContext, error) {
 	if ctx == nil {
 		return AssembledContext{}, &ValidationError{Code: CodeInvalidValue, Path: "context"}
@@ -378,6 +430,7 @@ func (a *ContextAssembler) Assemble(ctx context.Context, input ContextInput, tie
 	return assembled, nil
 }
 
+// AssembleForConfidence selects a tier from confidence before assembling.
 func (a *ContextAssembler) AssembleForConfidence(ctx context.Context, input ContextInput, confidence float64) (AssembledContext, error) {
 	tier, err := TierForConfidence(confidence)
 	if err != nil {

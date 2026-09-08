@@ -207,9 +207,9 @@ func TestAssembledContextWireOmitsPrunedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new assembler: %v", err)
 	}
-	secret := "omitted-sensitive-guidance"
+	omittedText := "omitted-sensitive-guidance"
 	input := minimalInput()
-	input.Advisory = []OptionalItem{{ID: "oversized", Text: secret + " " + strings.Repeat("guidance ", 1800), Priority: 1}}
+	input.Advisory = []OptionalItem{{ID: "oversized", Text: omittedText + " " + strings.Repeat("guidance ", 1800), Priority: 1}}
 	assembled, err := assembler.Assemble(context.Background(), input, TierLow)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
@@ -221,7 +221,7 @@ func TestAssembledContextWireOmitsPrunedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal assembled context: %v", err)
 	}
-	if strings.Contains(string(wire), "unpruned") || strings.Contains(string(wire), secret) {
+	if strings.Contains(string(wire), "unpruned") || strings.Contains(string(wire), omittedText) {
 		t.Fatalf("wire context exposed omitted payload: %s", wire)
 	}
 }
@@ -342,6 +342,7 @@ func TestAssemblerRejectsInvalidInputsAndCounterValues(t *testing.T) {
 		})
 	}
 
+	//nolint:staticcheck // Deliberately verify that nil context is rejected.
 	if _, err := assembler.Assemble(nil, minimalInput(), TierLow); err == nil {
 		t.Fatal("nil context accepted")
 	}

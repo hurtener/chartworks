@@ -9,24 +9,33 @@ import (
 )
 
 var (
+	// ErrGenerationStopped identifies strategies that must not generate output.
 	ErrGenerationStopped = errors.New("nlq: generation is not permitted for this strategy")
 )
 
+// GenerationStrategy identifies the precedence source selected for generation.
 type GenerationStrategy string
 
 const (
+	// GenerationEditBase selects an explicit edit of an existing base.
 	GenerationEditBase GenerationStrategy = "edit_base"
-	GenerationHints    GenerationStrategy = "hints"
+	// GenerationHints selects hint instructions when no edit base is present.
+	GenerationHints GenerationStrategy = "hints"
+	// GenerationExamples selects examples when no edit base or hints are present.
 	GenerationExamples GenerationStrategy = "examples"
-	GenerationDefault  GenerationStrategy = "default"
-	MaxInstructions                       = 64
+	// GenerationDefault selects the default instructions as the final fallback.
+	GenerationDefault GenerationStrategy = "default"
+	// MaxInstructions bounds each precedence source.
+	MaxInstructions = 64
 )
 
+// Instruction is a bounded keyed generation instruction.
 type Instruction struct {
 	Key  string `json:"key"`
 	Text string `json:"text"`
 }
 
+// GenerationInput contains the assembled context and precedence candidates.
 type GenerationInput struct {
 	Context  AssembledContext `json:"context"`
 	EditBase []Instruction    `json:"edit_base"`
@@ -35,6 +44,7 @@ type GenerationInput struct {
 	Default  []Instruction    `json:"default"`
 }
 
+// GenerationContext is the sealed final payload for a generation adapter.
 type GenerationContext struct {
 	Strategy             GenerationStrategy `json:"strategy"`
 	FewShotDisabled      bool               `json:"few_shot_disabled"`
@@ -121,6 +131,7 @@ func ResolvePrecedence(ctx context.Context, input GenerationInput) (GenerationCo
 	return a.ResolvePrecedence(ctx, input)
 }
 
+// GenerationBudgetError reports that the final payload exceeds its tier.
 type GenerationBudgetError struct {
 	Tier           Tier
 	Budget         int
@@ -172,18 +183,6 @@ func cloneAssembled(input AssembledContext) AssembledContext {
 	out.Advisory = cloneOptional(input.Advisory)
 	out.Examples = cloneOptional(input.Examples)
 	out.Audit = cloneAudit(input.Audit)
-	return out
-}
-
-func cloneInput(input ContextInput) ContextInput {
-	out := input
-	out.Evidence = cloneEvidence(input.Evidence)
-	out.Metrics = cloneMetrics(input.Metrics)
-	out.Advisory = cloneOptional(input.Advisory)
-	out.Examples = cloneOptional(input.Examples)
-	if input.Constraints != nil {
-		out.Constraints = &ConstraintState{Allowed: input.Constraints.Allowed, Required: cloneConstraints(input.Constraints.Required), Excluded: cloneConstraints(input.Constraints.Excluded)}
-	}
 	return out
 }
 
