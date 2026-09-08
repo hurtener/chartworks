@@ -2,6 +2,7 @@ name: Phase 20 source snapshot
 on:
   push:
     branches: [feat/phase-20-21-chart-spec-http]
+    paths: [.github/workflows/phase-20-source-snapshot.yml]
 permissions:
   contents: read
 jobs:
@@ -21,4 +22,45 @@ jobs:
           path: |
             /tmp/chartworks-source.tar.gz
             /tmp/source-sha.txt
+          retention-days: 2
+  toolkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Archive pinned Go toolchain
+        run: tar -czf /tmp/chartworks-go.tar.gz -C "$(go env GOROOT)" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-20-go-toolchain
+          path: /tmp/chartworks-go.tar.gz
+          compression-level: 0
+          retention-days: 2
+      - name: Download locked dependencies and native parser
+        run: |
+          go mod download
+          bash scripts/build-bruin.sh
+          go mod verify
+      - name: Archive immutable dependency inputs only
+        run: |
+          tar -czf /tmp/chartworks-modules.tar.gz -C "$(go env GOMODCACHE)" --exclude='cache/download/*/@v/*.zip' --exclude='cache/download/*/@v/*.ziphash' .
+          tar -czf /tmp/chartworks-native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libsqlparser_ffi.a
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-20-modules
+          path: /tmp/chartworks-modules.tar.gz
+          compression-level: 0
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-20-native
+          path: /tmp/chartworks-native.tar.gz
+          compression-level: 0
           retention-days: 2
