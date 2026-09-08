@@ -45,8 +45,11 @@ func NewRuleSubject(pack TopicPack, digest string) (RuleSubject, error) {
 	return RuleSubject{topic: p.Topic, version: p.Version, digest: digest, refs: refs, graph: dependencyGraphPack(p)}, nil
 }
 
+// Definition returns a detached copy of the compiled rule definition.
 func (m RuleModel) Definition() RuleSetDefinition { return cloneRules(m.definition) }
-func (m RuleModel) Digest() string                { return m.digest }
+
+// Digest returns the deterministic digest of the compiled rule definition.
+func (m RuleModel) Digest() string { return m.digest }
 
 // CompileRules binds authoring rules and slots to an existing semantic model,
 // rejecting stale references and contradictory mandatory dependency requirements.

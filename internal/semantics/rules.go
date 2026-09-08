@@ -3,21 +3,28 @@ package semantics
 // RuleCategory classifies business reasoning, never caller authority.
 type RuleCategory string
 
+// RuleComputation, RuleSemantic, and RuleStructural classify the kind of
+// business reasoning represented by a rule.
 const (
 	RuleComputation RuleCategory = "computation"
 	RuleSemantic    RuleCategory = "semantic"
 	RuleStructural  RuleCategory = "structural"
 )
 
+// RuleClass distinguishes executable constraints from bounded advisory text.
 type RuleClass string
 
+// RuleExecutionConstraint and RuleAdvisoryContext identify the supported rule
+// classes; neither class grants caller authority.
 const (
 	RuleExecutionConstraint RuleClass = "execution_constraint"
 	RuleAdvisoryContext     RuleClass = "advisory_context"
 )
 
+// RuleScopeKind identifies whether a rule applies to a topic or selected entities.
 type RuleScopeKind string
 
+// RuleScopeTopic and RuleScopeEntities identify the supported rule scopes.
 const (
 	RuleScopeTopic    RuleScopeKind = "topic"
 	RuleScopeEntities RuleScopeKind = "entities"
@@ -30,8 +37,11 @@ type RuleScope struct {
 	Targets []Reference   `json:"targets"`
 }
 
+// ProvenanceKind identifies the source of authoring evidence for a rule.
 type ProvenanceKind string
 
+// ProvenanceHuman, ProvenanceModel, ProvenanceFeedback, and ProvenanceImport
+// identify supported authoring evidence sources.
 const (
 	ProvenanceHuman    ProvenanceKind = "human"
 	ProvenanceModel    ProvenanceKind = "model"
@@ -45,8 +55,11 @@ type RuleProvenance struct {
 	Evidence string         `json:"evidence"`
 }
 
+// ConstraintKind identifies the closed hard-constraint operations.
 type ConstraintKind string
 
+// ConstraintRequireReference and ConstraintExcludeReference identify the
+// supported dependency-presence constraints.
 const (
 	ConstraintRequireReference ConstraintKind = "require_reference"
 	ConstraintExcludeReference ConstraintKind = "exclude_reference"
@@ -60,13 +73,18 @@ type Constraint struct {
 	Target Reference      `json:"target"`
 }
 
+// LiteralSensitivity records the declared sensitivity of bounded rule text.
 type LiteralSensitivity string
 
+// LiteralNonSensitive and LiteralSensitive identify the supported sensitivity
+// declarations.
 const (
 	LiteralNonSensitive LiteralSensitivity = "non_sensitive"
 	LiteralSensitive    LiteralSensitivity = "sensitive"
 )
 
+// AdvisoryGuidance carries bounded authoring guidance that is not an execution
+// constraint or authority decision.
 type AdvisoryGuidance struct {
 	Text        string             `json:"text"`
 	Sensitivity LiteralSensitivity `json:"sensitivity"`
@@ -86,8 +104,11 @@ type RuleDefinition struct {
 	Guidance   *AdvisoryGuidance `json:"guidance,omitempty"`
 }
 
+// SlotKind identifies the input shape of a clarification slot.
 type SlotKind string
 
+// SlotChoice, SlotText, SlotNumber, SlotBoolean, and SlotDate identify the
+// supported clarification slot shapes.
 const (
 	SlotChoice  SlotKind = "choice"
 	SlotText    SlotKind = "text"
@@ -96,13 +117,15 @@ const (
 	SlotDate    SlotKind = "date"
 )
 
+// ClarificationChoice is one bounded choice offered for a clarification slot.
 type ClarificationChoice struct {
 	ID     string     `json:"id"`
 	Label  string     `json:"label"`
 	Target *Reference `json:"target,omitempty"`
 }
 
-// Slot/choice order is author-selected presentation order and affects the digest.
+// ClarificationSlot defines one typed clarification input. Slot/choice order is
+// author-selected presentation order and affects the digest.
 // Sensitivity is a required declaration, not a claim of automatic PII detection.
 type ClarificationSlot struct {
 	ID          string                `json:"id"`

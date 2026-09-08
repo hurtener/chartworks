@@ -133,12 +133,13 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 	successes, conflicts := 0, 0
 	for range 2 {
 		result := <-results
-		if result.err == nil {
+		switch {
+		case result.err == nil:
 			active = result.published
 			successes++
-		} else if sdkConflict(result.err) {
+		case sdkConflict(result.err):
 			conflicts++
-		} else {
+		default:
 			t.Fatal("concurrent publish rules", result.err)
 		}
 	}

@@ -46,6 +46,7 @@ func lockRetainedTopic(ctx context.Context, tx pgx.Tx, tenant string, expected t
 	return nil
 }
 
+// SaveRuleDraft persists a rule draft after rechecking the published topic pin.
 func (d *DB) SaveRuleDraft(ctx context.Context, e identity.Envelope, published topics.Published, model semantics.RuleModel, expected int64, change string) (out rulesets.Draft, err error) {
 	definition := model.Definition()
 	if expected < 0 || expected >= 1<<62 || definition.Topic != published.State.Topic || definition.TopicVersion != published.State.Version || definition.PackDigest != published.Digest {
@@ -88,6 +89,7 @@ func (d *DB) SaveRuleDraft(ctx context.Context, e identity.Envelope, published t
 	return
 }
 
+// ReviewRuleDraft persists a review decision for a version-pinned rule draft.
 func (d *DB) ReviewRuleDraft(ctx context.Context, e identity.Envelope, published topics.Published, topic string, in rulesets.ReviewRequest) (out rulesets.Review, err error) {
 	if err = requireRuleAccess(e, topic, drafts.Review); err != nil {
 		return out, err
@@ -122,6 +124,7 @@ func (d *DB) ReviewRuleDraft(ctx context.Context, e identity.Envelope, published
 	return
 }
 
+// PublishRules atomically publishes an approved rule version and advances its head.
 func (d *DB) PublishRules(ctx context.Context, e identity.Envelope, published topics.Published, reviewID string, expected int64) (out rulesets.Published, err error) {
 	if err = requireRuleAccess(e, published.State.Topic, drafts.Publish); err != nil {
 		return out, err
@@ -181,6 +184,7 @@ func (d *DB) PublishRules(ctx context.Context, e identity.Envelope, published to
 	return
 }
 
+// RuleVersionPin reads the exact rule/topic pin for a current or retained version.
 func (d *DB) RuleVersionPin(ctx context.Context, e identity.Envelope, topic, version string, access drafts.Access) (out rulesets.Pin, err error) {
 	if err = requireRuleAccess(e, topic, access); err != nil {
 		return out, err
@@ -196,6 +200,7 @@ func (d *DB) RuleVersionPin(ctx context.Context, e identity.Envelope, topic, ver
 	return
 }
 
+// ReadPublishedRules reads a current or explicitly retained immutable rule version.
 func (d *DB) ReadPublishedRules(ctx context.Context, e identity.Envelope, topic, version string, access drafts.Access, current bool) (out rulesets.Published, err error) {
 	if err = requireRuleAccess(e, topic, access); err != nil {
 		return out, err
@@ -226,6 +231,7 @@ func (d *DB) ReadPublishedRules(ctx context.Context, e identity.Envelope, topic,
 	return
 }
 
+// RetireRules clears the active rule pointer after rechecking the retained topic.
 func (d *DB) RetireRules(ctx context.Context, e identity.Envelope, published topics.Published, note string, expected int64) (out rulesets.State, err error) {
 	if err = requireRuleAccess(e, published.State.Topic, drafts.Publish); err != nil {
 		return out, err

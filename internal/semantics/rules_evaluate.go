@@ -4,13 +4,17 @@ import (
 	"sort"
 )
 
+// RuleViolationKind identifies why a hard rule evaluation was not allowed.
 type RuleViolationKind string
 
+// ViolationMissingRequired and ViolationExcludedPresent identify the supported
+// hard-constraint violations.
 const (
 	ViolationMissingRequired RuleViolationKind = "missing_required"
 	ViolationExcludedPresent RuleViolationKind = "excluded_present"
 )
 
+// RuleViolation records one deterministic hard-constraint failure.
 type RuleViolation struct {
 	Rule   string            `json:"rule"`
 	Kind   RuleViolationKind `json:"kind"`

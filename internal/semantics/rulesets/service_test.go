@@ -16,9 +16,10 @@ func TestServiceRejectsInvalidBoundariesBeforeDependencies(t *testing.T) {
 	}
 	s := &Service{}
 	ctx := context.Background()
+	var nilContext context.Context
 	e := identity.Envelope{}
 	definition := semantics.RuleSetDefinition{Topic: "commerce"}
-	if _, err := s.Save(nil, e, SaveRequest{Definition: definition, Change: "change"}); !errors.Is(err, store.ErrInvalid) {
+	if _, err := s.Save(nilContext, e, SaveRequest{Definition: definition, Change: "change"}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("nil save context", err)
 	}
 	if _, err := s.Review(ctx, e, "bad/topic", ReviewRequest{}); !errors.Is(err, store.ErrInvalid) {
