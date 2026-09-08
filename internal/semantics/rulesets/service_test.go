@@ -205,6 +205,7 @@ func TestEvidenceServiceBoundariesPreservePins(t *testing.T) {
 			t.Fatalf("invalid replay references accepted: %v", err)
 		}
 	}
+	//nolint:staticcheck // deliberate nil verifies the service's nil-context boundary.
 	if _, err := service.Replay(nil, e, "commerce", ReplayRequest{RuleVersion: "rules-v1", References: refs}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("nil replay context accepted", err)
 	}
