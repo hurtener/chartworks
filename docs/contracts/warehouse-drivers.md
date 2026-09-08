@@ -83,9 +83,10 @@ Mandatory fork leaf-package suites exercise the real SDK/HTTP protocol clients w
 recorded fixtures. `TestBigQuerySourceLifecycleInjected`,
 `TestSnowflakeSourceLifecycleInjected` and `TestDatabricksSourceLifecycleInjected`
 separately exercise the actual Chartworks Service with private per-instance injected
-fixture clients. Neither layer is live cloud qualification. Hosted CI must pass on
-the final committed head before these pending implementations are described as
-qualified.
+fixture clients. Neither layer is live cloud qualification. The exact committed head
+passed all required hosted gates in [CI 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766);
+these recorded cloud fixtures remain implementation evidence and do not qualify live
+cloud migration or production support.
 
 The root `Dockerfile` is the reference deployment image. Its Go1.26.4/Rust1.98.1
 build and Debian bookworm runtime share the same libc ABI; the Rust parser is

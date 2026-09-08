@@ -137,7 +137,7 @@ Both blocks default to `enabled=false`. Disabling new work removes upload/profil
 | `profiling.summaries` / `max_versions` | false / 32 | Summaries use the existing optional `profile_summary` gateway role; versions 2–1,000. |
 | `profiling.policies` | empty | At most 128 tenant/source policies and 256 unique declared range columns each. Policies minimize retained values; they grant no authority. |
 
-CSV uses the standard-library decoder; XLSX uses the pinned Excelize dependency and requires an explicit sheet; Parquet uses the pinned parquet-go dependency and the bounded supported encodings. Every activated upload is a normal PostgreSQL 17 managed source consumed through the same validated-read path. Other warehouse engines remain phase 14 work and are not implied by upload format support.
+CSV uses the standard-library decoder; XLSX uses the pinned Excelize dependency and requires an explicit sheet; Parquet uses the pinned parquet-go dependency and the bounded supported encodings. Every activated upload is a normal PostgreSQL 17 managed source consumed through the same validated-read path. Other warehouse engines use the accepted phase 14 source matrix; upload format support remains PostgreSQL-only and does not turn recorded cloud fixtures into live qualification.
 
 ## Managed pipeline configuration
 
