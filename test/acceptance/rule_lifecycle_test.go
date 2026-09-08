@@ -19,7 +19,7 @@ import (
 
 func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 	f, draftsService, topicService, gatewayFixture, pack := publicationFixture(t)
-	ruleService, err := rulesets.New(f.db, f.db)
+	ruleService, err := rulesets.New(f.db, f.db, f.db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,8 +241,8 @@ func TestRuleLifecycleAndDeterministicEvaluation(t *testing.T) {
 		t.Fatal("same-version rule shadow", shadow, err)
 	}
 	invalidations, err = client.RuleInvalidations(ctx, pack.Topic, sdk.RuleInvalidationRequest{Limit: 8})
-	if err != nil || len(invalidations) != 1 || invalidations[0].Kind != "publish" || invalidations[0].NewRuleVersion != rules.Version || invalidations[0].OldRuleVersion != "" {
-		t.Fatal("first rule invalidation", invalidations, err)
+	if err != nil || len(invalidations) != 2 || invalidations[0].Kind != "publish" || invalidations[0].NewRuleVersion != "rules-v1" || invalidations[0].OldRuleVersion != "" || invalidations[1].Kind != "publish" || invalidations[1].NewRuleVersion != rules.Version || invalidations[1].OldRuleVersion != "rules-v1" {
+		t.Fatal("rule invalidation history", invalidations, err)
 	}
 
 	pack.Version = "v2"
