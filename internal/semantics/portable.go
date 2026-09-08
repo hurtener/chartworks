@@ -42,16 +42,16 @@ type PortablePack struct {
 }
 
 type ExportColumnSlot struct {
-	Column string
-	Slot   string
+	Column string `json:"column"`
+	Slot   string `json:"slot"`
 }
 
 // ExportDatasetSlots explicitly separates current stable coordinates from the
 // chosen logical slots. Export never guesses a mapping from display/source names.
 type ExportDatasetSlots struct {
-	Dataset string
-	Slot    string
-	Columns []ExportColumnSlot
+	Dataset string             `json:"dataset"`
+	Slot    string             `json:"slot"`
+	Columns []ExportColumnSlot `json:"columns"`
 }
 
 // ExportPortable projects an already compiled model through a complete mapping.
@@ -116,24 +116,24 @@ func ExportPortable(model Model, mapping []ExportDatasetSlots) (PortablePack, er
 // ImportColumnBinding is caller-supplied destination evidence. Its shape is not
 // proof that a source/profile was consulted or that current authority permits it.
 type ImportColumnBinding struct {
-	Slot       string
-	ID         string
-	SourceName string
-	NativeType string
-	Category   string
-	Nullable   bool
+	Slot       string `json:"slot"`
+	ID         string `json:"id"`
+	SourceName string `json:"source_name"`
+	NativeType string `json:"native_type"`
+	Category   string `json:"category"`
+	Nullable   bool   `json:"nullable"`
 }
 
 type ImportDatasetBinding struct {
-	Slot    string
-	Source  SourceReference
-	Columns []ImportColumnBinding
+	Slot    string                `json:"slot"`
+	Source  SourceReference       `json:"source"`
+	Columns []ImportColumnBinding `json:"columns"`
 }
 
 type DraftBindings struct {
-	Topic    string
-	Version  string
-	Datasets []ImportDatasetBinding
+	Topic    string                 `json:"topic"`
+	Version  string                 `json:"version"`
+	Datasets []ImportDatasetBinding `json:"datasets"`
 }
 
 // DraftCandidate is structurally compiled untrusted authoring data. It carries

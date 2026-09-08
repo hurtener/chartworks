@@ -68,14 +68,13 @@ the existing 1 MiB ceiling; structural and text bounds apply before deep copying
 
 The result type is deliberately `DraftCandidate`: an untrusted authoring candidate,
 with detached pack/digest access and no publication or execution API. Supplied
-`SourceReference` values are not verified-binding proofs. The future service must
+`SourceReference` values are not verified-binding proofs. A consuming service must
 revalidate the entire mapping against actual source/profile health and current
 Pengui reach before storing a draft. It must also resolve canonical registry
 collisions and validate exact revision meaning; carrying a revision number does not
 approve a registry entry in the destination. No destination ID is allocated, no
 profile is refreshed, and no rule-set/pattern lifecycle bundle is imported by this
-pure helper. Topic export authorization and persisted draft review remain service
-work through the phase 21 registration contract.
+pure helper. The [private draft service](topic-drafts-v1.md) now supplies mapped import admission, export authorization and immutable private revision history through the phase 21 registry. Reviewed publication and canonical registry resolution remain service work.
 
 `DiffModels` compares two compiled versions of the same topic and reports their
 exact version/digest pins, topic metadata changes, ordered entity changes, and
@@ -102,7 +101,7 @@ HTTP/SDK/PostgreSQL schema checks. This replaces that consumer's independent rou
 inventory; it does not introduce another parallel business API. Foundation
 health/capabilities, security and work adapters still require migration.
 `/capabilities` continues to
-report `business_api: false`; no topic operation is registered. Public document
+report `business_api: false`; seven concrete private topic draft operations are now registered separately through the same shared contract. Public document
 delivery, cumulative generated SDK/isolation/audit checks and all six named phase
 21 criteria remain incomplete.
 
@@ -114,9 +113,11 @@ acceptance or satisfy the missing topic service work.
 
 ## Required phase 15 continuation
 
-The next phase 15 implementation must consume current phase 12 profile evidence and
-verify every dataset provenance field before accepting a draft. It then adds the
-PostgreSQL topic/version/audit store, immutable publication model, draft mutation and
+The private draft service now consumes current phase 12 profile evidence, verifies
+dataset provenance against source discovery and commits immutable CAS revisions with
+audit and dependency fences. This supplies draft mutation, scoped history/diff and
+neutral mapped import/export, while approved canonical entities remain unsupported.
+The next phase 15 implementation adds the immutable publication model, reviewed
 source-reference rewrite operations, bounded Bifrost generation, compact capability
 contracts, and version-fenced facet preparation/publication using `internal/vindex`.
 Phase 12 profile records are private to their originating actor/session. Their
@@ -268,9 +269,11 @@ detached results, and structural/serialized size limits. The 2026-09-07 local ru
 passed with 87.8% statement coverage against the 80% package band. Focused `go vet`,
 `make planning-check`, mirrored contributor rules, and `git diff --check` passed.
 
-These are compiler and documentation checks. No phase 15/16 acceptance criterion,
-PostgreSQL lifecycle/publication path, HTTP/SDK operation, browser interaction, live
-provider run, or cloud CI result is claimed by this foundation.
+Those historical checks cover the pure compiler and documentation foundation. The
+later [private draft stage](../reviews/phase-15-topic-drafts.md) records separate
+PostgreSQL and HTTP/SDK evidence. Neither stage claims a complete phase 15/16
+acceptance criterion, publication, browser interaction, live provider quality or
+cloud CI result.
 
 The rule compiler adds focused tests in `internal/semantics/rules_test.go` for stale
 semantic and canonical-revision pins, nested mutation/concurrent reuse, closed unions,

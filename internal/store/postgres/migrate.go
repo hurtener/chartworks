@@ -122,10 +122,10 @@ func SchemaVersion() string {
 // Required relation presence complements history checks, without claiming a superuser-tamper sandbox.
 func requiredRelations(ctx context.Context, tx pgx.Tx) error {
 	var count int
-	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname IN ('schema_migrations','policies','policy_revisions','audit_events','operations','queue_limits','operation_attempts','job_schedules','job_occurrences','pipeline_heads','pipeline_versions','pipeline_runs','pipeline_stages','pipeline_outputs')`).Scan(&count); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname IN ('schema_migrations','policies','policy_revisions','audit_events','operations','queue_limits','operation_attempts','job_schedules','job_occurrences','pipeline_heads','pipeline_versions','pipeline_runs','pipeline_stages','pipeline_outputs','topic_draft_heads','topic_draft_versions','topic_draft_dependencies')`).Scan(&count); e != nil {
 		return e
 	}
-	if count != 14 {
+	if count != 17 {
 		return store.ErrMigration
 	}
 	return nil

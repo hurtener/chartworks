@@ -44,3 +44,9 @@ Implement `TestPhase15/AC01` through `TestPhase15/AC06` with real PostgreSQL/pgv
 ## Glossary, decisions and deviations
 
 D-045/D-049/D-052 preserve lifecycle outcomes but remove local policy decisions. No runtime completion is claimed.
+
+## Bounded draft service stage
+
+`internal/semantics/drafts`, PostgreSQL migration 012, `internal/topicapi` and the Go SDK now provide private draft creation, exact CAS revisions, scoped reads/history/diff and neutral mapped export/import. Admission consumes real source discovery and active private profile evidence; storage fences them at commit. The [draft service contract](../contracts/topic-drafts-v1.md) defines authority, limits and typed failure behavior. `TestTopicDraftAPIAndSDK`, `TestTopicDraftCASAndScopeFences`, `TestTopicDraftCommitFencesAndErasure`, `TestTopicDraftProfileHeadAndAuditFences` `TestTopicDraftAdmissionLimitsAndIndependentActions` and `TestTopicDraftMultipleDatasetScopeAndAdmissionBounds` exercise this partial AC02/AC03/AC06 consumer against real PostgreSQL and HTTP/SDK schemas. They do not satisfy the six cumulative `TestPhase15` criteria.
+
+Publication/facet activation, published-topic health, review/rollback/archive, entity/onboarding APIs, approved canonical registry, generation and full lifecycle portability remain unimplemented. Drafts containing canonical registry entries are explicitly unsupported until approved revision meaning can be resolved; numeric authoring pins alone are not accepted approval proof. No phase acceptance stub or completed-phase claim is added.

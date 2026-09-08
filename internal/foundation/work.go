@@ -18,9 +18,11 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/sourceapi"
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store/postgres"
+	"github.com/hurtener/chartworks/internal/topicapi"
 	"github.com/hurtener/chartworks/internal/workapi"
 )
 
@@ -126,6 +128,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
 	w.handler = sourceapi.EngineeringHandler(verifier, w.engineering, w.handler)
 	w.handler = sourceapi.PipelineHandler(verifier, w.pipelines, w.handler)
+	topics, err := drafts.New(db, w.sourceService, w.engineering)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = topicapi.Handler(verifier, topics, w.handler)
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {

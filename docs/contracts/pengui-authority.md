@@ -34,7 +34,7 @@ Execution checks require the service-resolved target, every executable dependenc
 
 The execution/artifact functions are implemented enforcement primitives, not reporting/storage endpoints advertised ahead of their phases. Their callers must derive complete dependency/context manifests from trusted domain metadata. A helper cannot infer a deliberately omitted dependency; later validator/domain fixtures prove completeness at the first concrete data consumer.
 
-Creation checks parent write reach: blocks under topics, datasets under sources, sources/reports/dashboards under the tenant. Publication, certification, SQL inspection, export and schedule management remain distinct actions. Immutable revisions, evidence, health, references and SQL safety are separate domain-validity checks, not invented identity policy.
+Creation checks parent write reach: blocks under topics, datasets under sources, sources/topic drafts/reports/dashboards under the tenant. Publication, certification, SQL inspection, export and schedule management remain distinct actions. Immutable revisions, evidence, health, references and SQL safety are separate domain-validity checks, not invented identity policy.
 
 ## Actual source context
 
@@ -59,3 +59,5 @@ Apps use the established host bridge; resources/tool arguments contain no shared
 ## Verification scope
 
 Named phase 03/04 acceptance covers cryptography, key rotation/staleness, claim bounds, immutable scopes, pre-I/O denial, tenant isolation, distinct permissions and current-context partition rules. The compiled-binary test exercises ephemeral trusted TLS verification -> real PostgreSQL -> SDK -> shutdown. These are Chartworks implementation tests with synthetic issuer-shaped fixtures, not a claim that customer credentials or a deployed Pengui session were exercised. Full MCP transport, later reporting data paths and durable renewal stay assigned to their owning phases.
+
+Private topic draft admission additionally requires the exact topic write target and every source read, dataset query and execution-context use dependency. Retained draft operations enforce their own topic read/export action, private actor/session provenance and the complete persisted dependency set before fetching content; creator identity alone grants no access. See [topic draft service](topic-drafts-v1.md).

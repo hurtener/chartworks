@@ -1,0 +1,44 @@
+[
+  {
+    "method": "POST",
+    "path": "/v1/topic-drafts",
+    "action": "topics.write",
+    "effect": "source_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topic-draft-imports",
+    "action": "topics.write",
+    "effect": "source_catalog_read_and_draft_commit"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/topics/{id}/draft",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-versions/read",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-history",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-diff",
+    "action": "topics.read",
+    "effect": "metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/draft-export",
+    "action": "topics.export",
+    "effect": "metadata_export"
+  }
+]
