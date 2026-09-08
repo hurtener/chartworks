@@ -21,6 +21,7 @@ type EmbeddingSpace struct {
 	Normalization string `json:"normalization"`
 }
 
+// Key returns the stable persisted digest of the complete embedding descriptor.
 func (s EmbeddingSpace) Key() string {
 	// Preserve the phase 07 persisted key format. EmbeddingSpace has the exact
 	// field order and JSON tags of the original vindex.Space value, so the full

@@ -270,11 +270,12 @@ func TestTopicDraftCASAndScopeFences(t *testing.T) {
 	close(results)
 	wins, conflicts := 0, 0
 	for err := range results {
-		if err == nil {
+		switch {
+		case err == nil:
 			wins++
-		} else if errors.Is(err, store.ErrConflict) {
+		case errors.Is(err, store.ErrConflict):
 			conflicts++
-		} else {
+		default:
 			t.Fatal("unexpected CAS error", err)
 		}
 	}
@@ -463,6 +464,7 @@ func TestTopicDraftAdmissionLimitsAndIndependentActions(t *testing.T) {
 			t.Fatal("invalid admission accepted")
 		}
 	}
+	//nolint:staticcheck // The public service must reject a nil context before any dependency work.
 	if _, err := s.Save(nil, e, drafts.SaveRequest{Pack: p, Change: "x"}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("nil context", err)
 	}
@@ -590,9 +592,11 @@ func TestTopicDraftMultipleDatasetScopeAndAdmissionBounds(t *testing.T) {
 			t.Fatal("empty dependency selection", removed, err)
 		}
 	}
+	//nolint:staticcheck // The negative verifies that retained reads reject a nil context.
 	if _, err := s.Read(nil, e, p.Topic, 1); err == nil {
 		t.Fatal("nil read context")
 	}
+	//nolint:staticcheck // The negative verifies that history reads reject a nil context.
 	if _, err := s.History(nil, e, p.Topic, 0, 1); err == nil {
 		t.Fatal("nil history context")
 	}

@@ -307,6 +307,138 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	if _, err = client.PublishedTopic(ctx, pack.Topic); err != nil {
 		t.Fatal("retained read depended on deleted source", err)
 	}
+	t.Run("atomic store stage failures", testTopicPublicationAtomicStoreStageFailures)
+}
+
+func testTopicPublicationAtomicStoreStageFailures(t *testing.T) {
+	f, draftsService, service, _, pack := publicationFixture(t)
+	ctx := context.Background()
+	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
+	pack.CanonicalEntities = []semantics.CanonicalEntity{{
+		ID: "atomic-customer", Revision: 1, Name: "Atomic customer",
+		Keys: []semantics.Reference{{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "id"}},
+	}}
+	draft, err := draftsService.Save(ctx, e, drafts.SaveRequest{Pack: pack, Change: "Atomic store-stage candidate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := service.Review(ctx, e, pack.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Approve atomic store-stage candidate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := support.Raw(t, f.dsn)
+	if _, err = metadata.Exec(ctx, `CREATE FUNCTION chartworks.reject_topic_publish_stage_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected topic publication stage failure'; END; $$`); err != nil {
+		t.Fatal("install publication failure function", err)
+	}
+	t.Cleanup(func() {
+		_, _ = metadata.Exec(context.Background(), `DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.topic_published_versions; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.canonical_entity_revisions; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.canonical_entity_heads; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.topic_published_canonical_refs; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.topic_published_generations; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.vector_heads; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.topic_publication_events; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.audit_events; DROP TRIGGER IF EXISTS reject_topic_publish_stage_test ON chartworks.topic_health; DROP FUNCTION IF EXISTS chartworks.reject_topic_publish_stage_test()`)
+	})
+	stages := []struct {
+		name, create, drop string
+	}{
+		{"published version", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.topic_published_versions FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_published_versions`},
+		{"canonical revision", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.canonical_entity_revisions FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.canonical_entity_revisions`},
+		{"canonical head", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.canonical_entity_heads FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.canonical_entity_heads`},
+		{"canonical reference", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.topic_published_canonical_refs FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_published_canonical_refs`},
+		{"generation receipt", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.topic_published_generations FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_published_generations`},
+		{"facet activation", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE UPDATE ON chartworks.vector_heads FOR EACH ROW WHEN (NEW.active_generation IS DISTINCT FROM OLD.active_generation) EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.vector_heads`},
+		{"publication event", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.topic_publication_events FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_publication_events`},
+		{"publication audit", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.audit_events FOR EACH ROW WHEN (NEW.action='topic.published') EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.audit_events`},
+		{"facet publication audit", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.audit_events FOR EACH ROW WHEN (NEW.action='facets.generation_published') EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.audit_events`},
+		{"initial health", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.topic_health FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_health`},
+	}
+	for _, stage := range stages {
+		t.Run(stage.name, func(t *testing.T) {
+			if _, err = metadata.Exec(ctx, stage.create); err != nil {
+				t.Fatal("install stage failure", err)
+			}
+			if _, err = service.Publish(ctx, e, pack.Topic, topics.PublishRequest{Review: review.ID}); err == nil {
+				t.Fatal("injected stage failure published topic")
+			}
+			var heads, versions, revisions int
+			if err = metadata.QueryRow(ctx, `SELECT (SELECT count(*) FROM chartworks.topic_publication_heads WHERE tenant_id=$1 AND topic_id=$2 AND revision<>0),(SELECT count(*) FROM chartworks.topic_published_versions WHERE tenant_id=$1 AND topic_id=$2),(SELECT count(*) FROM chartworks.canonical_entity_revisions WHERE tenant_id=$1 AND entity_id='atomic-customer')`, e.Tenant(), pack.Topic).Scan(&heads, &versions, &revisions); err != nil || heads != 0 || versions != 0 || revisions != 0 {
+				t.Fatal("failed publication leaked durable state", heads, versions, revisions, err)
+			}
+			if _, err = metadata.Exec(ctx, stage.drop); err != nil {
+				t.Fatal("remove stage failure", err)
+			}
+		})
+	}
+	if _, err = service.Publish(ctx, e, pack.Topic, topics.PublishRequest{Review: review.ID}); err != nil {
+		t.Fatal("publication retry after staged failures", err)
+	}
+	pack.Version = "v2"
+	second, err := draftsService.Save(ctx, e, drafts.SaveRequest{Expected: 1, Pack: pack, Change: "Second atomic store-stage candidate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondReview, err := service.Review(ctx, e, pack.Topic, topics.ReviewRequest{DraftRevision: second.Metadata.Revision, Digest: second.Metadata.Digest, Decision: "approve", Note: "Approve second atomic store-stage candidate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Publish(ctx, e, pack.Topic, topics.PublishRequest{Review: secondReview.ID, Expected: 1}); err != nil {
+		t.Fatal("publish rollback source version", err)
+	}
+	rollbackStages := []struct {
+		name, create, drop string
+	}{
+		{"rollback facets", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE UPDATE ON chartworks.vector_heads FOR EACH ROW WHEN (NEW.active_generation IS DISTINCT FROM OLD.active_generation) EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.vector_heads`},
+		{"rollback event", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.topic_publication_events FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_publication_events`},
+		{"rollback audit", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.audit_events FOR EACH ROW WHEN (NEW.action='topic.rolled_back') EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.audit_events`},
+		{"rollback health", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT OR UPDATE ON chartworks.topic_health FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_health`},
+	}
+	for _, stage := range rollbackStages {
+		t.Run(stage.name, func(t *testing.T) {
+			if _, err = metadata.Exec(ctx, stage.create); err != nil {
+				t.Fatal("install rollback stage failure", err)
+			}
+			if _, err = service.Rollback(ctx, e, pack.Topic, topics.TransitionRequest{Version: "v1", Expected: 2, Note: "Injected rollback stage"}); err == nil {
+				t.Fatal("injected stage failure rolled back topic")
+			}
+			current, readErr := service.Read(ctx, e, pack.Topic, "")
+			if readErr != nil || current.State.Revision != 2 || current.State.Version != "v2" {
+				t.Fatal("failed rollback changed publication head", current.State, readErr)
+			}
+			if _, err = metadata.Exec(ctx, stage.drop); err != nil {
+				t.Fatal("remove rollback stage failure", err)
+			}
+		})
+	}
+	if _, err = service.Rollback(ctx, e, pack.Topic, topics.TransitionRequest{Version: "v1", Expected: 2, Note: "Retry rollback after staged failures"}); err != nil {
+		t.Fatal("rollback retry after staged failures", err)
+	}
+	archiveStages := []struct {
+		name, create, drop string
+	}{
+		{"archive facets", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE UPDATE ON chartworks.vector_heads FOR EACH ROW WHEN (NEW.archived IS DISTINCT FROM OLD.archived) EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.vector_heads`},
+		{"archive event", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.topic_publication_events FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_publication_events`},
+		{"archive audit", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.audit_events FOR EACH ROW WHEN (NEW.action='topic.archived') EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.audit_events`},
+		{"archive health", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE DELETE ON chartworks.topic_health FOR EACH ROW EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.topic_health`},
+		{"facet archive audit", `CREATE TRIGGER reject_topic_publish_stage_test BEFORE INSERT ON chartworks.audit_events FOR EACH ROW WHEN (NEW.action='facets.archived') EXECUTE FUNCTION chartworks.reject_topic_publish_stage_test()`, `DROP TRIGGER reject_topic_publish_stage_test ON chartworks.audit_events`},
+	}
+	for _, stage := range archiveStages {
+		t.Run(stage.name, func(t *testing.T) {
+			if _, err = metadata.Exec(ctx, stage.create); err != nil {
+				t.Fatal("install archive stage failure", err)
+			}
+			if _, err = service.Archive(ctx, e, pack.Topic, 3, "Injected archive stage"); err == nil {
+				t.Fatal("injected stage failure archived topic")
+			}
+			current, readErr := service.Read(ctx, e, pack.Topic, "")
+			if readErr != nil || current.State.Revision != 3 || current.State.Archived {
+				t.Fatal("failed archive changed publication head", current.State, readErr)
+			}
+			if _, err = metadata.Exec(ctx, stage.drop); err != nil {
+				t.Fatal("remove archive stage failure", err)
+			}
+		})
+	}
+	if _, err = service.Archive(ctx, e, pack.Topic, 3, "Retry archive after staged failures"); err != nil {
+		t.Fatal("archive retry after staged failures", err)
+	}
+	if _, err = metadata.Exec(ctx, `DROP FUNCTION chartworks.reject_topic_publish_stage_test()`); err != nil {
+		t.Fatal("remove publication failure function", err)
+	}
 }
 
 func TestTopicPublicationRaceFailureAndContextTransition(t *testing.T) {

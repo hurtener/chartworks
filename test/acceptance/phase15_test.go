@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	semantictopics "github.com/hurtener/chartworks/internal/semantics/topics"
@@ -44,11 +45,43 @@ func testPhase15HealthRecheck(t *testing.T) {
 	if err != nil || !health.Healthy || health.Revision != published.State.Revision || len(health.Issues) != 0 {
 		t.Fatal("initial retained health", health, err)
 	}
+	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
+	metadata := support.Raw(t, f.dsn)
+	injectedIssue := []semantictopics.HealthIssue{{Source: pack.Datasets[0].Source.Source, Context: pack.Datasets[0].Source.Context, Dataset: pack.Datasets[0].ID, Code: "schema_changed"}}
+	if _, err = metadata.Exec(ctx, `CREATE FUNCTION chartworks.reject_health_write_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected health write failure'; END; $$; CREATE TRIGGER reject_health_write_test BEFORE INSERT OR UPDATE ON chartworks.topic_health FOR EACH ROW EXECUTE FUNCTION chartworks.reject_health_write_test()`); err != nil {
+		t.Fatal("install health write failure", err)
+	}
+	if _, err = f.db.SaveTopicHealth(ctx, e, published, injectedIssue); err == nil {
+		t.Fatal("injected health write failure committed")
+	}
+	retained, err := client.HealthTopic(ctx, pack.Topic)
+	if err != nil || !retained.Healthy || retained.ObservedAt != health.ObservedAt {
+		t.Fatal("failed health write changed retained state", retained, err)
+	}
+	if _, err = metadata.Exec(ctx, `DROP TRIGGER reject_health_write_test ON chartworks.topic_health; DROP FUNCTION chartworks.reject_health_write_test()`); err != nil {
+		t.Fatal("remove health write failure", err)
+	}
+	if _, err = metadata.Exec(ctx, `CREATE FUNCTION chartworks.reject_health_audit_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='topic.health_rechecked' THEN RAISE EXCEPTION 'injected health audit failure'; END IF; RETURN NEW; END; $$; CREATE TRIGGER reject_health_audit_test BEFORE INSERT ON chartworks.audit_events FOR EACH ROW EXECUTE FUNCTION chartworks.reject_health_audit_test()`); err != nil {
+		t.Fatal("install health audit failure", err)
+	}
+	t.Cleanup(func() {
+		_, _ = metadata.Exec(context.Background(), `DROP TRIGGER IF EXISTS reject_health_audit_test ON chartworks.audit_events; DROP FUNCTION IF EXISTS chartworks.reject_health_audit_test()`)
+	})
+	if _, err = f.db.SaveTopicHealth(ctx, e, published, injectedIssue); err == nil {
+		t.Fatal("injected audit failure committed health")
+	}
+	retained, err = client.HealthTopic(ctx, pack.Topic)
+	if err != nil || !retained.Healthy || retained.ObservedAt != health.ObservedAt {
+		t.Fatal("failed health transaction changed retained state", retained, err)
+	}
+	if _, err = metadata.Exec(ctx, `DROP TRIGGER reject_health_audit_test ON chartworks.audit_events; DROP FUNCTION chartworks.reject_health_audit_test()`); err != nil {
+		t.Fatal("remove health audit failure", err)
+	}
 	if _, err = f.s.Rotate(ctx, f.e, pack.Datasets[0].Source.Source, pack.Datasets[0].Source.SourceRevision); err != nil {
 		t.Fatal("rotate source", err)
 	}
 	// Retained health is independent of private profiles and live source work.
-	retained, err := client.HealthTopic(ctx, pack.Topic)
+	retained, err = client.HealthTopic(ctx, pack.Topic)
 	if err != nil || !retained.Healthy || retained.ObservedAt != health.ObservedAt {
 		t.Fatal("retained health changed without recheck", retained, err)
 	}
@@ -59,7 +92,6 @@ func testPhase15HealthRecheck(t *testing.T) {
 	if _, err = client.TopicContract(ctx, pack.Topic); err == nil {
 		t.Fatal("unhealthy source exposed query contract")
 	}
-	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
 	if _, err = f.db.SaveTopicHealth(ctx, e, published, nil); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("unverified healthy result cleared issues", err)
 	}
@@ -67,10 +99,60 @@ func testPhase15HealthRecheck(t *testing.T) {
 	if err != nil || retained.Healthy || len(retained.Issues) != 1 {
 		t.Fatal("failed clear changed retained issues", retained, err)
 	}
-	metadata := support.Raw(t, f.dsn)
 	var stored bool
 	if err = metadata.QueryRow(ctx, `SELECT healthy FROM chartworks.topic_health WHERE tenant_id=$1 AND topic_id=$2`, f.e.Tenant(), pack.Topic).Scan(&stored); err != nil || stored {
 		t.Fatal("health observation not committed", err)
+	}
+	for _, issues := range [][]semantictopics.HealthIssue{
+		{{Source: "bad/source", Context: pack.Datasets[0].Source.Context, Dataset: pack.Datasets[0].ID, Code: "schema_changed"}},
+		{injectedIssue[0], injectedIssue[0]},
+		{{Source: pack.Datasets[0].Source.Source, Context: pack.Datasets[0].Source.Context, Dataset: pack.Datasets[0].ID, Code: "unknown"}},
+	} {
+		if _, err = f.db.SaveTopicHealth(ctx, e, published, issues); !errors.Is(err, store.ErrInvalid) {
+			t.Fatal("malformed health evidence accepted", err)
+		}
+	}
+	if _, err = f.db.SaveTopicHealth(ctx, identity.Envelope{}, published, injectedIssue); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("unauthorized health write accepted", err)
+	}
+	if _, err = f.db.ReadTopicHealth(ctx, identity.Envelope{}, published); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatal("unauthorized health read accepted", err)
+	}
+	stale := published
+	stale.State.Revision++
+	if _, err = f.db.SaveTopicHealth(ctx, e, stale, injectedIssue); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("stale publication health write accepted", err)
+	}
+	if _, err = f.db.ReadTopicHealth(ctx, e, stale); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("missing publication health read accepted", err)
+	}
+	var originalIssues []byte
+	if err = metadata.QueryRow(ctx, `SELECT issues FROM chartworks.topic_health WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic).Scan(&originalIssues); err != nil {
+		t.Fatal("read retained health payload", err)
+	}
+	if _, err = metadata.Exec(ctx, `UPDATE chartworks.topic_health SET issues='not-json'::jsonb WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic); err == nil {
+		t.Fatal("PostgreSQL accepted malformed JSON")
+	}
+	if _, err = metadata.Exec(ctx, `UPDATE chartworks.topic_health SET healthy=true WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic); err != nil {
+		t.Fatal("corrupt retained health consistency", err)
+	}
+	if _, err = f.db.ReadTopicHealth(ctx, e, published); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("inconsistent retained health accepted", err)
+	}
+	if _, err = metadata.Exec(ctx, `UPDATE chartworks.topic_health SET healthy=false,issues=$3 WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic, originalIssues); err != nil {
+		t.Fatal("restore retained health", err)
+	}
+	if _, err = metadata.Exec(ctx, `CREATE FUNCTION chartworks.reject_health_delete_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected health delete failure'; END; $$; CREATE TRIGGER reject_health_delete_test BEFORE DELETE ON chartworks.topic_health FOR EACH ROW EXECUTE FUNCTION chartworks.reject_health_delete_test()`); err != nil {
+		t.Fatal("install health delete failure", err)
+	}
+	if _, err = client.ArchiveTopic(ctx, pack.Topic, sdk.ArchiveTopicRequest{Expected: published.State.Revision, Note: "Archive with injected failure"}); err == nil {
+		t.Fatal("injected health delete archived topic")
+	}
+	if retained, err = client.HealthTopic(ctx, pack.Topic); err != nil || retained.Healthy || len(retained.Issues) != 1 {
+		t.Fatal("failed archive changed retained health", retained, err)
+	}
+	if _, err = metadata.Exec(ctx, `DROP TRIGGER reject_health_delete_test ON chartworks.topic_health; DROP FUNCTION chartworks.reject_health_delete_test()`); err != nil {
+		t.Fatal("remove health delete failure", err)
 	}
 	if _, err = client.ArchiveTopic(ctx, pack.Topic, sdk.ArchiveTopicRequest{Expected: published.State.Revision, Note: "Archive unhealthy topic"}); err != nil {
 		t.Fatal("archive unhealthy topic", err)
@@ -110,6 +192,9 @@ func testPhase15ResumableEnhancement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err = f.db.TopicGenerationCheckpoint(ctx, e, pack.Topic, 0); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("zero checkpoint revision accepted", err)
+	}
 	if _, err = client.EnhanceTopicDraft(ctx, pack.Topic, sdk.EnhanceTopicRequest{Expected: first.Metadata.Revision, Version: "skip", Cursor: 1, Limit: 1, Change: "Skip initial column"}); err == nil || gatewayFixture.requests.Load() != 0 {
 		t.Fatal("initial generation cursor skipped", err)
 	}
@@ -123,6 +208,10 @@ func testPhase15ResumableEnhancement(t *testing.T) {
 	if unresolvedID != semantics.GeneratedEntityID(semantics.EnhancementUnresolved, columns[0].Dataset, columns[0].ID) {
 		t.Fatal("unstable unresolved ID", unresolvedID)
 	}
+	metadata := support.Raw(t, f.dsn)
+	if _, err = metadata.Exec(ctx, `UPDATE chartworks.topic_generation_checkpoints SET receipt='{}'::jsonb WHERE tenant_id=$1 AND topic_id=$2 AND actor_id=$3 AND session_id=$4 AND draft_revision=$5`, e.Tenant(), pack.Topic, e.User(), e.Session(), step1.Draft.Metadata.Revision); err == nil {
+		t.Fatal("immutable checkpoint receipt mutated")
+	}
 	if _, err = client.EnhanceTopicDraft(ctx, pack.Topic, sdk.EnhanceTopicRequest{Expected: step1.Draft.Metadata.Revision, Version: "rewind", Cursor: 0, Limit: 1, Change: "Rewind generation cursor"}); err == nil || gatewayFixture.requests.Load() != 1 {
 		t.Fatal("generation cursor rewind reached gateway", err)
 	}
@@ -134,13 +223,12 @@ func testPhase15ResumableEnhancement(t *testing.T) {
 	if _, err = client.EnhanceTopicDraft(ctx, pack.Topic, sdk.EnhanceTopicRequest{Expected: first.Metadata.Revision, Version: "stale", Cursor: 1, Limit: 1, Change: "Stale resume"}); err == nil {
 		t.Fatal("stale generation checkpoint accepted")
 	}
-	metadata := support.Raw(t, f.dsn)
 	var checkpoints int
 	if err = metadata.QueryRow(ctx, `SELECT count(*) FROM chartworks.topic_generation_checkpoints WHERE tenant_id=$1 AND topic_id=$2`, e.Tenant(), pack.Topic).Scan(&checkpoints); err != nil || checkpoints != 2 {
 		t.Fatal("durable checkpoints", checkpoints, err)
 	}
 	if gatewayFixture.requests.Load() != 2 {
-		t.Fatal(fmt.Sprintf("unexpected gateway requests: %d", gatewayFixture.requests.Load()))
+		t.Fatalf("unexpected gateway requests: %d", gatewayFixture.requests.Load())
 	}
 	projected := semantictopics.Project(step2.Draft.Pack)
 	if len(projected.Unresolved) != 1 || projected.Unresolved[0].ID != unresolvedID || len(projected.Dimensions) == 0 || projected.Dimensions[0].ID != semantics.GeneratedEntityID(semantics.EnhancementDimension, columns[1].Dataset, columns[1].ID) {
