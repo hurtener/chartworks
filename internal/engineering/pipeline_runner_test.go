@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
@@ -116,6 +117,15 @@ func TestPipelineLineageAndDerivedGraph(t *testing.T) {
 }
 
 func FuzzPipelineDerivedGraph(f *testing.F) {
+	// Every fresh fuzz worker initializes its own pinned WASM parser. Keep that
+	// one-time compilation outside F.Fuzz's 10-second per-input watchdog; the
+	// overall test timeout still bounds setup.
+	started := time.Now()
+	if err := validatePipelineDerivedSQL(PipelineStep{SQL: "SELECT id FROM {{step.first}}", FromSteps: []string{"first"}}); err != nil {
+		f.Fatal("pipeline graph fuzz parser initialization failed")
+	}
+	f.Logf("pipeline graph fuzz parser initialization completed in %s", time.Since(started))
+
 	f.Add("SELECT id FROM {{step.first}}")
 	f.Add("WITH x AS (DELETE FROM {{step.first}} RETURNING id) SELECT id FROM x")
 	f.Fuzz(func(t *testing.T, sql string) {
