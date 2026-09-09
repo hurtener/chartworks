@@ -231,7 +231,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	blockRegistry, err := reportingapi.Registry(blockService.CanValidate(), blockService.CanCapture())
+	blockRegistry, err := reportingapi.Registry(blockService.CanValidate(), blockService.CanCapture(), blockService.CanObserve())
 	if err != nil {
 		w.close()
 		return nil, err

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hurtener/chartworks/internal/chartdata"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -79,7 +80,7 @@ func phase27Definition(t *testing.T, f *phase17Fixture, e identity.Envelope, sql
 	if err != nil || report.Result == nil {
 		t.Fatalf("fixture observed schema: %#v %v", report, err)
 	}
-	data, err := sdk.ChartDataFromReadResult(ctx, *report.Result, charts.Defaults())
+	data, err := chartdata.FromReadResult(ctx, *report.Result, charts.Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}

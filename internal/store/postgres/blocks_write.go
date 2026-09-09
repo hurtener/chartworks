@@ -21,7 +21,7 @@ func blockAudit(kind string) string {
 
 func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting.Mutation) error {
 	r := m.Revision
-	if r == nil || r.Actor != e.User() || r.Number < 1 || r.Number > int64(m.MaxRevisions) || r.Definition.Topics[0].Topic != m.Topic || reporting.DefinitionDigest(r.Definition) != r.Digest || reporting.ExecutionDigest(r.Definition) != r.ExecutionDigest {
+	if r == nil || len(r.Definition.Topics) == 0 || r.Actor != e.User() || r.Number < 1 || r.Number > int64(m.MaxRevisions) || r.Definition.Topics[0].Topic != m.Topic || reporting.DefinitionDigest(r.Definition) != r.Digest || reporting.ExecutionDigest(r.Definition) != r.ExecutionDigest {
 		return store.ErrInvalid
 	}
 	raw, err := json.Marshal(r.Definition)
@@ -236,7 +236,7 @@ func (d *DB) CommitBlock(ctx context.Context, e identity.Envelope, proof reporti
 				if err := blockCurrentFence(ctx, tx, e, m); err != nil {
 					return err
 				}
-				if !snapshot.Current {
+				if !snapshot.Current && m.Revision == nil {
 					return reporting.ErrStale
 				}
 			}

@@ -25,7 +25,7 @@ import (
 const MaxBodyBytes = 2 << 20
 
 // Registry advertises only handlers backed by the supplied common services.
-func Registry(validation, capture bool) (*api.Registry, error) {
+func Registry(validation, capture, observe bool) (*api.Registry, error) {
 	entries := []struct {
 		method, path string
 		action       reporting.Access
@@ -33,6 +33,9 @@ func Registry(validation, capture bool) (*api.Registry, error) {
 		in, out      reflect.Type
 		feature      string
 	}{
+		{"POST", "/v1/blocks/{id}/parameters/assist", reporting.Write, "parameterizeBlock", "Append an AST-verified typed period amendment without publication", reflect.TypeFor[reporting.ParameterizeRequest](), reflect.TypeFor[reporting.View](), "observe"},
+		{"POST", "/v1/blocks/{id}/impact", reporting.Read, "recheckBlockImpact", "Explicitly observe dependency impact without altering definitions", reflect.TypeFor[reporting.ImpactRequest](), reflect.TypeFor[reporting.Impact](), "observe"},
+		{"POST", "/v1/blocks/{id}/impact/apply", reporting.Write, "applyBlockImpact", "Create a private draft for an exact current dependency proposal", reflect.TypeFor[reporting.ApplyImpactRequest](), reflect.TypeFor[reporting.View](), "observe"},
 		{"POST", "/v1/blocks", reporting.Write, "createBlock", "Create an unvalidated private block draft", reflect.TypeFor[reporting.CreateRequest](), reflect.TypeFor[reporting.View](), ""},
 		{"GET", "/v1/blocks", reporting.Read, "listBlocks", "List only currently authorized block definitions", nil, reflect.TypeFor[reporting.Page](), ""},
 		{"POST", "/v1/blocks/capture", reporting.Write, "captureBlock", "Capture a completed authorized query as an unvalidated draft", reflect.TypeFor[reporting.CaptureRequest](), reflect.TypeFor[reporting.View](), "capture"},
@@ -53,7 +56,7 @@ func Registry(validation, capture bool) (*api.Registry, error) {
 	}
 	definitions := make([]api.Definition, 0, len(entries))
 	for _, entry := range entries {
-		if entry.feature == "validate" && !validation || entry.feature == "capture" && !capture {
+		if entry.feature == "validate" && !validation || entry.feature == "capture" && !capture || entry.feature == "observe" && !observe {
 			continue
 		}
 		response, err := api.SchemaFor(entry.id+"Response", entry.out, true)
@@ -101,7 +104,7 @@ func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Hand
 	if service == nil {
 		return next
 	}
-	registry, err := Registry(service.CanValidate(), service.CanCapture())
+	registry, err := Registry(service.CanValidate(), service.CanCapture(), service.CanObserve())
 	if err != nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { failure(w, err) })
 	}
@@ -140,7 +143,8 @@ func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Hand
 			failure(w, reporting.ErrInvalid)
 			return
 		}
-		if !validQuery(r.URL.Query(), selected.Query) {
+		parsedQuery, queryErr := url.ParseQuery(r.URL.RawQuery)
+		if queryErr != nil || !validQuery(parsedQuery, selected.Query) {
 			failure(w, reporting.ErrInvalid)
 			return
 		}
@@ -153,6 +157,24 @@ func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Hand
 		}
 		var out any
 		switch selected.ID {
+		case "parameterizeBlock":
+			var in reporting.ParameterizeRequest
+			err = decode(w, r, selected, &in)
+			if err == nil {
+				out, err = service.Parameterize(r.Context(), e, id, in)
+			}
+		case "recheckBlockImpact":
+			var in reporting.ImpactRequest
+			err = decode(w, r, selected, &in)
+			if err == nil {
+				out, err = service.RecheckImpact(r.Context(), e, id, in)
+			}
+		case "applyBlockImpact":
+			var in reporting.ApplyImpactRequest
+			err = decode(w, r, selected, &in)
+			if err == nil {
+				out, err = service.ApplyImpact(r.Context(), e, id, in)
+			}
 		case "createBlock":
 			var in reporting.CreateRequest
 			err = decode(w, r, selected, &in)

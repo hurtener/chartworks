@@ -6,6 +6,7 @@ package reporting
 import (
 	"context"
 	"errors"
+	"github.com/hurtener/chartworks/internal/sources"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/charts"
@@ -244,12 +245,13 @@ type Evidence struct {
 // ValidationRecord is private server-derived dependency evidence for persistence.
 // It is intentionally not an API response schema.
 type ValidationRecord struct {
-	Evidence      Evidence            `json:"evidence"`
-	Dependencies  []Dependency        `json:"dependencies"`
-	BindingDigest string              `json:"binding_digest"`
-	Topics        []TopicPin          `json:"topics"`
-	Binding       exec.Binding        `json:"binding"`
-	Definitions   []topics.Definition `json:"definitions"`
+	Catalog       sources.CatalogIdentity `json:"catalog_identity"`
+	Evidence      Evidence                `json:"evidence"`
+	Dependencies  []Dependency            `json:"dependencies"`
+	BindingDigest string                  `json:"binding_digest"`
+	Topics        []TopicPin              `json:"topics"`
+	Binding       exec.Binding            `json:"binding"`
+	Definitions   []topics.Definition     `json:"definitions"`
 }
 
 type Attestation struct {

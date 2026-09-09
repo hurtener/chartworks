@@ -12,6 +12,21 @@ import (
 // ErrBlockRequest rejects a malformed coordinate before any network call.
 var ErrBlockRequest = errors.New("chartworks: invalid block coordinate")
 
+// BlockParameterizeRequest mirrors the common governed block wire contract.
+type BlockParameterizeRequest = reporting.ParameterizeRequest
+
+// BlockRename mirrors the common governed block wire contract.
+type BlockRename = reporting.Rename
+
+// BlockImpactRequest mirrors the common governed block wire contract.
+type BlockImpactRequest = reporting.ImpactRequest
+
+// BlockImpact mirrors the common governed block wire contract.
+type BlockImpact = reporting.Impact
+
+// BlockApplyImpactRequest mirrors the common governed block wire contract.
+type BlockApplyImpactRequest = reporting.ApplyImpactRequest
+
 // BlockLocalized mirrors the common governed block wire contract.
 type BlockLocalized = reporting.Localized
 
@@ -152,6 +167,36 @@ type BlockResolutionResult = reporting.ResolutionResult
 
 // BlockProvenance mirrors the common governed block wire contract.
 type BlockProvenance = reporting.Provenance
+
+// ParameterizeBlock append an AST-verified typed period amendment without publication. Mutations are never automatically replayed.
+func (c *Client) ParameterizeBlock(ctx context.Context, id string, in BlockParameterizeRequest) (out BlockView, err error) {
+	if !identity.Identifier(id) {
+		return out, ErrBlockRequest
+	}
+	path := "/v1/blocks/" + id + "/parameters/assist"
+	err = c.callLimit(ctx, "POST", path, "", in, &out, 16<<20)
+	return
+}
+
+// RecheckBlockImpact explicitly observe dependency impact without altering definitions. Mutations are never automatically replayed.
+func (c *Client) RecheckBlockImpact(ctx context.Context, id string, in BlockImpactRequest) (out BlockImpact, err error) {
+	if !identity.Identifier(id) {
+		return out, ErrBlockRequest
+	}
+	path := "/v1/blocks/" + id + "/impact"
+	err = c.callLimit(ctx, "POST", path, "", in, &out, 16<<20)
+	return
+}
+
+// ApplyBlockImpact create a private draft for an exact current dependency proposal. Mutations are never automatically replayed.
+func (c *Client) ApplyBlockImpact(ctx context.Context, id string, in BlockApplyImpactRequest) (out BlockView, err error) {
+	if !identity.Identifier(id) {
+		return out, ErrBlockRequest
+	}
+	path := "/v1/blocks/" + id + "/impact/apply"
+	err = c.callLimit(ctx, "POST", path, "", in, &out, 16<<20)
+	return
+}
 
 // CreateBlock create an unvalidated private block draft. Mutations are never automatically replayed.
 func (c *Client) CreateBlock(ctx context.Context, in BlockCreateRequest) (out BlockView, err error) {

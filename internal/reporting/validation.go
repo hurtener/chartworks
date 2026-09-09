@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"context"
+	"github.com/hurtener/chartworks/internal/sources"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
@@ -53,6 +54,17 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	if binding.Tenant != e.Tenant() || binding.Source != d.Source || binding.Context != d.Context {
 		return record, result, resolved, nil, ErrStale
 	}
+	var catalog sources.CatalogIdentity
+	if observer, ok := s.sources.(CatalogObserver); ok {
+		observed, err := observer.ObserveCatalog(ctx, e, d.Source, d.Context)
+		if err != nil {
+			return record, result, resolved, nil, err
+		}
+		if observed.BindingDigest != exec.Hash(binding) {
+			return record, result, resolved, nil, ErrStale
+		}
+		catalog = observed.Identity
+	}
 	scope, err := validationScope(binding, definitions)
 	if err != nil {
 		return record, result, resolved, nil, err
@@ -94,6 +106,7 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	}
 	now := time.Now().UTC()
 	record = ValidationRecord{Evidence: Evidence{ID: evidenceID, Revision: snapshot.Revision.Number, RevisionID: snapshot.Revision.ID, DefinitionDigest: snapshot.Revision.Digest, ExecutionDigest: snapshot.Revision.ExecutionDigest, ParameterDigest: parameterDigest(resolved.Parameters), DependencyDigest: DependencyDigest(dependencies, d.Topics), SchemaDigest: digest(report.Result.Schema), CanonicalizationVersion: CanonicalizationVersion, ValidatorVersion: binding.Contract, ValidationManifest: receipt.Manifest, Schema: clone(report.Result.Schema), Attempt: clone(attempt), Actor: e.User(), CreatedAt: now, ExpiresAt: now.Add(time.Duration(s.limits.EvidenceTTL))}, Dependencies: dependencies, BindingDigest: exec.Hash(binding), Topics: clone(d.Topics), Binding: binding.Clone(), Definitions: []topics.Definition{}}
+	record.Catalog = clone(catalog)
 	record.Evidence.ResolvedAt = resolved.At
 	record.Evidence.Timezone = resolved.Timezone
 	record.Evidence.Parameters = clone(resolved.Values)

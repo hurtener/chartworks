@@ -5,6 +5,9 @@ import re
 
 # method, suffix, action, SDK method, domain method, request, response, summary, feature
 operations = [
+ ('POST','/{id}/parameters/assist','Write','ParameterizeBlock','Parameterize','ParameterizeRequest','View','Append an AST-verified typed period amendment without publication','observe'),
+ ('POST','/{id}/impact','Read','RecheckBlockImpact','RecheckImpact','ImpactRequest','Impact','Explicitly observe dependency impact without altering definitions','observe'),
+ ('POST','/{id}/impact/apply','Write','ApplyBlockImpact','ApplyImpact','ApplyImpactRequest','View','Create a private draft for an exact current dependency proposal','observe'),
  ('POST','', 'Write','CreateBlock','Create','CreateRequest','View','Create an unvalidated private block draft',''),
  ('GET','', 'Read','ListBlocks','List','ListRequest','Page','List only currently authorized block definitions',''),
  ('POST','/capture','Write','CaptureBlock','CaptureQuery','CaptureRequest','View','Capture a completed authorized query as an unvalidated draft','capture'),
@@ -54,13 +57,13 @@ for method,path,action,sdk,domain,inp,out,summary,feature in operations:
     rows.append(f'{{"{method}","/v1/blocks{path}",reporting.{action},"{sdk[0].lower()+sdk[1:]}","{summary}",{input_type},reflect.TypeFor[reporting.{out}](),"{feature}"}},')
 registry='''
 // Registry advertises only handlers backed by the supplied common services.
-func Registry(validation, capture bool) (*api.Registry,error) {
+func Registry(validation, capture, observe bool) (*api.Registry,error) {
  entries := []struct{method,path string; action reporting.Access; id,summary string; in,out reflect.Type; feature string}{
 '''+ '\n'.join(rows)+'''
  }
  definitions:=make([]api.Definition,0,len(entries))
  for _,entry:=range entries {
-  if entry.feature=="validate" && !validation || entry.feature=="capture" && !capture {continue}
+  if entry.feature=="validate" && !validation || entry.feature=="capture" && !capture || entry.feature=="observe" && !observe {continue}
   response,err:=api.SchemaFor(entry.id+"Response",entry.out,true);if err!=nil{return nil,err}
   d:=api.Definition{Operation:api.Operation{Method:entry.method,Path:entry.path,Action:entry.action.Action(),Effect:"governed_block_metadata"},ID:entry.id,Summary:entry.summary,ResourceLoader:"reporting.Service and PostgreSQL tenant/revision/parent/private eligibility",Audit:"block lifecycle and common read-attempt journal; no SQL in audit",Response:response,Replay:"never",Errors:[]api.ErrorResponse{
    {Status:400,Code:"invalid_request"},{Status:401,Code:"unauthenticated"},{Status:401,Code:"unauthorized"},{Status:403,Code:"forbidden"},{Status:404,Code:"not_found"},{Status:409,Code:"conflict"},{Status:409,Code:"stale_validation"},{Status:413,Code:"limit_exceeded"},{Status:422,Code:"invalid_query"},{Status:429,Code:"busy"},{Status:503,Code:"unavailable"},{Status:504,Code:"cancelled_or_timed_out"}}}
@@ -80,7 +83,7 @@ handler='''
 // addressed-resource and mutation check to the common service, not a router role.
 func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Handler) http.Handler {
  if verifier==nil || next==nil{return http.NotFoundHandler()};if service==nil{return next}
- registry,err:=Registry(service.CanValidate(),service.CanCapture());if err!=nil{return http.HandlerFunc(func(w http.ResponseWriter,_ *http.Request){failure(w,err)})}
+ registry,err:=Registry(service.CanValidate(),service.CanCapture(),service.CanObserve());if err!=nil{return http.HandlerFunc(func(w http.ResponseWriter,_ *http.Request){failure(w,err)})}
  requests:=make(chan struct{},service.Limits().MaxConcurrent*4)
  protected:=verifier.Middleware(auth.HTTP,http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   headers(w)
@@ -91,7 +94,8 @@ func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Hand
   if id!="" { action:=reporting.Access(strings.TrimPrefix(selected.Action,"reporting."));if err=reporting.Require(e,id,action);err!=nil{failure(w,err);return} }
   select{case requests<-struct{}{}:defer func(){<-requests}();default:failure(w,reporting.ErrBusy);return}
   if r.URL.RawPath!="" || r.Header.Get("Content-Encoding")!="" || r.Header.Get("Idempotency-Key")!="" {failure(w,reporting.ErrInvalid);return}
-  if !validQuery(r.URL.Query(),selected.Query){failure(w,reporting.ErrInvalid);return}
+  parsedQuery,queryErr:=url.ParseQuery(r.URL.RawQuery)
+  if queryErr!=nil || !validQuery(parsedQuery,selected.Query){failure(w,reporting.ErrInvalid);return}
   if r.Method=="GET" {body,err:=io.ReadAll(http.MaxBytesReader(w,r.Body,1));if err!=nil || len(body)>0{failure(w,reporting.ErrInvalid);return}}
   var out any
   switch selected.ID {
@@ -176,7 +180,7 @@ import (
 // ErrBlockRequest rejects a malformed coordinate before any network call.
 var ErrBlockRequest=errors.New("chartworks: invalid block coordinate")
 '''
-aliases=['Localized','TopicPin','TemplatePin','DimensionReference','Parameter','Value','Argument','Period','Window','Resolution','BoundValue','Resolved','Narrative','Output','Definition','Reference','State','Evidence','Attestation','Withdrawal','Health','Trust','View','SQLView','CreateRequest','EditRequest','TransitionRequest','RestoreRequest','PublishRequest','CertifyRequest','WithdrawRequest','ValidateRequest','PreviewRequest','ValidationResult','PreviewResult','CaptureRequest','ListRequest','Summary','Page','QuestionRequest','QuestionMatch','Assessment','Event','History','ResolveRequest','ResolutionResult','Provenance']
+aliases=['ParameterizeRequest','Rename','ImpactRequest','Impact','ApplyImpactRequest','Localized','TopicPin','TemplatePin','DimensionReference','Parameter','Value','Argument','Period','Window','Resolution','BoundValue','Resolved','Narrative','Output','Definition','Reference','State','Evidence','Attestation','Withdrawal','Health','Trust','View','SQLView','CreateRequest','EditRequest','TransitionRequest','RestoreRequest','PublishRequest','CertifyRequest','WithdrawRequest','ValidateRequest','PreviewRequest','ValidationResult','PreviewResult','CaptureRequest','ListRequest','Summary','Page','QuestionRequest','QuestionMatch','Assessment','Event','History','ResolveRequest','ResolutionResult','Provenance']
 for name in aliases:
     sdk+=f'// Block{name} mirrors the common governed block wire contract.\ntype Block{name}=reporting.{name}\n'
 for method,path,action,name,domain,inp,out,summary,feature in operations:

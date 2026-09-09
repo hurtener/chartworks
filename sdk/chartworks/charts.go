@@ -3,6 +3,7 @@ package chartworks
 import (
 	"context"
 	"github.com/hurtener/chartworks/internal/chartdata"
+	"github.com/hurtener/chartworks/internal/exec"
 
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/chartservice"
@@ -119,5 +120,14 @@ var ErrChartResult = chartdata.ErrInvalid
 // source partition. Callers may add reviewed metadata before authoring a mapping.
 // Limits come from ChartCatalog; oversize data fails rather than truncating again.
 func ChartDataFromReadResult(ctx context.Context, result ReadResult, limits ChartLimits) (ChartData, error) {
-	return chartdata.FromReadResult(ctx, result, limits)
+	normalized := exec.Result{Rows: result.Rows, Outcome: result.Outcome, Truncation: result.Truncation, Bytes: result.Bytes}
+	normalized.Cost.PlannerUnits = result.Cost.PlannerUnits
+	normalized.Cost.ScannedBytes = result.Cost.ScannedBytes
+	if result.Schema != nil {
+		normalized.Schema = make([]exec.Field, len(result.Schema))
+		for i, field := range result.Schema {
+			normalized.Schema[i] = exec.Field(field)
+		}
+	}
+	return chartdata.FromReadResult(ctx, normalized, limits)
 }
