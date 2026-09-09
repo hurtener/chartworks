@@ -1,0 +1,28 @@
+name: CI source recovery
+on:
+  push:
+    branches: [dev/phase20-ci-recovery-20260909]
+    paths: [.github/workflows/ci-source-recovery.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 67aff22011352ad3ceb8f7f6959f2e3750e7bee7
+          persist-credentials: false
+      - name: Archive unmodified reviewed source
+        run: |
+          test "$(git rev-parse HEAD)" = 67aff22011352ad3ceb8f7f6959f2e3750e7bee7
+          git archive --format=tar.gz HEAD > /tmp/chartworks-source.tar.gz
+          git rev-parse HEAD HEAD^{tree} > /tmp/source-identity.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-source
+          path: |
+            /tmp/chartworks-source.tar.gz
+            /tmp/source-identity.txt
+          retention-days: 2
