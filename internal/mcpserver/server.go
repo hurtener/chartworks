@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -53,7 +52,7 @@ func New(verifier *auth.Verifier, registry *Registry, settings config.MCP, origi
 		seen[origin] = true
 	}
 	s := &Server{verifier: verifier, registry: registry, settings: settings.Clone(), origins: append([]string{}, origins...), slots: make(chan struct{}, settings.MaxConcurrent)}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	protocol := mcp.NewServer(&mcp.Implementation{Name: "chartworks", Version: "1"}, &mcp.ServerOptions{Logger: logger, Capabilities: &mcp.ServerCapabilities{}, GetSessionID: func() string { return "" }})
 	for _, b := range registry.bindings {
 		protocol.AddTool(b.tool(), func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {

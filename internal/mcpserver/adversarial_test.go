@@ -183,7 +183,9 @@ func TestDispatchSafetyAndBoundedOutcomes(t *testing.T) {
 	if _, err = wrong.ListTools(t.Context()); !errors.Is(err, access.ErrUnauthenticated) {
 		t.Fatal(err)
 	}
-	if _, err = client.ListTools(nil); !errors.Is(err, access.ErrUnauthenticated) {
+	// The absent context is deliberately invalid input, not an optional default.
+	var absentContext context.Context
+	if _, err = client.ListTools(absentContext); !errors.Is(err, access.ErrUnauthenticated) {
 		t.Fatal("nil context", err)
 	}
 	noAction, _ := s.Client(func(context.Context) (string, error) {
@@ -458,7 +460,9 @@ func TestConstructionAndUntrustedMapper(t *testing.T) {
 	if _, err := s.Client(nil); err == nil {
 		t.Fatal("nil token provider")
 	}
-	if err := s.admit(nil, func(context.Context) error { return nil }); !errors.Is(err, access.ErrUnauthenticated) {
+	// Test the rejection boundary with an intentionally absent call context.
+	var absentContext context.Context
+	if err := s.admit(absentContext, func(context.Context) error { return nil }); !errors.Is(err, access.ErrUnauthenticated) {
 		t.Fatal(err)
 	}
 	token := f.token(t, "one", "alice", f.cfg.MCPAudience(), "mcp.use", "fixture.read", "cw.dataset.query:allowed")
