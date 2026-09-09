@@ -1,0 +1,23 @@
+name: Client PostgreSQL fixture
+on:
+  push:
+    branches: [dev/phase-22-23-workspace]
+    paths: [.github/workflows/client-postgres.yml]
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Export binaries and libraries from the existing CI fixture image
+        run: |
+          docker pull pgvector/pgvector:0.8.2-pg17
+          docker run --name cw-pg-export --entrypoint sh pgvector/pgvector:0.8.2-pg17 -c 'tar -czf /tmp/fixture.tar.gz /usr/lib/postgresql/17 /usr/share/postgresql/17 /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu'
+          docker cp cw-pg-export:/tmp/fixture.tar.gz /tmp/postgres-fixture.tar.gz
+          docker rm cw-pg-export
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-postgres-fixture
+          path: /tmp/postgres-fixture.tar.gz
+          compression-level: 0
+          retention-days: 3
