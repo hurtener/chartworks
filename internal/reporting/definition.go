@@ -94,21 +94,21 @@ func metadataValid(ms []Localized, limits config.Reporting) bool {
 // SQL bytes are never silently normalized or rewritten before hashing/execution.
 func DefinitionDigest(d Definition) string {
 	return digest(struct {
-		Version string
+		Version    string
 		Definition Definition
 	}{CanonicalizationVersion, d})
 }
 
 func ExecutionDigest(d Definition) string {
 	return digest(struct {
-		Version string
-		Source string
-		Context string
-		Topics []TopicPin
-		Template *TemplatePin
-		SQL string
+		Version    string
+		Source     string
+		Context    string
+		Topics     []TopicPin
+		Template   *TemplatePin
+		SQL        string
 		Parameters []Parameter
-		Schema []exec.Field
+		Schema     []exec.Field
 	}{CanonicalizationVersion, d.Source, d.Context, d.Topics, d.Template, d.SQL, d.Parameters, d.ExpectedSchema})
 }
 

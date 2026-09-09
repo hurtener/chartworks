@@ -13,13 +13,13 @@ import (
 type Access string
 
 const (
-	Read Access = "read"
-	Write Access = "write"
+	Read     Access = "read"
+	Write    Access = "write"
 	Validate Access = "validate"
-	Preview Access = "preview"
-	Publish Access = "publish"
-	Certify Access = "certify"
-	SQLRead Access = "sql.read"
+	Preview  Access = "preview"
+	Publish  Access = "publish"
+	Certify  Access = "certify"
+	SQLRead  Access = "sql.read"
 )
 
 func (a Access) Action() string {
@@ -80,9 +80,9 @@ func RequirePrivate(e identity.Envelope, id, actor string, a Access) error {
 
 // ResourceReference is a server-derived, tenant-composite eligibility row.
 type ResourceReference struct {
-	Kind string `json:"kind"`
+	Kind       string `json:"kind"`
 	Permission string `json:"permission"`
-	ID string `json:"id"`
+	ID         string `json:"id"`
 }
 
 func RequireReferences(e identity.Envelope, a Access, refs []ResourceReference) error {
@@ -104,25 +104,25 @@ func RequireReferences(e identity.Envelope, a Access, refs []ResourceReference) 
 // Mutation is exposed only through Prepared.Checked. Repositories recheck head,
 // revision, evidence and dependency fences in the same transaction as the write.
 type Mutation struct {
-	ID string `json:"id"`
-	Topic string `json:"topic"`
-	Kind string `json:"kind"`
-	ExpectedVersion int64 `json:"expected_version"`
-	TargetRevision int64 `json:"target_revision"`
-	TargetDigest string `json:"target_digest"`
-	Note string `json:"note"`
-	Revision *Revision `json:"revision,omitempty"`
-	References []ResourceReference `json:"references"`
-	Validation *ValidationRecord `json:"validation,omitempty"`
-	Evidence string `json:"evidence,omitempty"`
-	Attestation *Attestation `json:"attestation,omitempty"`
-	Withdrawal *Withdrawal `json:"withdrawal,omitempty"`
-	Health *Health `json:"health,omitempty"`
-	Watch []Dependency `json:"watch"`
-	Topics []TopicPin `json:"topics"`
-	CheckCurrent bool `json:"check_current"`
-	MaxRevisions int `json:"max_revisions"`
-	MaxBlocks int `json:"max_blocks"`
+	ID              string              `json:"id"`
+	Topic           string              `json:"topic"`
+	Kind            string              `json:"kind"`
+	ExpectedVersion int64               `json:"expected_version"`
+	TargetRevision  int64               `json:"target_revision"`
+	TargetDigest    string              `json:"target_digest"`
+	Note            string              `json:"note"`
+	Revision        *Revision           `json:"revision,omitempty"`
+	References      []ResourceReference `json:"references"`
+	Validation      *ValidationRecord   `json:"validation,omitempty"`
+	Evidence        string              `json:"evidence,omitempty"`
+	Attestation     *Attestation        `json:"attestation,omitempty"`
+	Withdrawal      *Withdrawal         `json:"withdrawal,omitempty"`
+	Health          *Health             `json:"health,omitempty"`
+	Watch           []Dependency        `json:"watch"`
+	Topics          []TopicPin          `json:"topics"`
+	CheckCurrent    bool                `json:"check_current"`
+	MaxRevisions    int                 `json:"max_revisions"`
+	MaxBlocks       int                 `json:"max_blocks"`
 }
 
 func (m Mutation) Access() Access {
@@ -145,17 +145,17 @@ func (m Mutation) Access() Access {
 // Prepared cannot be constructed by transport input or a store caller. The
 // encoded snapshot prevents mutations through slice/map aliases after admission.
 type Prepared struct {
-	encoded []byte
+	encoded   []byte
 	authority string
-	deadline time.Time
+	deadline  time.Time
 }
 
 func authority(e identity.Envelope) string {
 	return digest(struct {
-		Tenant string
-		User string
+		Tenant  string
+		User    string
 		Session string
-		Scopes []string
+		Scopes  []string
 	}{e.Tenant(), e.User(), e.Session(), e.Scopes()})
 }
 

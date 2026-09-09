@@ -131,7 +131,10 @@ func scalar(p Parameter, literal string) (exec.Parameter, error) {
 	if len(p.Enum) > 0 && !slices.Contains(p.Enum, literal) {
 		return out, ErrInvalid
 	}
-	for _, bound := range []struct { value string; lower bool }{{p.Min, true}, {p.Max, false}} {
+	for _, bound := range []struct {
+		value string
+		lower bool
+	}{{p.Min, true}, {p.Max, false}} {
 		if bound.value == "" {
 			continue
 		}

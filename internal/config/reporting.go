@@ -8,21 +8,21 @@ import (
 // Reporting bounds definition authoring and explicitly requested validation.
 // These settings never grant identity, source or publication authority.
 type Reporting struct {
-	MaxSQLBytes int `json:"max_sql_bytes"`
-	MaxDefinitionBytes int `json:"max_definition_bytes"`
-	MaxSchemaColumns int `json:"max_schema_columns"`
-	MaxOutputs int `json:"max_outputs"`
-	MaxParameters int `json:"max_parameters"`
-	MaxLocales int `json:"max_locales"`
-	MaxAliases int `json:"max_aliases"`
-	MaxRevisions int `json:"max_revisions"`
-	MaxBlocks int `json:"max_blocks"`
-	MaxConcurrent int `json:"max_concurrent"`
-	PreviewRows int `json:"preview_rows"`
-	PreviewBytes int `json:"preview_bytes"`
-	ValidationTimeout Duration `json:"validation_timeout"`
-	EvidenceTTL Duration `json:"evidence_ttl"`
-	QuestionThreshold float64 `json:"question_threshold"`
+	MaxSQLBytes        int      `json:"max_sql_bytes"`
+	MaxDefinitionBytes int      `json:"max_definition_bytes"`
+	MaxSchemaColumns   int      `json:"max_schema_columns"`
+	MaxOutputs         int      `json:"max_outputs"`
+	MaxParameters      int      `json:"max_parameters"`
+	MaxLocales         int      `json:"max_locales"`
+	MaxAliases         int      `json:"max_aliases"`
+	MaxRevisions       int      `json:"max_revisions"`
+	MaxBlocks          int      `json:"max_blocks"`
+	MaxConcurrent      int      `json:"max_concurrent"`
+	PreviewRows        int      `json:"preview_rows"`
+	PreviewBytes       int      `json:"preview_bytes"`
+	ValidationTimeout  Duration `json:"validation_timeout"`
+	EvidenceTTL        Duration `json:"evidence_ttl"`
+	QuestionThreshold  float64  `json:"question_threshold"`
 }
 
 // DefaultReporting requires neither a model provider nor a live warehouse.
