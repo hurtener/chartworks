@@ -87,3 +87,25 @@ func (r *Registry) resource(uri string) (Binding, json.RawMessage, bool) {
 	}
 	return Binding{}, nil, false
 }
+
+// resourcePatternsOverlap rejects ambiguous dispatch even when templates use
+// different variable names or trade a literal segment for a variable. A URI
+// must identify exactly one action/service, independent of registration order.
+func resourcePatternsOverlap(a, b string) bool {
+	left, ok := resourceParts(a)
+	if !ok {
+		return false
+	}
+	right, ok := resourceParts(b)
+	if !ok || len(left) != len(right) {
+		return false
+	}
+	for i, part := range left {
+		variable := strings.HasPrefix(part, "{") && strings.HasSuffix(part, "}")
+		otherVariable := strings.HasPrefix(right[i], "{") && strings.HasSuffix(right[i], "}")
+		if !variable && !otherVariable && part != right[i] {
+			return false
+		}
+	}
+	return true
+}

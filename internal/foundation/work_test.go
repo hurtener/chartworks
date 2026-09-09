@@ -42,6 +42,7 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 		v.Gateway.Roles[role] = config.Role{Provider: "openai", Model: "synthetic-model", ModelRevision: "test-1", Timeout: config.Duration(time.Second), MaxTokens: 32, Dimensions: 2, MaxBatchItems: 2, MaxBatchBytes: 1024}
 	}
 	v.Features.Gateway = true
+	v.Features.MCP = true
 	v.Jobs.Enabled = true
 	v.Jobs.BrokerURL = "https://issuer.example.test/exchange/execution-authority"
 	// #nosec G101 -- environment-variable references only; synthetic test credentials are resolved separately.
@@ -58,6 +59,9 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	}
 	if definition, _, ok := w.registry.Match(http.MethodPost, "/v1/nlq/routes"); !ok || definition.ID != "routeNLQ" {
 		t.Fatalf("gateway-enabled work omitted NLQ registry entry: %#v", definition)
+	}
+	if definition, _, ok := w.registry.Match(http.MethodPost, "/v1/mcp"); !ok || definition.Surface != auth.MCP || definition.Action != "mcp.use" {
+		t.Fatalf("MCP mount omitted verified audience/action: %#v", definition)
 	}
 	serverDSN := support.Database(t)
 	if definition, _, ok := w.registry.Match(http.MethodPost, "/v1/nlq/plans"); !ok || definition.ID != "planNLQ" {

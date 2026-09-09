@@ -1,6 +1,6 @@
 # Phase 20 — charts-spec
 
-Status: in_progress. Owner: internal/charts. Hard dependencies: 10, 15.
+Status: shipped. Owner: internal/charts. Hard dependencies: 10, 15.
 
 ## Authority and design
 

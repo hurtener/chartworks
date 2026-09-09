@@ -1,6 +1,6 @@
 # Phase 22 — mcp-server
 
-Status: planned. Owner: internal/mcpserver. Hard dependencies: 21.
+Status: in_progress. Owner: internal/mcpserver. Hard dependencies: 21.
 
 ## Authority and design
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/api"
+	"github.com/hurtener/chartworks/internal/auth"
 )
 
 func verifyPhase21RegisteredDenials(t *testing.T) {
@@ -23,6 +24,11 @@ func verifyPhase21RegisteredDenials(t *testing.T) {
 			continue
 		}
 		path := strings.ReplaceAll(d.Path, "{id}", "missing")
+		bareClaims := fixture.claims("registered-tenant", "reader", nil)
+		if d.Surface == auth.MCP {
+			bareClaims["aud"] = fixture.cfg.MCPAudience()
+		}
+		operationBare := fixture.sign(t, bareClaims, nil)
 		seenNLQ = seenNLQ || d.ID == "routeNLQ"
 		seenBYO = seenBYO || d.ID == "submitSQL"
 		seenCharts = seenCharts || d.ID == "chartCatalog"
@@ -30,7 +36,7 @@ func verifyPhase21RegisteredDenials(t *testing.T) {
 		for _, test := range []struct {
 			token  string
 			status int
-		}{{"", 401}, {bare, 403}, {"invalid-bearer", 401}} {
+		}{{"", 401}, {operationBare, 403}, {"invalid-bearer", 401}} {
 			response := callProtected(t, guarded, d.Method, path, test.token, "{not JSON}", nil)
 			if response.Code != test.status {
 				t.Fatalf("registered denial %s %s: %d %s", d.Method, path, response.Code, response.Body.String())
@@ -39,7 +45,11 @@ func verifyPhase21RegisteredDenials(t *testing.T) {
 		if reached.Load() != before {
 			t.Fatal("registered denial reached a domain handler")
 		}
-		good := fixture.sign(t, fixture.claims("registered-tenant", "reader", []string{d.Action}), nil)
+		goodClaims := fixture.claims("registered-tenant", "reader", []string{d.Action})
+		if d.Surface == auth.MCP {
+			goodClaims["aud"] = fixture.cfg.MCPAudience()
+		}
+		good := fixture.sign(t, goodClaims, nil)
 		response := callProtected(t, guarded, d.Method, path, good, "", nil)
 		if response.Code != 204 || reached.Load() != before+1 {
 			t.Fatalf("declared action not consumed: %s %d", d.ID, response.Code)

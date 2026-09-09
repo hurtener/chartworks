@@ -45,13 +45,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) (err error) {
 			err = nil
 		}
 	}()
+	if !s.allowedOrigin(r) || !s.allowedHost(r.Host) {
+		writeError(w, wireError{403, "forbidden_origin"})
+		return nil
+	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		return nil
-	}
-	if !s.allowedOrigin(r) || !s.allowedHost(r.Host) {
-		writeError(w, wireError{403, "forbidden_origin"})
 		return nil
 	}
 	if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery || r.Header.Get("Content-Encoding") != "" || len(r.Header.Values("Mcp-Session-Id")) > 0 || len(r.Header.Values("Last-Event-Id")) > 0 || len(r.Header.Values("Mcp-Protocol-Version")) > 1 {

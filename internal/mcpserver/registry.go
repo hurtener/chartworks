@@ -182,6 +182,11 @@ func NewRegistry(bindings []Binding) (*Registry, error) {
 			if resources[b.resource] || !b.effects.readOnly || !validResourcePattern(b.resource, b.input) {
 				return nil, ErrRegistration
 			}
+			for previous := range resources {
+				if resourcePatternsOverlap(previous, b.resource) {
+					return nil, ErrRegistration
+				}
+			}
 			resources[b.resource] = true
 		}
 	}

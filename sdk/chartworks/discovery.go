@@ -2,6 +2,7 @@ package chartworks
 
 import (
 	"context"
+
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/sources"
 )
