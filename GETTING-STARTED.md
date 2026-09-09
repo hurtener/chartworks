@@ -175,3 +175,52 @@ keeps optional ranking disabled; enabling it also requires the existing Bifrost
 
 This returns provider-neutral drawing input, not PNG/SVG/PDF, a stored chart,
 published block or report. Those product surfaces remain in later owning phases.
+
+## MCP tools on the existing server
+
+Merge [examples/chartworks.mcp.json](examples/chartworks.mcp.json) into your existing
+configuration, retaining the trusted Pengui issuer/JWKS, intended HTTP/MCP audiences,
+metadata connection and installed domain services. Use exact `mcp.allowed_hosts`
+for your deployment; allow browser origins deliberately through
+`server.cors_allowlist`. The default 75-second server write timeout exceeds the
+65-second MCP call limit; existing deployments with shorter timeouts must adjust
+it or lower `mcp.timeout`. No provider is contacted merely by enabling MCP.
+
+```bash
+./bin/chartworks config-check --config /path/to/chartworks.json
+./bin/chartworks mcp --config /path/to/chartworks.json
+# Equivalently: chartworks serve --config ... with features.mcp=true.
+```
+
+The explicit `mcp` command fails when MCP is disabled. Both commands use the same
+listener, health/capability services and authenticated route registry. There is no
+stdio token store or separate public authentication endpoint. The host/client
+supplies a current Pengui bearer carrying `mcp.use` plus the needed domain actions
+and signed resource/session/context restrictions. Use the MCP intended audience,
+not an HTTP-only bearer. Never put that bearer in an MCP URL or resource URI.
+
+A client initializes using a JSON-RPC object such as the following, sent to
+`POST /v1/mcp` with `Content-Type: application/json`,
+`Accept: application/json, text/event-stream`, and its current Authorization bearer:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"analytics-client","version":"1"}}}
+```
+
+Send `notifications/initialized` next (202, no body), then use the negotiated
+`Mcp-Protocol-Version` on subsequent requests. `tools/list` returns the permitted
+installed bindings. A model-free chart catalog call is:
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"chart_catalog","arguments":{}}}
+```
+
+This additionally requires `charts.read` and `cw.tenant.read:<signed-tenant>`.
+There is no GET/SSE stream or transport-session cookie. A successful tool result
+contains a typed `result`; inspect `isError`, error outcome and domain receipts
+before retrying anything that may have persisted or spent budget.
+`sdk/chartworks.Client.MCP` obtains the bearer from its caller-supplied token
+provider on every message. Its typed `ListTopics`, `ListDatasets` and
+`DescribeDataset` methods instead use their ordinary HTTP endpoints/audience.
+See the [MCP contract](docs/contracts/mcp-v1.md) for all eighteen tools, metadata
+resource URIs and exact restrictions. The reporting Apps viewer remains phase 31.

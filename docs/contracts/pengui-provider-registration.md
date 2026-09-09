@@ -53,7 +53,7 @@ Phase 13 newly consumes four opaque action strings through the existing Pengui m
 
 `TestPhase03/AC04` uses a synthetic signed fixture matching the inspected issuer serialization; `TestProviderRegistrationManifest` pins the published manifest/example to the actual registry and decoder. `TestPhase04` exercises the real PostgreSQL consumer through HTTP and the public SDK; `TestCompiledAuthorityLifecycle` builds and starts the actual binary with an ephemeral trusted TLS issuer, runs permitted operations, denies unsigned/foreign calls, and joins SIGTERM shutdown.
 
-These tests establish consumer and serializer conformance. The phase 11/12 manifest parity check pins the published engineering inventory to `sourceapi.EngineeringRegistry(true, true)`; those phases are shipped. The phase 13/14 pipeline and source registrations are accepted at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41` by [qualifying hosted CI run 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766). These tests do not claim a deployed Pengui session, production signing key, customer connection or live model was used. No external platform deployment or new platform API was created. MCP transport/tools remain phase 22; both intended-audience verifier paths use the same verification core. Later reporting and source adapters must supply complete, server-resolved dependency/context metadata and apply selections before their own data access.
+These tests establish consumer and serializer conformance. The phase 11/12 manifest parity check pins the published engineering inventory to `sourceapi.EngineeringRegistry(true, true)`; those phases are shipped. The phase 13/14 pipeline and source registrations are accepted at exact head `6883bc2103b2b870595222e623cd4d79bc01bc41` by [qualifying hosted CI run 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766). These tests do not claim a deployed Pengui session, production signing key, customer connection or live model was used. No external platform deployment or new platform API was created. Phase 22 implements MCP transport/tools through the same intended-audience verification core; see its operator requirements below. Later reporting and source adapters must supply complete, server-resolved dependency/context metadata and apply selections before their own data access.
 
 ## Private topic draft consumer
 
@@ -113,3 +113,33 @@ capability policies; ordinary source access remains separately authorized.
 Optional author-requested ranking uses the existing `visual_rank` role and returns
 usage receipts. Saved builds and rebinding never invoke inference or a source.
 The [v1 contract](chart-specifications-v1.md) defines the exact safety boundary.
+
+## MCP and retained discovery (phase 22)
+
+Operators may now deliberately register the opaque **`mcp.use`** action for the
+Chartworks MCP capability. Each request to `POST /v1/mcp` requires a freshly supplied
+Pengui bearer for `auth.audiences.mcp`, then its ordinary tool action and complete
+resource/session reach. Use distinct HTTP and MCP audiences to prevent unintended
+cross-surface replay. The transport never issues, renews or persists bearer tokens.
+A transport session or enabled tool group cannot confer permission. Existing
+same-audience configuration remains an explicit operator choice, not an alias
+created by the adapter.
+
+The [MCP contract](mcp-v1.md) maps eighteen real tools to the actual HTTP operation
+IDs and signed action spellings. `tools/list` derives schemas/effects/audit metadata
+from those registrations and filters by current actions. Topic and dataset metadata
+resources reuse the same services and require their normal reach; none is a local
+public/anonymous capability or an Apps viewer.
+
+Three cumulative HTTP/SDK operations add no new domain action: `POST /v1/topics/list`
+uses `topics.read`, while `POST /v1/datasets/list` and `/v1/datasets/describe` use
+`sources.read`. Topic list requires signed topic-read, source-read, dataset-query
+and execution-context-use selections, applied to every publication dependency before
+pagination. Dataset operations require source-read, exact execution-context-use
+and selected dataset-query reach. They read retained metadata without connecting
+to the warehouse. Their source/topic manifests and phase-21 denial tests extend
+in the same change.
+
+This is a verified consumer integration, not evidence that a production Pengui
+policy has been provisioned. No Pengui issuer change or separate Chartworks
+credential channel is required for these opaque action strings.

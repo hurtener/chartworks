@@ -47,7 +47,8 @@ Implement `TestPhase20/AC01` through `TestPhase20/AC06` with exhaustive catalog 
 
 Spec selection and rendering are distinct; both are in product scope. D-047/D-049 apply. [D-069](../decisions/2026-09-08-chart-specifications.md)
 records the caller-data boundary, portable output and cumulative HTTP enforcement.
-The implementation is in review, not a merged release or rendered-pixel claim.
+The implementation merged in PR #13 at `2fa80a404518e59db5d6157b50a7521aa9c1512f`.
+This is a specification capability, not a rendered-pixel or full-release claim.
 
 ## Implemented continuation, 2026-09-08
 
@@ -64,5 +65,6 @@ See the [v1 contract](../contracts/chart-specifications-v1.md),
 and [adversarial review](../reviews/phase-20-21-adversarial.md).
 `TestPhase20/AC01`–`AC06` and the real PostgreSQL-to-output integration test are the
 runtime evidence; read-only exact-source CI, not this paragraph, establishes
-readiness. The phase remains `in_progress` pending review/merge. Renderer and full
+readiness. The phase is shipped following PR #13; its current criteria also run
+in cumulative CI. Renderer and full
 release gates remain in their owning later workstreams.

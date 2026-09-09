@@ -1,19 +1,17 @@
 # Chartworks — actionable implementation plan
 
-Current merged baseline: phases **01–19 and 21 are shipped** (20 workstreams,
-124 implemented acceptance criteria). PR #11 delivered semantics/NLQ and the HTTP
-prerequisite; PR #12 delivered BYO mode and merged at
-`99055d4fd5f7a613a9518f3b2b3e4e564301eb5c` after
-[qualifying CI 34284686569](https://github.com/hurtener/chartworks/actions/runs/34284686569).
-This branch implements phase 20's six additional criteria and extends phase 21's
-cumulative registration/security coverage. Phase 20 stays `in_progress` until
-review/merge; the other thirteen workstreams remain planned, including phase 25.
+Current merged baseline: phases **01–21 are shipped** (21 workstreams,
+130 implemented acceptance criteria). PR #13 merged phase 20 and cumulative
+phase-21 HTTP hardening at `2fa80a404518e59db5d6157b50a7521aa9c1512f`.
+Phase 22 now implements six additional criteria, eighteen real MCP bindings and
+three metadata resources, with HTTP/SDK discovery extensions. It remains
+`in_progress` until final verification/review closes in PR #14; twelve workstreams
+(23–34) remain planned, including the phase-25 final release gate.
 
-The [phase-20/21 review](../reviews/phase-20-21-adversarial.md) records the new scope,
-findings and verification boundary. The registry records status; actual named
-tests and exact-source execution evidence establish acceptance, not a green
-documentation check. Historical superseded plans remain under
-`docs/archive/phase0-plans/`.
+The [phase-22 review](../reviews/phase-22-adversarial.md) records findings and actual
+execution evidence. The registry is a status ledger; real named tests and
+exact-source CI establish acceptance, not a green documentation check. Historical
+superseded plans remain under `docs/archive/phase0-plans/`.
 
 ## Fixed decisions
 
@@ -29,7 +27,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–19 and21 are shipped; phase20 is implemented in review, leaving thirteen planned workstreams. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented.
+There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–21 are shipped; phase22 is implemented under verification, leaving twelve planned workstreams. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 

@@ -4,11 +4,21 @@
 
 ## Current status
 
-**Merged baseline: phases 01–19 and the phase-21 HTTP prerequisite are implemented** — 20 of 34 workstreams, with 124 named acceptance criteria. PRs #11 and #12 are merged. The latest baseline qualification is [CI 34284686569](https://github.com/hurtener/chartworks/actions/runs/34284686569), covering the phase-19 head whose tree is preserved by merge `99055d4fd5f7a613a9518f3b2b3e4e564301eb5c`.
+**Merged baseline: phases 01–21 are implemented** — 21 of 34 workstreams and
+130 named acceptance criteria. PR #13 merged the phase-20 output specifications
+and cumulative phase-21 HTTP hardening at
+`2fa80a404518e59db5d6157b50a7521aa9c1512f`.
 
-**This change implements phase 20 and extends phase 21 for review.** It adds fourteen provider-neutral output kinds, exact-value labels, saved bindings, optional bounded authoring rank assistance, five protected HTTP/Go SDK operations, and executable registration guards. Phase 20 remains `in_progress` until review and required verification close; implementation is not a release claim. See the [current review and verification record](docs/reviews/phase-20-21-adversarial.md).
+**Phase 22 is implemented and under final verification in PR #14.** It adds a
+bounded Pengui-authenticated MCP transport, eighteen real tools and three metadata
+resource bindings, plus cumulative HTTP/Go SDK discovery. Its six named criteria
+exercise the eleven established core operations through actual services; the
+[adversarial and verification record](docs/reviews/phase-22-adversarial.md) separates
+local checks from full CI evidence. No release or deployment is implied.
 
-With phase 20 under review, **13 workstreams remain planned**: 22–34, including the phase-25 final release gate. There are 224 acceptance criteria across the full plan. Recorded cloud and model fixtures do not constitute live-provider or production-cutover qualification.
+**Twelve workstreams remain planned: 23–34**, including the phase-25 final release
+gate. There are 224 acceptance criteria across the full plan. Recorded cloud and
+model fixtures do not constitute live-provider or production-cutover qualification.
 
 | Capability | Implemented boundary |
 |---|---|
@@ -18,14 +28,15 @@ With phase 20 under review, **13 workstreams remain planned**: 22–34, includin
 | Uploads, profiling and engineering | CSV/XLSX/Parquet managed workspace ingestion, deterministic profiles and drift evidence, reviewed SQL-only managed pipelines and staged external effects. |
 | Semantics and natural-language queries | Versioned private topic drafts and publication, canonical meaning, context-local facets, rules/clarification, compact authorized routing, plan/run/refine/templates, bounded correction and reviewed learning. |
 | External-agent SQL | Opaque expiring context references, exact semantic/source pins, reauthorization, bounded idempotent submission steps and content-free receipts. Context access alone cannot execute SQL. |
-| Output specifications — this change | All fourteen kinds, deterministic selection and explicit bindings, portable metadata/format hints, exact labels/totals, saved-schema validation and review-only rebinding. No warehouse requery or chart-state store. |
-| HTTP — cumulative phase 21 | Implemented operations register schemas, action/resource and audit/effect metadata; OpenAPI comes from that registry. A runtime guard rejects unregistered paths before handler dispatch. |
+| Output specifications | All fourteen kinds, deterministic selection and explicit bindings, portable metadata/format hints, exact labels/totals, saved-schema validation and review-only rebinding. No warehouse requery or chart-state store. |
+| HTTP — cumulative phase 21 | Implemented operations register schemas, action/resource and audit/effect metadata; OpenAPI comes from that registry. A runtime guard rejects unregistered paths before handler dispatch and selects the declared HTTP/MCP intended audience. |
+| MCP — phase 22 | Eighteen installed-service tools, the eleven core contracts, three pure metadata resource bindings, fresh per-request authority, closed schemas, bounded work and explicit effects. No Apps viewer or local credentials. |
 
 ## Ownership and security
 
 **Pengui is the sole issuer, authentication and access-policy owner.** Chartworks verifies current Pengui JWTs and enforces their signed scopes. It does not create users, roles, API keys, login/OAuth flows, local token renewal or embed credentials. Warehouse secrets are a separate source concern. See the [authority contract](docs/contracts/pengui-authority.md) and [operator registration guide](docs/contracts/pengui-provider-registration.md).
 
-Harbor/Pengui MCP Apps support is established by the owner. The later Chartworks MCP tools, retained-artifact viewer and exports are implementation work, not a reason to reopen host compatibility. Iframe credentials belong in the Pengui/client BFF.
+Harbor/Pengui MCP Apps support is established by the owner. Chartworks MCP tools use that established ecosystem; the retained-artifact viewer and exports remain later implementation work, not a reason to reopen host compatibility. Iframe credentials belong in the Pengui/client BFF.
 
 **Production inference uses the embedded Bifrost Go SDK and remote providers only.** There is no local learned model, weight download or alternate direct model client. Optional inference is explicit and budgeted. Retained metadata, deterministic output building and other model-free operations remain useful with providers disabled. See the [gateway contract](docs/contracts/model-gateway.md).
 
@@ -43,6 +54,29 @@ make release-check   # Final gate: every phase shipped, all criteria pass, no sk
 ```
 
 Real database, native-runner and source fixtures are required for their tests. Missing dependencies are failures, not evidence of passing integration. CI tests committed source without repair scripts. Planning checks and the status registry are bookkeeping, not runtime proof.
+
+## MCP tools and metadata resources
+
+Enable `features.mcp` to mount **POST `/v1/mcp`** on the existing server. The
+[configuration excerpt](examples/chartworks.mcp.json) and [MCP contract](docs/contracts/mcp-v1.md)
+define exact hosts/origins, request/response/concurrency limits and operator setup.
+Each request requires a fresh Pengui bearer for the MCP intended audience and
+`mcp.use`; each operation then enforces its ordinary domain action and exact reach.
+The transport is stateless and returns JSON, with no bearer persistence or separate
+credential channel. HTTP and in-process clients use the same guarded dispatch.
+
+The eleven core tools list/describe topics and datasets; preflight/plan/run/refine
+questions; obtain context/submit SQL; and submit feedback. Source listing, retained
+context lookup and five chart-specification tools bring the installed inventory to
+eighteen. Paid or persisted calls are annotated accordingly: preflight is **not** a
+pure metadata read. Disabled or unbuilt services are absent, never success stubs.
+
+The chart catalog, published topic and registered dataset metadata can also be read
+as three resource bindings through the same services, without source/model calls.
+These are JSON metadata, not rendered Apps or retained reporting artifacts.
+Phase 21 and the typed Go SDK additionally expose `POST /v1/topics/list`,
+`POST /v1/datasets/list` and `POST /v1/datasets/describe`. Their database queries apply
+all signed dependency/context restrictions before pagination, not after broad reads.
 
 ## Portable output specifications
 
@@ -78,6 +112,6 @@ Durable operations obtain fresh Pengui authority through the [execution-authorit
 
 The [actionable master plan](docs/plans/README.md) owns sequencing, dependencies and status. [RFC-001](RFC-001-Chartworks.md), [RFC-002](RFC-002-Governed-Reporting.md), [COMMON.md](docs/plans/COMMON.md) and [AGENTS.md](AGENTS.md) define implementation obligations. Historical plans under `docs/archive/` are not current instructions.
 
-Still planned: the full MCP/CLI surface, evaluation and release gates, reviewed L2 engineering, governed blocks, frozen reporting runs and retained artifacts, reports/dashboards, reporting schedules, Apps viewer, static rendering/BFF embeds/exports, guided onboarding and migration/cutover. The completed queue is not a claim that reporting schedules already exist; output specs are not a claim that reports or renderers are shipped.
+Still planned: full SDK/CLI parity, evaluation and release gates, reviewed L2 engineering, governed blocks, frozen reporting runs and retained artifacts, reports/dashboards, reporting schedules, Apps viewer, static rendering/BFF embeds/exports, guided onboarding and migration/cutover. The completed queue is not a claim that reporting schedules already exist; output specs are not a claim that reports or renderers are shipped.
 
-Useful evidence includes the [warehouse-driver matrix](docs/contracts/warehouse-drivers.md), [managed-pipeline contract](docs/contracts/managed-pipelines.md), [read-execution contract](docs/contracts/read-execution.md), [semantic/NLQ delivery record](docs/reviews/phase-15-18-current-evidence.md) and [phase-20/21 adversarial review](docs/reviews/phase-20-21-adversarial.md). No merge, deployment or full replacement qualification is implied by this branch.
+Useful evidence includes the [warehouse-driver matrix](docs/contracts/warehouse-drivers.md), [managed-pipeline contract](docs/contracts/managed-pipelines.md), [read-execution contract](docs/contracts/read-execution.md), [semantic/NLQ delivery record](docs/reviews/phase-15-18-current-evidence.md) and [phase-20/21 adversarial review](docs/reviews/phase-20-21-adversarial.md). Phase 22 adds its own [MCP contract](docs/contracts/mcp-v1.md) and [review record](docs/reviews/phase-22-adversarial.md); no deployment or full replacement qualification is implied.

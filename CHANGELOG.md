@@ -28,3 +28,19 @@ The earlier commits contain the governed-reporting analysis and actionable 34-ph
 - Content-free explicit attempt journal, cancellation intent and observed reconciliation; no hidden retries or result cache.
 - Source-revision fence through bounded execution/cleanup; API/SDK parity and real adversarial regressions.
 - Forward migration 006; applied migrations 001–005 and existing phase-09 criteria preserved.
+
+## Phase 22 MCP and cumulative phase 21 discovery
+
+- Optional stateless Streamable HTTP mount and authenticated in-process client,
+  eighteen actual service bindings including all eleven established core operations,
+  and three pure metadata resources through the same domain core.
+- Fresh MCP-audience Pengui verification, registered tool actions/resources, bounded
+  concurrent admission, closed schemas, typed safe errors and honest paid/persisted
+  annotations. No local issuer, credential channel, analytical transport state or
+  reporting viewer placeholder.
+- HTTP/OpenAPI/public Go SDK topic and dataset discovery with signed dependency
+  restrictions applied before database pagination. Existing NLQ preflight effects
+  correctly include routing cost and persisted session evidence.
+- Six phase-22 criteria, cumulative phase-21 guards, ordinary MCP functional tests,
+  malformed-input/expiry/cancellation/panic/isolation regressions and protocol fuzzing.
+  Final evidence is recorded in docs/reviews/phase-22-adversarial.md.
