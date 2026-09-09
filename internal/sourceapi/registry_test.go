@@ -32,7 +32,7 @@ func TestSourceRegistrySchemasAndManifest(t *testing.T) {
 	for _, settings := range []struct {
 		warehouse, validation bool
 		count                 int
-	}{{false, false, 2}, {false, true, 2}, {true, false, 6}, {true, true, 7}} {
+	}{{false, false, 4}, {false, true, 4}, {true, false, 8}, {true, true, 9}} {
 		registry, err := SourceRegistry(settings.warehouse, settings.validation)
 		if err != nil {
 			t.Fatal(err)
@@ -56,10 +56,12 @@ func TestSourceRegistrySchemasAndManifest(t *testing.T) {
 		}
 	}
 	samples := map[string]string{
-		"createSource": `{"id":"source1","name":"Synthetic source","connection":"approved_alias"}`,
-		"testSource":   `{}`,
-		"rotateSource": `{"expected_revision":1}`,
-		"validateRead": `{"context":"source1:v1","sql":"SELECT 1","parameters":[]}`,
+		"listDatasets":    `{"source":"source1","context":"source1:v1","after":"","limit":32}`,
+		"describeDataset": `{"source":"source1","context":"source1:v1","dataset":"sales"}`,
+		"createSource":    `{"id":"source1","name":"Synthetic source","connection":"approved_alias"}`,
+		"testSource":      `{}`,
+		"rotateSource":    `{"expected_revision":1}`,
+		"validateRead":    `{"context":"source1:v1","sql":"SELECT 1","parameters":[]}`,
 	}
 	for _, d := range r.Definitions() {
 		if d.Request == nil {

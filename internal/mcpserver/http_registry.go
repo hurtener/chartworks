@@ -37,7 +37,7 @@ func HTTPRegistry(settings config.MCP) (*api.Registry, error) {
 		return nil, ErrRegistration
 	}
 	return api.New([]api.Definition{{Operation: api.Operation{Method: "POST", Path: Path, Action: "mcp.use", Effect: "delegated_registered_tool_or_resource"}, Surface: auth.MCP, ID: "mcpTransport", Summary: "Call the bounded stateless Pengui-authenticated MCP transport", ResourceLoader: "mcpserver dispatcher followed by registered domain service", Audit: "registered domain audit; protocol metadata reads have no mutation audit", MaxBodyBytes: settings.MaxRequestBytes, Request: requestSchema, Response: responseSchema, EmptySuccess: []int{202}, Headers: []api.Parameter{
-		{Name: "Accept", In: "header", Required: true, Type: "string", Min: 1, Max: 1024, Description: "Must accept application/json and text/event-stream; responses use JSON"},
+		{Name: "Accept", In: "header", Required: true, Type: "string", Min: 1, Max: maxAcceptBytes, Description: "Must accept application/json and text/event-stream; responses use JSON"},
 		{Name: "Mcp-Protocol-Version", In: "header", Type: "string", Min: 10, Max: 10, Description: "Negotiated SDK protocol version; omitted versions use 2025-03-26"},
 	}, Errors: []api.ErrorResponse{{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthenticated"}, {Status: 401, Code: "unauthorized"}, {Status: 403, Code: "forbidden"}, {Status: 403, Code: "forbidden_origin"}, {Status: 404, Code: "not_found"}, {Status: 413, Code: "limit_exceeded"}, {Status: 415, Code: "unsupported_media_type"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}}})
 }

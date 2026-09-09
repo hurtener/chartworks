@@ -49,6 +49,15 @@ func TestTransportRejectsAmbiguityBeforeDomain(t *testing.T) {
 		{"bad port", readRPC, func(r *http.Request) { r.Host = "localhost:0" }, 403},
 		{"cookie only", readRPC, func(r *http.Request) { r.Header.Del("Authorization"); r.Header.Set("Cookie", "token="+token) }, 401},
 		{"dual bearer", readRPC, func(r *http.Request) { r.Header.Add("Authorization", "Bearer "+token) }, 401},
+		{"empty encoding", readRPC, func(r *http.Request) { r.Header.Set("Content-Encoding", "") }, 400},
+		{"duplicate encoding", readRPC, func(r *http.Request) { r.Header.Set("Content-Encoding", ""); r.Header.Add("Content-Encoding", "gzip") }, 400},
+		{"oversized accept", readRPC, func(r *http.Request) {
+			r.Header.Set("Accept", "application/json; x="+strings.Repeat("x", 1024)+", text/event-stream")
+		}, 400},
+		{"aggregate accept size", readRPC, func(r *http.Request) {
+			r.Header.Set("Accept", "application/json; x="+strings.Repeat("x", 600))
+			r.Header.Add("Accept", "text/event-stream; x="+strings.Repeat("x", 600))
+		}, 400},
 		{"compression", readRPC, func(r *http.Request) { r.Header.Set("Content-Encoding", "gzip") }, 400},
 		{"session", readRPC, func(r *http.Request) { r.Header.Set("Mcp-Session-Id", "invented") }, 400},
 		{"resume", readRPC, func(r *http.Request) { r.Header.Set("Last-Event-Id", "foreign") }, 400},

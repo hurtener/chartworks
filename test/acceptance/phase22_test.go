@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/api"
-	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/chartapi"
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/chartservice"

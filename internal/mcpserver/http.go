@@ -54,7 +54,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) (err error) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return nil
 	}
-	if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery || r.Header.Get("Content-Encoding") != "" || len(r.Header.Values("Mcp-Session-Id")) > 0 || len(r.Header.Values("Last-Event-Id")) > 0 || len(r.Header.Values("Mcp-Protocol-Version")) > 1 {
+	if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery || len(r.Header.Values("Content-Encoding")) > 0 || len(r.Header.Values("Mcp-Session-Id")) > 0 || len(r.Header.Values("Last-Event-Id")) > 0 || len(r.Header.Values("Mcp-Protocol-Version")) > 1 {
 		writeError(w, wireError{400, "invalid_request"})
 		return nil
 	}
@@ -127,7 +127,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) (err error) {
 	return nil
 }
 
+const maxAcceptBytes = 1024
+
 func accepted(values []string) bool {
+	size := 0
+	for _, value := range values {
+		size += len(value)
+		if size > maxAcceptBytes {
+			return false
+		}
+	}
 	jsonOK, streamOK := false, false
 	for _, value := range values {
 		for _, part := range strings.Split(value, ",") {

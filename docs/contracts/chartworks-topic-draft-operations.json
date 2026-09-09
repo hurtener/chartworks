@@ -184,5 +184,11 @@
     "path": "/v1/topics/{id}/rules/retire",
     "action": "topics.publish",
     "effect": "atomic_rule_retirement"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/list",
+    "action": "topics.read",
+    "effect": "retained_metadata_read"
   }
 ]

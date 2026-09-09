@@ -29,7 +29,7 @@ func operation(method, path, action, effect string) Operation {
 	return Operation{Method: method, Path: path, Action: action, Effect: effect}
 }
 
-// SourceRegistry is the sole inventory for the seven existing source routes.
+// SourceRegistry is the sole inventory for the nine source and dataset routes.
 // The router, legacy manifest projection, and OpenAPI use these same definitions.
 // Resource loader/audit labels identify existing domain/store behavior; they do
 // not move authorization or transaction boundaries into this metadata package.
