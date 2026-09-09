@@ -15,7 +15,7 @@ concurrency:
 jobs:
   clients:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       CGO_ENABLED: 1
       CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
@@ -59,7 +59,26 @@ jobs:
           echo 'CGO_LDFLAGS=-L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
           git rev-parse HEAD | tee /tmp/clients-source-sha.txt
       - name: Race-enabled client package tests
-        run: go test -race -count=1 -timeout=5m -coverprofile=/tmp/clients-coverage.out ./sdk/chartworks ./internal/clientcli ./internal/foundation
+        run: go test -race -count=1 -timeout=5m -coverprofile=/tmp/clients-coverage.out ./sdk/chartworks ./internal/clientcli ./internal/foundation ./internal/api ./internal/config ./internal/httpmount ./internal/gateway ./internal/mcpserver
+      - name: All eighteen concrete HTTP MCP and client acceptance criteria
+        run: |
+          set -o pipefail
+          go test -race -count=1 -json -timeout=15m ./test/acceptance -run '^TestPhase(21|22|23)$' | tee /tmp/clients-acceptance.json
+          python3 - <<'PYVALIDATE'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from run_phase_acceptance import validate_events
+          lines = Path('/tmp/clients-acceptance.json').read_text().splitlines()
+          for phase in ('21', '22', '23'):
+              for criterion in validate_events(lines, phase, 6, 0):
+                  print('OK:', criterion)
+          PYVALIDATE
+      - name: Bounded client input and mount mutation campaigns
+        run: |
+          go test -race ./sdk/chartworks -run '^$' -fuzz '^FuzzOperationCatalog$' -fuzztime=128x -timeout=3m -parallel=2
+          go test -race ./internal/clientcli -run '^$' -fuzz '^FuzzCLIConfiguration$' -fuzztime=128x -timeout=3m -parallel=2
+          go test -race ./internal/httpmount -run '^$' -fuzz '^FuzzCanonicalMount$' -fuzztime=128x -timeout=3m -parallel=2
       - name: Verify tests did not modify delivered source
         run: |
           git diff --exit-code
@@ -72,4 +91,5 @@ jobs:
           path: |
             /tmp/clients-source-sha.txt
             /tmp/clients-coverage.out
+            /tmp/clients-acceptance.json
           retention-days: 14
