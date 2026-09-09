@@ -1,0 +1,42 @@
+name: Phase 27 workspace recovery
+on:
+  push:
+    branches: [feat/phase-27-reporting-blocks]
+    paths: [.github/workflows/phase-27-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive exact source without credentials
+        run: |
+          mkdir -p /tmp/phase27-workspace
+          git rev-parse HEAD > /tmp/phase27-workspace/source-sha.txt
+          git archive HEAD | gzip -1 > /tmp/phase27-workspace/source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase27-source
+          path: /tmp/phase27-workspace
+          retention-days: 3
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Package public build dependencies for offline local verification
+        run: |
+          go mod vendor
+          tar -czf /tmp/phase27-vendor.tar.gz vendor
+          tar -czf /tmp/phase27-toolchain.tar.gz -C "$(go env GOROOT)" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase27-offline-build
+          path: |
+            /tmp/phase27-vendor.tar.gz
+            /tmp/phase27-toolchain.tar.gz
+          compression-level: 0
+          retention-days: 3
