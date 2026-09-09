@@ -1,0 +1,42 @@
+name: Phase 22 isolated workspace
+
+on:
+  push:
+    branches: [feat/phase-22-mcp-server]
+    paths: [.github/workflows/phase-22-workspace.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive exact checked-out source without credentials
+        run: |
+          git rev-parse HEAD > /tmp/source-sha.txt
+          git archive --format=tar HEAD | gzip > /tmp/chartworks-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-22-source
+          path: |
+            /tmp/chartworks-source.tar.gz
+            /tmp/source-sha.txt
+          retention-days: 3
+  toolchain:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Archive public pinned compiler for offline checks
+        run: tar -C "$(go env GOROOT)" -czf /tmp/go-1.26.4-linux-amd64.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-22-toolchain
+          path: /tmp/go-1.26.4-linux-amd64.tar.gz
+          retention-days: 3
