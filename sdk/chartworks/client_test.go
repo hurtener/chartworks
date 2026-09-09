@@ -12,7 +12,7 @@ import (
 
 func TestClientSafety(t *testing.T) {
 	provider := func(context.Context) (string, error) { return "synthetic-token", nil }
-	for _, base := range []string{"", "://bad", "https://u:p@example.com", "https://example.com/path", "https://example.com?secret=x", "http://example.com", "https://example.com#fragment"} {
+	for _, base := range []string{"", "://bad", "https://u:p@example.com", "https://example.com/path/../escape", "https://example.com?secret=x", "http://example.com", "https://example.com#fragment"} {
 		if _, err := New(base, nil, provider); err == nil {
 			t.Fatal("unsafe client URL")
 		}
