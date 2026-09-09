@@ -1,6 +1,6 @@
 # Running the current Chartworks build
 
-This build includes shipped phases 01–12: configuration, identity enforcement, remote Bifrost inference, durable work, PostgreSQL sources, validated reads, managed uploads and profiling. It does **not** implement NLQ, reporting, the full MCP server or rendering yet. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
+This build preserves shipped phases 01–21 and includes the phase-22 MCP implementation under final CI qualification in PR #14. It provides configuration, identity enforcement, remote Bifrost inference, durable work, governed sources/reads/uploads/profiles/pipelines/topics, NLQ/BYO, output specifications and HTTP/SDK discovery. Reporting and rendering remain unimplemented. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ curl --fail http://127.0.0.1:8080/capabilities
 
 Liveness is independent of dependency health. Readiness reports `starting`, `ready`, `unavailable` or `stale` for PostgreSQL and trusted verification-key material. The real JWT verifier and readiness use the same bounded trusted public-key cache; a readiness result does not authorize an individual request. Failed key refresh never extends key freshness. The default configuration does not enable inference or workers, and readiness never makes a paid model call.
 
-Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors, release idle HTTP connections and close the database pool. `chartworks mcp` currently exits 3 with an explicit unavailable message; it does not start a fake MCP server. Operational `/v1/*` and `/metrics` requests now require a valid Pengui bearer plus their separately registered action and addressed reach. Anonymous requests return 401; a valid caller receives a nondisclosing 404 for unregistered/inaccessible resources. Metrics also needs `ops.metrics` and returns 404 when disabled. Use the operation manifest below; there is no local login or default administrator token.
+Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors, release idle HTTP connections and close the database pool. `chartworks mcp --config PATH` requires `features.mcp=true` and starts the same protected shared-port service as `serve`; when MCP is disabled, it exits 2 without starting a listener. See the MCP configuration section below for real service groups and the per-request Pengui authority requirements. Operational `/v1/*` and `/metrics` requests now require a valid Pengui bearer plus their separately registered action and addressed reach. Anonymous requests return 401; a valid caller receives a nondisclosing 404 for unregistered/inaccessible resources. Metrics also needs `ops.metrics` and returns 404 when disabled. Use the operation manifest below; there is no local login or default administrator token.
 
 ## Configuration contract
 
@@ -63,7 +63,7 @@ make preflight-full
 
 Real-store tests create unique `cw_test_*` databases on the explicit test server and remove them afterward. Missing PostgreSQL/client tools, a missing acceptance child, or a skipped runtime test is a failure, not a pass. Coverage instruments production packages across the full test suite, including integration callers; thresholds remain 85% for store, 80% for other internal code and 70% for CLI.
 
-The other 22 phases remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [phase 11/12 evidence ledger](docs/reviews/phase-11-12-current-evidence.md).
+Phase 22 remains under final qualification; twelve workstreams (23–34) remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [current phase ledger](docs/plans/README.md) and [phase-22 review](docs/reviews/phase-22-adversarial.md).
 
 ## Backup, restore and rollback
 
