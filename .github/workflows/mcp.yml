@@ -1,0 +1,87 @@
+name: MCP
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  mcp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      # Synthetic disposable metadata and read-source fixture only.
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Record exact source for independent reproduction
+        run: |
+          git rev-parse HEAD > /tmp/mcp-source-sha.txt
+          git archive --format=tar.gz HEAD > /tmp/mcp-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-source
+          path: |
+            /tmp/mcp-source-sha.txt
+            /tmp/mcp-source.tar.gz
+          retention-days: 14
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Build the pinned native validation and read dependencies
+        run: bash scripts/build-bruin.sh
+      - name: Race-enabled MCP boundary and composition tests
+        run: go test -race -count=1 -timeout=5m -coverprofile=/tmp/mcp-package-coverage.out ./internal/mcpserver ./internal/config ./internal/api ./internal/chartapi ./internal/foundation ./sdk/chartworks
+      - name: Real HTTP and MCP acceptance, all twelve named criteria
+        run: |
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+          go test -race -count=1 -json -timeout=10m ./test/acceptance -run '^TestPhase(21|22)$' | tee /tmp/mcp-acceptance.json
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from run_phase_acceptance import validate_events
+          lines = Path('/tmp/mcp-acceptance.json').read_text().splitlines()
+          for phase in ('21', '22'):
+              for test in validate_events(lines, phase, 6, 0):
+                  print('OK:', test)
+          PY
+      - name: Bounded adversarial protocol fuzz campaign
+        run: go test -race ./internal/mcpserver -run '^$' -fuzz '^FuzzMCPBoundaries$' -fuzztime=128x -timeout=3m -parallel=2
+      - name: Read-only verification and no transfer workflow in delivered source
+        run: |
+          test ! -f .github/workflows/phase-22-workspace.yml
+          test ! -f .github/workflows/phase-22-dependencies.yml
+          test ! -f .github/workflows/phase-22-integrate.yml
+          test ! -f .github/workflows/phase-22-continue.yml
+          test -z "$(find .github -name 'phase-22-transfer-*' -print)"
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+      - name: Retain actual acceptance and race instrumentation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-acceptance
+          path: |
+            /tmp/mcp-acceptance.json
+            /tmp/mcp-package-coverage.out
+          retention-days: 14

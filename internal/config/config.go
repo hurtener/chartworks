@@ -134,6 +134,7 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
+	MCP          MCP            `json:"mcp"`
 	Charts       Charts         `json:"charts"`
 	QueryBundles QueryBundles   `json:"query_bundles"`
 	Pipelines    Pipelines      `json:"pipelines"`
@@ -167,6 +168,7 @@ func (c Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.values) }
 // Values returns a deep copy, so consumers cannot race by mutating the live snapshot.
 func (c Config) Values() Values {
 	v := c.values
+	v.MCP = c.values.MCP.Clone()
 	v.Server.CORSAllowlist = append([]string{}, c.values.Server.CORSAllowlist...)
 	v.Sources = c.values.Sources.Clone()
 	v.Uploads = c.values.Uploads.Clone()
@@ -187,6 +189,7 @@ func (c Config) StoreDSN() string { return c.dsn }
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
 	v := Values{
+		MCP:          DefaultMCP(),
 		Charts:       DefaultCharts(),
 		Pipelines:    DefaultPipelines(),
 		Uploads:      DefaultUploads(),
@@ -385,8 +388,14 @@ func validate(v Values) error {
 	if v.Telemetry.OTel {
 		return invalid("telemetry.otel", "export not implemented; disable explicitly")
 	}
-	if v.Features.MCP || v.Features.Reporting || v.Features.Renderer {
+	if v.Features.Reporting || v.Features.Renderer {
 		return invalid("features", "requested capability is not implemented in phases 01-02")
+	}
+	if err := ValidateMCP(v.MCP); err != nil {
+		return err
+	}
+	if v.Features.MCP && v.MCP.Timeout >= v.Server.WriteTimeout {
+		return invalid("mcp.timeout", "must be shorter than server.write_timeout")
 	}
 	if err := ValidateJobs(v.Jobs, v.Auth); err != nil {
 		return err

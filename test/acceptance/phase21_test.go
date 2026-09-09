@@ -16,9 +16,11 @@ import (
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/chartapi"
+	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/foundation"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/sourceapi"
@@ -150,7 +152,11 @@ func phase21Registry(t *testing.T) *api.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	composed, err := api.Compose(public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart)
+	transport, err := mcpserver.HTTPRegistry(config.DefaultMCP())
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := api.Compose(public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart, transport)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,10 +411,10 @@ func TestPhase21(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = response.Body.Close()
-		if !capabilities.BusinessAPI || !capabilities.Authentication || capabilities.Phase != "01-21-http" {
+		if !capabilities.BusinessAPI || !capabilities.Authentication || capabilities.Phase != "01-22-mcp" {
 			t.Fatalf("capabilities=%+v", capabilities)
 		}
-		if !contains(capabilities.Implemented, "http_api") || !contains(capabilities.Implemented, "openapi") || !contains(capabilities.Implemented, "output_specifications") || contains(capabilities.Implemented, "reporting") {
+		if !contains(capabilities.Implemented, "http_api") || !contains(capabilities.Implemented, "openapi") || !contains(capabilities.Implemented, "output_specifications") || !contains(capabilities.Implemented, "mcp") || contains(capabilities.Implemented, "reporting") {
 			t.Fatalf("capability projection=%v", capabilities.Implemented)
 		}
 		request, err := http.NewRequest(http.MethodHead, server.URL+"/openapi.json", nil)

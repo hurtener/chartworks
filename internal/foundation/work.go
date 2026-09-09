@@ -165,6 +165,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 	var nlqRegistry *api.Registry
 	var nlqExecutionRegistry *api.Registry
 	var byoRegistry *api.Registry
+	var byo *nlqbyo.Service
 	var routing *nlqroute.Service
 	if w.engine != nil {
 		var routeErr error
@@ -195,7 +196,8 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		}
 	}
 	if validator != nil && executor != nil {
-		byo, byoErr := nlqbyo.New(routing, published, rules, w.sourceService, validator, executor, db, v.QueryBundles, v.Exec, nil)
+		var byoErr error
+		byo, byoErr = nlqbyo.New(routing, published, rules, w.sourceService, validator, executor, db, v.QueryBundles, v.Exec, nil)
 		if byoErr != nil {
 			w.close()
 			return nil, byoErr
@@ -262,6 +264,11 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler)
 	if err != nil {
 		w.close()
 		return nil, err

@@ -1,6 +1,6 @@
 # Implemented configuration and authority
 
-Source of truth: `internal/config.Values`, `Defaults()` and validation. JSON only; unknown, retired, duplicate, null and trailing documents are rejected. Document size is at most 1 MiB and nesting at most 32 levels. Errors identify a safe known field/container and fixed rule, never a rejected value or secret environment contents. Operational, source, validated-read, upload and profiling APIs require verified Pengui authority; NLQ, reporting and full MCP transports remain in their owning phases.
+Source of truth: `internal/config.Values`, `Defaults()` and validation. JSON only; unknown, retired, duplicate, null and trailing documents are rejected. Document size is at most 1 MiB and nesting at most 32 levels. Errors identify a safe known field/container and fixed rule, never a rejected value or secret environment contents. Operational, source, validated-read, upload and profiling APIs require verified Pengui authority; NLQ and optional MCP use the same verification core; reporting remains in its owning later phases.
 
 Use `chartworks config-check --defaults` for a machine-readable defaults snapshot. Required blanks deliberately do not form a runnable development-authority configuration. The example `examples/chartworks.foundation.json` supplies references for the required deployment-specific values.
 
@@ -13,7 +13,7 @@ Use `chartworks config-check --defaults` for a machine-readable defaults snapsho
 | `server.cors_allowlist` | string array | `[]` | Empty means same-origin only. Entries must be unique absolute `http`/`https` origins; no credentials or wildcard is accepted. |
 | `server.read_header_timeout` | duration string | `5s` | Positive, at most 1 minute. |
 | `server.read_timeout` | duration string | `15s` | Positive, at most 5 minutes. |
-| `server.write_timeout` | duration string | `30s` | Positive, at most 5 minutes. |
+| `server.write_timeout` | duration string | `1m15s` | Positive, at most 5 minutes. |
 | `server.idle_timeout` | duration string | `1m0s` | Positive, at most 10 minutes. |
 | `server.shutdown_grace` | duration string | `10s` | Positive, at most 1 minute; timeout forces HTTP closure. |
 | `server.max_body_bytes` | integer bytes | 10 MiB | 1 byte–100 MiB. Health endpoints accept no body; oversized known bodies receive 413. |
@@ -55,11 +55,11 @@ The real verifier and readiness share one bounded public-key cache. It rejects d
 | `telemetry.metrics` | boolean | true | Enables the internal counter/gauge exporter. False disables updates/export while retaining bounded lifecycle logs. `/metrics` is protected by explicit Pengui-issued `ops.metrics` and tenant read reach; false returns 404 even to a permitted operator. |
 | `telemetry.otel` | boolean | false | True is explicitly rejected: the optional export adapter is not implemented, not silently ignored. |
 | `features.gateway` | boolean | false | Enables the real Bifrost SDK adapter; false leaves it unconstructed. |
-| `features.mcp` | boolean | false | True rejected until the MCP surface phase is implemented. |
+| `features.mcp` | boolean | false | Mounts the real stateless MCP adapter at `/v1/mcp`; no extra listener or credential channel. |
 | `features.reporting` | boolean | false | True rejected until reporting phases are implemented. |
 | `features.renderer` | boolean | false | True rejected until rendering is implemented. |
 
-`/capabilities` reports verified authentication, signed-scope enforcement, the composed HTTP route registry and generated OpenAPI as implemented. It never returns tokens, source IDs or DSNs; later reporting, rendering and MCP surfaces remain unavailable until their owning phases. Health and `/openapi.json` are public; the composed domain and operational routes require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
+`/capabilities` reports verified authentication, signed-scope enforcement, the composed HTTP route registry and generated OpenAPI as implemented. It never returns tokens, source IDs or DSNs; MCP availability follows its configured installed-service mount; reporting and rendering remain unavailable until their owning phases. Health and `/openapi.json` are public; the composed domain and operational routes require Pengui-issued authority. No login/bootstrap/token/grants/principals routes exist. The optional metrics switch cannot disable authentication.
 
 ## Bifrost configuration and inactive excerpts
 
@@ -224,3 +224,31 @@ when the real chart registry is installed, not rendering or report execution.
 Chart POST bodies have a fixed additional 10 MiB ceiling. No arbitrary formatter,
 resource URL, SQL or implicit source lookup is accepted. Configuring these bounds
 neither grants source permissions nor enables reporting/rendering/MCP features.
+
+## MCP shared-port transport (phase 22)
+
+All settings below are non-secret. The [excerpt](../examples/chartworks.mcp.json)
+merges into the ordinary operator-owned configuration; it does not create authority.
+
+| Key | Type / units | Default | Bounds and behavior |
+|---|---|---|---|
+| `mcp.max_request_bytes` | integer bytes | 10 MiB | 1 KiB–10 MiB; bounded before SDK decoding, with non-queued admission before body read. The ordinary server body cap also applies. |
+| `mcp.max_response_bytes` | integer bytes | 16 MiB | 16 KiB–32 MiB; text plus structured results and final protocol encoding are bounded. |
+| `mcp.max_concurrent` | integer calls | 16 | 1–64; exhaustion returns 429, with no unbounded waiting queue. |
+| `mcp.timeout` | duration | `1m5s` | 1–65 seconds; when enabled, strictly shorter than `server.write_timeout`. Caller cancellation and current bearer expiry may shorten it. |
+| `mcp.groups` | string array | discovery, query, byo, charts | 1–4 distinct implemented group names. Only installed services are exposed; selecting no real bindings fails startup. |
+| `mcp.allowed_hosts` | string array | localhost, 127.0.0.1, ::1 | 1–16 unique canonical lower-case DNS names or IP literals; no wildcard, scheme, port or forwarding-header substitution. |
+
+Every request uses `auth.audiences.mcp` (or the explicitly configured shared
+`auth.audience`) and requires `mcp.use`. Tools also require their existing domain
+actions and actual session/resource/context reach. MCP rejects query credentials,
+cookie-based identity, transport-session/resume headers, compressed bodies and noncanonical URIs.
+It returns JSON; GET/SSE is not provided. The original HTTP context is restored
+inside the SDK so disconnects and deadlines remain effective.
+
+An MCP Origin must be a single exact entry in `server.cors_allowlist`, including
+same-origin requests; empty means no browser-origin access. Host/origin allowlists
+are deployment boundaries, not authority policies. The default listener remains
+loopback-only and a TLS proxy must preserve an explicitly allowed Host.
+`TestMCPConfigurationBoundsAndIsolation` and decoder/admission tests cover positive
+round trips, all limit edges, invalid hosts/groups and detached configuration.

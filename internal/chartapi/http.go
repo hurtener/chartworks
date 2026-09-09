@@ -190,6 +190,21 @@ func failureStatus(w http.ResponseWriter, status int, code string) {
 	}{code})
 }
 func failure(w http.ResponseWriter, err error) {
+	status, code := classify(err)
+	var interrupted *chartservice.Failure
+	if errors.As(err, &interrupted) {
+		headers(w)
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(struct {
+			Error   string          `json:"error"`
+			Receipt gateway.Receipt `json:"receipt"`
+		}{code, interrupted.Receipt})
+		return
+	}
+	failureStatus(w, status, code)
+}
+
+func classify(err error) (int, string) {
 	status, code := 503, "unavailable"
 	switch {
 	case errors.Is(err, access.ErrUnauthenticated):
@@ -211,15 +226,5 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 		status, code = 504, "cancelled_or_timed_out"
 	}
-	var interrupted *chartservice.Failure
-	if errors.As(err, &interrupted) {
-		headers(w)
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(struct {
-			Error   string          `json:"error"`
-			Receipt gateway.Receipt `json:"receipt"`
-		}{code, interrupted.Receipt})
-		return
-	}
-	failureStatus(w, status, code)
+	return status, code
 }

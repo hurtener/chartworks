@@ -12,7 +12,7 @@ Briefs 01, 04, 14: bounded configuration, content-free exported observability, e
 
 ## Findings I'm departing from
 
-Pengui alone issues authority. Actual JWT acceptance is phase 03, not a local implementation in this phase. The foundation is loopback health-only; the usable public-key health probe is not a token verifier. MCP dispatch explicitly exits unavailable rather than starting a successful stub. Optional OTel configuration fails explicitly until its adapter is implemented. Typed JSON is the implemented configuration format; no competing YAML or implicit environment alias regime is introduced.
+Pengui alone issues authority. Actual JWT acceptance is phase 03, not a local implementation in this phase. The foundation is loopback health-only; the usable public-key health probe is not a token verifier. The original MCP-unavailable dispatch was superseded by the real [phase-22 transport](phase-22-mcp-server.md): it remains opt-in, rejects disabled startup with exit 2, and otherwise invokes the common protected service lifecycle. Optional OTel configuration fails explicitly until its adapter is implemented. Typed JSON is the implemented configuration format; no competing YAML or implicit environment alias regime is introduced.
 
 ## Scope and implementation tasks
 
@@ -48,3 +48,17 @@ No local IAM, token issuance, inference, reporting, rendering, authentication by
 D-056 defines health-only exposure until phase 03/04. D-058 records JSON and cross-package coverage. The key probe hands off through a dependency-check seam; it is not a competing auth implementation. Later-phase source/provider failures are not manufactured to demonstrate currently nonexistent artifact operations: their explicit disabled state is exercised here, and real artifact resilience remains assigned to reporting phases.
 
 All six acceptance criteria, actual PostgreSQL startup/shutdown, coverage, vet and lint passed on the reviewed Go source before this status changed. The final read-only CI rechecks the exact PR tree. Other phases remain planned and all-product release is not claimed.
+
+## Cumulative MCP regression contract (2026-09-09)
+
+Phase 22 makes `features.mcp=true` valid; AC01 now tests that positive case and
+keeps negative coverage for missing issuer configuration, unimplemented reporting,
+renderer/OTel, invalid MCP limits/groups/hosts and a transport deadline that would
+outlive the HTTP writer. Existing authentication/secret/listener negatives remain.
+AC05 checks disabled MCP returns 2 with zero lifecycle calls, enabled MCP preserves
+its caller context/configuration/overrides/I/O, and missing or failing lifecycles
+return sanitized failures. `make foundation-smoke` additionally exercises both the
+compiled `serve` (MCP disabled) and `mcp` (real charts group) commands: exact
+OpenAPI/401/404 distinctions, capability advertisement, readiness and joined
+SIGTERM shutdown. These assertions replace obsolete unimplemented-feature
+expectations, not security checks. Exact-source CI remains the merge gate.

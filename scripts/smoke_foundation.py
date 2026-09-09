@@ -48,16 +48,18 @@ REQUIRED_PROTECTED_ROUTES = frozenset({
 PUBLIC_ROUTES = frozenset((method, path)
                           for method in ("GET", "HEAD")
                           for path in ("/healthz", "/readyz", "/capabilities", "/openapi.json"))
-# MCP/reporting land in later phases; local credential issuance never lands here.
+# Legacy MCP paths/reporting remain absent; local credential issuance never lands here.
 ABSENT_ROUTES = ("/mcp", "/v1/admin/keys", "/v1/reports", "/v1/unregistered-smoke-route")
 
 
-def verify_route_security(base: str) -> None:
+def verify_route_security(base: str, *, mcp_enabled: bool = False) -> None:
+    required = REQUIRED_PROTECTED_ROUTES | ({("POST", "/v1/mcp")} if mcp_enabled else set())
+    absent = ABSENT_ROUTES + (() if mcp_enabled else ("/v1/mcp",))
     code, document = request(base + "/openapi.json")
     paths = document.get("paths")
     if code != 200 or not isinstance(paths, dict) or not paths:
         raise RuntimeError("compiled OpenAPI paths unavailable or empty")
-    for path in ABSENT_ROUTES:
+    for path in absent:
         if path in paths:
             raise RuntimeError(f"unimplemented route advertised: {path}")
     protected = set()
@@ -82,17 +84,69 @@ def verify_route_security(base: str) -> None:
                     raise RuntimeError(f"{method} {path}: expected 401, got {status}")
                 if method != "HEAD" and body != {"error": "unauthorized"}:
                     raise RuntimeError(f"unsafe authentication error: {method} {path}")
-    missing = REQUIRED_PROTECTED_ROUTES - protected
+    missing = required - protected
     if missing:
         raise RuntimeError(f"required protected route missing: {sorted(missing)}")
     # An absent route is not a protected capability. Never accept 401-or-404
     # interchangeably: registered routes above require 401, absent routes 404.
-    for path in ABSENT_ROUTES:
+    for path in absent:
         status, body = request(base + path)
         if status != 404 or body != {"error": "not_found"}:
             raise RuntimeError(f"{path}: expected 404, got {status}")
     print(f"OK: {len(protected)} registered protected operations reject unauthenticated access; "
-          f"{len(ABSENT_ROUTES)} absent routes return 404")
+          f"{len(absent)} absent routes return 404")
+
+
+def verify_process(binary: Path, command: str, config: Path, env: dict,
+                   address: str, dsn: str, *, mcp_enabled: bool) -> None:
+    started = time.perf_counter()
+    process = subprocess.Popen([str(binary), command, "--config", str(config)], env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        deadline = time.monotonic() + 15
+        while True:
+            if process.poll() is not None:
+                raise RuntimeError("foundation exited before liveness")
+            try:
+                code, body = request("http://" + address + "/healthz")
+                if code == 200 and body.get("live") is True:
+                    break
+            except (URLError, TimeoutError, OSError):
+                pass
+            if time.monotonic() >= deadline:
+                raise RuntimeError("compiled binary did not become live")
+            time.sleep(0.02)
+        print(f"MEASURED: fresh process to observed liveness_ms={(time.perf_counter() - started) * 1000:.2f}")
+        code, body = request("http://" + address + "/readyz")
+        if code != 503 or body.get("ready") is not False:
+            raise RuntimeError("unavailable verification keys incorrectly reported ready")
+        code, body = request("http://" + address + "/capabilities")
+        if code != 200 or body.get("business_api") is not True or body.get("authentication") is not True:
+            raise RuntimeError("incorrect implemented authority capability")
+        implemented = body.get("implemented")
+        if not isinstance(implemented, list) or ("mcp" in implemented) != mcp_enabled:
+            raise RuntimeError("MCP capability does not match the installed transport")
+        verify_route_security("http://" + address, mcp_enabled=mcp_enabled)
+        status = Path(f"/proc/{process.pid}/status")
+        if status.is_file():
+            for line in status.read_text().splitlines():
+                if line.startswith(("VmRSS:", "Threads:")):
+                    print("MEASURED: foundation idle " + line)
+        process.send_signal(signal.SIGTERM)
+        stdout, stderr = process.communicate(timeout=12)
+        if process.returncode != 0 or dsn.encode() in stdout + stderr:
+            raise RuntimeError("compiled shutdown/redaction smoke failed")
+        try:
+            request("http://" + address + "/healthz")
+        except (URLError, OSError):
+            pass
+        else:
+            raise RuntimeError("listener survived process shutdown")
+        print(f"OK: compiled {command}, MCP enabled={mcp_enabled}, health, negative routes, redaction and SIGTERM shutdown")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=5)
 
 
 def main() -> int:
@@ -115,55 +169,19 @@ def main() -> int:
         config = Path(directory) / "foundation.json"
         config.write_text(json.dumps(document))
         config.chmod(0o600)
-        for args, expected in ((["version"], 0), (["config-check", "--config", str(config)], 0), (["mcp"], 3)):
+        for args, expected in ((["version"], 0), (["config-check", "--config", str(config)], 0), (["mcp", "--config", str(config)], 2)):
             result = subprocess.run([str(binary), *args], env=env, capture_output=True, timeout=10, check=False)
             if result.returncode != expected or dsn.encode() in result.stdout + result.stderr:
                 raise RuntimeError("compiled command exit/redaction smoke failed")
-        started = time.perf_counter()
-        process = subprocess.Popen([str(binary), "serve", "--config", str(config)], env=env,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        try:
-            deadline = time.monotonic() + 15
-            while True:
-                if process.poll() is not None:
-                    raise RuntimeError("foundation exited before liveness")
-                try:
-                    code, body = request("http://" + address + "/healthz")
-                    if code == 200 and body.get("live") is True:
-                        break
-                except (URLError, TimeoutError, OSError):
-                    pass
-                if time.monotonic() >= deadline:
-                    raise RuntimeError("compiled binary did not become live")
-                time.sleep(0.02)
-            print(f"MEASURED: fresh process to observed liveness_ms={(time.perf_counter() - started) * 1000:.2f}")
-            code, body = request("http://" + address + "/readyz")
-            if code != 503 or body.get("ready") is not False:
-                raise RuntimeError("unavailable verification keys incorrectly reported ready")
-            code, body = request("http://" + address + "/capabilities")
-            if code != 200 or body.get("business_api") is not True or body.get("authentication") is not True:
-                raise RuntimeError("incorrect implemented authority capability")
-            verify_route_security("http://" + address)
-            status = Path(f"/proc/{process.pid}/status")
-            if status.is_file():
-                for line in status.read_text().splitlines():
-                    if line.startswith(("VmRSS:", "Threads:")):
-                        print("MEASURED: foundation idle " + line)
-            process.send_signal(signal.SIGTERM)
-            stdout, stderr = process.communicate(timeout=12)
-            if process.returncode != 0 or dsn.encode() in stdout + stderr:
-                raise RuntimeError("compiled shutdown/redaction smoke failed")
-            try:
-                request("http://" + address + "/healthz")
-            except (URLError, OSError):
-                pass
-            else:
-                raise RuntimeError("listener survived process shutdown")
-            print("OK: compiled commands, health, negative routes, redaction and SIGTERM shutdown")
-        finally:
-            if process.poll() is None:
-                process.kill()
-                process.communicate(timeout=5)
+            if args[0] == "mcp" and b"features.mcp=true" not in result.stderr:
+                raise RuntimeError("disabled MCP did not reject startup at its feature gate")
+        verify_process(binary, "serve", config, env, address, dsn, mcp_enabled=False)
+        # Exercise the actual MCP command and common composition root, not a stub
+        # Starter. Charts are real services requiring no model/source credentials.
+        document["features"] = {"mcp": True}
+        document["mcp"] = {"groups": ["charts"]}
+        config.write_text(json.dumps(document))
+        verify_process(binary, "mcp", config, env, address, dsn, mcp_enabled=True)
     return 0
 
 

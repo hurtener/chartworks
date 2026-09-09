@@ -113,3 +113,24 @@ attempt receipts on interrupted ranking. Empty 405 responses match the existing
 shared contract. The [review](../reviews/phase-20-21-adversarial.md) distinguishes
 these cumulative improvements from still-unimplemented reporting/render/export
 and MCP consumers; no placeholder is introduced for them.
+
+## Phase-22 cumulative consumers, 2026-09-09
+
+Three retained-metadata operations (`listTopics`, `listDatasets`, `describeDataset`)
+now share the ordinary protected registry, DTO schemas and Go SDK with their MCP
+bindings. Signed topic and every dependency restriction are applied before SQL
+pagination; dataset access names its exact source/context. These operations neither
+probe a warehouse nor expose private drafts. The checked-in source/topic manifests
+and exhaustive registry tests include them.
+
+`POST /v1/mcp` is a registered protected transport, not a guard exception.
+`Definition.Surface` selects the current MCP intended audience and `mcp.use` at
+the composition boundary; domain dispatch still requires its own action/resources.
+OpenAPI describes that audience, bounded JSON-RPC request/response and empty 202
+notification success. The bodyless 405 contract remains unchanged. NLQ preflight's
+existing effect is corrected to paid routing plus persisted session evidence.
+
+`TestPhase21` reruns cumulative denial/registration coverage, while `TestPhase22`
+exercises the real HTTP/MCP/SDK services and per-request authority. The
+[phase-22 review](../reviews/phase-22-adversarial.md) records evidence. No reporting,
+render/export, Apps-viewer or credential-issuance placeholder is added.

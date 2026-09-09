@@ -1,6 +1,6 @@
 # Phase 22 — mcp-server
 
-Status: planned. Owner: internal/mcpserver. Hard dependencies: 21.
+Status: in_progress. Owner: internal/mcpserver. Hard dependencies: 21.
 
 ## Authority and design
 
@@ -45,4 +45,38 @@ Implement `TestPhase22/AC01` through `TestPhase22/AC06`; every domain owner reru
 
 ## Glossary, decisions and deviations
 
-D-046 establishes host support; D-050 permits early shell delivery. No runtime completion is claimed.
+D-046 establishes host support; D-050 permits early shell delivery. The continuation
+below implements Chartworks behavior without changing either decision.
+
+## Implemented continuation, 2026-09-09
+
+`internal/mcpserver` supplies one immutable typed binding registry, bounded
+stateless Streamable HTTP mount and verified in-process adapter. Source, topic,
+NLQ, BYO and chart owners bind their actual services to shared phase-21 schemas,
+actions, error inventories and effect/audit metadata. All eleven core contracts
+have real consumers; source listing, retained context lookup and five chart
+operations bring the all-services inventory to eighteen. Three metadata resource
+bindings invoke those same pure services. No reporting Apps resource is claimed.
+
+Configuration defaults MCP off and bounds groups, hosts, request/response bytes,
+concurrency and timeout. The request deadline/cancellation and verified envelope
+are preserved through the SDK; transport sessions never carry analytical authority.
+The same listener is used by `serve` and the explicit MCP-enabled `mcp` command.
+Fresh caller-supplied tokens are required by HTTP and in-process clients.
+
+`TestPhase22/AC01`–`AC06` are implemented with real PostgreSQL/pgvector, native
+validation/read execution and recorded Bifrost provider responses. They exercise
+all eleven contracts, binding parity/effects, three resource reads, private/foreign
+reach denials, replay and concurrent caller isolation. Additional package tests
+cover malformed envelopes, ambiguous resource templates, protocol/panic redaction,
+expiry/cancellation, output bounds and overload; `FuzzMCPBoundaries` covers the parse
+surface. The read-only MCP workflow enforces all six phase-22 and six cumulative
+phase-21 results. Full CI also retains the complete race/coverage, native/container,
+lint and preflight obligations. Status remains in progress pending those results.
+
+See the [MCP v1 contract](../contracts/mcp-v1.md),
+[configuration excerpt](../../examples/chartworks.mcp.json),
+[operator handoff](../contracts/pengui-provider-registration.md) and
+[adversarial record](../reviews/phase-22-adversarial.md). Later domain owners extend
+this registry and its tests; phase 23 still owns full SDK/CLI parity, and phase 31
+owns the reporting Apps resource/viewer.

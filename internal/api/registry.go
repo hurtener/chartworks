@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 )
@@ -54,6 +55,8 @@ type Parameter struct {
 // it is descriptive metadata, not a replacement authorization callback.
 type Definition struct {
 	Operation
+	// Surface defaults to HTTP; MCP mounts explicitly require the MCP audience.
+	Surface        auth.Surface
 	ID             string
 	Summary        string
 	ResourceLoader string
@@ -73,6 +76,8 @@ type Definition struct {
 	Request             *gateway.Schema
 	Response            *gateway.Schema
 	Errors              []ErrorResponse
+	// EmptySuccess documents implemented bodyless 2xx outcomes (MCP notifications).
+	EmptySuccess []int
 }
 
 // Registry is an immutable collection of actual HTTP operation definitions.
@@ -100,6 +105,9 @@ func New(definitions []Definition) (*Registry, error) {
 	ids, routes := map[string]bool{}, map[string]bool{}
 	out := make([]Definition, len(definitions))
 	for i, d := range definitions {
+		if d.Surface != 0 && d.Surface != auth.HTTP && d.Surface != auth.MCP || d.Public && d.Surface != 0 {
+			return nil, ErrRegistration
+		}
 		if !identity.Identifier(d.ID) || !line(d.Summary) || !line(d.ResourceLoader) || !line(d.Audit) || (!d.Public && !line(d.Action)) || !line(d.Effect) || !validPath(d.Path, d.Public) || d.Response == nil || d.Response.Name() == "" || len(d.Errors) < 1 || len(d.Errors) > 32 {
 			return nil, ErrRegistration
 		}
@@ -132,6 +140,13 @@ func New(definitions []Definition) (*Registry, error) {
 			return nil, ErrRegistration
 		}
 		ids[d.ID], routes[key] = true, true
+		success := map[int]bool{}
+		for _, status := range d.EmptySuccess {
+			if status < 201 || status > 299 || success[status] {
+				return nil, ErrRegistration
+			}
+			success[status] = true
+		}
 		seen := map[ErrorResponse]bool{}
 		unauthorized, forbidden := false, false
 		for _, e := range d.Errors {
@@ -253,6 +268,7 @@ func validParameters(parameters []Parameter, location string) bool {
 }
 func cloneDefinition(d Definition) Definition {
 	d.Errors = append([]ErrorResponse(nil), d.Errors...)
+	d.EmptySuccess = append([]int(nil), d.EmptySuccess...)
 	d.Query = append([]Parameter(nil), d.Query...)
 	d.Headers = append([]Parameter(nil), d.Headers...)
 	// The private schema backing is immutable, but the exported wrapper can be
@@ -320,6 +336,9 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 			schema := map[string]any{"type": "object", "properties": properties, "required": []string{"error"}, "additionalProperties": false}
 			responses[statusString(status)] = map[string]any{"description": http.StatusText(status), "content": content(schema)}
 		}
+		for _, status := range d.EmptySuccess {
+			responses[strconv.Itoa(status)] = map[string]any{"description": "Accepted; empty response body"}
+		}
 		// The existing router's authenticated wrong-method response has no body.
 		responses["405"] = map[string]any{"description": "Method not allowed; empty response body"}
 		op := map[string]any{"operationId": d.ID, "summary": d.Summary, "responses": responses, "x-chartworks-auth": "bearer", "x-chartworks-effect": d.Effect, "x-chartworks-resource-loader": d.ResourceLoader, "x-chartworks-audit": d.Audit}
@@ -328,6 +347,10 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 		} else {
 			op["security"] = []any{map[string]any{"penguiBearer": []string{}}}
 			op["x-chartworks-action"] = d.Action
+			op["x-chartworks-audience"] = "http"
+			if d.Surface == auth.MCP {
+				op["x-chartworks-audience"] = "mcp"
+			}
 		}
 		if strings.Contains(d.Path, "{id}") {
 			op["parameters"] = []any{map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]+$"}}}

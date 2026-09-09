@@ -1,6 +1,6 @@
 # Running the current Chartworks build
 
-This build includes shipped phases 01–12: configuration, identity enforcement, remote Bifrost inference, durable work, PostgreSQL sources, validated reads, managed uploads and profiling. It does **not** implement NLQ, reporting, the full MCP server or rendering yet. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
+This build preserves shipped phases 01–21 and includes the phase-22 MCP implementation under final CI qualification in PR #14. It provides configuration, identity enforcement, remote Bifrost inference, durable work, governed sources/reads/uploads/profiles/pipelines/topics, NLQ/BYO, output specifications and HTTP/SDK discovery. Reporting and rendering remain unimplemented. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ curl --fail http://127.0.0.1:8080/capabilities
 
 Liveness is independent of dependency health. Readiness reports `starting`, `ready`, `unavailable` or `stale` for PostgreSQL and trusted verification-key material. The real JWT verifier and readiness use the same bounded trusted public-key cache; a readiness result does not authorize an individual request. Failed key refresh never extends key freshness. The default configuration does not enable inference or workers, and readiness never makes a paid model call.
 
-Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors, release idle HTTP connections and close the database pool. `chartworks mcp` currently exits 3 with an explicit unavailable message; it does not start a fake MCP server. Operational `/v1/*` and `/metrics` requests now require a valid Pengui bearer plus their separately registered action and addressed reach. Anonymous requests return 401; a valid caller receives a nondisclosing 404 for unregistered/inaccessible resources. Metrics also needs `ops.metrics` and returns 404 when disabled. Use the operation manifest below; there is no local login or default administrator token.
+Use Ctrl+C or SIGTERM to drain the listener, cancel and join dependency monitors, release idle HTTP connections and close the database pool. `chartworks mcp --config PATH` requires `features.mcp=true` and starts the same protected shared-port service as `serve`; when MCP is disabled, it exits 2 without starting a listener. See the MCP configuration section below for real service groups and the per-request Pengui authority requirements. Operational `/v1/*` and `/metrics` requests now require a valid Pengui bearer plus their separately registered action and addressed reach. Anonymous requests return 401; a valid caller receives a nondisclosing 404 for unregistered/inaccessible resources. Metrics also needs `ops.metrics` and returns 404 when disabled. Use the operation manifest below; there is no local login or default administrator token.
 
 ## Configuration contract
 
@@ -63,7 +63,7 @@ make preflight-full
 
 Real-store tests create unique `cw_test_*` databases on the explicit test server and remove them afterward. Missing PostgreSQL/client tools, a missing acceptance child, or a skipped runtime test is a failure, not a pass. Coverage instruments production packages across the full test suite, including integration callers; thresholds remain 85% for store, 80% for other internal code and 70% for CLI.
 
-The other 22 phases remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [phase 11/12 evidence ledger](docs/reviews/phase-11-12-current-evidence.md).
+Phase 22 remains under final qualification; twelve workstreams (23–34) remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [current phase ledger](docs/plans/README.md) and [phase-22 review](docs/reviews/phase-22-adversarial.md).
 
 ## Backup, restore and rollback
 
@@ -175,3 +175,52 @@ keeps optional ranking disabled; enabling it also requires the existing Bifrost
 
 This returns provider-neutral drawing input, not PNG/SVG/PDF, a stored chart,
 published block or report. Those product surfaces remain in later owning phases.
+
+## MCP tools on the existing server
+
+Merge [examples/chartworks.mcp.json](examples/chartworks.mcp.json) into your existing
+configuration, retaining the trusted Pengui issuer/JWKS, intended HTTP/MCP audiences,
+metadata connection and installed domain services. Use exact `mcp.allowed_hosts`
+for your deployment; allow browser origins deliberately through
+`server.cors_allowlist`. The default 75-second server write timeout exceeds the
+65-second MCP call limit; existing deployments with shorter timeouts must adjust
+it or lower `mcp.timeout`. No provider is contacted merely by enabling MCP.
+
+```bash
+./bin/chartworks config-check --config /path/to/chartworks.json
+./bin/chartworks mcp --config /path/to/chartworks.json
+# Equivalently: chartworks serve --config ... with features.mcp=true.
+```
+
+The explicit `mcp` command fails when MCP is disabled. Both commands use the same
+listener, health/capability services and authenticated route registry. There is no
+stdio token store or separate public authentication endpoint. The host/client
+supplies a current Pengui bearer carrying `mcp.use` plus the needed domain actions
+and signed resource/session/context restrictions. Use the MCP intended audience,
+not an HTTP-only bearer. Never put that bearer in an MCP URL or resource URI.
+
+A client initializes using a JSON-RPC object such as the following, sent to
+`POST /v1/mcp` with `Content-Type: application/json`,
+`Accept: application/json, text/event-stream`, and its current Authorization bearer:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"analytics-client","version":"1"}}}
+```
+
+Send `notifications/initialized` next (202, no body), then use the negotiated
+`Mcp-Protocol-Version` on subsequent requests. `tools/list` returns the permitted
+installed bindings. A model-free chart catalog call is:
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"chart_catalog","arguments":{}}}
+```
+
+This additionally requires `charts.read` and `cw.tenant.read:<signed-tenant>`.
+There is no GET/SSE stream or transport-session cookie. A successful tool result
+contains a typed `result`; inspect `isError`, error outcome and domain receipts
+before retrying anything that may have persisted or spent budget.
+`sdk/chartworks.Client.MCP` obtains the bearer from its caller-supplied token
+provider on every message. Its typed `ListTopics`, `ListDatasets` and
+`DescribeDataset` methods instead use their ordinary HTTP endpoints/audience.
+See the [MCP contract](docs/contracts/mcp-v1.md) for all eighteen tools, metadata
+resource URIs and exact restrictions. The reporting Apps viewer remains phase 31.

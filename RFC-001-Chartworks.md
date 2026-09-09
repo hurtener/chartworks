@@ -1,6 +1,13 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-08 for the merged phases 01–19 and 21, phase-20 output specifications in review, and cumulative HTTP enforcement. PR #12 merged at `99055d4fd5f7a613a9518f3b2b3e4e564301eb5c` after [qualifying CI 34284686569](https://github.com/hurtener/chartworks/actions/runs/34284686569); the actionable [phase ledger](docs/plans/README.md) distinguishes merged scope, this branch and thirteen planned workstreams. Exact-source CI establishes readiness; phase 25 and renderer phases 31/32 remain unimplemented, and recorded cloud/model fixtures do not claim live qualification.
+Status: implementation design, revised 2026-09-09 for merged phases 01–21 and
+phase-22 MCP implementation under final verification in PR #14. PR #13 merged at
+`2fa80a404518e59db5d6157b50a7521aa9c1512f`. The actionable
+[phase ledger](docs/plans/README.md) separates implemented scope from twelve planned
+workstreams. [MCP v1](docs/contracts/mcp-v1.md) binds real services and cumulative
+HTTP discovery without a new issuer or host qualification. Exact-source CI
+establishes readiness; phase 25 and rendering phases 31/32 remain unimplemented.
+Recorded cloud/model fixtures do not claim live qualification.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 

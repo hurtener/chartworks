@@ -61,6 +61,16 @@ func Handler(verifier *auth.Verifier, service *sources.Service, validator *reade
 		}
 		var out any
 		switch selected.Path {
+		case "/v1/datasets/list":
+			var in sources.DatasetListRequest
+			if err = body(w, r, &in); err == nil {
+				out, err = service.ListDatasets(r.Context(), e, in)
+			}
+		case "/v1/datasets/describe":
+			var in sources.DatasetDescribeRequest
+			if err = body(w, r, &in); err == nil {
+				out, err = service.DescribeDataset(r.Context(), e, in)
+			}
 		case "/v1/sources":
 			if r.Method == http.MethodGet {
 				out, err = service.List(r.Context(), e, 100)
@@ -169,6 +179,14 @@ func shape(data []byte, typ reflect.Type) error {
 	return nil
 }
 func failure(w http.ResponseWriter, err error) {
+	status, code := classify(err)
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{code})
+}
+
+func classify(err error) (int, string) {
 	status, code := 503, "unavailable"
 	switch {
 	case errors.Is(err, access.ErrUnauthenticated):
@@ -192,8 +210,5 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 		status, code = 504, "cancelled_or_timed_out"
 	}
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(struct {
-		Error string `json:"error"`
-	}{code})
+	return status, code
 }

@@ -23,7 +23,7 @@ type Build struct{ Version, Commit, Date string }
 // Starter is the command's injected, cancellable service lifecycle.
 type Starter func(context.Context, config.Config, io.Writer) error
 
-const usage = "usage: chartworks version | config-check [--defaults | --config PATH] | serve --config PATH [--listen IP:PORT] | mcp\n"
+const usage = "usage: chartworks version | config-check [--defaults | --config PATH] | serve --config PATH [--listen IP:PORT] | mcp --config PATH [--listen IP:PORT]\n"
 
 // Command has deterministic exit codes and injectable environment, I/O and startup.
 func Command(ctx context.Context, args []string, lookup func(string) (string, bool), stdout, stderr io.Writer, build Build, start Starter) int {
@@ -42,11 +42,7 @@ func Command(ctx context.Context, args []string, lookup func(string) (string, bo
 		}
 		return 0
 	}
-	if args[0] == "mcp" {
-		write(stderr, "MCP transport is not implemented; phase 22 owns it. No listener was started.\n")
-		return 3
-	}
-	if args[0] != "serve" && args[0] != "config-check" {
+	if args[0] != "serve" && args[0] != "config-check" && args[0] != "mcp" {
 		write(stderr, usage)
 		return 2
 	}
@@ -101,6 +97,10 @@ func Command(ctx context.Context, args []string, lookup func(string) (string, bo
 			return 1
 		}
 		return 0
+	}
+	if args[0] == "mcp" && !cfg.Values().Features.MCP {
+		write(stderr, "MCP shared-port transport requires features.mcp=true; no listener was started.\n")
+		return 2
 	}
 	if start == nil {
 		write(stderr, "service lifecycle unavailable\n")
