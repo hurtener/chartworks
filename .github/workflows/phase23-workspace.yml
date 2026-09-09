@@ -18,10 +18,10 @@ jobs:
         with:
           go-version: '1.26.4'
           cache: false
-      - name: Apply reviewed authoring edits, never test or certify a repaired checkout
+      - name: Apply authoring edits to committed source; no verification in this write job
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 7efea3b7396694f7621c0841b189f41eea25b4ba
+          test "$(git rev-parse HEAD)" = 5445eb69138072759e89885e65ff7ffc40985186
           python3 - <<'PY'
           from pathlib import Path
           import subprocess
@@ -30,48 +30,21 @@ jobs:
               text = p.read_text()
               assert text.count(old) == 1, (path, old, text.count(old))
               p.write_text(text.replace(old, new))
-          cli = 'internal/clientcli/command.go'
-          edit(cli, '''	defaultTimeout := cw.DefaultRequestTimeout
-          	if configured, ok := streams.Lookup("CHARTWORKS_CLIENT_TIMEOUT"); ok {
-          		var err error
-          		defaultTimeout, err = time.ParseDuration(configured)
-          		if err != nil {
-          			return writeUsage(streams.Stderr, 2)
-          		}
-          	}''', '''	timeoutText := cw.DefaultRequestTimeout.String()
-          	if configured, ok := streams.Lookup("CHARTWORKS_CLIENT_TIMEOUT"); ok {
-          		timeoutText = configured
-          	}''')
-          edit(cli, 'timeout := flags.Duration("timeout", defaultTimeout, "whole-command deadline")', 'timeoutArg := flags.String("timeout", timeoutText, "whole-command deadline")')
-          edit(cli, '\tif flags.NArg() != 0 || *timeout <= 0', '\tduration, parseErr := time.ParseDuration(*timeoutArg)\n\ttimeout := &duration\n\tif parseErr != nil {\n\t\treturn writeUsage(streams.Stderr, 2)\n\t}\n\tif flags.NArg() != 0 || *timeout <= 0')
-          edit(cli, '\tif len(args) == 1 && (args[0] == "--help"', '\tif err := ctx.Err(); err != nil {\n\t\treturn fail(streams.Stderr, err)\n\t}\n\tif len(args) == 1 && (args[0] == "--help"')
-          edit(cli, '\t\treturn writeBody(streams.Stdout, result)\n\tcase "call":', '\t\treturn writeMCPBody(streams.Stdout, streams.Stderr, result)\n\tcase "call":')
-          edit(cli, 'if _, err := io.WriteString(writer, usage); err != nil {', 'if err := writeOutput(writer, []byte(usage)); err != nil {')
-          edit(cli, '''	if json.NewEncoder(writer).Encode(value) != nil {
-          		return 1
-          	}
-          	return 0''', '''	data, err := json.Marshal(value)
-          	if err != nil || writeOutput(writer, append(data, '\\n')) != nil {
-          		return 1
-          	}
-          	return 0''')
-          edit(cli, 'if _, err := writer.Write(body); err != nil {', 'if err := writeOutput(writer, body); err != nil {')
-          edit(cli, 'if _, err := io.WriteString(writer, "\\n"); err != nil {', 'if err := writeOutput(writer, []byte("\\n")); err != nil {')
-          matrix = 'sdk/chartworks/matrix.go'
-          edit(matrix, '\t"encoding/json"\n)', '\t"encoding/json"\n\n\t"github.com/hurtener/chartworks/internal/gateway"\n)')
-          edit(matrix, '\tvar response struct {', '\tif _, err := gateway.DecodeJSON(raw, 32<<20); err != nil {\n\t\treturn nil, ErrInvalidCatalog\n\t}\n\tvar response struct {\n\t\tVersion string `json:"jsonrpc"`\n\t\tID json.RawMessage `json:"id"`')
-          edit(matrix, 'if json.Unmarshal(raw, &response) != nil || response.Error != nil', 'if json.Unmarshal(raw, &response) != nil || response.Version != "2.0" || string(response.ID) != "1" || response.Error != nil')
-          edit('internal/foundation/command.go', '| mcp --config PATH [--listen IP:PORT]\\n"', '| mcp --config PATH [--listen IP:PORT] | client --help\\n"')
+          edit('internal/clientcli/command_test.go', '\n\t"time"', '')
+          edit('test/acceptance/phase23_fixture_test.go', '''case "feedbackNLQ":
+          		return phase23Encode(ctx,options.Body,func(ctx context.Context,input cw.FeedbackRequest)(nlqapi.FeedbackResult,error){
+          			accepted,err:=client.FeedbackNLQ(ctx,input);return nlqapi.FeedbackResult{Accepted:accepted},err
+          		})''', '''case "feedbackNLQ":return phase23Encode(ctx,options.Body,client.FeedbackNLQ)''')
           paths = subprocess.check_output(['git', 'diff', '--name-only', '--diff-filter=AM', 'd6dbd31899449f6e042b4ab069c9c30c01fb844b'], text=True).splitlines()
           paths = [p for p in paths if p.endswith('.go')]
           subprocess.run(['gofmt', '-w', *paths], check=True)
           PY
           git diff --check
           git fetch origin feat/phase-23-sdk-cli-parity
-          test "$(git rev-parse FETCH_HEAD)" = 7efea3b7396694f7621c0841b189f41eea25b4ba
+          test "$(git rev-parse FETCH_HEAD)" = 5445eb69138072759e89885e65ff7ffc40985186
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add sdk/chartworks internal/clientcli internal/foundation cmd/chartworks
-          git commit -m 'fix(clients): enforce MCP exit status, output integrity and configuration precedence'
+          git add sdk/chartworks internal/clientcli internal/foundation cmd/chartworks test/acceptance
+          git commit -m 'test(clients): align typed feedback adapter and format acceptance fixtures'
           git push origin HEAD:refs/heads/feat/phase-23-sdk-cli-parity
           git rev-parse HEAD
