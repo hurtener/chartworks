@@ -293,3 +293,8 @@ func safeIdentifierToken(s string) bool {
 	}
 	return !strings.ContainsAny(s, "\x00\r\n")
 }
+
+// parameterDigest canonicalizes zero bind values independently of nil slices.
+func parameterDigest(values []exec.Parameter) string {
+	return digest(append([]exec.Parameter{}, values...))
+}

@@ -236,24 +236,31 @@ type Evidence struct {
 	Actor                   string       `json:"actor"`
 	CreatedAt               time.Time    `json:"created_at"`
 	ExpiresAt               time.Time    `json:"expires_at"`
+	ResolvedAt              time.Time    `json:"resolved_at"`
+	Timezone                string       `json:"timezone"`
+	Parameters              []BoundValue `json:"parameters"`
 }
 
 // ValidationRecord is private server-derived dependency evidence for persistence.
 // It is intentionally not an API response schema.
 type ValidationRecord struct {
-	Evidence      Evidence     `json:"evidence"`
-	Dependencies  []Dependency `json:"dependencies"`
-	BindingDigest string       `json:"binding_digest"`
-	Topics        []TopicPin   `json:"topics"`
+	Evidence      Evidence            `json:"evidence"`
+	Dependencies  []Dependency        `json:"dependencies"`
+	BindingDigest string              `json:"binding_digest"`
+	Topics        []TopicPin          `json:"topics"`
+	Binding       exec.Binding        `json:"binding"`
+	Definitions   []topics.Definition `json:"definitions"`
 }
 
 type Attestation struct {
-	ID        string    `json:"id"`
-	Revision  int64     `json:"revision"`
-	Evidence  string    `json:"evidence"`
-	Actor     string    `json:"actor"`
-	Note      string    `json:"note"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                string    `json:"id"`
+	Revision          int64     `json:"revision"`
+	Evidence          string    `json:"evidence"`
+	Actor             string    `json:"actor"`
+	Note              string    `json:"note"`
+	CreatedAt         time.Time `json:"created_at"`
+	EvidenceExpiresAt time.Time `json:"evidence_expires_at"`
+	DependencyDigest  string    `json:"dependency_digest"`
 }
 
 type Withdrawal struct {
@@ -319,6 +326,7 @@ type Snapshot struct {
 	PublishedAt *time.Time
 	Current     bool
 	Health      Health
+	References  []ResourceReference
 }
 
 type CreateRequest struct {
@@ -358,6 +366,7 @@ type WithdrawRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Attestation     string `json:"attestation"`
 	Note            string `json:"note"`
+	Revision        int64  `json:"revision,omitempty"`
 }
 
 type ValidateRequest struct {
@@ -392,10 +401,12 @@ type PreviewResult struct {
 }
 
 type CaptureRequest struct {
-	ID       string      `json:"id"`
-	Query    string      `json:"query"`
-	Metadata []Localized `json:"metadata"`
-	Outputs  []Output    `json:"outputs"`
+	ID         string      `json:"id"`
+	Query      string      `json:"query"`
+	Metadata   []Localized `json:"metadata"`
+	Outputs    []Output    `json:"outputs"`
+	Parameters []Parameter `json:"parameters"`
+	Resolution Resolution  `json:"resolution"`
 }
 
 // Capture is supplied by the existing query service after its own session and

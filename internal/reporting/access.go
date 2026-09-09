@@ -70,7 +70,7 @@ func RequireParent(e identity.Envelope, topic string, a Access, creating bool) e
 // and SQL additionally requires explicit preview reach.
 func RequirePrivate(e identity.Envelope, id, actor string, a Access) error {
 	if e.User() != actor {
-		return access.ErrDenied
+		return access.ErrNotFound
 	}
 	if a == Write || a == Validate || a == Publish {
 		return nil
@@ -137,6 +137,8 @@ func (m Mutation) Access() Access {
 		return Certify
 	case "health":
 		return Read
+	case "preview":
+		return Preview
 	default:
 		return ""
 	}
