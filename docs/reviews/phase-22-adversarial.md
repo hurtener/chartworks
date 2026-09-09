@@ -41,6 +41,18 @@ Pengui remains the only issuer and policy owner.
 | Shared clients could retain another caller's token or envelope. | No mutable client bearer; request-local TokenProvider, immutable verified envelope, per-request SDK context, resource reauthorization and safe bounded admission. | Race-enabled concurrent callers across tenants and contexts in `TestPhase22/AC05`. |
 | The new concrete discovery routes left older static manifests and route counts stale. | Update source, topic and NLQ checked manifests and add valid schema samples for both new dataset operations. Preserve exhaustive extra-field rejection and metadata parity tests. | `internal/sourceapi`, `internal/topicapi` and `internal/nlqapi` registration tests; cumulative `TestPhase21`. |
 
+The next exact-source acceptance run identified a concrete resource defect:
+source context/dataset IDs may contain colons, but simple URI-template expansion
+did not match those valid canonical resource URIs in the SDK. Templates now use
+RFC 6570 reserved expansion while retaining exact identifier/component checks and
+rejection of percent aliases, extra paths, credentials and traversal. Network and
+in-process regressions cover colon-bearing IDs as well as the real source
+resource in AC06. The same run found two stale test expectations: the capability
+phase label still expected phase 21, and malformed-request tests expected an HTTP
+status even when the SDK rejected JSON before sending it. The latter tests now
+exercise the actual HTTP handler directly, rather than weakening the assertion to
+accept any client-side error. These changes require a new qualifying run.
+
 No finding is closed merely by documentation or by an annotation string. Domain
 resource checks still execute after mount-level audience and action verification.
 Discovery metadata is not authority to execute SQL or read an artifact. Listing a

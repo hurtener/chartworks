@@ -113,8 +113,8 @@ Three resource bindings invoke the same pure service adapters as their tools:
 | URI or template | Tool |
 |---|---|
 | `chartworks://charts/catalog` | `chart_catalog` |
-| `chartworks://topics/{topic}` | `describe_topic` |
-| `chartworks://datasets/{source}/{context}/{dataset}` | `describe_dataset` |
+| `chartworks://topics/{+topic}` | `describe_topic` |
+| `chartworks://datasets/{+source}/{+context}/{+dataset}` | `describe_dataset` |
 
 `resources/list` returns the catalog resource; `resources/templates/list` returns
 the two templates, filtered by current actions. A read returns JSON with the same
@@ -174,3 +174,13 @@ The read-only MCP workflow validates all twelve named criteria and fuzzes the
 protocol; full CI separately runs the complete race/coverage and native/container
 suite. The [adversarial record](../reviews/phase-22-adversarial.md) records actual
 execution evidence, not live-cloud, independent human-review or host qualification.
+
+### Resource identifier expansion
+
+Template variables use RFC 6570 reserved expansion (`{+context}`, for example).
+Registered identifiers can contain colons, so simple expansion would encode
+those identifiers and the SDK would not match their canonical raw URI. The
+Chartworks resolver still checks each complete path component as an identifier
+before any service access. Percent aliases, extra components, credentials, query
+strings, fragments and traversal remain rejected; reserved expansion does not
+make arbitrary paths or URLs acceptable.

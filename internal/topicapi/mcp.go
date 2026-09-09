@@ -35,7 +35,7 @@ func MCPBindings(service *topics.Service) ([]mcpserver.Binding, error) {
 	if err != nil {
 		return nil, err
 	}
-	b1, err = mcpserver.WithResource(b1, "chartworks://topics/{topic}")
+	b1, err = mcpserver.WithResource(b1, "chartworks://topics/{+topic}")
 	if err != nil {
 		return nil, err
 	}

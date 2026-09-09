@@ -387,10 +387,11 @@ func TestPhase22(t *testing.T) {
 		}
 		malformed := []string{`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"describe_topic","arguments":{"topic":"one","topic":"two"}}}`, `[{"jsonrpc":"2.0","id":1,"method":"ping"}]`}
 		for _, raw := range malformed {
-			_, err := client.MCP(t.Context(), json.RawMessage(raw))
-			var status *cw.StatusError
-			if !errors.As(err, &status) || status.Status != 400 {
-				t.Fatal("ambiguous protocol accepted", err)
+			// Send malformed envelopes to the actual server, not the SDK's earlier
+			// local JSON check. A locally rejected request has no HTTP status.
+			response := callProtected(t, f.network.Config.Handler, "POST", "http://127.0.0.1"+mcpserver.Path, f.bearer, raw, map[string]string{"Accept": "application/json, text/event-stream"})
+			if response.Code != http.StatusBadRequest {
+				t.Fatal("ambiguous protocol accepted", response.Code, response.Body.String())
 			}
 		}
 		for _, uri := range []string{"chartworks://topics/missing-private-topic", "chartworks://topics/%2e%2e", "chartworks://topics/missing?token=private-secret"} {

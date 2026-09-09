@@ -41,7 +41,7 @@ func validResourcePattern(pattern string, input *gateway.Schema) bool {
 	fields := map[string]bool{}
 	for _, part := range parts {
 		if strings.HasPrefix(part, "{") && strings.HasSuffix(part, "}") {
-			name := part[1 : len(part)-1]
+			name := strings.TrimPrefix(part[1:len(part)-1], "+")
 			v, ok := properties[name].(map[string]any)
 			if !toolName(name) || fields[name] || !ok || v["type"] != "string" {
 				return false
@@ -69,7 +69,7 @@ func resourceArguments(pattern, uri string) (json.RawMessage, bool) {
 			if !identity.Identifier(got[i]) {
 				return nil, false
 			}
-			in[p[1:len(p)-1]] = got[i]
+			in[strings.TrimPrefix(p[1:len(p)-1], "+")] = got[i]
 		} else if got[i] != p {
 			return nil, false
 		}

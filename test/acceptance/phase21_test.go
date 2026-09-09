@@ -411,10 +411,10 @@ func TestPhase21(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = response.Body.Close()
-		if !capabilities.BusinessAPI || !capabilities.Authentication || capabilities.Phase != "01-21-http" {
+		if !capabilities.BusinessAPI || !capabilities.Authentication || capabilities.Phase != "01-22-mcp" {
 			t.Fatalf("capabilities=%+v", capabilities)
 		}
-		if !contains(capabilities.Implemented, "http_api") || !contains(capabilities.Implemented, "openapi") || !contains(capabilities.Implemented, "output_specifications") || contains(capabilities.Implemented, "reporting") {
+		if !contains(capabilities.Implemented, "http_api") || !contains(capabilities.Implemented, "openapi") || !contains(capabilities.Implemented, "output_specifications") || !contains(capabilities.Implemented, "mcp") || contains(capabilities.Implemented, "reporting") {
 			t.Fatalf("capability projection=%v", capabilities.Implemented)
 		}
 		request, err := http.NewRequest(http.MethodHead, server.URL+"/openapi.json", nil)
