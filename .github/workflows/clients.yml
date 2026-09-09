@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: clients-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   clients:
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: native
         with:
           path: /tmp/chartworks-bruin
@@ -48,13 +48,18 @@ jobs:
       - name: Build immutable native validation dependency
         if: steps.native.outputs.cache-hit != 'true'
         run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native.outputs.cache-hit != 'true'
+        with:
+          path: /tmp/chartworks-bruin
+          key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f
       - name: Select exact dependency and record source
         run: |
           test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
           echo 'CGO_LDFLAGS=-L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
           git rev-parse HEAD | tee /tmp/clients-source-sha.txt
       - name: Race-enabled client package tests
-        run: go test -race -count=1 -timeout=5m -coverprofile=/tmp/clients-coverage.out ./sdk/chartworks
+        run: go test -race -count=1 -timeout=5m -coverprofile=/tmp/clients-coverage.out ./sdk/chartworks ./internal/clientcli ./internal/foundation
       - name: Verify tests did not modify delivered source
         run: |
           git diff --exit-code
