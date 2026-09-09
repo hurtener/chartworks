@@ -57,6 +57,32 @@ The full existing phase-21 and phase-22 acceptance is retained and rerun. No
 unimplemented reporting endpoint was added to satisfy a test. Model fixtures are
 recorded behavior, not live cloud/model quality or final migration qualification.
 
+## Full-suite coverage failure and regression completion
+
+Exact-head CI run `34376439762` on
+`b186fa39c54bf65300be00dc0004be5e449624c9` completed the full race-enabled
+unit/integration/acceptance execution successfully. It then failed the unchanged
+PostgreSQL store coverage gate: **3,167 / 3,748 statements**, or **84.4984%**, is
+strictly below the existing owner-approved 84.5% minimum despite its two-decimal
+printed value. The other 38 configured package bands passed. This failed gate is
+not described as a green run, and the later smoke/preflight steps skipped after
+it do not count as evidence.
+
+`TestPhase23CatalogRepositoryFences` adds real PostgreSQL regressions for the
+catalog boundaries consumed by the new clients. Repository calls independently
+reject zero/unscoped envelopes and oversized pages; cancellation returns no page.
+A temporary fixture-only metadata relation outage returns a typed unavailable
+error and no partial/empty-success data through both HTTP and in-process clients.
+Restoring the relation restores reads without reopening warehouse/model access or
+reusing caller authority. All relation renames occur in the test's isolated
+metadata database and are restored; no migration, immutable payload, production
+check or runtime coverage denominator is changed.
+
+The new regression passed locally with race instrumentation and lint. It covers
+six previously uncovered store statements. Final readiness still depends on a
+new complete exact-source CI run, not adding separate coverage files together or
+rounding a failing percentage upward. No threshold or test timeout was relaxed.
+
 ## Reproduction and qualification
 
 Local continuation environment: Linux amd64, Go 1.26.4, real PostgreSQL 17.10 and
