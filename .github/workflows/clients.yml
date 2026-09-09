@@ -1,0 +1,70 @@
+name: Clients
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/phase-23-sdk-cli-parity]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clients:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      # Disposable synthetic fixture; never a production credential.
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache@v4
+        id: native
+        with:
+          path: /tmp/chartworks-bruin
+          key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build immutable native validation dependency
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - name: Select exact dependency and record source
+        run: |
+          test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
+          echo 'CGO_LDFLAGS=-L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
+          git rev-parse HEAD | tee /tmp/clients-source-sha.txt
+      - name: Race-enabled client package tests
+        run: go test -race -count=1 -timeout=5m -coverprofile=/tmp/clients-coverage.out ./sdk/chartworks
+      - name: Verify tests did not modify delivered source
+        run: |
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+      - name: Retain exact-source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clients-evidence
+          path: |
+            /tmp/clients-source-sha.txt
+            /tmp/clients-coverage.out
+          retention-days: 14
