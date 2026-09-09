@@ -1,0 +1,21 @@
+name: Exact client source
+on:
+  push:
+    branches: [dev/phase-22-23-workspace]
+    paths: [.github/workflows/client-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: git bundle create /tmp/chartworks.bundle --all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-source
+          path: /tmp/chartworks.bundle
+          retention-days: 3
