@@ -138,6 +138,21 @@ func decodeBody(w http.ResponseWriter, r *http.Request, schema interface{ Valida
 }
 
 func failure(w http.ResponseWriter, err error) {
+	status, code := classify(err)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{code})
+}
+
+func isClarification(err error) bool {
+	var clarification *nlqroute.Clarification
+	return errors.As(err, &clarification)
+}
+
+func classify(err error) (int, string) {
 	status, code := http.StatusServiceUnavailable, "unavailable"
 	switch {
 	case errors.Is(err, nlqbyo.ErrReplan):
@@ -185,15 +200,5 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, gateway.ErrSpace):
 		status, code = http.StatusConflict, "context_changed"
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(struct {
-		Error string `json:"error"`
-	}{code})
-}
-
-func isClarification(err error) bool {
-	var clarification *nlqroute.Clarification
-	return errors.As(err, &clarification)
+	return status, code
 }

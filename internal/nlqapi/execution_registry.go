@@ -29,7 +29,7 @@ func ExecutionRegistry() (*api.Registry, error) {
 		method, path, action, effect, id, summary, loader string
 		request, response                                 reflect.Type
 	}{
-		{http.MethodPost, "/v1/nlq/preflight", "query.preflight", "nlq_preflight_metadata", "preflightNLQ", "Admit a question and return bounded routing evidence", "nlqexec.Service.Preflight", reflect.TypeFor[nlqexec.PreflightRequest](), reflect.TypeFor[nlqexec.PreflightResult]()},
+		{http.MethodPost, "/v1/nlq/preflight", "query.preflight", "nlq_routing_and_preflight_commit", "preflightNLQ", "Admit a question and return bounded routing evidence", "nlqexec.Service.Preflight", reflect.TypeFor[nlqexec.PreflightRequest](), reflect.TypeFor[nlqexec.PreflightResult]()},
 		{http.MethodPost, "/v1/nlq/plans", "query.plan", "nlq_generation_and_plan_commit", "planNLQ", "Generate and validate one governed read plan", "nlqexec.Service.Plan", reflect.TypeFor[nlqexec.PlanRequest](), reflect.TypeFor[nlqexec.PlanResult]()},
 		{http.MethodPost, "/v1/nlq/runs", "query.execute", "nlq_validated_read_execution", "runNLQ", "Execute one previously validated NLQ plan", "nlqexec.Service.Run", reflect.TypeFor[nlqexec.RunRequest](), reflect.TypeFor[nlqexec.RunResult]()},
 		{http.MethodPost, "/v1/nlq/refinements", "query.execute", "nlq_refine_generation_and_plan_commit", "refineNLQ", "Refine a plan within its signed session", "nlqexec.Service.Refine", reflect.TypeFor[nlqexec.RefineRequest](), reflect.TypeFor[nlqexec.PlanResult]()},

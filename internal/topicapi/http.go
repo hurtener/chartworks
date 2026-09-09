@@ -79,6 +79,7 @@ func Registry() (*api.Registry, error) {
 		request, response                              reflect.Type
 	}
 	routes := []route{
+		{"POST", "/v1/topics/list", "listTopics", "topics.read", "retained_metadata_read", "topics.Service.List", "read_only_no_domain_audit", reflect.TypeFor[topics.ListRequest](), reflect.TypeFor[[]topics.Summary]()},
 		{"POST", "/v1/topic-drafts", "saveTopicDraft", "topics.write", "source_catalog_read_and_draft_commit", "drafts.Service.Save", "topic.drafted", reflect.TypeFor[drafts.SaveRequest](), reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topic-draft-imports", "importTopicDraft", "topics.write", "source_catalog_read_and_draft_commit", "drafts.Service.Import", "topic.drafted", reflect.TypeFor[drafts.ImportRequest](), reflect.TypeFor[drafts.Version]()},
 		{"POST", "/v1/topic-onboarding", "onboardTopicProfile", "topics.write", "profile_catalog_read_and_draft_commit", "drafts.Service.OnboardProfile", "topic.drafted", reflect.TypeFor[drafts.OnboardRequest](), reflect.TypeFor[drafts.Version]()},
@@ -142,6 +143,7 @@ func Registry() (*api.Registry, error) {
 				"archiveTopic":             "Archive the active topic and every matching facet head",
 				"saveRuleDraft":            "Create or edit an immutable proposed ruleset",
 				"reviewRules":              "Record an immutable review of an exact ruleset draft",
+				"listTopics":               "List authorized active topic publications without source or model work",
 				"publishRules":             "Activate an approved ruleset for the current topic version",
 				"getPublishedRules":        "Read the active published ruleset",
 				"getPublishedRuleVersion":  "Read an exact retained ruleset version",
@@ -222,6 +224,11 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 		decode := func(out any) error { return body(w, r, selected.Request, out) }
 		var out any
 		switch selected.ID {
+		case "listTopics":
+			var in topics.ListRequest
+			if err = decode(&in); err == nil {
+				out, err = published.List(r.Context(), e, in)
+			}
 		case "saveTopicDraft":
 			var in drafts.SaveRequest
 			if err = decode(&in); err == nil {
@@ -443,6 +450,14 @@ func body(w http.ResponseWriter, r *http.Request, schema *gateway.Schema, out an
 	return nil
 }
 func failure(w http.ResponseWriter, err error) {
+	status, code := classify(err)
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{code})
+}
+
+func classify(err error) (int, string) {
 	status, code := 503, "unavailable"
 	switch {
 	case errors.Is(err, access.ErrUnauthenticated):
@@ -464,8 +479,5 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status, code = 504, "cancelled_or_timed_out"
 	}
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(struct {
-		Error string `json:"error"`
-	}{code})
+	return status, code
 }

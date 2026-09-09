@@ -105,6 +105,16 @@ func (c *Client) callLimit(ctx context.Context, method, path, key string, body, 
 // callReader is the only authenticated transport. It reads no file bytes before
 // obtaining the current token and never follows credential-bearing redirects.
 func (c *Client) callReader(ctx context.Context, method, path, key, media string, input io.Reader, out any, limit int64) error {
+	return c.exchange(ctx, method, path, key, media, input, out, limit, wireOptions{})
+}
+
+type wireOptions struct {
+	accept, protocol string
+	accepted         bool
+}
+
+// exchange is the sole network credential boundary for ordinary HTTP and MCP.
+func (c *Client) exchange(ctx context.Context, method, path, key, media string, input io.Reader, out any, limit int64, options wireOptions) error {
 	if c == nil || ctx == nil {
 		return errors.New("chartworks: invalid request")
 	}
@@ -123,11 +133,24 @@ func (c *Client) callReader(ctx context.Context, method, path, key, media string
 	if key != "" {
 		req.Header.Set("Idempotency-Key", key)
 	}
+	if options.accept != "" {
+		req.Header.Set("Accept", options.accept)
+	}
+	if options.protocol != "" {
+		req.Header.Set("Mcp-Protocol-Version", options.protocol)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return errors.New("chartworks: transport failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusAccepted && options.accepted {
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 1))
+		if readErr != nil || len(data) != 0 {
+			return errors.New("chartworks: invalid response")
+		}
+		return nil
+	}
 	if resp.StatusCode != http.StatusOK {
 		rejected := &StatusError{Status: resp.StatusCode}
 		if path == "/v1/charts/select" {

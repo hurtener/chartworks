@@ -196,6 +196,7 @@ func (p Prepared) CanonicalMeanings(e identity.Envelope) ([]semantics.CanonicalM
 
 // Repository persists topic review, publication, health and lifecycle state.
 type Repository interface {
+	ListPublishedTopics(context.Context, identity.Envelope, ListRequest) ([]Summary, error)
 	CheckCanonicalMeanings(context.Context, identity.Envelope, string, drafts.Access, []semantics.CanonicalMeaning) (bool, error)
 	ReviewTopic(context.Context, identity.Envelope, string, ReviewRequest) (Review, error)
 	ReviewedTopic(context.Context, identity.Envelope, string, string) (Review, drafts.Version, error)

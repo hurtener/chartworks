@@ -198,7 +198,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		response = ReadyResponse{Ready: ready, Dependencies: states}
 	case "/capabilities":
-		response = CapabilitiesResponse{Phase: "01-21-http", Implemented: s.implemented(), BusinessAPI: s.businessAPI(), Authentication: s.protected != nil}
+		response = CapabilitiesResponse{Phase: "01-22-mcp", Implemented: s.implemented(), BusinessAPI: s.businessAPI(), Authentication: s.protected != nil}
 	}
 	w.WriteHeader(status)
 	if r.Method != http.MethodHead {
@@ -216,7 +216,7 @@ func (s *Server) originAllowed(w http.ResponseWriter, r *http.Request) bool {
 	for _, allowed := range s.values.Server.CORSAllowlist {
 		if origin == allowed {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Mcp-Protocol-Version")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Add("Vary", "Origin")
 			return true
@@ -299,7 +299,9 @@ func (s *Server) implemented() []string {
 		for _, d := range s.registry.Definitions() {
 			if d.ID == "chartCatalog" {
 				out = append(out, "output_specifications")
-				break
+			}
+			if d.ID == "mcpTransport" {
+				out = append(out, "mcp")
 			}
 		}
 	}

@@ -69,6 +69,7 @@ type Repository interface {
 	PutSource(context.Context, store.Scope, int64, Record) error
 	ReadSource(context.Context, store.Scope, string) (Record, error)
 	ListSources(context.Context, store.Scope, access.Selection, int) ([]Source, error)
+	ReadDatasetCatalog(context.Context, identity.Envelope, DatasetQuery) ([]Dataset, error)
 	WithSource(context.Context, store.Scope, string, func(context.Context, Record) error) error
 }
 

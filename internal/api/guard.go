@@ -18,7 +18,7 @@ func Guard(verifier *auth.Verifier, registry *Registry, next http.Handler) http.
 	if verifier == nil || registry == nil || next == nil {
 		return http.NotFoundHandler()
 	}
-	protected := verifier.Middleware(auth.HTTP, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dispatch := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d, _, known := registry.Match(r.Method, r.URL.Path)
 		if !known {
 			guardError(w, 404, "not_found")
@@ -39,7 +39,9 @@ func Guard(verifier *auth.Verifier, registry *Registry, next http.Handler) http.
 			return
 		}
 		next.ServeHTTP(w, r)
-	}))
+	})
+	protected := verifier.Middleware(auth.HTTP, dispatch)
+	mcpProtected := verifier.Middleware(auth.MCP, dispatch)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d, _, known := registry.Match(r.Method, r.URL.Path)
 		if !known {
@@ -48,6 +50,19 @@ func Guard(verifier *auth.Verifier, registry *Registry, next http.Handler) http.
 		}
 		if d.Public {
 			next.ServeHTTP(w, r)
+			return
+		}
+		surface := d.Surface
+		if d.Path == "" {
+			for _, candidate := range registry.Definitions() {
+				if _, ok := MatchPath(candidate.Path, r.URL.Path); ok {
+					surface = candidate.Surface
+					break
+				}
+			}
+		}
+		if surface == auth.MCP {
+			mcpProtected.ServeHTTP(w, r)
 			return
 		}
 		protected.ServeHTTP(w, r)

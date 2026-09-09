@@ -436,3 +436,7 @@ func TestBigQueryProbeUsesFreshAttemptTags(t *testing.T) {
 		t.Fatalf("recorded %d unique metadata attempts, want 4", len(seen))
 	}
 }
+
+func (r *cloudMemoryRepository) ReadDatasetCatalog(context.Context, identity.Envelope, DatasetQuery) ([]Dataset, error) {
+	return nil, store.ErrInvalid
+}
