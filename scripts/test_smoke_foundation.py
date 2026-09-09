@@ -7,7 +7,7 @@ from urllib.request import Request
 import smoke_foundation as smoke
 
 
-def document():
+def document(mcp_enabled=False):
     paths = {}
     for method, path in smoke.REQUIRED_PROTECTED_ROUTES:
         paths.setdefault(path, {})[method.lower()] = {
@@ -15,6 +15,11 @@ def document():
             "x-chartworks-action": "fixture.read",
             "security": [{"penguiBearer": []}],
         }
+    if mcp_enabled:
+        paths["/v1/mcp"] = {"post": {
+            "x-chartworks-auth": "bearer", "x-chartworks-action": "mcp.use",
+            "security": [{"penguiBearer": []}],
+        }}
     paths["/healthz"] = {"get": {"x-chartworks-auth": "none"}}
     paths["/v1/fixture/{id}"] = {"delete": {
         "x-chartworks-auth": "bearer", "x-chartworks-action": "fixture.delete",
@@ -24,8 +29,8 @@ def document():
 
 
 class SmokeRouteSecurityTest(unittest.TestCase):
-    def run_probe(self, doc=None, override=None):
-        doc = document() if doc is None else doc
+    def run_probe(self, doc=None, override=None, *, mcp_enabled=False):
+        doc = document(mcp_enabled) if doc is None else doc
         calls = []
 
         def request(url, method="GET", headers=None):
@@ -37,22 +42,40 @@ class SmokeRouteSecurityTest(unittest.TestCase):
                 result = override(method, path, headers)
                 if result is not None:
                     return result
-            if path in smoke.ABSENT_ROUTES:
+            if path in smoke.ABSENT_ROUTES or (path == "/v1/mcp" and not mcp_enabled):
                 return 404, {"error": "not_found"}
             return 401, {"error": "unauthorized"}
 
         with patch.object(smoke, "request", side_effect=request):
-            smoke.verify_route_security("http://localhost")
+            smoke.verify_route_security("http://localhost", mcp_enabled=mcp_enabled)
         return calls
 
     def test_registered_denied_and_absent_not_found(self):
         calls = self.run_probe()
         protected = [(method, path, headers) for method, path, headers in calls
-                     if path != "/openapi.json" and path not in smoke.ABSENT_ROUTES]
+                     if path not in ("/openapi.json", "/v1/mcp") and path not in smoke.ABSENT_ROUTES]
         self.assertEqual(len(protected), 2 * (len(smoke.REQUIRED_PROTECTED_ROUTES) + 1))
         self.assertIn(("DELETE", "/v1/fixture/smoke-missing-resource", None), calls)
         self.assertTrue(any(headers and "Cookie" in headers for _, _, headers in protected))
         self.assertFalse(any("{" in path for _, path, _ in calls))
+
+    def test_disabled_mcp_is_absent(self):
+        self.assertIn(("GET", "/v1/mcp", None), self.run_probe())
+        with self.assertRaisesRegex(RuntimeError, "unimplemented route advertised"):
+            self.run_probe(document(mcp_enabled=True))
+        with self.assertRaisesRegex(RuntimeError, r"/v1/mcp.*expected 404, got 401"):
+            self.run_probe(override=lambda method, path, _: (401, {}) if path == "/v1/mcp" else None)
+
+    def test_enabled_mcp_is_required_and_protected(self):
+        calls = self.run_probe(mcp_enabled=True)
+        self.assertIn(("POST", "/v1/mcp", None), calls)
+        self.assertTrue(any(path == "/v1/mcp" and headers for _, path, headers in calls))
+        with self.assertRaisesRegex(RuntimeError, "required protected route missing"):
+            self.run_probe(document(), mcp_enabled=True)
+        for status in (200, 404):
+            with self.subTest(status=status), self.assertRaisesRegex(RuntimeError, "expected 401"):
+                self.run_probe(mcp_enabled=True, override=lambda method, path, _: (status, {})
+                               if path == "/v1/mcp" else None)
 
     def test_protected_404_is_not_accepted(self):
         with self.assertRaisesRegex(RuntimeError, r"GET /metrics.*expected 401, got 404"):
