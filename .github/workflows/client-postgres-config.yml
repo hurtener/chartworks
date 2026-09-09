@@ -1,0 +1,20 @@
+name: Client PostgreSQL configuration
+on:
+  push:
+    branches: [dev/phase-22-23-workspace]
+    paths: [.github/workflows/client-postgres-config.yml]
+permissions:
+  contents: read
+jobs:
+  config:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          docker run --name cw-pg-config --entrypoint sh pgvector/pgvector:0.8.2-pg17 -c 'tar -chzf /tmp/config.tar.gz /usr/share/postgresql/17/postgresql.conf.sample'
+          docker cp cw-pg-config:/tmp/config.tar.gz /tmp/postgres-config.tar.gz
+          docker rm cw-pg-config
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-postgres-config
+          path: /tmp/postgres-config.tar.gz
+          retention-days: 3
