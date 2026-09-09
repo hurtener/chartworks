@@ -1,28 +1,53 @@
-name: CI source recovery
+name: Focused compiled smoke verification
 on:
   push:
     branches: [dev/phase20-ci-recovery-20260909]
     paths: [.github/workflows/ci-source-recovery.yml]
 permissions:
   contents: read
+  actions: read
 jobs:
-  snapshot:
+  smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      # Synthetic disposable metadata fixture only.
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 67aff22011352ad3ceb8f7f6959f2e3750e7bee7
+          ref: c992a5d87862663b007d0ab2c2457bca1273413f
+          fetch-depth: 2
           persist-credentials: false
-      - name: Archive unmodified reviewed source
+      - name: Verify source identity and unchanged compiled application
         run: |
-          test "$(git rev-parse HEAD)" = 67aff22011352ad3ceb8f7f6959f2e3750e7bee7
-          git archive --format=tar.gz HEAD > /tmp/chartworks-source.tar.gz
-          git rev-parse HEAD HEAD^{tree} > /tmp/source-identity.txt
-      - uses: actions/upload-artifact@v4
+          test "$(git rev-parse HEAD)" = c992a5d87862663b007d0ab2c2457bca1273413f
+          test "$(git rev-parse HEAD^)" = 67aff22011352ad3ceb8f7f6959f2e3750e7bee7
+          git diff --exit-code HEAD^ HEAD -- cmd internal sdk go.mod go.sum
+      - name: Recover binary from that identical application's qualifying native build
+        uses: actions/download-artifact@v4
         with:
-          name: reviewed-source
-          path: |
-            /tmp/chartworks-source.tar.gz
-            /tmp/source-identity.txt
-          retention-days: 2
+          name: chartworks-linux-amd64
+          run-id: 34295850421
+          github-token: ${{ github.token }}
+          path: bin
+      - name: Run repaired compiled smoke against actual PostgreSQL
+        run: |
+          chmod +x bin/chartworks
+          ./bin/chartworks version
+          python3 -m unittest discover -s scripts -p test_smoke_foundation.py
+          python3 scripts/smoke_foundation.py
+          git diff --exit-code
+      - name: Verification boundary
+        run: echo 'Focused smoke proves the Python repair on identical application code. PR-head full CI remains the readiness gate.'
