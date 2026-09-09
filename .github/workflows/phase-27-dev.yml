@@ -34,26 +34,26 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Apply Go formatting to this development branch only
+      - name: Apply exact guarded development edits and formatting
         run: |
+          python3 .phase27_apply.py
           find internal/reporting -name '*.go' -print0 | xargs -0 gofmt -w
-          gofmt -w internal/config/reporting.go
+          gofmt -w internal/config/reporting.go internal/store/postgres/blocks_read.go internal/store/postgres/blocks_write.go
           if ! git diff --quiet; then
             git config user.name 'Santi Benvenuto'
             git config user.email 'benvenuto.santiago@hotmail.com'
-            git add internal/reporting internal/config/reporting.go
-            git commit -m 'style(reporting): format phase 27 domain source'
+            git add internal/reporting internal/config/reporting.go internal/store/postgres/blocks_read.go internal/store/postgres/blocks_write.go
+            git commit -m 'fix(reporting): integrate evidence fields and canonical empty parameter bindings'
             git push origin HEAD:refs/heads/feat/phase-27-reporting-blocks
           fi
           git rev-parse HEAD
-      - name: Inspect existing integration seam locations
+      - name: Inspect test and migration integration seams
         run: |
-          grep -R -n -A45 'func .*ContextBinding' internal/sources || true
-          grep -R -n -A12 'Fingerprint:' internal/sources || true
-          grep -R -n 'CREATE TABLE.*read_attempts\|CREATE TABLE.*sources\|CREATE TABLE.*source_revisions' internal/store/postgres || true
-          find test/support -type f
-          ls internal/access
-          grep -n 'type ExecutionReport\|type Options\|type Attempt' internal/exec/execution.go
+          grep -n 'SchemaVersion\|requiredRelations' internal/store/postgres/migrate.go
+          grep -R -n 'func newPhase18Fixture\|func newSourceFixture\|func newTokenFixture' test
+          grep -n 'type Values\|Charts\|NLQ\|ReadValidation' internal/config/config.go
+          cat test/support/database.go
+          cat scripts/coverage-bands.conf
       - uses: actions/cache/restore@v4
         id: native
         with:
@@ -66,7 +66,9 @@ jobs:
         run: |
           test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
           echo 'CGO_LDFLAGS=-L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
-      - name: Compile and test current domain checkpoint
-        run: go test -race -count=1 -timeout=10m ./internal/reporting ./internal/config
+      - name: Test bounded domain behavior with races
+        run: go test -race -count=1 -v -timeout=10m ./internal/reporting ./internal/config
+      - name: Compile repository integration (not acceptance evidence)
+        run: go test -run '^$' -count=1 -timeout=10m ./...
       - name: Preserve read-only test status
         run: git diff --exit-code
