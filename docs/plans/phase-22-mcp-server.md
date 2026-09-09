@@ -1,6 +1,6 @@
 # Phase 22 — mcp-server
 
-Status: in_progress. Owner: internal/mcpserver. Hard dependencies: 21.
+Status: shipped. Owner: internal/mcpserver. Hard dependencies: 21.
 
 ## Authority and design
 
@@ -80,3 +80,9 @@ See the [MCP v1 contract](../contracts/mcp-v1.md),
 [adversarial record](../reviews/phase-22-adversarial.md). Later domain owners extend
 this registry and its tests; phase 23 still owns full SDK/CLI parity, and phase 31
 owns the reporting Apps resource/viewer.
+
+## Delivery update, 2026-09-09
+
+PR #14 was merged at `d6dbd31899449f6e042b4ab069c9c30c01fb844b`. This records that delivered
+baseline, not a new test result. Phase 23 extends cumulative client and large-output
+parity while preserving the existing eighteen bindings and authority checks.

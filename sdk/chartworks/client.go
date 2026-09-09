@@ -1,5 +1,5 @@
 // Package chartworks is the token-forwarding client for implemented Chartworks operations.
-// Tokens come from Pengui. This client never signs, exchanges, renews or logs credentials.
+// Tokens and renewal come from the caller's Pengui provider, never a local issuer.
 package chartworks
 
 import (
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/gateway"
+	"github.com/hurtener/chartworks/internal/httpmount"
 )
 
 // Policy is operational retention state, not access policy.
@@ -58,7 +59,15 @@ type StatusError struct {
 func (e *StatusError) Error() string { return "chartworks: request rejected" }
 
 // TokenProvider supplies current Pengui credentials. Errors are never echoed.
+// The SDK calls it again for each request or explicitly authorized retry. Any
+// renewal is the provider's responsibility; a 401 is never silently replayed.
 type TokenProvider func(context.Context) (string, error)
+
+// DefaultRequestTimeout bounds one exchange, including credential acquisition.
+const DefaultRequestTimeout = 75 * time.Second
+
+// MaximumRequestTimeout is the upper bound for an explicitly configured exchange.
+const MaximumRequestTimeout = 15 * time.Minute
 
 // Client is safe for concurrent requests provided its token provider is also safe.
 type Client struct {
@@ -67,24 +76,43 @@ type Client struct {
 	token TokenProvider
 }
 
-// New pins a trusted backend URL and refuses credential-bearing redirect requests.
+// New pins a trusted backend origin and optional configured base path. It refuses
+// userinfo, query/fragment credentials, ambiguous path encodings and redirects.
+// A supplied zero HTTP timeout selects the bounded default, not infinite work.
 func New(base string, client *http.Client, token TokenProvider) (*Client, error) {
 	u, err := url.Parse(base)
-	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || token == nil {
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.RawPath != "" || strings.TrimSpace(base) != base || strings.ContainsAny(base, "?#\\\r\n\t") || !clientBasePath(u.Path) || token == nil {
 		return nil, errors.New("chartworks: invalid client configuration")
 	}
 	ip := net.ParseIP(u.Hostname())
 	if u.Scheme != "https" && (u.Scheme != "http" || ip == nil || !ip.IsLoopback()) {
 		return nil, errors.New("chartworks: HTTPS required")
 	}
-	c := http.Client{Timeout: 75 * time.Second}
+	c := http.Client{Timeout: DefaultRequestTimeout}
 	if client != nil {
 		c = *client
+	}
+	if c.Timeout < 0 || c.Timeout > MaximumRequestTimeout {
+		return nil, errors.New("chartworks: invalid request timeout")
+	}
+	if c.Timeout == 0 {
+		c.Timeout = DefaultRequestTimeout
 	}
 	c.Jar = nil
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("chartworks: redirect refused") }
 	return &Client{strings.TrimSuffix(base, "/"), &c, token}, nil
 }
+
+func clientBasePath(path string) bool {
+	if path == "" {
+		return true
+	}
+	if path != "/" {
+		path = strings.TrimSuffix(path, "/")
+	}
+	return httpmount.Valid(path)
+}
+
 func (c *Client) call(ctx context.Context, method, path, key string, body, out any) error {
 	return c.callLimit(ctx, method, path, key, body, out, 1<<20)
 }
@@ -115,16 +143,31 @@ type wireOptions struct {
 
 // exchange is the sole network credential boundary for ordinary HTTP and MCP.
 func (c *Client) exchange(ctx context.Context, method, path, key, media string, input io.Reader, out any, limit int64, options wireOptions) error {
-	if c == nil || ctx == nil {
-		return errors.New("chartworks: invalid request")
+	bounded, cancel, err := c.clientContext(ctx)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	ctx = bounded
+	if limit < 1 || limit > 128<<20 || !clientRoute(path) {
+		return errors.New("chartworks: invalid response limit")
 	}
 	token, err := c.token(ctx)
-	if err != nil || token == "" || strings.ContainsAny(token, " \r\n\t,") {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil || token == "" || len(token) > 64<<10 || strings.ContainsAny(token, " \x00\r\n\t,") {
 		return errors.New("chartworks: credential unavailable")
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, input)
 	if err != nil {
 		return errors.New("chartworks: invalid request")
+	}
+	// The standard transport can replay a rewindable keyed POST after a lost
+	// response. Mutation replay belongs only to Invoke's bounded owner-approved
+	// loop; never give the transport a rewind function for mutation bodies.
+	if method != http.MethodGet && method != http.MethodHead {
+		req.GetBody = nil
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	if media != "" {
@@ -141,11 +184,17 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return errors.New("chartworks: transport failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusAccepted && options.accepted {
 		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 1))
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if readErr != nil || len(data) != 0 {
 			return errors.New("chartworks: invalid response")
 		}
@@ -159,6 +208,9 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 		return rejected
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err == nil && int64(len(data)) <= limit {
 		if text, ok := out.(*string); ok {
 			*text = string(data)
@@ -226,4 +278,11 @@ func readFailureReceipt(body io.Reader) *GatewayReceipt {
 		}
 	}
 	return value.Receipt
+}
+
+// The pinned origin/mount is never bypassed by a typed method's path coordinate.
+// This also protects older typed methods whose identifier grammar includes dots.
+func clientRoute(path string) bool {
+	u, err := url.ParseRequestURI(path)
+	return err == nil && u.Host == "" && !u.IsAbs() && u.RawPath == "" && !strings.Contains(u.EscapedPath(), "%") && !strings.ContainsAny(u.Path, "{}") && operationPath(u.Path)
 }

@@ -1,13 +1,13 @@
 # RFC-001 — Chartworks execution baseline
 
-Status: implementation design, revised 2026-09-09 for merged phases 01–21 and
-phase-22 MCP implementation under final verification in PR #14. PR #13 merged at
-`2fa80a404518e59db5d6157b50a7521aa9c1512f`. The actionable
-[phase ledger](docs/plans/README.md) separates implemented scope from twelve planned
-workstreams. [MCP v1](docs/contracts/mcp-v1.md) binds real services and cumulative
-HTTP discovery without a new issuer or host qualification. Exact-source CI
-establishes readiness; phase 25 and rendering phases 31/32 remain unimplemented.
-Recorded cloud/model fixtures do not claim live qualification.
+Status: implementation design, revised 2026-09-09 for merged phases 01–22 at
+`d6dbd31899449f6e042b4ab069c9c30c01fb844b` (PR #14), and phase-23 SDK/CLI
+implementation submitted for review. The [phase ledger](docs/plans/README.md)
+separates 142 implemented named criteria from eleven planned workstreams.
+[Clients v1](docs/contracts/clients-v1.md) and D-070 define canonical HTTP mounts,
+registry-derived calls and explicit owner-classified replay without a new issuer.
+Exact-source CI establishes readiness; phase 25 and rendering phases 31/32 remain
+unimplemented. Recorded cloud/model fixtures do not claim live qualification.
 
 Authority: RFC-001 for shared architecture/security; RFC-002 for reporting; the contracts referenced here and active numbered phase plans for implementation; master plan; contributor rules; research. Append-only decisions are in `docs/decisions.md` and `docs/decisions/*.md`. Historical plans and proposals under `docs/archive/` are not competing instructions.
 
@@ -124,7 +124,11 @@ Business HTTP operations use `/v1`, one registered action/resource loader, typed
 
 Retain eleven discovery/question/BYO/feedback tools and add narrow reporting search/describe/run/history/view tools. Resource metadata uses the established Apps mechanism. Paid calls and persisted runs have actual side-effect annotations even if source SQL is read-only. Test new code without host qualification or forced protocol changes.
 
-Source/dataset/pipeline/topic/rule/query/session/feedback/schedule/reporting operations are implemented by owning domain phases through early thin shells. No grants/principals/users/keys/auth/bootstrap/embed-token issuance routes. SDK/CLI consume caller-supplied Pengui authority; in-process calls do not bypass it. [COMMON.md](docs/plans/COMMON.md) defines required surface parity.
+Source/dataset/pipeline/topic/rule/query/session/feedback/schedule/reporting operations are implemented by owning domain phases through early thin shells. No grants/principals/users/keys/auth/bootstrap/embed-token issuance routes. SDK/CLI consume caller-supplied Pengui authority; in-process calls do not bypass it.
+The implemented client contract uses fresh providers, canonical configured mounts,
+closed registry-derived calls and explicit owner-classified replay. Its output-only
+JSON decoder supports the existing 100,000-row execution ceiling without changing
+model/request collection limits or result byte budgets. [COMMON.md](docs/plans/COMMON.md) defines required surface parity.
 
 ## 12. Persistence and durable authority
 

@@ -152,7 +152,7 @@ func TestServerBasePathAndCORSConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, edit := range []func(*Values){
-		func(v *Values) { v.Server.BasePath = "/api" },
+		func(v *Values) { v.Server.BasePath = "/api/../escape" },
 		func(v *Values) { v.Server.CORSAllowlist = []string{"https://app.example/path"} },
 		func(v *Values) { v.Server.CORSAllowlist = []string{"https://app.example", "https://app.example"} },
 		func(v *Values) { v.Server.CORSAllowlist = []string{"https://user:secret@app.example"} },
@@ -203,3 +203,25 @@ func FuzzLoad(f *testing.F) {
 }
 
 var _ io.Writer = errorWriter{}
+
+func TestConfiguredMountsRoundTrip(t *testing.T) {
+	for _, path := range []string{"/", "/api", "/chartworks/v1", "/" + strings.Repeat("a", 63)} {
+		v := good()
+		v.Server.BasePath = path
+		data, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(bytes.NewReader(data), func(string) (string, bool) { return "synthetic", true }, Overrides{})
+		if err != nil || cfg.Values().Server.BasePath != path {
+			t.Fatalf("mount round trip %q: %v", path, err)
+		}
+	}
+	for _, path := range []string{"", "/api/", "/api//v1", "/api/..", "/api%2fprivate", "/" + strings.Repeat("a", 64)} {
+		v := good()
+		v.Server.BasePath = path
+		if validate(v) == nil {
+			t.Fatalf("unsafe mount accepted: %q", path)
+		}
+	}
+}

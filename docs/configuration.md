@@ -9,7 +9,7 @@ Use `chartworks config-check --defaults` for a machine-readable defaults snapsho
 | Key | Type / units | Default | Bounds and behavior |
 |---|---|---|---|
 | `server.listen` | host:port string | `127.0.0.1:8080` | Explicit loopback IP only in this foundation; numeric port 0–65535. Port 0 is useful for isolated tests. |
-| `server.base_path` | path string | `/` | The public HTTP mount; this slice supports the root mount so generated OpenAPI and SDK paths cannot drift. |
+| `server.base_path` | path string | `/` | Canonical public HTTP mount, `/` or absolute ASCII segments up to 64 bytes. The router, OpenAPI and SDK share this grammar; empty/dot segments, percent encodings, queries and fragments are rejected. |
 | `server.cors_allowlist` | string array | `[]` | Empty means same-origin only. Entries must be unique absolute `http`/`https` origins; no credentials or wildcard is accepted. |
 | `server.read_header_timeout` | duration string | `5s` | Positive, at most 1 minute. |
 | `server.read_timeout` | duration string | `15s` | Positive, at most 5 minutes. |
@@ -252,3 +252,22 @@ are deployment boundaries, not authority policies. The default listener remains
 loopback-only and a TLS proxy must preserve an explicitly allowed Host.
 `TestMCPConfigurationBoundsAndIsolation` and decoder/admission tests cover positive
 round trips, all limit edges, invalid hosts/groups and detached configuration.
+
+## Phase 23 client configuration
+
+Clients have no server-side persistence and create no authority. The
+[client v1 contract](contracts/clients-v1.md) lists all commands and examples.
+
+| Setting | Default / bound | Secret and behavior |
+| --- | --- | --- |
+| SDK base URL / `--url` / `CHARTWORKS_CLIENT_URL` | Required; HTTPS, or an explicit loopback IP over HTTP | Not secret; no userinfo, query or fragment. Optional canonical server mount must match `server.base_path`. No redirects or cookies. |
+| SDK HTTP timeout / `--timeout` / `CHARTWORKS_CLIENT_TIMEOUT` | 75 seconds; positive through 15 minutes; SDK zero selects default | Not secret; includes cooperative token-supplier work and the exchange; CLI deadline includes command/input work. Caller earlier deadline wins. |
+| `TokenProvider` / `--token-env` | Caller callback; CLI environment name defaults to `CHARTWORKS_TOKEN` | Value is secret and transient; never printed or persisted. Provider owns renewal and must honor context and concurrent use. |
+| `--token-fd` | Explicit inherited regular-file descriptor 3–1024, at most 64 KiB | Secret input; exclusive with explicit `--token-env`. Pipes/sockets and stdin/stdout/stderr descriptors rejected. Re-read on each call, close when command ends. |
+| `--mcp-token-env` | Unset; optional for operation-matrix join only | Separate caller-owned MCP-audience token; not an audience exchange or fallback. |
+| `CallOptions.Attempts` / `--attempts` | One, explicit maximum three | Only declared reads or owner-classified keyed mutations; unchanged body/path/key. Cancellation and unauthorized/expired/missing object responses are terminal. |
+| `--execute` | False | Required acknowledgement for generic HTTP/MCP calls; does not confer scopes or ownership. |
+
+Client config inspection does not open a token descriptor, resolve a token, connect
+to a service or start workers. `--input -` accepts only bounded stdin payloads;
+CLI arguments never accept a literal token, SQL, arbitrary URL target or headers.

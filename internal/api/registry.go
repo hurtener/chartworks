@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hurtener/chartworks/internal/httpmount"
+
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -54,6 +56,10 @@ type Parameter struct {
 // ResourceLoader names the existing service path that resolves/enforces resources;
 // it is descriptive metadata, not a replacement authorization callback.
 type Definition struct {
+	// Replay is an owner's explicit retry contract: empty/never for mutations,
+	// read for GET/HEAD, or keyed for a proven required-header idempotent service.
+	// Merely accepting an Idempotency-Key header never proves replay safety.
+	Replay string
 	Operation
 	// Surface defaults to HTTP; MCP mounts explicitly require the MCP audience.
 	Surface        auth.Surface
@@ -158,6 +164,9 @@ func New(definitions []Definition) (*Registry, error) {
 			forbidden = forbidden || e.Status == 403
 		}
 		if !d.Public && (!unauthorized || !forbidden) {
+			return nil, ErrRegistration
+		}
+		if !validReplay(d) {
 			return nil, ErrRegistration
 		}
 		out[i] = cloneDefinition(d)
@@ -341,7 +350,7 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 		}
 		// The existing router's authenticated wrong-method response has no body.
 		responses["405"] = map[string]any{"description": "Method not allowed; empty response body"}
-		op := map[string]any{"operationId": d.ID, "summary": d.Summary, "responses": responses, "x-chartworks-auth": "bearer", "x-chartworks-effect": d.Effect, "x-chartworks-resource-loader": d.ResourceLoader, "x-chartworks-audit": d.Audit}
+		op := map[string]any{"operationId": d.ID, "summary": d.Summary, "responses": responses, "x-chartworks-auth": "bearer", "x-chartworks-effect": d.Effect, "x-chartworks-resource-loader": d.ResourceLoader, "x-chartworks-audit": d.Audit, "x-chartworks-replay": d.ReplayPolicy()}
 		if d.Public {
 			op["x-chartworks-auth"] = "none"
 		} else {
@@ -418,20 +427,38 @@ func defaultStatus(d Definition) int {
 	return 200
 }
 
-func validBasePath(path string) bool {
-	if path == "/" {
-		return true
-	}
-	if len(path) > 64 || !strings.HasPrefix(path, "/") || strings.HasSuffix(path, "/") || strings.ContainsAny(path, "?#\\\x00\r\n\t") {
-		return false
-	}
-	for _, part := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
-		if part == "" || !identity.Identifier(part) {
-			return false
-		}
-	}
-	return true
-}
+func validBasePath(path string) bool { return httpmount.Valid(path) }
+
 func statusString(status int) string {
 	return strconv.Itoa(status)
+}
+
+// ReplayPolicy returns only the owner-declared operational replay semantics.
+// Read methods retain their HTTP semantics; mutation replay is explicitly opt-in.
+func (d Definition) ReplayPolicy() string {
+	if d.Replay != "" {
+		return d.Replay
+	}
+	if d.Method == http.MethodGet || d.Method == http.MethodHead {
+		return "read"
+	}
+	return "never"
+}
+func validReplay(d Definition) bool {
+	switch d.ReplayPolicy() {
+	case "never":
+		return true
+	case "read":
+		return d.Method == http.MethodGet || d.Method == http.MethodHead
+	case "keyed":
+		if d.Public || d.Surface == auth.MCP || d.Method == http.MethodGet || d.Method == http.MethodHead {
+			return false
+		}
+		for _, header := range d.Headers {
+			if header.Name == "Idempotency-Key" && header.Required && header.Type == "string" && header.Max > 0 && header.Max <= 128 {
+				return true
+			}
+		}
+	}
+	return false
 }

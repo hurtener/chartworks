@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/httpmount"
 )
 
 const maxDocumentBytes = 1 << 20
@@ -349,7 +351,7 @@ func validate(v Values) error {
 		return invalid("server", "byte limit out of bounds")
 	}
 	if !validBasePath(v.Server.BasePath) {
-		return invalid("server.base_path", "root path required")
+		return invalid("server.base_path", "canonical absolute mount required (maximum 64 bytes)")
 	}
 	if err := validateCORS(v.Server.CORSAllowlist); err != nil {
 		return err
@@ -427,12 +429,7 @@ func validate(v Values) error {
 	return ValidateGateway(v.Gateway, v.Features.Gateway)
 }
 
-func validBasePath(path string) bool {
-	// The first public transport slice uses the root mount. Keeping this typed
-	// and explicit prevents a partial prefix rollout from drifting from SDK
-	// paths or generated OpenAPI servers.
-	return path == "/"
-}
+func validBasePath(path string) bool { return httpmount.Valid(path) }
 
 func validateCORS(origins []string) error {
 	seen := map[string]bool{}

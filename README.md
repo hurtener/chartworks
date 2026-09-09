@@ -4,19 +4,20 @@
 
 ## Current status
 
-**Merged baseline: phases 01–21 are implemented** — 21 of 34 workstreams and
-130 named acceptance criteria. PR #13 merged the phase-20 output specifications
-and cumulative phase-21 HTTP hardening at
-`2fa80a404518e59db5d6157b50a7521aa9c1512f`.
+**Merged baseline: phases 01–22 are implemented** — 22 of 34 workstreams and
+136 named acceptance criteria. PR #14 merged MCP and cumulative HTTP discovery at
+`d6dbd31899449f6e042b4ab069c9c30c01fb844b`.
 
-**Phase 22 is implemented and under final verification in PR #14.** It adds a
-bounded Pengui-authenticated MCP transport, eighteen real tools and three metadata
-resource bindings, plus cumulative HTTP/Go SDK discovery. Its six named criteria
-exercise the eleven established core operations through actual services; the
-[adversarial and verification record](docs/reviews/phase-22-adversarial.md) separates
-local checks from full CI evidence. No release or deployment is implied.
+**Phase 23 adds the SDK/CLI parity implementation for review**, bringing the
+implemented acceptance inventory to 142 criteria. It preserves the typed SDK,
+adds authenticated in-process calls, a registry-derived operation matrix and CLI,
+and extends phase 21 with canonical mounts and explicit safe-replay metadata.
+The [client contract](docs/contracts/clients-v1.md) and
+[adversarial record](docs/reviews/phase-23-adversarial.md) describe the boundaries.
+Phase 23 stays `in_progress` until reviewed and merged; source-matched CI and named
+test results, not this status paragraph, establish readiness.
 
-**Twelve workstreams remain planned: 23–34**, including the phase-25 final release
+**Eleven workstreams remain planned: 24–34**, including the phase-25 final release
 gate. There are 224 acceptance criteria across the full plan. Recorded cloud and
 model fixtures do not constitute live-provider or production-cutover qualification.
 
@@ -30,6 +31,7 @@ model fixtures do not constitute live-provider or production-cutover qualificati
 | External-agent SQL | Opaque expiring context references, exact semantic/source pins, reauthorization, bounded idempotent submission steps and content-free receipts. Context access alone cannot execute SQL. |
 | Output specifications | All fourteen kinds, deterministic selection and explicit bindings, portable metadata/format hints, exact labels/totals, saved-schema validation and review-only rebinding. No warehouse requery or chart-state store. |
 | HTTP — cumulative phase 21 | Implemented operations register schemas, action/resource and audit/effect metadata; OpenAPI comes from that registry. A runtime guard rejects unregistered paths before handler dispatch and selects the declared HTTP/MCP intended audience. |
+| SDK/CLI — phase 23 | Existing typed clients plus registry-driven HTTP calls, authenticated in-process transport, explicit caller token providers, bounded safe replay and injected CLI I/O. No local issuer or future reporting stubs. |
 | MCP — phase 22 | Eighteen installed-service tools, the eleven core contracts, three pure metadata resource bindings, fresh per-request authority, closed schemas, bounded work and explicit effects. No Apps viewer or local credentials. |
 
 ## Ownership and security
@@ -77,6 +79,26 @@ These are JSON metadata, not rendered Apps or retained reporting artifacts.
 Phase 21 and the typed Go SDK additionally expose `POST /v1/topics/list`,
 `POST /v1/datasets/list` and `POST /v1/datasets/describe`. Their database queries apply
 all signed dependency/context restrictions before pagination, not after broad reads.
+
+## SDK and operator CLI
+
+Applications supply a current Pengui token provider to `sdk/chartworks.New` and
+use the existing typed domain methods. `NewInProcessWithOptions` uses the same
+production authenticated handler without opening a listener. `Operations`,
+`OperationMatrix` and `Invoke` expose only installed public contracts.
+
+```bash
+# The application/Pengui integration already supplies CHARTWORKS_TOKEN.
+# Never place a literal bearer in shell arguments or history.
+chartworks client config --url https://analytics.example/warehouse
+chartworks client operations --url https://analytics.example/warehouse
+chartworks client diagnostics --url https://analytics.example/warehouse
+```
+
+Generic calls require `--execute` and take JSON or upload bytes from stdin, not
+SQL/token command arguments. They do not silently retry denied, expired or missing
+objects. See the [complete client and CLI examples](docs/contracts/clients-v1.md)
+for response/status handling, stable operation keys and separate HTTP/MCP tokens.
 
 ## Portable output specifications
 

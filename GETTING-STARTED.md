@@ -1,6 +1,6 @@
 # Running the current Chartworks build
 
-This build preserves shipped phases 01–21 and includes the phase-22 MCP implementation under final CI qualification in PR #14. It provides configuration, identity enforcement, remote Bifrost inference, durable work, governed sources/reads/uploads/profiles/pipelines/topics, NLQ/BYO, output specifications and HTTP/SDK discovery. Reporting and rendering remain unimplemented. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
+This build preserves shipped phases 01–22 (PR #14) and adds the phase-23 SDK/CLI parity implementation for review. It provides configuration, identity enforcement, remote Bifrost inference, durable work, governed sources/reads/uploads/profiles/pipelines/topics, NLQ/BYO, output specifications and HTTP/MCP/SDK/CLI consumers. Reporting and rendering remain unimplemented. Pengui remains the sole authority issuer; Chartworks creates no credentials or local identity policy.
 
 ## Requirements
 
@@ -63,7 +63,7 @@ make preflight-full
 
 Real-store tests create unique `cw_test_*` databases on the explicit test server and remove them afterward. Missing PostgreSQL/client tools, a missing acceptance child, or a skipped runtime test is a failure, not a pass. Coverage instruments production packages across the full test suite, including integration callers; thresholds remain 85% for store, 80% for other internal code and 70% for CLI.
 
-Phase 22 remains under final qualification; twelve workstreams (23–34) remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [current phase ledger](docs/plans/README.md) and [phase-22 review](docs/reviews/phase-22-adversarial.md).
+Phase 23 remains under review; eleven workstreams (24–34) remain planned. Development preflight reports planned phases as explicit skips; `make release-check` correctly refuses an all-product release until every phase is shipped. See the [current phase ledger](docs/plans/README.md) and [phase-22 review](docs/reviews/phase-22-adversarial.md).
 
 ## Backup, restore and rollback
 
@@ -224,3 +224,21 @@ provider on every message. Its typed `ListTopics`, `ListDatasets` and
 `DescribeDataset` methods instead use their ordinary HTTP endpoints/audience.
 See the [MCP contract](docs/contracts/mcp-v1.md) for all eighteen tools, metadata
 resource URIs and exact restrictions. The reporting Apps viewer remains phase 31.
+
+## Phase 23 clients and CLI
+
+See [clients v1](docs/contracts/clients-v1.md) for the complete commands, status
+codes, safe token input and cumulative operation matrix. `server.base_path` may
+now be a canonical absolute mount such as `/analytics`; use that same prefix in
+the SDK/CLI URL. The default remains `/`. Encoded or dot-segment paths are rejected.
+
+```bash
+# CHARTWORKS_TOKEN is populated by the application's Pengui integration.
+# This command only prints safe configuration; it never reads the token.
+./bin/chartworks client config --url https://analytics.example/analytics
+./bin/chartworks client operations --url https://analytics.example/analytics
+```
+
+No business call accepts a tenant/user header as authority. Generic calls require
+an explicit `--execute` flag; stdin carries JSON or upload bytes. Artifacts and
+reports cannot be invoked until their owning domains register real operations.

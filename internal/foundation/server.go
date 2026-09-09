@@ -110,6 +110,14 @@ func (s *Server) readiness() (bool, map[string]string) {
 // to the verifier/enforcer after the configured transport prefix is removed.
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Every registered route uses canonical unescaped ASCII segments. Reject
+		// aliases before stripping the mount: a proxy and this router must not
+		// disagree about which deployment or resource a credential addresses.
+		if r.URL.RawPath != "" || strings.Contains(r.URL.EscapedPath(), "%") {
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		if !s.originAllowed(w, r) {
 			return
 		}

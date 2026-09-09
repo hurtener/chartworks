@@ -224,7 +224,7 @@ func assertRegisteredWireSchemas(t *testing.T, registry *api.Registry, next http
 			}
 			// The common read SDK permits 16 MiB of values plus bounded receipts.
 			// Individual SDK calls continue enforcing their own response limits.
-			if err := definition.Response.Validate(response.Body.Bytes(), (16<<20)+(128<<10)); err != nil {
+			if err := definition.Response.ValidateResponse(response.Body.Bytes(), (16<<20)+(128<<10)); err != nil {
 				t.Errorf("actual %s response violates its registered wire schema: %v", definition.ID, err)
 			}
 		}

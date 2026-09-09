@@ -761,3 +761,5 @@ Warehouse read substrate continuation: [D-067 pinned minimal Bruin leaf-client f
 Canonical registry continuation: [D-068 reviewed publication approves exact canonical meaning](decisions/2026-09-08-canonical-registry.md).
 
 Output specification continuation: [D-069 bounded provider-neutral output specifications and executable HTTP registration](decisions/2026-09-08-chart-specifications.md).
+
+Client parity continuation: [D-070 canonical mounts, registered SDK/CLI consumers and explicit owner replay](decisions/2026-09-09-client-parity.md).

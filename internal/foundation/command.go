@@ -23,7 +23,7 @@ type Build struct{ Version, Commit, Date string }
 // Starter is the command's injected, cancellable service lifecycle.
 type Starter func(context.Context, config.Config, io.Writer) error
 
-const usage = "usage: chartworks version | config-check [--defaults | --config PATH] | serve --config PATH [--listen IP:PORT] | mcp --config PATH [--listen IP:PORT]\n"
+const usage = "usage: chartworks version | config-check [--defaults | --config PATH] | serve --config PATH [--listen IP:PORT] | mcp --config PATH [--listen IP:PORT] | client --help\n"
 
 // Command has deterministic exit codes and injectable environment, I/O and startup.
 func Command(ctx context.Context, args []string, lookup func(string) (string, bool), stdout, stderr io.Writer, build Build, start Starter) int {
