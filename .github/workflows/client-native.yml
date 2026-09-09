@@ -1,0 +1,27 @@
+name: Client native dependency
+on:
+  push:
+    branches: [dev/phase-22-23-workspace]
+    paths: [.github/workflows/client-native.yml]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Build the existing pinned native parser without changing source
+        run: |
+          git init /tmp/bruin-source
+          git -C /tmp/bruin-source remote add origin https://github.com/hurtener/bruin.git
+          git -C /tmp/bruin-source fetch --depth=1 origin 5f562c2959496a04d57f5f199f5e3ad22159fa9f
+          git -C /tmp/bruin-source checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/bruin-source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo +1.98.1 build --release --locked --manifest-path /tmp/bruin-source/pkg/sqlparser/rustffi/Cargo.toml
+          find /tmp/bruin-source/pkg/sqlparser/rustffi/target/release -maxdepth 1 -name '*.a' -exec cp '{}' /tmp/ ';'
+          tar -C /tmp -czf /tmp/native-parser.tar.gz --wildcards '*.a'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-native-parser
+          path: /tmp/native-parser.tar.gz
+          retention-days: 3
