@@ -1,6 +1,6 @@
 # Phase 19 — byo-mode
 
-Status: in_progress. Owner: internal/nlq. Hard dependencies: 02, 10, 17.
+Status: shipped. Owner: internal/nlq. Hard dependencies: 02, 10, 17.
 
 ## Authority and design
 
@@ -45,6 +45,7 @@ Implement `TestPhase19/AC01` through `TestPhase19/AC06`, real stored references 
 
 Opaque context reference has no authority independent of the current JWT. D-052 supersedes local signed-handle machinery. The implemented contract and retry semantics are documented in
 [BYO SQL](../contracts/byo-sql.md); the [review record](../reviews/phase-19-byo-mode.md)
-maps the six acceptance criteria to executable evidence. The phase stays
-`in_progress` until its hosted gates and review complete; no full-release or
-live-cloud qualification is implied.
+maps the six acceptance criteria to executable evidence. PR #12 merged on 2026-09-08 at `99055d4fd5f7a613a9518f3b2b3e4e564301eb5c`
+after [exact-head CI 34284686569](https://github.com/hurtener/chartworks/actions/runs/34284686569)
+passed all required jobs. Phase 19 is shipped; no full-release or live-cloud
+qualification is implied.

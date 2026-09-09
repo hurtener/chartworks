@@ -2,8 +2,8 @@
 
 Status: shipped. Owner: internal/api. Hard dependencies: 01, 02, 03, 04. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
-Proposed PR #11 delivery; this status becomes effective after every required hosted
-check passes and the PR merges.
+The prerequisite shipped with merged PR #11. Cumulative endpoint coverage is
+extended in this change for the merged NLQ/BYO consumers and phase-20 outputs.
 
 ## Authority and design
 
@@ -83,8 +83,8 @@ Implement `TestPhase21/AC01` through `TestPhase21/AC06`. Registration tests enum
 ## Glossary, decisions and deviations
 
 D-050 changes execution order, not phase IDs. The HTTP prerequisite runtime is
-verified. PR #11 records this prerequisite as shipped conditionally; that status
-becomes effective after every required hosted check passes and the PR merges.
+verified and PR #11 is merged. Phase 21 remains shipped; each new domain adds and
+verifies its real consumers rather than claiming unimplemented endpoints.
 Later domain consumers and release gates remain outside this prerequisite.
 
 The phase 15 [private draft consumer](../contracts/topic-drafts-v1.md) and
@@ -93,3 +93,23 @@ operations through the same shared registry and generated schemas, with actual
 HTTP/SDK/PostgreSQL/pgvector fixtures. These domain consumers extend the completed
 HTTP prerequisite and do not by themselves close the remaining phase/release
 criteria.
+
+## Cumulative enforcement continuation, 2026-09-08
+
+The acceptance inventory now includes enabled engineering/pipeline mutations,
+NLQ routing/execution, BYO context/submission and all five chart operations.
+`api.Guard` is installed at the production composition boundary: unregistered
+paths cannot reach a handler; registered protected paths require current bearer
+verification and their exact declared action before domain dispatch. Every
+protected definition must declare 401/403 outcomes. Domain services still enforce
+actual resource/dependency reach and mutation audit transactions; descriptive
+resource-loader/audit strings are not executable security proofs.
+
+Registry-driven denial tests enumerate the full implemented set, prove no domain
+dispatch for missing/invalid bearer or missing action, and retain actual
+HTTP/SDK/PostgreSQL resource checks. Generated OpenAPI uses closed request/response
+DTOs, with required non-null chart scalars, nullable Go collections and optional
+attempt receipts on interrupted ranking. Empty 405 responses match the existing
+shared contract. The [review](../reviews/phase-20-21-adversarial.md) distinguishes
+these cumulative improvements from still-unimplemented reporting/render/export
+and MCP consumers; no placeholder is introduced for them.

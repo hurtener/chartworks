@@ -12,6 +12,8 @@ import (
 
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/chartapi"
+	"github.com/hurtener/chartworks/internal/chartservice"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
@@ -205,6 +207,17 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			return nil, err
 		}
 	}
+	chartService, err := chartservice.New(v.Charts.ServiceOptions(), w.engine)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	chartRegistry, err := chartapi.Registry()
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = chartapi.Handler(verifier, chartService, w.handler)
 	publicRegistry, err := PublicRegistry()
 	if err != nil {
 		w.close()
@@ -248,11 +261,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry)
 	if err != nil {
 		w.close()
 		return nil, err
 	}
+	w.handler = api.Guard(verifier, w.registry, w.handler)
 	return w, nil
 }
 func jobLimits(j config.Jobs) jobs.Limits {

@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/gateway"
 )
 
 // Policy is operational retention state, not access policy.
@@ -42,8 +45,15 @@ type Operation struct {
 	DeletedOperations int64     `json:"deleted_operations"`
 }
 
-// StatusError contains no private server/body/token content.
-type StatusError struct{ Status int }
+// GatewayReceipt contains typed attempted inference usage; missing cost is unknown.
+type GatewayReceipt = gateway.Receipt
+
+// StatusError exposes the HTTP status and optional bounded usage metadata, never
+// the raw rejection body or its message. Error() remains content-free.
+type StatusError struct {
+	Status  int
+	Receipt *GatewayReceipt
+}
 
 func (e *StatusError) Error() string { return "chartworks: request rejected" }
 
@@ -119,7 +129,11 @@ func (c *Client) callReader(ctx context.Context, method, path, key, media string
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return &StatusError{resp.StatusCode}
+		rejected := &StatusError{Status: resp.StatusCode}
+		if path == "/v1/charts/select" {
+			rejected.Receipt = readFailureReceipt(resp.Body)
+		}
+		return rejected
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err == nil && int64(len(data)) <= limit {
@@ -168,4 +182,25 @@ func (c *Client) Sweep(ctx context.Context, key string) (Operation, error) {
 	var o Operation
 	err := c.call(ctx, "POST", "/v1/retention-sweeps", key, struct{}{}, &o)
 	return o, err
+}
+
+// readFailureReceipt is intentionally narrow: other domain errors retain their
+// existing projection and an oversized/malformed body never obscures the status.
+func readFailureReceipt(body io.Reader) *GatewayReceipt {
+	b, err := io.ReadAll(io.LimitReader(body, (64<<10)+1))
+	if err != nil || len(b) > 64<<10 {
+		return nil
+	}
+	var value struct {
+		Receipt *GatewayReceipt `json:"receipt"`
+	}
+	if json.Unmarshal(b, &value) != nil || value.Receipt == nil || len(value.Receipt.Calls) > 4 || len(value.Receipt.Warning) > 256 {
+		return nil
+	}
+	for _, u := range value.Receipt.Calls {
+		if len(u.Role) > 64 || len(u.Provider) > 128 || len(u.RequestedModel) > 256 || len(u.ActualModel) > 256 || u.Attempts < 0 || u.Attempts > 64 || u.DurationMS < 0 || u.InputTokens != nil && *u.InputTokens < 0 || u.OutputTokens != nil && *u.OutputTokens < 0 || u.CostUSD != nil && (*u.CostUSD < 0 || math.IsNaN(*u.CostUSD) || math.IsInf(*u.CostUSD, 0)) {
+			return nil
+		}
+	}
+	return value.Receipt
 }

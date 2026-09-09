@@ -160,3 +160,18 @@ The implemented support boundary is:
 | Other warehouse engines | phase 14 source matrix | Managed uploads remain PostgreSQL-only; native MySQL/SQL Server use real fixtures, while cloud rows remain recorded-only pending separately approved live qualification |
 
 The sequence is reserve `POST /v1/uploads`, send the exact binary body to `PUT /v1/uploads/{id}/content` with `application/octet-stream`, then start or explicitly resume `POST /v1/uploads/{id}/load`. Build a profile with `POST /v1/profiles`; inspect retained state/evidence/history and dependency health without a source/model call. Every work request uses an explicit operation key, and a lost response is recovered through `/v1/engineering-operations/{id}` rather than silently creating another attempt. Use the [manifest](docs/contracts/chartworks-engineering-operations.json) and [provider registration contract](docs/contracts/pengui-provider-registration.md) for the exact actions.
+
+## Output specifications without a renderer
+
+The protected chart catalog and four transformation endpoints are available after
+normal server startup, even with inference and warehouse features disabled. Add
+only the required `charts.read`, `charts.select` or `charts.bind` action and signed
+tenant read reach through Pengui's existing capability policy. The
+[v1 contract and SDK example](docs/contracts/chart-specifications-v1.md) show how to
+adapt an authorized `ReadResult`, choose an output and rebuild its exact mapping
+without querying again. The [configuration excerpt](examples/chartworks.charts.json)
+keeps optional ranking disabled; enabling it also requires the existing Bifrost
+`visual_rank` role and explicit author opt-in on the request.
+
+This returns provider-neutral drawing input, not PNG/SVG/PDF, a stored chart,
+published block or report. Those product surfaces remain in later owning phases.

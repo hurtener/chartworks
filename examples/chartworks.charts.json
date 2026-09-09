@@ -1,0 +1,22 @@
+{
+  "charts": {
+    "limits": {
+      "max_rows": 5000,
+      "max_columns": 64,
+      "max_bytes": 2097152,
+      "max_cell_bytes": 4096,
+      "max_categories": 100,
+      "max_series": 12,
+      "max_alternatives": 3,
+      "selection_floor": 50,
+      "max_options_bytes": 4096,
+      "max_options_depth": 2
+    },
+    "max_concurrent": 8,
+    "timeout": "10s",
+    "rank_enabled": false,
+    "rank_calls": 2,
+    "rank_tokens": 8192,
+    "rank_timeout": "5s"
+  }
+}

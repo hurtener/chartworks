@@ -296,6 +296,12 @@ func (s *Server) implemented() []string {
 	out := []string{"configuration", "health", "postgresql_metadata"}
 	if s.registry != nil {
 		out = append(out, "http_api", "openapi")
+		for _, d := range s.registry.Definitions() {
+			if d.ID == "chartCatalog" {
+				out = append(out, "output_specifications")
+				break
+			}
+		}
 	}
 	if s.businessAPI() {
 		out = append(out, "jwt_verification", "signed_scope_enforcement", "operational_api")

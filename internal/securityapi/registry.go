@@ -30,6 +30,7 @@ type DiagnosticCheck struct {
 func securityErrors() []api.ErrorResponse {
 	return []api.ErrorResponse{
 		{Status: 401, Code: "unauthorized"},
+		{Status: 401, Code: "unauthenticated"},
 		{Status: 403, Code: "forbidden"},
 		{Status: 404, Code: "not_found"},
 		{Status: 409, Code: "conflict"},

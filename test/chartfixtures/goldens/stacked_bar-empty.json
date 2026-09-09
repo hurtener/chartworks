@@ -1,0 +1,180 @@
+{
+  "output": {
+    "version": 1,
+    "kind": "stacked_bar",
+    "mapping": {
+      "version": 1,
+      "kind": "stacked_bar",
+      "columns": [
+        {
+          "id": "category",
+          "name": "category",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "category"
+          }
+        },
+        {
+          "id": "value",
+          "name": "value",
+          "type": "decimal",
+          "role": "measure",
+          "grain": "",
+          "aggregation": "sum",
+          "format": {
+            "unit": "items",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 3
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "value"
+          }
+        },
+        {
+          "id": "series",
+          "name": "series",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "series"
+          }
+        }
+      ],
+      "bindings": {
+        "category": "category",
+        "value": "value",
+        "series": "series"
+      },
+      "order": null,
+      "options": {
+        "title": "",
+        "legend": {
+          "visible": true,
+          "position": "bottom"
+        },
+        "label_max_runes": 80
+      }
+    },
+    "columns": [
+      {
+        "id": "category",
+        "name": "category",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "category"
+        }
+      },
+      {
+        "id": "value",
+        "name": "value",
+        "type": "decimal",
+        "role": "measure",
+        "grain": "",
+        "aggregation": "sum",
+        "format": {
+          "unit": "items",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 3
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "value"
+        }
+      },
+      {
+        "id": "series",
+        "name": "series",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "series"
+        }
+      }
+    ],
+    "rows": [],
+    "points": [],
+    "totals": [
+      {
+        "column": "value",
+        "value": {
+          "null": true,
+          "value": ""
+        },
+        "scope": "complete_result"
+      }
+    ],
+    "state": "empty",
+    "input_rows": 0,
+    "omitted_rows": 0,
+    "completeness": {
+      "status": "complete_result",
+      "reason": ""
+    },
+    "warnings": []
+  }
+}

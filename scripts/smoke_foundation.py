@@ -9,23 +9,90 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import socket
 import subprocess
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
-def request(url: str) -> tuple[int, dict]:
+def request(url: str, method: str = "GET", headers: dict | None = None) -> tuple[int, dict]:
     try:
-        with urlopen(url, timeout=1) as response:
-            return response.status, json.load(response)
+        with urlopen(Request(url, method=method, headers=headers or {}), timeout=1) as response:
+            payload = response.read()
+            return response.status, json.loads(payload) if payload else {}
     except HTTPError as error:
         with error:
             payload = error.read(8192)
             return error.code, json.loads(payload) if payload else {}
+
+
+# These capabilities are always enabled in this smoke configuration. Anchors
+# prevent a missing/empty registry from turning an enumeration into a false pass.
+REQUIRED_PROTECTED_ROUTES = frozenset({
+    ("GET", "/metrics"),
+    ("GET", "/v1/retention-policy"),
+    ("PUT", "/v1/retention-policy"),
+    ("GET", "/v1/audit-events"),
+    ("POST", "/v1/retention-sweeps"),
+    ("GET", "/v1/access/diagnostics"),
+    ("GET", "/v1/charts/catalog"),
+    ("POST", "/v1/charts/select"),
+    ("POST", "/v1/charts/specify"),
+    ("POST", "/v1/charts/build"),
+    ("POST", "/v1/charts/rebind"),
+})
+PUBLIC_ROUTES = frozenset((method, path)
+                          for method in ("GET", "HEAD")
+                          for path in ("/healthz", "/readyz", "/capabilities", "/openapi.json"))
+# MCP/reporting land in later phases; local credential issuance never lands here.
+ABSENT_ROUTES = ("/mcp", "/v1/admin/keys", "/v1/reports", "/v1/unregistered-smoke-route")
+
+
+def verify_route_security(base: str) -> None:
+    code, document = request(base + "/openapi.json")
+    paths = document.get("paths")
+    if code != 200 or not isinstance(paths, dict) or not paths:
+        raise RuntimeError("compiled OpenAPI paths unavailable or empty")
+    for path in ABSENT_ROUTES:
+        if path in paths:
+            raise RuntimeError(f"unimplemented route advertised: {path}")
+    protected = set()
+    for path, operations in sorted(paths.items()):
+        for method, operation in sorted(operations.items()):
+            method = method.upper()
+            if (method, path) in PUBLIC_ROUTES:
+                if operation.get("x-chartworks-auth") != "none" or operation.get("security"):
+                    raise RuntimeError(f"incorrect public registration: {method} {path}")
+                continue
+            if (operation.get("x-chartworks-auth") != "bearer"
+                    or operation.get("security") != [{"penguiBearer": []}]
+                    or not operation.get("x-chartworks-action")):
+                raise RuntimeError(f"incomplete protected registration: {method} {path}")
+            protected.add((method, path))
+            concrete = re.sub(r"\{[^{}]+\}", "smoke-missing-resource", path)
+            # Neither a missing bearer nor spoofed cookie/header identity may
+            # reach decoding or resource lookup, even with keys unavailable.
+            for headers in (None, {"Cookie": "token=pretend", "X-Principal": "pretend"}):
+                status, body = request(base + concrete, method, headers)
+                if status != 401:
+                    raise RuntimeError(f"{method} {path}: expected 401, got {status}")
+                if method != "HEAD" and body != {"error": "unauthorized"}:
+                    raise RuntimeError(f"unsafe authentication error: {method} {path}")
+    missing = REQUIRED_PROTECTED_ROUTES - protected
+    if missing:
+        raise RuntimeError(f"required protected route missing: {sorted(missing)}")
+    # An absent route is not a protected capability. Never accept 401-or-404
+    # interchangeably: registered routes above require 401, absent routes 404.
+    for path in ABSENT_ROUTES:
+        status, body = request(base + path)
+        if status != 404 or body != {"error": "not_found"}:
+            raise RuntimeError(f"{path}: expected 404, got {status}")
+    print(f"OK: {len(protected)} registered protected operations reject unauthenticated access; "
+          f"{len(ABSENT_ROUTES)} absent routes return 404")
 
 
 def main() -> int:
@@ -76,9 +143,7 @@ def main() -> int:
             code, body = request("http://" + address + "/capabilities")
             if code != 200 or body.get("business_api") is not True or body.get("authentication") is not True:
                 raise RuntimeError("incorrect implemented authority capability")
-            for path in ("/metrics", "/mcp", "/v1/admin/keys", "/v1/reports"):
-                if request("http://" + address + path)[0] != 401:
-                    raise RuntimeError("unprotected or unimplemented route exposed")
+            verify_route_security("http://" + address)
             status = Path(f"/proc/{process.pid}/status")
             if status.is_file():
                 for line in status.read_text().splitlines():

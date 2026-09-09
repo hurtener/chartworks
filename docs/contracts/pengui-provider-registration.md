@@ -19,7 +19,7 @@ A signed MCP registration envelope with `tenant_id`, `user_id`, `session_id` and
 1. Register the Chartworks issuer/JWKS and intended HTTP/MCP audience from trusted deployment configuration. Chartworks never reads private issuer keys.
 2. Derive the tenant/user/session principal through Pengui's normal verified session path. Choose destination and provider scopes from operator-approved capability policy, not user or model arguments.
 3. Pass the approved scope strings through `MintCapabilityUserToken` (or the corresponding already-approved platform delivery path). Send the resulting bearer only in `Authorization` to Chartworks.
-4. Use the executable manifests for [operations](chartworks-operations.json), [sources](chartworks-source-operations.json), [validated reads](chartworks-read-operations.json), [durable work](chartworks-work-operations.json), [uploads/profiling](chartworks-engineering-operations.json), [managed pipelines](chartworks-pipeline-operations.json), and [NLQ routing](chartworks-nlq-operations.json) to select the minimum action and addressed reach needed by the consumer. The [read-only example](../../examples/pengui-chartworks-scopes.json) is illustrative, not an API request that authenticates a tenant.
+4. Use the executable manifests for [operations](chartworks-operations.json), [sources](chartworks-source-operations.json), [validated reads](chartworks-read-operations.json), [durable work](chartworks-work-operations.json), [uploads/profiling](chartworks-engineering-operations.json), [managed pipelines](chartworks-pipeline-operations.json), [NLQ routing](chartworks-nlq-operations.json), and [output specifications](chartworks-chart-operations.json) to select the minimum action and addressed reach needed by the consumer. The [read-only example](../../examples/pengui-chartworks-scopes.json) is illustrative, not an API request that authenticates a tenant.
 5. Consume the real operation through `sdk/chartworks` or HTTP. The SDK's token provider supplies a current Pengui bearer for each request. It never mints, stores for unattended replay, or upgrades credentials.
 
 There are no default operator-wide scopes. In particular, `ops.metrics` is deployment-level aggregate observability permission and `ops.inspect` exposes enforcement diagnostics. Pengui should authorize those for intended operators separately from normal tenant analytical access. Neither is inferred from a user's name, service prefix, creator status, or tenant read scope alone.
@@ -96,8 +96,20 @@ rechecks the current topic version in its transaction. Retirement validates the
 retained pinned topic and active rule CAS so it remains available after topic
 transition or archive. The
 [rule lifecycle contract](rule-lifecycle-v1.md) defines the bounded evaluator and
-its retained-topic/dependency fences. PR #11 records the consuming phases as shipped
-conditionally; that status becomes effective after every required hosted check in
-the [PR #11 checks](https://github.com/hurtener/chartworks/pull/11/checks) passes and
-the PR merges. The remaining boundary is hosted CI and release integration rather
-than an unimplemented authority seam.
+its retained-topic/dependency fences. These consumers shipped with merged PR #11;
+BYO context/SQL submission shipped with PR #12. Later product/release integration
+does not require a second authority service.
+
+## Portable output specifications (phase 20)
+
+The [chart manifest](chartworks-chart-operations.json) registers the opaque actions
+`charts.read` (catalog), `charts.select` (exploratory selection) and `charts.bind`
+(explicit specification, saved build and review-only rebinding). Each additionally
+requires `cw.tenant.read:<signed-tenant>`. These are caller-data transformations,
+not source reads: descriptive source/topic pins never authorize a query. No chart
+credential, signing key, local user policy or deployed provider registration is
+created. Operators deliberately enable these actions through existing Pengui
+capability policies; ordinary source access remains separately authorized.
+Optional author-requested ranking uses the existing `visual_rank` role and returns
+usage receipts. Saved builds and rebinding never invoke inference or a source.
+The [v1 contract](chart-specifications-v1.md) defines the exact safety boundary.

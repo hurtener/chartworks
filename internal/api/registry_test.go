@@ -32,7 +32,7 @@ func definition(t *testing.T) Definition {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Definition{Operation: Operation{"POST", "/v1/sources/{id}/test", "sources.read", "warehouse_catalog_read"}, ID: "testSource", Summary: "Test source", ResourceLoader: "sources.Service.Test", Audit: "read_only_no_domain_audit", MaxBodyBytes: 65536, Request: req, Response: res, Errors: []ErrorResponse{{Status: 401, Code: "unauthenticated"}, {Status: 503, Code: "unavailable"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "context_changed"}}}
+	return Definition{Operation: Operation{"POST", "/v1/sources/{id}/test", "sources.read", "warehouse_catalog_read"}, ID: "testSource", Summary: "Test source", ResourceLoader: "sources.Service.Test", Audit: "read_only_no_domain_audit", MaxBodyBytes: 65536, Request: req, Response: res, Errors: []ErrorResponse{{Status: 401, Code: "unauthenticated"}, {Status: 403, Code: "forbidden"}, {Status: 503, Code: "unavailable"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "context_changed"}}}
 }
 
 func TestSchemaTracksClosedRequestAndNullableResponseShapes(t *testing.T) {
@@ -404,6 +404,42 @@ func TestRegistryCompositionAndParameterMetadata(t *testing.T) {
 		edit(&bad)
 		if _, err := New([]Definition{bad}); err == nil {
 			t.Fatalf("invalid metadata accepted: %#v", bad)
+		}
+	}
+}
+
+func TestNullableCollectionsKeepRequiredScalarsStrict(t *testing.T) {
+	s, err := SchemaFor("nullable_collections", reflect.TypeFor[requestDTO](), false, NullableCollections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wire := range []string{`{"name":"x","values":null}`, `{"name":"x","values":[]}`} {
+		if s.Validate([]byte(wire), 4096) != nil {
+			t.Fatal("valid Go collection rejected")
+		}
+	}
+	for _, wire := range []string{`{"name":null,"values":[]}`, `{"values":[]}`, `{"name":"x","values":[null]}`} {
+		if s.Validate([]byte(wire), 4096) == nil {
+			t.Fatalf("nullable scalar accepted %s", wire)
+		}
+	}
+	if _, err = SchemaFor("bad_mode", reflect.TypeFor[requestDTO](), false, SchemaOption(99)); err == nil {
+		t.Fatal("unknown schema mode accepted")
+	}
+}
+
+func TestProtectedRegistryCannotOmitAuthorizationErrors(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		d := definition(t)
+		var retained []ErrorResponse
+		for _, e := range d.Errors {
+			if e.Status != status {
+				retained = append(retained, e)
+			}
+		}
+		d.Errors = retained
+		if _, err := New([]Definition{d}); err == nil {
+			t.Fatal("protected operation lacks denial contract")
 		}
 	}
 }

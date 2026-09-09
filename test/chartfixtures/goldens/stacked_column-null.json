@@ -1,0 +1,249 @@
+{
+  "output": {
+    "version": 1,
+    "kind": "stacked_column",
+    "mapping": {
+      "version": 1,
+      "kind": "stacked_column",
+      "columns": [
+        {
+          "id": "category",
+          "name": "category",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "category"
+          }
+        },
+        {
+          "id": "value",
+          "name": "value",
+          "type": "decimal",
+          "role": "measure",
+          "grain": "",
+          "aggregation": "sum",
+          "format": {
+            "unit": "items",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 3
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "value"
+          }
+        },
+        {
+          "id": "series",
+          "name": "series",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "series"
+          }
+        }
+      ],
+      "bindings": {
+        "category": "category",
+        "value": "value",
+        "series": "series"
+      },
+      "order": null,
+      "options": {
+        "title": "",
+        "legend": {
+          "visible": true,
+          "position": "bottom"
+        },
+        "label_max_runes": 80
+      }
+    },
+    "columns": [
+      {
+        "id": "category",
+        "name": "category",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "category"
+        }
+      },
+      {
+        "id": "value",
+        "name": "value",
+        "type": "decimal",
+        "role": "measure",
+        "grain": "",
+        "aggregation": "sum",
+        "format": {
+          "unit": "items",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 3
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "value"
+        }
+      },
+      {
+        "id": "series",
+        "name": "series",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "series"
+        }
+      }
+    ],
+    "rows": [],
+    "points": [
+      {
+        "row": 1,
+        "category": {
+          "null": false,
+          "value": "Alpha"
+        },
+        "series": {
+          "null": false,
+          "value": "East"
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "1.125",
+          "coordinate": 1.125,
+          "approximate": false
+        }
+      },
+      {
+        "row": 2,
+        "category": {
+          "null": false,
+          "value": "Gamma"
+        },
+        "series": {
+          "null": false,
+          "value": "West"
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "2.500",
+          "coordinate": 2.5,
+          "approximate": false
+        }
+      }
+    ],
+    "totals": [
+      {
+        "column": "value",
+        "value": {
+          "null": false,
+          "value": "3.625"
+        },
+        "scope": "complete_result"
+      }
+    ],
+    "state": "ready",
+    "input_rows": 3,
+    "omitted_rows": 1,
+    "completeness": {
+      "status": "complete_result",
+      "reason": ""
+    },
+    "warnings": [
+      "null_coordinates_omitted"
+    ]
+  }
+}

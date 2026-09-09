@@ -17,12 +17,18 @@ type SchemaOption uint8
 // and null fields before domain validation. It applies only to request schemas.
 const OptionalJSONFields SchemaOption = 1
 
+// NullableCollections preserves Go nil slice encoding while keeping request
+// scalar fields required and non-null. In particular, explicit cell null bits
+// cannot be bypassed by silently decoding JSON null into an empty string.
+const NullableCollections SchemaOption = 2
+
 // SchemaFor derives wire shapes from actual DTOs. Domain validity, scopes and
 // configured budgets remain in the service. Responses admit nil pointer/slice/map
 // values; default request schemas retain required, non-null fields.
 func SchemaFor(name string, typ reflect.Type, response bool, options ...SchemaOption) (*gateway.Schema, error) {
 	optional := len(options) == 1 && options[0] == OptionalJSONFields && !response
-	if len(options) > 0 && !optional || !supportedType(typ, map[reflect.Type]bool{}, 0, response, optional) {
+	nullableCollections := len(options) == 1 && options[0] == NullableCollections && !response
+	if len(options) > 0 && !optional && !nullableCollections || !supportedType(typ, map[reflect.Type]bool{}, 0, response, optional) {
 		return nil, ErrRegistration
 	}
 	r := jsonschema.Reflector{Anonymous: true, DoNotReference: true, RequiredFromJSONSchemaTags: optional}
@@ -38,7 +44,7 @@ func SchemaFor(name string, typ reflect.Type, response bool, options ...SchemaOp
 	if err != nil {
 		return nil, ErrRegistration
 	}
-	if response || optional {
+	if response || optional || nullableCollections {
 		var shape map[string]any
 		if json.Unmarshal(raw, &shape) != nil {
 			return nil, ErrRegistration

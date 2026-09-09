@@ -196,3 +196,31 @@ at most 64 due records in its own tenant before checking quotas; the existing
 retention sweep also deletes due evidence. Source and semantic pins are immutable.
 A restarted process can serve stored references without a router/model, but still
 requires current signed authority and the same source/validator/reader services.
+
+## Output specifications (phase 20)
+
+The `charts` block is always available with the protected HTTP service; it does not
+need enabled warehouse or model features. The [example excerpt](../examples/chartworks.charts.json)
+is mergeable configuration, not a deployed authorization policy. The
+[v1 specification contract](contracts/chart-specifications-v1.md) defines the wire
+shape and exactness rules. `/capabilities` advertises `output_specifications` only
+when the real chart registry is installed, not rendering or report execution.
+
+| Key | Default | Bounds and behavior |
+|---|---:|---|
+| `charts.limits.max_rows` | 5000 | 1–100000 supplied rows; excess fails, never implicitly truncates. |
+| `charts.limits.max_columns` | 64 | 1–256 portable columns and binding slots. |
+| `charts.limits.max_bytes` | 2097152 | 1024–8388608 encoded input bytes; serialized output <=4 times this bound. |
+| `charts.limits.max_cell_bytes` | 4096 | 16–16384 literal UTF-8 bytes, not greater than max_bytes; exact numerics independently cap text/exponent expansion. |
+| `charts.limits.max_categories` / `max_series` | 100 / 12 | Categories 1–10000; series/treemap parents 1–128. |
+| `charts.limits.max_alternatives` / `selection_floor` | 3 / 50 | Alternatives 0–13 plus primary; deterministic score floor 1–100. |
+| `charts.limits.max_options_bytes` / `max_options_depth` | 4096 / 2 | Bytes 128–16384; depth 1–8. The closed shape is depth 2, so a depth-1 restriction rejects specifications rather than ignoring the limit. |
+| `charts.max_concurrent` | 8 | 1–64; nonqueued HTTP decode and service admission. |
+| `charts.timeout` | `10s` | 1–30 seconds; also bounded by caller context and current JWT expiry. Server read deadlines separately bound body reception. |
+| `charts.rank_enabled` | false | Requires explicit request `rank:true` and configured existing Bifrost/visual_rank to assist. |
+| `charts.rank_calls` / `rank_tokens` | 2 / 8192 | Reserved calls 1–4; pessimistic token ceiling 1024–65536, not billed usage. |
+| `charts.rank_timeout` | `5s` | 1 second up to charts.timeout; failed rank preserves rules with provenance. |
+
+Chart POST bodies have a fixed additional 10 MiB ceiling. No arbitrary formatter,
+resource URL, SQL or implicit source lookup is accepted. Configuring these bounds
+neither grants source permissions nor enables reporting/rendering/MCP features.

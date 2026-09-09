@@ -1,58 +1,83 @@
 # Chartworks
 
-**Governed analytics and publishing for Pengui.** Go services for semantic data access, NLQ/BYO SQL, reusable approved reporting blocks, reports/dashboards, scheduled runs and portable retained results.
+**Governed analytics and publishing for Pengui.** A Go service for controlled data access, reviewed semantic topics, natural-language and external-agent SQL, and portable output specifications. Governed reporting and rendering build on these foundations; they are not all implemented yet.
 
-Status: phases 01–14 are shipped, including the qualified PostgreSQL 17 validated-read path, managed CSV/XLSX/Parquet uploads, versioned profiling, managed SQL pipelines and the phase 14 warehouse-driver subset. The qualifying exact-head hosted run is [CI 34182486766](https://github.com/hurtener/chartworks/actions/runs/34182486766) at `6883bc2103b2b870595222e623cd4d79bc01bc41`. PR #11 proposes shipping phases 15–18 and prerequisite 21. If every required check in the [PR #11 checks](https://github.com/hurtener/chartworks/pull/11/checks) passes and the PR merges, 19 phases will be shipped and 15 later workstreams will remain planned; this proposal does not claim those checks or the merge yet. Recorded cloud fixtures do not claim live-cloud qualification.
+## Current status
 
-## Start here
+**Merged baseline: phases 01–19 and the phase-21 HTTP prerequisite are implemented** — 20 of 34 workstreams, with 124 named acceptance criteria. PRs #11 and #12 are merged. The latest baseline qualification is [CI 34284686569](https://github.com/hurtener/chartworks/actions/runs/34284686569), covering the phase-19 head whose tree is preserved by merge `99055d4fd5f7a613a9518f3b2b3e4e564301eb5c`.
 
-Read [the actionable phase plan](docs/plans/README.md), [RFC-001](RFC-001-Chartworks.md), [RFC-002 reporting](RFC-002-Governed-Reporting.md), and [the contributor rules](AGENTS.md). The [source parity audit](docs/research/14-reporting-parity-audit.md) distinguishes inspected code, documentation, inventory and stubs.
+**This change implements phase 20 and extends phase 21 for review.** It adds fourteen provider-neutral output kinds, exact-value labels, saved bindings, optional bounded authoring rank assistance, five protected HTTP/Go SDK operations, and executable registration guards. Phase 20 remains `in_progress` until review and required verification close; implementation is not a release claim. See the [current review and verification record](docs/reviews/phase-20-21-adversarial.md).
 
-Pengui is the sole issuer/authentication/access-policy owner; Chartworks validates its JWTs and applies signed scopes. Harbor/Pengui MCP Apps support is established. Chartworks owns analytics, SQL safety, reporting lifecycle, artifact retention, scheduling and its read viewer—not a second IAM platform or standalone builder UI.
+With phase 20 under review, **13 workstreams remain planned**: 22–34, including the phase-25 final release gate. There are 224 acceptance criteria across the full plan. Recorded cloud and model fixtures do not constitute live-provider or production-cutover qualification.
 
-**Production inference uses the embedded Bifrost Go SDK and remote providers only.** Embeddings and reranking follow reviewed Soundings/Stowage patterns. No local models/weights/downloads or alternate direct-compatible production client. See [gateway contract and configuration](docs/contracts/model-gateway.md) and [the example excerpt](examples/chartworks.gateway.json).
+| Capability | Implemented boundary |
+|---|---|
+| Foundation, authority and operations | Strict configuration, health/readiness, PostgreSQL migrations, telemetry, Pengui JWT verification, signed action/resource enforcement, protected maintenance and audit reads. |
+| Gateway and durable work | One embedded Bifrost SDK with remote-provider roles and bounded budgets; leased operations, fencing, cancellation and cron/interval/manual occurrences using fresh Pengui-issued execution authority. |
+| Sources and safe execution | Versioned source contexts, positive SQL validation, opaque executable plans, exact typed results, read caps, cancellation and uncertainty reconciliation. PostgreSQL is qualified directly; the six-engine matrix records narrower per-driver evidence. |
+| Uploads, profiling and engineering | CSV/XLSX/Parquet managed workspace ingestion, deterministic profiles and drift evidence, reviewed SQL-only managed pipelines and staged external effects. |
+| Semantics and natural-language queries | Versioned private topic drafts and publication, canonical meaning, context-local facets, rules/clarification, compact authorized routing, plan/run/refine/templates, bounded correction and reviewed learning. |
+| External-agent SQL | Opaque expiring context references, exact semantic/source pins, reauthorization, bounded idempotent submission steps and content-free receipts. Context access alone cannot execute SQL. |
+| Output specifications — this change | All fourteen kinds, deterministic selection and explicit bindings, portable metadata/format hints, exact labels/totals, saved-schema validation and review-only rebinding. No warehouse requery or chart-state store. |
+| HTTP — cumulative phase 21 | Implemented operations register schemas, action/resource and audit/effect metadata; OpenAPI comes from that registry. A runtime guard rejects unregistered paths before handler dispatch. |
 
-## Planning checks
+## Ownership and security
+
+**Pengui is the sole issuer, authentication and access-policy owner.** Chartworks verifies current Pengui JWTs and enforces their signed scopes. It does not create users, roles, API keys, login/OAuth flows, local token renewal or embed credentials. Warehouse secrets are a separate source concern. See the [authority contract](docs/contracts/pengui-authority.md) and [operator registration guide](docs/contracts/pengui-provider-registration.md).
+
+Harbor/Pengui MCP Apps support is established by the owner. The later Chartworks MCP tools, retained-artifact viewer and exports are implementation work, not a reason to reopen host compatibility. Iframe credentials belong in the Pengui/client BFF.
+
+**Production inference uses the embedded Bifrost Go SDK and remote providers only.** There is no local learned model, weight download or alternate direct model client. Optional inference is explicit and budgeted. Retained metadata, deterministic output building and other model-free operations remain useful with providers disabled. See the [gateway contract](docs/contracts/model-gateway.md).
+
+## Start and verify
+
+Use [GETTING-STARTED.md](GETTING-STARTED.md) for the reference build, PostgreSQL, native parser/managed runner, trusted issuer configuration and operation examples. The reference deployment includes its pinned native dependencies; an ordinary CGo-free build does not describe the complete current binary.
 
 ```bash
-make planning-check   # document/graph/criteria/coverage coherence plus tool tests
-make preflight-full   # implemented phase tests; planned phases are explicit SKIPs
-make release-check    # strict: actual tests, all phases shipped, no SKIPs
+make planning-check  # Plans, dependency graph, links, configuration and checker tests.
+make build           # Requires the documented pinned native build inputs.
+make vet
+make coverage        # Full race-enabled suite, real fixtures and package coverage bands.
+make preflight-full  # Named implemented-phase acceptance; planned phases explicitly skip.
+make release-check   # Final gate: every phase shipped, all criteria pass, no skips.
 ```
 
-There are 34 phase plans, 224 acceptance criteria, 63 source-feature rows and 41 review gates. Those counts and a green planning check are not runtime proof. Historical plans remain under `docs/archive/`. Development follows the graph rather than numeric phase order; phases21–23 are early thin surfaces and phase25 is the final release gate.
+Real database, native-runner and source fixtures are required for their tests. Missing dependencies are failures, not evidence of passing integration. CI tests committed source without repair scripts. Planning checks and the status registry are bookkeeping, not runtime proof.
 
-## Phase 01–02 foundation
+## Portable output specifications
 
-The first Go foundation now has strict configuration, lifecycle/health, PostgreSQL metadata migrations and real-store acceptance tests. JWT verification and signed-scope enforcement now protect the operational consumer; full analytics and reporting remain later phases while the NLQ routing work proceeds through its in-progress phases. Start with [GETTING-STARTED.md](GETTING-STARTED.md); the [adversarial review](docs/reviews/phase-01-02-adversarial.md) records failure probes and corrections.
+The catalog is **area, bar, column, donut, grouped bar, heatmap, KPI card, line, pie, scatter, stacked bar, stacked column, table and treemap**. Every kind has its own slot requirements and empty/null/negative/order behavior; a table fallback does not count as another chart kind.
 
-## Verified operational access (phases 03/04)
+Five operations use the same service from HTTP and the public Go SDK:
 
-The production `serve` command now protects retention policy, audit, synchronous retention sweep, diagnostics and metrics with Pengui JWTs and signed addressed scopes. The old health-only foundation boundary is superseded for these implemented operations, not for the later analytical/MCP features. The listener remains explicit-loopback; a trusted backend supplies credentials. See [operator registration](docs/contracts/pengui-provider-registration.md), [operation manifest](docs/contracts/chartworks-operations.json) and [authority contract](docs/contracts/pengui-authority.md). The public Go client is `sdk/chartworks`; its caller supplies a current Pengui token provider. Chartworks issues no credentials.
+| HTTP | Go client | Signed action |
+|---|---|---|
+| `GET /v1/charts/catalog` | `ChartCatalog` | `charts.read` |
+| `POST /v1/charts/select` | `SelectChart` | `charts.select` |
+| `POST /v1/charts/specify` | `SpecifyChart` | `charts.bind` |
+| `POST /v1/charts/build` | `BuildChart` | `charts.bind` |
+| `POST /v1/charts/rebind` | `RebindChart` | `charts.bind` |
 
-## Remote gateway and durable work (phases 05/06)
+Each also requires current signed `cw.tenant.read:<tenant>` reach. The SDK receives a caller-supplied token provider; Chartworks issues no credentials. [The operation manifest](docs/contracts/chartworks-chart-operations.json) and [version-one contract](docs/contracts/chart-specifications-v1.md) describe schemas, errors and authority precisely.
 
-The embedded Bifrost v1.6.2 adapter implements all ten configured roles, strict JSON/indexed response validation, independent remote routing, conservative budgets and isolated embedding caches. The first HTTP consumer is a fixed synthetic operator probe, not an arbitrary-prompt endpoint.
+`ChartDataFromReadResult` converts an already returned, qualified read result without another source call. Integers and decimals remain exact strings; geometry may explicitly approximate them. Truncated totals are labeled as totals of returned rows, never full-source totals. Units, currency, percent basis, grain, aggregation and versioned provenance travel separately from display geometry.
 
-One PostgreSQL operation ledger now owns queued maintenance, attempts, fencing, bounded cron/interval/manual occurrences, retries and cancellation. Every privileged attempt obtains fresh **Pengui-issued** authority bound to its accepted manifest. This requires the [companion Pengui endpoint](docs/contracts/execution-authority-v1.md); Chartworks has no local credential renewal or signing path. Retained metadata remains available with model inference and job dispatch disabled.
+Saved mappings pin compatible column metadata and chosen outputs. Building one does not select a different chart or call a model. Schema drift fails; an unambiguous semantic rebind returns a `review_required` proposal rather than editing an approved definition. Optional rank assistance is author-requested, disabled by default and restricted to the already suitable candidates. It cannot invent SQL or bindings. [Configuration](examples/chartworks.charts.json) bounds input size, categories, series, alternatives, concurrency, options and gateway work.
 
-See [setup](GETTING-STARTED.md) and the [adversarial review and verification record](docs/reviews/phase-05-06-adversarial.md). The implementation has recorded-wire tests, not paid live-provider or production deployment acceptance. Reporting targets and the full MCP surface are still later workstreams.
+These endpoints transform **caller-supplied data**. They do not certify its provenance or confer access to any source, topic or retained artifact. The output is sealed typed rendering input, **not a rendered image**. Static rendering, artifact privacy/retention and block-revision persistence remain with their later owning phases.
 
-Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](docs/contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.
+## Semantic queries and external agents
 
-## Uploads and profiling (phases 11/12)
+Reviewed semantic publications, rules and authorized compact context feed the existing validator/read executor. SQL parsing alone is not a safety proof. Executable plans remain bound to actual source/context restrictions, dependencies and parameters; neither NLQ nor external SQL gets a weaker execution path.
 
-The service accepts bounded CSV, XLSX and Parquet files into a tenant-scoped managed PostgreSQL workspace, then exposes the activated dataset through the ordinary source, validation and read-execution path. Deterministic versioned profiles retain sampling provenance, freshness, quality findings and schema-drift evidence; optional summaries use only the existing Bifrost gateway over sanitized aggregates. See [setup](GETTING-STARTED.md), [configuration](docs/configuration.md), the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json) and [acceptance evidence](docs/reviews/phase-11-12-current-evidence.md).
+Phase 19 supports caller-driven multi-step analysis through opaque context references and explicit SQL submission. Lookup and submission recheck current authority and exact pins. Retrying an accepted step returns its content-free receipt without rerunning SQL or pretending that result values were retained. It is not a second agent loop or result cache. See [BYO SQL](docs/contracts/byo-sql.md), [configuration](examples/chartworks.byo.json) and [phase-19 evidence](docs/reviews/phase-19-byo-mode.md).
 
-## External-agent context and SQL (phase 19)
+Durable operations obtain fresh Pengui authority through the [execution-authority companion contract](docs/contracts/execution-authority-v1.md). Enable dispatch only with that real Pengui integration deployed. Chartworks never persists a user's token to replay later or signs a replacement locally.
 
-PR #12 adds versioned opaque context references and explicit SQL submissions on
-the existing router/validator/reader. Context-only authority cannot execute SQL;
-lookup/submission recheck current Pengui authority and exact semantic/source pins.
-Multi-step analysis remains caller-driven, with bounded idempotent steps and
-content-free receipts rather than another agent loop or a result cache. See the
-[wire and retry contract](docs/contracts/byo-sql.md),
-[configuration excerpt](examples/chartworks.byo.json) and
-[review/verification record](docs/reviews/phase-19-byo-mode.md). Phase 19 remains
-in progress until its required checks and review complete; this is not the
-phase-25 full-release qualification.
+## Roadmap and evidence
+
+The [actionable master plan](docs/plans/README.md) owns sequencing, dependencies and status. [RFC-001](RFC-001-Chartworks.md), [RFC-002](RFC-002-Governed-Reporting.md), [COMMON.md](docs/plans/COMMON.md) and [AGENTS.md](AGENTS.md) define implementation obligations. Historical plans under `docs/archive/` are not current instructions.
+
+Still planned: the full MCP/CLI surface, evaluation and release gates, reviewed L2 engineering, governed blocks, frozen reporting runs and retained artifacts, reports/dashboards, reporting schedules, Apps viewer, static rendering/BFF embeds/exports, guided onboarding and migration/cutover. The completed queue is not a claim that reporting schedules already exist; output specs are not a claim that reports or renderers are shipped.
+
+Useful evidence includes the [warehouse-driver matrix](docs/contracts/warehouse-drivers.md), [managed-pipeline contract](docs/contracts/managed-pipelines.md), [read-execution contract](docs/contracts/read-execution.md), [semantic/NLQ delivery record](docs/reviews/phase-15-18-current-evidence.md) and [phase-20/21 adversarial review](docs/reviews/phase-20-21-adversarial.md). No merge, deployment or full replacement qualification is implied by this branch.
