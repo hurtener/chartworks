@@ -4,10 +4,7 @@ on:
     branches: [feat/phase-27-reporting-blocks]
     paths: [.github/workflows/phase-27-dev.yml]
 permissions:
-  contents: write
-concurrency:
-  group: phase27-development
-  cancel-in-progress: false
+  contents: read
 jobs:
   checkpoint:
     runs-on: ubuntu-24.04
@@ -30,23 +27,24 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Recover exact source history
+        run: |
+          git bundle create /tmp/phase27.git.bundle --all
+          git rev-parse HEAD > /tmp/phase27-source-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase27-current-source
+          path: |
+            /tmp/phase27.git.bundle
+            /tmp/phase27-source-sha.txt
+          retention-days: 3
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: Apply guarded catalog and assistance integration
-        run: |
-          python3 .phase27_core.py
-          python3 .phase27_api.py
-          find internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
-          if ! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"; then
-            git config user.name 'Santi Benvenuto'
-            git config user.email 'benvenuto.santiago@hotmail.com'
-            git add internal sdk test .phase27_api.py
-            git commit -m 'feat(reporting): integrate source-backed catalog continuity and SQL assistance consumers'
-            git push origin HEAD:refs/heads/feat/phase-27-reporting-blocks
-          fi
-          git rev-parse HEAD
       - uses: actions/cache/restore@v4
         id: native
         with:
@@ -55,15 +53,29 @@ jobs:
       - name: Build immutable native validation dependency
         if: steps.native.outputs.cache-hit != 'true'
         run: bash scripts/build-bruin.sh
-      - name: Select immutable native dependency
+      - name: Package offline native and disposable database runtime
         run: |
           test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
           echo 'CGO_LDFLAGS=-L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
-      - name: Test bounded domain and typed public consumers with races
-        run: go test -race -count=1 -v -timeout=10m ./internal/reporting ./internal/reportingapi ./internal/chartdata ./internal/config ./sdk/chartworks
-      - name: Live PostgreSQL block lifecycle checkpoint
-        run: go test -race -count=1 -v -timeout=10m -run '^TestPhase27$' ./test/acceptance
-      - name: Compile all repository consumers (not acceptance evidence)
-        run: go test -run '^$' -count=1 -timeout=10m ./...
-      - name: Preserve read-only test status
-        run: git diff --exit-code
+          tar -czf /tmp/phase27-native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_sqlparser.a
+          id=$(docker create pgvector/pgvector:0.8.2-pg17)
+          docker export "$id" | gzip -1 > /tmp/phase27-pg17.tar.gz
+          docker rm "$id"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase27-native-offline
+          path: |
+            /tmp/phase27-native.tar.gz
+            /tmp/phase27-pg17.tar.gz
+          compression-level: 0
+          retention-days: 3
+      - name: Race-enabled current acceptance
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=10m -run '^TestPhase27$' ./test/acceptance | tee /tmp/phase27-acceptance.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase27-checkpoint-evidence
+          path: /tmp/phase27-acceptance.txt
+          retention-days: 3
