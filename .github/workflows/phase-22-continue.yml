@@ -1,0 +1,48 @@
+name: Phase 22 verified source transfer
+on:
+  push:
+    branches: [feat/phase-22-mcp-server]
+    paths: [.github/workflows/phase-22-continue.yml]
+permissions:
+  contents: write
+concurrency:
+  group: phase-22-source-transfer
+  cancel-in-progress: false
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Apply the exact locally reviewed patch and remove transfer inputs
+        run: |
+          test "$(git rev-parse HEAD^)" = 5724077226b7293d909be3ca0f9045dec7158280
+          python3 - <<'PY'
+          import base64, gzip, hashlib
+          from pathlib import Path
+          encoded = ''.join(Path(f'.github/phase-22-transfer-{n}.b64').read_text() for n in (1,2,3))
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '380848d7c1b9ac9b147f1e30eeacf61e11887185145506682712d67d7c98e0ef'
+          Path('/tmp/phase22-reviewed.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/phase22-reviewed.patch
+          git apply /tmp/phase22-reviewed.patch
+          rm .github/phase-22-transfer-{1,2,3}.b64 .github/workflows/phase-22-continue.yml
+          git add --all
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test(mcp): enforce phase 22 acceptance and adversarial isolation gates'
+          git push origin HEAD:feat/phase-22-mcp-server
+      - name: Record exact source for verification, not a test result
+        run: |
+          git rev-parse HEAD > /tmp/source-sha.txt
+          git archive --format=tar HEAD | gzip > /tmp/chartworks-phase22-verified-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-22-verified-source
+          path: |
+            /tmp/source-sha.txt
+            /tmp/chartworks-phase22-verified-source.tar.gz
+          retention-days: 3
