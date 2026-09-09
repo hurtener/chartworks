@@ -1,0 +1,37 @@
+name: Phase 23 coverage diagnostics
+on:
+  push:
+    branches: [dev/phase-23-workspace]
+    paths: [.github/workflows/phase23-coverage-diagnostics.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read the completed verification log without changing source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/hurtener/chartworks/actions/jobs/102550323320/logs > /tmp/phase23-full-ci.log
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          lines = Path('/tmp/phase23-full-ci.log').read_text(encoding='utf-8-sig').splitlines()
+          wanted = set()
+          for i, line in enumerate(lines):
+              if re.search(r'--- FAIL:|FAIL: |panic:|DATA RACE|FAIL\s+github.com|PASS\s+github.com|^.*OK: internal/|coverage unavailable|Process completed with exit code|^.*ok\s+github.com/hurtener/chartworks/test/acceptance', line):
+                  wanted.update(range(max(0, i-2), min(len(lines), i+4)))
+          excerpt = '\n'.join(lines[i] for i in sorted(wanted))
+          print(excerpt)
+          Path('/tmp/phase23-coverage-diagnostics.txt').write_text(excerpt)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase23-coverage-diagnostics
+          path: |
+            /tmp/phase23-full-ci.log
+            /tmp/phase23-coverage-diagnostics.txt
+          retention-days: 2
