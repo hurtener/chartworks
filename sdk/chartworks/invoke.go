@@ -21,18 +21,18 @@ import (
 // can opt into replay. Transport errors, cancellation, authorization, conflicts
 // and expired/missing objects are never automatically retried.
 type CallOptions struct {
-	ResourceID string
-	Query url.Values
-	Body []byte
+	ResourceID     string
+	Query          url.Values
+	Body           []byte
 	IdempotencyKey string
-	Attempts int
+	Attempts       int
 }
 
 // CallResult preserves the exact bounded wire body, including lossless numbers.
 // JSON remains JSON bytes; text metrics are not wrapped in a fabricated object.
 type CallResult struct {
 	ContentType string
-	Body []byte
+	Body        []byte
 }
 
 // Invoke calls only an operation in the running server's generated registry.

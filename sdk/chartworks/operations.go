@@ -29,11 +29,11 @@ const operationCatalogLimit = 4 << 20
 // OperationParameter is the exact bounded path/query/header contract published
 // by the server. It is metadata, never a substitute for signed resource reach.
 type OperationParameter struct {
-	Name string `json:"name"`
-	In string `json:"in"`
-	Required bool `json:"required"`
-	Description string `json:"description,omitempty"`
-	Schema json.RawMessage `json:"schema"`
+	Name        string          `json:"name"`
+	In          string          `json:"in"`
+	Required    bool            `json:"required"`
+	Description string          `json:"description,omitempty"`
+	Schema      json.RawMessage `json:"schema"`
 }
 
 // OperationInfo is one row of the generated HTTP/MCP/SDK/CLI operation matrix.
@@ -41,26 +41,26 @@ type OperationParameter struct {
 // MCPTool is populated only when a separately authorized MCP catalog is supplied.
 // Schemas and rows are detached; changing a returned row cannot change Invoke.
 type OperationInfo struct {
-	ID string `json:"id"`
-	Method string `json:"method"`
-	Path string `json:"path"`
-	Summary string `json:"summary"`
-	Action string `json:"action,omitempty"`
-	Effect string `json:"effect"`
-	Audit string `json:"audit"`
-	ResourceLoader string `json:"resource_loader"`
-	Public bool `json:"public"`
-	Audience string `json:"audience"`
-	Replay string `json:"replay"`
-	MaxBodyBytes int `json:"max_body_bytes,omitempty"`
-	RequestContentType string `json:"request_content_type,omitempty"`
-	ResponseContentType string `json:"response_content_type,omitempty"`
-	Parameters []OperationParameter `json:"parameters,omitempty"`
-	RequestSchema json.RawMessage `json:"request_schema,omitempty"`
-	ResponseSchema json.RawMessage `json:"response_schema,omitempty"`
-	SDKMethod string `json:"sdk_method"`
-	CLICommand string `json:"cli_command"`
-	MCPTool string `json:"mcp_tool,omitempty"`
+	ID                  string               `json:"id"`
+	Method              string               `json:"method"`
+	Path                string               `json:"path"`
+	Summary             string               `json:"summary"`
+	Action              string               `json:"action,omitempty"`
+	Effect              string               `json:"effect"`
+	Audit               string               `json:"audit"`
+	ResourceLoader      string               `json:"resource_loader"`
+	Public              bool                 `json:"public"`
+	Audience            string               `json:"audience"`
+	Replay              string               `json:"replay"`
+	MaxBodyBytes        int                  `json:"max_body_bytes,omitempty"`
+	RequestContentType  string               `json:"request_content_type,omitempty"`
+	ResponseContentType string               `json:"response_content_type,omitempty"`
+	Parameters          []OperationParameter `json:"parameters,omitempty"`
+	RequestSchema       json.RawMessage      `json:"request_schema,omitempty"`
+	ResponseSchema      json.RawMessage      `json:"response_schema,omitempty"`
+	SDKMethod           string               `json:"sdk_method"`
+	CLICommand          string               `json:"cli_command"`
+	MCPTool             string               `json:"mcp_tool,omitempty"`
 }
 
 // Operations reads the current server's generated document. There is no saved
@@ -81,8 +81,8 @@ func ParseOperations(document []byte) ([]OperationInfo, error) {
 		return nil, ErrInvalidCatalog
 	}
 	var root struct {
-		Version string `json:"openapi"`
-		Paths map[string]map[string]json.RawMessage `json:"paths"`
+		Version string                                `json:"openapi"`
+		Paths   map[string]map[string]json.RawMessage `json:"paths"`
 	}
 	if json.Unmarshal(document, &root) != nil || root.Version != "3.1.1" || len(root.Paths) == 0 || len(root.Paths) > 256 {
 		return nil, ErrInvalidCatalog
@@ -114,19 +114,19 @@ type operationContent map[string]struct {
 }
 
 type operationDocument struct {
-	ID string `json:"operationId"`
-	Summary string `json:"summary"`
-	Auth string `json:"x-chartworks-auth"`
-	Action string `json:"x-chartworks-action"`
-	Effect string `json:"x-chartworks-effect"`
-	Audit string `json:"x-chartworks-audit"`
-	ResourceLoader string `json:"x-chartworks-resource-loader"`
-	Audience string `json:"x-chartworks-audience"`
-	MaxBodyBytes int `json:"x-chartworks-max-body-bytes"`
-	Parameters []OperationParameter `json:"parameters"`
-	RequestBody *struct {
-		Required bool `json:"required"`
-		Content operationContent `json:"content"`
+	ID             string               `json:"operationId"`
+	Summary        string               `json:"summary"`
+	Auth           string               `json:"x-chartworks-auth"`
+	Action         string               `json:"x-chartworks-action"`
+	Effect         string               `json:"x-chartworks-effect"`
+	Audit          string               `json:"x-chartworks-audit"`
+	ResourceLoader string               `json:"x-chartworks-resource-loader"`
+	Audience       string               `json:"x-chartworks-audience"`
+	MaxBodyBytes   int                  `json:"x-chartworks-max-body-bytes"`
+	Parameters     []OperationParameter `json:"parameters"`
+	RequestBody    *struct {
+		Required bool             `json:"required"`
+		Content  operationContent `json:"content"`
 	} `json:"requestBody"`
 	Responses map[string]struct {
 		Content operationContent `json:"content"`

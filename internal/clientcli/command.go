@@ -23,11 +23,11 @@ import (
 // ownership of an explicitly selected inherited token descriptor to Command.
 // It is never invoked implicitly, or by the configuration inspection command.
 type IO struct {
-	Stdin io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
-	Lookup func(string) (string, bool)
-	HTTP *http.Client
+	Stdin          io.Reader
+	Stdout         io.Writer
+	Stderr         io.Writer
+	Lookup         func(string) (string, bool)
+	HTTP           *http.Client
 	OpenDescriptor func(int) (*os.File, error)
 }
 
@@ -39,6 +39,9 @@ const usage = "usage: chartworks client config|operations|diagnostics|call OPERA
 func Command(ctx context.Context, args []string, streams IO) int {
 	if ctx == nil || streams.Stdout == nil || streams.Stderr == nil || streams.Lookup == nil {
 		return 2
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(streams.Stderr, err)
 	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
 		return writeUsage(streams.Stdout, 0)
@@ -59,18 +62,14 @@ func Command(ctx context.Context, args []string, streams IO) int {
 		return writeUsage(streams.Stderr, 2)
 	}
 	base, _ := streams.Lookup("CHARTWORKS_CLIENT_URL")
-	defaultTimeout := cw.DefaultRequestTimeout
+	timeoutText := cw.DefaultRequestTimeout.String()
 	if configured, ok := streams.Lookup("CHARTWORKS_CLIENT_TIMEOUT"); ok {
-		var err error
-		defaultTimeout, err = time.ParseDuration(configured)
-		if err != nil {
-			return writeUsage(streams.Stderr, 2)
-		}
+		timeoutText = configured
 	}
 	flags := flag.NewFlagSet("client", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	baseURL := flags.String("url", base, "trusted backend URL including an optional configured prefix")
-	timeout := flags.Duration("timeout", defaultTimeout, "whole-command deadline")
+	timeoutArg := flags.String("timeout", timeoutText, "whole-command deadline")
 	tokenEnv := flags.String("token-env", "", "name of caller-populated token environment variable")
 	tokenFD := flags.Int("token-fd", -1, "explicit inherited regular-file token descriptor (3..1024)")
 	mcpEnv := flags.String("mcp-token-env", "", "separate MCP-audience token environment for the matrix")
@@ -86,6 +85,11 @@ func Command(ctx context.Context, args []string, streams IO) int {
 		if errors.Is(err, flag.ErrHelp) {
 			return writeUsage(streams.Stdout, 0)
 		}
+		return writeUsage(streams.Stderr, 2)
+	}
+	duration, parseErr := time.ParseDuration(*timeoutArg)
+	timeout := &duration
+	if parseErr != nil {
 		return writeUsage(streams.Stderr, 2)
 	}
 	if flags.NArg() != 0 || *timeout <= 0 || *timeout > cw.MaximumRequestTimeout || *attempts < 1 || *attempts > 3 || (*input != "" && *input != "-") || (*tokenFD != -1 && (*tokenFD < 3 || *tokenFD > 1024)) || (*tokenFD != -1 && *tokenEnv != "") {
@@ -123,8 +127,8 @@ func Command(ctx context.Context, args []string, streams IO) int {
 			source = "explicit_regular_file_descriptor"
 		}
 		return writeJSON(streams.Stdout, struct {
-			URL string `json:"base_url"`
-			Timeout string `json:"timeout"`
+			URL         string `json:"base_url"`
+			Timeout     string `json:"timeout"`
 			TokenSource string `json:"token_source"`
 		}{*baseURL, timeout.String(), source})
 	}
@@ -187,7 +191,7 @@ func Command(ctx context.Context, args []string, streams IO) int {
 		if err != nil {
 			return fail(streams.Stderr, err)
 		}
-		return writeBody(streams.Stdout, result)
+		return writeMCPBody(streams.Stdout, streams.Stderr, result)
 	case "call":
 		// Metadata lookup supplies the actual body bound before stdin is read.
 		// Invoke rechecks the current contract. --execute is mandatory even for
@@ -229,6 +233,7 @@ func Command(ctx context.Context, args []string, streams IO) int {
 }
 
 type queryFlags struct{ values url.Values }
+
 func (*queryFlags) String() string { return "" }
 func (q *queryFlags) Set(value string) error {
 	name, content, ok := strings.Cut(value, "=")
@@ -310,13 +315,14 @@ func readInput(ctx context.Context, reader io.Reader, limit int) ([]byte, error)
 	return data, nil
 }
 func writeUsage(writer io.Writer, code int) int {
-	if _, err := io.WriteString(writer, usage); err != nil {
+	if err := writeOutput(writer, []byte(usage)); err != nil {
 		return 1
 	}
 	return code
 }
 func writeJSON(writer io.Writer, value any) int {
-	if json.NewEncoder(writer).Encode(value) != nil {
+	data, err := json.Marshal(value)
+	if err != nil || writeOutput(writer, append(data, '\n')) != nil {
 		return 1
 	}
 	return 0
@@ -325,11 +331,11 @@ func writeBody(writer io.Writer, body []byte) int {
 	if len(body) == 0 {
 		return 0
 	}
-	if _, err := writer.Write(body); err != nil {
+	if err := writeOutput(writer, body); err != nil {
 		return 1
 	}
 	if !bytes.HasSuffix(body, []byte("\n")) {
-		if _, err := io.WriteString(writer, "\n"); err != nil {
+		if err := writeOutput(writer, []byte("\n")); err != nil {
 			return 1
 		}
 	}

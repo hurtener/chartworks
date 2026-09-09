@@ -3,6 +3,8 @@ package chartworks
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/hurtener/chartworks/internal/gateway"
 )
 
 // OperationMatrix joins installed HTTP contracts with currently visible MCP tools.
@@ -27,16 +29,21 @@ func (c *Client) OperationMatrix(ctx context.Context, mcpClient *Client) ([]Oper
 	if err != nil {
 		return nil, err
 	}
+	if _, err := gateway.DecodeJSON(raw, 32<<20); err != nil {
+		return nil, ErrInvalidCatalog
+	}
 	var response struct {
-		Error json.RawMessage `json:"error"`
-		Result *struct {
+		Version string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Error   json.RawMessage `json:"error"`
+		Result  *struct {
 			Tools []struct {
-				Name string `json:"name"`
+				Name string                     `json:"name"`
 				Meta map[string]json.RawMessage `json:"_meta"`
 			} `json:"tools"`
 		} `json:"result"`
 	}
-	if json.Unmarshal(raw, &response) != nil || response.Error != nil || response.Result == nil || len(response.Result.Tools) > 64 {
+	if json.Unmarshal(raw, &response) != nil || response.Version != "2.0" || string(response.ID) != "1" || response.Error != nil || response.Result == nil || len(response.Result.Tools) > 64 {
 		return nil, ErrInvalidCatalog
 	}
 	byID := make(map[string]int, len(rows))
