@@ -1,0 +1,26 @@
+name: Phase 22 reviewed documentation transfer
+on:
+  push:
+    branches: [feat/phase-22-mcp-server]
+    paths: [.github/workflows/phase-22-continue.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Publish exact locally reviewed documentation and remove transfer inputs
+        run: |
+          test "$(git rev-parse HEAD^)" = 01e95b02a013efb7b271ad0b1dc3465b09f20374
+          python3 .github/phase-22-docs.py
+          rm .github/phase-22-docs.py .github/workflows/phase-22-continue.yml
+          git add --all
+          git diff --cached --check
+          test "$(git write-tree)" = 622ca9585025c0363274ec931ec7921298120eda
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs(mcp): complete deployment and cumulative phase ownership guides'
+          git push origin HEAD:feat/phase-22-mcp-server
