@@ -33,6 +33,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Record exact source for independent reproduction
+        run: |
+          git rev-parse HEAD > /tmp/mcp-source-sha.txt
+          git archive --format=tar.gz HEAD > /tmp/mcp-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-source
+          path: |
+            /tmp/mcp-source-sha.txt
+            /tmp/mcp-source.tar.gz
+          retention-days: 14
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
