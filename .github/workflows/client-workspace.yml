@@ -1,0 +1,32 @@
+name: Client development workspace
+on:
+  push:
+    branches: [dev/phase-22-23-workspace]
+    paths: [.github/workflows/client-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Archive exact source and public client dependencies
+        run: |
+          git bundle create /tmp/chartworks.bundle --all
+          go list -deps ./sdk/chartworks ./internal/mcpserver ./internal/chartapi ./internal/config ./internal/api > /tmp/client-dependencies.txt
+          tar -C "$(go env GOMODCACHE)" -czf /tmp/client-modcache.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-workspace
+          path: |
+            /tmp/chartworks.bundle
+            /tmp/client-modcache.tar.gz
+            /tmp/client-dependencies.txt
+          retention-days: 3
