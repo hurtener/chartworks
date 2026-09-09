@@ -34,11 +34,19 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Inspect existing fixture settings
+      - name: Apply guarded catalog and assistance integration
         run: |
-          grep -R -n -A30 'func newTokenFixture' test/acceptance || true
-          grep -n -A20 'func .*Rotate' internal/sources/sources.go || true
-          grep -n -A80 'func .*inspectReadContext' internal/sources/postgres.go || true
+          python3 .phase27_core.py
+          python3 .phase27_api.py
+          find internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
+          if ! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"; then
+            git config user.name 'Santi Benvenuto'
+            git config user.email 'benvenuto.santiago@hotmail.com'
+            git add internal sdk test .phase27_api.py
+            git commit -m 'feat(reporting): integrate source-backed catalog continuity and SQL assistance consumers'
+            git push origin HEAD:refs/heads/feat/phase-27-reporting-blocks
+          fi
+          git rev-parse HEAD
       - uses: actions/cache/restore@v4
         id: native
         with:
