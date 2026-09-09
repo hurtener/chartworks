@@ -15,9 +15,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Apply the exact locally reviewed patch and remove transfer inputs
+      - name: Apply exact reviewed code; CI changes use the authorized GitHub connector
         run: |
-          test "$(git rev-parse HEAD^)" = 5724077226b7293d909be3ca0f9045dec7158280
+          test "$(git rev-parse HEAD^)" = fae561ebc256a21132ec3829c1f8482882786c04
           python3 - <<'PY'
           import base64, gzip, hashlib
           from pathlib import Path
@@ -26,8 +26,8 @@ jobs:
           assert hashlib.sha256(patch).hexdigest() == '380848d7c1b9ac9b147f1e30eeacf61e11887185145506682712d67d7c98e0ef'
           Path('/tmp/phase22-reviewed.patch').write_bytes(patch)
           PY
-          git apply --check /tmp/phase22-reviewed.patch
-          git apply /tmp/phase22-reviewed.patch
+          git apply --check --exclude=.github/workflows/ci.yml /tmp/phase22-reviewed.patch
+          git apply --exclude=.github/workflows/ci.yml /tmp/phase22-reviewed.patch
           rm .github/phase-22-transfer-{1,2,3}.b64 .github/workflows/phase-22-continue.yml
           git add --all
           git diff --cached --check
