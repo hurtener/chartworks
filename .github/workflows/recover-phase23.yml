@@ -1,0 +1,32 @@
+name: Recover phase 23 workspace
+on:
+  push:
+    branches: [dev/phase-23-workspace]
+    paths: [.github/workflows/recover-phase23.yml]
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 51758889692a4983cfe50387667da8a2b4193dcd
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - run: |
+          git bundle create /tmp/phase23-recovered.bundle --all HEAD
+          git rev-parse HEAD > /tmp/recovered-sha.txt
+          tar -C "$(go env GOROOT)" -czf /tmp/go1.26.4.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase23-recovered-source
+          path: |
+            /tmp/phase23-recovered.bundle
+            /tmp/recovered-sha.txt
+            /tmp/go1.26.4.tar.gz
+          retention-days: 3
