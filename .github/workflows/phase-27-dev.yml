@@ -34,25 +34,27 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Apply exact guarded development edits and formatting
+      - name: Apply guarded integration and typed transport edits
         run: |
           python3 .phase27_apply.py
-          find internal/reporting -name '*.go' -print0 | xargs -0 gofmt -w
-          gofmt -w internal/config/reporting.go internal/store/postgres/blocks_read.go internal/store/postgres/blocks_write.go
-          if ! git diff --quiet; then
+          python3 .phase27_integrate.py
+          python3 .phase27_api.py
+          find internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
+          if ! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"; then
             git config user.name 'Santi Benvenuto'
             git config user.email 'benvenuto.santiago@hotmail.com'
-            git add internal/reporting internal/config/reporting.go internal/store/postgres/blocks_read.go internal/store/postgres/blocks_write.go
-            git commit -m 'fix(reporting): integrate evidence fields and canonical empty parameter bindings'
+            git add internal sdk test scripts/coverage-bands.conf .phase27_apply.py
+            git commit -m 'feat(reporting): wire typed public consumers and share lossless chart adaptation'
             git push origin HEAD:refs/heads/feat/phase-27-reporting-blocks
           fi
           git rev-parse HEAD
-      - name: Inspect test and migration integration seams
+      - name: Inspect semantic and authorization fixture seams
         run: |
-          grep -n 'SchemaVersion\|requiredRelations' internal/store/postgres/migrate.go
-          grep -R -n 'func newPhase18Fixture\|func newSourceFixture\|func newTokenFixture' test
-          grep -n 'type Values\|Charts\|NLQ\|ReadValidation' internal/config/config.go
-          cat test/support/database.go
+          grep -n -A15 'func topicScopes' test/acceptance/*test.go
+          grep -n -A45 'func newTokenFixture' test/acceptance/auth_support_test.go
+          grep -n -A18 'func .*Rotate' internal/sources/sources.go
+          grep -n -A50 'func .*Revision' internal/store/postgres/sources.go || true
+          grep -R -n 'type SourceRevision\|type Source struct\|type Record struct\|type RotateRequest' internal/sources
           cat scripts/coverage-bands.conf
       - uses: actions/cache/restore@v4
         id: native
@@ -66,9 +68,11 @@ jobs:
         run: |
           test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
           echo 'CGO_LDFLAGS=-L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
-      - name: Test bounded domain behavior with races
-        run: go test -race -count=1 -v -timeout=10m ./internal/reporting ./internal/config
-      - name: Compile repository integration (not acceptance evidence)
+      - name: Test bounded domain and typed public consumers with races
+        run: go test -race -count=1 -v -timeout=10m ./internal/reporting ./internal/reportingapi ./internal/chartdata ./internal/config ./sdk/chartworks
+      - name: Live PostgreSQL block lifecycle checkpoint
+        run: go test -race -count=1 -v -timeout=10m -run '^TestPhase27$' ./test/acceptance
+      - name: Compile all repository consumers (not acceptance evidence)
         run: go test -run '^$' -count=1 -timeout=10m ./...
       - name: Preserve read-only test status
         run: git diff --exit-code
