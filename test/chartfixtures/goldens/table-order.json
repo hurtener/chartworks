@@ -1,0 +1,295 @@
+{
+  "output": {
+    "version": 1,
+    "kind": "table",
+    "mapping": {
+      "version": 1,
+      "kind": "table",
+      "columns": [
+        {
+          "id": "category",
+          "name": "category",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "category"
+          }
+        },
+        {
+          "id": "value",
+          "name": "value",
+          "type": "decimal",
+          "role": "measure",
+          "grain": "",
+          "aggregation": "sum",
+          "format": {
+            "unit": "items",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 3
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "value"
+          }
+        },
+        {
+          "id": "series",
+          "name": "series",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "series"
+          }
+        },
+        {
+          "id": "x",
+          "name": "x",
+          "type": "decimal",
+          "role": "measure",
+          "grain": "",
+          "aggregation": "sum",
+          "format": {
+            "unit": "items",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 3
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "x"
+          }
+        }
+      ],
+      "bindings": {
+        "columns": [
+          "category",
+          "value",
+          "series",
+          "x"
+        ]
+      },
+      "order": [
+        {
+          "column": "category",
+          "direction": "asc"
+        }
+      ],
+      "options": {
+        "title": "",
+        "legend": {
+          "visible": true,
+          "position": "bottom"
+        },
+        "label_max_runes": 80
+      }
+    },
+    "columns": [
+      {
+        "id": "category",
+        "name": "category",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "category"
+        }
+      },
+      {
+        "id": "value",
+        "name": "value",
+        "type": "decimal",
+        "role": "measure",
+        "grain": "",
+        "aggregation": "sum",
+        "format": {
+          "unit": "items",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 3
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "value"
+        }
+      },
+      {
+        "id": "series",
+        "name": "series",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "series"
+        }
+      },
+      {
+        "id": "x",
+        "name": "x",
+        "type": "decimal",
+        "role": "measure",
+        "grain": "",
+        "aggregation": "sum",
+        "format": {
+          "unit": "items",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 3
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "x"
+        }
+      }
+    ],
+    "rows": [
+      [
+        {
+          "null": false,
+          "value": "Alpha"
+        },
+        {
+          "null": false,
+          "value": "1.125"
+        },
+        {
+          "null": false,
+          "value": "East"
+        },
+        {
+          "null": false,
+          "value": "1"
+        }
+      ],
+      [
+        {
+          "null": false,
+          "value": "Beta"
+        },
+        {
+          "null": false,
+          "value": "3.250"
+        },
+        {
+          "null": false,
+          "value": "West"
+        },
+        {
+          "null": false,
+          "value": "3"
+        }
+      ],
+      [
+        {
+          "null": false,
+          "value": "Gamma"
+        },
+        {
+          "null": false,
+          "value": "2.500"
+        },
+        {
+          "null": false,
+          "value": "West"
+        },
+        {
+          "null": false,
+          "value": "2"
+        }
+      ]
+    ],
+    "points": [],
+    "totals": [
+      {
+        "column": "value",
+        "value": {
+          "null": false,
+          "value": "6.875"
+        },
+        "scope": "complete_result"
+      },
+      {
+        "column": "x",
+        "value": {
+          "null": false,
+          "value": "6"
+        },
+        "scope": "complete_result"
+      }
+    ],
+    "state": "ready",
+    "input_rows": 3,
+    "omitted_rows": 0,
+    "completeness": {
+      "status": "complete_result",
+      "reason": ""
+    },
+    "warnings": []
+  }
+}

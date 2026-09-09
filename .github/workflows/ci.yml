@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs, feat/phase-07-08-vindex-sources, feat/phase-09-10-read-execution]
+    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs, feat/phase-07-08-vindex-sources, feat/phase-09-10-read-execution, feat/phase-20-21-chart-spec-http]
 
 permissions:
   contents: read
@@ -150,6 +150,7 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 17
           python3 scripts/run_phase_acceptance.py --phase 18
           python3 scripts/run_phase_acceptance.py --phase 19
+          python3 scripts/run_phase_acceptance.py --phase 20
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
@@ -167,6 +168,7 @@ jobs:
             go test -race ./internal/engineering -run '^$' -fuzz "^${name}$" -fuzztime=64x -timeout=3m -parallel=2
           done
           go test -race ./internal/nlqbyo -run '^$' -fuzz '^FuzzReferenceAndReceipt$' -fuzztime=64x -timeout=3m -parallel=2
+          go test -race ./internal/charts -run '^$' -fuzz '^FuzzDataAndMappings$' -fuzztime=128x -timeout=3m -parallel=2
       - name: Full cumulative development preflight
         run: make preflight-full
       - name: Microbenchmark baseline (not warehouse or end-user latency)
@@ -187,6 +189,8 @@ jobs:
           test ! -f .github/workflows/phase-11-12-development.yml
           test ! -f .github/workflows/phase-11-12-workspace.yml
           test ! -f .github/workflows/verification-source.yml
+          test ! -f .github/workflows/phase-20-source-snapshot.yml
+          test ! -f .github/workflows/phase-20-apply.yml
       - name: Working tree must remain unchanged
         run: |
           git diff --exit-code

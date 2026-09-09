@@ -1,0 +1,235 @@
+{
+  "output": {
+    "version": 1,
+    "kind": "area",
+    "mapping": {
+      "version": 1,
+      "kind": "area",
+      "columns": [
+        {
+          "id": "category",
+          "name": "category",
+          "type": "temporal",
+          "role": "time",
+          "grain": "day",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "category"
+          }
+        },
+        {
+          "id": "value",
+          "name": "value",
+          "type": "decimal",
+          "role": "measure",
+          "grain": "",
+          "aggregation": "sum",
+          "format": {
+            "unit": "items",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 3
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "value"
+          }
+        }
+      ],
+      "bindings": {
+        "category": "category",
+        "value": "value"
+      },
+      "order": null,
+      "options": {
+        "title": "",
+        "legend": {
+          "visible": true,
+          "position": "bottom"
+        },
+        "label_max_runes": 80
+      }
+    },
+    "columns": [
+      {
+        "id": "category",
+        "name": "category",
+        "type": "temporal",
+        "role": "time",
+        "grain": "day",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "category"
+        }
+      },
+      {
+        "id": "value",
+        "name": "value",
+        "type": "decimal",
+        "role": "measure",
+        "grain": "",
+        "aggregation": "sum",
+        "format": {
+          "unit": "items",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 3
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "value"
+        }
+      }
+    ],
+    "rows": [],
+    "points": [
+      {
+        "row": 0,
+        "category": {
+          "null": false,
+          "value": "2026-09-03"
+        },
+        "series": {
+          "null": true,
+          "value": ""
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "3.250",
+          "coordinate": 3.25,
+          "approximate": false
+        }
+      },
+      {
+        "row": 1,
+        "category": {
+          "null": false,
+          "value": "2026-09-01"
+        },
+        "series": {
+          "null": true,
+          "value": ""
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "1.125",
+          "coordinate": 1.125,
+          "approximate": false
+        }
+      },
+      {
+        "row": 2,
+        "category": {
+          "null": false,
+          "value": "2026-09-02"
+        },
+        "series": {
+          "null": true,
+          "value": ""
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": true,
+          "exact": "",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "2.500",
+          "coordinate": 2.5,
+          "approximate": false
+        }
+      }
+    ],
+    "totals": [
+      {
+        "column": "value",
+        "value": {
+          "null": false,
+          "value": "6.875"
+        },
+        "scope": "complete_result"
+      }
+    ],
+    "state": "ready",
+    "input_rows": 3,
+    "omitted_rows": 0,
+    "completeness": {
+      "status": "complete_result",
+      "reason": ""
+    },
+    "warnings": []
+  }
+}

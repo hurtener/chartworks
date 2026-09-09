@@ -15,9 +15,11 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/chartapi"
 	"github.com/hurtener/chartworks/internal/foundation"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/sourceapi"
 	"github.com/hurtener/chartworks/internal/store"
@@ -116,7 +118,7 @@ func phase21Registry(t *testing.T) *api.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engineering, err := sourceapi.EngineeringAPIRegistry(false, false, 0)
+	engineering, err := sourceapi.EngineeringAPIRegistry(true, true, 16<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +126,7 @@ func phase21Registry(t *testing.T) *api.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipelines, err := sourceapi.PipelineAPIRegistry(false)
+	pipelines, err := sourceapi.PipelineAPIRegistry(true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +134,23 @@ func phase21Registry(t *testing.T) *api.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	composed, err := api.Compose(public, security, work, sources, engineering, execution, pipelines, topics)
+	nlq, err := nlqapi.Registry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nlqExec, err := nlqapi.ExecutionRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byo, err := nlqapi.BYORegistry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chart, err := chartapi.Registry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := api.Compose(public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +159,7 @@ func phase21Registry(t *testing.T) *api.Registry {
 
 func TestPhase21(t *testing.T) {
 	t.Run("AC01", func(t *testing.T) {
+		verifyPhase21RegisteredDenials(t)
 		f := newSourceFixture(t, nil)
 		registry, err := sourceapi.SourceRegistry(true, true)
 		if err != nil {
@@ -389,7 +408,7 @@ func TestPhase21(t *testing.T) {
 		if !capabilities.BusinessAPI || !capabilities.Authentication || capabilities.Phase != "01-21-http" {
 			t.Fatalf("capabilities=%+v", capabilities)
 		}
-		if !contains(capabilities.Implemented, "http_api") || !contains(capabilities.Implemented, "openapi") || contains(capabilities.Implemented, "reporting") {
+		if !contains(capabilities.Implemented, "http_api") || !contains(capabilities.Implemented, "openapi") || !contains(capabilities.Implemented, "output_specifications") || contains(capabilities.Implemented, "reporting") {
 			t.Fatalf("capability projection=%v", capabilities.Implemented)
 		}
 		request, err := http.NewRequest(http.MethodHead, server.URL+"/openapi.json", nil)

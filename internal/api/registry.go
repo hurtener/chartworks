@@ -133,11 +133,17 @@ func New(definitions []Definition) (*Registry, error) {
 		}
 		ids[d.ID], routes[key] = true, true
 		seen := map[ErrorResponse]bool{}
+		unauthorized, forbidden := false, false
 		for _, e := range d.Errors {
 			if e.Status < 400 || e.Status > 599 || !identity.Identifier(e.Code) || seen[e] {
 				return nil, ErrRegistration
 			}
 			seen[e] = true
+			unauthorized = unauthorized || e.Status == 401
+			forbidden = forbidden || e.Status == 403
+		}
+		if !d.Public && (!unauthorized || !forbidden) {
+			return nil, ErrRegistration
 		}
 		out[i] = cloneDefinition(d)
 	}

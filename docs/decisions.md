@@ -759,3 +759,5 @@ Read execution continuation: [bounded plan-only reads and attempt uncertainty](d
 Warehouse read substrate continuation: [D-067 pinned minimal Bruin leaf-client fork](decisions/2026-09-07-bruin-read-adoption.md).
 
 Canonical registry continuation: [D-068 reviewed publication approves exact canonical meaning](decisions/2026-09-08-canonical-registry.md).
+
+Output specification continuation: [D-069 bounded provider-neutral output specifications and executable HTTP registration](decisions/2026-09-08-chart-specifications.md).

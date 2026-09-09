@@ -1,6 +1,6 @@
 # Phase 20 — charts-spec
 
-Status: planned. Owner: internal/charts. Hard dependencies: 10, 15.
+Status: in_progress. Owner: internal/charts. Hard dependencies: 10, 15.
 
 ## Authority and design
 
@@ -45,4 +45,24 @@ Implement `TestPhase20/AC01` through `TestPhase20/AC06` with exhaustive catalog 
 
 ## Glossary, decisions and deviations
 
-Spec selection and rendering are distinct; both are in product scope. D-047/D-049 apply. No runtime completion is claimed.
+Spec selection and rendering are distinct; both are in product scope. D-047/D-049 apply. [D-069](../decisions/2026-09-08-chart-specifications.md)
+records the caller-data boundary, portable output and cumulative HTTP enforcement.
+The implementation is in review, not a merged release or rendered-pixel claim.
+
+## Implemented continuation, 2026-09-08
+
+`internal/charts` implements all fourteen kinds, bounded rules-first selection,
+exact-value labels/totals, immutable column pins, review-only semantic rebinding
+and 84 static behavior goldens. `internal/chartservice` adds signed tenant/action
+checks and optional bounded Bifrost-only ranking. `internal/chartapi` registers
+five actual typed consumers; `sdk/chartworks` adds the corresponding methods and a
+lossless adapter from qualified read results. No chart-state table or parallel
+source/SQL/model client is introduced.
+
+See the [v1 contract](../contracts/chart-specifications-v1.md),
+[configuration](../configuration.md), [operator manifest](../contracts/chartworks-chart-operations.json)
+and [adversarial review](../reviews/phase-20-21-adversarial.md).
+`TestPhase20/AC01`–`AC06` and the real PostgreSQL-to-output integration test are the
+runtime evidence; read-only exact-source CI, not this paragraph, establishes
+readiness. The phase remains `in_progress` pending review/merge. Renderer and full
+release gates remain in their owning later workstreams.

@@ -1,0 +1,280 @@
+{
+  "output": {
+    "version": 1,
+    "kind": "heatmap",
+    "mapping": {
+      "version": 1,
+      "kind": "heatmap",
+      "columns": [
+        {
+          "id": "value",
+          "name": "value",
+          "type": "decimal",
+          "role": "measure",
+          "grain": "",
+          "aggregation": "sum",
+          "format": {
+            "unit": "items",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 3
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "value"
+          }
+        },
+        {
+          "id": "category",
+          "name": "Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción ",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "category"
+          }
+        },
+        {
+          "id": "series",
+          "name": "series",
+          "type": "text",
+          "role": "dimension",
+          "grain": "",
+          "aggregation": "",
+          "format": {
+            "unit": "",
+            "currency": "",
+            "percent": "",
+            "fraction_digits": 0
+          },
+          "provenance": {
+            "version": 1,
+            "source": "fixture",
+            "source_revision": 1,
+            "topic": "sales",
+            "topic_version": "v1",
+            "semantic_id": "series"
+          }
+        }
+      ],
+      "bindings": {
+        "value": "value",
+        "x": "category",
+        "y": "series"
+      },
+      "order": null,
+      "options": {
+        "title": "",
+        "legend": {
+          "visible": true,
+          "position": "bottom"
+        },
+        "label_max_runes": 80
+      }
+    },
+    "columns": [
+      {
+        "id": "value",
+        "name": "value",
+        "type": "decimal",
+        "role": "measure",
+        "grain": "",
+        "aggregation": "sum",
+        "format": {
+          "unit": "items",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 3
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "value"
+        }
+      },
+      {
+        "id": "category",
+        "name": "Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción Descripción ",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "category"
+        }
+      },
+      {
+        "id": "series",
+        "name": "series",
+        "type": "text",
+        "role": "dimension",
+        "grain": "",
+        "aggregation": "",
+        "format": {
+          "unit": "",
+          "currency": "",
+          "percent": "",
+          "fraction_digits": 0
+        },
+        "provenance": {
+          "version": 1,
+          "source": "fixture",
+          "source_revision": 1,
+          "topic": "sales",
+          "topic_version": "v1",
+          "semantic_id": "series"
+        }
+      }
+    ],
+    "rows": [],
+    "points": [
+      {
+        "row": 0,
+        "category": {
+          "null": true,
+          "value": ""
+        },
+        "series": {
+          "null": true,
+          "value": ""
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": false,
+          "exact": "Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e Categoría extendida \u003cliteral\u003e ",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": false,
+          "exact": "West",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "3.250",
+          "coordinate": 3.25,
+          "approximate": false
+        }
+      },
+      {
+        "row": 1,
+        "category": {
+          "null": true,
+          "value": ""
+        },
+        "series": {
+          "null": true,
+          "value": ""
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": false,
+          "exact": "Alpha",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": false,
+          "exact": "East",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "1.125",
+          "coordinate": 1.125,
+          "approximate": false
+        }
+      },
+      {
+        "row": 2,
+        "category": {
+          "null": true,
+          "value": ""
+        },
+        "series": {
+          "null": true,
+          "value": ""
+        },
+        "parent": {
+          "null": true,
+          "value": ""
+        },
+        "x": {
+          "null": false,
+          "exact": "Gamma",
+          "coordinate": null,
+          "approximate": false
+        },
+        "y": {
+          "null": false,
+          "exact": "West",
+          "coordinate": null,
+          "approximate": false
+        },
+        "value": {
+          "null": false,
+          "exact": "2.500",
+          "coordinate": 2.5,
+          "approximate": false
+        }
+      }
+    ],
+    "totals": [
+      {
+        "column": "value",
+        "value": {
+          "null": false,
+          "value": "6.875"
+        },
+        "scope": "complete_result"
+      }
+    ],
+    "state": "ready",
+    "input_rows": 3,
+    "omitted_rows": 0,
+    "completeness": {
+      "status": "complete_result",
+      "reason": ""
+    },
+    "warnings": []
+  }
+}

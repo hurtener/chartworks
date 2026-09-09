@@ -1,0 +1,7 @@
+[
+  {"method":"GET","path":"/v1/charts/catalog","action":"charts.read","effect":"caller_data_transform_no_persistence"},
+  {"method":"POST","path":"/v1/charts/select","action":"charts.select","effect":"caller_data_selection_optional_gateway_rank"},
+  {"method":"POST","path":"/v1/charts/specify","action":"charts.bind","effect":"caller_data_transform_no_persistence"},
+  {"method":"POST","path":"/v1/charts/build","action":"charts.bind","effect":"caller_data_transform_no_persistence"},
+  {"method":"POST","path":"/v1/charts/rebind","action":"charts.bind","effect":"caller_data_transform_no_persistence"}
+]

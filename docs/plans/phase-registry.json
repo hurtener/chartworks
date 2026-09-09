@@ -177,7 +177,7 @@
         "10",
         "17"
       ],
-      "status": "in_progress",
+      "status": "shipped",
       "acceptance_count": 6
     },
     "20": {
@@ -186,7 +186,7 @@
         "10",
         "15"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "acceptance_count": 6
     },
     "21": {
