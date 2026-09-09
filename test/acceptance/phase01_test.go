@@ -119,21 +119,46 @@ func TestPhase01(t *testing.T) {
 		if _, e := config.Load(bytes.NewReader(valid), environment(""), config.Overrides{}); e == nil {
 			t.Fatal("missing secret accepted")
 		}
-		mutations := []func(map[string]any){
-			func(m map[string]any) { m["store"] = map[string]any{"dsn": canary} },
-			func(m map[string]any) { m["server"] = map[string]any{"listen": "0.0.0.0:8080"} },
-			func(m map[string]any) { m["server"] = map[string]any{"max_body_bytes": 0} },
-			func(m map[string]any) { m["auth"].(map[string]any)["algorithms"] = []string{"HS256"} },
-			func(m map[string]any) { m["auth"].(map[string]any)["jwks_url"] = "http://issuer.example/keys" },
-			func(m map[string]any) { m["auth"].(map[string]any)["clock_skew"] = "-1s" },
-			func(m map[string]any) { m["gateway"] = map[string]any{"driver": "local"} },
-			func(m map[string]any) { m["features"] = map[string]any{"mcp": true} },
-			func(m map[string]any) { m["telemetry"] = map[string]any{"otel": true} },
+		mutations := []struct {
+			name string
+			edit func(map[string]any)
+		}{
+			{"literal_store_secret", func(m map[string]any) { m["store"] = map[string]any{"dsn": canary} }},
+			{"external_listener", func(m map[string]any) { m["server"] = map[string]any{"listen": "0.0.0.0:8080"} }},
+			{"unbounded_body", func(m map[string]any) { m["server"] = map[string]any{"max_body_bytes": 0} }},
+			{"symmetric_auth", func(m map[string]any) { m["auth"].(map[string]any)["algorithms"] = []string{"HS256"} }},
+			{"insecure_jwks", func(m map[string]any) { m["auth"].(map[string]any)["jwks_url"] = "http://issuer.example/keys" }},
+			{"negative_clock_skew", func(m map[string]any) { m["auth"].(map[string]any)["clock_skew"] = "-1s" }},
+			{"local_gateway", func(m map[string]any) { m["gateway"] = map[string]any{"driver": "local"} }},
+			{"unimplemented_reporting", func(m map[string]any) { m["features"] = map[string]any{"reporting": true} }},
+			{"unimplemented_renderer", func(m map[string]any) { m["features"] = map[string]any{"renderer": true} }},
+			{"unimplemented_otel", func(m map[string]any) { m["telemetry"] = map[string]any{"otel": true} }},
+			{"unbounded_mcp", func(m map[string]any) { m["mcp"] = map[string]any{"max_concurrent": 0} }},
+			{"unknown_mcp_group", func(m map[string]any) { m["mcp"] = map[string]any{"groups": []string{"unbuilt"}} }},
+			{"wildcard_mcp_host", func(m map[string]any) { m["mcp"] = map[string]any{"allowed_hosts": []string{"*"}} }},
+			{"mcp_deadline_outlives_http", func(m map[string]any) {
+				m["features"] = map[string]any{"mcp": true}
+				m["server"] = map[string]any{"write_timeout": "65s"}
+			}},
 		}
-		for _, f := range mutations {
-			if _, e := config.Load(bytes.NewReader(configBytes(t, f)), environment(canary), config.Overrides{}); e == nil {
-				t.Fatal("invalid feature/security config accepted")
-			}
+		for _, mutation := range mutations {
+			t.Run(mutation.name, func(t *testing.T) {
+				if _, e := config.Load(bytes.NewReader(configBytes(t, mutation.edit)), environment(canary), config.Overrides{}); e == nil || strings.Contains(e.Error(), canary) {
+					t.Fatal("invalid feature/security config accepted or leaked input")
+				}
+			})
+		}
+		// Phase 22 implements MCP; enabling it is no longer an invalid feature.
+		// The ordinary decoder still requires the configured issuer and all bounds.
+		if loaded(t, valid, canary).Values().Features.MCP {
+			t.Fatal("MCP must remain opt-in")
+		}
+		enabled := configBytes(t, func(m map[string]any) { m["features"] = map[string]any{"mcp": true} })
+		if !loaded(t, enabled, canary).Values().Features.MCP {
+			t.Fatal("implemented MCP feature not enabled")
+		}
+		if _, e := config.Load(bytes.NewReader([]byte(`{"features":{"mcp":true}}`)), environment(canary), config.Overrides{}); e == nil {
+			t.Fatal("MCP bypassed required issuer configuration")
 		}
 		c := loaded(t, valid, "postgres://fixture:"+canary+"@127.0.0.1/fixture")
 		b, e := json.Marshal(c)
@@ -319,7 +344,7 @@ func TestPhase01(t *testing.T) {
 		for _, tc := range []struct {
 			args []string
 			code int
-		}{{nil, 2}, {[]string{"unknown"}, 2}, {[]string{"version"}, 0}, {[]string{"version", "extra"}, 2}, {[]string{"mcp"}, 3}, {[]string{"config-check"}, 0}, {[]string{"config-check", "--defaults"}, 0}, {[]string{"serve", "--defaults"}, 2}, {[]string{"serve", "--unknown", canary}, 2}, {[]string{"serve", "--config", path, "--listen", "127.0.0.1:0"}, 0}, {[]string{"config-check", "--config", filepath.Join(dir, "missing")}, 2}} {
+		}{{nil, 2}, {[]string{"unknown"}, 2}, {[]string{"version"}, 0}, {[]string{"version", "extra"}, 2}, {[]string{"mcp"}, 2}, {[]string{"config-check"}, 0}, {[]string{"config-check", "--defaults"}, 0}, {[]string{"serve", "--defaults"}, 2}, {[]string{"serve", "--unknown", canary}, 2}, {[]string{"serve", "--config", path, "--listen", "127.0.0.1:0"}, 0}, {[]string{"config-check", "--config", filepath.Join(dir, "missing")}, 2}} {
 			var out, errout bytes.Buffer
 			code := foundation.Command(context.Background(), tc.args, lookup, &out, &errout, build, start)
 			if code != tc.code {
@@ -329,6 +354,64 @@ func TestPhase01(t *testing.T) {
 				t.Fatal("command leaked input")
 			}
 		}
+		t.Run("MCP_lifecycle", func(t *testing.T) {
+			mcpPath := filepath.Join(dir, "mcp.json")
+			if e := os.WriteFile(mcpPath, configBytes(t, func(m map[string]any) {
+				m["features"] = map[string]any{"mcp": true}
+				m["mcp"] = map[string]any{"groups": []string{"charts"}}
+			}), 0600); e != nil {
+				t.Fatal(e)
+			}
+			for _, tc := range []struct {
+				name    string
+				args    []string
+				code    int
+				started bool
+			}{
+				{"disabled_environment", []string{"mcp"}, 2, false},
+				{"disabled_file", []string{"mcp", "--config", path}, 2, false},
+				{"enabled_file", []string{"mcp", "--config", mcpPath, "--listen", "127.0.0.1:0"}, 0, true},
+				{"check_without_start", []string{"config-check", "--config", mcpPath}, 0, false},
+				{"missing_file", []string{"mcp", "--config", filepath.Join(dir, "missing")}, 2, false},
+				{"reject_defaults", []string{"mcp", "--defaults"}, 2, false},
+				{"reject_flags", []string{"mcp", "--unknown", canary}, 2, false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					var out, errout bytes.Buffer
+					calls := 0
+					ctx, cancel := context.WithCancel(t.Context())
+					defer cancel()
+					code := foundation.Command(ctx, tc.args, lookup, &out, &errout, build, func(got context.Context, cfg config.Config, log io.Writer) error {
+						calls++
+						if got != ctx || log != &errout || !cfg.Values().Features.MCP || cfg.Values().Server.Listen != "127.0.0.1:0" {
+							t.Fatal("MCP lost caller lifecycle, config override or injected I/O")
+						}
+						return nil
+					})
+					wantCalls := 0
+					if tc.started {
+						wantCalls = 1
+					}
+					if code != tc.code || calls != wantCalls {
+						t.Fatalf("exit=%d, lifecycle calls=%d; expected %d, %d", code, calls, tc.code, wantCalls)
+					}
+					if strings.Contains(out.String()+errout.String(), canary) {
+						t.Fatal("MCP command leaked input")
+					}
+					if strings.HasPrefix(tc.name, "disabled_") && !strings.Contains(errout.String(), "features.mcp=true") {
+						t.Fatal("disabled MCP did not explain the feature gate")
+					}
+				})
+			}
+			var out bytes.Buffer
+			args := []string{"mcp", "--config", mcpPath}
+			if foundation.Command(t.Context(), args, lookup, &out, &out, build, nil) != 1 {
+				t.Fatal("MCP accepted a missing lifecycle")
+			}
+			if foundation.Command(t.Context(), args, lookup, &out, &out, build, func(context.Context, config.Config, io.Writer) error { return errors.New(canary) }) != 1 || strings.Contains(out.String(), canary) {
+				t.Fatal("MCP startup failure ignored or leaked")
+			}
+		})
 		var out bytes.Buffer
 		if foundation.Command(context.Background(), []string{"serve"}, lookup, &out, &out, build, nil) != 1 {
 			t.Fatal("nil lifecycle accepted")
