@@ -26,7 +26,7 @@ func TestInvalidOptionsAndNilAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, service := range []*Service{nil, s} {
-		if _, _, err = service.begin(nil, identity.Envelope{}, "charts.read"); !errors.Is(err, charts.ErrInvalid) {
+		if _, _, err = service.begin(nil, identity.Envelope{}, "charts.read"); !errors.Is(err, charts.ErrInvalid) { //nolint:staticcheck // Deliberately probe rejection of a missing context.
 			t.Fatal("nil context accepted", err)
 		}
 	}

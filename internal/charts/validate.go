@@ -136,7 +136,7 @@ func ValidateData(ctx context.Context, d Data, limits Limits) error {
 					return ErrInvalid
 				}
 				for _, v := range cell.Value {
-					if !(v >= '0' && v <= '9' || v >= 'a' && v <= 'f' || v >= 'A' && v <= 'F') {
+					if (v < '0' || v > '9') && (v < 'a' || v > 'f') && (v < 'A' || v > 'F') {
 						return ErrInvalid
 					}
 				}

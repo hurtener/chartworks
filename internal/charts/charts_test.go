@@ -253,7 +253,7 @@ func TestBoundedInvalidDataAndMappings(t *testing.T) {
 	if _, err := charts.Select(cancelled, d, charts.Defaults()); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancellation lost")
 	}
-	if charts.ValidateData(nil, d, charts.Defaults()) == nil {
+	if charts.ValidateData(nil, d, charts.Defaults()) == nil { //nolint:staticcheck // Deliberately probe rejection of a missing context.
 		t.Fatal("nil context")
 	}
 }

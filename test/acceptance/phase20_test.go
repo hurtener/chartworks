@@ -490,8 +490,16 @@ func containsChartScope(scopes []string, target string) bool {
 func verifyChartDecodeAdmission(t *testing.T) {
 	f := newChartHTTP(t, nil, func(o *chartservice.Options) { o.MaxConcurrent = 1 })
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	defer func() {
+		if err := writer.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	entered := make(chan struct{})
 	body := &chartSignaledReader{Reader: reader, entered: entered}
 	request := httptest.NewRequest("POST", "/v1/charts/select", body)

@@ -106,6 +106,9 @@ func ValidateMapping(ctx context.Context, d Data, m Mapping, limits Limits) erro
 }
 
 func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
+	if len(m.Bindings.Columns) > l.MaxColumns {
+		return ErrLimit
+	}
 	e, ok := entry(m.Kind)
 	if !ok || m.Version != Version || len(m.Columns) == 0 || len(m.Columns) > l.MaxColumns || len(m.Order) > len(m.Columns) {
 		return ErrInvalid
