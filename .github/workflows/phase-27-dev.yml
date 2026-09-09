@@ -1,0 +1,72 @@
+name: Phase 27 development checkpoint
+on:
+  push:
+    branches: [feat/phase-27-reporting-blocks]
+    paths: [.github/workflows/phase-27-dev.yml]
+permissions:
+  contents: write
+concurrency:
+  group: phase27-development
+  cancel-in-progress: false
+jobs:
+  checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Apply Go formatting to this development branch only
+        run: |
+          find internal/reporting -name '*.go' -print0 | xargs -0 gofmt -w
+          gofmt -w internal/config/reporting.go
+          if ! git diff --quiet; then
+            git config user.name 'Santi Benvenuto'
+            git config user.email 'benvenuto.santiago@hotmail.com'
+            git add internal/reporting internal/config/reporting.go
+            git commit -m 'style(reporting): format phase 27 domain source'
+            git push origin HEAD:refs/heads/feat/phase-27-reporting-blocks
+          fi
+          git rev-parse HEAD
+      - name: Inspect existing integration seam locations
+        run: |
+          grep -R -n -A45 'func .*ContextBinding' internal/sources || true
+          grep -R -n -A12 'Fingerprint:' internal/sources || true
+          grep -R -n 'CREATE TABLE.*read_attempts\|CREATE TABLE.*sources\|CREATE TABLE.*source_revisions' internal/store/postgres || true
+          find test/support -type f
+          ls internal/access
+          grep -n 'type ExecutionReport\|type Options\|type Attempt' internal/exec/execution.go
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: /tmp/chartworks-bruin
+          key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build immutable native validation dependency
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - name: Select immutable native dependency
+        run: |
+          test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
+          echo 'CGO_LDFLAGS=-L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
+      - name: Compile and test current domain checkpoint
+        run: go test -race -count=1 -timeout=10m ./internal/reporting ./internal/config
+      - name: Preserve read-only test status
+        run: git diff --exit-code
