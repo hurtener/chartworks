@@ -19,7 +19,8 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal
           cargo +1.98.1 build --release --locked --manifest-path /tmp/bruin-source/pkg/sqlparser/rustffi/Cargo.toml
           find /tmp/bruin-source/pkg/sqlparser/rustffi/target/release -maxdepth 1 -name '*.a' -exec cp '{}' /tmp/ ';'
-          tar -C /tmp -czf /tmp/native-parser.tar.gz --wildcards '*.a'
+          cd /tmp
+          tar -czf native-parser.tar.gz ./*.a
       - uses: actions/upload-artifact@v4
         with:
           name: client-native-parser
