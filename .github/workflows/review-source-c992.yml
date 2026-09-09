@@ -1,0 +1,27 @@
+name: Review source c992
+on:
+  push:
+    branches: [dev/phase20-review-source-c992]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export only the pinned implementation revision
+        run: |
+          git archive --format=tar.gz c992a5d87862663b007d0ab2c2457bca1273413f > /tmp/chartworks-review-source.tar.gz
+          git bundle create /tmp/chartworks-review.bundle refs/remotes/origin/feat/phase-20-21-chart-spec-http
+          git rev-parse c992a5d87862663b007d0ab2c2457bca1273413f^{tree} > /tmp/chartworks-review-tree.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chartworks-review-source
+          path: |
+            /tmp/chartworks-review-source.tar.gz
+            /tmp/chartworks-review.bundle
+            /tmp/chartworks-review-tree.txt
+          retention-days: 2
