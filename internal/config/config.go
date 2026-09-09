@@ -136,6 +136,7 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
+	Reporting    Reporting      `json:"reporting"`
 	MCP          MCP            `json:"mcp"`
 	Charts       Charts         `json:"charts"`
 	QueryBundles QueryBundles   `json:"query_bundles"`
@@ -193,6 +194,7 @@ func Defaults() Values {
 	v := Values{
 		MCP:          DefaultMCP(),
 		Charts:       DefaultCharts(),
+		Reporting:    DefaultReporting(),
 		Pipelines:    DefaultPipelines(),
 		Uploads:      DefaultUploads(),
 		Profiling:    DefaultProfiling(),
@@ -406,6 +408,9 @@ func validate(v Values) error {
 		return err
 	}
 	if err := v.Charts.validate(); err != nil {
+		return err
+	}
+	if err := v.Reporting.validate(); err != nil {
 		return err
 	}
 	if err := ValidateQueryBundles(v.QueryBundles); err != nil {

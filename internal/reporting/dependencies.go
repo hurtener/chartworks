@@ -21,6 +21,9 @@ func definitionReferences(d Definition, definitions []topics.Published) []Resour
 	for _, pin := range d.Topics {
 		add("topic", "read", pin.Topic)
 	}
+	for _, pin := range d.Topics {
+		add("topic", "read", pin.Topic)
+	}
 	for _, publication := range definitions {
 		add("topic", "read", publication.Definition.Topic)
 		for _, dataset := range publication.Definition.Datasets {

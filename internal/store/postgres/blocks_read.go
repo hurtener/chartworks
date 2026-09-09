@@ -44,7 +44,8 @@ const blockReferenceEligibility = `EXISTS(SELECT 1 FROM chartworks.block_revisio
   WHERE g->>'kind'=rr.kind AND g->>'permission'=rr.permission
     AND g->>'id' IN(rr.resource_id,'*')))`
 
-const blockCurrent = `NOT EXISTS (
+const blockCurrent = `EXISTS(SELECT 1 FROM chartworks.block_source_pins present WHERE (present.tenant_id,present.block_id,present.revision)=(r.tenant_id,r.block_id,r.revision))
+ AND EXISTS(SELECT 1 FROM chartworks.block_topic_pins present WHERE (present.tenant_id,present.block_id,present.revision)=(r.tenant_id,r.block_id,r.revision)) AND NOT EXISTS (
  SELECT 1 FROM chartworks.block_source_pins bp
  LEFT JOIN chartworks.sources src ON (src.tenant_id,src.source_id)=(bp.tenant_id,bp.source_id)
  LEFT JOIN chartworks.source_revisions sr ON (sr.tenant_id,sr.source_id,sr.revision)=(src.tenant_id,src.source_id,src.current_revision)
@@ -137,6 +138,9 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
 		out.Health = reporting.Health{Status: "unknown", Reason: "not_validated"}
 	} else if out.Health.Status == "" {
 		out.Health = reporting.Health{Status: "stale", Reason: "validation_expired"}
+	}
+	if err := blockConsistency(out); err != nil {
+		return reporting.Snapshot{}, err
 	}
 	if !e.Valid() {
 		return reporting.Snapshot{}, access.ErrUnauthenticated
@@ -272,10 +276,8 @@ func (d *DB) BlockHistory(ctx context.Context, e identity.Envelope, id string) (
 		if err != nil {
 			return err
 		}
-		if reporting.Require(e, id, reporting.Preview) != nil {
-			out.State.DraftRevision = 0
-			out.State.DraftState = ""
-		}
+		out.State.DraftRevision = 0
+		out.State.DraftState = ""
 		return nil
 	})
 	return

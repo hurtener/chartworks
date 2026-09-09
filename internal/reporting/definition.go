@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/hurtener/chartworks/internal/chartdata"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -252,48 +253,33 @@ func SelectOutputs(all []Output, selected []string) ([]Output, error) {
 // checkResult validates the observed schema against the exact draft and checks
 // saved mappings against the real normalized values without selecting new charts.
 func checkResult(ctx context.Context, d Definition, result exec.Result, limits config.Reporting) error {
-	if digest(result.Schema) != digest(d.ExpectedSchema) || len(result.Rows) > limits.PreviewRows || result.Bytes > limits.PreviewBytes {
+	if digest(result.Schema) != digest(d.ExpectedSchema) || result.Bytes > limits.PreviewBytes {
+		return ErrStale
+	}
+	normalized, err := chartdata.FromReadResult(ctx, result, chartLimits(limits))
+	if err != nil {
 		return ErrStale
 	}
 	positions := map[string]int{}
 	for i, f := range result.Schema {
 		positions[f.Name] = i
 	}
-	for _, o := range d.Outputs {
-		if o.Mapping == nil {
+	for _, output := range d.Outputs {
+		if output.Mapping == nil {
 			continue
 		}
-		data := charts.Data{Version: charts.Version, Columns: clone(o.Mapping.Columns), Rows: [][]charts.Cell{}, Completeness: charts.Completeness{Status: "complete_result"}}
-		if result.Outcome == "truncated" {
-			data.Completeness = charts.Completeness{Status: "truncated", Reason: result.Truncation}
-			if !slices.Contains([]string{"rows", "bytes", "source_limit", "unknown"}, data.Completeness.Reason) {
-				data.Completeness.Reason = "unknown"
-			}
-		}
-		for _, row := range result.Rows {
-			if len(row) != len(result.Schema) {
-				return ErrInvalid
-			}
-			cells := make([]charts.Cell, len(data.Columns))
-			for i, c := range data.Columns {
-				index, ok := positions[c.Name]
+		data := charts.Data{Version: charts.Version, Columns: clone(output.Mapping.Columns), Rows: make([][]charts.Cell, len(normalized.Rows)), Completeness: normalized.Completeness}
+		for rowIndex, row := range normalized.Rows {
+			data.Rows[rowIndex] = make([]charts.Cell, len(data.Columns))
+			for i, column := range data.Columns {
+				index, ok := positions[column.Name]
 				if !ok {
 					return ErrStale
 				}
-				raw := row[index]
-				if string(raw) == "null" {
-					cells[i].Null = true
-				} else if len(raw) > 0 && raw[0] == '"' {
-					if json.Unmarshal(raw, &cells[i].Value) != nil {
-						return ErrInvalid
-					}
-				} else {
-					cells[i].Value = string(raw)
-				}
+				data.Rows[rowIndex][i] = row[index]
 			}
-			data.Rows = append(data.Rows, cells)
 		}
-		if err := charts.ValidateMapping(ctx, data, *o.Mapping, chartLimits(limits)); err != nil {
+		if err := charts.ValidateMapping(ctx, data, *output.Mapping, chartLimits(limits)); err != nil {
 			return ErrStale
 		}
 	}

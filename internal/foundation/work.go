@@ -3,6 +3,8 @@ package foundation
 import (
 	"context"
 	"errors"
+	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/reportingapi"
 	"io"
 	"log/slog"
 	"net/http"
@@ -220,6 +222,21 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = chartapi.Handler(verifier, chartService, w.handler)
+	var capture reporting.QueryCapture
+	if w.nlq != nil {
+		capture = queryBlockCapture{query: w.nlq}
+	}
+	blockService, err := reporting.New(db, published, w.sourceService, validator, executor, capture, v.Reporting)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	blockRegistry, err := reportingapi.Registry(blockService.CanValidate(), blockService.CanCapture())
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = reportingapi.Handler(verifier, blockService, w.handler)
 	publicRegistry, err := PublicRegistry()
 	if err != nil {
 		w.close()
@@ -263,7 +280,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry)
 	if err != nil {
 		w.close()
 		return nil, err

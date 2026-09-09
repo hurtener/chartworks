@@ -39,7 +39,7 @@ if 'return clone(snapshot.References)' not in s:
     if old not in s: raise SystemExit('missing references helper')
     s = s.replace(old,old+'\tif len(snapshot.References) > 0 { return clone(snapshot.References) }\n')
 old = 'add("execution_context", "use", d.Context)'
-if 'for _, pin := range d.Topics { add("topic", "read", pin.Topic) }' not in s:
+if 'add("topic", "read", pin.Topic)' not in s:
     s = s.replace(old,old+'\n\tfor _, pin := range d.Topics { add("topic", "read", pin.Topic) }')
 p.write_text(s)
 
