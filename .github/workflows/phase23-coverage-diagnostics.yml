@@ -15,11 +15,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/hurtener/chartworks/actions/jobs/102550323320/logs > /tmp/phase23-full-ci.log
+          gh api --allow-escape-sequences repos/hurtener/chartworks/actions/jobs/102550323320/logs > /tmp/phase23-full-ci.log
           python3 - <<'PY'
           import re
           from pathlib import Path
-          lines = Path('/tmp/phase23-full-ci.log').read_text(encoding='utf-8-sig').splitlines()
+          text = Path('/tmp/phase23-full-ci.log').read_text(encoding='utf-8-sig')
+          text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+          lines = text.splitlines()
           wanted = set()
           for i, line in enumerate(lines):
               if re.search(r'--- FAIL:|FAIL: |panic:|DATA RACE|FAIL\s+github.com|PASS\s+github.com|^.*OK: internal/|coverage unavailable|Process completed with exit code|^.*ok\s+github.com/hurtener/chartworks/test/acceptance', line):
