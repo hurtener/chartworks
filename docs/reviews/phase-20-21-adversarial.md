@@ -42,3 +42,32 @@ Required before ready status: exact-source full race coverage and database/nativ
 ## Remaining boundaries
 
 Phase 20 remains in review. Phase 21 is an already shipped prerequisite extended cumulatively, not the implementation of future render/export/private-preview routes. Those domain phases must register real operations and retain isolation tests when they land. Rendering, retained artifacts, publication of output definitions and the remaining 13 planned workstreams are not implemented by this PR. Caller-supplied metadata cannot certify a source/topic or widen signed reach. Exact totals cover provided rows only, including rows omitted from plotting; they are not full-source totals or inferred aggregates.
+
+## Compiled smoke regression follow-up
+
+The final-head CI at `67aff22011352ad3ceb8f7f6959f2e3750e7bee7` passed
+the all-package real-database race/coverage step and every implemented phase's
+strict acceptance, then failed in `scripts/smoke_foundation.py`. Its historical
+negative-route loop required 401 for both protected `/metrics` and unimplemented
+`/mcp`, `/v1/admin/keys` and `/v1/reports`. The phase-21 registered-path guard
+correctly returns 404 for absent routes, so that mixed expectation was stale.
+
+The repaired compiled smoke enumerates protected operations from the running
+server's generated OpenAPI, checks their declared bearer/action contract, and
+requires 401 for each operation with both missing and spoofed cookie/header
+identity. Core operational routes and all five chart routes are required anchors
+to prevent empty or incomplete inventories from passing. Absent routes must stay
+unadvertised and return a safe 404; a blanket 401-or-404 allowance is not used.
+Eleven Python regression tests cover the distinction, newly added operation
+enumeration, lost registrations, public relabeling, incomplete security metadata,
+unsafe errors, and request method/header forwarding. They run in the existing
+`make planning-check` discovery. No production authorization, route guard,
+acceptance criterion, coverage band or test skip was weakened.
+
+The previous failure prevented later fuzz, preflight and source-hygiene stages
+from executing. The fix requires a new exact-source complete CI run before ready
+status; results and the final head are recorded in PR #13 rather than attributing
+the earlier passing stages to an untested revision. Phase 20's scope is the six
+output-specification criteria; phase 21's scope is the six shared-HTTP criteria
+over implemented endpoints. Renderer pixels (31–32), output publication/storage
+(27–28), MCP (22/31), and full product release (25) remain separate workstreams.
