@@ -1,0 +1,43 @@
+name: Bounded client dependencies
+on:
+  push:
+    branches: [dev/phase-22-23-workspace]
+    paths: [.github/workflows/client-deps-split.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-workspace
+          run-id: 34313183971
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/client-workspace
+      - run: split -b 300M -d /tmp/client-workspace/client-modcache.tar.gz /tmp/deps-
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-deps-00
+          path: /tmp/deps-00
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-deps-01
+          path: /tmp/deps-01
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-deps-02
+          path: /tmp/deps-02
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-deps-03
+          path: /tmp/deps-03
+          compression-level: 0
+          retention-days: 3
