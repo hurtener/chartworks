@@ -17,7 +17,7 @@ import (
 // CallOptions carries request coordinates, never identity or executable authority.
 // Body is JSON or raw upload bytes according to the registered operation. Query
 // accepts only registered single-valued parameters. Attempts defaults to one and
-// is bounded at three; only declared reads or required Idempotency-Key operations
+// is bounded at three; only declared reads or owner-classified keyed operations
 // can opt into replay. Transport errors, cancellation, authorization, conflicts
 // and expired/missing objects are never automatically retried.
 type CallOptions struct {
@@ -91,7 +91,7 @@ func (c *Client) Invoke(ctx context.Context, operationID string, in CallOptions)
 		err = c.callReader(ctx, row.Method, path, in.IdempotencyKey, row.RequestContentType, bytes.NewReader(body), &output, 32<<20)
 		if err == nil {
 			result := CallResult{ContentType: row.ResponseContentType, Body: []byte(output)}
-			if outputSchema != nil && outputSchema.Validate(result.Body, 32<<20) != nil {
+			if outputSchema != nil && outputSchema.ValidateResponse(result.Body, 32<<20) != nil {
 				return CallResult{}, errors.New("chartworks: invalid operation response")
 			}
 			return result, nil

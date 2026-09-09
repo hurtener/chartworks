@@ -46,6 +46,7 @@ func unitOperationRegistry(t *testing.T) *api.Registry {
 	write := definition("writeFixture", "POST", "/v1/writes", "write")
 	write.Request, write.MaxBodyBytes = empty, 1024
 	erase := definition("eraseFixture", "POST", "/v1/erase", "erase")
+	erase.Replay = "keyed"
 	erase.Request, erase.MaxBodyBytes = value, 1024
 	erase.Headers = []api.Parameter{{Name: "Idempotency-Key", In: "header", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}
 	upload := definition("uploadFixture", "POST", "/v1/uploads", "write")

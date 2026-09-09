@@ -49,8 +49,9 @@ unauthenticated; every protected definition carries its existing Pengui action,
 resource-loader description, audit classification, closed request/response schema,
 error mapping and body/query/header bounds. `GET` and `HEAD /openapi.json` are
 served by the foundation handler from this immutable composition. The typed server
-configuration defaults to `/` with an empty CORS allowlist; non-root prefixes are
-rejected until route, OpenAPI and SDK joining can be delivered together.
+configuration defaults to `/` with an empty CORS allowlist. Non-root prefixes were
+initially rejected; the phase-23 extension below now delivers route, OpenAPI and
+SDK joining together.
 
 `TestPhase21/AC01` through `AC06` exercise the actual composed registration, real
 source HTTP/SDK/PostgreSQL behavior, security denial ordering, transport limits and
@@ -134,3 +135,25 @@ existing effect is corrected to paid routing plus persisted session evidence.
 exercises the real HTTP/MCP/SDK services and per-request authority. The
 [phase-22 review](../reviews/phase-22-adversarial.md) records evidence. No reporting,
 render/export, Apps-viewer or credential-issuance placeholder is added.
+
+## Phase-23 cumulative clients, 2026-09-09
+
+The [client v1 contract](../contracts/clients-v1.md) and
+[D-070](../decisions/2026-09-09-client-parity.md) supersede the earlier root-only
+mount restriction. `server.base_path`, generated OpenAPI and network/in-process
+SDKs share canonical absolute ASCII segments, at most 64 bytes; `/` remains the
+default. Dot/empty segments, encoded aliases, queries and fragments are rejected.
+The actual outer router strips exactly that mount, not a similar prefix, and
+rejects percent-encoded path aliases before authority or domain dispatch.
+
+`Definition.Replay` adds explicit owner intent to generated OpenAPI as
+`x-chartworks-replay`: `read`, `never`, or `keyed`. A required Idempotency-Key
+header alone is not proof of safe replay. Only the already implemented retention
+sweep, job submission, schedule creation and manual schedule fire owners classify
+their existing deduplicated operations as keyed. All query/model mutations default
+to no client replay; their domain operation identifiers remain unchanged.
+
+There are no new endpoints, action scopes or persistence tables in this extension.
+`TestPhase21` continues to test every registered route. Phase 23 adds real
+prefixed HTTP/MCP/SDK/CLI and output-ceiling parity, authority denial and
+post-commit lost-response retry tests. Input schemas stay closed and bounded.

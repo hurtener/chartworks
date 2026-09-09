@@ -242,7 +242,7 @@ func writeError(w http.ResponseWriter, e wireError) {
 // No SDK/native error message or data is allowed onto the HTTP wire. Normal
 // successful raw JSON is retained verbatim, including lossless scalar numbers.
 func sanitizeProtocol(payload []byte, limit int) []byte {
-	if _, err := gateway.DecodeJSON(payload, limit); err != nil {
+	if _, err := gateway.DecodeResponseJSON(payload, limit); err != nil {
 		return nil
 	}
 	var response map[string]json.RawMessage

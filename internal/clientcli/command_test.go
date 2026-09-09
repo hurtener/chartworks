@@ -214,7 +214,7 @@ func TestCLIUsageNeverEchoesCredentialArguments(t *testing.T) {
 	if code := f.run(t.Context(), []string{"config"}, ""); code != 2 {
 		t.Fatal("implicit backend URL", code)
 	}
-	if Command(nil, []string{"help"}, f.streams(nil)) != 2 || Command(t.Context(), nil, IO{}) != 2 {
+	if Command(nil, []string{"help"}, f.streams(nil)) != 2 || Command(t.Context(), nil, IO{}) != 2 { //nolint:staticcheck // Deliberate missing-context rejection regression.
 		t.Fatal("missing injected dependencies")
 	}
 }
@@ -256,8 +256,14 @@ func TestCLIStatusCancellationAndInputErrors(t *testing.T) {
 	}
 	reader, writer := io.Pipe()
 	defer func() { _ = writer.Close() }()
-	streams = f.streams(reader)
-	if code := Command(t.Context(), []string{"call", "setRetentionPolicy", "--execute", "--input", "-", "--timeout", "40ms"}, streams); code != 124 {
+	defer func() { _ = reader.Close() }()
+	inputCtx, cancelInput := context.WithCancel(t.Context())
+	defer cancelInput()
+	// Cancel at the actual input read, not during the preceding registry lookup.
+	// Under concurrent race instrumentation a 40ms wall clock could expire before
+	// the CLI owned stdin, making an unrelated Write-to-open-pipe assertion hang.
+	streams = f.streams(cliCancelOnRead{PipeReader: reader, cancel: cancelInput})
+	if code := Command(inputCtx, []string{"call", "setRetentionPolicy", "--execute", "--input", "-", "--timeout", "5s"}, streams); code != 130 {
 		t.Fatal("stdin was not canceled", code)
 	}
 	if _, err := writer.Write([]byte("after cancellation")); err == nil {
@@ -431,4 +437,16 @@ func FuzzCLIConfiguration(f *testing.F) {
 			t.Fatal("unstable configuration exit", code)
 		}
 	})
+}
+
+// cliCancelOnRead deterministically targets in-flight stdin ownership rather
+// than relying on network scheduling to beat a short fixture deadline.
+type cliCancelOnRead struct {
+	*io.PipeReader
+	cancel context.CancelFunc
+}
+
+func (r cliCancelOnRead) Read(data []byte) (int, error) {
+	r.cancel()
+	return r.PipeReader.Read(data)
 }

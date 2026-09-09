@@ -82,12 +82,39 @@ func (s *Schema) Validate(document []byte, maxBytes int) error {
 
 // DecodeJSON preserves numbers and nullable values, rejects duplicates/trailing values and bounds nesting.
 func DecodeJSON(document []byte, maxBytes int) (any, error) {
+	return decodeBoundedJSON(document, maxBytes, 65536)
+}
+
+// MaxResponseItems matches the qualified read executor's 100,000-row ceiling.
+// This is an output-only bound, not a larger model/request input allowance.
+const MaxResponseItems = 100000
+
+// DecodeResponseJSON accepts bounded service results up to the qualified read
+// row ceiling, retaining all duplicate/key/depth/number/byte rejection rules.
+func DecodeResponseJSON(document []byte, maxBytes int) (any, error) {
+	return decodeBoundedJSON(document, maxBytes, MaxResponseItems)
+}
+
+// ValidateResponse validates exact service output without applying the smaller
+// model/input collection ceiling to a successfully executed warehouse result.
+func (s *Schema) ValidateResponse(document []byte, maxBytes int) error {
+	if s == nil || s.compiled == nil {
+		return ErrInput
+	}
+	value, err := DecodeResponseJSON(document, maxBytes)
+	if err != nil || s.compiled.Validate(value) != nil {
+		return ErrOutput
+	}
+	return nil
+}
+
+func decodeBoundedJSON(document []byte, maxBytes, items int) (any, error) {
 	if len(document) == 0 || len(document) > maxBytes || !utf8.Valid(document) {
 		return nil, ErrOutput
 	}
 	d := json.NewDecoder(bytes.NewReader(document))
 	d.UseNumber()
-	if walkJSON(d, 0) != nil {
+	if walkJSON(d, 0, items) != nil {
 		return nil, ErrOutput
 	}
 	if _, err := d.Token(); err != io.EOF {
@@ -101,7 +128,7 @@ func DecodeJSON(document []byte, maxBytes int) (any, error) {
 	}
 	return v, nil
 }
-func walkJSON(d *json.Decoder, depth int) error {
+func walkJSON(d *json.Decoder, depth, items int) error {
 	if depth > 32 {
 		return ErrOutput
 	}
@@ -135,16 +162,16 @@ func walkJSON(d *json.Decoder, depth int) error {
 				if len(seen) > 4096 {
 					return ErrOutput
 				}
-				if walkJSON(d, depth+1) != nil {
+				if walkJSON(d, depth+1, items) != nil {
 					return ErrOutput
 				}
 			}
 		case '[':
 			for i := 0; d.More(); i++ {
-				if i >= 65536 {
+				if i >= items {
 					return ErrOutput
 				}
-				if walkJSON(d, depth+1) != nil {
+				if walkJSON(d, depth+1, items) != nil {
 					return ErrOutput
 				}
 			}

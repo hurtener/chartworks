@@ -35,7 +35,10 @@ import (
 
 func TestPhase23(t *testing.T) {
 	f := newPhase23Fixture(t)
-	t.Run("AC01", func(t *testing.T) { phase23Parity(t, f) })
+	t.Run("AC01", func(t *testing.T) {
+		phase23Parity(t, f)
+		t.Run("row-ceiling", func(t *testing.T) { phase23LargeResponses(t, f) })
+	})
 	t.Run("AC02", func(t *testing.T) { phase23Inventory(t, f) })
 	t.Run("AC03", func(t *testing.T) { phase23Authority(t, f) })
 	t.Run("AC04", func(t *testing.T) { phase23Command(t, f) })
@@ -162,7 +165,7 @@ func phase23Inventory(t *testing.T, f *phase23Fixture) {
 	}
 	for _, definition := range registry.Definitions() {
 		row, ok := byID[definition.ID]
-		if !ok || row.Method != definition.Method || row.Path != definition.Path || row.Action != definition.Action || row.Effect != definition.Effect || row.Audit != definition.Audit || row.ResourceLoader != definition.ResourceLoader || row.MaxBodyBytes != definition.MaxBodyBytes {
+		if !ok || row.Method != definition.Method || row.Path != definition.Path || row.Action != definition.Action || row.Effect != definition.Effect || row.Audit != definition.Audit || row.ResourceLoader != definition.ResourceLoader || row.MaxBodyBytes != definition.MaxBodyBytes || row.Replay != definition.ReplayPolicy() {
 			t.Fatal("operation metadata drift", definition.ID)
 		}
 	}
@@ -198,6 +201,7 @@ func phase23Inventory(t *testing.T, f *phase23Fixture) {
 
 func phase23Authority(t *testing.T, f *phase23Fixture) {
 	t.Helper()
+	t.Run("canonical-mount", func(t *testing.T) { phase23MountBoundaries(t, f) })
 	e, err := f.authority.verifier.Verify(t.Context(), f.httpToken, auth.HTTP)
 	if err != nil {
 		t.Fatal(err)
@@ -505,5 +509,69 @@ func phase23Erasure(t *testing.T, f *phase23Fixture) {
 	other, err := clients["erase-b"].Sweep(t.Context(), "erase-once")
 	if err != nil || other.ID == receipt.ID || other.DeletedEvents != 1 {
 		t.Fatal("logical keys not tenant isolated", err)
+	}
+}
+
+func phase23LargeResponses(t *testing.T, f *phase23Fixture) {
+	t.Helper()
+	if config.DefaultReadValidation().RowsCeiling != 100000 {
+		t.Fatal("update client response qualification with source ceiling")
+	}
+	if _, err := f.domain.f.admin.Exec(t.Context(), `INSERT INTO analytics.sales(id,amount) SELECT n,0 FROM generate_series(3,100000) AS n`); err != nil {
+		t.Fatal(err)
+	}
+	var expectedLast []json.RawMessage
+	for _, surface := range f.surfaces(t) {
+		if surface.name != "sdk-http" && surface.name != "sdk-http-generic" && surface.name != "sdk-local-generic" && surface.name != "mcp-http" && surface.name != "cli" && surface.name != "cli-mcp" {
+			continue
+		}
+		t.Run(surface.name, func(t *testing.T) {
+			op := "ceiling-" + surface.name
+			plan := phase23Call[nlqexec.PlanResult](t, surface, "planNLQ", "", nlqexec.PlanRequest{QuestionRequest: phase18Question(f.domain, nlq.LanguageEnglish, f.domain.pack.Topic), Operation: op}, nil)
+			result := phase23Call[nlqexec.RunResult](t, surface, "runNLQ", "", nlqexec.RunRequest{QueryID: plan.QueryID, Operation: op, Rows: 100000, Bytes: 16 << 20}, nil)
+			if result.Status != "succeeded" || result.Execution.Result == nil || len(result.Execution.Result.Rows) != 100000 {
+				t.Fatal("qualified row ceiling lost", result.Status)
+			}
+			last := result.Execution.Result.Rows[99999]
+			if expectedLast == nil {
+				expectedLast = last
+			} else if !reflect.DeepEqual(expectedLast, last) {
+				t.Fatal("ceiling values changed by surface")
+			}
+		})
+	}
+}
+
+// Requests pass through the actual production outer router. No redirect or
+// canonicalization may move the caller's credential into a different mount.
+func phase23MountBoundaries(t *testing.T, f *phase23Fixture) {
+	t.Helper()
+	beforeModel, beforeSource := f.domain.model.requests.Load(), f.domain.f.lookups.Load()
+	for _, test := range []struct {
+		path   string
+		status int
+	}{
+		{"/healthz", 404}, {"/openapi.json", 404}, {"/v1/topics/list", 404},
+		{phase23Mount + "-other/healthz", 404}, {phase23Mount + "//healthz", 404},
+		{"/sdk%2dparity/healthz", 400}, {phase23Mount + "/%2e%2e/healthz", 400},
+		{phase23Mount + "/healthz", 200}, {phase23Mount + "/v1/topics/list", 401},
+	} {
+		method := "GET"
+		if strings.Contains(test.path, "topics/list") {
+			method = "POST"
+		}
+		request := httptest.NewRequest(method, "http://127.0.0.1"+test.path, strings.NewReader("{}"))
+		if method == "GET" {
+			request.Body = nil
+			request.ContentLength = 0
+		}
+		response := httptest.NewRecorder()
+		f.handler.ServeHTTP(response, request)
+		if response.Code != test.status || response.Header().Get("Location") != "" {
+			t.Fatalf("mount %s: status=%d want=%d redirect=%q", test.path, response.Code, test.status, response.Header().Get("Location"))
+		}
+	}
+	if f.domain.model.requests.Load() != beforeModel || f.domain.f.lookups.Load() != beforeSource {
+		t.Fatal("mount denial reached a domain dependency")
 	}
 }

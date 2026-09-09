@@ -57,3 +57,11 @@ Business data and diagnostic metadata may use ordinary technical names such as a
 ## Output specification vocabulary (phase 20)
 
 A **saved output mapping** is a versioned kind, closed options, slot bindings, order and exact column-metadata pins. A **rebind proposal** is a detached `review_required` mapping, never an edit to a published output. A **complete-result total** covers all rows provided to the specification, not all rows in a warehouse; a **returned-rows total** explicitly marks truncated input. Exact labels are separate from approximate plotting coordinates. See the [version-one contract](contracts/chart-specifications-v1.md).
+
+## Client operation matrix
+
+Detached registration metadata linking an installed HTTP operation to its real
+SDK/CLI dispatch and, when queried under separate authority, MCP binding. It is
+not a permission grant or another authoritative business store. Replay eligibility
+is an explicit owner contract (`read`, `never`, `keyed`), not an inference from a
+header. See [clients v1](contracts/clients-v1.md).

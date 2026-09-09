@@ -109,7 +109,7 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/jobs", Action: "scheduling.write", Effect: "durable_admission"},
-		ID:        "submitJob", Summary: "Admit one bounded durable operation", ResourceLoader: "jobs.Service.Submit", Audit: "job.admitted", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical operation", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: submission, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
+		Replay:    "keyed", ID: "submitJob", Summary: "Admit one bounded durable operation", ResourceLoader: "jobs.Service.Submit", Audit: "job.admitted", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical operation", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: submission, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
 	}, dispatch)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/jobs/{id}/cancel", Action: "scheduling.cancel", Effect: "durable_cancellation"},
@@ -121,7 +121,7 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/schedules", Action: "scheduling.write", Effect: "schedule_creation"},
-		ID:        "createSchedule", Summary: "Create one bounded schedule", ResourceLoader: "jobs.Service.CreateSchedule", Audit: "schedule.created", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: schedule, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: scheduleResponse, Errors: workErrors,
+		Replay:    "keyed", ID: "createSchedule", Summary: "Create one bounded schedule", ResourceLoader: "jobs.Service.CreateSchedule", Audit: "schedule.created", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: schedule, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: scheduleResponse, Errors: workErrors,
 	}, dispatch)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "PUT", Path: "/v1/schedules/{id}/state", Action: "scheduling.write", Effect: "schedule_state"},
@@ -129,7 +129,7 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 	}, true)
 	appendDefinition(api.Definition{
 		Operation: api.Operation{Method: "POST", Path: "/v1/schedules/{id}/runs", Action: "scheduling.execute", Effect: "durable_admission"},
-		ID:        "fireSchedule", Summary: "Admit one manual schedule run", ResourceLoader: "jobs.Service.Fire", Audit: "schedule.run_requested", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule run", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: empty, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
+		Replay:    "keyed", ID: "fireSchedule", Summary: "Admit one manual schedule run", ResourceLoader: "jobs.Service.Fire", Audit: "schedule.run_requested", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule run", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: empty, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
 	}, dispatch)
 	if len(definitions) == 0 {
 		return nil, nil

@@ -352,9 +352,10 @@ func fail(writer io.Writer, err error) int {
 	case errors.Is(err, cw.ErrInvalidCall), errors.Is(err, cw.ErrUnknownOperation), errors.Is(err, cw.ErrUnsafeRetry):
 		code = 2
 	case errors.As(err, &status):
-		if status.Status == 401 || status.Status == 403 {
+		switch status.Status {
+		case 401, 403:
 			code = 3
-		} else if status.Status == 409 || status.Status == 410 {
+		case 409, 410:
 			code = 4
 		}
 	}

@@ -114,6 +114,7 @@ type operationContent map[string]struct {
 }
 
 type operationDocument struct {
+	Replay         string               `json:"x-chartworks-replay"`
 	ID             string               `json:"operationId"`
 	Summary        string               `json:"summary"`
 	Auth           string               `json:"x-chartworks-auth"`
@@ -199,8 +200,10 @@ func parseOperation(method, path string, raw json.RawMessage) (OperationInfo, er
 			pathParameter = true
 		case "query":
 		case "header":
-			if strings.EqualFold(p.Name, "Idempotency-Key") && p.Required && row.Replay == "never" && row.Audience == "http" {
-				row.Replay = "keyed"
+			if strings.EqualFold(p.Name, "Idempotency-Key") && p.Required && row.Replay == "never" && row.Audience == "http" && !row.Public {
+				if d.Replay == "keyed" {
+					row.Replay = "keyed"
+				}
 			}
 		default:
 			return OperationInfo{}, ErrInvalidCatalog
@@ -208,6 +211,12 @@ func parseOperation(method, path string, raw json.RawMessage) (OperationInfo, er
 	}
 	if strings.Contains(path, "{id}") != pathParameter {
 		return OperationInfo{}, ErrInvalidCatalog
+	}
+	if d.Replay != "" && d.Replay != "never" && d.Replay != row.Replay {
+		return OperationInfo{}, ErrInvalidCatalog
+	}
+	if d.Replay == "never" {
+		row.Replay = "never"
 	}
 	return row, nil
 }

@@ -86,7 +86,7 @@ func newPhase23Fixture(t *testing.T) *phase23Fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var protected http.Handler = securityapi.Handler(f.authority.verifier, security, reporter, true)
+	protected := securityapi.Handler(f.authority.verifier, security, reporter, true)
 	protected = chartapi.Handler(f.authority.verifier, chart, protected)
 	protected = nlqapi.BYOHandler(f.authority.verifier, byo, protected)
 	protected = nlqapi.ExecutionHandler(f.authority.verifier, query, protected)
@@ -314,6 +314,25 @@ func (f *phase23Fixture) surfaces(t *testing.T) []phase23Surface {
 			return nil, errors.New("CLI acceptance failed: " + diagnostic)
 		}
 		return body, nil
+	}})
+	out = append(out, phase23Surface{name: "cli-mcp", call: func(ctx context.Context, id string, _ cw.CallOptions, args any) (json.RawMessage, error) {
+		body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": rows[id].MCPTool, "arguments": args}})
+		if err != nil {
+			return nil, err
+		}
+		token := f.token(t, f.domain.e.Tenant(), f.domain.e.User(), "phase23-session", f.scopes, true)
+		code, raw, diagnostic := f.cli(ctx, token, []string{"mcp", "--execute", "--input", "-"}, body)
+		if code != 0 {
+			return nil, errors.New("CLI MCP failed: " + diagnostic)
+		}
+		var rpc struct {
+			Result phase22ToolResult `json:"result"`
+			Error  json.RawMessage   `json:"error"`
+		}
+		if json.Unmarshal(raw, &rpc) != nil || rpc.Error != nil {
+			return nil, errors.New("CLI MCP protocol failed")
+		}
+		return unpack(rpc.Result.Structured, rpc.Result.IsError)
 	}})
 	return out
 }

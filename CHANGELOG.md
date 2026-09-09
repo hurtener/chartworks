@@ -44,3 +44,17 @@ The earlier commits contain the governed-reporting analysis and actionable 34-ph
 - Six phase-22 criteria, cumulative phase-21 guards, ordinary MCP functional tests,
   malformed-input/expiry/cancellation/panic/isolation regressions and protocol fuzzing.
   Final evidence is recorded in docs/reviews/phase-22-adversarial.md.
+
+## Phase 23 clients and cumulative phase 21 contracts
+
+- Existing typed SDK plus authenticated bounded in-process transport, actual
+  registry-derived HTTP/MCP/SDK/CLI matrix and generic invocation with closed input.
+- Injected operator CLI with safe token-provider/environment/inherited-descriptor
+  input, explicit effect acknowledgement, cancellation, status exits and bounded
+  stdin/output. No issuer, business shadow store or future endpoint placeholders.
+- Shared canonical configured mount grammar; explicit owner replay classification,
+  stable logical keys and no automatic replay of denied/expired objects.
+- Output-only 100,000-row JSON decoding preserves the existing executor ceiling;
+  model/request decoder limits, SQL validation and byte budgets are unchanged.
+- Six real phase-23 acceptance criteria and adversarial regression/fuzz coverage.
+  See docs/reviews/phase-23-adversarial.md for actual-source verification boundaries.

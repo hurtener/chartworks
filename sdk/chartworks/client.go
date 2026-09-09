@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/gateway"
+	"github.com/hurtener/chartworks/internal/httpmount"
 )
 
 // Policy is operational retention state, not access policy.
@@ -103,19 +104,13 @@ func New(base string, client *http.Client, token TokenProvider) (*Client, error)
 }
 
 func clientBasePath(path string) bool {
-	if path == "" || path == "/" {
+	if path == "" {
 		return true
 	}
-	path = strings.TrimSuffix(path, "/")
-	if len(path) > 64 || !strings.HasPrefix(path, "/") {
-		return false
+	if path != "/" {
+		path = strings.TrimSuffix(path, "/")
 	}
-	for _, segment := range strings.Split(path[1:], "/") {
-		if !wireID(segment) || segment == "." || segment == ".." {
-			return false
-		}
-	}
-	return true
+	return httpmount.Valid(path)
 }
 
 func (c *Client) call(ctx context.Context, method, path, key string, body, out any) error {
@@ -154,7 +149,7 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 	}
 	defer cancel()
 	ctx = bounded
-	if limit < 1 || limit > 128<<20 {
+	if limit < 1 || limit > 128<<20 || !clientRoute(path) {
 		return errors.New("chartworks: invalid response limit")
 	}
 	token, err := c.token(ctx)
@@ -167,6 +162,12 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, input)
 	if err != nil {
 		return errors.New("chartworks: invalid request")
+	}
+	// The standard transport can replay a rewindable keyed POST after a lost
+	// response. Mutation replay belongs only to Invoke's bounded owner-approved
+	// loop; never give the transport a rewind function for mutation bodies.
+	if method != http.MethodGet && method != http.MethodHead {
+		req.GetBody = nil
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	if media != "" {
@@ -277,4 +278,11 @@ func readFailureReceipt(body io.Reader) *GatewayReceipt {
 		}
 	}
 	return value.Receipt
+}
+
+// The pinned origin/mount is never bypassed by a typed method's path coordinate.
+// This also protects older typed methods whose identifier grammar includes dots.
+func clientRoute(path string) bool {
+	u, err := url.ParseRequestURI(path)
+	return err == nil && u.Host == "" && !u.IsAbs() && u.RawPath == "" && !strings.Contains(u.EscapedPath(), "%") && !strings.ContainsAny(u.Path, "{}") && operationPath(u.Path)
 }

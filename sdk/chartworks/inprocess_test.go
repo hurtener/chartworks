@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -58,7 +59,7 @@ func TestInProcessConcurrentProvidersDoNotShareAuthority(t *testing.T) {
 		if r.Context().Value(inProcessTokenKey{}) != nil {
 			t.Error("per-caller token leaked through context")
 		}
-		_, _ = io.WriteString(w, r.Header.Get("Authorization"))
+		_, _ = io.WriteString(w, html.EscapeString(r.Header.Get("Authorization")))
 	})
 	client, err := NewInProcess(handler, func(ctx context.Context) (string, error) {
 		token, _ := ctx.Value(inProcessTokenKey{}).(string)
@@ -123,14 +124,18 @@ func TestInProcessResponseBoundsAndHeaderCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = response.Body.Close() }()
+	defer func(body io.Closer) { _ = body.Close() }(response.Body)
 	body, err := io.ReadAll(response.Body)
 	if err != nil || string(body) != "bounded" || response.Header.Get("X-Receipt") != "committed" || response.StatusCode != 200 {
 		t.Fatal("HTTP response commit diverged", err)
 	}
 	for _, status := range []int{99, 101, 600} {
 		transport.handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) })
-		if _, err := transport.RoundTrip(request); err == nil {
+		response, err := transport.RoundTrip(request)
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		if err == nil {
 			t.Fatal("invalid status accepted", status)
 		}
 	}
@@ -153,7 +158,11 @@ func TestInProcessResponseBoundsAndHeaderCommit(t *testing.T) {
 		_, _ = w.Write(make([]byte, inProcessResponseLimit+1))
 		_, _ = w.Write([]byte("must-not-grow"))
 	})
-	if _, err := transport.RoundTrip(request); err == nil {
+	response, err = transport.RoundTrip(request)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	if err == nil {
 		t.Fatal("unbounded in-process response")
 	}
 	writer := &boundedResponse{header: make(http.Header)}
@@ -205,11 +214,15 @@ func TestClientMountAndTimeoutValidation(t *testing.T) {
 			t.Fatal("invalid client panicked or succeeded")
 		}
 	}
-	if _, err := client.RetentionPolicy(nil); err == nil {
+	if _, err := client.RetentionPolicy(nil); err == nil { //nolint:staticcheck // Deliberate missing-context rejection regression.
 		t.Fatal("missing context accepted")
 	}
 	for _, request := range []*http.Request{nil, {}, {URL: &url.URL{Scheme: "https", Host: "127.0.0.1"}}, {URL: &url.URL{Scheme: "http", Host: "other.example"}}} {
-		if _, err := (inProcessTransport{handler: http.NotFoundHandler()}).RoundTrip(request); err == nil {
+		response, err := (inProcessTransport{handler: http.NotFoundHandler()}).RoundTrip(request)
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		if err == nil {
 			t.Fatal("foreign in-process route accepted")
 		}
 	}

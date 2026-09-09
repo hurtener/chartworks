@@ -25,7 +25,7 @@ func writeMCPBody(stdout, stderr io.Writer, body []byte) int {
 	if len(body) == 0 {
 		return 0 // A successful initialized notification has no response body.
 	}
-	if _, err := gateway.DecodeJSON(body, 32<<20); err != nil {
+	if _, err := gateway.DecodeResponseJSON(body, 32<<20); err != nil {
 		return fail(stderr, cw.ErrInvalidCatalog)
 	}
 	var response struct {

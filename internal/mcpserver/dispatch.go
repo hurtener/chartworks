@@ -104,7 +104,7 @@ func (s *Server) dispatch(ctx context.Context, name string, args json.RawMessage
 	if len(raw) > s.settings.MaxResponseBytes {
 		return failure("limit_exceeded", "unknown")
 	}
-	if b.output.Validate(raw, s.settings.MaxResponseBytes) != nil {
+	if b.output.ValidateResponse(raw, s.settings.MaxResponseBytes) != nil {
 		return failure("unavailable", "unknown")
 	}
 	out = &mcp.CallToolResult{StructuredContent: json.RawMessage(raw), Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}
