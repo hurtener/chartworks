@@ -1,0 +1,52 @@
+name: Phase 22 integration workspace
+on:
+  push:
+    branches: [feat/phase-22-mcp-server]
+    paths: [.github/workflows/phase-22-integrate.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: github.repository == 'hurtener/chartworks' && github.ref == 'refs/heads/feat/phase-22-mcp-server'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Integrate the guarded local wiring and lock public dependencies
+        run: |
+          python3 scripts/_phase22_wire.py
+          go mod edit -require=github.com/modelcontextprotocol/go-sdk@v1.6.1
+          go mod tidy
+          find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
+          rm scripts/_phase22_wire.py
+          rm .github/workflows/phase-22-workspace.yml .github/workflows/phase-22-dependencies.yml .github/workflows/phase-22-integrate.yml
+          git add --all
+          git diff --cached --check
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(mcp): bind authenticated tools and metadata resources to shared services'
+          git push origin HEAD:refs/heads/feat/phase-22-mcp-server
+      - name: Record exact committed source for independent comparison
+        run: |
+          git rev-parse HEAD > /tmp/source-sha.txt
+          test -z "$(git status --porcelain)"
+          git archive --format=tar HEAD | gzip > /tmp/chartworks-phase22-integrated.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-22-integrated-source
+          path: |
+            /tmp/source-sha.txt
+            /tmp/chartworks-phase22-integrated.tar.gz
+          retention-days: 3
+      - name: Build pinned native parser for compilation checks
+        run: bash scripts/build-bruin.sh
+      - name: Compile every package against the committed tree
+        run: go test -run '^$' -p 2 ./...
+      - name: Run initial network and in-process race regressions
+        run: go test -race -count=1 -v ./internal/mcpserver ./internal/api ./internal/config ./internal/chartapi
