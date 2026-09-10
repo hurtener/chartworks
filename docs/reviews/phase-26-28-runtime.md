@@ -93,3 +93,10 @@ PostgreSQL test passes locally. Topic amendments now advance draft revision only
 for a recorded committed topic effect and preserve reviewed names/entities in the
 new independent material. Explicit fresh-profile selection updates only evidence
 coordinates and still requires ordinary semantic/source validation.
+
+Hosted CI run 34542894136 at 27f98f24092bb82eb8ffdd8a6daf7cfbd69bd653
+completed the combined strict phase-26/28 runtime acceptance step successfully
+(2026-09-10 23:51:03 UTC). This includes the first real Linux reviewed-topic apply.
+The subsequent cancellation and topic-amendment fixes at 58e4bf5 have their own
+pending CI run; neither result substitutes for final-head full coverage or the
+remaining schedule integration.
