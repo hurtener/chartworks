@@ -5,13 +5,16 @@ on:
     paths: [.github/workflows/phase-26-28-edit.yml]
 permissions:
   contents: write
+  actions: read
 jobs:
   edit:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
-      EXPECTED_SOURCE: 69b5c89753d69cf152554b23fbbe10fd16682be6
+      EXPECTED_SOURCE: a9585a8017d66b590a2097b76f8e786828500844
       FEATURE_BRANCH: feat/phase-26-28-engineering-artifacts
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,33 +23,83 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Apply exact, reviewed source edits
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native library
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libsqlparser_ffi.a -print -quit)
+          test -n "$parser"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+      - name: Apply exact source integration edits
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('internal/config/reporting.go')
-          text = p.read_text()
-          old = 'type Reporting struct {'
-          assert text.count(old) == 1
-          text = text.replace(old, old + '\n\tExecution ReportingExecution `json:"execution"`')
-          old = 'return Reporting{'
-          assert text.count(old) == 1
-          text = text.replace(old, old + 'Execution: DefaultReportingExecution(), ')
-          old = 'func (c Reporting) Validate() error {'
-          assert text.count(old) == 1
-          text = text.replace(old, old + '\n\tif err := c.Execution.Validate(); err != nil { return err }')
+          def replace(path, old, new):
+              p=Path(path); text=p.read_text()
+              assert text.count(old)==1, (path, old, text.count(old))
+              p.write_text(text.replace(old,new))
+          p='internal/reporting/access.go'
+          replace(p, 'SQLRead  Access = "sql.read"', 'SQLRead  Access = "sql.read"\n\tExecute Access = "execute"')
+          replace(p, 'case Read, Write, Validate, Preview, Publish, Certify, SQLRead:', 'case Read, Write, Validate, Preview, Publish, Certify, SQLRead, Execute:')
+          replace(p, 'case Read, SQLRead:', 'case Execute:\n\t\treturn "execute"\n\tcase Read, SQLRead:')
+          replace('internal/store/postgres/blocks_read.go', 'full := a == reporting.Write || a == reporting.Validate || a == reporting.Preview || a == reporting.SQLRead', 'full := a == reporting.Execute || a == reporting.Write || a == reporting.Validate || a == reporting.Preview || a == reporting.SQLRead')
+          p='internal/jobs/requests.go'
+          replace(p, '(r.Kind == "upload.load"', '(r.Kind == "reporting.run" || r.Kind == "upload.load"')
+          replace(p, 'action, permission := "sources.upload", "write"', 'if r.Kind == "reporting.run" {\n\t\treturn access.Require(e, "reporting.execute", access.Resource{Tenant: e.Tenant(), Kind: "block", Permission: "execute", ID: r.Target})\n\t}\n\taction, permission := "sources.upload", "write"')
+          p='internal/reporting/runs_service.go'
+          replace(p, 'in.ReuseMaxAgeSeconds < 0 ||', 'in.ReuseMaxAgeSeconds < 0 || in.ReuseMaxAgeSeconds > 86400 ||')
+          replace(p, 'charts.SpecVersion, charts.MappingVersion', 'charts.Version')
+          p='internal/reporting/runs_proof.go'
+          replace(p, 'w.Attempt.Manifest.Number', 'w.Attempt.Number')
+          replace(p, 'exec.ValidateResult(*w.Result, w.Manifest.Limits.MaxRows, w.Manifest.Limits.MaxResultBytes) != nil', 'len(w.Result.Rows) > w.Manifest.Limits.MaxRows || w.Result.Bytes > int64(w.Manifest.Limits.MaxResultBytes)')
+          p=Path('internal/reporting/runs_execution.go'); text=p.read_text()
+          old='''		data, err := chartdata.FromResult(result)
+          		if err != nil { return out, err }
+          		if saved.Mapping == nil { return out, ErrInvalid }
+          		chart, err := charts.Build(ctx, data, *saved.Mapping)'''
+          assert text.count(old)==1
+          text=text.replace(old, '''		if saved.Mapping == nil { return out, ErrInvalid }
+          		chart, err := s.buildRetainedChart(ctx, m, result, *saved.Mapping)''')
+          old='''		data, err := chartdata.FromResult(*r.Result)
+          		if err != nil { return RetainedOutput{}, err }
+          		chart, err := charts.Build(ctx, data, *saved.Mapping)'''
+          assert text.count(old)==1
+          text=text.replace(old, '\t\tchart, err := s.buildRetainedChart(ctx, *r.Manifest, *r.Result, *saved.Mapping)')
+          text=text.replace('\n\t"github.com/hurtener/chartworks/internal/chartdata"','').replace('\n\t"github.com/hurtener/chartworks/internal/charts"','')
+          old='if !time.Now().Before(m.Expires) { return ErrExpired }'
+          assert text.count(old)==1
+          text=text.replace(old, old+'''
+          	snapshot, err := s.blocks.repo.ReadBlock(ctx, e, m.Block, Reference{Revision: m.Revision.Number}, Execute)
+          	if err != nil { return err }
+          	if snapshot.Revision.Digest != m.Revision.Digest { return ErrStale }
+          	if err = runEligibility(e, snapshot, m.Policy, time.Now()); err != nil { return err }''')
+          old='func (s *Runs) RebuildOutput(ctx context.Context, e identity.Envelope, id, output string) (RetainedOutput, error) {'
+          assert text.count(old)==1
+          text=text.replace(old, old+'\n\tif s == nil || ctx == nil || !identity.Identifier(id) || !identity.Identifier(output) { return RetainedOutput{}, ErrInvalid }')
           p.write_text(text)
           PY
-          gofmt -w internal/config/reporting.go internal/config/reporting_execution.go internal/config/reporting_execution_test.go
+          gofmt -w internal/reporting/*.go internal/config/reporting*.go internal/jobs/requests.go internal/store/postgres/blocks_read.go
           git diff --check
-      - name: Commit only feature source and fast-forward the feature branch
+      - name: Commit feature integration with ordinary fast-forward push
         run: |
           git config user.name chartworks-development-bot
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add internal/config/reporting.go internal/config/reporting_execution.go internal/config/reporting_execution_test.go
-          git commit -m 'feat(reporting): wire frozen-run configuration into the typed decoder'
+          git add internal/reporting internal/config/reporting*.go internal/jobs/requests.go internal/store/postgres/blocks_read.go
+          git commit -m 'feat(reporting): integrate frozen execution with existing authority and output contracts'
           git push origin "HEAD:$FEATURE_BRANCH"
           echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
-      - name: Verify exact committed configuration
-        run: go test -race -count=1 ./internal/config
+      - name: Exact-source compiler and domain contracts
+        run: go test -race -count=1 ./internal/config ./internal/jobs ./internal/reporting
+      - name: Development schema diagnostics
+        if: always()
+        run: |
+          find internal/store/postgres/migrations -type f | sort
+          grep -nE 'kind|request_manifest' internal/store/postgres/migrations/*sql | tail -50
+          git status --short
