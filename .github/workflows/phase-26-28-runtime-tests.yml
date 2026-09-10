@@ -1,0 +1,91 @@
+name: Phase 26-28 exact runtime tests
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-runtime-tests.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  runtime:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        ports: [5434:5432]
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 750b5de06b9d337458197c710129b0167b675d9f
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native dependencies
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          find /tmp/native -maxdepth 4 -type f -printf '%P %s\n' | head -40
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          test -s "$parser"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+          bruin=$(find /tmp/native -type f -name bruin -print -quit)
+          if test -n "$bruin"; then
+            chmod +x "$bruin"
+            echo "CHARTWORKS_TEST_BRUIN_PATH=$bruin" >> "$GITHUB_ENV"
+          fi
+      - name: Prepare private executable scratch and synthetic PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container=$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+      - name: Exact-source compile and domain race tests
+        run: |
+          echo "TESTED_SOURCE=$(git rev-parse HEAD)"
+          go test -race -count=1 ./internal/config ./internal/reporting ./internal/engineering
+          go test -run '^$' ./internal/store/postgres ./test/acceptance
+      - name: Preserve phase 27 on the real source and store
+        run: go test -race -count=1 -timeout=10m -v -run '^TestPhase27$' ./test/acceptance
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+      - name: Confirm no source modification
+        if: always()
+        run: git diff --exit-code
