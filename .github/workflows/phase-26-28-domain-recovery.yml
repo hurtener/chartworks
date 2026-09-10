@@ -1,0 +1,155 @@
+name: Phase 26-28 recovered domain verification
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-domain-recovery.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: chartworks-phase-26-28-publication
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1d412d9549f5fd9faeb5fd580fb2440ef9e9a41f
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native dependencies
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          runner=$(find /tmp/native -type f -name bruin -print -quit)
+          test -s "$parser"
+          test -s "$runner"
+          chmod +x "$runner"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+          echo "CHARTWORKS_TEST_BRUIN_PATH=$runner" >> "$GITHUB_ENV"
+      - name: Prepare private executable scratch and synthetic PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container=$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+      - name: Recover exact boundary changes and correct the observed failures
+        run: |
+          test "$(git rev-parse HEAD)" = 1d412d9549f5fd9faeb5fd580fb2440ef9e9a41f
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,textwrap
+          original=subprocess.check_output(['git','show','4024d3cff394b15e5c533c485d5aa28d04c2e4bf:.github/workflows/phase-26-28-boundary-repair.yml'],text=True)
+          script=textwrap.dedent(original.split('      - name: Apply exact reviewed boundary changes\n        run: |\n',1)[1].split('      - name:',1)[0])
+          subprocess.run(['bash','-e','-c',script],check=True)
+          def replace(path,old,new):
+              p=Path(path);s=p.read_text();assert s.count(old)==1,(path,old,s.count(old));p.write_text(s.replace(old,new))
+          replace('internal/store/postgres/postgres.go','"github.com/hurtener/chartworks/internal/nlqbyo"','"github.com/hurtener/chartworks/internal/nlqbyo"\n\t"github.com/hurtener/chartworks/internal/reporting"')
+          replace('internal/store/postgres/postgres.go','[]error{nlqbyo.ErrBudget,','[]error{reporting.ErrInvalid, reporting.ErrStale, reporting.ErrUnavailable, reporting.ErrBusy, reporting.ErrExpired, reporting.ErrIncomplete, reporting.ErrBudget, engineering.ErrProposalReview, engineering.ErrProposalDrift, engineering.ErrProposalConflict, engineering.ErrCompensationBlocked, engineering.ErrPipelineQuality, engineering.ErrPipelineUncertain, nlqbyo.ErrBudget,')
+          # The authored phase-27 contract selects the saved output order, not
+          # arbitrary caller order. Do not rewrite approved semantics for a test.
+          replace('test/acceptance/phase28_test.go','v.Outputs[0].ID != "table-second" || v.Outputs[1].ID != "table-main"','v.Outputs[0].ID != "table-main" || v.Outputs[1].ID != "table-second"')
+          # Allowed and redacted field sets are disjoint by the existing schema.
+          replace('test/acceptance/phase28_test.go','d.Outputs[1].Narrative.RedactedFields = []string{"id"}','d.Outputs[1].Narrative.Fields = []string{"amount"}\n\t\td.Outputs[1].Narrative.RedactedFields = []string{"id"}')
+          Path('internal/store/postgres/frozen_domain_errors_test.go').write_text('''package postgres
+          import (
+              "errors"
+              "fmt"
+              "testing"
+              "github.com/hurtener/chartworks/internal/engineering"
+              "github.com/hurtener/chartworks/internal/reporting"
+              "github.com/hurtener/chartworks/internal/store"
+          )
+          func TestFrozenAndReviewedDomainErrorsRemainTyped(t *testing.T) {
+              for _, want := range []error{reporting.ErrInvalid,reporting.ErrStale,reporting.ErrUnavailable,reporting.ErrBusy,reporting.ErrExpired,reporting.ErrIncomplete,reporting.ErrBudget,engineering.ErrProposalReview,engineering.ErrProposalDrift,engineering.ErrProposalConflict,engineering.ErrCompensationBlocked,engineering.ErrPipelineQuality,engineering.ErrPipelineUncertain} {
+                  got := safe(fmt.Errorf("private diagnostic must not escape: %w", want))
+                  if got != want { t.Errorf("lost typed failure: %v", want) }
+              }
+              if safe(errors.New("SYNTHETIC_SQL_SECRET")) != store.ErrUnavailable { t.Fatal("unrecognized database diagnostic escaped") }
+          }
+          ''')
+          PY
+          gofmt -w internal/store/postgres/postgres.go internal/store/postgres/frozen_domain_errors_test.go test/acceptance/phase28_test.go
+          git diff --check
+      - name: Domain and PostgreSQL boundary regression tests
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=5m ./internal/config ./internal/reporting ./internal/engineering ./internal/store/postgres 2>&1 | tee /tmp/domain-recovery-unit.log
+      - name: Real phase 26, 27 and 28 acceptance
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -v -run '^TestPhase(26|27|28)$' ./test/acceptance 2>&1 | tee /tmp/domain-recovery-acceptance.log
+      - name: Publish the verified recovered domain changes
+        run: |
+          git diff --check
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/store/postgres test/acceptance/phase28_test.go
+          git commit -m 'fix: verify recovered engineering and frozen-run criteria with exact domain failures'
+          git push origin HEAD:feat/phase-26-28-engineering-artifacts
+          echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+      - name: Preserve exact recovery evidence
+        if: always()
+        run: |
+          mkdir -p /tmp/domain-recovery
+          if test -d .git; then
+            git rev-parse HEAD > /tmp/domain-recovery/head.txt
+            git diff --binary HEAD > /tmp/domain-recovery/uncommitted.patch
+            git ls-files --others --exclude-standard -z | tar --null -T - -czf /tmp/domain-recovery/untracked-source.tar.gz
+          fi
+          for log in /tmp/domain-recovery-unit.log /tmp/domain-recovery-acceptance.log; do
+            if test -f "$log"; then cp "$log" /tmp/domain-recovery/; fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase26-28-domain-recovery
+          path: /tmp/domain-recovery
+          retention-days: 7
