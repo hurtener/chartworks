@@ -19,7 +19,7 @@ jobs:
           POSTGRES_DB: chartworks_schema
         ports: ['5434:5432']
         options: >-
-          --health-cmd "pg_isready -U chartworks"
+          --health-cmd "pg_isready -U chartworks -d chartworks_schema"
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       EXPECTED_SOURCE: 0a705286fde9b75a0b85f4f554f238af6edc105a
@@ -34,6 +34,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
       - uses: actions/download-artifact@v4
         with:
           name: phase-26-28-native
@@ -64,7 +69,7 @@ jobs:
         env:
           PGURL: postgres://chartworks:chartworks@localhost:5434/chartworks_schema?sslmode=disable
         run: |
-          psql "$PGURL" -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA chartworks' -c 'CREATE EXTENSION IF NOT EXISTS vector'
+          psql "$PGURL" -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA chartworks' -c 'CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public'
           for migration in internal/store/postgres/migrations/*.sql; do
             echo "APPLY_MIGRATION=$migration"
             psql "$PGURL" -v ON_ERROR_STOP=1 --single-transaction -f "$migration"
@@ -77,6 +82,11 @@ jobs:
           git commit -m 'feat(reporting): integrate fenced artifact persistence, expiry and physical-attempt recovery'
           git push origin "HEAD:$FEATURE_BRANCH"
           echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
       - name: Preserve diagnostics
         if: always()
         run: |
