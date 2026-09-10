@@ -1,0 +1,381 @@
+name: Phase 26-28 guarded boundary repairs
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-boundary-repair.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: chartworks-phase-26-28-boundary-repair
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: ['5434:5432']
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      EXPECTED_SOURCE: 750b5de06b9d337458197c710129b0167b675d9f
+      FEATURE_BRANCH: feat/phase-26-28-engineering-artifacts
+      CANDIDATE_BRANCH: dev/phase-26-28-runtime-completion
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-26-28-engineering-artifacts
+          fetch-depth: 0
+      - name: Guard both existing branch heads
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          test "$(git rev-parse "refs/remotes/origin/$CANDIDATE_BRANCH")" = "$EXPECTED_SOURCE"
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native dependencies
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -type f -name libbruin_rustsqlparser.a -print -quit)
+          runner=$(find /tmp/native -type f -name bruin -print -quit)
+          test -s "$parser"
+          test -x "$runner"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+          echo "CHARTWORKS_TEST_BRUIN_PATH=$runner" >> "$GITHUB_ENV"
+      - name: Prepare isolated pipeline scratch and synthetic PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container=$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+      - name: Apply exact reviewed boundary changes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              assert text.count(old) == 1, (path, old[:100], text.count(old))
+              p.write_text(text.replace(old, new))
+          def create(path, content):
+              p = Path(path)
+              assert not p.exists(), path
+              p.write_text(content)
+          expected_blobs = {
+              'internal/store/postgres/frozen_runs_write.go': '2128325e3e008e88df0b3c3feff91941caad99d4',
+              'internal/store/postgres/autopilot_lifecycle.go': '66b0dc6c2d458849b3de51aafbf199df8a883902',
+          }
+          for path, expected in expected_blobs.items():
+              actual = subprocess.check_output(['git', 'hash-object', path], text=True).strip()
+              assert actual == expected, (path, actual)
+          create('internal/store/postgres/frozen_runs_encoding.go', '''package postgres
+
+          import (
+              "encoding/json"
+
+              "github.com/hurtener/chartworks/internal/store"
+          )
+
+          // frozenCanonicalBytes measures the typed encoding used when values are
+          // admitted. PostgreSQL JSONB whitespace and key ordering are not charges.
+          func frozenCanonicalBytes(value any) (int, error) {
+              raw, err := json.Marshal(value)
+              if err != nil {
+                  return 0, store.ErrInvalid
+              }
+              return len(raw), nil
+          }
+          ''')
+          replace('internal/store/postgres/frozen_runs_write.go',
+              'if err = frozenBytesTx(ctx, tx, e, h, int64(len(raw)-len(oldRaw))); err != nil {',
+              '''previousSize := 0
+              if exists {
+                  var previous reporting.RetainedOutput
+                  if json.Unmarshal(oldRaw, &previous) != nil {
+                      return store.ErrInvalid
+                  }
+                  previousSize, err = frozenCanonicalBytes(previous)
+                  if err != nil {
+                      return err
+                  }
+              }
+              if err = frozenBytesTx(ctx, tx, e, h, int64(len(raw)-previousSize)); err != nil {''')
+          replace('internal/store/postgres/frozen_runs_read.go',
+              ' || len(result) > m.Limits.MaxResultBytes', '')
+          replace('internal/store/postgres/frozen_runs_read.go',
+              '\t\tout.Result = &r',
+              '''        size, sizeErr := frozenCanonicalBytes(r)
+                  if sizeErr != nil || size > m.Limits.MaxResultBytes {
+                      return store.ErrInvalid
+                  }
+                  out.Result = &r''')
+          create('internal/store/postgres/autopilot_impact_query.go', '''package postgres
+
+          // proposalImpactQuery constrains the complete referenced partition before
+          // returning even an impact identifier. A parent read grant is not a grant
+          // to discover its other datasets or execution contexts.
+          const proposalImpactQuery = `SELECT kind,id FROM (
+           SELECT 'block'::text kind,h.block_id id
+           FROM chartworks.block_heads h
+           JOIN chartworks.block_source_pins b ON(b.tenant_id,b.block_id,b.revision)=(h.tenant_id,h.block_id,h.published_revision)
+           WHERE h.tenant_id=$1 AND b.source_id=ANY($2::text[]) AND NOT h.archived
+           AND EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='block' AND g->>'permission'='read' AND g->>'id' IN(h.block_id,'*'))
+           AND EXISTS(SELECT 1 FROM chartworks.block_revision_references rr WHERE(rr.tenant_id,rr.block_id,rr.revision)=(h.tenant_id,h.block_id,h.published_revision))
+           AND NOT EXISTS(
+            SELECT 1 FROM chartworks.block_revision_references rr
+            WHERE(rr.tenant_id,rr.block_id,rr.revision)=(h.tenant_id,h.block_id,h.published_revision)
+            AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'=rr.kind AND g->>'permission'=rr.permission AND g->>'id' IN(rr.resource_id,'*')))
+           UNION
+           SELECT 'topic'::text kind,h.topic_id id
+           FROM chartworks.topic_publication_heads h
+           JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version),
+           LATERAL jsonb_array_elements(v.definition->'datasets') ds
+           WHERE h.tenant_id=$1 AND ds#>>'{source,source}'=ANY($2::text[]) AND NOT h.archived
+           AND EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='topic' AND g->>'permission'='read' AND g->>'id' IN(h.topic_id,'*'))
+           AND NOT EXISTS(
+            SELECT 1 FROM jsonb_array_elements(v.definition->'datasets') dependency
+            WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='source' AND g->>'permission'='read' AND g->>'id' IN(dependency#>>'{source,source}','*'))
+               OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='dataset' AND g->>'permission'='query' AND g->>'id' IN(dependency#>>'{source,dataset}','*'))
+               OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='execution_context' AND g->>'permission'='use' AND g->>'id' IN(dependency#>>'{source,context}','*')))
+          ) impacts ORDER BY kind,id LIMIT 101`
+          ''')
+          p = Path('internal/store/postgres/autopilot_lifecycle.go')
+          text = p.read_text()
+          start = text.index('rows, err := tx.Query(ctx, `SELECT kind,id FROM (')
+          end_marker = ') impacts ORDER BY kind,id LIMIT 101`, e.Tenant(), sources, grants)'
+          end = text.index(end_marker, start) + len(end_marker)
+          text = text[:start] + 'rows, err := tx.Query(ctx, proposalImpactQuery, e.Tenant(), sources, grants)' + text[end:]
+          p.write_text(text)
+          create('internal/store/postgres/phase26_28_boundaries_test.go', r'''package postgres
+
+          import (
+              "context"
+              "crypto/rand"
+              "encoding/hex"
+              "encoding/json"
+              "errors"
+              "os"
+              "reflect"
+              "strings"
+              "testing"
+              "time"
+
+              readexec "github.com/hurtener/chartworks/internal/exec"
+              "github.com/hurtener/chartworks/internal/reporting"
+              "github.com/hurtener/chartworks/internal/store"
+              "github.com/jackc/pgx/v5"
+          )
+
+          // Each test owns a uniquely created disposable database. These tests exercise
+          // actual JSONB encoding and pre-payload SQL selection, not an in-memory store.
+          func frozenBoundaryDatabase(t *testing.T) *pgx.Conn {
+              t.Helper()
+              dsn := os.Getenv("CHARTWORKS_TEST_STORE_URL")
+              if dsn == "" {
+                  t.Fatal("CHARTWORKS_TEST_STORE_URL is required for PostgreSQL boundary regression tests")
+              }
+              ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+              defer cancel()
+              admin, err := pgx.Connect(ctx, dsn)
+              if err != nil {
+                  t.Fatal("connect disposable PostgreSQL fixture", err)
+              }
+              var random [12]byte
+              if _, err = rand.Read(random[:]); err != nil {
+                  _ = admin.Close(ctx)
+                  t.Fatal(err)
+              }
+              name := "cw_boundary_" + hex.EncodeToString(random[:])
+              quoted := pgx.Identifier{name}.Sanitize()
+              if _, err = admin.Exec(ctx, "CREATE DATABASE " + quoted); err != nil {
+                  _ = admin.Close(ctx)
+                  t.Fatal("create owned regression database", err)
+              }
+              var database *pgx.Conn
+              t.Cleanup(func() {
+                  cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
+                  defer stop()
+                  if database != nil {
+                      if closeErr := database.Close(cleanup); closeErr != nil {
+                          t.Error("close regression database", closeErr)
+                      }
+                  }
+                  if _, dropErr := admin.Exec(cleanup, "DROP DATABASE " + quoted); dropErr != nil {
+                      t.Error("drop owned regression database", dropErr)
+                  }
+                  if closeErr := admin.Close(cleanup); closeErr != nil {
+                      t.Error("close fixture administrator", closeErr)
+                  }
+              })
+              cfg, err := pgx.ParseConfig(dsn)
+              if err != nil {
+                  t.Fatal("parse fixture configuration", err)
+              }
+              cfg.Database = name
+              database, err = pgx.ConnectConfig(ctx, cfg)
+              if err != nil {
+                  t.Fatal("connect owned regression database", err)
+              }
+              return database
+          }
+
+          func TestFrozenJSONBEncodingAccounting(t *testing.T) {
+              db := frozenBoundaryDatabase(t)
+              ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+              defer stop()
+              previous := reporting.RetainedOutput{
+                  ID: "narrative-main", Kind: "narrative", State: "indeterminate",
+                  Code: "narrative_indeterminate", ReservedCalls: 1, ReservedTokens: 1024,
+              }
+              previousJSON, err := json.Marshal(previous)
+              if err != nil { t.Fatal(err) }
+              var stored []byte
+              if err = db.QueryRow(ctx, "SELECT $1::jsonb", previousJSON).Scan(&stored); err != nil { t.Fatal(err) }
+              if len(stored) == len(previousJSON) { t.Fatal("fixture did not exercise JSONB representation expansion") }
+              var decoded reporting.RetainedOutput
+              if err = json.Unmarshal(stored, &decoded); err != nil { t.Fatal(err) }
+              priorSize, err := frozenCanonicalBytes(decoded)
+              if err != nil || priorSize != len(previousJSON) { t.Fatalf("canonical previous size = %d, wanted %d: %v", priorSize, len(previousJSON), err) }
+              next := previous
+              next.State, next.Code = "failed", "narrative_failed"
+              next.Digest = next.ContentDigest()
+              nextJSON, err := json.Marshal(next)
+              if err != nil { t.Fatal(err) }
+              charged := int64(len(previousJSON))
+              charged += int64(len(nextJSON) - priorSize)
+              if charged != int64(len(nextJSON)) { t.Fatal("output transition undercounted retained bytes") }
+              if int64(len(previousJSON)+len(nextJSON)-len(stored)) == charged { t.Fatal("regression fixture would not catch the former accounting expression") }
+              result := readexec.Result{
+                  Schema: []readexec.Field{{Name: "amount", Type: "decimal"}},
+                  Rows: [][]json.RawMessage{{json.RawMessage(`"9007199254740993.123400"`)}},
+                  Outcome: "succeeded",
+              }
+              encoded, err := json.Marshal(result)
+              if err != nil { t.Fatal(err) }
+              if err = db.QueryRow(ctx, "SELECT $1::jsonb", encoded).Scan(&stored); err != nil { t.Fatal(err) }
+              var restored readexec.Result
+              if err = json.Unmarshal(stored, &restored); err != nil { t.Fatal(err) }
+              actual, err := frozenCanonicalBytes(restored)
+              if err != nil || actual != len(encoded) { t.Fatalf("result byte boundary changed on storage: %d != %d, %v", actual, len(encoded), err) }
+              if string(restored.Rows[0][0]) != `"9007199254740993.123400"` { t.Fatal("exact decimal changed during JSONB round trip") }
+              if _, err = frozenCanonicalBytes(make(chan int)); !errors.Is(err, store.ErrInvalid) { t.Fatal("invalid JSON value accepted", err) }
+          }
+
+          func TestAutopilotImpactQueryRequiresEveryContext(t *testing.T) {
+              db := frozenBoundaryDatabase(t)
+              ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+              defer stop()
+              _, err := db.Exec(ctx, `
+                  CREATE SCHEMA chartworks;
+                  CREATE TABLE chartworks.block_heads(tenant_id text,block_id text,published_revision bigint,archived boolean);
+                  CREATE TABLE chartworks.block_source_pins(tenant_id text,block_id text,revision bigint,source_id text);
+                  CREATE TABLE chartworks.block_revision_references(tenant_id text,block_id text,revision bigint,kind text,permission text,resource_id text);
+                  CREATE TABLE chartworks.topic_publication_heads(tenant_id text,topic_id text,active_version text,archived boolean);
+                  CREATE TABLE chartworks.topic_published_versions(tenant_id text,topic_id text,version_id text,definition jsonb);
+                  INSERT INTO chartworks.block_heads VALUES('tenant-a','visible',1,false),('tenant-a','restricted',1,false),('tenant-b','foreign',1,false);
+                  INSERT INTO chartworks.block_source_pins SELECT tenant_id,block_id,1,'source-a' FROM chartworks.block_heads;
+                  INSERT INTO chartworks.block_revision_references SELECT tenant_id,block_id,1,'execution_context','use',CASE WHEN block_id='visible' THEN 'context-a' ELSE 'context-b' END FROM chartworks.block_heads;
+                  INSERT INTO chartworks.block_revision_references SELECT tenant_id,block_id,1,'dataset','query','dataset-a' FROM chartworks.block_heads;
+                  INSERT INTO chartworks.topic_publication_heads VALUES('tenant-a','visible','v1',false),('tenant-a','restricted','v1',false),('tenant-a','mixed','v1',false),('tenant-b','foreign','v1',false);
+                  INSERT INTO chartworks.topic_published_versions
+                  SELECT tenant_id,topic_id,'v1',jsonb_build_object('datasets',jsonb_build_array(jsonb_build_object('source',jsonb_build_object('source','source-a','dataset','dataset-a','context',CASE WHEN topic_id='visible' THEN 'context-a' ELSE 'context-b' END)))) FROM chartworks.topic_publication_heads;
+                  UPDATE chartworks.topic_published_versions SET definition=jsonb_build_object('datasets',(definition->'datasets')||jsonb_build_array(jsonb_build_object('source',jsonb_build_object('source','source-a','dataset','dataset-a','context','context-a')))) WHERE topic_id='mixed';
+              `)
+              if err != nil { t.Fatal("create isolated impact-query fixture", err) }
+              narrow := `[{"kind":"block","permission":"read","id":"*"},{"kind":"topic","permission":"read","id":"*"},{"kind":"source","permission":"read","id":"source-a"},{"kind":"dataset","permission":"query","id":"dataset-a"},{"kind":"execution_context","permission":"use","id":"context-a"}]`
+              cases := []struct{name, grants string; want []string}{
+                  {"narrow_context", narrow, []string{"block:visible", "topic:visible"}},
+                  {"all_contexts", strings.Replace(narrow, `"id":"context-a"`, `"id":"*"`, 1), []string{"block:restricted", "block:visible", "topic:mixed", "topic:restricted", "topic:visible"}},
+                  {"missing_dataset", strings.Replace(narrow, `"id":"dataset-a"`, `"id":"other-dataset"`, 1), []string{}},
+                  {"no_grants", "[]", []string{}},
+              }
+              for _, tc := range cases {
+                  t.Run(tc.name, func(t *testing.T) {
+                      rows, queryErr := db.Query(ctx, proposalImpactQuery, "tenant-a", []string{"source-a"}, tc.grants)
+                      if queryErr != nil { t.Fatal(queryErr) }
+                      defer rows.Close()
+                      got := []string{}
+                      for rows.Next() {
+                          var kind, id string
+                          if scanErr := rows.Scan(&kind, &id); scanErr != nil { t.Fatal(scanErr) }
+                          got = append(got, kind+":"+id)
+                      }
+                      if queryErr = rows.Err(); queryErr != nil { t.Fatal(queryErr) }
+                      if !reflect.DeepEqual(got, tc.want) { t.Fatalf("impact identifiers escaped current reach: got %v, wanted %v", got, tc.want) }
+                  })
+              }
+          }
+          ''')
+          PY
+          gofmt -w internal/store/postgres/frozen_runs_encoding.go internal/store/postgres/frozen_runs_write.go internal/store/postgres/frozen_runs_read.go internal/store/postgres/autopilot_impact_query.go internal/store/postgres/autopilot_lifecycle.go internal/store/postgres/phase26_28_boundaries_test.go
+          git diff --check
+      - name: Race-test affected domain and real PostgreSQL boundaries
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=5m ./internal/config ./internal/reporting ./internal/engineering ./internal/store/postgres 2>&1 | tee /tmp/phase26-28-boundaries.log
+      - name: Preserve real phase 27 behavior
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=5m ./test/acceptance -run '^TestPhase27$' 2>&1 | tee /tmp/phase26-28-phase27.log
+      - name: Commit and fast-forward only the verified boundary fixes
+        run: |
+          git diff --check
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/store/postgres/frozen_runs_encoding.go internal/store/postgres/frozen_runs_write.go internal/store/postgres/frozen_runs_read.go internal/store/postgres/autopilot_impact_query.go internal/store/postgres/autopilot_lifecycle.go internal/store/postgres/phase26_28_boundaries_test.go
+          git commit -m 'fix: preserve canonical artifact byte charges and full-context L2 impact visibility'
+          git push --atomic origin "HEAD:$FEATURE_BRANCH" "HEAD:$CANDIDATE_BRANCH"
+          echo "VERIFIED_BOUNDARY_COMMIT=$(git rev-parse HEAD)"
+      - name: Preserve exact recovery evidence
+        if: always()
+        run: |
+          mkdir -p /tmp/phase26-28-repair-evidence
+          if test -d .git; then
+            git rev-parse HEAD > /tmp/phase26-28-repair-evidence/head.txt
+            git diff --binary HEAD > /tmp/phase26-28-repair-evidence/uncommitted.patch
+            git ls-files --others --exclude-standard -z | tar --null -T - -czf /tmp/phase26-28-repair-evidence/untracked-source.tar.gz
+          fi
+          for log in /tmp/phase26-28-boundaries.log /tmp/phase26-28-phase27.log; do
+            if test -f "$log"; then cp "$log" /tmp/phase26-28-repair-evidence/; fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase26-28-boundary-repair-evidence
+          path: /tmp/phase26-28-repair-evidence
+          retention-days: 7
