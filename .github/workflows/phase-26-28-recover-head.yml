@@ -1,0 +1,28 @@
+name: Phase 26-28 exact source recovery
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-recover-head.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a9585a8017d66b590a2097b76f8e786828500844
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bundle exact feature head
+        run: |
+          test "$(git rev-parse HEAD)" = a9585a8017d66b590a2097b76f8e786828500844
+          git branch recovery-exact-head HEAD
+          git bundle create /tmp/phase-26-28-head.bundle recovery-exact-head ^dc6fb297dc6379c0093d1e6305d5a6112f08f1a7
+          git bundle verify /tmp/phase-26-28-head.bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-26-28-exact-head
+          path: /tmp/phase-26-28-head.bundle
+          retention-days: 3
