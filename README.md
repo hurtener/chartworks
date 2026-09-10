@@ -4,22 +4,24 @@
 
 ## Current status
 
-**Merged baseline: phases 01–22 are implemented** — 22 of 34 workstreams and
-136 named acceptance criteria. PR #14 merged MCP and cumulative HTTP discovery at
-`d6dbd31899449f6e042b4ab069c9c30c01fb844b`.
+**Merged baseline: phases 01–23 are implemented** — 23 of 34 workstreams and
+142 named acceptance criteria, based on merged main
+`55463d424c2deed555fa680f47d5444fc89ae950`.
 
-**Phase 23 adds the SDK/CLI parity implementation for review**, bringing the
-implemented acceptance inventory to 142 criteria. It preserves the typed SDK,
-adds authenticated in-process calls, a registry-derived operation matrix and CLI,
-and extends phase 21 with canonical mounts and explicit safe-replay metadata.
-The [client contract](docs/contracts/clients-v1.md) and
-[adversarial record](docs/reviews/phase-23-adversarial.md) describe the boundaries.
-Phase 23 stays `in_progress` until reviewed and merged; source-matched CI and named
-test results, not this status paragraph, establish readiness.
+**Phase 27 adds governed reporting-block authoring for review**, bringing the
+implemented acceptance inventory to 150 criteria. It includes private drafts,
+immutable publication, independent certification and current health, typed
+parameters, explicit validation/preview, query capture and conservative dependency
+impact proposals. The [block contract](docs/contracts/reporting-blocks-v1.md) and
+[adversarial record](docs/reviews/phase-27-adversarial.md) describe the boundaries.
+Phase 27 stays `in_progress` until reviewed and merged; exact-source tests and CI,
+not status bookkeeping, establish readiness.
 
-**Eleven workstreams remain planned: 24–34**, including the phase-25 final release
-gate. There are 224 acceptance criteria across the full plan. Recorded cloud and
-model fixtures do not constitute live-provider or production-cutover qualification.
+**Ten workstreams remain planned: 24–26 and 28–34**, including the phase-25 final
+release gate. There are 224 acceptance criteria across the full plan. Recurring
+block execution, retained reporting artifacts, report/dashboard composition and
+rendering are not implemented by phase 27. Recorded cloud/model fixtures do not
+constitute live-provider or production-cutover qualification.
 
 | Capability | Implemented boundary |
 |---|---|
@@ -32,6 +34,7 @@ model fixtures do not constitute live-provider or production-cutover qualificati
 | Output specifications | All fourteen kinds, deterministic selection and explicit bindings, portable metadata/format hints, exact labels/totals, saved-schema validation and review-only rebinding. No warehouse requery or chart-state store. |
 | HTTP — cumulative phase 21 | Implemented operations register schemas, action/resource and audit/effect metadata; OpenAPI comes from that registry. A runtime guard rejects unregistered paths before handler dispatch and selects the declared HTTP/MCP intended audience. |
 | SDK/CLI — phase 23 | Existing typed clients plus registry-driven HTTP calls, authenticated in-process transport, explicit caller token providers, bounded safe replay and injected CLI I/O. No local issuer or future reporting stubs. |
+| Governed blocks — phase 27 | SQL-private metadata, scoped SQL inspection, CAS revisions, exact read-backed validation, immutable publications/attestations, nine parameter types, private multi-output previews, localized question discovery and review-only dependency/period proposals. No scheduled refresh or narrative execution. |
 | MCP — phase 22 | Eighteen installed-service tools, the eleven core contracts, three pure metadata resource bindings, fresh per-request authority, closed schemas, bounded work and explicit effects. No Apps viewer or local credentials. |
 
 ## Ownership and security

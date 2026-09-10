@@ -18,7 +18,7 @@ func verifyPhase21RegisteredDenials(t *testing.T) {
 	terminal := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { reached.Add(1); w.WriteHeader(http.StatusNoContent) })
 	guarded := api.Guard(fixture.verifier, registry, terminal)
 	bare := fixture.sign(t, fixture.claims("registered-tenant", "reader", nil), nil)
-	seenNLQ, seenBYO, seenCharts := false, false, false
+	seenNLQ, seenBYO, seenCharts, seenBlocks := false, false, false, false
 	for _, d := range registry.Definitions() {
 		if d.Public {
 			continue
@@ -32,6 +32,7 @@ func verifyPhase21RegisteredDenials(t *testing.T) {
 		seenNLQ = seenNLQ || d.ID == "routeNLQ"
 		seenBYO = seenBYO || d.ID == "submitSQL"
 		seenCharts = seenCharts || d.ID == "chartCatalog"
+		seenBlocks = seenBlocks || d.ID == "createBlock"
 		before := reached.Load()
 		for _, test := range []struct {
 			token  string
@@ -57,7 +58,7 @@ func verifyPhase21RegisteredDenials(t *testing.T) {
 		// The terminal is only a dispatch probe. Actual resource isolation remains
 		// exercised by each domain's real service/HTTP/store acceptance cases.
 	}
-	if !seenNLQ || !seenBYO || !seenCharts {
+	if !seenNLQ || !seenBYO || !seenCharts || !seenBlocks {
 		t.Fatal("cumulative registry omitted an implemented domain")
 	}
 	before := reached.Load()

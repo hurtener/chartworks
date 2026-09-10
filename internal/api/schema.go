@@ -17,7 +17,7 @@ type SchemaOption uint8
 // and null fields before domain validation. It applies only to request schemas.
 const OptionalJSONFields SchemaOption = 1
 
-// NullableCollections preserves Go nil slice encoding while keeping request
+// NullableCollections preserves Go nil collection and optional pointer encoding while keeping request
 // scalar fields required and non-null. In particular, explicit cell null bits
 // cannot be bypassed by silently decoding JSON null into an empty string.
 const NullableCollections SchemaOption = 2
@@ -28,7 +28,7 @@ const NullableCollections SchemaOption = 2
 func SchemaFor(name string, typ reflect.Type, response bool, options ...SchemaOption) (*gateway.Schema, error) {
 	optional := len(options) == 1 && options[0] == OptionalJSONFields && !response
 	nullableCollections := len(options) == 1 && options[0] == NullableCollections && !response
-	if len(options) > 0 && !optional && !nullableCollections || !supportedType(typ, map[reflect.Type]bool{}, 0, response, optional) {
+	if len(options) > 0 && !optional && !nullableCollections || !supportedType(typ, map[reflect.Type]bool{}, 0, response, optional, response || optional || nullableCollections) {
 		return nil, ErrRegistration
 	}
 	r := jsonschema.Reflector{Anonymous: true, DoNotReference: true, RequiredFromJSONSchemaTags: optional}
@@ -62,7 +62,7 @@ func SchemaFor(name string, typ reflect.Type, response bool, options ...SchemaOp
 	return compiled, nil
 }
 
-func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, response, optional bool) bool {
+func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, response, optional, pointers bool) bool {
 	if t == nil || depth > 16 || stack[t] {
 		return false
 	}
@@ -73,13 +73,13 @@ func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, respo
 	defer delete(stack, t)
 	switch t.Kind() {
 	case reflect.Pointer:
-		return (response || optional) && supportedType(t.Elem(), stack, depth+1, response, optional)
+		return pointers && supportedType(t.Elem(), stack, depth+1, response, optional, pointers)
 	case reflect.Map:
 		return response && t.Key().Kind() == reflect.String && responseMapValue(t.Elem())
 	case reflect.Bool, reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
 		return true
 	case reflect.Slice:
-		return t.Elem().Kind() != reflect.Uint8 && supportedType(t.Elem(), stack, depth+1, response, optional)
+		return t.Elem().Kind() != reflect.Uint8 && supportedType(t.Elem(), stack, depth+1, response, optional, pointers)
 	case reflect.Struct:
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
@@ -91,12 +91,12 @@ func supportedType(t reflect.Type, stack map[reflect.Type]bool, depth int, respo
 				return false
 			}
 			if field.Anonymous {
-				if !supportedType(field.Type, stack, depth+1, response, optional) {
+				if !supportedType(field.Type, stack, depth+1, response, optional, pointers) {
 					return false
 				}
 				continue
 			}
-			if name == "" || !supportedType(field.Type, stack, depth+1, response, optional) {
+			if name == "" || !supportedType(field.Type, stack, depth+1, response, optional, pointers) {
 				return false
 			}
 		}
@@ -137,6 +137,12 @@ func adjustWireSchema(schema map[string]any, t reflect.Type, optional, root bool
 			for i := 0; i < t.NumField(); i++ {
 				field := t.Field(i)
 				name := strings.Split(field.Tag.Get("json"), ",")[0]
+				if field.Anonymous && name == "" && field.Type.Kind() == reflect.Struct {
+					// encoding/json flattens embedded DTO fields into the parent.
+					// Apply the same nullability rules to their actual properties.
+					adjustWireSchema(schema, field.Type, optional, true)
+					continue
+				}
 				if child, ok := properties[name].(map[string]any); ok {
 					adjustWireSchema(child, field.Type, optional, false)
 				}

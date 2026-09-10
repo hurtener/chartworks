@@ -1,6 +1,6 @@
 # Phase 27 — reporting-blocks
 
-Status: planned. Owner: internal/reporting. Hard dependencies: 15, 20, 21.
+Status: in_progress. Owner: internal/reporting. Hard dependencies: 15, 20, 21.
 
 ## Authority and design
 
@@ -47,4 +47,4 @@ Implement `TestPhase27/AC01` through `TestPhase27/AC08`. Use real source validat
 
 ## Glossary, decisions and deviations
 
-Block, revision, validation evidence, attestation and current health are distinct shared terms. D-047 establishes required reporting scope; D-045 leaves access decisions in Pengui. No runtime completion is claimed.
+Block, revision, validation evidence, attestation and current health are distinct shared terms. D-047 establishes required reporting scope; D-045 leaves access decisions in Pengui. The implementation and all eight named acceptance criteria are present. Review/merge status remains separate from runtime evidence; see [the adversarial record](../reviews/phase-27-adversarial.md) and [the HTTP/SDK contract](../contracts/reporting-blocks-v1.md).

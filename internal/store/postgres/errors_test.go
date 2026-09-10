@@ -25,11 +25,11 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "21" || len(manifest) != 21 {
+	if err != nil || SchemaVersion() != "22" || len(manifest) != 22 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	latest := manifest[len(manifest)-1]
-	if latest.Version != 21 || latest.Name != "migrations/021_byo_context_bundles.sql" || len(latest.Checksum) != 64 || !strings.Contains(latest.SQL, "byo_context_bundles") || !strings.Contains(latest.SQL, "byo_step_fence") {
+	if latest.Version != 22 || latest.Name != "migrations/022_reporting_blocks.sql" || len(latest.Checksum) != 64 || !strings.Contains(latest.SQL, "block_revisions") || !strings.Contains(latest.SQL, "block_attestations") {
 		t.Fatal("latest embedded migration identity", latest.Version, latest.Name, latest.Checksum)
 	}
 	for _, dialect := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
