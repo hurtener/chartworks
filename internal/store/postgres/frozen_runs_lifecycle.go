@@ -128,7 +128,7 @@ func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string)
 	return out, reused, nil
 }
 
-// expireFrozenRows is also used by ordinary retention maintenance. Only values
+// expireFrozenRows implements explicitly authorized artifact retention. Only values
 // are erased; immutable identity/expiry and bounded query receipts remain as
 // permitted tombstones. A later rendition owner must share this payload lifetime.
 func expireFrozenRows(ctx context.Context, tx pgx.Tx, scope store.Scope, asOf time.Time, limit int) (int64, error) {

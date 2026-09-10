@@ -107,6 +107,17 @@ func (s *Runs) selectRunOutputs(d Definition, in RunRequest) ([]Output, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Authoring previews use definition order. An explicit frozen-run selection
+	// seals the caller's output order, which is also the retained paging order.
+	if len(in.Outputs) > 0 {
+		byID := make(map[string]Output, len(selected))
+		for _, output := range selected {
+			byID[output.ID] = output
+		}
+		for i, id := range in.Outputs {
+			selected[i] = byID[id]
+		}
+	}
 	calls, tokens := 0, 0
 	for _, output := range selected {
 		if output.Kind != "narrative" {

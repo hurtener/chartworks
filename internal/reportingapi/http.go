@@ -16,8 +16,10 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/engineering"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/store"
@@ -397,13 +399,17 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = 403, "forbidden"
 	case errors.Is(err, access.ErrNotFound), errors.Is(err, store.ErrNotFound), errors.Is(err, nlqexec.ErrForeignSession):
 		status, code = 404, "not_found"
-	case errors.Is(err, reporting.ErrInvalid), errors.Is(err, store.ErrInvalid), errors.Is(err, nlqexec.ErrInvalid):
+	case errors.Is(err, engineering.ErrInvalid), errors.Is(err, jobs.ErrInvalid), errors.Is(err, reporting.ErrInvalid), errors.Is(err, store.ErrInvalid), errors.Is(err, nlqexec.ErrInvalid):
 		status, code = 400, "invalid_request"
-	case errors.Is(err, store.ErrConflict), errors.Is(err, nlqexec.ErrNoPlan):
+	case errors.Is(err, engineering.ErrProposalReview), errors.Is(err, engineering.ErrProposalConflict), errors.Is(err, engineering.ErrCompensationBlocked), errors.Is(err, engineering.ErrState), errors.Is(err, store.ErrConflict), errors.Is(err, nlqexec.ErrNoPlan):
 		status, code = 409, "conflict"
-	case errors.Is(err, reporting.ErrStale), errors.Is(err, exec.ErrBinding):
+	case errors.Is(err, engineering.ErrProposalDrift), errors.Is(err, reporting.ErrStale), errors.Is(err, exec.ErrBinding):
 		status, code = 409, "stale_validation"
-	case errors.Is(err, exec.ErrLimit):
+	case errors.Is(err, reporting.ErrExpired):
+		status, code = 410, "expired"
+	case errors.Is(err, reporting.ErrIncomplete), errors.Is(err, exec.ErrUncertain):
+		status, code = 409, "incomplete"
+	case errors.Is(err, reporting.ErrBudget), errors.Is(err, engineering.ErrLimit), errors.Is(err, exec.ErrLimit):
 		status, code = 413, "limit_exceeded"
 	case errors.Is(err, exec.ErrQuery):
 		status, code = 422, "invalid_query"

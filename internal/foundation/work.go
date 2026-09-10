@@ -45,6 +45,7 @@ type work struct {
 	sourceService *sources.Service
 	engineering   *engineering.Service
 	pipelines     *engineering.PipelineService
+	autopilot     *engineering.Autopilot
 	handler       http.Handler
 	engine        gateway.Engine
 	nlq           *nlqexec.Service
@@ -237,6 +238,28 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = reportingapi.Handler(verifier, blockService, w.handler)
+	requestRunner, err := jobs.NewRequestRunner(db, jobLimits(v.Jobs))
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	runs, err := reporting.NewRuns(blockService, db, requestRunner, w.engine, v.Reporting.Execution.ModelVersion, v.Reporting.Execution)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.autopilot, err = engineering.NewAutopilot(db, w.pipelines, v.Autopilot)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	runtimeRegistry, err := reportingapi.RuntimeRegistry(blockService.CanValidate(), v.Autopilot.Enabled)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = reportingapi.RuntimeHandler(verifier, runs, w.autopilot, blockService.CanValidate(), v.Autopilot.Enabled, w.handler)
+
 	publicRegistry, err := PublicRegistry()
 	if err != nil {
 		w.close()
@@ -280,7 +303,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry)
 	if err != nil {
 		w.close()
 		return nil, err
@@ -317,6 +340,9 @@ func (w *work) close() {
 		w.wait.Wait()
 		if w.engineering != nil {
 			w.engineering.Close()
+		}
+		if w.autopilot != nil {
+			w.autopilot.Close()
 		}
 		if w.pipelines != nil {
 			w.pipelines.Close()

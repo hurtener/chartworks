@@ -5,11 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/reportingapi"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
+	"github.com/hurtener/chartworks/internal/vindex"
+	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
@@ -97,11 +106,13 @@ func phase26Scopes() []string {
 
 type phase26Fixture struct {
 	*pipelineFixture
-	model  *phase26Model
-	auto   *engineering.Autopilot
-	author identity.Envelope
-	limits config.Autopilot
-	goal   engineering.AutopilotGoal
+	model    *phase26Model
+	auto     *engineering.Autopilot
+	author   identity.Envelope
+	limits   config.Autopilot
+	goal     engineering.AutopilotGoal
+	client   *sdk.Client
+	reviewer *sdk.Client
 }
 
 func newPhase26Fixture(t *testing.T) *phase26Fixture {
@@ -118,13 +129,48 @@ func newPhase26Fixture(t *testing.T) *phase26Fixture {
 	}
 	t.Cleanup(auto.Close)
 	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), phase26Scopes()...)
-	return &phase26Fixture{pipelineFixture: f, model: model, auto: auto, author: e, limits: limits,
+
+	index, err := vindex.New(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := topics.New(f.db, f.s, index, model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks, err := reporting.New(f.db, published, f.s, f.validator, nil, nil, config.DefaultReporting())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := jobs.NewRequestRunner(f.db, jobs.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs, err := reporting.NewRuns(blocks, f.db, runner, nil, "", config.DefaultReportingExecution())
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := reportingapi.RuntimeRegistry(false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(assertRegisteredWireSchemas(t, registry, reportingapi.RuntimeHandler(f.token.verifier, runs, auto, false, true, http.NotFoundHandler())))
+	t.Cleanup(server.Close)
+	clientFor := func(user string) *sdk.Client {
+		bearer := f.token.sign(t, f.token.claims(e.Tenant(), user, phase26Scopes()), nil)
+		client, clientErr := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return bearer, nil })
+		if clientErr != nil {
+			t.Fatal(clientErr)
+		}
+		return client
+	}
+	return &phase26Fixture{client: clientFor(e.User()), reviewer: clientFor("independent-reviewer"), pipelineFixture: f, model: model, auto: auto, author: e, limits: limits,
 		goal: engineering.AutopilotGoal{ID: "p26-goal", Pipeline: "p26-managed", Name: "Reviewed identifier projection", Connection: "workspace", Source: source.ID, Context: source.ContextID, Goal: "Prepare a managed sale identifier dataset for review; do not publish business meaning.", MaxStalenessSeconds: 60}}
 }
 
 func (f *phase26Fixture) propose(t *testing.T) engineering.AutopilotProposal {
 	t.Helper()
-	p, err := f.auto.Propose(context.Background(), f.author, f.goal)
+	p, err := f.client.ProposeEngineering(context.Background(), f.goal)
 	if err != nil {
 		t.Fatal("bounded L2 proposal", err)
 	}
@@ -133,8 +179,7 @@ func (f *phase26Fixture) propose(t *testing.T) engineering.AutopilotProposal {
 
 func (f *phase26Fixture) approve(t *testing.T, p engineering.AutopilotProposal) engineering.AutopilotProposal {
 	t.Helper()
-	reviewer := f.token.envelope(t, f.author.Tenant(), "independent-reviewer", phase26Scopes()...)
-	approved, err := f.auto.Review(context.Background(), reviewer, p.ID, engineering.AutopilotReviewRequest{ExpectedVersion: p.Version, Revision: p.Revision, Digest: p.Digest, Decision: "approve", Reason: "Reviewed exact SQL, ownership and declared evidence."})
+	approved, err := f.reviewer.ReviewEngineeringProposal(context.Background(), p.ID, engineering.AutopilotReviewRequest{ExpectedVersion: p.Version, Revision: p.Revision, Digest: p.Digest, Decision: "approve", Reason: "Reviewed exact SQL, ownership and declared evidence."})
 	if err != nil {
 		t.Fatal("independent approval", err)
 	}
@@ -147,7 +192,7 @@ func phase26ApplyRequest(p engineering.AutopilotProposal) engineering.AutopilotA
 
 func (f *phase26Fixture) apply(t *testing.T, p engineering.AutopilotProposal) engineering.AutopilotProposal {
 	t.Helper()
-	out, err := f.auto.Apply(context.Background(), f.author, p.ID, phase26ApplyRequest(p))
+	out, err := f.client.ApplyEngineeringProposal(context.Background(), p.ID, phase26ApplyRequest(p))
 	if err != nil || out.State != "applied" || out.Operation == "" {
 		t.Fatal("reviewed native managed application", out.State, err)
 	}
@@ -232,7 +277,7 @@ func TestPhase26(t *testing.T) {
 		if _, err := f.auto.Review(context.Background(), f.author, p.ID, request); !errors.Is(err, engineering.ErrProposalReview) {
 			t.Fatal("submitter self-approved", err)
 		}
-		if _, err := f.auto.Apply(context.Background(), f.author, p.ID, phase26ApplyRequest(p)); !errors.Is(err, engineering.ErrProposalReview) {
+		if _, err := f.client.ApplyEngineeringProposal(context.Background(), p.ID, phase26ApplyRequest(p)); !errors.Is(err, engineering.ErrProposalReview) {
 			t.Fatal("unreviewed proposal applied", err)
 		}
 		reviewer := f.token.envelope(t, f.author.Tenant(), "independent-reviewer", phase26Scopes()...)

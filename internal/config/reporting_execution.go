@@ -5,6 +5,7 @@ import "time"
 // ReportingExecution bounds retained frozen runs. None of these operational
 // settings grants source, preview, publication or artifact-reading authority.
 type ReportingExecution struct {
+	ModelVersion     string   `json:"model_version"`
 	Retention        Duration `json:"retention"`
 	PreviewRetention Duration `json:"preview_retention"`
 	Timeout          Duration `json:"timeout"`
@@ -34,6 +35,14 @@ func DefaultReportingExecution() ReportingExecution {
 
 // Validate also protects direct in-process construction from unbounded work.
 func (c ReportingExecution) Validate() error {
+	if len(c.ModelVersion) > 256 {
+		return invalid("reporting.execution.model_version", "version too long")
+	}
+	for _, r := range c.ModelVersion {
+		if r < 33 || r > 126 {
+			return invalid("reporting.execution.model_version", "printable version without whitespace required")
+		}
+	}
 	if time.Duration(c.Retention) < time.Minute || time.Duration(c.Retention) > 90*24*time.Hour ||
 		time.Duration(c.PreviewRetention) < time.Minute || c.PreviewRetention > c.Retention || time.Duration(c.PreviewRetention) > 7*24*time.Hour ||
 		time.Duration(c.Timeout) < time.Second || time.Duration(c.Timeout) > time.Minute ||

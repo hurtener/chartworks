@@ -1,6 +1,6 @@
 # Phase 28 — reporting-execution-artifacts
 
-Status: planned. Owner: internal/reporting. Hard dependencies: 05, 06, 10, 20, 27.
+Status: in_progress. Owner: internal/reporting. Hard dependencies: 05, 06, 10, 20, 27.
 
 ## Authority and design
 
@@ -48,3 +48,9 @@ Implement `TestPhase28/AC01` through `TestPhase28/AC08`. Negative stage spies mu
 ## Glossary, decisions and deviations
 
 Logical operation, attempt, retained artifact and rendition are separate. D-047/D-051 apply. No runtime completion is claimed.
+
+## Runtime completion evidence
+
+See the [runtime contract](../contracts/reviewed-engineering-and-frozen-runs.md) and
+[review and verification ledger](../reviews/phase-26-28-runtime.md). Exact-source
+acceptance and coverage are required before closure.

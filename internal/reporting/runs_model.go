@@ -36,10 +36,10 @@ type RunRequest struct {
 	Arguments          []Argument `json:"arguments"`
 	Resolution         Resolution `json:"resolution"`
 	Outputs            []string   `json:"outputs"`
-	Policy             string     `json:"policy" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale,enum=private_preview"`
+	Policy             string     `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale,enum=private_preview"`
 	Locale             string     `json:"locale"`
 	Narrative          bool       `json:"narrative"`
-	PartialPolicy      string     `json:"partial_policy" jsonschema:"enum=fail,enum=allow_partial"`
+	PartialPolicy      string     `json:"partial_policy,omitempty" jsonschema:"enum=fail,enum=allow_partial"`
 	ReuseMaxAgeSeconds int        `json:"reuse_max_age_seconds"`
 }
 

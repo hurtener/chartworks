@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/internal/reportingapi"
+	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
@@ -63,6 +69,7 @@ func phase28Chat(t *testing.T, model, content string) string {
 type phase28LostReply struct {
 	reporting.RunRepository
 	lost atomic.Bool
+	kind string
 }
 
 func (r *phase28LostReply) CheckpointFrozenRun(ctx context.Context, inv jobs.Invocation, proof reporting.PreparedRunWrite) (reporting.RunRecord, error) {
@@ -71,7 +78,7 @@ func (r *phase28LostReply) CheckpointFrozenRun(ctx context.Context, inv jobs.Inv
 		return reporting.RunRecord{}, err
 	}
 	out, err := r.RunRepository.CheckpointFrozenRun(ctx, inv, proof)
-	if err == nil && w.Kind == "result" && r.lost.CompareAndSwap(false, true) {
+	if err == nil && (w.Kind == r.kind || r.kind == "" && w.Kind == "result") && r.lost.CompareAndSwap(false, true) {
 		return reporting.RunRecord{}, store.ErrUnavailable
 	}
 	return out, err
@@ -208,6 +215,8 @@ func TestPhase28(t *testing.T) {
 		model.mode.Store(phase28Chat(t, model.cfg.Roles["narrative"].Model, `{"claims":[{"kind":"value","evidence":["e1"]}]}`))
 		d := phase27Copy(t, base)
 		d.Outputs[1].Narrative.SchemaVersion = "grounded-narrative-v1"
+		d.Outputs[1].Narrative.MaxTokens = 8192
+		d.Outputs[1].Narrative.Fields = []string{"amount"}
 		d.Outputs[1].Narrative.RedactedFields = []string{"id"}
 		create(t, "p28-narrative", d, true)
 		withNarrative := phase28RunService(t, f, blocks, f.f.db, model.engine, limits)
@@ -262,6 +271,26 @@ func TestPhase28(t *testing.T) {
 		}
 		if _, conflict := runs.Admit(ctx, execute, created.State.ID, reporting.RunRequest{Key: "p28-recovery-key", Locale: "es-AR"}); !errors.Is(conflict, store.ErrConflict) {
 			t.Fatal("changed request reused a reserved key", conflict)
+		}
+
+		for _, boundary := range []string{"attempt", "output", "complete"} {
+			t.Run("lost_reply_"+boundary, func(t *testing.T) {
+				lost := &phase28LostReply{RunRepository: f.f.db, kind: boundary}
+				crashing := phase28RunService(t, f, blocks, lost, nil, limits)
+				admitted := admit(t, crashing, created.State.ID, "p28-lost-"+boundary, reporting.RunRequest{})
+				_, firstErr := crashing.Run(ctx, execute, admitted.ID, false)
+				if !lost.lost.Load() || boundary != "complete" && !errors.Is(firstErr, store.ErrUnavailable) || boundary == "complete" && firstErr != nil {
+					t.Fatal("fault boundary not reached", boundary, firstErr)
+				}
+				recovered, resumeErr := runs.Run(ctx, execute, admitted.ID, true)
+				if boundary == "attempt" {
+					if !errors.Is(resumeErr, reporting.ErrIncomplete) || len(recovered.QueryAttempts) != 1 {
+						t.Fatal("lost successful source values were silently rerun", recovered, resumeErr)
+					}
+				} else if resumeErr != nil || recovered.State != "succeeded" || len(recovered.QueryAttempts) != 1 {
+					t.Fatal("durable output/commit recovery repeated query", recovered, resumeErr)
+				}
+			})
 		}
 		if _, forged := f.f.db.CheckpointFrozenRun(ctx, jobs.Invocation{}, reporting.PreparedRunWrite{}); forged == nil {
 			t.Fatal("forged invocation published a checkpoint")
@@ -334,10 +363,57 @@ func TestPhase28(t *testing.T) {
 	})
 
 	t.Run("AC08", func(t *testing.T) {
+		registry, registryErr := reportingapi.RuntimeRegistry(true, false)
+		if registryErr != nil {
+			t.Fatal(registryErr)
+		}
+		// Only retained proposal reads are registered; no managed runner is needed by frozen reporting.
+		pipelineService, setupErr := engineering.NewPipelineService(f.f.db, f.f.s, f.f.validator, nil, config.Defaults(), func(string) (string, bool) { return "", false })
+		if setupErr != nil {
+			t.Fatal(setupErr)
+		}
+		t.Cleanup(pipelineService.Close)
+		proposals, setupErr := engineering.NewAutopilot(f.f.db, pipelineService, config.DefaultAutopilot())
+		if setupErr != nil {
+			t.Fatal(setupErr)
+		}
+		t.Cleanup(proposals.Close)
+		server := httptest.NewServer(assertRegisteredWireSchemas(t, registry, reportingapi.RuntimeHandler(f.f.token.verifier, runs, proposals, true, false, http.NotFoundHandler())))
+		t.Cleanup(server.Close)
+		bearer := phase27Token(t, f, execute.User(), execute.Session(), phase28Scopes(execute.Tenant()))
+		client, setupErr := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return bearer, nil })
+		if setupErr != nil {
+			t.Fatal(setupErr)
+		}
+		create(t, "p28-http", tableDefinition(t), true)
+		admitted, apiErr := client.AdmitReportingRun(ctx, "p28-http", sdk.ReportingRunRequest{Key: "p28-http-key"})
+		if apiErr != nil {
+			t.Fatalf("HTTP admission: %#v", apiErr)
+		}
+		completed, apiErr := client.ExecuteReportingRun(ctx, admitted.ID, sdk.ReportingRunDispatch{})
+		if apiErr != nil || completed.State != "succeeded" {
+			t.Fatal("HTTP execution", completed, apiErr)
+		}
+		page, apiErr := client.ReportingRunRows(ctx, admitted.ID, 0, 1)
+		if apiErr != nil || len(page.Rows) != 1 || page.Next == nil {
+			t.Fatal("HTTP paging", page, apiErr)
+		}
+		output, apiErr := client.ReportingRunOutput(ctx, admitted.ID, "table-main")
+		if apiErr != nil || output.Chart == nil {
+			t.Fatal("HTTP retained output", apiErr)
+		}
+		listed, apiErr := client.ListReportingRuns(ctx, "", 100)
+		if apiErr != nil {
+			t.Fatal("HTTP artifact list", listed, apiErr)
+		}
+
 		create(t, "p28-cancel-budget", tableDefinition(t), true)
-		v := admit(t, runs, "p28-cancel-budget", "p28-cancel-key", reporting.RunRequest{})
+		v, apiErr := client.AdmitReportingRun(ctx, "p28-cancel-budget", sdk.ReportingRunRequest{Key: "p28-cancel-key"})
+		if apiErr != nil {
+			t.Fatal(apiErr)
+		}
 		before := f.f.lookups.Load()
-		cancelled, cancelErr := runs.Cancel(ctx, execute, v.ID)
+		cancelled, cancelErr := client.CancelReportingRun(ctx, v.ID)
 		if cancelErr != nil || cancelled.State != "cancelled" {
 			t.Fatal("durable cancellation unreachable", cancelled, cancelErr)
 		}
