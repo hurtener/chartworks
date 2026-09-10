@@ -54,13 +54,13 @@ func (p PreparedRun) Checked(e identity.Envelope) (RunManifest, error) {
 // RunWrite is a closed internal checkpoint union. Only a service-issued proof
 // and an owned live invocation can persist values or publish completion.
 type RunWrite struct {
-	Kind           string          `json:"kind"`
-	Manifest       RunManifest     `json:"manifest"`
-	Result         *exec.Result    `json:"result,omitempty"`
-	Attempt        *exec.Attempt   `json:"attempt,omitempty"`
-	Output         *RetainedOutput `json:"output,omitempty"`
-	Outcome        string          `json:"outcome,omitempty"`
-	Code           string          `json:"code,omitempty"`
+	Kind     string          `json:"kind"`
+	Manifest RunManifest     `json:"manifest"`
+	Result   *exec.Result    `json:"result,omitempty"`
+	Attempt  *exec.Attempt   `json:"attempt,omitempty"`
+	Output   *RetainedOutput `json:"output,omitempty"`
+	Outcome  string          `json:"outcome,omitempty"`
+	Code     string          `json:"code,omitempty"`
 }
 
 // PreparedRunWrite prevents transports and unrelated jobs from manufacturing
@@ -101,8 +101,8 @@ func (p PreparedRunWrite) Checked(inv jobs.Invocation) (RunWrite, error) {
 	switch w.Kind {
 	case "result":
 		if w.Result == nil || w.Attempt == nil || w.Output != nil || w.Outcome != "" || w.Attempt.Manifest.Operation != w.Manifest.ID ||
-			w.Attempt.Manifest.Number != inv.Lease().Attempt || w.Attempt.Finished == nil || w.Attempt.RemoteState != "stopped" || !successful(w.Attempt.Status) ||
-			exec.ValidateResult(*w.Result, w.Manifest.Limits.MaxRows, w.Manifest.Limits.MaxResultBytes) != nil {
+			w.Attempt.Number != inv.Lease().Attempt || w.Attempt.Finished == nil || w.Attempt.RemoteState != "stopped" || !successful(w.Attempt.Status) ||
+			len(w.Result.Rows) > w.Manifest.Limits.MaxRows || w.Result.Bytes > w.Manifest.Limits.MaxResultBytes {
 			return RunWrite{}, ErrInvalid
 		}
 	case "output_start", "output":

@@ -61,7 +61,7 @@ type RunManifest struct {
 	Binding       exec.Binding              `json:"binding"`
 	Definitions   []topics.Definition       `json:"definitions"`
 	Dependencies  []Dependency              `json:"dependencies"`
-	References    []ResourceReference        `json:"references"`
+	References    []ResourceReference       `json:"references"`
 	Trust         Trust                     `json:"trust"`
 	Private       bool                      `json:"private"`
 	Policy        string                    `json:"policy"`
@@ -80,11 +80,9 @@ func (m RunManifest) Digest() string { return digest(m) }
 
 // Reach contains only the authority projection needed by a retained-value read.
 func (m RunManifest) Reach() access.Artifact {
-	privacy, actor := "public", ""
-	if m.Private {
-		privacy, actor = "private_preview", m.Actor
-	}
-	return access.Artifact{Tenant: m.Tenant, ID: m.ID, TargetKind: "block", Target: m.Block, Context: m.Binding.Context, Privacy: privacy, PreviewActor: actor}
+	return access.Artifact{Tenant: m.Tenant, RunID: m.ID, ParentKind: "block", ParentID: m.Block,
+		Published: !m.Private, Private: m.Private,
+		Contexts: []access.Resource{{Tenant: m.Tenant, Kind: "execution_context", Permission: "use", ID: m.Binding.Context}}}
 }
 
 // RequireRunManifest applies present authority to the original actor/session and
@@ -96,7 +94,22 @@ func RequireRunManifest(e identity.Envelope, m RunManifest) error {
 	if m.Version != FrozenVersion || m.Tenant != e.Tenant() || m.Actor != e.User() || m.Session != e.Session() {
 		return access.ErrNotFound
 	}
-	if err := access.RequireExecution(e, "reporting.execute", "block", m.Block, m.Binding.Context, m.Private); err != nil {
+	dependencies := []access.Resource{{Tenant: m.Tenant, Kind: "source", Permission: "query", ID: m.Binding.Source}}
+	for _, ref := range m.References {
+		if ref.Kind == "dataset" && ref.Permission == "query" {
+			dependencies = append(dependencies, access.Resource{Tenant: m.Tenant, Kind: ref.Kind, Permission: ref.Permission, ID: ref.ID})
+		}
+	}
+	if m.Private {
+		if err := Require(e, m.Block, Preview); err != nil {
+			return err
+		}
+	}
+	if err := access.RequireExecution(e, access.Execution{
+		Target:       access.Resource{Tenant: m.Tenant, Kind: "block", Permission: "execute", ID: m.Block},
+		Dependencies: dependencies,
+		Contexts:     []access.Resource{{Tenant: m.Tenant, Kind: "execution_context", Permission: "use", ID: m.Binding.Context}},
+	}); err != nil {
 		return err
 	}
 	return RequireReferences(e, Execute, m.References)
@@ -149,7 +162,7 @@ type RetainedOutput struct {
 	Code           string           `json:"code,omitempty"`
 	Digest         string           `json:"digest"`
 	Chart          *charts.Output   `json:"chart,omitempty"`
-	Narrative      *NarrativeResult  `json:"narrative,omitempty"`
+	Narrative      *NarrativeResult `json:"narrative,omitempty"`
 	ReservedCalls  int              `json:"reserved_calls"`
 	ReservedTokens int              `json:"reserved_tokens"`
 }
@@ -165,33 +178,33 @@ type OutputSummary struct {
 
 // RunView has no approved SQL, raw binds, result rows or bearer credentials.
 type RunView struct {
-	ID               string          `json:"id"`
-	Block            string          `json:"block"`
-	Revision         int64           `json:"revision"`
-	RevisionDigest   string          `json:"revision_digest"`
-	ManifestDigest   string          `json:"manifest_digest"`
-	State            string          `json:"state"`
-	Code             string          `json:"code,omitempty"`
-	Private          bool            `json:"private"`
-	Source           string          `json:"source"`
-	Context          string          `json:"context"`
-	PartitionDigest  string          `json:"partition_digest"`
-	Locale           string          `json:"locale"`
-	Timezone         string          `json:"timezone"`
-	Created          time.Time       `json:"created_at"`
-	Expires          time.Time       `json:"expires_at"`
-	Observed         *time.Time      `json:"observed_at,omitempty"`
-	Finished         *time.Time      `json:"finished_at,omitempty"`
-	Attempts         int             `json:"attempts"`
-	QueryAttempts    []exec.Attempt  `json:"query_attempts"`
-	Parameters       []BoundValue    `json:"parameters"`
-	Outputs          []OutputSummary `json:"outputs"`
-	Trust            Trust           `json:"trust"`
-	ReusedFrom       string          `json:"reused_from,omitempty"`
-	RetainedBytes    int64           `json:"retained_bytes"`
-	ReservedCalls    int             `json:"reserved_calls"`
-	ReservedTokens   int             `json:"reserved_tokens"`
-	FrozenVersion    string          `json:"frozen_version"`
+	ID              string          `json:"id"`
+	Block           string          `json:"block"`
+	Revision        int64           `json:"revision"`
+	RevisionDigest  string          `json:"revision_digest"`
+	ManifestDigest  string          `json:"manifest_digest"`
+	State           string          `json:"state"`
+	Code            string          `json:"code,omitempty"`
+	Private         bool            `json:"private"`
+	Source          string          `json:"source"`
+	Context         string          `json:"context"`
+	PartitionDigest string          `json:"partition_digest"`
+	Locale          string          `json:"locale"`
+	Timezone        string          `json:"timezone"`
+	Created         time.Time       `json:"created_at"`
+	Expires         time.Time       `json:"expires_at"`
+	Observed        *time.Time      `json:"observed_at,omitempty"`
+	Finished        *time.Time      `json:"finished_at,omitempty"`
+	Attempts        int             `json:"attempts"`
+	QueryAttempts   []exec.Attempt  `json:"query_attempts"`
+	Parameters      []BoundValue    `json:"parameters"`
+	Outputs         []OutputSummary `json:"outputs"`
+	Trust           Trust           `json:"trust"`
+	ReusedFrom      string          `json:"reused_from,omitempty"`
+	RetainedBytes   int64           `json:"retained_bytes"`
+	ReservedCalls   int             `json:"reserved_calls"`
+	ReservedTokens  int             `json:"reserved_tokens"`
+	FrozenVersion   string          `json:"frozen_version"`
 }
 
 // RunRecord is an internal repository result; its manifest/data are protected
@@ -209,10 +222,10 @@ type ResultPage struct {
 	ID        string              `json:"id"`
 	Schema    []exec.Field        `json:"schema"`
 	Rows      [][]json.RawMessage `json:"rows"`
-	Offset    int                `json:"offset"`
-	Next      *int               `json:"next,omitempty"`
-	TotalRows int                `json:"total_rows"`
-	Truncated bool               `json:"truncated"`
+	Offset    int                 `json:"offset"`
+	Next      *int                `json:"next,omitempty"`
+	TotalRows int                 `json:"total_rows"`
+	Truncated bool                `json:"truncated"`
 	Observed  *time.Time          `json:"observed_at,omitempty"`
 }
 

@@ -27,7 +27,7 @@ type RequestInput struct {
 func (r RequestInput) Valid() bool {
 	b, e := hex.DecodeString(r.InputHash)
 	return identity.Identifier(r.Target) && (r.Context == "" || identity.Identifier(r.Context)) &&
-		(r.Kind == "upload.load" || r.Kind == "upload.erase" || r.Kind == "profile.build" || r.Kind == "pipeline.run") &&
+		(r.Kind == "reporting.run" || r.Kind == "upload.load" || r.Kind == "upload.erase" || r.Kind == "profile.build" || r.Kind == "pipeline.run") &&
 		e == nil && len(b) == 32 && hex.EncodeToString(b) == r.InputHash && (r.Kind != "profile.build" || r.Context != "")
 }
 
@@ -35,6 +35,9 @@ func (r RequestInput) Valid() bool {
 func (r RequestInput) Require(e identity.Envelope) error {
 	if !r.Valid() {
 		return ErrInvalid
+	}
+	if r.Kind == "reporting.run" {
+		return access.Require(e, "reporting.execute", access.Resource{Tenant: e.Tenant(), Kind: "block", Permission: "execute", ID: r.Target})
 	}
 	action, permission := "sources.upload", "write"
 	if r.Kind == "upload.erase" {
