@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -46,6 +47,23 @@ func TestReportingExecutionBounds(t *testing.T) {
 		change(&c)
 		if err := c.Validate(); err == nil {
 			t.Errorf("accepted invalid limits: %+v", c)
+		}
+	}
+}
+
+func TestReportingNarrativeModelPolicyVersion(t *testing.T) {
+	for _, version := range []string{"", "narrative-policy-v1", strings.Repeat("v", 256)} {
+		limits := DefaultReportingExecution()
+		limits.ModelVersion = version
+		if err := limits.Validate(); err != nil {
+			t.Fatal(version, err)
+		}
+	}
+	for _, version := range []string{"with space", "line\nbreak", "\x00", "\x7f", strings.Repeat("v", 257)} {
+		limits := DefaultReportingExecution()
+		limits.ModelVersion = version
+		if err := limits.Validate(); err == nil {
+			t.Fatal("invalid policy version accepted", version)
 		}
 	}
 }

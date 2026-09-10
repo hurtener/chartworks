@@ -34,3 +34,28 @@ notation and bounds exponent allocation. Regression tests accompany these change
 Pending: Phase 26 Linux runtime acceptance, direct adversarial review completion,
 coverage, full cumulative checks and exact committed-source hosted CI. Phase 25,
 34, live provider quality and production deployment are not claimed.
+
+## Continued scope and contract review
+
+At `2903e5c`, the cumulative phase-21 protected-operation checks pass locally
+with the new runtime registry, including both verifier and dispatch authentication
+errors. The runtime operation manifest has a parity assertion against the actual
+registration. Local lint reports zero issues. Phase-28 real-PostgreSQL acceptance
+also exercises schema drift before physical execution, preview privacy after
+publication, receipt/summary reads and closed HTTP request shapes.
+
+Full phase-26 closure remains open: its task 1 includes proposed topic and schedule
+changes, while the current proposal model and validator admit only one pipeline
+and its managed dataset. The existing durable scheduling service currently admits
+only the maintenance target; request-driven pipeline execution is functional but
+is not an unattended schedule handler. This is a concrete runtime gap, not a
+reason to mark the task complete based on the six named tests. Any added consumer
+must preserve ordinary topic review/publication and Pengui execution authority,
+and must not advertise a schedule target without its real handler.
+
+The passing local unit plus `TestPhase21`, `TestPhase27`, and `TestPhase28`
+race-instrumented runs cover 2,007/2,508 reporting statements (80.02%) and
+323/390 reporting API statements (82.82%). These are combined statement unions
+from the same production source, not sums of percentages or full CI results.
+The new reporting model-policy configuration tests also pass. Hosted Linux
+phase-26 acceptance and full repository coverage remain pending.
