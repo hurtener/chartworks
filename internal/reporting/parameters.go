@@ -13,7 +13,7 @@ import (
 )
 
 func validateDeclarations(parameters []Parameter, max int) error {
-	if len(parameters) > max {
+	if len(parameters) > max || scalarSlots(parameters) > 64 {
 		return ErrInvalid
 	}
 	seen := map[string]bool{}

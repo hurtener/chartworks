@@ -305,6 +305,9 @@ func (s *Server) implemented() []string {
 	if s.registry != nil {
 		out = append(out, "http_api", "openapi")
 		for _, d := range s.registry.Definitions() {
+			if d.ID == "createBlock" {
+				out = append(out, "governed_blocks")
+			}
 			if d.ID == "chartCatalog" {
 				out = append(out, "output_specifications")
 			}

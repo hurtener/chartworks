@@ -14,6 +14,7 @@ type ResolveRequest struct {
 	Resolution Resolution `json:"resolution"`
 }
 
+// ResolutionResult returns typed resolution evidence without executing a source query.
 type ResolutionResult struct {
 	ID         string   `json:"id"`
 	Revision   int64    `json:"revision"`
@@ -22,6 +23,7 @@ type ResolutionResult struct {
 	Resolved   Resolved `json:"resolved"`
 }
 
+// Resolve resolves declared parameters for an eligible revision without touching the source.
 func (s *Service) Resolve(ctx context.Context, e identity.Envelope, id string, in ResolveRequest) (ResolutionResult, error) {
 	ctx, cancel, err := s.begin(ctx, e, id, Read)
 	if err != nil {

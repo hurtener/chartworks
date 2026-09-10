@@ -22,6 +22,7 @@ import (
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/nlqapi"
+	"github.com/hurtener/chartworks/internal/reportingapi"
 	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/sourceapi"
 	"github.com/hurtener/chartworks/internal/store"
@@ -156,7 +157,11 @@ func phase21Registry(t *testing.T) *api.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	composed, err := api.Compose(public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart, transport)
+	blocks, err := reportingapi.Registry(true, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := api.Compose(blocks, public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart, transport)
 	if err != nil {
 		t.Fatal(err)
 	}

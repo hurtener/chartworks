@@ -5,6 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
+	"reflect"
+	"strconv"
+	"strings"
+
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
@@ -13,15 +21,9 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/store"
-	"io"
-	"mime"
-	"net/http"
-	"net/url"
-	"reflect"
-	"strconv"
-	"strings"
 )
 
+// MaxBodyBytes bounds every reporting JSON request body before decoding.
 const MaxBodyBytes = 2 << 20
 
 // Registry advertises only handlers backed by the supplied common services.
@@ -121,8 +123,8 @@ func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Hand
 			failure(w, access.ErrUnauthenticated)
 			return
 		}
-		if err = access.Require(e, selected.Action); err != nil {
-			failure(w, err)
+		if !e.Has(selected.Action) {
+			failure(w, access.ErrForbidden)
 			return
 		}
 		if id != "" {

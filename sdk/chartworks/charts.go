@@ -2,11 +2,11 @@ package chartworks
 
 import (
 	"context"
-	"github.com/hurtener/chartworks/internal/chartdata"
-	"github.com/hurtener/chartworks/internal/exec"
 
+	"github.com/hurtener/chartworks/internal/chartdata"
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/chartservice"
+	"github.com/hurtener/chartworks/internal/exec"
 )
 
 // Public aliases mirror the registered closed wire contract without a parallel

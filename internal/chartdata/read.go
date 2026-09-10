@@ -7,9 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
+
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/exec"
-	"strconv"
 )
 
 var ErrInvalid = errors.New("chartworks: invalid chart result")

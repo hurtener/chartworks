@@ -6,11 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/hurtener/chartworks/internal/chartdata"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/hurtener/chartworks/internal/chartdata"
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/exec"
@@ -100,6 +100,7 @@ func DefinitionDigest(d Definition) string {
 	}{CanonicalizationVersion, d})
 }
 
+// ExecutionDigest hashes execution-relevant content independently of descriptive metadata.
 func ExecutionDigest(d Definition) string {
 	return digest(struct {
 		Version    string

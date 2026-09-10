@@ -22,6 +22,7 @@ const (
 	SQLRead  Access = "sql.read"
 )
 
+// Action returns the signed action required for this reporting access mode.
 func (a Access) Action() string {
 	switch a {
 	case Read, Write, Validate, Preview, Publish, Certify, SQLRead:
@@ -31,6 +32,7 @@ func (a Access) Action() string {
 	}
 }
 
+// Permission returns the block resource permission required for this access mode.
 func (a Access) Permission() string {
 	switch a {
 	case Read, SQLRead:
@@ -57,6 +59,7 @@ func Require(e identity.Envelope, id string, a Access) error {
 	return access.Require(e, a.Action(), access.Resource{Tenant: e.Tenant(), Kind: "block", Permission: a.Permission(), ID: id})
 }
 
+// RequireParent enforces signed parent-topic reach before block creation or access.
 func RequireParent(e identity.Envelope, topic string, a Access, creating bool) error {
 	permission := "read"
 	if creating || a == Write {
@@ -85,6 +88,7 @@ type ResourceReference struct {
 	ID         string `json:"id"`
 }
 
+// RequireReferences enforces all server-derived parent and execution-context references.
 func RequireReferences(e identity.Envelope, a Access, refs []ResourceReference) error {
 	if len(refs) == 0 || len(refs) > 4096 {
 		return ErrInvalid
@@ -125,6 +129,7 @@ type Mutation struct {
 	MaxBlocks       int                 `json:"max_blocks"`
 }
 
+// Access returns the authority mode associated with this mutation kind.
 func (m Mutation) Access() Access {
 	switch m.Kind {
 	case "create", "edit", "capture", "restore", "rename", "parameterize", "reject", "archive":

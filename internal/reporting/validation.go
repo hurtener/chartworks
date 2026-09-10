@@ -2,13 +2,13 @@ package reporting
 
 import (
 	"context"
-	"github.com/hurtener/chartworks/internal/sources"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
+	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -169,7 +169,7 @@ func (s *Service) Preview(ctx context.Context, e identity.Envelope, id string, i
 func freshValidation(snapshot Snapshot, evidenceID string, now time.Time) error {
 	r := snapshot.Revision
 	v := snapshot.Validation
-	if v == nil || v.Evidence.ID != evidenceID || !hashValid(v.Evidence.DefinitionDigest) || v.Evidence.DefinitionDigest != r.Digest || v.Evidence.ExecutionDigest != r.ExecutionDigest || v.Evidence.Revision != r.Number || v.Evidence.RevisionID != r.ID || v.Evidence.CanonicalizationVersion != CanonicalizationVersion || v.Evidence.DependencyDigest != DependencyDigest(v.Dependencies, r.Definition.Topics) || !now.Before(v.Evidence.ExpiresAt) || !snapshot.Current || !successful(v.Evidence.Attempt.Status) {
+	if v == nil || v.Evidence.ID != evidenceID || !hashValid(v.Evidence.DefinitionDigest) || v.Evidence.DefinitionDigest != r.Digest || v.Evidence.ExecutionDigest != r.ExecutionDigest || v.Evidence.Revision != r.Number || v.Evidence.RevisionID != r.ID || v.Evidence.CanonicalizationVersion != CanonicalizationVersion || v.Evidence.DependencyDigest != DependencyDigest(v.Dependencies, r.Definition.Topics) || !now.Before(v.Evidence.ExpiresAt) || !snapshot.Current || snapshot.Health.Status != "healthy" || snapshot.Health.DependencyDigest != v.Evidence.DependencyDigest || !successful(v.Evidence.Attempt.Status) {
 		return ErrStale
 	}
 	return nil

@@ -6,23 +6,30 @@ package reporting
 import (
 	"context"
 	"errors"
-	"github.com/hurtener/chartworks/internal/sources"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
+	"github.com/hurtener/chartworks/internal/sources"
 )
 
+// SchemaVersion identifies the closed governed-block definition format.
 const SchemaVersion = 1
+
+// CanonicalizationVersion identifies the canonical definition and evidence hashing contract.
 const CanonicalizationVersion = "block-definition-v1"
 
 var (
-	ErrInvalid     = errors.New("reporting: invalid definition or request")
-	ErrStale       = errors.New("reporting: current validation or dependency review required")
+	// ErrInvalid identifies an invalid definition, parameter or request.
+	ErrInvalid = errors.New("reporting: invalid definition or request")
+	// ErrStale requires new validation or dependency review before the requested transition.
+	ErrStale = errors.New("reporting: current validation or dependency review required")
+	// ErrUnavailable identifies unavailable validation dependencies.
 	ErrUnavailable = errors.New("reporting: validation unavailable")
-	ErrBusy        = errors.New("reporting: validation concurrency exhausted")
+	// ErrBusy identifies exhausted bounded validation concurrency.
+	ErrBusy = errors.New("reporting: validation concurrency exhausted")
 )
 
 // Localized contains plain text, never frontend HTML. Locale is a canonical BCP47
@@ -35,6 +42,7 @@ type Localized struct {
 	Description string   `json:"description"`
 }
 
+// TopicPin binds a reviewed semantic topic version to its exact content digest.
 type TopicPin struct {
 	Topic   string `json:"topic"`
 	Version string `json:"version"`
@@ -49,6 +57,7 @@ type TemplatePin struct {
 	Digest  string `json:"digest"`
 }
 
+// DimensionReference pins the semantic dimension governing a parameter value.
 type DimensionReference struct {
 	Topic     string `json:"topic"`
 	Version   string `json:"version"`
@@ -68,11 +77,13 @@ type Parameter struct {
 	Dimension *DimensionReference `json:"dimension,omitempty"`
 }
 
+// Value carries exactly one scalar literal or a structured period.
 type Value struct {
 	Literal string  `json:"literal,omitempty"`
 	Period  *Period `json:"period,omitempty"`
 }
 
+// Argument assigns a typed value to a declared parameter by name.
 type Argument struct {
 	Name  string `json:"name"`
 	Value Value  `json:"value"`
@@ -92,6 +103,7 @@ type Period struct {
 	MonthPolicy     string `json:"month_policy" jsonschema:"enum=clamp,enum=reject"`
 }
 
+// Window is a half-open interval with explicit instants.
 type Window struct {
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
@@ -105,6 +117,7 @@ type Resolution struct {
 	ScheduleWindow *Window   `json:"schedule_window,omitempty"`
 }
 
+// BoundValue records the resolved parameter identity, origin and digest without SQL fragments.
 type BoundValue struct {
 	Name       string  `json:"name"`
 	Type       string  `json:"type"`
@@ -113,6 +126,7 @@ type BoundValue struct {
 	Digest     string  `json:"digest"`
 }
 
+// Resolved contains exact typed execution binds and their resolution evidence.
 type Resolved struct {
 	Values     []BoundValue     `json:"values"`
 	Parameters []exec.Parameter `json:"parameters"`
@@ -167,6 +181,7 @@ type Definition struct {
 	Outputs        []Output     `json:"outputs"`
 }
 
+// Provenance records the server-derived origin of an authored revision.
 type Provenance struct {
 	Kind             string       `json:"kind"`
 	ParentRevision   int64        `json:"parent_revision,omitempty"`
@@ -195,6 +210,7 @@ type Reference struct {
 	Draft    bool  `json:"draft"`
 }
 
+// State contains the CAS version and current lifecycle pointers for a stable block identity.
 type State struct {
 	ID                string    `json:"id"`
 	Topic             string    `json:"topic"`
@@ -207,6 +223,7 @@ type State struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+// Revision is an immutable definition snapshot with stable content and execution digests.
 type Revision struct {
 	Number          int64      `json:"number"`
 	ID              string     `json:"id"`
@@ -254,6 +271,7 @@ type ValidationRecord struct {
 	Definitions   []topics.Definition     `json:"definitions"`
 }
 
+// Attestation records a separately authorized certification of exact revision evidence.
 type Attestation struct {
 	ID                string    `json:"id"`
 	Revision          int64     `json:"revision"`
@@ -265,6 +283,7 @@ type Attestation struct {
 	DependencyDigest  string    `json:"dependency_digest"`
 }
 
+// Withdrawal records the explicit withdrawal of an existing certification.
 type Withdrawal struct {
 	Attestation string    `json:"attestation"`
 	Actor       string    `json:"actor"`
@@ -272,6 +291,7 @@ type Withdrawal struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// Health records current dependency status independently of historical approval.
 type Health struct {
 	Status           string     `json:"status"`
 	ObservedAt       *time.Time `json:"observed_at,omitempty"`
@@ -279,6 +299,7 @@ type Health struct {
 	Reason           string     `json:"reason"`
 }
 
+// Trust projects publication, certification, current health and historical attestation separately.
 type Trust struct {
 	Publication           string       `json:"publication"`
 	Certification         string       `json:"certification"`
@@ -309,6 +330,7 @@ type View struct {
 	Evidence        *Evidence    `json:"validation,omitempty"`
 }
 
+// SQLView is the separately authorized SQL-bearing revision projection.
 type SQLView struct {
 	ID         string     `json:"id"`
 	Revision   int64      `json:"revision"`
@@ -331,32 +353,38 @@ type Snapshot struct {
 	References  []ResourceReference
 }
 
+// CreateRequest supplies a new stable block identity and its private definition.
 type CreateRequest struct {
 	ID         string     `json:"id"`
 	Definition Definition `json:"definition"`
 }
 
+// EditRequest supplies a complete amendment under an expected CAS version.
 type EditRequest struct {
 	ExpectedVersion int64      `json:"expected_version"`
 	Definition      Definition `json:"definition"`
 }
 
+// TransitionRequest identifies a version-fenced lifecycle transition and its audit note.
 type TransitionRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Note            string `json:"note"`
 }
 
+// RestoreRequest selects an existing revision to restore as a new private amendment.
 type RestoreRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Revision        int64  `json:"revision"`
 	Note            string `json:"note"`
 }
 
+// PublishRequest binds publication to an expected state version and validation receipt.
 type PublishRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Evidence        string `json:"evidence"`
 }
 
+// CertifyRequest identifies the exact revision and evidence to certify under separate authority.
 type CertifyRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Revision        int64  `json:"revision"`
@@ -364,6 +392,7 @@ type CertifyRequest struct {
 	Note            string `json:"note"`
 }
 
+// WithdrawRequest identifies the attestation to withdraw under an expected state version.
 type WithdrawRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Attestation     string `json:"attestation"`
@@ -371,6 +400,7 @@ type WithdrawRequest struct {
 	Revision        int64  `json:"revision,omitempty"`
 }
 
+// ValidateRequest supplies the version-fenced draft and typed execution arguments.
 type ValidateRequest struct {
 	ExpectedVersion int64      `json:"expected_version"`
 	Revision        int64      `json:"revision,omitempty"`
@@ -378,11 +408,13 @@ type ValidateRequest struct {
 	Resolution      Resolution `json:"resolution"`
 }
 
+// PreviewRequest adds an optional saved-output subset to a private validation request.
 type PreviewRequest struct {
 	ValidateRequest
 	Outputs []string `json:"outputs"`
 }
 
+// ValidationResult returns persisted validation evidence and the resulting block state.
 type ValidationResult struct {
 	State    State    `json:"state"`
 	Evidence Evidence `json:"evidence"`
@@ -402,6 +434,7 @@ type PreviewResult struct {
 	NarrativesGenerated bool         `json:"narratives_generated"`
 }
 
+// CaptureRequest references an existing private query handoff without accepting caller-supplied provenance.
 type CaptureRequest struct {
 	ID         string      `json:"id"`
 	Query      string      `json:"query"`
@@ -424,12 +457,14 @@ type Capture struct {
 	Question   string
 }
 
+// ListRequest bounds a permission-filtered scan and controls private-draft inclusion.
 type ListRequest struct {
 	After         string `json:"after,omitempty"`
 	Limit         int    `json:"limit"`
 	IncludeDrafts bool   `json:"include_drafts"`
 }
 
+// Summary is a SQL-free lifecycle and localized-metadata projection.
 type Summary struct {
 	State    State       `json:"state"`
 	Revision int64       `json:"revision"`
@@ -437,17 +472,20 @@ type Summary struct {
 	Private  bool        `json:"private"`
 }
 
+// Page contains only eligible block summaries and a bounded continuation cursor.
 type Page struct {
 	Items []Summary `json:"items"`
 	Next  string    `json:"next,omitempty"`
 }
 
+// QuestionRequest supplies localized text for advisory, permission-filtered question assessment.
 type QuestionRequest struct {
 	Locale        string `json:"locale"`
 	Question      string `json:"question"`
 	IncludeDrafts bool   `json:"include_drafts"`
 }
 
+// QuestionMatch identifies an eligible localized question or alias match.
 type QuestionMatch struct {
 	ID       string  `json:"id"`
 	Revision int64   `json:"revision"`
@@ -456,12 +494,14 @@ type QuestionMatch struct {
 	Score    float64 `json:"score"`
 }
 
+// Assessment reports bounded advisory matches without claiming global uniqueness.
 type Assessment struct {
 	Matches   []QuestionMatch `json:"matches"`
 	Complete  bool            `json:"complete"`
 	Threshold float64         `json:"threshold"`
 }
 
+// Event records an immutable lifecycle event and its actor coordinates.
 type Event struct {
 	Version   int64     `json:"version"`
 	Kind      string    `json:"kind"`
@@ -471,6 +511,7 @@ type Event struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// History is the lifecycle and trust history eligible under current signed reach and persisted privacy.
 type History struct {
 	State  State   `json:"state"`
 	Events []Event `json:"events"`
@@ -481,18 +522,22 @@ type TopicReader interface {
 	Read(context.Context, identity.Envelope, string, string) (topics.Published, error)
 }
 
+// SourceReader supplies current registered source bindings to the common reporting service.
 type SourceReader interface {
 	ContextBinding(context.Context, identity.Envelope, string, string) (exec.Binding, error)
 }
 
+// Validator issues the existing opaque source-safe execution plan.
 type Validator interface {
 	ValidateWithin(context.Context, identity.Envelope, exec.Request, []exec.RelationScope) (exec.Plan, error)
 }
 
+// Executor executes an opaque validated plan through the existing read core.
 type Executor interface {
 	Execute(context.Context, identity.Envelope, exec.Plan, exec.Options) (exec.ExecutionReport, error)
 }
 
+// QueryCapture supplies a private source-backed query definition from the owning query service.
 type QueryCapture interface {
 	Capture(context.Context, identity.Envelope, string) (Capture, error)
 }

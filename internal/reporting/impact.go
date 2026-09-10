@@ -29,11 +29,13 @@ type Rename struct {
 	To      string `json:"to"`
 }
 
+// ImpactRequest selects a revision for a current dependency-impact observation.
 type ImpactRequest struct {
 	ExpectedVersion int64     `json:"expected_version"`
 	Reference       Reference `json:"reference"`
 }
 
+// Impact describes observed dependency continuity and any server-recomputed amendment proposal.
 type Impact struct {
 	ID               string    `json:"id"`
 	Revision         int64     `json:"revision"`
@@ -47,6 +49,7 @@ type Impact struct {
 	ObservedAt       time.Time `json:"observed_at"`
 }
 
+// ApplyImpactRequest binds an explicit amendment to an expected state version and impact proposal.
 type ApplyImpactRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Revision        int64  `json:"revision"`
@@ -62,6 +65,7 @@ type impactWork struct {
 	dependencies []Dependency
 }
 
+// CanObserve reports whether current source catalog observation is installed.
 func (s *Service) CanObserve() bool {
 	if s == nil {
 		return false
@@ -138,12 +142,16 @@ func compareImpact(old ValidationRecord, binding exec.Binding, observed sources.
 	if len(used) == 0 || len(old.Definitions) != len(current) {
 		return "review_required", "missing_dependency_baseline", nil
 	}
-	if old.Binding.Source != binding.Source || old.Binding.Dialect != binding.Dialect || old.Catalog.Version == "" || old.Catalog.Version != observed.Identity.Version || old.Catalog.Authority != observed.Identity.Authority {
-		// Without native identity evidence, an identical exact registered binding
-		// can still be observed unchanged. It cannot support a rename proposal.
-		if old.BindingDigest != exec.Hash(binding) {
-			return "review_required", "source_identity_changed_or_unproven", nil
-		}
+	if old.Binding.Source != binding.Source || old.Binding.Dialect != binding.Dialect {
+		return "review_required", "source_identity_changed_or_unproven", nil
+	}
+	// Positive native identity evidence may never be discarded just because
+	// registered names/schema are unchanged: DROP/CREATE can preserve both.
+	if old.Catalog.Version != observed.Identity.Version || old.Catalog.Authority != observed.Identity.Authority {
+		return "review_required", "source_identity_changed_or_unproven", nil
+	}
+	if old.Catalog.Version == "" && old.BindingDigest != exec.Hash(binding) {
+		return "review_required", "source_identity_changed_or_unproven", nil
 	}
 	renamed := []Rename{}
 	for i, publication := range current {
@@ -167,7 +175,7 @@ func compareImpact(old ValidationRecord, binding exec.Binding, observed sources.
 						oldTable, oldColumn := nativeColumn(old.Catalog, beforeDataset.ID, beforeColumn.SourceName)
 						newTable, newColumn := nativeColumn(observed.Identity, afterDataset.ID, afterColumn.SourceName)
 						if oldTable == "" || oldColumn == "" || oldTable != newTable || oldColumn != newColumn {
-							if old.BindingDigest != exec.Hash(binding) || beforeColumn.SourceName != afterColumn.SourceName {
+							if old.Catalog.Version != "" || old.BindingDigest != exec.Hash(binding) || beforeColumn.SourceName != afterColumn.SourceName {
 								return "review_required", "native_object_identity_changed_or_unproven", nil
 							}
 						}

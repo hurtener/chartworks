@@ -159,7 +159,7 @@ func blockFresh(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting
 	if err := tx.QueryRow(ctx, `SELECT record FROM chartworks.block_validations WHERE tenant_id=$1 AND block_id=$2 AND revision=$3 AND evidence_id=$4 AND expires_at>clock_timestamp()`, e.Tenant(), m.ID, m.TargetRevision, m.Evidence).Scan(&raw); err != nil {
 		return v, err
 	}
-	if json.Unmarshal(raw, &v) != nil || v.Evidence.DefinitionDigest != snapshot.Revision.Digest || v.Evidence.RevisionID != snapshot.Revision.ID || v.Evidence.ExecutionDigest != snapshot.Revision.ExecutionDigest || v.Evidence.DependencyDigest != reporting.DependencyDigest(m.Watch, m.Topics) || v.Evidence.CanonicalizationVersion != reporting.CanonicalizationVersion {
+	if json.Unmarshal(raw, &v) != nil || snapshot.Health.Status != "healthy" || snapshot.Health.DependencyDigest != v.Evidence.DependencyDigest || v.Evidence.DefinitionDigest != snapshot.Revision.Digest || v.Evidence.RevisionID != snapshot.Revision.ID || v.Evidence.ExecutionDigest != snapshot.Revision.ExecutionDigest || v.Evidence.DependencyDigest != reporting.DependencyDigest(m.Watch, m.Topics) || v.Evidence.CanonicalizationVersion != reporting.CanonicalizationVersion {
 		return v, reporting.ErrStale
 	}
 	return v, nil

@@ -3,8 +3,6 @@ package foundation
 import (
 	"context"
 	"errors"
-	"github.com/hurtener/chartworks/internal/reporting"
-	"github.com/hurtener/chartworks/internal/reportingapi"
 	"io"
 	"log/slog"
 	"net/http"
@@ -27,6 +25,8 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/reportingapi"
 	"github.com/hurtener/chartworks/internal/securityapi"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
@@ -224,7 +224,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 	w.handler = chartapi.Handler(verifier, chartService, w.handler)
 	var capture reporting.QueryCapture
 	if w.nlq != nil {
-		capture = queryBlockCapture{query: w.nlq}
+		capture = reporting.CaptureFromQueries(w.nlq)
 	}
 	blockService, err := reporting.New(db, published, w.sourceService, validator, executor, capture, v.Reporting)
 	if err != nil {

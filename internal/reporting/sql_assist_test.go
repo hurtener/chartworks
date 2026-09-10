@@ -112,6 +112,12 @@ func TestASTEditBoundsAndEquivalence(t *testing.T) {
 }
 
 func FuzzSQLAssistSpanSafety(f *testing.F) {
+	// Compile the embedded PostgreSQL WASM grammar before the per-input fuzz
+	// deadline starts. Each worker has its own cache; cold race-instrumented
+	// compilation is not an adversarial SQL input or a parser hang.
+	if _, _, err := parseAssistance(context.Background(), "SELECT 1"); err != nil {
+		f.Fatal("initialize SQL assistance parser", err)
+	}
 	f.Add("SELECT amount FROM analytics.sales WHERE note = 'amount'")
 	f.Add("SELECT id FROM analytics.sales WHERE created_at >= '2024-01-01' AND created_at < '2024-02-01'")
 	f.Fuzz(func(t *testing.T, sql string) {

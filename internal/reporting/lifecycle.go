@@ -102,6 +102,7 @@ func (s *Service) Withdraw(ctx context.Context, e identity.Envelope, id string, 
 	return withdrawal, nil
 }
 
+// Reject closes the current private amendment without rewriting published history.
 func (s *Service) Reject(ctx context.Context, e identity.Envelope, id string, in TransitionRequest) (State, error) {
 	ctx, cancel, err := s.begin(ctx, e, id, Write)
 	if err != nil {

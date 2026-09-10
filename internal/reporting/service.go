@@ -52,10 +52,15 @@ func New(repo Repository, topics TopicReader, sources SourceReader, validator Va
 	return &Service{repo: repo, topics: topics, sources: sources, validator: validator, executor: executor, capture: capture, limits: limits, slots: make(chan struct{}, limits.MaxConcurrent)}, nil
 }
 
+// CanValidate reports whether the existing validator and executor are installed.
 func (s *Service) CanValidate() bool {
 	return s != nil && s.sources != nil && s.validator != nil && s.executor != nil
 }
-func (s *Service) CanCapture() bool         { return s != nil && s.capture != nil }
+
+// CanCapture reports whether the owning query service supplies the private capture handoff.
+func (s *Service) CanCapture() bool { return s != nil && s.capture != nil }
+
+// Limits returns the configured reporting bounds by value.
 func (s *Service) Limits() config.Reporting { return s.limits }
 
 func (s *Service) begin(ctx context.Context, e identity.Envelope, id string, a Access) (context.Context, context.CancelFunc, error) {
@@ -311,6 +316,7 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	return project(Snapshot{State: state, Revision: r}, time.Now()), nil
 }
 
+// List returns only blocks eligible under current signed reach and persisted privacy.
 func (s *Service) List(ctx context.Context, e identity.Envelope, in ListRequest) (Page, error) {
 	if s == nil || ctx == nil || in.Limit < 1 || in.Limit > 100 || in.After != "" && !identity.Identifier(in.After) {
 		return Page{}, ErrInvalid
@@ -333,6 +339,7 @@ func (s *Service) List(ctx context.Context, e identity.Envelope, in ListRequest)
 	return out, nil
 }
 
+// History returns only lifecycle history eligible under current signed reach and persisted privacy.
 func (s *Service) History(ctx context.Context, e identity.Envelope, id string) (History, error) {
 	ctx, cancel, err := s.begin(ctx, e, id, Read)
 	if err != nil {

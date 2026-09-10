@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/hurtener/chartworks/internal/chartdata"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,10 +18,13 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/chartdata"
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/reportingapi"
 	"github.com/hurtener/chartworks/internal/store"
@@ -31,7 +33,10 @@ import (
 )
 
 func phase27Scopes(tenant string) []string {
-	return append(phase18Scopes(tenant, true), "reporting.read", "reporting.write", "reporting.validate", "reporting.preview", "reporting.publish", "reporting.certify", "cw.block.read:*", "cw.block.write:*", "cw.block.preview:*", "cw.block.publish:*", "cw.block.certify:*")
+	// Reporting does not submit query feedback. Keep the issuer's 32-scope
+	// ceiling intact rather than broadening production authority for the fixture.
+	base := slices.DeleteFunc(phase18Scopes(tenant, true), func(scope string) bool { return scope == "feedback.write" })
+	return append(base, "reporting.read", "reporting.write", "reporting.validate", "reporting.preview", "reporting.publish", "reporting.certify", "cw.block.read:*", "cw.block.write:*", "cw.block.preview:*", "cw.block.publish:*", "cw.block.certify:*")
 }
 
 func phase27Token(t *testing.T, f *phase17Fixture, user, session string, scopes []string) string {
@@ -119,8 +124,8 @@ func phase27ValidatePublish(t *testing.T, service *reporting.Service, e identity
 // connection, native validator/executor and cryptographically verified authority.
 func TestPhase27(t *testing.T) {
 	f := newPhase18Fixture(t)
-	_, topicService := newPhase18Service(t, f)
-	service, err := reporting.New(f.f.db, topicService, f.f.s, f.f.validator, f.f.executor, nil, config.DefaultReporting())
+	queryService, topicService := newPhase18Service(t, f)
+	service, err := reporting.New(f.f.db, topicService, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(queryService), config.DefaultReporting())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,6 +159,40 @@ func TestPhase27(t *testing.T) {
 		}
 		if _, err := service.Read(ctx, e, created.State.ID, reporting.Reference{}); !errors.Is(err, store.ErrNotFound) {
 			t.Fatal("unpublished draft became default", err)
+		}
+		// A valid issuer signature never grants another tenant or execution
+		// partition access, even with the same actor and wildcard block reach.
+		claims := f.f.token.claims("p27-foreign-tenant", e.User(), phase27Scopes("p27-foreign-tenant"))
+		claims["session"] = "phase27-session"
+		foreign, err := f.f.token.verifier.Verify(ctx, f.f.token.sign(t, claims, nil), auth.HTTP)
+		if err != nil {
+			t.Fatal("verify foreign tenant fixture", err)
+		}
+		narrowScopes := phase27Scopes(e.Tenant())
+		for i, scope := range narrowScopes {
+			if strings.HasPrefix(scope, "cw.execution_context.use:") {
+				narrowScopes[i] = "cw.execution_context.use:p27-other-context"
+			}
+		}
+		narrow := phase27Actor(t, f, e.User(), narrowScopes)
+		before := f.f.lookups.Load()
+		for _, denied := range []identity.Envelope{foreign, narrow} {
+			if _, err := service.Read(ctx, denied, created.State.ID, reporting.Reference{Draft: true}); !errors.Is(err, store.ErrNotFound) {
+				t.Fatal("foreign partition read must conceal existence", err)
+			}
+			if _, err := service.SQL(ctx, denied, created.State.ID, reporting.Reference{Draft: true}); !errors.Is(err, store.ErrNotFound) {
+				t.Fatal("foreign partition SQL must conceal existence", err)
+			}
+			if _, err := service.History(ctx, denied, created.State.ID); !errors.Is(err, store.ErrNotFound) {
+				t.Fatal("foreign partition history must conceal existence", err)
+			}
+			page, err := service.List(ctx, denied, reporting.ListRequest{Limit: 20, IncludeDrafts: true})
+			if err != nil || len(page.Items) != 0 || page.Next != "" {
+				t.Fatal("foreign partition list disclosed rows or cursor", page, err)
+			}
+		}
+		if f.f.lookups.Load() != before {
+			t.Fatal("foreign partition reads reached source secrets")
 		}
 		for _, mutate := range []func(*reporting.Definition){func(d *reporting.Definition) { d.Outputs[1].ID = d.Outputs[0].ID }, func(d *reporting.Definition) { d.Metadata[0].Locale = "en-us" }, func(d *reporting.Definition) { d.SchemaVersion = 999 }, func(d *reporting.Definition) { d.SQL = strings.Repeat("x", 65537) }} {
 			bad := phase27Copy(t, base)
@@ -320,7 +359,27 @@ func TestPhase27(t *testing.T) {
 		}
 	})
 
+	t.Run("AC05", testPhase27Parameters)
+
 	t.Run("AC06", func(t *testing.T) {
+		// All four saved output kinds consume one real result, not fabricated rows
+		// or an implicit second query/chart selection during preview.
+		multi := phase27Definition(t, f, e, "SELECT id, amount FROM analytics.sales WHERE id = 1")
+		columns := phase27Copy(t, multi.Outputs[0].Mapping.Columns)
+		for i := range columns {
+			columns[i].Role = "measure"
+		}
+		kpi := charts.Mapping{Version: charts.Version, Kind: charts.KPI, Columns: columns[1:], Bindings: charts.Bindings{Value: columns[1].ID}, Options: charts.DefaultOptions()}
+		plot := charts.Mapping{Version: charts.Version, Kind: charts.Scatter, Columns: columns, Bindings: charts.Bindings{X: columns[0].ID, Y: columns[1].ID}, Options: charts.DefaultOptions()}
+		multi.Outputs = append(multi.Outputs, reporting.Output{ID: "kpi-main", Kind: "kpi", Mapping: &kpi}, reporting.Output{ID: "chart-main", Kind: "chart", Mapping: &plot})
+		allKinds, err := service.Create(ctx, e, reporting.CreateRequest{ID: "p27-all-output-kinds", Definition: multi})
+		if err != nil {
+			t.Fatal("four-kind authoring", err)
+		}
+		allPreview, err := service.Preview(ctx, e, allKinds.State.ID, reporting.PreviewRequest{ValidateRequest: reporting.ValidateRequest{ExpectedVersion: allKinds.State.Version}})
+		if err != nil || len(allPreview.Outputs) != 4 || len(allPreview.Result.Rows) != 1 || !allPreview.Private || allPreview.NarrativesGenerated {
+			t.Fatal("four-kind actual preview", allPreview, err)
+		}
 		created := create(t, "p27-outputs")
 		preview, err := service.Preview(ctx, e, created.State.ID, reporting.PreviewRequest{ValidateRequest: reporting.ValidateRequest{ExpectedVersion: 1}, Outputs: []string{"narrative-main", "table-main"}})
 		if err != nil || !preview.Private || preview.NarrativesGenerated || preview.Outputs[0].ID != "table-main" || len(preview.Result.Rows) != 2 {
@@ -350,9 +409,20 @@ func TestPhase27(t *testing.T) {
 		}
 	})
 
+	t.Run("AC07", testPhase27DependencyImpact)
+
 	t.Run("AC08", func(t *testing.T) {
+		registry, registryErr := reportingapi.Registry(true, true, true)
+		if registryErr != nil {
+			t.Fatal("reporting registry", registryErr)
+		}
+		shape, _, _ := registry.Match("POST", "/v1/blocks")
+		wire, _ := json.Marshal(sdk.BlockCreateRequest{ID: "p27-sdk", Definition: base})
+		if err := shape.Request.Validate(wire, shape.MaxBodyBytes); err != nil {
+			t.Fatalf("SDK create wire rejected by registered schema: %v\n%s", err, wire)
+		}
 		handler := reportingapi.Handler(f.f.token.verifier, service, http.NotFoundHandler())
-		server := httptest.NewServer(handler)
+		server := httptest.NewServer(assertRegisteredWireSchemas(t, registry, handler))
 		t.Cleanup(server.Close)
 		token := phase27Token(t, f, e.User(), "phase27-session", phase27Scopes(e.Tenant()))
 		client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
@@ -361,7 +431,46 @@ func TestPhase27(t *testing.T) {
 		}
 		created, err := client.CreateBlock(ctx, sdk.BlockCreateRequest{ID: "p27-sdk", Definition: base})
 		if err != nil {
-			t.Fatal("SDK create", err)
+			t.Fatalf("SDK create: %#v", err)
+		}
+		// Query capture consumes the real durable private query, not client SQL
+		// or a fabricated positive validation record.
+		f.model.embeddingMode.Store("fixed")
+		f.model.rerankMode.Store("fixed")
+		f.model.mode.Store(phase18RawResponse(t, base.SQL))
+		planned, err := queryService.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: phase18Question(f, nlq.LanguageEnglish, f.pack.Topic), Operation: "p27-capture-query"})
+		if err != nil {
+			t.Fatal("capture query plan", err)
+		}
+		capture := sdk.BlockCaptureRequest{ID: "p27-captured", Query: planned.QueryID, Metadata: base.Metadata, Outputs: base.Outputs}
+		if _, err := client.CaptureBlock(ctx, capture); err == nil {
+			t.Fatal("planned query accepted as executed capture")
+		}
+		run, err := queryService.Run(ctx, e, nlqexec.RunRequest{QueryID: planned.QueryID, Operation: "p27-capture-query", Rows: 10, Bytes: 65536})
+		if err != nil || run.Execution.Result == nil {
+			t.Fatal("capture query execution", run, err)
+		}
+		before := f.f.lookups.Load()
+		captured, err := client.CaptureBlock(ctx, capture)
+		if err != nil || !captured.Private || captured.Evidence != nil || captured.Trust.Certification != "none" || f.f.lookups.Load() != before {
+			t.Fatal("source-backed capture", captured, err)
+		}
+		capturedSQL, err := client.ReadBlockSQL(ctx, capture.ID, sdk.BlockReference{Draft: true})
+		if err != nil || capturedSQL.SQL != base.SQL || capturedSQL.Provenance.Query != planned.QueryID || capturedSQL.Provenance.Kind != "query_capture" {
+			t.Fatal("capture provenance", capturedSQL, err)
+		}
+		wrongSession, err := f.f.token.verifier.Verify(ctx, phase27Token(t, f, e.User(), "other-session", phase27Scopes(e.Tenant())), auth.HTTP)
+		if err != nil {
+			t.Fatal(err)
+		}
+		foreignCapture := capture
+		foreignCapture.ID = "p27-foreign-capture"
+		if _, err := service.CaptureQuery(ctx, wrongSession, foreignCapture); !errors.Is(err, nlqexec.ErrForeignSession) {
+			t.Fatal("cross-session capture", err)
+		}
+		noSQL := phase27Actor(t, f, e.User(), slices.DeleteFunc(phase27Scopes(e.Tenant()), func(scope string) bool { return scope == "reporting.sql.read" }))
+		if _, err := service.CaptureQuery(ctx, noSQL, foreignCapture); !errors.Is(err, nlqexec.ErrInspectionRequired) {
+			t.Fatal("capture SQL authority", err)
 		}
 		validation, err := client.ValidateBlock(ctx, created.State.ID, sdk.BlockValidateRequest{ExpectedVersion: 1})
 		if err != nil {
@@ -383,6 +492,47 @@ func TestPhase27(t *testing.T) {
 		if err != nil || len(assessment.Matches) == 0 || assessment.Matches[0].Kind != "exact" {
 			t.Fatal("localized question assessment", assessment, err)
 		}
+		preview, err := client.PreviewBlock(ctx, created.State.ID, sdk.BlockPreviewRequest{ValidateRequest: sdk.BlockValidateRequest{ExpectedVersion: state.Version}, Outputs: []string{"table-main"}})
+		if err != nil || !preview.Private || len(preview.Result.Rows) != 2 {
+			t.Fatal("SDK preview", preview, err)
+		}
+		attestation, err := client.CertifyBlock(ctx, created.State.ID, sdk.BlockCertifyRequest{ExpectedVersion: state.Version, Revision: created.Revision, Evidence: validation.Evidence.ID, Note: "Review exact SDK evidence"})
+		if err != nil {
+			t.Fatal("SDK certify", err)
+		}
+		view, err = client.ReadBlock(ctx, created.State.ID, sdk.BlockReference{})
+		if err != nil || view.Trust.HistoricalAttestation == nil || view.Trust.HistoricalAttestation.ID != attestation.ID {
+			t.Fatal("SDK attestation", view, err)
+		}
+		_, err = client.WithdrawBlockCertification(ctx, created.State.ID, sdk.BlockWithdrawRequest{ExpectedVersion: view.State.Version, Attestation: attestation.ID, Note: "Withdraw while preserving history"})
+		if err != nil {
+			t.Fatal("SDK withdraw", err)
+		}
+		view, err = client.ReadBlock(ctx, created.State.ID, sdk.BlockReference{})
+		if err != nil || view.Trust.Certification != "withdrawn" {
+			t.Fatal(view, err)
+		}
+		edited, err := client.EditBlock(ctx, created.State.ID, sdk.BlockEditRequest{ExpectedVersion: view.State.Version, Definition: base})
+		if err != nil || edited.Evidence != nil {
+			t.Fatal("SDK edit", edited, err)
+		}
+		rejected, err := client.RejectBlock(ctx, created.State.ID, sdk.BlockTransitionRequest{ExpectedVersion: edited.State.Version, Note: "Reject unvalidated amendment"})
+		if err != nil {
+			t.Fatal("SDK reject", err)
+		}
+		restored, err := client.RestoreBlock(ctx, created.State.ID, sdk.BlockRestoreRequest{ExpectedVersion: rejected.Version, Revision: created.Revision, Note: "Restore approved content as private draft"})
+		if err != nil || !restored.Private || restored.Evidence != nil {
+			t.Fatal("SDK restore", restored, err)
+		}
+		inspected, err := client.ReadBlockSQL(ctx, created.State.ID, sdk.BlockReference{Draft: true})
+		if err != nil || inspected.SQL != base.SQL {
+			t.Fatal("SDK SQL inspection", inspected, err)
+		}
+		history, err := client.BlockHistory(ctx, created.State.ID)
+		if err != nil || len(history.Events) < 7 {
+			t.Fatal("SDK history", history, err)
+		}
+		state = restored.State
 		archived, err := client.ArchiveBlock(ctx, created.State.ID, sdk.BlockTransitionRequest{ExpectedVersion: state.Version, Note: "Archive fixture publication"})
 		if err != nil || !archived.Archived {
 			t.Fatal(archived, err)

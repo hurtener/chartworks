@@ -3,10 +3,11 @@ package chartworks
 import (
 	"context"
 	"errors"
-	"github.com/hurtener/chartworks/internal/identity"
-	"github.com/hurtener/chartworks/internal/reporting"
 	"net/url"
 	"strconv"
+
+	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/reporting"
 )
 
 // ErrBlockRequest rejects a malformed coordinate before any network call.
