@@ -1,0 +1,42 @@
+name: Phase 26-28 development verification
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-check.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+      TESTED_REF: '69b5c89753d69cf152554b23fbbe10fd16682be6'
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TESTED_REF }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Exact-source identity
+        run: test "$(git rev-parse HEAD)" = "$TESTED_REF"
+      - name: Run targeted configuration contracts
+        run: go test -race -count=1 ./internal/config
+      - name: Source hygiene
+        run: git diff --exit-code
