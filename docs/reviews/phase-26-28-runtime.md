@@ -26,6 +26,11 @@ Phase 28 local race acceptance passed all eight criteria after the fixes, includ
 HTTP/SDK admission, execution, paging, cancellation and three additional lost-reply
 checkpoints. This was a working-tree run, not hosted exact-commit evidence.
 
+Additional review fixes: PostgreSQL preserves the new safe typed domain errors;
+drift can produce an independently reviewable amendment; physical source probes
+detect unregistered schema changes; narrative arithmetic preserves scientific
+notation and bounds exponent allocation. Regression tests accompany these changes.
+
 Pending: Phase 26 Linux runtime acceptance, direct adversarial review completion,
 coverage, full cumulative checks and exact committed-source hosted CI. Phase 25,
 34, live provider quality and production deployment are not claimed.

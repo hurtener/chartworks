@@ -10,19 +10,42 @@ import (
 	"github.com/hurtener/chartworks/internal/reporting"
 )
 
+// ReportingRunRequest is the common domain wire contract exposed by the typed client.
 type ReportingRunRequest = reporting.RunRequest
+
+// ReportingRun is the common domain wire contract exposed by the typed client.
 type ReportingRun = reporting.RunView
+
+// ReportingRunDispatch is the common domain wire contract exposed by the typed client.
 type ReportingRunDispatch struct {
 	Resume bool `json:"resume"`
 }
+
+// ReportingResultPage is the common domain wire contract exposed by the typed client.
 type ReportingResultPage = reporting.ResultPage
+
+// ReportingRetainedOutput is the common domain wire contract exposed by the typed client.
 type ReportingRetainedOutput = reporting.RetainedOutput
+
+// ReportingArtifactList is the common domain wire contract exposed by the typed client.
 type ReportingArtifactList = reporting.ArtifactList
+
+// EngineeringGoal is the common domain wire contract exposed by the typed client.
 type EngineeringGoal = engineering.AutopilotGoal
+
+// EngineeringProposal is the common domain wire contract exposed by the typed client.
 type EngineeringProposal = engineering.AutopilotProposal
+
+// EngineeringProposalEdit is the common domain wire contract exposed by the typed client.
 type EngineeringProposalEdit = engineering.AutopilotEditRequest
+
+// EngineeringProposalReview is the common domain wire contract exposed by the typed client.
 type EngineeringProposalReview = engineering.AutopilotReviewRequest
+
+// EngineeringProposalApply is the common domain wire contract exposed by the typed client.
 type EngineeringProposalApply = engineering.AutopilotApplyRequest
+
+// EngineeringDrift is the common domain wire contract exposed by the typed client.
 type EngineeringDrift = engineering.AutopilotDrift
 
 // AdmitReportingRun calls the common registered domain operation with fresh caller authority.
@@ -130,6 +153,7 @@ func (c *Client) DetectEngineeringDrift(ctx context.Context, id string) (out Eng
 	return
 }
 
+// ListReportingRuns calls the registered operation with current caller authority.
 func (c *Client) ListReportingRuns(ctx context.Context, after string, limit int) (out ReportingArtifactList, err error) {
 	if limit < 1 || limit > 100 || after != "" && !identity.Identifier(after) {
 		return out, ErrBlockRequest
@@ -138,6 +162,8 @@ func (c *Client) ListReportingRuns(ctx context.Context, after string, limit int)
 	err = c.callLimit(ctx, "GET", "/v1/reporting-runs?"+q.Encode(), "", nil, &out, 64<<20)
 	return
 }
+
+// ReportingRunRows calls the registered operation with current caller authority.
 func (c *Client) ReportingRunRows(ctx context.Context, id string, offset, limit int) (out ReportingResultPage, err error) {
 	if !identity.Identifier(id) || offset < 0 || offset > 10000 || limit < 1 || limit > 1000 {
 		return out, ErrBlockRequest
@@ -146,6 +172,8 @@ func (c *Client) ReportingRunRows(ctx context.Context, id string, offset, limit 
 	err = c.callLimit(ctx, "GET", "/v1/reporting-runs/"+id+"/rows?"+q.Encode(), "", nil, &out, 64<<20)
 	return
 }
+
+// ReportingRunOutput calls the registered operation with current caller authority.
 func (c *Client) ReportingRunOutput(ctx context.Context, id, output string) (out ReportingRetainedOutput, err error) {
 	if !identity.Identifier(id) || !identity.Identifier(output) {
 		return out, ErrBlockRequest
@@ -154,6 +182,8 @@ func (c *Client) ReportingRunOutput(ctx context.Context, id, output string) (out
 	err = c.callLimit(ctx, "GET", "/v1/reporting-runs/"+id+"/output?"+q.Encode(), "", nil, &out, 64<<20)
 	return
 }
+
+// ExpireReportingArtifacts calls the registered operation with current caller authority.
 func (c *Client) ExpireReportingArtifacts(ctx context.Context, limit int) (removed int64, err error) {
 	if limit < 1 || limit > 1000 {
 		return 0, ErrBlockRequest
@@ -166,4 +196,16 @@ func (c *Client) ExpireReportingArtifacts(ctx context.Context, limit int) (remov
 	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting-retention", "", in, &out, 64<<20)
 	return out.Removed, err
+}
+
+// EngineeringProposalAmend identifies the exact observed drift to review.
+type EngineeringProposalAmend = engineering.AutopilotAmendRequest
+
+// AmendEngineeringProposal creates a draft without inheriting the prior approval.
+func (c *Client) AmendEngineeringProposal(ctx context.Context, id string, in EngineeringProposalAmend) (out EngineeringProposal, err error) {
+	if !identity.Identifier(id) {
+		return out, ErrBlockRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/engineering-proposals/"+id+"/amend", "", in, &out, 64<<20)
+	return
 }

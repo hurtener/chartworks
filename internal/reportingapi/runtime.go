@@ -21,9 +21,13 @@ import (
 type RunDispatch struct {
 	Resume bool `json:"resume"`
 }
+
+// RetentionRequest bounds one explicit artifact erasure pass.
 type RetentionRequest struct {
 	Limit int `json:"limit"`
 }
+
+// RetentionResult counts artifacts whose values were erased.
 type RetentionResult struct {
 	Removed int64 `json:"removed"`
 }
@@ -118,6 +122,9 @@ func runtimeEntries(runs *reporting.Runs, proposals *engineering.Autopilot, exec
 			}),
 			runtimeEntry("PUT", "/v1/engineering-proposals/{id}", "engineering.autopilot.propose", "editEngineeringProposal", "Append a reviewed-material amendment and invalidate approval", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in engineering.AutopilotEditRequest) (engineering.AutopilotProposal, error) {
 				return proposals.Edit(ctx, e, id, in)
+			}),
+			runtimeEntry("POST", "/v1/engineering-proposals/{id}/amend", "engineering.autopilot.propose", "amendEngineeringProposal", "Create independent review material from exact drift evidence", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in engineering.AutopilotAmendRequest) (engineering.AutopilotProposal, error) {
+				return proposals.Amend(ctx, e, id, in)
 			}),
 			runtimeEntry("POST", "/v1/engineering-proposals/{id}/review", "engineering.autopilot.review", "reviewEngineeringProposal", "Independently approve or reject exact proposal material", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in engineering.AutopilotReviewRequest) (engineering.AutopilotProposal, error) {
 				return proposals.Review(ctx, e, id, in)

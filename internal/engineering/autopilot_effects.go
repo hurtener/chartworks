@@ -2,6 +2,7 @@ package engineering
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
@@ -194,14 +195,23 @@ func (s *Autopilot) DetectDrift(ctx context.Context, e identity.Envelope, id str
 	if p.State != "applied" && p.State != "applying" {
 		return AutopilotDrift{}, ErrState
 	}
-	binding, err := s.pipelines.source.Binding(ctx, e, p.Material.Binding.Source, p.Material.Binding.Context)
+	source, err := s.pipelines.source.Get(ctx, e, p.Material.Binding.Source)
 	if err != nil {
 		return AutopilotDrift{}, err
 	}
+	binding, err := s.pipelines.source.Binding(ctx, e, source.ID, source.ContextID)
+	if err != nil {
+		return AutopilotDrift{}, err
+	}
+	// Observe the actual read-only source, not only its last registered schema.
+	_, observationErr := s.pipelines.source.Test(ctx, e, source.ID)
+	if observationErr != nil && !errors.Is(observationErr, readexec.ErrBinding) {
+		return AutopilotDrift{}, observationErr
+	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	drift := AutopilotDrift{Proposal: p.ID, Revision: p.Revision, PriorBindingDigest: readexec.Hash(p.Material.Binding), CurrentBindingDigest: readexec.Hash(binding), Observed: now, State: "proposed", Impacts: []ProposalImpact{}}
+	drift := AutopilotDrift{CurrentContext: binding.Context, Proposal: p.ID, Revision: p.Revision, PriorBindingDigest: readexec.Hash(p.Material.Binding), CurrentBindingDigest: readexec.Hash(binding), Observed: now, State: "proposed", Impacts: []ProposalImpact{}}
 	switch {
-	case drift.PriorBindingDigest != drift.CurrentBindingDigest:
+	case drift.PriorBindingDigest != drift.CurrentBindingDigest || errors.Is(observationErr, readexec.ErrBinding):
 		drift.Kind = "schema_changed"
 	case p.Applied != nil && now.Sub(*p.Applied) > time.Duration(p.Material.Request.MaxStalenessSeconds)*time.Second:
 		drift.Kind = "freshness_expired"

@@ -79,6 +79,9 @@ func proposalTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, action 
 	if json.Unmarshal(material, &out.Material) != nil || out.Material.Digest() != out.Digest || out.Material.Request.ID != out.ID || out.Material.Binding.Tenant != out.Tenant || engineering.ValidateAutopilotMaterial(out.Material, proposalHardLimits()) != nil {
 		return engineering.AutopilotProposal{}, store.ErrInvalid
 	}
+	if out.Material.Origin != nil {
+		out.AmendmentOf = out.Material.Origin.Proposal
+	}
 	if review != nil {
 		if json.Unmarshal(review, &out.Review) != nil || out.Review == nil || out.Review.Revision != out.Revision || out.Review.Digest != out.Digest {
 			return engineering.AutopilotProposal{}, store.ErrInvalid
@@ -168,4 +171,27 @@ func proposalApplyTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, v engi
 		}
 	}
 	return p, nil
+}
+
+// ReadAutopilotAmendment resolves only metadata identity before the normal
+// authority-filtered proposal query; drift identifiers are not read authority.
+func (d *DB) ReadAutopilotAmendment(ctx context.Context, e identity.Envelope, drift string) (out engineering.AutopilotProposal, err error) {
+	if !identity.Identifier(drift) || !e.Valid() {
+		return out, store.ErrInvalid
+	}
+	ctx, stop, err := requestContext(ctx, e)
+	if err != nil {
+		return out, err
+	}
+	defer stop()
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var id string
+		if err := tx.QueryRow(ctx, `SELECT proposal_id FROM chartworks.engineering_amendment_proposals WHERE tenant_id=$1 AND amendment_id=$2`, e.Tenant(), drift).Scan(&id); err != nil {
+			return err
+		}
+		var readErr error
+		out, readErr = proposalTx(ctx, tx, e, id, "engineering.autopilot.propose", false)
+		return readErr
+	})
+	return out, err
 }

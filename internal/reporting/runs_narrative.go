@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -36,11 +37,46 @@ func narrativeNumeric(kind string) bool {
 	return slices.Contains([]string{"integer", "decimal", "float", "number", "int64", "uint64", "float64"}, kind)
 }
 
-func decimalScale(value string) int {
-	if i := strings.IndexByte(value, '.'); i >= 0 {
-		return min(len(value)-i-1, 1024)
+// narrativeNumber bounds decimal/exponent parsing before math/big allocates.
+// Scientific notation retains its exact scale instead of rounding small values to zero.
+func narrativeNumber(value string) (*big.Rat, int, bool) {
+	if len(value) == 0 || len(value) > 4096 {
+		return nil, 0, false
 	}
-	return 0
+	mantissa := value
+	exponent := 0
+	if index := strings.IndexAny(value, "eE"); index >= 0 {
+		mantissa = value[:index]
+		parsed, err := strconv.Atoi(value[index+1:])
+		if err != nil || parsed < -1024 || parsed > 1024 {
+			return nil, 0, false
+		}
+		exponent = parsed
+	}
+	digits, fraction := 0, 0
+	decimal := false
+	for i, c := range mantissa {
+		if i == 0 && (c == '-' || c == '+') {
+			continue
+		}
+		if c == '.' && !decimal {
+			decimal = true
+			continue
+		}
+		if c < '0' || c > '9' {
+			return nil, 0, false
+		}
+		digits++
+		if decimal {
+			fraction++
+		}
+	}
+	scale := max(0, fraction-exponent)
+	if digits == 0 || scale > 1024 {
+		return nil, 0, false
+	}
+	number, ok := new(big.Rat).SetString(value)
+	return number, scale, ok
 }
 
 // narrativeEvidence operates only on the retained normalized result. Redaction
@@ -77,7 +113,8 @@ func narrativeEvidence(result exec.Result, n Narrative) ([]NarrativeEvidence, []
 		items = append(items, candidate)
 		return true
 	}
-	if n.Reduction == "aggregate_evidence" {
+	switch n.Reduction {
+	case "aggregate_evidence":
 		for column, field := range result.Schema {
 			if !allowed[field.Name] || !narrativeNumeric(field.Type) {
 				continue
@@ -91,12 +128,12 @@ func narrativeEvidence(result exec.Result, n Narrative) ([]NarrativeEvidence, []
 				if !present {
 					continue
 				}
-				v, ok := new(big.Rat).SetString(value)
-				if !ok || len(value) > 4096 {
+				v, valueScale, ok := narrativeNumber(value)
+				if !ok {
 					return nil, nil, ErrInvalid
 				}
 				sum.Add(sum, v)
-				scale = max(scale, decimalScale(value))
+				scale = max(scale, valueScale)
 				count++
 			}
 			if count == 0 {
@@ -108,7 +145,7 @@ func narrativeEvidence(result exec.Result, n Narrative) ([]NarrativeEvidence, []
 				break
 			}
 		}
-	} else if n.Reduction == "first_rows" {
+	case "first_rows":
 		full := false
 		for row := 0; row < rows && !full; row++ {
 			if len(result.Rows[row]) != len(result.Schema) {
@@ -129,7 +166,7 @@ func narrativeEvidence(result exec.Result, n Narrative) ([]NarrativeEvidence, []
 				}
 			}
 		}
-	} else {
+	default:
 		return nil, nil, ErrInvalid
 	}
 	if len(items) == 0 {
@@ -175,12 +212,12 @@ func groundedText(answer NarrativeAnswer, evidence []NarrativeEvidence, n Narrat
 			if !exists || a.Field != b.Field || a.Type != b.Type || !narrativeNumeric(a.Type) {
 				return "", gateway.ErrOutput
 			}
-			x, validX := new(big.Rat).SetString(a.Value)
-			y, validY := new(big.Rat).SetString(b.Value)
+			x, xScale, validX := narrativeNumber(a.Value)
+			y, yScale, validY := narrativeNumber(b.Value)
 			if !validX || !validY {
 				return "", gateway.ErrOutput
 			}
-			difference := new(big.Rat).Sub(x, y).FloatString(max(decimalScale(a.Value), decimalScale(b.Value)))
+			difference := new(big.Rat).Sub(x, y).FloatString(max(xScale, yScale))
 			label := "Difference"
 			if spanish {
 				label = "Diferencia"

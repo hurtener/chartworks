@@ -127,6 +127,10 @@ jobs:
           docker build -t chartworks-reference:ci .
           docker run --rm --network none --read-only chartworks-reference:ci version
       - run: make vet
+      - name: Reviewed engineering and frozen-run runtime acceptance
+        run: |
+          python3 scripts/run_phase_acceptance.py --phase 26
+          python3 scripts/run_phase_acceptance.py --phase 28
       - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
       - name: Per-function diagnostics from actual race instrumentation
@@ -161,8 +165,6 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 22
           python3 scripts/run_phase_acceptance.py --phase 23
           python3 scripts/run_phase_acceptance.py --phase 27
-          python3 scripts/run_phase_acceptance.py --phase 26
-          python3 scripts/run_phase_acceptance.py --phase 28
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns

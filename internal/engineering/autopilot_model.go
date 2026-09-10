@@ -16,14 +16,23 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 )
 
+// AutopilotVersion identifies immutable reviewed engineering material.
 const AutopilotVersion = "reviewed-engineering-v1"
+
+// AutopilotPromptVersion pins the bounded planning and matching instructions.
 const AutopilotPromptVersion = "scope-plan-confirm-v1"
 
 // ErrProposalReview means that the exact material has not received an independent
 // review. Being its creator, a model, or a named administrator is not approval.
 var ErrProposalReview = errors.New("engineering: independent proposal review required")
+
+// ErrProposalDrift rejects changed source or amendment evidence.
 var ErrProposalDrift = errors.New("engineering: proposal source evidence changed")
+
+// ErrProposalConflict rejects effects conflicting with current managed state.
 var ErrProposalConflict = errors.New("engineering: reviewed proposal effect conflicts with current state")
+
+// ErrCompensationBlocked preserves referenced or unowned managed effects.
 var ErrCompensationBlocked = errors.New("engineering: compensation blocked by dependencies or non-owned effects")
 
 // AutopilotGoal fixes source and managed destination coordinates before a model
@@ -57,6 +66,7 @@ type ProposalEvidence struct {
 	Digest  string `json:"digest"`
 }
 
+// ProposalAlternative names an authorized dataset considered for direct reuse.
 type ProposalAlternative struct {
 	Dataset   string `json:"dataset"`
 	Rationale string `json:"rationale"`
@@ -76,15 +86,30 @@ type ProposalObject struct {
 	ModelVersion string                `json:"model_version"`
 }
 
+// ProposalReference records required source-partition reach.
 type ProposalReference struct {
 	Kind       string `json:"kind"`
 	Permission string `json:"permission"`
 	ID         string `json:"id"`
 }
 
-// ProposalMaterial is append-only and is the exact unit reviewed and applied.
-// Revisions do not copy approval, and the source partition is part of its digest.
+// ProposalOrigin binds a new independently reviewed amendment to exact drift evidence.
+type ProposalOrigin struct {
+	Proposal       string `json:"proposal"`
+	Revision       int64  `json:"revision"`
+	Digest         string `json:"digest"`
+	Drift          string `json:"drift"`
+	EvidenceDigest string `json:"evidence_digest"`
+}
+
+// AutopilotAmendRequest selects exact drift evidence for independent review.
+type AutopilotAmendRequest struct {
+	Drift string `json:"drift"`
+}
+
+// ProposalMaterial is the immutable unit of review, including amendment provenance.
 type ProposalMaterial struct {
+	Origin        *ProposalOrigin     `json:"origin,omitempty"`
 	Version       string              `json:"version"`
 	Request       AutopilotGoal       `json:"request"`
 	Plan          AutopilotPlan       `json:"blind_plan"`
@@ -101,8 +126,10 @@ type ProposalMaterial struct {
 	Usage         gateway.Receipt     `json:"usage"`
 }
 
+// Digest binds the entire immutable proposal material.
 func (m ProposalMaterial) Digest() string { return readexec.Hash(m) }
 
+// ProposalReview records the signed independent decision over exact material.
 type ProposalReview struct {
 	Revision int64     `json:"revision"`
 	Digest   string    `json:"digest"`
@@ -126,6 +153,7 @@ type ProposalEffect struct {
 	Observed  time.Time `json:"observed_at"`
 }
 
+// AutopilotProposal combines immutable material with review and staged effects.
 type AutopilotProposal struct {
 	ID           string           `json:"id"`
 	Tenant       string           `json:"tenant"`
@@ -146,6 +174,7 @@ type AutopilotProposal struct {
 	AmendmentOf  string           `json:"amendment_of,omitempty"`
 }
 
+// AutopilotReviewRequest binds approval or rejection to an exact revision.
 type AutopilotReviewRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Revision        int64  `json:"revision"`
@@ -154,12 +183,14 @@ type AutopilotReviewRequest struct {
 	Reason          string `json:"reason"`
 }
 
+// AutopilotEditRequest appends material without inheriting approval.
 type AutopilotEditRequest struct {
 	ExpectedVersion int64              `json:"expected_version"`
 	Definition      PipelineDefinition `json:"definition"`
 	Reason          string             `json:"reason"`
 }
 
+// AutopilotApplyRequest identifies reviewed material and explicit retry intent.
 type AutopilotApplyRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Revision        int64  `json:"revision"`
@@ -167,12 +198,14 @@ type AutopilotApplyRequest struct {
 	Resume          bool   `json:"resume"`
 }
 
+// ProposalImpact identifies a currently authorized affected definition.
 type ProposalImpact struct {
 	Kind   string `json:"kind"`
 	ID     string `json:"id"`
 	Reason string `json:"reason"`
 }
 
+// AutopilotDrift retains observed failure evidence without changing definitions.
 type AutopilotDrift struct {
 	ID                   string           `json:"id"`
 	Proposal             string           `json:"proposal"`
@@ -180,6 +213,7 @@ type AutopilotDrift struct {
 	Kind                 string           `json:"kind"`
 	EvidenceDigest       string           `json:"evidence_digest"`
 	PriorBindingDigest   string           `json:"prior_binding_digest"`
+	CurrentContext       string           `json:"current_context,omitempty"`
 	CurrentBindingDigest string           `json:"current_binding_digest"`
 	Observed             time.Time        `json:"observed_at"`
 	State                string           `json:"state"`
@@ -189,6 +223,7 @@ type AutopilotDrift struct {
 // AutopilotRepository is the first consumer of proposal metadata, not a second
 // job engine. Actual managed effects run in the existing pipeline request ledger.
 type AutopilotRepository interface {
+	ReadAutopilotAmendment(context.Context, identity.Envelope, string) (AutopilotProposal, error)
 	SaveAutopilotProposal(context.Context, identity.Envelope, PreparedProposal, int64, int) (AutopilotProposal, error)
 	ReadAutopilotProposal(context.Context, identity.Envelope, string, string) (AutopilotProposal, error)
 	ReviewAutopilotProposal(context.Context, identity.Envelope, string, AutopilotReviewRequest) (AutopilotProposal, error)
@@ -243,6 +278,12 @@ func ValidateAutopilotMaterial(m ProposalMaterial, l config.Autopilot) error {
 	}
 	for _, r := range m.Plan.Requirements {
 		if !proposalText(r, 1024) {
+			return ErrInvalid
+		}
+	}
+	if m.Origin != nil {
+		o := m.Origin
+		if !identity.Identifier(o.Proposal) || o.Proposal == m.Request.ID || o.Revision < 1 || o.Revision > 256 || !digest64(o.Digest) || !digest64(o.EvidenceDigest) || len(o.Drift) != 32 || !identity.Identifier(o.Drift) {
 			return ErrInvalid
 		}
 	}
@@ -321,4 +362,16 @@ func ValidateAutopilotMaterial(m ProposalMaterial, l config.Autopilot) error {
 		return ErrLimit
 	}
 	return nil
+}
+
+func digest64(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, c := range value {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

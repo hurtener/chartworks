@@ -2,7 +2,7 @@ package reporting
 
 import (
 	"errors"
-	"strings"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,7 +12,7 @@ import (
 func TestFrozenQueryAttemptClassification(t *testing.T) {
 	now := time.Now()
 	makeAttempt := func(number int, status, remote string, finished bool) exec.Attempt {
-		a := exec.Attempt{ID: strings.Repeat(string(rune('a'+number)), 32), Number: number, Status: status, RemoteState: remote}
+		a := exec.Attempt{ID: fmt.Sprintf("%032x", number), Number: number, Status: status, RemoteState: remote}
 		if finished {
 			a.Finished = &now
 		}

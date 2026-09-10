@@ -61,7 +61,11 @@ to `engineering.autopilot.apply`. Proposal approval alone grants none of them.
 `/compensate` retires only a new, still-current, owned managed generation without
 published dependents. It records quarantine, not physical deletion or global
 rollback. `/drift` records deduplicated schema/freshness/quality evidence and
-currently authorized affected topic/block identifiers. Published business meaning
+currently authorized affected topic/block identifiers. `/amend` accepts the exact
+drift ID and creates one ordinary editable proposal with immutable parent/evidence
+links, a current source partition and expected pipeline version. It retains no old
+approval. A changed pipeline head or unavailable current context fails closed.
+Physical schema observation uses the existing read-only source probe. Published business meaning
 is never automatically changed.
 
 Each operation registers its closed schema, signed action, resource loader,

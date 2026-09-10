@@ -29,6 +29,7 @@ type Autopilot struct {
 	planning  chan struct{}
 }
 
+// NewAutopilot composes bounded planning with the existing managed pipeline service.
 func NewAutopilot(repo AutopilotRepository, pipelines *PipelineService, limits config.Autopilot) (*Autopilot, error) {
 	if repo == nil || pipelines == nil || limits.Validate() != nil {
 		return nil, ErrInvalid
@@ -40,6 +41,7 @@ func NewAutopilot(repo AutopilotRepository, pipelines *PipelineService, limits c
 	return &Autopilot{repo: repo, pipelines: pipelines, limits: limits, life: life, cancel: cancel, planning: make(chan struct{}, 4)}, nil
 }
 
+// Close cancels work and joins in-flight proposal calls.
 func (s *Autopilot) Close() { s.cancel(); s.mu.Lock(); defer s.mu.Unlock(); s.closed = true }
 
 func (s *Autopilot) begin(ctx context.Context, e identity.Envelope, mutate bool) (context.Context, func(), error) {
@@ -67,6 +69,7 @@ func autopilotEarlier(a, b time.Time) time.Time {
 	return b
 }
 
+// Get reads only currently authorized proposal material and effect receipts.
 func (s *Autopilot) Get(ctx context.Context, e identity.Envelope, id string) (AutopilotProposal, error) {
 	ctx, stop, err := s.begin(ctx, e, false)
 	if err != nil {
@@ -107,6 +110,9 @@ const matchedProposalSchema = `{"type":"object","additionalProperties":false,"re
 // source partition, validates the match/build decision and persists a draft.
 // It cannot invoke pipeline publication, managed writes or topic publication.
 func (s *Autopilot) Propose(ctx context.Context, e identity.Envelope, g AutopilotGoal) (AutopilotProposal, error) {
+	return s.propose(ctx, e, g, nil)
+}
+func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g AutopilotGoal, origin *ProposalOrigin) (AutopilotProposal, error) {
 	ctx, stop, err := s.begin(ctx, e, true)
 	if err != nil {
 		return AutopilotProposal{}, err
@@ -120,7 +126,7 @@ func (s *Autopilot) Propose(ctx context.Context, e identity.Envelope, g Autopilo
 	}
 	previous, err := s.repo.ReadAutopilotProposal(ctx, e, g.ID, "engineering.autopilot.propose")
 	if err == nil {
-		if readexec.Hash(previous.Material.Request) != readexec.Hash(g) {
+		if readexec.Hash(previous.Material.Request) != readexec.Hash(g) || readexec.Hash(previous.Material.Origin) != readexec.Hash(origin) {
 			return AutopilotProposal{}, store.ErrConflict
 		}
 		return previous, nil
@@ -141,7 +147,7 @@ func (s *Autopilot) Propose(ctx context.Context, e identity.Envelope, g Autopilo
 	if binding.Dialect != "postgres" || !binding.Valid() {
 		return AutopilotProposal{}, ErrInvalid
 	}
-	material := ProposalMaterial{Version: AutopilotVersion, Request: g, Binding: binding, References: proposalRefs(binding), Evidence: proposalFacts(binding), Author: e.User(), Session: e.Session(), Created: time.Now().UTC().Truncate(time.Microsecond), ModelVersion: s.limits.ModelVersion, PromptVersion: AutopilotPromptVersion}
+	material := ProposalMaterial{Origin: origin, Version: AutopilotVersion, Request: g, Binding: binding, References: proposalRefs(binding), Evidence: proposalFacts(binding), Author: e.User(), Session: e.Session(), Created: time.Now().UTC().Truncate(time.Microsecond), ModelVersion: s.limits.ModelVersion, PromptVersion: AutopilotPromptVersion}
 	material.Pipeline = PipelineDefinition{ID: g.Pipeline, Name: g.Name, Connection: g.Connection}
 	if err = RequireAutopilotMaterial(e, material, "engineering.autopilot.propose"); err != nil {
 		return AutopilotProposal{}, err
@@ -287,4 +293,44 @@ func (s *Autopilot) Review(ctx context.Context, e identity.Envelope, id string, 
 		return AutopilotProposal{}, ErrInvalid
 	}
 	return s.repo.ReviewAutopilotProposal(ctx, e, id, r)
+}
+
+// Amend turns observed drift into ordinary editable material, never carrying the
+// old approval forward. Every retry addresses the same evidence-derived ID.
+func (s *Autopilot) Amend(ctx context.Context, e identity.Envelope, id string, r AutopilotAmendRequest) (AutopilotProposal, error) {
+	if ctx == nil || len(r.Drift) != 32 || !identity.Identifier(r.Drift) {
+		return AutopilotProposal{}, ErrInvalid
+	}
+	p, err := s.Get(ctx, e, id)
+	if err != nil {
+		return AutopilotProposal{}, err
+	}
+	if err = RequireAutopilotMaterial(e, p.Material, "engineering.autopilot.propose"); err != nil {
+		return AutopilotProposal{}, err
+	}
+	existing, err := s.repo.ReadAutopilotAmendment(ctx, e, r.Drift)
+	if err == nil {
+		if existing.Material.Origin == nil || existing.Material.Origin.Proposal != id {
+			return AutopilotProposal{}, store.ErrConflict
+		}
+		return existing, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return AutopilotProposal{}, err
+	}
+	drift, err := s.DetectDrift(ctx, e, id)
+	if err != nil {
+		return AutopilotProposal{}, err
+	}
+	if drift.ID != r.Drift || drift.Revision != p.Revision {
+		return AutopilotProposal{}, ErrProposalDrift
+	}
+	goal := p.Material.Request
+	goal.ID = "amend-" + drift.ID
+	goal.ExpectedPipelineVersion++
+	if drift.CurrentContext != "" {
+		goal.Context = drift.CurrentContext
+	}
+	origin := &ProposalOrigin{Proposal: p.ID, Revision: p.Revision, Digest: p.Digest, Drift: drift.ID, EvidenceDigest: drift.EvidenceDigest}
+	return s.propose(ctx, e, goal, origin)
 }

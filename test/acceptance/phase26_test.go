@@ -295,11 +295,12 @@ func TestPhase26(t *testing.T) {
 		close(results)
 		wins, conflicts := 0, 0
 		for err := range results {
-			if err == nil {
+			switch {
+			case err == nil:
 				wins++
-			} else if errors.Is(err, store.ErrConflict) {
+			case errors.Is(err, store.ErrConflict):
 				conflicts++
-			} else {
+			default:
 				t.Fatal("unexpected competing review result", err)
 			}
 		}
@@ -379,6 +380,18 @@ func TestPhase26(t *testing.T) {
 		second, err := f.auto.DetectDrift(context.Background(), f.author, p.ID)
 		if err != nil || second.ID != first.ID || second.EvidenceDigest != first.EvidenceDigest || f.model.fixture.requests.Load() != before {
 			t.Fatal("unchanged drift spammed amendments or called a model", second, err)
+		}
+		amendment, err := f.client.AmendEngineeringProposal(context.Background(), p.ID, sdk.EngineeringProposalAmend{Drift: first.ID})
+		if err != nil || amendment.State != "draft" || amendment.Review != nil || amendment.AmendmentOf != p.ID || amendment.Material.Request.ExpectedPipelineVersion != 1 || amendment.Material.Origin == nil || amendment.Material.Origin.EvidenceDigest != first.EvidenceDigest {
+			t.Fatal("drift did not become independent review material", amendment, err)
+		}
+		afterAmend := f.model.fixture.requests.Load()
+		replay, err := f.client.AmendEngineeringProposal(context.Background(), p.ID, sdk.EngineeringProposalAmend{Drift: first.ID})
+		if err != nil || replay.ID != amendment.ID || f.model.fixture.requests.Load() != afterAmend {
+			t.Fatal("amendment replay repeated planning", replay, err)
+		}
+		if _, err = f.auto.Apply(context.Background(), f.author, amendment.ID, phase26ApplyRequest(amendment)); !errors.Is(err, engineering.ErrProposalReview) {
+			t.Fatal("amendment inherited approval", err)
 		}
 		unchanged, err := f.auto.Get(context.Background(), f.author, p.ID)
 		if err != nil || unchanged.Digest != p.Digest || unchanged.Revision != p.Revision || unchanged.Version != p.Version {

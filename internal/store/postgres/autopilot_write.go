@@ -74,7 +74,7 @@ func (d *DB) SaveAutopilotProposal(ctx context.Context, e identity.Envelope, pro
 				return readErr
 			}
 			if expected == 0 {
-				if readexec.Hash(old.Material.Request) != readexec.Hash(m.Request) {
+				if readexec.Hash(old.Material.Request) != readexec.Hash(m.Request) || readexec.Hash(old.Material.Origin) != readexec.Hash(m.Origin) {
 					return store.ErrConflict
 				}
 				out = old
@@ -83,7 +83,7 @@ func (d *DB) SaveAutopilotProposal(ctx context.Context, e identity.Envelope, pro
 			if old.Version != expected || old.State == "applying" || old.State == "applied" || old.State == "compensated" || old.Revision >= 256 {
 				return store.ErrConflict
 			}
-			if readexec.Hash(old.Material.Request) != readexec.Hash(m.Request) || readexec.Hash(old.Material.Binding) != readexec.Hash(m.Binding) {
+			if readexec.Hash(old.Material.Request) != readexec.Hash(m.Request) || readexec.Hash(old.Material.Origin) != readexec.Hash(m.Origin) || readexec.Hash(old.Material.Binding) != readexec.Hash(m.Binding) {
 				return engineering.ErrProposalDrift
 			}
 			revision, version, action = old.Revision+1, old.Version+1, "engineering.proposal_edited"
@@ -99,6 +99,11 @@ func (d *DB) SaveAutopilotProposal(ctx context.Context, e identity.Envelope, pro
 				return engineering.ErrLimit
 			}
 		}
+		if !exists && m.Origin != nil {
+			if originErr := proposalOriginTx(ctx, tx, e, m); originErr != nil {
+				return originErr
+			}
+		}
 		if writeErr := proposalSourceFence(ctx, tx, e, m); writeErr != nil {
 			return writeErr
 		}
@@ -109,6 +114,11 @@ func (d *DB) SaveAutopilotProposal(ctx context.Context, e identity.Envelope, pro
 		}
 		if writeErr := insertProposalMaterial(ctx, tx, e, m, revision); writeErr != nil {
 			return writeErr
+		}
+		if !exists && m.Origin != nil {
+			if _, writeErr := tx.Exec(ctx, `INSERT INTO chartworks.engineering_amendment_proposals(tenant_id,amendment_id,proposal_id,parent_id,parent_revision,parent_digest) VALUES($1,$2,$3,$4,$5,$6)`, e.Tenant(), m.Origin.Drift, m.Request.ID, m.Origin.Proposal, m.Origin.Revision, m.Origin.Digest); writeErr != nil {
+				return writeErr
+			}
 		}
 		if exists {
 			if _, writeErr := tx.Exec(ctx, `UPDATE chartworks.engineering_proposal_heads SET version=$3,revision=$4,state='draft',review_version=NULL,updated_at=clock_timestamp() WHERE tenant_id=$1 AND proposal_id=$2 AND version=$5`, e.Tenant(), m.Request.ID, version, revision, expected); writeErr != nil {
@@ -372,4 +382,42 @@ func (d *DB) RecordAutopilotRun(ctx context.Context, e identity.Envelope, proof 
 		return engineering.AutopilotProposal{}, err
 	}
 	return out, nil
+}
+
+func proposalOriginTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, m engineering.ProposalMaterial) error {
+	o := m.Origin
+	p, err := proposalTx(ctx, tx, e, o.Proposal, "engineering.autopilot.propose", true)
+	if err != nil {
+		return err
+	}
+	if p.Revision != o.Revision || p.Digest != o.Digest || p.Material.Pipeline.ID != m.Pipeline.ID || p.Material.Binding.Source != m.Binding.Source || m.Request.ExpectedPipelineVersion != p.Material.Request.ExpectedPipelineVersion+1 {
+		return engineering.ErrProposalDrift
+	}
+	if p.State != "applied" {
+		if p.State != "applying" || p.Operation == "" {
+			return engineering.ErrState
+		}
+		x, readErr := readPipelineExecutionTx(ctx, tx, e, p.Operation)
+		if readErr != nil {
+			return readErr
+		}
+		if x.State != "quality_failed" {
+			return engineering.ErrState
+		}
+	}
+	var evidence string
+	if err = tx.QueryRow(ctx, `SELECT evidence_digest FROM chartworks.engineering_amendments WHERE tenant_id=$1 AND amendment_id=$2 AND proposal_id=$3 AND revision=$4 FOR SHARE`, e.Tenant(), o.Drift, p.ID, p.Revision).Scan(&evidence); err != nil {
+		return err
+	}
+	if evidence != o.EvidenceDigest {
+		return engineering.ErrProposalDrift
+	}
+	var version int64
+	if err = tx.QueryRow(ctx, `SELECT draft_version FROM chartworks.pipeline_heads WHERE tenant_id=$1 AND pipeline_id=$2 AND NOT retired FOR SHARE`, e.Tenant(), m.Pipeline.ID).Scan(&version); err != nil {
+		return err
+	}
+	if version != m.Request.ExpectedPipelineVersion {
+		return engineering.ErrProposalConflict
+	}
+	return nil
 }
