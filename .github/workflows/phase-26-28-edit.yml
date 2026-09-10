@@ -1,0 +1,52 @@
+name: Phase 26-28 guarded development edit
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-edit.yml]
+permissions:
+  contents: write
+jobs:
+  edit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_SOURCE: 69b5c89753d69cf152554b23fbbe10fd16682be6
+      FEATURE_BRANCH: feat/phase-26-28-engineering-artifacts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-26-28-engineering-artifacts
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Apply exact, reviewed source edits
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('internal/config/reporting.go')
+          text = p.read_text()
+          old = 'type Reporting struct {'
+          assert text.count(old) == 1
+          text = text.replace(old, old + '\n\tExecution ReportingExecution `json:"execution"`')
+          old = 'return Reporting{'
+          assert text.count(old) == 1
+          text = text.replace(old, old + 'Execution: DefaultReportingExecution(), ')
+          old = 'func (c Reporting) Validate() error {'
+          assert text.count(old) == 1
+          text = text.replace(old, old + '\n\tif err := c.Execution.Validate(); err != nil { return err }')
+          p.write_text(text)
+          PY
+          gofmt -w internal/config/reporting.go internal/config/reporting_execution.go internal/config/reporting_execution_test.go
+          git diff --check
+      - name: Commit only feature source and fast-forward the feature branch
+        run: |
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/config/reporting.go internal/config/reporting_execution.go internal/config/reporting_execution_test.go
+          git commit -m 'feat(reporting): wire frozen-run configuration into the typed decoder'
+          git push origin "HEAD:$FEATURE_BRANCH"
+          echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
+      - name: Verify exact committed configuration
+        run: go test -race -count=1 ./internal/config
