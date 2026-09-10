@@ -71,7 +71,7 @@ func phase26ImpactTopic(t *testing.T, f *phase26Fixture, p engineering.Autopilot
 
 func phase26CheckImpactReach(t *testing.T, f *phase26Fixture, p engineering.AutopilotProposal, topic string) {
 	t.Helper()
-	scopes := append(phase26Scopes(), "topics.read", "reporting.read")
+	scopes := append(phase26Scopes(), "reporting.read")
 	all := f.token.envelope(t, f.author.Tenant(), f.author.User(), scopes...)
 	impact, err := f.auto.DetectDrift(context.Background(), all, p.ID)
 	if err != nil {

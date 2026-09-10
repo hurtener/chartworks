@@ -641,3 +641,46 @@ func TestTopicProfilePlanningDoesNotPersist(t *testing.T) {
 		t.Fatal("planned material could not use normal save", saved, err)
 	}
 }
+
+func TestAutopilotTopicDraftAdapter(t *testing.T) {
+	f, service, actor, pack := topicFixture(t)
+	ctx := context.Background()
+	goal := engineering.AutopilotTopicGoal{Topic: "engineering-topic", Profile: pack.Datasets[0].Source.ProfileVersion, Version: "v1", Name: "Reviewed topic", Description: "Synthetic profile-backed material"}
+	planned, err := service.PlanAutopilotTopic(ctx, actor, goal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned.Name = "Edited proposed meaning"
+	if err = service.CheckAutopilotTopic(ctx, actor, goal, planned); err != nil {
+		t.Fatal(err)
+	}
+	invalid := cloneTopic(t, planned)
+	invalid.Datasets[0].Source.Context = "unrelated-context"
+	if err = service.CheckAutopilotTopic(ctx, actor, goal, invalid); err == nil {
+		t.Fatal("changed profile context accepted")
+	}
+	p := engineering.AutopilotProposal{ID: "topic-proposal", Revision: 1, Digest: strings.Repeat("a", 64), Material: engineering.ProposalMaterial{Request: engineering.AutopilotGoal{Topic: &goal}, Topic: &planned}}
+	saved, err := service.ApplyAutopilotTopic(ctx, actor, p)
+	if err != nil || saved.Revision != 1 {
+		t.Fatal("ordinary topic save failed", saved, err)
+	}
+	replay, err := service.ApplyAutopilotTopic(ctx, actor, p)
+	if err != nil || replay != saved {
+		t.Fatal("lost-reply reconciliation failed", replay, err)
+	}
+	other := p
+	other.ID = "different-proposal"
+	if _, err = service.ApplyAutopilotTopic(ctx, actor, other); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("foreign proposal adopted private effect", err)
+	}
+	goal.ExpectedRevision = 1
+	goal.Version = "v2"
+	next, err := service.PlanAutopilotTopic(ctx, actor, goal)
+	if err != nil || next.Version != "v2" || next.Datasets[0].Source != planned.Datasets[0].Source {
+		t.Fatal("existing draft proposal lost provenance", next, err)
+	}
+	limited := f.token.envelope(t, actor.Tenant(), actor.User(), "topics.write", "cw.topic.write:"+goal.Topic)
+	if _, err = service.PlanAutopilotTopic(ctx, limited, goal); err == nil {
+		t.Fatal("topic plan widened authority")
+	}
+}

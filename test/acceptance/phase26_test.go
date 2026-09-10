@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/reportingapi"
+	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/vindex"
 	sdk "github.com/hurtener/chartworks/sdk/chartworks"
@@ -98,7 +99,7 @@ func (m *phase26Model) Generate(ctx context.Context, call gateway.Call, budget *
 
 func phase26Scopes() []string {
 	return []string{
-		"sources.read", "sources.query", "engineering.autopilot.read", "engineering.autopilot.propose", "engineering.autopilot.review", "engineering.autopilot.apply", "engineering.autopilot.compensate", "engineering.autopilot.drift",
+		"sources.read", "sources.query", "engineering.read", "topics.read", "topics.write", "cw.tenant.write:source-a", "cw.topic.write:*", "engineering.autopilot.read", "engineering.autopilot.propose", "engineering.autopilot.review", "engineering.autopilot.apply", "engineering.autopilot.compensate", "engineering.autopilot.drift",
 		"engineering.pipeline.read", "engineering.pipeline.write", "engineering.pipeline.publish", "engineering.pipeline.run", "jobs.read", "jobs.cancel",
 		"cw.source.read:*", "cw.source.write:*", "cw.source.query:*", "cw.execution_context.use:*", "cw.dataset.query:*", "cw.topic.read:*", "cw.block.read:*",
 	}
@@ -123,7 +124,11 @@ func newPhase26Fixture(t *testing.T) *phase26Fixture {
 	source := f.create(t, "p26-authorized-source")
 	limits := config.DefaultAutopilot()
 	limits.Enabled, limits.ModelVersion = true, "reviewed-model-v1"
-	auto, err := engineering.NewAutopilot(f.db, f.pipelines, limits)
+	topicDrafts, err := drafts.New(f.db, f.s, f.service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auto, err := engineering.NewAutopilot(f.db, f.pipelines, limits, topicDrafts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,8 +282,13 @@ func TestPhase26(t *testing.T) {
 		if _, err := f.auto.Review(context.Background(), f.author, p.ID, request); !errors.Is(err, engineering.ErrProposalReview) {
 			t.Fatal("submitter self-approved", err)
 		}
-		if _, err := f.client.ApplyEngineeringProposal(context.Background(), p.ID, phase26ApplyRequest(p)); !errors.Is(err, engineering.ErrProposalReview) {
-			t.Fatal("unreviewed proposal applied", err)
+		if _, err := f.client.ApplyEngineeringProposal(context.Background(), p.ID, phase26ApplyRequest(p)); err == nil {
+			t.Fatal("unreviewed proposal applied")
+		} else {
+			var status *sdk.StatusError
+			if !errors.As(err, &status) || status.Status != 409 {
+				t.Fatal("unreviewed proposal failure lost its wire contract", err)
+			}
 		}
 		reviewer := f.token.envelope(t, f.author.Tenant(), "independent-reviewer", phase26Scopes()...)
 		results := make(chan error, 2)
@@ -402,6 +412,7 @@ func TestPhase26(t *testing.T) {
 	})
 
 	t.Run("AC06", func(t *testing.T) {
+		t.Run("reviewed_topic", testPhase26TopicApply)
 		f := newPhase26Fixture(t)
 		approved := f.approve(t, f.propose(t))
 		applyOnly := slices.DeleteFunc(phase26Scopes(), func(scope string) bool { return scope == "engineering.pipeline.run" })

@@ -14,6 +14,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics"
 )
 
 // AutopilotVersion identifies immutable reviewed engineering material.
@@ -38,15 +39,16 @@ var ErrCompensationBlocked = errors.New("engineering: compensation blocked by de
 // AutopilotGoal fixes source and managed destination coordinates before a model
 // sees any catalog metadata. It contains no identity, credentials or approval flag.
 type AutopilotGoal struct {
-	ID                      string `json:"id"`
-	Pipeline                string `json:"pipeline"`
-	Name                    string `json:"name"`
-	Connection              string `json:"connection"`
-	Source                  string `json:"source"`
-	Context                 string `json:"context"`
-	Goal                    string `json:"goal"`
-	ExpectedPipelineVersion int64  `json:"expected_pipeline_version"`
-	MaxStalenessSeconds     int    `json:"max_staleness_seconds"`
+	Topic                   *AutopilotTopicGoal `json:"topic,omitempty"`
+	ID                      string              `json:"id"`
+	Pipeline                string              `json:"pipeline"`
+	Name                    string              `json:"name"`
+	Connection              string              `json:"connection"`
+	Source                  string              `json:"source"`
+	Context                 string              `json:"context"`
+	Goal                    string              `json:"goal"`
+	ExpectedPipelineVersion int64               `json:"expected_pipeline_version"`
+	MaxStalenessSeconds     int                 `json:"max_staleness_seconds"`
 }
 
 // AutopilotPlan is the retained blind-planning output, before catalog retrieval.
@@ -104,26 +106,28 @@ type ProposalOrigin struct {
 
 // AutopilotAmendRequest selects exact drift evidence for independent review.
 type AutopilotAmendRequest struct {
-	Drift string `json:"drift"`
+	TopicProfile string `json:"topic_profile,omitempty"`
+	Drift        string `json:"drift"`
 }
 
 // ProposalMaterial is the immutable unit of review, including amendment provenance.
 type ProposalMaterial struct {
-	Origin        *ProposalOrigin     `json:"origin,omitempty"`
-	Version       string              `json:"version"`
-	Request       AutopilotGoal       `json:"request"`
-	Plan          AutopilotPlan       `json:"blind_plan"`
-	Binding       readexec.Binding    `json:"binding"`
-	Pipeline      PipelineDefinition  `json:"pipeline"`
-	Evidence      []ProposalEvidence  `json:"evidence"`
-	Objects       []ProposalObject    `json:"objects"`
-	References    []ProposalReference `json:"references"`
-	Author        string              `json:"author"`
-	Session       string              `json:"session"`
-	Created       time.Time           `json:"created_at"`
-	ModelVersion  string              `json:"model_version"`
-	PromptVersion string              `json:"prompt_version"`
-	Usage         gateway.Receipt     `json:"usage"`
+	Topic         *semantics.TopicPack `json:"topic,omitempty"`
+	Origin        *ProposalOrigin      `json:"origin,omitempty"`
+	Version       string               `json:"version"`
+	Request       AutopilotGoal        `json:"request"`
+	Plan          AutopilotPlan        `json:"blind_plan"`
+	Binding       readexec.Binding     `json:"binding"`
+	Pipeline      PipelineDefinition   `json:"pipeline"`
+	Evidence      []ProposalEvidence   `json:"evidence"`
+	Objects       []ProposalObject     `json:"objects"`
+	References    []ProposalReference  `json:"references"`
+	Author        string               `json:"author"`
+	Session       string               `json:"session"`
+	Created       time.Time            `json:"created_at"`
+	ModelVersion  string               `json:"model_version"`
+	PromptVersion string               `json:"prompt_version"`
+	Usage         gateway.Receipt      `json:"usage"`
 }
 
 // Digest binds the entire immutable proposal material.
@@ -185,9 +189,10 @@ type AutopilotReviewRequest struct {
 
 // AutopilotEditRequest appends material without inheriting approval.
 type AutopilotEditRequest struct {
-	ExpectedVersion int64              `json:"expected_version"`
-	Definition      PipelineDefinition `json:"definition"`
-	Reason          string             `json:"reason"`
+	Topic           *semantics.TopicPack `json:"topic,omitempty"`
+	ExpectedVersion int64                `json:"expected_version"`
+	Definition      PipelineDefinition   `json:"definition"`
+	Reason          string               `json:"reason"`
 }
 
 // AutopilotApplyRequest identifies reviewed material and explicit retry intent.
@@ -223,6 +228,7 @@ type AutopilotDrift struct {
 // AutopilotRepository is the first consumer of proposal metadata, not a second
 // job engine. Actual managed effects run in the existing pipeline request ledger.
 type AutopilotRepository interface {
+	RecordAutopilotTopic(context.Context, identity.Envelope, PreparedProposalApply, ProposalTopicResult) (AutopilotProposal, error)
 	ReadAutopilotAmendment(context.Context, identity.Envelope, string) (AutopilotProposal, error)
 	SaveAutopilotProposal(context.Context, identity.Envelope, PreparedProposal, int64, int) (AutopilotProposal, error)
 	ReadAutopilotProposal(context.Context, identity.Envelope, string, string) (AutopilotProposal, error)
@@ -238,7 +244,7 @@ func proposalText(s string, maximum int) bool {
 }
 
 func validateAutopilotGoal(g AutopilotGoal) error {
-	if !identity.Identifier(g.ID) || !identity.Identifier(g.Pipeline) || len(g.Pipeline) > 48 || g.Pipeline == g.Source ||
+	if !validTopicGoal(g.Topic) || !identity.Identifier(g.ID) || !identity.Identifier(g.Pipeline) || len(g.Pipeline) > 48 || g.Pipeline == g.Source ||
 		!identity.Identifier(g.Source) || !identity.Identifier(g.Context) || !identity.Identifier(g.Connection) || !proposalText(g.Name, 128) ||
 		!proposalText(g.Goal, 4096) || g.ExpectedPipelineVersion < 0 || g.ExpectedPipelineVersion > 4096 || g.MaxStalenessSeconds < 60 || g.MaxStalenessSeconds > 604800 {
 		return ErrInvalid
@@ -273,8 +279,11 @@ func ValidateAutopilotMaterial(m ProposalMaterial, l config.Autopilot) error {
 		!m.Binding.Valid() || m.Binding.Source != m.Request.Source || m.Binding.Context != m.Request.Context || m.Binding.Dialect != "postgres" ||
 		m.Pipeline.ID != m.Request.Pipeline || m.Pipeline.Name != m.Request.Name || m.Pipeline.Connection != m.Request.Connection ||
 		!identity.Identifier(m.Author) || !identity.Identifier(m.Session) || m.Created.IsZero() || !proposalText(m.ModelVersion, 256) ||
-		len(m.Plan.Requirements) < 1 || len(m.Plan.Requirements) > l.MaxSteps || !proposalText(m.Plan.Rationale, 4096) || len(m.Objects) != len(m.Pipeline.Steps)+1 {
+		len(m.Plan.Requirements) < 1 || len(m.Plan.Requirements) > l.MaxSteps || !proposalText(m.Plan.Rationale, 4096) || len(m.Objects) != len(m.Pipeline.Steps)+1+topicObjectCount(m) {
 		return ErrInvalid
+	}
+	if err := validateProposalTopic(m); err != nil {
+		return err
 	}
 	for _, r := range m.Plan.Requirements {
 		if !proposalText(r, 1024) {
@@ -314,15 +323,21 @@ func ValidateAutopilotMaterial(m ProposalMaterial, l config.Autopilot) error {
 	for _, r := range m.Binding.Relations {
 		wantRefs = append(wantRefs, ProposalReference{Kind: "dataset", Permission: "query", ID: r.ID})
 	}
+	if m.Topic != nil {
+		wantRefs = append(wantRefs, ProposalReference{Kind: "topic", Permission: "read", ID: m.Topic.Topic})
+	}
 	if readexec.Hash(m.References) != readexec.Hash(wantRefs) {
 		return ErrInvalid
 	}
 	for index, o := range m.Objects {
 		kind, id := "pipeline", m.Pipeline.ID
-		if index > 0 {
+		decision := "build_managed"
+		if index == len(m.Pipeline.Steps)+1 && m.Topic != nil {
+			kind, id, decision = "topic", m.Topic.Topic, "private_draft"
+		} else if index > 0 {
 			kind, id = "dataset", m.Pipeline.ID+"."+m.Pipeline.Steps[index-1].ID
 		}
-		if o.Kind != kind || o.ID != id || o.Decision != "build_managed" || o.Author != m.Author || o.ModelVersion != m.ModelVersion ||
+		if o.Kind != kind || o.ID != id || o.Decision != decision || o.Author != m.Author || o.ModelVersion != m.ModelVersion ||
 			!proposalText(o.Rationale, 4096) || len(o.Evidence) < 1 || len(o.Evidence) > 33 || len(o.Alternatives) < 1 || len(o.Alternatives) > 16 {
 			return ErrInvalid
 		}

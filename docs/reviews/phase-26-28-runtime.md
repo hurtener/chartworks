@@ -67,3 +67,20 @@ action before returning impact IDs. AC05 now publishes a real two-context topic
 and checks both authorized inclusion and exclusion under missing context/action,
 including replay of the same deduplicated observation. The added acceptance
 fixture compiles; local lint is clean. Its Linux execution is still pending.
+
+## Topic integration continuation
+
+L2 now accepts an optional profile-backed private topic change, retains it in the
+reviewed material, supports explicit semantic edits and saves through the existing
+draft service after successful managed execution. Migration 026 extends the
+existing effect/reference ledger; final completion verifies the actual private
+draft. Local PostgreSQL tests cover no-write preparation, exact evidence checks,
+normal save, lost-reply reconciliation and refusal to adopt another proposal's
+private effect. Full phase-26 topic apply is included in AC06 for Linux CI.
+
+The first hosted Linux run at c06a0e4 passed AC01, AC02, AC04, AC05 and AC06.
+AC03 failed because its SDK assertion expected an internal domain sentinel rather
+than the actual HTTP 409; the assertion now checks the SDK status. This was a
+failed CI run, not phase completion. Current-head acceptance and coverage remain
+required. The focused runtime step now precedes the expensive reference-container
+build, with all container and full-suite gates retained.

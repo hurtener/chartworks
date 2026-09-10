@@ -58,6 +58,15 @@ func (s *Autopilot) Apply(ctx context.Context, e identity.Envelope, id string, r
 	if err = s.currentProposalBinding(ctx, e, p.Material); err != nil {
 		return p, err
 	}
+
+	if p.Material.Topic != nil {
+		if s.topics == nil {
+			return p, ErrInvalid
+		}
+		if err = s.topics.CheckAutopilotTopic(ctx, e, *p.Material.Request.Topic, *p.Material.Topic); err != nil {
+			return p, err
+		}
+	}
 	// Proposal approval grants none of these ordinary operational actions.
 	for _, action := range []string{"engineering.pipeline.write", "engineering.pipeline.publish", "engineering.pipeline.run"} {
 		if err = pipelineAuthority(e, p.Material.Pipeline, action, "write"); err != nil {
@@ -105,7 +114,11 @@ func (s *Autopilot) Apply(ctx context.Context, e identity.Envelope, id string, r
 	if err != nil {
 		return p, err
 	}
-	return p, runErr
+
+	if runErr != nil {
+		return p, runErr
+	}
+	return s.applyTopic(ctx, e, p)
 }
 
 // Compensate retires only a newly created, still-current, independently owned
@@ -127,7 +140,7 @@ func (s *Autopilot) Compensate(ctx context.Context, e identity.Envelope, id stri
 	if p.State == "compensated" {
 		return p, nil
 	}
-	if p.State != "applied" || p.Version != r.ExpectedVersion || p.Material.Request.ExpectedPipelineVersion != 0 || p.Operation == "" {
+	if p.State != "applied" || p.Version != r.ExpectedVersion || p.Material.Request.ExpectedPipelineVersion != 0 || p.Operation == "" || p.Material.Topic != nil {
 		return p, ErrCompensationBlocked
 	}
 	if p.ApplyActor != e.User() || p.ApplySession != e.Session() {

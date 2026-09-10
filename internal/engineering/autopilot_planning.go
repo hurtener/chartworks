@@ -19,6 +19,7 @@ import (
 // Autopilot composes reviewed L2 planning with the existing pipeline service.
 // It is not a model agent loop and has no query/write tools available to a model.
 type Autopilot struct {
+	topics    AutopilotTopics
 	repo      AutopilotRepository
 	pipelines *PipelineService
 	limits    config.Autopilot
@@ -30,15 +31,19 @@ type Autopilot struct {
 }
 
 // NewAutopilot composes bounded planning with the existing managed pipeline service.
-func NewAutopilot(repo AutopilotRepository, pipelines *PipelineService, limits config.Autopilot) (*Autopilot, error) {
-	if repo == nil || pipelines == nil || limits.Validate() != nil {
+func NewAutopilot(repo AutopilotRepository, pipelines *PipelineService, limits config.Autopilot, topicServices ...AutopilotTopics) (*Autopilot, error) {
+	if repo == nil || pipelines == nil || limits.Validate() != nil || len(topicServices) > 1 {
 		return nil, ErrInvalid
 	}
 	if limits.Enabled && (!pipelines.Enabled() || pipelines.model == nil || pipelines.validator == nil) {
 		return nil, store.ErrUnavailable
 	}
 	life, cancel := context.WithCancel(context.Background())
-	return &Autopilot{repo: repo, pipelines: pipelines, limits: limits, life: life, cancel: cancel, planning: make(chan struct{}, 4)}, nil
+	var topicService AutopilotTopics
+	if len(topicServices) == 1 {
+		topicService = topicServices[0]
+	}
+	return &Autopilot{topics: topicService, repo: repo, pipelines: pipelines, limits: limits, life: life, cancel: cancel, planning: make(chan struct{}, 4)}, nil
 }
 
 // Close cancels work and joins in-flight proposal calls.
@@ -149,6 +154,21 @@ func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g Autopilo
 	}
 	material := ProposalMaterial{Origin: origin, Version: AutopilotVersion, Request: g, Binding: binding, References: proposalRefs(binding), Evidence: proposalFacts(binding), Author: e.User(), Session: e.Session(), Created: time.Now().UTC().Truncate(time.Microsecond), ModelVersion: s.limits.ModelVersion, PromptVersion: AutopilotPromptVersion}
 	material.Pipeline = PipelineDefinition{ID: g.Pipeline, Name: g.Name, Connection: g.Connection}
+	if g.Topic != nil {
+		if s.topics == nil {
+			return AutopilotProposal{}, ErrInvalid
+		}
+		pack, topicErr := s.topics.PlanAutopilotTopic(ctx, e, *g.Topic)
+		if topicErr != nil {
+			return AutopilotProposal{}, topicErr
+		}
+		material.Topic = &pack
+		material.References = append(material.References, ProposalReference{Kind: "topic", Permission: "read", ID: pack.Topic})
+		if topicErr = validateProposalTopic(material); topicErr != nil {
+			return AutopilotProposal{}, topicErr
+		}
+	}
+
 	if err = RequireAutopilotMaterial(e, material, "engineering.autopilot.propose"); err != nil {
 		return AutopilotProposal{}, err
 	}
@@ -215,6 +235,10 @@ func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g Autopilo
 	for _, target := range []struct{ kind, id string }{{"pipeline", g.Pipeline}, {"dataset", g.Pipeline + ".output"}} {
 		material.Objects = append(material.Objects, ProposalObject{Kind: target.kind, ID: target.id, Decision: "build_managed", Rationale: matched.Rationale, Evidence: append([]string(nil), matched.Evidence...), Alternatives: append([]ProposalAlternative(nil), matched.Alternatives...), Author: e.User(), ModelVersion: s.limits.ModelVersion})
 	}
+
+	if material.Topic != nil {
+		material.Objects = append(material.Objects, ProposalObject{Kind: "topic", ID: material.Topic.Topic, Decision: "private_draft", Rationale: "Profile-backed authoring material; business meaning remains subject to ordinary topic review and publication.", Evidence: []string{"binding", "relation:" + material.Topic.Datasets[0].ID}, Alternatives: append([]ProposalAlternative(nil), matched.Alternatives...), Author: e.User(), ModelVersion: s.limits.ModelVersion})
+	}
 	if err = s.pipelines.validateInputs(ctx, e, material.Pipeline); err != nil {
 		return AutopilotProposal{}, err
 	}
@@ -248,6 +272,16 @@ func (s *Autopilot) Edit(ctx context.Context, e identity.Envelope, id string, r 
 		return AutopilotProposal{}, store.ErrConflict
 	}
 	m := p.Material
+	if r.Topic != nil {
+		if m.Request.Topic == nil || s.topics == nil {
+			return AutopilotProposal{}, ErrInvalid
+		}
+		if err = s.topics.CheckAutopilotTopic(ctx, e, *m.Request.Topic, *r.Topic); err != nil {
+			return AutopilotProposal{}, err
+		}
+		m.Topic = r.Topic
+	}
+
 	if r.Definition.ID != m.Pipeline.ID || r.Definition.Connection != m.Pipeline.Connection || r.Definition.Name != m.Pipeline.Name || len(r.Definition.Steps) != len(m.Pipeline.Steps) {
 		return AutopilotProposal{}, ErrInvalid
 	}
@@ -298,7 +332,7 @@ func (s *Autopilot) Review(ctx context.Context, e identity.Envelope, id string, 
 // Amend turns observed drift into ordinary editable material, never carrying the
 // old approval forward. Every retry addresses the same evidence-derived ID.
 func (s *Autopilot) Amend(ctx context.Context, e identity.Envelope, id string, r AutopilotAmendRequest) (AutopilotProposal, error) {
-	if ctx == nil || len(r.Drift) != 32 || !identity.Identifier(r.Drift) {
+	if ctx == nil || len(r.Drift) != 32 || !identity.Identifier(r.Drift) || r.TopicProfile != "" && !identity.Identifier(r.TopicProfile) {
 		return AutopilotProposal{}, ErrInvalid
 	}
 	p, err := s.Get(ctx, e, id)
@@ -308,9 +342,12 @@ func (s *Autopilot) Amend(ctx context.Context, e identity.Envelope, id string, r
 	if err = RequireAutopilotMaterial(e, p.Material, "engineering.autopilot.propose"); err != nil {
 		return AutopilotProposal{}, err
 	}
+	if r.TopicProfile != "" && p.Material.Request.Topic == nil {
+		return AutopilotProposal{}, ErrInvalid
+	}
 	existing, err := s.repo.ReadAutopilotAmendment(ctx, e, r.Drift)
 	if err == nil {
-		if existing.Material.Origin == nil || existing.Material.Origin.Proposal != id {
+		if existing.Material.Origin == nil || existing.Material.Origin.Proposal != id || r.TopicProfile != "" && (existing.Material.Request.Topic == nil || existing.Material.Request.Topic.Profile != r.TopicProfile) {
 			return AutopilotProposal{}, store.ErrConflict
 		}
 		return existing, nil
@@ -328,6 +365,15 @@ func (s *Autopilot) Amend(ctx context.Context, e identity.Envelope, id string, r
 	goal := p.Material.Request
 	goal.ID = "amend-" + drift.ID
 	goal.ExpectedPipelineVersion++
+	if goal.Topic != nil {
+		topicGoal := *goal.Topic
+		topicGoal.ExpectedRevision++
+		if r.TopicProfile != "" {
+			topicGoal.Profile = r.TopicProfile
+		}
+		topicGoal.Version = "amend-" + drift.ID
+		goal.Topic = &topicGoal
+	}
 	if drift.CurrentContext != "" {
 		goal.Context = drift.CurrentContext
 	}

@@ -121,16 +121,16 @@ jobs:
           test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
           test -z "$(find . -maxdepth 1 -name '.phase27*.py' -print)"
           test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' -o -name '_phase_11_12*' \) -print)"
+      - name: Reviewed engineering and frozen-run runtime acceptance
+        run: |
+          python3 scripts/run_phase_acceptance.py --phase 26
+          python3 scripts/run_phase_acceptance.py --phase 28
       - run: make build
       - name: Build and execute the reference native container
         run: |
           docker build -t chartworks-reference:ci .
           docker run --rm --network none --read-only chartworks-reference:ci version
       - run: make vet
-      - name: Reviewed engineering and frozen-run runtime acceptance
-        run: |
-          python3 scripts/run_phase_acceptance.py --phase 26
-          python3 scripts/run_phase_acceptance.py --phase 28
       - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
         run: make coverage
       - name: Per-function diagnostics from actual race instrumentation

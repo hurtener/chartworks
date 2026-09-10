@@ -89,3 +89,26 @@ Narratives allow at most four calls, 32,768 tokens and 15 seconds. An empty
 `model_version` leaves narrative execution unavailable while deterministic
 execution and artifact reading remain usable. All values have constructor and
 configuration bounds in `internal/config`.
+
+## Private topic changes in L2
+
+An optional `topic` goal names the topic, profile, version, name, description and
+expected private draft revision. Preparation reads exact authorized profile
+metadata without creating a draft. New topics start as profile-backed scaffolds;
+existing drafts preserve their semantic entities. The workflow never invents
+business meaning to fill an unresolved scaffold. `PUT` may include an edited
+`topic` pack; compilation, canonical references and exact source/profile checks
+apply, and the material receives a new proposal digest with no inherited review.
+
+Applying the independently reviewed proposal saves the exact private topic through
+normal topic authoring after the managed pipeline succeeds. Topic read/write and
+profile/source authority remain necessary. The effect journal checks the actual
+draft head, digest, actor/session and proposal note before marking the proposal
+applied. A failed topic save leaves the already completed pipeline visible as a
+partial effect; retry reconciles the same private draft instead of claiming a
+cross-system transaction. Compensation is blocked for these multi-object applies.
+The ordinary topic review/publication operations remain necessary for publication.
+
+This consumer currently uses one exact profile-backed dataset per topic change.
+A schema-drift amendment may supply `topic_profile` selecting freshly prepared
+profile evidence; it cannot manufacture a profile or silently rebind old evidence.
