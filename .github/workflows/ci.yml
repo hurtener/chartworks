@@ -31,6 +31,7 @@ jobs:
     timeout-minutes: 90
     env:
       CGO_ENABLED: 1
+      GOFLAGS: -p=2
       CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
       CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
       CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
@@ -77,6 +78,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - name: Reserve disk for pinned native and race-instrumented builds
+        run: |
+          # Unused preinstalled SDKs, not project files, caches or test fixtures.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          df -h /
       - name: Build pinned native parser and managed SQL runner
         run: bash scripts/build-bruin.sh
       - name: Recorded cloud SDK/HTTP and owned-session leaf lifecycle contracts
@@ -113,6 +119,7 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
+          test -z "$(find . -maxdepth 1 -name '.phase27*.py' -print)"
           test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' -o -name '_phase_11_12*' \) -print)"
       - run: make build
       - name: Build and execute the reference native container
@@ -153,6 +160,7 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 20
           python3 scripts/run_phase_acceptance.py --phase 22
           python3 scripts/run_phase_acceptance.py --phase 23
+          python3 scripts/run_phase_acceptance.py --phase 27
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
@@ -171,6 +179,8 @@ jobs:
           done
           go test -race ./internal/nlqbyo -run '^$' -fuzz '^FuzzReferenceAndReceipt$' -fuzztime=64x -timeout=3m -parallel=2
           go test -race ./internal/charts -run '^$' -fuzz '^FuzzDataAndMappings$' -fuzztime=128x -timeout=3m -parallel=2
+          go test -race ./internal/reporting -run '^$' -fuzz '^FuzzParameterScalarDoesNotBecomeSQL$' -fuzztime=128x -timeout=3m -parallel=2
+          go test -race ./internal/reporting -run '^$' -fuzz '^FuzzSQLAssistSpanSafety$' -fuzztime=128x -timeout=3m -parallel=2
       - name: Full cumulative development preflight
         run: make preflight-full
       - name: Microbenchmark baseline (not warehouse or end-user latency)
