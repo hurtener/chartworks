@@ -1,0 +1,98 @@
+name: Phase 26-28 real runtime verification
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-runtime-check.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  runtime:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        ports: ['5434:5432']
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      EXPECTED_SOURCE: 750b5de06b9d337458197c710129b0167b675d9f
+      TEST_SOURCE: bb48dcdbeea300c69a76e26ce45bf81f702a30b6
+      FEATURE_BRANCH: feat/phase-26-28-engineering-artifacts
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-26-28-engineering-artifacts
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native parser
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          test -s "$parser"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+      - name: Integrate exact new runtime fixture
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          git show "$TEST_SOURCE:test/acceptance/phase28_test.go" > test/acceptance/phase28_test.go
+          gofmt -w test/acceptance/phase28_test.go
+          git diff --check
+      - name: Actual store, read-only source, queue and retained artifact behavior
+        run: go test -race -count=1 -v -run '^TestFrozenRunsRealStore$' -timeout=180s ./test/acceptance
+      - name: Publish passing runtime regressions
+        run: |
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add test/acceptance/phase28_test.go
+          git commit -m 'test(reporting): verify frozen execution, private artifacts and normalized crash recovery'
+          git push origin "HEAD:$FEATURE_BRANCH"
+          echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
+      - name: Preserve diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/runtime-check
+          git diff > /tmp/runtime-check/uncommitted.patch
+          git rev-parse HEAD > /tmp/runtime-check/head.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in Path('test/acceptance').glob('*.go'):
+              text=p.read_text()
+              for marker in ['type engineeringFixture struct','type gatewayFixture struct']:
+                  if marker in text:
+                      start=text.index(marker)
+                      print(str(p),text[start:start+7000])
+          PY
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-26-28-runtime-diagnostics
+          path: /tmp/runtime-check
+          retention-days: 3
