@@ -1,0 +1,104 @@
+[
+  {
+    "method": "GET",
+    "path": "/v1/engineering-proposals/{id}",
+    "action": "engineering.autopilot.read",
+    "effect": "authorized_retained_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/reporting-runs",
+    "action": "reporting.read",
+    "effect": "authorized_retained_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/reporting-runs/{id}",
+    "action": "reporting.read",
+    "effect": "authorized_retained_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/reporting-runs/{id}/output",
+    "action": "reporting.read",
+    "effect": "authorized_retained_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/reporting-runs/{id}/receipt",
+    "action": "reporting.execute",
+    "effect": "authorized_retained_read"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/reporting-runs/{id}/rows",
+    "action": "reporting.read",
+    "effect": "authorized_retained_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/blocks/{id}/runs",
+    "action": "reporting.execute",
+    "effect": "frozen_manifest_reservation"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/engineering-proposals",
+    "action": "engineering.autopilot.propose",
+    "effect": "bounded_model_review_material"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/engineering-proposals/{id}/amend",
+    "action": "engineering.autopilot.propose",
+    "effect": "bounded_model_review_material"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/engineering-proposals/{id}/apply",
+    "action": "engineering.autopilot.apply",
+    "effect": "managed_warehouse_write"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/engineering-proposals/{id}/compensate",
+    "action": "engineering.autopilot.compensate",
+    "effect": "managed_visibility_quarantine"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/engineering-proposals/{id}/drift",
+    "action": "engineering.autopilot.drift",
+    "effect": "bounded_source_observation_amendment_evidence"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/engineering-proposals/{id}/review",
+    "action": "engineering.autopilot.review",
+    "effect": "independent_business_review"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/reporting-retention",
+    "action": "reporting.retention",
+    "effect": "expired_artifact_erasure"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/reporting-runs/{id}/cancel",
+    "action": "jobs.cancel",
+    "effect": "durable_cancellation_intent"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/reporting-runs/{id}/execute",
+    "action": "reporting.execute",
+    "effect": "bounded_source_read_optional_model_retained_artifact"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/engineering-proposals/{id}",
+    "action": "engineering.autopilot.propose",
+    "effect": "review_material_amendment"
+  }
+]

@@ -64,7 +64,7 @@ func runtimeEntry[I, O any](method, path, action, id, summary string, call func(
 	}}
 }
 func runtimeErrors() []api.ErrorResponse {
-	return []api.ErrorResponse{{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthenticated"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "stale_validation"}, {Status: 409, Code: "incomplete"}, {Status: 410, Code: "expired"}, {Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "invalid_query"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}
+	return []api.ErrorResponse{{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthorized"}, {Status: 401, Code: "unauthenticated"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "stale_validation"}, {Status: 409, Code: "incomplete"}, {Status: 410, Code: "expired"}, {Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "invalid_query"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}
 }
 func runtimeEntries(runs *reporting.Runs, proposals *engineering.Autopilot, execution, planning bool) []runtimeEndpoint {
 	entries := []runtimeEndpoint{
@@ -141,6 +141,30 @@ func runtimeEntries(runs *reporting.Runs, proposals *engineering.Autopilot, exec
 	}
 	for i := range entries {
 		d := &entries[i].definition
+		switch d.ID {
+		case "admitReportingRun":
+			d.Effect = "frozen_manifest_reservation"
+		case "executeReportingRun":
+			d.Effect = "bounded_source_read_optional_model_retained_artifact"
+		case "cancelReportingRun":
+			d.Effect = "durable_cancellation_intent"
+		case "expireReportingArtifacts":
+			d.Effect = "expired_artifact_erasure"
+		case "proposeEngineering":
+			d.Effect = "bounded_model_review_material"
+		case "editEngineeringProposal":
+			d.Effect = "review_material_amendment"
+		case "reviewEngineeringProposal":
+			d.Effect = "independent_business_review"
+		case "applyEngineeringProposal":
+			d.Effect = "managed_warehouse_write"
+		case "compensateEngineeringProposal":
+			d.Effect = "managed_visibility_quarantine"
+		case "detectEngineeringDrift":
+			d.Effect = "bounded_source_observation_amendment_evidence"
+		case "amendEngineeringProposal":
+			d.Effect = "bounded_model_review_material"
+		}
 		switch d.ID {
 		case "listReportingRuns":
 			d.Query = []api.Parameter{{Name: "after", In: "query", Type: "string", Max: 128}, {Name: "limit", In: "query", Type: "integer", Min: 1, Max: 100}}

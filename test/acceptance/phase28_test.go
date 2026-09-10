@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/engineering"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/reportingapi"
 	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 
@@ -208,6 +209,23 @@ func TestPhase28(t *testing.T) {
 		if _, badErr := runs.Admit(ctx, execute, v.Block, bad); !errors.Is(badErr, reporting.ErrInvalid) {
 			t.Fatal("parameter literal became SQL", badErr)
 		}
+		driftRun := admit(t, runs, v.Block, "p28-incompatible-schema", request)
+		if _, changeErr := f.f.admin.Exec(ctx, `ALTER TABLE analytics.sales ALTER COLUMN amount TYPE numeric(30,4)`); changeErr != nil {
+			t.Fatal(changeErr)
+		}
+		defer func() {
+			if _, restoreErr := f.f.admin.Exec(ctx, `ALTER TABLE analytics.sales ALTER COLUMN amount TYPE numeric(30,3)`); restoreErr != nil {
+				t.Fatal(restoreErr)
+			}
+		}()
+		rejected, driftErr := runs.Run(ctx, execute, driftRun.ID, false)
+		if !errors.Is(driftErr, readexec.ErrBinding) && !errors.Is(driftErr, reporting.ErrStale) {
+			t.Fatal("incompatible schema was not rejected", rejected, driftErr)
+		}
+		if len(rejected.QueryAttempts) != 0 {
+			t.Fatal("incompatible precision reached read execution", rejected.QueryAttempts)
+		}
+
 	})
 
 	t.Run("AC04", func(t *testing.T) {
@@ -322,6 +340,11 @@ func TestPhase28(t *testing.T) {
 		if !preview.Private {
 			t.Fatal("private execution lost immutable privacy")
 		}
+		currentPrivate, readErr := blocks.Read(ctx, author, private.State.ID, reporting.Reference{Draft: true})
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		phase27ValidatePublish(t, blocks, author, currentPrivate)
 		other := phase27Actor(t, f, "other-preview-reader", []string{"reporting.read", "reporting.preview", "cw.run.read:*", "cw.block.read:*", "cw.block.preview:*", "cw.execution_context.use:*"})
 		if _, readErr := runs.Get(ctx, other, preview.ID); !errors.Is(readErr, store.ErrNotFound) && !errors.Is(readErr, access.ErrNotFound) {
 			t.Fatal("private preview escaped its original actor/session", readErr)
@@ -394,6 +417,14 @@ func TestPhase28(t *testing.T) {
 		if apiErr != nil || completed.State != "succeeded" {
 			t.Fatal("HTTP execution", completed, apiErr)
 		}
+		receipt, apiErr := client.InspectReportingRun(ctx, admitted.ID)
+		if apiErr != nil || receipt.ID != admitted.ID {
+			t.Fatal("HTTP private receipt", receipt, apiErr)
+		}
+		summary, apiErr := client.ReadReportingRun(ctx, admitted.ID)
+		if apiErr != nil || summary.State != "succeeded" {
+			t.Fatal("HTTP summary", summary, apiErr)
+		}
 		page, apiErr := client.ReportingRunRows(ctx, admitted.ID, 0, 1)
 		if apiErr != nil || len(page.Rows) != 1 || page.Next == nil {
 			t.Fatal("HTTP paging", page, apiErr)
@@ -401,6 +432,28 @@ func TestPhase28(t *testing.T) {
 		output, apiErr := client.ReportingRunOutput(ctx, admitted.ID, "table-main")
 		if apiErr != nil || output.Chart == nil {
 			t.Fatal("HTTP retained output", apiErr)
+		}
+
+		beforeQueries, beforeModels := f.f.lookups.Load(), f.model.requests.Load()
+		badRequests := []struct {
+			method, path, body string
+			status             int
+		}{
+			{"GET", "/v1/reporting-runs/" + admitted.ID + "/rows?offset=-1", "", 400},
+			{"GET", "/v1/reporting-runs/" + admitted.ID + "/rows?limit=01", "", 400},
+			{"GET", "/v1/reporting-runs/" + admitted.ID + "/rows?limit=1&limit=2", "", 400},
+			{"GET", "/v1/reporting-runs/" + admitted.ID + "/output?output=missing", "", 404},
+			{"POST", "/v1/reporting-runs/" + admitted.ID + "/execute", `{"resume":false,"actor":"other"}`, 400},
+			{"GET", "/v1/reporting-runs/" + admitted.ID, `{}`, 400},
+		}
+		for _, bad := range badRequests {
+			response := callProtected(t, reportingapi.RuntimeHandler(f.f.token.verifier, runs, proposals, true, false, http.NotFoundHandler()), bad.method, bad.path, bearer, bad.body, map[string]string{"Content-Type": "application/json"})
+			if response.Code != bad.status {
+				t.Fatal("runtime boundary", bad.path, response.Code, response.Body.String())
+			}
+		}
+		if f.f.lookups.Load() != beforeQueries || f.model.requests.Load() != beforeModels {
+			t.Fatal("invalid wire request executed data/model work")
 		}
 		listed, apiErr := client.ListReportingRuns(ctx, "", 100)
 		if apiErr != nil {

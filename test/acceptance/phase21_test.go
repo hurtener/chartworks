@@ -161,7 +161,11 @@ func phase21Registry(t *testing.T) *api.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	composed, err := api.Compose(blocks, public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart, transport)
+	runtimeRegistry, err := reportingapi.RuntimeRegistry(true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := api.Compose(runtimeRegistry, blocks, public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart, transport)
 	if err != nil {
 		t.Fatal(err)
 	}
