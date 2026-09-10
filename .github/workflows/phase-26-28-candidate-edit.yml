@@ -1,0 +1,50 @@
+name: Phase 26-28 guarded candidate edit
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-candidate-edit.yml, .github/phase-26-28-edits.json]
+permissions:
+  contents: write
+jobs:
+  edit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve exact edit instructions
+        run: cp .github/phase-26-28-edits.json /tmp/phase-edits.json
+      - uses: actions/checkout@v4
+        with:
+          ref: dev/phase-26-28-runtime-completion
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Apply only exact matching development edits
+        run: |
+          python3 - <<'PY'
+          import json,re,subprocess
+          from pathlib import Path
+          v=json.load(open('/tmp/phase-edits.json'))
+          assert re.fullmatch('[a-f0-9]{40}',v['source'])
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==v['source']
+          paths=set()
+          for edit in v['replacements']:
+            p=Path(edit['path'])
+            assert not p.is_absolute() and '..' not in p.parts and p.parts[0] in ('internal','sdk','test','docs','scripts')
+            assert p.is_file() and not p.is_symlink()
+            text=p.read_text()
+            assert edit['old'] and text.count(edit['old'])==edit['count'],(str(p),text.count(edit['old']))
+            p.write_text(text.replace(edit['old'],edit['new']))
+            paths.add(str(p))
+          gofiles=sorted(p for p in paths if p.endswith('.go'))
+          if gofiles: subprocess.run(['gofmt','-w',*gofiles],check=True)
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','config','user.name','chartworks-development-bot'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--',*sorted(paths)],check=True)
+          subprocess.run(['git','commit','-m',v['message']],check=True)
+          subprocess.run(['git','push','origin','HEAD:dev/phase-26-28-runtime-completion'],check=True)
+          print('PUBLISHED_CANDIDATE='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+          PY
