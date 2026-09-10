@@ -59,3 +59,11 @@ race-instrumented runs cover 2,007/2,508 reporting statements (80.02%) and
 from the same production source, not sums of percentages or full CI results.
 The new reporting model-policy configuration tests also pass. Hosted Linux
 phase-26 acceptance and full repository coverage remain pending.
+
+A further direct inspection found drift-impact discovery checked target read
+reach without all dependencies. The fix filters every block reference and every
+topic source/dataset/context in PostgreSQL and requires the corresponding read
+action before returning impact IDs. AC05 now publishes a real two-context topic
+and checks both authorized inclusion and exclusion under missing context/action,
+including replay of the same deduplicated observation. The added acceptance
+fixture compiles; local lint is clean. Its Linux execution is still pending.

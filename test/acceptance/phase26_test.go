@@ -372,6 +372,8 @@ func TestPhase26(t *testing.T) {
 		if _, err := raw.Exec(context.Background(), `UPDATE chartworks.engineering_proposal_heads SET applied_at=clock_timestamp()-interval '2 minutes' WHERE tenant_id=$1 AND proposal_id=$2`, f.author.Tenant(), p.ID); err != nil {
 			t.Fatal(err)
 		}
+		impactTopic := phase26ImpactTopic(t, f, p)
+		phase26CheckImpactReach(t, f, p, impactTopic)
 		before := f.model.fixture.requests.Load()
 		first, err := f.auto.DetectDrift(context.Background(), f.author, p.ID)
 		if err != nil || first.Kind != "freshness_expired" || first.State != "proposed" || first.ID == "" || len(first.Impacts) == 0 {

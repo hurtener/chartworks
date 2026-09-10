@@ -149,13 +149,21 @@ func proposalImpactsTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, p en
 	}
 	rows, err := tx.Query(ctx, `SELECT kind,id FROM (
  SELECT 'block'::text kind,h.block_id id FROM chartworks.block_heads h JOIN chartworks.block_source_pins b ON(b.tenant_id,b.block_id,b.revision)=(h.tenant_id,h.block_id,h.published_revision)
- WHERE h.tenant_id=$1 AND b.source_id=ANY($2::text[]) AND NOT h.archived
+ WHERE h.tenant_id=$1 AND $4::boolean AND b.source_id=ANY($2::text[]) AND NOT h.archived
+ AND EXISTS(SELECT 1 FROM chartworks.block_revision_references rr WHERE(rr.tenant_id,rr.block_id,rr.revision)=(h.tenant_id,h.block_id,h.published_revision))
+ AND NOT EXISTS(SELECT 1 FROM chartworks.block_revision_references rr WHERE(rr.tenant_id,rr.block_id,rr.revision)=(h.tenant_id,h.block_id,h.published_revision)
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'=rr.kind AND g->>'permission'=rr.permission AND g->>'id' IN(rr.resource_id,'*')))
  AND EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='block' AND g->>'permission'='read' AND g->>'id' IN(h.block_id,'*'))
  UNION
  SELECT 'topic'::text kind,h.topic_id id FROM chartworks.topic_publication_heads h JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id,v.version_id)=(h.tenant_id,h.topic_id,h.active_version),LATERAL jsonb_array_elements(v.definition->'datasets') ds
- WHERE h.tenant_id=$1 AND ds#>>'{source,source}'=ANY($2::text[]) AND NOT h.archived
+ WHERE h.tenant_id=$1 AND $5::boolean AND ds#>>'{source,source}'=ANY($2::text[]) AND NOT h.archived
+ AND EXISTS(SELECT 1 FROM chartworks.topic_published_dependencies dep WHERE(dep.tenant_id,dep.topic_id,dep.version_id)=(v.tenant_id,v.topic_id,v.version_id))
+ AND NOT EXISTS(SELECT 1 FROM chartworks.topic_published_dependencies dep WHERE(dep.tenant_id,dep.topic_id,dep.version_id)=(v.tenant_id,v.topic_id,v.version_id)
+  AND (NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='source' AND g->>'permission'='read' AND g->>'id' IN(dep.source_id,'*'))
+   OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='dataset' AND g->>'permission'='query' AND g->>'id' IN(dep.dataset_id,'*'))
+   OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='execution_context' AND g->>'permission'='use' AND g->>'id' IN(dep.context_id,'*'))))
  AND EXISTS(SELECT 1 FROM jsonb_array_elements($3::jsonb) g WHERE g->>'kind'='topic' AND g->>'permission'='read' AND g->>'id' IN(h.topic_id,'*'))
- ) impacts ORDER BY kind,id LIMIT 101`, e.Tenant(), sources, grants)
+ ) impacts ORDER BY kind,id LIMIT 101`, e.Tenant(), sources, grants, e.Has("reporting.read"), e.Has("topics.read"))
 	if err != nil {
 		return nil, err
 	}
