@@ -13,6 +13,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -115,9 +116,9 @@ const matchedProposalSchema = `{"type":"object","additionalProperties":false,"re
 // source partition, validates the match/build decision and persists a draft.
 // It cannot invoke pipeline publication, managed writes or topic publication.
 func (s *Autopilot) Propose(ctx context.Context, e identity.Envelope, g AutopilotGoal) (AutopilotProposal, error) {
-	return s.propose(ctx, e, g, nil)
+	return s.propose(ctx, e, g, nil, nil)
 }
-func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g AutopilotGoal, origin *ProposalOrigin) (AutopilotProposal, error) {
+func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g AutopilotGoal, origin *ProposalOrigin, priorTopic *semantics.TopicPack) (AutopilotProposal, error) {
 	ctx, stop, err := s.begin(ctx, e, true)
 	if err != nil {
 		return AutopilotProposal{}, err
@@ -161,6 +162,17 @@ func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g Autopilo
 		pack, topicErr := s.topics.PlanAutopilotTopic(ctx, e, *g.Topic)
 		if topicErr != nil {
 			return AutopilotProposal{}, topicErr
+		}
+
+		if priorTopic != nil {
+			preserved, preserveErr := preserveAmendmentTopic(*priorTopic, pack)
+			if preserveErr != nil {
+				return AutopilotProposal{}, preserveErr
+			}
+			if preserveErr = s.topics.CheckAutopilotTopic(ctx, e, *g.Topic, preserved); preserveErr != nil {
+				return AutopilotProposal{}, preserveErr
+			}
+			pack = preserved
 		}
 		material.Topic = &pack
 		material.References = append(material.References, ProposalReference{Kind: "topic", Permission: "read", ID: pack.Topic})
@@ -366,17 +378,11 @@ func (s *Autopilot) Amend(ctx context.Context, e identity.Envelope, id string, r
 	goal.ID = "amend-" + drift.ID
 	goal.ExpectedPipelineVersion++
 	if goal.Topic != nil {
-		topicGoal := *goal.Topic
-		topicGoal.ExpectedRevision++
-		if r.TopicProfile != "" {
-			topicGoal.Profile = r.TopicProfile
-		}
-		topicGoal.Version = "amend-" + drift.ID
-		goal.Topic = &topicGoal
+		goal.Topic = amendmentTopicGoal(p, drift.ID, r.TopicProfile)
 	}
 	if drift.CurrentContext != "" {
 		goal.Context = drift.CurrentContext
 	}
 	origin := &ProposalOrigin{Proposal: p.ID, Revision: p.Revision, Digest: p.Digest, Drift: drift.ID, EvidenceDigest: drift.EvidenceDigest}
-	return s.propose(ctx, e, goal, origin)
+	return s.propose(ctx, e, goal, origin, p.Material.Topic)
 }

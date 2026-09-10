@@ -476,6 +476,7 @@ func TestPhase28(t *testing.T) {
 		if f.f.lookups.Load() != before {
 			t.Fatal("cancelled pending operation reached warehouse")
 		}
+		phase28CancelBlockedWarehouse(t, f.f.warehouse, client, "p28-http")
 		bounded := limits
 		bounded.MaxTenantBytes = int64(bounded.MaxArtifactBytes)
 		limited := phase28RunService(t, f, blocks, f.f.db, nil, bounded)

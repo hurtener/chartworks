@@ -9,6 +9,8 @@ import (
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
+	sdk "github.com/hurtener/chartworks/sdk/chartworks"
+	"github.com/hurtener/chartworks/test/support"
 )
 
 func testPhase26TopicApply(t *testing.T) {
@@ -49,4 +51,22 @@ func testPhase26TopicApply(t *testing.T) {
 	if _, err = f.auto.Compensate(ctx, f.author, applied.ID, phase26ApplyRequest(applied)); !errors.Is(err, engineering.ErrCompensationBlocked) {
 		t.Fatal("multi-object apply claimed automatic reversal", err)
 	}
+	raw := support.Raw(t, f.dsn)
+	if _, err = raw.Exec(ctx, `UPDATE chartworks.engineering_proposal_heads SET applied_at=clock_timestamp()-interval '2 minutes' WHERE tenant_id=$1 AND proposal_id=$2`, f.author.Tenant(), applied.ID); err != nil {
+		t.Fatal(err)
+	}
+	drift, err := f.auto.DetectDrift(ctx, f.author, applied.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amendment, err := f.client.AmendEngineeringProposal(ctx, applied.ID, sdk.EngineeringProposalAmend{Drift: drift.ID})
+	if err != nil || amendment.Material.Topic == nil || amendment.Material.Topic.Name != pack.Name || amendment.Material.Request.Topic.ExpectedRevision != 1 || amendment.Review != nil {
+		t.Fatal("topic amendment lost reviewed material or actual head", amendment, err)
+	}
+	f.apply(t, f.approve(t, amendment))
+	updated, err := service.Read(ctx, f.author, f.goal.Topic.Topic, 0)
+	if err != nil || updated.Metadata.Revision != 2 || updated.Pack.Name != pack.Name {
+		t.Fatal("reviewed topic amendment failed ordinary CAS update", updated, err)
+	}
+
 }

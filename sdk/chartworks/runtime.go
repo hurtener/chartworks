@@ -33,6 +33,9 @@ type ReportingArtifactList = reporting.ArtifactList
 // EngineeringGoal is the common domain wire contract exposed by the typed client.
 type EngineeringGoal = engineering.AutopilotGoal
 
+// EngineeringTopicGoal addresses a profile-backed private topic change.
+type EngineeringTopicGoal = engineering.AutopilotTopicGoal
+
 // EngineeringProposal is the common domain wire contract exposed by the typed client.
 type EngineeringProposal = engineering.AutopilotProposal
 

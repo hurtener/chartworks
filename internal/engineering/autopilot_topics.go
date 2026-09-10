@@ -2,6 +2,7 @@ package engineering
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
@@ -90,4 +91,39 @@ func topicObjectCount(m ProposalMaterial) int {
 		return 1
 	}
 	return 0
+}
+
+func amendmentTopicGoal(p AutopilotProposal, drift, profile string) *AutopilotTopicGoal {
+	goal := *p.Material.Request.Topic
+	for _, effect := range p.Effects {
+		if effect.Kind == "topic_draft" && effect.Target == goal.Topic && effect.State == "committed" && effect.Version == goal.ExpectedRevision+1 {
+			goal.ExpectedRevision++
+			break
+		}
+	}
+	if profile != "" {
+		goal.Profile = profile
+	}
+	goal.Version = "amend-" + drift
+	if p.Material.Topic != nil {
+		goal.Name = p.Material.Topic.Name
+		goal.Description = p.Material.Topic.Description
+	}
+	return &goal
+}
+
+func preserveAmendmentTopic(prior, current semantics.TopicPack) (semantics.TopicPack, error) {
+	if len(prior.Datasets) != 1 || len(current.Datasets) != 1 || prior.Topic != current.Topic || prior.Datasets[0].ID != current.Datasets[0].ID {
+		return semantics.TopicPack{}, ErrProposalDrift
+	}
+	// Detach the retained parent before advancing only explicit evidence/version
+	// coordinates. Semantic entities and stable column IDs remain reviewed input.
+	encoded, err := json.Marshal(prior)
+	var out semantics.TopicPack
+	if err != nil || json.Unmarshal(encoded, &out) != nil {
+		return out, ErrInvalid
+	}
+	out.Version = current.Version
+	out.Datasets[0].Source = current.Datasets[0].Source
+	return out, nil
 }

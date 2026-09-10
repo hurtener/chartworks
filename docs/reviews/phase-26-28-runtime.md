@@ -84,3 +84,12 @@ than the actual HTTP 409; the assertion now checks the SDK status. This was a
 failed CI run, not phase completion. Current-head acceptance and coverage remain
 required. The focused runtime step now precedes the expensive reference-container
 build, with all container and full-suite gates retained.
+
+Follow-up checks found a stale migration inventory assertion (22 rather than 26);
+it is updated to the actual final migration identity, and the affected store/API/
+SDK race tests pass. AC08 now observes a real blocked warehouse relation before
+cancelling through HTTP; the request terminates without result exposure. That
+PostgreSQL test passes locally. Topic amendments now advance draft revision only
+for a recorded committed topic effect and preserve reviewed names/entities in the
+new independent material. Explicit fresh-profile selection updates only evidence
+coordinates and still requires ordinary semantic/source validation.

@@ -38,6 +38,11 @@ func (s *Service) PlanAutopilotTopic(ctx context.Context, e identity.Envelope, g
 	}
 	pack := current.Pack
 	pack.Version, pack.Name, pack.Description = g.Version, g.Name, g.Description
+	if len(pack.Datasets) != 1 || pack.Datasets[0].ID != base.Datasets[0].ID {
+		return semantics.TopicPack{}, store.ErrConflict
+	}
+	pack.Datasets[0].Source = base.Datasets[0].Source
+
 	if err = s.CheckAutopilotTopic(ctx, e, g, pack); err != nil {
 		return semantics.TopicPack{}, err
 	}
