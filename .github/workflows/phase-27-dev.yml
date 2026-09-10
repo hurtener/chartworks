@@ -2,37 +2,65 @@ name: Phase 27 development checkpoint
 on:
   push:
     branches: [feat/phase-27-reporting-blocks]
-    paths: [.github/workflows/phase-27-dev.yml]
 permissions:
   contents: read
+concurrency:
+  group: phase27-checkpoint
+  cancel-in-progress: false
 jobs:
-  recover:
+  checkpoint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 40
+    env:
+      CGO_ENABLED: 1
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CGO_LDFLAGS: -L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - uses: actions/cache/restore@v4
         with:
           path: /tmp/chartworks-bruin
           key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f
           fail-on-cache-miss: true
-      - name: Recover exact public development dependencies
+      - name: Verify pinned native dependency
+        run: test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Phase 27 acceptance
         run: |
-          test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f
-          tar -czf /tmp/phase27-native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
-          id=$(docker create pgvector/pgvector:0.8.2-pg17)
-          docker export "$id" | gzip -1 > /tmp/phase27-pg17.tar.gz
-          docker rm "$id"
-          git bundle create /tmp/phase27.git.bundle --all
+          set -o pipefail
+          go test -race -count=1 -v -timeout=10m -run '^TestPhase27$' ./test/acceptance | tee /tmp/phase27-acceptance.txt
+      - name: Full race-enabled suite and cross-package coverage
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -coverpkg=./internal/...,./sdk/...,./cmd/... -coverprofile=/tmp/phase27-coverage.out ./... | tee /tmp/phase27-full-suite.txt
+      - name: Verify source is unchanged
+        if: always()
+        run: git diff --exit-code && test -z "$(git ls-files --others --exclude-standard)"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: phase27-native-offline
+          name: phase27-checkpoint-evidence
           path: |
-            /tmp/phase27-native.tar.gz
-            /tmp/phase27-pg17.tar.gz
-            /tmp/phase27.git.bundle
-          compression-level: 0
+            /tmp/phase27-acceptance.txt
+            /tmp/phase27-full-suite.txt
+            /tmp/phase27-coverage.out
           retention-days: 3
