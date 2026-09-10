@@ -1,0 +1,148 @@
+name: Phase 26 reviewed L2 integration
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-integration.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks_schema
+        ports: ['5434:5432']
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks_schema"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      EXPECTED_SOURCE: fbc81b13942255127366eb2ef629ea5011429293
+      DEVELOPMENT_SOURCE: 64e715ae414be04bfc894c0f7c1f2155306ebbad
+      FEATURE_BRANCH: feat/phase-26-28-engineering-artifacts
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-26-28-engineering-artifacts
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native parser
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          test -s "$parser"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+      - name: Integrate exact reviewed domain source without development workflows
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          python3 - <<'PY'
+          import os,subprocess
+          from pathlib import Path
+          paths=['internal/engineering/autopilot_model.go','internal/engineering/autopilot_proof.go','internal/engineering/autopilot_planning.go','internal/engineering/autopilot_effects.go','internal/store/postgres/autopilot_read.go','internal/store/postgres/autopilot_write.go','internal/store/postgres/autopilot_lifecycle.go','internal/store/postgres/pipeline_transactions.go','internal/store/postgres/migrations/024_reviewed_engineering.sql']
+          for path in paths:
+              target=Path(path);assert not target.exists(),path
+              target.parent.mkdir(parents=True,exist_ok=True)
+              target.write_bytes(subprocess.check_output(['git','show',os.environ['DEVELOPMENT_SOURCE']+':'+path]))
+          p=Path('internal/store/postgres/autopilot_write.go');s=p.read_text();s=s.replace('\n\t"github.com/hurtener/chartworks/internal/access"','');p.write_text(s)
+          p=Path('internal/engineering/autopilot_planning.go');s=p.read_text();s=s.replace('ErrUnavailable','store.ErrUnavailable').replace('minTime','autopilotEarlier');p.write_text(s)
+          p=Path('internal/store/postgres/migrations/024_reviewed_engineering.sql');s=p.read_text()
+          old="CREATE TABLE chartworks.engineering_proposal_effects (\n tenant_id text NOT NULL, proposal_id text NOT NULL, revision bigint NOT NULL,"
+          assert s.count(old)==1
+          s=s.replace(old,old+'\n observed_order integer NOT NULL CHECK(observed_order BETWEEN 0 AND 4),')
+          p.write_text(s)
+          p=Path('internal/store/postgres/pipelines.go');s=p.read_text()
+          old='WHERE h.tenant_id=$1 AND h.pipeline_id=$2 AND v.version=$3`'
+          assert s.count(old)==1;s=s.replace(old,'WHERE h.tenant_id=$1 AND h.pipeline_id=$2 AND v.version=$3 AND NOT h.retired`')
+          start=s.index('func (d *DB) SavePipeline(');end=s.index('// ReadPipeline',start)
+          s=s[:start]+'''func (d *DB) SavePipeline(ctx context.Context, e identity.Envelope, def engineering.PipelineDefinition, expected int64) (out engineering.PipelineRecord, err error) {
+              ctx, stop, err := requestContext(ctx, e)
+              if err != nil { return out, err }
+              defer stop()
+              err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+                  var inner error
+                  out, inner = savePipelineTx(ctx, tx, e, def, expected)
+                  return inner
+              })
+              if err != nil { return engineering.PipelineRecord{}, err }
+              return out, nil
+          }
+
+          '''+s[end:]
+          start=s.index('func (d *DB) PublishPipeline(')
+          s=s[:start]+'''func (d *DB) PublishPipeline(ctx context.Context, e identity.Envelope, id string, version int64) (out engineering.PipelineRecord, err error) {
+              ctx, stop, err := requestContext(ctx, e)
+              if err != nil { return out, err }
+              defer stop()
+              err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+                  var inner error
+                  out, inner = publishPipelineTx(ctx, tx, e, id, version)
+                  return inner
+              })
+              if err != nil { return engineering.PipelineRecord{}, err }
+              return out, nil
+          }
+          '''
+          s=s.replace('\n\t"errors"','');p.write_text(s)
+          PY
+          gofmt -w internal/engineering/autopilot*.go internal/store/postgres/autopilot*.go internal/store/postgres/pipeline_transactions.go internal/store/postgres/pipelines.go
+          git diff --check
+      - name: Compile and race-test domain code
+        run: |
+          go test -race -count=1 ./internal/config ./internal/reporting ./internal/engineering
+          go test -run '^$' ./internal/store/postgres ./test/acceptance
+      - name: Apply all forward migrations to isolated PostgreSQL
+        env:
+          PGURL: postgres://chartworks:chartworks@localhost:5434/chartworks_schema?sslmode=disable
+        run: |
+          psql "$PGURL" -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA chartworks' -c 'CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public'
+          for migration in internal/store/postgres/migrations/*.sql; do
+            echo "APPLY_MIGRATION=$migration"
+            psql "$PGURL" -v ON_ERROR_STOP=1 --single-transaction -f "$migration"
+          done
+      - name: Publish verified source only by ordinary fast-forward
+        run: |
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/engineering/autopilot*.go internal/store/postgres/autopilot*.go internal/store/postgres/pipeline_transactions.go internal/store/postgres/pipelines.go internal/store/postgres/migrations/024_reviewed_engineering.sql
+          git commit -m 'feat(engineering): integrate reviewed L2 proposals with shared pipeline effects and drift evidence'
+          git push origin "HEAD:$FEATURE_BRANCH"
+          echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+      - name: Preserve exact source diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/p26-check
+          git diff > /tmp/p26-check/uncommitted.patch
+          git rev-parse HEAD > /tmp/p26-check/head.txt
+          git status --short
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-26-integration-diagnostics
+          path: /tmp/p26-check
+          retention-days: 3
