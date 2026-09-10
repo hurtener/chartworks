@@ -18,7 +18,9 @@ jobs:
           POSTGRES_PASSWORD: chartworks
           POSTGRES_DB: chartworks_schema
         ports: ['5434:5432']
-        options: --health-cmd 'pg_isready -U chartworks' --health-interval 5s --health-timeout 5s --health-retries 12
+        options: >-
+          --health-cmd "pg_isready -U chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       EXPECTED_SOURCE: 0a705286fde9b75a0b85f4f554f238af6edc105a
       FEATURE_BRANCH: feat/phase-26-28-engineering-artifacts
@@ -45,91 +47,20 @@ jobs:
           parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
           test -s "$parser"
           echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
-      - name: Apply reviewed persistent-domain integration
+      - name: Apply exact previously reviewed integration
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
           python3 - <<'PY'
-          from pathlib import Path
-          def replace(path,old,new):
-              p=Path(path);s=p.read_text();assert s.count(old)==1,(path,old,s.count(old));p.write_text(s.replace(old,new))
-          replace('internal/config/config.go','type Values struct {','type Values struct {\n\tAutopilot Autopilot `json:"autopilot"`')
-          replace('internal/config/config.go','v := Values{','v := Values{\n\t\tAutopilot: DefaultAutopilot(),')
-          replace('internal/config/config.go','func validate(v Values) error {','func validate(v Values) error {\n\tif err := v.Autopilot.Validate(); err != nil { return err }')
-          p='internal/store/postgres/migrations/023_frozen_reporting_runs.sql'
-          replace(p,' expires_at timestamptz NOT NULL,',' expires_at timestamptz NOT NULL,\n payload_expires_at timestamptz NOT NULL,')
-          replace(p," CHECK(expires_at>created_at AND expires_at<=created_at+interval '90 days'),"," CHECK(expires_at>created_at AND expires_at<=created_at+interval '90 days'),\n CHECK(payload_expires_at>created_at AND payload_expires_at<=expires_at),")
-          replace(p," IF OLD.state IN('succeeded','partial','failed','expired')", " IF NEW.payload_expires_at>OLD.payload_expires_at THEN RAISE EXCEPTION 'retained payload expiry cannot increase' USING ERRCODE='23514'; END IF;\n IF OLD.state IN('succeeded','partial','failed','expired')")
-          replace('internal/store/postgres/frozen_runs_read.go','actor, session, requestHash, taskHash, reuseKey string','actor, session, requestHash, taskHash, reuseKey string\n\tmanifestExpires time.Time')
-          replace('internal/store/postgres/frozen_runs_read.go','h.created_at,h.expires_at,h.observed_at','h.created_at,h.payload_expires_at,h.observed_at')
-          replace('internal/store/postgres/frozen_runs_read.go',"COALESCE(NOT b.archived AND b.published_revision IS NOT NULL,false)`","COALESCE(NOT b.archived AND b.published_revision IS NOT NULL,false),h.expires_at`")
-          replace('internal/store/postgres/frozen_runs_read.go','&v.Attempts,&h.published)','&v.Attempts,&h.published,&h.manifestExpires)')
-          replace('internal/store/postgres/frozen_runs_read.go','!m.Expires.Equal(h.view.Expires)','!m.Expires.Equal(h.manifestExpires)')
-          replace('internal/store/postgres/frozen_runs_write.go','if readErr=frozenCurrentTx(ctx,tx,e,w.Manifest);readErr!=nil{return readErr}','if w.Kind != "attempt" { if readErr=frozenCurrentTx(ctx,tx,e,w.Manifest);readErr!=nil{return readErr} }')
-          p=Path('internal/reporting/runs_proof.go');s=p.read_text()
-          old='w.Attempt.Number != inv.Lease().Attempt';assert s.count(old)==1;s=s.replace(old,'w.Attempt.Number < 1 || w.Attempt.Number > 3')
-          old='case "result":';assert s.count(old)==1;s=s.replace(old,'''case "attempt":
-              if w.Attempt == nil || w.Result != nil || w.Output != nil || w.Outcome != "" || w.Code != "" || !w.Attempt.Manifest.Valid() || w.Attempt.Manifest.Operation != w.Manifest.ID || w.Attempt.Manifest.Session != w.Manifest.Session || w.Attempt.Number < 1 || w.Attempt.Number > 3 { return RunWrite{}, ErrInvalid }
-          case "result":''')
-          p.write_text(s)
-          p=Path('internal/reporting/runs_execution.go');s=p.read_text();start=s.index('func (s *Runs) queryFrozen(');end=s.index('func (s *Runs) makeOutput(',start)
-          s=s[:start]+'''func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m RunManifest) (RunRecord, error) {
-              current, err := s.repo.ReadFrozenRun(ctx, e, m.ID, true)
-              if err != nil { return RunRecord{}, err }
-              number, err := nextFrozenQueryNumber(current.View.QueryAttempts)
-              if err != nil { return RunRecord{}, err }
-              plan, err := s.pinnedPlan(ctx, e, m)
-              if err != nil { return RunRecord{}, err }
-              report, executeErr := s.blocks.executor.Execute(ctx, e, plan, exec.Options{Operation: m.ID, Number: number,
-                  Preview: m.Private, Rows: min(m.Limits.MaxRows, s.limits.MaxRows), Bytes: min(m.Limits.MaxResultBytes, s.limits.MaxResultBytes)})
-              if report.Attempt.ID != "" {
-                  if _, err = s.writeRun(ctx, e, inv, RunWrite{Kind: "attempt", Manifest: m, Attempt: &report.Attempt}); err != nil { return RunRecord{}, err }
-              }
-              if executeErr != nil { return RunRecord{}, executeErr }
-              if report.Result == nil || !successful(report.Attempt.Status) {
-                  if report.Attempt.Status == "uncertain" || report.Attempt.RemoteState == "unknown" || report.Attempt.RemoteState == "running" { return RunRecord{}, exec.ErrUncertain }
-                  return RunRecord{}, ErrIncomplete
-              }
-              if report.Attempt.Number != number || report.Attempt.Manifest.Receipt.Manifest != plan.Receipt().Manifest { return RunRecord{}, ErrInvalid }
-              if err = CheckFrozenResult(ctx, m, *report.Result, report.Attempt); err != nil { return RunRecord{}, err }
-              return s.writeRun(ctx, e, inv, RunWrite{Kind: "result", Manifest: m, Result: report.Result, Attempt: &report.Attempt})
-          }
-
-          '''+s[end:]
-          s=s.replace('if current.Result == nil && m.ReuseMaxAge > 0 {','if current.Result == nil && m.ReuseMaxAge > 0 && len(current.View.QueryAttempts) == 0 {')
-          old='''		// Reuse still verifies present business/dependency eligibility. The
-          		// validator cannot execute SQL or generate any new presentation choice.
-          		if _, err = s.pinnedPlan(ctx, e, m); err != nil {
-          			return err
-          		}
-          '''
-          assert s.count(old)==1;s=s.replace(old,'\t\t// The repository rechecks present pins and reach without warehouse/model I/O.\n')
-          old='out.State, out.Code = "failed", "narrative_failed"';assert s.count(old)==1;s=s.replace(old,old+'\n\t\t\t\tout.Narrative = &narrative')
-          old='''		chart, err := s.buildRetainedChart(ctx, m, result, *saved.Mapping)
-          		if err != nil {
-          			return out, err
-          		}
-          		out.Chart = &chart'''
-          new='''		chart, err := s.buildRetainedChart(ctx, m, result, *saved.Mapping)
-          		if err != nil {
-          			out.State, out.Code = "failed", "output_failed"
-          		} else { out.Chart = &chart }'''
-          assert s.count(old)==1;s=s.replace(old,new);p.write_text(s)
-          p=Path('internal/reporting/runs_guards.go');s=p.read_text();s=s.replace('"github.com/hurtener/chartworks/internal/config"','"github.com/hurtener/chartworks/internal/config"\n\t"github.com/hurtener/chartworks/internal/chartdata"')
-          old='''	definition := m.Revision.Definition
-          	definition.Outputs = m.Outputs
-          	return checkResult(ctx, definition, result, limits)'''
-          new='''	if digest(result.Schema) != digest(m.Revision.Definition.ExpectedSchema) { return ErrStale }
-          	_, err = chartdata.FromReadResult(ctx, result, chartLimits(limits))
-          	return err'''
-          assert s.count(old)==1;s=s.replace(old,new);p.write_text(s)
+          import subprocess,textwrap
+          original=subprocess.check_output(['git','show','b02a041745578c5963c755091a8e4d4942b8bc3f:.github/workflows/phase-26-28-store-check.yml'],text=True)
+          script=textwrap.dedent(original.split('      - name: Apply reviewed persistent-domain integration\n        run: |\n',1)[1].split('      - name:',1)[0])
+          subprocess.run(['bash','-e','-c',script],check=True)
           PY
-          gofmt -w internal/config/config.go internal/config/autopilot.go internal/reporting/*.go internal/store/postgres/frozen_runs*.go
-          git diff --check
       - name: Compile and race-test domain code
         run: |
           go test -race -count=1 ./internal/config ./internal/reporting ./internal/engineering
           go test -run '^$' ./internal/store/postgres
-      - name: Apply every forward migration to an isolated PostgreSQL database
+      - name: Apply all forward migrations to an isolated PostgreSQL database
         env:
           PGURL: postgres://chartworks:chartworks@localhost:5434/chartworks_schema?sslmode=disable
         run: |
@@ -146,13 +77,15 @@ jobs:
           git commit -m 'feat(reporting): integrate fenced artifact persistence, expiry and physical-attempt recovery'
           git push origin "HEAD:$FEATURE_BRANCH"
           echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
-      - name: Preserve diagnostics without claiming unfinished verification
+      - name: Preserve diagnostics
         if: always()
         run: |
           mkdir -p /tmp/domain-check
-          git diff > /tmp/domain-check/uncommitted.patch
-          git rev-parse HEAD > /tmp/domain-check/head.txt
-          git status --short
+          if test -d .git; then
+            git diff > /tmp/domain-check/uncommitted.patch
+            git rev-parse HEAD > /tmp/domain-check/head.txt
+            git status --short
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
