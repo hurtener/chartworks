@@ -1,0 +1,114 @@
+name: Phase 26-28 candidate acceptance
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-candidate-tests.yml, .github/phase-26-28-candidate.json]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        ports: [5434:5432]
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select immutable candidate
+        id: candidate
+        run: |
+          python3 - <<'PY'
+          import json,os,re
+          v=json.load(open('.github/phase-26-28-candidate.json'))
+          assert re.fullmatch('[0-9a-f]{40}',v['source'])
+          assert isinstance(v['tests'],str) and len(v['tests'])<512
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+            f.write('source='+v['source']+'\n')
+            f.write('tests='+v['tests']+'\n')
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.candidate.outputs.source }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore exact native dependencies
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          test -s "$parser"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+          bruin=$(find /tmp/native -type f -name bruin -print -quit)
+          test -s "$bruin"
+          chmod +x "$bruin"
+          echo "CHARTWORKS_TEST_BRUIN_PATH=$bruin" >> "$GITHUB_ENV"
+      - name: Prepare owned scratch and verify-full PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container=$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+      - name: Exact-source build and unit race tests
+        run: |
+          echo "TESTED_SOURCE=$(git rev-parse HEAD)"
+          go test -race -count=1 ./internal/config ./internal/reporting ./internal/engineering
+          go test -run '^$' ./internal/store/postgres ./internal/foundation ./sdk/... ./test/acceptance
+      - name: Real-store acceptance criteria
+        env:
+          TEST_PATTERN: ${{ steps.candidate.outputs.tests }}
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=20m -v -run "$TEST_PATTERN" ./test/acceptance 2>&1 | tee /tmp/phase-26-28-acceptance.log
+      - name: Confirm exact source remains unchanged
+        if: always()
+        run: git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-26-28-acceptance
+          path: /tmp/phase-26-28-acceptance.log
+          retention-days: 7
