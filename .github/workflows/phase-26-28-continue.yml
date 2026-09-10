@@ -36,19 +36,47 @@ jobs:
           parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
           test -s "$parser"
           echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
-      - name: Recover the prior unapplied integration edits
+      - name: Recover and correct the prior unapplied integration edits
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
           python3 - <<'PY'
           import subprocess,textwrap
-          # Immutable, previously authored development script. It never ran in
-          # the earlier attempt because native-library restoration failed first.
+          from pathlib import Path
           source=subprocess.check_output(['git','show','e1c68e9461066bf83937ec7ba83e4bc34ce7e7c4'],text=True)
-          script=source.split('      - name: Apply exact source integration edits\n        run: |\n',1)[1].split('      - name:',1)[0]
-          script=textwrap.dedent(script)
+          script=textwrap.dedent(source.split('      - name: Apply exact source integration edits\n        run: |\n',1)[1].split('      - name:',1)[0])
           script=script.replace('w.Result.Bytes > int64(w.Manifest.Limits.MaxResultBytes)','w.Result.Bytes > w.Manifest.Limits.MaxResultBytes')
           subprocess.run(['bash','-e','-c',script],check=True)
+          p=Path('internal/reporting/runs_model.go'); s=p.read_text()
+          start=s.index('func (m RunManifest) Reach() access.Artifact {')
+          end=s.index('// RequireRunManifest',start)
+          s=s[:start]+'''func (m RunManifest) Reach() access.Artifact {
+              return access.Artifact{Tenant: m.Tenant, RunID: m.ID, ParentKind: "block", ParentID: m.Block,
+                  Published: !m.Private, Private: m.Private,
+                  Contexts: []access.Resource{{Tenant: m.Tenant, Kind: "execution_context", Permission: "use", ID: m.Binding.Context}}}
+          }
+
+          '''+s[end:]
+          old='if err := access.RequireExecution(e, "reporting.execute", "block", m.Block, m.Binding.Context, m.Private); err != nil {'
+          assert s.count(old)==1
+          s=s.replace(old, '''dependencies := []access.Resource{{Tenant: m.Tenant, Kind: "source", Permission: "query", ID: m.Binding.Source}}
+              for _, ref := range m.References {
+                  if ref.Kind == "dataset" && ref.Permission == "query" {
+                      dependencies = append(dependencies, access.Resource{Tenant: m.Tenant, Kind: ref.Kind, Permission: ref.Permission, ID: ref.ID})
+                  }
+              }
+              if m.Private {
+                  if err := Require(e, m.Block, Preview); err != nil { return err }
+              }
+              if err := access.RequireExecution(e, access.Execution{
+                  Target: access.Resource{Tenant: m.Tenant, Kind: "block", Permission: "execute", ID: m.Block},
+                  Dependencies: dependencies,
+                  Contexts: []access.Resource{{Tenant: m.Tenant, Kind: "execution_context", Permission: "use", ID: m.Binding.Context}},
+              }); err != nil {''')
+          p.write_text(s)
+          for name,old,new in [('runs_narrative.go','if result.Truncated {','if result.Outcome == "truncated" {'),('runs_service.go','Truncated: r.Result.Truncated','Truncated: r.Result.Outcome == "truncated"')]:
+              p=Path('internal/reporting')/name;s=p.read_text();assert s.count(old)==1,(name,old);p.write_text(s.replace(old,new))
           PY
+          gofmt -w internal/reporting/*.go
       - name: Compile and test before advancing the feature branch
         run: |
           go test -race -count=1 ./internal/config ./internal/jobs ./internal/reporting
@@ -59,7 +87,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git diff --check
           git add internal/reporting internal/config/reporting*.go internal/jobs/requests.go internal/store/postgres/blocks_read.go
-          git commit -m 'fix(reporting): integrate frozen execution with existing authority and output contracts'
+          git commit -m 'fix(reporting): integrate frozen execution with actual authority and result contracts'
           git push origin "HEAD:$FEATURE_BRANCH"
           echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
       - name: Preserve exact diagnostics
