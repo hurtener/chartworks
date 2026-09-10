@@ -1,0 +1,29 @@
+name: Phase 26-28 container continuation bundle
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-container-export.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1d412d9549f5fd9faeb5fd580fb2440ef9e9a41f
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export repository objects only
+        run: |
+          git branch container-candidate HEAD
+          git bundle create /tmp/chartworks-candidate.bundle container-candidate
+          git rev-parse HEAD > /tmp/chartworks-candidate-head.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chartworks-container-candidate
+          path: |
+            /tmp/chartworks-candidate.bundle
+            /tmp/chartworks-candidate-head.txt
+          retention-days: 7
