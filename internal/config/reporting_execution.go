@@ -5,19 +5,19 @@ import "time"
 // ReportingExecution bounds retained frozen runs. None of these operational
 // settings grants source, preview, publication or artifact-reading authority.
 type ReportingExecution struct {
-	Retention         Duration `json:"retention"`
-	PreviewRetention  Duration `json:"preview_retention"`
-	Timeout           Duration `json:"timeout"`
-	MaxRows           int      `json:"max_rows"`
-	MaxResultBytes    int      `json:"max_result_bytes"`
-	MaxArtifactBytes  int      `json:"max_artifact_bytes"`
-	MaxTenantBytes    int64    `json:"max_tenant_bytes"`
-	MaxRequests       int      `json:"max_requests"`
-	PageRows          int      `json:"page_rows"`
-	MaxReuseAge       Duration `json:"max_reuse_age"`
-	NarrativeCalls    int      `json:"narrative_calls"`
-	NarrativeTokens   int      `json:"narrative_tokens"`
-	NarrativeTimeout  Duration `json:"narrative_timeout"`
+	Retention        Duration `json:"retention"`
+	PreviewRetention Duration `json:"preview_retention"`
+	Timeout          Duration `json:"timeout"`
+	MaxRows          int      `json:"max_rows"`
+	MaxResultBytes   int      `json:"max_result_bytes"`
+	MaxArtifactBytes int      `json:"max_artifact_bytes"`
+	MaxTenantBytes   int64    `json:"max_tenant_bytes"`
+	MaxRequests      int      `json:"max_requests"`
+	PageRows         int      `json:"page_rows"`
+	MaxReuseAge      Duration `json:"max_reuse_age"`
+	NarrativeCalls   int      `json:"narrative_calls"`
+	NarrativeTokens  int      `json:"narrative_tokens"`
+	NarrativeTimeout Duration `json:"narrative_timeout"`
 }
 
 // DefaultReportingExecution retains public values for seven days and private
