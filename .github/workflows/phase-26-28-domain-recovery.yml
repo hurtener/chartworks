@@ -75,43 +75,18 @@ jobs:
           docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
           docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
           psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
-      - name: Recover exact boundary changes and correct the observed failures
+      - name: Recover exact domain edits and executable boundary tests
         run: |
           test "$(git rev-parse HEAD)" = 1d412d9549f5fd9faeb5fd580fb2440ef9e9a41f
           python3 - <<'PY'
-          from pathlib import Path
           import subprocess,textwrap
-          original=subprocess.check_output(['git','show','4024d3cff394b15e5c533c485d5aa28d04c2e4bf:.github/workflows/phase-26-28-boundary-repair.yml'],text=True)
-          script=textwrap.dedent(original.split('      - name: Apply exact reviewed boundary changes\n        run: |\n',1)[1].split('      - name:',1)[0])
+          prior=subprocess.check_output(['git','show','e73f545d64a6a2d303d738c5486e95d7f45e031f:.github/workflows/phase-26-28-domain-recovery.yml'],text=True)
+          script=textwrap.dedent(prior.split('      - name: Recover exact boundary changes and correct the observed failures\n        run: |\n',1)[1].split('      - name:',1)[0])
           subprocess.run(['bash','-e','-c',script],check=True)
-          def replace(path,old,new):
-              p=Path(path);s=p.read_text();assert s.count(old)==1,(path,old,s.count(old));p.write_text(s.replace(old,new))
-          replace('internal/store/postgres/postgres.go','"github.com/hurtener/chartworks/internal/nlqbyo"','"github.com/hurtener/chartworks/internal/nlqbyo"\n\t"github.com/hurtener/chartworks/internal/reporting"')
-          replace('internal/store/postgres/postgres.go','[]error{nlqbyo.ErrBudget,','[]error{reporting.ErrInvalid, reporting.ErrStale, reporting.ErrUnavailable, reporting.ErrBusy, reporting.ErrExpired, reporting.ErrIncomplete, reporting.ErrBudget, engineering.ErrProposalReview, engineering.ErrProposalDrift, engineering.ErrProposalConflict, engineering.ErrCompensationBlocked, engineering.ErrPipelineQuality, engineering.ErrPipelineUncertain, nlqbyo.ErrBudget,')
-          # The authored phase-27 contract selects the saved output order, not
-          # arbitrary caller order. Do not rewrite approved semantics for a test.
-          replace('test/acceptance/phase28_test.go','v.Outputs[0].ID != "table-second" || v.Outputs[1].ID != "table-main"','v.Outputs[0].ID != "table-main" || v.Outputs[1].ID != "table-second"')
-          # Allowed and redacted field sets are disjoint by the existing schema.
-          replace('test/acceptance/phase28_test.go','d.Outputs[1].Narrative.RedactedFields = []string{"id"}','d.Outputs[1].Narrative.Fields = []string{"amount"}\n\t\td.Outputs[1].Narrative.RedactedFields = []string{"id"}')
-          Path('internal/store/postgres/frozen_domain_errors_test.go').write_text('''package postgres
-          import (
-              "errors"
-              "fmt"
-              "testing"
-              "github.com/hurtener/chartworks/internal/engineering"
-              "github.com/hurtener/chartworks/internal/reporting"
-              "github.com/hurtener/chartworks/internal/store"
-          )
-          func TestFrozenAndReviewedDomainErrorsRemainTyped(t *testing.T) {
-              for _, want := range []error{reporting.ErrInvalid,reporting.ErrStale,reporting.ErrUnavailable,reporting.ErrBusy,reporting.ErrExpired,reporting.ErrIncomplete,reporting.ErrBudget,engineering.ErrProposalReview,engineering.ErrProposalDrift,engineering.ErrProposalConflict,engineering.ErrCompensationBlocked,engineering.ErrPipelineQuality,engineering.ErrPipelineUncertain} {
-                  got := safe(fmt.Errorf("private diagnostic must not escape: %w", want))
-                  if got != want { t.Errorf("lost typed failure: %v", want) }
-              }
-              if safe(errors.New("SYNTHETIC_SQL_SECRET")) != store.ErrUnavailable { t.Fatal("unrecognized database diagnostic escaped") }
-          }
-          ''')
+          replacement=subprocess.check_output(['git','show','157eb7c10703b34e6aa0e99f3eeea45b35332036:scripts/_phase26_28_boundary_test_recovery.py'],text=True)
+          exec(compile(replacement,'recovered-boundary-test','exec'))
           PY
-          gofmt -w internal/store/postgres/postgres.go internal/store/postgres/frozen_domain_errors_test.go test/acceptance/phase28_test.go
+          gofmt -w internal/store/postgres/phase26_28_boundaries_test.go
           git diff --check
       - name: Domain and PostgreSQL boundary regression tests
         run: |
@@ -121,7 +96,7 @@ jobs:
         run: |
           set -o pipefail
           go test -race -count=1 -timeout=15m -v -run '^TestPhase(26|27|28)$' ./test/acceptance 2>&1 | tee /tmp/domain-recovery-acceptance.log
-      - name: Publish the verified recovered domain changes
+      - name: Publish only the verified recovered domain changes
         run: |
           git diff --check
           git config user.name chartworks-development-bot
@@ -143,6 +118,9 @@ jobs:
             git rev-parse HEAD > /tmp/domain-recovery/head.txt
             git diff --binary HEAD > /tmp/domain-recovery/uncommitted.patch
             git ls-files --others --exclude-standard -z | tar --null -T - -czf /tmp/domain-recovery/untracked-source.tar.gz
+            if test -f internal/store/postgres/phase26_28_boundaries_test.go; then
+              nl -ba internal/store/postgres/phase26_28_boundaries_test.go > /tmp/domain-recovery/boundary-source.txt
+            fi
           fi
           for log in /tmp/domain-recovery-unit.log /tmp/domain-recovery-acceptance.log; do
             if test -f "$log"; then cp "$log" /tmp/domain-recovery/; fi
