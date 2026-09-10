@@ -1,5 +1,7 @@
 # Chartworks — actionable implementation plan
 
+The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
+
 Current merged baseline: phases **01–22 are shipped** (22 workstreams,
 136 implemented acceptance criteria) at `d6dbd31899449f6e042b4ab069c9c30c01fb844b`,
 which merged PR #14. Phase 23 adds six named criteria and the SDK/CLI parity
