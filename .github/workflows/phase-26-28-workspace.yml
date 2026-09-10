@@ -1,0 +1,76 @@
+name: Phase 26-28 development workspace
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive exact public source without checkout credentials
+        run: |
+          mkdir -p /tmp/source-export
+          git bundle create /tmp/source-export/chartworks.bundle --all
+          git rev-parse HEAD > /tmp/source-export/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-26-28-source
+          path: /tmp/source-export
+          retention-days: 3
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Prepare offline module and toolchain workspace
+        run: |
+          mkdir -p /tmp/offline
+          go mod download
+          go mod vendor
+          tar -czf /tmp/offline/vendor.tar.gz vendor
+          tar -czf /tmp/offline/go.tar.gz -C "$(dirname "$(go env GOROOT)")" "$(basename "$(go env GOROOT)")"
+          rm -rf vendor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-26-28-go
+          path: /tmp/offline
+          compression-level: 0
+          retention-days: 3
+      - name: Build exact native dependency
+        run: bash scripts/build-bruin.sh
+      - name: Install PostgreSQL 17, pgvector and sandbox tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-17 postgresql-17-pgvector postgresql-client-17 bubblewrap
+      - name: Archive public native runtime dependencies only
+        run: |
+          mkdir -p /tmp/native/postgres /tmp/native/lib /tmp/native/sqlparser
+          cp /tmp/chartworks-bruin/bruin /tmp/native/
+          find /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release -maxdepth 1 -name '*.a' -exec cp {} /tmp/native/sqlparser/ \;
+          cp -a /usr/lib/postgresql/17/bin /usr/lib/postgresql/17/lib /tmp/native/postgres/
+          cp -a /usr/share/postgresql/17 /tmp/native/postgres/share
+          cp /usr/bin/bwrap /tmp/native/
+          for f in /usr/lib/postgresql/17/bin/* /usr/lib/postgresql/17/lib/*.so /usr/bin/bwrap /tmp/native/bruin; do
+            ldd "$f" 2>/dev/null || true
+          done | awk '/=> \/.* \(/ {print $3}' | sort -u | while read -r lib; do
+            case "$(basename "$lib")" in libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*) continue;; esac
+            cp -L "$lib" /tmp/native/lib/
+          done
+          tar -czf /tmp/native.tar.gz -C /tmp native
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-26-28-native
+          path: /tmp/native.tar.gz
+          compression-level: 0
+          retention-days: 3
