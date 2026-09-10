@@ -1,0 +1,229 @@
+name: Phase 26-28 recovered surface integration
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-surface-integration.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: chartworks-phase-26-28-publication
+  cancel-in-progress: false
+jobs:
+  integrate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Pin the saved source and recovery payloads
+        run: |
+          mkdir -p /tmp/cw-recovered /tmp/cw-evidence
+          git rev-parse HEAD > /tmp/cw-evidence/recovery-head.txt
+          for payload in reporting_transport engineering_clients boundary_test composition; do
+            path="scripts/_phase26_28_${payload}_recovery.py"
+            test -f "$path"
+            cp "$path" "/tmp/cw-recovered/$payload.py"
+            git hash-object "$path" >> /tmp/cw-evidence/recovery-blobs.txt
+          done
+          git show 4024d3cff394b15e5c533c485d5aa28d04c2e4bf:.github/workflows/phase-26-28-boundary-repair.yml > /tmp/cw-recovered/boundary.yml
+          git checkout --detach 1d412d9549f5fd9faeb5fd580fb2440ef9e9a41f
+          git merge-base --is-ancestor 750b5de06b9d337458197c710129b0167b675d9f HEAD
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native dependencies
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          runner=$(find /tmp/native -type f -name bruin -print -quit)
+          test -s "$parser"
+          test -s "$runner"
+          chmod +x "$runner"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+          echo "CHARTWORKS_TEST_BRUIN_PATH=$runner" >> "$GITHUB_ENV"
+      - name: Prepare private executable scratch and synthetic PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container=$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+      - name: Recover the exact domain and saved surface work
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee /tmp/cw-evidence/recovery.log
+          from pathlib import Path
+          import subprocess,textwrap
+          original=Path('/tmp/cw-recovered/boundary.yml').read_text()
+          script=textwrap.dedent(original.split('      - name: Apply exact reviewed boundary changes\n        run: |\n',1)[1].split('      - name:',1)[0])
+          subprocess.run(['bash','-e','-c',script],check=True)
+          exec(compile(Path('/tmp/cw-recovered/boundary_test.py').read_text(),'boundary-test-recovery','exec'))
+          def replace(path,old,new):
+              p=Path(path);s=p.read_text();assert s.count(old)==1,(path,old[:80],s.count(old));p.write_text(s.replace(old,new))
+          replace('internal/store/postgres/postgres.go','"github.com/hurtener/chartworks/internal/nlqbyo"','"github.com/hurtener/chartworks/internal/nlqbyo"\n\t"github.com/hurtener/chartworks/internal/reporting"')
+          replace('internal/store/postgres/postgres.go','[]error{nlqbyo.ErrBudget,','[]error{reporting.ErrInvalid, reporting.ErrStale, reporting.ErrUnavailable, reporting.ErrBusy, reporting.ErrExpired, reporting.ErrIncomplete, reporting.ErrBudget, engineering.ErrProposalReview, engineering.ErrProposalDrift, engineering.ErrProposalConflict, engineering.ErrCompensationBlocked, engineering.ErrPipelineQuality, engineering.ErrPipelineUncertain, nlqbyo.ErrBudget,')
+          replace('test/acceptance/phase28_test.go','v.Outputs[0].ID != "table-second" || v.Outputs[1].ID != "table-main"','v.Outputs[0].ID != "table-main" || v.Outputs[1].ID != "table-second"')
+          replace('test/acceptance/phase28_test.go','d.Outputs[1].Narrative.RedactedFields = []string{"id"}','d.Outputs[1].Narrative.Fields = []string{"amount"}\n\t\td.Outputs[1].Narrative.RedactedFields = []string{"id"}')
+          for payload in ['reporting_transport','engineering_clients','composition']:
+              print('APPLY_RECOVERED_PAYLOAD='+payload,flush=True)
+              source=Path('/tmp/cw-recovered/'+payload+'.py').read_text()
+              exec(compile(source,payload+'-recovery','exec'))
+          Path('internal/reportingapi/runs_registry_test.go').write_text('''package reportingapi
+          import (
+              "encoding/json"
+              "testing"
+              "github.com/hurtener/chartworks/internal/reporting"
+          )
+          func TestFrozenRunRegistrations(t *testing.T) {
+              for _, enabled := range []bool{false,true} {
+                  registry,err:=RunsRegistry(enabled)
+                  if err!=nil {t.Fatal(err)}
+                  want:=7
+                  if enabled {want=9}
+                  if len(registry.Definitions())!=want {t.Fatal("missing registered operation")}
+                  for _, d:=range registry.Definitions() {
+                      if d.Public || d.Action=="" || d.ResourceLoader=="" || d.Audit=="" {t.Fatal("unprotected or unclassified operation",d.ID)}
+                      if d.Request!=nil && d.Request.Validate([]byte(`{"actor":"forged","tenant":"foreign"}`),d.MaxBodyBytes)==nil {t.Fatal("caller authority fields admitted",d.ID)}
+                      if d.ID=="admitBlockRun" {
+                          body,err:=json.Marshal(RunAdmission{Block:"block",Request:reporting.RunRequest{Key:"request"}})
+                          if err!=nil || d.Request.Validate(body,d.MaxBodyBytes)!=nil {t.Fatal("normal SDK defaults rejected",err)}
+                      }
+                  }
+              }
+          }
+          ''')
+          Path('internal/sourceapi/autopilot_registry_test.go').write_text('''package sourceapi
+          import "testing"
+          func TestReviewedEngineeringRegistrations(t *testing.T) {
+              for _,enabled:=range []bool{false,true} {
+                  registry,err:=AutopilotAPIRegistry(enabled)
+                  if err!=nil {t.Fatal(err)}
+                  want:=1
+                  if enabled {want=7}
+                  if len(registry.Definitions())!=want {t.Fatal("missing reviewed operation")}
+                  for _,d:=range registry.Definitions() {
+                      if d.Public || d.Action=="" || d.ResourceLoader=="" || d.Audit=="" {t.Fatal("unprotected or unclassified operation",d.ID)}
+                      if d.Request!=nil && d.Request.Validate([]byte(`{"actor":"reviewer","approved":true}`),d.MaxBodyBytes)==nil {t.Fatal("body manufactured approval",d.ID)}
+                  }
+              }
+          }
+          ''')
+          Path('internal/store/postgres/frozen_domain_errors_test.go').write_text('''package postgres
+          import (
+              "errors"
+              "fmt"
+              "testing"
+              "github.com/hurtener/chartworks/internal/engineering"
+              "github.com/hurtener/chartworks/internal/reporting"
+              "github.com/hurtener/chartworks/internal/store"
+          )
+          func TestFrozenAndReviewedDomainErrorsRemainTyped(t *testing.T) {
+              for _,want:=range []error{reporting.ErrInvalid,reporting.ErrStale,reporting.ErrUnavailable,reporting.ErrBusy,reporting.ErrExpired,reporting.ErrIncomplete,reporting.ErrBudget,engineering.ErrProposalReview,engineering.ErrProposalDrift,engineering.ErrProposalConflict,engineering.ErrCompensationBlocked,engineering.ErrPipelineQuality,engineering.ErrPipelineUncertain} {
+                  if safe(fmt.Errorf("private diagnostic: %w",want))!=want {t.Errorf("lost typed failure: %v",want)}
+              }
+              if safe(errors.New("SYNTHETIC_SQL_SECRET"))!=store.ErrUnavailable {t.Fatal("private database diagnostic escaped")}
+          }
+          ''')
+          PY
+          find internal sdk test -name '*.go' -print0 | xargs -0 gofmt -w
+          git diff --check
+      - name: Compile all concrete surfaces and recovered acceptance tests
+        run: |
+          set -o pipefail
+          go test -run '^$' ./... 2>&1 | tee /tmp/cw-evidence/compile.log
+      - name: Race-enabled domain, registration and client regressions
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=10m ./internal/config ./internal/reporting ./internal/engineering ./internal/store/postgres ./internal/reportingapi ./internal/sourceapi ./internal/mcpserver ./internal/clientcli ./sdk/chartworks 2>&1 | tee /tmp/cw-evidence/regressions.log
+      - name: Real phase 26, 27 and 28 acceptance
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -v -run '^TestPhase(26|27|28)$' ./test/acceptance 2>&1 | tee /tmp/cw-evidence/acceptance.log
+      - name: Publish verified continuation to the existing draft PR
+        run: |
+          git diff --check
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal sdk test docs/plans
+          git commit -m 'feat: integrate reviewed engineering and frozen-run HTTP, SDK and MCP surfaces'
+          git push origin HEAD:feat/phase-26-28-engineering-artifacts
+          git rev-parse HEAD | tee /tmp/cw-evidence/published-head.txt
+      - name: Cumulative transport and client acceptance on exact committed source
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -v -run '^TestPhase(21|22|23)$' ./test/acceptance 2>&1 | tee /tmp/cw-evidence/cumulative.log
+          go test -race -count=1 ./internal/foundation 2>&1 | tee /tmp/cw-evidence/foundation.log
+          make planning-check
+          git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+      - name: Preserve exact source and bounded diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/cw-evidence
+          if test -d .git; then
+            git rev-parse HEAD > /tmp/cw-evidence/head.txt
+            git diff --binary HEAD > /tmp/cw-evidence/uncommitted.patch
+            git ls-files --others --exclude-standard -z | tar --null -T - -czf /tmp/cw-evidence/untracked-source.tar.gz
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/cw-evidence')
+          out=[]
+          for p in sorted(root.glob('*.log')):
+              lines=p.read_text(errors='replace').splitlines()
+              out.append('=== '+p.name)
+              out.extend(lines[-35:])
+          report='\n'.join(out)[-20000:]
+          (root/'summary.txt').write_text(report)
+          print(report)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase26-28-surface-integration
+          path: /tmp/cw-evidence
+          retention-days: 7
