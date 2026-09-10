@@ -27,9 +27,9 @@ import (
 // No production planner, validator, pipeline runner or store is replaced.
 type phase26Model struct {
 	gateway.Engine
-	fixture *gatewayFixture
-	mu sync.Mutex
-	foreign atomic.Bool
+	fixture     *gatewayFixture
+	mu          sync.Mutex
+	foreign     atomic.Bool
 	blindInputs []string
 }
 
@@ -64,10 +64,10 @@ func (m *phase26Model) Generate(ctx context.Context, call gateway.Call, budget *
 			evidence, alternative = "relation:foreign-dataset", "foreign-dataset"
 		}
 		answer = map[string]any{
-			"sql": "SELECT id::bigint AS id FROM "+pgx.Identifier{relation.Schema, relation.Name}.Sanitize(),
-			"columns": []engineering.PipelineColumn{{Name: "id", Type: "bigint", PrimaryKey: true}},
-			"rationale": "A reviewed managed identifier projection avoids exposing unrelated source columns.",
-			"evidence": []string{"binding", evidence},
+			"sql":          "SELECT id::bigint AS id FROM " + pgx.Identifier{relation.Schema, relation.Name}.Sanitize(),
+			"columns":      []engineering.PipelineColumn{{Name: "id", Type: "bigint", PrimaryKey: true}},
+			"rationale":    "A reviewed managed identifier projection avoids exposing unrelated source columns.",
+			"evidence":     []string{"binding", evidence},
 			"alternatives": []engineering.ProposalAlternative{{Dataset: alternative, Rationale: "Direct reuse exposes a wider source schema than this managed projection."}},
 		}
 	}
@@ -78,12 +78,12 @@ func (m *phase26Model) Generate(ctx context.Context, call gateway.Call, budget *
 	raw, err := json.Marshal(map[string]any{
 		"id": "recorded-reviewed-engineering", "object": "chat.completion", "model": m.fixture.cfg.Roles[role].Model,
 		"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": string(content)}, "finish_reason": "stop"}},
-		"usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+		"usage":   map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
 	})
 	if err != nil {
 		return gateway.Generated{}, err
 	}
-	m.fixture.mode.Store("chat_raw:"+string(raw))
+	m.fixture.mode.Store("chat_raw:" + string(raw))
 	return m.Engine.Generate(ctx, call, budget, role, instructions, input, schema)
 }
 
@@ -96,12 +96,12 @@ func phase26Scopes() []string {
 }
 
 type phase26Fixture struct {
-	* pipelineFixture
-	model *phase26Model
-	auto *engineering.Autopilot
+	*pipelineFixture
+	model  *phase26Model
+	auto   *engineering.Autopilot
 	author identity.Envelope
 	limits config.Autopilot
-	goal engineering.AutopilotGoal
+	goal   engineering.AutopilotGoal
 }
 
 func newPhase26Fixture(t *testing.T) *phase26Fixture {
@@ -173,7 +173,7 @@ func TestPhase26(t *testing.T) {
 	t.Run("AC01", func(t *testing.T) {
 		f := newPhase26Fixture(t)
 		p := f.propose(t)
-		if p.State != "draft" || p.Review != nil || p.Revision != 1 || p.Material.Usage.Calls != 2 || f.model.fixture.requests.Load() != 2 || len(p.Material.Objects) != 2 {
+		if p.State != "draft" || p.Review != nil || p.Revision != 1 || len(p.Material.Usage.Calls) != 2 || f.model.fixture.requests.Load() != 2 || len(p.Material.Objects) != 2 {
 			t.Fatal("proposal lacks bounded real planning evidence", p.State, p.Material.Usage)
 		}
 		for _, object := range p.Material.Objects {
@@ -360,7 +360,7 @@ func TestPhase26(t *testing.T) {
 			t.Fatal(err)
 		}
 		relation := binding.Relations[0]
-		dependent := engineering.PipelineDefinition{ID: "p26-dependent", Name: "Independent published consumer", Connection: "workspace", Steps: []engineering.PipelineStep{{ID: "output", Source: stage.Source, Context: stage.Context, SQL: "SELECT id FROM "+pgx.Identifier{relation.Schema, relation.Name}.Sanitize(), Inputs: []string{relation.ID}, DependsOn: []string{}, Strategy: "replace", Columns: []engineering.PipelineColumn{{Name: "id", Type: "bigint", PrimaryKey: true}}, Checks: []engineering.PipelineCheck{}}}}
+		dependent := engineering.PipelineDefinition{ID: "p26-dependent", Name: "Independent published consumer", Connection: "workspace", Steps: []engineering.PipelineStep{{ID: "output", Source: stage.Source, Context: stage.Context, SQL: "SELECT id FROM " + pgx.Identifier{relation.Schema, relation.Name}.Sanitize(), Inputs: []string{relation.ID}, DependsOn: []string{}, Strategy: "replace", Columns: []engineering.PipelineColumn{{Name: "id", Type: "bigint", PrimaryKey: true}}, Checks: []engineering.PipelineCheck{}}}}
 		version, err := f.pipelines.Draft(context.Background(), f.author, dependent, 0)
 		if err != nil {
 			t.Fatal("independent consumer draft", err)

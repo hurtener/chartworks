@@ -29,7 +29,7 @@ func phase28Scopes(tenant string) []string {
 
 func phase28Reader(t *testing.T, f *phase17Fixture, user, block, contextID string) identity.Envelope {
 	t.Helper()
-	return phase27Actor(t, f, user, []string{"reporting.read", "cw.block.read:"+block, "cw.execution_context.use:"+contextID})
+	return phase27Actor(t, f, user, []string{"reporting.read", "cw.block.read:" + block, "cw.execution_context.use:" + contextID})
 }
 
 func phase28RunService(t *testing.T, f *phase17Fixture, blocks *reporting.Service, repo reporting.RunRepository, model gateway.Engine, limits config.ReportingExecution) *reporting.Runs {
@@ -50,7 +50,7 @@ func phase28Chat(t *testing.T, model, content string) string {
 	raw, err := json.Marshal(map[string]any{
 		"id": "recorded-frozen-narrative", "object": "chat.completion", "model": model,
 		"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": content}, "finish_reason": "stop"}},
-		"usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+		"usage":   map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +218,7 @@ func TestPhase28(t *testing.T) {
 		v = run(t, withNarrative, v.ID)
 		reader := phase28Reader(t, f, "narrative-reader", v.Block, v.Context)
 		output, readErr := withNarrative.Output(ctx, reader, v.ID, "narrative-main")
-		if readErr != nil || output.Narrative == nil || model.requests.Load() != 1 || output.Narrative.Receipt.Calls != 1 || !strings.Contains(output.Narrative.Text, "9007199254740993.125") {
+		if readErr != nil || output.Narrative == nil || model.requests.Load() != 1 || len(output.Narrative.Receipt.Calls) != 1 || !strings.Contains(output.Narrative.Text, "9007199254740993.125") {
 			t.Fatal("grounded narrative and actual provider usage missing", output, readErr)
 		}
 		for _, evidence := range output.Narrative.Evidence {
@@ -238,7 +238,7 @@ func TestPhase28(t *testing.T) {
 			t.Fatal("narrative failure was hidden or budget refunded", partial, runErr)
 		}
 		failedOutput, outputErr := withNarrative.Output(ctx, reader, partial.ID, "narrative-main")
-		if outputErr != nil || failedOutput.State != "failed" || failedOutput.Narrative == nil || failedOutput.Narrative.Receipt.Calls == 0 || failedOutput.Narrative.Text != "" {
+		if outputErr != nil || failedOutput.State != "failed" || failedOutput.Narrative == nil || len(failedOutput.Narrative.Receipt.Calls) == 0 || failedOutput.Narrative.Text != "" {
 			t.Fatal("failed narrative lost paid usage or exposed unchecked prose", failedOutput, outputErr)
 		}
 	})
