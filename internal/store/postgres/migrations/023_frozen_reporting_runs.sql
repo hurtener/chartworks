@@ -33,6 +33,7 @@ CREATE TABLE chartworks.frozen_runs (
  frozen_version text NOT NULL CHECK(frozen_version='frozen-block-run-v1'),
  created_at timestamptz NOT NULL,
  expires_at timestamptz NOT NULL,
+ payload_expires_at timestamptz NOT NULL,
  observed_at timestamptz,
  finished_at timestamptz,
  state text NOT NULL DEFAULT 'sealed' CHECK(state IN('sealed','normalized','succeeded','partial','failed','expired')),
@@ -48,6 +49,7 @@ CREATE TABLE chartworks.frozen_runs (
  FOREIGN KEY(tenant_id,block_id,revision) REFERENCES chartworks.block_revisions(tenant_id,block_id,revision),
  FOREIGN KEY(tenant_id,reused_from) REFERENCES chartworks.frozen_runs(tenant_id,operation_id),
  CHECK(expires_at>created_at AND expires_at<=created_at+interval '90 days'),
+ CHECK(payload_expires_at>created_at AND payload_expires_at<=expires_at),
  CHECK(NOT private OR expires_at<=created_at+interval '7 days'),
  CHECK(retained_bytes<=max_artifact_bytes AND reserved_bytes<=max_artifact_bytes),
  CHECK(state<>'expired' OR (retained_bytes=0 AND reserved_bytes=0)),
@@ -92,6 +94,7 @@ CREATE FUNCTION chartworks.protect_frozen_run() RETURNS trigger LANGUAGE plpgsql
  IF ROW(NEW.tenant_id,NEW.operation_id,NEW.actor_id,NEW.session_id,NEW.block_id,NEW.revision,NEW.revision_digest,NEW.request_hash,NEW.task_hash,NEW.manifest_digest,NEW.reuse_key,NEW.private,NEW.source_id,NEW.context_id,NEW.partition_digest,NEW.locale,NEW.timezone,NEW.frozen_version,NEW.created_at,NEW.expires_at,NEW.max_artifact_bytes)
  IS DISTINCT FROM ROW(OLD.tenant_id,OLD.operation_id,OLD.actor_id,OLD.session_id,OLD.block_id,OLD.revision,OLD.revision_digest,OLD.request_hash,OLD.task_hash,OLD.manifest_digest,OLD.reuse_key,OLD.private,OLD.source_id,OLD.context_id,OLD.partition_digest,OLD.locale,OLD.timezone,OLD.frozen_version,OLD.created_at,OLD.expires_at,OLD.max_artifact_bytes)
  THEN RAISE EXCEPTION 'frozen run manifest is immutable' USING ERRCODE='23514'; END IF;
+ IF NEW.payload_expires_at>OLD.payload_expires_at THEN RAISE EXCEPTION 'retained payload expiry cannot increase' USING ERRCODE='23514'; END IF;
  IF OLD.state IN('succeeded','partial','failed','expired') AND NEW.state<>OLD.state AND NEW.state<>'expired'
  THEN RAISE EXCEPTION 'terminal frozen run cannot resume' USING ERRCODE='23514'; END IF;
  RETURN NEW;

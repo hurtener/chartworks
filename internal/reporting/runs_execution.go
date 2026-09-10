@@ -85,23 +85,38 @@ func frozenOutcome(outputs []RetainedOutput, policy string) (string, string) {
 }
 
 func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m RunManifest) (RunRecord, error) {
+	current, err := s.repo.ReadFrozenRun(ctx, e, m.ID, true)
+	if err != nil {
+		return RunRecord{}, err
+	}
+	number, err := nextFrozenQueryNumber(current.View.QueryAttempts)
+	if err != nil {
+		return RunRecord{}, err
+	}
 	plan, err := s.pinnedPlan(ctx, e, m)
 	if err != nil {
 		return RunRecord{}, err
 	}
-	report, err := s.blocks.executor.Execute(ctx, e, plan, exec.Options{Operation: m.ID, Number: inv.Lease().Attempt,
+	report, executeErr := s.blocks.executor.Execute(ctx, e, plan, exec.Options{Operation: m.ID, Number: number,
 		Preview: m.Private, Rows: min(m.Limits.MaxRows, s.limits.MaxRows), Bytes: min(m.Limits.MaxResultBytes, s.limits.MaxResultBytes)})
-	if err != nil {
-		return RunRecord{}, err
+	if report.Attempt.ID != "" {
+		if _, err = s.writeRun(ctx, e, inv, RunWrite{Kind: "attempt", Manifest: m, Attempt: &report.Attempt}); err != nil {
+			return RunRecord{}, err
+		}
 	}
-	if report.Result == nil || !successful(report.Attempt.Status) || report.Attempt.Finished == nil || report.Attempt.RemoteState != "stopped" ||
-		report.Attempt.Number != inv.Lease().Attempt || report.Attempt.Manifest.Operation != m.ID || report.Attempt.Manifest.Session != e.Session() ||
-		report.Attempt.Manifest.Preview != m.Private || report.Attempt.Manifest.Receipt.Manifest != plan.Receipt().Manifest {
+	if executeErr != nil {
+		return RunRecord{}, executeErr
+	}
+	if report.Result == nil || !successful(report.Attempt.Status) {
+		if report.Attempt.Status == "uncertain" || report.Attempt.RemoteState == "unknown" || report.Attempt.RemoteState == "running" {
+			return RunRecord{}, exec.ErrUncertain
+		}
 		return RunRecord{}, ErrIncomplete
 	}
-	limits := s.blocks.limits
-	limits.PreviewRows, limits.PreviewBytes = m.Limits.MaxRows, m.Limits.MaxResultBytes
-	if err = checkResult(ctx, m.Revision.Definition, *report.Result, limits); err != nil {
+	if report.Attempt.Number != number || report.Attempt.Manifest.Receipt.Manifest != plan.Receipt().Manifest {
+		return RunRecord{}, ErrInvalid
+	}
+	if err = CheckFrozenResult(ctx, m, *report.Result, report.Attempt); err != nil {
 		return RunRecord{}, err
 	}
 	return s.writeRun(ctx, e, inv, RunWrite{Kind: "result", Manifest: m, Result: report.Result, Attempt: &report.Attempt})
@@ -115,9 +130,10 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 		}
 		chart, err := s.buildRetainedChart(ctx, m, result, *saved.Mapping)
 		if err != nil {
-			return out, err
+			out.State, out.Code = "failed", "output_failed"
+		} else {
+			out.Chart = &chart
 		}
-		out.Chart = &chart
 	} else {
 		n := saved.Narrative
 		if n == nil || s.model == nil || m.Model != s.modelVersion || n.ModelVersion != s.modelVersion {
@@ -133,6 +149,7 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 			narrative, err := s.generateNarrative(ctx, e, m, saved.ID, result, *n)
 			if err != nil {
 				out.State, out.Code = "failed", "narrative_failed"
+				out.Narrative = &narrative
 			} else {
 				out.Narrative = &narrative
 			}
@@ -167,12 +184,8 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 	if err != nil {
 		return err
 	}
-	if current.Result == nil && m.ReuseMaxAge > 0 {
-		// Reuse still verifies present business/dependency eligibility. The
-		// validator cannot execute SQL or generate any new presentation choice.
-		if _, err = s.pinnedPlan(ctx, e, m); err != nil {
-			return err
-		}
+	if current.Result == nil && m.ReuseMaxAge > 0 && len(current.View.QueryAttempts) == 0 {
+		// The repository rechecks present pins and reach without warehouse/model I/O.
 		var reused bool
 		current, reused, err = s.repo.ReuseFrozenRun(ctx, inv, m.ID)
 		if err != nil {

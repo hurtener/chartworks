@@ -136,6 +136,7 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
+	Autopilot    Autopilot      `json:"autopilot"`
 	Reporting    Reporting      `json:"reporting"`
 	MCP          MCP            `json:"mcp"`
 	Charts       Charts         `json:"charts"`
@@ -192,6 +193,7 @@ func (c Config) StoreDSN() string { return c.dsn }
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
 	v := Values{
+		Autopilot:    DefaultAutopilot(),
 		MCP:          DefaultMCP(),
 		Charts:       DefaultCharts(),
 		Reporting:    DefaultReporting(),
@@ -322,6 +324,9 @@ func secureURL(s string) bool {
 	return e == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
 }
 func validate(v Values) error {
+	if err := v.Autopilot.Validate(); err != nil {
+		return err
+	}
 	h, p, e := net.SplitHostPort(v.Server.Listen)
 	port, portErr := strconv.Atoi(p)
 	if e != nil || portErr != nil || port < 0 || port > 65535 || p == "" || h == "" {

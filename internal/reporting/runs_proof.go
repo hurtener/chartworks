@@ -99,9 +99,13 @@ func (p PreparedRunWrite) Checked(inv jobs.Invocation) (RunWrite, error) {
 		return RunWrite{}, err
 	}
 	switch w.Kind {
+	case "attempt":
+		if w.Attempt == nil || w.Result != nil || w.Output != nil || w.Outcome != "" || w.Code != "" || !w.Attempt.Manifest.Valid() || w.Attempt.Manifest.Operation != w.Manifest.ID || w.Attempt.Manifest.Session != w.Manifest.Session || w.Attempt.Number < 1 || w.Attempt.Number > 3 {
+			return RunWrite{}, ErrInvalid
+		}
 	case "result":
 		if w.Result == nil || w.Attempt == nil || w.Output != nil || w.Outcome != "" || w.Attempt.Manifest.Operation != w.Manifest.ID ||
-			w.Attempt.Number != inv.Lease().Attempt || w.Attempt.Finished == nil || w.Attempt.RemoteState != "stopped" || !successful(w.Attempt.Status) ||
+			w.Attempt.Number < 1 || w.Attempt.Number > 3 || w.Attempt.Finished == nil || w.Attempt.RemoteState != "stopped" || !successful(w.Attempt.Status) ||
 			len(w.Result.Rows) > w.Manifest.Limits.MaxRows || w.Result.Bytes > w.Manifest.Limits.MaxResultBytes {
 			return RunWrite{}, ErrInvalid
 		}
