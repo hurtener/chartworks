@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/exec"
@@ -201,11 +200,12 @@ func ResolveParameters(parameters []Parameter, arguments []Argument, resolution 
 		v, explicit := provided[p.Name]
 		provenance := "invocation"
 		if !explicit {
-			if p.Default != nil {
+			switch {
+			case p.Default != nil:
 				v, provenance = clone(*p.Default), "block_default"
-			} else if p.Required {
+			case p.Required:
 				return out, ErrInvalid
-			} else {
+			default:
 				nulls := []exec.Parameter{{Kind: "null"}}
 				if p.Type == "relative_period" {
 					nulls = append(nulls, exec.Parameter{Kind: "null"})
@@ -279,19 +279,6 @@ func scalarDefaults(values []exec.Parameter) ([]Parameter, error) {
 		out = append(out, p)
 	}
 	return out, nil
-}
-
-func safeIdentifierToken(s string) bool {
-	if s == "" || len(s) > 128 {
-		return false
-	}
-	for i, r := range s {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '_' || i > 0 && r >= '0' && r <= '9' {
-			continue
-		}
-		return false
-	}
-	return !strings.ContainsAny(s, "\x00\r\n")
 }
 
 // parameterDigest canonicalizes zero bind values independently of nil slices.

@@ -221,11 +221,12 @@ func TestPhase27(t *testing.T) {
 		close(results)
 		wins, conflicts := 0, 0
 		for err := range results {
-			if err == nil {
+			switch {
+			case err == nil:
 				wins++
-			} else if errors.Is(err, store.ErrConflict) {
+			case errors.Is(err, store.ErrConflict):
 				conflicts++
-			} else {
+			default:
 				t.Fatal(err)
 			}
 		}
@@ -563,8 +564,14 @@ func TestPhase27(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw, _ := io.ReadAll(response.Body)
-			response.Body.Close()
+			raw, readErr := io.ReadAll(response.Body)
+			closeErr := response.Body.Close()
+			if readErr != nil {
+				t.Fatal("read rejection response", readErr)
+			}
+			if closeErr != nil {
+				t.Fatal("close rejection response", closeErr)
+			}
 			if response.StatusCode != 400 || response.Header.Get("Cache-Control") != "no-store" || bytes.Contains(raw, []byte("BLOCK_SQL_CANARY")) {
 				t.Fatalf("closed safe wire rejection: %d %s", response.StatusCode, raw)
 			}

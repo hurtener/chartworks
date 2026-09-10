@@ -12,6 +12,7 @@ import (
 // Access names domain actions, not local roles or an alternative grant store.
 type Access string
 
+// Reporting access modes map to signed actions and block resource permissions.
 const (
 	Read     Access = "read"
 	Write    Access = "write"

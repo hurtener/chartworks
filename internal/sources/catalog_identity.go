@@ -19,17 +19,20 @@ type CatalogIdentity struct {
 	Relations []RelationIdentity `json:"relations"`
 }
 
+// RelationIdentity binds a registered dataset to source-derived object and column identities.
 type RelationIdentity struct {
 	Dataset string           `json:"dataset"`
 	Object  string           `json:"object"`
 	Columns []ColumnIdentity `json:"columns"`
 }
 
+// ColumnIdentity binds a column name to its source-derived object identity.
 type ColumnIdentity struct {
 	Name   string `json:"name"`
 	Object string `json:"object"`
 }
 
+// CatalogObservation pairs a registered binding digest with observed catalog identity evidence.
 type CatalogObservation struct {
 	BindingDigest string          `json:"binding_digest"`
 	Identity      CatalogIdentity `json:"identity"`

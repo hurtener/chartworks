@@ -129,14 +129,15 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
 	if out.Validation != nil && (out.Validation.Evidence.Revision != out.Revision.Number || out.Validation.Evidence.RevisionID != out.Revision.ID || out.Validation.Evidence.DefinitionDigest != out.Revision.Digest) {
 		return reporting.Snapshot{}, store.ErrInvalid
 	}
-	if !out.Current {
+	switch {
+	case !out.Current:
 		out.Health = reporting.Health{Status: "stale", Reason: "dependency_revision_changed"}
-	} else if out.Validation != nil && time.Now().Before(out.Validation.Evidence.ExpiresAt) && out.Health.Status == "" {
+	case out.Validation != nil && time.Now().Before(out.Validation.Evidence.ExpiresAt) && out.Health.Status == "":
 		observed := out.Validation.Evidence.CreatedAt
 		out.Health = reporting.Health{Status: "healthy", Reason: "validated_observation", ObservedAt: &observed, DependencyDigest: out.Validation.Evidence.DependencyDigest}
-	} else if out.Validation == nil && out.Health.Status == "" {
+	case out.Validation == nil && out.Health.Status == "":
 		out.Health = reporting.Health{Status: "unknown", Reason: "not_validated"}
-	} else if out.Health.Status == "" {
+	case out.Health.Status == "":
 		out.Health = reporting.Health{Status: "stale", Reason: "validation_expired"}
 	}
 	if err := blockConsistency(out); err != nil {
@@ -148,6 +149,8 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
 	return out, ctx.Err()
 }
 
+// ReadBlock retrieves a revision under signed block, parent-topic, dependency
+// and private-draft eligibility checks within one metadata transaction.
 func (d *DB) ReadBlock(ctx context.Context, e identity.Envelope, id string, ref reporting.Reference, a reporting.Access) (out reporting.Snapshot, err error) {
 	if _, err = blockReadArgs(e, id, ref, a); err != nil {
 		return out, err
@@ -165,6 +168,8 @@ func (d *DB) ReadBlock(ctx context.Context, e identity.Envelope, id string, ref 
 	return
 }
 
+// ListBlocks returns a bounded page filtered by signed block, parent-topic
+// and dependency reach before projecting metadata.
 func (d *DB) ListBlocks(ctx context.Context, e identity.Envelope, in reporting.ListRequest) (out reporting.Page, err error) {
 	out.Items = []reporting.Summary{}
 	if in.Limit < 1 || in.Limit > 100 || in.After != "" && !identity.Identifier(in.After) {

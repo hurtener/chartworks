@@ -79,6 +79,7 @@ func TestDefinitionClosedBoundsAndDetachedOutputs(t *testing.T) {
 			}
 		})
 	}
+	//nolint:staticcheck // Intentionally exercise the nil-context rejection guard.
 	if validateDefinition(nil, base, limits, false) == nil {
 		t.Fatal("nil context accepted")
 	}

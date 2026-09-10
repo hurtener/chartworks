@@ -13,6 +13,7 @@ import (
 	"github.com/hurtener/chartworks/internal/exec"
 )
 
+// ErrInvalid reports a read result or conversion request that violates the chart data contract.
 var ErrInvalid = errors.New("chartworks: invalid chart result")
 
 // FromReadResult preserves exact scalar encodings and rejects invalid wire data.
