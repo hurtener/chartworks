@@ -22,6 +22,7 @@ import (
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -399,7 +400,7 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = 403, "forbidden"
 	case errors.Is(err, access.ErrNotFound), errors.Is(err, store.ErrNotFound), errors.Is(err, nlqexec.ErrForeignSession):
 		status, code = 404, "not_found"
-	case errors.Is(err, engineering.ErrInvalid), errors.Is(err, jobs.ErrInvalid), errors.Is(err, reporting.ErrInvalid), errors.Is(err, store.ErrInvalid), errors.Is(err, nlqexec.ErrInvalid):
+	case errors.Is(err, semantics.ErrInvalid), errors.Is(err, engineering.ErrInvalid), errors.Is(err, jobs.ErrInvalid), errors.Is(err, reporting.ErrInvalid), errors.Is(err, store.ErrInvalid), errors.Is(err, nlqexec.ErrInvalid):
 		status, code = 400, "invalid_request"
 	case errors.Is(err, engineering.ErrProposalReview), errors.Is(err, engineering.ErrProposalConflict), errors.Is(err, engineering.ErrCompensationBlocked), errors.Is(err, engineering.ErrState), errors.Is(err, store.ErrConflict), errors.Is(err, nlqexec.ErrNoPlan):
 		status, code = 409, "conflict"
