@@ -1,0 +1,77 @@
+name: Phase 26-28 continuation verification
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/phase-26-28-continue.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  integration:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_SOURCE: a9585a8017d66b590a2097b76f8e786828500844
+      FEATURE_BRANCH: feat/phase-26-28-engineering-artifacts
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-26-28-engineering-artifacts
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore exact compiled parser
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          test -s "$parser"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+      - name: Recover the prior unapplied integration edits
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          python3 - <<'PY'
+          import subprocess,textwrap
+          # Immutable, previously authored development script. It never ran in
+          # the earlier attempt because native-library restoration failed first.
+          source=subprocess.check_output(['git','show','e1c68e9461066bf83937ec7ba83e4bc34ce7e7c4'],text=True)
+          script=source.split('      - name: Apply exact source integration edits\n        run: |\n',1)[1].split('      - name:',1)[0]
+          script=textwrap.dedent(script)
+          script=script.replace('w.Result.Bytes > int64(w.Manifest.Limits.MaxResultBytes)','w.Result.Bytes > w.Manifest.Limits.MaxResultBytes')
+          subprocess.run(['bash','-e','-c',script],check=True)
+          PY
+      - name: Compile and test before advancing the feature branch
+        run: |
+          go test -race -count=1 ./internal/config ./internal/jobs ./internal/reporting
+          go test -run '^$' ./internal/store/postgres
+      - name: Publish only verified integration edits
+        run: |
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git diff --check
+          git add internal/reporting internal/config/reporting*.go internal/jobs/requests.go internal/store/postgres/blocks_read.go
+          git commit -m 'fix(reporting): integrate frozen execution with existing authority and output contracts'
+          git push origin "HEAD:$FEATURE_BRANCH"
+          echo "PUBLISHED_SOURCE=$(git rev-parse HEAD)"
+      - name: Preserve exact diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/continuation
+          git diff > /tmp/continuation/uncommitted.patch
+          git rev-parse HEAD > /tmp/continuation/head.txt
+          git status --short
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-26-28-integration-diagnostics
+          path: /tmp/continuation
+          retention-days: 3
