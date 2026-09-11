@@ -1,0 +1,147 @@
+name: PR19 PostgreSQL coverage verification
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/pr19-store-coverage.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: pr19-postgres-coverage-verification
+  cancel-in-progress: false
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      mysql:
+        image: mysql:8.4
+        ports: [13306:3306]
+        env:
+          MYSQL_ROOT_PASSWORD: chartworks-fixture-root
+          MYSQL_ROOT_HOST: '%'
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -pchartworks-fixture-root"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-CU23-ubuntu-22.04
+        ports: [11433:1433]
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: SYNTHETIC_fixture_Password9!
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SYNTHETIC_fixture_Password9!' -C -Q 'SELECT 1' -b"
+          --health-interval 10s --health-timeout 5s --health-retries 30
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: -p=2
+      CHARTWORKS_COVERAGE_OUTPUT: /tmp/pr19-evidence/coverage.out
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_MYSQL_DSN: root:chartworks-fixture-root@tcp(localhost:13306)/mysql
+      CHARTWORKS_TEST_SQLSERVER_DSN: sqlserver://sa:SYNTHETIC_fixture_Password9!@localhost:11433?database=master&encrypt=disable
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e42ae65759091dfef6ce42e91eed6813316018dd
+          fetch-depth: 0
+      - name: Materialize locally verified test-only candidate
+        run: |
+          test "$(git rev-parse HEAD)" = e42ae65759091dfef6ce42e91eed6813316018dd
+          mkdir -p /tmp/pr19-evidence
+          python3 - <<'PY'
+          import base64, hashlib, json, zlib
+          from pathlib import Path
+          payload = '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'
+          raw = zlib.decompress(base64.b64decode(payload, validate=True))
+          assert hashlib.sha256(raw).hexdigest() == '4770cd198ca7d80b95eb8bab0be37d7c24c64727bc37085970fbb6f55b040010'
+          files = json.loads(raw)
+          names = {'store_atomicity_support_test.go', 'store_engineering_atomicity_test.go', 'store_proposal_guards_test.go', 'store_reporting_atomicity_test.go', 'store_reporting_guards_test.go', 'store_reporting_outages_test.go', 'store_rules_atomicity_test.go'}
+          assert set(files) == {'test/acceptance/' + name for name in names}
+          for path, content in files.items():
+              target = Path(path)
+              assert not target.exists()
+              assert isinstance(content, str) and len(content.encode()) < 65536
+              target.write_text(content, encoding='utf-8')
+          PY
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add test/acceptance/store_*_test.go
+          git diff --cached --check
+          git commit -m 'test(postgres): cover transactional rollback, authority and retained recovery boundaries'
+          git rev-parse HEAD > /tmp/pr19-evidence/commit.txt
+          git diff HEAD^ --stat > /tmp/pr19-evidence/changes.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/native-export
+      - name: Restore pinned native dependencies and fixture TLS
+        run: |
+          mkdir -p /tmp/native
+          tar -xzf /tmp/native-export/native.tar.gz -C /tmp/native
+          parser=$(find /tmp/native -name libbruin_rustsqlparser.a -print -quit)
+          runner=$(find /tmp/native -type f -name bruin -print -quit)
+          test -s "$parser"
+          test -x "$runner"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+          echo "CHARTWORKS_TEST_BRUIN_PATH=$runner" >> "$GITHUB_ENV"
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-ci-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container=$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+      - name: PostgreSQL 17 recovery tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Fresh full race coverage with unchanged gates
+        run: |
+          set -o pipefail
+          test -z "$(gofmt -l test/acceptance/store_*_test.go)"
+          make coverage 2>&1 | tee /tmp/pr19-evidence/full-coverage.log
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          args: --timeout=10m
+      - name: Publish verified test candidate only
+        run: |
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+          git diff --exit-code e42ae65759091dfef6ce42e91eed6813316018dd -- internal scripts go.mod go.sum .github
+          git push origin HEAD:refs/heads/dev/pr19-postgres-coverage-20260911
+          echo "VERIFIED_CANDIDATE=$(git rev-parse HEAD)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr19-postgres-coverage-evidence
+          path: /tmp/pr19-evidence
+          retention-days: 7
