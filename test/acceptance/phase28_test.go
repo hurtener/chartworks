@@ -69,8 +69,9 @@ func phase28Chat(t *testing.T, model, content string) string {
 // loss of its reply. Recovery must not repeat the already retained source query.
 type phase28LostReply struct {
 	reporting.RunRepository
-	lost atomic.Bool
-	kind string
+	lost            atomic.Bool
+	kind            string
+	beforeNarrative bool
 }
 
 func (r *phase28LostReply) CheckpointFrozenRun(ctx context.Context, inv jobs.Invocation, proof reporting.PreparedRunWrite) (reporting.RunRecord, error) {
@@ -78,8 +79,11 @@ func (r *phase28LostReply) CheckpointFrozenRun(ctx context.Context, inv jobs.Inv
 	if err != nil {
 		return reporting.RunRecord{}, err
 	}
+	if r.beforeNarrative && w.Kind == "output" && w.Output != nil && w.Output.Kind == "narrative" && r.lost.CompareAndSwap(false, true) {
+		return reporting.RunRecord{}, store.ErrUnavailable
+	}
 	out, err := r.RunRepository.CheckpointFrozenRun(ctx, inv, proof)
-	if err == nil && (w.Kind == r.kind || r.kind == "" && w.Kind == "result") && r.lost.CompareAndSwap(false, true) {
+	if err == nil && !r.beforeNarrative && (w.Kind == r.kind || r.kind == "" && w.Kind == "result") && r.lost.CompareAndSwap(false, true) {
 		return reporting.RunRecord{}, store.ErrUnavailable
 	}
 	return out, err
@@ -267,6 +271,22 @@ func TestPhase28(t *testing.T) {
 		failedOutput, outputErr := withNarrative.Output(ctx, reader, partial.ID, "narrative-main")
 		if outputErr != nil || failedOutput.State != "failed" || failedOutput.Narrative == nil || len(failedOutput.Narrative.Receipt.Calls) == 0 || failedOutput.Narrative.Text != "" {
 			t.Fatal("failed narrative lost paid usage or exposed unchecked prose", failedOutput, outputErr)
+		}
+		model.mode.Store(phase28Chat(t, model.cfg.Roles["narrative"].Model, `{"claims":[{"kind":"value","evidence":["e1"]}]}`))
+		lost := &phase28LostReply{RunRepository: f.f.db, beforeNarrative: true}
+		crashing := phase28RunService(t, f, blocks, lost, model.engine, limits)
+		interrupted := admit(t, crashing, "p28-narrative", "p28-narrative-lost-output", reporting.RunRequest{Narrative: true, PartialPolicy: "allow_partial"})
+		before := model.requests.Load()
+		if _, runErr = crashing.Run(ctx, execute, interrupted.ID, false); !errors.Is(runErr, store.ErrUnavailable) || !lost.lost.Load() || model.requests.Load() != before+1 {
+			t.Fatal("accepted narrative response loss was not exercised", runErr)
+		}
+		recovered, resumeErr := withNarrative.Run(ctx, execute, interrupted.ID, true)
+		if resumeErr != nil || recovered.State != "partial" || recovered.ReservedCalls != 1 || model.requests.Load() != before+1 || len(recovered.QueryAttempts) != 1 {
+			t.Fatal("narrative recovery repeated work or refunded its reservation", recovered.State, resumeErr)
+		}
+		unknown, outputErr := withNarrative.Output(ctx, reader, recovered.ID, "narrative-main")
+		if outputErr != nil || unknown.State != "failed" || unknown.Code != "narrative_indeterminate" || unknown.Narrative != nil || unknown.ReservedCalls != 1 {
+			t.Fatal("lost narrative outcome was fabricated", unknown, outputErr)
 		}
 	})
 

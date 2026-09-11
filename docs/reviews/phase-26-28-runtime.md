@@ -1,174 +1,59 @@
-# Phase 26/28 runtime completion evidence
+# Phase 26/28 runtime completion audit
 
-Status: implementation and direct adversarial review in progress. No independent
-subagents were used, as requested by the owner. This document is not a runtime
-completion claim.
+Status: final committed-source verification pending. The PR remains draft.
+Review was performed directly; no subagents were used.
 
-The starting branch `1d412d9` contained domain services, PostgreSQL migrations and
-named acceptance tests, but lacked application wiring, registered HTTP operations
-and SDK integration. The runtime completion adds those consumers and changes the
-phase ledger to `in_progress` so cumulative preflight cannot skip them.
+## Requirement traceability
 
-Initial real PostgreSQL Phase 28 execution found an output-order mismatch and a
-narrative test fixture that put the same field in both allowed and redacted lists.
-The frozen lane now seals explicit request output order without changing the
-existing authoring-preview order contract. The narrative fixture uses disjoint
-lists. HTTP testing also exposed empty enum values in default run requests;
-optional policy fields now omit empty values so the core's defaults apply.
+| Criterion | Runtime evidence | Acceptance evidence |
+| --- | --- | --- |
+| 26 AC01: evidence and decisions for every object | `autopilot_planning.go` and `autopilot_model.go` retain bounded blind/matched planning, references, alternatives and provenance for pipeline, dataset, optional topic and schedule material. | `TestPhase26/AC01`; topic and schedule object consumers in AC06. |
+| 26 AC02: authorized planning scope | Proposal preparation resolves the addressed source context, validates generated SQL and rejects foreign evidence; proposal reads recheck signed references. | AC02 cross-tenant, different-context and foreign model-evidence negatives. |
+| 26 AC03: independent review and ordinary authority | Review CAS binds exact material; edits invalidate approval. Apply requires ordinary pipeline/topic/schedule authority. | AC03 self-review, competing review and stale approval; AC06 missing pipeline/schedule permission and private topic publication negatives. |
+| 26 AC04: actual staged effects and bounded compensation | Pipeline, topic and schedule effects are recorded from real persisted consumers. Compensation checks current native ownership and published dependents. | AC04 lost draft reply and actual native quarantine; AC06 dependent consumer and schedule-commit interruption/reconciliation. |
+| 26 AC05: deduplicated reviewed drift | Physical source probes plus freshness/quality evidence produce immutable drift and independent amendments. Impact projection requires all dependencies. | AC05 deduplication, current impact reach, amendment replay and no inherited approval; topic/schedule amendment consumers in AC06. |
+| 26 AC06: goal to managed data | Production assembly wires HTTP/SDK L2 execution, private topic authoring and scheduled pipeline execution under the existing operation lease. | AC06 actual native materialization, private topic apply/amendment, schedule create/replace/recovery and accepted occurrence execution. |
+| 28 AC01: frozen stage prohibitions | Frozen execution composes the validator/read executor and deterministic chart builder; the gateway is reached only for selected narratives. | AC01 exact frozen SQL and zero model calls without narratives. |
+| 28 AC02: one logical result, selected outputs | The sealed ordered output list fans out from one retained typed result. | AC02 output selection, invalid outputs and physical attempt evidence. |
+| 28 AC03: parameters and schema meaning | Admission resolves parameters/window once; execution checks exact ordered schema and pinned dependencies. | AC03 parameter precedence, actual schema drift and refusal to rebind. |
+| 28 AC04: bounded grounded narratives | Evidence reduction/redaction precedes the gateway call; durable budgets and mechanically grounded claims retain exact provenance. | AC04 allowed evidence, model/prompt provenance, invalid output, retained paid usage and a lost accepted narrative response without model replay; numeric boundary unit tests. |
+| 28 AC05: idempotency and recovery | A reserved operation seals one manifest; fenced checkpoints retain results and output reservations. | AC05 lost result/attempt/output/completion replies, changed-key conflict and forged checkpoint rejection. |
+| 28 AC06: private/context-aware reuse and reads | Store queries enforce current target/context reach and original privacy; reuse binds revisions, parameters, locale and source partition. | AC06 concurrent admission/reuse, foreign tenant/context reads, original observation/expiry and private preview after publication. |
+| 28 AC07: retention without execution | Retention deletes retained values/outputs and preserves bounded tombstones; output rebuild uses retained data. | AC07 actual deletion, expired read/rebuild refusal and no warehouse/model access. |
+| 28 AC08: usable APIs, cancellation and budgets | Registered HTTP operations and SDK methods call the shared core; explicit cancellation reaches the owned active query. | AC08 real HTTP/SDK admission, execution, paging, output, cancellation, invalid wire requests and quota refusal. |
 
-Verification environment: macOS arm64, Go 1.26.4, PostgreSQL 17.11 and pgvector
-0.8.2, native pinned SQL parser. Docker returned a local storage I/O error and its
-existing PostgreSQL fixture was unreachable, so an isolated native database was
-created for read-path tests. The managed runner intentionally requires Linux
-process isolation and executable tmpfs; its evidence must come from Linux CI.
+## Review findings resolved
 
-Phase 28 local race acceptance passed all eight criteria after the fixes, including
-HTTP/SDK admission, execution, paging, cancellation and three additional lost-reply
-checkpoints. This was a working-tree run, not hosted exact-commit evidence.
+- Added the missing application, HTTP and SDK consumers from the initial domain-only branch.
+- Bound drift impact discovery to every required topic/block dependency and current action.
+- Preserved explicit output order and exact scientific-notation narrative arithmetic.
+- Preserved reviewed private topic material and advanced amendments from actual committed draft effects.
+- Corrected nullable request schemas without widening accepted wire shapes or bearer limits.
+- Bound queue admission to bearer expiry, including database lock waits.
+- Pinned manual fire to the schedule revision whose target was authorized.
+- Preserved the authority error contract before classifying completion targets.
+- Added schedule effect-receipt recovery and concurrent frozen admission/reuse coverage.
 
-Additional review fixes: PostgreSQL preserves the new safe typed domain errors;
-drift can produce an independently reviewable amendment; physical source probes
-detect unregistered schema changes; narrative arithmetic preserves scientific
-notation and bounds exponent allocation. Regression tests accompany these changes.
+## Verified evidence
 
-Pending: Phase 26 Linux runtime acceptance, direct adversarial review completion,
-coverage, full cumulative checks and exact committed-source hosted CI. Phase 25,
-34, live provider quality and production deployment are not claimed.
+- Linux run 34548849438 at a5d2e484a6cd8955c05d3fcaa9e9dd4059fa4b93 passed strict Phase 26 and 28 acceptance on 2026-09-11 at 01:15:06 UTC, including reviewed schedule creation and amendment.
+- Linux run 34549071207 at db3da3f8e94f962f0aab946f2a1336dc031aec5a passed strict Phase 26 and 28 acceptance on 2026-09-11 at 01:17:06 UTC, including interruption after the ordinary schedule commits but before its proposal effect receipt.
+- Local real-PostgreSQL Phase 28 race acceptance passed with concurrent admission/reuse and cross-tenant checks (19.577 seconds; source committed as e9709ca).
+- At 382a730, all local core, SDK and CLI race tests passed. Focused queue/Phase 06/Phase 21 regressions and lint passed at their checked sources.
+- These results do not establish final-head full coverage. The earlier failed cumulative runs are diagnostic evidence only.
 
-## Continued scope and contract review
+- Linux run 34549736699 at 382a73023966d9854a90d824737f18ff83275fe7 passed strict Phase 26 and 28 acceptance on 2026-09-11 at 01:26:24 UTC, including execution of an accepted prior pipeline version after schedule replacement. Both native platform builds, lint, Clients and MCP also passed.
+- The additional lost-narrative-output case passed locally with race instrumentation (16.141 seconds). It interrupts after the provider response but before the output checkpoint, then verifies one physical query, one model call, an unchanged reservation and an honest indeterminate output on resume. Focused lint reports zero issues.
 
-At `2903e5c`, the cumulative phase-21 protected-operation checks pass locally
-with the new runtime registry, including both verifier and dispatch authentication
-errors. The runtime operation manifest has a parity assertion against the actual
-registration. Local lint reports zero issues. Phase-28 real-PostgreSQL acceptance
-also exercises schema drift before physical execution, preview privacy after
-publication, receipt/summary reads and closed HTTP request shapes.
+## Remaining release evidence
 
-Full phase-26 closure remains open: its task 1 includes proposed topic and schedule
-changes, while the current proposal model and validator admit only one pipeline
-and its managed dataset. The existing durable scheduling service currently admits
-only the maintenance target; request-driven pipeline execution is functional but
-is not an unattended schedule handler. This is a concrete runtime gap, not a
-reason to mark the task complete based on the six named tests. Any added consumer
-must preserve ordinary topic review/publication and Pengui execution authority,
-and must not advertise a schedule target without its real handler.
+- Final delivery-head strict Linux acceptance, including the added lost-narrative-output regression.
+- Successful full cumulative suite and unchanged package coverage bands, including the existing owner-approved 84% PostgreSQL band.
+- Latest-head container/native, client, MCP, fuzz, preflight and clean-source checks.
+- Final review of the resulting committed source and coherent phase status/evidence updates.
 
-The passing local unit plus `TestPhase21`, `TestPhase27`, and `TestPhase28`
-race-instrumented runs cover 2,007/2,508 reporting statements (80.02%) and
-323/390 reporting API statements (82.82%). These are combined statement unions
-from the same production source, not sums of percentages or full CI results.
-The new reporting model-policy configuration tests also pass. Hosted Linux
-phase-26 acceptance and full repository coverage remain pending.
-
-A further direct inspection found drift-impact discovery checked target read
-reach without all dependencies. The fix filters every block reference and every
-topic source/dataset/context in PostgreSQL and requires the corresponding read
-action before returning impact IDs. AC05 now publishes a real two-context topic
-and checks both authorized inclusion and exclusion under missing context/action,
-including replay of the same deduplicated observation. The added acceptance
-fixture compiles; local lint is clean. Its Linux execution is still pending.
-
-## Topic integration continuation
-
-L2 now accepts an optional profile-backed private topic change, retains it in the
-reviewed material, supports explicit semantic edits and saves through the existing
-draft service after successful managed execution. Migration 026 extends the
-existing effect/reference ledger; final completion verifies the actual private
-draft. Local PostgreSQL tests cover no-write preparation, exact evidence checks,
-normal save, lost-reply reconciliation and refusal to adopt another proposal's
-private effect. Full phase-26 topic apply is included in AC06 for Linux CI.
-
-The first hosted Linux run at c06a0e4 passed AC01, AC02, AC04, AC05 and AC06.
-AC03 failed because its SDK assertion expected an internal domain sentinel rather
-than the actual HTTP 409; the assertion now checks the SDK status. This was a
-failed CI run, not phase completion. Current-head acceptance and coverage remain
-required. The focused runtime step now precedes the expensive reference-container
-build, with all container and full-suite gates retained.
-
-Follow-up checks found a stale migration inventory assertion (22 rather than 26);
-it is updated to the actual final migration identity, and the affected store/API/
-SDK race tests pass. AC08 now observes a real blocked warehouse relation before
-cancelling through HTTP; the request terminates without result exposure. That
-PostgreSQL test passes locally. Topic amendments now advance draft revision only
-for a recorded committed topic effect and preserve reviewed names/entities in the
-new independent material. Explicit fresh-profile selection updates only evidence
-coordinates and still requires ordinary semantic/source validation.
-
-Hosted CI run 34542894136 at 27f98f24092bb82eb8ffdd8a6daf7cfbd69bd653
-completed the combined strict phase-26/28 runtime acceptance step successfully
-(2026-09-10 23:51:03 UTC). This includes the first real Linux reviewed-topic apply.
-The subsequent cancellation and topic-amendment fixes at 58e4bf5 have their own
-pending CI run; neither result substitutes for final-head full coverage or the
-remaining schedule integration.
-
-Hosted CI run 34543896878 at 58e4bf5bf98bae94a979f6a60b1760bba9097b31
-also passed the strict combined runtime acceptance step (2026-09-11 00:03:50
-UTC), including the running-cancellation and topic-amendment additions. The
-full build/container/coverage sequence was still running when inspected.
-
-## Scheduling authority inspection
-
-Pipeline occurrence timing, retries and execution belong to Chartworks. The
-platform's prompt schedules are a separate consumer and do not implement this
-requirement. The currently consumed execution-authority companion remains
-unmerged and permits only retention maintenance. Inspection of the platform's
-ordinary capability mint found a real-user scope projection and a separate
-connection bootstrap identity; neither supplies the existing manifest-bound
-execution proof required by this repository. Reusing a connection bearer or
-persisting the initiating user's token would not satisfy the active contract.
-No platform scheduling feature or authorization change has been implemented as
-part of this inspection. Scheduled pipeline execution remains incomplete.
-
-
-## Scheduled execution and reviewed recurrence continuation
-
-The strict Linux phase-26/28 runtime acceptance step passed at c31118a6e726fefc9548cdb66fb1e2625063b2dc
-in run 34546295009 (2026-09-11 00:38:27 UTC), including native scheduled pipeline
-execution and exact occurrence replay. Its client job found the optional target's
-request schema still using the pointer-free schema mode. That registration is
-corrected; the actual assembly lifecycle passes locally. Two lint findings are
-also corrected.
-
-The following L2 stage adds reviewed schedule creation/replacement and final
-actual-effect verification. Schedule edits retain the immutable initial request,
-and amendments address the previously committed schedule revision. Local real-PG
-race acceptance proves replacement retry reconciliation and preservation of
-accepted occurrences; phase-21/28 regression acceptance and focused core tests
-pass. Lint reports zero issues. The newly extended native L2 schedule test compiles
-but requires its own hosted execution before completion can be claimed.
-
-## Cumulative gates and admission deadline review
-
-The full run at 58e4bf5 failed on an outdated table inventory and an unregistered
-pipeline input fixture, then reached the cumulative ten-minute Go package timeout.
-The corrected PostgreSQL inventory/atomicity tests pass with race instrumentation
-at c697c07. The cumulative allowance is now twenty minutes; coverage thresholds,
-test selection and failure handling are unchanged. The coverage parser's six
-unit tests pass.
-
-The 0955bbe client and MCP workflows pass. Its Linux runtime step rejects the new
-reviewed-schedule fixture before apply because it requests more than 32 scopes.
-The fixture now omits unrelated topic and compensation scopes; the production
-bound is unchanged. Native execution of that corrected fixture remains required.
-
-Direct authority review also found ordinary queue admission could wait beyond
-bearer expiry before writing. Submit, schedule creation, replacement, pause/resume
-and manual fire now carry the signed deadline through their complete call. The
-real PostgreSQL regression observes admission waiting on the queue lock, releases
-it after expiry, and verifies that neither jobs nor schedules were admitted.
-That regression and existing Phase 06/replacement race acceptance pass locally.
-
-Manual schedule fire now pins the revision whose target was authorized. A real
-PostgreSQL regression interposes a committed binding replacement between the
-service read and admission, proves that the old authorization receives a conflict
-without creating an occurrence, and verifies that current authority can still
-fire the replacement. Queue, schedule and Phase 21 race regressions pass. The
-maintenance completion path again checks the verified proof before classifying
-the target, preserving its established authority error contract.
-
-Phase 28 AC06 now races duplicate admission, verifies one sealed manifest, then
-executes two distinct reuse requests concurrently without physical queries. It
-also explicitly rejects a foreign tenant's artifact read. The full local Phase 28
-race acceptance passes (19.577 seconds); focused lint reports zero issues. The
-new Phase 26 schedule-commit interruption test compiles and still awaits Linux
-runtime verification. Full committed-source coverage remains outstanding.
+Chartworks owns pipeline schedules and execution. The separately prepared platform
+issuer extension supplies fresh manifest-bound authority and must be available
+before enabling this target in a deployment. No platform PR publication, merge,
+production deployment, live provider-quality measurement or phase 25/34 release
+completion is claimed here.
