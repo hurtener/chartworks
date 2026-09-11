@@ -15,6 +15,8 @@ import (
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
 	"github.com/jackc/pgx/v5"
@@ -409,5 +411,46 @@ func TestDisabledAutopilotPreservesReadOnlyProposalAccess(t *testing.T) {
 	}
 	if f.model.fixture.requests.Load() != before {
 		t.Fatal("retained access or disabled mutation invoked model")
+	}
+}
+
+func TestProposalRejectsUnreviewedEffectExpansion(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	p := f.propose(t)
+	ctx := context.Background()
+	before := f.model.fixture.requests.Load()
+	edit := engineering.AutopilotEditRequest{ExpectedVersion: p.Version, Definition: p.Material.Pipeline, Reason: "Synthetic effect expansion."}
+	edit.Schedule = &jobs.Spec{}
+	if _, err := f.auto.Edit(ctx, f.author, p.ID, edit); !errors.Is(err, engineering.ErrInvalid) {
+		t.Fatal("edit added an unrequested schedule", err)
+	}
+	edit.Schedule = nil
+	edit.Topic = &semantics.TopicPack{}
+	if _, err := f.auto.Edit(ctx, f.author, p.ID, edit); !errors.Is(err, engineering.ErrInvalid) {
+		t.Fatal("edit added an unrequested topic", err)
+	}
+	edit.Topic = nil
+	edit.Definition.Steps = append([]engineering.PipelineStep(nil), edit.Definition.Steps...)
+	edit.Definition.Steps[0].SQL = "DELETE FROM analytics.sales"
+	if _, err := f.auto.Edit(ctx, f.author, p.ID, edit); err == nil {
+		t.Fatal("edit admitted a destructive read plan")
+	}
+	if _, err := f.auto.Review(ctx, f.author, p.ID, engineering.AutopilotReviewRequest{ExpectedVersion: p.Version, Revision: p.Revision, Digest: p.Digest, Decision: "publish", Reason: "Unsupported review effect."}); !errors.Is(err, engineering.ErrInvalid) {
+		t.Fatal("review accepted publication as a decision", err)
+	}
+	if _, err := f.auto.Amend(ctx, f.author, p.ID, engineering.AutopilotAmendRequest{Drift: "invented"}); !errors.Is(err, engineering.ErrInvalid) {
+		t.Fatal("amendment accepted an invalid evidence identity", err)
+	}
+	invalid := f.goal
+	invalid.Goal = ""
+	if _, err := f.auto.Propose(ctx, f.author, invalid); !errors.Is(err, engineering.ErrInvalid) {
+		t.Fatal("empty goal admitted", err)
+	}
+	current, err := f.auto.Get(ctx, f.author, p.ID)
+	if err != nil || current.Version != p.Version || current.Digest != p.Digest || current.State != "draft" {
+		t.Fatal("invalid requests changed proposal", current, err)
+	}
+	if f.model.fixture.requests.Load() != before {
+		t.Fatal("invalid mutation called model")
 	}
 }
