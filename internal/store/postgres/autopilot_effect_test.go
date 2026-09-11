@@ -81,3 +81,20 @@ func TestProposalEffectWriteFailureDoesNotClaimCommit(t *testing.T) {
 		})
 	}
 }
+
+func TestProposalAuditRejectsUnboundedEvidenceBeforeStorage(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		evidence any
+	}{
+		{"unencodable", make(chan int)},
+		{"oversized", string(make([]byte, 131073))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := proposalEventTx(context.Background(), nil, identity.Envelope{}, "proposal", 1, 1, "engineering.proposal_created", tc.evidence)
+			if !errors.Is(err, store.ErrInvalid) {
+				t.Fatal("unbounded audit evidence reached storage", err)
+			}
+		})
+	}
+}
