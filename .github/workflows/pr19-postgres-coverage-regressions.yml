@@ -1,0 +1,690 @@
+name: PR19 PostgreSQL coverage regressions
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/pr19-postgres-coverage-regressions.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: pr19-postgres-coverage-regressions
+  cancel-in-progress: false
+jobs:
+  regressions:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      EXPECTED_SOURCE: e42ae65759091dfef6ce42e91eed6813316018dd
+      FEATURE_BRANCH: dev/phase-26-28-runtime-completion
+      CGO_ENABLED: '1'
+      GOFLAGS: -mod=readonly -p=2
+      GOMAXPROCS: '2'
+      GOMEMLIMIT: 2GiB
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-coverage-pipeline
+      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-coverage-tls/server.crt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e42ae65759091dfef6ce42e91eed6813316018dd
+          fetch-depth: 0
+      - name: Guard the existing PR head
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          test "$(git rev-parse "refs/remotes/origin/$FEATURE_BRANCH")" = "$EXPECTED_SOURCE"
+          test -z "$(git status --porcelain)"
+          test ! -e test/acceptance/postgres_coverage_regressions_test.go
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
+          restore-keys: cw-phase-26-28-build-
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase-26-28-native
+          run-id: 34441124485
+          github-token: ${{ github.token }}
+          path: /tmp/coverage-native-export
+      - uses: actions/download-artifact@v4
+        with:
+          name: race-coverage
+          run-id: 34555245117
+          github-token: ${{ github.token }}
+          path: /tmp/coverage-baseline
+      - name: Restore pinned native dependencies
+        run: |
+          mkdir -p /tmp/coverage-native
+          tar -xzf /tmp/coverage-native-export/native.tar.gz -C /tmp/coverage-native
+          parser=$(find /tmp/coverage-native -type f -name libbruin_rustsqlparser.a -print -quit)
+          runner=$(find /tmp/coverage-native -type f -name bruin -print -quit)
+          test -s "$parser"
+          test -x "$runner"
+          echo "CGO_LDFLAGS=-L$(dirname "$parser")" >> "$GITHUB_ENV"
+          echo "CHARTWORKS_TEST_BRUIN_PATH=$runner" >> "$GITHUB_ENV"
+      - name: Prepare isolated native execution and PostgreSQL TLS
+        run: |
+          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
+          install -d -m 0700 /tmp/chartworks-coverage-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-coverage-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          chmod 0600 /tmp/chartworks-coverage-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
+          pg_container=$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')
+          test -n "$pg_container"
+          docker cp /tmp/chartworks-coverage-tls/server.key "$pg_container":/tmp/chartworks-server.key
+          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
+          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
+      - name: Add real-store regression tests only
+        run: |
+          cat > test/acceptance/postgres_coverage_regressions_test.go <<'GO'
+          package acceptance
+
+          import (
+           "context"
+           "errors"
+           "fmt"
+           "strings"
+           "testing"
+           "time"
+
+           "github.com/hurtener/chartworks/internal/access"
+           "github.com/hurtener/chartworks/internal/auth"
+           "github.com/hurtener/chartworks/internal/config"
+           "github.com/hurtener/chartworks/internal/engineering"
+           "github.com/hurtener/chartworks/internal/identity"
+           "github.com/hurtener/chartworks/internal/jobs"
+           "github.com/hurtener/chartworks/internal/reporting"
+           "github.com/hurtener/chartworks/internal/store"
+           "github.com/hurtener/chartworks/internal/store/postgres"
+           "github.com/hurtener/chartworks/test/support"
+           "github.com/jackc/pgx/v5"
+          )
+
+          // The sequence survives rollback and proves that the selected real SQL
+          // boundary fired. No immutable-history protection trigger is disabled.
+          func coverageStoreFault(t *testing.T, raw *pgx.Conn, table, operation, condition string) func() {
+           t.Helper()
+           if operation!="INSERT" && operation!="UPDATE" && operation!="DELETE" { t.Fatal("invalid test fault operation") }
+           ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
+           _,err:=raw.Exec(ctx,`CREATE SEQUENCE chartworks.test_coverage_fault_count;
+          CREATE FUNCTION chartworks.test_coverage_fault() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN
+           PERFORM nextval('chartworks.test_coverage_fault_count');
+           RAISE EXCEPTION 'synthetic failure: PRIVATE_FAULT_CANARY' USING ERRCODE='P0001';
+          END; $$;`)
+           if err!=nil {t.Fatal("install database fault",err)}
+           when:="";if condition!="" {when=" WHEN ("+condition+")"}
+           name:=pgx.Identifier{"chartworks",table}.Sanitize()
+           // Identifiers are quoted; operation/condition are static test cases.
+           _,err=raw.Exec(ctx,"CREATE TRIGGER test_coverage_fault BEFORE "+operation+" ON "+name+" FOR EACH ROW"+when+" EXECUTE FUNCTION chartworks.test_coverage_fault()")
+           if err!=nil {t.Fatal("attach database fault",err)}
+           removed:=false
+           remove:=func(requireHit bool){
+            t.Helper();if removed{return};removed=true
+            cleanup,stop:=context.WithTimeout(context.Background(),10*time.Second);defer stop()
+            if requireHit {
+             var hit bool
+             if err:=raw.QueryRow(cleanup,`SELECT is_called FROM chartworks.test_coverage_fault_count`).Scan(&hit);err!=nil||!hit {t.Errorf("fault not exercised at %s %s: hit=%v error=%v",operation,table,hit,err)}
+            }
+            if _,err:=raw.Exec(cleanup,"DROP TRIGGER test_coverage_fault ON "+name+`; DROP FUNCTION chartworks.test_coverage_fault(); DROP SEQUENCE chartworks.test_coverage_fault_count;`);err!=nil{t.Error("remove fault",err)}
+           }
+           t.Cleanup(func(){remove(false)})
+           return func(){remove(true)}
+          }
+
+          // Compare complete rows, not only counts: pointers, quota reservations,
+          // lifecycle state and evidence must roll back with a failed transaction.
+          func coverageStoreSnapshot(t *testing.T,raw *pgx.Conn,tables ...string)string{
+           t.Helper();ctx,stop:=context.WithTimeout(context.Background(),10*time.Second);defer stop()
+           out:=make([]string,0,len(tables))
+           for _,table:=range tables{
+            var value string
+            query:="SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb)::text FROM "+pgx.Identifier{"chartworks",table}.Sanitize()+" r"
+            if err:=raw.QueryRow(ctx,query).Scan(&value);err!=nil{t.Fatal("snapshot test table",table,err)}
+            out=append(out,fmt.Sprintf("%s=%s",table,value))
+           }
+           return strings.Join(out,"\n")
+          }
+
+          type coverageReportingStore struct{
+           f *phase17Fixture
+           db *postgres.DB
+           blocks *reporting.Service
+           runs *reporting.Runs
+           author,execute identity.Envelope
+           definition reporting.Definition
+           raw *pgx.Conn
+          }
+          func newCoverageReportingStore(t *testing.T)*coverageReportingStore{
+           t.Helper();f:=newPhase18Fixture(t);query,topics:=newPhase18Service(t,f)
+           blocks,err:=reporting.New(f.f.db,topics,f.f.s,f.f.validator,f.f.executor,reporting.CaptureFromQueries(query),config.DefaultReporting());if err!=nil{t.Fatal(err)}
+           author:=phase27Actor(t,f,f.f.e.User(),phase27Scopes(f.f.e.Tenant()))
+           d:=phase27Definition(t,f,author,"SELECT id, amount FROM analytics.sales ORDER BY id");d.Outputs=d.Outputs[:1]
+           return &coverageReportingStore{f:f,db:f.f.db,blocks:blocks,runs:phase28RunService(t,f,blocks,f.f.db,nil,config.DefaultReportingExecution()),author:author,execute:phase27Actor(t,f,f.f.e.User(),phase28Scopes(f.f.e.Tenant())),definition:d,raw:support.Raw(t,f.f.dsn)}
+          }
+          func(f *coverageReportingStore)create(t *testing.T,id string,publish bool)reporting.View{
+           t.Helper();out,err:=f.blocks.Create(context.Background(),f.author,reporting.CreateRequest{ID:id,Definition:f.definition});if err!=nil{t.Fatal(err)}
+           if publish{phase27ValidatePublish(t,f.blocks,f.author,out)};return out
+          }
+          func(f *coverageReportingStore)admit(t *testing.T,s *reporting.Runs,block,key string,reuse int)reporting.RunView{
+           t.Helper();out,err:=s.Admit(context.Background(),f.execute,block,reporting.RunRequest{Key:key,ReuseMaxAgeSeconds:reuse});if err!=nil{t.Fatal("admit test run",err)};return out
+          }
+          func(f *coverageReportingStore)blockSnapshot(t *testing.T)string{
+           t.Helper();return coverageStoreSnapshot(t,f.raw,"block_heads","block_revisions","block_revision_references","block_topic_pins","block_source_pins","block_validations","block_publications","block_attestations","block_withdrawals","block_health","block_events")
+          }
+          func(f *coverageReportingStore)frozenSnapshot(t *testing.T)string{
+           t.Helper();return coverageStoreSnapshot(t,f.raw,"frozen_runs","frozen_run_payloads","frozen_run_outputs","frozen_run_attempts")
+          }
+
+          func TestStoreCoverageBlockPublicationRollback(t *testing.T){
+           f:=newCoverageReportingStore(t);ctx:=context.Background()
+           for _,table:=range []string{"block_heads","block_revisions","block_revision_references","block_topic_pins","block_source_pins","block_events","audit_events"}{
+            t.Run("create/"+table,func(t *testing.T){
+             before:=f.blockSnapshot(t);remove:=coverageStoreFault(t,f.raw,table,"INSERT","")
+             out,err:=f.blocks.Create(ctx,f.author,reporting.CreateRequest{ID:"coverage-create-rollback",Definition:f.definition});remove()
+             if !errors.Is(err,store.ErrUnavailable)||out.State.ID!=""||f.blockSnapshot(t)!=before{t.Fatal("failed creation changed domain state",err)}
+            })
+           }
+           created:=f.create(t,"coverage-lifecycle-rollback",false)
+           for _,table:=range []string{"block_validations","block_health","block_events","audit_events"}{
+            t.Run("validate/"+table,func(t *testing.T){
+             before:=f.blockSnapshot(t);condition:="";if table=="audit_events"{condition="NEW.action='block.validated'"}
+             remove:=coverageStoreFault(t,f.raw,table,"INSERT",condition)
+             _,err:=f.blocks.Validate(ctx,f.author,created.State.ID,reporting.ValidateRequest{ExpectedVersion:created.State.Version});remove()
+             if !errors.Is(err,store.ErrUnavailable)||f.blockSnapshot(t)!=before{t.Fatal("validation checkpoint partially committed",err)}
+            })
+           }
+           validated,err:=f.blocks.Validate(ctx,f.author,created.State.ID,reporting.ValidateRequest{ExpectedVersion:created.State.Version});if err!=nil{t.Fatal(err)}
+           for _,tc:=range []struct{table,operation string}{{"block_publications","INSERT"},{"block_heads","UPDATE"},{"block_events","INSERT"},{"audit_events","INSERT"}}{
+            t.Run("publish/"+tc.table,func(t *testing.T){
+             before:=f.blockSnapshot(t);remove:=coverageStoreFault(t,f.raw,tc.table,tc.operation,"")
+             _,err:=f.blocks.Publish(ctx,f.author,created.State.ID,reporting.PublishRequest{ExpectedVersion:validated.State.Version,Evidence:validated.Evidence.ID});remove()
+             if !errors.Is(err,store.ErrUnavailable)||f.blockSnapshot(t)!=before{t.Fatal("failed publication changed pointer or history",err)}
+            })
+           }
+           state,err:=f.blocks.Publish(ctx,f.author,created.State.ID,reporting.PublishRequest{ExpectedVersion:validated.State.Version,Evidence:validated.Evidence.ID});if err!=nil{t.Fatal(err)}
+           for _,table:=range []string{"block_attestations","block_events","audit_events"}{
+            t.Run("certify/"+table,func(t *testing.T){
+             before:=f.blockSnapshot(t);remove:=coverageStoreFault(t,f.raw,table,"INSERT","")
+             _,err:=f.blocks.Certify(ctx,f.author,state.ID,reporting.CertifyRequest{ExpectedVersion:state.Version,Revision:state.PublishedRevision,Evidence:validated.Evidence.ID,Note:"Synthetic reviewed evidence"});remove()
+             if !errors.Is(err,store.ErrUnavailable)||f.blockSnapshot(t)!=before{t.Fatal("failed certification changed approval",err)}
+            })
+           }
+          }
+
+          type coverageFrozenHooks struct{
+           reporting.RunRepository
+           seal func(context.Context,identity.Envelope,jobs.RequestTask,reporting.PreparedRun)(reporting.RunRecord,error)
+           checkpoint func(context.Context,jobs.Invocation,reporting.PreparedRunWrite)(reporting.RunRecord,error)
+           reuse func(context.Context,jobs.Invocation,string)(reporting.RunRecord,bool,error)
+          }
+          func(r *coverageFrozenHooks)SealFrozenRun(ctx context.Context,e identity.Envelope,task jobs.RequestTask,p reporting.PreparedRun)(reporting.RunRecord,error){
+           if r.seal!=nil{return r.seal(ctx,e,task,p)};return r.RunRepository.SealFrozenRun(ctx,e,task,p)
+          }
+          func(r *coverageFrozenHooks)CheckpointFrozenRun(ctx context.Context,inv jobs.Invocation,p reporting.PreparedRunWrite)(reporting.RunRecord,error){
+           if r.checkpoint!=nil{return r.checkpoint(ctx,inv,p)};return r.RunRepository.CheckpointFrozenRun(ctx,inv,p)
+          }
+          func(r *coverageFrozenHooks)ReuseFrozenRun(ctx context.Context,inv jobs.Invocation,id string)(reporting.RunRecord,bool,error){
+           if r.reuse!=nil{return r.reuse(ctx,inv,id)};return r.RunRepository.ReuseFrozenRun(ctx,inv,id)
+          }
+
+          func TestStoreCoverageFrozenCheckpointRollback(t *testing.T){
+           f:=newCoverageReportingStore(t);block:=f.create(t,"coverage-frozen-rollback",true);ctx:=context.Background()
+           for _,table:=range []string{"frozen_runs","frozen_run_payloads","audit_events"}{
+            t.Run("seal/"+table,func(t *testing.T){
+             before:=f.frozenSnapshot(t);r:=&coverageFrozenHooks{RunRepository:f.db}
+             r.seal=func(ctx context.Context,e identity.Envelope,task jobs.RequestTask,p reporting.PreparedRun)(reporting.RunRecord,error){
+              remove:=coverageStoreFault(t,f.raw,table,"INSERT","");out,err:=f.db.SealFrozenRun(ctx,e,task,p);remove();return out,err
+             }
+             s:=phase28RunService(t,f.f,f.blocks,r,nil,config.DefaultReportingExecution())
+             _,err:=s.Admit(ctx,f.execute,block.State.ID,reporting.RunRequest{Key:"coverage-seal-"+table})
+             if !errors.Is(err,store.ErrUnavailable)||f.frozenSnapshot(t)!=before{t.Fatal("seal leaked manifest or quota",err)}
+            })
+           }
+           for index,tc:=range []struct{kind,table,operation,condition string}{
+            {"attempt","frozen_run_attempts","INSERT",""},
+            {"result","frozen_runs","UPDATE",""},
+            {"result","frozen_run_payloads","UPDATE",""},
+            {"result","audit_events","INSERT","NEW.action='reporting.query_checkpoint'"},
+            {"output","frozen_run_outputs","INSERT",""},
+            {"output","audit_events","INSERT","NEW.action='reporting.output_checkpoint'"},
+            {"complete","frozen_runs","UPDATE","NEW.state='succeeded'"},
+            {"complete","operations","UPDATE","NEW.status='succeeded'"},
+            {"complete","audit_events","INSERT","NEW.action='reporting.run_completed'"},
+           }{
+            t.Run(tc.kind+"/"+tc.table,func(t *testing.T){
+             called:=false;r:=&coverageFrozenHooks{RunRepository:f.db}
+             r.checkpoint=func(ctx context.Context,inv jobs.Invocation,p reporting.PreparedRunWrite)(reporting.RunRecord,error){
+              w,err:=p.Checked(inv);if err!=nil{return reporting.RunRecord{},err}
+              if called||w.Kind!=tc.kind{return f.db.CheckpointFrozenRun(ctx,inv,p)}
+              called=true;before:=f.frozenSnapshot(t);remove:=coverageStoreFault(t,f.raw,tc.table,tc.operation,tc.condition)
+              out,err:=f.db.CheckpointFrozenRun(ctx,inv,p);remove()
+              if f.frozenSnapshot(t)!=before{t.Error("failed checkpoint changed values, usage or completion")};return out,err
+             }
+             s:=phase28RunService(t,f.f,f.blocks,r,nil,config.DefaultReportingExecution())
+             v:=f.admit(t,s,block.State.ID,fmt.Sprintf("coverage-checkpoint-%d",index),0)
+             out,err:=s.Run(ctx,f.execute,v.ID,false)
+             if !called||!errors.Is(err,store.ErrUnavailable)||out.State=="succeeded"{t.Fatal("checkpoint fault not exercised or falsely completed",called,out.State,err)}
+             if tc.kind=="output"||tc.kind=="complete"{
+              resumed,err:=f.runs.Run(ctx,f.execute,v.ID,true)
+              if err!=nil||resumed.State!="succeeded"||len(resumed.QueryAttempts)!=1{t.Fatal("resume repeated or lost retained source query",resumed.State,err)}
+             }
+            })
+           }
+          }
+
+          func TestStoreCoverageFrozenReuseRollback(t *testing.T){
+           f:=newCoverageReportingStore(t);block:=f.create(t,"coverage-reuse-rollback",true);ctx:=context.Background()
+           v:=f.admit(t,f.runs,block.State.ID,"coverage-reuse-original",0);if _,err:=f.runs.Run(ctx,f.execute,v.ID,false);err!=nil{t.Fatal(err)}
+           for index,tc:=range []struct{table,operation,condition string}{
+            {"frozen_runs","UPDATE","NEW.retained_bytes<>OLD.retained_bytes"},
+            {"frozen_run_payloads","UPDATE",""},{"frozen_run_outputs","INSERT",""},
+            {"frozen_runs","UPDATE","NEW.state='succeeded'"},
+            {"operations","UPDATE","NEW.status='succeeded'"},
+            {"audit_events","INSERT","NEW.action='reporting.run_reused'"},
+           }{
+            t.Run(fmt.Sprintf("%d-%s",index,tc.table),func(t *testing.T){
+             called:=false;r:=&coverageFrozenHooks{RunRepository:f.db}
+             r.reuse=func(ctx context.Context,inv jobs.Invocation,id string)(reporting.RunRecord,bool,error){
+              called=true;before:=f.frozenSnapshot(t);remove:=coverageStoreFault(t,f.raw,tc.table,tc.operation,tc.condition)
+              out,reused,err:=f.db.ReuseFrozenRun(ctx,inv,id);remove()
+              if reused||f.frozenSnapshot(t)!=before{t.Error("failed reuse committed a partial clone")};return out,reused,err
+             }
+             s:=phase28RunService(t,f.f,f.blocks,r,nil,config.DefaultReportingExecution())
+             v:=f.admit(t,s,block.State.ID,fmt.Sprintf("coverage-reuse-%d",index),3600)
+             _,err:=s.Run(ctx,f.execute,v.ID,false)
+             if !called||!errors.Is(err,store.ErrUnavailable){t.Fatal("reuse fault not observed",called,err)}
+             resumed,err:=f.runs.Run(ctx,f.execute,v.ID,true)
+             if err!=nil||resumed.State!="succeeded"||len(resumed.QueryAttempts)!=0||resumed.ReusedFrom==""{t.Fatal("reuse recovery executed a new query",resumed.State,err)}
+            })
+           }
+          }
+
+          func TestStoreCoverageFrozenRetentionRollback(t *testing.T){
+           f:=newCoverageReportingStore(t);ctx:=context.Background();block:=f.create(t,"coverage-retention-rollback",true)
+           run:=f.admit(t,f.runs,block.State.ID,"coverage-retention-key",0)
+           if _,err:=f.runs.Run(ctx,f.execute,run.ID,false);err!=nil{t.Fatal(err)}
+           // Move this disposable fixture's payload clock without changing the
+           // immutable manifest or disabling the terminal-row protection trigger.
+           if _,err:=f.raw.Exec(ctx,`UPDATE chartworks.frozen_runs SET payload_expires_at=created_at+interval '1 microsecond' WHERE tenant_id=$1 AND operation_id=$2`,f.execute.Tenant(),run.ID);err!=nil{t.Fatal(err)}
+           for _,tc:=range []struct{table,operation string}{{"frozen_run_outputs","DELETE"},{"frozen_run_payloads","DELETE"},{"frozen_runs","UPDATE"},{"audit_events","INSERT"}}{
+            t.Run(tc.table,func(t *testing.T){
+             before:=f.frozenSnapshot(t);remove:=coverageStoreFault(t,f.raw,tc.table,tc.operation,"")
+             count,err:=f.db.ExpireFrozenArtifacts(ctx,f.execute,100);remove()
+             if !errors.Is(err,store.ErrUnavailable)||count!=0||f.frozenSnapshot(t)!=before{t.Fatal("retention partially erased an artifact",count,err)}
+            })
+           }
+           count,err:=f.db.ExpireFrozenArtifacts(ctx,f.execute,100);if err!=nil||count!=1{t.Fatal("retention after rollback",count,err)}
+           tombstone,err:=f.runs.Get(ctx,f.execute,run.ID)
+           if err!=nil||tombstone.State!="expired"||tombstone.RetainedBytes!=0{t.Fatal("retention tombstone",tombstone.State,err)}
+           before:=f.f.f.lookups.Load()
+           if _,err=f.runs.Rows(ctx,f.execute,run.ID,0,1);!errors.Is(err,reporting.ErrExpired){t.Fatal("expired values remained readable",err)}
+           replay:=f.admit(t,f.runs,block.State.ID,"coverage-retention-key",0)
+           if replay.ID!=run.ID||replay.State!="expired"||f.f.f.lookups.Load()!=before{t.Fatal("retention replay silently issued another query")}
+          }
+
+          type coverageProposalHooks struct{
+           engineering.AutopilotRepository
+           save func(context.Context,identity.Envelope,engineering.PreparedProposal,int64,int)(engineering.AutopilotProposal,error)
+           stage func(context.Context,identity.Envelope,engineering.PreparedProposalApply,string)(engineering.AutopilotProposal,error)
+           run func(context.Context,identity.Envelope,engineering.PreparedProposalApply,engineering.PipelineRun)(engineering.AutopilotProposal,error)
+           compensate func(context.Context,identity.Envelope,engineering.PreparedProposalApply,engineering.PipelineExecution)(engineering.AutopilotProposal,error)
+          }
+          func(r *coverageProposalHooks)SaveAutopilotProposal(ctx context.Context,e identity.Envelope,p engineering.PreparedProposal,v int64,max int)(engineering.AutopilotProposal,error){
+           if r.save!=nil{return r.save(ctx,e,p,v,max)};return r.AutopilotRepository.SaveAutopilotProposal(ctx,e,p,v,max)
+          }
+          func(r *coverageProposalHooks)StageAutopilotPipeline(ctx context.Context,e identity.Envelope,p engineering.PreparedProposalApply,stage string)(engineering.AutopilotProposal,error){
+           if r.stage!=nil{return r.stage(ctx,e,p,stage)};return r.AutopilotRepository.StageAutopilotPipeline(ctx,e,p,stage)
+          }
+          func(r *coverageProposalHooks)RecordAutopilotRun(ctx context.Context,e identity.Envelope,p engineering.PreparedProposalApply,run engineering.PipelineRun)(engineering.AutopilotProposal,error){
+           if r.run!=nil{return r.run(ctx,e,p,run)};return r.AutopilotRepository.RecordAutopilotRun(ctx,e,p,run)
+          }
+          func(r *coverageProposalHooks)CompensateAutopilot(ctx context.Context,e identity.Envelope,p engineering.PreparedProposalApply,x engineering.PipelineExecution)(engineering.AutopilotProposal,error){
+           if r.compensate!=nil{return r.compensate(ctx,e,p,x)};return r.AutopilotRepository.CompensateAutopilot(ctx,e,p,x)
+          }
+          func coverageAutopilot(t *testing.T,f *phase26Fixture,repo engineering.AutopilotRepository)*engineering.Autopilot{
+           t.Helper();s,err:=engineering.NewAutopilot(repo,f.pipelines,f.limits);if err!=nil{t.Fatal(err)};t.Cleanup(s.Close);return s
+          }
+          func coverageProposalSnapshot(t *testing.T,raw *pgx.Conn)string{
+           t.Helper();return coverageStoreSnapshot(t,raw,"engineering_proposal_heads","engineering_proposal_versions","engineering_proposal_references","engineering_proposal_reviews","engineering_proposal_effects","engineering_proposal_pipeline_effects","engineering_proposal_events","engineering_amendments","pipeline_heads","pipeline_versions","pipeline_outputs","sources")
+          }
+          func coverageApproveProposal(t *testing.T,f *phase26Fixture,p engineering.AutopilotProposal)engineering.AutopilotProposal{
+           t.Helper();token:=phase26Token(t,f,"coverage-reviewer","coverage-review",phase26Scopes())
+           reviewer,err:=f.token.verifier.Verify(context.Background(),token,auth.HTTP);if err!=nil{t.Fatal(err)}
+           p,err=f.auto.Review(context.Background(),reviewer,p.ID,engineering.AutopilotReviewRequest{ExpectedVersion:p.Version,Revision:p.Revision,Digest:p.Digest,Decision:"approve",Reason:"Independent review of synthetic managed effect"});if err!=nil{t.Fatal(err)};return p
+          }
+
+          func TestStoreCoverageProposalAuthoringRollback(t *testing.T){
+           f:=newPhase26Fixture(t);raw:=support.Raw(t,f.dsn);ctx:=context.Background()
+           for _,table:=range []string{"engineering_proposal_heads","engineering_proposal_versions","engineering_proposal_references","engineering_proposal_events","audit_events"}{
+            t.Run("create/"+table,func(t *testing.T){
+             r:=&coverageProposalHooks{AutopilotRepository:f.db}
+             r.save=func(ctx context.Context,e identity.Envelope,p engineering.PreparedProposal,v int64,max int)(engineering.AutopilotProposal,error){
+              before:=coverageProposalSnapshot(t,raw);remove:=coverageStoreFault(t,raw,table,"INSERT","")
+              out,err:=f.db.SaveAutopilotProposal(ctx,e,p,v,max);remove()
+              if coverageProposalSnapshot(t,raw)!=before{t.Error("proposal creation partially committed")};return out,err
+             }
+             out,err:=coverageAutopilot(t,f,r).Propose(ctx,f.author,f.goal)
+             if !errors.Is(err,store.ErrUnavailable)||out.ID!=""{t.Fatal("proposal creation failed open",err)}
+            })
+           }
+           p,err:=f.auto.Propose(ctx,f.author,f.goal);if err!=nil{t.Fatal(err)}
+           for _,tc:=range []struct{table,operation string}{{"engineering_proposal_versions","INSERT"},{"engineering_proposal_heads","UPDATE"},{"engineering_proposal_events","INSERT"}}{
+            t.Run("edit/"+tc.table,func(t *testing.T){
+             before:=coverageProposalSnapshot(t,raw);remove:=coverageStoreFault(t,raw,tc.table,tc.operation,"")
+             _,err:=f.auto.Edit(ctx,f.author,p.ID,engineering.AutopilotEditRequest{ExpectedVersion:p.Version,Definition:p.Material.Pipeline,Reason:"Reviewed draft amendment"});remove()
+             if !errors.Is(err,store.ErrUnavailable)||coverageProposalSnapshot(t,raw)!=before{t.Fatal("failed edit changed revision or review",err)}
+            })
+           }
+           token:=phase26Token(t,f,"coverage-reviewer","coverage-review",phase26Scopes());reviewer,err:=f.token.verifier.Verify(ctx,token,auth.HTTP);if err!=nil{t.Fatal(err)}
+           for _,tc:=range []struct{table,operation string}{{"engineering_proposal_reviews","INSERT"},{"engineering_proposal_heads","UPDATE"},{"engineering_proposal_events","INSERT"},{"audit_events","INSERT"}}{
+            t.Run("review/"+tc.table,func(t *testing.T){
+             before:=coverageProposalSnapshot(t,raw);remove:=coverageStoreFault(t,raw,tc.table,tc.operation,"")
+             _,err:=f.auto.Review(ctx,reviewer,p.ID,engineering.AutopilotReviewRequest{ExpectedVersion:p.Version,Revision:p.Revision,Digest:p.Digest,Decision:"approve",Reason:"Independent synthetic review"});remove()
+             if !errors.Is(err,store.ErrUnavailable)||coverageProposalSnapshot(t,raw)!=before{t.Fatal("review failure changed approval",err)}
+            })
+           }
+           approved:=coverageApproveProposal(t,f,p)
+           if approved.Version!=p.Version+1||approved.State!="approved"{t.Fatal("rollback consumed a revision",approved.Version,approved.State)}
+          }
+
+          func TestStoreCoverageProposalStageRollback(t *testing.T){
+           f:=newPhase26Fixture(t);raw:=support.Raw(t,f.dsn);ctx:=context.Background()
+           for index,tc:=range []struct{stage,table,operation,condition string}{
+            {"draft","pipeline_heads","INSERT",""},{"draft","pipeline_versions","INSERT",""},
+            {"draft","audit_events","INSERT","NEW.action='pipeline.drafted'"},
+            {"draft","engineering_proposal_pipeline_effects","INSERT",""},
+            {"draft","engineering_proposal_effects","INSERT",""},
+            {"draft","engineering_proposal_heads","UPDATE",""},
+            {"draft","engineering_proposal_events","INSERT",""},
+            {"publish","pipeline_versions","UPDATE",""},{"publish","pipeline_heads","UPDATE",""},
+            {"publish","audit_events","INSERT","NEW.action='pipeline.published'"},
+            {"publish","engineering_proposal_effects","INSERT",""},
+           }{
+            t.Run(tc.stage+"/"+tc.table,func(t *testing.T){
+             goal:=f.goal;goal.ID=fmt.Sprintf("coverage-stage-proposal-%d",index);goal.Pipeline=fmt.Sprintf("coverage-stage-pipeline-%d",index)
+             p,err:=f.auto.Propose(ctx,f.author,goal);if err!=nil{t.Fatal(err)};p=coverageApproveProposal(t,f,p)
+             called:=false;r:=&coverageProposalHooks{AutopilotRepository:f.db}
+             r.stage=func(ctx context.Context,e identity.Envelope,proof engineering.PreparedProposalApply,stage string)(engineering.AutopilotProposal,error){
+              if stage!=tc.stage{return f.db.StageAutopilotPipeline(ctx,e,proof,stage)}
+              called=true;before:=coverageProposalSnapshot(t,raw);remove:=coverageStoreFault(t,raw,tc.table,tc.operation,tc.condition)
+              out,err:=f.db.StageAutopilotPipeline(ctx,e,proof,stage);remove()
+              if coverageProposalSnapshot(t,raw)!=before{t.Error("staging failure orphaned pipeline or proposal effect")};return out,err
+             }
+             _,err=coverageAutopilot(t,f,r).Apply(ctx,f.author,p.ID,phase26ApplyRequest(p))
+             if !called||!errors.Is(err,store.ErrUnavailable){t.Fatal("stage failure not exercised",called,err)}
+             current,err:=f.auto.Get(ctx,f.author,p.ID);if err!=nil{t.Fatal(err)}
+             want:=0;if tc.stage=="publish"{want=1}
+             if len(current.Effects)!=want||current.Operation!=""{t.Fatal("failure reported work that never completed",current.State,current.Effects)}
+            })
+           }
+          }
+
+          func TestStoreCoverageProposalCompletionAndCompensationRollback(t *testing.T){
+           f:=newPhase26Fixture(t);raw:=support.Raw(t,f.dsn);ctx:=context.Background()
+           p,err:=f.auto.Propose(ctx,f.author,f.goal);if err!=nil{t.Fatal(err)};p=coverageApproveProposal(t,f,p)
+           r:=&coverageProposalHooks{AutopilotRepository:f.db};tested:=false
+           r.run=func(ctx context.Context,e identity.Envelope,proof engineering.PreparedProposalApply,run engineering.PipelineRun)(engineering.AutopilotProposal,error){
+            if run.State!="published"{return f.db.RecordAutopilotRun(ctx,e,proof,run)};tested=true
+            for _,tc:=range []struct{table,operation string}{{"engineering_proposal_effects","INSERT"},{"engineering_proposal_heads","UPDATE"},{"engineering_proposal_events","INSERT"},{"audit_events","INSERT"}}{
+             t.Run("receipt/"+tc.table,func(t *testing.T){
+              before:=coverageProposalSnapshot(t,raw);remove:=coverageStoreFault(t,raw,tc.table,tc.operation,"")
+              out,err:=f.db.RecordAutopilotRun(ctx,e,proof,run);remove()
+              if !errors.Is(err,store.ErrUnavailable)||out.ID!=""||coverageProposalSnapshot(t,raw)!=before{t.Fatal("completion receipt falsely advanced proposal",err)}
+             })
+            }
+            return f.db.RecordAutopilotRun(ctx,e,proof,run)
+           }
+           s:=coverageAutopilot(t,f,r);p,err=s.Apply(ctx,f.author,p.ID,phase26ApplyRequest(p))
+           if err!=nil||!tested||p.State!="applied"{t.Fatal("native pipeline or completion receipt",tested,p.State,err)}
+           r.compensate=func(ctx context.Context,e identity.Envelope,proof engineering.PreparedProposalApply,x engineering.PipelineExecution)(engineering.AutopilotProposal,error){
+            for _,tc:=range []struct{table,operation string}{{"sources","UPDATE"},{"pipeline_outputs","DELETE"},{"engineering_proposal_effects","INSERT"},{"pipeline_heads","UPDATE"},{"engineering_proposal_heads","UPDATE"},{"engineering_proposal_events","INSERT"},{"audit_events","INSERT"}}{
+             t.Run("compensate/"+tc.table,func(t *testing.T){
+              before:=coverageProposalSnapshot(t,raw);remove:=coverageStoreFault(t,raw,tc.table,tc.operation,"")
+              out,err:=f.db.CompensateAutopilot(ctx,e,proof,x);remove()
+              if !errors.Is(err,store.ErrUnavailable)||out.ID!=""||coverageProposalSnapshot(t,raw)!=before{t.Fatal("compensation partially retired generations",err)}
+             })
+            }
+            return f.db.CompensateAutopilot(ctx,e,proof,x)
+           }
+           p,err=s.Compensate(ctx,f.author,p.ID,phase26ApplyRequest(p))
+           if err!=nil||p.State!="compensated"{t.Fatal("compensation after rolled-back faults",p.State,err)}
+           var rows int
+           if err=f.admin.QueryRow(ctx,`SELECT count(*) FROM analytics.sales`).Scan(&rows);err!=nil||rows!=2{t.Fatal("compensation changed the input source",rows,err)}
+          }
+
+          // In-process callers do not get to rely on an HTTP decoder or on a
+          // previous approval for authority, input bounds or a live context.
+          func TestStoreCoverageFrozenRejections(t *testing.T){
+           f:=newCoverageReportingStore(t);ctx:=context.Background()
+           noActions:=phase27Actor(t,f.f,f.author.User(),[]string{"cw.block.read:*"})
+           cancelled,stop:=context.WithCancel(ctx);stop()
+           for _,tc:=range []struct{name string;call func()error;want error}{
+            {"read/identity",func()error{_,err:=f.db.ReadFrozenRun(ctx,identity.Envelope{},"missing",false);return err},access.ErrUnauthenticated},
+            {"read/id",func()error{_,err:=f.db.ReadFrozenRun(ctx,f.execute,"../missing",false);return err},store.ErrInvalid},
+            {"read/action",func()error{_,err:=f.db.ReadFrozenRun(ctx,noActions,"missing",false);return err},access.ErrForbidden},
+            {"execute/action",func()error{_,err:=f.db.ReadFrozenRun(ctx,noActions,"missing",true);return err},access.ErrForbidden},
+            {"read/context",func()error{_,err:=f.db.ReadFrozenRun(nil,f.execute,"missing",false);return err},store.ErrInvalid},
+            {"read/cancelled",func()error{_,err:=f.db.ReadFrozenRun(cancelled,f.execute,"missing",false);return err},nil},
+            {"read/not_found",func()error{_,err:=f.db.ReadFrozenRun(ctx,f.execute,"missing",false);return err},store.ErrNotFound},
+            {"list/zero",func()error{_,err:=f.db.ListFrozenArtifacts(ctx,f.execute,"",0);return err},store.ErrInvalid},
+            {"list/maximum",func()error{_,err:=f.db.ListFrozenArtifacts(ctx,f.execute,"",101);return err},store.ErrInvalid},
+            {"list/cursor",func()error{_,err:=f.db.ListFrozenArtifacts(ctx,f.execute,"bad/cursor",10);return err},store.ErrInvalid},
+            {"list/action",func()error{_,err:=f.db.ListFrozenArtifacts(ctx,noActions,"",10);return err},access.ErrForbidden},
+            {"list/context",func()error{_,err:=f.db.ListFrozenArtifacts(nil,f.execute,"",10);return err},store.ErrInvalid},
+            {"list/cancelled",func()error{_,err:=f.db.ListFrozenArtifacts(cancelled,f.execute,"",10);return err},nil},
+            {"cancel/identity",func()error{_,err:=f.db.CancelFrozenRun(ctx,identity.Envelope{},"missing");return err},access.ErrUnauthenticated},
+            {"cancel/action",func()error{_,err:=f.db.CancelFrozenRun(ctx,noActions,"missing");return err},access.ErrForbidden},
+            {"cancel/context",func()error{_,err:=f.db.CancelFrozenRun(nil,f.execute,"missing");return err},store.ErrInvalid},
+            {"cancel/not_found",func()error{_,err:=f.db.CancelFrozenRun(ctx,f.execute,"missing");return err},store.ErrNotFound},
+            {"retention/zero",func()error{_,err:=f.db.ExpireFrozenArtifacts(ctx,f.execute,0);return err},store.ErrInvalid},
+            {"retention/maximum",func()error{_,err:=f.db.ExpireFrozenArtifacts(ctx,f.execute,1001);return err},store.ErrInvalid},
+            {"retention/action",func()error{_,err:=f.db.ExpireFrozenArtifacts(ctx,noActions,1);return err},access.ErrForbidden},
+            {"retention/context",func()error{_,err:=f.db.ExpireFrozenArtifacts(nil,f.execute,1);return err},store.ErrInvalid},
+            {"retention/cancelled",func()error{_,err:=f.db.ExpireFrozenArtifacts(cancelled,f.execute,1);return err},nil},
+            {"seal/zero_proof",func()error{_,err:=f.db.SealFrozenRun(ctx,f.execute,jobs.RequestTask{},reporting.PreparedRun{});return err},nil},
+            {"checkpoint/zero_proof",func()error{_,err:=f.db.CheckpointFrozenRun(ctx,jobs.Invocation{},reporting.PreparedRunWrite{});return err},nil},
+            {"reuse/zero_proof",func()error{_,_,err:=f.db.ReuseFrozenRun(ctx,jobs.Invocation{},"missing");return err},nil},
+           }{
+            t.Run(tc.name,func(t *testing.T){
+             before:=f.frozenSnapshot(t);lookups:=f.f.f.lookups.Load();models:=f.f.model.requests.Load();err:=tc.call()
+             if err==nil||tc.want!=nil&&!errors.Is(err,tc.want){t.Fatalf("rejection = %v, wanted %v",err,tc.want)}
+             if f.frozenSnapshot(t)!=before||f.f.f.lookups.Load()!=lookups||f.f.model.requests.Load()!=models{t.Fatal("rejected call caused a state/source/model effect")}
+            })
+           }
+          }
+
+          func TestStoreCoverageProposalRejections(t *testing.T){
+           f:=newPhase26Fixture(t);raw:=support.Raw(t,f.dsn);ctx:=context.Background()
+           token:=phase26Token(t,f,"no-action","no-action",[]string{"cw.source.read:*"});noActions,err:=f.token.verifier.Verify(ctx,token,auth.HTTP);if err!=nil{t.Fatal(err)}
+           cancelled,stop:=context.WithCancel(ctx);stop()
+           for _,tc:=range []struct{name string;call func()error;want error}{
+            {"read/identity",func()error{_,err:=f.db.ReadAutopilotProposal(ctx,identity.Envelope{},"missing","engineering.autopilot.read");return err},access.ErrUnauthenticated},
+            {"read/id",func()error{_,err:=f.db.ReadAutopilotProposal(ctx,f.author,"../missing","engineering.autopilot.read");return err},store.ErrInvalid},
+            {"read/unsupported_action",func()error{_,err:=f.db.ReadAutopilotProposal(ctx,f.author,"missing","engineering.autopilot.owner");return err},access.ErrForbidden},
+            {"read/action",func()error{_,err:=f.db.ReadAutopilotProposal(ctx,noActions,"missing","engineering.autopilot.read");return err},access.ErrForbidden},
+            {"read/context",func()error{_,err:=f.db.ReadAutopilotProposal(nil,f.author,"missing","engineering.autopilot.read");return err},store.ErrInvalid},
+            {"read/cancelled",func()error{_,err:=f.db.ReadAutopilotProposal(cancelled,f.author,"missing","engineering.autopilot.read");return err},nil},
+            {"save/zero_proof",func()error{_,err:=f.db.SaveAutopilotProposal(ctx,f.author,engineering.PreparedProposal{},0,10);return err},nil},
+            {"review/request",func()error{_,err:=f.db.ReviewAutopilotProposal(ctx,f.author,"missing",engineering.AutopilotReviewRequest{});return err},store.ErrInvalid},
+            {"review/context",func()error{_,err:=f.db.ReviewAutopilotProposal(nil,f.author,"missing",engineering.AutopilotReviewRequest{ExpectedVersion:1,Revision:1,Decision:"approve",Reason:"Test",Digest:"not-a-real-digest"});return err},store.ErrInvalid},
+            {"stage/zero_proof",func()error{_,err:=f.db.StageAutopilotPipeline(ctx,f.author,engineering.PreparedProposalApply{},"draft");return err},nil},
+            {"topic/zero_proof",func()error{_,err:=f.db.StageAutopilotTopic(ctx,f.author,engineering.PreparedProposalApply{},0);return err},nil},
+            {"schedule/zero_proof",func()error{_,err:=f.db.StageAutopilotSchedule(ctx,f.author,engineering.PreparedProposalApply{},0,jobs.Defaults());return err},nil},
+            {"run/zero_proof",func()error{_,err:=f.db.RecordAutopilotRun(ctx,f.author,engineering.PreparedProposalApply{},engineering.PipelineRun{});return err},nil},
+            {"compensate/zero_proof",func()error{_,err:=f.db.CompensateAutopilot(ctx,f.author,engineering.PreparedProposalApply{},engineering.PipelineExecution{});return err},nil},
+            {"drift/zero_proof",func()error{_,err:=f.db.RecordAutopilotDrift(ctx,f.author,engineering.PreparedProposalApply{},engineering.AutopilotDrift{},time.Minute);return err},nil},
+           }{
+            t.Run(tc.name,func(t *testing.T){
+             before:=coverageProposalSnapshot(t,raw);calls:=f.model.calls.Load();lookups:=f.lookups.Load();err:=tc.call()
+             if err==nil||tc.want!=nil&&!errors.Is(err,tc.want){t.Fatalf("rejection = %v, wanted %v",err,tc.want)}
+             if coverageProposalSnapshot(t,raw)!=before||f.model.calls.Load()!=calls||f.lookups.Load()!=lookups{t.Fatal("rejected proposal call caused side effects")}
+            })
+           }
+          }
+
+          // These proofs originate in real services, not fabricated serialized
+          // capabilities. Possessing one still does not waive target or context checks.
+          func TestStoreCoverageValidFrozenProofGuards(t *testing.T){
+           f:=newCoverageReportingStore(t);ctx:=context.Background();block:=f.create(t,"coverage-proof-coordinates",true)
+           r:=&coverageFrozenHooks{RunRepository:f.db};called:=false
+           r.seal=func(ctx context.Context,e identity.Envelope,task jobs.RequestTask,p reporting.PreparedRun)(reporting.RunRecord,error){
+            called=true;before:=f.frozenSnapshot(t)
+            for _,tc:=range []struct{name string;task jobs.RequestTask}{
+             {"invalid_task",jobs.RequestTask{}},
+             {"other_operation",func()jobs.RequestTask{x:=task;x.ID="other-operation";x.ManifestHash=x.Digest();return x}()},
+             {"other_actor",func()jobs.RequestTask{x:=task;x.Actor="other-actor";x.ManifestHash=x.Digest();return x}()},
+            }{
+             t.Run(tc.name,func(t *testing.T){out,err:=f.db.SealFrozenRun(ctx,e,tc.task,p);if err==nil||out.View.ID!=""||f.frozenSnapshot(t)!=before{t.Fatal("proof accepted unrelated task",err)}})
+            }
+            if _,err:=f.db.SealFrozenRun(nil,e,task,p);!errors.Is(err,store.ErrInvalid){t.Fatal("proof bypassed nil context",err)}
+            return f.db.SealFrozenRun(ctx,e,task,p)
+           }
+           s:=phase28RunService(t,f.f,f.blocks,r,nil,config.DefaultReportingExecution());v:=f.admit(t,s,block.State.ID,"coverage-proof-key",0)
+           if !called||v.ID==""{t.Fatal("valid proof hook not exercised")}
+           r.checkpoint=func(ctx context.Context,inv jobs.Invocation,p reporting.PreparedRunWrite)(reporting.RunRecord,error){
+            before:=f.frozenSnapshot(t)
+            if _,err:=f.db.CheckpointFrozenRun(nil,inv,p);!errors.Is(err,store.ErrInvalid){t.Fatal("live checkpoint bypassed nil context",err)}
+            if _,_,err:=f.db.ReuseFrozenRun(ctx,inv,"different-operation");!errors.Is(err,store.ErrInvalid){t.Fatal("live invocation reused different operation",err)}
+            if _,_,err:=f.db.ReuseFrozenRun(nil,inv,inv.Lease().Task.ID);!errors.Is(err,store.ErrInvalid){t.Fatal("live reuse bypassed nil context",err)}
+            if f.frozenSnapshot(t)!=before{t.Fatal("invalid live-proof call changed checkpoint")}
+            return f.db.CheckpointFrozenRun(ctx,inv,p)
+           }
+           if _,err:=s.Run(ctx,f.execute,v.ID,false);err!=nil{t.Fatal("valid operation failed after rejected calls",err)}
+          }
+
+          func TestStoreCoverageValidProposalProofGuards(t *testing.T){
+           f:=newPhase26Fixture(t);raw:=support.Raw(t,f.dsn);ctx:=context.Background()
+           r:=&coverageProposalHooks{AutopilotRepository:f.db};saved,staged:=false,false
+           r.save=func(ctx context.Context,e identity.Envelope,p engineering.PreparedProposal,v int64,max int)(engineering.AutopilotProposal,error){
+            saved=true;before:=coverageProposalSnapshot(t,raw)
+            for _,tc:=range []struct{name string;expected int64;maximum int}{{"negative_version",-1,max},{"oversized_version",4096,max},{"zero_quota",0,0},{"oversized_quota",0,100001},{"missing_expected_revision",1,max}}{
+             t.Run("save/"+tc.name,func(t *testing.T){out,err:=f.db.SaveAutopilotProposal(ctx,e,p,tc.expected,tc.maximum);if err==nil||out.ID!=""||coverageProposalSnapshot(t,raw)!=before{t.Fatal("proof waived proposal coordinates",err)}})
+            }
+            if _,err:=f.db.SaveAutopilotProposal(nil,e,p,v,max);!errors.Is(err,store.ErrInvalid){t.Fatal("proof waived context",err)}
+            return f.db.SaveAutopilotProposal(ctx,e,p,v,max)
+           }
+           s:=coverageAutopilot(t,f,r);p,err:=s.Propose(ctx,f.author,f.goal);if err!=nil{t.Fatal(err)};p=coverageApproveProposal(t,f,p)
+           r.stage=func(ctx context.Context,e identity.Envelope,proof engineering.PreparedProposalApply,stage string)(engineering.AutopilotProposal,error){
+            if staged{return f.db.StageAutopilotPipeline(ctx,e,proof,stage)};staged=true;before:=coverageProposalSnapshot(t,raw)
+            for _,tc:=range []struct{name string;call func()error}{
+             {"unknown_stage",func()error{_,err:=f.db.StageAutopilotPipeline(ctx,e,proof,"execute");return err}},
+             {"nil_context",func()error{_,err:=f.db.StageAutopilotPipeline(nil,e,proof,"draft");return err}},
+             {"unowned_publication",func()error{_,err:=f.db.StageAutopilotPipeline(ctx,e,proof,"publish");return err}},
+             {"missing_topic",func()error{_,err:=f.db.StageAutopilotTopic(ctx,e,proof,0);return err}},
+             {"negative_topic",func()error{_,err:=f.db.StageAutopilotTopic(ctx,e,proof,-1);return err}},
+             {"missing_schedule",func()error{_,err:=f.db.StageAutopilotSchedule(ctx,e,proof,0,jobs.Defaults());return err}},
+             {"invalid_schedule_limits",func()error{_,err:=f.db.StageAutopilotSchedule(ctx,e,proof,0,jobs.Limits{});return err}},
+             {"invalid_operation",func()error{_,err:=f.db.RecordAutopilotRun(ctx,e,proof,engineering.PipelineRun{});return err}},
+             {"run_nil_context",func()error{_,err:=f.db.RecordAutopilotRun(nil,e,proof,engineering.PipelineRun{Operation:jobs.RequestTask{ID:"unknown"}});return err}},
+             {"unapplied_operation",func()error{_,err:=f.db.RecordAutopilotRun(ctx,e,proof,engineering.PipelineRun{Operation:jobs.RequestTask{ID:"unknown"}});return err}},
+             {"cross_action_compensation",func()error{_,err:=f.db.CompensateAutopilot(ctx,e,proof,engineering.PipelineExecution{});return err}},
+             {"cross_action_drift",func()error{_,err:=f.db.RecordAutopilotDrift(ctx,e,proof,engineering.AutopilotDrift{},time.Minute);return err}},
+            }{
+             t.Run("apply/"+tc.name,func(t *testing.T){if err:=tc.call();err==nil||coverageProposalSnapshot(t,raw)!=before{t.Fatal("rejected proof operation changed state",err)}})
+            }
+            return engineering.AutopilotProposal{},store.ErrUnavailable
+           }
+           _,err=s.Apply(ctx,f.author,p.ID,phase26ApplyRequest(p))
+           if !errors.Is(err,store.ErrUnavailable)||!saved||!staged{t.Fatal("live proof guards not exercised",saved,staged,err)}
+           current,err:=f.auto.Get(ctx,f.author,p.ID)
+           if err!=nil||current.State!="approved"||len(current.Effects)!=0||current.Operation!=""{t.Fatal("rejected proof published an effect",current.State,err)}
+          }
+          GO
+          gofmt -w test/acceptance/postgres_coverage_regressions_test.go
+          git add test/acceptance/postgres_coverage_regressions_test.go
+          test "$(git diff --cached --name-only)" = test/acceptance/postgres_coverage_regressions_test.go
+          git diff --check
+          git diff --exit-code HEAD -- internal cmd sdk scripts .github go.mod go.sum
+      - name: Race-enabled real PostgreSQL regression coverage
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -covermode=atomic -coverpkg=./internal/store/postgres -coverprofile=/tmp/pr19-new-store-coverage.out ./test/acceptance -run '^TestStoreCoverage' -v 2>&1 | tee /tmp/pr19-store-regressions.log
+      - name: Measure exact-source cumulative statement coverage
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          baseline_path = Path('/tmp/coverage-baseline/chartworks-coverage.out')
+          added_path = Path('/tmp/pr19-new-store-coverage.out')
+          def read(path):
+              result = {}
+              for line in path.read_text().splitlines()[1:]:
+                  coordinates, statements, hits = line.split()
+                  if '/internal/store/postgres/' not in coordinates:
+                      continue
+                  n, hit = int(statements), int(hits) > 0
+                  if coordinates in result:
+                      assert result[coordinates][0] == n
+                      hit = hit or result[coordinates][1]
+                  result[coordinates] = (n, hit)
+              return result
+          baseline, added = read(baseline_path), read(added_path)
+          old = sum(n for n,hit in baseline.values() if hit)
+          total = sum(n for n,hit in baseline.values())
+          assert (old,total) == (4449,5412), (old,total)
+          assert added.keys() == baseline.keys(), 'Coverage must address identical production source'
+          merged = {}
+          for key,(n,hit) in baseline.items():
+              assert added[key][0] == n, key
+              merged[key] = (n, hit or added[key][1])
+          covered = sum(n for n,hit in merged.values() if hit)
+          summary = {'baseline_covered':old,'covered':covered,'total':total,'newly_covered':covered-old,'percent':100*covered/total,'required_percent':84,'measurement':'unchanged-production CI baseline OR passing new race-instrumented regression profile; not a rerun of the entire CI matrix'}
+          Path('/tmp/pr19-store-coverage-summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+          Path('/tmp/pr19-combined-store-coverage.out').write_text('mode: atomic\n'+''.join(f'{key} {n} {int(hit)}\n' for key,(n,hit) in sorted(merged.items())))
+          print(json.dumps(summary,indent=2))
+          assert covered*100 >= 84*total, 'Existing 84% gate remains unmet; do not publish'
+          PY
+      - name: Repeat the new regressions before publication
+        run: go test -race -count=2 -timeout=15m ./test/acceptance -run '^TestStoreCoverage'
+      - name: Publish test-only changes with a guarded ordinary fast-forward
+        run: |
+          git fetch origin "$FEATURE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$FEATURE_BRANCH")" = "$EXPECTED_SOURCE"
+          git diff --exit-code HEAD -- internal cmd sdk scripts .github go.mod go.sum
+          test "$(git diff --cached --name-only)" = test/acceptance/postgres_coverage_regressions_test.go
+          git diff --check
+          git config user.name chartworks-development-bot
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test(postgres): cover transactional rollback and in-process rejection boundaries'
+          git push origin "HEAD:$FEATURE_BRANCH"
+          echo "PUBLISHED_TEST_COMMIT=$(git rev-parse HEAD)" | tee /tmp/pr19-published-test-commit.txt
+      - name: Preserve complete source and actual verification evidence
+        if: always()
+        run: |
+          mkdir -p /tmp/pr19-store-evidence
+          if test -d .git; then
+            git rev-parse HEAD > /tmp/pr19-store-evidence/head.txt
+            git diff --binary "$EXPECTED_SOURCE" -- test/acceptance/postgres_coverage_regressions_test.go > /tmp/pr19-store-evidence/coverage-tests.patch
+            if test -f test/acceptance/postgres_coverage_regressions_test.go; then cp test/acceptance/postgres_coverage_regressions_test.go /tmp/pr19-store-evidence/; fi
+          fi
+          for file in /tmp/pr19-store-regressions.log /tmp/pr19-new-store-coverage.out /tmp/pr19-combined-store-coverage.out /tmp/pr19-store-coverage-summary.json /tmp/pr19-published-test-commit.txt; do
+            if test -f "$file"; then cp "$file" /tmp/pr19-store-evidence/; fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr19-postgres-coverage-regressions
+          path: /tmp/pr19-store-evidence
+          retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/go-build
+          key: cw-phase-26-28-build-${{ github.run_id }}
