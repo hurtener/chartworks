@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
+	"github.com/jackc/pgx/v5"
 )
 
 // Planning uses the real source, validator, gateway and PostgreSQL. The runner
@@ -306,4 +307,29 @@ func TestProposalConcurrentAdmissionPreservesIdentity(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProposalCreationIsAtomicAcrossPersistenceSteps(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	ctx := context.Background()
+	raw := support.Raw(t, f.dsn)
+	sql(t, raw, `CREATE FUNCTION chartworks.reject_proposal_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF TG_TABLE_NAME='audit_events' THEN IF NEW.action<>'engineering.proposal_created' THEN RETURN NEW; END IF; END IF; RAISE EXCEPTION 'synthetic proposal persistence failure'; END; $$`)
+	for _, table := range []string{"engineering_proposal_heads", "engineering_proposal_versions", "engineering_proposal_references", "audit_events"} {
+		t.Run(table, func(t *testing.T) {
+			// Identifiers are this closed synthetic test inventory, never request data.
+			relation := pgx.Identifier{"chartworks", table}.Sanitize()
+			sql(t, raw, "CREATE TRIGGER reject_proposal_write BEFORE INSERT ON "+relation+" FOR EACH ROW EXECUTE FUNCTION chartworks.reject_proposal_write()")
+			_, err := f.client.ProposeEngineering(ctx, f.goal)
+			sql(t, raw, "DROP TRIGGER reject_proposal_write ON "+relation)
+			if err == nil {
+				t.Fatal("proposal survived failed persistence step")
+			}
+			var heads, versions, refs, events int
+			err = raw.QueryRow(ctx, `SELECT (SELECT count(*) FROM chartworks.engineering_proposal_heads),(SELECT count(*) FROM chartworks.engineering_proposal_versions),(SELECT count(*) FROM chartworks.engineering_proposal_references),(SELECT count(*) FROM chartworks.engineering_proposal_events)`).Scan(&heads, &versions, &refs, &events)
+			if err != nil || heads != 0 || versions != 0 || refs != 0 || events != 0 {
+				t.Fatal("partial proposal transaction", heads, versions, refs, events, err)
+			}
+		})
+	}
+	f.approve(t, f.propose(t))
 }
