@@ -1,6 +1,6 @@
 # Phase 29 — reports-dashboards
 
-Status: planned. Owner: internal/reporting. Hard dependencies: 18, 28.
+Status: in_progress. Owner: internal/reporting. Hard dependencies: 18, 28.
 
 ## Authority and design
 
@@ -48,3 +48,5 @@ Implement `TestPhase29/AC01` through `TestPhase29/AC08`. Use mixed block/query/t
 ## Glossary, decisions and deviations
 
 Report publication, widget origin, query durability and artifact privacy are independent. D-047 applies. No runtime completion is claimed.
+
+Implementation is in progress on `feat/phase-29-reports-dashboards`. Initial definition/lifecycle/storage regression tests are not substitutes for the eight complete acceptance criteria. The strict phase runner remains required and must fail while those criteria are absent or incomplete.

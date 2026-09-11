@@ -7,6 +7,7 @@ on:
     paths:
       - 'internal/reporting/**'
       - 'internal/reportingapi/**'
+      - 'internal/nlqexec/saved*'
       - 'internal/store/postgres/documents*'
       - 'internal/store/postgres/compositions*'
       - 'internal/store/postgres/migrations/029*'
@@ -40,15 +41,20 @@ jobs:
           POSTGRES_PASSWORD: chartworks
           POSTGRES_DB: chartworks
         options: >-
-          --health-cmd 'pg_isready -U chartworks -d chartworks'
+          --health-cmd "pg_isready -U chartworks -d chartworks"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        id: checkout
         with:
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - name: Formatting diagnostics without modifying source
+        run: |
+          files=$(find internal test -name '*documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go' -o -name 'compositions*.go' -o -name 'saved_question*.go')
+          if test -n "$files"; then gofmt -d $files; fi
       - name: Reserve native build disk
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       - name: Build the pinned native parser and runner
@@ -56,19 +62,13 @@ jobs:
       - name: Exact-source unit and PostgreSQL regression tests
         run: |
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
-          go test -race -count=1 -timeout=15m ./internal/config ./internal/reporting ./test/acceptance -run 'TestDocument|TestReportingComposition'
+          go test -race -count=1 -timeout=15m ./internal/config ./internal/reporting ./internal/nlqexec ./test/acceptance -run 'TestDocument|TestReportingComposition|TestSavedQuestion'
       - name: All eight named phase criteria are required
         run: python3 scripts/run_phase_acceptance.py --phase 29
-      - name: Formatting diagnostics without modifying source
-        if: always()
+      - name: Formatting and source must remain unchanged
+        if: always() && steps.checkout.outcome == 'success'
         run: |
-          files=$(find internal test -name '*documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go')
-          if test -n "$files"; then
-            gofmt -d $files
-            test -z "$(gofmt -l $files)"
-          fi
-      - name: Verification must leave source unchanged
-        if: always()
-        run: |
+          files=$(find internal test -name '*documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go' -o -name 'compositions*.go' -o -name 'saved_question*.go')
+          if test -n "$files"; then test -z "$(gofmt -l $files)"; fi
           git diff --exit-code
           test -z "$(git ls-files --others --exclude-standard)"
