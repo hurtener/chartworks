@@ -339,15 +339,15 @@ func (d *DB) FinishAttempt(ctx context.Context, lease jobs.Lease, code string, p
 // CompleteJob proves the fresh service identity and repeats its guard inside the transaction.
 // For this first consumer, queue completion, retention effects and audit are one database commit.
 func (d *DB) CompleteJob(ctx context.Context, lease jobs.Lease, proof auth.Execution) (out jobs.Job, err error) {
+	if jobs.AssertExecution(proof, lease.Job) != nil {
+		return out, jobs.ErrAuthority
+	}
 	if lease.Job.Kind != jobs.MaintenanceKind {
 		return out, jobs.ErrInvalid
 	}
 	e := proof.Envelope()
 	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
 	defer cancel()
-	if jobs.AssertExecution(proof, lease.Job) != nil {
-		return out, jobs.ErrAuthority
-	}
 	scope, err := store.NewScope(e.Tenant(), e.User())
 	if err != nil {
 		return out, err

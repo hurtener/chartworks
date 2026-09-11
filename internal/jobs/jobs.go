@@ -201,6 +201,6 @@ type Repository interface {
 	ReadSchedule(context.Context, store.Scope, string) (Schedule, error)
 	ReplaceSchedule(context.Context, store.Scope, string, string, int64, string, ScheduleRequest, Limits) (Schedule, error)
 	SetSchedule(context.Context, store.Scope, string, int64, bool) (Schedule, error)
-	FireSchedule(context.Context, store.Scope, string, string, string, Limits) (Job, error)
+	FireSchedule(context.Context, store.Scope, string, string, string, int64, Limits) (Job, error)
 	TickSchedules(context.Context, Limits) (int, error)
 }

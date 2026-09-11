@@ -89,7 +89,7 @@ func (phase21Repository) ReadSchedule(context.Context, store.Scope, string) (job
 func (phase21Repository) SetSchedule(context.Context, store.Scope, string, int64, bool) (jobs.Schedule, error) {
 	return jobs.Schedule{}, jobs.ErrEmpty
 }
-func (phase21Repository) FireSchedule(context.Context, store.Scope, string, string, string, jobs.Limits) (jobs.Job, error) {
+func (phase21Repository) FireSchedule(context.Context, store.Scope, string, string, string, int64, jobs.Limits) (jobs.Job, error) {
 	return jobs.Job{}, jobs.ErrEmpty
 }
 func (phase21Repository) TickSchedules(context.Context, jobs.Limits) (int, error) {

@@ -323,6 +323,11 @@ func TestPhase28(t *testing.T) {
 		if second.ReusedFrom != first.ID || len(second.QueryAttempts) != 0 || second.Observed == nil || first.Observed == nil || !second.Observed.Equal(*first.Observed) || second.Expires.After(first.Expires) {
 			t.Fatal("reuse lost partition, observation, expiry or physical attempt truth", first, second)
 		}
+		phase28ConcurrentReuse(t, runs, execute, first.Block)
+		foreign := f.f.token.envelope(t, "foreign-reporting-tenant", "foreign-reader", phase28Scopes("foreign-reporting-tenant")...)
+		if _, readErr := runs.Get(ctx, foreign, first.ID); !errors.Is(readErr, store.ErrNotFound) && !errors.Is(readErr, access.ErrNotFound) {
+			t.Fatal("cross-tenant artifact disclosed", readErr)
+		}
 		reader := phase28Reader(t, f, "restricted-reader", first.Block, first.Context)
 		before := f.f.lookups.Load()
 		if _, readErr := runs.Get(ctx, reader, first.ID); readErr != nil {

@@ -210,7 +210,7 @@ func (s *Service) Fire(ctx context.Context, e identity.Envelope, id, key string)
 	if !identity.Identifier(key) {
 		return Job{}, ErrInvalid
 	}
-	return s.repo.FireSchedule(ctx, scope, e.Session(), id, key, s.limits)
+	return s.repo.FireSchedule(ctx, scope, e.Session(), id, key, schedule.Revision, s.limits)
 }
 
 // Run starts a fixed worker set and joins all of it on every exit path. There is no detached job.

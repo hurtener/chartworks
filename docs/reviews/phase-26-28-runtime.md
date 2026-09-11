@@ -157,3 +157,18 @@ and manual fire now carry the signed deadline through their complete call. The
 real PostgreSQL regression observes admission waiting on the queue lock, releases
 it after expiry, and verifies that neither jobs nor schedules were admitted.
 That regression and existing Phase 06/replacement race acceptance pass locally.
+
+Manual schedule fire now pins the revision whose target was authorized. A real
+PostgreSQL regression interposes a committed binding replacement between the
+service read and admission, proves that the old authorization receives a conflict
+without creating an occurrence, and verifies that current authority can still
+fire the replacement. Queue, schedule and Phase 21 race regressions pass. The
+maintenance completion path again checks the verified proof before classifying
+the target, preserving its established authority error contract.
+
+Phase 28 AC06 now races duplicate admission, verifies one sealed manifest, then
+executes two distinct reuse requests concurrently without physical queries. It
+also explicitly rejects a foreign tenant's artifact read. The full local Phase 28
+race acceptance passes (19.577 seconds); focused lint reports zero issues. The
+new Phase 26 schedule-commit interruption test compiles and still awaits Linux
+runtime verification. Full committed-source coverage remains outstanding.
