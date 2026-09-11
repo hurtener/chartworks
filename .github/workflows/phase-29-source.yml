@@ -8,19 +8,32 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 45
+    env:
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      GOFLAGS: -p=2
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Archive tracked source only
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Build the repository's pinned native dependency
+        run: bash scripts/build-bruin.sh
+      - name: Download locked module dependencies
+        run: go mod download
+      - name: Archive tracked source and offline development dependencies
         run: |
-          git archive --format=tar.gz HEAD > /tmp/chartworks-source.tar.gz
-          git rev-parse HEAD > /tmp/chartworks-source.sha
+          mkdir -p /tmp/cw-transfer
+          git archive --format=tar.gz HEAD > /tmp/cw-transfer/chartworks-source.tar.gz
+          git rev-parse HEAD > /tmp/cw-transfer/chartworks-source.sha
+          tar -czf /tmp/cw-transfer/toolchain.tar.gz -C "$(go env GOROOT)" .
+          tar -czf /tmp/cw-transfer/modules.tar.gz -C "$(go env GOMODCACHE)" .
+          tar -czf /tmp/cw-transfer/native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_sqlparser.a
       - uses: actions/upload-artifact@v4
         with:
-          name: phase-29-source
-          path: |
-            /tmp/chartworks-source.tar.gz
-            /tmp/chartworks-source.sha
+          name: phase-29-offline
+          path: /tmp/cw-transfer
+          compression-level: 0
           retention-days: 1
