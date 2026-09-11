@@ -11,6 +11,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestProposalEffectReplayRequiresReadableEvidence(t *testing.T) {
@@ -40,6 +41,42 @@ func TestProposalEffectReplayRequiresReadableEvidence(t *testing.T) {
 			changed, err := proposalEffectTx(context.Background(), blockValidationTx{row: tc.row}, identity.Envelope{}, engineering.AutopilotProposal{ID: "proposal", Revision: 1}, candidate)
 			if !errors.Is(err, tc.want) || changed {
 				t.Fatal("effect receipt replay", changed, err)
+			}
+		})
+	}
+}
+
+type proposalEffectFailureTx struct {
+	blockValidationTx
+	failure error
+	writes  int
+}
+
+func (tx *proposalEffectFailureTx) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	tx.writes++
+	return pgconn.CommandTag{}, tx.failure
+}
+func TestProposalEffectWriteFailureDoesNotClaimCommit(t *testing.T) {
+	marker := errors.New("synthetic effect write failure")
+	prior := engineering.ProposalEffect{Kind: "pipeline_run", Target: "pipeline", State: "running", Version: 1}
+	raw, err := json.Marshal(prior)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		row  blockValidationRow
+	}{
+		{"new receipt", blockValidationRow{err: pgx.ErrNoRows}},
+		{"updated receipt", blockValidationRow{body: raw}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tx := &proposalEffectFailureTx{blockValidationTx: blockValidationTx{row: tc.row}, failure: marker}
+			effect := prior
+			effect.State = "succeeded"
+			changed, err := proposalEffectTx(context.Background(), tx, identity.Envelope{}, engineering.AutopilotProposal{ID: "proposal", Revision: 1}, effect)
+			if changed || !errors.Is(err, marker) || tx.writes != 1 {
+				t.Fatal("failed effect write claimed commit", changed, err, tx.writes)
 			}
 		})
 	}
