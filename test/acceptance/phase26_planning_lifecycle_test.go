@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -355,5 +356,28 @@ func TestProposalReviewRejectsUnavailableSource(t *testing.T) {
 	rejected, err := f.reviewer.ReviewEngineeringProposal(ctx, p.ID, request)
 	if err != nil || rejected.State != "rejected" {
 		t.Fatal("unavailable source prevented explicit rejection", rejected, err)
+	}
+}
+
+func TestProposalEvidenceBudgetStopsBeforeCatalogModelCall(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	limits := f.limits
+	limits.MaxEvidenceBytes = 1024
+	service, err := engineering.NewAutopilot(f.db, f.pipelines, limits, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(service.Close)
+	goal := f.goal
+	goal.Goal = strings.Repeat("A bounded synthetic requirement. ", 64)
+	before := f.model.fixture.requests.Load()
+	if _, err := service.Propose(context.Background(), f.author, goal); !errors.Is(err, engineering.ErrLimit) {
+		t.Fatal("oversized catalog evidence was accepted", err)
+	}
+	if calls := f.model.fixture.requests.Load() - before; calls != 1 {
+		t.Fatal("evidence limit allowed a catalog model call", calls)
+	}
+	if _, err := service.Get(context.Background(), f.author, goal.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("over-budget material persisted", err)
 	}
 }
