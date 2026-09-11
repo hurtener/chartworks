@@ -12,8 +12,8 @@ func validateArgument(p Parameter, value Value) error {
 	return validateDeclarations([]Parameter{copy}, 1)
 }
 
-// ValidateWidgetBindings validates names, types and every author-supplied value.
-// Runtime values are validated again against both filter and block constraints.
+// ValidateWidgetBindings checks names, types and all author-supplied values.
+// Runtime values are checked again against both filter and block constraints.
 func ValidateWidgetBindings(parameters []Parameter, d DocumentDefinition, w Widget) error {
 	declared := map[string]Parameter{}
 	for _, p := range parameters {
@@ -48,13 +48,18 @@ func ValidateWidgetBindings(parameters []Parameter, d DocumentDefinition, w Widg
 	return nil
 }
 
-// ResolveWidgetParameters applies RFC-002 precedence without constructing SQL:
-// block default -> report default -> widget literal -> filter -> permitted
-// invocation override. Equal-level duplicates are conflicts, not last-write-wins.
-// The returned provenance stays per widget even when equal values share a query.
+// ResolveWidgetParameters applies RFC-002 precedence without constructing SQL.
+// Provenance remains per widget even when equal values share a query.
 func ResolveWidgetParameters(parameters []Parameter, d DocumentDefinition, w Widget, filters, overrides []Argument, resolution Resolution) (Resolved, error) {
+	_, resolved, err := widgetArguments(parameters, d, w, filters, overrides, resolution)
+	return resolved, err
+}
+
+// widgetArguments retains the typed values as well as their resolved execution
+// parameters, so a child run can replay a relative period at the accepted time.
+func widgetArguments(parameters []Parameter, d DocumentDefinition, w Widget, filters, overrides []Argument, resolution Resolution) ([]Argument, Resolved, error) {
 	if w.Block == nil || ValidateWidgetBindings(parameters, d, w) != nil || len(filters) > len(d.Filters) || len(overrides) > len(w.Overrides) {
-		return Resolved{}, ErrInvalid
+		return nil, Resolved{}, ErrInvalid
 	}
 	declared := map[string]Parameter{}
 	for _, p := range parameters {
@@ -83,32 +88,32 @@ func ResolveWidgetParameters(parameters []Parameter, d DocumentDefinition, w Wid
 		return nil
 	}
 	if apply(d.Defaults, "report_default", true) != nil || apply(w.Literals, "widget_literal", false) != nil {
-		return Resolved{}, ErrInvalid
+		return nil, Resolved{}, ErrInvalid
 	}
 	filterValues, err := resolveReportFilters(d.Filters, filters)
 	if err != nil {
-		return Resolved{}, err
+		return nil, Resolved{}, err
 	}
 	bound := map[string]bool{}
 	for _, b := range w.Bindings {
 		if bound[b.Parameter] {
-			return Resolved{}, ErrInvalid
+			return nil, Resolved{}, ErrInvalid
 		}
 		bound[b.Parameter] = true
 		if value, exists := filterValues[b.Filter]; exists {
 			if validateArgument(declared[b.Parameter], value) != nil {
-				return Resolved{}, ErrInvalid
+				return nil, Resolved{}, ErrInvalid
 			}
 			values[b.Parameter], provenance[b.Parameter] = clone(value), "filter:"+b.Filter
 		}
 	}
 	for _, a := range overrides {
 		if !slices.Contains(w.Overrides, a.Name) {
-			return Resolved{}, ErrInvalid
+			return nil, Resolved{}, ErrInvalid
 		}
 	}
 	if apply(overrides, "invocation_override", false) != nil {
-		return Resolved{}, ErrInvalid
+		return nil, Resolved{}, ErrInvalid
 	}
 	arguments := []Argument{}
 	for _, p := range parameters {
@@ -118,7 +123,7 @@ func ResolveWidgetParameters(parameters []Parameter, d DocumentDefinition, w Wid
 	}
 	resolved, err := ResolveParameters(parameters, arguments, resolution)
 	if err != nil {
-		return Resolved{}, err
+		return nil, Resolved{}, err
 	}
 	for i := range resolved.Values {
 		p := provenance[resolved.Values[i].Name]
@@ -127,7 +132,7 @@ func ResolveWidgetParameters(parameters []Parameter, d DocumentDefinition, w Wid
 		}
 		resolved.Values[i].Provenance = p
 	}
-	return resolved, nil
+	return arguments, resolved, nil
 }
 
 func resolveReportFilters(definitions []ReportFilter, arguments []Argument) (map[string]Value, error) {
