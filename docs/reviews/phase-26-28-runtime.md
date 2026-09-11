@@ -45,6 +45,12 @@ Review was performed directly; no subagents were used.
 - Linux run 34549736699 at 382a73023966d9854a90d824737f18ff83275fe7 passed strict Phase 26 and 28 acceptance on 2026-09-11 at 01:26:24 UTC, including execution of an accepted prior pipeline version after schedule replacement. Both native platform builds, lint, Clients and MCP also passed.
 - The additional lost-narrative-output case passed locally with race instrumentation (16.141 seconds). It interrupts after the provider response but before the output checkpoint, then verifies one physical query, one model call, an unchanged reservation and an honest indeterminate output on resume. Focused lint reports zero issues.
 
+## Additional persistence regression evidence
+
+- At f43b115, real PostgreSQL proposal tests passed with race instrumentation for rejection/resubmission, concurrent edits, audit-write rollback, capacity enforcement, idempotent identity and target-redirection refusal. The planning-only fixture uses a non-executable runner sentinel; it does not substitute for native managed execution acceptance.
+- At 4317073, Phase 28 AC07 passed with race instrumentation after adding an injected retention audit failure. Payloads and outputs remain intact on failure, and the subsequent sweep completes deletion. Focused lint passed.
+- The a5d2e48 cumulative diagnostic profile measured engineering at 79.54% and PostgreSQL at 80.47%, below the required 80% and 84%. The new proposal/authority tests exercise 6 and 23 additional statements respectively in source files unchanged from that profile. These incremental counts are diagnostic, not a passing full-suite coverage claim; required coverage remains unresolved.
+
 ## Remaining release evidence
 
 - Final delivery-head strict Linux acceptance, including the added lost-narrative-output regression.

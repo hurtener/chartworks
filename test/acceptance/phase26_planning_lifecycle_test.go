@@ -5,12 +5,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
 )
@@ -231,6 +234,75 @@ func TestProposalEditsCannotRedirectReviewedTarget(t *testing.T) {
 			retained, err := f.auto.Get(context.Background(), f.author, p.ID)
 			if err != nil || retained.Version != p.Version || retained.Digest != p.Digest || retained.State != "approved" {
 				t.Fatal("rejected edit changed reviewed proposal", retained, err)
+			}
+		})
+	}
+}
+
+// Both requests observe absence before either plans. Persistence, rather than
+// process-local admission order, must resolve the competing proposal identity.
+type proposalAdmissionBarrier struct {
+	engineering.AutopilotRepository
+	arrived atomic.Int32
+	release chan struct{}
+}
+
+func (r *proposalAdmissionBarrier) ReadAutopilotProposal(ctx context.Context, e identity.Envelope, id, action string) (engineering.AutopilotProposal, error) {
+	p, err := r.AutopilotRepository.ReadAutopilotProposal(ctx, e, id, action)
+	if errors.Is(err, store.ErrNotFound) && action == "engineering.autopilot.propose" {
+		if r.arrived.Add(1) == 2 {
+			close(r.release)
+		}
+		select {
+		case <-r.release:
+		case <-ctx.Done():
+			return p, ctx.Err()
+		}
+	}
+	return p, err
+}
+
+func TestProposalConcurrentAdmissionPreservesIdentity(t *testing.T) {
+	for _, collision := range []bool{false, true} {
+		t.Run(fmt.Sprintf("conflicting-goal-%t", collision), func(t *testing.T) {
+			f := newPhase26PlanningFixture(t)
+			repository := &proposalAdmissionBarrier{AutopilotRepository: f.db, release: make(chan struct{})}
+			service, err := engineering.NewAutopilot(repository, f.pipelines, f.limits, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(service.Close)
+			type outcome struct {
+				p   engineering.AutopilotProposal
+				err error
+			}
+			results := make(chan outcome, 2)
+			for index := range 2 {
+				goal := f.goal
+				if collision && index == 1 {
+					goal.Goal = "Another request must not replace the accepted intention."
+				}
+				go func() { p, err := service.Propose(context.Background(), f.author, goal); results <- outcome{p, err} }()
+			}
+			first, second := <-results, <-results
+			if !collision {
+				if first.err != nil || second.err != nil || first.p.Digest != second.p.Digest || first.p.Version != 1 || second.p.Version != 1 {
+					t.Fatal("duplicate admission did not converge", first.err, second.err)
+				}
+			} else {
+				if (first.err == nil) == (second.err == nil) {
+					t.Fatal("collision did not accept exactly one intention", first.err, second.err)
+				}
+				if first.err == nil {
+					first, second = second, first
+				}
+				if !errors.Is(first.err, store.ErrConflict) {
+					t.Fatal("collision was not a conflict", first.err)
+				}
+				current, err := service.Get(context.Background(), f.author, f.goal.ID)
+				if err != nil || current.Digest != second.p.Digest || current.Material.Request.Goal != second.p.Material.Request.Goal {
+					t.Fatal("collision changed winner", current, err)
+				}
 			}
 		})
 	}
