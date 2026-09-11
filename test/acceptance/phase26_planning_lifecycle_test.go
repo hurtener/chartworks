@@ -10,6 +10,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/test/support"
 )
 
 // Planning uses the real source, validator, gateway and PostgreSQL. The runner
@@ -104,4 +105,51 @@ func TestProposalConcurrentEditsPreserveOneRevision(t *testing.T) {
 		t.Fatal("persisted winner is not the sole next revision", current, err)
 	}
 	f.approve(t, current)
+}
+
+func TestProposalAuditFailureRollsBackMaterialAndReview(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	ctx := context.Background()
+	raw := support.Raw(t, f.dsn)
+	sql(t, raw, `CREATE FUNCTION chartworks.reject_proposal_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit write failure'; END; $$`)
+	reject := func() {
+		sql(t, raw, `CREATE TRIGGER reject_proposal_event BEFORE INSERT ON chartworks.engineering_proposal_events FOR EACH ROW EXECUTE FUNCTION chartworks.reject_proposal_event()`)
+	}
+	allow := func() { sql(t, raw, `DROP TRIGGER reject_proposal_event ON chartworks.engineering_proposal_events`) }
+	reject()
+	if _, err := f.client.ProposeEngineering(ctx, f.goal); err == nil {
+		t.Fatal("proposal survived failed audit")
+	}
+	var count int
+	if err := raw.QueryRow(ctx, `SELECT count(*) FROM chartworks.engineering_proposal_heads`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("partial proposal head", count, err)
+	}
+	allow()
+	p := f.propose(t)
+	reject()
+	edit := engineering.AutopilotEditRequest{ExpectedVersion: p.Version, Definition: p.Material.Pipeline, Reason: "Synthetic correction requiring an atomic event."}
+	if _, err := f.client.EditEngineeringProposal(ctx, p.ID, edit); err == nil {
+		t.Fatal("edit survived failed audit")
+	}
+	current, err := f.auto.Get(ctx, f.author, p.ID)
+	if err != nil || current.Version != p.Version || current.Digest != p.Digest {
+		t.Fatal("failed edit changed material", current, err)
+	}
+	review := engineering.AutopilotReviewRequest{ExpectedVersion: p.Version, Revision: p.Revision, Digest: p.Digest, Decision: "approve", Reason: "Synthetic independent review requiring an atomic event."}
+	if _, err := f.reviewer.ReviewEngineeringProposal(ctx, p.ID, review); err == nil {
+		t.Fatal("approval survived failed audit")
+	}
+	current, err = f.auto.Get(ctx, f.author, p.ID)
+	if err != nil || current.State != "draft" || current.Review != nil || current.Version != p.Version {
+		t.Fatal("failed review changed authority state", current, err)
+	}
+	if err := raw.QueryRow(ctx, `SELECT count(*) FROM chartworks.engineering_proposal_reviews`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("orphan review", count, err)
+	}
+	allow()
+	revised, err := f.client.EditEngineeringProposal(ctx, p.ID, edit)
+	if err != nil || revised.Revision != p.Revision+1 {
+		t.Fatal("retry after audit recovery", revised, err)
+	}
+	f.approve(t, revised)
 }
