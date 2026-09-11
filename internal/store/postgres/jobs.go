@@ -16,12 +16,26 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const jobColumns = `operation_id,tenant_id,kind,binding_id,actor_id,initiator_id,initiator_session,status,error_code,policy_revision,due_at,window_start,window_end,cutoff,batch_limit,attempt_count,max_attempts,COALESCE(schedule_id,''),COALESCE(schedule_revision,0),manifest_hash,deleted_events,deleted_operations`
+const jobColumns = `operation_id,tenant_id,kind,binding_id,actor_id,initiator_id,initiator_session,status,error_code,policy_revision,due_at,window_start,window_end,cutoff,batch_limit,attempt_count,max_attempts,COALESCE(schedule_id,''),COALESCE(schedule_revision,0),manifest_hash,deleted_events,deleted_operations,dispatch_manifest`
 
 func scanJob(row pgx.Row) (jobs.Job, error) {
 	var j jobs.Job
-	err := row.Scan(&j.ID, &j.Tenant, &j.Kind, &j.BindingID, &j.Executor, &j.Initiator, &j.InitiatorSession, &j.State, &j.ErrorCode, &j.PolicyRevision, &j.DueAt, &j.WindowStart, &j.WindowEnd, &j.Cutoff, &j.Batch, &j.Attempts, &j.MaxAttempts, &j.ScheduleID, &j.ScheduleRevision, &j.ManifestHash, &j.DeletedEvents, &j.DeletedOperations)
-	return j, err
+	var raw []byte
+	err := row.Scan(&j.ID, &j.Tenant, &j.Kind, &j.BindingID, &j.Executor, &j.Initiator, &j.InitiatorSession, &j.State, &j.ErrorCode, &j.PolicyRevision, &j.DueAt, &j.WindowStart, &j.WindowEnd, &j.Cutoff, &j.Batch, &j.Attempts, &j.MaxAttempts, &j.ScheduleID, &j.ScheduleRevision, &j.ManifestHash, &j.DeletedEvents, &j.DeletedOperations, &raw)
+	if err != nil {
+		return j, err
+	}
+	if len(raw) != 0 {
+		var accepted jobs.Job
+		if json.Unmarshal(raw, &accepted) != nil || !accepted.Valid() {
+			return jobs.Job{}, store.ErrInvalid
+		}
+		j.Pipeline = accepted.Pipeline
+		if j.Digest() != accepted.ManifestHash || j.ManifestHash != accepted.ManifestHash {
+			return jobs.Job{}, store.ErrInvalid
+		}
+	}
+	return j, nil
 }
 func queueLock(ctx context.Context, tx pgx.Tx, l jobs.Limits) error {
 	if l.Validate() != nil {
@@ -97,7 +111,7 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	clientKey := digestValue([]string{"queued-v1", scope.Actor(), key})
 	requestHash := digestValue([]any{request, l.Batch, scheduleID, scheduleRevision})
 	executor := jobs.Executor(request.BindingID)
-	row := tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations WHERE tenant_id=$1 AND initiator_id=$2 AND kind='retention.sweep' AND client_key=$3 AND dispatch_mode='queued'`, scope.Tenant(), scope.Actor(), clientKey)
+	row := tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations WHERE tenant_id=$1 AND initiator_id=$2 AND kind=$4 AND client_key=$3 AND dispatch_mode='queued'`, scope.Tenant(), scope.Actor(), clientKey, request.Kind)
 	existing, err := scanJob(row)
 	if err == nil {
 		var hash string
@@ -146,13 +160,25 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	}
 	due = due.UTC().Truncate(time.Microsecond)
 	windowStart = windowStart.UTC().Truncate(time.Microsecond)
-	j := jobs.Job{ID: id, Tenant: scope.Tenant(), Kind: request.Kind, BindingID: request.BindingID, Executor: executor, Initiator: scope.Actor(), InitiatorSession: session, State: "pending", PolicyRevision: revision, DueAt: due, WindowStart: windowStart, WindowEnd: due, Cutoff: due.Add(-time.Duration(days) * 24 * time.Hour), Batch: l.Batch, MaxAttempts: l.MaxAttempts, ScheduleID: scheduleID, ScheduleRevision: scheduleRevision}
+	j := jobs.Job{ID: id, Tenant: scope.Tenant(), Kind: request.Kind, BindingID: request.BindingID, Executor: executor, Initiator: scope.Actor(), InitiatorSession: session, State: "pending", PolicyRevision: revision, DueAt: due, WindowStart: windowStart, WindowEnd: due, Cutoff: due.Add(-time.Duration(days) * 24 * time.Hour), Batch: l.Batch, MaxAttempts: l.MaxAttempts, ScheduleID: scheduleID, ScheduleRevision: scheduleRevision, Pipeline: request.Pipeline}
 	j.ManifestHash = j.Digest()
 	if !j.Valid() {
 		return jobs.Job{}, jobs.ErrInvalid
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO chartworks.operations(tenant_id,operation_id,actor_id,kind,client_key,request_hash,policy_revision,cutoff,batch_limit,expires_at,dispatch_mode,binding_id,initiator_id,initiator_session,due_at,window_start,window_end,manifest_hash,max_attempts,next_attempt_at,schedule_id,schedule_revision)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()+make_interval(hours=>$19),'queued',$10,$11,$12,$13,$14,$13,$15,$16,$13,NULLIF($17,''),NULLIF($18,0))`, j.Tenant, j.ID, j.Executor, j.Kind, clientKey, requestHash, j.PolicyRevision, j.Cutoff, j.Batch, j.BindingID, j.Initiator, j.InitiatorSession, j.DueAt, j.WindowStart, j.ManifestHash, j.MaxAttempts, j.ScheduleID, j.ScheduleRevision, hours)
+	var dispatched, input []byte
+	if j.Pipeline != nil {
+		var published bool
+		if err := tx.QueryRow(ctx, `SELECT published_at IS NOT NULL AND manifest_hash=$4 FROM chartworks.pipeline_versions WHERE tenant_id=$1 AND pipeline_id=$2 AND version=$3 FOR SHARE`, j.Tenant, j.Pipeline.ID, j.Pipeline.Version, j.Pipeline.Digest).Scan(&published); err != nil {
+			return jobs.Job{}, err
+		}
+		if !published {
+			return jobs.Job{}, store.ErrConflict
+		}
+		dispatched, _ = json.Marshal(j)
+		input, _ = json.Marshal(jobs.RequestInput{Kind: jobs.PipelineKind, Target: j.Pipeline.ID, InputHash: j.Pipeline.Digest})
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO chartworks.operations(tenant_id,operation_id,actor_id,kind,client_key,request_hash,policy_revision,cutoff,batch_limit,expires_at,dispatch_mode,binding_id,initiator_id,initiator_session,due_at,window_start,window_end,manifest_hash,max_attempts,next_attempt_at,schedule_id,schedule_revision,dispatch_manifest,request_manifest)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()+make_interval(hours=>$19),'queued',$10,$11,$12,$13,$14,$13,$15,$16,$13,NULLIF($17,''),NULLIF($18,0),$20,$21)`, j.Tenant, j.ID, j.Executor, j.Kind, clientKey, requestHash, j.PolicyRevision, j.Cutoff, j.Batch, j.BindingID, j.Initiator, j.InitiatorSession, j.DueAt, j.WindowStart, j.ManifestHash, j.MaxAttempts, j.ScheduleID, j.ScheduleRevision, hours, dispatched, input)
 	if err != nil {
 		return jobs.Job{}, err
 	}
@@ -313,12 +339,15 @@ func (d *DB) FinishAttempt(ctx context.Context, lease jobs.Lease, code string, p
 // CompleteJob proves the fresh service identity and repeats its guard inside the transaction.
 // For this first consumer, queue completion, retention effects and audit are one database commit.
 func (d *DB) CompleteJob(ctx context.Context, lease jobs.Lease, proof auth.Execution) (out jobs.Job, err error) {
-	e := proof.Envelope()
-	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
-	defer cancel()
 	if jobs.AssertExecution(proof, lease.Job) != nil {
 		return out, jobs.ErrAuthority
 	}
+	if lease.Job.Kind != jobs.MaintenanceKind {
+		return out, jobs.ErrInvalid
+	}
+	e := proof.Envelope()
+	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
+	defer cancel()
 	scope, err := store.NewScope(e.Tenant(), e.User())
 	if err != nil {
 		return out, err

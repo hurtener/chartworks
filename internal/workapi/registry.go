@@ -54,11 +54,11 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 	if err != nil {
 		return nil, err
 	}
-	submission, err := api.SchemaFor("jobSubmissionRequest", reflect.TypeFor[jobs.Submission](), false)
+	submission, err := api.SchemaFor("jobSubmissionRequest", reflect.TypeFor[jobs.Submission](), false, api.NullableCollections)
 	if err != nil {
 		return nil, err
 	}
-	schedule, err := api.SchemaFor("scheduleRequest", reflect.TypeFor[jobs.ScheduleRequest](), false)
+	schedule, err := api.SchemaFor("scheduleRequest", reflect.TypeFor[jobs.ScheduleRequest](), false, api.NullableCollections)
 	if err != nil {
 		return nil, err
 	}

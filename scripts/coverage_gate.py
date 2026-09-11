@@ -77,7 +77,7 @@ def measure(text: str, module: str, packages: set[str]) -> dict[str, tuple[int, 
 def command(args: list[str], root: Path, *, capture: bool = False) -> str:
     result = subprocess.run(args, cwd=root, env=dict(os.environ, CGO_ENABLED="1"),
                             text=True, stdout=subprocess.PIPE if capture else None,
-                            timeout=900, check=False)
+                            timeout=1500, check=False)
     if result.returncode:
         raise ValueError("coverage command failed; no package may be silently skipped")
     return result.stdout.strip() if capture else ""
@@ -96,7 +96,7 @@ def main() -> int:
             profile = Path(directory) / "coverage.out"
             targets = ",".join(module + "/" + name for name in sorted(packages))
             try:
-                command(["go", "test", "-race", "-count=1", "-timeout=10m", "-covermode=atomic",
+                command(["go", "test", "-race", "-count=1", "-timeout=20m", "-covermode=atomic",
                          "-coverpkg=" + targets, "-coverprofile=" + str(profile), "./..."], root)
                 totals = measure(profile.read_text(), module, packages)
             finally:

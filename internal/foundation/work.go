@@ -45,6 +45,7 @@ type work struct {
 	sourceService *sources.Service
 	engineering   *engineering.Service
 	pipelines     *engineering.PipelineService
+	autopilot     *engineering.Autopilot
 	handler       http.Handler
 	engine        gateway.Engine
 	nlq           *nlqexec.Service
@@ -99,14 +100,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			w.close()
 			return nil, err
 		}
-		queue, err := jobs.New(db, provider, limits, func(stage string) {
-			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
-		})
-		if err != nil {
-			w.close()
-			return nil, err
-		}
-		w.queue = queue
+
 	}
 	w.sourceService, err = sources.New(db, v.Sources, lookup)
 	if err != nil {
@@ -139,6 +133,21 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+	if v.Jobs.Enabled {
+		observe := func(stage string) {
+			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
+		}
+		if w.pipelines.Enabled() {
+			w.queue, err = jobs.NewWithPipeline(db, w.broker, jobLimits(v.Jobs), w.pipelines, observe)
+		} else {
+			w.queue, err = jobs.New(db, w.broker, jobLimits(v.Jobs), observe)
+		}
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
+
 	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
 	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
 	w.handler = sourceapi.EngineeringHandler(verifier, w.engineering, w.handler)
@@ -237,6 +246,28 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = reportingapi.Handler(verifier, blockService, w.handler)
+	requestRunner, err := jobs.NewRequestRunner(db, jobLimits(v.Jobs))
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	runs, err := reporting.NewRuns(blockService, db, requestRunner, w.engine, v.Reporting.Execution.ModelVersion, v.Reporting.Execution)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.autopilot, err = engineering.NewAutopilotWithSchedules(db, w.pipelines, v.Autopilot, w.queue, topics)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	runtimeRegistry, err := reportingapi.RuntimeRegistry(blockService.CanValidate(), v.Autopilot.Enabled)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = reportingapi.RuntimeHandler(verifier, runs, w.autopilot, blockService.CanValidate(), v.Autopilot.Enabled, w.handler)
+
 	publicRegistry, err := PublicRegistry()
 	if err != nil {
 		w.close()
@@ -280,7 +311,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry)
 	if err != nil {
 		w.close()
 		return nil, err
@@ -317,6 +348,9 @@ func (w *work) close() {
 		w.wait.Wait()
 		if w.engineering != nil {
 			w.engineering.Close()
+		}
+		if w.autopilot != nil {
+			w.autopilot.Close()
 		}
 		if w.pipelines != nil {
 			w.pipelines.Close()

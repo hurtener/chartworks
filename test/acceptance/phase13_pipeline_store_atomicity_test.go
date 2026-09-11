@@ -17,13 +17,19 @@ import (
 func TestPhase13PipelineStoreAtomicActivation(t *testing.T) {
 	f := newEngineeringFixture(t, nil, nil)
 	ctx := context.Background()
-	relation := readexec.Relation{ID: "analytics.sales", Schema: "analytics", Name: "sales", Columns: []readexec.Column{{Name: "id", NativeType: "int8", Category: "integer", Safe: true}}}
-	binding := readexec.Binding{
-		Tenant: f.e.Tenant(), Source: "atomic-input", Context: "atomic-input:v1", Revision: 1, Dialect: "postgres",
-		Contract: "source-contract:atomic-input", Fingerprint: readexec.Hash(relation), Relations: []readexec.Relation{relation},
+	source := f.create(t, "atomic-input")
+	binding, err := f.s.Binding(ctx, f.e, source.ID, source.ContextID)
+	if err != nil || !binding.Valid() {
+		t.Fatal("registered pipeline input", err)
 	}
-	if !binding.Valid() {
-		t.Fatal("synthetic pipeline input binding is invalid")
+	var relation readexec.Relation
+	for _, candidate := range binding.Relations {
+		if candidate.Schema == "analytics" && candidate.Name == "sales" {
+			relation = candidate
+		}
+	}
+	if relation.ID == "" {
+		t.Fatal("actual pipeline input relation missing")
 	}
 	definition := engineering.PipelineDefinition{
 		ID: "atomic-pipeline", Name: "Atomic activation pipeline", Connection: "workspace",

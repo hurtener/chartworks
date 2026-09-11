@@ -134,8 +134,8 @@ func (d *DB) SetSchedule(ctx context.Context, scope store.Scope, id string, expe
 }
 
 // FireSchedule admits a replay-safe manual occurrence under the same overlap policy as scheduled work.
-func (d *DB) FireSchedule(ctx context.Context, scope store.Scope, session, id, key string, l jobs.Limits) (out jobs.Job, err error) {
-	if !scope.Valid() || !identity.Identifier(session) || !identity.Identifier(id) || !identity.Identifier(key) || l.Validate() != nil {
+func (d *DB) FireSchedule(ctx context.Context, scope store.Scope, session, id, key string, expected int64, l jobs.Limits) (out jobs.Job, err error) {
+	if !scope.Valid() || !identity.Identifier(session) || !identity.Identifier(id) || !identity.Identifier(key) || expected < 1 || expected >= 1<<62 || l.Validate() != nil {
 		return out, jobs.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -146,7 +146,7 @@ func (d *DB) FireSchedule(ctx context.Context, scope store.Scope, session, id, k
 		if e != nil {
 			return e
 		}
-		if !schedule.Enabled {
+		if !schedule.Enabled || schedule.Revision != expected {
 			return store.ErrConflict
 		}
 		var now time.Time

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
@@ -130,103 +131,7 @@ func (s *PipelineService) Run(ctx context.Context, e identity.Envelope, id strin
 		}
 	}
 	_, runErr := s.runner.Run(ctx, e, task, time.Duration(s.values.Pipelines.Timeout), func(work context.Context, inv jobs.Invocation) error {
-		done := map[string]bool{}
-		for len(done) < len(record.Definition.Steps) {
-			progressed := false
-			for _, step := range record.Definition.Steps {
-				if done[step.ID] {
-					continue
-				}
-				ready := true
-				for _, dep := range step.DependsOn {
-					if !done[dep] {
-						ready = false
-					}
-				}
-				if !ready {
-					continue
-				}
-				current, err := s.repo.ReadPipelineExecution(work, e, task.ID)
-				if err != nil {
-					return err
-				}
-				var state PipelineStageState
-				for _, stage := range current.Stages {
-					if stage.Stage.Step == step.ID {
-						state = stage
-					}
-				}
-				if state.Stage.Step == "" {
-					return ErrState
-				}
-				if state.State != "checked" {
-					statement := step.SQL
-					validator := s.validator
-					withPlan := s.source.WithValidatedPipelineRead
-					sourceID, contextID := step.Source, step.Context
-					if len(step.FromSteps) > 0 {
-						sourceID, contextID = state.Stage.Source, state.Stage.Context
-						private, err := s.source.NewPipelineInput(work, e, task.ID, step.FromSteps, sourceID, contextID)
-						if err != nil {
-							return err
-						}
-						validator, err = readexec.NewValidator(private, s.values.Exec)
-						if err != nil {
-							return err
-						}
-						withPlan = private.WithPlan
-						for _, dep := range step.FromSteps {
-							stage, err := s.repo.ReadPipelineStage(work, e, task.ID, dep)
-							if err != nil {
-								return err
-							}
-							statement = strings.ReplaceAll(statement, "{{step."+dep+"}}", quotePipelineRelation(stage.Schema, stage.Table))
-						}
-					}
-					if strings.Contains(statement, "{{") || strings.Contains(statement, "}}") {
-						return ErrInvalid
-					}
-					plan, err := validator.Validate(work, e, readexec.Request{Source: sourceID, Context: contextID, SQL: statement})
-					if err != nil {
-						return err
-					}
-					if len(step.FromSteps) == 0 {
-						actual := plan.Receipt().Dependencies
-						expected := append([]string(nil), step.Inputs...)
-						sort.Strings(actual)
-						sort.Strings(expected)
-						if !reflect.DeepEqual(actual, expected) {
-							return readexec.ErrBinding
-						}
-					}
-					err = withPlan(work, e, plan, func(held context.Context, sql string, args []readexec.Parameter, b readexec.Binding) error {
-						if len(args) != 0 {
-							return ErrInvalid
-						}
-						executionStep := step
-						executionStep.Inputs = plan.Receipt().Dependencies
-						return pipelineFailure(s.executePipelineStage(held, inv, record, c, state, executionStep, sql, b))
-					})
-					if err != nil {
-						return err
-					}
-				}
-				done[step.ID] = true
-				progressed = true
-			}
-			if !progressed {
-				return ErrInvalid
-			}
-		}
-		// One native transaction holds all exact output locks through the single
-		// local metadata publication; it does not borrow once per output.
-		steps := make([]string, 0, len(record.Definition.Steps))
-		for _, step := range record.Definition.Steps {
-			steps = append(steps, step.ID)
-		}
-		return s.source.WithPipelineOutputs(work, e, task.ID, steps, func(held context.Context, records []sources.Record) error {
-			return s.repo.CompletePipelineExecution(held, inv, record, records)
-		})
+		return s.executePipeline(work, inv, record, c)
 	})
 	current, err := s.repo.ReadPipelineExecution(ctx, e, task.ID)
 	if err != nil {
@@ -234,6 +139,114 @@ func (s *PipelineService) Run(ctx context.Context, e identity.Envelope, id strin
 	}
 	return current.Public(), runErr
 }
+
+// executePipeline is the domain effect path for an already owned invocation.
+// Admission and attempt leasing remain with the operation runner.
+func (s *PipelineService) executePipeline(work context.Context, inv jobs.Invocation, record PipelineRecord, c config.SourceConnection) error {
+	e, err := inv.Current("pipeline.run", record.Definition.ID, record.Digest)
+	if err != nil {
+		return err
+	}
+	task := inv.Lease().Task
+	done := map[string]bool{}
+	for len(done) < len(record.Definition.Steps) {
+		progressed := false
+		for _, step := range record.Definition.Steps {
+			if done[step.ID] {
+				continue
+			}
+			ready := true
+			for _, dep := range step.DependsOn {
+				if !done[dep] {
+					ready = false
+				}
+			}
+			if !ready {
+				continue
+			}
+			current, err := s.repo.ReadPipelineExecution(work, e, task.ID)
+			if err != nil {
+				return err
+			}
+			var state PipelineStageState
+			for _, stage := range current.Stages {
+				if stage.Stage.Step == step.ID {
+					state = stage
+				}
+			}
+			if state.Stage.Step == "" {
+				return ErrState
+			}
+			if state.State != "checked" {
+				statement := step.SQL
+				validator := s.validator
+				withPlan := s.source.WithValidatedPipelineRead
+				sourceID, contextID := step.Source, step.Context
+				if len(step.FromSteps) > 0 {
+					sourceID, contextID = state.Stage.Source, state.Stage.Context
+					private, err := s.source.NewPipelineInput(work, e, task.ID, step.FromSteps, sourceID, contextID)
+					if err != nil {
+						return err
+					}
+					validator, err = readexec.NewValidator(private, s.values.Exec)
+					if err != nil {
+						return err
+					}
+					withPlan = private.WithPlan
+					for _, dep := range step.FromSteps {
+						stage, err := s.repo.ReadPipelineStage(work, e, task.ID, dep)
+						if err != nil {
+							return err
+						}
+						statement = strings.ReplaceAll(statement, "{{step."+dep+"}}", quotePipelineRelation(stage.Schema, stage.Table))
+					}
+				}
+				if strings.Contains(statement, "{{") || strings.Contains(statement, "}}") {
+					return ErrInvalid
+				}
+				plan, err := validator.Validate(work, e, readexec.Request{Source: sourceID, Context: contextID, SQL: statement})
+				if err != nil {
+					return err
+				}
+				if len(step.FromSteps) == 0 {
+					actual := plan.Receipt().Dependencies
+					expected := append([]string(nil), step.Inputs...)
+					sort.Strings(actual)
+					sort.Strings(expected)
+					if !reflect.DeepEqual(actual, expected) {
+						return readexec.ErrBinding
+					}
+				}
+				err = withPlan(work, e, plan, func(held context.Context, sql string, args []readexec.Parameter, b readexec.Binding) error {
+					if len(args) != 0 {
+						return ErrInvalid
+					}
+					executionStep := step
+					executionStep.Inputs = plan.Receipt().Dependencies
+					return pipelineFailure(s.executePipelineStage(held, inv, record, c, state, executionStep, sql, b))
+				})
+				if err != nil {
+					return err
+				}
+			}
+			done[step.ID] = true
+			progressed = true
+		}
+		if !progressed {
+			return ErrInvalid
+		}
+	}
+	// One native transaction holds all exact output locks through the single
+	// local metadata publication; it does not borrow once per output.
+	steps := make([]string, 0, len(record.Definition.Steps))
+	for _, step := range record.Definition.Steps {
+		steps = append(steps, step.ID)
+	}
+	return s.source.WithPipelineOutputs(work, e, task.ID, steps, func(held context.Context, records []sources.Record) error {
+		return s.repo.CompletePipelineExecution(held, inv, record, records)
+	})
+}
+
 func quotePipelineRelation(schema, table string) string { return `"` + schema + `"."` + table + `"` }
 
 // AdmitRun returns the durable operation ID before execution so explicit cancel

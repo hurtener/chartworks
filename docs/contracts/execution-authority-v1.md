@@ -31,7 +31,7 @@ JSON file with no group/world write permission. Replace it atomically for change
 keep its parent directory operator-controlled. Pengui reads it on every request.
 The file contains version 1 and at most128 unique bindings. A binding has only
 `id`, `revision`, `tenant`, `runtime_id`, `capability_id`, `audience`, `operation`,
-`enabled`, `not_after`. Only `retention.sweep` is supported. The registered runtime
+`enabled`, `not_after`. Maintenance bindings use `retention.sweep`. The scheduled-pipeline extension uses `pipeline.run` plus the exact operator-owned `pipeline` reach described below. The registered runtime
 and MCP-server capability must both still be enabled. The binding tenant/runtime
 must match the verified broker; an execution audience is never the ordinary
 capability audience. The binding revision is a positive integer at most9999999999.
@@ -71,3 +71,26 @@ wrong service identity/expired tokens. Companion `TestExecutionAuthority` exerci
 Pengui's real vault, registered runtime/capability, strict binding loader and actual
 issuer with128 concurrent calls. These are complementary fixture-backed producer
 and consumer tests, not a claim of a deployed cross-service live smoke.
+
+
+## Scheduled pipeline extension
+
+Chartworks owns recurrence, occurrence admission, retries and managed execution.
+The platform supplies authority only; its prompt scheduling is unrelated.
+`pipeline.run` policy adds a closed `pipeline` object with `id`, `sources`,
+`datasets` and `contexts`. Each list contains 1–16 distinct exact identifiers.
+The issuer supplies `engineering.pipeline.run`, `sources.query`, `sources.read`,
+pipeline source-write, external source read/query, dataset query and context-use
+scopes, plus the existing exact execution-binding/job scopes. No tenant erasure,
+publication or schedule-administration action is issued. Request/response transport,
+issuer, audience, lifetime and manifest binding remain the v1 contract.
+
+The consumer seals the pipeline ID/version/digest into each accepted occurrence.
+Its pipeline effects use that occurrence's existing operation ID and lease fence;
+no inner request task is admitted. An ordinary request runner cannot claim the
+scheduled task, and the maintenance completion path rejects pipeline targets.
+Every attempt obtains a fresh token and revalidates the exact published definition
+and external data reach. Accepted due times, windows and versions survive schedule
+replacement. Current issuer support is a separate companion change; enable this
+target only after that provider change is available and the consumer passes its
+actual native scheduled-execution tests. This document is not deployment evidence.

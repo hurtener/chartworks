@@ -15,13 +15,16 @@ import (
 
 var _ jobs.RequestRepository = (*DB)(nil)
 
-const requestColumns = `operation_id,tenant_id,actor_id,initiator_session,request_manifest,status,error_code,attempt_count,max_attempts,created_at,expires_at,manifest_hash`
+const requestColumns = `operation_id,tenant_id,actor_id,CASE WHEN dispatch_mode='queued' THEN operation_id ELSE initiator_session END,request_manifest,status,error_code,attempt_count,max_attempts,created_at,expires_at,manifest_hash,dispatch_manifest`
 
 func scanRequest(row pgx.Row) (task jobs.RequestTask, err error) {
-	var raw []byte
-	err = row.Scan(&task.ID, &task.Tenant, &task.Actor, &task.Session, &raw, &task.State, &task.Code, &task.Attempts, &task.MaxAttempts, &task.Created, &task.Expires, &task.ManifestHash)
+	var raw, dispatched []byte
+	err = row.Scan(&task.ID, &task.Tenant, &task.Actor, &task.Session, &raw, &task.State, &task.Code, &task.Attempts, &task.MaxAttempts, &task.Created, &task.Expires, &task.ManifestHash, &dispatched)
 	if err != nil {
 		return task, err
+	}
+	if len(dispatched) != 0 && json.Unmarshal(dispatched, &task.Dispatch) != nil {
+		return jobs.RequestTask{}, store.ErrInvalid
 	}
 	if json.Unmarshal(raw, &task.Input) != nil || !task.Valid() {
 		return jobs.RequestTask{}, store.ErrInvalid
@@ -39,7 +42,7 @@ func readOwnedRequestTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id 
 	if !e.Valid() || !identity.Identifier(id) {
 		return jobs.RequestTask{}, access.ErrUnauthenticated
 	}
-	query := `SELECT ` + requestColumns + ` FROM chartworks.operations WHERE tenant_id=$1 AND actor_id=$2 AND initiator_session=$3 AND operation_id=$4 AND dispatch_mode='request'`
+	query := `SELECT ` + requestColumns + ` FROM chartworks.operations WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$4 AND ((dispatch_mode='request' AND initiator_session=$3) OR (dispatch_mode='queued' AND kind='pipeline.run' AND operation_id=$3))`
 	if lock {
 		query += ` FOR UPDATE`
 	}
@@ -195,6 +198,9 @@ func (d *DB) ResumeRequest(ctx context.Context, e identity.Envelope, id string, 
 		if err != nil {
 			return err
 		}
+		if out.Dispatch != nil {
+			return jobs.ErrAuthority
+		}
 		if out.State == "succeeded" {
 			return nil
 		}
@@ -277,6 +283,9 @@ func (d *DB) ClaimRequest(ctx context.Context, e identity.Envelope, id, owner st
 		task, err := readRequestTx(ctx, tx, e, id, true)
 		if err != nil {
 			return err
+		}
+		if task.Dispatch != nil {
+			return jobs.ErrAuthority
 		}
 		if !time.Now().Before(task.Expires) {
 			return store.ErrExpired
