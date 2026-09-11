@@ -209,7 +209,7 @@ func proposalEffectTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, p eng
 	if err != nil {
 		return false, store.ErrInvalid
 	}
-	order, ok := map[string]int{"pipeline_draft": 0, "pipeline_publication": 1, "pipeline_run": 2, "managed_step": 3, "compensation": 4, "topic_draft": 5}[effect.Kind]
+	order, ok := map[string]int{"pipeline_draft": 0, "pipeline_publication": 1, "pipeline_run": 2, "managed_step": 3, "compensation": 4, "topic_draft": 5, "schedule": 6}[effect.Kind]
 	if !ok {
 		return false, store.ErrInvalid
 	}
@@ -362,7 +362,7 @@ func (d *DB) RecordAutopilotRun(ctx context.Context, e identity.Envelope, proof 
 					return store.ErrInvalid
 				}
 			}
-			if p.Material.Topic == nil || p.State == "applied" {
+			if (p.Material.Topic == nil && p.Material.Request.Schedule == nil) || p.State == "applied" {
 				state, action = "applied", "engineering.proposal_applied"
 			}
 		}

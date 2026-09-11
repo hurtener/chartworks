@@ -65,11 +65,15 @@ func (d *DB) RecordAutopilotTopic(ctx context.Context, e identity.Envelope, proo
 		if writeErr != nil {
 			return writeErr
 		}
-		if changed || p.State != "applied" {
-			if _, writeErr = tx.Exec(ctx, `UPDATE chartworks.engineering_proposal_heads SET version=version+1,state='applied',applied_at=COALESCE(applied_at,clock_timestamp()),updated_at=clock_timestamp() WHERE tenant_id=$1 AND proposal_id=$2`, e.Tenant(), p.ID); writeErr != nil {
+		state, action := "applied", "engineering.proposal_applied"
+		if p.Material.Request.Schedule != nil {
+			state, action = "applying", "engineering.proposal_effect"
+		}
+		if changed || p.State != state {
+			if _, writeErr = tx.Exec(ctx, `UPDATE chartworks.engineering_proposal_heads SET version=version+1,state=$3,applied_at=CASE WHEN $3='applied' THEN COALESCE(applied_at,clock_timestamp()) ELSE applied_at END,updated_at=clock_timestamp() WHERE tenant_id=$1 AND proposal_id=$2`, e.Tenant(), p.ID, state); writeErr != nil {
 				return writeErr
 			}
-			if writeErr = proposalEventTx(ctx, tx, e, p.ID, p.Version+1, p.Revision, "engineering.proposal_applied", map[string]any{"topic": result.Topic, "topic_revision": result.Revision, "digest": result.Digest}); writeErr != nil {
+			if writeErr = proposalEventTx(ctx, tx, e, p.ID, p.Version+1, p.Revision, action, map[string]any{"topic": result.Topic, "topic_revision": result.Revision, "digest": result.Digest}); writeErr != nil {
 				return writeErr
 			}
 		}

@@ -80,6 +80,9 @@ func (phase21Repository) FinishAttempt(context.Context, jobs.Lease, string, bool
 func (phase21Repository) CreateSchedule(context.Context, store.Scope, string, string, jobs.ScheduleRequest, jobs.Limits) (jobs.Schedule, error) {
 	return jobs.Schedule{}, jobs.ErrEmpty
 }
+func (phase21Repository) ReplaceSchedule(context.Context, store.Scope, string, string, int64, string, jobs.ScheduleRequest, jobs.Limits) (jobs.Schedule, error) {
+	return jobs.Schedule{}, jobs.ErrEmpty
+}
 func (phase21Repository) ReadSchedule(context.Context, store.Scope, string) (jobs.Schedule, error) {
 	return jobs.Schedule{}, jobs.ErrEmpty
 }

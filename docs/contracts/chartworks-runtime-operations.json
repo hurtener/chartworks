@@ -57,7 +57,7 @@
     "method": "POST",
     "path": "/v1/engineering-proposals/{id}/apply",
     "action": "engineering.autopilot.apply",
-    "effect": "managed_warehouse_write_private_topic_draft"
+    "effect": "managed_warehouse_write_topic_draft_schedule"
   },
   {
     "method": "POST",

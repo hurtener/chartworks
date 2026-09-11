@@ -14,6 +14,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/semantics"
 )
 
@@ -39,16 +40,17 @@ var ErrCompensationBlocked = errors.New("engineering: compensation blocked by de
 // AutopilotGoal fixes source and managed destination coordinates before a model
 // sees any catalog metadata. It contains no identity, credentials or approval flag.
 type AutopilotGoal struct {
-	Topic                   *AutopilotTopicGoal `json:"topic,omitempty"`
-	ID                      string              `json:"id"`
-	Pipeline                string              `json:"pipeline"`
-	Name                    string              `json:"name"`
-	Connection              string              `json:"connection"`
-	Source                  string              `json:"source"`
-	Context                 string              `json:"context"`
-	Goal                    string              `json:"goal"`
-	ExpectedPipelineVersion int64               `json:"expected_pipeline_version"`
-	MaxStalenessSeconds     int                 `json:"max_staleness_seconds"`
+	Schedule                *AutopilotScheduleGoal `json:"schedule,omitempty"`
+	Topic                   *AutopilotTopicGoal    `json:"topic,omitempty"`
+	ID                      string                 `json:"id"`
+	Pipeline                string                 `json:"pipeline"`
+	Name                    string                 `json:"name"`
+	Connection              string                 `json:"connection"`
+	Source                  string                 `json:"source"`
+	Context                 string                 `json:"context"`
+	Goal                    string                 `json:"goal"`
+	ExpectedPipelineVersion int64                  `json:"expected_pipeline_version"`
+	MaxStalenessSeconds     int                    `json:"max_staleness_seconds"`
 }
 
 // AutopilotPlan is the retained blind-planning output, before catalog retrieval.
@@ -112,6 +114,7 @@ type AutopilotAmendRequest struct {
 
 // ProposalMaterial is the immutable unit of review, including amendment provenance.
 type ProposalMaterial struct {
+	ScheduleSpec  *jobs.Spec           `json:"schedule_spec,omitempty"`
 	Topic         *semantics.TopicPack `json:"topic,omitempty"`
 	Origin        *ProposalOrigin      `json:"origin,omitempty"`
 	Version       string               `json:"version"`
@@ -189,6 +192,7 @@ type AutopilotReviewRequest struct {
 
 // AutopilotEditRequest appends material without inheriting approval.
 type AutopilotEditRequest struct {
+	Schedule        *jobs.Spec           `json:"schedule,omitempty"`
 	Topic           *semantics.TopicPack `json:"topic,omitempty"`
 	ExpectedVersion int64                `json:"expected_version"`
 	Definition      PipelineDefinition   `json:"definition"`
@@ -228,6 +232,7 @@ type AutopilotDrift struct {
 // AutopilotRepository is the first consumer of proposal metadata, not a second
 // job engine. Actual managed effects run in the existing pipeline request ledger.
 type AutopilotRepository interface {
+	RecordAutopilotSchedule(context.Context, identity.Envelope, PreparedProposalApply, jobs.Schedule) (AutopilotProposal, error)
 	RecordAutopilotTopic(context.Context, identity.Envelope, PreparedProposalApply, ProposalTopicResult) (AutopilotProposal, error)
 	ReadAutopilotAmendment(context.Context, identity.Envelope, string) (AutopilotProposal, error)
 	SaveAutopilotProposal(context.Context, identity.Envelope, PreparedProposal, int64, int) (AutopilotProposal, error)
@@ -244,7 +249,7 @@ func proposalText(s string, maximum int) bool {
 }
 
 func validateAutopilotGoal(g AutopilotGoal) error {
-	if !validTopicGoal(g.Topic) || !identity.Identifier(g.ID) || !identity.Identifier(g.Pipeline) || len(g.Pipeline) > 48 || g.Pipeline == g.Source ||
+	if !validScheduleGoal(g.Schedule) || !validTopicGoal(g.Topic) || !identity.Identifier(g.ID) || !identity.Identifier(g.Pipeline) || len(g.Pipeline) > 48 || g.Pipeline == g.Source ||
 		!identity.Identifier(g.Source) || !identity.Identifier(g.Context) || !identity.Identifier(g.Connection) || !proposalText(g.Name, 128) ||
 		!proposalText(g.Goal, 4096) || g.ExpectedPipelineVersion < 0 || g.ExpectedPipelineVersion > 4096 || g.MaxStalenessSeconds < 60 || g.MaxStalenessSeconds > 604800 {
 		return ErrInvalid
@@ -279,7 +284,10 @@ func ValidateAutopilotMaterial(m ProposalMaterial, l config.Autopilot) error {
 		!m.Binding.Valid() || m.Binding.Source != m.Request.Source || m.Binding.Context != m.Request.Context || m.Binding.Dialect != "postgres" ||
 		m.Pipeline.ID != m.Request.Pipeline || m.Pipeline.Name != m.Request.Name || m.Pipeline.Connection != m.Request.Connection ||
 		!identity.Identifier(m.Author) || !identity.Identifier(m.Session) || m.Created.IsZero() || !proposalText(m.ModelVersion, 256) ||
-		len(m.Plan.Requirements) < 1 || len(m.Plan.Requirements) > l.MaxSteps || !proposalText(m.Plan.Rationale, 4096) || len(m.Objects) != len(m.Pipeline.Steps)+1+topicObjectCount(m) {
+		len(m.Plan.Requirements) < 1 || len(m.Plan.Requirements) > l.MaxSteps || !proposalText(m.Plan.Rationale, 4096) || len(m.Objects) != len(m.Pipeline.Steps)+1+topicObjectCount(m)+scheduleObjectCount(m) {
+		return ErrInvalid
+	}
+	if m.ScheduleSpec != nil && (m.Request.Schedule == nil || m.ScheduleSpec.Validate() != nil) {
 		return ErrInvalid
 	}
 	if err := validateProposalTopic(m); err != nil {
@@ -326,15 +334,19 @@ func ValidateAutopilotMaterial(m ProposalMaterial, l config.Autopilot) error {
 	if m.Topic != nil {
 		wantRefs = append(wantRefs, ProposalReference{Kind: "topic", Permission: "read", ID: m.Topic.Topic})
 	}
+	wantRefs = append(wantRefs, scheduleReferences(m.Request.Schedule)...)
 	if readexec.Hash(m.References) != readexec.Hash(wantRefs) {
 		return ErrInvalid
 	}
 	for index, o := range m.Objects {
 		kind, id := "pipeline", m.Pipeline.ID
 		decision := "build_managed"
-		if index == len(m.Pipeline.Steps)+1 && m.Topic != nil {
+		switch {
+		case index == len(m.Pipeline.Steps)+1+topicObjectCount(m) && m.Request.Schedule != nil:
+			kind, id, decision = "schedule", scheduleObjectID(m.Request), "reviewed_schedule"
+		case index == len(m.Pipeline.Steps)+1 && m.Topic != nil:
 			kind, id, decision = "topic", m.Topic.Topic, "private_draft"
-		} else if index > 0 {
+		case index > 0:
 			kind, id = "dataset", m.Pipeline.ID+"."+m.Pipeline.Steps[index-1].ID
 		}
 		if o.Kind != kind || o.ID != id || o.Decision != decision || o.Author != m.Author || o.ModelVersion != m.ModelVersion ||

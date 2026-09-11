@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/identity"
 )

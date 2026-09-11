@@ -118,3 +118,21 @@ execution proof required by this repository. Reusing a connection bearer or
 persisting the initiating user's token would not satisfy the active contract.
 No platform scheduling feature or authorization change has been implemented as
 part of this inspection. Scheduled pipeline execution remains incomplete.
+
+
+## Scheduled execution and reviewed recurrence continuation
+
+The strict Linux phase-26/28 runtime acceptance step passed at c31118a6e726fefc9548cdb66fb1e2625063b2dc
+in run 34546295009 (2026-09-11 00:38:27 UTC), including native scheduled pipeline
+execution and exact occurrence replay. Its client job found the optional target's
+request schema still using the pointer-free schema mode. That registration is
+corrected; the actual assembly lifecycle passes locally. Two lint findings are
+also corrected.
+
+The following L2 stage adds reviewed schedule creation/replacement and final
+actual-effect verification. Schedule edits retain the immutable initial request,
+and amendments address the previously committed schedule revision. Local real-PG
+race acceptance proves replacement retry reconciliation and preservation of
+accepted occurrences; phase-21/28 regression acceptance and focused core tests
+pass. Lint reports zero issues. The newly extended native L2 schedule test compiles
+but requires its own hosted execution before completion can be claimed.

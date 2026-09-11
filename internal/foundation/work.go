@@ -256,7 +256,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.autopilot, err = engineering.NewAutopilot(db, w.pipelines, v.Autopilot, topics)
+	w.autopilot, err = engineering.NewAutopilotWithSchedules(db, w.pipelines, v.Autopilot, w.queue, topics)
 	if err != nil {
 		w.close()
 		return nil, err

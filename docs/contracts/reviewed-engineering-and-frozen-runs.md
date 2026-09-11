@@ -112,3 +112,25 @@ The ordinary topic review/publication operations remain necessary for publicatio
 This consumer currently uses one exact profile-backed dataset per topic change.
 A schema-drift amendment may supply `topic_profile` selecting freshly prepared
 profile evidence; it cannot manufacture a profile or silently rebind old evidence.
+
+
+## Reviewed schedule changes
+
+An optional L2 `schedule` goal contains `binding_id`, a real cron/interval/manual
+`spec`, and an optional existing `id` with `expected_revision`. Planning records a
+schedule decision without creating a schedule. An edit may replace the reviewed
+`schedule_spec`; the original request remains immutable and approval is invalidated.
+Apply requires current scheduling authority in addition to ordinary pipeline
+permissions. It first completes managed execution and any requested private topic
+change, then creates or replaces the exact reviewed pipeline schedule. The final
+proposal effect verifies the actual schedule, revision, request and retry key.
+A topic/schedule proposal is not marked applied after only its pipeline succeeds.
+
+Schedule amendments replace the recorded schedule ID with CAS rather than creating
+a second refresh. Already accepted occurrences retain their old windows, revision
+and target; replacement governs future admissions. Paused schedules remain paused.
+The exact revision receipt reconciles a lost replacement reply; an intervening
+pause or unrelated change cannot be adopted as that replacement. Multi-object
+compensation remains explicitly blocked rather than claiming to undo schedule or
+warehouse effects atomically. Service execution obtains fresh platform authority;
+no user bearer is persisted in either proposal or schedule.

@@ -81,10 +81,20 @@ type Submission struct {
 
 // Validate rejects malformed or unbounded values before use.
 func (s Submission) Validate() error {
-	if !BindingID(s.BindingID) || !((s.Kind == MaintenanceKind && s.Pipeline == nil) || (s.Kind == PipelineKind && s.Pipeline != nil && s.Pipeline.Valid())) {
+	if !BindingID(s.BindingID) {
 		return ErrInvalid
 	}
-	return nil
+	switch s.Kind {
+	case MaintenanceKind:
+		if s.Pipeline == nil {
+			return nil
+		}
+	case PipelineKind:
+		if s.Pipeline != nil && s.Pipeline.Valid() {
+			return nil
+		}
+	}
+	return ErrInvalid
 }
 
 // BindingID validates the opaque binding grammar shared with Pengui execution authority v1.
@@ -189,6 +199,7 @@ type Repository interface {
 	FinishAttempt(context.Context, Lease, string, bool, time.Duration) error
 	CreateSchedule(context.Context, store.Scope, string, string, ScheduleRequest, Limits) (Schedule, error)
 	ReadSchedule(context.Context, store.Scope, string) (Schedule, error)
+	ReplaceSchedule(context.Context, store.Scope, string, string, int64, string, ScheduleRequest, Limits) (Schedule, error)
 	SetSchedule(context.Context, store.Scope, string, int64, bool) (Schedule, error)
 	FireSchedule(context.Context, store.Scope, string, string, string, Limits) (Job, error)
 	TickSchedules(context.Context, Limits) (int, error)

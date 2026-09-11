@@ -13,6 +13,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -20,6 +21,7 @@ import (
 // Autopilot composes reviewed L2 planning with the existing pipeline service.
 // It is not a model agent loop and has no query/write tools available to a model.
 type Autopilot struct {
+	schedules *jobs.Service
 	topics    AutopilotTopics
 	repo      AutopilotRepository
 	pipelines *PipelineService
@@ -181,6 +183,10 @@ func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g Autopilo
 		}
 	}
 
+	material.References = append(material.References, scheduleReferences(g.Schedule)...)
+	if err = s.checkSchedule(ctx, e, g, false); err != nil {
+		return AutopilotProposal{}, err
+	}
 	if err = RequireAutopilotMaterial(e, material, "engineering.autopilot.propose"); err != nil {
 		return AutopilotProposal{}, err
 	}
@@ -251,6 +257,9 @@ func (s *Autopilot) propose(ctx context.Context, e identity.Envelope, g Autopilo
 	if material.Topic != nil {
 		material.Objects = append(material.Objects, ProposalObject{Kind: "topic", ID: material.Topic.Topic, Decision: "private_draft", Rationale: "Profile-backed authoring material; business meaning remains subject to ordinary topic review and publication.", Evidence: []string{"binding", "relation:" + material.Topic.Datasets[0].ID}, Alternatives: append([]ProposalAlternative(nil), matched.Alternatives...), Author: e.User(), ModelVersion: s.limits.ModelVersion})
 	}
+	if g.Schedule != nil {
+		material.Objects = append(material.Objects, ProposalObject{Kind: "schedule", ID: scheduleObjectID(g), Decision: "reviewed_schedule", Rationale: "Apply the explicitly reviewed recurrence to the exact managed pipeline version after successful materialization.", Evidence: []string{"binding"}, Alternatives: append([]ProposalAlternative(nil), matched.Alternatives...), Author: e.User(), ModelVersion: s.limits.ModelVersion})
+	}
 	if err = s.pipelines.validateInputs(ctx, e, material.Pipeline); err != nil {
 		return AutopilotProposal{}, err
 	}
@@ -284,6 +293,16 @@ func (s *Autopilot) Edit(ctx context.Context, e identity.Envelope, id string, r 
 		return AutopilotProposal{}, store.ErrConflict
 	}
 	m := p.Material
+	if r.Schedule != nil {
+		if m.Request.Schedule == nil || r.Schedule.Validate() != nil {
+			return AutopilotProposal{}, ErrInvalid
+		}
+		changed := *r.Schedule
+		m.ScheduleSpec = &changed
+		if err = s.checkSchedule(ctx, e, m.Request, false); err != nil {
+			return AutopilotProposal{}, err
+		}
+	}
 	if r.Topic != nil {
 		if m.Request.Topic == nil || s.topics == nil {
 			return AutopilotProposal{}, ErrInvalid
@@ -377,6 +396,19 @@ func (s *Autopilot) Amend(ctx context.Context, e identity.Envelope, id string, r
 	goal := p.Material.Request
 	goal.ID = "amend-" + drift.ID
 	goal.ExpectedPipelineVersion++
+	if goal.Schedule != nil {
+		changed := *goal.Schedule
+		if p.Material.ScheduleSpec != nil {
+			changed.Spec = *p.Material.ScheduleSpec
+		}
+		for _, effect := range p.Effects {
+			if effect.Kind == "schedule" && effect.State == "committed" {
+				changed.ID = effect.Target
+				changed.ExpectedRevision = effect.Version
+			}
+		}
+		goal.Schedule = &changed
+	}
 	if goal.Topic != nil {
 		goal.Topic = amendmentTopicGoal(p, drift.ID, r.TopicProfile)
 	}

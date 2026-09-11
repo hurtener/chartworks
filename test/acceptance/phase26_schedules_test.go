@@ -3,14 +3,19 @@ package acceptance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/engineering"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/test/support"
 )
 
 func testPhase26ScheduledPipeline(t *testing.T) {
@@ -97,5 +102,98 @@ func testPhase26ScheduledPipeline(t *testing.T) {
 	execution, err := f.db.ReadPipelineExecution(context.Background(), proof.Envelope(), job.ID)
 	if err != nil || execution.State != "published" || execution.Operation.ID != job.ID || execution.Operation.ID == applied.Operation {
 		t.Fatal("scheduled operation did not own pipeline effects", err)
+	}
+	testPhase26ReviewedSchedule(t, f, queue)
+}
+
+func testPhase26ReviewedSchedule(t *testing.T, f *phase26Fixture, queue *jobs.Service) {
+	ctx := context.Background()
+	auto, err := engineering.NewAutopilotWithSchedules(f.db, f.pipelines, f.limits, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(auto.Close)
+	scopes := append(phase26Scopes(), "scheduling.write", "scheduling.read", "scheduling.execute", "cw.execution_binding.use:pipeline", "cw.schedule.write:*", "cw.schedule.read:*", "cw.schedule.execute:*", "cw.run.read:*")
+	author := f.token.envelope(t, f.author.Tenant(), f.author.User(), scopes...)
+	reviewer := f.token.envelope(t, f.author.Tenant(), "independent-reviewer", scopes...)
+	goal := f.goal
+	goal.ID, goal.ExpectedPipelineVersion = "reviewed-schedule-goal", 1
+	goal.Schedule = &engineering.AutopilotScheduleGoal{BindingID: "pipeline", Spec: jobs.Spec{Type: "manual", Timezone: "UTC", Missed: "skip", Overlap: "queue"}}
+	raw := support.Raw(t, f.dsn)
+	count := func() int {
+		t.Helper()
+		var n int
+		if err := raw.QueryRow(ctx, `SELECT count(*) FROM chartworks.job_schedules`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := count()
+	proposal, err := auto.Propose(ctx, author, goal)
+	if err != nil {
+		t.Fatal("schedule proposal", err)
+	}
+	spec := jobs.Spec{Type: "interval", IntervalSeconds: 60, Anchor: time.Now().UTC().Truncate(time.Second), Timezone: "UTC", Missed: "skip", Overlap: "queue"}
+	proposal, err = auto.Edit(ctx, author, proposal.ID, engineering.AutopilotEditRequest{ExpectedVersion: proposal.Version, Definition: proposal.Material.Pipeline, Schedule: &spec, Reason: "Review the exact interval before enabling refresh."})
+	if err != nil {
+		t.Fatal("schedule edit", err)
+	}
+	if count() != before {
+		t.Fatal("planning created an active schedule")
+	}
+	approve := func(p engineering.AutopilotProposal) engineering.AutopilotProposal {
+		t.Helper()
+		out, err := auto.Review(ctx, reviewer, p.ID, engineering.AutopilotReviewRequest{ExpectedVersion: p.Version, Revision: p.Revision, Digest: p.Digest, Decision: "approve", Reason: "Reviewed the exact pipeline and recurrence."})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	proposal = approve(proposal)
+	limited := f.token.envelope(t, author.Tenant(), author.User(), slices.DeleteFunc(append([]string(nil), scopes...), func(s string) bool { return s == "scheduling.write" })...)
+	if _, err = auto.Apply(ctx, limited, proposal.ID, phase26ApplyRequest(proposal)); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("review bypassed schedule authority", err)
+	}
+	applied, err := auto.Apply(ctx, author, proposal.ID, phase26ApplyRequest(proposal))
+	if err != nil || applied.State != "applied" {
+		t.Fatal("reviewed schedule apply", applied.State, err)
+	}
+	scheduleID := ""
+	for _, effect := range applied.Effects {
+		if effect.Kind == "schedule" && effect.State == "committed" {
+			scheduleID = effect.Target
+		}
+	}
+	schedule, err := queue.GetSchedule(ctx, author, scheduleID)
+	if err != nil || schedule.Request.Target.Pipeline == nil || schedule.Request.Target.Pipeline.Version != 2 || schedule.Request.Spec.Type != "interval" || count() != before+1 {
+		t.Fatal("durable reviewed schedule missing", schedule, err)
+	}
+	accepted, err := queue.Fire(ctx, author, scheduleID, "accepted-reviewed-occurrence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = raw.Exec(ctx, `UPDATE chartworks.engineering_proposal_heads SET applied_at=clock_timestamp()-interval '2 minutes' WHERE tenant_id=$1 AND proposal_id=$2`, author.Tenant(), applied.ID); err != nil {
+		t.Fatal(err)
+	}
+	drift, err := auto.DetectDrift(ctx, author, applied.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amendment, err := auto.Amend(ctx, author, applied.ID, engineering.AutopilotAmendRequest{Drift: drift.ID})
+	if err != nil || amendment.Material.Request.Schedule.ID != scheduleID || amendment.Material.Request.Schedule.ExpectedRevision != 1 {
+		t.Fatal("schedule amendment did not address existing revision", err)
+	}
+	amendment = approve(amendment)
+	amended, err := auto.Apply(ctx, author, amendment.ID, phase26ApplyRequest(amendment))
+	if err != nil || amended.State != "applied" {
+		t.Fatal("schedule amendment apply", err)
+	}
+	current, err := queue.GetSchedule(ctx, author, scheduleID)
+	if err != nil || current.Revision != 2 || current.Request.Target.Pipeline.Version != 3 || count() != before+1 {
+		t.Fatal("amendment duplicated or failed to replace schedule", current, err)
+	}
+	retained, err := queue.Get(ctx, author, accepted.ID)
+	if err != nil || retained.ManifestHash != accepted.ManifestHash || retained.Pipeline.Version != 2 || retained.ScheduleRevision != 1 {
+		t.Fatal("amendment rewrote accepted work", err)
 	}
 }

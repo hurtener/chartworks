@@ -157,7 +157,7 @@ func runtimeEntries(runs *reporting.Runs, proposals *engineering.Autopilot, exec
 		case "reviewEngineeringProposal":
 			d.Effect = "independent_business_review"
 		case "applyEngineeringProposal":
-			d.Effect = "managed_warehouse_write_private_topic_draft"
+			d.Effect = "managed_warehouse_write_topic_draft_schedule"
 		case "compensateEngineeringProposal":
 			d.Effect = "managed_visibility_quarantine"
 		case "detectEngineeringDrift":
