@@ -100,3 +100,21 @@ completed the combined strict phase-26/28 runtime acceptance step successfully
 The subsequent cancellation and topic-amendment fixes at 58e4bf5 have their own
 pending CI run; neither result substitutes for final-head full coverage or the
 remaining schedule integration.
+
+Hosted CI run 34543896878 at 58e4bf5bf98bae94a979f6a60b1760bba9097b31
+also passed the strict combined runtime acceptance step (2026-09-11 00:03:50
+UTC), including the running-cancellation and topic-amendment additions. The
+full build/container/coverage sequence was still running when inspected.
+
+## Scheduling authority inspection
+
+Pipeline occurrence timing, retries and execution belong to Chartworks. The
+platform's prompt schedules are a separate consumer and do not implement this
+requirement. The currently consumed execution-authority companion remains
+unmerged and permits only retention maintenance. Inspection of the platform's
+ordinary capability mint found a real-user scope projection and a separate
+connection bootstrap identity; neither supplies the existing manifest-bound
+execution proof required by this repository. Reusing a connection bearer or
+persisting the initiating user's token would not satisfy the active contract.
+No platform scheduling feature or authorization change has been implemented as
+part of this inspection. Scheduled pipeline execution remains incomplete.
