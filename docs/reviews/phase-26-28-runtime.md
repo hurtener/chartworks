@@ -51,6 +51,10 @@ Review was performed directly; no subagents were used.
 - At 4317073, Phase 28 AC07 passed with race instrumentation after adding an injected retention audit failure. Payloads and outputs remain intact on failure, and the subsequent sweep completes deletion. Focused lint passed.
 - The a5d2e48 cumulative diagnostic profile measured engineering at 79.54% and PostgreSQL at 80.47%, below the required 80% and 84%. The new proposal/authority tests exercise 6 and 23 additional statements respectively in source files unchanged from that profile. These incremental counts are diagnostic, not a passing full-suite coverage claim; required coverage remains unresolved.
 
+- At 5e8fd37, the complete local proposal regression group passed together under race instrumentation (27.244 seconds). Planning checks passed and the contributor rule mirrors matched.
+- At 8994a78, a removed source prevented approval without changing the draft; explicit rejection remained available. The real PostgreSQL race test and lint passed.
+- At 3208b6f, the complete local Phase 28 acceptance group passed under race instrumentation (14.635 seconds), including seal-audit rollback and recovery of the original reserved request. PostgreSQL unit tests for accounting write failures and malformed retained manifests also passed with race instrumentation; these decoder seams do not claim real SQL selection coverage.
+
 ## Remaining release evidence
 
 - Final delivery-head strict Linux acceptance, including the added lost-narrative-output regression.
