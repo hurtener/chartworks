@@ -454,3 +454,25 @@ func TestProposalRejectsUnreviewedEffectExpansion(t *testing.T) {
 		t.Fatal("invalid mutation called model")
 	}
 }
+
+func TestProposalReadRejectsCorruptEffectEvidence(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	p := f.propose(t)
+	ctx := context.Background()
+	raw := support.Raw(t, f.dsn)
+	for _, body := range []string{`{}`, `{"target":"pipeline","observed":42}`} {
+		if _, err := raw.Exec(ctx, `INSERT INTO chartworks.engineering_proposal_effects(tenant_id,proposal_id,revision,kind,target_id,evidence,observed_order) VALUES($1,$2,$3,'pipeline_draft','pipeline',$4::jsonb,0)`, f.author.Tenant(), p.ID, p.Revision, body); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.auto.Get(ctx, f.author, p.ID); !errors.Is(err, store.ErrInvalid) {
+			t.Fatal("corrupt effect evidence exposed", err)
+		}
+		if _, err := raw.Exec(ctx, `DELETE FROM chartworks.engineering_proposal_effects WHERE tenant_id=$1 AND proposal_id=$2`, f.author.Tenant(), p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	current, err := f.auto.Get(ctx, f.author, p.ID)
+	if err != nil || current.Digest != p.Digest || current.Version != p.Version {
+		t.Fatal("repaired evidence changed immutable material", current, err)
+	}
+}
