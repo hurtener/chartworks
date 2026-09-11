@@ -1,0 +1,37 @@
+# Temporary, branch-only development formatter. Remove before review.
+# Verification is separate, read-only, and tests the subsequent committed SHA.
+name: Phase 29 development formatting
+on:
+  push:
+    branches: [feat/phase-29-reports-dashboards]
+    paths: [.github/workflows/phase-29-format.yml]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Format only the authored phase files
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          find internal test -type f \( -name '*documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go' -o -name 'compositions*.go' -o -name 'saved_question*.go' \) -print0 | xargs -0 gofmt -w
+          gofmt -w internal/config/reporting.go
+          git diff --check
+          git diff --stat
+          if ! git diff --quiet; then
+            git config user.name 'Chartworks development formatter'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -- internal test
+            git commit -m 'style: format phase 29 Go source with the pinned toolchain'
+            git push origin HEAD:refs/heads/feat/phase-29-reports-dashboards
+          fi
+          echo "FORMATTED_COMMIT=$(git rev-parse HEAD)"
