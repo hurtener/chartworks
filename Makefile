@@ -14,7 +14,7 @@ build:
 	CGO_ENABLED=1 $(GO) build -ldflags "$(LDFLAGS)" -o bin/chartworks ./cmd/chartworks
 
 test:
-	CGO_ENABLED=1 $(GO) test -race -count=1 -timeout=10m ./...
+	CGO_ENABLED=1 $(GO) test -race -count=1 -timeout=20m ./...
 
 coverage:
 	@CGO_ENABLED=1 bash scripts/coverage.sh

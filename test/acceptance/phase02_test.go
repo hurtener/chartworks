@@ -247,11 +247,13 @@ func TestPhase02(t *testing.T) {
 			t.Fatal("schema rows failed")
 		}
 		expected := []string{"audit_events", "block_attestations", "block_events", "block_heads", "block_health", "block_publications", "block_revision_references", "block_revisions", "block_source_pins", "block_topic_pins", "block_validations", "block_withdrawals", "byo_context_bundles", "byo_steps", "nlq_examples", "nlq_feedback", "nlq_queries", "nlq_sessions", "canonical_entity_heads", "canonical_entity_revisions", "canonical_entity_terms", "job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs", "pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "topic_draft_dependencies", "topic_draft_heads", "topic_draft_versions", "topic_generation_checkpoints", "topic_health", "topic_publication_events", "topic_publication_heads", "topic_published_canonical_refs", "topic_published_dependencies", "topic_published_generations", "topic_published_versions", "topic_reviews", "topic_rule_draft_heads", "topic_rule_comparison_evidence", "topic_rule_draft_versions", "topic_rule_evidence_invalidations", "topic_rule_publication_events", "topic_rule_publication_heads", "topic_rule_published_versions", "topic_rule_reviews", "uploads", "vector_facets", "vector_generations", "vector_heads"}
+		expected = append(expected, "engineering_amendment_proposals", "engineering_amendments", "engineering_proposal_effects", "engineering_proposal_events", "engineering_proposal_heads", "engineering_proposal_pipeline_effects", "engineering_proposal_references", "engineering_proposal_reviews", "engineering_proposal_versions", "frozen_run_attempts", "frozen_run_outputs", "frozen_run_payloads", "frozen_runs")
 		sort.Strings(expected)
 		if strings.Join(names, ",") != strings.Join(expected, ",") {
 			t.Fatalf("unexpected foundation schema: %v", names)
 		}
-		if count(t, c, `SELECT count(*) FROM information_schema.columns WHERE table_schema='chartworks' AND (column_name LIKE '%password%' OR column_name LIKE '%secret%' OR column_name LIKE '%token%' OR column_name LIKE '%role%' OR column_name LIKE '%grant%')`) != 0 {
+		// reserved_tokens is a bounded model budget, not a persisted bearer credential.
+		if count(t, c, `SELECT count(*) FROM information_schema.columns WHERE table_schema='chartworks' AND NOT (table_name='frozen_runs' AND column_name='reserved_tokens') AND (column_name LIKE '%password%' OR column_name LIKE '%secret%' OR column_name LIKE '%token%' OR column_name LIKE '%role%' OR column_name LIKE '%grant%')`) != 0 {
 			t.Fatal("local IAM/issuer material in schema")
 		}
 		tx, e := c.Begin(ctx)

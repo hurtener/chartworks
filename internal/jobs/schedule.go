@@ -8,7 +8,8 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// Spec supports only executable trigger kinds. Definitions are immutable; pause/resume uses CAS.
+// Spec supports only executable trigger kinds. Replacement and pause/resume use CAS;
+// accepted occurrences retain their original definition and revision.
 type Spec struct {
 	Type            string    `json:"type"`
 	Cron            string    `json:"cron,omitempty"`
