@@ -3,14 +3,12 @@ package reporting
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"slices"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
-	"github.com/hurtener/chartworks/internal/nlqexec"
 )
 
 func (s *Compositions) checkpoint(ctx context.Context, inv jobs.Invocation, write CompositionWrite) (CompositionRecord, error) {
@@ -363,7 +361,3 @@ func DecodeCompositionManifest(body []byte, expected string) (CompositionManifes
 	}
 	return m, nil
 }
-
-// Suppress unused-import drift while keeping error identity explicit in tests.
-var _ = errors.Is
-var _ nlqexec.SavedPlan

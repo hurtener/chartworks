@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -210,7 +209,7 @@ func TestDocumentStorage(t *testing.T) {
 		if err != nil || quarantine.State != nil || quarantine.Quarantine == "" {
 			t.Fatal("unsupported record was not quarantined", quarantine, err)
 		}
-		connection, err := pgx.Connect(ctx, os.Getenv("CHARTWORKS_TEST_STORE_URL"))
+		connection, err := pgx.Connect(ctx, f.f.dsn)
 		if err != nil {
 			t.Fatal(err)
 		}

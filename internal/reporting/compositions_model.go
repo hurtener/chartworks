@@ -36,7 +36,7 @@ type CompositionRequest struct {
 	Preview        bool              `json:"preview"`
 	PartialFailure string            `json:"partial_failure,omitempty"`
 	Resolution     Resolution        `json:"resolution"`
-	Pages          []PageInput        `json:"pages"`
+	Pages          []PageInput       `json:"pages"`
 }
 
 // CompositionWidget keeps its own output selection, binding provenance and safe
@@ -64,27 +64,27 @@ type CompositionPage struct {
 // CompositionGroup seals one exact query/context/value identity and the union
 // of saved outputs. It does not expose SQL through metadata surfaces.
 type CompositionGroup struct {
-	ID              string              `json:"id"`
-	Kind            string              `json:"kind"`
-	Block           string              `json:"block,omitempty"`
-	Revision        int64               `json:"revision,omitempty"`
-	Definition      string              `json:"definition_digest,omitempty"`
-	Execution       string              `json:"execution_digest,omitempty"`
-	Outputs         []string            `json:"outputs"`
-	Arguments       []Argument          `json:"arguments"`
-	Resolved        Resolved            `json:"resolved"`
-	Resolution      Resolution          `json:"resolution"`
-	Binding         exec.Binding        `json:"binding"`
-	Locale          string              `json:"locale"`
-	Policy          string              `json:"policy"`
-	Private         bool                `json:"private"`
-	Narrative       bool                `json:"narrative"`
-	Query           *QueryWidget        `json:"query,omitempty"`
-	Origin          *QueryOrigin        `json:"origin,omitempty"`
-	References      []ResourceReference `json:"references"`
-	Trust           *Trust              `json:"trust,omitempty"`
-	ReservedCalls   int                 `json:"reserved_calls"`
-	ReservedTokens  int                 `json:"reserved_tokens"`
+	ID             string              `json:"id"`
+	Kind           string              `json:"kind"`
+	Block          string              `json:"block,omitempty"`
+	Revision       int64               `json:"revision,omitempty"`
+	Definition     string              `json:"definition_digest,omitempty"`
+	Execution      string              `json:"execution_digest,omitempty"`
+	Outputs        []string            `json:"outputs"`
+	Arguments      []Argument          `json:"arguments"`
+	Resolved       Resolved            `json:"resolved"`
+	Resolution     Resolution          `json:"resolution"`
+	Binding        exec.Binding        `json:"binding"`
+	Locale         string              `json:"locale"`
+	Policy         string              `json:"policy"`
+	Private        bool                `json:"private"`
+	Narrative      bool                `json:"narrative"`
+	Query          *QueryWidget        `json:"query,omitempty"`
+	Origin         *QueryOrigin        `json:"origin,omitempty"`
+	References     []ResourceReference `json:"references"`
+	Trust          *Trust              `json:"trust,omitempty"`
+	ReservedCalls  int                 `json:"reserved_calls"`
+	ReservedTokens int                 `json:"reserved_tokens"`
 }
 
 // CompositionManifest is service-issued, immutable and bound to the existing
@@ -118,34 +118,34 @@ func (m CompositionManifest) ManifestDigest() string { return digest(m) }
 // GroupResult is an immutable checkpoint of a completed or explicitly failed
 // query group. Query evidence has no block certificate field.
 type GroupResult struct {
-	Group       string               `json:"group"`
-	Kind        string               `json:"kind"`
-	State       string               `json:"state"`
-	Code        string               `json:"code,omitempty"`
-	ChildRun    string               `json:"child_run,omitempty"`
-	Block       *RunView             `json:"block,omitempty"`
-	Outputs     []RetainedOutput     `json:"outputs"`
-	Query       *nlqexec.SavedResult  `json:"query,omitempty"`
-	QueryPlan   *nlqexec.SavedPlan    `json:"query_plan,omitempty"`
-	Observed    *time.Time           `json:"observed_at,omitempty"`
-	Digest      string               `json:"digest"`
+	Group     string               `json:"group"`
+	Kind      string               `json:"kind"`
+	State     string               `json:"state"`
+	Code      string               `json:"code,omitempty"`
+	ChildRun  string               `json:"child_run,omitempty"`
+	Block     *RunView             `json:"block,omitempty"`
+	Outputs   []RetainedOutput     `json:"outputs"`
+	Query     *nlqexec.SavedResult `json:"query,omitempty"`
+	QueryPlan *nlqexec.SavedPlan   `json:"query_plan,omitempty"`
+	Observed  *time.Time           `json:"observed_at,omitempty"`
+	Digest    string               `json:"digest"`
 }
 
 // CompositionWidgetSummary has no raw normalized values, SQL or hidden payload.
 type CompositionWidgetSummary struct {
-	ID          string       `json:"id"`
-	Kind        string       `json:"kind"`
-	State       string       `json:"state"`
-	Code        string       `json:"code,omitempty"`
-	Grid        GridCell     `json:"grid"`
-	Presentation Presentation `json:"presentation"`
-	Outputs     []string     `json:"outputs"`
-	Parameters  []BoundValue `json:"parameters"`
-	Durability  string       `json:"durability,omitempty"`
-	Trust       *Trust       `json:"trust,omitempty"`
-	QueryDigest string       `json:"query_digest,omitempty"`
-	SemanticDigest string    `json:"semantic_digest,omitempty"`
-	Observed    *time.Time   `json:"observed_at,omitempty"`
+	ID             string       `json:"id"`
+	Kind           string       `json:"kind"`
+	State          string       `json:"state"`
+	Code           string       `json:"code,omitempty"`
+	Grid           GridCell     `json:"grid"`
+	Presentation   Presentation `json:"presentation"`
+	Outputs        []string     `json:"outputs"`
+	Parameters     []BoundValue `json:"parameters"`
+	Durability     string       `json:"durability,omitempty"`
+	Trust          *Trust       `json:"trust,omitempty"`
+	QueryDigest    string       `json:"query_digest,omitempty"`
+	SemanticDigest string       `json:"semantic_digest,omitempty"`
+	Observed       *time.Time   `json:"observed_at,omitempty"`
 }
 
 // CompositionPageSummary is independently redacted under current report reach.
@@ -159,34 +159,34 @@ type CompositionPageSummary struct {
 
 // CompositionView is metadata only. Opening it never executes a source or model.
 type CompositionView struct {
-	ID          string                   `json:"id"`
-	Kind        string                   `json:"kind"`
-	Document    string                   `json:"document"`
-	Revision    int64                    `json:"revision"`
-	Manifest    string                   `json:"manifest_digest"`
-	State       string                   `json:"state"`
-	Code        string                   `json:"code,omitempty"`
-	Private     bool                     `json:"private"`
-	Complete    bool                     `json:"complete"`
-	MixedFreshness bool                  `json:"mixed_freshness"`
-	Redacted    bool                     `json:"redacted"`
-	Created     time.Time                `json:"created_at"`
-	Expires     time.Time                `json:"expires_at"`
-	Finished    *time.Time               `json:"finished_at,omitempty"`
-	Pages       []CompositionPageSummary `json:"pages"`
-	QueryGroups int                      `json:"query_groups"`
-	RetainedBytes int64                  `json:"retained_bytes"`
+	ID             string                   `json:"id"`
+	Kind           string                   `json:"kind"`
+	Document       string                   `json:"document"`
+	Revision       int64                    `json:"revision"`
+	Manifest       string                   `json:"manifest_digest"`
+	State          string                   `json:"state"`
+	Code           string                   `json:"code,omitempty"`
+	Private        bool                     `json:"private"`
+	Complete       bool                     `json:"complete"`
+	MixedFreshness bool                     `json:"mixed_freshness"`
+	Redacted       bool                     `json:"redacted"`
+	Created        time.Time                `json:"created_at"`
+	Expires        time.Time                `json:"expires_at"`
+	Finished       *time.Time               `json:"finished_at,omitempty"`
+	Pages          []CompositionPageSummary `json:"pages"`
+	QueryGroups    int                      `json:"query_groups"`
+	RetainedBytes  int64                    `json:"retained_bytes"`
 }
 
 // CompositionPayload returns only the addressed visible widget's saved subset.
 type CompositionPayload struct {
-	Page    string                  `json:"page"`
-	Widget  string                  `json:"widget"`
-	State   string                  `json:"state"`
-	Code    string                  `json:"code,omitempty"`
-	Text    *TextWidget             `json:"text,omitempty"`
-	Outputs []RetainedOutput        `json:"outputs"`
-	Query   *nlqexec.SavedResult     `json:"query,omitempty"`
+	Page    string               `json:"page"`
+	Widget  string               `json:"widget"`
+	State   string               `json:"state"`
+	Code    string               `json:"code,omitempty"`
+	Text    *TextWidget          `json:"text,omitempty"`
+	Outputs []RetainedOutput     `json:"outputs"`
+	Query   *nlqexec.SavedResult `json:"query,omitempty"`
 }
 
 // CompositionRecord is private execution state, not a metadata response shape.

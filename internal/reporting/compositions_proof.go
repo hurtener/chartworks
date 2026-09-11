@@ -280,11 +280,11 @@ func CheckCompositionResult(m CompositionManifest, g CompositionGroup, r GroupRe
 	}
 	if g.Kind == "block" {
 		b := r.Block
-		if b == nil || r.Query != nil || r.QueryPlan != nil || b.ID != r.ChildRun || b.Block != g.Block || b.Revision != g.Revision || b.Digest != g.Definition || b.PartitionDigest != exec.Hash(g.Binding) || b.Private != g.Private || len(r.Outputs) != len(g.Outputs) {
+		if b == nil || r.Query != nil || r.QueryPlan != nil || b.ID != r.ChildRun || b.Block != g.Block || b.Revision != g.Revision || b.RevisionDigest != g.Definition || b.PartitionDigest != exec.Hash(g.Binding) || b.Private != g.Private || len(r.Outputs) != len(g.Outputs) {
 			return ErrInvalid
 		}
 		for i, output := range r.Outputs {
-			if output.ID != g.Outputs[i] || output.Digest == "" || r.State == "completed" && output.State != "completed" {
+			if output.ID != g.Outputs[i] || output.Digest == "" || r.State == "completed" && output.State != "succeeded" {
 				return ErrInvalid
 			}
 		}

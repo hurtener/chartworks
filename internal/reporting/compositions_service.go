@@ -214,21 +214,6 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		Revision: root.Revision.Number, Digest: root.Revision.Digest, RequestHash: hash, TaskHash: task.Digest(), Private: in.Preview, Policy: policy,
 		Redacted: kind == "dashboard" && DocumentDigest(root.Revision.Raw) != root.Revision.Digest, Created: task.Created, Expires: task.Created.Add(time.Duration(retention)),
 		Limits: limits.Composition, ArtifactLimits: limits.Execution, Pages: []CompositionPage{}, Groups: []CompositionGroup{}}
-	// A session-bound result retains its actor/session privacy independently of
-	// report publication. It is only executable as an explicitly private run.
-	for _, page := range pages {
-		d, err := ProjectStoredDocument(page.snapshot.Revision.Raw, "report")
-		if err != nil {
-			return CompositionManifest{}, err
-		}
-		for _, w := range d.Widgets {
-			if w.Query != nil && w.Query.Durability == "session_bound" && !m.Private {
-				// Keep a disabled/omitted session widget observable, but never put
-				// its result in an artifact admitted as public.
-				continue
-			}
-		}
-	}
 	memo := map[string]compositionBlockSource{}
 	groups := map[string]int{}
 	widgetCount := 0
