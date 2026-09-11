@@ -1,0 +1,38 @@
+name: PR19 coverage fixture export
+on:
+  push:
+    branches: [dev/phase-26-28-workspace]
+    paths: [.github/workflows/pr19-coverage-export.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e42ae65759091dfef6ce42e91eed6813316018dd
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export exact source and unused disposable runtime
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = e42ae65759091dfef6ce42e91eed6813316018dd
+          mkdir -p /tmp/pr19-coverage-export /tmp/pr19-pg/usr/lib /tmp/pr19-pg/usr/share
+          git bundle create /tmp/pr19-coverage-export/source.bundle HEAD
+          git rev-parse HEAD > /tmp/pr19-coverage-export/source-sha.txt
+          docker pull pgvector/pgvector:0.8.2-pg17
+          fixture=$(docker create pgvector/pgvector:0.8.2-pg17)
+          trap 'docker rm -f "$fixture" >/dev/null' EXIT
+          docker cp "$fixture":/usr/lib/postgresql /tmp/pr19-pg/usr/lib/
+          docker cp "$fixture":/usr/share/postgresql /tmp/pr19-pg/usr/share/
+          docker cp "$fixture":/usr/lib/x86_64-linux-gnu /tmp/pr19-pg/usr/lib/
+          docker image inspect pgvector/pgvector:0.8.2-pg17 --format '{{json .RepoDigests}}' > /tmp/pr19-coverage-export/fixture-image.json
+          tar -czf /tmp/pr19-coverage-export/postgres-runtime.tar.gz -C /tmp/pr19-pg .
+          git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr19-coverage-source-runtime
+          path: /tmp/pr19-coverage-export
+          retention-days: 7
