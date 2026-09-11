@@ -144,6 +144,29 @@ func TestPhase28(t *testing.T) {
 		return v
 	}
 
+	t.Run("AdmissionAuditRollback", func(t *testing.T) {
+		create(t, "p28-admission-rollback", tableDefinition(t), true)
+		raw := support.Raw(t, f.f.dsn)
+		sql(t, raw, `CREATE FUNCTION chartworks.reject_run_seal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='reporting.run_sealed' THEN RAISE EXCEPTION 'synthetic seal audit failure'; END IF; RETURN NEW; END; $$; CREATE TRIGGER reject_run_seal BEFORE INSERT ON chartworks.audit_events FOR EACH ROW EXECUTE FUNCTION chartworks.reject_run_seal()`)
+		request := reporting.RunRequest{Key: "admission-rollback"}
+		if _, err := runs.Admit(ctx, execute, "p28-admission-rollback", request); err == nil {
+			t.Fatal("run sealed without its audit")
+		}
+		var heads, payloads int
+		if err := raw.QueryRow(ctx, `SELECT (SELECT count(*) FROM chartworks.frozen_runs),(SELECT count(*) FROM chartworks.frozen_run_payloads)`).Scan(&heads, &payloads); err != nil || heads != 0 || payloads != 0 {
+			t.Fatal("failed admission left partial payloads", heads, payloads, err)
+		}
+		sql(t, raw, `DROP TRIGGER reject_run_seal ON chartworks.audit_events`)
+		v, err := runs.Admit(ctx, execute, "p28-admission-rollback", request)
+		if err != nil {
+			t.Fatal("admission did not recover its reserved request", err)
+		}
+		retry, err := runs.Admit(ctx, execute, "p28-admission-rollback", request)
+		if err != nil || retry.ID != v.ID || retry.ManifestDigest != v.ManifestDigest {
+			t.Fatal("recovered admission duplicated its manifest", retry, err)
+		}
+	})
+
 	t.Run("AC01", func(t *testing.T) {
 		create(t, "p28-model-free", tableDefinition(t), true)
 		beforeModels := f.model.requests.Load()
