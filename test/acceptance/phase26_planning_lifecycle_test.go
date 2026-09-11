@@ -333,3 +333,27 @@ func TestProposalCreationIsAtomicAcrossPersistenceSteps(t *testing.T) {
 	}
 	f.approve(t, f.propose(t))
 }
+
+func TestProposalReviewRejectsUnavailableSource(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	p := f.propose(t)
+	ctx := context.Background()
+	raw := support.Raw(t, f.dsn)
+	// Model a source removal committed after planning and before human approval.
+	if _, err := raw.Exec(ctx, `UPDATE chartworks.sources SET deleted=true WHERE tenant_id=$1 AND source_id=$2`, f.author.Tenant(), f.goal.Source); err != nil {
+		t.Fatal(err)
+	}
+	request := engineering.AutopilotReviewRequest{ExpectedVersion: p.Version, Revision: p.Revision, Digest: p.Digest, Decision: "approve", Reason: "Review must recheck the source at commit."}
+	if _, err := f.reviewer.ReviewEngineeringProposal(ctx, p.ID, request); err == nil {
+		t.Fatal("approval accepted a deleted source")
+	}
+	current, err := f.auto.Get(ctx, f.author, p.ID)
+	if err != nil || current.Version != p.Version || current.State != "draft" || current.Review != nil {
+		t.Fatal("failed source fence changed proposal", current, err)
+	}
+	request.Decision = "reject"
+	rejected, err := f.reviewer.ReviewEngineeringProposal(ctx, p.ID, request)
+	if err != nil || rejected.State != "rejected" {
+		t.Fatal("unavailable source prevented explicit rejection", rejected, err)
+	}
+}
