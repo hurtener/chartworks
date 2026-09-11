@@ -1,0 +1,26 @@
+name: Phase 29 source transfer
+on:
+  push:
+    branches: [feat/phase-29-reports-dashboards]
+    paths: [.github/workflows/phase-29-source.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive tracked source only
+        run: |
+          git archive --format=tar.gz HEAD > /tmp/chartworks-source.tar.gz
+          git rev-parse HEAD > /tmp/chartworks-source.sha
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-source
+          path: |
+            /tmp/chartworks-source.tar.gz
+            /tmp/chartworks-source.sha
+          retention-days: 1
