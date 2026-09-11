@@ -13,6 +13,8 @@ func (s *Service) ReplaceSchedule(ctx context.Context, e identity.Envelope, id s
 	if ctx == nil || !identity.Identifier(id) || !identity.Identifier(key) || expected < 1 || expected >= 1<<62 || request.Validate() != nil {
 		return Schedule{}, ErrInvalid
 	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	if err := access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: id}); err != nil {
 		return Schedule{}, err
 	}
@@ -20,7 +22,5 @@ func (s *Service) ReplaceSchedule(ctx context.Context, e identity.Envelope, id s
 	if err != nil {
 		return Schedule{}, err
 	}
-	ctx, stop := context.WithDeadline(ctx, e.Deadline())
-	defer stop()
 	return s.repo.ReplaceSchedule(ctx, scope, e.Session(), id, expected, key, request, s.limits)
 }

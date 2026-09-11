@@ -76,6 +76,11 @@ func (s *Service) admission(ctx context.Context, e identity.Envelope, request Su
 
 // Submit authorizes a fixed target and durably admits or replays its logical request key.
 func (s *Service) Submit(ctx context.Context, e identity.Envelope, key string, request Submission) (Job, error) {
+	if ctx == nil {
+		return Job{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	scope, err := s.admission(ctx, e, request)
 	if err != nil {
 		return Job{}, err
@@ -128,6 +133,11 @@ func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string) (J
 
 // CreateSchedule stores or replays a fixed target and validated recurrence under tenant scope.
 func (s *Service) CreateSchedule(ctx context.Context, e identity.Envelope, key string, request ScheduleRequest) (Schedule, error) {
+	if ctx == nil {
+		return Schedule{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	if request.Validate() != nil || !identity.Identifier(key) {
 		return Schedule{}, ErrInvalid
 	}
@@ -152,6 +162,11 @@ func (s *Service) GetSchedule(ctx context.Context, e identity.Envelope, id strin
 
 // SetSchedule applies a revision-checked pause/resume while preserving the durable occurrence cursor.
 func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id string, expected int64, enabled bool) (Schedule, error) {
+	if ctx == nil {
+		return Schedule{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	if err := access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: id}); err != nil {
 		return Schedule{}, err
 	}
@@ -173,6 +188,11 @@ func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id strin
 
 // Fire authorizes one idempotent manual occurrence of a stored schedule.
 func (s *Service) Fire(ctx context.Context, e identity.Envelope, id, key string) (Job, error) {
+	if ctx == nil {
+		return Job{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	if err := access.Require(e, "scheduling.execute", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "execute", ID: id}); err != nil {
 		return Job{}, err
 	}

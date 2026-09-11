@@ -113,7 +113,12 @@ func testPhase26ReviewedSchedule(t *testing.T, f *phase26Fixture, queue *jobs.Se
 		t.Fatal(err)
 	}
 	t.Cleanup(auto.Close)
-	scopes := append(phase26Scopes(), "scheduling.write", "scheduling.read", "scheduling.execute", "cw.execution_binding.use:pipeline", "cw.schedule.write:*", "cw.schedule.read:*", "cw.schedule.execute:*", "cw.run.read:*")
+	// This proposal has no topic effect. Keep its bearer within the consumed
+	// 32-scope bound instead of requesting unrelated topic/compensation actions.
+	scopes := slices.DeleteFunc(phase26Scopes(), func(scope string) bool {
+		return slices.Contains([]string{"topics.read", "topics.write", "cw.topic.read:*", "cw.topic.write:*", "engineering.autopilot.compensate"}, scope)
+	})
+	scopes = append(scopes, "scheduling.write", "scheduling.read", "scheduling.execute", "cw.execution_binding.use:pipeline", "cw.schedule.write:*", "cw.schedule.read:*", "cw.schedule.execute:*", "cw.run.read:*")
 	author := f.token.envelope(t, f.author.Tenant(), f.author.User(), scopes...)
 	reviewer := f.token.envelope(t, f.author.Tenant(), "independent-reviewer", scopes...)
 	goal := f.goal

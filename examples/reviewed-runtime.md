@@ -50,6 +50,38 @@ The Go SDK exposes `EngineeringGoal`, `EngineeringTopicGoal`,
 `ProposeEngineering`, `ReviewEngineeringProposal`, `ApplyEngineeringProposal`,
 and `ReadEngineeringProposal`. It obtains a token from its provider for each call.
 
+## Include a reviewed pipeline schedule
+
+Add this optional `schedule` member to the engineering goal above:
+
+```json
+{
+  "binding_id": "sales-pipeline-execution",
+  "spec": {
+    "type": "cron",
+    "cron": "0 6 * * *",
+    "timezone": "UTC",
+    "missed": "skip",
+    "overlap": "queue"
+  }
+}
+```
+
+Chartworks creates the schedule only during approved apply, after the actual
+pipeline effects succeed. The target is the exact reviewed pipeline version and
+digest. The applying bearer also needs `scheduling.write`, tenant write and use of
+the named execution binding. Pengui supplies fresh scoped execution authority
+when Chartworks executes an occurrence; this is independent of Pengui's prompt
+schedules. Deployment requires the pipeline execution binding extension described
+in the [execution authority contract](../docs/contracts/execution-authority-v1.md).
+
+For an explicit replacement, add the existing schedule `id` and
+`expected_revision` to the schedule goal. Reviewed replacement changes future
+occurrences; already accepted occurrences retain their original target, due time
+and revision. Proposal edits may supply a new `schedule` spec alongside the usual
+version guard. The original submitted goal stays immutable. The SDK exports
+`EngineeringScheduleGoal` and `Recurrence` for these fields.
+
 ## Admit and execute a frozen block
 
 Send this body to `POST /v1/blocks/sales-summary/runs`:

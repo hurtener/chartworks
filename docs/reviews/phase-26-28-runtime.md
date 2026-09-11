@@ -136,3 +136,24 @@ race acceptance proves replacement retry reconciliation and preservation of
 accepted occurrences; phase-21/28 regression acceptance and focused core tests
 pass. Lint reports zero issues. The newly extended native L2 schedule test compiles
 but requires its own hosted execution before completion can be claimed.
+
+## Cumulative gates and admission deadline review
+
+The full run at 58e4bf5 failed on an outdated table inventory and an unregistered
+pipeline input fixture, then reached the cumulative ten-minute Go package timeout.
+The corrected PostgreSQL inventory/atomicity tests pass with race instrumentation
+at c697c07. The cumulative allowance is now twenty minutes; coverage thresholds,
+test selection and failure handling are unchanged. The coverage parser's six
+unit tests pass.
+
+The 0955bbe client and MCP workflows pass. Its Linux runtime step rejects the new
+reviewed-schedule fixture before apply because it requests more than 32 scopes.
+The fixture now omits unrelated topic and compensation scopes; the production
+bound is unchanged. Native execution of that corrected fixture remains required.
+
+Direct authority review also found ordinary queue admission could wait beyond
+bearer expiry before writing. Submit, schedule creation, replacement, pause/resume
+and manual fire now carry the signed deadline through their complete call. The
+real PostgreSQL regression observes admission waiting on the queue lock, releases
+it after expiry, and verifies that neither jobs nor schedules were admitted.
+That regression and existing Phase 06/replacement race acceptance pass locally.
