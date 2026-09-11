@@ -72,17 +72,17 @@ type FilterBinding struct {
 
 // Widget is a closed tagged union; exactly one payload must match Kind.
 type Widget struct {
-	ID          string          `json:"id"`
-	Kind        string          `json:"kind" jsonschema:"enum=block,enum=query,enum=text"`
-	Grid        GridCell        `json:"grid"`
-	Presentation Presentation   `json:"presentation"`
-	Block       *BlockWidget    `json:"block,omitempty"`
-	Query       *QueryWidget    `json:"query,omitempty"`
-	Text        *TextWidget     `json:"text,omitempty"`
-	Literals    []Argument      `json:"literals,omitempty"`
-	Bindings    []FilterBinding `json:"bindings,omitempty"`
-	Overrides   []string        `json:"overrides,omitempty"`
-	Section     string          `json:"section,omitempty"`
+	ID           string          `json:"id"`
+	Kind         string          `json:"kind" jsonschema:"enum=block,enum=query,enum=text"`
+	Grid         GridCell        `json:"grid"`
+	Presentation Presentation    `json:"presentation"`
+	Block        *BlockWidget    `json:"block,omitempty"`
+	Query        *QueryWidget    `json:"query,omitempty"`
+	Text         *TextWidget     `json:"text,omitempty"`
+	Literals     []Argument      `json:"literals,omitempty"`
+	Bindings     []FilterBinding `json:"bindings,omitempty"`
+	Overrides    []string        `json:"overrides,omitempty"`
+	Section      string          `json:"section,omitempty"`
 }
 
 // ReportFilter reuses the exact scalar/period type system used by frozen blocks.
@@ -156,13 +156,13 @@ type DocumentState struct {
 // DocumentRevision contains immutable authored bytes and server-derived query
 // origins. It is private repository input; normal responses use DocumentView.
 type DocumentRevision struct {
-	Number  int64               `json:"number"`
-	Raw     json.RawMessage     `json:"raw"`
-	Digest  string              `json:"digest"`
-	Actor   string              `json:"actor"`
-	Session string              `json:"session"`
-	Created time.Time           `json:"created_at"`
-	Origins []QueryOrigin       `json:"origins"`
+	Number   int64              `json:"number"`
+	Raw      json.RawMessage    `json:"raw"`
+	Digest   string             `json:"digest"`
+	Actor    string             `json:"actor"`
+	Session  string             `json:"session"`
+	Created  time.Time          `json:"created_at"`
+	Origins  []QueryOrigin      `json:"origins"`
 	External *ExternalReference `json:"external,omitempty"`
 }
 

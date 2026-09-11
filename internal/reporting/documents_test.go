@@ -12,7 +12,7 @@ import (
 func documentFixture() DocumentDefinition {
 	return DocumentDefinition{SchemaVersion: DocumentVersion, Locale: "en-US", Timezone: "UTC",
 		Metadata: []DocumentMetadata{{Locale: "en-US", Title: "Synthetic report"}},
-		Widgets: []Widget{{ID: "note", Kind: "text", Grid: GridCell{Width: 12, Height: 1}, Text: &TextWidget{Format: "markdown", Text: "# Evidence\n\n**Bounded** text."}}}}
+		Widgets:  []Widget{{ID: "note", Kind: "text", Grid: GridCell{Width: 12, Height: 1}, Text: &TextWidget{Format: "markdown", Text: "# Evidence\n\n**Bounded** text."}}}}
 }
 
 func TestDocumentCanonicalJSON(t *testing.T) {
@@ -44,10 +44,14 @@ func TestDocumentDefinition(t *testing.T) {
 		func(d *DocumentDefinition) { d.Widgets[0].Text.Text = strings.Repeat("x", limits.MaxTextBytes+1) },
 		func(d *DocumentDefinition) { d.Widgets[0].Presentation.Density = "javascript" },
 		func(d *DocumentDefinition) { d.Widgets = append(d.Widgets, d.Widgets[0]) },
-		func(d *DocumentDefinition) { d.Widgets = append(d.Widgets, Widget{ID: "overlap", Kind: "text", Grid: d.Widgets[0].Grid, Text: &TextWidget{Format: "plain", Text: "note"}}) },
+		func(d *DocumentDefinition) {
+			d.Widgets = append(d.Widgets, Widget{ID: "overlap", Kind: "text", Grid: d.Widgets[0].Grid, Text: &TextWidget{Format: "plain", Text: "note"}})
+		},
 		func(d *DocumentDefinition) { d.Locale = "fr-FR" },
 		func(d *DocumentDefinition) { d.Timezone = "not-a-timezone" },
-		func(d *DocumentDefinition) { d.Filters = []ReportFilter{{Parameter: Parameter{Name: "unused", Type: "integer"}}} },
+		func(d *DocumentDefinition) {
+			d.Filters = []ReportFilter{{Parameter: Parameter{Name: "unused", Type: "integer"}}}
+		},
 	}
 	for i, mutate := range mutations {
 		d := documentFixture()

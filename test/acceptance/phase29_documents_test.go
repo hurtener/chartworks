@@ -25,7 +25,7 @@ func phase29DocumentScopes() []string {
 func phase29Text(title string) reporting.DocumentDefinition {
 	return reporting.DocumentDefinition{SchemaVersion: reporting.DocumentVersion, Locale: "en-US", Timezone: "UTC", PartialFailure: "fail_closed",
 		Metadata: []reporting.DocumentMetadata{{Locale: "en-US", Title: title}, {Locale: "es-AR", Title: "Informe sintético"}},
-		Widgets: []reporting.Widget{{ID: "intro", Kind: "text", Grid: reporting.GridCell{Width: 12, Height: 1}, Text: &reporting.TextWidget{Format: "markdown", Text: "# Retained evidence\n\nNo warehouse execution is needed to read this."}}}}
+		Widgets:  []reporting.Widget{{ID: "intro", Kind: "text", Grid: reporting.GridCell{Width: 12, Height: 1}, Text: &reporting.TextWidget{Format: "markdown", Text: "# Retained evidence\n\nNo warehouse execution is needed to read this."}}}}
 }
 
 func phase29Publish(t *testing.T, s *reporting.Documents, e identity.Envelope, state reporting.DocumentState) reporting.DocumentState {
