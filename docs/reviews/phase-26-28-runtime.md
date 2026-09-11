@@ -55,6 +55,9 @@ Review was performed directly; no subagents were used.
 - At 8994a78, a removed source prevented approval without changing the draft; explicit rejection remained available. The real PostgreSQL race test and lint passed.
 - At 3208b6f, the complete local Phase 28 acceptance group passed under race instrumentation (14.635 seconds), including seal-audit rollback and recovery of the original reserved request. PostgreSQL unit tests for accounting write failures and malformed retained manifests also passed with race instrumentation; these decoder seams do not claim real SQL selection coverage.
 
+- Linux CI 34550844757 at bc1b265 completed the cumulative race suite without test failures, then failed the coverage gate on 2026-09-11 at 02:09:48 UTC: engineering 3207/4032 (79.54%, required 80%) and PostgreSQL 4367/5412 (80.69%, required 84%). Every other measured package met its band. This supersedes the earlier failed-suite diagnostic baseline but is not a successful CI run.
+- Subsequent local regressions cover proposal evidence budgets, disabled-planner reads, unrequested effect expansion, immutable output replay and narrative reservation/accounting failures. Their focused race tests and lint passed. Full hosted coverage at the resulting head is still required; combining local and hosted profiles is diagnostic only, especially across native platform variants.
+
 ## Remaining release evidence
 
 - Final delivery-head strict Linux acceptance, including the added lost-narrative-output regression.
