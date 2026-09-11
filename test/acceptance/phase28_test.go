@@ -397,6 +397,18 @@ func TestPhase28(t *testing.T) {
 		if _, readErr = runs.RebuildOutput(ctx, reader, v.ID, "table-main"); !errors.Is(readErr, reporting.ErrExpired) {
 			t.Fatal("expired rendition was silently rebuilt", readErr)
 		}
+		// A retention audit failure must roll back both payload deletion and the
+		// tombstone update; retry can then finish the same expiration normally.
+		sql(t, raw, `CREATE FUNCTION chartworks.reject_frozen_retention() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='reporting.artifact_expired' THEN RAISE EXCEPTION 'synthetic retention audit failure'; END IF; RETURN NEW; END; $$; CREATE TRIGGER reject_frozen_retention BEFORE INSERT ON chartworks.audit_events FOR EACH ROW EXECUTE FUNCTION chartworks.reject_frozen_retention()`)
+		if count, failed := runs.Expire(ctx, execute, 100); failed == nil || count != 0 {
+			t.Fatal("retention succeeded without its audit", count, failed)
+		}
+		var retainedPayloads, retainedOutputs int
+		var retainedState string
+		if queryErr := raw.QueryRow(ctx, `SELECT state,(SELECT count(*) FROM chartworks.frozen_run_payloads p WHERE p.tenant_id=h.tenant_id AND p.operation_id=h.operation_id),(SELECT count(*) FROM chartworks.frozen_run_outputs o WHERE o.tenant_id=h.tenant_id AND o.operation_id=h.operation_id) FROM chartworks.frozen_runs h WHERE tenant_id=$1 AND operation_id=$2`, execute.Tenant(), v.ID).Scan(&retainedState, &retainedPayloads, &retainedOutputs); queryErr != nil || retainedState != "succeeded" || retainedPayloads != 1 || retainedOutputs == 0 {
+			t.Fatal("failed retention partially deleted its artifact", retainedState, retainedPayloads, retainedOutputs, queryErr)
+		}
+		sql(t, raw, `DROP TRIGGER reject_frozen_retention ON chartworks.audit_events`)
 		count, expireErr := runs.Expire(ctx, execute, 100)
 		if expireErr != nil || count != 1 {
 			t.Fatal("bounded retention sweep", count, expireErr)
