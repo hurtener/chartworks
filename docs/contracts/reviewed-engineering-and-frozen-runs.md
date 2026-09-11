@@ -118,8 +118,9 @@ profile evidence; it cannot manufacture a profile or silently rebind old evidenc
 
 An optional L2 `schedule` goal contains `binding_id`, a real cron/interval/manual
 `spec`, and an optional existing `id` with `expected_revision`. Planning records a
-schedule decision without creating a schedule. An edit may replace the reviewed
-`schedule_spec`; the original request remains immutable and approval is invalidated.
+schedule decision without creating a schedule. `PUT` accepts an edited `schedule`
+spec, retained as `schedule_spec` in the reviewed material; the original request
+remains immutable and approval is invalidated.
 Apply requires current scheduling authority in addition to ordinary pipeline
 permissions. It first completes managed execution and any requested private topic
 change, then creates or replaces the exact reviewed pipeline schedule. The final

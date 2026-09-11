@@ -7,14 +7,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
 )
 
@@ -106,9 +109,24 @@ func testPhase26ScheduledPipeline(t *testing.T) {
 	testPhase26ReviewedSchedule(t, f, queue)
 }
 
+// The ordinary schedule has committed, but the proposal has not recorded it.
+// Retrying apply must reconcile that effect rather than create another schedule.
+type phase26LostScheduleEffect struct {
+	engineering.AutopilotRepository
+	lost atomic.Bool
+}
+
+func (r *phase26LostScheduleEffect) RecordAutopilotSchedule(ctx context.Context, e identity.Envelope, proof engineering.PreparedProposalApply, result jobs.Schedule) (engineering.AutopilotProposal, error) {
+	if r.lost.CompareAndSwap(false, true) {
+		return engineering.AutopilotProposal{}, store.ErrUnavailable
+	}
+	return r.AutopilotRepository.RecordAutopilotSchedule(ctx, e, proof, result)
+}
+
 func testPhase26ReviewedSchedule(t *testing.T, f *phase26Fixture, queue *jobs.Service) {
 	ctx := context.Background()
-	auto, err := engineering.NewAutopilotWithSchedules(f.db, f.pipelines, f.limits, queue)
+	lost := &phase26LostScheduleEffect{AutopilotRepository: f.db}
+	auto, err := engineering.NewAutopilotWithSchedules(lost, f.pipelines, f.limits, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +176,13 @@ func testPhase26ReviewedSchedule(t *testing.T, f *phase26Fixture, queue *jobs.Se
 	limited := f.token.envelope(t, author.Tenant(), author.User(), slices.DeleteFunc(append([]string(nil), scopes...), func(s string) bool { return s == "scheduling.write" })...)
 	if _, err = auto.Apply(ctx, limited, proposal.ID, phase26ApplyRequest(proposal)); !errors.Is(err, access.ErrForbidden) {
 		t.Fatal("review bypassed schedule authority", err)
+	}
+	if _, err = auto.Apply(ctx, author, proposal.ID, phase26ApplyRequest(proposal)); !errors.Is(err, store.ErrUnavailable) || !lost.lost.Load() || count() != before+1 {
+		t.Fatal("committed schedule fault not exercised", err)
+	}
+	partial, err := auto.Get(ctx, author, proposal.ID)
+	if err != nil || partial.State != "applying" {
+		t.Fatal("unrecorded schedule effect claimed completion", partial.State, err)
 	}
 	applied, err := auto.Apply(ctx, author, proposal.ID, phase26ApplyRequest(proposal))
 	if err != nil || applied.State != "applied" {
