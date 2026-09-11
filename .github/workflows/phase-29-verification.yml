@@ -1,0 +1,74 @@
+name: Reports and dashboards verification
+
+on:
+  push:
+    branches: [feat/phase-29-reports-dashboards]
+  pull_request:
+    paths:
+      - 'internal/reporting/**'
+      - 'internal/reportingapi/**'
+      - 'internal/store/postgres/documents*'
+      - 'internal/store/postgres/compositions*'
+      - 'internal/store/postgres/migrations/029*'
+      - 'internal/store/postgres/migrations/030*'
+      - 'test/acceptance/phase29*'
+      - '.github/workflows/phase-29-verification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-29-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reports:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -p=2
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd 'pg_isready -U chartworks -d chartworks'
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Reserve native build disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+      - name: Build the pinned native parser and runner
+        run: bash scripts/build-bruin.sh
+      - name: Exact-source unit and PostgreSQL regression tests
+        run: |
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+          go test -race -count=1 -timeout=15m ./internal/config ./internal/reporting ./test/acceptance -run 'TestDocument|TestReportingComposition'
+      - name: All eight named phase criteria are required
+        run: python3 scripts/run_phase_acceptance.py --phase 29
+      - name: Formatting diagnostics without modifying source
+        if: always()
+        run: |
+          files=$(find internal test -name '*documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go')
+          if test -n "$files"; then
+            gofmt -d $files
+            test -z "$(gofmt -l $files)"
+          fi
+      - name: Verification must leave source unchanged
+        if: always()
+        run: |
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"

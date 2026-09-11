@@ -14,22 +14,26 @@ import (
 
 func documentKind(kind string) bool { return kind == "report" || kind == "dashboard" }
 
-// DocumentDigest includes the authored version, not its potentially newer read
-// projection. Merely opening an old revision can never change its identity.
+// DocumentDigest hashes canonical JSON, independent of PostgreSQL JSONB key
+// ordering. It includes the authored version, never a newer read projection.
 func DocumentDigest(raw json.RawMessage) string {
-	if !json.Valid(raw) {
+	value, err := documentJSON(raw)
+	if err != nil {
 		return ""
 	}
 	return digest(struct {
 		Version string
-		Raw     json.RawMessage
-	}{"reporting-document-v1", raw})
+		Value   any
+	}{"reporting-document-v1", value})
 }
 
 func decodeDocument(raw json.RawMessage, max int) (DocumentDefinition, error) {
 	var d DocumentDefinition
 	if len(raw) == 0 || len(raw) > max {
 		return d, ErrInvalid
+	}
+	if _, err := documentJSON(raw); err != nil {
+		return d, err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -44,8 +48,8 @@ func decodeDocument(raw json.RawMessage, max int) (DocumentDefinition, error) {
 }
 
 // ProjectDocument supports one explicit historical format. Version-one sections
-// are ordered stacks; their titles become inert heading widgets and their
-// children keep section membership. The input is never mutated or re-persisted.
+// are ordered stacks; titles become inert heading widgets and children retain
+// section membership. The input is never mutated or re-persisted.
 func ProjectDocument(raw json.RawMessage, kind string, limits config.ReportingComposition) (DocumentDefinition, error) {
 	d, err := decodeDocument(raw, limits.MaxDefinitionBytes)
 	if err != nil {
@@ -68,8 +72,7 @@ func ProjectDocument(raw json.RawMessage, kind string, limits config.ReportingCo
 				row++
 			}
 			for _, original := range section.Widgets {
-				if original.Grid != (GridCell{}) || original.Section != "" {
-					// Do not reinterpret an unknown historical grid convention.
+				if original.Grid != (GridCell{}) || original.Section != "" || len(d.Widgets) >= limits.MaxWidgets {
 					return DocumentDefinition{}, ErrInvalid
 				}
 				w := clone(original)
@@ -118,12 +121,10 @@ func safeText(w TextWidget, max int) bool {
 	if w.Format == "plain" {
 		return true
 	}
-	// This is intentionally an inert Markdown subset, not an HTML sanitizer
-	// based on a blacklist of script names. Raw HTML, link/image constructs,
-	// entity-obfuscated markup and autolinks are outside the accepted grammar.
+	// An inert Markdown subset, not a blacklist of script names. Raw HTML,
+	// links, images, entity-obfuscated markup and autolinks are excluded.
 	// Emphasis, headings, lists and code remain ordinary retained source text.
-	decoded := html.UnescapeString(w.Text)
-	return !strings.ContainsAny(decoded, "<>[]")
+	return !strings.ContainsAny(html.UnescapeString(w.Text), "<>[]")
 }
 
 func validPresentation(p Presentation) bool {
@@ -150,7 +151,7 @@ func validWidget(w Widget, limits config.ReportingComposition) bool {
 			return false
 		}
 		q := w.Query
-		if !identity.Identifier(q.Context) || len(q.Topics) == 0 || len(q.Topics) > 8 {
+		if !identity.Identifier(q.Context) || len(q.Topics) == 0 || len(q.Topics) > 4 {
 			return false
 		}
 		seen := map[string]bool{}
@@ -200,9 +201,8 @@ func validWidget(w Widget, limits config.ReportingComposition) bool {
 	}
 }
 
-// ValidateDocument validates authored values and bounded tagged unions. It does
-// not claim reference existence or grant source access; the service and database
-// perform those checks separately. emptyPages is used only by a redacted reader.
+// ValidateDocument checks bounded tagged unions, not reference existence or
+// source authority. emptyPages is reserved for an authorized redacted read.
 func ValidateDocument(kind string, d DocumentDefinition, limits config.ReportingComposition, emptyPages bool) error {
 	if limits.Validate() != nil || !documentKind(kind) || d.SchemaVersion != DocumentVersion || len(d.Sections) != 0 || !validDocumentMetadata(d) || !slices.Contains([]string{"", "fail_closed", "allow_partial"}, d.PartialFailure) {
 		return ErrInvalid
