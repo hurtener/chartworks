@@ -70,3 +70,34 @@ func TestFrozenOutputReplayRejectsChangedOrCorruptCheckpoint(t *testing.T) {
 		})
 	}
 }
+
+func TestFrozenNarrativeCheckpointPreservesReservation(t *testing.T) {
+	m := reporting.RunManifest{Outputs: []reporting.Output{{ID: "summary", Kind: "narrative", Narrative: &reporting.Narrative{MaxCalls: 1, MaxTokens: 256}}}}
+	started := reporting.RetainedOutput{ID: "summary", Kind: "narrative", State: "indeterminate", Code: "narrative_indeterminate", ReservedCalls: 1, ReservedTokens: 256}
+	prior, err := json.Marshal(started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := started
+	finished.State, finished.Code = "failed", "narrative_failed"
+	finished.ReservedTokens = 128
+	finished.Digest = finished.ContentDigest()
+	for _, tc := range []struct {
+		name   string
+		kind   string
+		row    frozenOutputRow
+		output reporting.RetainedOutput
+		want   error
+	}{
+		{"duplicate reservation", "output_start", frozenOutputRow{state: "indeterminate", payload: prior}, started, store.ErrConflict},
+		{"changed paid reservation", "output", frozenOutputRow{state: "indeterminate", payload: prior}, finished, store.ErrInvalid},
+		{"completion without reservation", "output", frozenOutputRow{err: pgx.ErrNoRows}, finished, store.ErrConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := frozenOutputTx(context.Background(), retainedOutputTx{row: tc.row}, identity.Envelope{}, frozenHead{view: reporting.RunView{State: "normalized"}}, reporting.RunWrite{Manifest: m, Output: &tc.output, Kind: tc.kind})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("narrative reservation %v; want %v", err, tc.want)
+			}
+		})
+	}
+}
