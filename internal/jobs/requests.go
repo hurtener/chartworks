@@ -71,15 +71,25 @@ type RequestTask struct {
 	Created      time.Time    `json:"created_at"`
 	Expires      time.Time    `json:"expires_at"`
 	ManifestHash string       `json:"manifest_hash"`
+	Dispatch     *Job         `json:"dispatch,omitempty"`
 }
 
 // Digest excludes mutable lifecycle state and includes exact admitted identity.
 func (t RequestTask) Digest() string {
+	if t.Dispatch != nil {
+		return t.Dispatch.Digest()
+	}
 	return requestDigest([]any{"chartworks-request-operation-v1", t.ID, t.Tenant, t.Actor, t.Session, t.Input, t.MaxAttempts, t.Created.UTC(), t.Expires.UTC()})
 }
 
 // Valid rejects incomplete or tampered retained manifests.
 func (t RequestTask) Valid() bool {
+	if t.Dispatch != nil {
+		j := t.Dispatch
+		if !j.Valid() || j.Kind != PipelineKind || t.ID != j.ID || t.Tenant != j.Tenant || t.Actor != j.Executor || t.Session != j.ID || t.MaxAttempts != j.MaxAttempts || t.Input != (RequestInput{Kind: PipelineKind, Target: j.Pipeline.ID, InputHash: j.Pipeline.Digest}) {
+			return false
+		}
+	}
 	return identity.Identifier(t.Tenant) && identity.Identifier(t.ID) && identity.Identifier(t.Actor) && identity.Identifier(t.Session) && t.Input.Valid() &&
 		t.MaxAttempts >= 1 && t.MaxAttempts <= 8 && t.Attempts >= 0 && t.Attempts <= t.MaxAttempts && !t.Created.IsZero() && t.Expires.After(t.Created) && t.ManifestHash == t.Digest()
 }

@@ -17,6 +17,7 @@ import (
 // Service applies signed authority at every API/in-process call and owns joined worker lifetimes.
 type Service struct {
 	repo      Repository
+	pipeline  PipelineExecutor
 	authority Authority
 	limits    Limits
 	running   atomic.Bool
@@ -51,7 +52,7 @@ func (s *Service) report(stage string, err error) {
 		s.observe(stage)
 	}
 }
-func (s *Service) admission(e identity.Envelope, request Submission) (store.Scope, error) {
+func (s *Service) admission(ctx context.Context, e identity.Envelope, request Submission) (store.Scope, error) {
 	if !s.DispatchEnabled() {
 		return store.Scope{}, ErrTransient
 	}
@@ -61,12 +62,21 @@ func (s *Service) admission(e identity.Envelope, request Submission) (store.Scop
 	if err := access.Require(e, "scheduling.write", access.Tenant(e, "write"), access.Resource{Tenant: e.Tenant(), Kind: "execution_binding", Permission: "use", ID: request.BindingID}); err != nil {
 		return store.Scope{}, err
 	}
+	if request.Kind == PipelineKind {
+		if s.pipeline == nil {
+			return store.Scope{}, ErrTransient
+		}
+		if err := s.pipeline.ValidateScheduledPipeline(ctx, e, *request.Pipeline); err != nil {
+			return store.Scope{}, err
+		}
+		return store.NewScope(e.Tenant(), e.User())
+	}
 	return access.StoreScope(e, "ops.maintain", "erase")
 }
 
 // Submit authorizes a fixed target and durably admits or replays its logical request key.
 func (s *Service) Submit(ctx context.Context, e identity.Envelope, key string, request Submission) (Job, error) {
-	scope, err := s.admission(e, request)
+	scope, err := s.admission(ctx, e, request)
 	if err != nil {
 		return Job{}, err
 	}
@@ -121,7 +131,7 @@ func (s *Service) CreateSchedule(ctx context.Context, e identity.Envelope, key s
 	if request.Validate() != nil || !identity.Identifier(key) {
 		return Schedule{}, ErrInvalid
 	}
-	scope, err := s.admission(e, request.Target)
+	scope, err := s.admission(ctx, e, request.Target)
 	if err != nil {
 		return Schedule{}, err
 	}
@@ -154,7 +164,7 @@ func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id strin
 		if err != nil {
 			return Schedule{}, err
 		}
-		if _, err = s.admission(e, current.Request.Target); err != nil {
+		if _, err = s.admission(ctx, e, current.Request.Target); err != nil {
 			return Schedule{}, err
 		}
 	}
@@ -174,7 +184,7 @@ func (s *Service) Fire(ctx context.Context, e identity.Envelope, id, key string)
 	if err != nil {
 		return Job{}, err
 	}
-	if _, err = s.admission(e, schedule.Request.Target); err != nil {
+	if _, err = s.admission(ctx, e, schedule.Request.Target); err != nil {
 		return Job{}, err
 	}
 	if !identity.Identifier(key) {
@@ -270,7 +280,15 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	if err == nil {
 		effect, stop := context.WithDeadline(work, envelope.Envelope().Deadline())
-		_, err = s.repo.CompleteJob(effect, lease, envelope)
+		if lease.Job.Kind == PipelineKind {
+			if s.pipeline == nil {
+				err = ErrAuthority
+			} else {
+				err = s.pipeline.ExecuteScheduledPipeline(effect, lease, envelope)
+			}
+		} else {
+			_, err = s.repo.CompleteJob(effect, lease, envelope)
+		}
 		stop()
 	}
 	cancel()

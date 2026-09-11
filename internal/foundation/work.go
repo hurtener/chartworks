@@ -100,14 +100,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			w.close()
 			return nil, err
 		}
-		queue, err := jobs.New(db, provider, limits, func(stage string) {
-			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
-		})
-		if err != nil {
-			w.close()
-			return nil, err
-		}
-		w.queue = queue
+
 	}
 	w.sourceService, err = sources.New(db, v.Sources, lookup)
 	if err != nil {
@@ -140,6 +133,21 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+	if v.Jobs.Enabled {
+		observe := func(stage string) {
+			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
+		}
+		if w.pipelines.Enabled() {
+			w.queue, err = jobs.NewWithPipeline(db, w.broker, jobLimits(v.Jobs), w.pipelines, observe)
+		} else {
+			w.queue, err = jobs.New(db, w.broker, jobLimits(v.Jobs), observe)
+		}
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
+
 	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
 	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
 	w.handler = sourceapi.EngineeringHandler(verifier, w.engineering, w.handler)

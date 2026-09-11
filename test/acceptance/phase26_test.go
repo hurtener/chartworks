@@ -413,6 +413,7 @@ func TestPhase26(t *testing.T) {
 
 	t.Run("AC06", func(t *testing.T) {
 		t.Run("reviewed_topic", testPhase26TopicApply)
+		t.Run("scheduled_pipeline", testPhase26ScheduledPipeline)
 		f := newPhase26Fixture(t)
 		approved := f.approve(t, f.propose(t))
 		applyOnly := slices.DeleteFunc(phase26Scopes(), func(scope string) bool { return scope == "engineering.pipeline.run" })
