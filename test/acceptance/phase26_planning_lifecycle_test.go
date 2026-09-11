@@ -460,7 +460,7 @@ func TestProposalReadRejectsCorruptEffectEvidence(t *testing.T) {
 	p := f.propose(t)
 	ctx := context.Background()
 	raw := support.Raw(t, f.dsn)
-	for _, body := range []string{`{}`, `{"target":"pipeline","observed":42}`} {
+	for _, body := range []string{`{}`, `{"target":"pipeline","observed_at":42}`} {
 		if _, err := raw.Exec(ctx, `INSERT INTO chartworks.engineering_proposal_effects(tenant_id,proposal_id,revision,kind,target_id,evidence,observed_order) VALUES($1,$2,$3,'pipeline_draft','pipeline',$4::jsonb,0)`, f.author.Tenant(), p.ID, p.Revision, body); err != nil {
 			t.Fatal(err)
 		}
@@ -474,5 +474,30 @@ func TestProposalReadRejectsCorruptEffectEvidence(t *testing.T) {
 	current, err := f.auto.Get(ctx, f.author, p.ID)
 	if err != nil || current.Digest != p.Digest || current.Version != p.Version {
 		t.Fatal("repaired evidence changed immutable material", current, err)
+	}
+}
+
+func TestProposalReadBoundsRetainedEffects(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	p := f.propose(t)
+	ctx := context.Background()
+	raw := support.Raw(t, f.dsn)
+	insert := func(index int) {
+		t.Helper()
+		target := fmt.Sprintf("synthetic-output-%d", index)
+		if _, err := raw.Exec(ctx, `INSERT INTO chartworks.engineering_proposal_effects(tenant_id,proposal_id,revision,kind,target_id,evidence,observed_order) VALUES($1,$2,$3,'managed_step',$4,jsonb_build_object('kind','managed_step','target',$4::text,'state','checked','observed_at',clock_timestamp()),3)`, f.author.Tenant(), p.ID, p.Revision, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index := range 40 {
+		insert(index)
+	}
+	bounded, err := f.auto.Get(ctx, f.author, p.ID)
+	if err != nil || len(bounded.Effects) != 40 {
+		t.Fatal("exact receipt limit", len(bounded.Effects), err)
+	}
+	insert(40)
+	if _, err := f.auto.Get(ctx, f.author, p.ID); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("oversized receipt set was exposed", err)
 	}
 }
