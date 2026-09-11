@@ -5,6 +5,9 @@ on:
     paths: [.github/workflows/phase-29-source.yml]
 permissions:
   contents: read
+concurrency:
+  group: phase-29-source-transfer
+  cancel-in-progress: true
 jobs:
   snapshot:
     runs-on: ubuntu-24.04
@@ -30,7 +33,15 @@ jobs:
           git rev-parse HEAD > /tmp/cw-transfer/chartworks-source.sha
           tar -czf /tmp/cw-transfer/toolchain.tar.gz -C "$(go env GOROOT)" .
           tar -czf /tmp/cw-transfer/modules.tar.gz -C "$(go env GOMODCACHE)" .
-          tar -czf /tmp/cw-transfer/native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_sqlparser.a
+          tar -czf /tmp/cw-transfer/native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          docker pull pgvector/pgvector:0.8.2-pg17
+          fixture=$(docker create pgvector/pgvector:0.8.2-pg17)
+          mkdir -p /tmp/cw-pg/usr/lib /tmp/cw-pg/usr/share
+          docker cp "$fixture":/usr/lib/postgresql /tmp/cw-pg/usr/lib/
+          docker cp "$fixture":/usr/share/postgresql /tmp/cw-pg/usr/share/
+          docker cp "$fixture":/usr/lib/x86_64-linux-gnu /tmp/cw-pg/usr/lib/
+          docker rm "$fixture"
+          tar -czf /tmp/cw-transfer/postgres.tar.gz -C /tmp/cw-pg .
       - uses: actions/upload-artifact@v4
         with:
           name: phase-29-offline
