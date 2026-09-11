@@ -5,46 +5,50 @@ on:
     paths: [.github/workflows/phase-29-source.yml]
 permissions:
   contents: read
-concurrency:
-  group: phase-29-source-transfer
-  cancel-in-progress: true
+  actions: read
 jobs:
-  snapshot:
+  split:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    env:
-      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
-      GOFLAGS: -p=2
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-      - name: Build the repository's pinned native dependency
-        run: bash scripts/build-bruin.sh
-      - name: Download locked module dependencies
-        run: go mod download
-      - name: Archive tracked source and offline development dependencies
-        run: |
-          mkdir -p /tmp/cw-transfer
-          git archive --format=tar.gz HEAD > /tmp/cw-transfer/chartworks-source.tar.gz
-          git rev-parse HEAD > /tmp/cw-transfer/chartworks-source.sha
-          tar -czf /tmp/cw-transfer/toolchain.tar.gz -C "$(go env GOROOT)" .
-          tar -czf /tmp/cw-transfer/modules.tar.gz -C "$(go env GOMODCACHE)" .
-          tar -czf /tmp/cw-transfer/native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
-          docker pull pgvector/pgvector:0.8.2-pg17
-          fixture=$(docker create pgvector/pgvector:0.8.2-pg17)
-          mkdir -p /tmp/cw-pg/usr/lib /tmp/cw-pg/usr/share
-          docker cp "$fixture":/usr/lib/postgresql /tmp/cw-pg/usr/lib/
-          docker cp "$fixture":/usr/share/postgresql /tmp/cw-pg/usr/share/
-          docker cp "$fixture":/usr/lib/x86_64-linux-gnu /tmp/cw-pg/usr/lib/
-          docker rm "$fixture"
-          tar -czf /tmp/cw-transfer/postgres.tar.gz -C /tmp/cw-pg .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: phase-29-offline
+          run-id: 34644121455
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: /tmp/cw-transfer
+      - name: Split the exact archive without modifying source
+        run: |
+          tar -cf /tmp/offline.tar -C /tmp/cw-transfer .
+          split -b 350M /tmp/offline.tar /tmp/offline.part-
+          sha256sum /tmp/offline.tar /tmp/offline.part-*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-offline-aa
+          path: /tmp/offline.part-aa
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-offline-ab
+          path: /tmp/offline.part-ab
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-offline-ac
+          path: /tmp/offline.part-ac
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-offline-ad
+          path: /tmp/offline.part-ad
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-offline-ae
+          path: /tmp/offline.part-ae
           compression-level: 0
           retention-days: 1
