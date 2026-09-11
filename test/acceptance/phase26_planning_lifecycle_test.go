@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
 )
 
@@ -152,4 +154,84 @@ func TestProposalAuditFailureRollsBackMaterialAndReview(t *testing.T) {
 		t.Fatal("retry after audit recovery", revised, err)
 	}
 	f.approve(t, revised)
+}
+
+func TestProposalCapacityPreservesExistingIdentity(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	ctx := context.Background()
+	limits := f.limits
+	limits.MaxProposals = 1
+	bounded, err := engineering.NewAutopilot(f.db, f.pipelines, limits, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(bounded.Close)
+	p, err := bounded.Propose(ctx, f.author, f.goal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := f.approve(t, p)
+	f.model.mu.Lock()
+	calls := len(f.model.blindInputs)
+	f.model.mu.Unlock()
+	retry, err := bounded.Propose(ctx, f.author, f.goal)
+	if err != nil || retry.Version != approved.Version || retry.Digest != approved.Digest || retry.State != "approved" {
+		t.Fatal("idempotent request lost review", retry, err)
+	}
+	changed := f.goal
+	changed.Goal = "A different intention must not reuse this proposal identity."
+	if _, err := bounded.Propose(ctx, f.author, changed); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("identity collision", err)
+	}
+	f.model.mu.Lock()
+	after := len(f.model.blindInputs)
+	f.model.mu.Unlock()
+	if after != calls {
+		t.Fatal("existing proposal invoked planning again", calls, after)
+	}
+	changed.ID = "capacity-second"
+	changed.Pipeline = "capacity-second-pipeline"
+	if _, err := bounded.Propose(ctx, f.author, changed); !errors.Is(err, engineering.ErrLimit) {
+		t.Fatal("proposal capacity", err)
+	}
+	if _, err := bounded.Get(ctx, f.author, changed.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("over-capacity proposal persisted", err)
+	}
+	retained, err := bounded.Get(ctx, f.author, p.ID)
+	if err != nil || retained.Digest != approved.Digest || retained.Version != approved.Version {
+		t.Fatal("capacity rejection changed existing proposal", retained, err)
+	}
+}
+
+func TestProposalEditsCannotRedirectReviewedTarget(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	p := f.approve(t, f.propose(t))
+	for _, tc := range []struct {
+		name   string
+		mutate func(*engineering.AutopilotEditRequest)
+	}{
+		{"pipeline identity", func(r *engineering.AutopilotEditRequest) { r.Definition.ID = "another-pipeline" }},
+		{"connection", func(r *engineering.AutopilotEditRequest) { r.Definition.Connection = "another-connection" }},
+		{"name", func(r *engineering.AutopilotEditRequest) { r.Definition.Name = "Another purpose" }},
+		{"missing stage", func(r *engineering.AutopilotEditRequest) { r.Definition.Steps = nil }},
+		{"stage identity", func(r *engineering.AutopilotEditRequest) { r.Definition.Steps[0].ID = "another-output" }},
+		{"source", func(r *engineering.AutopilotEditRequest) { r.Definition.Steps[0].Source = "another-source" }},
+		{"context", func(r *engineering.AutopilotEditRequest) { r.Definition.Steps[0].Context = "another-context" }},
+		{"unreviewed stage dependency", func(r *engineering.AutopilotEditRequest) { r.Definition.Steps[0].FromSteps = []string{"other"} }},
+		{"missing rationale", func(r *engineering.AutopilotEditRequest) { r.Reason = "" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			definition := p.Material.Pipeline
+			definition.Steps = append([]engineering.PipelineStep(nil), definition.Steps...)
+			request := engineering.AutopilotEditRequest{ExpectedVersion: p.Version, Definition: definition, Reason: "Synthetic redirected edit."}
+			tc.mutate(&request)
+			if _, err := f.client.EditEngineeringProposal(context.Background(), p.ID, request); err == nil {
+				t.Fatal("redirected edit accepted")
+			}
+			retained, err := f.auto.Get(context.Background(), f.author, p.ID)
+			if err != nil || retained.Version != p.Version || retained.Digest != p.Digest || retained.State != "approved" {
+				t.Fatal("rejected edit changed reviewed proposal", retained, err)
+			}
+		})
+	}
 }
