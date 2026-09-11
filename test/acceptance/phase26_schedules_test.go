@@ -226,4 +226,11 @@ func testPhase26ReviewedSchedule(t *testing.T, f *phase26Fixture, queue *jobs.Se
 	if err != nil || retained.ManifestHash != accepted.ManifestHash || retained.Pipeline.Version != 2 || retained.ScheduleRevision != 1 {
 		t.Fatal("amendment rewrote accepted work", err)
 	}
+	if err = queue.RunOnce(ctx); err != nil {
+		t.Fatal("accepted prior revision could not execute after replacement", err)
+	}
+	completed, err := queue.Get(ctx, author, accepted.ID)
+	if err != nil || completed.State != "succeeded" || completed.Pipeline.Version != 2 || completed.ManifestHash != accepted.ManifestHash {
+		t.Fatal("replacement changed execution of accepted occurrence", completed.State, err)
+	}
 }
