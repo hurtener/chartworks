@@ -57,8 +57,19 @@ jobs:
           if test -n "$files"; then gofmt -d $files; fi
       - name: Reserve native build disk
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+      - uses: actions/cache/restore@v4
+        id: rust-cache
+        with:
+          path: /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target
+          key: phase29-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-bruin.sh') }}
       - name: Build the pinned native parser and runner
+        id: native
         run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: always() && steps.native.outcome == 'success' && steps.rust-cache.outputs.cache-hit != 'true'
+        with:
+          path: /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
       - name: Exact-source unit and PostgreSQL regression tests
         run: |
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
@@ -70,5 +81,7 @@ jobs:
         run: |
           files=$(find internal test -name '*documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go' -o -name 'compositions*.go' -o -name 'saved_question*.go')
           if test -n "$files"; then test -z "$(gofmt -l $files)"; fi
+          test ! -f .github/workflows/phase-29-edit.yml
+          test ! -f .github/workflows/phase-29-format.yml
           git diff --exit-code
           test -z "$(git ls-files --others --exclude-standard)"
