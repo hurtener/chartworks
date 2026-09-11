@@ -381,3 +381,33 @@ func TestProposalEvidenceBudgetStopsBeforeCatalogModelCall(t *testing.T) {
 		t.Fatal("over-budget material persisted", err)
 	}
 }
+
+func TestDisabledAutopilotPreservesReadOnlyProposalAccess(t *testing.T) {
+	f := newPhase26PlanningFixture(t)
+	p := f.propose(t)
+	limits := f.limits
+	limits.Enabled = false
+	service, err := engineering.NewAutopilot(f.db, f.pipelines, limits, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(service.Close)
+	before := f.model.fixture.requests.Load()
+	retained, err := service.Get(context.Background(), f.author, p.ID)
+	if err != nil || retained.Digest != p.Digest {
+		t.Fatal("disabled planner lost retained proposal", retained, err)
+	}
+	if _, err := service.Propose(context.Background(), f.author, f.goal); !errors.Is(err, store.ErrUnavailable) {
+		t.Fatal("disabled planner accepted mutation", err)
+	}
+	if _, err := service.Edit(context.Background(), f.author, p.ID, engineering.AutopilotEditRequest{ExpectedVersion: p.Version, Definition: p.Material.Pipeline, Reason: "Disabled planner edit."}); !errors.Is(err, store.ErrUnavailable) {
+		t.Fatal("disabled planner accepted edit", err)
+	}
+	service.Close()
+	if _, err := service.Get(context.Background(), f.author, p.ID); !errors.Is(err, store.ErrUnavailable) {
+		t.Fatal("closed service admitted a request", err)
+	}
+	if f.model.fixture.requests.Load() != before {
+		t.Fatal("retained access or disabled mutation invoked model")
+	}
+}
