@@ -121,6 +121,11 @@ func newPhase26Fixture(t *testing.T) *phase26Fixture {
 	provider := newGatewayFixture(t, nil)
 	model := &phase26Model{Engine: provider.engine, fixture: provider}
 	f := newPipelineFixture(t, model, nil)
+	return phase26FixtureFromPipeline(t, model, f)
+}
+
+func phase26FixtureFromPipeline(t *testing.T, model *phase26Model, f *pipelineFixture) *phase26Fixture {
+	t.Helper()
 	source := f.create(t, "p26-authorized-source")
 	limits := config.DefaultAutopilot()
 	limits.Enabled, limits.ModelVersion = true, "reviewed-model-v1"
