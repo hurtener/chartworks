@@ -127,6 +127,12 @@ func (s *Delivery) View(ctx context.Context, e identity.Envelope, input Reportin
 		description, descErr := s.Describe(ctx, e, ReportingDescribeRequest{Target: out.Summary.Target, Locale: out.Locale})
 		if descErr == nil {
 			out.Filters = description.Filters
+			if out.Locale == "" {
+				out.Locale = description.Resource.Locale
+			}
+			if out.Timezone == "" {
+				out.Timezone = description.Timezone
+			}
 		} else if !errors.Is(descErr, access.ErrForbidden) && !errors.Is(descErr, access.ErrNotFound) && !errors.Is(descErr, store.ErrNotFound) && !errors.Is(descErr, ErrStale) {
 			return ReportingViewResult{}, descErr
 		}
@@ -282,7 +288,7 @@ func (s *Delivery) queryTable(ctx context.Context, out *ReportingViewResult, ret
 	if len(page.Rows) == 0 && page.Outcome == "succeeded" {
 		page.Outcome = "empty"
 	}
-	limits := charts.DefaultLimits()
+	limits := charts.Defaults()
 	limits.MaxRows = s.limits.MaxRows
 	limits.MaxBytes = s.limits.MaxMessageBytes
 	data, err := chartdata.FromReadResult(ctx, page, limits)

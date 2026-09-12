@@ -31,6 +31,9 @@ func NewDelivery(blocks *Service, runs *Runs, documents *Documents, compositions
 	return &Delivery{blocks: blocks, runs: runs, documents: documents, compositions: compositions, catalog: catalog, limits: limits}, nil
 }
 
+// CanExecute reports actual configured admission support, not user authority.
+func (s *Delivery) CanExecute() bool { return s != nil && s.blocks.CanValidate() }
+
 func deliveryKind(kind string) bool { return kind == "block" || documentKind(kind) }
 func validDeliveryTarget(t DeliveryTarget) bool {
 	return deliveryKind(t.Kind) && identity.Identifier(t.ID) && t.Revision >= 0

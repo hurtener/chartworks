@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strings"
 	"unicode/utf8"
@@ -53,7 +54,7 @@ func (a AppResource) valid() bool {
 
 func (a AppResource) meta() mcp.Meta {
 	return mcp.Meta{"ui": map[string]any{
-		"csp": map[string]any{"connectDomains": []string{}, "resourceDomains": []string{}, "frameDomains": []string{}, "baseUriDomains": []string{}},
+		"csp":         map[string]any{"connectDomains": []string{}, "resourceDomains": []string{}, "frameDomains": []string{}, "baseUriDomains": []string{}},
 		"permissions": map[string]any{}, "prefersBorder": true,
 	}}
 }
@@ -138,5 +139,10 @@ func (s *Server) readAppResource(ctx context.Context, uri string) (*mcp.ReadReso
 	if len(a.html)+4096 > s.settings.MaxResponseBytes {
 		return nil, protocolError(-32000, "limit_exceeded")
 	}
-	return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: uri, MIMEType: AppMIME, Text: a.html, Meta: a.meta()}}}, nil
+	out := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: uri, MIMEType: AppMIME, Text: a.html, Meta: a.meta()}}}
+	wire, encodeErr := json.Marshal(out)
+	if encodeErr != nil || len(wire)+512 > s.settings.MaxResponseBytes {
+		return nil, protocolError(-32000, "limit_exceeded")
+	}
+	return out, nil
 }

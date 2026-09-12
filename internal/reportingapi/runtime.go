@@ -193,7 +193,10 @@ func runtimeInt(q url.Values, key string, fallback, min, max int) (int, error) {
 
 // RuntimeRegistry includes retained reads even while execution providers are disabled.
 func RuntimeRegistry(execution, planning bool) (*api.Registry, error) {
-	entries := runtimeEntries(nil, nil, execution, planning)
+	return registryForEntries(runtimeEntries(nil, nil, execution, planning))
+}
+
+func registryForEntries(entries []runtimeEndpoint) (*api.Registry, error) {
 	defs := make([]api.Definition, 0, len(entries))
 	for _, entry := range entries {
 		if entry.schemaErr != nil {
@@ -209,11 +212,17 @@ func RuntimeHandler(verifier *auth.Verifier, runs *reporting.Runs, proposals *en
 	if verifier == nil || runs == nil || proposals == nil || next == nil {
 		return http.NotFoundHandler()
 	}
-	registry, err := RuntimeRegistry(execution, planning)
+	return serveRuntimeEntries(verifier, runtimeEntries(runs, proposals, execution, planning), next)
+}
+
+func serveRuntimeEntries(verifier *auth.Verifier, entries []runtimeEndpoint, next http.Handler) http.Handler {
+	if verifier == nil || next == nil {
+		return http.NotFoundHandler()
+	}
+	registry, err := registryForEntries(entries)
 	if err != nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { failure(w, err) })
 	}
-	entries := runtimeEntries(runs, proposals, execution, planning)
 	calls := map[string]runtimeEndpoint{}
 	for _, entry := range entries {
 		calls[entry.definition.ID] = entry
@@ -267,6 +276,10 @@ func RuntimeHandler(verifier *auth.Verifier, runs *reporting.Runs, proposals *en
 		}
 		if err = r.Context().Err(); err != nil {
 			failure(w, err)
+			return
+		}
+		if !e.Valid() {
+			failure(w, access.ErrUnauthenticated)
 			return
 		}
 		encoded, err := json.Marshal(out)

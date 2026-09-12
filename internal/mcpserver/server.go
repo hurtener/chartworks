@@ -66,6 +66,9 @@ func New(verifier *auth.Verifier, registry *Registry, settings config.MCP, origi
 			}
 		}
 	}
+	for _, app := range registry.apps() {
+		protocol.AddResource(app.resource(), s.readResource)
+	}
 	protocol.AddReceivingMiddleware(s.middleware)
 	// Chartworks' mandatory exact host/origin gate also works behind an explicitly
 	// configured proxy; it is stricter than the SDK's automatic loopback heuristic
@@ -154,7 +157,9 @@ func (s *Server) middleware(next mcp.MethodHandler) mcp.MethodHandler {
 				return nil, protocolError(jsonrpc.CodeInvalidParams, "invalid_request")
 			}
 			if _, _, ok = s.registry.resource(p.URI); !ok {
-				return nil, protocolError(jsonrpc.CodeInvalidParams, "not_found")
+				if _, exists := s.registry.app(p.URI); !exists {
+					return nil, protocolError(jsonrpc.CodeInvalidParams, "not_found")
+				}
 			}
 		case "initialize", "notifications/initialized", "ping":
 		default:
@@ -183,6 +188,11 @@ func (s *Server) listResources(e identity.Envelope) *mcp.ListResourcesResult {
 			out.Resources = append(out.Resources, &mcp.Resource{Name: b.name, URI: b.resource, MIMEType: "application/json", Description: b.description})
 		}
 	}
+	for _, app := range s.registry.apps() {
+		if s.registry.canReadApp(e, app.uri) {
+			out.Resources = append(out.Resources, app.resource())
+		}
+	}
 	return out
 }
 func (s *Server) listTemplates(e identity.Envelope) *mcp.ListResourceTemplatesResult {
@@ -195,6 +205,9 @@ func (s *Server) listTemplates(e identity.Envelope) *mcp.ListResourceTemplatesRe
 	return out
 }
 func (s *Server) readResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	if _, exists := s.registry.app(req.Params.URI); exists {
+		return s.readAppResource(ctx, req.Params.URI)
+	}
 	b, args, ok := s.registry.resource(req.Params.URI)
 	if !ok {
 		return nil, protocolError(jsonrpc.CodeInvalidParams, "not_found")
