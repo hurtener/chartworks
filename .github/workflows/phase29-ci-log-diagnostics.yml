@@ -19,7 +19,7 @@ jobs:
           set -euo pipefail
           for job in 103592214249 103592219420; do
             gh api "repos/hurtener/chartworks/actions/jobs/$job" > "$RUNNER_TEMP/job-$job.json"
-            gh api "repos/hurtener/chartworks/actions/jobs/$job/logs" > "$RUNNER_TEMP/job-$job.log"
+            gh api --allow-escape-sequences "repos/hurtener/chartworks/actions/jobs/$job/logs" > "$RUNNER_TEMP/job-$job.log"
           done
           python3 - <<'PY'
           import datetime
@@ -48,8 +48,8 @@ jobs:
                           continue
                       if start <= stamp <= end:
                           selected.append(re.sub(r'\x1b\[[0-9;]*m', '', line)[:800])
-                  # Escape workflow-command syntax in untrusted log text; never
-                  # interpret log content as shell, Python, or Actions commands.
+                  # Escaped JSON neutralizes workflow commands and terminal
+                  # escapes. Downloaded log bytes never become executable code.
                   print(json.dumps({'job': job, 'step': step['name'],
                                     'total_lines': len(selected),
                                     'last_lines': selected[-90:]}, ensure_ascii=True))
