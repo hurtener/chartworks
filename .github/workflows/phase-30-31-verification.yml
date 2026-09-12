@@ -71,12 +71,14 @@ jobs:
         run: |
           set -o pipefail
           go test -race -count=1 -v -timeout=20m ./test/acceptance -run '^TestPhase31$' 2>&1 | tee /tmp/phase31.log
-      - name: Existing reporting, configuration and MCP regressions
+      - name: Existing reporting, queue, configuration and MCP regressions
         if: always()
-        run: go test -race -count=1 -timeout=10m ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
-      - name: Formatting diagnostics without editing source
+        run: go test -race -count=1 -timeout=10m ./internal/jobs ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
+      - name: Formatting and source are unchanged
         if: always()
-        run: git ls-files '*.go' | xargs gofmt -l
+        run: |
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          git diff --exit-code
       - uses: actions/upload-artifact@v4
         if: always()
         with:
