@@ -126,7 +126,12 @@ func (s *Delivery) View(ctx context.Context, e identity.Envelope, input Reportin
 		// Optional business-filter descriptions never expand artifact permission.
 		description, descErr := s.Describe(ctx, e, ReportingDescribeRequest{Target: out.Summary.Target, Locale: out.Locale})
 		if descErr == nil {
-			out.Filters = description.Filters
+			out.Filters = []ViewerFilter{}
+			for _, filter := range description.Filters {
+				if out.Selection.Kind == "block" || filter.Page == out.Selection.Page {
+					out.Filters = append(out.Filters, filter)
+				}
+			}
 			if out.Locale == "" {
 				out.Locale = description.Resource.Locale
 			}
@@ -231,14 +236,14 @@ func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out
 		return nil
 	}
 	out.Trust, out.Observed = clone(selected.Trust), clone(selected.Observed)
-	if v.State != "succeeded" && v.State != "partial" {
+	if v.State != "completed" && v.State != "partial" {
 		return nil
 	}
 	payload, err := s.compositions.Widget(ctx, e, v.ID, out.Selection.Page, out.Selection.Widget)
 	if err != nil {
 		return err
 	}
-	if payload.State != "succeeded" {
+	if payload.State != "completed" {
 		out.Output = &ViewerOutput{ID: selected.ID, Kind: selected.Kind, State: payload.State, Code: payload.Code}
 		return nil
 	}

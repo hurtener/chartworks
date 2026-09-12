@@ -138,7 +138,7 @@ try{
     await evaluate(`${body}.querySelector('select').focus()`);await rpc('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await rpc('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
     await check(`${doc}.activeElement.tagName!=='BODY'`,'keyboard navigation');
     await evaluate(`context({theme:'light',locale:'en-US'});show(fixture.view)`);await waitTitle(fixtures.view.summary.target.id);
-    await evaluate(`const d=Array.from(${body}.querySelectorAll('details')).find(d=>d.textContent.includes('Run with different filters'));d.open=true;const input=d.querySelector('input[type=text]');input.value='2';input.dispatchEvent(new Event('input',{bubbles:true}));`);
+    await evaluate(`const d=Array.from(${body}.querySelectorAll('details')).find(d=>d.textContent.includes('Run with different filters'));d.open=true;const useDefault=d.querySelector('input[type=checkbox]');useDefault.checked=false;useDefault.dispatchEvent(new Event('change'));const input=d.querySelector('input[type=text]');input.value='2';input.dispatchEvent(new Event('input',{bubbles:true}));`);
     await check(`calls.every(c=>c.name!=='reporting_run')`,'editing a filter is not execution');
     const n=await evaluate('calls.length');await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click()`);await waitCalls(n+3);await waitTitle(fixtures.view.summary.target.id);
     await check(`calls.filter(c=>c.name==='reporting_run').length===1`,'one explicit cost-bearing invocation');
@@ -173,7 +173,7 @@ try{
   console.log(JSON.stringify({suite,passes,kinds:suite==='charts'||suite==='all'?14:undefined,engine:'Chromium actual bundled resource'}));
 }catch(e){
   try{await writeFile(join(directory,'failure.json'),JSON.stringify({message:e.message,errors:errors.slice(-10),dom:await evaluate(`${body}?.textContent`)}));}catch{}
-  console.error(e.stack||e.message);console.error(errors.slice(-6).join('').slice(-4000));process.exitCode=1;
+  console.error(e.stack||e.message);try{console.error('COMPONENT_DOM='+String(await evaluate(`${body}?.textContent`)).slice(0,6000));}catch{}console.error(errors.slice(-6).join('').slice(-4000));process.exitCode=1;
 }finally{
   if(socket)socket.close();for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('test shutdown'));}pending.clear();
   browser.kill('SIGTERM');await Promise.race([once(browser,'exit'),pause(2000)]);if(browser.exitCode===null)browser.kill('SIGKILL');

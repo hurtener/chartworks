@@ -15,6 +15,7 @@ const words = {
 const fail = code => { const e = new Error(ERRORS.has(code) ? code : 'unavailable'); e.code = e.message; return e; };
 const text = x => typeof x === 'string' ? x : '';
 const array = x => Array.isArray(x) ? x : [];
+const shorten = (value, max) => Array.from(value).slice(0,max).join('');
 const id = x => typeof x === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(x);
 const integer = (x, min, max) => Number.isSafeInteger(x) && x >= min && x <= max;
 
@@ -172,7 +173,7 @@ function renderBars(parent, c, w) {
     const attrs = horizontal ? {x:Math.min(x(q.start),x(q.end)),y:24+q.index*stride+sub,width:Math.abs(x(q.end)-x(q.start)),height:Math.max(.5,slot-2)} : {x:64+q.index*stride+sub,y:Math.min(y(q.start),y(q.end)),width:Math.max(.5,slot-2),height:Math.abs(y(q.end)-y(q.start))};
     s.append(svg('rect',{...attrs,class:'swatch-'+((stacked || grouped ? q.series : q.index)%8)},titleFor(c,q.p,w)));
   }
-  categories.forEach((name,i) => { const t = svg('text',horizontal ? {x:8,y:30+i*stride} : {x:64+i*stride,y:375}); t.textContent = name.slice(0,32); const full = svg('title'); full.textContent = name; t.append(full); s.append(t); });
+  categories.forEach((name,i) => { const t = svg('text',horizontal ? {x:8,y:30+i*stride} : {x:64+i*stride,y:375}); t.textContent = shorten(name,32); const full = svg('title'); full.textContent = name; t.append(full); s.append(t); });
   if ((stacked || grouped) && c.mapping?.options?.legend?.visible !== false) legend(parent,series);
 }
 
@@ -203,7 +204,7 @@ function renderLines(parent,c,w) {
     }
     flush(); color++;
   }
-  categories.forEach((label,i) => { if (i % Math.max(1,Math.ceil(categories.length/10)) === 0) { const t = svg('text',{x:65+i*680/Math.max(1,categories.length-1),y:380}); t.textContent = label.slice(0,22); s.append(t); } });
+  categories.forEach((label,i) => { if (i % Math.max(1,Math.ceil(categories.length/10)) === 0) { const t = svg('text',{x:65+i*680/Math.max(1,categories.length-1),y:380}); t.textContent = shorten(label,22); s.append(t); } });
   if (groups.size > 1 && c.mapping?.options?.legend?.visible !== false) legend(parent,Array.from(groups.values(),g => cellValue(g[0].series,w.null)));
 }
 
@@ -238,8 +239,8 @@ function renderHeatmap(parent,c,w) {
   for (const p of c.points) { const x=categoryKey(p.x),y=categoryKey(p.y); if(!xi.has(x)){xi.set(x,xs.length);xs.push(cellValue(p.x,w.null));} if(!yi.has(y)){yi.set(y,ys.length);ys.push(cellValue(p.y,w.null));} }
   const s=chartRoot(parent,c,w),cw=650/Math.max(1,xs.length),ch=310/Math.max(1,ys.length),magnitude=scale(c.points.map(p=>coordinate(p.value)));
   for(const p of c.points){const v=coordinate(p.value);if(v===null)continue;s.append(svg('rect',{x:120+xi.get(categoryKey(p.x))*cw,y:25+yi.get(categoryKey(p.y))*ch,width:cw-1,height:ch-1,class:v<0?'swatch-4':'swatch-0','fill-opacity':.15+.85*Math.abs(v)/magnitude},titleFor(c,p,w)));}
-  xs.forEach((label,i)=>{const t=svg('text',{x:120+i*cw,y:365});t.textContent=label.slice(0,20);s.append(t);});
-  ys.forEach((label,i)=>{const t=svg('text',{x:8,y:40+i*ch});t.textContent=label.slice(0,20);s.append(t);});
+  xs.forEach((label,i)=>{const t=svg('text',{x:120+i*cw,y:365});t.textContent=shorten(label,20);s.append(t);});
+  ys.forEach((label,i)=>{const t=svg('text',{x:8,y:40+i*ch});t.textContent=shorten(label,20);s.append(t);});
 }
 
 function renderTreemap(parent,c,w) {
@@ -248,8 +249,8 @@ function renderTreemap(parent,c,w) {
   const total=points.reduce((n,p)=>n+p.value.coordinate/magnitude,0);let left=20,color=0;
   for(const group of groups.values()){
     const weight=group.reduce((n,p)=>n+p.value.coordinate/magnitude,0),width=760*weight/total;let top=40;
-    const title=cellValue(group[0].parent,'');const label=svg('text',{x:left+5,y:25});label.textContent=title.slice(0,40);s.append(label);
-    for(const p of group){const height=350*(p.value.coordinate/magnitude)/weight;s.append(svg('rect',{x:left+2,y:top,width:Math.max(0,width-4),height:Math.max(0,height-2),class:'swatch-'+(color%8)},titleFor(c,p,w)));if(width>70&&height>30){const t=svg('text',{x:left+8,y:top+20});t.textContent=cellValue(p.category,w.null).slice(0,Math.floor(width/9));s.append(t);}top+=height;color++;}
+    const title=cellValue(group[0].parent,'');const label=svg('text',{x:left+5,y:25});label.textContent=shorten(title,40);s.append(label);
+    for(const p of group){const height=350*(p.value.coordinate/magnitude)/weight;s.append(svg('rect',{x:left+2,y:top,width:Math.max(0,width-4),height:Math.max(0,height-2),class:'swatch-'+(color%8)},titleFor(c,p,w)));if(width>70&&height>30){const t=svg('text',{x:left+8,y:top+20});t.textContent=shorten(cellValue(p.category,w.null),Math.floor(width/9));s.append(t);}top+=height;color++;}
     left+=width;
   }
 }
@@ -309,7 +310,7 @@ function selectControl(label,items,current,onchange){const l=element('label',lab
 function periodValue(raw){let p;try{p=JSON.parse(raw);}catch{throw fail('invalid_request');}boundedJSON(p,4096);const keys=new Set(['mode','unit','count','start','end','from_date','first_occurrence','dst_policy','month_policy']);if(!p||Array.isArray(p)||Object.keys(p).some(k=>!keys.has(k)))throw fail('invalid_request');return {period:p};}
 
 export class Viewer {
-  constructor(root,bridge){this.root=root;this.bridge=bridge;this.locale='en';this.value=null;this.generation=0;this.timer=null;this.closed=false;this.lastSize='';bridge.onresult=result=>this.accept(result);bridge.oninput=()=>this.loading();bridge.oncontext=context=>this.context(context);bridge.onfailure=e=>this.error(e);bridge.onclose=()=>this.close();this.observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{const box=root.getBoundingClientRect(),key=Math.ceil(box.width)+':'+Math.ceil(box.height);if(key!==this.lastSize){this.lastSize=key;bridge.resize(box.width,box.height);}}):null;this.observer?.observe(root);this.loading();}
+  constructor(root,bridge){this.root=root;this.bridge=bridge;this.locale='en';this.value=null;this.generation=0;this.mutationPending=false;this.timer=null;this.closed=false;this.lastSize='';bridge.onresult=result=>this.accept(result);bridge.oninput=()=>this.loading();bridge.oncontext=context=>this.context(context);bridge.onfailure=e=>this.error(e);bridge.onclose=()=>this.close();this.observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{const box=root.getBoundingClientRect(),key=Math.ceil(box.width)+':'+Math.ceil(box.height);if(key!==this.lastSize){this.lastSize=key;bridge.resize(box.width,box.height);}}):null;this.observer?.observe(root);this.loading();}
   get w(){return words[this.locale];}
   clear(){clearTimeout(this.timer);this.timer=null;this.value=null;this.root.replaceChildren();}
   loading(){this.generation++;this.clear();const p=element('p',this.w.loading,'notice');p.setAttribute('role','status');this.root.append(p);}
@@ -352,7 +353,7 @@ export class Viewer {
         else if(v.output.chart)renderChart(content,v.output.chart,this.locale);
         else if(v.output.narrative){content.append(element('p',text(v.output.narrative.text),'narrative'));for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));content.append(element('p',`${text(v.output.narrative.model_version)} · ${text(v.output.narrative.prompt_version)} · ${text(v.output.narrative.locale)}`,'metadata'));}
       }else content.append(element('p',`${text(v.output?.state)||text(v.summary.state)} ${text(v.output?.code)}`,'notice'));
-      if(!['succeeded','partial','expired'].includes(v.summary.state))content.append(button(w.refresh,()=>this.navigate({})));
+      if(!['succeeded','completed','partial','expired'].includes(v.summary.state))content.append(button(w.refresh,()=>this.navigate({})));
       if(!v.summary.private)this.filters(v);
     }catch(e){this.error(e);}
   }
@@ -362,21 +363,22 @@ export class Viewer {
     for(const f of filters){const p=f.parameter;if(!id(p?.name))throw fail('invalid_request');const label=element('label',text(f.label)||p.name);let input;
       if(array(p.enum).length||p.type==='boolean'){input=element('select');const options=p.type==='boolean'?['true','false']:p.enum;const empty=element('option',w.default);empty.value='';input.append(empty);for(const value of options){const o=element('option',value);o.value=value;input.append(o);}}
       else{input=element(p.type==='relative_period'?'textarea':'input');if(input.tagName==='INPUT'){input.type=p.type==='date'?'date':'text';if(['number','integer','top_n'].includes(p.type))input.inputMode='decimal';}input.maxLength=p.type==='relative_period'?4096:4096;input.placeholder=p.default?JSON.stringify(p.default):w.default;}
-      input.setAttribute('aria-label',text(f.label)||p.name);label.append(input);if(p.type==='relative_period')label.append(element('span','JSON: mode, unit, count, start, end, dst_policy, month_policy','metadata'));grid.append(label);controls.push({f,input});
+      input.setAttribute('aria-label',text(f.label)||p.name);const useDefault=element('input');useDefault.type='checkbox';useDefault.checked=true;input.disabled=true;useDefault.addEventListener('change',()=>{input.disabled=useDefault.checked;});const defaultLabel=element('span',undefined,'check');defaultLabel.append(useDefault,element('span',w.default));label.append(defaultLabel,input);if(p.type==='relative_period')label.append(element('span','JSON: mode, unit, count, start, end, dst_policy, month_policy','metadata'));grid.append(label);controls.push({f,input,useDefault});
     }
     fieldset.append(grid);const dynamic=element('input'),narrative=element('input');dynamic.type=narrative.type='checkbox';for(const [input,label]of[[dynamic,w.dynamic],[narrative,w.narrative]]){const l=element('label',undefined,'check');l.append(input,element('span',label));fieldset.append(l);}
     const run=button(w.apply,async()=>{
-      run.disabled=true;const oldSelection={...v.selection};
+      if(this.mutationPending||this.closed)return;this.mutationPending=true;run.disabled=true;const oldSelection={...v.selection},startingGeneration=this.generation;
       try{
-        const grouped=new Map();for(const {f,input}of controls){if(input.value==='')continue;const value=f.parameter.type==='relative_period'?periodValue(input.value):{literal:input.value};if(!grouped.has(f.page))grouped.set(f.page,[]);grouped.get(f.page).push({name:f.parameter.name,value});}
+        const grouped=new Map();for(const {f,input,useDefault}of controls){if(useDefault.checked)continue;const value=f.parameter.type==='relative_period'?periodValue(input.value):{literal:input.value};if(!grouped.has(f.page))grouped.set(f.page,[]);grouped.get(f.page).push({name:f.parameter.name,value});}
         const description=unwrap(await this.bridge.call('reporting_describe',{target:v.summary.target,locale:text(v.locale),outputs:[]}));
+        if(this.closed||startingGeneration!==this.generation)return;
         if(!id(description.resource?.target?.id)||description.resource.target.revision!==v.summary.target.revision)throw fail('stale_validation');
         const request={target:description.resource.target,key:crypto.randomUUID(),arguments:[],pages:[],outputs:[],policy:'',locale:text(v.locale),timezone:text(v.timezone)||description.timezone,narrative:narrative.checked,dynamic:dynamic.checked,partial_failure:''};
         if(v.summary.kind==='block'){request.arguments=Array.from(grouped.values()).flat();request.outputs=array(v.outputs).map(o=>o.id);}
         else request.pages=Array.from(grouped,([page,filters])=>({page,filters,overrides:[]}));
         this.loading();const generation=this.generation;const response=await this.bridge.call('reporting_run',request);if(generation!==this.generation||this.closed)return;const result=unwrap(response);if(!id(result.run))throw fail('unavailable');await this.read({...oldSelection,run:result.run,offset:0});
-      }catch(e){this.error(e,true);}
-    },true);fieldset.append(run);details.append(fieldset);this.root.append(details);
+      }catch(e){if(!this.closed)this.error(e,true);}finally{this.mutationPending=false;if(this.value&&!this.closed)this.draw();}
+    },true);run.disabled=this.mutationPending;fieldset.append(run);details.append(fieldset);this.root.append(details);
   }
   close(){this.closed=true;this.generation++;this.clear();this.observer?.disconnect();}
 }
