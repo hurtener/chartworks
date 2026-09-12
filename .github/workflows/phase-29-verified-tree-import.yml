@@ -1,0 +1,39 @@
+name: Phase 29 verified tree import
+on:
+  push:
+    branches: [chore/phase-29-local-recovery]
+    paths: [.github/workflows/phase-29-verified-tree-import.yml]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Stage only the pinned locally verified tree on the recovery branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base=3a4028987e6ffae863ccbb28c5ad7de08631a1a1
+          expected_tree=b7dec97f59ead7be43f5158489d4b4ad70ebe469
+          : > /tmp/phase29.patch.xz
+          for blob in 9cdaeb6efef3c97be9f43f70dc984235bfde3a5c 32faa1924255addd7c76bb917d68bf0c613be76b; do
+            gh api "repos/hurtener/chartworks/git/blobs/$blob" --jq .content | base64 --decode >> /tmp/phase29.patch.xz
+          done
+          xz --decompress --stdout /tmp/phase29.patch.xz > /tmp/phase29.patch
+          echo 'f99f32856d8b630fc50c2f33772dfd62fbe79ae7c72ece6dceb004eedfbf2287  /tmp/phase29.patch' | sha256sum -c -
+          git checkout --detach "$base"
+          git apply --check /tmp/phase29.patch
+          git apply --index /tmp/phase29.patch
+          tree=$(git write-tree)
+          test "$tree" = "$expected_tree"
+          commit=$(git -c user.name='Chartworks automation' -c user.email='chartworks-automation@users.noreply.github.com' commit-tree "$tree" -p "$GITHUB_SHA" -m 'chore: stage exact verified phase 29 tree')
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push origin "$commit:refs/heads/chore/phase-29-local-recovery"
+          echo "VERIFIED_TREE=$tree"
+          echo "TRANSFER_COMMIT=$commit"
