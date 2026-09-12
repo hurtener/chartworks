@@ -10,6 +10,9 @@ func TestPhase29(t *testing.T) {
 		t.Run("http-sdk-lifecycle", TestDocumentHTTPContracts)
 		t.Run("cas-and-reference-integrity", TestDocumentStorage)
 		t.Run("phase21-inventory-extension", TestDocumentCombinedRegistry)
+		t.Run("bounded-resource-filtered-list", TestDocumentListBoundaries)
+		t.Run("atomic-lifecycle-audit", TestDocumentAuditRollback)
+		t.Run("atomic-import-graph", TestDocumentGraphRollback)
 	})
 	t.Run("AC02", func(t *testing.T) {
 		t.Run("persistent-artifact-privacy", TestReportingCompositionStorage)
@@ -18,6 +21,7 @@ func TestPhase29(t *testing.T) {
 	t.Run("AC03", func(t *testing.T) {
 		t.Run("sealed-reference-and-output-union", testPhase29SealedFanout)
 		t.Run("first-seal-and-page-order", TestReportingCompositionStorage)
+		t.Run("atomic-first-seal", TestReportingCompositionAdmissionRollback)
 		t.Run("concurrent-block-report-dashboard-publication", TestReportingCompositionConcurrentPublication)
 	})
 	t.Run("AC04", func(t *testing.T) {
@@ -33,6 +37,9 @@ func TestPhase29(t *testing.T) {
 		t.Run("query-row-retention-budgets", testPhase29Budgets)
 		t.Run("mixed-observation-times", testPhase29SealedFanout)
 		t.Run("checkpoint-recovery", TestReportingCompositionRecovery)
+		t.Run("checkpoint-transaction-rollback", TestReportingCompositionCheckpointRollback)
+		t.Run("cancellation-authority-and-rollback", TestReportingCompositionControlBoundaries)
+		t.Run("dynamic-plan-recovery", TestReportingCompositionDynamicRecovery)
 		t.Run("output-error-with-retained-table", testPhase29OutputFailure)
 		t.Run("per-widget-output-failure", TestReportingCompositionOutputSubsets)
 		t.Run("shared-artifact-request-quota", func(t *testing.T) { testPhase29SharedQuota(t, false) })
@@ -45,5 +52,6 @@ func TestPhase29(t *testing.T) {
 		t.Run("artifact-redaction-and-metadata", TestReportingCompositionStorage)
 		t.Run("data-bearing-metadata-only-read", testPhase29SealedFanout)
 		t.Run("tenant-and-context-isolated-retained-reads", testPhase29RetainedBoundaries)
+		t.Run("expiry-erasure-and-atomic-audit", TestReportingCompositionRetention)
 	})
 }

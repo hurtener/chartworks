@@ -87,15 +87,16 @@ func validComposition(m CompositionManifest) bool {
 		if !identity.Identifier(g.ID) || groups[g.ID].ID != "" || !identity.Identifier(g.Binding.Source) || !identity.Identifier(g.Binding.Context) || g.Private != m.Private || len(g.References) == 0 || len(g.References) > 128 || !locale(g.Locale) {
 			return false
 		}
-		if g.Kind == "block" {
+		switch g.Kind {
+		case "block":
 			if !identity.Identifier(g.Block) || g.Revision < 1 || g.Revision > 256 || !hashValid(g.Definition) || !hashValid(g.Execution) || len(g.Outputs) < 1 || len(g.Outputs) > 64 || g.Query != nil || g.Origin != nil || g.Trust == nil || !slices.Contains([]string{"published", "certified_only", "explicit_stale"}, g.Policy) || g.Resolution.At.IsZero() || g.Resolved.At.IsZero() {
 				return false
 			}
-		} else if g.Kind == "query" {
+		case "query":
 			if g.Query == nil || g.Origin == nil || !validQueryOrigin(*g.Origin, *g.Query) || g.Block != "" || g.Revision != 0 || g.Trust != nil || len(g.Outputs) != 0 || len(g.Arguments) != 0 || g.Narrative || !m.Limits.LiveQueries || g.Query.Durability == "session_bound" && (!m.Limits.SessionBound || !m.Private || g.Origin.Actor != m.Actor || g.Origin.Session != m.Session) {
 				return false
 			}
-		} else {
+		default:
 			return false
 		}
 		outputs := map[string]bool{}

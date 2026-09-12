@@ -65,3 +65,8 @@ The single offline bundle exceeds the connector's 512 MiB download ceiling. Spli
 Downloads aa through ad were reported as mounted under `/mnt/data`; ae was not downloaded. The local execution service began returning `TransportTimeoutError` and then `InvalidArgumentError`, including for a bare health-check command. Do not infer a test pass, a preserved patch, or a successful extraction from artifact-download success.
 
 First establish readable execution and recover the workspace. Finish implementation, run the real acceptance/coverage/parity suites, perform and fix the adversarial review, and only then open a ready PR on a green exact commit. Final CI must remain read-only and contain no source-repair or temporary transfer workflow.
+
+
+## Superseding continuation — 2026-09-12
+
+The interrupted state above is historical. Runtime changes were recovered and committed through `3a4028987e6ffae863ccbb28c5ad7de08631a1a1`, then completed and regression-tested in the continuation described by [phase-29-adversarial.md](phase-29-adversarial.md). That record and the current PR's exact-source checks supersede the earlier unverified-workspace and remaining-implementation statements; the earlier environment-transfer runs remain preparation evidence only.

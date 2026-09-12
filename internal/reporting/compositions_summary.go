@@ -30,11 +30,12 @@ func SummarizeComposition(record CompositionRecord) CompositionView {
 			if d.Query != nil {
 				w.Durability = d.Query.Durability
 			}
-			if d.Kind == "text" {
+			switch {
+			case d.Kind == "text":
 				w.State = "completed"
-			} else if widget.Code != "" {
+			case widget.Code != "":
 				w.State, w.Code = "failed", widget.Code
-			} else {
+			default:
 				group := groups[widget.Group]
 				w.Trust = clone(group.Trust)
 				if result, exists := results[widget.Group]; exists {

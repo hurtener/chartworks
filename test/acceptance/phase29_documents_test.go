@@ -93,11 +93,12 @@ func TestDocumentStorage(t *testing.T) {
 		close(results)
 		won, conflicted := 0, 0
 		for err := range results {
-			if err == nil {
+			switch {
+			case err == nil:
 				won++
-			} else if errors.Is(err, store.ErrConflict) {
+			case errors.Is(err, store.ErrConflict):
 				conflicted++
-			} else {
+			default:
 				t.Fatal("unexpected CAS failure", err)
 			}
 		}

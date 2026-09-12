@@ -93,7 +93,7 @@ func documentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, kind, id st
 	if json.Unmarshal(origins, &out.Revision.Origins) != nil {
 		return reporting.DocumentSnapshot{}, store.ErrInvalid
 	}
-	if !(kind == "dashboard" && redact) && reporting.DocumentDigest(out.Revision.Raw) != out.Revision.Digest {
+	if (kind != "dashboard" || !redact) && reporting.DocumentDigest(out.Revision.Raw) != out.Revision.Digest {
 		return reporting.DocumentSnapshot{}, store.ErrInvalid
 	}
 	if _, err := reporting.ProjectStoredDocument(out.Revision.Raw, kind); err != nil {

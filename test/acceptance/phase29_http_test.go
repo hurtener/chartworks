@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -72,6 +73,39 @@ func TestDocumentHTTPContracts(t *testing.T) {
 		}
 		return state
 	}
+
+	// Submit checked-in request bytes directly through the closed transport
+	// schema; re-marshalling a struct could hide a malformed example field.
+	for _, kind := range []sdk.DocumentKind{sdk.ReportDocument, sdk.DashboardDocument} {
+		body, err := os.ReadFile("../../examples/" + string(kind) + "-create.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := callProtected(t, assertRegisteredWireSchemas(t, registry, handler), "POST", "/v1/"+string(kind)+"s", bearer, string(body), map[string]string{"Content-Type": "application/json"})
+		if response.Code != http.StatusOK {
+			t.Fatal("invalid checked-in create example", kind, response.Code, response.Body.String())
+		}
+		var example sdk.DocumentState
+		if err := json.Unmarshal(response.Body.Bytes(), &example); err != nil {
+			t.Fatal(err)
+		}
+		example = publish(kind, example)
+		v, err := client.AdmitComposition(ctx, kind, example.ID, sdk.CompositionRequest{Key: "example-" + string(kind)})
+		if err != nil {
+			t.Fatal("example admission", err)
+		}
+		if v, err = client.ExecuteComposition(ctx, v.ID, false); err != nil || !v.Complete {
+			t.Fatal("example execution", v, err)
+		}
+		page := "main"
+		if kind == sdk.DashboardDocument {
+			page = "weekly"
+		}
+		payload, err := client.ReadCompositionWidget(ctx, v.ID, page, "intro")
+		if err != nil || payload.Text == nil || payload.State != "completed" {
+			t.Fatal("example retained text", payload, err)
+		}
+	}
 	report := publish(sdk.ReportDocument, create(sdk.ReportDocument, "http-report", phase29Text("Wire-contract report")))
 	dashboardDefinition := phase29Text("Wire-contract dashboard")
 	dashboardDefinition.Widgets = nil
@@ -86,7 +120,7 @@ func TestDocumentHTTPContracts(t *testing.T) {
 		page       string
 	}{{sdk.DashboardDocument, dashboard, dashboardDefinition, "report-page"}, {sdk.ReportDocument, report, phase29Text("Report amendment"), "main"}} {
 		kind, state := target.kind, target.state
-		if listed, err := client.ListDocuments(ctx, kind, "", 20); err != nil || len(listed.Items) != 1 || listed.Items[0].ID != state.ID {
+		if listed, err := client.ListDocuments(ctx, kind, "", 20); err != nil || len(listed.Items) != 2 || listed.Items[0].ID != state.ID {
 			t.Fatal("HTTP published listing", listed, err)
 		}
 		admitted, err := client.AdmitComposition(ctx, kind, state.ID, sdk.CompositionRequest{Key: "http-" + string(kind) + "-run"})
