@@ -1,0 +1,29 @@
+name: Phase 30-31 source workspace
+
+on:
+  push:
+    branches: [feat/phase-30-31-reporting-delivery]
+    paths: [.github/workflows/phase-30-31-workspace.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive exact tracked source, without credentials or runtime data
+        run: |
+          git rev-parse HEAD > /tmp/chartworks-source-sha.txt
+          git archive HEAD --format=tar.gz -o /tmp/chartworks-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-30-31-source
+          path: |
+            /tmp/chartworks-source.tar.gz
+            /tmp/chartworks-source-sha.txt
+          retention-days: 1
