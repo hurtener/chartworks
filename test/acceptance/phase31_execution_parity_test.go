@@ -196,7 +196,7 @@ func testPhase31ProviderParity(t *testing.T) {
 	list := reporting.ReportingRunsRequest{Kind: "block", Resource: "p31-parity", Limit: 20}
 	hRuns := phase31HTTP[reporting.ReportingRunsResult](t, f, bearer, "runs", list)
 	mRuns := phase22Call[reporting.ReportingRunsResult](t, mcpClient, "reporting_runs", list)
-	sRuns, err := httpClient.ListReportingRuns(t.Context(), list)
+	sRuns, err := httpClient.SearchReportingRuns(t.Context(), list)
 	if err != nil {
 		t.Fatal(err)
 	}

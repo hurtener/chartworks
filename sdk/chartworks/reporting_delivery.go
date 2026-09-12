@@ -38,8 +38,8 @@ type ReportingOutputChoice = reporting.ViewerOutputChoice
 // ReportingFilter describes a business input, never an authorization predicate.
 type ReportingFilter = reporting.ViewerFilter
 
-// ReportingRunRequest explicitly requests a new authorized execution.
-type ReportingRunRequest = reporting.ReportingRunRequest
+// ReportingDeliveryRunRequest explicitly requests a new authorized execution.
+type ReportingDeliveryRunRequest = reporting.ReportingRunRequest
 
 // ReportingRunResult points to an ordinary retained artifact catalog entry.
 type ReportingRunResult = reporting.ReportingRunResult
@@ -101,7 +101,7 @@ func (c *Client) DescribeReporting(ctx context.Context, in ReportingDescribeRequ
 // The exact published revision and fresh signed authority are required. This
 // POST is never automatically retried; inspect the catalog after an unknown
 // outcome rather than submitting another key blindly.
-func (c *Client) RunReporting(ctx context.Context, in ReportingRunRequest) (out ReportingRunResult, err error) {
+func (c *Client) RunReporting(ctx context.Context, in ReportingDeliveryRunRequest) (out ReportingRunResult, err error) {
 	if !validReportingTarget(in.Target) || in.Target.Revision < 1 || !identity.Identifier(in.Key) {
 		return out, ErrReportingRequest
 	}
@@ -109,8 +109,8 @@ func (c *Client) RunReporting(ctx context.Context, in ReportingRunRequest) (out 
 	return
 }
 
-// ListReportingRuns reads currently authorized retained artifact metadata only.
-func (c *Client) ListReportingRuns(ctx context.Context, in ReportingRunsRequest) (out ReportingRunsResult, err error) {
+// SearchReportingRuns reads currently authorized retained artifact metadata only.
+func (c *Client) SearchReportingRuns(ctx context.Context, in ReportingRunsRequest) (out ReportingRunsResult, err error) {
 	if in.Limit == 0 {
 		in.Limit = 20
 	}
