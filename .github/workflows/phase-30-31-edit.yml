@@ -1,0 +1,55 @@
+name: Phase 30-31 branch editor
+on:
+  push:
+    branches: [feat/phase-30-31-reporting-delivery]
+    paths: [.github/workflows/phase-30-31-edit.yml, scripts/dev/phase-30-31-edit.py]
+permissions:
+  contents: write
+concurrency:
+  group: phase-30-31-editor
+  cancel-in-progress: false
+jobs:
+  edit:
+    if: github.repository == 'hurtener/chartworks' && github.ref == 'refs/heads/feat/phase-30-31-reporting-delivery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/phase-30-31-reporting-delivery
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Apply explicit source edits and formatting
+        run: python3 scripts/dev/phase-30-31-edit.py
+      - name: Inspect touched source and integration file inventory
+        run: |
+          git diff --stat
+          git diff --check
+          find test/acceptance internal/mcpserver internal/reportingapi internal/foundation cmd -maxdepth 2 -type f | sort
+      - name: Commit only the reviewed branch delta, without persisted credentials
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const cp = require('child_process');
+            const owner = 'hurtener', repo = 'chartworks', branch = 'feat/phase-30-31-reporting-delivery';
+            const base = cp.execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
+            const paths = cp.execFileSync('git', ['diff', '--name-only', '-z'], {encoding:'utf8'}).split('\0').filter(Boolean);
+            if (!paths.length) { core.info('No new edits'); return; }
+            const current = await github.rest.git.getRef({owner, repo, ref:'heads/'+branch});
+            if (current.data.object.sha !== base) throw new Error('Branch moved: refuse to overwrite concurrent work');
+            const parent = await github.rest.git.getCommit({owner, repo, commit_sha:base});
+            const tree = [];
+            for (const path of paths) {
+              if (!fs.existsSync(path)) { tree.push({path, mode:'100644', type:'blob', sha:null}); continue; }
+              const stat = fs.statSync(path);
+              if (!stat.isFile() || stat.size > 2000000) throw new Error('Unexpected edit size/type');
+              const blob = await github.rest.git.createBlob({owner, repo, content:fs.readFileSync(path).toString('base64'), encoding:'base64'});
+              tree.push({path, mode:(stat.mode & 0o111)?'100755':'100644', type:'blob', sha:blob.data.sha});
+            }
+            const next = await github.rest.git.createTree({owner, repo, base_tree:parent.data.tree.sha, tree});
+            const commit = await github.rest.git.createCommit({owner, repo, message:'feat(reporting): integrate bounded retained-result delivery', tree:next.data.sha, parents:[base]});
+            await github.rest.git.updateRef({owner, repo, ref:'heads/'+branch, sha:commit.data.sha, force:false});
+            core.info('EDITED_COMMIT='+commit.data.sha);
