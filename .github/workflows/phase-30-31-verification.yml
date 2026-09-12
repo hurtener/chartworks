@@ -70,7 +70,7 @@ jobs:
       - name: Actual phase 31 criteria and provider fixtures
         run: |
           set -o pipefail
-          go test -race -count=1 -v -timeout=20m ./test/acceptance -run '^TestPhase31$' | tee /tmp/phase31.log
+          go test -race -count=1 -v -timeout=20m ./test/acceptance -run '^TestPhase31$' 2>&1 | tee /tmp/phase31.log
       - name: Existing reporting, configuration and MCP regressions
         if: always()
         run: go test -race -count=1 -timeout=10m ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
