@@ -108,7 +108,7 @@ func compositionReadTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h co
 	if err := reporting.RequireComposition(e, m); err != nil {
 		return reporting.CompositionRecord{}, err
 	}
-	out.State, out.Code = h.view.State, h.view.Code
+	out.State, out.Code, out.Finished = h.view.State, h.view.Code, h.view.Finished
 	out.Results = []reporting.GroupResult{}
 	out.Plans = map[string]nlqexec.SavedPlan{}
 	out.Started = map[string]bool{}
@@ -224,6 +224,7 @@ func compositionViewTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h co
 		v.Redacted, v.Complete = true, false
 		// Counts and timing derived from invisible pages are not projected.
 		v.QueryGroups, v.RetainedBytes, v.MixedFreshness = 0, 0, false
+		v.Finished = nil
 	}
 	if !e.Valid() {
 		return reporting.CompositionView{}, access.ErrUnauthenticated

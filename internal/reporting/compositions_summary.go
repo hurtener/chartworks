@@ -8,7 +8,7 @@ func SummarizeComposition(record CompositionRecord) CompositionView {
 	m := record.Manifest
 	view := CompositionView{ID: m.ID, Kind: m.Kind, Document: m.Document, Revision: m.Revision,
 		Manifest: m.ManifestDigest(), State: record.State, Code: record.Code, Private: m.Private,
-		Redacted: m.Redacted, Created: m.Created, Expires: m.Expires,
+		Redacted: m.Redacted, Created: m.Created, Expires: m.Expires, Finished: clone(record.Finished),
 		Pages: []CompositionPageSummary{}, QueryGroups: len(m.Groups), RetainedBytes: CompositionRetainedBytes(record)}
 	results := map[string]GroupResult{}
 	for _, result := range record.Results {
@@ -38,23 +38,14 @@ func SummarizeComposition(record CompositionRecord) CompositionView {
 				group := groups[widget.Group]
 				w.Trust = clone(group.Trust)
 				if result, exists := results[widget.Group]; exists {
-					w.State, w.Code, w.Observed = result.State, result.Code, clone(result.Observed)
+					w.State, w.Code = compositionSelectionState(result, w.Outputs)
+					w.Observed = clone(result.Observed)
 					if result.Block != nil {
 						w.Trust = clone(&result.Block.Trust)
 					}
 					if result.Query != nil {
 						w.Trust = nil
 						w.QueryDigest, w.SemanticDigest = result.Query.QueryDigest, result.Query.SemanticDigest
-					}
-					if result.Code == "output_failed" {
-						w.State, w.Code = "completed", ""
-						for _, output := range result.Outputs {
-							for _, selected := range w.Outputs {
-								if output.ID == selected && output.State != "succeeded" {
-									w.State, w.Code = "partial", "output_failed"
-								}
-							}
-						}
 					}
 				}
 			}

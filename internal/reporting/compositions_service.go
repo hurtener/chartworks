@@ -447,6 +447,14 @@ func (s *Compositions) resolveQuery(ctx context.Context, e identity.Envelope, m 
 	if err != nil {
 		return CompositionGroup{}, err
 	}
+	// These are conservative reservations, not claimed usage. The existing
+	// router, planner and equivalent-correction owner enforce their own bounded
+	// budgets (4+3+2 calls, each at most 1 Mi tokens). Session cloning performs
+	// neither routing nor generation; only the ordinary execution owner remains.
+	calls, tokens := 9, 3<<20
+	if w.Query.Durability == "session_bound" {
+		calls, tokens = 2, 1<<20
+	}
 	return CompositionGroup{Kind: "query", Query: clone(w.Query), Origin: origin, Binding: binding, References: refs, Private: m.Private, Locale: d.Locale,
-		Outputs: []string{}, Arguments: []Argument{}, Resolution: resolution, Policy: "dynamic", ReservedCalls: 5, ReservedTokens: 2 << 20}, nil
+		Outputs: []string{}, Arguments: []Argument{}, Resolution: resolution, Policy: "dynamic", ReservedCalls: calls, ReservedTokens: tokens}, nil
 }

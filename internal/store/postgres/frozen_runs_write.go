@@ -96,7 +96,12 @@ func (d *DB) SealFrozenRun(ctx context.Context, e identity.Envelope, task jobs.R
 		}
 		var count int
 		var charged int64
-		if readErr = tx.QueryRow(ctx, `SELECT count(*),COALESCE(sum(GREATEST(retained_bytes,reserved_bytes)),0) FROM chartworks.frozen_runs WHERE tenant_id=$1`, e.Tenant()).Scan(&count, &charged); readErr != nil {
+		// Compositions and their frozen children share one tenant quota and
+		// the same advisory lock. A block must not ignore earlier composition
+		// reservations merely because those values live in another table.
+		if readErr = tx.QueryRow(ctx, `SELECT count(*),COALESCE(sum(GREATEST(retained_bytes,reserved_bytes)),0) FROM (
+ SELECT retained_bytes,reserved_bytes FROM chartworks.frozen_runs WHERE tenant_id=$1
+ UNION ALL SELECT retained_bytes,reserved_bytes FROM chartworks.composition_runs WHERE tenant_id=$1) usage`, e.Tenant()).Scan(&count, &charged); readErr != nil {
 			return readErr
 		}
 		if count >= m.Limits.MaxRequests || charged > m.Limits.MaxTenantBytes-int64(m.Limits.MaxArtifactBytes) {

@@ -111,10 +111,33 @@ func CompositionStaticPayload(page string, w CompositionWidget) *CompositionPayl
 	return nil
 }
 
+// An output-local failure affects only widgets that selected that output.
+// Query truncation, stale dependencies and failed execution remain group-wide.
+func compositionSelectionState(result GroupResult, selected []string) (string, string) {
+	if result.Kind != "block" || result.Code != "output_failed" {
+		return result.State, result.Code
+	}
+	byID := map[string]RetainedOutput{}
+	for _, output := range result.Outputs {
+		byID[output.ID] = output
+	}
+	for _, id := range selected {
+		output, exists := byID[id]
+		if !exists {
+			return "partial", "output_incomplete"
+		}
+		if output.State != "succeeded" {
+			return "partial", "output_failed"
+		}
+	}
+	return "completed", ""
+}
+
 // CompositionPayloadFromResult enforces the widget's saved output subset even
 // when its group retained the union requested by several widgets.
 func CompositionPayloadFromResult(page, widget string, outputs []string, result GroupResult) (CompositionPayload, error) {
-	out := CompositionPayload{Page: page, Widget: widget, State: result.State, Code: result.Code, Outputs: []RetainedOutput{}}
+	out := CompositionPayload{Page: page, Widget: widget, Outputs: []RetainedOutput{}}
+	out.State, out.Code = compositionSelectionState(result, outputs)
 	if result.Digest != GroupResultDigest(result) {
 		return CompositionPayload{}, ErrInvalid
 	}
