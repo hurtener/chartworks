@@ -146,6 +146,10 @@ func (s *Runs) selectRunOutputs(d Definition, in RunRequest) ([]Output, error) {
 // reservation may subsequently seal floating revision and logical-time inputs.
 // A replay reads its original seal even after a new block publication.
 func (s *Runs) Admit(ctx context.Context, e identity.Envelope, id string, input RunRequest) (RunView, error) {
+	return s.admit(ctx, e, id, input, nil)
+}
+
+func (s *Runs) admit(ctx context.Context, e identity.Envelope, id string, input RunRequest, parent *jobs.Invocation) (RunView, error) {
 	if s == nil || ctx == nil {
 		return RunView{}, ErrInvalid
 	}
@@ -162,9 +166,33 @@ func (s *Runs) Admit(ctx context.Context, e identity.Envelope, id string, input 
 	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
 	defer cancel()
 	requestHash := digest([]any{FrozenVersion, id, in})
-	task, err := s.runner.Admit(ctx, e, in.Key, jobs.RequestInput{Kind: "reporting.run", Target: id, InputHash: requestHash})
+	var task jobs.RequestTask
+	request := jobs.RequestInput{Kind: "reporting.run", Target: id, InputHash: requestHash}
+	if parent == nil {
+		task, err = s.runner.Admit(ctx, e, in.Key, request)
+	} else {
+		task, err = s.runner.AdmitNested(ctx, *parent, in.Key, request)
+	}
 	if err != nil {
 		return RunView{}, err
+	}
+	out, err := s.seal(ctx, e, id, in, requestHash, task)
+	if err != nil && parent != nil && ctx.Err() == nil {
+		if _, cancelErr := s.runner.Cancel(ctx, e, task.ID); cancelErr != nil && !errors.Is(cancelErr, store.ErrConflict) {
+			return out, errors.Join(err, cancelErr)
+		}
+	}
+	return out, err
+}
+
+// seal uses the same proof and storage path for caller and accepted scheduled
+// work. The supplied task must match the canonical request, actor and session.
+func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunRequest, requestHash string, task jobs.RequestTask) (RunView, error) {
+	if err := task.Require(e); err != nil {
+		return RunView{}, err
+	}
+	if task.Input != (jobs.RequestInput{Kind: "reporting.run", Target: id, InputHash: requestHash}) {
+		return RunView{}, jobs.ErrAuthority
 	}
 	existing, err := s.repo.ReadFrozenRun(ctx, e, task.ID, true)
 	if err == nil {
