@@ -139,12 +139,13 @@ func (s *Service) InspectSaved(ctx context.Context, e identity.Envelope, in Save
 			return SavedEvidence{}, ErrNoPlan
 		}
 		for _, dataset := range p.Definition.Datasets {
-			if dataset.Context != in.Context || out.Source != "" && out.Source != dataset.Source {
+			binding := dataset.Source
+			if binding.Context != in.Context || out.Source != "" && out.Source != binding.Source {
 				return SavedEvidence{}, ErrInvalid
 			}
-			out.Source = dataset.Source
+			out.Source = binding.Source
 			if err := access.Require(e, "query.execute",
-				access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: dataset.Source},
+				access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: binding.Source},
 				access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: dataset.ID}); err != nil {
 				return SavedEvidence{}, err
 			}
