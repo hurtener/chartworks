@@ -11,8 +11,10 @@ jobs:
     timeout-minutes: 45
     env:
       CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
       CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
       CHARTWORKS_BRUIN_BIN: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
       CGO_LDFLAGS: -L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
     services:
@@ -65,10 +67,19 @@ jobs:
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
           go mod verify
           git diff --exit-code
-      - name: Compile actual integration surfaces
-        run: go test -race -p 2 -run '^$' ./internal/reporting ./internal/reportingapi ./internal/foundation ./internal/store/postgres ./internal/mcpserver ./test/acceptance ./web/report-viewer
+      - name: Actual phase 31 criteria and provider fixtures
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=20m ./test/acceptance -run '^TestPhase31$' | tee /tmp/phase31.log
       - name: Existing reporting, configuration and MCP regressions
-        run: go test -race -p 2 -count=1 -timeout=5m ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer
+        if: always()
+        run: go test -race -count=1 -timeout=10m ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
       - name: Formatting diagnostics without editing source
         if: always()
         run: git ls-files '*.go' | xargs gofmt -l
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-31-verification-log
+          path: /tmp/phase31.log
+          retention-days: 7
