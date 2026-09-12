@@ -8,6 +8,7 @@ import (
 // Reporting bounds definition authoring and explicitly requested validation.
 // These settings never grant identity, source or publication authority.
 type Reporting struct {
+	Viewer             ReportingViewer      `json:"viewer"`
 	Execution          ReportingExecution   `json:"execution"`
 	Composition        ReportingComposition `json:"composition"`
 	MaxSQLBytes        int                  `json:"max_sql_bytes"`
@@ -29,12 +30,15 @@ type Reporting struct {
 
 // DefaultReporting requires neither a model provider nor a live warehouse.
 func DefaultReporting() Reporting {
-	return Reporting{Execution: DefaultReportingExecution(), Composition: DefaultReportingComposition(), MaxSQLBytes: 64 << 10, MaxDefinitionBytes: 512 << 10, MaxSchemaColumns: 128, MaxOutputs: 32, MaxParameters: 32, MaxLocales: 16, MaxAliases: 32, MaxRevisions: 128, MaxBlocks: 10000, MaxConcurrent: 4, PreviewRows: 1000, PreviewBytes: 1 << 20, ValidationTimeout: Duration(30 * time.Second), EvidenceTTL: Duration(24 * time.Hour), QuestionThreshold: 0.8}
+	return Reporting{Viewer: DefaultReportingViewer(), Execution: DefaultReportingExecution(), Composition: DefaultReportingComposition(), MaxSQLBytes: 64 << 10, MaxDefinitionBytes: 512 << 10, MaxSchemaColumns: 128, MaxOutputs: 32, MaxParameters: 32, MaxLocales: 16, MaxAliases: 32, MaxRevisions: 128, MaxBlocks: 10000, MaxConcurrent: 4, PreviewRows: 1000, PreviewBytes: 1 << 20, ValidationTimeout: Duration(30 * time.Second), EvidenceTTL: Duration(24 * time.Hour), QuestionThreshold: 0.8}
 }
 
 // Validate is also used by the domain constructor, so in-process callers cannot
 // circumvent the bounds enforced by configuration decoding.
 func (c Reporting) Validate() error {
+	if err := c.Viewer.Validate(); err != nil {
+		return err
+	}
 	if err := c.Execution.Validate(); err != nil {
 		return err
 	}

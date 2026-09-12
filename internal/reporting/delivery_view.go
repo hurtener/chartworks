@@ -15,11 +15,11 @@ import (
 // ViewerTable is an exact window of a retained table. Totals retain their declared
 // whole-result scope; they are never recalculated over just the visible page.
 type ViewerTable struct {
-	Columns      []charts.Column   `json:"columns"`
-	Rows         [][]charts.Cell   `json:"rows"`
-	Totals       []charts.Total    `json:"totals"`
+	Columns      []charts.Column     `json:"columns"`
+	Rows         [][]charts.Cell     `json:"rows"`
+	Totals       []charts.Total      `json:"totals"`
 	Completeness charts.Completeness `json:"completeness"`
-	Warnings     []string          `json:"warnings"`
+	Warnings     []string            `json:"warnings"`
 }
 
 // ViewerOutput distinguishes a bounded projection from the original artifact.
@@ -32,8 +32,8 @@ type ViewerOutput struct {
 	Code           string           `json:"code"`
 	RetainedDigest string           `json:"retained_digest"`
 	Chart          *charts.Output   `json:"chart,omitempty"`
-	Table          *ViewerTable      `json:"table,omitempty"`
-	Narrative      *NarrativeResult  `json:"narrative,omitempty"`
+	Table          *ViewerTable     `json:"table,omitempty"`
+	Narrative      *NarrativeResult `json:"narrative,omitempty"`
 }
 
 func (s *Delivery) viewRequest(in ReportingViewRequest) (ReportingViewRequest, error) {

@@ -70,9 +70,9 @@ type ReportingDescription struct {
 	Outputs  []ViewerOutputChoice     `json:"outputs"`
 	Filters  []ViewerFilter           `json:"filters"`
 	Pages    []CompositionPageSummary `json:"pages"`
-	Trust    *Trust                    `json:"trust,omitempty"`
-	Dynamic  bool                      `json:"dynamic"`
-	Timezone string                    `json:"timezone"`
+	Trust    *Trust                   `json:"trust,omitempty"`
+	Dynamic  bool                     `json:"dynamic"`
+	Timezone string                   `json:"timezone"`
 }
 
 // ReportingRunRequest is deliberately side-effecting. It cannot contain SQL,
@@ -168,12 +168,11 @@ type ReportingViewResult struct {
 	Outputs        []ViewerOutputChoice     `json:"outputs"`
 	Pages          []CompositionPageSummary `json:"pages"`
 	Filters        []ViewerFilter           `json:"filters"`
-	Trust          *Trust                    `json:"trust,omitempty"`
+	Trust          *Trust                   `json:"trust,omitempty"`
 	Observed       *time.Time               `json:"observed_at,omitempty"`
 	MixedFreshness bool                     `json:"mixed_freshness"`
 	Redacted       bool                     `json:"redacted"`
-	Output         *RetainedOutput          `json:"output,omitempty"`
-	Rows           *ResultPage              `json:"rows,omitempty"`
+	Output         *ViewerOutput            `json:"output,omitempty"`
 	Text           *TextWidget              `json:"text,omitempty"`
 	PageBounds     ViewerPage               `json:"page_bounds"`
 }
