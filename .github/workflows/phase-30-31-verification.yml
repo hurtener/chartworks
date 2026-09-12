@@ -33,6 +33,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Actual browser and module prerequisites
+        run: |
+          node --version
+          google-chrome --version
+          node --check web/report-viewer/app.js
       - name: Reserve disk for native and race builds
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       - uses: actions/cache/restore@v4
@@ -58,9 +66,9 @@ jobs:
           go mod verify
           git diff --exit-code
       - name: Compile actual integration surfaces
-        run: go test -race -p 2 -run '^$' ./internal/reporting ./internal/reportingapi ./internal/foundation ./internal/store/postgres ./test/acceptance
+        run: go test -race -p 2 -run '^$' ./internal/reporting ./internal/reportingapi ./internal/foundation ./internal/store/postgres ./internal/mcpserver ./test/acceptance ./web/report-viewer
       - name: Existing reporting, configuration and MCP regressions
-        run: go test -race -p 2 -count=1 -timeout=5m ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver
+        run: go test -race -p 2 -count=1 -timeout=5m ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer
       - name: Formatting diagnostics without editing source
         if: always()
         run: git ls-files '*.go' | xargs gofmt -l
