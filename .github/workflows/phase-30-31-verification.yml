@@ -1,0 +1,66 @@
+name: Phase 30-31 exact-source verification
+on:
+  push:
+    branches: [feat/phase-30-31-reporting-delivery]
+    paths: [.github/workflows/phase-30-31-verification.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_BRUIN_BIN: /tmp/chartworks-bruin/bruin
+      CGO_LDFLAGS: -L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Reserve disk for native and race builds
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build exact pinned native dependencies
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native.outputs.cache-hit != 'true'
+        with:
+          path: |
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Record exact source and verify dependencies
+        run: |
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+          go mod verify
+          git diff --exit-code
+      - name: Compile actual integration surfaces
+        run: go test -race -p 2 -run '^$' ./internal/reporting ./internal/reportingapi ./internal/foundation ./internal/store/postgres ./test/acceptance
+      - name: Existing reporting, configuration and MCP regressions
+        run: go test -race -p 2 -count=1 -timeout=5m ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver
+      - name: Formatting diagnostics without editing source
+        if: always()
+        run: git ls-files '*.go' | xargs gofmt -l
