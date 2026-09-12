@@ -218,6 +218,7 @@ func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out
 			continue
 		}
 		pageFound = true
+		out.Locale, out.Timezone = page.Locale, page.Timezone
 		if out.Selection.Widget == "" && len(page.Widgets) != 0 {
 			out.Selection.Widget = page.Widgets[0].ID
 		}

@@ -142,7 +142,7 @@ func outputChoices(outputs []Output) []ViewerOutputChoice {
 }
 
 func describeReportPage(id, report string, revision int64, d DocumentDefinition) CompositionPageSummary {
-	page := CompositionPageSummary{ID: id, Report: report, Revision: revision, Title: report, Widgets: []CompositionWidgetSummary{}}
+	page := CompositionPageSummary{ID: id, Report: report, Revision: revision, Title: report, Locale: d.Locale, Timezone: d.Timezone, Widgets: []CompositionWidgetSummary{}}
 	if len(d.Metadata) != 0 {
 		page.Title = d.Metadata[0].Title
 	}

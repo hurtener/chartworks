@@ -78,7 +78,9 @@ func validReportingTarget(target ReportingTarget) bool {
 
 // SearchReporting reads authorized published metadata. It does not run data or models.
 func (c *Client) SearchReporting(ctx context.Context, in ReportingSearchRequest) (out ReportingSearchResult, err error) {
-	if in.Limit == 0 { in.Limit = 20 }
+	if in.Limit == 0 {
+		in.Limit = 20
+	}
 	if !validReportingKind(in.Kind) || in.Limit < 1 || in.Limit > 100 || in.After != "" && !identity.Identifier(in.After) || len(in.Query) > 256 {
 		return out, ErrReportingRequest
 	}
@@ -88,7 +90,9 @@ func (c *Client) SearchReporting(ctx context.Context, in ReportingSearchRequest)
 
 // DescribeReporting reads public presentation metadata and typed filters only.
 func (c *Client) DescribeReporting(ctx context.Context, in ReportingDescribeRequest) (out ReportingDescription, err error) {
-	if !validReportingTarget(in.Target) || len(in.Outputs) > 64 { return out, ErrReportingRequest }
+	if !validReportingTarget(in.Target) || len(in.Outputs) > 64 {
+		return out, ErrReportingRequest
+	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting/describe", "", in, &out, 4<<20)
 	return
 }
@@ -107,7 +111,9 @@ func (c *Client) RunReporting(ctx context.Context, in ReportingRunRequest) (out 
 
 // ListReportingRuns reads currently authorized retained artifact metadata only.
 func (c *Client) ListReportingRuns(ctx context.Context, in ReportingRunsRequest) (out ReportingRunsResult, err error) {
-	if in.Limit == 0 { in.Limit = 20 }
+	if in.Limit == 0 {
+		in.Limit = 20
+	}
 	if !validReportingKind(in.Kind) || in.Limit < 1 || in.Limit > 100 || in.After != "" && !identity.Identifier(in.After) || in.Resource != "" && !identity.Identifier(in.Resource) {
 		return out, ErrReportingRequest
 	}

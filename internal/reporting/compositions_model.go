@@ -148,6 +148,8 @@ type CompositionWidgetSummary struct {
 
 // CompositionPageSummary is independently redacted under current report reach.
 type CompositionPageSummary struct {
+	Locale   string                     `json:"locale,omitempty"`
+	Timezone string                     `json:"timezone,omitempty"`
 	ID       string                     `json:"id"`
 	Report   string                     `json:"report"`
 	Revision int64                      `json:"revision"`
