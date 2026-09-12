@@ -1,0 +1,53 @@
+name: Phase 29 local recovery
+on:
+  push:
+    branches: [chore/phase-29-local-recovery]
+    paths: [.github/workflows/phase-29-local-recovery.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Export repository history without credentials
+        run: git bundle create /tmp/chartworks.bundle --all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-recovery-source
+          path: /tmp/chartworks.bundle
+          retention-days: 1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.4
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target
+          key: phase29-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('third_party/bruin.lock') }}
+      - name: Build pinned native tools
+        run: bash scripts/build-bruin.sh
+      - name: Package native tools and pinned linter
+        run: |
+          set -euo pipefail
+          mkdir /tmp/phase29-tools
+          cp /tmp/chartworks-bruin/bruin /tmp/phase29-tools/
+          cp /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a /tmp/phase29-tools/
+          curl -fsSL https://github.com/golangci/golangci-lint/releases/download/v2.12.2/golangci-lint-2.12.2-linux-amd64.tar.gz -o /tmp/golangci-lint-2.12.2-linux-amd64.tar.gz
+          curl -fsSL https://github.com/golangci/golangci-lint/releases/download/v2.12.2/golangci-lint-2.12.2-checksums.txt -o /tmp/checksums.txt
+          (cd /tmp; grep ' golangci-lint-2.12.2-linux-amd64.tar.gz$' checksums.txt | sha256sum -c -)
+          tar -xzf /tmp/golangci-lint-2.12.2-linux-amd64.tar.gz -C /tmp
+          cp /tmp/golangci-lint-2.12.2-linux-amd64/golangci-lint /tmp/phase29-tools/
+          tar -czf /tmp/phase29-tools.tar.gz -C /tmp/phase29-tools .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-29-recovery-tools
+          path: /tmp/phase29-tools.tar.gz
+          compression-level: 0
+          retention-days: 1
