@@ -18,27 +18,27 @@ const ReportingKind = "reporting.scheduled"
 // ReportingPeriod is the closed scheduling wire form of a reporting period.
 // Its calendar semantics are interpreted only by the reporting parameter core.
 type ReportingPeriod struct {
-	Mode string `json:"mode" jsonschema:"enum=explicit,enum=from_date,enum=previous,enum=rolling,enum=schedule_window"`
-	Unit string `json:"unit,omitempty" jsonschema:"enum=hour,enum=day,enum=week,enum=month,enum=quarter,enum=year"`
-	Count int `json:"count,omitempty"`
-	Start string `json:"start,omitempty"`
-	End string `json:"end,omitempty"`
-	FromDate string `json:"from_date,omitempty"`
+	Mode            string `json:"mode" jsonschema:"enum=explicit,enum=from_date,enum=previous,enum=rolling,enum=schedule_window"`
+	Unit            string `json:"unit,omitempty" jsonschema:"enum=hour,enum=day,enum=week,enum=month,enum=quarter,enum=year"`
+	Count           int    `json:"count,omitempty"`
+	Start           string `json:"start,omitempty"`
+	End             string `json:"end,omitempty"`
+	FromDate        string `json:"from_date,omitempty"`
 	FirstOccurrence string `json:"first_occurrence,omitempty" jsonschema:"enum=reject,enum=from_date,enum=previous"`
-	DSTPolicy string `json:"dst_policy" jsonschema:"enum=reject,enum=earlier"`
-	MonthPolicy string `json:"month_policy" jsonschema:"enum=clamp,enum=reject"`
+	DSTPolicy       string `json:"dst_policy" jsonschema:"enum=reject,enum=earlier"`
+	MonthPolicy     string `json:"month_policy" jsonschema:"enum=clamp,enum=reject"`
 }
 
 // ReportingValue does not carry SQL fragments, source locations or authority.
 type ReportingValue struct {
-	Literal string `json:"literal,omitempty"`
-	Period *ReportingPeriod `json:"period,omitempty"`
+	Literal string           `json:"literal,omitempty"`
+	Period  *ReportingPeriod `json:"period,omitempty"`
 }
 
 // ReportingArgument assigns a value to an existing block parameter or report
 // filter. Reporting validates the declared type before accepting a schedule.
 type ReportingArgument struct {
-	Name string `json:"name"`
+	Name  string         `json:"name"`
 	Value ReportingValue `json:"value"`
 }
 
@@ -46,11 +46,11 @@ type ReportingArgument struct {
 // Zero model calls/tokens is a deterministic-only execution policy.
 type ReportingBudget struct {
 	TimeoutMillis int `json:"timeout_ms"`
-	MaxRows int `json:"max_rows"`
-	MaxBytes int `json:"max_bytes"`
+	MaxRows       int `json:"max_rows"`
+	MaxBytes      int `json:"max_bytes"`
 	QueryAttempts int `json:"query_attempts"`
-	ModelCalls int `json:"model_calls"`
-	ModelTokens int `json:"model_tokens"`
+	ModelCalls    int `json:"model_calls"`
+	ModelTokens   int `json:"model_tokens"`
 }
 
 // Valid applies hard bounds independently of the narrower deployment settings.
@@ -68,31 +68,39 @@ func (b ReportingBudget) Valid() bool {
 // published report; report executes the full publication. No hidden report or
 // alternative authoring/security model is created by scheduling.
 type ReportingTarget struct {
-	Type string `json:"type" jsonschema:"enum=saved_sql,enum=saved_question,enum=block,enum=report"`
-	ID string `json:"id"`
-	Revision int64 `json:"revision"`
-	LatestPublished bool `json:"latest_published"`
-	Widget string `json:"widget,omitempty"`
-	Outputs []string `json:"outputs"`
-	Arguments []ReportingArgument `json:"arguments"`
-	Locale string `json:"locale"`
-	Timezone string `json:"timezone"`
-	Dynamic bool `json:"dynamic"`
-	Narrative bool `json:"narrative"`
-	Budget ReportingBudget `json:"budget"`
+	Type            string              `json:"type" jsonschema:"enum=saved_sql,enum=saved_question,enum=block,enum=report"`
+	ID              string              `json:"id"`
+	Revision        int64               `json:"revision"`
+	LatestPublished bool                `json:"latest_published"`
+	Widget          string              `json:"widget,omitempty"`
+	Outputs         []string            `json:"outputs"`
+	Arguments       []ReportingArgument `json:"arguments"`
+	Locale          string              `json:"locale"`
+	Timezone        string              `json:"timezone"`
+	Dynamic         bool                `json:"dynamic"`
+	Narrative       bool                `json:"narrative"`
+	Budget          ReportingBudget     `json:"budget"`
 }
 
 // ResourceKind selects the existing signed resource namespace.
 func (t ReportingTarget) ResourceKind() string {
-	if t.Type == "saved_sql" || t.Type == "block" { return "block" }
-	if t.Type == "saved_question" || t.Type == "report" { return "report" }
+	if t.Type == "saved_sql" || t.Type == "block" {
+		return "block"
+	}
+	if t.Type == "saved_question" || t.Type == "report" {
+		return "report"
+	}
 	return ""
 }
 
 // InputKind identifies the existing frozen or composition execution consumer.
 func (t ReportingTarget) InputKind() string {
-	if t.ResourceKind() == "block" { return "reporting.run" }
-	if t.ResourceKind() == "report" { return "report.run" }
+	if t.ResourceKind() == "block" {
+		return "reporting.run"
+	}
+	if t.ResourceKind() == "report" {
+		return "report.run"
+	}
 	return ""
 }
 
@@ -115,7 +123,9 @@ func (t ReportingTarget) Valid() bool {
 	}
 	seen := map[string]bool{}
 	for _, id := range t.Outputs {
-		if !identity.Identifier(id) || seen[id] { return false }
+		if !identity.Identifier(id) || seen[id] {
+			return false
+		}
 		seen[id] = true
 	}
 	seen = map[string]bool{}
@@ -137,28 +147,30 @@ func (t ReportingTarget) Valid() bool {
 
 // Require never derives permission from a creator, recipient or binding name.
 func (t ReportingTarget) Require(e identity.Envelope) error {
-	if !t.Valid() { return ErrInvalid }
+	if !t.Valid() {
+		return ErrInvalid
+	}
 	return access.Require(e, "reporting.execute", access.Resource{Tenant: e.Tenant(), Kind: t.ResourceKind(), Permission: "execute", ID: t.ID})
 }
 
 // ReportingPin is resolved by the repository while accepting the occurrence.
 // It is not a client write shape and cannot float during retry or dispatch.
 type ReportingPin struct {
-	ID string `json:"id"`
-	Revision int64 `json:"revision"`
-	Digest string `json:"digest"`
+	ID       string `json:"id"`
+	Revision int64  `json:"revision"`
+	Digest   string `json:"digest"`
 }
 
 // ReportingDispatch records only definition coordinates and declared inputs.
 // Source SQL, data, issuer/provider credentials and bearer tokens are absent.
 // Blocked resolution is retained explicitly rather than silently repinning.
 type ReportingDispatch struct {
-	Target ReportingTarget `json:"target"`
-	Revision int64 `json:"revision"`
-	Digest string `json:"digest"`
-	Pins []ReportingPin `json:"pins"`
-	Input RequestInput `json:"input"`
-	Blocked string `json:"blocked,omitempty"`
+	Target   ReportingTarget `json:"target"`
+	Revision int64           `json:"revision"`
+	Digest   string          `json:"digest"`
+	Pins     []ReportingPin  `json:"pins"`
+	Input    RequestInput    `json:"input"`
+	Blocked  string          `json:"blocked,omitempty"`
 }
 
 func reportingHash(s string) bool { return len(s) == 64 && strings.Trim(s, "0123456789abcdef") == "" }
@@ -171,10 +183,14 @@ func (d ReportingDispatch) Valid() bool {
 	if d.Blocked != "" {
 		return d.Blocked == "dependency_unavailable" && d.Revision == 0 && d.Digest == "" && len(d.Pins) == 0
 	}
-	if d.Revision < 1 || d.Revision > 256 || !reportingHash(d.Digest) || !d.Target.LatestPublished && d.Revision != d.Target.Revision { return false }
+	if d.Revision < 1 || d.Revision > 256 || !reportingHash(d.Digest) || !d.Target.LatestPublished && d.Revision != d.Target.Revision {
+		return false
+	}
 	seen := map[string]bool{}
 	for _, p := range d.Pins {
-		if !identity.Identifier(p.ID) || p.Revision < 1 || p.Revision > 256 || !reportingHash(p.Digest) || seen[p.ID] { return false }
+		if !identity.Identifier(p.ID) || p.Revision < 1 || p.Revision > 256 || !reportingHash(p.Digest) || seen[p.ID] {
+			return false
+		}
 		seen[p.ID] = true
 	}
 	return true
@@ -189,9 +205,13 @@ type ReportingExecutor interface {
 
 // NewWithReporting composes both real target families before workers start.
 func NewWithReporting(repo Repository, authority Authority, limits Limits, pipeline PipelineExecutor, reporting ReportingExecutor) (*Service, error) {
-	if reporting == nil { return nil, ErrInvalid }
+	if reporting == nil {
+		return nil, ErrInvalid
+	}
 	s, err := New(repo, authority, limits)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	s.pipeline, s.reporting = pipeline, reporting
 	return s, nil
 }
@@ -204,6 +224,8 @@ func ReportingInvocation(proof auth.Execution, lease Lease, task RequestTask) (I
 		return Invocation{}, ErrAuthority
 	}
 	inv := Invocation{lease: RequestLease{Task: task, Owner: lease.Owner, Fence: lease.Fence, Attempt: lease.Attempt, Until: lease.Until}, authority: proof.Envelope(), owned: true}
-	if !inv.Valid() { return Invocation{}, ErrAuthority }
+	if !inv.Valid() {
+		return Invocation{}, ErrAuthority
+	}
 	return inv, nil
 }

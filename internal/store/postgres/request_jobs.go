@@ -42,7 +42,7 @@ func readOwnedRequestTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id 
 	if !e.Valid() || !identity.Identifier(id) {
 		return jobs.RequestTask{}, access.ErrUnauthenticated
 	}
-	query := `SELECT ` + requestColumns + ` FROM chartworks.operations WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$4 AND ((dispatch_mode='request' AND initiator_session=$3) OR (dispatch_mode='queued' AND kind='pipeline.run' AND operation_id=$3))`
+	query := `SELECT ` + requestColumns + ` FROM chartworks.operations WHERE tenant_id=$1 AND actor_id=$2 AND operation_id=$4 AND ((dispatch_mode='request' AND initiator_session=$3) OR (dispatch_mode='queued' AND kind IN('pipeline.run','reporting.scheduled') AND operation_id=$3))`
 	if lock {
 		query += ` FOR UPDATE`
 	}

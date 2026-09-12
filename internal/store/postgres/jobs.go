@@ -31,6 +31,7 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 			return jobs.Job{}, store.ErrInvalid
 		}
 		j.Pipeline = accepted.Pipeline
+		j.Reporting = accepted.Reporting
 		if j.Digest() != accepted.ManifestHash || j.ManifestHash != accepted.ManifestHash {
 			return jobs.Job{}, store.ErrInvalid
 		}

@@ -89,10 +89,7 @@ func (t RequestTask) Digest() string {
 // Valid rejects incomplete or tampered retained manifests.
 func (t RequestTask) Valid() bool {
 	if t.Dispatch != nil {
-		j := t.Dispatch
-		if !j.Valid() || j.Kind != PipelineKind || t.ID != j.ID || t.Tenant != j.Tenant || t.Actor != j.Executor || t.Session != j.ID || t.MaxAttempts != j.MaxAttempts || t.Input != (RequestInput{Kind: PipelineKind, Target: j.Pipeline.ID, InputHash: j.Pipeline.Digest}) {
-			return false
-		}
+		return validDispatchedRequest(t)
 	}
 	return identity.Identifier(t.Tenant) && identity.Identifier(t.ID) && identity.Identifier(t.Actor) && identity.Identifier(t.Session) && t.Input.Valid() &&
 		t.MaxAttempts >= 1 && t.MaxAttempts <= 8 && t.Attempts >= 0 && t.Attempts <= t.MaxAttempts && !t.Created.IsZero() && t.Expires.After(t.Created) && t.ManifestHash == t.Digest()

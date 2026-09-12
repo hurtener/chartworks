@@ -74,9 +74,10 @@ func (l Limits) QueueFingerprint() string {
 
 // Submission is closed: there is no caller-selected actor, tenant, credential, SQL or timestamp.
 type Submission struct {
-	Kind      string          `json:"kind"`
-	BindingID string          `json:"binding_id"`
-	Pipeline  *PipelineTarget `json:"pipeline,omitempty"`
+	Kind      string           `json:"kind"`
+	BindingID string           `json:"binding_id"`
+	Pipeline  *PipelineTarget  `json:"pipeline,omitempty"`
+	Reporting *ReportingTarget `json:"reporting,omitempty"`
 }
 
 // Validate rejects malformed or unbounded values before use.
@@ -86,11 +87,15 @@ func (s Submission) Validate() error {
 	}
 	switch s.Kind {
 	case MaintenanceKind:
-		if s.Pipeline == nil {
+		if s.Pipeline == nil && s.Reporting == nil {
+			return nil
+		}
+	case ReportingKind:
+		if s.Pipeline == nil && s.Reporting != nil && s.Reporting.Valid() {
 			return nil
 		}
 	case PipelineKind:
-		if s.Pipeline != nil && s.Pipeline.Valid() {
+		if s.Pipeline != nil && s.Pipeline.Valid() && s.Reporting == nil {
 			return nil
 		}
 	}
@@ -107,29 +112,30 @@ func Executor(binding string) string { return "svc:chartworks:" + binding }
 
 // Job is retained execution metadata, not authority. All temporal values are UTC microseconds.
 type Job struct {
-	ID                string          `json:"id"`
-	Tenant            string          `json:"tenant"`
-	Kind              string          `json:"kind"`
-	BindingID         string          `json:"binding_id"`
-	Executor          string          `json:"executor"`
-	Initiator         string          `json:"initiator"`
-	InitiatorSession  string          `json:"initiator_session"`
-	State             string          `json:"state"`
-	ErrorCode         string          `json:"error_code,omitempty"`
-	PolicyRevision    int64           `json:"policy_revision"`
-	DueAt             time.Time       `json:"due_at"`
-	WindowStart       time.Time       `json:"window_start"`
-	WindowEnd         time.Time       `json:"window_end"`
-	Cutoff            time.Time       `json:"cutoff"`
-	Batch             int             `json:"batch"`
-	Attempts          int             `json:"attempts"`
-	MaxAttempts       int             `json:"max_attempts"`
-	ScheduleID        string          `json:"schedule_id,omitempty"`
-	ScheduleRevision  int64           `json:"schedule_revision,omitempty"`
-	ManifestHash      string          `json:"manifest_hash"`
-	DeletedEvents     int64           `json:"deleted_events"`
-	DeletedOperations int64           `json:"deleted_operations"`
-	Pipeline          *PipelineTarget `json:"pipeline,omitempty"`
+	ID                string             `json:"id"`
+	Tenant            string             `json:"tenant"`
+	Kind              string             `json:"kind"`
+	BindingID         string             `json:"binding_id"`
+	Executor          string             `json:"executor"`
+	Initiator         string             `json:"initiator"`
+	InitiatorSession  string             `json:"initiator_session"`
+	State             string             `json:"state"`
+	ErrorCode         string             `json:"error_code,omitempty"`
+	PolicyRevision    int64              `json:"policy_revision"`
+	DueAt             time.Time          `json:"due_at"`
+	WindowStart       time.Time          `json:"window_start"`
+	WindowEnd         time.Time          `json:"window_end"`
+	Cutoff            time.Time          `json:"cutoff"`
+	Batch             int                `json:"batch"`
+	Attempts          int                `json:"attempts"`
+	MaxAttempts       int                `json:"max_attempts"`
+	ScheduleID        string             `json:"schedule_id,omitempty"`
+	ScheduleRevision  int64              `json:"schedule_revision,omitempty"`
+	ManifestHash      string             `json:"manifest_hash"`
+	DeletedEvents     int64              `json:"deleted_events"`
+	DeletedOperations int64              `json:"deleted_operations"`
+	Pipeline          *PipelineTarget    `json:"pipeline,omitempty"`
+	Reporting         *ReportingDispatch `json:"reporting,omitempty"`
 }
 
 // Digest binds only the immutable accepted manifest; attempt/result state cannot change its meaning.
@@ -138,6 +144,9 @@ func (j Job) Digest() string {
 	if j.Pipeline != nil {
 		parts = append(parts, j.Pipeline)
 	}
+	if j.Reporting != nil {
+		parts = append(parts, j.Reporting)
+	}
 	b, _ := json.Marshal(parts)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -145,7 +154,7 @@ func (j Job) Digest() string {
 
 // Valid checks the value's invariants and any attached authority expiry.
 func (j Job) Valid() bool {
-	return identity.Identifier(j.ID) && identity.Identifier(j.Tenant) && BindingID(j.BindingID) && ((j.Kind == MaintenanceKind && j.Pipeline == nil) || (j.Kind == PipelineKind && j.Pipeline != nil && j.Pipeline.Valid())) && j.Executor == Executor(j.BindingID) && identity.Identifier(j.Initiator) && identity.Identifier(j.InitiatorSession) && j.PolicyRevision > 0 && j.Batch >= 1 && j.Batch <= 1000 && !j.DueAt.IsZero() && !j.WindowStart.After(j.WindowEnd) && j.WindowEnd.Equal(j.DueAt) && j.ManifestHash == j.Digest()
+	return identity.Identifier(j.ID) && identity.Identifier(j.Tenant) && BindingID(j.BindingID) && ((j.Kind == MaintenanceKind && j.Pipeline == nil && j.Reporting == nil) || (j.Kind == PipelineKind && j.Pipeline != nil && j.Pipeline.Valid() && j.Reporting == nil) || (j.Kind == ReportingKind && j.Pipeline == nil && j.Reporting != nil && j.Reporting.Valid())) && j.Executor == Executor(j.BindingID) && identity.Identifier(j.Initiator) && identity.Identifier(j.InitiatorSession) && j.PolicyRevision > 0 && j.Batch >= 1 && j.Batch <= 1000 && !j.DueAt.IsZero() && !j.WindowStart.After(j.WindowEnd) && j.WindowEnd.Equal(j.DueAt) && j.ManifestHash == j.Digest()
 }
 
 // Lease fences bookkeeping and completion; it is never a replacement for fresh signed authority.
@@ -170,6 +179,14 @@ func AssertExecution(proof auth.Execution, j Job) error {
 	}
 	if !j.Valid() || !e.Valid() || e.Tenant() != j.Tenant || e.User() != j.Executor || e.Session() != j.ID {
 		return ErrAuthority
+	}
+	if j.Kind == ReportingKind {
+		if j.Reporting.Target.Require(e) != nil || access.Require(e, "reporting.execute",
+			access.Resource{Tenant: j.Tenant, Kind: "execution_binding", Permission: "use", ID: j.BindingID},
+			access.Resource{Tenant: j.Tenant, Kind: "run", Permission: "execute", ID: j.ID}) != nil {
+			return ErrAuthority
+		}
+		return nil
 	}
 	if j.Kind == PipelineKind {
 		if err := access.Require(e, "engineering.pipeline.run",
