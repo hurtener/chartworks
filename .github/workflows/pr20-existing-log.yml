@@ -13,13 +13,14 @@ jobs:
       - name: Download already-completed job log
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api repos/hurtener/chartworks/actions/jobs/103581067025/logs > /tmp/pr20-failed-job.log
+        run: gh api --allow-escape-sequences repos/hurtener/chartworks/actions/jobs/103581067025/logs > /tmp/pr20-failed-job.log
       - name: Extract test and coverage failures
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
-          lines = Path('/tmp/pr20-failed-job.log').read_text(encoding='utf-8-sig').splitlines()
+          raw = Path('/tmp/pr20-failed-job.log').read_text(encoding='utf-8-sig')
+          lines = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', raw).splitlines()
           pattern = re.compile(r'--- FAIL:|FAIL: coverage|FAIL: internal/|panic: test timed out|WARNING: DATA RACE|FAIL\s+github.com/hurtener/chartworks|coverage unavailable|aggregate wall-clock')
           indices = set()
           for index, line in enumerate(lines):
