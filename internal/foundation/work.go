@@ -267,6 +267,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = reportingapi.RuntimeHandler(verifier, runs, w.autopilot, blockService.CanValidate(), v.Autopilot.Enabled, w.handler)
+	documentRegistry, handler, err := mountDocuments(v.Reporting, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = handler
 
 	publicRegistry, err := PublicRegistry()
 	if err != nil {
@@ -311,7 +317,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry, documentRegistry)
 	if err != nil {
 		w.close()
 		return nil, err

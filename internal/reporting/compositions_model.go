@@ -35,7 +35,7 @@ type CompositionRequest struct {
 	Preview        bool              `json:"preview"`
 	PartialFailure string            `json:"partial_failure,omitempty"`
 	Resolution     Resolution        `json:"resolution"`
-	Pages          []PageInput        `json:"pages"`
+	Pages          []PageInput       `json:"pages"`
 }
 
 // CompositionWidget keeps per-widget provenance and its original output subset.
@@ -116,17 +116,17 @@ func (m CompositionManifest) ManifestDigest() string { return digest(m) }
 // GroupResult retains a completed or explicitly failed group checkpoint.
 // Dynamic query evidence has no block certificate field.
 type GroupResult struct {
-	Group     string              `json:"group"`
-	Kind      string              `json:"kind"`
-	State     string              `json:"state"`
-	Code      string              `json:"code,omitempty"`
-	ChildRun  string              `json:"child_run,omitempty"`
-	Block     *RunView            `json:"block,omitempty"`
-	Outputs   []RetainedOutput    `json:"outputs"`
+	Group     string               `json:"group"`
+	Kind      string               `json:"kind"`
+	State     string               `json:"state"`
+	Code      string               `json:"code,omitempty"`
+	ChildRun  string               `json:"child_run,omitempty"`
+	Block     *RunView             `json:"block,omitempty"`
+	Outputs   []RetainedOutput     `json:"outputs"`
 	Query     *nlqexec.SavedResult `json:"query,omitempty"`
 	QueryPlan *nlqexec.SavedPlan   `json:"query_plan,omitempty"`
-	Observed  *time.Time          `json:"observed_at,omitempty"`
-	Digest    string              `json:"digest"`
+	Observed  *time.Time           `json:"observed_at,omitempty"`
+	Digest    string               `json:"digest"`
 }
 
 // CompositionWidgetSummary has no normalized values, SQL or hidden payload.
@@ -184,7 +184,7 @@ type CompositionPayload struct {
 	Code    string               `json:"code,omitempty"`
 	Text    *TextWidget          `json:"text,omitempty"`
 	Outputs []RetainedOutput     `json:"outputs"`
-	Query   *nlqexec.SavedResult  `json:"query,omitempty"`
+	Query   *nlqexec.SavedResult `json:"query,omitempty"`
 }
 
 // CompositionRecord is private execution state. Started is a durable pre-model
@@ -196,6 +196,7 @@ type CompositionRecord struct {
 	Results  []GroupResult
 	Plans    map[string]nlqexec.SavedPlan
 	Started  map[string]bool
+	Finished *time.Time
 }
 
 // CompositionRepository adds retention to the common leased operation ledger.
