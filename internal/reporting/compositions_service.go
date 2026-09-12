@@ -188,7 +188,6 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		delete(inputs, "main")
 	} else {
 		for _, page := range definition.Pages {
-			// Dashboard read reach does not create report execution authority.
 			if err := RequireDocument(e, "report", page.Report, Execute); err != nil {
 				return CompositionManifest{}, err
 			}
@@ -223,7 +222,6 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 			return CompositionManifest{}, err
 		}
 		if d.PartialFailure == "fail_closed" {
-			// Enclosing dashboard policy cannot weaken a page's own strictness.
 			m.Policy = "fail_closed"
 		}
 		resolution := clone(in.Resolution)
@@ -266,7 +264,7 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 			}
 			delete(overrides, widget.ID)
 			if groupErr != nil {
-				if ctx.Err() != nil || !e.Valid() {
+				if ctx.Err() != nil || !e.Valid() || errors.Is(groupErr, store.ErrUnavailable) {
 					return CompositionManifest{}, groupErr
 				}
 				cw.Code = compositionFailure(groupErr)
@@ -289,6 +287,7 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 							m.Groups[position].Outputs = append(m.Groups[position].Outputs, output)
 						}
 					}
+					m.Groups[position].Narrative = m.Groups[position].Narrative || group.Narrative
 					cw.Group = m.Groups[position].ID
 				} else if len(m.Groups) >= limits.Composition.MaxQueries {
 					cw.Code = "budget_exhausted"
@@ -306,6 +305,35 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		}
 		m.Pages = append(m.Pages, page)
 	}
+	// Validate the union, not the separate widget subsets. Otherwise repeated
+	// references could each fit the model budget while their union exceeds it.
+	for i := range m.Groups {
+		g := &m.Groups[i]
+		if g.Kind != "block" {
+			continue
+		}
+		var definition Definition
+		for _, cached := range memo {
+			if cached.err == nil && cached.snapshot.State.ID == g.Block && cached.snapshot.Revision.Digest == g.Definition {
+				definition = cached.snapshot.Revision.Definition
+				break
+			}
+		}
+		selected, err := s.runs.selectRunOutputs(definition, RunRequest{Outputs: g.Outputs, Narrative: g.Narrative})
+		if err != nil {
+			return CompositionManifest{}, err
+		}
+		g.ReservedCalls, g.ReservedTokens = 0, 0
+		for _, output := range selected {
+			if output.Narrative != nil {
+				g.ReservedCalls += output.Narrative.MaxCalls
+				g.ReservedTokens += output.Narrative.MaxTokens
+			}
+		}
+		if g.ReservedCalls > limits.Execution.NarrativeCalls || g.ReservedTokens > limits.Execution.NarrativeTokens {
+			return CompositionManifest{}, ErrBudget
+		}
+	}
 	return m, nil
 }
 
@@ -318,20 +346,18 @@ func documentTitle(d DocumentDefinition) string {
 	return ""
 }
 
-// Output subsets and binding provenance do not change query semantics. Exact
-// parameters, partition, policy, locale/timezone and revision do. No cross-run or
-// cross-context shared cache is introduced by this within-manifest grouping.
+// Output subsets, narrative opt-in and binding provenance are not query identity.
+// Opt-in is enforced before grouping; the union retains each widget's selection.
 func groupIdentity(g CompositionGroup) string {
 	if g.Kind == "query" {
-		// Distinct query widgets retain independent generated-query evidence.
 		return digest([]any{g.Kind, g.Origin, g.Query, g.Binding, g.Locale, g.Private, g.Resolution})
 	}
-	return digest([]any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Narrative, g.Resolution})
+	return digest([]any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Resolution})
 }
 
 func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, d DocumentDefinition, w Widget, filters, overrides []Argument, resolution Resolution, memo map[string]compositionBlockSource) (CompositionGroup, CompositionWidget, error) {
 	cw := CompositionWidget{Definition: clone(w), Parameters: []BoundValue{}}
-	if s.runs == nil || s.documents.blocks == nil {
+	if s.runs == nil || !s.documents.blocks.CanValidate() {
 		return CompositionGroup{}, cw, ErrUnavailable
 	}
 	key := w.Block.Block + ":" + strconv.FormatInt(w.Block.Revision, 10)
@@ -392,7 +418,7 @@ func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m 
 }
 
 func (s *Compositions) resolveQuery(ctx context.Context, e identity.Envelope, m CompositionManifest, d DocumentDefinition, w Widget, origins []QueryOrigin, resolution Resolution) (CompositionGroup, error) {
-	if !m.Limits.LiveQueries || w.Query.Durability == "session_bound" && (!m.Limits.SessionBound || !m.Private) || s.queries == nil || s.documents.blocks == nil {
+	if !m.Limits.LiveQueries || w.Query.Durability == "session_bound" && (!m.Limits.SessionBound || !m.Private) || s.queries == nil || !s.documents.blocks.CanValidate() {
 		return CompositionGroup{}, ErrUnavailable
 	}
 	var origin *QueryOrigin
@@ -422,5 +448,5 @@ func (s *Compositions) resolveQuery(ctx context.Context, e identity.Envelope, m 
 		return CompositionGroup{}, err
 	}
 	return CompositionGroup{Kind: "query", Query: clone(w.Query), Origin: origin, Binding: binding, References: refs, Private: m.Private, Locale: d.Locale,
-		Outputs: []string{}, Arguments: []Argument{}, Resolution: resolution, Policy: "dynamic", ReservedCalls: 3, ReservedTokens: 1 << 20}, nil
+		Outputs: []string{}, Arguments: []Argument{}, Resolution: resolution, Policy: "dynamic", ReservedCalls: 5, ReservedTokens: 2 << 20}, nil
 }

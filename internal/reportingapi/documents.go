@@ -18,8 +18,8 @@ type DocumentCreate struct {
 
 // DocumentEdit creates an immutable amendment without changing a pending review.
 type DocumentEdit struct {
-	ExpectedVersion int64                       `json:"expected_version"`
-	From            reporting.DocumentReference `json:"from"`
+	ExpectedVersion int64                        `json:"expected_version"`
+	From            reporting.DocumentReference  `json:"from"`
 	Definition      reporting.DocumentDefinition `json:"definition"`
 }
 

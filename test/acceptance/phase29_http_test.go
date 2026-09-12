@@ -3,6 +3,7 @@ package acceptance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -76,19 +77,25 @@ func TestDocumentHTTPContracts(t *testing.T) {
 	dashboardDefinition.Widgets = nil
 	dashboardDefinition.Pages = []reporting.DocumentPage{{ID: "report-page", Title: "Report page", Report: report.ID, Revision: report.PublishedRevision}}
 	dashboard := publish(sdk.DashboardDocument, create(sdk.DashboardDocument, "http-dashboard", dashboardDefinition))
+	// Exercise the dashboard before archiving its referenced report. An archived
+	// dependency must remain ineligible; the happy-path fixture cannot revoke it.
 	for _, target := range []struct {
 		kind       sdk.DocumentKind
 		state      sdk.DocumentState
 		definition reporting.DocumentDefinition
 		page       string
-	}{{sdk.ReportDocument, report, phase29Text("Report amendment"), "main"}, {sdk.DashboardDocument, dashboard, dashboardDefinition, "report-page"}} {
+	}{{sdk.DashboardDocument, dashboard, dashboardDefinition, "report-page"}, {sdk.ReportDocument, report, phase29Text("Report amendment"), "main"}} {
 		kind, state := target.kind, target.state
 		if listed, err := client.ListDocuments(ctx, kind, "", 20); err != nil || len(listed.Items) != 1 || listed.Items[0].ID != state.ID {
 			t.Fatal("HTTP published listing", listed, err)
 		}
 		admitted, err := client.AdmitComposition(ctx, kind, state.ID, sdk.CompositionRequest{Key: "http-" + string(kind) + "-run"})
 		if err != nil {
-			t.Fatal("HTTP composition admission", err)
+			var rejection *sdk.StatusError
+			if errors.As(err, &rejection) {
+				t.Fatalf("HTTP %s composition admission: status=%d", kind, rejection.Status)
+			}
+			t.Fatal("HTTP composition admission", kind, err)
 		}
 		if receipt, err := client.InspectComposition(ctx, admitted.ID); err != nil || receipt.State != "sealed" || receipt.Complete {
 			t.Fatal("HTTP sealed receipt", receipt, err)

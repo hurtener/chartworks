@@ -44,8 +44,10 @@ func phase29RuntimeScopes(tenant string) []string {
 }
 
 func phase29AuthorScopes(tenant string) []string {
+	// Authoring inspects existing semantics but never generates a query plan.
+	// Preserve the production 32-scope ceiling and separate execution authority.
 	base := slices.DeleteFunc(phase29RuntimeScopes(tenant), func(s string) bool {
-		return s == "reporting.execute" || s == "jobs.cancel" || strings.HasPrefix(s, "cw.") && strings.Contains(s, ".execute:")
+		return s == "reporting.execute" || s == "jobs.cancel" || s == "query.plan" || strings.HasPrefix(s, "cw.") && strings.Contains(s, ".execute:")
 	})
 	return append(base, "reporting.write", "reporting.publish", "cw.report.write:*", "cw.report.publish:*", "cw.dashboard.write:*", "cw.dashboard.publish:*")
 }
@@ -168,8 +170,6 @@ func testPhase29SealedFanout(t *testing.T) {
 	if f.attemptCount(t) != before {
 		t.Fatal("composition admission executed a warehouse query")
 	}
-	// Publish a genuinely different result-producing block revision after the
-	// report is sealed. The accepted run must use revision one, not follow it.
 	old, err := f.blocks.Read(ctx, f.blockAuthor, "shared-block", reporting.Reference{})
 	if err != nil {
 		t.Fatal(err)
@@ -301,8 +301,6 @@ func testPhase29DynamicDurability(t *testing.T) {
 	if beforeSource != f.f.f.lookups.Load() || beforeModel != f.f.model.requests.Load() {
 		t.Fatal("terminal replay or retained widget read regenerated data")
 	}
-	// A session-bound widget clones the original governed definition, rather
-	// than impersonating an author or rerunning the original query operation.
 	sessionDefinition := phase29Text("Session-bound private report")
 	sessionWidget := f.queryWidget()
 	sessionWidget.Query.Durability = "session_bound"
