@@ -54,14 +54,15 @@ type BlockWidget struct {
 }
 
 // QueryWidget is an explicitly dynamic lane, not a block or a certificate.
-// Replayable questions have exact semantic pins and no originating session.
-// Session-bound references are resolved using the current actor/session only.
+// Replayable questions have exact semantic pins and explicit routing choices.
+// Session-bound references use the original query's choices and actor/session.
 type QueryWidget struct {
-	Durability string     `json:"durability" jsonschema:"enum=replayable,enum=session_bound"`
-	Context    string     `json:"context"`
-	Topics     []TopicPin `json:"topics"`
-	Question   string     `json:"question,omitempty"`
-	Query      string     `json:"query,omitempty"`
+	Durability string           `json:"durability" jsonschema:"enum=replayable,enum=session_bound"`
+	Context    string           `json:"context"`
+	Topics     []TopicPin       `json:"topics"`
+	Question   string           `json:"question,omitempty"`
+	Query      string           `json:"query,omitempty"`
+	Selections *QuerySelections `json:"selections,omitempty"`
 }
 
 // FilterBinding names one declared filter and one block parameter.

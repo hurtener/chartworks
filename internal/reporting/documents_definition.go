@@ -147,22 +147,7 @@ func validWidget(w Widget, limits config.ReportingComposition) bool {
 	case "text":
 		return w.Text != nil && w.Block == nil && w.Query == nil && len(w.Literals)+len(w.Bindings)+len(w.Overrides) == 0 && safeText(*w.Text, limits.MaxTextBytes)
 	case "query":
-		if w.Query == nil || w.Block != nil || w.Text != nil || len(w.Literals)+len(w.Bindings)+len(w.Overrides) != 0 {
-			return false
-		}
-		q := w.Query
-		if !identity.Identifier(q.Context) || len(q.Topics) == 0 || len(q.Topics) > 4 {
-			return false
-		}
-		seen := map[string]bool{}
-		for _, pin := range q.Topics {
-			if !identity.Identifier(pin.Topic) || !identity.Identifier(pin.Version) || !hashValid(pin.Digest) || seen[pin.Topic] {
-				return false
-			}
-			seen[pin.Topic] = true
-		}
-		return q.Durability == "replayable" && q.Query == "" && strings.TrimSpace(q.Question) != "" && text(q.Question, 4096) ||
-			q.Durability == "session_bound" && q.Question == "" && identity.Identifier(q.Query)
+		return w.Query != nil && w.Block == nil && w.Text == nil && len(w.Literals)+len(w.Bindings)+len(w.Overrides) == 0 && validQuerySelections(*w.Query)
 	case "block":
 		if w.Block == nil || w.Query != nil || w.Text != nil || !identity.Identifier(w.Block.Block) || w.Block.Revision < 0 || w.Block.Revision > 256 || len(w.Block.Outputs) > 64 || !slices.Contains([]string{"", "published", "certified_only", "explicit_stale"}, w.Block.Policy) {
 			return false

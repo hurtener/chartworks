@@ -25,11 +25,12 @@ type SavedTopic struct {
 
 // SavedQuestion distinguishes replayable questions from private session references.
 type SavedQuestion struct {
-	Durability string       `json:"durability"`
-	Context    string       `json:"context"`
-	Topics     []SavedTopic `json:"topics"`
-	Question   string       `json:"question,omitempty"`
-	Query      string       `json:"query,omitempty"`
+	Durability string           `json:"durability"`
+	Context    string           `json:"context"`
+	Topics     []SavedTopic     `json:"topics"`
+	Question   string           `json:"question,omitempty"`
+	Query      string           `json:"query,omitempty"`
+	Selections *SavedSelections `json:"selections,omitempty"`
 }
 
 // SavedEvidence is metadata-only. It grants no authority over the named source.
@@ -78,7 +79,7 @@ type SavedResult struct {
 }
 
 func savedQuestionValid(q SavedQuestion) bool {
-	if !identity.Identifier(q.Context) || len(q.Topics) < 1 || len(q.Topics) > 4 {
+	if !identity.Identifier(q.Context) || len(q.Topics) < 1 || len(q.Topics) > 4 || !savedSelectionsValid(q) {
 		return false
 	}
 	seen := map[string]bool{}
@@ -97,7 +98,7 @@ func savedQueryDigest(q QueryRecord) string {
 }
 
 func savedRecordMatches(q QueryRecord, in SavedQuestion) bool {
-	if q.Context != in.Context || len(q.Topics) != len(in.Topics) || len(q.TopicVersions) != len(in.Topics) || strings.TrimSpace(q.SQL) == "" {
+	if q.Context != in.Context || len(q.Topics) != len(in.Topics) || len(q.TopicVersions) != len(in.Topics) || strings.TrimSpace(q.SQL) == "" || !savedSelectionsMatch(q, in) {
 		return false
 	}
 	for i, pin := range in.Topics {
@@ -255,7 +256,6 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 			return SavedPlan{}, err
 		}
 	} else {
-		ids := make([]string, 0, len(in.Topics))
 		for _, pin := range in.Topics {
 			current, err := s.topics.Contract(ctx, e, pin.Topic)
 			if err != nil {
@@ -264,15 +264,14 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 			if current.Publication.Digest != pin.Digest || current.Publication.Definition.Version != pin.Version {
 				return SavedPlan{}, ErrNoPlan
 			}
-			ids = append(ids, pin.Topic)
 		}
-		language := nlq.Language("en")
+		language := nlq.LanguageEnglish
 		if strings.HasPrefix(locale, "es") {
-			language = nlq.Language("es")
+			language = nlq.LanguageSpanish
 		} else if !strings.HasPrefix(locale, "en") {
 			return SavedPlan{}, ErrInvalid
 		}
-		result, err := s.Plan(ctx, e, PlanRequest{Operation: operation, QuestionRequest: QuestionRequest{Topics: ids, Context: in.Context, Locale: language, Question: in.Question}})
+		result, err := s.Plan(ctx, e, PlanRequest{Operation: operation, QuestionRequest: savedRouting(in, language)})
 		if err != nil {
 			return SavedPlan{}, err
 		}

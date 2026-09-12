@@ -153,6 +153,12 @@ func (s *Compositions) continueComposition(ctx context.Context, e identity.Envel
 			if !e.Valid() {
 				return access.ErrUnauthenticated
 			}
+			// A lost child checkpoint reply or metadata outage is not proof of
+			// a failed query. Preserve the manifest and durable child evidence
+			// for explicit resume instead of sealing a permanent failed group.
+			if errors.Is(err, store.ErrUnavailable) {
+				return err
+			}
 			result = failedGroup(group, compositionExecutionCode(err))
 		}
 		result.Digest = GroupResultDigest(result)
@@ -309,6 +315,3 @@ func (s *Compositions) executeQuery(ctx context.Context, e identity.Envelope, in
 	out.Digest = GroupResultDigest(out)
 	return out, record, CheckCompositionResult(m, g, out)
 }
-
-// Retain the common store error identity for callers resolving interrupted work.
-var _ = store.ErrConflict

@@ -8,11 +8,15 @@ on:
       - 'internal/reporting/**'
       - 'internal/reportingapi/**'
       - 'internal/nlqexec/saved*'
+      - 'internal/nlqroute/request_validation.go'
+      - 'internal/config/reporting*'
+      - 'internal/foundation/**'
       - 'internal/store/postgres/documents*'
       - 'internal/store/postgres/compositions*'
       - 'internal/store/postgres/saved*'
       - 'internal/store/postgres/migrations/029*'
       - 'internal/store/postgres/migrations/030*'
+      - 'sdk/chartworks/documents*'
       - 'test/acceptance/phase29*'
       - '.github/workflows/phase-29-verification.yml'
 
@@ -54,9 +58,7 @@ jobs:
           go-version: '1.26.4'
       - name: Formatting diagnostics without modifying source
         run: |
-          files=$(find internal test -name 'documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go' -o -name 'compositions*.go' -o -name 'saved_*.go')
-          # Print all diagnostics before compilation. The final gate still
-          # fails on every formatting difference, even when compilation fails.
+          files=$(git ls-files '*.go')
           if test -n "$files"; then
             if ! gofmt -d $files; then echo 'Formatting differences remain; final formatting gate is required.'; fi
           fi
@@ -79,13 +81,14 @@ jobs:
       - name: Exact-source unit and PostgreSQL regression tests
         run: |
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
-          go test -race -count=1 -v -timeout=15m ./internal/config ./internal/reporting ./internal/nlqexec ./test/acceptance -run 'TestDocument|TestReportingComposition|TestSavedQuestion'
+          go test -race -count=1 -v -timeout=15m ./internal/config ./internal/reporting ./internal/reportingapi ./internal/nlqexec ./internal/nlqroute ./sdk/chartworks ./test/acceptance -run 'TestDocument|TestReportingComposition|TestSavedQuestion'
       - name: All eight named phase criteria are required
+        if: always() && steps.native.outcome == 'success'
         run: python3 scripts/run_phase_acceptance.py --phase 29
       - name: Formatting and source must remain unchanged
         if: always() && steps.checkout.outcome == 'success'
         run: |
-          files=$(find internal test -name 'documents*.go' -o -name 'reporting_composition*.go' -o -name 'phase29*.go' -o -name 'compositions*.go' -o -name 'saved_*.go')
+          files=$(git ls-files '*.go')
           if test -n "$files"; then test -z "$(gofmt -l $files)"; fi
           test ! -f .github/workflows/phase-29-edit.yml
           test ! -f .github/workflows/phase-29-format.yml

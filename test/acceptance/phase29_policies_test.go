@@ -97,7 +97,7 @@ func testPhase29FilterBindings(t *testing.T) {
 	d.Widgets = append(d.Widgets, one, two)
 	state := f.report(t, "typed-filter-report", d, true)
 	input := reporting.CompositionRequest{Key: "typed-filter-run", Pages: []reporting.PageInput{{Page: "main",
-		Filters: []reporting.Argument{{Name: "minimum_filter", Value: reporting.Value{Literal: "1"}}},
+		Filters:   []reporting.Argument{{Name: "minimum_filter", Value: reporting.Value{Literal: "1"}}},
 		Overrides: []reporting.WidgetOverride{{Widget: "override-driven", Arguments: []reporting.Argument{{Name: "minimum", Value: reporting.Value{Literal: "1"}}}}}}}}
 	admitted, err := f.compositions.Admit(ctx, f.execute, "report", state.ID, input)
 	if err != nil || admitted.QueryGroups != 1 {

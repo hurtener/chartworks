@@ -44,10 +44,8 @@ func phase29RuntimeScopes(tenant string) []string {
 }
 
 func phase29AuthorScopes(tenant string) []string {
-	// Authoring inspects existing semantics but never generates a query plan.
-	// Preserve the production 32-scope ceiling and separate execution authority.
 	base := slices.DeleteFunc(phase29RuntimeScopes(tenant), func(s string) bool {
-		return s == "reporting.execute" || s == "jobs.cancel" || s == "query.plan" || strings.HasPrefix(s, "cw.") && strings.Contains(s, ".execute:")
+		return s == "reporting.execute" || s == "query.plan" || s == "jobs.cancel" || strings.HasPrefix(s, "cw.") && strings.Contains(s, ".execute:")
 	})
 	return append(base, "reporting.write", "reporting.publish", "cw.report.write:*", "cw.report.publish:*", "cw.dashboard.write:*", "cw.dashboard.publish:*")
 }
@@ -119,7 +117,9 @@ func phase29BlockWidget(id, block string, row int, outputs ...string) reporting.
 }
 
 func (f *phase29ExecutionFixture) queryWidget() reporting.Widget {
-	return reporting.Widget{ID: "dynamic", Kind: "query", Grid: reporting.GridCell{Row: 2, Width: 12, Height: 1}, Query: &reporting.QueryWidget{Durability: "replayable", Context: f.base.Context, Topics: phase27CopyNoTest(f.base.Topics), Question: "What is revenue?"}}
+	return reporting.Widget{ID: "dynamic", Kind: "query", Grid: reporting.GridCell{Row: 2, Width: 12, Height: 1}, Query: &reporting.QueryWidget{
+		Durability: "replayable", Context: f.base.Context, Topics: phase27CopyNoTest(f.base.Topics), Question: "What is revenue?",
+		Selections: &reporting.QuerySelections{Kinds: []string{"measure"}, LimitPerKind: 1}}}
 }
 
 func phase27CopyNoTest[T any](value T) T {
@@ -305,6 +305,7 @@ func testPhase29DynamicDurability(t *testing.T) {
 	sessionWidget := f.queryWidget()
 	sessionWidget.Query.Durability = "session_bound"
 	sessionWidget.Query.Question = ""
+	sessionWidget.Query.Selections = nil
 	sessionWidget.Query.Query = queryResult.Query.Query
 	sessionDefinition.Widgets = append(sessionDefinition.Widgets, sessionWidget)
 	sessionState := f.report(t, "session-bound-report", sessionDefinition, false)

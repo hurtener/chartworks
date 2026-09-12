@@ -7,6 +7,10 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqexec"
 )
 
+// QuerySelections reuses the existing NLQ routing selection contract. Neither
+// persisted business choices nor their labels grant source or query authority.
+type QuerySelections = nlqexec.SavedSelections
+
 // DocumentQueries composes the existing NLQ service. Its evidence remains
 // independent of block publication, certification and artifact access policy.
 type DocumentQueries interface {
@@ -32,11 +36,15 @@ func DocumentsFromQueries(service *nlqexec.Service) DocumentQueries {
 }
 
 func savedQuestion(q QueryWidget) nlqexec.SavedQuestion {
-	out := nlqexec.SavedQuestion{Durability: q.Durability, Context: q.Context, Question: q.Question, Query: q.Query, Topics: []nlqexec.SavedTopic{}}
+	out := nlqexec.SavedQuestion{Durability: q.Durability, Context: q.Context, Question: q.Question, Query: q.Query, Topics: []nlqexec.SavedTopic{}, Selections: clone(q.Selections)}
 	for _, pin := range q.Topics {
 		out.Topics = append(out.Topics, nlqexec.SavedTopic{Topic: pin.Topic, Version: pin.Version, Digest: pin.Digest})
 	}
 	return out
+}
+
+func validQuerySelections(q QueryWidget) bool {
+	return nlqexec.ValidateSavedQuestion(savedQuestion(q)) == nil
 }
 
 func queryOrigin(e nlqexec.SavedEvidence) QueryOrigin {
