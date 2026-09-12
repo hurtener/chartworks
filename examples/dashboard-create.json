@@ -1,0 +1,23 @@
+{
+  "id": "operations-overview",
+  "definition": {
+    "schema_version": 2,
+    "locale": "en-US",
+    "timezone": "UTC",
+    "partial_failure": "fail_closed",
+    "metadata": [
+      {
+        "locale": "en-US",
+        "title": "Operations overview"
+      }
+    ],
+    "pages": [
+      {
+        "id": "weekly",
+        "title": "Weekly operations",
+        "report": "weekly-operations",
+        "revision": 1
+      }
+    ]
+  }
+}

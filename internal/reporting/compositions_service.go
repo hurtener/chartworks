@@ -319,7 +319,7 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 				break
 			}
 		}
-		selected, err := s.runs.selectRunOutputs(definition, RunRequest{Outputs: g.Outputs, Narrative: g.Narrative})
+		selected, err := s.runs.selectRunOutputs(definition, RunRequest{Outputs: g.Outputs, Narrative: g.Narrative, PartialPolicy: "allow_partial"})
 		if err != nil {
 			return CompositionManifest{}, err
 		}
@@ -392,7 +392,7 @@ func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m 
 		}
 	}
 	definition := entry.snapshot.Revision.Definition
-	selected, err := s.runs.selectRunOutputs(definition, RunRequest{Outputs: w.Block.Outputs, Narrative: w.Block.Narrative})
+	selected, err := s.runs.selectRunOutputs(definition, RunRequest{Outputs: w.Block.Outputs, Narrative: w.Block.Narrative, PartialPolicy: "allow_partial"})
 	if err != nil {
 		return CompositionGroup{}, cw, err
 	}

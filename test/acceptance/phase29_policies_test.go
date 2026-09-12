@@ -3,6 +3,7 @@ package acceptance
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -116,9 +117,9 @@ func testPhase29FilterBindings(t *testing.T) {
 	if err != nil || stored.Pages[0].Widgets[1].Parameters[0].Provenance != "filter:minimum_filter" || stored.Pages[0].Widgets[2].Parameters[0].Provenance != "invocation_override" {
 		t.Fatal("retained provenance changed", stored, err)
 	}
-	for _, bad := range []string{"1 OR TRUE", "3", "1.5"} {
+	for index, bad := range []string{"1 OR TRUE", "3", "1.5"} {
 		request := phase27Copy(t, input)
-		request.Key = "invalid-filter-" + string(rune('a'+len(bad)))
+		request.Key = "invalid-filter-" + strconv.Itoa(index)
 		request.Pages[0].Filters[0].Value.Literal = bad
 		badRun, err := f.compositions.Admit(ctx, f.execute, "report", state.ID, request)
 		if err == nil {
