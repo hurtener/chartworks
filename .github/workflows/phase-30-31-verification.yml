@@ -62,26 +62,37 @@ jobs:
             /tmp/chartworks-bruin/bruin
             /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
           key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - uses: actions/cache/restore@v4
+        id: incremental
+        with:
+          path: /home/runner/.cache/go-build
+          key: phase30-31-ubuntu24-go1264-${{ github.sha }}
+          restore-keys: phase30-31-ubuntu24-go1264-
       - name: Record exact source and verify dependencies
         run: |
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
           go mod verify
           git diff --exit-code
-      - name: Actual phase 31 criteria and provider fixtures
+      - name: Actual phase 31 criteria and phase 29 regression criteria
         run: |
           set -o pipefail
-          go test -race -count=1 -v -timeout=20m ./test/acceptance -run '^TestPhase31$' 2>&1 | tee /tmp/phase31.log
-      - name: Existing reporting, queue, configuration and MCP regressions
+          go test -race -count=1 -v -timeout=20m ./test/acceptance -run '^TestPhase(29|31)$' 2>&1 | tee /tmp/reporting-acceptance.log
+      - name: Existing reporting, queue, calendar, configuration and MCP regressions
         if: always()
-        run: go test -race -count=1 -timeout=10m ./internal/jobs ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
+        run: go test -race -count=1 -timeout=10m ./internal/calendars ./internal/jobs ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
       - name: Formatting and source are unchanged
         if: always()
         run: |
           test -z "$(git ls-files '*.go' | xargs gofmt -l)"
           git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always() && steps.incremental.outcome == 'success' && steps.incremental.outputs.cache-hit != 'true'
+        with:
+          path: /home/runner/.cache/go-build
+          key: ${{ steps.incremental.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: phase-31-verification-log
-          path: /tmp/phase31.log
+          name: reporting-verification-log
+          path: /tmp/reporting-acceptance.log
           retention-days: 7
