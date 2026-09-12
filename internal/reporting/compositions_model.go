@@ -11,36 +11,34 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqexec"
 )
 
-// CompositionVersion versions an accepted manifest independently of definitions.
+// CompositionVersion versions accepted manifests independently of definitions.
 const CompositionVersion = "report-composition-v1"
 
-// WidgetOverride is accepted only for parameter names permitted by the widget.
+// WidgetOverride can name only parameters explicitly permitted by the widget.
 type WidgetOverride struct {
 	Widget    string     `json:"widget"`
 	Arguments []Argument `json:"arguments"`
 }
 
-// PageInput binds business filters to one declared page, not row-security reach.
-// A direct report uses the reserved page ID "main".
+// PageInput binds business filters, not security policy. Direct reports use main.
 type PageInput struct {
 	Page      string           `json:"page"`
 	Filters   []Argument       `json:"filters"`
 	Overrides []WidgetOverride `json:"overrides"`
 }
 
-// CompositionRequest is reserved before floating references are resolved.
-// Preview must name an exact revision and independently requires signed preview.
+// CompositionRequest reserves a key before resolving floating references.
+// Preview names an exact revision and independently requires signed preview.
 type CompositionRequest struct {
 	Key            string            `json:"key"`
 	Reference      DocumentReference `json:"reference"`
 	Preview        bool              `json:"preview"`
 	PartialFailure string            `json:"partial_failure,omitempty"`
 	Resolution     Resolution        `json:"resolution"`
-	Pages          []PageInput       `json:"pages"`
+	Pages          []PageInput        `json:"pages"`
 }
 
-// CompositionWidget keeps its own output selection, binding provenance and safe
-// presentation even when its query is shared with another widget.
+// CompositionWidget keeps per-widget provenance and its original output subset.
 type CompositionWidget struct {
 	Definition Widget       `json:"definition"`
 	Parameters []BoundValue `json:"parameters"`
@@ -48,7 +46,7 @@ type CompositionWidget struct {
 	Code       string       `json:"code,omitempty"`
 }
 
-// CompositionPage is an exact report revision, never a floating dashboard page.
+// CompositionPage pins an exact report revision and its independently checked reach.
 type CompositionPage struct {
 	ID       string              `json:"id"`
 	Report   string              `json:"report"`
@@ -61,8 +59,8 @@ type CompositionPage struct {
 	Widgets  []CompositionWidget `json:"widgets"`
 }
 
-// CompositionGroup seals one exact query/context/value identity and the union
-// of saved outputs. It does not expose SQL through metadata surfaces.
+// CompositionGroup seals one query/value/context identity and its output union.
+// It is private persistence input, never the public metadata response.
 type CompositionGroup struct {
 	ID             string              `json:"id"`
 	Kind           string              `json:"kind"`
@@ -87,8 +85,8 @@ type CompositionGroup struct {
 	ReservedTokens int                 `json:"reserved_tokens"`
 }
 
-// CompositionManifest is service-issued, immutable and bound to the existing
-// request operation. Private preview status cannot change with publication.
+// CompositionManifest is immutable and bound to an existing request operation.
+// Private preview status cannot change with later definition publication.
 type CompositionManifest struct {
 	Version        string                      `json:"version"`
 	ID             string                      `json:"id"`
@@ -112,26 +110,26 @@ type CompositionManifest struct {
 	Groups         []CompositionGroup          `json:"groups"`
 }
 
-// ManifestDigest is independent of mutable attempt and result state.
+// ManifestDigest excludes mutable attempt and result state.
 func (m CompositionManifest) ManifestDigest() string { return digest(m) }
 
-// GroupResult is an immutable checkpoint of a completed or explicitly failed
-// query group. Query evidence has no block certificate field.
+// GroupResult retains a completed or explicitly failed group checkpoint.
+// Dynamic query evidence has no block certificate field.
 type GroupResult struct {
-	Group     string               `json:"group"`
-	Kind      string               `json:"kind"`
-	State     string               `json:"state"`
-	Code      string               `json:"code,omitempty"`
-	ChildRun  string               `json:"child_run,omitempty"`
-	Block     *RunView             `json:"block,omitempty"`
-	Outputs   []RetainedOutput     `json:"outputs"`
+	Group     string              `json:"group"`
+	Kind      string              `json:"kind"`
+	State     string              `json:"state"`
+	Code      string              `json:"code,omitempty"`
+	ChildRun  string              `json:"child_run,omitempty"`
+	Block     *RunView            `json:"block,omitempty"`
+	Outputs   []RetainedOutput    `json:"outputs"`
 	Query     *nlqexec.SavedResult `json:"query,omitempty"`
 	QueryPlan *nlqexec.SavedPlan   `json:"query_plan,omitempty"`
-	Observed  *time.Time           `json:"observed_at,omitempty"`
-	Digest    string               `json:"digest"`
+	Observed  *time.Time          `json:"observed_at,omitempty"`
+	Digest    string              `json:"digest"`
 }
 
-// CompositionWidgetSummary has no raw normalized values, SQL or hidden payload.
+// CompositionWidgetSummary has no normalized values, SQL or hidden payload.
 type CompositionWidgetSummary struct {
 	ID             string       `json:"id"`
 	Kind           string       `json:"kind"`
@@ -157,7 +155,7 @@ type CompositionPageSummary struct {
 	Widgets  []CompositionWidgetSummary `json:"widgets"`
 }
 
-// CompositionView is metadata only. Opening it never executes a source or model.
+// CompositionView is metadata only; opening it never executes a source or model.
 type CompositionView struct {
 	ID             string                   `json:"id"`
 	Kind           string                   `json:"kind"`
@@ -178,7 +176,7 @@ type CompositionView struct {
 	RetainedBytes  int64                    `json:"retained_bytes"`
 }
 
-// CompositionPayload returns only the addressed visible widget's saved subset.
+// CompositionPayload contains only the addressed visible widget's output subset.
 type CompositionPayload struct {
 	Page    string               `json:"page"`
 	Widget  string               `json:"widget"`
@@ -186,24 +184,33 @@ type CompositionPayload struct {
 	Code    string               `json:"code,omitempty"`
 	Text    *TextWidget          `json:"text,omitempty"`
 	Outputs []RetainedOutput     `json:"outputs"`
-	Query   *nlqexec.SavedResult `json:"query,omitempty"`
+	Query   *nlqexec.SavedResult  `json:"query,omitempty"`
 }
 
-// CompositionRecord is private execution state, not a metadata response shape.
+// CompositionRecord is private execution state. Started is a durable pre-model
+// marker: an uncheckpointed generation must not be silently repeated on resume.
 type CompositionRecord struct {
 	Manifest CompositionManifest
 	State    string
 	Code     string
 	Results  []GroupResult
 	Plans    map[string]nlqexec.SavedPlan
+	Started  map[string]bool
 }
 
-// CompositionRepository adds retained composition state to the existing leased
-// operation ledger. It does not introduce a scheduler or independent queue.
+// CompositionRepository adds retention to the common leased operation ledger.
+// It does not introduce a scheduler, queue or authority issuer.
 type CompositionRepository interface {
 	ReadComposition(context.Context, identity.Envelope, string) (CompositionRecord, error)
 	SealComposition(context.Context, identity.Envelope, jobs.RequestTask, PreparedComposition) (CompositionRecord, error)
 	CheckpointComposition(context.Context, jobs.Invocation, PreparedCompositionWrite) (CompositionRecord, error)
 	ViewComposition(context.Context, identity.Envelope, string) (CompositionView, error)
 	CompositionWidget(context.Context, identity.Envelope, string, string, string) (CompositionPayload, error)
+}
+
+// CompositionLifecycleRepository controls cancellation and explicit bounded
+// retention independently of the optional warehouse/model execution services.
+type CompositionLifecycleRepository interface {
+	CancelComposition(context.Context, identity.Envelope, string) (CompositionView, error)
+	ExpireCompositions(context.Context, identity.Envelope, int) (int64, error)
 }

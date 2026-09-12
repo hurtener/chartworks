@@ -7,17 +7,23 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqexec"
 )
 
-// DocumentQueries composes the existing NLQ service. Its own retained evidence
-// is independent of block publication and certification.
+// DocumentQueries composes the existing NLQ service. Its evidence remains
+// independent of block publication, certification and artifact access policy.
 type DocumentQueries interface {
 	DocumentQueryCatalog
 	PrepareDocumentQuery(context.Context, identity.Envelope, QueryWidget, QueryOrigin, string, string) (nlqexec.SavedPlan, error)
-	RunDocumentQuery(context.Context, identity.Envelope, QueryWidget, QueryOrigin, nlqexec.SavedPlan, int, int) (nlqexec.SavedResult, error)
+	RunDocumentQuery(context.Context, identity.Envelope, QueryWidget, QueryOrigin, nlqexec.SavedPlan, int, int, bool) (nlqexec.SavedResult, error)
+}
+
+// DocumentQueryRecovery recovers a previously persisted ordinary plan without
+// authorizing another model call after a durable generation-start marker.
+type DocumentQueryRecovery interface {
+	RecoverDocumentQuery(context.Context, identity.Envelope, QueryWidget, QueryOrigin, string) (nlqexec.SavedPlan, error)
 }
 
 type documentQueries struct{ service *nlqexec.Service }
 
-// DocumentsFromQueries installs the actual query service, not another planner.
+// DocumentsFromQueries installs the actual query service, never a second planner.
 func DocumentsFromQueries(service *nlqexec.Service) DocumentQueries {
 	if service == nil {
 		return nil
@@ -41,7 +47,7 @@ func queryOrigin(e nlqexec.SavedEvidence) QueryOrigin {
 	return out
 }
 
-// InspectDocumentQuery is metadata-only and never returns query SQL or rows.
+// InspectDocumentQuery reads metadata only and never returns SQL or result rows.
 func (a documentQueries) InspectDocumentQuery(ctx context.Context, e identity.Envelope, q QueryWidget) (QueryOrigin, error) {
 	out, err := a.service.InspectSaved(ctx, e, savedQuestion(q))
 	if err != nil {
@@ -72,11 +78,20 @@ func (a documentQueries) PrepareDocumentQuery(ctx context.Context, e identity.En
 	return a.service.PrepareSaved(ctx, e, savedQuestion(q), evidence, operation, locale)
 }
 
-// RunDocumentQuery uses the ordinary validator/executor and returns its receipt.
-func (a documentQueries) RunDocumentQuery(ctx context.Context, e identity.Envelope, q QueryWidget, expected QueryOrigin, plan nlqexec.SavedPlan, rows, bytes int) (nlqexec.SavedResult, error) {
+// RecoverDocumentQuery cannot generate replacement SQL for missing evidence.
+func (a documentQueries) RecoverDocumentQuery(ctx context.Context, e identity.Envelope, q QueryWidget, expected QueryOrigin, operation string) (nlqexec.SavedPlan, error) {
+	evidence, err := a.evidence(ctx, e, q, expected)
+	if err != nil {
+		return nlqexec.SavedPlan{}, err
+	}
+	return a.service.RecoverSaved(ctx, e, savedQuestion(q), evidence, operation)
+}
+
+// RunDocumentQuery uses the ordinary validator/executor and actual read receipt.
+func (a documentQueries) RunDocumentQuery(ctx context.Context, e identity.Envelope, q QueryWidget, expected QueryOrigin, plan nlqexec.SavedPlan, rows, bytes int, preview bool) (nlqexec.SavedResult, error) {
 	evidence, err := a.evidence(ctx, e, q, expected)
 	if err != nil {
 		return nlqexec.SavedResult{}, err
 	}
-	return a.service.RunSaved(ctx, e, savedQuestion(q), evidence, plan, rows, bytes)
+	return a.service.RunSaved(ctx, e, savedQuestion(q), evidence, plan, rows, bytes, preview)
 }

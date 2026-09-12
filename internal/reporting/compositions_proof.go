@@ -12,11 +12,13 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqexec"
 )
 
-// RequireComposition enforces the current execution envelope independently of
-// authored creator/audience labels and the enclosing publication.
+// RequireComposition applies current authority independently of authored labels.
 func RequireComposition(e identity.Envelope, m CompositionManifest) error {
-	if !e.Valid() || m.Tenant != e.Tenant() || m.Actor != e.User() || m.Session != e.Session() {
+	if !e.Valid() {
 		return access.ErrUnauthenticated
+	}
+	if m.Tenant != e.Tenant() || m.Actor != e.User() || m.Session != e.Session() {
+		return access.ErrNotFound
 	}
 	if err := RequireDocument(e, m.Kind, m.Document, Execute); err != nil {
 		return err
@@ -30,9 +32,14 @@ func RequireComposition(e identity.Envelope, m CompositionManifest) error {
 		if err := RequireDocument(e, "report", page.Report, Execute); err != nil {
 			return err
 		}
+		if page.Private {
+			if err := RequireDocument(e, "report", page.Report, Preview); err != nil {
+				return err
+			}
+		}
 	}
-	for _, g := range m.Groups {
-		if err := requireCompositionGroup(e, g); err != nil {
+	for _, group := range m.Groups {
+		if err := requireCompositionGroup(e, group); err != nil {
 			return err
 		}
 	}
@@ -65,10 +72,14 @@ func requireCompositionGroup(e identity.Envelope, g CompositionGroup) error {
 }
 
 func validComposition(m CompositionManifest) bool {
-	if m.Version != CompositionVersion || !identity.Identifier(m.ID) || !documentKind(m.Kind) || !identity.Identifier(m.Document) || m.Revision < 1 || m.Revision > 256 ||
-		!hashValid(m.Digest) || !hashValid(m.RequestHash) || !hashValid(m.TaskHash) || m.Created.IsZero() || !m.Expires.After(m.Created) ||
-		m.Limits.Validate() != nil || m.ArtifactLimits.Validate() != nil || !slices.Contains([]string{"fail_closed", "allow_partial"}, m.Policy) ||
-		len(m.Pages) > m.Limits.MaxPages || len(m.Pages) == 0 && !m.Redacted || len(m.Groups) > m.Limits.MaxQueries {
+	if m.Version != CompositionVersion || !identity.Identifier(m.ID) || !identity.Identifier(m.Tenant) || !identity.Identifier(m.Actor) || !identity.Identifier(m.Session) || !documentKind(m.Kind) || !identity.Identifier(m.Document) || m.Revision < 1 || m.Revision > 256 || !hashValid(m.Digest) || !hashValid(m.RequestHash) || !hashValid(m.TaskHash) || m.Created.IsZero() || !m.Expires.After(m.Created) || m.Limits.Validate() != nil || m.ArtifactLimits.Validate() != nil || !slices.Contains([]string{"fail_closed", "allow_partial"}, m.Policy) || len(m.Pages) > m.Limits.MaxPages || len(m.Pages) == 0 && !m.Redacted || len(m.Groups) > m.Limits.MaxQueries || m.Redacted && m.Kind != "dashboard" {
+		return false
+	}
+	retention := time.Duration(m.ArtifactLimits.Retention)
+	if m.Private {
+		retention = time.Duration(m.ArtifactLimits.PreviewRetention)
+	}
+	if !m.Expires.Equal(m.Created.Add(retention)) {
 		return false
 	}
 	groups := map[string]CompositionGroup{}
@@ -77,11 +88,11 @@ func validComposition(m CompositionManifest) bool {
 			return false
 		}
 		if g.Kind == "block" {
-			if !identity.Identifier(g.Block) || g.Revision < 1 || !hashValid(g.Definition) || !hashValid(g.Execution) || len(g.Outputs) < 1 || len(g.Outputs) > 64 || g.Query != nil || g.Origin != nil || g.Trust == nil || !slices.Contains([]string{"published", "certified_only", "explicit_stale"}, g.Policy) {
+			if !identity.Identifier(g.Block) || g.Revision < 1 || g.Revision > 256 || !hashValid(g.Definition) || !hashValid(g.Execution) || len(g.Outputs) < 1 || len(g.Outputs) > 64 || g.Query != nil || g.Origin != nil || g.Trust == nil || !slices.Contains([]string{"published", "certified_only", "explicit_stale"}, g.Policy) || g.Resolution.At.IsZero() || g.Resolved.At.IsZero() {
 				return false
 			}
 		} else if g.Kind == "query" {
-			if g.Query == nil || g.Origin == nil || !validQueryOrigin(*g.Origin, *g.Query) || g.Block != "" || g.Revision != 0 || g.Trust != nil || len(g.Outputs) != 0 || len(g.Arguments) != 0 || g.Narrative || !m.Limits.LiveQueries || g.Query.Durability == "session_bound" && !m.Limits.SessionBound {
+			if g.Query == nil || g.Origin == nil || !validQueryOrigin(*g.Origin, *g.Query) || g.Block != "" || g.Revision != 0 || g.Trust != nil || len(g.Outputs) != 0 || len(g.Arguments) != 0 || g.Narrative || !m.Limits.LiveQueries || g.Query.Durability == "session_bound" && (!m.Limits.SessionBound || !m.Private || g.Origin.Actor != m.Actor || g.Origin.Session != m.Session) {
 				return false
 			}
 		} else {
@@ -99,7 +110,10 @@ func validComposition(m CompositionManifest) bool {
 	pages, used := map[string]bool{}, map[string]bool{}
 	count := 0
 	for _, p := range m.Pages {
-		if !identity.Identifier(p.ID) || pages[p.ID] || !identity.Identifier(p.Report) || p.Revision < 1 || p.Revision > 256 || !hashValid(p.Digest) || !text(p.Title, 256) || !locale(p.Locale) {
+		if !identity.Identifier(p.ID) || pages[p.ID] || !identity.Identifier(p.Report) || p.Revision < 1 || p.Revision > 256 || !hashValid(p.Digest) || !text(p.Title, 256) || !locale(p.Locale) || p.Private && !m.Private {
+			return false
+		}
+		if _, err := namedZone(p.Timezone); err != nil {
 			return false
 		}
 		pages[p.ID] = true
@@ -128,7 +142,7 @@ func validComposition(m CompositionManifest) bool {
 			}
 			used[g.ID] = true
 			if g.Kind == "block" {
-				if w.Definition.Block.Block != g.Block || w.Definition.Block.Revision != g.Revision {
+				if w.Definition.Block.Block != g.Block || w.Definition.Block.Revision != g.Revision || len(w.Definition.Block.Outputs) == 0 {
 					return false
 				}
 				for _, id := range w.Definition.Block.Outputs {
@@ -136,6 +150,8 @@ func validComposition(m CompositionManifest) bool {
 						return false
 					}
 				}
+			} else if digest(w.Definition.Query) != digest(g.Query) {
+				return false
 			}
 		}
 	}
@@ -146,8 +162,7 @@ func compositionCodeValid(code string) bool {
 	return slices.Contains([]string{"dependency_unavailable", "dependency_denied", "dependency_stale", "live_queries_disabled", "session_bound_disabled", "session_unavailable", "binding_invalid", "budget_exhausted", "query_failed", "query_truncated", "output_failed", "output_incomplete", "strict_omission", "deadline_exceeded", "query_indeterminate", "partial_report"}, code)
 }
 
-// PreparedComposition is an unforgeable in-process content/authority proof.
-// Storing its bytes does not create a local credential or an execution grant.
+// PreparedComposition is an opaque in-process proof, not a persisted credential.
 type PreparedComposition struct {
 	encoded   []byte
 	authority string
@@ -167,7 +182,7 @@ func prepareComposition(e identity.Envelope, m CompositionManifest) (PreparedCom
 	return proof, err
 }
 
-// Checked is repeated inside the transaction that accepts the exact manifest.
+// Checked is repeated inside the accepting metadata transaction.
 func (p PreparedComposition) Checked(e identity.Envelope) (CompositionManifest, error) {
 	var m CompositionManifest
 	if !e.Valid() || p.authority != authority(e) || !time.Now().Before(p.deadline) {
@@ -182,7 +197,7 @@ func (p PreparedComposition) Checked(e identity.Envelope) (CompositionManifest, 
 	return m, nil
 }
 
-// CompositionWrite is one plan, immutable group result, or terminal transition.
+// CompositionWrite is a pre-model marker, plan, result or terminal transition.
 type CompositionWrite struct {
 	Manifest CompositionManifest
 	Kind     string
@@ -209,13 +224,16 @@ func prepareCompositionWrite(inv jobs.Invocation, w CompositionWrite) (PreparedC
 	return proof, err
 }
 
-// Checked rejects fabricated, expired and previous-owner checkpoint writes.
+// Checked rejects fabricated, expired, unrelated and previous-owner writes.
 func (p PreparedCompositionWrite) Checked(inv jobs.Invocation) (CompositionWrite, error) {
 	var w CompositionWrite
 	if len(p.encoded) == 0 || len(p.encoded) > 32<<20 || json.Unmarshal(p.encoded, &w) != nil || !validComposition(w.Manifest) || digest(p.lease) != digest(inv.Lease()) {
 		return w, ErrInvalid
 	}
 	m := w.Manifest
+	if inv.Lease().Task.ID != m.ID || inv.Lease().Task.ManifestHash != m.TaskHash {
+		return CompositionWrite{}, ErrInvalid
+	}
 	e, err := inv.Current(m.Kind+".run", m.Document, m.RequestHash)
 	if err != nil {
 		return CompositionWrite{}, err
@@ -230,12 +248,16 @@ func (p PreparedCompositionWrite) Checked(inv jobs.Invocation) (CompositionWrite
 		return w, nil
 	}
 	g, ok := compositionGroup(m, w.Group)
-	if !ok {
+	if !ok || w.Outcome != "" || w.Code != "" {
 		return CompositionWrite{}, ErrInvalid
 	}
 	switch w.Kind {
+	case "query_start":
+		if g.Kind != "query" || w.Plan != nil || w.Result != nil {
+			return CompositionWrite{}, ErrInvalid
+		}
 	case "plan":
-		if g.Kind != "query" || w.Plan == nil || w.Result != nil || !identity.Identifier(w.Plan.Query) || !identity.Identifier(w.Plan.Operation) || !hashValid(w.Plan.QueryDigest) || w.Plan.BindingDigest != exec.Hash(g.Binding) {
+		if g.Kind != "query" || w.Plan == nil || w.Result != nil || !identity.Identifier(w.Plan.Query) || w.Plan.Operation != "composition:"+m.ID+":"+g.ID || !hashValid(w.Plan.InputDigest) || !hashValid(w.Plan.QueryDigest) || w.Plan.BindingDigest != exec.Hash(g.Binding) {
 			return CompositionWrite{}, ErrInvalid
 		}
 	case "group":
@@ -257,20 +279,19 @@ func compositionGroup(m CompositionManifest, id string) (CompositionGroup, bool)
 	return CompositionGroup{}, false
 }
 
-// GroupResultDigest omits the hash field itself and retains exact result types.
+// GroupResultDigest omits its own hash field and preserves exact result types.
 func GroupResultDigest(r GroupResult) string {
 	r.Digest = ""
 	return digest(r)
 }
 
-// CheckCompositionResult prevents trust/partition/output-subset substitution at
-// the storage boundary, independently of the worker's response projection.
+// CheckCompositionResult prevents trust, partition and output substitution.
 func CheckCompositionResult(m CompositionManifest, g CompositionGroup, r GroupResult) error {
-	if r.Group != g.ID || r.Kind != g.Kind || r.Digest != GroupResultDigest(r) || !slices.Contains([]string{"completed", "partial", "failed"}, r.State) || r.Code != "" && !compositionCodeValid(r.Code) {
+	if r.Group != g.ID || r.Kind != g.Kind || r.Digest != GroupResultDigest(r) || !slices.Contains([]string{"completed", "partial", "failed"}, r.State) || r.Code != "" && !compositionCodeValid(r.Code) || r.State == "completed" && r.Code != "" || r.State != "completed" && r.Code == "" {
 		return ErrInvalid
 	}
 	if r.State == "failed" {
-		if r.Code == "" || r.Query != nil || r.Block != nil || len(r.Outputs) != 0 || r.Observed != nil {
+		if r.Query != nil || r.Block != nil || len(r.Outputs) != 0 || r.Observed != nil || r.ChildRun != "" || r.QueryPlan != nil {
 			return ErrInvalid
 		}
 		return nil
@@ -280,7 +301,7 @@ func CheckCompositionResult(m CompositionManifest, g CompositionGroup, r GroupRe
 	}
 	if g.Kind == "block" {
 		b := r.Block
-		if b == nil || r.Query != nil || r.QueryPlan != nil || b.ID != r.ChildRun || b.Block != g.Block || b.Revision != g.Revision || b.RevisionDigest != g.Definition || b.PartitionDigest != exec.Hash(g.Binding) || b.Private != g.Private || len(r.Outputs) != len(g.Outputs) {
+		if b == nil || r.Query != nil || r.QueryPlan != nil || b.ID != r.ChildRun || b.Block != g.Block || b.Revision != g.Revision || b.RevisionDigest != g.Definition || b.PartitionDigest != exec.Hash(g.Binding) || b.Private != g.Private || len(r.Outputs) != len(g.Outputs) || b.Observed == nil || !b.Observed.Equal(*r.Observed) {
 			return ErrInvalid
 		}
 		for i, output := range r.Outputs {
@@ -290,15 +311,15 @@ func CheckCompositionResult(m CompositionManifest, g CompositionGroup, r GroupRe
 		}
 	} else {
 		q := r.Query
-		if q == nil || r.Block != nil || len(r.Outputs) != 0 || r.ChildRun != "" || r.QueryPlan == nil || q.Query != r.QueryPlan.Query || q.Partition != exec.Hash(g.Binding) || q.SemanticDigest != g.Origin.SemanticDigest || q.Execution.Result == nil || !successful(q.Execution.Attempt.Status) {
+		if q == nil || r.Block != nil || len(r.Outputs) != 0 || r.ChildRun != "" || r.QueryPlan == nil || q.Query != r.QueryPlan.Query || q.Partition != exec.Hash(g.Binding) || q.SemanticDigest != g.Origin.SemanticDigest || q.Execution.Result == nil || !successful(q.Execution.Attempt.Status) || q.Execution.Attempt.RemoteState != "stopped" || q.Execution.Attempt.Finished == nil || !q.Execution.Attempt.Finished.Equal(*r.Observed) || q.Execution.Attempt.Manifest.Operation != r.QueryPlan.Operation || q.Execution.Attempt.Manifest.Session != m.Session || q.Execution.Attempt.Manifest.Preview != m.Private || r.State == "completed" && (q.EvidenceStale || q.Execution.Result.Outcome == "truncated") {
 			return ErrInvalid
 		}
 	}
 	return nil
 }
 
-// CompositionCompletion derives terminal state from every selected widget.
-// Omission, truncation, redaction or output failure can never become complete.
+// CompositionCompletion derives state from all selected widgets. Omissions,
+// truncation, redaction and output failures never become a complete report.
 func CompositionCompletion(m CompositionManifest, results []GroupResult) (string, string, bool, error) {
 	byID := map[string]GroupResult{}
 	for _, r := range results {

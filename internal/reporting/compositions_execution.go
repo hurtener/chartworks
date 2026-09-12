@@ -2,17 +2,19 @@ package reporting
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"slices"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/store"
 )
 
-func (s *Compositions) checkpoint(ctx context.Context, inv jobs.Invocation, write CompositionWrite) (CompositionRecord, error) {
-	proof, err := prepareCompositionWrite(inv, write)
+func (s *Compositions) checkpoint(ctx context.Context, inv jobs.Invocation, w CompositionWrite) (CompositionRecord, error) {
+	proof, err := prepareCompositionWrite(inv, w)
 	if err != nil {
 		return CompositionRecord{}, err
 	}
@@ -20,9 +22,9 @@ func (s *Compositions) checkpoint(ctx context.Context, inv jobs.Invocation, writ
 }
 
 func failedGroup(g CompositionGroup, code string) GroupResult {
-	r := GroupResult{Group: g.ID, Kind: g.Kind, State: "failed", Code: code, Outputs: []RetainedOutput{}}
-	r.Digest = GroupResultDigest(r)
-	return r
+	out := GroupResult{Group: g.ID, Kind: g.Kind, State: "failed", Code: code, Outputs: []RetainedOutput{}}
+	out.Digest = GroupResultDigest(out)
+	return out
 }
 
 func strictCompositionOmission(m CompositionManifest) bool {
@@ -42,139 +44,137 @@ func strictCompositionOmission(m CompositionManifest) bool {
 	return false
 }
 
-// Run executes or explicitly resumes one attempt through the existing lease
-// runner. A retained terminal artifact is returned without warehouse/model work.
+func compositionExecutionCode(err error) string {
+	if errors.Is(err, exec.ErrUncertain) {
+		return "query_indeterminate"
+	}
+	return compositionFailure(err)
+}
+
+// Run performs one explicit bounded attempt with current signed authority.
+// Completed checkpoints are read back, not regenerated on a replay.
 func (s *Compositions) Run(ctx context.Context, e identity.Envelope, id string, resume bool) (CompositionView, error) {
 	if s == nil || ctx == nil || !identity.Identifier(id) {
 		return CompositionView{}, ErrInvalid
 	}
-	r, err := s.repo.ReadComposition(ctx, e, id)
+	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
+	defer cancel()
+	record, err := s.repo.ReadComposition(ctx, e, id)
 	if err != nil {
 		return CompositionView{}, err
 	}
-	if r.State == "expired" || !time.Now().Before(r.Manifest.Expires) {
-		return SummarizeComposition(r), ErrExpired
+	view := SummarizeComposition(record)
+	if slices.Contains([]string{"completed", "partial"}, record.State) {
+		return view, nil
 	}
-	if slices.Contains([]string{"completed", "partial", "failed"}, r.State) {
-		if r.State == "failed" {
-			return SummarizeComposition(r), ErrIncomplete
-		}
-		return SummarizeComposition(r), nil
+	if record.State == "failed" || record.State == "cancelled" {
+		return view, ErrIncomplete
 	}
-	if err := RequireComposition(e, r.Manifest); err != nil {
+	if record.State == "expired" || !time.Now().Before(record.Manifest.Expires) {
+		return view, ErrExpired
+	}
+	if err := RequireComposition(e, record.Manifest); err != nil {
 		return CompositionView{}, err
 	}
 	task, err := s.runner.Inspect(ctx, e, id)
 	if err != nil {
-		return SummarizeComposition(r), err
+		return view, err
 	}
 	if resume {
 		task, err = s.runner.Resume(ctx, e, id)
 		if err != nil {
-			return SummarizeComposition(r), err
+			return view, err
 		}
 	}
-	timeout := min(time.Duration(r.Manifest.Limits.Timeout), time.Duration(s.documents.limits.Composition.Timeout))
+	timeout := min(time.Duration(record.Manifest.Limits.Timeout), time.Duration(s.documents.limits.Composition.Timeout))
 	_, runErr := s.runner.Run(ctx, e, task, timeout, func(work context.Context, inv jobs.Invocation) error {
-		return s.continueComposition(work, inv, r)
+		return s.continueComposition(work, e, inv, record)
 	})
-	current, readErr := s.repo.ReadComposition(ctx, e, id)
+	// A bounded authorized read resolves a lost commit reply. It never supplies
+	// fresh execution authority or extends the verified envelope's deadline.
+	recovery, finish := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer finish()
+	current, readErr := s.repo.ReadComposition(recovery, e, id)
 	if readErr != nil {
 		if runErr != nil {
-			return SummarizeComposition(r), runErr
+			return view, runErr
 		}
-		return SummarizeComposition(r), readErr
+		return view, readErr
 	}
-	view := SummarizeComposition(current)
+	view = SummarizeComposition(current)
+	if slices.Contains([]string{"completed", "partial"}, current.State) {
+		return view, nil
+	}
 	if runErr != nil {
 		return view, runErr
 	}
-	if current.State != "completed" && current.State != "partial" {
-		return view, ErrIncomplete
-	}
-	return view, nil
+	return view, ErrIncomplete
 }
 
-func (s *Compositions) continueComposition(ctx context.Context, inv jobs.Invocation, record CompositionRecord) error {
+func (s *Compositions) continueComposition(ctx context.Context, e identity.Envelope, inv jobs.Invocation, record CompositionRecord) error {
 	m := record.Manifest
-	e, err := inv.Current(m.Kind+".run", m.Document, m.RequestHash)
-	if err != nil {
-		return err
-	}
-	if err := RequireComposition(e, m); err != nil {
-		return err
-	}
-	done := map[string]bool{}
-	retained := 0
+	omit := strictCompositionOmission(m)
+	completed := map[string]bool{}
 	for _, result := range record.Results {
-		done[result.Group] = true
-		body, err := json.Marshal(result)
-		if err != nil {
-			return ErrInvalid
-		}
-		retained += len(body)
+		completed[result.Group] = true
+		omit = omit || m.Policy == "fail_closed" && result.State != "completed"
 	}
-	strictOmission := strictCompositionOmission(m)
-	for index, group := range m.Groups {
-		if done[group.ID] {
+	for _, group := range m.Groups {
+		if completed[group.ID] {
 			continue
-		}
-		if _, err := inv.Current(m.Kind+".run", m.Document, m.RequestHash); err != nil {
-			return err
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if _, err := inv.Current(m.Kind+".run", m.Document, m.RequestHash); err != nil {
+			return err
+		}
+		currentLimits := s.documents.limits.Composition
 		var result GroupResult
+		var err error
 		switch {
-		case strictOmission:
+		case omit:
 			result = failedGroup(group, "strict_omission")
-		case index >= min(m.Limits.MaxQueries, s.documents.limits.Composition.MaxQueries):
+		case len(completed) >= currentLimits.MaxQueries:
 			result = failedGroup(group, "budget_exhausted")
-		case group.Kind == "query" && !s.documents.limits.Composition.LiveQueries:
+		case group.Kind == "query" && !currentLimits.LiveQueries:
 			result = failedGroup(group, "live_queries_disabled")
-		case group.Kind == "query" && group.Query.Durability == "session_bound" && !s.documents.limits.Composition.SessionBound:
+		case group.Kind == "query" && group.Query.Durability == "session_bound" && !currentLimits.SessionBound:
 			result = failedGroup(group, "session_bound_disabled")
 		case group.Kind == "block":
 			result, err = s.executeBlock(ctx, e, m, group)
-		case group.Kind == "query":
-			var updated CompositionRecord
-			result, updated, err = s.executeQuery(ctx, e, inv, record, group)
-			if err == nil && updated.Manifest.ID != "" {
-				record = updated
-			}
 		default:
-			return ErrInvalid
+			result, record, err = s.executeQuery(ctx, e, inv, record, group)
 		}
 		if err != nil {
-			if ctx.Err() != nil || !e.Valid() {
-				return err
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-			result = failedGroup(group, compositionFailure(err))
+			if !e.Valid() {
+				return access.ErrUnauthenticated
+			}
+			result = failedGroup(group, compositionExecutionCode(err))
 		}
 		result.Digest = GroupResultDigest(result)
-		body, marshalErr := json.Marshal(result)
-		if marshalErr != nil {
-			return ErrInvalid
-		}
-		if retained+len(body) > min(m.Limits.MaxRetainedBytes, s.documents.limits.Composition.MaxRetainedBytes) {
+		updated, err := s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "group", Group: group.ID, Result: &result})
+		if errors.Is(err, ErrBudget) {
+			// The refused value transaction rolled back. Its reserved error space
+			// remains available; never silently publish an empty successful widget.
 			result = failedGroup(group, "budget_exhausted")
-			body, marshalErr = json.Marshal(result)
-			if marshalErr != nil {
-				return ErrInvalid
-			}
+			updated, err = s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "group", Group: group.ID, Result: &result})
 		}
-		record, err = s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "group", Group: group.ID, Result: &result})
 		if err != nil {
 			return err
 		}
-		retained += len(body)
+		record = updated
+		completed[group.ID] = true
+		omit = omit || m.Policy == "fail_closed" && result.State != "completed"
 	}
-	outcome, code, _, err := CompositionCompletion(m, record.Results)
+	state, code, _, err := CompositionCompletion(m, record.Results)
 	if err != nil {
 		return err
 	}
-	_, err = s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "complete", Outcome: outcome, Code: code})
+	_, err = s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "complete", Outcome: state, Code: code})
 	return err
 }
 
@@ -186,178 +186,129 @@ func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, m 
 	if err != nil {
 		return GroupResult{}, err
 	}
-	if err := runEligibility(e, snapshot, g.Policy, time.Now()); err != nil {
+	if err := CheckCompositionBlock(e, g, snapshot); err != nil {
 		return GroupResult{}, err
-	}
-	if snapshot.Revision.Digest != g.Definition || snapshot.Revision.ExecutionDigest != g.Execution || snapshot.Validation.BindingDigest != exec.Hash(g.Binding) {
-		return GroupResult{}, ErrStale
 	}
 	policy := g.Policy
 	if m.Private {
 		policy = "private_preview"
 	}
-	child, err := s.runs.Admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID, Reference: Reference{Revision: g.Revision}, Arguments: clone(g.Arguments),
-		Resolution: clone(g.Resolution), Outputs: clone(g.Outputs), Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"})
+	child, err := s.runs.Admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID,
+		Reference: Reference{Revision: g.Revision}, Arguments: g.Arguments, Resolution: g.Resolution,
+		Outputs: g.Outputs, Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"})
 	if err != nil {
 		return GroupResult{}, err
 	}
-	if child.RevisionDigest != g.Definition || child.PartitionDigest != exec.Hash(g.Binding) || child.Private != g.Private {
+	if child.RevisionDigest != g.Definition || child.PartitionDigest != exec.Hash(g.Binding) || child.Private != m.Private {
 		return GroupResult{}, ErrStale
 	}
-	if _, err := s.runs.Run(ctx, e, child.ID, false); err != nil {
+	resume := child.Attempts > 0 && !slices.Contains([]string{"succeeded", "partial", "failed", "expired"}, child.State)
+	if _, err := s.runs.Run(ctx, e, child.ID, resume); err != nil {
 		return GroupResult{}, err
 	}
 	retained, err := s.runs.repo.ReadFrozenRun(ctx, e, child.ID, true)
 	if err != nil {
 		return GroupResult{}, err
 	}
-	if retained.Manifest == nil || digest(retained.Manifest.Resolved.Parameters) != digest(g.Resolved.Parameters) || retained.View.RevisionDigest != g.Definition || retained.View.PartitionDigest != exec.Hash(g.Binding) {
+	if retained.Manifest == nil || retained.Result == nil || retained.View.Observed == nil || retained.Manifest.Revision.Digest != g.Definition || retained.Manifest.Binding.Context != g.Binding.Context || exec.Hash(retained.Manifest.Binding) != exec.Hash(g.Binding) || digest(retained.Manifest.Resolved.Parameters) != digest(g.Resolved.Parameters) || retained.View.Private != m.Private {
 		return GroupResult{}, ErrStale
 	}
-	// A private child run preserves privacy but does not bypass the report's
-	// original certified-only or explicit-stale eligibility requirement.
-	current, err := s.documents.blocks.repo.ReadBlock(ctx, e, g.Block, Reference{Revision: g.Revision}, Execute)
+	// The original widget policy remains checked even for a private child run.
+	snapshot, err = s.documents.blocks.repo.ReadBlock(ctx, e, g.Block, Reference{Revision: g.Revision}, Execute)
 	if err != nil {
 		return GroupResult{}, err
 	}
-	if err := runEligibility(e, current, g.Policy, time.Now()); err != nil {
+	if err := CheckCompositionBlock(e, g, snapshot); err != nil {
 		return GroupResult{}, err
 	}
-	out := GroupResult{Group: g.ID, Kind: "block", State: "completed", ChildRun: child.ID, Block: &retained.View, Outputs: []RetainedOutput{}, Observed: retained.View.Observed}
-	byID := map[string]RetainedOutput{}
-	for _, output := range retained.Outputs {
-		byID[output.ID] = output
-	}
-	for _, id := range g.Outputs {
-		output, ok := byID[id]
-		if !ok {
-			return GroupResult{}, ErrIncomplete
-		}
-		out.Outputs = append(out.Outputs, clone(output))
+	out := GroupResult{Group: g.ID, Kind: "block", State: "completed", ChildRun: child.ID,
+		Block: &retained.View, Outputs: clone(retained.Outputs), Observed: clone(retained.View.Observed)}
+	for _, output := range out.Outputs {
 		if output.State != "succeeded" {
 			out.State, out.Code = "partial", "output_failed"
 		}
 	}
-	if retained.Result == nil {
-		return GroupResult{}, ErrIncomplete
-	}
-	if retained.Result.Truncated {
+	if retained.Result.Outcome == "truncated" {
 		out.State, out.Code = "partial", "query_truncated"
 	}
 	out.Digest = GroupResultDigest(out)
-	return out, nil
+	return out, CheckCompositionResult(m, g, out)
 }
 
-func (s *Compositions) executeQuery(ctx context.Context, e identity.Envelope, inv jobs.Invocation, record CompositionRecord, group CompositionGroup) (GroupResult, CompositionRecord, error) {
-	if s.queries == nil || group.Query == nil || group.Origin == nil {
+func (s *Compositions) executeQuery(ctx context.Context, e identity.Envelope, inv jobs.Invocation, record CompositionRecord, g CompositionGroup) (GroupResult, CompositionRecord, error) {
+	m := record.Manifest
+	if s.queries == nil || g.Query == nil || g.Origin == nil {
 		return GroupResult{}, record, ErrUnavailable
 	}
-	m := record.Manifest
-	plan, found := record.Plans[group.ID]
-	if !found {
+	plan, planned := record.Plans[g.ID]
+	if !planned {
 		var err error
-		plan, err = s.queries.PrepareDocumentQuery(ctx, e, *group.Query, *group.Origin, "composition:"+m.ID+":"+group.ID, group.Locale)
-		if err != nil {
-			return GroupResult{}, record, err
+		operation := "composition:" + m.ID + ":" + g.ID
+		if record.Started[g.ID] {
+			recovery, ok := s.queries.(DocumentQueryRecovery)
+			if !ok {
+				return GroupResult{}, record, exec.ErrUncertain
+			}
+			// A prior owner may have spent the generation budget. Recovery is
+			// strictly metadata-only and cannot silently start another model call.
+			plan, err = recovery.RecoverDocumentQuery(ctx, e, *g.Query, *g.Origin, operation)
+			if err != nil {
+				return GroupResult{}, record, errors.Join(exec.ErrUncertain, err)
+			}
+		} else {
+			updated, startErr := s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "query_start", Group: g.ID})
+			if startErr != nil {
+				// Only this invocation attempted the marker; no provider call has
+				// occurred yet. Confirm its durable receipt before dispatching.
+				updated, err = s.repo.ReadComposition(ctx, e, m.ID)
+				if err != nil || !updated.Started[g.ID] {
+					return GroupResult{}, record, startErr
+				}
+			}
+			record = updated
+			plan, err = s.queries.PrepareDocumentQuery(ctx, e, *g.Query, *g.Origin, operation, g.Locale)
+			if err != nil {
+				return GroupResult{}, record, err
+			}
 		}
-		if plan.BindingDigest != exec.Hash(group.Binding) {
+		if plan.BindingDigest != exec.Hash(g.Binding) {
 			return GroupResult{}, record, ErrStale
 		}
-		record, err = s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "plan", Group: group.ID, Plan: &plan})
+		updated, err := s.checkpoint(ctx, inv, CompositionWrite{Manifest: m, Kind: "plan", Group: g.ID, Plan: &plan})
 		if err != nil {
-			return GroupResult{}, record, err
+			updated, readErr := s.repo.ReadComposition(ctx, e, m.ID)
+			if readErr != nil || updated.Plans[g.ID] != plan {
+				return GroupResult{}, record, err
+			}
+			record = updated
+		} else {
+			record = updated
 		}
 	}
-	query, err := s.queries.RunDocumentQuery(ctx, e, *group.Query, *group.Origin, plan,
-		min(m.ArtifactLimits.MaxRows, s.documents.limits.Execution.MaxRows), min(m.ArtifactLimits.MaxResultBytes, s.documents.limits.Execution.MaxResultBytes))
+	available := int64(m.Limits.MaxRetainedBytes) - CompositionRetainedBytes(record) - int64(len(m.Groups)-len(record.Results))*1024
+	if available < 1024 {
+		return GroupResult{}, record, ErrBudget
+	}
+	rows := min(m.ArtifactLimits.MaxRows, s.documents.limits.Execution.MaxRows)
+	bytes := min(m.ArtifactLimits.MaxResultBytes, s.documents.limits.Execution.MaxResultBytes, int(available/2))
+	result, err := s.queries.RunDocumentQuery(ctx, e, *g.Query, *g.Origin, plan, rows, bytes, m.Private)
 	if err != nil {
 		return GroupResult{}, record, err
 	}
-	observed := time.Now().UTC()
-	result := GroupResult{Group: group.ID, Kind: "query", State: "completed", Query: &query, QueryPlan: &plan, Outputs: []RetainedOutput{}, Observed: &observed}
-	if query.Execution.Result == nil {
+	if result.Execution.Result == nil || result.Execution.Attempt.Finished == nil || result.Partition != exec.Hash(g.Binding) {
 		return GroupResult{}, record, ErrIncomplete
 	}
-	if query.EvidenceStale || query.Execution.Result.Truncated {
-		result.State, result.Code = "partial", "query_truncated"
+	out := GroupResult{Group: g.ID, Kind: "query", State: "completed", Outputs: []RetainedOutput{},
+		Query: &result, QueryPlan: &plan, Observed: clone(result.Execution.Attempt.Finished)}
+	if result.Execution.Result.Outcome == "truncated" {
+		out.State, out.Code = "partial", "query_truncated"
 	}
-	result.Digest = GroupResultDigest(result)
-	return result, record, nil
+	if result.EvidenceStale {
+		out.State, out.Code = "partial", "dependency_stale"
+	}
+	out.Digest = GroupResultDigest(out)
+	return out, record, CheckCompositionResult(m, g, out)
 }
 
-// SummarizeComposition projects already-authorized execution state. Retained
-// read surfaces apply page redaction in SQL before returning this projection.
-func SummarizeComposition(record CompositionRecord) CompositionView {
-	m := record.Manifest
-	view := CompositionView{ID: m.ID, Kind: m.Kind, Document: m.Document, Revision: m.Revision, Manifest: m.ManifestDigest(), State: record.State, Code: record.Code,
-		Private: m.Private, Redacted: m.Redacted, Created: m.Created, Expires: m.Expires, Pages: []CompositionPageSummary{}, QueryGroups: len(m.Groups)}
-	results := map[string]GroupResult{}
-	for _, r := range record.Results {
-		results[r.Group] = r
-		if raw, err := json.Marshal(r); err == nil {
-			view.RetainedBytes += int64(len(raw))
-		}
-	}
-	for _, p := range m.Pages {
-		page := CompositionPageSummary{ID: p.ID, Report: p.Report, Revision: p.Revision, Title: p.Title, Widgets: []CompositionWidgetSummary{}}
-		for _, widget := range p.Widgets {
-			w := CompositionWidgetSummary{ID: widget.Definition.ID, Kind: widget.Definition.Kind, State: "pending", Code: widget.Code, Grid: widget.Definition.Grid,
-				Presentation: clone(widget.Definition.Presentation), Parameters: clone(widget.Parameters), Outputs: []string{}}
-			if w.Kind == "text" {
-				w.State = "completed"
-			} else if w.Code != "" {
-				w.State = "omitted"
-			} else if result, found := results[widget.Group]; found {
-				w.State, w.Code, w.Observed = result.State, result.Code, result.Observed
-				if result.Block != nil {
-					trust := clone(result.Block.Trust)
-					w.Trust = &trust
-				}
-				if result.Query != nil {
-					w.QueryDigest, w.SemanticDigest = result.Query.QueryDigest, result.Query.SemanticDigest
-				}
-			}
-			if widget.Definition.Block != nil {
-				w.Outputs = clone(widget.Definition.Block.Outputs)
-			}
-			if widget.Definition.Query != nil {
-				w.Durability = widget.Definition.Query.Durability
-			}
-			page.Widgets = append(page.Widgets, w)
-		}
-		view.Pages = append(view.Pages, page)
-	}
-	if state, _, mixed, err := CompositionCompletion(m, record.Results); err == nil {
-		view.Complete = record.State == "completed" && state == "completed"
-		view.MixedFreshness = mixed
-	}
-	return view
-}
-
-// CompositionResultJSON is the bounded immutable group storage representation.
-func CompositionResultJSON(result GroupResult) ([]byte, error) {
-	body, err := json.Marshal(result)
-	if err != nil || len(body) > 16<<20 {
-		return nil, ErrBudget
-	}
-	return body, nil
-}
-
-// DecodeCompositionResult rejects corrupt or substituted persisted group data.
-func DecodeCompositionResult(body []byte, manifest CompositionManifest, group string) (GroupResult, error) {
-	var result GroupResult
-	g, ok := compositionGroup(manifest, group)
-	if !ok || len(body) == 0 || len(body) > 16<<20 || json.Unmarshal(body, &result) != nil || CheckCompositionResult(manifest, g, result) != nil {
-		return GroupResult{}, ErrInvalid
-	}
-	return result, nil
-}
-
-// DecodeCompositionManifest is a validation boundary, not an authority issuer.
-func DecodeCompositionManifest(body []byte, expected string) (CompositionManifest, error) {
-	var m CompositionManifest
-	if len(body) == 0 || len(body) > 16<<20 || json.Unmarshal(body, &m) != nil || !validComposition(m) || m.ManifestDigest() != expected {
-		return CompositionManifest{}, ErrInvalid
-	}
-	return m, nil
-}
+// Retain the common store error identity for callers resolving interrupted work.
+var _ = store.ErrConflict

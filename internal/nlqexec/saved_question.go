@@ -10,21 +10,20 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
-// SavedTopic pins one immutable published semantic definition. Saved questions
-// are dynamic query inputs, not approved SQL or business certificates.
+// SavedTopic pins an immutable published semantic definition, not certified SQL.
 type SavedTopic struct {
 	Topic   string `json:"topic"`
 	Version string `json:"version"`
 	Digest  string `json:"digest"`
 }
 
-// SavedQuestion distinguishes replayable questions from private session-bound
-// query references. Neither carries an issuer token or an impersonation handle.
+// SavedQuestion distinguishes replayable questions from private session references.
 type SavedQuestion struct {
 	Durability string       `json:"durability"`
 	Context    string       `json:"context"`
@@ -33,8 +32,7 @@ type SavedQuestion struct {
 	Query      string       `json:"query,omitempty"`
 }
 
-// SavedEvidence is a metadata-only handoff. QueryDigest covers the question for
-// replayable inputs, or exact retained SQL and parameters for session-bound ones.
+// SavedEvidence is metadata-only. It grants no authority over the named source.
 type SavedEvidence struct {
 	Query          string       `json:"query,omitempty"`
 	Actor          string       `json:"actor,omitempty"`
@@ -47,14 +45,18 @@ type SavedEvidence struct {
 	QueryDigest    string       `json:"query_digest"`
 }
 
-// SavedQueryReader projects definitions without fetching the raw result column.
-// Its envelope is mandatory; raw tenant/actor coordinates are not authority.
+// SavedQueryReader projects protected definitions without fetching raw results.
 type SavedQueryReader interface {
 	ReadSavedQuery(context.Context, identity.Envelope, string, bool) (QueryRecord, error)
 }
 
-// SavedPlan identifies an already persisted ordinary NLQ plan. A serialized
-// plan alone is not executable: RunSaved rechecks its owner, content and reach.
+// SavedAttemptReader reads the actual source journal when a terminal NLQ result
+// is replayed. It cannot manufacture a successful attempt from retained rows.
+type SavedAttemptReader interface {
+	ReadSavedAttempt(context.Context, identity.Envelope, string) (exec.Attempt, error)
+}
+
+// SavedPlan identifies an ordinary persisted plan, never a serialized credential.
 type SavedPlan struct {
 	Query         string `json:"query"`
 	Operation     string `json:"operation"`
@@ -63,14 +65,15 @@ type SavedPlan struct {
 	BindingDigest string `json:"binding_digest"`
 }
 
-// SavedResult retains the ordinary validated-read receipt, not a certificate.
-// Public report metadata must use a summary rather than serializing these rows.
+// SavedResult retains the real read receipt and actual gateway usage. A dynamic
+// query never acquires a block certificate from an enclosing report publication.
 type SavedResult struct {
 	Query          string               `json:"query"`
 	QueryDigest    string               `json:"query_digest"`
 	SemanticDigest string               `json:"semantic_digest"`
 	Partition      string               `json:"partition_digest"`
 	Execution      exec.ExecutionReport `json:"execution"`
+	Receipt        gateway.Receipt      `json:"receipt"`
 	EvidenceStale  bool                 `json:"evidence_stale"`
 }
 
@@ -113,8 +116,8 @@ func (s *Service) savedRecord(ctx context.Context, e identity.Envelope, id strin
 	return r.ReadSavedQuery(ctx, e, id, operation)
 }
 
-// InspectSaved checks exact retained semantics and current signed query reach
-// before returning reference metadata. It executes neither models nor sources.
+// InspectSaved checks exact retained semantics and signed query reach without
+// opening a warehouse connection or invoking a model provider.
 func (s *Service) InspectSaved(ctx context.Context, e identity.Envelope, in SavedQuestion) (SavedEvidence, error) {
 	if s == nil || ctx == nil || !savedQuestionValid(in) {
 		return SavedEvidence{}, ErrInvalid
@@ -167,8 +170,7 @@ func (s *Service) InspectSaved(ctx context.Context, e identity.Envelope, in Save
 		if q.Session != e.Session() || !savedRecordMatches(q, in) || q.EvidenceStale || !slices.Contains([]string{"planned", "succeeded", "empty", "truncated"}, q.Status) {
 			return SavedEvidence{}, ErrNoPlan
 		}
-		out.Query, out.Actor, out.Session = in.Query, e.User(), e.Session()
-		out.QueryDigest = savedQueryDigest(q)
+		out.Query, out.Actor, out.Session, out.QueryDigest = in.Query, e.User(), e.Session(), savedQueryDigest(q)
 	}
 	if !e.Valid() {
 		return SavedEvidence{}, access.ErrUnauthenticated
@@ -177,10 +179,13 @@ func (s *Service) InspectSaved(ctx context.Context, e identity.Envelope, in Save
 }
 
 func (s *Service) savedPlan(ctx context.Context, e identity.Envelope, in SavedQuestion, evidence SavedEvidence, q QueryRecord, operation string) (SavedPlan, error) {
-	if q.Session != e.Session() || q.Operation != operation || !savedRecordMatches(q, in) ||
-		in.Durability == "replayable" && q.Question != in.Question ||
-		in.Durability == "session_bound" && (q.Parent != in.Query || savedQueryDigest(q) != evidence.QueryDigest) {
+	if q.Session != e.Session() || q.Operation != operation || !savedRecordMatches(q, in) || in.Durability == "replayable" && q.Question != in.Question || in.Durability == "session_bound" && q.Parent != in.Query {
 		return SavedPlan{}, store.ErrConflict
+	}
+	// Only the ordinary execution service may have made a validated equivalent
+	// correction after planning. Nonterminal session clones must remain exact.
+	if in.Durability == "session_bound" && !terminalQueryStatus(q.Status) && savedQueryDigest(q) != evidence.QueryDigest {
+		return SavedPlan{}, ErrNoPlan
 	}
 	binding, err := s.sources.Binding(ctx, e, evidence.Source, evidence.Context)
 	if err != nil {
@@ -189,10 +194,28 @@ func (s *Service) savedPlan(ctx context.Context, e identity.Envelope, in SavedQu
 	return SavedPlan{Query: q.ID, Operation: operation, InputDigest: exec.Hash([]any{in, evidence}), QueryDigest: savedQueryDigest(q), BindingDigest: exec.Hash(binding)}, nil
 }
 
-// PrepareSaved uses the ordinary NLQ planner for replayable questions. An exact
-// session-bound definition is cloned into a new operation without generation;
-// the originating query and its previously retained result remain untouched.
-// The caller reserves its parent operation/model budget before invoking this.
+// RecoverSaved is metadata-only recovery after a durable pre-generation marker.
+// Missing plan evidence remains uncertain; it never triggers fresh generation.
+func (s *Service) RecoverSaved(ctx context.Context, e identity.Envelope, in SavedQuestion, expected SavedEvidence, operation string) (SavedPlan, error) {
+	if !identity.Identifier(operation) {
+		return SavedPlan{}, ErrInvalid
+	}
+	evidence, err := s.InspectSaved(ctx, e, in)
+	if err != nil || exec.Hash(evidence) != exec.Hash(expected) {
+		if err == nil {
+			err = ErrNoPlan
+		}
+		return SavedPlan{}, err
+	}
+	q, err := s.savedRecord(ctx, e, operation, true)
+	if err != nil {
+		return SavedPlan{}, err
+	}
+	return s.savedPlan(ctx, e, in, evidence, q, operation)
+}
+
+// PrepareSaved uses the existing NLQ planner or copies an exact session-bound
+// definition into a new operation. The caller reserves its generation once first.
 func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in SavedQuestion, expected SavedEvidence, operation, locale string) (SavedPlan, error) {
 	if !identity.Identifier(operation) {
 		return SavedPlan{}, ErrInvalid
@@ -209,12 +232,8 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 	} else if !errors.Is(err, store.ErrNotFound) && !errors.Is(err, access.ErrNotFound) {
 		return SavedPlan{}, err
 	}
-	sc, err := scope(e)
-	if err != nil {
-		return SavedPlan{}, err
-	}
 	if in.Durability == "session_bound" {
-		original, err := s.repo.ReadQuery(ctx, sc, in.Query)
+		original, err := s.savedRecord(ctx, e, in.Query, false)
 		if err != nil {
 			return SavedPlan{}, err
 		}
@@ -225,10 +244,13 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 		if err != nil {
 			return SavedPlan{}, err
 		}
+		sc, err := scope(e)
+		if err != nil {
+			return SavedPlan{}, err
+		}
 		original.ID, original.Parent, original.Operation = id, in.Query, operation
 		original.Status, original.Result, original.Revision = "planned", nil, 1
-		original.Created, original.Updated = time.Now().UTC(), time.Now().UTC()
-		original.ExecutionFixes = 0
+		original.Created, original.Updated, original.ExecutionFixes = time.Now().UTC(), time.Now().UTC(), 0
 		if err := s.repo.CreateQuery(ctx, sc, original); err != nil && !errors.Is(err, store.ErrConflict) {
 			return SavedPlan{}, err
 		}
@@ -258,18 +280,17 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 			return SavedPlan{}, ErrNoPlan
 		}
 	}
+	// Post-plan pin checks catch routing/publication races before source execution.
 	q, err := s.savedRecord(ctx, e, operation, true)
 	if err != nil {
 		return SavedPlan{}, err
 	}
-	// This post-plan comparison catches publication/routing races before any
-	// warehouse query. A changed semantic pin is not silently followed.
 	return s.savedPlan(ctx, e, in, evidence, q, operation)
 }
 
-// RunSaved executes an already persisted plan through Service.Run, preserving
-// its validator, actual source partition, attempt journal and correction bounds.
-func (s *Service) RunSaved(ctx context.Context, e identity.Envelope, in SavedQuestion, expected SavedEvidence, plan SavedPlan, rows, bytes int) (SavedResult, error) {
+// RunSaved delegates all SQL validation, execution and equivalent-correction
+// bounds to Service.Run. Terminal replay recovers the real read-journal receipt.
+func (s *Service) RunSaved(ctx context.Context, e identity.Envelope, in SavedQuestion, expected SavedEvidence, plan SavedPlan, rows, bytes int, preview bool) (SavedResult, error) {
 	if plan.InputDigest != exec.Hash([]any{in, expected}) || !identity.Identifier(plan.Query) || !identity.Identifier(plan.Operation) || rows < 1 || rows > 100000 || bytes < 128 || bytes > 16<<20 {
 		return SavedResult{}, ErrInvalid
 	}
@@ -285,13 +306,18 @@ func (s *Service) RunSaved(ctx context.Context, e identity.Envelope, in SavedQue
 		return SavedResult{}, err
 	}
 	checked, err := s.savedPlan(ctx, e, in, evidence, q, plan.Operation)
-	if err != nil || checked != plan {
-		if err == nil {
-			err = ErrNoPlan
-		}
+	if err != nil {
 		return SavedResult{}, err
 	}
-	run, err := s.Run(ctx, e, RunRequest{QueryID: plan.Query, Operation: plan.Operation, Rows: rows, Bytes: bytes})
+	if checked != plan {
+		// A terminal ordinary query may retain a mechanically equivalent
+		// correction. Nothing is reexecuted; identity, pins and partition must
+		// still match the originally sealed plan and current signed authority.
+		if !terminalQueryStatus(q.Status) || checked.Query != plan.Query || checked.Operation != plan.Operation || checked.InputDigest != plan.InputDigest || checked.BindingDigest != plan.BindingDigest {
+			return SavedResult{}, ErrNoPlan
+		}
+	}
+	run, err := s.Run(ctx, e, RunRequest{QueryID: plan.Query, Operation: plan.Operation, Rows: rows, Bytes: bytes, Preview: preview})
 	if err != nil {
 		return SavedResult{}, err
 	}
@@ -309,5 +335,19 @@ func (s *Service) RunSaved(ctx context.Context, e identity.Envelope, in SavedQue
 	if actual.Session != e.Session() || !savedRecordMatches(actual, in) || !e.Valid() {
 		return SavedResult{}, ErrForeignSession
 	}
-	return SavedResult{Query: plan.Query, QueryDigest: savedQueryDigest(actual), SemanticDigest: evidence.SemanticDigest, Partition: plan.BindingDigest, Execution: run.Execution, EvidenceStale: run.EvidenceStale}, nil
+	if run.Execution.Attempt.ID == "" {
+		journal, ok := s.repo.(SavedAttemptReader)
+		if !ok {
+			return SavedResult{}, store.ErrUnavailable
+		}
+		run.Execution.Attempt, err = journal.ReadSavedAttempt(ctx, e, plan.Operation)
+		if err != nil {
+			return SavedResult{}, err
+		}
+	}
+	a := run.Execution.Attempt
+	if a.Manifest.Operation != plan.Operation || a.Manifest.Session != e.Session() || a.Manifest.Preview != preview || a.Manifest.Receipt.Source != evidence.Source || a.Manifest.Receipt.Context != evidence.Context || a.RemoteState != "stopped" || a.Finished == nil || run.Execution.Result == nil {
+		return SavedResult{}, ErrNoPlan
+	}
+	return SavedResult{Query: plan.Query, QueryDigest: savedQueryDigest(actual), SemanticDigest: evidence.SemanticDigest, Partition: plan.BindingDigest, Execution: run.Execution, Receipt: actual.Receipt, EvidenceStale: run.EvidenceStale}, nil
 }
