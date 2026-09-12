@@ -1,0 +1,48 @@
+name: Phase 30-31 bounded module transfer
+on:
+  push:
+    branches: [feat/phase-30-31-reporting-delivery]
+    paths: [.github/workflows/phase-30-31-module-transfer.yml]
+permissions:
+  contents: read
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Verify public locked modules and create bounded chunks
+        run: |
+          go mod download
+          go mod verify
+          tar -czf /tmp/modules.tar.gz -C "$(go env GOMODCACHE)" .
+          split -b 400M -d /tmp/modules.tar.gz /tmp/modules.part-
+          sha256sum /tmp/modules.tar.gz /tmp/modules.part-* > /tmp/module-checksums.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-30-31-modules-00
+          path: /tmp/modules.part-00
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-30-31-modules-01
+          path: /tmp/modules.part-01
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-30-31-modules-02
+          path: /tmp/modules.part-02
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-30-31-modules-checksums
+          path: /tmp/module-checksums.txt
+          retention-days: 1
