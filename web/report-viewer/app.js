@@ -101,6 +101,7 @@ function categoryKey(cell) { return JSON.stringify([cell?.null ?? true,text(cell
 
 function renderTable(parent, columns, rows, w, caption, totals = []) {
   if (columns.length > 256 || rows.length > 1000) throw fail('limit_exceeded');
+  if (rows.length === 0) { const notice = element('p',w.empty,'notice'); notice.setAttribute('role','status'); parent.append(notice); }
   const scroll = element('div',undefined,'scroll');
   scroll.tabIndex = 0;
   const table = element('table');

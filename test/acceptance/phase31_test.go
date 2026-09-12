@@ -125,7 +125,20 @@ func (f *phase31Fixture) reader(t *testing.T, block, report string) identity.Env
 	t.Helper()
 	scopes := []string{"reporting.read", "cw.execution_context.use:" + f.domain.base.Context}
 	if block != "" {
-		scopes = append(scopes, "cw.block.read:"+block)
+		// The real catalog requires signed parent/dependency reach in addition
+		// to the block ID. Derive only this synthetic block's exact references;
+		// no execution, SQL-read, model, authoring or wildcard grant is added.
+		snapshot, err := f.domain.f.f.db.ReadBlock(t.Context(), f.domain.execute, block, reporting.Reference{}, reporting.Read)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scopes = append(scopes, "cw.block.read:"+block, "cw.topic.read:"+snapshot.State.Topic)
+		for _, ref := range snapshot.References {
+			scope := "cw." + ref.Kind + "." + ref.Permission + ":" + ref.ID
+			if !slices.Contains(scopes, scope) {
+				scopes = append(scopes, scope)
+			}
+		}
 	}
 	if report != "" {
 		scopes = append(scopes, "cw.report.read:"+report)

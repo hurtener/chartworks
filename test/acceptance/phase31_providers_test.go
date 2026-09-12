@@ -151,6 +151,11 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 	f.domain.report(t, "p31-report", report, true)
 	reader := f.reader(t, "p31-visible", "p31-report")
 	beforeSource, beforeModels := f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
+	missingDependencies := phase27Actor(t, f.domain.f, "missing-dependency-reader", []string{"reporting.read", "cw.block.read:p31-visible", "cw.execution_context.use:" + d.Context})
+	deniedSearch, err := f.service.Search(t.Context(), missingDependencies, reporting.ReportingSearchRequest{Kind: "block", Limit: 100})
+	if err != nil || len(deniedSearch.Items) != 0 {
+		t.Fatal("metadata catalog widened missing dependency authority", deniedSearch, err)
+	}
 	search, err := f.service.Search(t.Context(), reader, reporting.ReportingSearchRequest{Kind: "block", Limit: 100})
 	if err != nil || len(search.Items) != 1 || search.Items[0].Target.ID != "p31-visible" {
 		t.Fatalf("signed metadata search: %+v %v", search, err)
@@ -250,10 +255,12 @@ func testPhase31ArtifactStates(t *testing.T) {
 	if err == nil || denied.Output != nil || denied.Summary.Run != "" {
 		t.Fatal("private actor/session boundary waived", denied, err)
 	}
-	// Move only the test fixture's retention deadline into the past. The real
-	// metadata-only reader must return a tombstone without loading old payloads.
+	// Install the production retention tombstone while deliberately retaining
+	// the synthetic old payload rows as adversarial input. Do not rewrite the
+	// immutable accepted deadline. The actual provider must not fetch those
+	// values merely because stale payload bytes still exist in storage.
 	pool := support.Raw(t, f.domain.f.f.dsn)
-	if _, err := pool.Exec(context.Background(), `UPDATE chartworks.composition_runs SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND operation_id=$2`, f.domain.execute.Tenant(), preview.ID); err != nil {
+	if _, err := pool.Exec(context.Background(), `UPDATE chartworks.composition_runs SET state='expired',code='retention_expired',complete=false,retained_bytes=0,reserved_bytes=0 WHERE tenant_id=$1 AND operation_id=$2`, f.domain.execute.Tenant(), preview.ID); err != nil {
 		t.Fatal(err)
 	}
 	expired, err := f.service.View(t.Context(), owner, reporting.ReportingViewRequest{Kind: "report", Run: preview.ID, Limit: 1})
