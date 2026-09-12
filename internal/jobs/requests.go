@@ -88,8 +88,8 @@ func (t RequestTask) Digest() string {
 
 // Valid rejects incomplete or tampered retained manifests.
 func (t RequestTask) Valid() bool {
-	if t.Dispatch != nil {
-		return validDispatchedRequest(t)
+	if t.Dispatch != nil && !validDispatchedRequest(t) {
+		return false
 	}
 	return identity.Identifier(t.Tenant) && identity.Identifier(t.ID) && identity.Identifier(t.Actor) && identity.Identifier(t.Session) && t.Input.Valid() &&
 		t.MaxAttempts >= 1 && t.MaxAttempts <= 8 && t.Attempts >= 0 && t.Attempts <= t.MaxAttempts && !t.Created.IsZero() && t.Expires.After(t.Created) && t.ManifestHash == t.Digest()
@@ -119,6 +119,7 @@ type Invocation struct {
 	lease     RequestLease
 	authority identity.Envelope
 	owned     bool
+	parent    *Invocation
 }
 
 // Lease returns content-free coordinates; a serialized copy cannot forge Invocation.
@@ -126,6 +127,14 @@ func (i Invocation) Lease() RequestLease { return i.lease }
 
 // Valid identifies the originally owned attempt, not permission to perform effects.
 func (i Invocation) Valid() bool {
+	if i.parent != nil {
+		p := i.parent
+		if p.parent != nil || !p.Valid() || (p.lease.Task.Input.Kind != "report.run" && p.lease.Task.Input.Kind != "dashboard.run") ||
+			i.lease.Task.Input.Kind != "reporting.run" || i.lease.Task.Tenant != p.lease.Task.Tenant ||
+			i.lease.Task.Actor != p.lease.Task.Actor || i.lease.Task.Session != p.lease.Task.Session || i.lease.Task.ID == p.lease.Task.ID {
+			return false
+		}
+	}
 	return i.owned && i.lease.Task.Valid() && identity.Identifier(i.lease.Owner) && i.lease.Fence > 0 && i.lease.Attempt > 0 && i.lease.Task.Tenant == i.authority.Tenant() && i.lease.Task.Actor == i.authority.User() && i.lease.Task.Session == i.authority.Session()
 }
 
@@ -133,6 +142,12 @@ func (i Invocation) Valid() bool {
 func (i Invocation) Current(kind, target, hash string) (identity.Envelope, error) {
 	if !i.Valid() || i.lease.Task.Input.Kind != kind || i.lease.Task.Input.Target != target || i.lease.Task.Input.InputHash != hash {
 		return identity.Envelope{}, ErrAuthority
+	}
+	if i.parent != nil {
+		p := i.parent.Lease().Task
+		if _, err := i.parent.Current(p.Input.Kind, p.Input.Target, p.Input.InputHash); err != nil {
+			return identity.Envelope{}, err
+		}
 	}
 	if err := i.lease.Task.Require(i.authority); err != nil {
 		return identity.Envelope{}, err
@@ -209,6 +224,10 @@ func (r *RequestRunner) Resume(ctx context.Context, e identity.Envelope, id stri
 // observer. Domain completion must atomically publish its pointer and finish the
 // same live fence; returning nil from a handler alone does not manufacture success.
 func (r *RequestRunner) Run(ctx context.Context, e identity.Envelope, task RequestTask, timeout time.Duration, handler func(context.Context, Invocation) error) (RequestTask, error) {
+	return r.run(ctx, e, task, timeout, handler, nil)
+}
+
+func (r *RequestRunner) run(ctx context.Context, e identity.Envelope, task RequestTask, timeout time.Duration, handler func(context.Context, Invocation) error, parent *Invocation) (RequestTask, error) {
 	if ctx == nil || handler == nil || timeout < time.Millisecond || timeout > time.Minute {
 		return RequestTask{}, ErrInvalid
 	}
@@ -226,11 +245,24 @@ func (r *RequestRunner) Run(ctx context.Context, e identity.Envelope, task Reque
 	if _, err := rand.Read(id[:]); err != nil {
 		return RequestTask{}, store.ErrUnavailable
 	}
-	lease, err := r.repo.ClaimRequest(ctx, e, task.ID, hex.EncodeToString(id[:]), r.limits)
+	var lease RequestLease
+	var err error
+	if parent == nil {
+		lease, err = r.repo.ClaimRequest(ctx, e, task.ID, hex.EncodeToString(id[:]), r.limits)
+	} else {
+		if _, err = nestedAuthority(*parent, task.Input); err != nil {
+			return RequestTask{}, err
+		}
+		repo, ok := r.repo.(NestedRequestRepository)
+		if !ok {
+			return RequestTask{}, ErrInvalid
+		}
+		lease, err = repo.ClaimNestedRequest(ctx, *parent, task.ID, hex.EncodeToString(id[:]), r.limits)
+	}
 	if err != nil {
 		return RequestTask{}, err
 	}
-	invocation := Invocation{lease: lease, authority: e, owned: true}
+	invocation := Invocation{lease: lease, authority: e, owned: true, parent: parent}
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop, done := make(chan struct{}), make(chan error, 1)

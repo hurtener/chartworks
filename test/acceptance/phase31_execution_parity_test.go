@@ -105,7 +105,7 @@ func testPhase31ExplicitExecution(t *testing.T) {
 
 func phase31HTTP[Out any](t *testing.T, f *phase31Fixture, token, operation string, input any) (out Out) {
 	t.Helper()
-	response := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/"+operation, token, phase31Wire(t, input), nil)
+	response := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/"+operation, token, string(phase31Wire(t, input)), nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("HTTP %s: %d %s", operation, response.Code, response.Body.String())
 	}
@@ -203,7 +203,7 @@ func testPhase31ProviderParity(t *testing.T) {
 	phase31Equivalent(t, hRuns, mRuns, "catalog HTTP/MCP")
 	phase31Equivalent(t, hRuns, sRuns, "catalog HTTP/SDK")
 	selection.Output = "does-not-exist"
-	denied := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", bearer, phase31Wire(t, selection), nil)
+	denied := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", bearer, string(phase31Wire(t, selection)), nil)
 	if denied.Code != http.StatusNotFound || !strings.Contains(denied.Body.String(), "not_found") {
 		t.Fatal("HTTP missing-selection code", denied.Code, denied.Body.String())
 	}
@@ -259,22 +259,22 @@ func testPhase31ProviderBounds(t *testing.T) {
 		`{"kind":"block","run":"` + run.Run + `","output":"table-main","offset":0,"limit":1,"authorization":"Bearer forged"}`,
 		`{"kind":"block","run":"` + run.Run + `","output":"table-main","offset":0,"limit":1,"_meta":{"ui":{"visibility":["app"]}}}`,
 	} {
-		response := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", bearer, []byte(body), nil)
+		response := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", bearer, body, nil)
 		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_request") {
 			t.Fatal("closed request accepted executable/authority extensions", response.Code, response.Body.String())
 		}
 	}
-	response := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", bearer, []byte(strings.Repeat(" ", 17<<20)+"{}"), nil)
+	response := callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", bearer, strings.Repeat(" ", 17<<20)+"{}", nil)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatal("request byte ceiling", response.Code, response.Body.String())
 	}
 	foreign := f.token(t, "foreign-reader", "foreign-tenant", readScopes, false)
-	response = callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", foreign, phase31Wire(t, reporting.ReportingViewRequest{Kind: "block", Run: run.Run, Limit: 1}), nil)
+	response = callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", foreign, string(phase31Wire(t, reporting.ReportingViewRequest{Kind: "block", Run: run.Run, Limit: 1})), nil)
 	if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), run.Run) {
 		t.Fatal("cross-tenant artifact disclosure", response.Code, response.Body.String())
 	}
 	request := phase31Request("block", "p31-bounds", "p31-hint-not-authority")
-	response = callProtected(t, f.handler, http.MethodPost, "/v1/reporting/run", bearer, phase31Wire(t, request), nil)
+	response = callProtected(t, f.handler, http.MethodPost, "/v1/reporting/run", bearer, string(phase31Wire(t, request)), nil)
 	if response.Code != http.StatusForbidden {
 		t.Fatal("app visibility replaced signed execution action", response.Code, response.Body.String())
 	}
