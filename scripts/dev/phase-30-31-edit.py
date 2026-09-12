@@ -42,18 +42,12 @@ replace(p,'''\t_, runErr := s.runner.Run(ctx, e, task, min(time.Duration(r.Manif
  }''')
 p='internal/reporting/compositions_execution.go'
 replace(p,'s.executeBlock(ctx, e, m, group)', 's.executeBlock(ctx, e, inv, m, group)')
-replace(p,'func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, g QueryGroup)', 'func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m CompositionManifest, g QueryGroup)')
-# The literal ends at the sole child block-admission line; preserve every field.
-text=Path(p).read_text()
-lines=text.splitlines(keepends=True)
-found=0
-for n,line in enumerate(lines):
- if 'child, err := s.blocks.Admit(' in line:
-  assert line.rstrip().endswith('})'),line
-  lines[n]=line.replace('s.blocks.Admit(', 's.blocks.admit(').rstrip()[:-1]+', &inv)\n'
-  found+=1
-if found!=1:raise RuntimeError('Expected child admission line')
-Path(p).write_text(''.join(lines));changed.add(p)
-replace(p,'s.blocks.Run(ctx, e, child.ID, resume)', 's.blocks.run(ctx, e, child.ID, resume, &inv)')
+replace(p,'func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, g CompositionGroup)', 'func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m CompositionManifest, g CompositionGroup)')
+replace(p,'''\tchild, err := s.runs.Admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID,
+\t\tReference: Reference{Revision: g.Revision}, Arguments: g.Arguments, Resolution: g.Resolution,
+\t\tOutputs: g.Outputs, Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"})''','''\tchild, err := s.runs.admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID,
+\t\tReference: Reference{Revision: g.Revision}, Arguments: g.Arguments, Resolution: g.Resolution,
+\t\tOutputs: g.Outputs, Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"}, &inv)''')
+replace(p,'s.runs.Run(ctx, e, child.ID, resume)', 's.runs.run(ctx, e, child.ID, resume, &inv)')
 subprocess.run(['gofmt','-w',*sorted(changed)],check=True)
 subprocess.run(['git','diff','--check'],check=True)
