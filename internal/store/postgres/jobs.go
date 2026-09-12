@@ -64,7 +64,7 @@ func (d *DB) ConfigureQueue(ctx context.Context, l jobs.Limits) error {
 }
 func queueCapacity(ctx context.Context, tx pgx.Tx, tenant string, l jobs.Limits) error {
 	var global, local int
-	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.operations WHERE dispatch_mode IN ('queued','request') AND status IN ('pending','retry','running')`, tenant).Scan(&global, &local); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.pending_execution_roots`, tenant).Scan(&global, &local); err != nil {
 		return err
 	}
 	if global >= l.MaxPending || local >= l.MaxPendingPerTenant {
@@ -275,7 +275,7 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 			return e
 		}
 		var active int
-		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.operations WHERE dispatch_mode IN ('queued','request') AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`).Scan(&active); e != nil {
+		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.active_execution_roots`).Scan(&active); e != nil {
 			return e
 		}
 		if active >= l.GlobalConcurrency {
@@ -283,7 +283,7 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 			return nil
 		}
 		row := tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations o WHERE dispatch_mode='queued' AND status IN ('pending','retry','running') AND next_attempt_at<=clock_timestamp() AND due_at<=clock_timestamp() AND expires_at>clock_timestamp() AND attempt_count<max_attempts AND(lease_until IS NULL OR lease_until<=clock_timestamp())
- AND(SELECT count(*) FROM chartworks.operations a WHERE a.dispatch_mode IN ('queued','request') AND a.tenant_id=o.tenant_id AND a.status='running' AND a.lease_until>clock_timestamp())<$1
+ AND(SELECT count(*) FROM chartworks.active_execution_roots a WHERE a.tenant_id=o.tenant_id)<$1
  AND(o.schedule_id IS NULL OR NOT EXISTS(SELECT 1 FROM chartworks.operations a WHERE a.tenant_id=o.tenant_id AND a.schedule_id=o.schedule_id AND a.operation_id<>o.operation_id AND a.status='running' AND a.lease_until>clock_timestamp()))
  ORDER BY next_attempt_at,due_at,operation_id LIMIT 1 FOR UPDATE OF o SKIP LOCKED`, l.TenantConcurrency)
 		j, e := scanJob(row)

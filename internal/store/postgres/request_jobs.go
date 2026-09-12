@@ -89,6 +89,10 @@ func cancelRequestTaskTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, ta
 // AdmitRequest reserves content-free request work in the existing operation
 // ledger under the same cross-replica queue-capacity lock as broker work.
 func (d *DB) AdmitRequest(ctx context.Context, e identity.Envelope, key string, input jobs.RequestInput, l jobs.Limits) (out jobs.RequestTask, err error) {
+	return d.admitRequest(ctx, e, key, input, l, nil)
+}
+
+func (d *DB) admitRequest(ctx context.Context, e identity.Envelope, key string, input jobs.RequestInput, l jobs.Limits, parent *jobs.Invocation) (out jobs.RequestTask, err error) {
 	if !identity.Identifier(key) || l.Validate() != nil {
 		return out, jobs.ErrInvalid
 	}
@@ -115,13 +119,20 @@ func (d *DB) AdmitRequest(ctx context.Context, e identity.Envelope, key string, 
 			if err = previous.Require(e); err != nil {
 				return err
 			}
+			if err = checkNestedReplayTx(ctx, tx, previous, parent); err != nil {
+				return err
+			}
 			out = previous
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if err = queueCapacity(ctx, tx, e.Tenant(), l); err != nil {
+		if parent == nil {
+			if err = queueCapacity(ctx, tx, e.Tenant(), l); err != nil {
+				return err
+			}
+		} else if err = prepareNestedAdmissionTx(ctx, tx, parent, input); err != nil {
 			return err
 		}
 		// Retained terminal receipts preserve replay identity, but consume no pending slot.
@@ -137,15 +148,24 @@ func (d *DB) AdmitRequest(ctx context.Context, e identity.Envelope, key string, 
 		}
 		now = now.UTC().Truncate(time.Microsecond)
 		out = jobs.RequestTask{ID: id, Tenant: e.Tenant(), Actor: e.User(), Session: e.Session(), Input: input, State: "pending", MaxAttempts: l.MaxAttempts, Created: now, Expires: now.Add(time.Duration(hours) * time.Hour)}
+		if parent != nil && out.Expires.After(parent.Lease().Task.Expires) {
+			out.Expires = parent.Lease().Task.Expires
+		}
 		out.ManifestHash = out.Digest()
 		if !out.Valid() {
 			return jobs.ErrInvalid
+		}
+		var parentID string
+		var parentFence int64
+		if parent != nil {
+			parentID = parent.Lease().Task.ID
+			parentFence = parent.Lease().Fence
 		}
 		body, _ := json.Marshal(input)
 		if !e.Valid() {
 			return access.ErrUnauthenticated
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO chartworks.operations(tenant_id,operation_id,actor_id,kind,client_key,request_hash,policy_revision,cutoff,batch_limit,created_at,expires_at,dispatch_mode,initiator_id,initiator_session,due_at,window_start,window_end,manifest_hash,max_attempts,next_attempt_at,request_manifest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,1,$8,$9,'request',$3,$10,$8,$8,$8,$11,$12,$8,$13)`, out.Tenant, out.ID, out.Actor, input.Kind, clientKey, hash, revision, now, out.Expires, out.Session, out.ManifestHash, out.MaxAttempts, body)
+		_, err = tx.Exec(ctx, `INSERT INTO chartworks.operations(tenant_id,operation_id,actor_id,kind,client_key,request_hash,policy_revision,cutoff,batch_limit,created_at,expires_at,dispatch_mode,initiator_id,initiator_session,due_at,window_start,window_end,manifest_hash,max_attempts,next_attempt_at,request_manifest,nested_parent,nested_fence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,1,$8,$9,'request',$3,$10,$8,$8,$8,$11,$12,$8,$13,NULLIF($14,''),NULLIF($15,0))`, out.Tenant, out.ID, out.Actor, input.Kind, clientKey, hash, revision, now, out.Expires, out.Session, out.ManifestHash, out.MaxAttempts, body, parentID, parentFence)
 		if err != nil {
 			return err
 		}
@@ -287,11 +307,14 @@ func (d *DB) ClaimRequest(ctx context.Context, e identity.Envelope, id, owner st
 		if task.Dispatch != nil {
 			return jobs.ErrAuthority
 		}
+		if err = checkNestedReplayTx(ctx, tx, task, nil); err != nil {
+			return err
+		}
 		if !time.Now().Before(task.Expires) {
 			return store.ErrExpired
 		}
 		var global, tenant int
-		if err = tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.operations WHERE dispatch_mode IN('queued','request') AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`, e.Tenant()).Scan(&global, &tenant); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.active_execution_roots`, e.Tenant()).Scan(&global, &tenant); err != nil {
 			return err
 		}
 		if global >= l.GlobalConcurrency || tenant >= l.TenantConcurrency {
@@ -339,6 +362,9 @@ func (d *DB) PulseRequest(ctx context.Context, i jobs.Invocation, renew bool, tt
 	}
 	defer stop()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := requireRequestParentTx(ctx, tx, i); err != nil {
+			return err
+		}
 		var live bool
 		if err := tx.QueryRow(ctx, `SELECT status,COALESCE(lease_owner=$3 AND fence=$4 AND lease_until>clock_timestamp() AND expires_at>clock_timestamp(),false) FROM chartworks.operations WHERE tenant_id=$1 AND operation_id=$2 AND manifest_hash=$5 AND dispatch_mode='request'`, l.Task.Tenant, l.Task.ID, l.Owner, l.Fence, l.Task.ManifestHash).Scan(&state, &live); err != nil {
 			return err
@@ -382,6 +408,9 @@ func requestFenceTx(ctx context.Context, tx pgx.Tx, i jobs.Invocation) (jobs.Req
 	if err != nil {
 		return jobs.RequestTask{}, err
 	}
+	if err := requireRequestParentTx(ctx, tx, i); err != nil {
+		return jobs.RequestTask{}, err
+	}
 	task, err := readRequestTx(ctx, tx, e, l.Task.ID, true)
 	if err != nil {
 		return jobs.RequestTask{}, err
@@ -399,6 +428,9 @@ func completeRequestTx(ctx context.Context, tx pgx.Tx, i jobs.Invocation) error 
 	l := i.Lease()
 	e, err := i.Current(l.Task.Input.Kind, l.Task.Input.Target, l.Task.Input.InputHash)
 	if err != nil {
+		return err
+	}
+	if err := requireRequestParentTx(ctx, tx, i); err != nil {
 		return err
 	}
 	tag, err := tx.Exec(ctx, `UPDATE chartworks.operations SET status='succeeded',error_code='',finished_at=clock_timestamp(),lease_owner=NULL,lease_until=NULL WHERE tenant_id=$1 AND operation_id=$2 AND status='running' AND lease_owner=$3 AND fence=$4 AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`, l.Task.Tenant, l.Task.ID, l.Owner, l.Fence)
