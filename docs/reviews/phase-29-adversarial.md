@@ -77,3 +77,33 @@ Phase 29 is API-first, not a visual report builder. Phase 30 owns report schedul
 The phase-25 final release gate remains planned. Report publication does not
 certify dynamic SQL. Parent expiry is not a purge of independently retained child
 frozen runs. No platform build or fixture pass is a production cutover claim.
+
+## Cumulative schema and failure-surface continuation
+
+The full race/coverage run for source tree
+`d27e05984ec77569d787eb135ece2352178e72b9` failed at `TestPhase02/AC04`:
+its explicit foundation schema inventory omitted the 17 domain tables added by
+migrations 29–30. The saved instrumentation met all 42 unchanged package bands,
+but a failed Go test invocation is not a passing coverage gate.
+
+The cumulative inventory now explicitly includes the document and composition
+tables. Exact table equality and the separate ban on local IAM/issuer material
+remain enforced; the expected list is not derived from the implementation being
+tested. CI also runs Phase 02 before the expensive container/coverage steps so a
+future cumulative migration mismatch fails with named acceptance diagnostics.
+
+Additional acceptance exercises caller JSON against the sealed document,
+quarantine, composition-admission and checkpoint proof types. Ordinary verified
+scope does not turn caller data into a service-prepared proof or a leased fence;
+rejected attempts leave no document/quarantine/composition records. A real
+PostgreSQL retained text artifact supplies the positive control for a matrix of
+unverified authority, cancelled requests and a closed actual connection pool.
+Document reads/listing, execution recovery, artifact metadata, widget payloads,
+cancellation, retention and creation return the precise failure category and no
+payload. Independent SQL inspection verifies unchanged durable state and audit
+counts; source/model counters stay unchanged. The new cases are included in
+Phase 29 AC01/AC08, not only discovered as unrelated test names.
+
+These regression additions do not change production execution behavior, coverage
+thresholds, package inventory, timeouts or race instrumentation. The PR records
+observed verification against the final source separately.

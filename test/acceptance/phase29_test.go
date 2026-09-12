@@ -13,6 +13,7 @@ func TestPhase29(t *testing.T) {
 		t.Run("bounded-resource-filtered-list", TestDocumentListBoundaries)
 		t.Run("atomic-lifecycle-audit", TestDocumentAuditRollback)
 		t.Run("atomic-import-graph", TestDocumentGraphRollback)
+		t.Run("caller-proof-rejection", TestDocumentStorageRejectsCallerPreparedProofs)
 	})
 	t.Run("AC02", func(t *testing.T) {
 		t.Run("persistent-artifact-privacy", TestReportingCompositionStorage)
@@ -50,6 +51,7 @@ func TestPhase29(t *testing.T) {
 	t.Run("AC08", func(t *testing.T) {
 		t.Run("document-redaction-and-metadata", TestDocumentStorage)
 		t.Run("artifact-redaction-and-metadata", TestReportingCompositionStorage)
+		t.Run("no-payload-on-storage-failure", TestReportingCompositionStorageFailureSurfaces)
 		t.Run("data-bearing-metadata-only-read", testPhase29SealedFanout)
 		t.Run("tenant-and-context-isolated-retained-reads", testPhase29RetainedBoundaries)
 		t.Run("expiry-erasure-and-atomic-audit", TestReportingCompositionRetention)

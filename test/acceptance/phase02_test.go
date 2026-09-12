@@ -248,6 +248,15 @@ func TestPhase02(t *testing.T) {
 		}
 		expected := []string{"audit_events", "block_attestations", "block_events", "block_heads", "block_health", "block_publications", "block_revision_references", "block_revisions", "block_source_pins", "block_topic_pins", "block_validations", "block_withdrawals", "byo_context_bundles", "byo_steps", "nlq_examples", "nlq_feedback", "nlq_queries", "nlq_sessions", "canonical_entity_heads", "canonical_entity_revisions", "canonical_entity_terms", "job_occurrences", "job_schedules", "operation_attempts", "operations", "pipeline_heads", "pipeline_outputs", "pipeline_runs", "pipeline_stages", "pipeline_versions", "policies", "policy_revisions", "profile_dependencies", "profile_heads", "profile_health_events", "profile_versions", "queue_limits", "read_attempts", "schema_migrations", "source_revisions", "sources", "topic_draft_dependencies", "topic_draft_heads", "topic_draft_versions", "topic_generation_checkpoints", "topic_health", "topic_publication_events", "topic_publication_heads", "topic_published_canonical_refs", "topic_published_dependencies", "topic_published_generations", "topic_published_versions", "topic_reviews", "topic_rule_draft_heads", "topic_rule_comparison_evidence", "topic_rule_draft_versions", "topic_rule_evidence_invalidations", "topic_rule_publication_events", "topic_rule_publication_heads", "topic_rule_published_versions", "topic_rule_reviews", "uploads", "vector_facets", "vector_generations", "vector_heads"}
 		expected = append(expected, "engineering_amendment_proposals", "engineering_amendments", "engineering_proposal_effects", "engineering_proposal_events", "engineering_proposal_heads", "engineering_proposal_pipeline_effects", "engineering_proposal_references", "engineering_proposal_reviews", "engineering_proposal_versions", "frozen_run_attempts", "frozen_run_outputs", "frozen_run_payloads", "frozen_runs")
+		// Phase 29 adds domain evidence, not local identity/issuer storage. Keep
+		// this explicit inventory independent of the migration implementation.
+		expected = append(expected,
+			"document_heads", "document_revisions", "document_events", "document_publications",
+			"document_block_refs", "document_topic_refs", "document_query_refs", "document_page_refs",
+			"document_references", "document_external_refs", "document_quarantine",
+			"composition_runs", "composition_run_payloads", "composition_run_groups",
+			"composition_run_pages", "composition_run_widgets", "composition_run_references",
+		)
 		sort.Strings(expected)
 		if strings.Join(names, ",") != strings.Join(expected, ",") {
 			t.Fatalf("unexpected foundation schema: %v", names)
