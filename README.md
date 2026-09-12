@@ -4,24 +4,24 @@
 
 ## Current status
 
-**Merged baseline: phases 01–23 are implemented** — 23 of 34 workstreams and
-142 named acceptance criteria, based on merged main
-`55463d424c2deed555fa680f47d5444fc89ae950`.
+**Merged baseline: phases 01–23 and 26–28 are implemented** — 26 of 34
+workstreams and 164 named acceptance criteria, based on main
+`6f0001dbd6370dff300cab472405088d7b85fead` (including PR #19).
 
-**Phase 27 adds governed reporting-block authoring for review**, bringing the
-implemented acceptance inventory to 150 criteria. It includes private drafts,
-immutable publication, independent certification and current health, typed
-parameters, explicit validation/preview, query capture and conservative dependency
-impact proposals. The [block contract](docs/contracts/reporting-blocks-v1.md) and
-[adversarial record](docs/reviews/phase-27-adversarial.md) describe the boundaries.
-Phase 27 stays `in_progress` until reviewed and merged; exact-source tests and CI,
-not status bookkeeping, establish readiness.
+**Phase 29 adds report/dashboard composition for review**, bringing the
+implemented acceptance inventory to 172 criteria. It composes approved blocks,
+explicitly enabled dynamic queries and inert text; seals exact input revisions;
+and retains per-widget results, privacy and provenance. The
+[composition contract](docs/contracts/reporting-composition-v1.md) and
+[adversarial review](docs/reviews/phase-29-adversarial.md) describe the boundaries.
+Phase 29 remains `in_progress` pending review/merge; acceptance and exact-source
+CI, not the status label, establish readiness.
 
-**Ten workstreams remain planned: 24–26 and 28–34**, including the phase-25 final
-release gate. There are 224 acceptance criteria across the full plan. Recurring
-block execution, retained reporting artifacts, report/dashboard composition and
-rendering are not implemented by phase 27. Recorded cloud/model fixtures do not
-constitute live-provider or production-cutover qualification.
+**Seven workstreams remain planned: 24–25 and 30–34**, including the phase-25
+final release gate. There are 224 acceptance criteria across the full plan.
+Reporting schedules, the Apps viewer, static rendering/exports and final cutover
+qualification are not delivered by Phase 29. Recorded cloud/model fixtures are
+not live-provider or production-cutover qualification.
 
 | Capability | Implemented boundary |
 |---|---|
@@ -35,6 +35,9 @@ constitute live-provider or production-cutover qualification.
 | HTTP — cumulative phase 21 | Implemented operations register schemas, action/resource and audit/effect metadata; OpenAPI comes from that registry. A runtime guard rejects unregistered paths before handler dispatch and selects the declared HTTP/MCP intended audience. |
 | SDK/CLI — phase 23 | Existing typed clients plus registry-driven HTTP calls, authenticated in-process transport, explicit caller token providers, bounded safe replay and injected CLI I/O. No local issuer or future reporting stubs. |
 | Governed blocks — phase 27 | SQL-private metadata, scoped SQL inspection, CAS revisions, exact read-backed validation, immutable publications/attestations, nine parameter types, private multi-output previews, localized question discovery and review-only dependency/period proposals. No scheduled refresh or narrative execution. |
+| Reviewed engineering — phase 26 | Versioned change proposals, validation and impact review, exact approved promotion and schedule-change receipts; not arbitrary code execution. |
+| Frozen reporting runs — phase 28 | Bounded selected-output execution, optional grounded narrative, durable results and read receipts, explicit recovery, artifact privacy and retention. |
+| Reports/dashboards — phase 29 | Independent revision/review/publication pointers, exact report pages, typed business filters, shared-block output fan-out, opt-in dynamic query durability, partial outcomes and metadata-only artifact summaries. |
 | MCP — phase 22 | Eighteen installed-service tools, the eleven core contracts, three pure metadata resource bindings, fresh per-request authority, closed schemas, bounded work and explicit effects. No Apps viewer or local credentials. |
 
 ## Ownership and security

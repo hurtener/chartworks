@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs, feat/phase-07-08-vindex-sources, feat/phase-09-10-read-execution, feat/phase-20-21-chart-spec-http, feat/phase-23-sdk-cli-parity]
+    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs, feat/phase-07-08-vindex-sources, feat/phase-09-10-read-execution, feat/phase-20-21-chart-spec-http, feat/phase-23-sdk-cli-parity, feat/phase-29-reports-dashboards]
 
 permissions:
   contents: read
@@ -121,8 +121,9 @@ jobs:
           test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
           test -z "$(find . -maxdepth 1 -name '.phase27*.py' -print)"
           test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' -o -name '_phase_11_12*' \) -print)"
-      - name: Reviewed engineering and frozen-run runtime acceptance
+      - name: Cumulative schema, engineering and frozen-run runtime acceptance
         run: |
+          python3 scripts/run_phase_acceptance.py --phase 02
           python3 scripts/run_phase_acceptance.py --phase 26
           python3 scripts/run_phase_acceptance.py --phase 28
       - run: make build
@@ -137,7 +138,7 @@ jobs:
         if: always()
         run: |
           if test -s "$CHARTWORKS_COVERAGE_OUTPUT"; then
-            go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(engineering|store/postgres)/|total:'
+            go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(engineering|reporting|reportingapi|nlqexec|nlqroute|foundation|store/postgres)/|total:'
           fi
       - name: Implemented phase criteria, no missing/skipped tests
         run: |
@@ -165,6 +166,7 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 22
           python3 scripts/run_phase_acceptance.py --phase 23
           python3 scripts/run_phase_acceptance.py --phase 27
+          python3 scripts/run_phase_acceptance.py --phase 29
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns

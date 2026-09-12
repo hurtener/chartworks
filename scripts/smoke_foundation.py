@@ -44,12 +44,42 @@ REQUIRED_PROTECTED_ROUTES = frozenset({
     ("POST", "/v1/charts/specify"),
     ("POST", "/v1/charts/build"),
     ("POST", "/v1/charts/rebind"),
+    # Phase 29 mounts these services without a model/source credential or MCP.
+    # Require every operation, not just the collections, so a missing protected
+    # handler cannot pass merely because it disappeared from OpenAPI.
+    ("GET", "/v1/reports"),
+    ("POST", "/v1/reports"),
+    ("POST", "/v1/reports/import"),
+    ("GET", "/v1/reports/{id}"),
+    ("PUT", "/v1/reports/{id}"),
+    ("POST", "/v1/reports/{id}/review"),
+    ("POST", "/v1/reports/{id}/publish"),
+    ("POST", "/v1/reports/{id}/reject"),
+    ("POST", "/v1/reports/{id}/archive"),
+    ("POST", "/v1/reports/{id}/runs"),
+    ("GET", "/v1/dashboards"),
+    ("POST", "/v1/dashboards"),
+    ("POST", "/v1/dashboards/import"),
+    ("GET", "/v1/dashboards/{id}"),
+    ("PUT", "/v1/dashboards/{id}"),
+    ("POST", "/v1/dashboards/{id}/review"),
+    ("POST", "/v1/dashboards/{id}/publish"),
+    ("POST", "/v1/dashboards/{id}/reject"),
+    ("POST", "/v1/dashboards/{id}/archive"),
+    ("POST", "/v1/dashboards/{id}/runs"),
+    ("GET", "/v1/composition-runs/{id}"),
+    ("GET", "/v1/composition-runs/{id}/receipt"),
+    ("POST", "/v1/composition-runs/{id}/execute"),
+    ("GET", "/v1/composition-runs/{id}/widget"),
+    ("POST", "/v1/composition-runs/{id}/cancel"),
+    ("POST", "/v1/composition-retention"),
 })
 PUBLIC_ROUTES = frozenset((method, path)
                           for method in ("GET", "HEAD")
                           for path in ("/healthz", "/readyz", "/capabilities", "/openapi.json"))
-# Legacy MCP paths/reporting remain absent; local credential issuance never lands here.
-ABSENT_ROUTES = ("/mcp", "/v1/admin/keys", "/v1/reports", "/v1/unregistered-smoke-route")
+# Legacy MCP paths and local credential issuance remain absent. Implemented
+# report/dashboard routes above must return 401, never an interchangeable 404.
+ABSENT_ROUTES = ("/mcp", "/v1/admin/keys", "/v1/unregistered-smoke-route")
 
 
 def verify_route_security(base: str, *, mcp_enabled: bool = False) -> None:

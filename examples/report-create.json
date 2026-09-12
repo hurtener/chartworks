@@ -1,0 +1,36 @@
+{
+  "id": "weekly-operations",
+  "definition": {
+    "schema_version": 2,
+    "locale": "en-US",
+    "timezone": "UTC",
+    "partial_failure": "fail_closed",
+    "metadata": [
+      {
+        "locale": "en-US",
+        "title": "Weekly operations"
+      },
+      {
+        "locale": "es-AR",
+        "title": "Operaciones semanales"
+      }
+    ],
+    "widgets": [
+      {
+        "id": "intro",
+        "kind": "text",
+        "grid": {
+          "row": 0,
+          "column": 0,
+          "width": 12,
+          "height": 1
+        },
+        "text": {
+          "format": "markdown",
+          "text": "# Weekly operations\n\nThis text-only report performs no source or model work."
+        },
+        "presentation": {}
+      }
+    ]
+  }
+}
