@@ -1,12 +1,13 @@
 # Phase 29 — compiled smoke continuation
 
 The parent source is `138524199b1ff724f56022118a030b2587f4bad9`.
-Its full race-coverage step passed, but PR CI run `34708280749` subsequently
-failed in the compiled foundation smoke. The smoke still classified
-`/v1/reports` as an unimplemented, absent route even though the actual Phase 29
-HTTP registry mounts it. The same source's push CI run `34708278786` failed
-earlier in cumulative acceptance; its detailed failing criterion still needs
-inspection. A passing coverage step is not a complete CI result.
+Full race coverage and cumulative acceptance passed on both PR CI run
+`34708280749` and push CI run `34708278786`. Both then failed in the compiled
+foundation smoke with `unimplemented route advertised: /v1/reports`.
+The checker still classified this implemented route as absent. Bounded windows
+of the original job logs confirmed the identical failure; an earlier status
+inspection did not establish a separate cumulative-acceptance defect.
+A passing coverage step alone is not a complete CI result.
 
 The smoke now requires all 26 implemented report, dashboard, composition-run
 and composition-retention operations. None is allowed to disappear from the
@@ -22,8 +23,16 @@ responses, spoofed identity, all required security metadata fields and safe
 error bodies. These are checker regressions, not substitutes for the real
 compiled-binary smoke, Phase 29 acceptance or full CI.
 
-This source change has not been represented as verified before its checks run.
-The existing read-only CI must pass script tests, the compiled smoke and all
-remaining cumulative acceptance, fuzz and preflight steps on the new commit
-before PR #20 is marked ready. Prior successful coverage and dedicated Phase 29
-runs do not waive those remaining checks. No merge or deployment is authorized.
+At commit `7efb091c186471299ae8ee3bfc7f251626c6efe4`, CI's planning job ran all
+59 script tests successfully, including the six new smoke-security tests with
+per-operation negative cases. Planning coherence and drift also passed.
+The local execution service was unavailable during this continuation; no new
+local Go pass is claimed. The small log-reading workflow ran on an isolated
+diagnostic branch with read-only permissions, not in the implementation PR.
+
+The existing read-only CI must pass the compiled smoke and all remaining
+cumulative acceptance, fuzz and preflight steps on the final commit before
+PR #20 is marked ready. Prior successful coverage and dedicated Phase 29 runs
+do not waive those checks. Final results belong in the PR evidence record;
+this document does not pre-declare unobserved results. No merge or deployment
+is authorized.
