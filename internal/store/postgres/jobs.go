@@ -10,6 +10,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/calendars"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/store"
@@ -51,6 +52,16 @@ func queueLock(ctx context.Context, tx pgx.Tx, l jobs.Limits) error {
 	var fingerprint string
 	if err := tx.QueryRow(ctx, `SELECT fingerprint FROM chartworks.queue_limits WHERE singleton`).Scan(&fingerprint); err != nil {
 		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE chartworks.queue_limits SET timezone_database=$1 WHERE singleton AND timezone_database IS NULL`, calendars.Version); err != nil {
+		return err
+	}
+	var timezoneVersion string
+	if err := tx.QueryRow(ctx, `SELECT timezone_database FROM chartworks.queue_limits WHERE singleton`).Scan(&timezoneVersion); err != nil {
+		return err
+	}
+	if timezoneVersion != calendars.Version {
+		return store.ErrConflict
 	}
 	if fingerprint != l.QueueFingerprint() {
 		return store.ErrConflict

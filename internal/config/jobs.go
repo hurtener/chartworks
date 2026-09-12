@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/hurtener/chartworks/internal/calendars"
 	"net/url"
 	"strings"
 	"time"
@@ -15,30 +16,34 @@ type BrokerCredential struct {
 
 // Jobs configures one durable worker family; metadata reads work with this capability disabled.
 type Jobs struct {
-	Enabled             bool               `json:"enabled"`
-	Workers             int                `json:"workers"`
-	GlobalConcurrency   int                `json:"global_concurrency"`
-	TenantConcurrency   int                `json:"tenant_concurrency"`
-	MaxPending          int                `json:"max_pending"`
-	MaxPendingPerTenant int                `json:"max_pending_per_tenant"`
-	MaxAttempts         int                `json:"max_attempts"`
-	Batch               int                `json:"batch"`
-	Lease               Duration           `json:"lease"`
-	Heartbeat           Duration           `json:"heartbeat"`
-	Poll                Duration           `json:"poll"`
-	AttemptTimeout      Duration           `json:"attempt_timeout"`
-	Backoff             Duration           `json:"backoff"`
-	BrokerURL           string             `json:"broker_url"`
-	Credentials         []BrokerCredential `json:"credentials"`
+	TimezoneDatabaseVersion string             `json:"timezone_database_version"`
+	Enabled                 bool               `json:"enabled"`
+	Workers                 int                `json:"workers"`
+	GlobalConcurrency       int                `json:"global_concurrency"`
+	TenantConcurrency       int                `json:"tenant_concurrency"`
+	MaxPending              int                `json:"max_pending"`
+	MaxPendingPerTenant     int                `json:"max_pending_per_tenant"`
+	MaxAttempts             int                `json:"max_attempts"`
+	Batch                   int                `json:"batch"`
+	Lease                   Duration           `json:"lease"`
+	Heartbeat               Duration           `json:"heartbeat"`
+	Poll                    Duration           `json:"poll"`
+	AttemptTimeout          Duration           `json:"attempt_timeout"`
+	Backoff                 Duration           `json:"backoff"`
+	BrokerURL               string             `json:"broker_url"`
+	Credentials             []BrokerCredential `json:"credentials"`
 }
 
 // DefaultJobs returns reference queue bounds without enabling a broker or worker.
 func DefaultJobs() Jobs {
-	return Jobs{Workers: 4, GlobalConcurrency: 16, TenantConcurrency: 2, MaxPending: 10000, MaxPendingPerTenant: 1000, MaxAttempts: 3, Batch: 100, Lease: Duration(15 * time.Second), Heartbeat: Duration(5 * time.Second), Poll: Duration(500 * time.Millisecond), AttemptTimeout: Duration(10 * time.Second), Backoff: Duration(time.Second), Credentials: []BrokerCredential{}}
+	return Jobs{TimezoneDatabaseVersion: calendars.Version, Workers: 4, GlobalConcurrency: 16, TenantConcurrency: 2, MaxPending: 10000, MaxPendingPerTenant: 1000, MaxAttempts: 3, Batch: 100, Lease: Duration(15 * time.Second), Heartbeat: Duration(5 * time.Second), Poll: Duration(500 * time.Millisecond), AttemptTimeout: Duration(10 * time.Second), Backoff: Duration(time.Second), Credentials: []BrokerCredential{}}
 }
 
 // ValidateJobs checks worker bounds and requires a real Pengui execution configuration when enabled.
 func ValidateJobs(j Jobs, a Auth) error {
+	if j.TimezoneDatabaseVersion != "" && j.TimezoneDatabaseVersion != calendars.Version {
+		return invalid("jobs.timezone_database_version", "configured timezone archive does not match the bundled version")
+	}
 	if j.Workers < 1 || j.Workers > 32 || j.GlobalConcurrency < j.Workers || j.GlobalConcurrency > 128 || j.TenantConcurrency < 1 || j.TenantConcurrency > j.GlobalConcurrency || j.MaxPending < 1 || j.MaxPending > 100000 || j.MaxPendingPerTenant < 1 || j.MaxPendingPerTenant > j.MaxPending || j.MaxAttempts < 1 || j.MaxAttempts > 8 || j.Batch < 1 || j.Batch > 1000 || j.Lease < Duration(time.Second) || j.Lease > Duration(time.Minute) || j.Heartbeat < Duration(10*time.Millisecond) || j.Heartbeat >= j.Lease/2 || j.Poll < Duration(10*time.Millisecond) || j.Poll > Duration(5*time.Second) || j.AttemptTimeout < Duration(100*time.Millisecond) || j.AttemptTimeout > Duration(time.Minute) || j.Backoff < Duration(10*time.Millisecond) || j.Backoff > Duration(30*time.Second) {
 		return invalid("jobs", "invalid worker or admission bounds")
 	}

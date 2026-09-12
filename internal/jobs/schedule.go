@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/calendars"
 	"github.com/robfig/cron/v3"
 )
 
@@ -26,7 +27,7 @@ func (s Spec) Validate() error {
 	if s.Missed != "skip" && s.Missed != "catch_up" || s.Overlap != "skip" && s.Overlap != "queue" || s.MaxCatchUp < 0 || s.MaxCatchUp > 32 || s.Missed == "catch_up" && s.MaxCatchUp < 1 || s.Timezone == "" || len(s.Timezone) > 128 {
 		return ErrInvalid
 	}
-	if _, err := time.LoadLocation(s.Timezone); err != nil {
+	if _, err := calendars.Location(s.Timezone); err != nil {
 		return ErrInvalid
 	}
 	switch s.Type {
@@ -51,7 +52,7 @@ func (s Spec) Validate() error {
 	return nil
 }
 func (s Spec) parsed() (cron.Schedule, error) {
-	location, err := time.LoadLocation(s.Timezone)
+	location, err := calendars.Location(s.Timezone)
 	if err != nil {
 		return nil, ErrInvalid
 	}
