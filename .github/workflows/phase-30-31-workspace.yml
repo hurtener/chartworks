@@ -16,100 +16,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Archive exact tracked source, without credentials or runtime data
+          fetch-depth: 0
+      - name: Archive exact tracked source and history without credentials or runtime data
         run: |
           git rev-parse HEAD > /tmp/chartworks-source-sha.txt
           git archive HEAD --format=tar.gz -o /tmp/chartworks-source.tar.gz
+          git bundle create /tmp/chartworks-source.bundle HEAD refs/remotes/origin/main
       - uses: actions/upload-artifact@v4
         with:
           name: phase-30-31-source
           path: |
             /tmp/chartworks-source.tar.gz
             /tmp/chartworks-source-sha.txt
-          retention-days: 1
-  go-runtime:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-      - name: Archive pinned compiler only
-        run: tar -czf /tmp/go-runtime.tar.gz -C "$(go env GOROOT)" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: phase-30-31-go-runtime
-          path: /tmp/go-runtime.tar.gz
-          retention-days: 1
-      - name: Download and verify public locked modules
-        run: |
-          go mod download
-          go mod verify
-          tar -czf /tmp/go-modules.tar.gz -C "$(go env GOMODCACHE)" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: phase-30-31-go-modules
-          path: /tmp/go-modules.tar.gz
-          retention-days: 1
-  native:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    env:
-      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-      - run: bash scripts/build-bruin.sh
-      - name: Archive pinned public native libraries and runner
-        run: |
-          tar -czf /tmp/native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libsqlparser.a
-      - uses: actions/upload-artifact@v4
-        with:
-          name: phase-30-31-native
-          path: /tmp/native.tar.gz
-          retention-days: 1
-  postgres:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Install disposable public PostgreSQL 17 tools and pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl --fail --silent --show-error -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql-17 postgresql-17-pgvector
-      - name: Archive binaries and their public shared-library dependencies, not a database
-        run: |
-          python3 - <<'PY'
-          import pathlib, re, shutil, subprocess
-          root = pathlib.Path('/tmp/pg-runtime')
-          for path in ['/usr/lib/postgresql/17', '/usr/share/postgresql/17']:
-              shutil.copytree(path, root / path.lstrip('/'), symlinks=False)
-          libraries = set()
-          for f in list((root/'usr/lib/postgresql/17').rglob('*')):
-              if not f.is_file():
-                  continue
-              result = subprocess.run(['ldd', str(f)], capture_output=True, text=True)
-              for name in re.findall(r'=> (/\S+)', result.stdout):
-                  if pathlib.Path(name).name.startswith(('libc.so.', 'libm.so.', 'libdl.so.', 'libpthread.so.', 'librt.so.', 'libresolv.so.')):
-                      continue
-                  libraries.add(pathlib.Path(name))
-          target = root / 'lib'
-          target.mkdir(parents=True, exist_ok=True)
-          for lib in libraries:
-              shutil.copy2(lib, target / lib.name, follow_symlinks=True)
-          PY
-          tar -czf /tmp/pg-runtime.tar.gz -C /tmp/pg-runtime .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: phase-30-31-postgres
-          path: /tmp/pg-runtime.tar.gz
+            /tmp/chartworks-source.bundle
           retention-days: 1
