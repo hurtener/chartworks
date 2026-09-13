@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
-      - name: Actual browser and module prerequisites
+      - name: Verify installed browser and JavaScript
         run: |
           node --version
           google-chrome --version
@@ -77,7 +77,7 @@ jobs:
         run: |
           set -o pipefail
           go test -race -count=1 -v -timeout=20m ./test/acceptance -run '^TestPhase(29|31)$' 2>&1 | tee /tmp/reporting-acceptance.log
-      - name: Existing reporting, queue, calendar, configuration and MCP regressions
+      - name: Reporting, queue, calendar, configuration and MCP regressions
         if: always()
         run: go test -race -count=1 -timeout=10m ./internal/calendars ./internal/jobs ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
       - name: Formatting and source are unchanged
