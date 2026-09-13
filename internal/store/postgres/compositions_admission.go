@@ -140,6 +140,10 @@ func insertCompositionIndexes(ctx context.Context, tx pgx.Tx, e identity.Envelop
 // SealComposition reserves retention and seals all floating inputs atomically
 // under the existing request-key lock. Replays keep the first successful seal.
 func (d *DB) SealComposition(ctx context.Context, e identity.Envelope, task jobs.RequestTask, proof reporting.PreparedComposition) (out reporting.CompositionRecord, err error) {
+	return d.sealComposition(ctx, e, task, proof, nil)
+}
+
+func (d *DB) sealComposition(ctx context.Context, e identity.Envelope, task jobs.RequestTask, proof reporting.PreparedComposition, invocation *jobs.Invocation) (out reporting.CompositionRecord, err error) {
 	m, err := proof.Checked(e)
 	if err != nil {
 		return out, err
@@ -166,6 +170,11 @@ func (d *DB) SealComposition(ctx context.Context, e identity.Envelope, task jobs
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if invocation != nil {
+			if _, err := requestFenceTx(ctx, tx, *invocation); err != nil {
+				return err
+			}
+		}
 		actual, err := readRequestTx(ctx, tx, e, task.ID, true)
 		if err != nil {
 			return err
@@ -184,7 +193,7 @@ func (d *DB) SealComposition(ctx context.Context, e identity.Envelope, task jobs
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if actual.State != "pending" || !time.Now().Before(actual.Expires) {
+		if !time.Now().Before(actual.Expires) || (invocation == nil && (actual.State != "pending" || actual.Dispatch != nil)) || (invocation != nil && (actual.State != "running" || actual.Dispatch == nil)) {
 			return store.ErrExpired
 		}
 		if err := compositionDefinitionsTx(ctx, tx, e, m); err != nil {

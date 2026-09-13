@@ -56,8 +56,8 @@ type ReportingBudget struct {
 // Valid applies hard bounds independently of the narrower deployment settings.
 func (b ReportingBudget) Valid() bool {
 	return b.TimeoutMillis >= 1000 && b.TimeoutMillis <= 60000 && b.MaxRows >= 1 && b.MaxRows <= 10000 &&
-		b.MaxBytes >= 1024 && b.MaxBytes <= 4<<20 && b.QueryAttempts >= 1 && b.QueryAttempts <= 8 &&
-		b.ModelCalls >= 0 && b.ModelCalls <= 8 && b.ModelTokens >= 0 && b.ModelTokens <= 128<<10 &&
+		b.MaxBytes >= 1024 && b.MaxBytes <= 4<<20 && b.QueryAttempts >= 1 && b.QueryAttempts <= 800 &&
+		b.ModelCalls >= 0 && b.ModelCalls <= 64 && b.ModelTokens >= 0 && b.ModelTokens <= 16<<20 &&
 		(b.ModelCalls == 0 && b.ModelTokens == 0 || b.ModelCalls > 0 && b.ModelTokens >= 64)
 }
 
@@ -68,6 +68,8 @@ func (b ReportingBudget) Valid() bool {
 // published report; report executes the full publication. No hidden report or
 // alternative authoring/security model is created by scheduling.
 type ReportingTarget struct {
+	PartialFailure  string              `json:"partial_failure,omitempty" jsonschema:"enum=fail_closed,enum=allow_partial"`
+	Recipients      []string            `json:"recipients,omitempty"`
 	Type            string              `json:"type" jsonschema:"enum=saved_sql,enum=saved_question,enum=block,enum=report"`
 	ID              string              `json:"id"`
 	Revision        int64               `json:"revision"`
@@ -106,6 +108,19 @@ func (t ReportingTarget) InputKind() string {
 
 // Valid rejects unsupported kinds and implicit dynamic/model execution.
 func (t ReportingTarget) Valid() bool {
+	if !slices.Contains([]string{"", "fail_closed", "allow_partial"}, t.PartialFailure) || len(t.Recipients) > 32 {
+		return false
+	}
+	recipients := map[string]bool{}
+	for _, id := range t.Recipients {
+		if !identity.Identifier(id) || recipients[id] {
+			return false
+		}
+		recipients[id] = true
+	}
+	if t.Type == "saved_question" && len(t.Arguments) != 0 {
+		return false
+	}
 	if t.ResourceKind() == "" || !identity.Identifier(t.ID) || t.Revision < 0 || t.Revision > 256 ||
 		(t.LatestPublished && t.Revision != 0) || (!t.LatestPublished && t.Revision == 0) ||
 		!t.Budget.Valid() || len(t.Outputs) > 32 || len(t.Arguments) > 64 ||
@@ -156,6 +171,7 @@ func (t ReportingTarget) Require(e identity.Envelope) error {
 // ReportingPin is resolved by the repository while accepting the occurrence.
 // It is not a client write shape and cannot float during retry or dispatch.
 type ReportingPin struct {
+	Block    string `json:"block"`
 	ID       string `json:"id"`
 	Revision int64  `json:"revision"`
 	Digest   string `json:"digest"`
@@ -188,7 +204,7 @@ func (d ReportingDispatch) Valid() bool {
 	}
 	seen := map[string]bool{}
 	for _, p := range d.Pins {
-		if !identity.Identifier(p.ID) || p.Revision < 1 || p.Revision > 256 || !reportingHash(p.Digest) || seen[p.ID] {
+		if !identity.Identifier(p.ID) || !identity.Identifier(p.Block) || p.Revision < 1 || p.Revision > 256 || !reportingHash(p.Digest) || seen[p.ID] {
 			return false
 		}
 		seen[p.ID] = true
@@ -204,11 +220,11 @@ type ReportingExecutor interface {
 }
 
 // NewWithReporting composes both real target families before workers start.
-func NewWithReporting(repo Repository, authority Authority, limits Limits, pipeline PipelineExecutor, reporting ReportingExecutor) (*Service, error) {
+func NewWithReporting(repo Repository, authority Authority, limits Limits, pipeline PipelineExecutor, reporting ReportingExecutor, observer ...func(string)) (*Service, error) {
 	if reporting == nil {
 		return nil, ErrInvalid
 	}
-	s, err := New(repo, authority, limits)
+	s, err := New(repo, authority, limits, observer...)
 	if err != nil {
 		return nil, err
 	}

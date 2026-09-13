@@ -257,7 +257,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		if err = b.Reserve(call, len(prompt)+len(system)+len(schema.Document())+1024+r.MaxTokens); err != nil {
+		if err = gateway.ReserveAttempt(ctx, b, call, len(prompt)+len(system)+len(schema.Document())+1024+r.MaxTokens); err != nil {
 			return out, err
 		}
 		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
@@ -363,7 +363,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			if ctx.Err() != nil {
 				return out, ctx.Err()
 			}
-			if err = b.Reserve(call, bytes+128*(end-start)); err != nil {
+			if err = gateway.ReserveAttempt(ctx, b, call, bytes+128*(end-start)); err != nil {
 				return out, err
 			}
 			bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
@@ -478,7 +478,7 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		if err = b.Reserve(call, size+128*len(items)); err != nil {
+		if err = gateway.ReserveAttempt(ctx, b, call, size+128*len(items)); err != nil {
 			return out, err
 		}
 		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)

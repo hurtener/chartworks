@@ -173,11 +173,25 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	due = due.UTC().Truncate(time.Microsecond)
 	windowStart = windowStart.UTC().Truncate(time.Microsecond)
 	j := jobs.Job{ID: id, Tenant: scope.Tenant(), Kind: request.Kind, BindingID: request.BindingID, Executor: executor, Initiator: scope.Actor(), InitiatorSession: session, State: "pending", PolicyRevision: revision, DueAt: due, WindowStart: windowStart, WindowEnd: due, Cutoff: due.Add(-time.Duration(days) * 24 * time.Hour), Batch: l.Batch, MaxAttempts: l.MaxAttempts, ScheduleID: scheduleID, ScheduleRevision: scheduleRevision, Pipeline: request.Pipeline}
+	if request.Reporting != nil {
+		resolved, resolveErr := reportingDispatchTx(ctx, tx, scope.Tenant(), *request.Reporting)
+		if resolveErr != nil {
+			return jobs.Job{}, resolveErr
+		}
+		j.Reporting = &resolved
+		j.Reporting.Input = jobs.ReportingInput(j)
+	}
 	j.ManifestHash = j.Digest()
 	if !j.Valid() {
 		return jobs.Job{}, jobs.ErrInvalid
 	}
 	var dispatched, input []byte
+	if j.Reporting != nil {
+		dispatched, input, err = reportingDispatchJSON(j)
+		if err != nil {
+			return jobs.Job{}, err
+		}
+	}
 	if j.Pipeline != nil {
 		var published bool
 		if err := tx.QueryRow(ctx, `SELECT published_at IS NOT NULL AND manifest_hash=$4 FROM chartworks.pipeline_versions WHERE tenant_id=$1 AND pipeline_id=$2 AND version=$3 FOR SHARE`, j.Tenant, j.Pipeline.ID, j.Pipeline.Version, j.Pipeline.Digest).Scan(&published); err != nil {
@@ -194,6 +208,9 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	if err != nil {
 		return jobs.Job{}, err
 	}
+	if err = insertReportingDeliveryTx(ctx, tx, j); err != nil {
+		return jobs.Job{}, err
+	}
 	if err = auditJob(ctx, tx, scope, "job.accepted", j.ID); err != nil {
 		return jobs.Job{}, err
 	}
@@ -208,6 +225,9 @@ func (d *DB) ReadJob(ctx context.Context, scope store.Scope, id string) (out job
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var e error
 		out, e = scanJob(tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations WHERE tenant_id=$1 AND operation_id=$2 AND dispatch_mode='queued'`, scope.Tenant(), id))
+		if e == nil {
+			out.Delivery, e = reportingReceiptTx(ctx, tx, out)
+		}
 		return e
 	})
 	return out, err
@@ -232,7 +252,18 @@ func (d *DB) ListJobs(ctx context.Context, scope store.Scope, selection access.S
 			}
 			out = append(out, j)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		rows.Close()
+		for i := range out {
+			var err error
+			out[i].Delivery, err = reportingReceiptTx(ctx, tx, out[i])
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return out, err
 }
@@ -339,7 +370,7 @@ func (d *DB) FinishAttempt(ctx context.Context, lease jobs.Lease, code string, p
 		return jobs.ErrInvalid
 	}
 	switch code {
-	case "authority_blocked", "attempt_failed", "attempt_timeout", "definition_changed":
+	case "authority_blocked", "attempt_failed", "attempt_timeout", "definition_changed", "reporting_budget", "reporting_attention":
 	default:
 		return jobs.ErrInvalid
 	}

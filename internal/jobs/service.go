@@ -340,6 +340,10 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	} // leave a recoverable lease; process shutdown is not user cancellation.
 	code, permanent := "attempt_failed", false
 	switch {
+	case errors.Is(err, ErrReportingBudget):
+		code, permanent = "reporting_budget", true
+	case errors.Is(err, ErrReportingAttention):
+		code, permanent = "reporting_attention", true
 	case errors.Is(err, ErrAuthority):
 		code, permanent = "authority_blocked", true
 	case errors.Is(err, store.ErrConflict):

@@ -483,6 +483,9 @@ func (x *Executor) execute(ctx context.Context, e identity.Envelope, p Plan, o O
 	if err != nil {
 		return ExecutionReport{}, err
 	}
+	if err = reserveAttempt(ctx, e, o); err != nil {
+		return ExecutionReport{}, err
+	}
 	if err = x.repo.BeginRead(ctx, scope, a, x.settings.MaxReadAttempts); err != nil {
 		return ExecutionReport{}, err
 	}

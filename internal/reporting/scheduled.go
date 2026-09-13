@@ -182,7 +182,7 @@ func (s *Scheduled) inspectBlock(ctx context.Context, e identity.Envelope, runs 
 	if err := runEligibility(e, snapshot, policy, time.Now()); err != nil {
 		return err
 	}
-	if _, err := runs.selectRunOutputs(snapshot.Revision.Definition, RunRequest{Outputs: outputs, Narrative: narrative, PartialPolicy: "fail"}); err != nil {
+	if _, err := runs.selectRunOutputs(snapshot.Revision.Definition, RunRequest{Outputs: outputs, Narrative: narrative, PartialPolicy: "allow_partial"}); err != nil {
 		return err
 	}
 	if _, err := ResolveParameters(snapshot.Revision.Definition.Parameters, arguments, resolution); err != nil {
@@ -269,7 +269,7 @@ func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.E
 			if err != nil {
 				return err
 			}
-			arguments, _, err := ResolveWidgetArguments(block.Revision.Definition.Parameters, d, w, scheduledArguments(target.Arguments), nil, resolution)
+			arguments, _, err := widgetArguments(block.Revision.Definition.Parameters, d, w, scheduledArguments(target.Arguments), nil, resolution)
 			if err != nil {
 				return err
 			}

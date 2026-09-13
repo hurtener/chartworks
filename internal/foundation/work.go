@@ -133,22 +133,8 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	if v.Jobs.Enabled {
-		observe := func(stage string) {
-			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
-		}
-		if w.pipelines.Enabled() {
-			w.queue, err = jobs.NewWithPipeline(db, w.broker, jobLimits(v.Jobs), w.pipelines, observe)
-		} else {
-			w.queue, err = jobs.New(db, w.broker, jobLimits(v.Jobs), observe)
-		}
-		if err != nil {
-			w.close()
-			return nil, err
-		}
-	}
 
-	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, workapi.Handler(verifier, w.engine, w.queue, next))
+	w.handler = sourceapi.Handler(verifier, w.sourceService, validator, next)
 	w.handler = sourceapi.ExecutionHandler(verifier, validator, executor, w.handler)
 	w.handler = sourceapi.EngineeringHandler(verifier, w.engineering, w.handler)
 	w.handler = sourceapi.PipelineHandler(verifier, w.pipelines, w.handler)
@@ -256,6 +242,32 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+
+	documentRegistry, delivery, handler, err := mountDocuments(v.Reporting, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = handler
+	if v.Jobs.Enabled {
+		scheduled, makeErr := reporting.NewScheduled(delivery, db)
+		if makeErr != nil {
+			w.close()
+			return nil, makeErr
+		}
+		var pipeline jobs.PipelineExecutor
+		if w.pipelines.Enabled() {
+			pipeline = w.pipelines
+		}
+		observe := func(stage string) {
+			w.logger.Error("durable work failed; inspect current job receipt and dependency status", "stage", stage)
+		}
+		w.queue, err = jobs.NewWithReporting(db, w.broker, jobLimits(v.Jobs), pipeline, scheduled, observe)
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
 	w.autopilot, err = engineering.NewAutopilotWithSchedules(db, w.pipelines, v.Autopilot, w.queue, topics)
 	if err != nil {
 		w.close()
@@ -267,12 +279,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = reportingapi.RuntimeHandler(verifier, runs, w.autopilot, blockService.CanValidate(), v.Autopilot.Enabled, w.handler)
-	documentRegistry, delivery, handler, err := mountDocuments(v.Reporting, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
-	if err != nil {
-		w.close()
-		return nil, err
-	}
-	w.handler = handler
+	w.handler = workapi.Handler(verifier, w.engine, w.queue, w.handler)
 
 	publicRegistry, err := PublicRegistry()
 	if err != nil {

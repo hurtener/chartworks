@@ -112,6 +112,7 @@ func Executor(binding string) string { return "svc:chartworks:" + binding }
 
 // Job is retained execution metadata, not authority. All temporal values are UTC microseconds.
 type Job struct {
+	Delivery          *ReportingReceipt  `json:"delivery,omitempty"`
 	ID                string             `json:"id"`
 	Tenant            string             `json:"tenant"`
 	Kind              string             `json:"kind"`
@@ -154,7 +155,7 @@ func (j Job) Digest() string {
 
 // Valid checks the value's invariants and any attached authority expiry.
 func (j Job) Valid() bool {
-	return identity.Identifier(j.ID) && identity.Identifier(j.Tenant) && BindingID(j.BindingID) && ((j.Kind == MaintenanceKind && j.Pipeline == nil && j.Reporting == nil) || (j.Kind == PipelineKind && j.Pipeline != nil && j.Pipeline.Valid() && j.Reporting == nil) || (j.Kind == ReportingKind && j.Pipeline == nil && j.Reporting != nil && j.Reporting.Valid())) && j.Executor == Executor(j.BindingID) && identity.Identifier(j.Initiator) && identity.Identifier(j.InitiatorSession) && j.PolicyRevision > 0 && j.Batch >= 1 && j.Batch <= 1000 && !j.DueAt.IsZero() && !j.WindowStart.After(j.WindowEnd) && j.WindowEnd.Equal(j.DueAt) && j.ManifestHash == j.Digest()
+	return identity.Identifier(j.ID) && identity.Identifier(j.Tenant) && BindingID(j.BindingID) && ((j.Kind == MaintenanceKind && j.Pipeline == nil && j.Reporting == nil) || (j.Kind == PipelineKind && j.Pipeline != nil && j.Pipeline.Valid() && j.Reporting == nil) || (j.Kind == ReportingKind && j.Pipeline == nil && j.Reporting != nil && j.Reporting.Valid())) && j.Executor == Executor(j.BindingID) && identity.Identifier(j.Initiator) && identity.Identifier(j.InitiatorSession) && j.PolicyRevision > 0 && j.Batch >= 1 && j.Batch <= 1000 && !j.DueAt.IsZero() && !j.WindowStart.After(j.WindowEnd) && j.WindowEnd.Equal(j.DueAt) && j.ManifestHash == j.Digest() && (j.Reporting == nil || j.Reporting.Input == ReportingInput(j))
 }
 
 // Lease fences bookkeeping and completion; it is never a replacement for fresh signed authority.

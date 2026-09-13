@@ -426,6 +426,9 @@ func requestFenceTx(ctx context.Context, tx pgx.Tx, i jobs.Invocation) (jobs.Req
 }
 func completeRequestTx(ctx context.Context, tx pgx.Tx, i jobs.Invocation) error {
 	l := i.Lease()
+	if l.Task.Dispatch != nil && l.Task.Dispatch.Kind == jobs.ReportingKind {
+		return completeReportingRequestTx(ctx, tx, i)
+	}
 	e, err := i.Current(l.Task.Input.Kind, l.Task.Input.Target, l.Task.Input.InputHash)
 	if err != nil {
 		return err

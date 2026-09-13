@@ -198,6 +198,9 @@ func completeReportingRequestTx(ctx context.Context, tx pgx.Tx, inv jobs.Invocat
 		var normalized bool
 		err = tx.QueryRow(ctx, `SELECT f.state,p.result IS NOT NULL FROM chartworks.frozen_runs f
  JOIN chartworks.frozen_run_payloads p USING(tenant_id,operation_id) WHERE f.tenant_id=$1 AND f.operation_id=$2`, j.Tenant, j.ID).Scan(&state, &normalized)
+		if err != nil {
+			return err
+		}
 		if !normalized {
 			return reporting.ErrIncomplete
 		}
@@ -253,7 +256,7 @@ func completeReportingRequestTx(ctx context.Context, tx pgx.Tx, inv jobs.Invocat
 // Keep the dispatch's closed JSON shape checked before inserting it. These
 // helpers expose no raw definition or token in error text or history.
 func reportingDispatchJSON(j jobs.Job) ([]byte, []byte, error) {
-	if j.Kind != jobs.ReportingKind || j.Reporting == nil || j.Reporting.Input != jobs.ReportingInput(j) || !j.Valid() {
+	if j.Kind != jobs.ReportingKind || j.Reporting == nil || j.Reporting.Input != jobs.ReportingInput(j) || !j.Valid() || !reportingWindow(j) {
 		return nil, nil, jobs.ErrInvalid
 	}
 	manifest, err := json.Marshal(j)

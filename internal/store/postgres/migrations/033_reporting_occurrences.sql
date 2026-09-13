@@ -32,12 +32,12 @@ CREATE TABLE chartworks.reporting_occurrence_delivery (
  artifact_state text NOT NULL DEFAULT 'pending' CHECK(artifact_state IN('pending','retained')),
  catalog_state text NOT NULL DEFAULT 'pending' CHECK(catalog_state IN('pending','available','unavailable')),
  notification_state text NOT NULL DEFAULT 'not_requested' CHECK(notification_state='not_requested'),
- query_limit integer NOT NULL CHECK(query_limit BETWEEN 1 AND 8),
- model_call_limit integer NOT NULL CHECK(model_call_limit BETWEEN 0 AND 8),
- model_token_limit integer NOT NULL CHECK(model_token_limit BETWEEN 0 AND 131072),
- query_reservations integer NOT NULL DEFAULT 0 CHECK(query_reservations BETWEEN 0 AND 8),
- model_call_reservations integer NOT NULL DEFAULT 0 CHECK(model_call_reservations BETWEEN 0 AND 8),
- model_token_reservations integer NOT NULL DEFAULT 0 CHECK(model_token_reservations BETWEEN 0 AND 131072),
+ query_limit integer NOT NULL CHECK(query_limit BETWEEN 1 AND 800),
+ model_call_limit integer NOT NULL CHECK(model_call_limit BETWEEN 0 AND 64),
+ model_token_limit integer NOT NULL CHECK(model_token_limit BETWEEN 0 AND 16777216),
+ query_reservations integer NOT NULL DEFAULT 0 CHECK(query_reservations BETWEEN 0 AND 800),
+ model_call_reservations integer NOT NULL DEFAULT 0 CHECK(model_call_reservations BETWEEN 0 AND 64),
+ model_token_reservations integer NOT NULL DEFAULT 0 CHECK(model_token_reservations BETWEEN 0 AND 16777216),
  published_at timestamptz,
  PRIMARY KEY(tenant_id,operation_id),
  FOREIGN KEY(tenant_id,operation_id) REFERENCES chartworks.operations(tenant_id,operation_id) ON DELETE CASCADE,
@@ -94,3 +94,17 @@ CREATE FUNCTION chartworks.protect_schedule_history() RETURNS trigger LANGUAGE p
 END $$;
 CREATE TRIGGER schedule_history_immutable BEFORE UPDATE OR DELETE ON chartworks.job_schedule_revisions
  FOR EACH ROW EXECUTE FUNCTION chartworks.protect_schedule_history();
+
+-- Fixed reporting failure stages remain content-free across retries/history.
+DO $$ DECLARE previous text; relation text; constraint_name text; BEGIN
+ FOR relation,constraint_name IN VALUES ('operations','operations_error_code_check'),('operation_attempts','operation_attempts_error_code_check') LOOP
+  SELECT pg_get_expr(conbin,conrelid) INTO STRICT previous FROM pg_constraint
+  WHERE conrelid=('chartworks.'||relation)::regclass AND conname=constraint_name;
+  EXECUTE format('ALTER TABLE chartworks.%I DROP CONSTRAINT %I',relation,constraint_name);
+  EXECUTE format('ALTER TABLE chartworks.%I ADD CONSTRAINT %I CHECK ((%s) OR error_code IN (''reporting_budget'',''reporting_attention''))',relation,constraint_name,previous);
+ END LOOP;
+ SELECT pg_get_expr(conbin,conrelid) INTO STRICT previous FROM pg_constraint
+ WHERE conrelid='chartworks.audit_events'::regclass AND conname='audit_events_action_check';
+ ALTER TABLE chartworks.audit_events DROP CONSTRAINT audit_events_action_check;
+ EXECUTE format('ALTER TABLE chartworks.audit_events ADD CONSTRAINT audit_events_action_check CHECK ((%s) OR action IN (''reporting.delivery_completed'',''reporting.delivery_blocked''))',previous);
+END $$;

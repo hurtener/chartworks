@@ -176,7 +176,7 @@ func (s *Runs) admit(ctx context.Context, e identity.Envelope, id string, input 
 	if err != nil {
 		return RunView{}, err
 	}
-	out, err := s.seal(ctx, e, id, in, requestHash, task)
+	out, err := s.seal(ctx, e, id, in, requestHash, task, nil)
 	if err != nil && parent != nil && ctx.Err() == nil {
 		if _, cancelErr := s.runner.Cancel(ctx, e, task.ID); cancelErr != nil && !errors.Is(cancelErr, store.ErrConflict) {
 			return out, errors.Join(err, cancelErr)
@@ -187,7 +187,7 @@ func (s *Runs) admit(ctx context.Context, e identity.Envelope, id string, input 
 
 // seal uses the same proof and storage path for caller and accepted scheduled
 // work. The supplied task must match the canonical request, actor and session.
-func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunRequest, requestHash string, task jobs.RequestTask) (RunView, error) {
+func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunRequest, requestHash string, task jobs.RequestTask, invocation *jobs.Invocation) (RunView, error) {
 	if err := task.Require(e); err != nil {
 		return RunView{}, err
 	}
@@ -266,7 +266,16 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	if err != nil {
 		return RunView{}, err
 	}
-	sealed, err := s.repo.SealFrozenRun(ctx, e, task, proof)
+	var sealed RunRecord
+	if invocation == nil {
+		sealed, err = s.repo.SealFrozenRun(ctx, e, task, proof)
+	} else {
+		repo, ok := s.repo.(ScheduledRunRepository)
+		if !ok {
+			return RunView{}, ErrUnavailable
+		}
+		sealed, err = repo.SealScheduledFrozenRun(ctx, *invocation, proof)
+	}
 	return sealed.View, err
 }
 
