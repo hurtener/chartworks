@@ -138,6 +138,9 @@ try{
     await evaluate(`${body}.querySelector('select').focus()`);await rpc('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await rpc('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
     await check(`${doc}.activeElement.tagName!=='BODY'`,'keyboard navigation');
     await evaluate(`context({theme:'light',locale:'en-US'});show(fixture.view)`);await waitTitle(fixtures.view.summary.target.id);
+    // The run title is unchanged by locale updates. Wait for the actual translated
+    // control, rather than treating an already-present title as an acknowledgement.
+    await until(()=>evaluate(`${doc}.documentElement.lang==='en-US'&&Array.from(${body}.querySelectorAll('details > summary')).some(s=>s.textContent==='Run with different filters')`),'English filter controls were not rendered');
     await evaluate(`const d=Array.from(${body}.querySelectorAll('details')).find(d=>d.textContent.includes('Run with different filters'));d.open=true;const useDefault=d.querySelector('input[type=checkbox]');useDefault.checked=false;useDefault.dispatchEvent(new Event('change'));const input=d.querySelector('input[type=text]');input.value='2';input.dispatchEvent(new Event('input',{bubbles:true}));`);
     await check(`calls.every(c=>c.name!=='reporting_run')`,'editing a filter is not execution');
     const n=await evaluate('calls.length');await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click()`);await waitCalls(n+3);await waitTitle(fixtures.view.summary.target.id);
