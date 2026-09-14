@@ -1,4 +1,4 @@
-name: Phase 30-31 exact-source verification
+name: Phase 30-31 reviewed-source verification
 on:
   push:
     branches: [feat/phase-30-31-reporting-delivery]

@@ -185,6 +185,7 @@ func Run(t *testing.T, suite string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
+	// #nosec G204 -- Test-only literal Node executable, repository-owned script, private temporary files, and allowlisted suite; no user input or shell.
 	cmd := exec.CommandContext(ctx, "node", script, htmlPath, fixturePath, suite)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

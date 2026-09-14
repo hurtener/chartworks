@@ -25,25 +25,29 @@ var locations sync.Map
 var ErrZone = errors.New("calendar: timezone unavailable")
 
 func archiveIndex() {
-	sum := sha256.Sum256(archive)
-	if hex.EncodeToString(sum[:]) != archiveSHA256 {
-		indexErr = ErrZone
-		return
+	index, indexErr = parseArchive(archive, archiveSHA256)
+}
+
+// parseArchive verifies the pinned bytes before indexing a bounded ZIP. It is
+// deliberately independent of process-wide caches, so malformed distributions
+// can be tested without changing the trusted embedded database or global state.
+func parseArchive(data []byte, expectedHash string) (map[string]*zip.File, error) {
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != expectedHash {
+		return nil, ErrZone
 	}
-	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
-	if err != nil || len(reader.File) > 2048 {
-		indexErr = ErrZone
-		return
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil || len(reader.File) == 0 || len(reader.File) > 2048 {
+		return nil, ErrZone
 	}
 	files := make(map[string]*zip.File, len(reader.File))
 	for _, file := range reader.File {
 		if file.UncompressedSize64 == 0 || file.UncompressedSize64 > 65536 || files[file.Name] != nil {
-			indexErr = ErrZone
-			return
+			return nil, ErrZone
 		}
 		files[file.Name] = file
 	}
-	index = files
+	return files, nil
 }
 
 // Location ignores mutable system files and environment-selected databases.

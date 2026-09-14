@@ -40,6 +40,7 @@ func (f *phase30Fixture) claim(t *testing.T, id, owner string) (jobs.Lease, auth
 }
 
 func testPhase30Operations(t *testing.T) {
+	t.Run("store-boundaries", testPhase30StoreBoundaries)
 	t.Run("shared-claim-and-nonrefundable-budget-fences", func(t *testing.T) {
 		f := newPhase30Fixture(t, false)
 		f.domain.block(t, "p30-budget-fence", f.domain.base)
