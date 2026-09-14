@@ -87,7 +87,7 @@ func testPhase30Targets(t *testing.T) {
 				t.Fatal("scheduling created a hidden report", err)
 			}
 			beforeQueries, beforeModels = f.domain.attemptCount(t), f.domain.f.model.requests.Load()
-			selection := reporting.ReportingViewRequest{Kind: target.ResourceKind(), Run: j.ID, Limit: 1}
+			selection := reporting.DeliveryViewRequest{Kind: target.ResourceKind(), Run: j.ID, Limit: 1}
 			view, err := f.delivery.View(t.Context(), f.domain.execute, selection)
 			if err != nil || view.Summary.Run != j.ID || view.Output == nil && view.Text == nil {
 				t.Fatal("scheduled result not consumable by existing viewer", view, err)

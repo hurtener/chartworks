@@ -152,15 +152,15 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 	reader := f.reader(t, "p31-visible", "p31-report")
 	beforeSource, beforeModels := f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
 	missingDependencies := phase27Actor(t, f.domain.f, "missing-dependency-reader", []string{"reporting.read", "cw.block.read:p31-visible", "cw.execution_context.use:" + d.Context})
-	deniedSearch, err := f.service.Search(t.Context(), missingDependencies, reporting.ReportingSearchRequest{Kind: "block", Limit: 100})
+	deniedSearch, err := f.service.Search(t.Context(), missingDependencies, reporting.DeliverySearchRequest{Kind: "block", Limit: 100})
 	if err != nil || len(deniedSearch.Items) != 0 {
 		t.Fatal("metadata catalog widened missing dependency authority", deniedSearch, err)
 	}
-	search, err := f.service.Search(t.Context(), reader, reporting.ReportingSearchRequest{Kind: "block", Limit: 100})
+	search, err := f.service.Search(t.Context(), reader, reporting.DeliverySearchRequest{Kind: "block", Limit: 100})
 	if err != nil || len(search.Items) != 1 || search.Items[0].Target.ID != "p31-visible" {
 		t.Fatalf("signed metadata search: %+v %v", search, err)
 	}
-	description, err := f.service.Describe(t.Context(), reader, reporting.ReportingDescribeRequest{Target: reporting.DeliveryTarget{Kind: "block", ID: "p31-visible"}, Outputs: []string{"table-second", "table-main"}})
+	description, err := f.service.Describe(t.Context(), reader, reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "block", ID: "p31-visible"}, Outputs: []string{"table-second", "table-main"}})
 	if err != nil || len(description.Outputs) != 2 || description.Outputs[0].ID != "table-second" || description.Resource.Target.Revision != 1 {
 		t.Fatalf("selected published description: %+v %v", description, err)
 	}
@@ -182,11 +182,11 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 	}
 	beforeSource, beforeModels = f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
 	for _, output := range []string{"table-second", "table-main"} {
-		first, err := f.service.View(t.Context(), reader, reporting.ReportingViewRequest{Kind: "block", Run: blockRun.Run, Output: output, Limit: 1})
+		first, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "block", Run: blockRun.Run, Output: output, Limit: 1})
 		if err != nil || first.Output == nil || first.Output.Table == nil || len(first.Output.Table.Rows) != 1 || first.PageBounds.Total != 2 || first.PageBounds.Next == nil || *first.PageBounds.Next != 1 {
 			t.Fatalf("exact first table page: %+v %v", first, err)
 		}
-		second, err := f.service.View(t.Context(), reader, reporting.ReportingViewRequest{Kind: "block", Run: blockRun.Run, Output: output, Offset: 1, Limit: 1})
+		second, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "block", Run: blockRun.Run, Output: output, Offset: 1, Limit: 1})
 		if err != nil || second.Output == nil || second.Output.Table == nil || second.Output.Table.Rows[0][0].Value == first.Output.Table.Rows[0][0].Value || second.PageBounds.Next != nil || second.Output.RetainedDigest != first.Output.RetainedDigest {
 			t.Fatalf("exact last page/full-artifact identity: %+v %v", second, err)
 		}
@@ -194,7 +194,7 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 			t.Fatal("retained provenance omitted")
 		}
 	}
-	runs, err := f.service.Runs(t.Context(), reader, reporting.ReportingRunsRequest{Kind: "block", Resource: "p31-visible", Limit: 20})
+	runs, err := f.service.Runs(t.Context(), reader, reporting.DeliveryRunsRequest{Kind: "block", Resource: "p31-visible", Limit: 20})
 	if err != nil || len(runs.Items) != 1 || runs.Items[0].Run != blockRun.Run {
 		t.Fatal("ordinary retained catalog", runs, err)
 	}
@@ -203,14 +203,14 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 	}
 	composed := f.run(t, "report", "p31-report", "p31-composed")
 	beforeSource, beforeModels = f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
-	view, err := f.service.View(t.Context(), reader, reporting.ReportingViewRequest{Kind: "report", Run: composed.Run, Page: "main", Widget: "first", Limit: 1})
+	view, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "report", Run: composed.Run, Page: "main", Widget: "first", Limit: 1})
 	if err != nil || view.Output == nil || view.Output.Table == nil || view.Selection.Output != "table-second" || len(view.Outputs) != 1 {
 		t.Fatalf("selected composed output received another union member or no values: %+v %v", view, err)
 	}
-	if _, err := f.service.View(t.Context(), reader, reporting.ReportingViewRequest{Kind: "report", Run: composed.Run, Page: "main", Widget: "first", Output: "table-main", Limit: 1}); !errors.Is(err, access.ErrNotFound) {
+	if _, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "report", Run: composed.Run, Page: "main", Widget: "first", Output: "table-main", Limit: 1}); !errors.Is(err, access.ErrNotFound) {
 		t.Fatal("output union crossed widget selection", err)
 	}
-	runs, err = f.service.Runs(t.Context(), reader, reporting.ReportingRunsRequest{Kind: "report", Resource: "p31-report", Limit: 20})
+	runs, err = f.service.Runs(t.Context(), reader, reporting.DeliveryRunsRequest{Kind: "report", Resource: "p31-report", Limit: 20})
 	if err != nil || len(runs.Items) != 1 || runs.Items[0].Run != composed.Run {
 		t.Fatal("composition catalog did not use ordinary artifact entry", runs, err)
 	}
@@ -219,7 +219,7 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 	}
 	for _, scopes := range [][]string{{"reporting.read", "cw.block.read:p31-visible"}, {"reporting.read", "cw.execution_context.use:" + d.Context}} {
 		denied := phase27Actor(t, f.domain.f, "revoked-viewer", scopes)
-		got, err := f.service.View(t.Context(), denied, reporting.ReportingViewRequest{Kind: "block", Run: blockRun.Run, Output: "table-main", Limit: 1})
+		got, err := f.service.View(t.Context(), denied, reporting.DeliveryViewRequest{Kind: "block", Run: blockRun.Run, Output: "table-main", Limit: 1})
 		if err == nil || got.Output != nil || got.Trust != nil || got.Summary.Run != "" {
 			t.Fatal("current artifact/context authority denial returned values or provenance", got, err)
 		}
@@ -236,7 +236,7 @@ func testPhase31ArtifactStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending, err := f.service.View(t.Context(), f.domain.execute, reporting.ReportingViewRequest{Kind: "report", Run: preview.ID, Page: "main", Widget: "block", Limit: 1})
+	pending, err := f.service.View(t.Context(), f.domain.execute, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "main", Widget: "block", Limit: 1})
 	if err != nil || !pending.Summary.Private || pending.Output != nil || pending.Summary.State == "completed" {
 		t.Fatal("pending/private state fabricated completion", pending, err)
 	}
@@ -246,12 +246,12 @@ func testPhase31ArtifactStates(t *testing.T) {
 	}
 	owner := phase27Actor(t, f.domain.f, f.domain.execute.User(), []string{"reporting.read", "reporting.preview", "cw.report.preview:*", "cw.run.read:*", "cw.execution_context.use:*"})
 	beforeSource, beforeModels := f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
-	view, err := f.service.View(t.Context(), owner, reporting.ReportingViewRequest{Kind: "report", Run: preview.ID, Page: "main", Widget: "block", Limit: 1})
+	view, err := f.service.View(t.Context(), owner, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "main", Widget: "block", Limit: 1})
 	if err != nil || !view.Summary.Private || view.Output == nil || view.Output.Table == nil {
 		t.Fatal("authorized private retained read", view, err)
 	}
 	foreign := phase27Actor(t, f.domain.f, "not-preview-owner", []string{"reporting.read", "reporting.preview", "cw.report.preview:*", "cw.run.read:*", "cw.execution_context.use:*"})
-	denied, err := f.service.View(t.Context(), foreign, reporting.ReportingViewRequest{Kind: "report", Run: preview.ID, Page: "main", Widget: "block", Limit: 1})
+	denied, err := f.service.View(t.Context(), foreign, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Page: "main", Widget: "block", Limit: 1})
 	if err == nil || denied.Output != nil || denied.Summary.Run != "" {
 		t.Fatal("private actor/session boundary waived", denied, err)
 	}
@@ -263,7 +263,7 @@ func testPhase31ArtifactStates(t *testing.T) {
 	if _, err := pool.Exec(context.Background(), `UPDATE chartworks.composition_runs SET state='expired',code='retention_expired',complete=false,retained_bytes=0,reserved_bytes=0 WHERE tenant_id=$1 AND operation_id=$2`, f.domain.execute.Tenant(), preview.ID); err != nil {
 		t.Fatal(err)
 	}
-	expired, err := f.service.View(t.Context(), owner, reporting.ReportingViewRequest{Kind: "report", Run: preview.ID, Limit: 1})
+	expired, err := f.service.View(t.Context(), owner, reporting.DeliveryViewRequest{Kind: "report", Run: preview.ID, Limit: 1})
 	if err != nil || expired.Summary.State != "expired" || expired.Output != nil || expired.Text != nil || len(expired.Pages) != 0 {
 		t.Fatal("expired retained values were exposed or regenerated", expired, err)
 	}

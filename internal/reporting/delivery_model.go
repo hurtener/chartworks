@@ -17,9 +17,9 @@ type DeliveryTarget struct {
 	Revision int64  `json:"revision"`
 }
 
-// ReportingSearchRequest searches a bounded published metadata page. Kind is
+// DeliverySearchRequest searches a bounded published metadata page. Kind is
 // explicit so a continuation cannot be confused with another resource catalog.
-type ReportingSearchRequest struct {
+type DeliverySearchRequest struct {
 	Kind   string `json:"kind" jsonschema:"enum=block,enum=report,enum=dashboard"`
 	Query  string `json:"query"`
 	Locale string `json:"locale"`
@@ -27,23 +27,23 @@ type ReportingSearchRequest struct {
 	Limit  int    `json:"limit"`
 }
 
-// ReportingResource is an intentionally SQL/definition/value-free search result.
-type ReportingResource struct {
+// DeliveryResource is an intentionally SQL/definition/value-free search result.
+type DeliveryResource struct {
 	Target      DeliveryTarget `json:"target"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	Locale      string         `json:"locale"`
 }
 
-// ReportingSearchResult carries a bounded permission-filtered continuation.
-type ReportingSearchResult struct {
-	Version string              `json:"version"`
-	Items   []ReportingResource `json:"items"`
-	Next    string              `json:"next"`
+// DeliverySearchResult carries a bounded permission-filtered continuation.
+type DeliverySearchResult struct {
+	Version string             `json:"version"`
+	Items   []DeliveryResource `json:"items"`
+	Next    string             `json:"next"`
 }
 
-// ReportingDescribeRequest selects published metadata and exact output IDs.
-type ReportingDescribeRequest struct {
+// DeliveryDescribeRequest selects published metadata and exact output IDs.
+type DeliveryDescribeRequest struct {
 	Target  DeliveryTarget `json:"target"`
 	Locale  string         `json:"locale"`
 	Outputs []string       `json:"outputs"`
@@ -63,10 +63,10 @@ type ViewerFilter struct {
 	Parameter Parameter `json:"parameter"`
 }
 
-// ReportingDescription exposes presentation and typed business inputs only.
-type ReportingDescription struct {
+// DeliveryDescription exposes presentation and typed business inputs only.
+type DeliveryDescription struct {
 	Version  string                   `json:"version"`
-	Resource ReportingResource        `json:"resource"`
+	Resource DeliveryResource         `json:"resource"`
 	Outputs  []ViewerOutputChoice     `json:"outputs"`
 	Filters  []ViewerFilter           `json:"filters"`
 	Pages    []CompositionPageSummary `json:"pages"`
@@ -75,10 +75,10 @@ type ReportingDescription struct {
 	Timezone string                   `json:"timezone"`
 }
 
-// ReportingRunRequest is deliberately side-effecting. It cannot contain SQL,
+// DeliveryRunRequest is deliberately side-effecting. It cannot contain SQL,
 // arbitrary query text, a bearer, a binding, a source URL or a replacement chart.
 // A changed filter needs a new key and fresh signed target/dependency authority.
-type ReportingRunRequest struct {
+type DeliveryRunRequest struct {
 	Target         DeliveryTarget `json:"target"`
 	Key            string         `json:"key"`
 	Arguments      []Argument     `json:"arguments"`
@@ -92,8 +92,8 @@ type ReportingRunRequest struct {
 	PartialFailure string         `json:"partial_failure"`
 }
 
-// ReportingRunResult supplies an ordinary catalog coordinate, not inline values.
-type ReportingRunResult struct {
+// DeliveryRunResult supplies an ordinary catalog coordinate, not inline values.
+type DeliveryRunResult struct {
 	Version string         `json:"version"`
 	Kind    string         `json:"kind"`
 	Run     string         `json:"run"`
@@ -102,17 +102,17 @@ type ReportingRunResult struct {
 	Target  DeliveryTarget `json:"target"`
 }
 
-// ReportingRunsRequest never triggers an occurrence or grants recipient access.
-type ReportingRunsRequest struct {
+// DeliveryRunsRequest never triggers an occurrence or grants recipient access.
+type DeliveryRunsRequest struct {
 	Kind     string `json:"kind" jsonschema:"enum=block,enum=report,enum=dashboard"`
 	Resource string `json:"resource"`
 	After    string `json:"after"`
 	Limit    int    `json:"limit"`
 }
 
-// ReportingRunSummary separates artifact publication/retention from execution.
+// DeliveryRunSummary separates artifact publication/retention from execution.
 // Scheduled provenance, when present, is metadata, not a viewer scheduler.
-type ReportingRunSummary struct {
+type DeliveryRunSummary struct {
 	Scheduled *ScheduledProvenance `json:"scheduled,omitempty"`
 	Kind      string               `json:"kind"`
 	Run       string               `json:"run"`
@@ -124,22 +124,22 @@ type ReportingRunSummary struct {
 	Expires   time.Time            `json:"expires_at"`
 }
 
-// ReportingRunsResult is a metadata page independent of model availability.
-type ReportingRunsResult struct {
-	Version string                `json:"version"`
-	Items   []ReportingRunSummary `json:"items"`
-	Next    string                `json:"next"`
+// DeliveryRunsResult is a metadata page independent of model availability.
+type DeliveryRunsResult struct {
+	Version string               `json:"version"`
+	Items   []DeliveryRunSummary `json:"items"`
+	Next    string               `json:"next"`
 }
 
 // CompositionCatalog lists only currently authorized retained metadata.
 // It deliberately has no query/model/worker method.
 type CompositionCatalog interface {
-	ListCompositionArtifacts(context.Context, identity.Envelope, string, string, string, int) (ReportingRunsResult, error)
+	ListCompositionArtifacts(context.Context, identity.Envelope, string, string, string, int) (DeliveryRunsResult, error)
 }
 
-// ReportingViewRequest addresses one selected artifact output. Redraw and
+// DeliveryViewRequest addresses one selected artifact output. Redraw and
 // pagination cannot change filters or cause a data/model execution.
-type ReportingViewRequest struct {
+type DeliveryViewRequest struct {
 	Kind   string `json:"kind" jsonschema:"enum=block,enum=report,enum=dashboard"`
 	Run    string `json:"run"`
 	Page   string `json:"page"`
@@ -157,14 +157,14 @@ type ViewerPage struct {
 	Next   *int `json:"next,omitempty"`
 }
 
-// ReportingViewResult is the single portable selected-result contract. The
+// DeliveryViewResult is the single portable selected-result contract. The
 // manifest itself, source credentials, SQL and run-authority tokens never occur.
 // A page of a table preserves its exact labels, units and retained row order.
-type ReportingViewResult struct {
+type DeliveryViewResult struct {
 	Policy         string                   `json:"policy,omitempty"`
 	Version        string                   `json:"version"`
-	Summary        ReportingRunSummary      `json:"summary"`
-	Selection      ReportingViewRequest     `json:"selection"`
+	Summary        DeliveryRunSummary       `json:"summary"`
+	Selection      DeliveryViewRequest      `json:"selection"`
 	Locale         string                   `json:"locale"`
 	Timezone       string                   `json:"timezone"`
 	Outputs        []ViewerOutputChoice     `json:"outputs"`

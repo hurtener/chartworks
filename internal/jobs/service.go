@@ -313,19 +313,21 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	if err == nil {
 		effect, stop := context.WithDeadline(work, envelope.Envelope().Deadline())
-		if lease.Job.Kind == PipelineKind {
+		switch lease.Job.Kind {
+		case PipelineKind:
 			if s.pipeline == nil {
 				err = ErrAuthority
 			} else {
 				err = s.pipeline.ExecuteScheduledPipeline(effect, lease, envelope)
 			}
-		} else if lease.Job.Kind == ReportingKind {
+
+		case ReportingKind:
 			if s.reporting == nil {
 				err = ErrAuthority
 			} else {
 				err = s.reporting.ExecuteScheduledReporting(effect, lease, envelope)
 			}
-		} else {
+		default:
 			_, err = s.repo.CompleteJob(effect, lease, envelope)
 		}
 		stop()

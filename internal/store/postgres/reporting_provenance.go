@@ -3,9 +3,10 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/jackc/pgx/v5"
-	"time"
 )
 
 // scheduledProvenanceTx is called only after the existing artifact/read-context

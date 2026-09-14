@@ -61,7 +61,7 @@ func testPhase30Delivery(t *testing.T) {
 		if err := f.queue.RunOnce(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		selection := reporting.ReportingViewRequest{Kind: "block", Run: job.ID, Output: "table-main", Limit: 1}
+		selection := reporting.DeliveryViewRequest{Kind: "block", Run: job.ID, Output: "table-main", Limit: 1}
 		beforeQueries, beforeModels := f.domain.attemptCount(t), f.domain.f.model.requests.Load()
 		for _, user := range []string{"recipient-only", "svc:untrusted", f.actor.User()} {
 			reader := phase27Actor(t, f.domain.f, user, []string{"reporting.read", "cw.block.read:p30-recipient"})

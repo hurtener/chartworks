@@ -147,12 +147,12 @@ func (f *phase31Fixture) reader(t *testing.T, block, report string) identity.Env
 	return phase27Actor(t, f.domain.f, "viewer-reader", scopes)
 }
 
-func phase31Request(kind, id, key string) reporting.ReportingRunRequest {
-	return reporting.ReportingRunRequest{Target: reporting.DeliveryTarget{Kind: kind, ID: id, Revision: 1}, Key: key,
+func phase31Request(kind, id, key string) reporting.DeliveryRunRequest {
+	return reporting.DeliveryRunRequest{Target: reporting.DeliveryTarget{Kind: kind, ID: id, Revision: 1}, Key: key,
 		Arguments: []reporting.Argument{}, Pages: []reporting.PageInput{}, Outputs: []string{}, Timezone: "UTC", Locale: "en"}
 }
 
-func (f *phase31Fixture) run(t *testing.T, kind, id, key string) reporting.ReportingRunResult {
+func (f *phase31Fixture) run(t *testing.T, kind, id, key string) reporting.DeliveryRunResult {
 	t.Helper()
 	out, err := f.service.Run(t.Context(), f.domain.execute, phase31Request(kind, id, key))
 	if err != nil || out.Run == "" || (out.State != "succeeded" && out.State != "completed") {

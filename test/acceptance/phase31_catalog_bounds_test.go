@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/hurtener/chartworks/internal/config"
-	"github.com/hurtener/chartworks/internal/reporting"
 	"strings"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/reporting"
 )
 
 func testPhase31CatalogBounds(t *testing.T) {
@@ -30,7 +31,7 @@ func testPhase31CatalogBounds(t *testing.T) {
 				t.Fatal(err)
 			}
 			beforeQueries, beforeModels := f.domain.attemptCount(t), f.domain.f.model.requests.Load()
-			request := reporting.ReportingRunsRequest{Kind: kind, Resource: id, Limit: 64}
+			request := reporting.DeliveryRunsRequest{Kind: kind, Resource: id, Limit: 64}
 			baseline, err := f.service.Runs(t.Context(), f.domain.execute, request)
 			wire, encodeErr := json.Marshal(baseline)
 			if err != nil || encodeErr != nil || len(baseline.Items) != 64 || len(wire) <= limits.MaxMessageBytes {

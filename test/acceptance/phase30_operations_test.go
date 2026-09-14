@@ -241,7 +241,7 @@ func testPhase30Operations(t *testing.T) {
 		if err := f.queue.RunOnce(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		view, err := f.delivery.View(t.Context(), f.domain.execute, reporting.ReportingViewRequest{Kind: "block", Run: job.ID, Output: "table-main", Limit: 10})
+		view, err := f.delivery.View(t.Context(), f.domain.execute, reporting.DeliveryViewRequest{Kind: "block", Run: job.ID, Output: "table-main", Limit: 10})
 		if err != nil || view.Output == nil || view.Output.Table == nil || len(view.Output.Table.Rows) != 1 || view.PageBounds.Total != 1 {
 			t.Fatal("scheduled row cap was only metadata", view, err)
 		}

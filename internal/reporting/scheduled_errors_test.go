@@ -3,11 +3,12 @@ package reporting
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/store"
-	"testing"
 )
 
 func TestScheduledFailureClassification(t *testing.T) {

@@ -36,7 +36,7 @@ type ViewerOutput struct {
 	Narrative      *NarrativeResult `json:"narrative,omitempty"`
 }
 
-func (s *Delivery) viewRequest(in ReportingViewRequest) (ReportingViewRequest, error) {
+func (s *Delivery) viewRequest(in DeliveryViewRequest) (DeliveryViewRequest, error) {
 	if !deliveryKind(in.Kind) || !identity.Identifier(in.Run) || in.Page != "" && !identity.Identifier(in.Page) || in.Widget != "" && !identity.Identifier(in.Widget) || in.Output != "" && !identity.Identifier(in.Output) || in.Offset < 0 || in.Offset > 100000 || in.Limit < 0 || in.Limit > s.limits.MaxRows {
 		return in, ErrInvalid
 	}
@@ -61,7 +61,7 @@ func tableBounds(total, offset, limit int) (ViewerPage, int, error) {
 	return out, end, nil
 }
 
-func (s *Delivery) projectOutput(v RetainedOutput, in ReportingViewRequest) (*ViewerOutput, ViewerPage, error) {
+func (s *Delivery) projectOutput(v RetainedOutput, in DeliveryViewRequest) (*ViewerOutput, ViewerPage, error) {
 	out := &ViewerOutput{ID: v.ID, Kind: v.Kind, State: v.State, Code: v.Code, RetainedDigest: v.Digest}
 	bounds := ViewerPage{Offset: 0, Limit: in.Limit, Total: 0}
 	if v.State != "succeeded" {
@@ -99,8 +99,8 @@ func (s *Delivery) projectOutput(v RetainedOutput, in ReportingViewRequest) (*Vi
 
 // View selects only previously retained values. All branches below are metadata
 // or artifact reads; none can call Run, a source, the gateway or a schedule.
-func (s *Delivery) View(ctx context.Context, e identity.Envelope, input ReportingViewRequest) (ReportingViewResult, error) {
-	out := ReportingViewResult{Version: DeliveryVersion, Outputs: []ViewerOutputChoice{}, Pages: []CompositionPageSummary{}, Filters: []ViewerFilter{}}
+func (s *Delivery) View(ctx context.Context, e identity.Envelope, input DeliveryViewRequest) (DeliveryViewResult, error) {
+	out := DeliveryViewResult{Version: DeliveryVersion, Outputs: []ViewerOutputChoice{}, Pages: []CompositionPageSummary{}, Filters: []ViewerFilter{}}
 	ctx, cancel, err := s.begin(ctx, e, "reporting.read")
 	if err != nil {
 		return out, err
@@ -119,12 +119,12 @@ func (s *Delivery) View(ctx context.Context, e identity.Envelope, input Reportin
 	}
 	if err != nil {
 		// No partial payload accompanies denial, expiration races or corruption.
-		return ReportingViewResult{}, err
+		return DeliveryViewResult{}, err
 	}
 	if out.Summary.State != "expired" && !out.Summary.Private {
 		// Artifact-only readers need not also possess definition-read authority.
 		// Optional business-filter descriptions never expand artifact permission.
-		description, descErr := s.Describe(ctx, e, ReportingDescribeRequest{Target: out.Summary.Target, Locale: out.Locale})
+		description, descErr := s.Describe(ctx, e, DeliveryDescribeRequest{Target: out.Summary.Target, Locale: out.Locale})
 		if descErr == nil {
 			out.Filters = []ViewerFilter{}
 			for _, filter := range description.Filters {
@@ -139,25 +139,25 @@ func (s *Delivery) View(ctx context.Context, e identity.Envelope, input Reportin
 				out.Timezone = description.Timezone
 			}
 		} else if !errors.Is(descErr, access.ErrForbidden) && !errors.Is(descErr, access.ErrNotFound) && !errors.Is(descErr, store.ErrNotFound) && !errors.Is(descErr, ErrStale) {
-			return ReportingViewResult{}, descErr
+			return DeliveryViewResult{}, descErr
 		}
 	}
 	if len(out.Outputs) > s.limits.MaxOutputs {
-		return ReportingViewResult{}, ErrBudget
+		return DeliveryViewResult{}, ErrBudget
 	}
 	if err := s.bound(out); err != nil {
-		return ReportingViewResult{}, err
+		return DeliveryViewResult{}, err
 	}
 	if !e.Valid() {
-		return ReportingViewResult{}, access.ErrUnauthenticated
+		return DeliveryViewResult{}, access.ErrUnauthenticated
 	}
 	if err := ctx.Err(); err != nil {
-		return ReportingViewResult{}, err
+		return DeliveryViewResult{}, err
 	}
 	return out, nil
 }
 
-func (s *Delivery) viewBlock(ctx context.Context, e identity.Envelope, out *ReportingViewResult) error {
+func (s *Delivery) viewBlock(ctx context.Context, e identity.Envelope, out *DeliveryViewResult) error {
 	v, err := s.runs.Get(ctx, e, out.Selection.Run)
 	if err != nil {
 		return err
@@ -195,7 +195,7 @@ func (s *Delivery) viewBlock(ctx context.Context, e identity.Envelope, out *Repo
 	return err
 }
 
-func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out *ReportingViewResult) error {
+func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out *DeliveryViewResult) error {
 	v, err := s.compositions.Get(ctx, e, out.Selection.Run)
 	if err != nil {
 		return err
@@ -283,7 +283,7 @@ func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out
 	return access.ErrNotFound
 }
 
-func (s *Delivery) queryTable(ctx context.Context, out *ReportingViewResult, retained exec.Result) error {
+func (s *Delivery) queryTable(ctx context.Context, out *DeliveryViewResult, retained exec.Result) error {
 	bounds, end, err := tableBounds(len(retained.Rows), out.Selection.Offset, out.Selection.Limit)
 	if err != nil {
 		return err

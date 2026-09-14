@@ -60,8 +60,8 @@ func deliveryText(s string, maxBytes int) bool {
 	return len(s) <= maxBytes && utf8.ValidString(s) && !strings.ContainsRune(s, 0)
 }
 
-func localizedResource(kind, id string, revision int64, metadata []DocumentMetadata, wanted string) ReportingResource {
-	out := ReportingResource{Target: DeliveryTarget{kind, id, revision}, Title: id, Locale: "en"}
+func localizedResource(kind, id string, revision int64, metadata []DocumentMetadata, wanted string) DeliveryResource {
+	out := DeliveryResource{Target: DeliveryTarget{kind, id, revision}, Title: id, Locale: "en"}
 	for i, m := range metadata {
 		if i == 0 || m.Locale == wanted {
 			out.Title, out.Description, out.Locale = m.Title, m.Description, m.Locale
@@ -72,21 +72,21 @@ func localizedResource(kind, id string, revision int64, metadata []DocumentMetad
 	}
 	return out
 }
-func blockResource(id string, revision int64, metadata []Localized, wanted string) ReportingResource {
+func blockResource(id string, revision int64, metadata []Localized, wanted string) DeliveryResource {
 	m := make([]DocumentMetadata, len(metadata))
 	for i, v := range metadata {
 		m[i] = DocumentMetadata{Locale: v.Locale, Title: v.Title, Description: v.Description}
 	}
 	return localizedResource("block", id, revision, m, wanted)
 }
-func matchesResource(r ReportingResource, query string) bool {
+func matchesResource(r DeliveryResource, query string) bool {
 	return query == "" || strings.Contains(strings.ToLower(r.Title+" "+r.Description+" "+r.Target.ID), strings.ToLower(query))
 }
 
 // Search returns a continuation even when all authorized rows in a bounded page
 // fail the text filter. It never scans an unbounded tenant index.
-func (s *Delivery) Search(ctx context.Context, e identity.Envelope, in ReportingSearchRequest) (ReportingSearchResult, error) {
-	out := ReportingSearchResult{Version: DeliveryVersion, Items: []ReportingResource{}}
+func (s *Delivery) Search(ctx context.Context, e identity.Envelope, in DeliverySearchRequest) (DeliverySearchResult, error) {
+	out := DeliverySearchResult{Version: DeliveryVersion, Items: []DeliveryResource{}}
 	ctx, cancel, err := s.begin(ctx, e, "reporting.read")
 	if err != nil {
 		return out, err
@@ -124,7 +124,7 @@ func (s *Delivery) Search(ctx context.Context, e identity.Envelope, in Reporting
 		}
 	}
 	if err := s.bound(out); err != nil {
-		return ReportingSearchResult{}, err
+		return DeliverySearchResult{}, err
 	}
 	return out, ctx.Err()
 }
@@ -159,7 +159,7 @@ func describeReportPage(id, report string, revision int64, d DocumentDefinition)
 	return page
 }
 
-func appendReportDescription(out *ReportingDescription, page string, view DocumentView) {
+func appendReportDescription(out *DeliveryDescription, page string, view DocumentView) {
 	d := view.Definition
 	out.Pages = append(out.Pages, describeReportPage(page, view.State.ID, view.Revision, d))
 	for _, f := range d.Filters {
@@ -174,8 +174,8 @@ func appendReportDescription(out *ReportingDescription, page string, view Docume
 
 // Describe never returns saved SQL, query text, raw narrative instructions or a
 // private definition. Dashboard pages remain independently permission-filtered.
-func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in ReportingDescribeRequest) (ReportingDescription, error) {
-	out := ReportingDescription{Version: DeliveryVersion, Outputs: []ViewerOutputChoice{}, Filters: []ViewerFilter{}, Pages: []CompositionPageSummary{}}
+func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in DeliveryDescribeRequest) (DeliveryDescription, error) {
+	out := DeliveryDescription{Version: DeliveryVersion, Outputs: []ViewerOutputChoice{}, Filters: []ViewerFilter{}, Pages: []CompositionPageSummary{}}
 	ctx, cancel, err := s.begin(ctx, e, "reporting.read")
 	if err != nil {
 		return out, err
@@ -230,7 +230,7 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Reporti
 			for _, p := range v.Definition.Pages {
 				child, err := s.documents.Read(ctx, e, "report", p.Report, DocumentReference{Revision: p.Revision})
 				if err != nil {
-					return ReportingDescription{}, err
+					return DeliveryDescription{}, err
 				}
 				if child.Private || child.State.Archived {
 					continue
@@ -240,7 +240,7 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Reporti
 		}
 	}
 	if err := s.bound(out); err != nil {
-		return ReportingDescription{}, err
+		return DeliveryDescription{}, err
 	}
 	return out, ctx.Err()
 }
@@ -248,8 +248,8 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Reporti
 // Run requires the exact published revision returned by Describe. This makes
 // dynamic/narrative consent stable across concurrent publication. The existing
 // admission still pins dependencies and checks immutable target eligibility.
-func (s *Delivery) Run(ctx context.Context, e identity.Envelope, in ReportingRunRequest) (ReportingRunResult, error) {
-	out := ReportingRunResult{Version: DeliveryVersion, Kind: in.Target.Kind, Target: in.Target}
+func (s *Delivery) Run(ctx context.Context, e identity.Envelope, in DeliveryRunRequest) (DeliveryRunResult, error) {
+	out := DeliveryRunResult{Version: DeliveryVersion, Kind: in.Target.Kind, Target: in.Target}
 	ctx, cancel, err := s.begin(ctx, e, "reporting.execute")
 	if err != nil {
 		return out, err
@@ -314,8 +314,8 @@ func (s *Delivery) requireRunOptIns(ctx context.Context, e identity.Envelope, t 
 
 // Runs returns catalog metadata only, including expired tombstones. Recipients
 // or schedule provenance never substitute for current signed artifact reach.
-func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in ReportingRunsRequest) (ReportingRunsResult, error) {
-	out := ReportingRunsResult{Version: DeliveryVersion, Items: []ReportingRunSummary{}}
+func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in DeliveryRunsRequest) (DeliveryRunsResult, error) {
+	out := DeliveryRunsResult{Version: DeliveryVersion, Items: []DeliveryRunSummary{}}
 	ctx, cancel, err := s.begin(ctx, e, "reporting.read")
 	if err != nil {
 		return out, err
@@ -327,10 +327,10 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in ReportingRu
 	if in.Kind != "block" {
 		result, err := s.catalog.ListCompositionArtifacts(ctx, e, in.Kind, in.Resource, in.After, in.Limit)
 		if err != nil {
-			return ReportingRunsResult{}, err
+			return DeliveryRunsResult{}, err
 		}
 		if err := s.bound(result); err != nil {
-			return ReportingRunsResult{}, err
+			return DeliveryRunsResult{}, err
 		}
 		return result, ctx.Err()
 	}
@@ -345,19 +345,19 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in ReportingRu
 		}
 	}
 	if err := s.bound(out); err != nil {
-		return ReportingRunsResult{}, err
+		return DeliveryRunsResult{}, err
 	}
 	return out, ctx.Err()
 }
 
-func blockRunSummary(v RunView) ReportingRunSummary {
-	return ReportingRunSummary{Kind: "block", Run: v.ID, Target: DeliveryTarget{"block", v.Block, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
+func blockRunSummary(v RunView) DeliveryRunSummary {
+	return DeliveryRunSummary{Kind: "block", Run: v.ID, Target: DeliveryTarget{"block", v.Block, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
 }
 
 // CompositionRunSummary contains no invisible page names, rows or aggregate
 // counts. The store supplies only an already authorized composition head.
-func CompositionRunSummary(v CompositionView) ReportingRunSummary {
-	return ReportingRunSummary{Kind: v.Kind, Run: v.ID, Target: DeliveryTarget{v.Kind, v.Document, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
+func CompositionRunSummary(v CompositionView) DeliveryRunSummary {
+	return DeliveryRunSummary{Kind: v.Kind, Run: v.ID, Target: DeliveryTarget{v.Kind, v.Document, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
 }
 
 func (s *Delivery) bound(value any) error {

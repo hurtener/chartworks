@@ -29,13 +29,13 @@ type chartCase struct {
 }
 
 type fixture struct {
-	Cases       []chartCase                    `json:"cases"`
-	View        reporting.ReportingViewResult  `json:"view"`
-	Description reporting.ReportingDescription `json:"description"`
-	Run         reporting.ReportingRunResult   `json:"run"`
-	Table       charts.Output                  `json:"table"`
-	Precision   charts.Output                  `json:"precision"`
-	Percent     charts.Output                  `json:"percent"`
+	Cases       []chartCase                   `json:"cases"`
+	View        reporting.DeliveryViewResult  `json:"view"`
+	Description reporting.DeliveryDescription `json:"description"`
+	Run         reporting.DeliveryRunResult   `json:"run"`
+	Table       charts.Output                 `json:"table"`
+	Precision   charts.Output                 `json:"precision"`
+	Percent     charts.Output                 `json:"percent"`
 }
 
 func expectedRows(out charts.Output) [][]*string {
@@ -134,11 +134,11 @@ func produce(t *testing.T) fixture {
 	choices := []reporting.ViewerOutputChoice{{ID: "table-main", Kind: "table", Title: "Table one"}, {ID: "table-second", Kind: "table", Title: "Table two"}}
 	filters := []reporting.ViewerFilter{{Page: "main", Label: "Minimum", Parameter: reporting.Parameter{Name: "minimum", Type: "integer", Required: true, Default: &reporting.Value{Literal: "1"}, Min: "1", Max: "2"}}}
 	next := 2
-	out.View = reporting.ReportingViewResult{
+	out.View = reporting.DeliveryViewResult{
 		Policy:    "certified_only",
 		Version:   reporting.DeliveryVersion,
-		Summary:   reporting.ReportingRunSummary{Kind: "block", Run: "viewer-run", Target: target, State: "succeeded", Created: created, Expires: created.Add(time.Hour)},
-		Selection: reporting.ReportingViewRequest{Kind: "block", Run: "viewer-run", Output: "table-main", Limit: 2},
+		Summary:   reporting.DeliveryRunSummary{Kind: "block", Run: "viewer-run", Target: target, State: "succeeded", Created: created, Expires: created.Add(time.Hour)},
+		Selection: reporting.DeliveryViewRequest{Kind: "block", Run: "viewer-run", Output: "table-main", Limit: 2},
 		Locale:    "en", Timezone: "UTC", Outputs: choices, Pages: []reporting.CompositionPageSummary{}, Filters: filters,
 		Trust:    &reporting.Trust{Publication: "published", Certification: "certified", Health: reporting.Health{Status: "healthy"}},
 		Observed: &created,
@@ -146,10 +146,10 @@ func produce(t *testing.T) fixture {
 			Table: &reporting.ViewerTable{Columns: out.Table.Columns, Rows: out.Table.Rows[:2], Totals: out.Table.Totals, Completeness: out.Table.Completeness, Warnings: out.Table.Warnings}},
 		PageBounds: reporting.ViewerPage{Offset: 0, Limit: 2, Total: len(out.Table.Rows), Next: &next},
 	}
-	out.Description = reporting.ReportingDescription{Version: reporting.DeliveryVersion,
-		Resource: reporting.ReportingResource{Target: target, Title: target.ID, Locale: "en"},
+	out.Description = reporting.DeliveryDescription{Version: reporting.DeliveryVersion,
+		Resource: reporting.DeliveryResource{Target: target, Title: target.ID, Locale: "en"},
 		Outputs:  choices, Filters: filters, Pages: []reporting.CompositionPageSummary{}, Timezone: "UTC"}
-	out.Run = reporting.ReportingRunResult{Version: reporting.DeliveryVersion, Kind: "block", Run: "viewer-new-run", State: "succeeded", Target: target}
+	out.Run = reporting.DeliveryRunResult{Version: reporting.DeliveryVersion, Kind: "block", Run: "viewer-new-run", State: "succeeded", Target: target}
 	return out
 }
 
@@ -167,7 +167,7 @@ func Run(t *testing.T, suite string) {
 		t.Fatal("cannot resolve bundled component test")
 	}
 	script := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "web", "report-viewer", "component.test.mjs"))
-	node, err := exec.LookPath("node")
+	_, err := exec.LookPath("node")
 	if err != nil {
 		t.Fatal("Phase31 component acceptance requires Node 22+ and Chrome; no browser tests were skipped", err)
 	}
@@ -185,7 +185,7 @@ func Run(t *testing.T, suite string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, node, script, htmlPath, fixturePath, suite)
+	cmd := exec.CommandContext(ctx, "node", script, htmlPath, fixturePath, suite)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

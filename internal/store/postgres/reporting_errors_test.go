@@ -3,9 +3,10 @@ package postgres
 import (
 	"errors"
 	"fmt"
+	"testing"
+
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/store"
-	"testing"
 )
 
 func TestReportingErrorsRetainPublicClass(t *testing.T) {

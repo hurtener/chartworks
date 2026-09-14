@@ -167,11 +167,11 @@ func testPhase30Lifecycle(t *testing.T) {
 		if f.domain.attemptCount(t) != before+2 {
 			t.Fatal("pinned runs did not execute exactly once")
 		}
-		oldView, err := f.delivery.View(t.Context(), f.domain.execute, reporting.ReportingViewRequest{Kind: "block", Run: first.ID, Output: "table-main", Limit: 10})
+		oldView, err := f.delivery.View(t.Context(), f.domain.execute, reporting.DeliveryViewRequest{Kind: "block", Run: first.ID, Output: "table-main", Limit: 10})
 		if err != nil || oldView.PageBounds.Total != 2 {
 			t.Fatal("earlier run used newer SQL", oldView, err)
 		}
-		newView, err := f.delivery.View(t.Context(), f.domain.execute, reporting.ReportingViewRequest{Kind: "block", Run: second.ID, Output: "table-main", Limit: 10})
+		newView, err := f.delivery.View(t.Context(), f.domain.execute, reporting.DeliveryViewRequest{Kind: "block", Run: second.ID, Output: "table-main", Limit: 10})
 		if err != nil || newView.PageBounds.Total != 1 {
 			t.Fatal("new run did not use accepted new revision", newView, err)
 		}
@@ -199,7 +199,7 @@ func testPhase30Lifecycle(t *testing.T) {
 				t.Fatal("pinned report consumer", err)
 			}
 		}
-		oldReport, err := f.delivery.View(t.Context(), f.domain.execute, reporting.ReportingViewRequest{Kind: "report", Run: reportJob.ID, Page: "main", Widget: "frozen", Output: "table-main", Limit: 10})
+		oldReport, err := f.delivery.View(t.Context(), f.domain.execute, reporting.DeliveryViewRequest{Kind: "report", Run: reportJob.ID, Page: "main", Widget: "frozen", Output: "table-main", Limit: 10})
 		if err != nil || oldReport.PageBounds.Total != 1 {
 			t.Fatal("accepted report dependency floated", oldReport, err)
 		}

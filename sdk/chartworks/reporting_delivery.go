@@ -18,19 +18,19 @@ const ReportingVersion = reporting.DeliveryVersion
 type ReportingTarget = reporting.DeliveryTarget
 
 // ReportingSearchRequest searches one bounded published metadata page.
-type ReportingSearchRequest = reporting.ReportingSearchRequest
+type ReportingSearchRequest = reporting.DeliverySearchRequest
 
 // ReportingResource omits SQL, credentials and retained values.
-type ReportingResource = reporting.ReportingResource
+type ReportingResource = reporting.DeliveryResource
 
 // ReportingSearchResult is a permission-filtered metadata page.
-type ReportingSearchResult = reporting.ReportingSearchResult
+type ReportingSearchResult = reporting.DeliverySearchResult
 
 // ReportingDescribeRequest selects published outputs and business filters.
-type ReportingDescribeRequest = reporting.ReportingDescribeRequest
+type ReportingDescribeRequest = reporting.DeliveryDescribeRequest
 
 // ReportingDescription never includes executable SQL or narrative instructions.
-type ReportingDescription = reporting.ReportingDescription
+type ReportingDescription = reporting.DeliveryDescription
 
 // ReportingOutputChoice preserves a stable output identifier and order.
 type ReportingOutputChoice = reporting.ViewerOutputChoice
@@ -39,28 +39,28 @@ type ReportingOutputChoice = reporting.ViewerOutputChoice
 type ReportingFilter = reporting.ViewerFilter
 
 // ReportingDeliveryRunRequest explicitly requests a new authorized execution.
-type ReportingDeliveryRunRequest = reporting.ReportingRunRequest
+type ReportingDeliveryRunRequest = reporting.DeliveryRunRequest
 
 // ReportingRunResult points to an ordinary retained artifact catalog entry.
-type ReportingRunResult = reporting.ReportingRunResult
+type ReportingRunResult = reporting.DeliveryRunResult
 
 // ReportingRunsRequest selects a bounded retained metadata page.
-type ReportingRunsRequest = reporting.ReportingRunsRequest
+type ReportingRunsRequest = reporting.DeliveryRunsRequest
 
 // ReportingRunsResult distinguishes artifact availability from execution status.
-type ReportingRunsResult = reporting.ReportingRunsResult
+type ReportingRunsResult = reporting.DeliveryRunsResult
 
 // ReportingRunSummary contains no result values or credentials.
-type ReportingRunSummary = reporting.ReportingRunSummary
+type ReportingRunSummary = reporting.DeliveryRunSummary
 
 // ReportingScheduledProvenance describes accepted windows and independent delivery stages.
 type ReportingScheduledProvenance = reporting.ScheduledProvenance
 
 // ReportingViewRequest selects one output or exact retained table page.
-type ReportingViewRequest = reporting.ReportingViewRequest
+type ReportingViewRequest = reporting.DeliveryViewRequest
 
 // ReportingViewResult is identical to the MCP Apps provider payload.
-type ReportingViewResult = reporting.ReportingViewResult
+type ReportingViewResult = reporting.DeliveryViewResult
 
 // ReportingViewerOutput identifies an exact projection separately from its full retained digest.
 type ReportingViewerOutput = reporting.ViewerOutput

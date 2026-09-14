@@ -58,7 +58,7 @@ func testPhase30CatalogProvenance(t *testing.T) {
 				t.Fatal(err)
 			}
 			beforeQueries, beforeModels := f.domain.attemptCount(t), f.domain.f.model.requests.Load()
-			selection := reporting.ReportingViewRequest{Kind: resource, Run: job.ID, Output: "table-main", Limit: 10}
+			selection := reporting.DeliveryViewRequest{Kind: resource, Run: job.ID, Output: "table-main", Limit: 10}
 			if resource == "report" {
 				selection.Page, selection.Widget = "main", "frozen"
 			}
@@ -80,7 +80,7 @@ func testPhase30CatalogProvenance(t *testing.T) {
 				p.Execution != "succeeded" || p.Query != "succeeded" || p.Artifact != "retained" || p.Catalog != "available" || p.Notification != "not_requested" || p.PublishedAt == nil {
 				t.Fatal("occurrence/delivery evidence changed", p)
 			}
-			page, err := f.delivery.Runs(t.Context(), f.domain.execute, reporting.ReportingRunsRequest{Kind: resource, Resource: id, Limit: 10})
+			page, err := f.delivery.Runs(t.Context(), f.domain.execute, reporting.DeliveryRunsRequest{Kind: resource, Resource: id, Limit: 10})
 			if err != nil || len(page.Items) != 1 || page.Items[0].Run != job.ID || page.Items[0].Scheduled == nil {
 				t.Fatal("ordinary catalog lost scheduled provenance", page, err)
 			}

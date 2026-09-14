@@ -16,8 +16,8 @@ var _ reporting.CompositionCatalog = (*DB)(nil)
 // protected metadata leaves SQL. It reads no manifest, result or narrative bytes
 // and has no source/model dependency. Page contexts are independently redacted
 // by the same projection used by ordinary retained composition reads.
-func (d *DB) ListCompositionArtifacts(ctx context.Context, e identity.Envelope, kind, resource, after string, limit int) (out reporting.ReportingRunsResult, err error) {
-	out = reporting.ReportingRunsResult{Version: reporting.DeliveryVersion, Items: []reporting.ReportingRunSummary{}}
+func (d *DB) ListCompositionArtifacts(ctx context.Context, e identity.Envelope, kind, resource, after string, limit int) (out reporting.DeliveryRunsResult, err error) {
+	out = reporting.DeliveryRunsResult{Version: reporting.DeliveryVersion, Items: []reporting.DeliveryRunSummary{}}
 	if (kind != "report" && kind != "dashboard") || resource != "" && !identity.Identifier(resource) || after != "" && !identity.Identifier(after) || limit < 1 || limit > 100 {
 		return out, store.ErrInvalid
 	}
@@ -81,7 +81,7 @@ func (d *DB) ListCompositionArtifacts(ctx context.Context, e identity.Envelope, 
 		return ctx.Err()
 	})
 	if err != nil {
-		return reporting.ReportingRunsResult{}, err
+		return reporting.DeliveryRunsResult{}, err
 	}
 	return out, nil
 }

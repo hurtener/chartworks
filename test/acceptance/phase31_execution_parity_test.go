@@ -37,11 +37,11 @@ func testPhase31ExplicitExecution(t *testing.T) {
 		t.Fatal("changed filters did not request a new single run", second, err)
 	}
 	reader := f.reader(t, "p31-filters", "")
-	old, err := f.service.View(t.Context(), reader, reporting.ReportingViewRequest{Kind: "block", Run: first.Run, Output: "table-second", Limit: 10})
+	old, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "block", Run: first.Run, Output: "table-second", Limit: 10})
 	if err != nil || old.PageBounds.Total != 2 || old.Outputs[0].ID != "table-second" {
 		t.Fatal("old artifact changed with filters/output order", old, err)
 	}
-	newer, err := f.service.View(t.Context(), reader, reporting.ReportingViewRequest{Kind: "block", Run: second.Run, Output: "table-second", Limit: 10})
+	newer, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "block", Run: second.Run, Output: "table-second", Limit: 10})
 	if err != nil || newer.PageBounds.Total != 1 || newer.Output.Table.Rows[0][0].Value != "2" {
 		t.Fatal("typed filter did not affect actual query", newer, err)
 	}
@@ -65,7 +65,7 @@ func testPhase31ExplicitExecution(t *testing.T) {
 	report := phase29Text("Exact published consent")
 	report.Widgets = append(report.Widgets, phase29BlockWidget("frozen", "p31-filters", 1, "table-main"))
 	state := f.domain.report(t, "p31-consent", report, true)
-	original, err := f.service.Describe(t.Context(), f.domain.execute, reporting.ReportingDescribeRequest{Target: reporting.DeliveryTarget{Kind: "report", ID: state.ID}, Outputs: []string{}})
+	original, err := f.service.Describe(t.Context(), f.domain.execute, reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "report", ID: state.ID}, Outputs: []string{}})
 	if err != nil || original.Dynamic || original.Resource.Target.Revision != 1 {
 		t.Fatal(original, err)
 	}
@@ -94,7 +94,7 @@ func testPhase31ExplicitExecution(t *testing.T) {
 		t.Fatal("authorized dynamic lane was not actually executed", dynamic, err)
 	}
 	beforeSource, beforeModels := f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
-	view, err := f.service.View(t.Context(), f.reader(t, "", state.ID), reporting.ReportingViewRequest{Kind: "report", Run: dynamic.Run, Page: "main", Widget: "dynamic", Limit: 1})
+	view, err := f.service.View(t.Context(), f.reader(t, "", state.ID), reporting.DeliveryViewRequest{Kind: "report", Run: dynamic.Run, Page: "main", Widget: "dynamic", Limit: 1})
 	if err != nil || view.Output == nil || view.Output.Table == nil || view.Trust != nil || view.Observed == nil {
 		t.Fatal("dynamic projection lost values/provenance or inherited certification", view, err)
 	}
@@ -134,18 +134,18 @@ func testPhase31ProviderParity(t *testing.T) {
 	f.domain.block(t, "p31-parity", f.domain.base)
 	mcpClient, httpClient := f.client(t, f.scopes, true), f.client(t, f.scopes, false)
 	bearer := f.token(t, f.domain.execute.User(), f.domain.execute.Tenant(), f.scopes, false)
-	search := reporting.ReportingSearchRequest{Kind: "block", Query: "", Locale: "en", Limit: 20}
-	hSearch := phase31HTTP[reporting.ReportingSearchResult](t, f, bearer, "search", search)
-	mSearch := phase22Call[reporting.ReportingSearchResult](t, mcpClient, "reporting_search", search)
+	search := reporting.DeliverySearchRequest{Kind: "block", Query: "", Locale: "en", Limit: 20}
+	hSearch := phase31HTTP[reporting.DeliverySearchResult](t, f, bearer, "search", search)
+	mSearch := phase22Call[reporting.DeliverySearchResult](t, mcpClient, "reporting_search", search)
 	sSearch, err := httpClient.SearchReporting(t.Context(), search)
 	if err != nil {
 		t.Fatal(err)
 	}
 	phase31Equivalent(t, hSearch, mSearch, "search HTTP/MCP")
 	phase31Equivalent(t, hSearch, sSearch, "search HTTP/SDK")
-	description := reporting.ReportingDescribeRequest{Target: reporting.DeliveryTarget{Kind: "block", ID: "p31-parity", Revision: 1}, Locale: "en", Outputs: []string{"table-second", "table-main"}}
-	hDescription := phase31HTTP[reporting.ReportingDescription](t, f, bearer, "describe", description)
-	mDescription := phase22Call[reporting.ReportingDescription](t, mcpClient, "reporting_describe", description)
+	description := reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "block", ID: "p31-parity", Revision: 1}, Locale: "en", Outputs: []string{"table-second", "table-main"}}
+	hDescription := phase31HTTP[reporting.DeliveryDescription](t, f, bearer, "describe", description)
+	mDescription := phase22Call[reporting.DeliveryDescription](t, mcpClient, "reporting_describe", description)
 	sDescription, err := httpClient.DescribeReporting(t.Context(), description)
 	if err != nil {
 		t.Fatal(err)
@@ -155,8 +155,8 @@ func testPhase31ProviderParity(t *testing.T) {
 	request := phase31Request("block", "p31-parity", "p31-cross-provider-key")
 	request.Outputs = []string{"table-second", "table-main"}
 	before := f.domain.attemptCount(t)
-	mRun := phase22Call[reporting.ReportingRunResult](t, mcpClient, "reporting_run", request)
-	hRun := phase31HTTP[reporting.ReportingRunResult](t, f, bearer, "run", request)
+	mRun := phase22Call[reporting.DeliveryRunResult](t, mcpClient, "reporting_run", request)
+	hRun := phase31HTTP[reporting.DeliveryRunResult](t, f, bearer, "run", request)
 	sRun, err := httpClient.RunReporting(t.Context(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -167,9 +167,9 @@ func testPhase31ProviderParity(t *testing.T) {
 		t.Fatal("provider parity/replay duplicated execution")
 	}
 	beforeSource, beforeModels := f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
-	selection := reporting.ReportingViewRequest{Kind: "block", Run: mRun.Run, Output: "table-second", Offset: 1, Limit: 1}
-	hView := phase31HTTP[reporting.ReportingViewResult](t, f, bearer, "view", selection)
-	mView := phase22Call[reporting.ReportingViewResult](t, mcpClient, "reporting_view", selection)
+	selection := reporting.DeliveryViewRequest{Kind: "block", Run: mRun.Run, Output: "table-second", Offset: 1, Limit: 1}
+	hView := phase31HTTP[reporting.DeliveryViewResult](t, f, bearer, "view", selection)
+	mView := phase22Call[reporting.DeliveryViewResult](t, mcpClient, "reporting_view", selection)
 	sView, err := httpClient.ViewReporting(t.Context(), selection)
 	if err != nil {
 		t.Fatal(err)
@@ -193,9 +193,9 @@ func testPhase31ProviderParity(t *testing.T) {
 	if json.Unmarshal(fallback.Structured, &structured) != nil || json.Unmarshal([]byte(fallback.Content[0].Text), &textual) != nil || !reflect.DeepEqual(structured, textual) {
 		t.Fatal("structured and text fallbacks disagree")
 	}
-	list := reporting.ReportingRunsRequest{Kind: "block", Resource: "p31-parity", Limit: 20}
-	hRuns := phase31HTTP[reporting.ReportingRunsResult](t, f, bearer, "runs", list)
-	mRuns := phase22Call[reporting.ReportingRunsResult](t, mcpClient, "reporting_runs", list)
+	list := reporting.DeliveryRunsRequest{Kind: "block", Resource: "p31-parity", Limit: 20}
+	hRuns := phase31HTTP[reporting.DeliveryRunsResult](t, f, bearer, "runs", list)
+	mRuns := phase22Call[reporting.DeliveryRunsResult](t, mcpClient, "reporting_runs", list)
 	sRuns, err := httpClient.SearchReportingRuns(t.Context(), list)
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +230,7 @@ func testPhase31ProviderBounds(t *testing.T) {
 	run := f.run(t, "block", "p31-bounds", "p31-bounds-run")
 	reader := f.reader(t, "p31-bounds", "")
 	beforeSource, beforeModels := f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
-	for _, selection := range []reporting.ReportingViewRequest{
+	for _, selection := range []reporting.DeliveryViewRequest{
 		{Kind: "block", Run: run.Run, Limit: 1001},
 		{Kind: "block", Run: run.Run, Offset: -1, Limit: 1},
 		{Kind: "block", Run: run.Run, Offset: 3, Limit: 1},
@@ -248,7 +248,7 @@ func testPhase31ProviderBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view, err := limited.View(t.Context(), reader, reporting.ReportingViewRequest{Kind: "block", Run: run.Run, Limit: 1})
+	view, err := limited.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "block", Run: run.Run, Limit: 1})
 	if !errors.Is(err, reporting.ErrBudget) || view.Output != nil || view.Summary.Run != "" {
 		t.Fatal("provider output cap was a hint instead of an enforced bound", view, err)
 	}
@@ -269,7 +269,7 @@ func testPhase31ProviderBounds(t *testing.T) {
 		t.Fatal("request byte ceiling", response.Code, response.Body.String())
 	}
 	foreign := f.token(t, "foreign-reader", "foreign-tenant", readScopes, false)
-	response = callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", foreign, string(phase31Wire(t, reporting.ReportingViewRequest{Kind: "block", Run: run.Run, Limit: 1})), nil)
+	response = callProtected(t, f.handler, http.MethodPost, "/v1/reporting/view", foreign, string(phase31Wire(t, reporting.DeliveryViewRequest{Kind: "block", Run: run.Run, Limit: 1})), nil)
 	if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), run.Run) {
 		t.Fatal("cross-tenant artifact disclosure", response.Code, response.Body.String())
 	}
@@ -280,7 +280,7 @@ func testPhase31ProviderBounds(t *testing.T) {
 	}
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err = f.service.View(cancelled, reader, reporting.ReportingViewRequest{Kind: "block", Run: run.Run, Limit: 1}); !errors.Is(err, context.Canceled) {
+	if _, err = f.service.View(cancelled, reader, reporting.DeliveryViewRequest{Kind: "block", Run: run.Run, Limit: 1}); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled provider read was not cancelled", err)
 	}
 	if beforeSource != f.domain.f.f.lookups.Load() || beforeModels != f.domain.f.model.requests.Load() {

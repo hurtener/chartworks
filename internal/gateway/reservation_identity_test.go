@@ -1,10 +1,11 @@
 package gateway
 
 import (
-	"github.com/hurtener/chartworks/internal/access"
-	"github.com/hurtener/chartworks/internal/identity"
 	"testing"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/identity"
 )
 
 func TestReservationMatchesExactCurrentIdentity(t *testing.T) {

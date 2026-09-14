@@ -1,8 +1,9 @@
 package config
 
 import (
-	"github.com/hurtener/chartworks/internal/calendars"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/calendars"
 )
 
 func TestJobsTimezoneDatabaseVersion(t *testing.T) {

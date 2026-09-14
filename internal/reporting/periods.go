@@ -1,10 +1,11 @@
 package reporting
 
 import (
-	"github.com/hurtener/chartworks/internal/calendars"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/calendars"
 )
 
 func namedZone(name string) (*time.Location, error) {
