@@ -73,19 +73,23 @@ jobs:
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
           go mod verify
           git diff --exit-code
-      - name: Phase 30 target and authority integration under development
+      - name: All eight scheduling acceptance criteria
         run: |
           set -o pipefail
-          go test -race -count=1 -v -timeout=10m ./test/acceptance -run '^TestPhase30$' 2>&1 | tee /tmp/reporting-phase30.log
-      - name: Phase 31 actual provider and browser acceptance
+          go test -race -count=1 -v -timeout=15m ./test/acceptance -run '^TestPhase30$' 2>&1 | tee /tmp/reporting-phase30.log
+      - name: All eight provider and real browser criteria
         if: always()
         run: |
           set -o pipefail
           go test -race -count=1 -v -timeout=10m ./test/acceptance -run '^TestPhase31$' 2>&1 | tee /tmp/reporting-phase31.log
-          go test -race -count=3 -v -timeout=5m ./test/acceptance -run '^TestPhase31$/^AC06$' 2>&1 | tee /tmp/reporting-interaction.log
-      - name: Reporting, queue, calendar, configuration and MCP regressions
+      - name: Original scheduler, exhaustive transport and composition regressions
         if: always()
-        run: go test -race -count=1 -timeout=10m ./internal/calendars ./internal/jobs ./internal/reporting ./internal/reportingapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=15m ./test/acceptance -run '^TestPhase(06|21|29)$' 2>&1 | tee /tmp/reporting-regressions.log
+      - name: Reporting, shared queue, calendar, API, configuration and MCP regressions
+        if: always()
+        run: go test -race -count=1 -timeout=10m ./internal/calendars ./internal/jobs ./internal/reporting ./internal/reportingapi ./internal/workapi ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks
       - name: Formatting and source are unchanged
         if: always()
         run: |
