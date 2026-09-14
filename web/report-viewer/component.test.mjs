@@ -15,7 +15,7 @@ const html=await readFile(htmlPath,'utf8'), fixtures=JSON.parse(await readFile(f
 const fixtureWire=JSON.stringify(fixtures).replaceAll('<','\\u003c');
 const errors=[],network=[]; let passes=0;
 const host = `<!doctype html><meta charset="utf-8"><title>Chartworks component fixture</title><iframe id="viewer" title="Actual reporting app" src="/resource" width="900" height="950"></iframe><script>
-window.fixture=${fixtureWire};window.calls=[];window.notifications=[];window.resultOverride=null;window.hostReady=false;
+window.fixture=${fixtureWire};window.calls=[];window.notifications=[];window.resultOverride=null;window.resultOverrideTool=null;window.hostReady=false;
 const frame=document.getElementById('viewer');
 const copy=v=>JSON.parse(JSON.stringify(v));
 const send=m=>frame.contentWindow.postMessage(m,location.origin);
@@ -32,7 +32,7 @@ window.addEventListener('message',e=>{
  if(m.method==='ui/notifications/size-changed'){notifications.push(copy(m.params));return;}
  if(m.method==='tools/call'){
    calls.push(copy(m.params));let result;
-   if(window.resultOverride){result=window.resultOverride;window.resultOverride=null;}
+   if(window.resultOverride&&(!window.resultOverrideTool||window.resultOverrideTool===m.params.name)){result=window.resultOverride;window.resultOverride=null;window.resultOverrideTool=null;}
    else if(m.params.name==='reporting_describe')result=wrapped(fixture.description);
    else if(m.params.name==='reporting_run')result=wrapped(fixture.run);
    else if(m.params.name==='reporting_view'){
@@ -72,7 +72,17 @@ const doc=`document.getElementById('viewer').contentDocument`;
 const body=`${doc}.getElementById('report-viewer')`;
 const waitTitle=title=>until(()=>evaluate(`${body}?.querySelector('h1')?.textContent===${JSON.stringify(title)}`),'render did not finish: '+title);
 const waitCalls=n=>until(()=>evaluate(`calls.length>=${n}`),'bridge request missing');
-const restore=async()=>{await evaluate('show(fixture.view)');await waitTitle(fixtures.view.summary.target.id);};
+let restoreSequence=0;
+// Posting a notification is asynchronous. A unique rendered marker proves the
+// resource accepted a new generation before installing the next hostile reply;
+// merely waiting for the unchanged fixture title can race an old tool response.
+const restore=async()=>{
+  const marker='restore-'+(++restoreSequence);
+  await evaluate(`(()=>{window.resultOverride=null;window.resultOverrideTool=null;const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id=${JSON.stringify(marker)};show(v);})()`);
+  await waitTitle(marker);
+  await evaluate('show(fixture.view)');
+  await waitTitle(fixtures.view.summary.target.id);
+};
 try{
   let port;
   await until(async()=>{try{port=Number((await readFile(join(directory,'DevToolsActivePort'),'utf8')).split('\n')[0]);return port>0;}catch{return false;}},'browser did not expose DevTools');
@@ -160,17 +170,17 @@ try{
     await restore();const initialRuns=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
     for(const field of ['id','kind']){
       await restore();
-      await evaluate(`const d=JSON.parse(JSON.stringify(fixture.description));d.resource.target.${field}=${field==='id'?"'different-resource'":"'report'"};window.resultOverride={structuredContent:{result:d},content:[]};Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();`);
+      await evaluate(`(()=>{const d=JSON.parse(JSON.stringify(fixture.description));d.resource.target.${field}=${field==='id'?"'different-resource'":"'report'"};window.resultOverride={structuredContent:{result:d},content:[]};window.resultOverrideTool='reporting_describe';Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();})()`);
       await until(()=>evaluate(`${body}.textContent.includes('stale_validation')`),'mismatched describe response was accepted');
       await check(`calls.filter(c=>c.name==='reporting_run').length===${initialRuns}`,'description identity cannot redirect a mutation');
       await check(`${body}.querySelector('table,svg')===null`,'mismatched description clears analytical values');
     }
     for(const field of ['run','kind']){
-      await restore();await evaluate(`const v=JSON.parse(JSON.stringify(fixture.view));v.selection.${field}=${field==='run'?"'different-run'":"'report'"};show(v);`);
+      await restore();await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.selection.${field}=${field==='run'?"'different-run'":"'report'"};show(v);})()`);
       await until(()=>evaluate(`${body}.textContent.includes('invalid_request')`),'inconsistent artifact identity rendered');
       await check(`${body}.querySelector('table,svg')===null`,'selection and summary must identify the same artifact');
     }
-    await restore();await evaluate(`const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id='_valid-coordinate';v.filters[0].parameter.name='_valid_parameter';show(v);`);await waitTitle('_valid-coordinate');
+    await restore();await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id='_valid-coordinate';v.filters[0].parameter.name='_valid_parameter';show(v);})()`);await waitTitle('_valid-coordinate');
     await check(`${body}.querySelector('fieldset')!==null`,'viewer preserves the canonical opaque identifier grammar');
 
     await restore();await evaluate(`const a=JSON.parse(JSON.stringify(fixture.view));a.summary.target.id='inert-label';a.output.table.columns[0].name='<img src=/attack onerror=parent.hacked=true>';a.output.table.rows[0][0].value='<script>parent.hacked=true</'+'script>';show(a);`);await waitTitle('inert-label');

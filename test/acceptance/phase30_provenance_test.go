@@ -2,9 +2,13 @@ package acceptance
 
 import (
 	"encoding/json"
-	"github.com/hurtener/chartworks/internal/reporting"
+	"errors"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/store"
 )
 
 func testPhase30CatalogProvenance(t *testing.T) {
@@ -28,7 +32,25 @@ func testPhase30CatalogProvenance(t *testing.T) {
 			target := phase30Target(kind, id)
 			target.Recipients = []string{"PRIVATE_RECIPIENT_CANARY"}
 			schedule := f.schedule(t, "provenance-schedule", phase30Manual(target))
-			job, err := f.queue.TestSchedule(t.Context(), f.manager(t), schedule.ID, "provenance-occurrence", schedule.Revision)
+			manager := f.manager(t)
+			if kind == "report" {
+				// Report publications explicitly retain dependency read reach.
+				// Schedule permissions must not replace that signed consent.
+				beforeQueries, beforeBroker := f.domain.attemptCount(t), f.calls.Load()
+				if _, err := f.queue.TestSchedule(t.Context(), manager, schedule.ID, "missing-dependency-consent", schedule.Revision); !errors.Is(err, store.ErrNotFound) {
+					t.Fatal("schedule management bypassed the report dependency graph", err)
+				}
+				if beforeQueries != f.domain.attemptCount(t) || beforeBroker != f.calls.Load() {
+					t.Fatal("rejected test performed protected work")
+				}
+				scopes := slices.DeleteFunc(phase30ManagementScopes(f), func(s string) bool { return s == "scheduling.cancel" || s == "cw.run.write:*" })
+				scopes = append(scopes, "cw.block.read:p30-provenance-block")
+				if len(scopes) > 32 {
+					t.Fatal("fixture enlarged issuer scope ceiling")
+				}
+				manager = phase27Actor(t, f.domain.f, f.actor.User(), scopes)
+			}
+			job, err := f.queue.TestSchedule(t.Context(), manager, schedule.ID, "provenance-occurrence", schedule.Revision)
 			if err != nil {
 				t.Fatal(err)
 			}
