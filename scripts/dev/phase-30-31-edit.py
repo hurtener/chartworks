@@ -1,52 +1,28 @@
-"""Temporary branch-only integration aid; removed before final review."""
+"""Temporary exact-source integration aid; removed before final review."""
 from pathlib import Path
-import re
+import json
 import subprocess
-changed = set()
-def replace(path, old, new):
-    p = Path(path); s = p.read_text()
-    if new in s: return
-    if s.count(old) != 1: raise RuntimeError(f'Expected one anchor in {path}: {old[:120]!r}')
-    p.write_text(s.replace(old, new)); changed.add(path)
 
-p = 'test/acceptance/phase30_test.go'
-replace(p, '\tt.Run("AC02", testPhase30Authority)\n', '\tt.Run("AC02", testPhase30Authority)\n\tt.Run("AC03", testPhase30Calendars)\n\tt.Run("AC04", testPhase30Lifecycle)\n\tt.Run("AC05", testPhase30Operations)\n\tt.Run("AC06", testPhase30Delivery)\n\tt.Run("AC07", testPhase30ChangedDependencies)\n\tt.Run("AC08", testPhase30Transport)\n')
-p = Path('test/acceptance/phase30_calendars_test.go')
-s = p.read_text()
-start = s.index('\tscopes := slices.Clone(f.admissionScopes)', s.index('func (f *phase30Fixture) manager'))
-end = s.index('\tif len(scopes) > 32', start)
-s = s[:start] + '\tscopes := phase30ManagementScopes(f)\n' + s[end:]
-s = s.replace('\n\t"slices"\n', '\n')
-p.write_text(s); changed.add(str(p))
+# Reuse the exact reviewed edit payload, correcting its overly narrow source
+# anchor. Fetch only this immutable public repository commit, without credentials.
+revision = '776a916d6edf63fde10f39ed71675ed4ddebdce5'
+subprocess.run(['git', 'fetch', '--no-tags', '--depth=1', 'origin', revision], check=True)
+payload = subprocess.check_output(['git', 'show', revision + ':scripts/dev/phase-30-31-edit.py'], text=True)
+old = "replace(p, 'case errors.Is(err, gateway.ErrBudget):', 'case errors.Is(err, gateway.ErrBudget), errors.Is(err, jobs.ErrReportingBudget):')"
+new = "replace(p, 'errors.Is(err, gateway.ErrBudget):', 'errors.Is(err, gateway.ErrBudget) || errors.Is(err, jobs.ErrReportingBudget):')"
+if payload.count(old) != 1:
+    raise RuntimeError('Exact reviewed budget edit anchor changed')
+exec(compile(payload.replace(old, new), 'reviewed-phase-30-31-integration.py', 'exec'))
 
-p = 'internal/reporting/scheduled.go'
-replace(p, 'func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.Envelope, target jobs.ReportingTarget) error {', '''func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.Envelope, target jobs.ReportingTarget) (err error) {
-    // The scheduling transport consumes this domain seam without importing the
-    // reporting implementation. Preserve public error classes, not source or
-    // model details, so a malformed target is not mislabeled an infrastructure
-    // outage and stale publication consent remains a revision conflict.
-    defer func() {
-        switch {
-        case errors.Is(err, ErrInvalid): err = errors.Join(jobs.ErrInvalid, err)
-        case errors.Is(err, ErrStale): err = errors.Join(store.ErrConflict, err)
-        case errors.Is(err, ErrBudget): err = errors.Join(jobs.ErrReportingBudget, err)
-        case errors.Is(err, ErrUnavailable): err = errors.Join(jobs.ErrTransient, err)
-        }
-    }()''')
-p = 'internal/workapi/http.go'
-replace(p, 'case errors.Is(err, gateway.ErrBudget):', 'case errors.Is(err, gateway.ErrBudget), errors.Is(err, jobs.ErrReportingBudget):')
-for path, field, jsonkey, enums in [
-    ('internal/jobs/schedule.go', 'Type', 'type', 'enum=manual,enum=interval,enum=cron'),
-    ('internal/jobs/jobs.go', 'Kind', 'kind', 'enum=retention.sweep,enum=pipeline.run,enum=reporting.scheduled')]:
-    p = Path(path); s = p.read_text()
-    pattern = r'(' + field + r'\s+string\s+`json:"' + jsonkey + r'")`'
-    s, count = re.subn(pattern, lambda m: m[1] + ' jsonschema:"' + enums + '"`', s, count=1)
-    if count != 1: raise RuntimeError('Expected closed kind schema: '+path)
-    p.write_text(s); changed.add(path)
-# A redundant state request under a matching CAS is a no-op, not an invented
-# revision whose immutable history would disagree with the stored definition.
-p = 'internal/store/postgres/schedules.go'
-replace(p, '\t\tprevious, next := out.PreviousDue, out.NextDue', '\t\tif out.Enabled == enabled { return nil }\n\t\tprevious, next := out.PreviousDue, out.NextDue')
-changed.update(str(p) for p in Path('test/acceptance').glob('phase30*.go'))
-subprocess.run(['gofmt', '-w', *sorted(changed)], check=True)
+# In-progress work is not allowed to evade the strict acceptance runner by
+# retaining a planned label. Shipping is a separate, evidence-backed change.
+p = Path('docs/plans/phase-registry.json')
+registry = json.loads(p.read_text())
+for phase in ['30', '31']:
+    registry['phases'][phase]['status'] = 'in_progress'
+    plan = next(Path('docs/plans').glob('phase-' + phase + '-*.md'))
+    text = plan.read_text()
+    text = text.replace('Status: planned', 'Status: in_progress').replace('**Status:** planned', '**Status:** in_progress').replace('| Status | planned |', '| Status | in_progress |')
+    plan.write_text(text)
+p.write_text(json.dumps(registry, indent=2) + '\n')
 subprocess.run(['git', 'diff', '--check'], check=True)
