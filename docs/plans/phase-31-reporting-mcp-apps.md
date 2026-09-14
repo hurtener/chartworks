@@ -1,6 +1,6 @@
 # Phase 31 — reporting-mcp-apps
 
-Status: planned. Owner: internal/mcpserver, internal/reporting, web/report-viewer. Hard dependencies: 22, 23, 28, 29.
+Status: in_progress. Owner: internal/mcpserver, internal/reporting, web/report-viewer. Hard dependencies: 22, 23, 28, 29.
 
 ## Authority and design
 

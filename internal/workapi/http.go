@@ -333,7 +333,7 @@ func fail(w http.ResponseWriter, err error, receipt *gateway.Receipt) {
 		status, code = 400, "invalid_request"
 	case errors.Is(err, gateway.ErrDisabled):
 		status, code = 409, "role_disabled"
-	case errors.Is(err, jobs.ErrBusy) || errors.Is(err, gateway.ErrBusy) || errors.Is(err, gateway.ErrBudget):
+	case errors.Is(err, jobs.ErrBusy) || errors.Is(err, gateway.ErrBusy) || errors.Is(err, gateway.ErrBudget) || errors.Is(err, jobs.ErrReportingBudget):
 		status, code = 429, "budget_exceeded"
 		w.Header().Set("Retry-After", strconv.Itoa(1))
 	case errors.Is(err, gateway.ErrOutput) || errors.Is(err, gateway.ErrSpace):

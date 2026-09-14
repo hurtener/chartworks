@@ -1,6 +1,6 @@
 # Phase 30 — reporting-schedules
 
-Status: planned. Owner: internal/jobs, internal/reporting. Hard dependencies: 06, 18, 23, 28, 29.
+Status: in_progress. Owner: internal/jobs, internal/reporting. Hard dependencies: 06, 18, 23, 28, 29.
 
 ## Authority and design
 

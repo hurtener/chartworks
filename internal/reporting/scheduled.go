@@ -205,7 +205,23 @@ func (s *Scheduled) inspectBlock(ctx context.Context, e identity.Envelope, runs 
 // ValidateScheduledReporting checks the creator's supplied target and actual
 // dependency reach, with zero model/query execution. The sample window here is
 // only shape validation; actual windows come from accepted occurrence instants.
-func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.Envelope, target jobs.ReportingTarget) error {
+func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.Envelope, target jobs.ReportingTarget) (err error) {
+	// The scheduling transport consumes this domain seam without importing the
+	// reporting implementation. Preserve public error classes, not source or
+	// model details, so a malformed target is not mislabeled an infrastructure
+	// outage and stale publication consent remains a revision conflict.
+	defer func() {
+		switch {
+		case errors.Is(err, ErrInvalid):
+			err = errors.Join(jobs.ErrInvalid, err)
+		case errors.Is(err, ErrStale):
+			err = errors.Join(store.ErrConflict, err)
+		case errors.Is(err, ErrBudget):
+			err = errors.Join(jobs.ErrReportingBudget, err)
+		case errors.Is(err, ErrUnavailable):
+			err = errors.Join(jobs.ErrTransient, err)
+		}
+	}()
 	if s == nil || ctx == nil || !target.Valid() {
 		return ErrInvalid
 	}

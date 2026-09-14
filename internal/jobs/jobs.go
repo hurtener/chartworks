@@ -74,7 +74,7 @@ func (l Limits) QueueFingerprint() string {
 
 // Submission is closed: there is no caller-selected actor, tenant, credential, SQL or timestamp.
 type Submission struct {
-	Kind      string           `json:"kind"`
+	Kind      string           `json:"kind" jsonschema:"enum=retention.sweep,enum=pipeline.run,enum=reporting.scheduled"`
 	BindingID string           `json:"binding_id"`
 	Pipeline  *PipelineTarget  `json:"pipeline,omitempty"`
 	Reporting *ReportingTarget `json:"reporting,omitempty"`

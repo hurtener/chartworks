@@ -118,6 +118,9 @@ func (d *DB) SetSchedule(ctx context.Context, scope store.Scope, id string, expe
 		if out.Revision != expected || out.Retired {
 			return store.ErrConflict
 		}
+		if out.Enabled == enabled {
+			return nil
+		}
 		previous, next := out.PreviousDue, out.NextDue
 		// Keep the durable cursor across pause/resume. The next tick applies the declared
 		// skip/catch-up bound to the missed range instead of silently discarding it.

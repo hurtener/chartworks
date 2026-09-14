@@ -18,6 +18,12 @@ import (
 func TestPhase30(t *testing.T) {
 	t.Run("AC01", testPhase30Targets)
 	t.Run("AC02", testPhase30Authority)
+	t.Run("AC03", testPhase30Calendars)
+	t.Run("AC04", testPhase30Lifecycle)
+	t.Run("AC05", testPhase30Operations)
+	t.Run("AC06", testPhase30Delivery)
+	t.Run("AC07", testPhase30ChangedDependencies)
+	t.Run("AC08", testPhase30Transport)
 }
 
 func testPhase30Targets(t *testing.T) {

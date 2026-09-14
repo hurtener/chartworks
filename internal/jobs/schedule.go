@@ -12,7 +12,7 @@ import (
 // Spec supports only executable trigger kinds. Replacement and pause/resume use CAS;
 // accepted occurrences retain their original definition and revision.
 type Spec struct {
-	Type            string    `json:"type"`
+	Type            string    `json:"type" jsonschema:"enum=manual,enum=interval,enum=cron"`
 	Cron            string    `json:"cron,omitempty"`
 	Timezone        string    `json:"timezone"`
 	IntervalSeconds int64     `json:"interval_seconds,omitempty"`
