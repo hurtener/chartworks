@@ -53,6 +53,9 @@ type ReportingRunsResult = reporting.ReportingRunsResult
 // ReportingRunSummary contains no result values or credentials.
 type ReportingRunSummary = reporting.ReportingRunSummary
 
+// ReportingScheduledProvenance describes accepted windows and independent delivery stages.
+type ReportingScheduledProvenance = reporting.ScheduledProvenance
+
 // ReportingViewRequest selects one output or exact retained table page.
 type ReportingViewRequest = reporting.ReportingViewRequest
 

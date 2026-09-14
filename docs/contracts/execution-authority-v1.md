@@ -94,3 +94,23 @@ and external data reach. Accepted due times, windows and versions survive schedu
 replacement. Current issuer support is a separate companion change; enable this
 target only after that provider change is available and the consumer passes its
 actual native scheduled-execution tests. This document is not deployment evidence.
+
+## Reporting consumer extension — phase 30
+
+Reporting uses the same v1 Basic-authenticated trusted broker adapter, body,
+short-lived signed execution proof and jobs audience. No target-scope or identity
+fields are added to the exchange request. The accepted local kind is
+`reporting.scheduled`; target-specific publication/dependency pins are part of the
+immutable manifest hash. The issuer must independently approve binding-use,
+`reporting.execute`, exact run execution and all actual block/report/source/topic/
+dataset/context reach; dynamic queries additionally need their ordinary query
+actions. The consumer never derives these permissions from a creator or recipient.
+
+The producer's deployment/policy must support that approved scope set before
+reporting dispatch is enabled. Chartworks fixture-backed tests do not claim to have
+provisioned production Pengui bindings or changed its issuer configuration.
+`TestPhase30/AC01`–`AC08` exercises the real adapter, verifier, queue and reporting
+paths, including wrong manifest/binding/audience/service, expiry, refusal, narrowed
+context, retries and zero protected work on denial. Metadata-only catalog reads
+are independent of that broker. The [delivery contract](reporting-delivery-v1.md)
+describes the four target representations and distinct effect/receipt states.

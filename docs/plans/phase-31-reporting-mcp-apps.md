@@ -48,4 +48,8 @@ Implement `TestPhase31/AC01` through `TestPhase31/AC08` with real viewer compone
 
 ## Glossary, decisions and deviations
 
-MCP Apps is an established dependency. D-046/D-054 remove host qualification and the accidental schedule prerequisite; phase 30 later supplies scheduled results without a viewer rewrite. No runtime completion is claimed.
+MCP Apps is an established dependency. D-046/D-054 remove host qualification and the accidental schedule prerequisite; phase 30 later supplies scheduled results without a viewer rewrite. The implementation and concrete representation choices are documented in
+[reporting delivery v1](../contracts/reporting-delivery-v1.md). All eight named
+criteria have executable real-consumer tests. Exact-source results and review
+findings are recorded in the [adversarial ledger](../reviews/phase-30-31-adversarial.md);
+status remains in_progress pending review/merge, not a planned-phase skip.

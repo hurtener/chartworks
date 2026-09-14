@@ -1,0 +1,23 @@
+{
+  "mcp": {
+    "groups": [
+      "discovery",
+      "query",
+      "byo",
+      "charts",
+      "reporting"
+    ]
+  },
+  "reporting": {
+    "viewer": {
+      "max_message_bytes": 2097152,
+      "max_rows": 500,
+      "page_rows": 100,
+      "max_outputs": 32,
+      "max_points": 5000
+    }
+  },
+  "jobs": {
+    "timezone_database_version": "go1.26.4-sha256:8f55634d05f8bca1f7bc7c69c5933428c69357e0bdf565e5ba224e3f88ff12e8"
+  }
+}

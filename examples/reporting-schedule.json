@@ -1,0 +1,36 @@
+{
+  "target": {
+    "kind": "reporting.scheduled",
+    "binding_id": "approved-reporting-binding",
+    "reporting": {
+      "type": "saved_sql",
+      "id": "sales-summary",
+      "revision": 1,
+      "latest_published": false,
+      "outputs": [
+        "table-main"
+      ],
+      "arguments": [],
+      "locale": "en",
+      "timezone": "America/Argentina/Buenos_Aires",
+      "dynamic": false,
+      "narrative": false,
+      "partial_failure": "fail_closed",
+      "budget": {
+        "timeout_ms": 10000,
+        "max_rows": 1000,
+        "max_bytes": 1048576,
+        "query_attempts": 1,
+        "model_calls": 0,
+        "model_tokens": 0
+      }
+    }
+  },
+  "spec": {
+    "type": "cron",
+    "cron": "0 9 * * 1-5",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "missed": "skip",
+    "overlap": "skip"
+  }
+}

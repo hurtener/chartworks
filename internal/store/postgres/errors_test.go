@@ -40,7 +40,7 @@ func TestSafeErrors(t *testing.T) {
 		{28, "migrations/029_reports_dashboards.sql", "document_revisions"},
 		{29, "migrations/030_report_composition_runs.sql", "composition_group_guard"},
 		{30, "migrations/031_nested_report_leases.sql", "nested_child_shape"},
-		{31, "migrations/032_timezone_database.sql", "timezone_database_version"},
+		{31, "migrations/032_timezone_database.sql", "queue_timezone_version"},
 		{32, "migrations/033_reporting_occurrences.sql", "reporting_occurrence_delivery"},
 	} {
 		added := manifest[m.index]

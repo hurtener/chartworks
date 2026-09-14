@@ -47,4 +47,8 @@ Implement TestPhase30/AC01 through TestPhase30/AC08 with real queue/store/target
 
 ## Glossary, decisions and deviations
 
-Pengui supplies authority; Chartworks retains occurrence/attempt/delivery state. D-055 puts first adapter delivery in06 and reporting consumption here. No runtime completion is claimed.
+Pengui supplies authority; Chartworks retains occurrence/attempt/delivery state. D-055 puts first adapter delivery in06 and reporting consumption here. The implementation and concrete representation choices are documented in
+[reporting delivery v1](../contracts/reporting-delivery-v1.md). All eight named
+criteria have executable real-consumer tests. Exact-source results and review
+findings are recorded in the [adversarial ledger](../reviews/phase-30-31-adversarial.md);
+status remains in_progress pending review/merge, not a planned-phase skip.
