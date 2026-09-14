@@ -67,3 +67,56 @@ widget, not a second saved-query authoring or IAM model. Direct block/saved-SQL
 execution creates no hidden report. The Apps viewer does not depend on a scheduler.
 Static rendering/export/BFF embedding, live model quality, cloud cutover, migration
 and final release are not claimed by these phase30/31 tests.
+
+## Final verification and submission — 2026-09-14
+
+Verified implementation and test revision:
+`5bafeb6e6bc354d94ef6ddd398550a59e9037503`.
+
+The completed [reviewed-source workflow](https://github.com/hurtener/chartworks/actions/runs/34894620229)
+and independent [reporting-contract workflow](https://github.com/hurtener/chartworks/actions/runs/34894620278)
+both succeeded on that exact revision. Downloaded evidence identifies the same
+`TESTED_COMMIT`; it is not inferred from a green parent job or a source filename.
+
+| Verification | Observed result |
+|---|---|
+| Strict phase30 acceptance | AC01–AC08 passed; `unimplemented_skips=0`. |
+| Strict phase31 acceptance | AC01–AC08 passed, including actual Chromium component tests; `unimplemented_skips=0`. |
+| Original phase06/21/29 race regressions | Passed, including cumulative API and composition behavior. |
+| Complete race-instrumented coverage suite | Passed with real PostgreSQL, MySQL and SQL Server fixtures and pinned native dependency. |
+| Production coverage gate | Every registered band passed; no threshold was lowered. |
+| Go build, vet and formatting | Passed on committed source. |
+| Typed golangci-lint | Passed using v2.12.2. |
+| Planning coherence | Passed; planning is recorded separately from runtime acceptance. |
+
+Measured statement coverage was 84.3% overall. Relevant exact band results were:
+`internal/reporting` 80.77%, `internal/reportingapi` 82.86%, `internal/jobs` 81.47%,
+`internal/jobs/pengui` 96.61%, `internal/calendars` 89.19%,
+`internal/gateway/bifrost` 86.95%, `internal/store/postgres` 84.12%,
+`internal/workapi` 85.49%, and `sdk/chartworks` 86.51%. PostgreSQL retains the
+previously owner-approved 84% band. The Go resource embed wrapper measured 100%;
+that figure is **not JavaScript coverage**. Browser behavior is proven separately
+by the real component criteria, not by the wrapper's four instrumented statements.
+
+The final review rechecked accepted revision/window integrity, creator versus
+renewed execution authority, durable pre-call usage, parent/child publication
+fences, independent delivery stages, current-context catalog filtering, escaped
+viewer content, parent-origin binding, and certified-only filter reruns. No
+unresolved blocking finding remains in this reviewed scope. Added boundary tests
+cover transactional failures, nested ownership, partial delivery and corruption
+of the pinned timezone distribution as part of the verified revision above.
+
+Submission cleanup removes all five remaining phase30/31 source-transfer,
+diagnostic and temporary verification workflows. The temporary write-capable
+editor and editing script were already removed in the verified revision. The
+permanent read-only `reporting.yml` and full `ci.yml` retain strict acceptance,
+real-browser checks, full regression coverage and typed lint; CI also rejects
+reintroduction of recovery and editing aids. This cleanup changes documentation and
+CI bookkeeping only: production code, tests, dependencies, migrations and coverage
+bands are byte-identical to the verified implementation. The PR's own checks
+remain a separate run and are not retroactively represented by the earlier SHA.
+
+The phases remain `in_progress` until review/merge, as required for submissions.
+That status does not indicate a skipped or missing criterion. Notification
+sending, phase32 static exports and production issuer provisioning remain the
+explicit out-of-scope qualification boundaries described above.
