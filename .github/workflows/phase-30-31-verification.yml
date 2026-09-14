@@ -1,4 +1,4 @@
-name: Phase 30-31 final exact-source verification
+name: Phase 30-31 exact-source verification
 on:
   push:
     branches: [feat/phase-30-31-reporting-delivery]
@@ -6,6 +6,105 @@ on:
 permissions:
   contents: read
 jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_BRUIN_BIN: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CGO_LDFLAGS: -L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Browser and source prerequisites
+        run: |
+          node --version
+          google-chrome --version
+          node --check web/report-viewer/app.js
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)" | tee /tmp/reporting-source.log
+      - name: Reserve native and race build disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build pinned native dependency on cache miss
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/restore@v4
+        id: incremental
+        with:
+          path: /home/runner/.cache/go-build
+          key: phase30-31-ubuntu24-go1264-${{ github.sha }}
+          restore-keys: phase30-31-ubuntu24-go1264-
+      - name: Verify dependencies and committed source
+        run: |
+          go mod verify
+          git diff --exit-code
+      - name: Strict scheduling acceptance
+        run: |
+          set -o pipefail
+          python3 scripts/run_phase_acceptance.py --phase 30 2>&1 | tee /tmp/reporting-phase30.log
+      - name: Strict provider and actual browser acceptance
+        if: always()
+        run: |
+          set -o pipefail
+          python3 scripts/run_phase_acceptance.py --phase 31 2>&1 | tee /tmp/reporting-phase31.log
+      - name: Scheduler, API and composition regressions
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=15m ./test/acceptance -run '^TestPhase(06|21|29)$' 2>&1 | tee /tmp/reporting-regressions.log
+      - name: Unit regressions, including migration identity
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=10m ./internal/calendars ./internal/gateway ./internal/jobs ./internal/reporting ./internal/reportingapi ./internal/workapi ./internal/store/postgres ./internal/config ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
+      - name: Planning, formatting and build
+        if: always()
+        run: |
+          set -o pipefail
+          make planning-check 2>&1 | tee /tmp/reporting-planning.log
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          make build 2>&1 | tee /tmp/reporting-build.log
+          make vet 2>&1 | tee /tmp/reporting-vet.log
+          git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always() && steps.incremental.outcome == 'success' && steps.incremental.outputs.cache-hit != 'true'
+        with:
+          path: /home/runner/.cache/go-build
+          key: ${{ steps.incremental.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reporting-verification-log
+          path: /tmp/reporting-*.log
+          retention-days: 7
   coverage:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -38,7 +137,7 @@ jobs:
         ports: [13306:3306]
         env:
           MYSQL_ROOT_PASSWORD: chartworks-fixture-root
-          MYSQL_ROOT_HOST: '*'
+          MYSQL_ROOT_HOST: '%'
         options: >-
           --health-cmd "mysqladmin ping -h localhost -pchartworks-fixture-root"
           --health-interval 5s --health-timeout 5s --health-retries 20
@@ -118,22 +217,13 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
-      - name: Strict acceptance, planning, build and vet
-        if: always()
-        run: |
-          set -o pipefail
-          python3 scripts/run_phase_acceptance.py --phase 30 2>&1 | tee /tmp/reporting-full-phase30.log
-          python3 scripts/run_phase_acceptance.py --phase 31 2>&1 | tee /tmp/reporting-full-phase31.log
-          make planning-check
-          make build
-          make vet
-          git diff --exit-code
       - name: Exact measured coverage diagnostics
         if: always()
         run: |
           if test -s "$CHARTWORKS_COVERAGE_OUTPUT"; then
             go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(reporting|reportingapi|jobs|gateway|store/postgres)/|web/report-viewer/|total:' > /tmp/reporting-full-functions.log
           fi
+          git diff --exit-code
       - uses: actions/cache/save@v4
         if: always()
         with:
@@ -147,3 +237,44 @@ jobs:
             /tmp/reporting-full-*.log
             /tmp/chartworks-coverage.out
           retention-days: 7
+  summary:
+    needs: verify
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reporting-verification-log
+          path: logs
+      - name: Concise exact-source evidence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in sorted(Path('logs').glob('*.log')):
+            lines=p.read_text().splitlines(); print('\nFILE:',p.name)
+            if len(lines)<40: print('\n'.join(lines)); continue
+            selected=[s for s in lines if any(x in s for x in ('FAIL','.go:','error:','panic:','OK:','ACCEPTANCE:','TESTED_COMMIT='))]
+            for s in selected[:90]: print(s[:2200])
+            print('\n'.join(lines[-8:]))
+          PY
+  coverage-summary:
+    needs: coverage
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reporting-full-evidence
+          path: logs
+      - name: Concise full-suite failures and coverage totals
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in sorted(Path('logs').glob('*.log')):
+            lines=p.read_text().splitlines(); print('\nFILE:',p.name)
+            selected=[s for s in lines if any(x in s for x in ('FAIL','.go:','error:','panic:','OK:','total:','TESTED_COMMIT='))]
+            for s in selected[:100]: print(s[:1600])
+            print('\n'.join(lines[-8:]))
+          PY
