@@ -17,11 +17,10 @@ replace(p, 'type Job struct {\n', 'type Job struct {\n\tReporting *ScheduledRepo
 p = 'internal/store/postgres/schedules.go'
 replace(p, 'const scheduleColumns = `schedule_id,revision,enabled,tenant_id,creator_id,creator_session,request,next_due,previous_due`', 'const scheduleColumns = `schedule_id,revision,enabled,tenant_id,creator_id,creator_session,request,next_due,previous_due,retired`')
 replace(p, '&s.NextDue, &s.PreviousDue)', '&s.NextDue, &s.PreviousDue, &s.Retired)')
-replace(p, 'if current.Revision != revision {', 'if current.Revision != revision || current.Retired {')
+replace(p, 'if out.Revision != expected {', 'if out.Revision != expected || out.Retired {')
+replace(p, 'if !schedule.Enabled || schedule.Revision != expected {', 'if !schedule.Enabled || schedule.Retired || schedule.Revision != expected {')
 p = 'internal/store/postgres/schedule_replace.go'
 replace(p, '\t\tif current.Revision == expected+1 {', '\t\tif current.Retired { return store.ErrConflict }\n\t\tif current.Revision == expected+1 {')
-# The persisted schedule revision contract has always been bounded to 8 KiB.
-# Apply that same ceiling before database admission for direct SDK callers too.
 for path, typ in [('internal/jobs/jobs.go', 'Submission'), ('internal/jobs/schedule.go', 'ScheduleRequest')]:
     p = Path(path); s = p.read_text()
     pattern = r'(func \((\w+) ' + typ + r'\) Validate\(\) error \{\n)'
@@ -67,6 +66,10 @@ replace(p, '\tif typ.Kind() != reflect.Struct || typ.PkgPath() == "time" {', '''
 \tif typ.Kind() != reflect.Struct || typ.PkgPath() == "time" {''')
 p = 'internal/workapi/registry.go'
 replace(p, '\tif len(definitions) == 0 {\n\t\treturn nil, nil\n\t}\n\treturn api.New(definitions)', '\tlifecycle, err := scheduleLifecycleDefinitions(dispatch)\n\tif err != nil { return nil, err }\n\tdefinitions = append(definitions, lifecycle...)\n\tif len(definitions) == 0 {\n\t\treturn nil, nil\n\t}\n\treturn api.New(definitions)')
+p = 'test/acceptance/phase30_fixture_test.go'
+replace(p, '\tif kind == "saved_question" {', '\tif t.ResourceKind() == "report" { t.Locale = "en-US" }\n\tif kind == "saved_question" {')
+p = 'test/acceptance/phase30_test.go'
+replace(p, '!errors.Is(err, access.ErrForbidden)', '!errors.Is(err, access.ErrNotFound)')
 for p in ['internal/jobs/schedule_lifecycle.go', 'internal/store/postgres/schedule_lifecycle.go', 'internal/workapi/schedules.go', 'sdk/chartworks/schedules.go']:
     changed.add(p)
 subprocess.run(['gofmt', '-w', *sorted(changed)], check=True)
