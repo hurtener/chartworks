@@ -11,25 +11,33 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const result = await github.rest.actions.downloadArtifact({owner: context.repo.owner, repo: context.repo.repo, artifact_id: 10354647645, archive_format: 'zip'});
+            const result = await github.rest.actions.downloadArtifact({owner: context.repo.owner, repo: context.repo.repo, artifact_id: 10364548963, archive_format: 'zip'});
             fs.writeFileSync('/tmp/reporting-diagnostics.zip', Buffer.from(result.data));
-      - name: Print bounded test failures, not container logs
+      - name: Read only failed subtests and actual fixture definitions
         run: |
           python3 - <<'PY'
-          import zipfile
+          import json, zipfile
+          from pathlib import Path
           with zipfile.ZipFile('/tmp/reporting-diagnostics.zip') as archive:
             for name in archive.namelist():
-              text = archive.read(name).decode('utf-8', errors='replace')
-              lines = text.splitlines()
-              print('\nFILE:', name, 'LINES:', len(lines))
-              indices = set()
-              for i, line in enumerate(lines):
-                if any(marker in line for marker in ['FAIL', 'error:', '.go:', 'panic:', 'fatal error', 'PASS: TestPhase']):
-                  indices.update(range(max(0, i-1), min(len(lines), i+2)))
-              for i in sorted(indices):
-                print(lines[i][:2000])
+              if 'phase30' not in name and 'phase31' not in name: continue
+              print('\nFILE:',name)
+              for line in archive.read(name).decode().splitlines():
+                try: record=json.loads(line)
+                except ValueError: continue
+                test=record.get('Test','')
+                if record.get('Action')=='output' and ('ordinary-catalog-and-viewer-scheduled-provenance/report' in test or 'actual-component-boundaries' in test):
+                  print(record.get('Output','')[:3500],end='')
+          for p in Path('test/acceptance').glob('phase30*.go'):
+            lines=p.read_text().splitlines()
+            for i,line in enumerate(lines):
+              if 'func (f *phase30Fixture) manager' in line:
+                print('\nMANAGER:',p); print('\n'.join(lines[i:i+24]))
           PY
