@@ -73,6 +73,10 @@ jobs:
           echo "TESTED_COMMIT=$(git rev-parse HEAD)"
           go mod verify
           git diff --exit-code
+      - name: Migration and provider prerequisite
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=5m ./test/acceptance -run '^TestPhase31$/^AC01$' 2>&1 | tee /tmp/reporting-prerequisite.log
       - name: Actual phase 31 criteria and phase 29 regression criteria
         run: |
           set -o pipefail
@@ -94,5 +98,5 @@ jobs:
         if: always()
         with:
           name: reporting-verification-log
-          path: /tmp/reporting-acceptance.log
+          path: /tmp/reporting-*.log
           retention-days: 7
