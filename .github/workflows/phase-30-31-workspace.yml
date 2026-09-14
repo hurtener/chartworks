@@ -17,7 +17,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Archive exact tracked source and history without credentials or runtime data
+      - name: Archive tracked source and history for final review
         run: |
           git rev-parse HEAD > /tmp/chartworks-source-sha.txt
           git rev-parse HEAD^{tree} > /tmp/chartworks-source-tree.txt
@@ -31,20 +31,4 @@ jobs:
             /tmp/chartworks-source-sha.txt
             /tmp/chartworks-source-tree.txt
             /tmp/chartworks-source.bundle
-          retention-days: 1
-      - uses: actions/cache/restore@v4
-        id: native
-        with:
-          path: |
-            /tmp/chartworks-bruin/bruin
-            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
-          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
-      - name: Archive pinned native dependency for local verification
-        if: steps.native.outputs.cache-hit == 'true'
-        run: tar -czf /tmp/chartworks-native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
-      - uses: actions/upload-artifact@v4
-        if: steps.native.outputs.cache-hit == 'true'
-        with:
-          name: phase-30-31-native
-          path: /tmp/chartworks-native.tar.gz
-          retention-days: 1
+          retention-days: 2
