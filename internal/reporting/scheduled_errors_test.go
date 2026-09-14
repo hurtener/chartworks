@@ -14,7 +14,7 @@ func TestScheduledFailureClassification(t *testing.T) {
 	for _, tc := range []struct{ input, want error }{
 		{nil, nil}, {context.Canceled, context.Canceled},
 		{context.DeadlineExceeded, context.DeadlineExceeded},
-		{store.ErrUnavailable, store.ErrUnavailable}, {store.ErrInvalid, jobs.ErrTransient},
+		{store.ErrUnavailable, store.ErrUnavailable}, {store.ErrInvalid, jobs.ErrReportingAttention},
 		{ErrInvalid, jobs.ErrReportingAttention}, {ErrStale, jobs.ErrReportingAttention},
 		{ErrIncomplete, jobs.ErrReportingAttention},
 		{ErrBudget, jobs.ErrReportingBudget}, {gateway.ErrBudget, jobs.ErrReportingBudget},

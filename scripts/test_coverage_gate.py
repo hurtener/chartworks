@@ -18,6 +18,10 @@ class CoverageTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 bands(value)
 
+    def test_viewer_is_a_production_coverage_band(self):
+        self.assertEqual(bands("web/report-viewer 80"), {"web/report-viewer": 8000})
+        self.assertEqual(measure("mode: atomic\nexample/web/report-viewer/resource.go:1.1,2.1 2 1\n", "example", {"web/report-viewer"}), {"web/report-viewer": (2, 2)})
+
     def test_decimal_bands_are_exact_basis_points(self):
         for text, expected in (('84.5', 8450), ('84.50', 8450), ('84.51', 8451), ('1.01', 101), ('100.00', 10000)):
             with self.subTest(text=text):

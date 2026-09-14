@@ -159,6 +159,7 @@ func frozenValuesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 	out.Manifest = &m
 	out.View.Parameters = append([]reporting.BoundValue{}, m.Resolved.Values...)
 	out.View.Trust = m.Trust
+	out.View.Policy = m.Policy
 	if result != nil {
 		var r readexec.Result
 		if json.Unmarshal(result, &r) != nil || resultHash == nil || readexec.Hash(r) != *resultHash || len(r.Rows) > m.Limits.MaxRows || len(result) > m.Limits.MaxResultBytes {

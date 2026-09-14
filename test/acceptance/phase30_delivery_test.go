@@ -19,7 +19,7 @@ func testPhase30Delivery(t *testing.T) {
 		job := f.submit(t, "catalog-publication-failure", target)
 		raw := support.Raw(t, f.domain.f.f.dsn)
 		_, err := raw.Exec(t.Context(), `CREATE FUNCTION chartworks.p30_reject_delivery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
- IF NEW.catalog_state='available' THEN RAISE EXCEPTION 'synthetic catalog publication failure' USING ERRCODE='55000'; END IF; RETURN NEW; END; $$;
+ IF NEW.catalog_state='available' THEN RAISE EXCEPTION 'synthetic catalog publication failure' USING ERRCODE='58000'; END IF; RETURN NEW; END; $$;
  CREATE TRIGGER p30_reject_delivery BEFORE UPDATE ON chartworks.reporting_occurrence_delivery FOR EACH ROW EXECUTE FUNCTION chartworks.p30_reject_delivery();`)
 		if err != nil {
 			t.Fatal(err)

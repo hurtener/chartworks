@@ -31,6 +31,7 @@ func TestPhase31(t *testing.T) {
 	t.Run("AC07", testPhase31ProviderParity)
 	t.Run("AC08", func(t *testing.T) {
 		t.Run("provider-boundaries", testPhase31ProviderBounds)
+		t.Run("retained-catalog-byte-ceiling", testPhase31CatalogBounds)
 		t.Run("actual-component-boundaries", func(t *testing.T) { viewerfixtures.Run(t, "security") })
 	})
 }

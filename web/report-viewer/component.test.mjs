@@ -150,6 +150,11 @@ try{
   }
 
   if(suite==='all'||suite==='security'){
+    await restore();const policyRunCount=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
+    await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();`);
+    await until(()=>evaluate(`calls.filter(c=>c.name==='reporting_run').length===${policyRunCount+1}`),'certified filter run was not emitted');
+    await check("calls.filter(c=>c.name==='reporting_run').at(-1).arguments.policy==='certified_only'",'filter rerun preserves the admitted trust requirement');
+
     // Corrupted/misrouted provider responses must not change the resource that
     // the user explicitly selected. These run in the actual iframe component.
     await restore();const initialRuns=await evaluate("calls.filter(c=>c.name==='reporting_run').length");

@@ -8,10 +8,14 @@ import (
 )
 
 func testPhase30CatalogProvenance(t *testing.T) {
-	for _, kind := range []string{"saved_sql", "report"} {
+	for _, kind := range []string{"saved_sql", "block", "report"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPhase30Fixture(t, false)
-			f.domain.block(t, "p30-provenance-block", f.domain.base)
+			if kind == "block" {
+				f.certify(t, "p30-provenance-block")
+			} else {
+				f.domain.block(t, "p30-provenance-block", f.domain.base)
+			}
 			id := "p30-provenance-block"
 			resource := "block"
 			if kind == "report" {
@@ -39,6 +43,15 @@ func testPhase30CatalogProvenance(t *testing.T) {
 			view, err := f.delivery.View(t.Context(), f.domain.execute, selection)
 			if err != nil || view.Output == nil || view.Summary.Scheduled == nil {
 				t.Fatal("ordinary viewer lost scheduled provenance", view, err)
+			}
+			if resource == "block" {
+				wantPolicy := "published"
+				if kind == "block" {
+					wantPolicy = "certified_only"
+				}
+				if view.Policy != wantPolicy {
+					t.Fatal("viewer lost the admitted trust policy", view.Policy)
+				}
 			}
 			p := view.Summary.Scheduled
 			if p.ScheduleID != schedule.ID || p.ScheduleRevision != schedule.Revision || !p.DueAt.Equal(job.DueAt) || !p.WindowStart.Equal(job.WindowStart) || !p.WindowEnd.Equal(job.WindowEnd) ||

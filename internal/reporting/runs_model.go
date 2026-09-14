@@ -178,6 +178,7 @@ type OutputSummary struct {
 
 // RunView has no approved SQL, raw binds, result rows or bearer credentials.
 type RunView struct {
+	Policy          string               `json:"policy,omitempty"`
 	Scheduled       *ScheduledProvenance `json:"scheduled,omitempty"`
 	ID              string               `json:"id"`
 	Block           string               `json:"block"`

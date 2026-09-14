@@ -325,7 +325,14 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in ReportingRu
 		return out, ErrInvalid
 	}
 	if in.Kind != "block" {
-		return s.catalog.ListCompositionArtifacts(ctx, e, in.Kind, in.Resource, in.After, in.Limit)
+		result, err := s.catalog.ListCompositionArtifacts(ctx, e, in.Kind, in.Resource, in.After, in.Limit)
+		if err != nil {
+			return ReportingRunsResult{}, err
+		}
+		if err := s.bound(result); err != nil {
+			return ReportingRunsResult{}, err
+		}
+		return result, ctx.Err()
 	}
 	page, err := s.runs.List(ctx, e, in.After, in.Limit)
 	if err != nil {
@@ -336,6 +343,9 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in ReportingRu
 		if in.Resource == "" || v.Block == in.Resource {
 			out.Items = append(out.Items, blockRunSummary(v))
 		}
+	}
+	if err := s.bound(out); err != nil {
+		return ReportingRunsResult{}, err
 	}
 	return out, ctx.Err()
 }

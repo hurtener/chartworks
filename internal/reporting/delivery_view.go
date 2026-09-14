@@ -163,6 +163,7 @@ func (s *Delivery) viewBlock(ctx context.Context, e identity.Envelope, out *Repo
 		return err
 	}
 	out.Summary = blockRunSummary(v)
+	out.Policy = v.Policy
 	out.Locale, out.Timezone, out.Trust, out.Observed = v.Locale, v.Timezone, clone(&v.Trust), clone(v.Observed)
 	if v.State == "expired" {
 		return nil

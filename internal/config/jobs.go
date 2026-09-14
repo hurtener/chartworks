@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.com/hurtener/chartworks/internal/calendars"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/calendars"
 )
 
 // BrokerCredential is a reference to a Pengui-owned existing broker client. Neither value is logged.

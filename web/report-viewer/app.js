@@ -375,8 +375,9 @@ export class Viewer {
         const grouped=new Map();for(const {f,input,useDefault}of controls){if(useDefault.checked)continue;const value=f.parameter.type==='relative_period'?periodValue(input.value):{literal:input.value};if(!grouped.has(f.page))grouped.set(f.page,[]);grouped.get(f.page).push({name:f.parameter.name,value});}
         const description=unwrap(await this.bridge.call('reporting_describe',{target:v.summary.target,locale:text(v.locale),outputs:[]}));
         if(this.closed||startingGeneration!==this.generation)return;
+        if(v.summary.kind==='block'&&!['published','certified_only'].includes(v.policy))throw fail('stale_validation');
         if(!id(description.resource?.target?.id)||description.resource.target.id!==v.summary.target.id||description.resource.target.kind!==v.summary.target.kind||description.resource.target.revision!==v.summary.target.revision)throw fail('stale_validation');
-        const request={target:description.resource.target,key:crypto.randomUUID(),arguments:[],pages:[],outputs:[],policy:'',locale:text(v.locale),timezone:text(v.timezone)||description.timezone,narrative:narrative.checked,dynamic:dynamic.checked,partial_failure:''};
+        const request={target:description.resource.target,key:crypto.randomUUID(),arguments:[],pages:[],outputs:[],policy:v.summary.kind==='block'?v.policy:'',locale:text(v.locale),timezone:text(v.timezone)||description.timezone,narrative:narrative.checked,dynamic:dynamic.checked,partial_failure:''};
         if(v.summary.kind==='block'){request.arguments=Array.from(grouped.values()).flat();request.outputs=array(v.outputs).map(o=>o.id);}
         else request.pages=Array.from(grouped,([page,filters])=>({page,filters,overrides:[]}));
         this.loading();const generation=this.generation;const response=await this.bridge.call('reporting_run',request);if(generation!==this.generation||this.closed)return;const result=unwrap(response);if(!id(result.run))throw fail('unavailable');await this.read({...oldSelection,run:result.run,offset:0});

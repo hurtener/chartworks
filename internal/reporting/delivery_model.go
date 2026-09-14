@@ -161,6 +161,7 @@ type ViewerPage struct {
 // manifest itself, source credentials, SQL and run-authority tokens never occur.
 // A page of a table preserves its exact labels, units and retained row order.
 type ReportingViewResult struct {
+	Policy         string                   `json:"policy,omitempty"`
 	Version        string                   `json:"version"`
 	Summary        ReportingRunSummary      `json:"summary"`
 	Selection      ReportingViewRequest     `json:"selection"`

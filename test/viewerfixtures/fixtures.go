@@ -135,11 +135,12 @@ func produce(t *testing.T) fixture {
 	filters := []reporting.ViewerFilter{{Page: "main", Label: "Minimum", Parameter: reporting.Parameter{Name: "minimum", Type: "integer", Required: true, Default: &reporting.Value{Literal: "1"}, Min: "1", Max: "2"}}}
 	next := 2
 	out.View = reporting.ReportingViewResult{
+		Policy:    "certified_only",
 		Version:   reporting.DeliveryVersion,
 		Summary:   reporting.ReportingRunSummary{Kind: "block", Run: "viewer-run", Target: target, State: "succeeded", Created: created, Expires: created.Add(time.Hour)},
 		Selection: reporting.ReportingViewRequest{Kind: "block", Run: "viewer-run", Output: "table-main", Limit: 2},
 		Locale:    "en", Timezone: "UTC", Outputs: choices, Pages: []reporting.CompositionPageSummary{}, Filters: filters,
-		Trust:    &reporting.Trust{Publication: "published", Certification: "uncertified", Health: reporting.Health{Status: "healthy"}},
+		Trust:    &reporting.Trust{Publication: "published", Certification: "certified", Health: reporting.Health{Status: "healthy"}},
 		Observed: &created,
 		Output: &reporting.ViewerOutput{ID: "table-main", Kind: "table", State: "succeeded", RetainedDigest: "fixture",
 			Table: &reporting.ViewerTable{Columns: out.Table.Columns, Rows: out.Table.Rows[:2], Totals: out.Table.Totals, Completeness: out.Table.Completeness, Warnings: out.Table.Warnings}},

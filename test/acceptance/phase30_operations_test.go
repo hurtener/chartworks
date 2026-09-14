@@ -252,7 +252,7 @@ func testPhase30Operations(t *testing.T) {
 		job := f.submit(t, "lost-normalized-result", phase30Target("saved_sql", "p30-uncertain"))
 		raw := support.Raw(t, f.domain.f.f.dsn)
 		_, err := raw.Exec(t.Context(), `CREATE FUNCTION chartworks.p30_reject_result() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
- IF NEW.result IS NOT NULL THEN RAISE EXCEPTION 'synthetic normalized checkpoint failure' USING ERRCODE='55000'; END IF; RETURN NEW; END; $$;
+ IF NEW.result IS NOT NULL THEN RAISE EXCEPTION 'synthetic normalized checkpoint failure' USING ERRCODE='58000'; END IF; RETURN NEW; END; $$;
  CREATE TRIGGER p30_reject_result BEFORE UPDATE ON chartworks.frozen_run_payloads FOR EACH ROW EXECUTE FUNCTION chartworks.p30_reject_result();`)
 		if err != nil {
 			t.Fatal(err)

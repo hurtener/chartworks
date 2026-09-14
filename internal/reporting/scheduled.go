@@ -311,12 +311,8 @@ func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.E
 }
 
 func scheduledError(err error) error {
-	// A rejected checkpoint transaction is not a changed business definition.
-	// Retrying preserves the accepted manifest and lets the existing consumer
-	// reconcile retained evidence; an uncheckpointed query remains incomplete.
-	if errors.Is(err, store.ErrInvalid) {
-		return errors.Join(jobs.ErrTransient, err)
-	}
+	// Storage outages may retry; invalid retained evidence or violated domain
+	// invariants require attention. Never retry by replacing accepted pins.
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrUnavailable) {
 		return err
 	}
@@ -353,7 +349,7 @@ func (s *Scheduled) ExecuteScheduledReporting(ctx context.Context, lease jobs.Le
 		return err
 	}
 	work, err = gateway.WithAttemptReservation(work, func(callCtx context.Context, call gateway.Call, tokens int) error {
-		if !call.Valid() || call.Tenant() != j.Tenant {
+		if !call.MatchesIdentity(e) {
 			return jobs.ErrAuthority
 		}
 		return s.usage.ReserveReportingUsage(callCtx, inv, jobs.ReportingCharge{ModelCalls: 1, ModelTokens: tokens})
