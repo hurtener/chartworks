@@ -1,0 +1,35 @@
+name: Phase 30-31 focused verification diagnostics
+on:
+  push:
+    branches: [feat/phase-30-31-reporting-delivery]
+    paths: [.github/workflows/phase-30-31-diagnostics.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const result = await github.rest.actions.downloadArtifact({owner: context.repo.owner, repo: context.repo.repo, artifact_id: 10354647645, archive_format: 'zip'});
+            fs.writeFileSync('/tmp/reporting-diagnostics.zip', Buffer.from(result.data));
+      - name: Print bounded test failures, not container logs
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('/tmp/reporting-diagnostics.zip') as archive:
+            for name in archive.namelist():
+              text = archive.read(name).decode('utf-8', errors='replace')
+              lines = text.splitlines()
+              print('\nFILE:', name, 'LINES:', len(lines))
+              indices = set()
+              for i, line in enumerate(lines):
+                if any(marker in line for marker in ['FAIL', 'error:', '.go:', 'panic:', 'fatal error', 'PASS: TestPhase']):
+                  indices.update(range(max(0, i-1), min(len(lines), i+2)))
+              for i in sorted(indices):
+                print(lines[i][:2000])
+          PY
