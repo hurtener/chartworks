@@ -24,16 +24,18 @@ BEGIN
   SELECT * INTO STRICT parent FROM chartworks.operations
    WHERE tenant_id=NEW.tenant_id AND operation_id=NEW.nested_parent FOR KEY SHARE;
   IF parent.nested_parent IS NOT NULL OR parent.kind NOT IN('report.run','dashboard.run','reporting.scheduled') OR
-     (parent.kind='reporting.scheduled' AND parent.request_manifest->>'kind'<>'report.run') OR
-     parent.actor_id<>NEW.actor_id OR
-     CASE WHEN parent.dispatch_mode='queued' THEN parent.operation_id ELSE parent.initiator_session END <> NEW.initiator_session OR
-     parent.status<>'running' OR parent.fence<>NEW.nested_fence OR parent.lease_until<=clock_timestamp() OR parent.expires_at<=clock_timestamp() OR
+     (parent.kind='reporting.scheduled' AND (parent.request_manifest->>'kind') IS DISTINCT FROM 'report.run') OR
+     parent.actor_id IS DISTINCT FROM NEW.actor_id OR
+     (CASE WHEN parent.dispatch_mode='queued' THEN parent.operation_id ELSE parent.initiator_session END) IS DISTINCT FROM NEW.initiator_session OR
+     parent.status IS DISTINCT FROM 'running' OR parent.fence IS DISTINCT FROM NEW.nested_fence OR
+     parent.lease_until IS NULL OR parent.lease_until<=clock_timestamp() OR parent.expires_at<=clock_timestamp() OR
      NEW.expires_at>parent.expires_at THEN
    RAISE EXCEPTION 'invalid report child ownership' USING ERRCODE='55000';
   END IF;
  END IF;
  RETURN NEW;
-END $$;
+END;
+$$;
 CREATE TRIGGER report_child_immutable BEFORE INSERT OR UPDATE ON chartworks.operations
  FOR EACH ROW EXECUTE FUNCTION chartworks.protect_report_child();
 
