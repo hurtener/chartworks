@@ -17,7 +17,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Archive tracked source and history for final review
+      - name: Archive exact source for recovered local verification
         run: |
           git rev-parse HEAD > /tmp/chartworks-source-sha.txt
           git rev-parse HEAD^{tree} > /tmp/chartworks-source-tree.txt
