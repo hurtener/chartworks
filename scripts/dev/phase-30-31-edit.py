@@ -1,64 +1,23 @@
-"""Explicit test-harness corrections, without changing production authority or assertions."""
+"""Exact reviewed final regression/lint changes. Remove this aid before the PR."""
+import base64, hashlib, re, subprocess, zlib
 from pathlib import Path
-import subprocess
-changed=set()
-def replace(path,old,new,count=1):
-    p=Path(path);text=p.read_text()
-    if new in text:return
-    if text.count(old)!=count:raise RuntimeError(f'Unexpected anchor {path}: {old[:140]!r}')
-    p.write_text(text.replace(old,new));changed.add(path)
-
-p='test/acceptance/phase30_provenance_test.go'
-replace(p,'''import (
-	"encoding/json"
-	"github.com/hurtener/chartworks/internal/reporting"
-	"strings"
-	"testing"
-)''','''import (
-    "encoding/json"
-    "errors"
-    "slices"
-    "strings"
-    "testing"
-
-    "github.com/hurtener/chartworks/internal/reporting"
-    "github.com/hurtener/chartworks/internal/store"
-)''')
-replace(p,'''job, err := f.queue.TestSchedule(t.Context(), f.manager(t), schedule.ID, "provenance-occurrence", schedule.Revision)''','''manager := f.manager(t)
-            if kind == "report" {
-                // Report publications explicitly retain dependency read reach.
-                // Schedule permissions must not replace that signed consent.
-                beforeQueries, beforeBroker := f.domain.attemptCount(t), f.calls.Load()
-                if _, err := f.queue.TestSchedule(t.Context(),manager,schedule.ID,"missing-dependency-consent",schedule.Revision); !errors.Is(err,store.ErrNotFound) {
-                    t.Fatal("schedule management bypassed the report dependency graph",err)
-                }
-                if beforeQueries!=f.domain.attemptCount(t) || beforeBroker!=f.calls.Load() {t.Fatal("rejected test performed protected work")}
-                scopes := slices.DeleteFunc(phase30ManagementScopes(f),func(s string)bool{return s=="scheduling.cancel" || s=="cw.run.write:*"})
-                scopes = append(scopes,"cw.block.read:p30-provenance-block")
-                if len(scopes)>32 {t.Fatal("fixture enlarged issuer scope ceiling")}
-                manager = phase27Actor(t,f.domain.f,f.actor.User(),scopes)
-            }
-            job, err := f.queue.TestSchedule(t.Context(), manager, schedule.ID, "provenance-occurrence", schedule.Revision)''')
-
-p='web/report-viewer/component.test.mjs'
-replace(p,'window.resultOverride=null;window.hostReady=false;', 'window.resultOverride=null;window.resultOverrideTool=null;window.hostReady=false;')
-replace(p,'if(window.resultOverride){result=window.resultOverride;window.resultOverride=null;}', 'if(window.resultOverride&&(!window.resultOverrideTool||window.resultOverrideTool===m.params.name)){result=window.resultOverride;window.resultOverride=null;window.resultOverrideTool=null;}')
-replace(p,"const restore=async()=>{await evaluate('show(fixture.view)');await waitTitle(fixtures.view.summary.target.id);};",'''let restoreSequence=0;
-// Posting a notification is asynchronous. A unique rendered marker proves the
-// resource accepted a new generation before installing the next hostile reply;
-// merely waiting for the unchanged fixture title can race an old tool response.
-const restore=async()=>{
-  const marker='restore-'+(++restoreSequence);
-  await evaluate(`(()=>{window.resultOverride=null;window.resultOverrideTool=null;const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id=${JSON.stringify(marker)};show(v);})()`);
-  await waitTitle(marker);
-  await evaluate('show(fixture.view)');
-  await waitTitle(fixtures.view.summary.target.id);
-};''')
-replace(p,'await evaluate(`const d=JSON.parse(JSON.stringify(fixture.description));','await evaluate(`(()=>{const d=JSON.parse(JSON.stringify(fixture.description));')
-replace(p,"window.resultOverride={structuredContent:{result:d},content:[]};Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();`);", "window.resultOverride={structuredContent:{result:d},content:[]};window.resultOverrideTool='reporting_describe';Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();})()`);")
-replace(p,'await restore();await evaluate(`const v=JSON.parse(JSON.stringify(fixture.view));v.selection.', 'await restore();await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.selection.')
-replace(p,"\"'different-run'\":\"'report'\"};show(v);`);", "\"'different-run'\":\"'report'\"};show(v);})()`);")
-replace(p,"await restore();await evaluate(`const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id='_valid-coordinate';v.filters[0].parameter.name='_valid_parameter';show(v);`);", "await restore();await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id='_valid-coordinate';v.filters[0].parameter.name='_valid_parameter';show(v);})()`);")
-subprocess.run(['gofmt','-w',*sorted(p for p in changed if p.endswith('.go'))],check=True)
-subprocess.run(['node','--check','web/report-viewer/component.test.mjs'],check=True)
+names = ['SearchRequest', 'Resource', 'SearchResult', 'DescribeRequest', 'Description', 'RunRequest', 'RunResult', 'RunsRequest', 'RunSummary', 'RunsResult', 'ViewRequest', 'ViewResult']
+for p in Path('.').rglob('*.go'):
+    if '.git' in p.parts:
+        continue
+    text = p.read_text()
+    for suffix in names:
+        old, new = 'Reporting'+suffix, 'Delivery'+suffix
+        if p.parent == Path('internal/reporting'):
+            text = re.sub(r'\b'+old+r'\b', new, text)
+        else:
+            text = re.sub(r'\breporting\.'+old+r'\b', 'reporting.'+new, text)
+    if text != p.read_text():
+        p.write_text(text)
+patch = zlib.decompress(base64.b64decode("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")).decode()
+subprocess.run(['git','apply','--whitespace=error-all','-'],input=patch,text=True,check=True)
+diff = subprocess.check_output(['git','diff','--binary'])
+if hashlib.sha256(diff).hexdigest() != "5e387568a7e22c3e1198db249d2657b002f6ebe4fb08f882fb4f324096f9e7d4":
+    raise RuntimeError('Result differs from the reviewed local patch')
 subprocess.run(['git','diff','--check'],check=True)
+print('Exact final regression/lint source verified')
