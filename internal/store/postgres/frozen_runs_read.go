@@ -194,6 +194,10 @@ func frozenReadTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string
 			return reporting.RunRecord{}, err
 		}
 	}
+	out.View.Scheduled, err = scheduledProvenanceTx(ctx, tx, e.Tenant(), id, h.view.State, h.view.Expires)
+	if err != nil {
+		return reporting.RunRecord{}, err
+	}
 	out.View.QueryAttempts, err = frozenAttemptsTx(ctx, tx, e.Tenant(), h)
 	if err != nil {
 		return reporting.RunRecord{}, err

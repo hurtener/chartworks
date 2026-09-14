@@ -113,14 +113,15 @@ type ReportingRunsRequest struct {
 // ReportingRunSummary separates artifact publication/retention from execution.
 // Scheduled provenance, when present, is metadata, not a viewer scheduler.
 type ReportingRunSummary struct {
-	Kind    string         `json:"kind"`
-	Run     string         `json:"run"`
-	Target  DeliveryTarget `json:"target"`
-	State   string         `json:"state"`
-	Code    string         `json:"code"`
-	Private bool           `json:"private"`
-	Created time.Time      `json:"created_at"`
-	Expires time.Time      `json:"expires_at"`
+	Scheduled *ScheduledProvenance `json:"scheduled,omitempty"`
+	Kind      string               `json:"kind"`
+	Run       string               `json:"run"`
+	Target    DeliveryTarget       `json:"target"`
+	State     string               `json:"state"`
+	Code      string               `json:"code"`
+	Private   bool                 `json:"private"`
+	Created   time.Time            `json:"created_at"`
+	Expires   time.Time            `json:"expires_at"`
 }
 
 // ReportingRunsResult is a metadata page independent of model availability.

@@ -150,6 +150,24 @@ try{
   }
 
   if(suite==='all'||suite==='security'){
+    // Corrupted/misrouted provider responses must not change the resource that
+    // the user explicitly selected. These run in the actual iframe component.
+    await restore();const initialRuns=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
+    for(const field of ['id','kind']){
+      await restore();
+      await evaluate(`const d=JSON.parse(JSON.stringify(fixture.description));d.resource.target.${field}=${field==='id'?"'different-resource'":"'report'"};window.resultOverride={structuredContent:{result:d},content:[]};Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();`);
+      await until(()=>evaluate(`${body}.textContent.includes('stale_validation')`),'mismatched describe response was accepted');
+      await check(`calls.filter(c=>c.name==='reporting_run').length===${initialRuns}`,'description identity cannot redirect a mutation');
+      await check(`${body}.querySelector('table,svg')===null`,'mismatched description clears analytical values');
+    }
+    for(const field of ['run','kind']){
+      await restore();await evaluate(`const v=JSON.parse(JSON.stringify(fixture.view));v.selection.${field}=${field==='run'?"'different-run'":"'report'"};show(v);`);
+      await until(()=>evaluate(`${body}.textContent.includes('invalid_request')`),'inconsistent artifact identity rendered');
+      await check(`${body}.querySelector('table,svg')===null`,'selection and summary must identify the same artifact');
+    }
+    await restore();await evaluate(`const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id='_valid-coordinate';v.filters[0].parameter.name='_valid_parameter';show(v);`);await waitTitle('_valid-coordinate');
+    await check(`${body}.querySelector('fieldset')!==null`,'viewer preserves the canonical opaque identifier grammar');
+
     await restore();await evaluate(`const a=JSON.parse(JSON.stringify(fixture.view));a.summary.target.id='inert-label';a.output.table.columns[0].name='<img src=/attack onerror=parent.hacked=true>';a.output.table.rows[0][0].value='<script>parent.hacked=true</'+'script>';show(a);`);await waitTitle('inert-label');
     await check(`${body}.textContent.includes('<img src=/attack')&&${body}.querySelector('img')===null&&window.hacked!==true`,'labels and values are inert text');
     await evaluate(`const n=JSON.parse(JSON.stringify(fixture.view));n.summary.target.id='inert-narrative';n.output={id:'narrative',kind:'narrative',state:'succeeded',code:'',retained_digest:'fixture',narrative:{text:'<svg onload=parent.hacked=true>https://example.invalid/private</svg>',caveats:['<a href=/attack>not a link</a>']}};show(n);`);await waitTitle('inert-narrative');

@@ -226,6 +226,13 @@ func compositionViewTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h co
 		v.QueryGroups, v.RetainedBytes, v.MixedFreshness = 0, 0, false
 		v.Finished = nil
 	}
+	rows.Close()
+	if !v.Redacted {
+		v.Scheduled, err = scheduledProvenanceTx(ctx, tx, e.Tenant(), v.ID, v.State, v.Expires)
+		if err != nil {
+			return reporting.CompositionView{}, err
+		}
+	}
 	if !e.Valid() {
 		return reporting.CompositionView{}, access.ErrUnauthenticated
 	}

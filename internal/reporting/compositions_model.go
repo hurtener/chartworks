@@ -159,6 +159,7 @@ type CompositionPageSummary struct {
 
 // CompositionView is metadata only; opening it never executes a source or model.
 type CompositionView struct {
+	Scheduled      *ScheduledProvenance     `json:"scheduled,omitempty"`
 	ID             string                   `json:"id"`
 	Kind           string                   `json:"kind"`
 	Document       string                   `json:"document"`

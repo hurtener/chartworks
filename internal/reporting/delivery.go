@@ -341,13 +341,13 @@ func (s *Delivery) Runs(ctx context.Context, e identity.Envelope, in ReportingRu
 }
 
 func blockRunSummary(v RunView) ReportingRunSummary {
-	return ReportingRunSummary{Kind: "block", Run: v.ID, Target: DeliveryTarget{"block", v.Block, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires}
+	return ReportingRunSummary{Kind: "block", Run: v.ID, Target: DeliveryTarget{"block", v.Block, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
 }
 
 // CompositionRunSummary contains no invisible page names, rows or aggregate
 // counts. The store supplies only an already authorized composition head.
 func CompositionRunSummary(v CompositionView) ReportingRunSummary {
-	return ReportingRunSummary{Kind: v.Kind, Run: v.ID, Target: DeliveryTarget{v.Kind, v.Document, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires}
+	return ReportingRunSummary{Kind: v.Kind, Run: v.ID, Target: DeliveryTarget{v.Kind, v.Document, v.Revision}, State: v.State, Code: v.Code, Private: v.Private, Created: v.Created, Expires: v.Expires, Scheduled: clone(v.Scheduled)}
 }
 
 func (s *Delivery) bound(value any) error {

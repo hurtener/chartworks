@@ -16,7 +16,7 @@ const fail = code => { const e = new Error(ERRORS.has(code) ? code : 'unavailabl
 const text = x => typeof x === 'string' ? x : '';
 const array = x => Array.isArray(x) ? x : [];
 const shorten = (value, max) => Array.from(value).slice(0,max).join('');
-const id = x => typeof x === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(x);
+const id = x => typeof x === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(x);
 const integer = (x, min, max) => Number.isSafeInteger(x) && x >= min && x <= max;
 
 // Bound traversal before serialization, including keys, depth and node count.
@@ -320,6 +320,7 @@ export class Viewer {
   accept(result){if(this.closed)return;try{const v=unwrap(result);if(v.selection&&v.summary)this.show(v);else if(id(v.run)&&['block','report','dashboard'].includes(v.kind))void this.read({kind:v.kind,run:v.run,page:'',widget:'',output:'',offset:0,limit:0});else throw fail('unavailable');}catch(e){this.error(e);}}
   show(v){
     boundedJSON(v);if(v.version!==VERSION||!id(v.summary?.run)||!['block','report','dashboard'].includes(v.summary.kind)||!v.selection||array(v.outputs).length>64||array(v.pages).length>100||array(v.filters).length>100)throw fail('invalid_request');
+    if(v.selection.run!==v.summary.run||v.selection.kind!==v.summary.kind||v.summary.target?.kind!==v.summary.kind||!id(v.summary.target?.id)||!integer(v.summary.target?.revision,1,256))throw fail('invalid_request');
     if(!integer(v.page_bounds?.offset,0,100000)||!integer(v.page_bounds?.limit,1,1000)||!integer(v.page_bounds?.total,0,100000))throw fail('invalid_request');
     this.generation++;this.clear();this.value=v;
     const expiry=Date.parse(v.summary.expires_at);if(!Number.isFinite(expiry))throw fail('invalid_request');
@@ -339,6 +340,7 @@ export class Viewer {
     meta.append(element('p',`${w.retained}: ${v.summary.expires_at} · ${text(v.locale)} · ${text(v.timezone)}`));
     if(v.trust)meta.append(element('p',`${w.trust}: ${text(v.trust.publication)} / ${text(v.trust.certification)} / ${text(v.trust.health?.status)}`));
     if(v.mixed_freshness)meta.append(element('p','mixed_freshness'));
+    if(v.summary.scheduled){const s=v.summary.scheduled;meta.append(element('p',`${text(s.schedule_id)} · ${text(s.due_at)} · [${text(s.window_start)}, ${text(s.window_end)})`),element('p',`query: ${text(s.query)} · artifact: ${text(s.artifact)} · catalog: ${text(s.catalog)} · notification: ${text(s.notification)}`));}
     if(v.summary.code)meta.append(element('p',text(v.summary.code)));this.root.append(meta);
     const toolbar=element('div',undefined,'toolbar');
     if(v.pages?.length)toolbar.append(selectControl(w.pages,v.pages,v.selection.page,page=>this.navigate({page,widget:'',output:'',offset:0})));
@@ -373,7 +375,7 @@ export class Viewer {
         const grouped=new Map();for(const {f,input,useDefault}of controls){if(useDefault.checked)continue;const value=f.parameter.type==='relative_period'?periodValue(input.value):{literal:input.value};if(!grouped.has(f.page))grouped.set(f.page,[]);grouped.get(f.page).push({name:f.parameter.name,value});}
         const description=unwrap(await this.bridge.call('reporting_describe',{target:v.summary.target,locale:text(v.locale),outputs:[]}));
         if(this.closed||startingGeneration!==this.generation)return;
-        if(!id(description.resource?.target?.id)||description.resource.target.revision!==v.summary.target.revision)throw fail('stale_validation');
+        if(!id(description.resource?.target?.id)||description.resource.target.id!==v.summary.target.id||description.resource.target.kind!==v.summary.target.kind||description.resource.target.revision!==v.summary.target.revision)throw fail('stale_validation');
         const request={target:description.resource.target,key:crypto.randomUUID(),arguments:[],pages:[],outputs:[],policy:'',locale:text(v.locale),timezone:text(v.timezone)||description.timezone,narrative:narrative.checked,dynamic:dynamic.checked,partial_failure:''};
         if(v.summary.kind==='block'){request.arguments=Array.from(grouped.values()).flat();request.outputs=array(v.outputs).map(o=>o.id);}
         else request.pages=Array.from(grouped,([page,filters])=>({page,filters,overrides:[]}));

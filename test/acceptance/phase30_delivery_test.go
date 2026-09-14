@@ -10,6 +10,7 @@ import (
 )
 
 func testPhase30Delivery(t *testing.T) {
+	t.Run("ordinary-catalog-and-viewer-scheduled-provenance", testPhase30CatalogProvenance)
 	t.Run("query-success-is-not-catalog-delivery", func(t *testing.T) {
 		f := newPhase30Fixture(t, false)
 		f.domain.block(t, "p30-delivery", f.domain.base)
