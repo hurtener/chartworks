@@ -98,7 +98,7 @@ func testPhase30Authority(t *testing.T) {
 	f.domain.block(t, "p30-authority", f.domain.base)
 	target := phase30Target("saved_sql", "p30-authority")
 	before := f.domain.attemptCount(t)
-	if _, err := f.queue.Submit(t.Context(), f.actor, "higher-binding", jobs.Submission{Kind: jobs.ReportingKind, BindingID: "higher", Reporting: &target}); !errors.Is(err, access.ErrForbidden) || f.domain.attemptCount(t) != before {
+	if _, err := f.queue.Submit(t.Context(), f.actor, "higher-binding", jobs.Submission{Kind: jobs.ReportingKind, BindingID: "higher", Reporting: &target}); !errors.Is(err, access.ErrNotFound) || f.domain.attemptCount(t) != before {
 		t.Fatal("creator selected a stronger unsigned binding", err)
 	}
 	narrowScopes := slices.DeleteFunc(slices.Clone(f.admissionScopes), func(s string) bool { return strings.HasPrefix(s, "cw.execution_context.use:") })

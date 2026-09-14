@@ -82,6 +82,10 @@ type Submission struct {
 
 // Validate rejects malformed or unbounded values before use.
 func (s Submission) Validate() error {
+	wire, marshalErr := json.Marshal(s)
+	if marshalErr != nil || len(wire) > 8192 {
+		return ErrInvalid
+	}
 	if !BindingID(s.BindingID) {
 		return ErrInvalid
 	}

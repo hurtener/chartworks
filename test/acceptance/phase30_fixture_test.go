@@ -167,6 +167,9 @@ func phase30Target(kind, id string) jobs.ReportingTarget {
 	if t.ResourceKind() == "block" {
 		t.Outputs = []string{"table-second", "table-main"}
 	}
+	if t.ResourceKind() == "report" {
+		t.Locale = "en-US"
+	}
 	if kind == "saved_question" {
 		t.Dynamic, t.Widget, t.Budget.ModelCalls, t.Budget.ModelTokens = true, "dynamic", 16, 1<<20
 	}

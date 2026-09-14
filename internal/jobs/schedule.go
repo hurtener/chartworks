@@ -143,6 +143,10 @@ type ScheduleRequest struct {
 
 // Validate rejects malformed or unbounded values before use.
 func (r ScheduleRequest) Validate() error {
+	wire, marshalErr := json.Marshal(r)
+	if marshalErr != nil || len(wire) > 8192 {
+		return ErrInvalid
+	}
 	if r.Target.Validate() != nil {
 		return ErrInvalid
 	}
@@ -151,6 +155,7 @@ func (r ScheduleRequest) Validate() error {
 
 // Schedule is the retained, revisioned definition and its durable occurrence cursor.
 type Schedule struct {
+	Retired          bool            `json:"retired"`
 	ID               string          `json:"id"`
 	Revision         int64           `json:"revision"`
 	Enabled          bool            `json:"enabled"`

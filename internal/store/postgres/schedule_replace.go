@@ -24,6 +24,9 @@ func (d *DB) ReplaceSchedule(ctx context.Context, scope store.Scope, session, id
 		if e != nil {
 			return e
 		}
+		if current.Retired {
+			return store.ErrConflict
+		}
 		if current.Revision == expected+1 {
 			var same bool
 			if e = tx.QueryRow(ctx, `SELECT change_key=$3 AND change_actor=$4 AND change_session=$5 AND change_revision=revision FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2`, scope.Tenant(), id, key, scope.Actor(), session).Scan(&same); e != nil {
