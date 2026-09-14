@@ -177,7 +177,7 @@ func testPhase30Lifecycle(t *testing.T) {
 		}
 
 		doc := phase29Text("Accepted report revision")
-		doc.Widgets = append(doc.Widgets, phase29BlockWidget("frozen", target.ID, 0, "table-main"))
+		doc.Widgets = append(doc.Widgets, phase29BlockWidget("frozen", target.ID, 1, "table-main"))
 		state := f.domain.report(t, "p30-report-pins", doc, true)
 		reportTarget := phase30Target("report", state.ID)
 		reportTarget.LatestPublished, reportTarget.Revision = true, 0

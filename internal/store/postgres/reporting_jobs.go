@@ -167,8 +167,18 @@ func reportingReceiptTx(ctx context.Context, tx pgx.Tx, j jobs.Job) (*jobs.Repor
 	}
 	if err == nil {
 		out.ArtifactID = j.ID
-		if state == "normalized" {
+		if out.Kind == "block" && (state == "normalized" || state == "succeeded") {
 			out.Query = "succeeded"
+		}
+		// Domain completion and catalog publication commit separately. Report
+		// only the artifact evidence already retained, even if publication is
+		// still pending after a storage failure. Never invent a notification.
+		if state == "succeeded" || state == "completed" || state == "partial" {
+			out.Artifact = "retained"
+			out.Query = "succeeded"
+			if state == "partial" {
+				out.Query = "partial"
+			}
 		}
 		if state == "expired" || expired {
 			out.Artifact, out.Catalog = "expired", "expired"

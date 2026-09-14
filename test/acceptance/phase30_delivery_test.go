@@ -145,7 +145,7 @@ func testPhase30ChangedDependencies(t *testing.T) {
 		schedule := f.schedule(t, "unavailable-target", request)
 		// This fixture changes the real persisted availability state before the
 		// next occurrence, without modifying any accepted manifest or authority.
-		if _, err := support.Raw(t, f.domain.f.f.dsn).Exec(t.Context(), `UPDATE chartworks.block_heads SET archived=true,version=version+1 WHERE tenant_id=$1 AND block_id=$2`, f.actor.Tenant(), target.ID); err != nil {
+		if _, err := support.Raw(t, f.domain.f.f.dsn).Exec(t.Context(), `UPDATE chartworks.block_heads SET archived=true,published_revision=NULL,version=version+1 WHERE tenant_id=$1 AND block_id=$2`, f.actor.Tenant(), target.ID); err != nil {
 			t.Fatal(err)
 		}
 		due := time.Now().UTC().Truncate(time.Minute).Add(-time.Minute)

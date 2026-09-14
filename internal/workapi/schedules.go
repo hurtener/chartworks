@@ -28,7 +28,7 @@ func scheduleLifecycleDefinitions(dispatch bool) ([]api.Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	historyRequest, err := api.SchemaFor("scheduleHistoryRequest", reflect.TypeFor[jobs.ScheduleHistoryRequest](), false)
+	historyRequest, err := api.SchemaFor("scheduleHistoryRequest", reflect.TypeFor[jobs.ScheduleHistoryRequest](), false, api.NullableCollections)
 	if err != nil {
 		return nil, err
 	}

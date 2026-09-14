@@ -311,6 +311,12 @@ func (s *Scheduled) ValidateScheduledReporting(ctx context.Context, e identity.E
 }
 
 func scheduledError(err error) error {
+	// A rejected checkpoint transaction is not a changed business definition.
+	// Retrying preserves the accepted manifest and lets the existing consumer
+	// reconcile retained evidence; an uncheckpointed query remains incomplete.
+	if errors.Is(err, store.ErrInvalid) {
+		return errors.Join(jobs.ErrTransient, err)
+	}
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrUnavailable) {
 		return err
 	}
