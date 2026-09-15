@@ -6,6 +6,7 @@
 
 - [Scope and evidence boundary](#scope-and-evidence-boundary)
 - [Assessment](#assessment)
+- [Sept 15 rebaseline and recheck](#sept-15-rebaseline-and-recheck)
 - [Finding index](#finding-index)
 - [Detailed findings](#detailed-findings)
 - [Unassessed expansion frontiers](#unassessed-expansion-frontiers)
@@ -19,18 +20,42 @@
 
 ## Scope and evidence boundary
 
-- Current target baseline: `dc6fb297dc6379c0093d1e6305d5a6112f08f1a7`. The audit boundary is this implementation head; stale prose in other status ledgers is not silently corrected here.
-- Reference provenance: the supplied manifest fingerprints 638 source/test files; SHA-256 `43deea9256ba79f424c9cfbf15498649123364c365d5db44b5868285c303de9f`. This is provenance, not a coverage or parity claim.
-- Phases 26 and 28 are treated as in progress per owner direction. Unmerged work is neither counted as shipped nor judged absent. Remaining planned phases retain their existing obligations.
-- The reference is a supplied local source snapshot. This document uses neutral behavior descriptions and abstract source evidence IDs only; exact private source locations remain in the owner-local audit bundle's external `source-evidence-map.md` (SHA-256 `33a2dfc2ed4d333845a1b6e14a008d6878eb85c6c380b483a94470c56638c373`) and are not reproduced in the repository.
-- Current repository links below are evidence pointers anchored to this checkout and line number. They show implementation shape, not a passing parity run.
-- No runtime, live-model, cloud, migration, or deployment tests were run for this document. Prior test results are historical evidence only and do not establish behavioral equivalence.
+- **Dated target baseline:** `09ef2de969317458753838d51e775ad8a21fcff1` (2026-09-15). This is the merged implementation head used for the recheck; line links below are resolved against this checkout.
+- **Merged phase work:** the baseline includes the Phase 26/28 implementation from PR #19, Phase 29 from PR #20, and Phase 30/31 from PR #21. The phase registry and owning plans still label phases 23, 26, 27, 28, 29, 30 and 31 `in_progress` pending their documented closure, review and release obligations; this document does not change those statuses. Remaining planned phases are 24, 25, 32, 33 and 34.
+- **Historical reference provenance:** the supplied `reference-manifest.json` fingerprints 638 source/test files and carries internal aggregate `reference_manifest_sha256` `43deea9256ba79f424c9cfbf15498649123364c365d5db44b5868285c303de9f`. This is provenance, not a coverage or parity claim.
+- **Dated reference refresh:** `reference-manifest-2026-09-15.json` fingerprints 649 Python source/test files; its file SHA-256 is `942b4b3b6504a7a4cee82456fe764f208820f1929d16c7b6f718fd426035efe9`, and its internal per-file-map aggregate is `1872a2d82f0de4c3f7a26217de1bfb7bd578ddccf57ccb4053ea94b1dd7ec54b`. `reference-delta-2026-09-15.json` records 11 added, 36 changed and 0 removed files; its file SHA-256 is `9fcfd4326146be797db112a9a15a4b41fc27aef26beec20cdc1e43f985a34706`. The delta is Python source/tests only; frontend historical bytes were not fingerprinted. Aggregate manifest encoding differs, so the per-file delta is the comparison basis.
+- **External evidence bundle:** exact private source locations remain in the owner-local dated `source-evidence-map-2026-09-15.md` revision (SHA-256 `d48809053076631df66fb6a700a83dbbae2850197f2de3549438a5bd7acb7a2d`), while the historical `source-evidence-map.md` remains immutable (SHA-256 `33a2dfc2ed4d333845a1b6e14a008d6878eb85c6c380b483a94470c56638c373`). The neutral semantic/context refresh is fingerprinted as `043481136edb619b7da611e2a079852d13182ae4dbd2c518240803c29c2d774d`; the reporting refresh is `eba060450ebfc0bfbd42c27aac2f7879e2429df55a890caa45d0c7dc25e26833`. These artifacts stay outside the repository.
+- **Evidence vocabulary:** the original 26 finding IDs and 63 ledger rows remain stable. This dated revision adds three separately tracked reference refresh findings, REP-01 through REP-03, for 29 tracked findings total; it does not renumber or replace the original records. The 12 EXP frontiers remain explicitly unassessed work packages.
+- **Repository evidence:** current links below are pointers to implementation shape, focused source/test coverage and plan ownership. They do not by themselves prove a passing parity run.
+- **Current validation boundary:** a bounded planning/mirror check and compiled viewer-resource Go tests were run during this update; no full phase acceptance, browser test, live model/warehouse, migration, deployment or stress result is claimed. See the dated validation record below.
 
 ## Assessment
 
-The migration preserves substantial governance, source safety, typed execution, bounded parsing, immutable lifecycle and a real chart specification boundary. It also narrows several behaviorally important systems: semantic fields and dependency context, interpretation and clarification, template/feedback selection, reporting output intent, multi-value chart bindings and calibrated reuse. Pending phases explain unfinished consumers, but they do not erase confirmed gaps already visible in merged contracts. A feature name, stored field, registered operation or green phase acceptance is insufficient without tracing the behavior through authoring, persistence, retrieval/selection, context, validation, execution, output, import and replay.
+The migration preserves substantial governance, source safety, typed execution, bounded parsing, immutable lifecycle and real reporting/viewer consumers in the merged phase 26–31 code. It still narrows semantic fields and dependency context, interpretation and clarification, template/feedback selection, reporting output intent, multi-value chart bindings, per-column formatting and calibrated reuse. The new consumers advance core report, schedule and viewer rows without supplying the missing authored fields or import/cutover proof. A feature name, stored field, registered operation or focused acceptance test is insufficient without tracing behavior through authoring, persistence, retrieval/selection, context, validation, execution, output, import and replay.
 
 The planning checker covers 63 broad source-feature IDs and maps them to acceptance criteria; it does not prove every variant, field, consumer, calibration or live workload. Treat every status below as a disposition to close with evidence, not as a completion percentage.
+
+## Sept 15 rebaseline and recheck
+
+This update rechecked every original finding against the merged target code and the dated reference inventory. The semantic, context, routing, learning, clarification, rules and data reference locations were unchanged in the per-file comparison; changed reporting locations were rechecked through the existing source IDs and the current phase consumers. “Inspected” means source and acceptance registrations were read, not that this document reran the referenced suite or measured a live workload.
+
+| Original IDs | Sept 15 recheck result | Current evidence and boundary |
+|---|---|---|
+| SEM-01, CTX-01 | **Still open; reference evidence unchanged.** | Phase 26 applies a profile-backed or already reviewed pack but does not add aliases, governed examples, temporal grains or dependency closure. The KPI helper still reduces the metric input to an aggregation/name and context evidence remains independently budgeted. [topic application](../internal/semantics/drafts/autopilot.go#L16), [metric resolution](../internal/nlqroute/service.go#L1014), [context assembly](../internal/nlq/context.go#L243) |
+| SEM-02, DATA-01, DATA-02 | **Still open; Phase 26 improves controlled application only.** | Profile planning copies safe physical columns into a draft scaffold and the reviewed proposal path applies an existing pack; rich role, relationship, value and temporal authoring remains planned. [profile scaffold](../internal/semantics/drafts/service.go#L473), [proposal topic validation](../internal/engineering/autopilot_topics.go#L55), [Phase 33 plan](../docs/plans/phase-33-guided-onboarding.md#L37) |
+| RTE-01, RTE-02, LRN-01, LRN-02, CLR-01, CLR-02, RUL-01 | **Still open; core source evidence unchanged.** | Caller topic selection, hit-distance confidence, topic examples, fixed feedback increments, non-choice clarification checks and narrow rule scopes remain. Reporting period resolution is a separate typed execution facility, not NLQ normalization. [route boundary](../internal/nlqroute/service.go#L421), [confidence](../internal/nlqroute/service.go#L914), [clarification](../internal/nlqroute/service.go#L584), [period resolution](../internal/reporting/periods.go#L26) |
+| BLK-01, BLK-02, BLK-03, BLK-04, BLK-06 | **Still open at the authored-contract boundary.** | Phase 28 now seals selected outputs, available source/context/topic dependencies and typed period resolution; the existing report composition and question-assessment consumers remain in place. The output model still lacks enablement/localized nested output fields, rule snapshots, certification language checks, semantic overlap and broad assistance. [output model](../internal/reporting/model.go#L160), [run manifest](../internal/reporting/runs_model.go#L46), [question assessment](../internal/reporting/service.go#L358) |
+| BLK-05, BLK-07 | **Runtime path inspected; inherited fields and policy mapping remain open.** | Bounded narratives use retained redacted evidence and receipts, and manifests seal deployment limits. Expected schema still lacks inherited sensitivity; authored maximum-claims and source-query policy mappings remain absent. No fresh runtime result is attributed here. [narrative evidence](../internal/reporting/runs_narrative.go#L82), [narrative definition](../internal/reporting/model.go#L137), [sealed limits](../internal/reporting/runs_model.go#L46) |
+| MIG-01, EVAL-01, PERF-01 | **Pending or unmeasured.** | The dated manifest is provenance only. Calibration, import/cutover, warm/cold authority-aware reuse and live latency/cost still require Phase 24/34/25 evidence. [evaluation plan](../docs/plans/phase-24-eval.md#L17), [cutover plan](../docs/plans/phase-34-migration-parity-cutover.md#L38), [routing cache boundary](../internal/nlqroute/service.go#L192) |
+| VIS-01, VIS-02, VIS-03, VIS-04 | **Definition/model gaps remain; Phase 31 viewer is a real current consumer.** | Current chart mappings remain scalar and format support is narrow; the viewer dispatches all fourteen kinds and draws one selected widget/output. Static rendering/export remain Phase 32 scope; whole-page grid equivalence requires an approved viewer/host expansion decision. [chart mapping](../internal/charts/model.go#L135), [viewer dispatch](../web/report-viewer/app.js#L259), [viewer exact formatting](../web/report-viewer/app.js#L79) |
+
+### Current bounded validation record
+
+- `go test ./web/report-viewer` passed the compiled Go resource tests only; this is not browser acceptance.
+- `node --test web/report-viewer/component.test.mjs` was attempted but stopped in setup because the runner requires generated resource/provider fixture arguments; no browser result is claimed.
+- `TMPDIR=/private/tmp make planning-check check-mirror` passed 60 script tests, planning coherence for 224 criteria/63 features/34 phases, and mirror validation.
+- A final document check resolved all 138 current relative file/line links, confirmed one title heading, 29 tracked finding IDs, all 12 EXP frontiers and all 63 ledger rows; the dated source-evidence map contains every referenced `REF-*` ID.
+- No full phase acceptance, hosted CI, live model/provider, live warehouse, migration, deployment or stress test was run for this document. Historical review files retain their own exact-SHA claims and are not re-attributed here.
 
 ## Finding index
 
@@ -42,26 +67,29 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 | RTE-01 | Routing | Routing confidence and topic choice are reduced | confirmed gap | 17/24 |
 | LRN-01 | Learning | Stored examples are not equivalent to retrieval-selected templates | confirmed gap | 15/17/18; optimization remains 24 |
 | LRN-02 | Learning | Feedback weights are fixed increments | confirmed gap | 18; evaluation 24 |
-| BLK-01 | Reporting | Output enablement and localized output metadata are missing from definitions | confirmed gap | 27 before 28/29 consumers |
-| BLK-02 | Reporting | Business-rule snapshots are absent from block dependencies | confirmed gap | 27 with 16/18; preserve in 28 |
-| BLK-03 | Reporting | Period wording no longer participates in certification | confirmed gap | 27 |
-| BLK-04 | Reporting | Question overlap assessment is lexical only | confirmed gap | 27; gateway05 |
-| BLK-05 | Reporting | Sensitive-column metadata is missing at the narrative handoff | definition gap; runtime pending | 27/28/33/34 |
-| BLK-06 | Reporting | Parameterization assistance supports a narrower workflow | narrowed; equivalent mapping needed | 27/34 |
-| BLK-07 | Reporting | Per-block limits and richer narrative policies need explicit mappings | pending contract risk | 27/28/34 |
+| BLK-01 | Reporting | Output enablement and localized output metadata are missing from definitions | confirmed definition gap; frozen consumer present | 27 with 28/29/31 consumers |
+| BLK-02 | Reporting | Business-rule snapshots are absent from block dependencies | confirmed gap; available dependencies now sealed | 27/28 |
+| BLK-03 | Reporting | Period wording no longer participates in certification | confirmed gap; typed execution present | 27/28 |
+| BLK-04 | Reporting | Question overlap assessment is lexical only | confirmed gap; current assessment retained | 27/29 |
+| BLK-05 | Reporting | Sensitive-column metadata is missing at the narrative handoff | runtime path present; inherited sensitivity gap | 27/28/33/34 |
+| BLK-06 | Reporting | Parameterization assistance supports a narrower workflow | narrowed; equivalent mapping needed | 27/28/34 |
+| BLK-07 | Reporting | Per-block limits and richer narrative policies need explicit mappings | runtime controls present; mapping gap | 27/28/34 |
 | CLR-01 | Clarification | Required clarification slots lack question-specific activation | confirmed gap | 16/17 |
 | RUL-01 | Rules | Compound and template scopes have no equivalent current representation | confirmed gap | 16/17/18 |
 | RTE-02 | Interpretation | Value, geography and temporal normalization is not an equivalent runtime stage | confirmed gap | 17/18; source metadata 15/33 |
 | MIG-01 | Portability | Topic-only portability does not carry the calibrated topic environment | narrowed; full migration pending | 15 subset; 34 full migration |
-| VIS-01 | Outputs | Rich KPI and table authoring options are absent | confirmed gap | 20/27 definitions; 28 and 31/32 execution/display |
-| VIS-02 | Charts | Multi-measure chart slots are reduced to singular bindings | confirmed gap | 20/27 before rendering |
-| VIS-03 | Formatting | Stored formatting and display labels lose authored intent | confirmed gap | 20/27; consume31/32; map34 |
+| VIS-01 | Outputs | Rich KPI and table authoring options are absent | confirmed definition gap; consumers present | 20/27; consume 28/29/31; static32 |
+| VIS-02 | Charts | Multi-measure chart slots are reduced to singular bindings | confirmed model gap; viewer present | 20/27/31; static32 |
+| VIS-03 | Formatting | Stored formatting and display labels lose authored intent | confirmed consumer gap | 20/27/31; static32/import34 |
 | VIS-04 | Selection diagnostics | Selection rationale carries less structured evidence | narrowed; equivalence decision needed | 20/24 |
 | EVAL-01 | Evaluation | Deterministic acceptance is not calibrated behavioral equivalence | explicitly pending | 24/34/25 |
 | CLR-02 | Clarification | Typed clarification answers can have no planning effect | confirmed gap | 16/17/18 |
 | DATA-01 | Profiling to semantics | Safe profiles no longer supply governed example values to semantic authoring | intentional redesign; replacement needed | 12/15/33; consumer17 |
 | DATA-02 | Discovery and onboarding | Physical discovery is not equivalent to semantic role and relationship discovery | pending richer authoring | 15/33; coordinate26 |
 | PERF-01 | Latency and reuse | Cache behavior must be compared under the new authority model | intentional redesign; performance unmeasured | 17/24; reuse28; qualification34/25 |
+| REP-01 | Reporting filters | Revision-bound selectable filter options are a newly observed reference capability | confirmed contract gap | 29/31; safe source 09/10/14; import34 |
+| REP-02 | Reporting lifecycle | Report/dashboard deletion has semantics beyond archive | disposition required; archive remains implemented | 29/30; retention28/32; import34 |
+| REP-03 | Reporting catalog | Readable actor labels and delivery relationships are richer in the reference catalog | current projection narrower; ownership-aware equivalent needed | 23/29/31 |
 
 ## Detailed findings
 
@@ -139,7 +167,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### BLK-01 — Output enablement and localized output metadata are missing from definitions
 
 - **Disposition:** confirmed gap.
-- **Owner / phases:** 27 before 28/29 consumers.
+- **Owner / phases:** 27 with current frozen/composition/viewer consumers in 28/29/31.
 - **Reference behavior (neutral):** Original output definitions include enabled state, localized name/description and display order. The execution/output builders filter disabled outputs.
 - **Current boundary:** Go Output contains ID, kind and mapping/narrative only. Empty selection means all stored outputs. Array order is preserved, but there is no disabled-output state or equivalent localized output label contract.
 - **Consequence:** An imported disabled output cannot retain its behavior without removal or a schema extension; stable ID retention matters to later widgets and schedules.
@@ -151,7 +179,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### BLK-02 — Business-rule snapshots are absent from block dependencies
 
 - **Disposition:** confirmed gap.
-- **Owner / phases:** 27 with 16/18; preserve in 28.
+- **Owner / phases:** 27/28 with rule and capture consumers in 16/18.
 - **Reference behavior (neutral):** Original block governance snapshots applicable rule IDs/hashes and compares current rules against the saved manifest.
 - **Current boundary:** Current block dependencies pin source catalogs and topic packs, but have no ruleset reader or rule snapshot. Query capture does not transfer query rule-version pins into the block definition.
 - **Consequence:** A rule-only change cannot be represented by the same explicit dependency comparison. This finding concerns business meaning and stale-approval detection, not an authority-provider bypass.
@@ -163,7 +191,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### BLK-03 — Period wording no longer participates in certification
 
 - **Disposition:** confirmed gap.
-- **Owner / phases:** 27.
+- **Owner / phases:** 27/28.
 - **Reference behavior (neutral):** The original compares each localized canonical question against period policy and requires acknowledgement of contradictory wording during certification.
 - **Current boundary:** Go resolves calendar periods carefully, but certification does not check or acknowledge question-period inconsistency.
 - **Consequence:** A block labelled as one period can be certified while its defaults resolve another period, losing a useful business review safeguard.
@@ -175,7 +203,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### BLK-04 — Question overlap assessment is lexical only
 
 - **Disposition:** confirmed gap.
-- **Owner / phases:** 27; gateway05.
+- **Owner / phases:** 27/29 with the current question-assessment consumer.
 - **Reference behavior (neutral):** The original shortlists questions and performs bounded semantic assessment of metric, grain, population, filters and period, with an explicit deterministic fallback.
 - **Current boundary:** Go compares normalized word sets above a threshold, within one bounded list page and matching locale. It correctly reports incompleteness but does not supply semantic intent assessment.
 - **Consequence:** Paraphrases may be missed and similarly worded questions with materially different periods may be conflated.
@@ -186,11 +214,11 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 
 ### BLK-05 — Sensitive-column metadata is missing at the narrative handoff
 
-- **Disposition:** definition gap; runtime pending.
+- **Disposition:** runtime path present by inspection; inherited sensitivity remains a definition gap.
 - **Owner / phases:** 27/28/33/34.
 - **Reference behavior (neutral):** The original expected schema flags sensitive columns, and narrative evidence construction consumes those flags in addition to explicit redactions.
 - **Current boundary:** Go expected schema uses exec.Field without that sensitivity field. Narrative definitions allow explicit RedactedFields, but no equivalent inherited sensitivity contract is present.
-- **Consequence:** Before phase28, define how sensitivity survives import and capture; explicit manual redactions alone are not the same inherited behavior. No live narrative disclosure is asserted because runtime is pending.
+- **Consequence:** Define how sensitivity survives import and capture before relying on the bounded narrative path; explicit manual redactions alone are not the same inherited behavior. No live narrative result is attributed by this audit.
 - **Contract, storage and import impact:** Carry sensitivity classification from expected schema/result capture into bounded narrative evidence. Add migration rules for inherited sensitivity and ensure ordinary logs/provider inputs exclude protected values.
 - **Closure requirements:** Capture a sensitive result and narrative selection; prove only the permitted projection enters the narrative path and model input.
 - **Source evidence IDs:** REF-BLK-05-A, REF-BLK-05-B, REF-BLK-05-C.
@@ -199,7 +227,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### BLK-06 — Parameterization assistance supports a narrower workflow
 
 - **Disposition:** narrowed; equivalent mapping needed.
-- **Owner / phases:** 27/34.
+- **Owner / phases:** 27/28/34.
 - **Reference behavior (neutral):** Original assistance proposes dialect-aware period edits and carries question/template/paraphrase dispositions with protected original authoring provenance.
 - **Current boundary:** Go safely replaces an explicitly selected PostgreSQL half-open predicate and creates a new draft. It has no equivalent question/template disposition workflow.
 - **Consequence:** The AST-constrained edit is valuable, but calling it full assisted-parameterization parity omits authoring intent preservation and non-PostgreSQL variants.
@@ -210,11 +238,11 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 
 ### BLK-07 — Per-block limits and richer narrative policies need explicit mappings
 
-- **Disposition:** pending contract risk.
+- **Disposition:** runtime controls present by inspection; contract mapping remains open.
 - **Owner / phases:** 27/28/34.
 - **Reference behavior (neutral):** Original definitions carry query row/time caps and narrative claim ceilings, analysis types, tones and caveat policies.
 - **Current boundary:** Current block definitions have no per-block query limit fields; narratives have bounded rows/bytes/calls/tokens but a different policy vocabulary and no max-claims field.
-- **Consequence:** Phase28 must decide and test the mapping before freezing run manifests. Stricter defaults may be intentional, but silently dropping saved behavior is not a migration rule.
+- **Consequence:** The current frozen-run path seals the available limits, but it still needs a field-level mapping before imported behavior can be treated as equivalent. Stricter defaults may be intentional, but silently dropping saved behavior is not a migration rule.
 - **Contract, storage and import impact:** Map per-block query limits and narrative policy fields into the frozen-run manifest. Every dropped or tightened field requires an explicit disposition, persisted audit evidence and an acceptance negative case.
 - **Closure requirements:** Dry-run nondefault query/narrative policies; enumerate transformations and prove equivalence or reviewed rejection before freezing a run manifest.
 - **Source evidence IDs:** REF-BLK-07-A, REF-BLK-07-B.
@@ -271,7 +299,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### VIS-01 — Rich KPI and table authoring options are absent
 
 - **Disposition:** confirmed gap.
-- **Owner / phases:** 20/27 definitions; 28 and 31/32 execution/display.
+- **Owner / phases:** 20/27 definitions; current consumers 28/29/31; static32.
 - **Reference behavior (neutral):** Original KPI output computes comparison/delta/percent delta, target difference, threshold state and sparkline; table definitions carry visibility, labels, sort, page size and show-totals intent.
 - **Current boundary:** Go saved KPI mapping exposes one value binding without comparison/trend/target/threshold slots. Generic tables support ordered selected columns, sorting and exact additive totals, but not all of the original saved display controls.
 - **Consequence:** Four output kind names do not prove parity within each kind. Totals are not wholly missing; the missing part includes saved display intent and rich KPI semantics.
@@ -283,7 +311,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### VIS-02 — Multi-measure chart slots are reduced to singular bindings
 
 - **Disposition:** confirmed gap.
-- **Owner / phases:** 20/27 before rendering.
+- **Owner / phases:** 20/27 model; current viewer31; static32.
 - **Reference behavior (neutral):** Original line generation consumes all bound y-axis columns and emits one series per measure when no series column is selected.
 - **Current boundary:** Current chart bindings have singular value/X/Y fields; a list binding is provided for tables, not multiple measure axes.
 - **Consequence:** A saved two-measure time series cannot be represented directly with the same query shape. A tested long-form transformation could be an equivalent alternative, but must preserve types/units/order without rerunning SQL.
@@ -295,9 +323,10 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 ### VIS-03 — Stored formatting and display labels lose authored intent
 
 - **Disposition:** confirmed gap.
-- **Owner / phases:** 20/27; consume31/32; map34.
+- **Owner / phases:** 20/27; viewer31; static32/import34.
 - **Reference behavior (neutral):** Original column format hints include locale, date format and currency-symbol fallback, and column metadata has a human-facing display label. Generators transmit formatting side-channel metadata.
 - **Current boundary:** Go retains unit/currency/percent/fraction digits and provenance, but lacks those per-column locale/date/display-label fields.
+- **Current consumer detail:** The Phase 31 viewer's `exact()` path applies percent, currency and unit hints but does not consume the persisted `fraction_digits` hint. That is a remaining consumer-specific formatting difference in addition to the missing per-column locale/date/display-label fields. [viewer exact formatter](../web/report-viewer/app.js#L79); [stored format](../internal/charts/model.go#L79)
 - **Consequence:** A later renderer can choose defaults, but cannot reconstruct the original author choice from the current persisted spec.
 - **Contract, storage and import impact:** Add per-column display label, locale, date pattern and currency fallback fields where authored intent must survive. Carry them through chart specs, report outputs, viewer, static renderer and exports.
 - **Closure requirements:** Round-trip a renamed result column with locale/date/currency formatting; verify interactive, static and export consumers agree.
@@ -321,7 +350,7 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 - **Disposition:** explicitly pending.
 - **Owner / phases:** 24/34/25.
 - **Reference behavior (neutral):** Original code exposes prompt packs, templates, evaluation and optimization workflows; deployed calibrated state may live outside the code snapshot.
-- **Current boundary:** Phase24 evaluation and phase34 differential cutover are pending. Existing recorded provider fixtures establish controlled behavior, not whether the same calibrated workload yields the same answer.
+- **Current boundary:** Phase24 evaluation and phase34 differential cutover remain planned. Existing recorded provider fixtures establish controlled behavior, not whether the same calibrated workload yields the same answer.
 - **Consequence:** Actual calibrated prompt versions, published topic content, examples, rules, thresholds, models, source schemas and data snapshots must be included in the comparison boundary.
 - **Contract, storage and import impact:** Create a private comparison manifest for calibrated semantic content, rules, examples, model/configuration, source schema/data and budgets. Store normalized context/SQL/result/output comparisons without copying confidential material into the repository.
 - **Closure requirements:** Run both systems against the same pinned semantic/rule/template/model/source/data state; compare normalized context, SQL meaning, results and outputs, reporting latency/cost separately.
@@ -376,6 +405,42 @@ The planning checker covers 63 broad source-feature IDs and maps them to accepta
 - **Source evidence IDs:** REF-PERF-01-A, REF-PERF-01-B.
 - **Current repository evidence:** [internal/nlqroute/service.go:192](../internal/nlqroute/service.go#L192); [docs/contracts/vector-sources-validation.md:111](../docs/contracts/vector-sources-validation.md#L111); [docs/plans/phase-24-eval.md:29](../docs/plans/phase-24-eval.md#L29).
 
+### REP-01 — Revision-bound selectable filter options
+
+- **Disposition:** newly observed reference capability; confirmed current contract gap.
+- **Owner / phases:** 29/31 with safe-source 09/10/14 and import 34; related EXP-06 and R04.
+- **Reference behavior (neutral):** The reference has an actual report/revision/filter options consumer. It verifies visible revision and SELECT type, requires an explicit governed topic/table/column source within report scope, pages distinct values, returns values/labels and continuation, and binds cursors to tenant/report/revision/filter/source/search/limit and keyset. Its source topic metadata comes from the active version; the cursor is not cryptographically signed. These are observed behaviors, not automatic target requirements.
+- **Current boundary:** The target `ReportFilter` carries only a typed parameter and label, and ordinary document/delivery registrations have no distinct-options operation. Typed filters and reruns are real; exhaustive paginated choices are not established.
+- **Consequence:** A client cannot offer verified searchable warehouse-backed choices from the report definition. Restoring raw profile samples would not be an equivalent substitute.
+- **Contract, storage and import impact:** Add a versioned option-source binding and closed query intent, route bounded distinct reads through validated execution and signed source/context reach, classify cost/side effects, expose SDK/MCP operations and visible page/search state, and define stale-cursor behavior. Decide scalar types/nulls/collation/search escaping, limits and freshness before publication/import. Do not infer SQL from labels or query a source while reading a retained result.
+- **Closure requirements:** Prove multi-page completeness without duplicates, search restart, wrong report/revision/filter/context/tenant denial before access, explicit empty/null/oversized/unsupported outcomes, freshness behavior and separate authorization for option retrieval versus artifact display.
+- **Source evidence IDs:** REF-REP-01-A, REF-REP-01-B.
+- **Current repository evidence:** [internal/reporting/documents_model.go:89](../internal/reporting/documents_model.go#L89); [internal/reportingapi/documents.go:49](../internal/reportingapi/documents.go#L49); [internal/reportingapi/delivery.go:25](../internal/reportingapi/delivery.go#L25).
+
+### REP-02 — Report/dashboard deletion beyond archive
+
+- **Disposition:** newly observed reference lifecycle operation; target deletion disposition required. This is not a defect in the implemented archive path.
+- **Owner / phases:** 29/30 with retention 28/32 and import 34; related EXP-08, R02 and Q10.
+- **Reference behavior (neutral):** The reference deletes reports and owned revisions/run artifacts, retires matching report schedules, retains shared blocks and schedule history, and prevents stale completion from recreating deleted results. Dashboard deletion examines reports across historical dashboard revisions and rejects a shared-report conflict; separate report deletion preserves dashboards while omitting dead references from their projection.
+- **Current boundary:** The target exposes review/publish/reject/archive transitions and an `Archived` state. Retention cleanup and source erasure exist separately, but archive is not evidence of payload erasure or retirement of every related schedule.
+- **Consequence:** Source deletion semantics cannot be assumed from archive or retention alone; a migration needs an explicit ownership and erasure policy.
+- **Contract, storage and import impact:** Define archive versus irreversible delete/erasure, resource-scoped signed reach, dependency impact preview, shared-report protection, accepted-run fences, schedule disposition, audit/tombstone retention and import replay. Destructive authority must remain server-derived; do not adopt dashboard cascade without approved ownership rules.
+- **Closure requirements:** Test cross-tenant/context denial, intended retained-value erasure, stale-worker invalidation, matching-schedule retirement without unrelated changes, shared-report conflict atomically, historical revision non-resurrection and idempotency. Exclude backup/WAL deletion from live-data erasure claims.
+- **Source evidence IDs:** REF-REP-02-A, REF-REP-02-B.
+- **Current repository evidence:** [internal/reportingapi/documents.go:80](../internal/reportingapi/documents.go#L80); [internal/reporting/documents_model.go:152](../internal/reporting/documents_model.go#L152); [internal/reporting/runs_execution.go:318](../internal/reporting/runs_execution.go#L318).
+
+### REP-03 — Readable catalog actor labels and delivery relationships
+
+- **Disposition:** newly observed reference presentation richness; target catalog projection is narrower and needs an ownership-aware equivalent.
+- **Owner / phases:** 23/29/31 with authority-provider identity integration; related EXP-03/11 and R10/R16.
+- **Reference behavior (neutral):** The reference catalog projects owner/editor display labels with a safe fallback rather than opaque identifiers and exposes associated schedule/topic/block identifiers under authorized report listing. This is presentation data; it does not create local identity or permission records.
+- **Current boundary:** The target summary contains kind, ID, version, revision and localized metadata; private revisions retain actor evidence, but the public summary has no owner/editor projection or delivery relationship fields. Bounded permission-filtered cursor paging remains a retained safety boundary.
+- **Consequence:** A client receives less readable ownership and delivery context even though authorized catalog listing exists.
+- **Contract, storage and import impact:** Resolve descriptive labels through an existing public identity seam or host-supplied projection, keep stable actor IDs in protected audit, specify localization/fallback and bounded relationship composition, and ensure labels never expand authority or disclose hidden resources.
+- **Closure requirements:** Cover known and missing/deleted actors, service actors, same identifiers across tenants, hidden reports/schedules, localized fallback and stable paging. Define whether delivery status is joined or composed through separate bounded operations.
+- **Source evidence IDs:** REF-REP-03-A.
+- **Current repository evidence:** [internal/reporting/documents_model.go:157](../internal/reporting/documents_model.go#L157); [internal/reporting/documents_model.go:199](../internal/reporting/documents_model.go#L199); [internal/reportingapi/documents.go:49](../internal/reportingapi/documents.go#L49).
+
 ## Unassessed expansion frontiers
 
 These 12 items are explicit rebaseline work packages, not newly proven defects. They prevent unexamined behavior from being assumed equivalent. Each needs an owner, concrete input/output evidence, an intentional disposition and a negative case.
@@ -396,7 +461,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 - **Contract, storage and import impact:** Calibration manifests must be externalized as versioned configuration/state with no credentials; import/export and rollback need explicit unknown-field handling.
 - **Required comparison and closure evidence:** Inventory approved prompts/settings/example weights/model and embedding versions outside repo; map every retained setting and explicitly reject unknown ones. Reproduce a held-out result set before/after rollback. Record exact revisions, model configuration, source/data snapshot and budget. Never import credentials or auto-promote old calibration.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Pending owner evidence at the completed implementation head.
+- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
 
 ### EXP-03 — Query interaction and diagnostics; 18/21/22/23/31
 
@@ -405,7 +470,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 - **Contract, storage and import impact:** Consumer event schemas, cancellation/error states and stale-response rules must be shared by every supported surface; no standalone authoring product is implied.
 - **Required comparison and closure evidence:** Contract journey: start, progress, clarify, cancel, inspect result, switch view, send feedback, refine. Verify stale responses cannot replace newer results; disconnect differs from explicit cancellation; truncated/empty/failed/uncertain are distinguishable. Plain-language actions must map to actual operations through each supported consumer. No requirement to recreate a standalone app or IAM.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Pending owner evidence at the completed implementation head.
+- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
 
 ### EXP-04 — Upload fidelity and downstream closure; 11/12/15/33/34
 
@@ -428,25 +493,25 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 ### EXP-06 — Report filter and layout semantics; 28/29/31/34
 
 - **Status:** unassessed/pending frontier; not a new confirmed gap.
-- **Boundary:** Pending planned consumers; R01–R16 remain obligations, not regressions.
+- **Boundary:** Phase 28/29/31 consumers are present in the merged baseline; field-level filter/layout equivalence and release evidence remain unassessed.
 - **Contract, storage and import impact:** Report filter/layout/run-manifest contracts must preserve precedence, distinct parameterized runs, empty states, locale labels and private previews.
 - **Required comparison and closure evidence:** Table of global/local/default/explicit values, typed parameter bindings and precedence. Shared block with distinct parameters must run separately; truly equivalent approved runs may share only within exact authority/context. Test empty selections, zero visible pages, locale labels, partial failure, widget order and private preview retained after publication.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Pending owner evidence at the completed implementation head.
+- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
 
 ### EXP-07 — Scheduled business windows and delivery; 06/28/30/34
 
 - **Status:** unassessed/pending frontier; not a new confirmed gap.
-- **Boundary:** Queue foundation present, report handlers pending30.
+- **Boundary:** Shared queue foundation and reporting schedule handlers are present in the merged baseline; this audit did not rerun a live calendar workload.
 - **Contract, storage and import impact:** Occurrence, authority, artifact and delivery records must be separate and idempotent, with accepted windows and revisions pinned across retries.
 - **Required comparison and closure evidence:** First/prior occurrence, DST gap/fold, leap boundaries, missed windows, retry after midnight, pause/edit/resume and latest-published pinning. Compare accepted due time/window and exact manifest across crashes. Artifact creation, catalog delivery and notification receipts are separate outcomes. Cutover creates one logical occurrence stream. Excluded event/condition stubs stay excluded.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Pending owner evidence at the completed implementation head.
+- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
 
 ### EXP-08 — Portability, retention and provenance; 28/29/32/34
 
 - **Status:** unassessed/pending frontier; not a new confirmed gap.
-- **Boundary:** Safe topic portability exists, full calibration/report import pending.
+- **Boundary:** Safe topic portability exists; calibrated report import and rendition retention remain pending in phases 32/34.
 - **Contract, storage and import impact:** Portability manifests must include provenance, retention and erasure dispositions at every dependent layer, with idempotent import.
 - **Required comparison and closure evidence:** Inventory fields at every layer: topic, rule, clarification, templates/examples, chart bindings/formats, block, report, schedule and historical certificate. Dry run must report every dropped/transformed/unsupported field, not merely valid JSON. Replay import idempotently. Erase source-derived retained payloads/renditions without claiming backup overwrite or deleting unrelated objects. Imported certificates remain historical, not current approval.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
@@ -473,16 +538,16 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 ### EXP-11 — Consumer parity after later phases; 21/22/23 plus each domain
 
 - **Status:** unassessed/pending frontier; not a new confirmed gap.
-- **Boundary:** Thin surfaces share core operations now; later operations are not proved by earlier shell completion.
+- **Boundary:** Current phase29–31 registries, SDK/MCP bindings and viewer consumers are present; cross-surface behavior for the newly merged operations was not rerun in this audit.
 - **Contract, storage and import impact:** Every new operation needs registration, scope, schema/error, client exposure, idempotency and cancellation checks in one conformance matrix.
 - **Required comparison and closure evidence:** After every new domain operation, verify registration, scope loader, schema/error, SDK/CLI/MCP accessibility, idempotency and cancellation meaning. Complete end-user journeys, not endpoint-count equality. Data/SQL visibility and export scopes remain distinct.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Pending owner evidence at the completed implementation head.
+- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
 
 ### EXP-12 — Rendering/export fidelity and interaction; 20/28/31/32
 
 - **Status:** unassessed/pending frontier; not a new confirmed gap.
-- **Boundary:** Current specification layer is not finished viewer/static rendering.
+- **Boundary:** The current specification layer has a real Phase 31 selector/viewer consumer; static rendering/export remain Phase 32 scope, while whole-page layout requires an approved viewer/host expansion decision.
 - **Contract, storage and import impact:** Chart specification, output policy, viewer, static renderer and export fields must be versioned together; read/render paths must remain source/model-free.
 - **Required comparison and closure evidence:** Compare supported data shape × chart/output × locale × interactive/static/export. Exact values, order, unit, omissions, nulls, labels and provenance must agree. Viewer redraw and retained pagination make no model/source call; filters that change data create explicit authorized runs. SVG/HTML/CSV safety and credential-free rendering stay required. PNG/PDF support must be explicitly scoped, not inferred from predecessor UI export.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
@@ -490,7 +555,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### Frontier rebaseline worksheet
 
-At the completed implementation head record: implementation SHA and active phase/decision; reference behavior or target-only design; status (`preserved`, `equivalent`, `confirmed-gap`, `pending`, `unassessed` or `excluded`); synthetic reproduction and expected result; current result and evidence type; owner/dependency; contract/storage/migration impact; acceptance and negative case; approved resolution or remaining limitation. An empty evidence cell is unknown, not pass.
+At each dated implementation head record: implementation SHA and active phase/decision; reference behavior or target-only design; status (`preserved`, `equivalent`, `confirmed-gap`, `pending`, `unassessed` or `excluded`); synthetic reproduction and expected result; current result and evidence type; owner/dependency; contract/storage/migration impact; acceptance and negative case; approved resolution or remaining limitation. An empty evidence cell is unknown, not pass.
 
 ## Clarification and underspecification UX expansion
 
@@ -632,7 +697,7 @@ Advanced migration detail, raw legacy matcher text, and ambiguous translations b
 
 Both implementations name fourteen catalog kinds. That is useful baseline coverage, but **a named kind is not equivalent to every executable binding shape, selected form, formatting choice, or reporting-output policy**.
 
-The current Go package is deliberately a sealed specification/data transformation boundary. It accepts caller-provided qualified result data, produces a typed output with exact labels, and does not emit pixels, ECharts option dictionaries, or client interaction code. The predecessor presentation path built renderer-oriented options for most kinds. This document treats that difference as a planned rendering boundary unless a field needed to preserve authored meaning is already absent from the current specification.
+The current Go package remains a sealed specification/data transformation boundary: it accepts caller-provided qualified result data and produces typed output with exact labels. The merged Phase 31 Apps viewer is now a real consumer of that output: it dispatches all fourteen kinds, draws locally, supports page/widget/output selection, retained table paging, accessibility tables and consented filter reruns. It is an inspector/selector rather than a whole-page grid renderer; static SSR/export remains Phase 32 scope. The predecessor presentation path built renderer-oriented options for most kinds, so authored fields still need to survive the specification boundary.
 
 External evidence maps provide exact locations. The body uses neutral source identifiers rather than copying source code, prompts or private source details.
 
@@ -644,7 +709,7 @@ External evidence maps provide exact locations. The body uses neutral source ide
 | O-REPORT | predecessor reporting-output definition and execution formatting |
 | C-CORE | current provider-neutral chart model, selector, mapping validation, and build |
 | C-CONTRACT | current documented chart specification boundary |
-| C-PLAN | current phase ownership and planned viewer/render/export boundary |
+| C-PLAN | current phase ownership with an implemented viewer and planned static/render/export boundary |
 
 ### Executive assessment
 
@@ -652,7 +717,7 @@ External evidence maps provide exact locations. The body uses neutral source ide
 - **Current strengths are substantive:** typed closed mappings, exact text labels with explicit null state, strict type/semantic pins, no renderer-originated SQL, deterministic fallback, non-lossy exact totals where mathematically valid, and explicit unsuitable/mapping-changed failures.
 - **The principal definition gaps are multi-value bindings, a scatter size channel, deep treemap hierarchy, per-column display/format fields, and output-specific KPI/table settings.** These are information-model dependencies that viewer/rendering consumers will inherit; an eventual renderer cannot infer discarded fields.
 - **The principal behavior changes are intentional or require an equivalence decision:** Go requires one row for a KPI, refuses duplicate non-scatter category tuples rather than silently choosing a value, rejects negative pie/donut/treemap geometry, and uses no question text in deterministic selection. These may be safer than predecessor behavior but are not output-equivalent without an explicit migration policy.
-- **Do not claim current interaction or export parity.** The predecessor frontend has browser CSV download, best-effort chart PNG download, and a table-view toggle. Current Phase 32 explicitly plans JSON/CSV/HTML/SVG exports while excluding advertised PNG/PDF/page-layout support. PNG is therefore an intentional current scope difference requiring an equivalence decision, not a Phase 20 core defect. Full drilldown remains unestablished in this bounded review.
+- **Viewer interaction is now present, while export parity remains open.** The merged Phase 31 viewer dispatches all fourteen kinds, supports selector navigation, retained table paging, accessible exact-value tables and consented filter-triggered reruns. The predecessor frontend has browser CSV download, best-effort chart PNG download and a table-view toggle. Current Phase 32 explicitly plans JSON/CSV/HTML/SVG exports while excluding advertised PNG/PDF/page-layout support. PNG is therefore an intentional current scope difference requiring an equivalence decision, not a Phase 20 or Phase 31 defect. Full drilldown remains unestablished in this bounded review.
 
 ### Core model comparison
 
@@ -663,7 +728,7 @@ External evidence maps provide exact locations. The body uses neutral source ide
 | Mapping | Closed slots prevent arbitrary scripts/URLs. Tables use an ordered selected-column list. | Every non-table slot is scalar. There is no general repeated slot model. |
 | Selection | Rules-first selection supplies a bounded selected candidate plus alternatives; invalid candidates are excluded and table fallback is labeled. | The deterministic selector examines result shape only. `Intent` reaches only optional ranking, so it cannot affect rules-stage candidate eligibility/score. The predecessor scoring uses question intent, cardinality and semantic metadata. |
 | Validation | Current validates row shape, typed values, bounds, slot suitability, and exact saved pins; it rejects changed mappings rather than rebinding silently. | Strict pre-aggregation/uniqueness rules change behavior for duplicate category tuples; a compatibility decision is needed where predecessor generators aggregate or overwrite. |
-| Renderer boundary | Build returns sealed, bounded typed data and no source/model action. | It does not produce renderer options, legends, tooltip behavior, client grid payloads, or pixels. This is planned work, not a Phase 20 defect. |
+| Renderer boundary | Build returns sealed, bounded typed data and no source/model action; Phase 31 consumes it in the Apps viewer. | The viewer does not consume whole-page grid/presentation layout, and static renderer/export contracts remain Phase 32. This is a consumer-scope decision, not a Phase 20 chart-core defect. |
 
 ### Per-kind matrix
 
@@ -681,8 +746,8 @@ External evidence maps provide exact locations. The body uses neutral source ide
 | Line | Temporal x; **multiple** measure y columns; optional series. Without series it emits one line per y measure. With series it uses the first y measure and preserves gaps for missing values. | One temporal `Category`, one numeric `Value`; sorted ascending by current mapping. No `Series` slot permitted. | **Narrower.** Current represents one-measure time series only. It preserves exact labels and null gaps at its typed boundary. |
 | Pie | One category and one value; sorted composition values with item tooltip/legend. | One `Category`, one `Value`; negative values are unsuitable; typed output does not include legend/tooltip settings. | **Comparable basic shape, behavior changed.** Negative policy and rendering presentation need an explicit equivalence decision. |
 | Scatter | x and y measures; optional categorical series and optional **size** measure. Size is rendered as a declarative bubble visual scale. | Numeric scalar `X` and `Y`; optional scalar `Series`; repeated observations are permitted. There is no size/bubble slot or value channel. | **Narrower.** Grouped scatter is retained; bubble scatter is not representable. |
-| Stacked bar | Category, one value, and required series; values aggregate by category/series into horizontal stacks. | Same three scalar slots and current exact typed values. | **Basic shape retained.** Current has no renderer stack/legend options yet, which is Phase 31/32. Current validation still differs where source rows are duplicate/invalid. |
-| Stacked column | Same as stacked bar, vertical orientation. | Same three scalar slots. | **Basic shape retained** at the sealed-data level; rendering orientation/legend remains pending. |
+| Stacked bar | Category, one value, and required series; values aggregate by category/series into horizontal stacks. | Same three scalar slots and current exact typed values. | **Basic shape retained.** The Phase 31 viewer draws the basic stack; richer authored legend/options and static/export agreement remain Phase 32 decisions. Current validation still differs where source rows are duplicate/invalid. |
+| Stacked column | Same as stacked bar, vertical orientation. | Same three scalar slots. | **Basic shape retained** at the sealed-data level; the Phase 31 viewer draws basic orientation/legend, while richer authored options remain pending. |
 | Table | All selected columns in order; predecessor generic presentation emits table rows plus per-column formatting hints. Reporting table definitions add per-column visibility/label/format, default sort, page size and show-totals. | `Columns []` is ordered and supports selected-column projection; `Order` supports stable current result sort. Build carries every projected row and creates exact additive totals for eligible result columns. | **Core table projection/sort/totals retained.** Missing persisted visibility, localized column labels, page size, per-column formatting and show-totals intent. Do not state “totals are missing”: current totals exist, but cannot encode whether a saved reporting table wants them shown. |
 | Treemap | One or **more** category levels plus one value. Builder creates arbitrary-depth nested hierarchy and rolls totals upward. | One `Category`, optional one `Parent`, and one `Value`; maximum hierarchy depth is two. Negative values are unsuitable. | **Narrower.** Current supports only a one-parent hierarchy, not arbitrary category-depth paths. Geometry/palette/tooltip remain rendering-owned. |
 
@@ -715,18 +780,18 @@ The reusable chart package and the reporting block output definition have differ
 | Reporting concern | Current state | Disposition |
 |---|---|---|
 | Output identity/order/selection | Stable output IDs and definition array order; selection rejects duplicate/unknown IDs. | Retained core. |
-| Output enabled state, localized output name/description, display order | Not represented on `reporting.Output`; block-level metadata is not a substitute. | Definition gap in Phase 27, before frozen-artifact consumption. |
-| KPI comparison, delta, percent delta, trend, target, thresholds, sparkline | Not representable by the shared `charts.Mapping`, which only has scalar chart slots. | Definition gap in Phase 27; Phase 28/31/32 must consume it later. |
+| Output enabled state, localized output name/description, display order | Not represented on `reporting.Output`; block-level metadata is not a substitute. | Definition gap in Phase 27; the Phase 28 frozen consumer currently seals only available fields. |
+| KPI comparison, delta, percent delta, trend, target, thresholds, sparkline | Not representable by the shared `charts.Mapping`, which only has scalar chart slots. | Definition gap in Phase 27; current Phase 28/31 consumers need the extension and Phase 32 must carry it into static/export paths. |
 | Table selected column order and sort | Representable through `charts.Bindings.Columns` and `Mapping.Order`. | Retained. |
 | Table saved visibility, localized labels, page size, per-column display format, show-totals preference | Not represented by current reporting Output/chart mapping. Generic core totals remain available. | Definition gap in Phase 27; do not describe it as absence of totals. |
 | Narrative | Current narrative is bounded and has explicit redacted fields, type/tone/evidence/caveat requirements. | Narrative policy variants and inherited sensitivity metadata need their own comparison; they are not chart renderer defects. |
 
 ### Interaction and export boundaries
 
-- The reference presentation files inspected build static ECharts option dictionaries (including tooltip, legend, heatmap visual scale, and bubble scale) and special payloads for KPI/table. Its query viewer also exposes browser-side CSV download, best-effort ECharts PNG download, and a user table-view toggle. This proves those client affordances existed; it does not prove a broader interaction product.
-- Current Phase 31 owns the Apps viewer, locale/theme/resize/accessibility, result paging and filter-triggered authorized reruns. Phase 32 owns static HTML/SVG, exact-value agreement, and explicitly scoped JSON/CSV/HTML/SVG exports. It expressly does **not** advertise PNG/PDF/page-layout export. Treat PNG as an intentional current scope difference that needs an approved migration/equivalence disposition, rather than as a missing Phase 20 chart-core capability.
-- This bounded review still found no supported predecessor contract establishing drilldown, brush, or click-to-filter as mandatory behavior. Do not add those as parity findings without a source consumer and test.
-- The **portable fields required by a future viewer/exporter**—multi-slot bindings, full formatting, localized output/table labels, and output policies—must be decided before frozen run artifacts, because renderer code cannot reconstruct them from a scalar mapping.
+- The reference presentation files inspected build static ECharts option dictionaries (including tooltip, legend, heatmap visual scale and bubble scale) and special payloads for KPI/table. Its query viewer also exposes browser-side CSV download, best-effort ECharts PNG download and a user table-view toggle. This proves those client affordances existed; it does not prove a broader interaction product.
+- Current Phase 31 owns a real Apps viewer with locale/theme/resize/accessibility, result paging, one page/widget/output selector and filter-triggered authorized reruns. It does not consume the stored grid/presentation fields for whole-page layout. Phase 32 owns static HTML/SVG, exact-value agreement and explicitly scoped JSON/CSV/HTML/SVG exports. It expressly does **not** advertise PNG/PDF/page-layout export.
+- This bounded review still found no supported predecessor contract establishing drilldown, brush or click-to-filter as mandatory behavior. Do not add those as parity findings without a source consumer and test.
+- The **portable fields required by a future viewer/exporter**—multi-slot bindings, full formatting, localized output/table labels and output policies—must be decided before frozen run artifacts, because renderer code cannot reconstruct them from a scalar mapping.
 
 ### Suggested acceptance corpus
 
@@ -745,11 +810,11 @@ Use a synthetic, table-driven corpus that records expected behavior at the seale
 
 ### Limits of this artifact
 
-No runtime tests were run for this document. Existing static catalog/acceptance tests demonstrate the current specified boundary; they do not establish predecessor equivalence, interactive UI behavior, pixel output, live-provider quality, performance, or deployment acceptance. The predecessor source snapshot may contain incomplete or transitional behavior; its source presence alone does not make it a mandatory requirement. Any imported behavior needs a current owner, authority-preserving contract, migration disposition, and executable acceptance case.
+No phase runtime acceptance or browser tests were run for this document. The bounded Go resource test and planning/mirror checks are recorded above; they do not establish predecessor equivalence, interactive UI behavior, pixel output, live-provider quality, performance, or deployment acceptance. The predecessor source snapshot may contain incomplete or transitional behavior; its source presence alone does not make it a mandatory requirement. Any imported behavior needs a current owner, authority-preserving contract, migration disposition, and executable acceptance case.
 
 ### Stable chart subitems under the existing findings
 
-These are stable subitems of VIS-02 and VIS-04, not additional finding IDs. The 26-finding count and the 63-feature ledger remain unchanged.
+These are stable subitems of VIS-02 and VIS-04, not additional finding IDs. The original 26-finding count and the 63-feature ledger remain unchanged; this dated refresh adds REP-01 through REP-03 as three separately tracked findings.
 
 - **VIS-02a — Multi-measure and series bindings:** the catalog names are present, but the current non-table mappings are scalar. Closure requires a typed repeated-measure/series shape or a tested long-form transform that preserves units, labels, order, null gaps and provenance without rerunning the query. Evidence IDs: `O-CATALOG`, `O-GEN`, `C-CORE`; current anchors: [internal/charts/model.go:135](../internal/charts/model.go#L135), [internal/charts/mapping.go:9](../internal/charts/mapping.go#L9).
 - **VIS-02b — Bubble scatter and deep treemap:** the reference accepts a scatter size channel and arbitrary-depth treemap levels; the current model has no size channel and caps the hierarchy at one parent. Closure requires either typed support or explicit unsupported/transformation records with deterministic negative-value and null-path policy. Evidence IDs: `O-CATALOG`, `O-GEN`, `C-CORE`; current anchor: [internal/charts/model.go:230](../internal/charts/model.go#L230).
@@ -760,7 +825,7 @@ These are stable subitems of VIS-02 and VIS-04, not additional finding IDs. The 
 - **Source and execution safety:** bounded uploads/profiles, exact typed result handling, source/context/revision fences, read-only validation, cancellation and uncertain-attempt reconciliation are real target boundaries. The expanded connector matrix is broader than the reference adapter baseline, but live per-engine qualification remains separate.
 - **Privacy and authority:** identity, issuer and durable authority are owned by the authority provider. The target service verifies and enforces signed action/resource reach, source/context partitions, retention and execution boundaries. Reproducing a predecessor cache hit must not weaken those controls.
 - **Profiles and onboarding:** the target deliberately avoids unrestricted raw samples and top-value lists. The replacement requirement is a reviewed, policy-bound value vocabulary, not a return to unrestricted sample exposure.
-- **Charts:** the target retains typed closed mappings, exact labels, explicit nulls, table projection/order/sort and eligible exact totals. Missing multi-value bindings, richer KPI/table settings, full formatting and deep hierarchy are information-model issues; renderer/UI/export behavior remains phase31/32 work.
+- **Charts:** the target retains typed closed mappings, exact labels, explicit nulls, table projection/order/sort and eligible exact totals. The Phase 31 viewer is a real current consumer, while missing multi-value bindings, richer KPI/table settings, full formatting and deep hierarchy remain information-model decisions; whole-page layout requires an approved viewer/host expansion decision and static/export work remains Phase 32 scope.
 - **Reporting:** output kinds, immutable definitions and selected mappings are present, but frozen-run consumers must resolve the output enablement, rule/sensitivity provenance, policy and limits before they claim parity.
 - **Explicit exclusion:** event/condition/custom-code scheduling stubs remain excluded by the active contract; their absence is not a gap to fix.
 
@@ -768,8 +833,8 @@ These are stable subitems of VIS-02 and VIS-04, not additional finding IDs. The 
 
 Follow this order while retaining every mandatory phase and release obligation. The sequence organizes dependency risk; it does not waive acceptance criteria or turn planned status into shipped behavior.
 
-1. **Finish planned implementation phases on the dependency DAG.** Complete in-progress 26/28 work and every remaining required phase in its declared dependency order, with each phase's named acceptance, schema, lifecycle and review obligations. Do not treat planned status as shipped, and do not silently widen a phase contract to absorb unresolved parity fields. Existing phase obligations remain in force.
-2. **Rebaseline the merged implementation.** After the planned phase work is merged, pin the resulting SHA, active decisions, phase state, 26 findings, 63 ledger rows and 12 frontiers. Recheck each disposition against merged code. Do not repair stale phase counts or registry/status files as part of this artifact. Unmerged work is neither counted as shipped nor judged absent.
+1. **Finish every planned implementation phase on the dependency DAG.** Complete in-progress phases 23/26/27/28/29/30/31 and then every remaining required phase (24/25/32/33/34) in declared dependency order, with each phase's named acceptance, schema, lifecycle and review obligations. Do not treat planned status as shipped, and do not silently widen a phase contract to absorb unresolved parity fields. Existing phase obligations remain in force.
+2. **Rebaseline the merged implementation.** After the planned phase work is merged, pin the resulting SHA, active decisions, phase state, the original 26 findings plus the three dated REP findings, the 63 ledger rows and 12 frontiers. Recheck each disposition against merged code. Do not repair stale phase counts or registry/status files as part of this artifact. Unmerged work is neither counted as shipped nor judged absent.
 3. **Expand the behavior contracts.** Resolve semantic/context, clarification, rules, output, chart, sensitivity, policy and portability gaps with owners, migrations, serializers, import/export, SDK/client shapes and real consumers. Required parity/cutover work remains owned by phase34; separately approved optional expansions may be scheduled without being forced into phase34. Preserve source safety and explicit exclusions.
 4. **Functional and quality closure.** Run deterministic negative/positive sentinel tests, then phase24 evaluation and phase34 differential/cutover comparisons over approved synthetic/private boundaries. Phase34 parity/cutover and phase25 release cannot be called complete until their evidence exists. Compare meaning/results, not SQL text alone; separate model, source and service measurements.
 5. **Stress after functional and quality closure.** Exercise cold/warm reuse, concurrency, cancellation, retries, crash recovery, DST/leap windows, retention/erasure and viewer/static/export paths. Require truthful receipts, no stale authority/context reuse and no renderer-triggered source/model work. Only then make final release claims.
@@ -802,46 +867,46 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | B04 | Exact topic/template/dependency references and definition hashes | gap | BLK-02 / LRN-01; missing rule/template dependency continuity | 27.AC03, 27.AC07 |
 | B05 | Real validation evidence bound to content and observed schema | retained core with incomplete dependency domain | Real schema/query evidence exists; BLK-02 remains | 27.AC03 |
 | B06 | Read metadata without automatically exposing SQL | retained core inspected | Separate SQL-read projection and action | 27.AC06, 04.AC04 |
-| B07 | One saved query can feed chart, KPI, table and narrative outputs | runtime pending28; definition gap | VIS-01; saved output kinds exist, richer KPI behavior absent | 28.AC01, 28.AC02 |
+| B07 | One saved query can feed chart, KPI, table and narrative outputs | Phase 28 frozen runtime is present; definition gap remains | VIS-01; saved output kinds exist, richer KPI behavior absent | 28.AC01, 28.AC02 |
 | B08 | Enabled/default output selection, output identifiers and mappings | gap | BLK-01; IDs/subsets/order retained, enabled state missing | 27.AC06, 28.AC02 |
-| B09 | Date/datetime/relative-period/dimension/number/integer/boolean/grain/top-N parameters | retained typed resolution; runtime pending28 | Dates/periods/scalars/grain/top-N and explicit dimension refs | 27.AC05, 28.AC03 |
+| B09 | Date/datetime/relative-period/dimension/number/integer/boolean/grain/top-N parameters | retained typed resolution; frozen runtime is present | Dates/periods/scalars/grain/top-N and explicit dimension refs | 27.AC05, 28.AC03 |
 | B10 | Locale, report timezone and explicit parameter provenance | partial | VIS-03; timezone resolution retained, formatting intent narrowed | 28.AC03 |
 | B11 | Period authoring: explicit range, previous period, rolling periods, schedule window | retained resolution with authoring gap | BLK-03/06; period maths exists, wording checks/workflow narrowed | 27.AC05, 30.AC03 |
 | B12 | Assisted parameterization and question-duplicate assessment | gap | BLK-04/06; lexical duplicate assessment and narrow parameterization | 27.AC05, 27.AC01 |
-| B13 | Exact revision and latest-published/latest-certified selection | execution policies pending28 | Exact revision reads exist; compare all floating-policy variants at run admission | 29.AC03, 30.AC04 |
-| B14 | Published/certified-only/explicit-stale/private-preview trust policies | execution policies pending28 | Separate current trust exists; full execution trust modes remain pending | 27.AC04, 29.AC02 |
+| B13 | Exact revision and latest-published/latest-certified selection | execution policies are implemented in the inspected frozen path; release evidence remains | Exact revision reads exist; compare all floating-policy variants at run admission | 29.AC03, 30.AC04 |
+| B14 | Published/certified-only/explicit-stale/private-preview trust policies | execution policies are implemented in the inspected frozen path; equivalence/release evidence remains | The frozen path validates and enforces all four trust policies; compare legacy policy outcomes and complete release evidence | 27.AC04, 29.AC02 |
 | B15 | Expected ordered columns, types, nullability and sensitive-field metadata | partial; gap | BLK-05; ordered exact typed schema exists, sensitivity handoff missing | 28.AC03, 10.AC03 |
-| B16 | Execution traces prove absence of interpret/generate/rewrite/select-chart stages | pending28 | Forbidden-stage spies must cover actual frozen runtime | 28.AC01 |
-| B17 | Bounded narrative generation, approved columns, evidence, tone/locale and budgets | pending28; definition mapping needed | BLK-05/07; redaction, max claims, analysis/tone/caveat policies | 28.AC04 |
+| B16 | Execution traces prove absence of interpret/generate/rewrite/select-chart stages | Phase 28 runtime inspected; fresh acceptance attribution pending | Forbidden-stage spies must cover actual frozen runtime | 28.AC01 |
+| B17 | Bounded narrative generation, approved columns, evidence, tone/locale and budgets | Phase 28 runtime is present; definition mapping remains needed | BLK-05/07; redaction, max claims, analysis/tone/caveat policies | 28.AC04 |
 | B18 | Schema/semantic impact, exact rename detection and dependent health | partial | Source/topic impact and safe rename exist; rule-only dependencies absent BLK-02 | 27.AC07 |
 | B19 | Revalidation / withdrawn approval / unavailable source | partial | Current source/topic health and withdrawal exist; rule snapshot gap BLK-02 | 27.AC04, 27.AC07 |
-| B20 | Idempotency and expired retained block outputs | pending28 | Expired-artifact idempotent replay must not re-execute | 28.AC05, 28.AC07 |
-| R01 | Reports compose multiple approved blocks and outputs | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC01, 29.AC03 |
-| R02 | Draft, pending review, publication, rejection and amendment lifecycle | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC01, 29.AC02 |
-| R03 | Grid layouts and safe per-widget presentation overrides | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC06 |
-| R04 | Global/local filter definitions and parameter bindings | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC06, 28.AC03 |
-| R05 | Frozen block, dynamic query and safe text widget kinds | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC04, 29.AC06 |
-| R06 | Replayable dynamic question versus session-bound query reference | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC04 |
-| R07 | Dynamic widgets disabled by default, explicit report/schedule opt-in | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC04, 30.AC01 |
-| R08 | Strict versus explicit partial report failure | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC05 |
-| R09 | Exact report revision, widget provenance, block run references and usage | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 28.AC08, 29.AC03 |
-| R10 | Immutable report artifacts, metadata summaries and cursor pagination | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 28.AC07, 28.AC08 |
-| R11 | Cache-aware materialization joins an in-flight equivalent run | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 28.AC05, 28.AC06 |
-| R12 | Private draft/review previews remain private after future publication | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC02 |
-| R13 | Versioned dashboards of exact report revision pages | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC01, 29.AC08 |
-| R14 | Source-shaped external import, external identifiers and revision sequencing | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC07, 34.AC01 |
-| R15 | Older section-based reports project to the canonical layout | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC07 |
-| R16 | Localized names/descriptions, intended business audience label | pending29/28/34 | Mapped plans retain this obligation; this audit does not claim completed target runtime or exhaustively verify the original implementation for this row | 29.AC01, 04.AC03 |
-| Q01 | Saved-question schedules and reviewed-SQL schedules are distinct | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC01 |
-| Q02 | Direct block schedules pin block revision and selected outputs | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC01 |
-| Q03 | Report schedules pin by default; latest-published is explicit | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC04 |
-| Q04 | Cron, interval, timezone and prior-occurrence window | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC03 |
-| Q05 | Pause/resume/retire, test runs and run history | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC04 |
-| Q06 | Retry, backoff, timeout and final-failure policy | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC05 |
-| Q07 | Current service-account status and topic grants | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC02 |
-| Q08 | Stored row cap also clamps to current deployment ceiling | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 10.AC04, 30.AC05 |
-| Q09 | Catalog delivery, partial-delivery policy and recipient metadata | pending30 over shared06 foundation | Target/window/delivery behavior must be compared when the actual reporting handlers land | 30.AC06 |
-| Q10 | Evidence/report-artifact/output retention cleanup | shared foundation; full cleanup pending | Bounded retention target exists in06; new reporting payload/rendition cleanup28/30 remains | 06.AC03, 28.AC07 |
+| B20 | Idempotency and expired retained block outputs | Phase 28 runtime inspected; fresh acceptance attribution pending | Expired-artifact idempotent replay must not re-execute | 28.AC05, 28.AC07 |
+| R01 | Reports compose multiple approved blocks and outputs | core retained; import/cutover/release evidence pending | Closed widgets/pages and composition manifests are present; output-field limits remain VIS-01 | 29.AC01, 29.AC03 |
+| R02 | Draft, pending review, publication, rejection and amendment lifecycle | core retained; release evidence pending | Independent lifecycle pointers, immutable revisions and archive are present; destructive deletion remains REP-02 | 29.AC01, 29.AC02 |
+| R03 | Grid layouts and safe per-widget presentation overrides | core retained in definition; viewer consumer narrower | Twelve-column grid and safe presentation fields persist; Phase 31 selects one page/widget/output rather than rendering a whole grid | 29.AC06 |
+| R04 | Global/local filter definitions and parameter bindings | core retained; selectable options remain a gap | Typed declared filters and explicit reruns are present; REP-01 tracks warehouse-backed option retrieval | 29.AC06, 28.AC03 |
+| R05 | Frozen block, dynamic query and safe text widget kinds | core retained; release evidence pending | Closed widget union, replay/session distinction and opt-in dynamic work are present in inspected composition paths | 29.AC04, 29.AC06 |
+| R06 | Replayable dynamic question versus session-bound query reference | core retained; release evidence pending | Composition groups retain dynamic plan/session provenance; broader conversational continuity remains EXP-01 | 29.AC04 |
+| R07 | Dynamic widgets disabled by default, explicit report/schedule opt-in | core retained; release evidence pending | Dynamic and narrative work are explicit request choices and schedule targets preserve the distinction | 29.AC04, 30.AC01 |
+| R08 | Strict versus explicit partial report failure | core retained; release evidence pending | Composition state records partial/failed output without false completion | 29.AC05 |
+| R09 | Exact report revision, widget provenance, block run references and usage | core retained; release evidence pending | Immutable manifests pin revision/digest and per-widget provenance | 28.AC08, 29.AC03 |
+| R10 | Immutable report artifacts, metadata summaries and cursor pagination | core retained; catalog projection limits remain | Retained artifacts and bounded metadata pages exist; actor/delivery labels and relationships remain REP-03 | 28.AC07, 28.AC08 |
+| R11 | Cache-aware materialization joins an in-flight equivalent run | core retained; release evidence pending | Run reuse/admission and in-flight fences are implemented; authority-aware performance remains PERF-01 | 28.AC05, 28.AC06 |
+| R12 | Private draft/review previews remain private after future publication | core retained; release evidence pending | Private composition/report states retain context and reach checks | 29.AC02 |
+| R13 | Versioned dashboards of exact report revision pages | core retained; viewer layout scope remains | Dashboard pages pin exact report revisions; Phase 31 viewer navigation is selector-based | 29.AC01, 29.AC08 |
+| R14 | Source-shaped external import, external identifiers and revision sequencing | partial; import mapping pending | External-reference coordinates and import seam exist; source-shaped placement/catalog/revision mapping remains to be decided (REF-RENDER-01, EXP-12) | 29.AC07, 34.AC01 |
+| R15 | Older section-based reports project to the canonical layout | core retained; importer evidence pending | Legacy sections have a bounded input and are projected without mutating stored revisions | 29.AC07 |
+| R16 | Localized names/descriptions, intended business audience label | core retained; nested output labels remain absent | Document metadata and audience labels persist; REP-03 tracks actor labels and output-specific labels remain VIS-01 | 29.AC01, 04.AC03 |
+| Q01 | Saved-question schedules and reviewed-SQL schedules are distinct | core retained at phase30 over shared06 foundation; live/release evidence pending | `ReportingTarget` admits the four implemented target families and maps them to their frozen/composition input kind; a saved question remains explicit dynamic replay, while reviewed SQL remains a reviewed block target. [reporting targets](../internal/jobs/reporting_target.go#L64) | 30.AC01 |
+| Q02 | Direct block schedules pin block revision and selected outputs | core retained at phase30 over shared06 foundation; live/release evidence pending | Block targets require selected output IDs and the accepted dispatch stores immutable revision/digest pins before queue execution. [target validation](../internal/jobs/reporting_target.go#L124); [dispatch pins](../internal/jobs/reporting_target.go#L171) | 30.AC01 |
+| Q03 | Report schedules pin by default; latest-published is explicit | core retained at phase30 over shared06 foundation; live/release evidence pending | The target shape separates an exact revision from `latest_published`; validation rejects contradictory combinations, so a floating policy is explicit. [target validation](../internal/jobs/reporting_target.go#L124) | 30.AC04 |
+| Q04 | Cron, interval, timezone and prior-occurrence window | core retained at phase30 over shared06 foundation; live/release evidence pending | The recurrence contract validates timezone/cron/interval bounds and computes anchored next/previous UTC occurrences; the reporting target carries its accepted half-open window. [schedule validation](../internal/jobs/schedule.go#L25); [reporting input](../internal/jobs/reporting_runtime.go#L15) | 30.AC03 |
+| Q05 | Pause/resume/retire, test runs and run history | core retained at phase30 over shared06 foundation; live/release evidence pending | Schedule revisions preserve enabled/retired state and bounded revision/occurrence cursors; pause/resume, retirement and manual test occurrences use revision checks and ordinary admission. [schedule lifecycle](../internal/jobs/schedule_lifecycle.go#L35); [test occurrence](../internal/jobs/schedule_lifecycle.go#L118) | 30.AC04 |
+| Q06 | Retry, backoff, timeout and final-failure policy | core retained at phase30 over shared06 foundation; live/release evidence pending | The worker classifies budget, authority, conflict and timeout failures, bounds exponential backoff and retains recoverable leases; reporting budgets independently cap query/model attempts. [worker policy](../internal/jobs/service.go#L343); [reporting budget](../internal/jobs/reporting_target.go#L45) | 30.AC05 |
+| Q07 | Current service-account status and topic grants | core retained at phase30 over shared06 foundation; live/release evidence pending | Schedule admission and target execution require the supplied signed `reporting.execute` resource scope; target IDs, recipients and creator labels cannot confer permission. [target authority](../internal/jobs/reporting_target.go#L163); [schedule admission](../internal/jobs/service.go#L147) | 30.AC02 |
+| Q08 | Stored row cap also clamps to current deployment ceiling | core retained at phase30 over shared06 foundation; live/release evidence pending | Scheduled execution tightens timeout, rows, bytes and narrative budgets against the deployment budget, and the frozen proof rejects a manifest that exceeds target ceilings. [scheduled limits](../internal/reporting/scheduled.go#L97); [scheduled proof](../internal/reporting/scheduled_proof.go#L15) | 10.AC04, 30.AC05 |
+| Q09 | Catalog delivery, partial-delivery policy and recipient metadata | core retained at phase30 over shared06 foundation; live/release evidence pending | The receipt separates query, retained artifact, catalog and notification outcomes; the delivery facade reads metadata/retained results while recipient values remain delivery intent rather than proof of notification. [reporting receipt](../internal/jobs/reporting_runtime.go#L50); [delivery facade](../internal/reporting/delivery.go#L14) | 30.AC06 |
+| Q10 | Evidence/report-artifact/output retention cleanup | shared foundation; reporting cleanup partial | Bounded composition/run expiry exists; rendition/export retention remains Phase 32 scope | 06.AC03, 28.AC07 |
 | Q11 | Event and condition trigger enum variants | intentional exclusion | Original event/condition stubs; do not implement to satisfy an enum inventory | 06.AC03, 30.AC08 |
 | N01 | Routing and span/entity extraction | gap | RTE-01/02; caller topic selection and missing interpretation stages | 17.AC01, 17.AC02 |
 | N02 | Lean context engineering | gap | CTX-01; budget mechanics retained, dependency closure lost | 17.AC03, 17.AC04 |
@@ -858,8 +923,8 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | N13 | Upload/dataset mode, SQL workspaces and preprocessing | retained foundation; richer semantic handoff gap | Bounded uploads/ordinary governed sources; DATA-01/02 semantic environment is narrower | 11.AC01, 11.AC05 |
 | N14 | Stage timing, cache attribution, cost and cancellation | partial / unmeasured | Cancellation and stage receipts retained; PERF-01 warm/cold cost/latency needs comparison | 01.AC03, 17.AC06, 05.AC03 |
 | N15 | Source adapters and dialect coverage | per-engine qualification incomplete | Six target engine contracts; recorded cloud evidence is not live workload equivalence | 14.AC01, 14.AC05 |
-| N16 | Operational setup and generated semantic environment | pending26/33 | Evidence-backed richer setup and generation; DATA-01/02, SEM-02 | 33.AC01, 33.AC03 |
+| N16 | Operational setup and generated semantic environment | Phase 26 reviewed application; richer generation pending33 | Evidence-backed richer setup and generation; DATA-01/02, SEM-02 | 33.AC01, 33.AC03 |
 
 ## Review disposition
 
-The canonical document incorporates the 26 finding records from the audit, the full 63-feature ledger, the 12 explicit expansion frontiers, and the neutral clarification/underspecification and chart-breadth briefs. Source-side evidence is represented only by abstract IDs; current target evidence uses exact relative line links. No files beyond this documentation artifact are changed by this task, no phase registry/status is modified, and no runtime or live parity test is claimed.
+The canonical document incorporates the original 26 finding records, the three dated REP refresh findings (29 tracked findings total), the full 63-feature ledger, the 12 explicit expansion frontiers, and the neutral clarification/underspecification, chart-breadth, semantic/context and reporting refreshes. Source-side evidence is represented only by abstract IDs; current target evidence uses exact relative line links. This update changes documentation and external evidence artifacts only; it does not change the phase registry/status or runtime code. The bounded validation record is not a live parity or release claim.
