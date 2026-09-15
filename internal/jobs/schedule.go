@@ -5,12 +5,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/calendars"
 	"github.com/robfig/cron/v3"
 )
 
-// Spec supports only executable trigger kinds. Definitions are immutable; pause/resume uses CAS.
+// Spec supports only executable trigger kinds. Replacement and pause/resume use CAS;
+// accepted occurrences retain their original definition and revision.
 type Spec struct {
-	Type            string    `json:"type"`
+	Type            string    `json:"type" jsonschema:"enum=manual,enum=interval,enum=cron"`
 	Cron            string    `json:"cron,omitempty"`
 	Timezone        string    `json:"timezone"`
 	IntervalSeconds int64     `json:"interval_seconds,omitempty"`
@@ -25,7 +27,7 @@ func (s Spec) Validate() error {
 	if s.Missed != "skip" && s.Missed != "catch_up" || s.Overlap != "skip" && s.Overlap != "queue" || s.MaxCatchUp < 0 || s.MaxCatchUp > 32 || s.Missed == "catch_up" && s.MaxCatchUp < 1 || s.Timezone == "" || len(s.Timezone) > 128 {
 		return ErrInvalid
 	}
-	if _, err := time.LoadLocation(s.Timezone); err != nil {
+	if _, err := calendars.Location(s.Timezone); err != nil {
 		return ErrInvalid
 	}
 	switch s.Type {
@@ -50,7 +52,7 @@ func (s Spec) Validate() error {
 	return nil
 }
 func (s Spec) parsed() (cron.Schedule, error) {
-	location, err := time.LoadLocation(s.Timezone)
+	location, err := calendars.Location(s.Timezone)
 	if err != nil {
 		return nil, ErrInvalid
 	}
@@ -141,6 +143,10 @@ type ScheduleRequest struct {
 
 // Validate rejects malformed or unbounded values before use.
 func (r ScheduleRequest) Validate() error {
+	wire, marshalErr := json.Marshal(r)
+	if marshalErr != nil || len(wire) > 8192 {
+		return ErrInvalid
+	}
 	if r.Target.Validate() != nil {
 		return ErrInvalid
 	}
@@ -149,6 +155,7 @@ func (r ScheduleRequest) Validate() error {
 
 // Schedule is the retained, revisioned definition and its durable occurrence cursor.
 type Schedule struct {
+	Retired          bool            `json:"retired"`
 	ID               string          `json:"id"`
 	Revision         int64           `json:"revision"`
 	Enabled          bool            `json:"enabled"`

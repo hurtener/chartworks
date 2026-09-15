@@ -12,6 +12,13 @@ import sys
 import tempfile
 
 
+DISCOVERY_TIMEOUT_SECONDS = 25 * 60
+# This is an aggregate build + all-packages budget. Go's -timeout=20m still
+# bounds each package separately; a cold race/coverpkg build is outside it.
+# Keep this bounded and below the 90-minute build-test CI job deadline.
+SUITE_TIMEOUT_SECONDS = 60 * 60
+
+
 def bands(text: str) -> dict[str, int]:
     """Parse percentages with at most two decimal places into exact basis points."""
     result = {}
@@ -20,7 +27,7 @@ def bands(text: str) -> dict[str, int]:
         if not line:
             continue
         parts = line.split()
-        if len(parts) != 2 or not re.fullmatch(r"(?:internal|cmd|sdk|eval)(?:/[A-Za-z0-9_-]+)+", parts[0]):
+        if len(parts) != 2 or not re.fullmatch(r"(?:internal|cmd|sdk|eval|web)(?:/[A-Za-z0-9_-]+)+", parts[0]):
             raise ValueError("invalid coverage band")
         if not re.fullmatch(r"[0-9]+(?:\.[0-9]{1,2})?", parts[1]):
             raise ValueError("invalid coverage threshold precision")
@@ -74,10 +81,11 @@ def measure(text: str, module: str, packages: set[str]) -> dict[str, tuple[int, 
     return {name: tuple(value) for name, value in totals.items()}
 
 
-def command(args: list[str], root: Path, *, capture: bool = False) -> str:
+def command(args: list[str], root: Path, *, capture: bool = False,
+            timeout_seconds: int = DISCOVERY_TIMEOUT_SECONDS) -> str:
     result = subprocess.run(args, cwd=root, env=dict(os.environ, CGO_ENABLED="1"),
                             text=True, stdout=subprocess.PIPE if capture else None,
-                            timeout=900, check=False)
+                            timeout=timeout_seconds, check=False)
     if result.returncode:
         raise ValueError("coverage command failed; no package may be silently skipped")
     return result.stdout.strip() if capture else ""
@@ -89,15 +97,16 @@ def main() -> int:
         limits = bands((root / "scripts/coverage-bands.conf").read_text())
         module = command(["go", "list", "-m"], root, capture=True)
         listed = command(["go", "list", "./..."], root, capture=True).splitlines()
-        packages = {name[len(module) + 1:] for name in listed if name.startswith(module + "/") and name[len(module) + 1:].split("/", 1)[0] in ("internal", "cmd", "sdk", "eval")}
+        packages = {name[len(module) + 1:] for name in listed if name.startswith(module + "/") and name[len(module) + 1:].split("/", 1)[0] in ("internal", "cmd", "sdk", "eval", "web")}
         if not packages or packages != set(limits):
             raise ValueError("production package inventory and exact coverage bands disagree")
         with tempfile.TemporaryDirectory(prefix="chartworks-coverage-") as directory:
             profile = Path(directory) / "coverage.out"
             targets = ",".join(module + "/" + name for name in sorted(packages))
             try:
-                command(["go", "test", "-race", "-count=1", "-timeout=10m", "-covermode=atomic",
-                         "-coverpkg=" + targets, "-coverprofile=" + str(profile), "./..."], root)
+                command(["go", "test", "-race", "-count=1", "-timeout=20m", "-covermode=atomic",
+                         "-coverpkg=" + targets, "-coverprofile=" + str(profile), "./..."], root,
+                        timeout_seconds=SUITE_TIMEOUT_SECONDS)
                 totals = measure(profile.read_text(), module, packages)
             finally:
                 # Preserve real instrumentation, including failed-suite evidence, when CI asks.
@@ -112,7 +121,13 @@ def main() -> int:
             failed |= not passed
             print(f"{'OK' if passed else 'FAIL'}: {name} {100 * covered / total:.2f}% ({covered}/{total}), required {band_percentage(limits[name])}%")
         return int(failed)
-    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired as error:
+        # Do not interpolate the command/environment: they may carry private
+        # paths or configuration. Partial instrumentation never proves success.
+        print(f"FAIL: coverage: command exceeded {error.timeout}s aggregate wall-clock limit; "
+              "partial coverage is not passing test evidence", file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as error:
         print(f"FAIL: coverage: {type(error).__name__}: coverage unavailable or invalid", file=sys.stderr)
         return 1
 

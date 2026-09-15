@@ -1,6 +1,6 @@
 # Phase 26 — engineering-autopilot
 
-Status: planned. Owner: internal/engineering. Hard dependencies: 13, 15, 16, 21, 27.
+Status: in_progress. Owner: internal/engineering. Hard dependencies: 13, 15, 16, 21, 27.
 
 ## Authority and design
 
@@ -44,3 +44,9 @@ Implement `TestPhase26/AC01` through `TestPhase26/AC06` with the real runner/sto
 ## Glossary, decisions and deviations
 
 Proposal approval and actual effect completion are separate. D-051/D-052 apply. No runtime completion is claimed.
+
+## Runtime completion evidence
+
+See the [runtime contract](../contracts/reviewed-engineering-and-frozen-runs.md) and
+[review and verification ledger](../reviews/phase-26-28-runtime.md). Exact-source
+acceptance and coverage are required before closure.

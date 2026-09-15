@@ -82,7 +82,7 @@ func blockReadArgs(e identity.Envelope, id string, ref reporting.Reference, a re
 	if a == reporting.Write {
 		parent = "write"
 	}
-	full := a == reporting.Write || a == reporting.Validate || a == reporting.Preview || a == reporting.SQLRead
+	full := a == reporting.Execute || a == reporting.Write || a == reporting.Validate || a == reporting.Preview || a == reporting.SQLRead
 	return []any{e.Tenant(), id, ref.Revision, ref.Draft, e.User(), grants, private, parent, full}, nil
 }
 

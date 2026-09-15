@@ -80,13 +80,16 @@ func (phase21Repository) FinishAttempt(context.Context, jobs.Lease, string, bool
 func (phase21Repository) CreateSchedule(context.Context, store.Scope, string, string, jobs.ScheduleRequest, jobs.Limits) (jobs.Schedule, error) {
 	return jobs.Schedule{}, jobs.ErrEmpty
 }
+func (phase21Repository) ReplaceSchedule(context.Context, store.Scope, string, string, int64, string, jobs.ScheduleRequest, jobs.Limits) (jobs.Schedule, error) {
+	return jobs.Schedule{}, jobs.ErrEmpty
+}
 func (phase21Repository) ReadSchedule(context.Context, store.Scope, string) (jobs.Schedule, error) {
 	return jobs.Schedule{}, jobs.ErrEmpty
 }
 func (phase21Repository) SetSchedule(context.Context, store.Scope, string, int64, bool) (jobs.Schedule, error) {
 	return jobs.Schedule{}, jobs.ErrEmpty
 }
-func (phase21Repository) FireSchedule(context.Context, store.Scope, string, string, string, jobs.Limits) (jobs.Job, error) {
+func (phase21Repository) FireSchedule(context.Context, store.Scope, string, string, string, int64, jobs.Limits) (jobs.Job, error) {
 	return jobs.Job{}, jobs.ErrEmpty
 }
 func (phase21Repository) TickSchedules(context.Context, jobs.Limits) (int, error) {
@@ -161,7 +164,11 @@ func phase21Registry(t *testing.T) *api.Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	composed, err := api.Compose(blocks, public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart, transport)
+	runtimeRegistry, err := reportingapi.RuntimeRegistry(true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := api.Compose(runtimeRegistry, blocks, public, security, work, sources, engineering, execution, pipelines, topics, nlq, nlqExec, byo, chart, transport)
 	if err != nil {
 		t.Fatal(err)
 	}

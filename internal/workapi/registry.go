@@ -54,11 +54,11 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 	if err != nil {
 		return nil, err
 	}
-	submission, err := api.SchemaFor("jobSubmissionRequest", reflect.TypeFor[jobs.Submission](), false)
+	submission, err := api.SchemaFor("jobSubmissionRequest", reflect.TypeFor[jobs.Submission](), false, api.NullableCollections)
 	if err != nil {
 		return nil, err
 	}
-	schedule, err := api.SchemaFor("scheduleRequest", reflect.TypeFor[jobs.ScheduleRequest](), false)
+	schedule, err := api.SchemaFor("scheduleRequest", reflect.TypeFor[jobs.ScheduleRequest](), false, api.NullableCollections)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +131,11 @@ func APIRegistry(engine gateway.Engine, queue *jobs.Service) (*api.Registry, err
 		Operation: api.Operation{Method: "POST", Path: "/v1/schedules/{id}/runs", Action: "scheduling.execute", Effect: "durable_admission"},
 		Replay:    "keyed", ID: "fireSchedule", Summary: "Admit one manual schedule run", ResourceLoader: "jobs.Service.Fire", Audit: "schedule.run_requested", Headers: []api.Parameter{{Name: "Idempotency-Key", In: "header", Description: "Stable key for the logical schedule run", Type: "string", Required: true, Max: 128, Pattern: "^[A-Za-z0-9_.:-]+$"}}, Request: empty, RequestContentType: "application/json", MaxBodyBytes: workRequestMaxBytes, Response: jobResponse, Errors: workErrors,
 	}, dispatch)
+	lifecycle, err := scheduleLifecycleDefinitions(dispatch)
+	if err != nil {
+		return nil, err
+	}
+	definitions = append(definitions, lifecycle...)
 	if len(definitions) == 0 {
 		return nil, nil
 	}

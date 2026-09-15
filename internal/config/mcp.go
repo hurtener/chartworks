@@ -19,7 +19,7 @@ type MCP struct {
 
 // DefaultMCP supplies bounded settings; features.mcp still defaults to false.
 func DefaultMCP() MCP {
-	return MCP{MaxRequestBytes: 10 << 20, MaxResponseBytes: 16 << 20, MaxConcurrent: 16, Timeout: Duration(65 * time.Second), Groups: []string{"discovery", "query", "byo", "charts"}, AllowedHosts: []string{"localhost", "127.0.0.1", "::1"}}
+	return MCP{MaxRequestBytes: 10 << 20, MaxResponseBytes: 16 << 20, MaxConcurrent: 16, Timeout: Duration(65 * time.Second), Groups: []string{"discovery", "query", "byo", "charts", "reporting"}, AllowedHosts: []string{"localhost", "127.0.0.1", "::1"}}
 }
 
 // Clone detaches operator-owned settings from request state.
@@ -34,12 +34,12 @@ func ValidateMCP(m MCP) error {
 	if m.MaxRequestBytes < 1024 || m.MaxRequestBytes > 10<<20 || m.MaxResponseBytes < 16384 || m.MaxResponseBytes > 32<<20 || m.MaxConcurrent < 1 || m.MaxConcurrent > 64 || m.Timeout < Duration(time.Second) || m.Timeout > Duration(65*time.Second) {
 		return invalid("mcp", "bounded request, response, concurrency and timeout limits required")
 	}
-	if len(m.Groups) < 1 || len(m.Groups) > 4 {
+	if len(m.Groups) < 1 || len(m.Groups) > 5 {
 		return invalid("mcp.groups", "one or more implemented groups required")
 	}
 	seen := map[string]bool{}
 	for _, g := range m.Groups {
-		if seen[g] || (g != "discovery" && g != "query" && g != "byo" && g != "charts") {
+		if seen[g] || (g != "discovery" && g != "query" && g != "byo" && g != "charts" && g != "reporting") {
 			return invalid("mcp.groups", "unknown or duplicate group")
 		}
 		seen[g] = true

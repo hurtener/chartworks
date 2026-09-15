@@ -31,7 +31,7 @@ JSON file with no group/world write permission. Replace it atomically for change
 keep its parent directory operator-controlled. Pengui reads it on every request.
 The file contains version 1 and at most128 unique bindings. A binding has only
 `id`, `revision`, `tenant`, `runtime_id`, `capability_id`, `audience`, `operation`,
-`enabled`, `not_after`. Only `retention.sweep` is supported. The registered runtime
+`enabled`, `not_after`. Maintenance bindings use `retention.sweep`. The scheduled-pipeline extension uses `pipeline.run` plus the exact operator-owned `pipeline` reach described below. The registered runtime
 and MCP-server capability must both still be enabled. The binding tenant/runtime
 must match the verified broker; an execution audience is never the ordinary
 capability audience. The binding revision is a positive integer at most9999999999.
@@ -71,3 +71,46 @@ wrong service identity/expired tokens. Companion `TestExecutionAuthority` exerci
 Pengui's real vault, registered runtime/capability, strict binding loader and actual
 issuer with128 concurrent calls. These are complementary fixture-backed producer
 and consumer tests, not a claim of a deployed cross-service live smoke.
+
+
+## Scheduled pipeline extension
+
+Chartworks owns recurrence, occurrence admission, retries and managed execution.
+The platform supplies authority only; its prompt scheduling is unrelated.
+`pipeline.run` policy adds a closed `pipeline` object with `id`, `sources`,
+`datasets` and `contexts`. Each list contains 1–16 distinct exact identifiers.
+The issuer supplies `engineering.pipeline.run`, `sources.query`, `sources.read`,
+pipeline source-write, external source read/query, dataset query and context-use
+scopes, plus the existing exact execution-binding/job scopes. No tenant erasure,
+publication or schedule-administration action is issued. Request/response transport,
+issuer, audience, lifetime and manifest binding remain the v1 contract.
+
+The consumer seals the pipeline ID/version/digest into each accepted occurrence.
+Its pipeline effects use that occurrence's existing operation ID and lease fence;
+no inner request task is admitted. An ordinary request runner cannot claim the
+scheduled task, and the maintenance completion path rejects pipeline targets.
+Every attempt obtains a fresh token and revalidates the exact published definition
+and external data reach. Accepted due times, windows and versions survive schedule
+replacement. Current issuer support is a separate companion change; enable this
+target only after that provider change is available and the consumer passes its
+actual native scheduled-execution tests. This document is not deployment evidence.
+
+## Reporting consumer extension — phase 30
+
+Reporting uses the same v1 Basic-authenticated trusted broker adapter, body,
+short-lived signed execution proof and jobs audience. No target-scope or identity
+fields are added to the exchange request. The accepted local kind is
+`reporting.scheduled`; target-specific publication/dependency pins are part of the
+immutable manifest hash. The issuer must independently approve binding-use,
+`reporting.execute`, exact run execution and all actual block/report/source/topic/
+dataset/context reach; dynamic queries additionally need their ordinary query
+actions. The consumer never derives these permissions from a creator or recipient.
+
+The producer's deployment/policy must support that approved scope set before
+reporting dispatch is enabled. Chartworks fixture-backed tests do not claim to have
+provisioned production Pengui bindings or changed its issuer configuration.
+`TestPhase30/AC01`–`AC08` exercises the real adapter, verifier, queue and reporting
+paths, including wrong manifest/binding/audience/service, expiry, refusal, narrowed
+context, retries and zero protected work on denial. Metadata-only catalog reads
+are independent of that broker. The [delivery contract](reporting-delivery-v1.md)
+describes the four target representations and distinct effect/receipt states.

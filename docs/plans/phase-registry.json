@@ -247,7 +247,7 @@
         "21",
         "27"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "acceptance_count": 6
     },
     "27": {
@@ -269,7 +269,7 @@
         "20",
         "27"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "acceptance_count": 8
     },
     "29": {
@@ -278,7 +278,7 @@
         "18",
         "28"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "acceptance_count": 8
     },
     "30": {
@@ -290,7 +290,7 @@
         "28",
         "29"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "acceptance_count": 8
     },
     "31": {
@@ -301,7 +301,7 @@
         "28",
         "29"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "acceptance_count": 8
     },
     "32": {

@@ -1,6 +1,6 @@
 # Phase 29 — reports-dashboards
 
-Status: planned. Owner: internal/reporting. Hard dependencies: 18, 28.
+Status: in_progress. Owner: internal/reporting. Hard dependencies: 18, 28.
 
 ## Authority and design
 
@@ -47,4 +47,10 @@ Implement `TestPhase29/AC01` through `TestPhase29/AC08`. Use mixed block/query/t
 
 ## Glossary, decisions and deviations
 
-Report publication, widget origin, query durability and artifact privacy are independent. D-047 applies. No runtime completion is claimed.
+Report publication, widget origin, query durability and artifact privacy are independent. D-047 applies. The implementation is submitted for review on `feat/phase-29-reports-dashboards`; `in_progress` is retained until review/merge, not to bypass acceptance.
+
+The eight named criteria now exercise the HTTP/SDK lifecycle and cumulative Phase 21 registry, real PostgreSQL/native source execution, output-subset isolation, publication races, saved-query routing/session identity, durable replay, current-scope retained reads and real expiry. Additional AC01/AC03/AC05/AC08 scenarios require transactional audit/first-seal rollback, recovery after a lost generated-plan reply without more model calls, explicit uncertainty when no plan exists, and bounded expiry erasure with audit-failure rollback. No immutable expiry or authority proof is rewritten to make these tests pass.
+
+An unavailable optional narrative is an output-local failed receipt in an explicitly opted-in partial frozen run; composition still enforces its own strict/partial policy and the full declared narrative budget. Strict standalone frozen admission retains its prior fail-fast behavior. A failed strict report does not expose a completed-looking widget payload.
+
+The [runtime contract](../contracts/reporting-composition-v1.md), [runnable request fixtures](../../examples/report-create.json), and [adversarial review](../reviews/phase-29-adversarial.md) describe the implemented scope. All eight strict acceptance results and exact-source CI remain mandatory. Phase 29 does not claim the Phase 30–34 schedules/viewer/rendering/cutover capabilities or the Phase 25 release gate.

@@ -236,7 +236,7 @@ merges into the ordinary operator-owned configuration; it does not create author
 | `mcp.max_response_bytes` | integer bytes | 16 MiB | 16 KiB–32 MiB; text plus structured results and final protocol encoding are bounded. |
 | `mcp.max_concurrent` | integer calls | 16 | 1–64; exhaustion returns 429, with no unbounded waiting queue. |
 | `mcp.timeout` | duration | `1m5s` | 1–65 seconds; when enabled, strictly shorter than `server.write_timeout`. Caller cancellation and current bearer expiry may shorten it. |
-| `mcp.groups` | string array | discovery, query, byo, charts | 1–4 distinct implemented group names. Only installed services are exposed; selecting no real bindings fails startup. |
+| `mcp.groups` | string array | discovery, query, byo, charts, reporting | 1–5 distinct implemented group names. Only installed services are exposed; selecting no real bindings fails startup. |
 | `mcp.allowed_hosts` | string array | localhost, 127.0.0.1, ::1 | 1–16 unique canonical lower-case DNS names or IP literals; no wildcard, scheme, port or forwarding-header substitution. |
 
 Every request uses `auth.audiences.mcp` (or the explicitly configured shared
@@ -271,3 +271,39 @@ Clients have no server-side persistence and create no authority. The
 Client config inspection does not open a token descriptor, resolve a token, connect
 to a service or start workers. `--input -` accepts only bounded stdin payloads;
 CLI arguments never accept a literal token, SQL, arbitrary URL target or headers.
+
+## Reporting delivery and timezone archive — phases 30/31
+
+The [operator excerpt](../examples/chartworks.reporting-delivery.json) merges into
+existing configuration without enabling a dispatcher or provisioning credentials.
+See [reporting delivery v1](contracts/reporting-delivery-v1.md) for lifecycle,
+authority and catalog-only delivery. All new fields below are non-secret.
+
+| Key | Units / default | Closed bounds and behavior |
+|---|---|---|
+| `mcp.groups` | Array; discovery, query, byo, charts, reporting | 1–5 distinct implemented names. The reporting group registers real services only; `features.mcp` still defaults false. |
+| `reporting.viewer.max_message_bytes` | Bytes; 2097152 | 16384–4194304. Enforced for search/describe/runs/view; over-budget replies contain no partial data. MCP's transport cap independently applies. |
+| `reporting.viewer.max_rows` | Rows; 500 | 1–1000 per selected table page, not a new source limit. |
+| `reporting.viewer.page_rows` | Rows; 100 | 1 through max_rows; default page selection. |
+| `reporting.viewer.max_outputs` | Count; 32 | 1–64. Rejects oversized output collections rather than silently dropping outputs. |
+| `reporting.viewer.max_points` | Count; 5000 | 1–10000 chart points; exact accessible values remain attached. |
+| `jobs.timezone_database_version` | String; bundled Go 1.26.4 archive SHA-256 coordinate | Empty normalizes to bundled; any other version is rejected. Persistence protects mixed-replica calendar behavior. No host-zonefile lookup or silent database-version replacement. |
+
+The exact archive coordinate is
+`go1.26.4-sha256:8f55634d05f8bca1f7bc7c69c5933428c69357e0bdf565e5ba224e3f88ff12e8`.
+The archive license and verification live in `internal/calendars`. Timezone
+rollouts require reviewed migration/deployment changes, not editing accepted
+occurrences. Tests cover pinned archive integrity, changed host environment,
+wrong version, invalid names, DST gaps/folds, leap dates and first windows.
+
+Each reporting target's budget is request intent constrained again by deployment
+limits: timeout_ms 1000–60000, max_rows 1–10000, max_bytes 1024–4194304,
+query_attempts 1–800, model_calls 0–64, model_tokens 0–16777216. Zero calls requires
+zero tokens; enabled calls require at least 64 reserved tokens. Deterministic
+frozen requests leave dynamic/narrative false and model ceilings zero. Reservations
+are durable pre-call ceilings, not invented usage/cost observations.
+
+`TestReportingViewerConfigurationBounds`, `TestReportingDeliveryOperatorExcerpt`,
+calendar/config tests and phase30/31 acceptance cover positive and negative
+settings, non-secret examples, actual payload caps and runtime attempts. Existing
+jobs/reader/gateway deadlines, tenant quotas and signed authority are not enlarged.

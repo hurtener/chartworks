@@ -47,10 +47,10 @@ func TestJobStoreRejectsInvalidWork(t *testing.T) {
 	if _, err := q.db.SetSchedule(ctx, scope, "absent", 1, false); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("absent state", err)
 	}
-	if _, err := q.db.FireSchedule(ctx, scope, "s", "x", "bad/", q.limits); err == nil {
+	if _, err := q.db.FireSchedule(ctx, scope, "s", "x", "bad/", 1, q.limits); err == nil {
 		t.Fatal("invalid occurrence key")
 	}
-	if _, err := q.db.FireSchedule(ctx, scope, "s", "absent", "key", q.limits); !errors.Is(err, store.ErrNotFound) {
+	if _, err := q.db.FireSchedule(ctx, scope, "s", "absent", "key", 1, q.limits); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("absent fire", err)
 	}
 	if _, err := q.db.ClaimJob(ctx, "invalid/", q.limits); err == nil {
@@ -132,7 +132,7 @@ func TestJobStoreRejectsInvalidWork(t *testing.T) {
 	if _, err := q.db.CreateSchedule(ctx, scope, "s", "new", scheduleRequest, mismatch); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("queue mismatch scheduled", err)
 	}
-	if _, err := q.db.FireSchedule(ctx, scope, "s", first.ID, "new", mismatch); !errors.Is(err, store.ErrConflict) {
+	if _, err := q.db.FireSchedule(ctx, scope, "s", first.ID, "new", first.Revision, mismatch); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("queue mismatch fired", err)
 	}
 	if _, err := q.db.TickSchedules(ctx, mismatch); !errors.Is(err, store.ErrConflict) {

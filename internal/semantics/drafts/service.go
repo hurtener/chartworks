@@ -461,21 +461,32 @@ func (s *Service) RebindDataset(ctx context.Context, e identity.Envelope, topic 
 // OnboardProfile creates a deterministic unresolved topic scaffold from one
 // active private profile. It invents no measures, dimensions, joins, or rules.
 func (s *Service) OnboardProfile(ctx context.Context, e identity.Envelope, in OnboardRequest) (Version, error) {
-	if ctx == nil || !identity.Identifier(in.Topic) || !identity.Identifier(in.Version) || !identity.Identifier(in.Profile) || len(in.Change) < 1 || len(in.Change) > 1024 || !utf8.ValidString(in.Change) {
-		return Version{}, store.ErrInvalid
-	}
-	if err := Require(e, in.Topic, Write); err != nil {
-		return Version{}, err
-	}
-	if err := access.Require(e, "topics.write", access.Tenant(e, "write")); err != nil {
-		return Version{}, err
-	}
-	evidence, err := s.profiles.Evidence(ctx, e, in.Profile)
+	pack, err := s.PlanProfile(ctx, e, in)
 	if err != nil {
 		return Version{}, err
 	}
+	return s.Save(ctx, e, SaveRequest{Pack: pack, Change: in.Change})
+}
+
+// PlanProfile prepares exact profile-backed private authoring material without
+// saving a draft, calling a model, or publishing business meaning. Save repeats
+// current source/profile validation when the reviewed material is later applied.
+func (s *Service) PlanProfile(ctx context.Context, e identity.Envelope, in OnboardRequest) (semantics.TopicPack, error) {
+	if ctx == nil || !identity.Identifier(in.Topic) || !identity.Identifier(in.Version) || !identity.Identifier(in.Profile) || len(in.Change) < 1 || len(in.Change) > 1024 || !utf8.ValidString(in.Change) {
+		return semantics.TopicPack{}, store.ErrInvalid
+	}
+	if err := Require(e, in.Topic, Write); err != nil {
+		return semantics.TopicPack{}, err
+	}
+	if err := access.Require(e, "topics.write", access.Tenant(e, "write")); err != nil {
+		return semantics.TopicPack{}, err
+	}
+	evidence, err := s.profiles.Evidence(ctx, e, in.Profile)
+	if err != nil {
+		return semantics.TopicPack{}, err
+	}
 	if !evidence.Active || evidence.Profile.Version != in.Profile {
-		return Version{}, readexec.ErrBinding
+		return semantics.TopicPack{}, readexec.ErrBinding
 	}
 	columns := make([]semantics.Column, 0, len(evidence.Profile.Schema))
 	for _, column := range evidence.Profile.Schema {
@@ -484,7 +495,14 @@ func (s *Service) OnboardProfile(ctx context.Context, e identity.Envelope, in On
 		}
 	}
 	pack := semantics.TopicPack{SchemaVersion: semantics.SchemaVersion, Topic: in.Topic, Version: in.Version, Name: in.Name, Description: in.Description, Datasets: []semantics.Dataset{{ID: evidence.Profile.Dataset, Name: evidence.Profile.Dataset, Source: semantics.SourceReference{Source: evidence.Profile.Source, Context: evidence.Profile.Context, Dataset: evidence.Profile.Dataset, ProfileVersion: evidence.Profile.Version, ProfileDigest: evidence.Profile.DeterministicHash(), SourceRevision: evidence.Profile.SourceRevision}, Columns: columns}}}
-	return s.Save(ctx, e, SaveRequest{Pack: pack, Change: in.Change})
+	model, err := semantics.Compile(pack)
+	if err != nil {
+		return semantics.TopicPack{}, err
+	}
+	if err = RequirePack(e, model.Pack(), Write); err != nil {
+		return semantics.TopicPack{}, err
+	}
+	return model.Pack(), nil
 }
 
 // EnhanceRequest advances one bounded generation step over stable draft columns.

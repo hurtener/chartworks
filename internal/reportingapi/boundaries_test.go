@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/reporting"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -93,7 +94,7 @@ func TestReportingClosedBodyAndSafeErrors(t *testing.T) {
 	}{
 		{access.ErrUnauthenticated, 401}, {access.ErrForbidden, 403}, {nlqexec.ErrInspectionRequired, 403},
 		{access.ErrNotFound, 404}, {store.ErrNotFound, 404}, {nlqexec.ErrForeignSession, 404},
-		{reporting.ErrInvalid, 400}, {store.ErrInvalid, 400}, {nlqexec.ErrInvalid, 400},
+		{&semantics.ValidationError{Code: semantics.CodeMissingReference, Path: "private-canary"}, 400}, {reporting.ErrInvalid, 400}, {store.ErrInvalid, 400}, {nlqexec.ErrInvalid, 400},
 		{store.ErrConflict, 409}, {nlqexec.ErrNoPlan, 409}, {reporting.ErrStale, 409}, {exec.ErrBinding, 409},
 		{exec.ErrLimit, 413}, {exec.ErrQuery, 422}, {reporting.ErrBusy, 429},
 		{context.Canceled, 504}, {context.DeadlineExceeded, 504}, {errors.New("SQL-credential-canary"), 503},

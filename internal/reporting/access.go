@@ -21,12 +21,13 @@ const (
 	Publish  Access = "publish"
 	Certify  Access = "certify"
 	SQLRead  Access = "sql.read"
+	Execute  Access = "execute"
 )
 
 // Action returns the signed action required for this reporting access mode.
 func (a Access) Action() string {
 	switch a {
-	case Read, Write, Validate, Preview, Publish, Certify, SQLRead:
+	case Read, Write, Validate, Preview, Publish, Certify, SQLRead, Execute:
 		return "reporting." + string(a)
 	default:
 		return ""
@@ -36,6 +37,8 @@ func (a Access) Action() string {
 // Permission returns the block resource permission required for this access mode.
 func (a Access) Permission() string {
 	switch a {
+	case Execute:
+		return "execute"
 	case Read, SQLRead:
 		return "read"
 	case Write, Validate:

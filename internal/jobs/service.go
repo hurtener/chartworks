@@ -17,6 +17,8 @@ import (
 // Service applies signed authority at every API/in-process call and owns joined worker lifetimes.
 type Service struct {
 	repo      Repository
+	pipeline  PipelineExecutor
+	reporting ReportingExecutor
 	authority Authority
 	limits    Limits
 	running   atomic.Bool
@@ -51,7 +53,7 @@ func (s *Service) report(stage string, err error) {
 		s.observe(stage)
 	}
 }
-func (s *Service) admission(e identity.Envelope, request Submission) (store.Scope, error) {
+func (s *Service) admission(ctx context.Context, e identity.Envelope, request Submission) (store.Scope, error) {
 	if !s.DispatchEnabled() {
 		return store.Scope{}, ErrTransient
 	}
@@ -61,12 +63,38 @@ func (s *Service) admission(e identity.Envelope, request Submission) (store.Scop
 	if err := access.Require(e, "scheduling.write", access.Tenant(e, "write"), access.Resource{Tenant: e.Tenant(), Kind: "execution_binding", Permission: "use", ID: request.BindingID}); err != nil {
 		return store.Scope{}, err
 	}
+	if request.Kind == ReportingKind {
+		if s.reporting == nil {
+			return store.Scope{}, ErrTransient
+		}
+		if err := request.Reporting.Require(e); err != nil {
+			return store.Scope{}, err
+		}
+		if err := s.reporting.ValidateScheduledReporting(ctx, e, *request.Reporting); err != nil {
+			return store.Scope{}, err
+		}
+		return store.NewScope(e.Tenant(), e.User())
+	}
+	if request.Kind == PipelineKind {
+		if s.pipeline == nil {
+			return store.Scope{}, ErrTransient
+		}
+		if err := s.pipeline.ValidateScheduledPipeline(ctx, e, *request.Pipeline); err != nil {
+			return store.Scope{}, err
+		}
+		return store.NewScope(e.Tenant(), e.User())
+	}
 	return access.StoreScope(e, "ops.maintain", "erase")
 }
 
 // Submit authorizes a fixed target and durably admits or replays its logical request key.
 func (s *Service) Submit(ctx context.Context, e identity.Envelope, key string, request Submission) (Job, error) {
-	scope, err := s.admission(e, request)
+	if ctx == nil {
+		return Job{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
+	scope, err := s.admission(ctx, e, request)
 	if err != nil {
 		return Job{}, err
 	}
@@ -118,10 +146,15 @@ func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string) (J
 
 // CreateSchedule stores or replays a fixed target and validated recurrence under tenant scope.
 func (s *Service) CreateSchedule(ctx context.Context, e identity.Envelope, key string, request ScheduleRequest) (Schedule, error) {
+	if ctx == nil {
+		return Schedule{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	if request.Validate() != nil || !identity.Identifier(key) {
 		return Schedule{}, ErrInvalid
 	}
-	scope, err := s.admission(e, request.Target)
+	scope, err := s.admission(ctx, e, request.Target)
 	if err != nil {
 		return Schedule{}, err
 	}
@@ -142,6 +175,11 @@ func (s *Service) GetSchedule(ctx context.Context, e identity.Envelope, id strin
 
 // SetSchedule applies a revision-checked pause/resume while preserving the durable occurrence cursor.
 func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id string, expected int64, enabled bool) (Schedule, error) {
+	if ctx == nil {
+		return Schedule{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	if err := access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: id}); err != nil {
 		return Schedule{}, err
 	}
@@ -154,7 +192,7 @@ func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id strin
 		if err != nil {
 			return Schedule{}, err
 		}
-		if _, err = s.admission(e, current.Request.Target); err != nil {
+		if _, err = s.admission(ctx, e, current.Request.Target); err != nil {
 			return Schedule{}, err
 		}
 	}
@@ -163,6 +201,11 @@ func (s *Service) SetSchedule(ctx context.Context, e identity.Envelope, id strin
 
 // Fire authorizes one idempotent manual occurrence of a stored schedule.
 func (s *Service) Fire(ctx context.Context, e identity.Envelope, id, key string) (Job, error) {
+	if ctx == nil {
+		return Job{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
 	if err := access.Require(e, "scheduling.execute", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "execute", ID: id}); err != nil {
 		return Job{}, err
 	}
@@ -174,13 +217,13 @@ func (s *Service) Fire(ctx context.Context, e identity.Envelope, id, key string)
 	if err != nil {
 		return Job{}, err
 	}
-	if _, err = s.admission(e, schedule.Request.Target); err != nil {
+	if _, err = s.admission(ctx, e, schedule.Request.Target); err != nil {
 		return Job{}, err
 	}
 	if !identity.Identifier(key) {
 		return Job{}, ErrInvalid
 	}
-	return s.repo.FireSchedule(ctx, scope, e.Session(), id, key, s.limits)
+	return s.repo.FireSchedule(ctx, scope, e.Session(), id, key, schedule.Revision, s.limits)
 }
 
 // Run starts a fixed worker set and joins all of it on every exit path. There is no detached job.
@@ -270,7 +313,23 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	if err == nil {
 		effect, stop := context.WithDeadline(work, envelope.Envelope().Deadline())
-		_, err = s.repo.CompleteJob(effect, lease, envelope)
+		switch lease.Job.Kind {
+		case PipelineKind:
+			if s.pipeline == nil {
+				err = ErrAuthority
+			} else {
+				err = s.pipeline.ExecuteScheduledPipeline(effect, lease, envelope)
+			}
+
+		case ReportingKind:
+			if s.reporting == nil {
+				err = ErrAuthority
+			} else {
+				err = s.reporting.ExecuteScheduledReporting(effect, lease, envelope)
+			}
+		default:
+			_, err = s.repo.CompleteJob(effect, lease, envelope)
+		}
 		stop()
 	}
 	cancel()
@@ -283,6 +342,10 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	} // leave a recoverable lease; process shutdown is not user cancellation.
 	code, permanent := "attempt_failed", false
 	switch {
+	case errors.Is(err, ErrReportingBudget):
+		code, permanent = "reporting_budget", true
+	case errors.Is(err, ErrReportingAttention):
+		code, permanent = "reporting_attention", true
 	case errors.Is(err, ErrAuthority):
 		code, permanent = "authority_blocked", true
 	case errors.Is(err, store.ErrConflict):
