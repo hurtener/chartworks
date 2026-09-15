@@ -13,21 +13,9 @@ import (
 	"github.com/hurtener/chartworks/test/support"
 )
 
-// Constructors do not configure the queue. Pin deliberately small real limits
-// before admitting any work; do not rewrite the shared fingerprint or emulate
-// the production queue with a counter fixture.
 func phase30OrphanFixture(t *testing.T, global, tenant int) *phase30Fixture {
 	t.Helper()
-	f := newPhase30Fixture(t, false)
-	f.limits.MaxPending, f.limits.MaxPendingPerTenant = global, tenant
-	var err error
-	f.queue, err = jobs.NewWithReporting(f.domain.f.f.db, f.provider, f.limits, nil, f.scheduled)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.domain.f.f.db.ConfigureQueue(t.Context(), f.limits); err != nil {
-		t.Fatal("pin real bounded fixture queue", err)
-	}
+	f := newPhase30QueueFixture(t, global, tenant)
 	f.domain.report(t, "p30-orphan-parent", phase29Text("Owned report"), true)
 	return f
 }

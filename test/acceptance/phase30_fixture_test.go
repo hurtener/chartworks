@@ -49,8 +49,15 @@ func phase30ExecutionScopes(tenant string) []string {
 
 func newPhase30Fixture(t *testing.T, dynamic bool) *phase30Fixture {
 	t.Helper()
-	d := newPhase29Execution(t, dynamic)
-	f := &phase30Fixture{domain: d, limits: jobs.Defaults()}
+	return newPhase30FixtureWithDomain(t, newPhase29Execution(t, dynamic), jobs.Defaults())
+}
+
+// Sharing the actual broker fixture does not require pre-executing an unrelated
+// profiling job. Queue-only regressions supply a real text-report domain whose
+// admission bounds are configured before its first operation.
+func newPhase30FixtureWithDomain(t *testing.T, d *phase29ExecutionFixture, limits jobs.Limits) *phase30Fixture {
+	t.Helper()
+	f := &phase30Fixture{domain: d, limits: limits}
 	f.limits.Backoff = 20 * time.Millisecond
 	f.limits.Heartbeat = 100 * time.Millisecond
 	f.runtimeScopes = phase30ExecutionScopes(d.execute.Tenant())
