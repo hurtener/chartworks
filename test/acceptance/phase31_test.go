@@ -26,7 +26,10 @@ func TestPhase31(t *testing.T) {
 	t.Run("AC02", testPhase31CatalogAndRetainedReads)
 	t.Run("AC03", testPhase31ArtifactStates)
 	t.Run("AC04", func(t *testing.T) { viewerfixtures.Run(t, "charts") })
-	t.Run("AC05", testPhase31ExplicitExecution)
+	t.Run("AC05", func(t *testing.T) {
+		t.Run("explicit-execution", testPhase31ExplicitExecution)
+		t.Run("exact-publication-consent", TestPhase31AdversarialPublicationConsent)
+	})
 	t.Run("AC06", func(t *testing.T) { viewerfixtures.Run(t, "interaction") })
 	t.Run("AC07", testPhase31ProviderParity)
 	t.Run("AC08", func(t *testing.T) {

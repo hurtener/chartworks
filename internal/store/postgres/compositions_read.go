@@ -108,6 +108,15 @@ func compositionReadTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h co
 	if err := reporting.RequireComposition(e, m); err != nil {
 		return reporting.CompositionRecord{}, err
 	}
+	// Recovery and every checkpoint of an unfinished execution must recheck
+	// the original definitions under current eligibility locks. Completed
+	// groups are evidence, not permission to publish after withdrawal.
+	// The separate retained-artifact read path does not enter this guard.
+	if h.view.State == "sealed" {
+		if err := compositionDefinitionsTx(ctx, tx, e, m); err != nil {
+			return reporting.CompositionRecord{}, err
+		}
+	}
 	out.State, out.Code, out.Finished = h.view.State, h.view.Code, h.view.Finished
 	out.Results = []reporting.GroupResult{}
 	out.Plans = map[string]nlqexec.SavedPlan{}

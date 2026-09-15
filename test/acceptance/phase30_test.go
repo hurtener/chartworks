@@ -22,7 +22,11 @@ func TestPhase30(t *testing.T) {
 	t.Run("AC04", testPhase30Lifecycle)
 	t.Run("AC05", testPhase30Operations)
 	t.Run("AC06", testPhase30Delivery)
-	t.Run("AC07", testPhase30ChangedDependencies)
+	t.Run("AC07", func(t *testing.T) {
+		t.Run("changed-dependencies", testPhase30ChangedDependencies)
+		t.Run("retry-current-eligibility", TestPhase30AdversarialRetryEligibility)
+		t.Run("publication-current-eligibility", TestPhase30AdversarialPublicationBoundary)
+	})
 	t.Run("AC08", testPhase30Transport)
 }
 
