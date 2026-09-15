@@ -11,7 +11,7 @@ import (
 // cases change real business eligibility after durable query checkpoints and
 // before a failed catalog transaction is retried with fresh broker authority.
 func TestPhase30AdversarialRetryEligibility(t *testing.T) {
-	for _, change := range []string{"archive-report", "withdraw-child-certification"} {
+	for _, change := range []string{"unchanged", "archive-report", "withdraw-child-certification"} {
 		t.Run(change, func(t *testing.T) {
 			f := newPhase30Fixture(t, false)
 			f.certify(t, "p30-retry-certified")
@@ -38,7 +38,7 @@ func TestPhase30AdversarialRetryEligibility(t *testing.T) {
 				t.Fatal("fixture did not reach a retryable post-query publication boundary", current)
 			}
 			var completed int
-			if err := raw.QueryRow(t.Context(), `SELECT count(*) FROM chartworks.composition_run_groups WHERE tenant_id=$1 AND operation_id=$2 AND result->>'state'='completed'`, f.actor.Tenant(), job.ID).Scan(&completed); err != nil || completed != 1 {
+			if err := raw.QueryRow(t.Context(), `SELECT count(*) FROM chartworks.composition_run_groups WHERE tenant_id=$1 AND operation_id=$2 AND convert_from(result,'UTF8')::jsonb->>'state'='completed'`, f.actor.Tenant(), job.ID).Scan(&completed); err != nil || completed != 1 {
 				t.Fatal("fixture lacks its durable successful group", completed, err)
 			}
 			if _, err := raw.Exec(t.Context(), `DROP TRIGGER p30_adversarial_delivery ON chartworks.reporting_occurrence_delivery; DROP FUNCTION chartworks.p30_adversarial_delivery();`); err != nil {
@@ -61,11 +61,15 @@ func TestPhase30AdversarialRetryEligibility(t *testing.T) {
 			f.retryNow(t, job.ID)
 			err = f.queue.RunOnce(t.Context())
 			current = f.get(t, job.ID)
-			if err == nil || current.State != "blocked" || current.Delivery.Catalog == "available" || current.ManifestHash != job.ManifestHash {
-				t.Fatal("P1: retry published after current business eligibility was withdrawn", change, current, err)
+			if current.ManifestHash != job.ManifestHash || current.Attempts != 2 || f.domain.attemptCount(t) != beforeQueries+1 || f.domain.f.model.requests.Load() != beforeModels {
+				t.Fatal("eligibility recheck changed accepted work or regenerated a protected effect", current, err)
 			}
-			if f.domain.attemptCount(t) != beforeQueries+1 || f.domain.f.model.requests.Load() != beforeModels {
-				t.Fatal("eligibility recheck regenerated protected work")
+			if change == "unchanged" {
+				if err != nil || current.State != "succeeded" || current.Delivery.Catalog != "available" {
+					t.Fatal("ordinary eligible retry was rejected", current, err)
+				}
+			} else if err == nil || current.State != "blocked" || current.Delivery.Catalog == "available" {
+				t.Fatal("P1: retry published after current business eligibility was withdrawn", change, current, err)
 			}
 		})
 	}

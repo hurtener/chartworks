@@ -35,14 +35,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - name: Record exact source and validation boundaries
-        run: |
-          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
-          grep -n -A 10 -B 5 'page.Revision\|p.Revision' internal/reporting/documents*.go || true
-          git ls-files 'internal/reporting/*'
-          git ls-files '*.go' | xargs gofmt -l
-      - name: Reserve disk for native and race builds
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+      - name: Record exact source
+        run: echo "TESTED_COMMIT=$(git rev-parse HEAD)" | tee /tmp/reporting-review-source.log
       - uses: actions/cache/restore@v4
         id: native
         with:
@@ -60,7 +54,7 @@ jobs:
           restore-keys: |
             reporting-ubuntu24-go1264-
             phase30-31-ubuntu24-go1264-
-      - name: Reproduce business eligibility and explicit consent races
+      - name: Actual eligibility and exact-publication probes
         run: |
           set -o pipefail
           go test -race -count=1 -v -timeout=10m ./test/acceptance -run '^TestPhase(30|31)Adversarial' 2>&1 | tee /tmp/reporting-review.log
@@ -68,5 +62,19 @@ jobs:
         if: always()
         with:
           name: reporting-adversarial-review
-          path: /tmp/reporting-review.log
+          path: /tmp/reporting-review*.log
           retention-days: 7
+  summary:
+    needs: reproduce
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reporting-adversarial-review
+          path: logs
+      - name: Exact reproduction outcomes
+        run: |
+          cat logs/reporting-review-source.log
+          cat logs/reporting-review.log

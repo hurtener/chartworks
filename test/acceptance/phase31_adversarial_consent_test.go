@@ -29,16 +29,23 @@ func (r *phase31PublicationRace) ReadDocument(ctx context.Context, e identity.En
 	return snapshot, err
 }
 
+// Dashboard pages are exact by construction. Retain a regression for that
+// safety property rather than changing the domain to support a hypothetical
+// floating page. Publishing a dynamic child cannot change the accepted page.
 func TestPhase31AdversarialPublicationConsent(t *testing.T) {
 	f := newPhase31Fixture(t, true)
 	d := phase29Text("Originally deterministic")
-	report := f.domain.report(t, "p31-floating-consent-report", d, true)
+	report := f.domain.report(t, "p31-consent-report", d, true)
 	dashboard := phase29Text("Explicit dynamic consent must survive publication")
 	dashboard.Widgets = nil
-	dashboard.Pages = []reporting.DocumentPage{{ID: "main", Title: "Latest report", Report: report.ID, Revision: 0}}
-	state, err := f.domain.documents.Create(t.Context(), f.domain.author, "dashboard", "p31-floating-consent-dashboard", dashboard)
+	dashboard.Pages = []reporting.DocumentPage{{ID: "main", Title: "Exact report", Report: report.ID, Revision: 0}}
+	if _, err := f.domain.documents.Create(t.Context(), f.domain.author, "dashboard", "p31-floating-dashboard", dashboard); !errors.Is(err, reporting.ErrInvalid) {
+		t.Fatal("floating dashboard page bypassed its exact-revision contract", err)
+	}
+	dashboard.Pages[0].Revision = 1
+	state, err := f.domain.documents.Create(t.Context(), f.domain.author, "dashboard", "p31-consent-dashboard", dashboard)
 	if err != nil {
-		t.Fatal("floating dashboard fixture admission", err)
+		t.Fatal("exact dashboard fixture admission", err)
 	}
 	state = phase29Publish(t, f.domain.documents, f.domain.author, state)
 	race := &phase31PublicationRace{DocumentRepository: f.domain.f.f.db}
@@ -69,11 +76,15 @@ func TestPhase31AdversarialPublicationConsent(t *testing.T) {
 	}
 	beforeQueries, beforeModels := f.domain.attemptCount(t), f.domain.f.model.requests.Load()
 	request := phase31Request("dashboard", state.ID, "publication-race-no-consent")
-	_, err = delivery.Run(t.Context(), f.domain.execute, request)
-	if race.rootReads < 2 {
-		t.Fatal("fixture did not interleave publication with execution admission", race.rootReads, err)
+	result, err := delivery.Run(t.Context(), f.domain.execute, request)
+	if race.rootReads < 2 || err != nil || result.State != "completed" {
+		t.Fatal("exact admitted dashboard did not survive concurrent publication", race.rootReads, result, err)
 	}
-	if !errors.Is(err, reporting.ErrInvalid) || f.domain.attemptCount(t) != beforeQueries || f.domain.f.model.requests.Load() != beforeModels {
-		t.Fatal("P1: floating child publication bypassed explicit dynamic consent", err, f.domain.attemptCount(t)-beforeQueries, f.domain.f.model.requests.Load()-beforeModels)
+	if f.domain.attemptCount(t) != beforeQueries || f.domain.f.model.requests.Load() != beforeModels {
+		t.Fatal("new child publication caused unconsented execution")
+	}
+	retained, err := f.domain.f.f.db.ReadComposition(t.Context(), f.domain.execute, result.Run)
+	if err != nil || len(retained.Manifest.Pages) != 1 || retained.Manifest.Pages[0].Revision != 1 || len(retained.Manifest.Groups) != 0 {
+		t.Fatal("concurrent publication changed the sealed exact page", retained.Manifest, err)
 	}
 }
