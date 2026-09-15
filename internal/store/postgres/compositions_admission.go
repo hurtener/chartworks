@@ -24,8 +24,8 @@ func compositionGroupByID(m reporting.CompositionManifest, id string) (reporting
 }
 
 func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting.CompositionManifest) error {
-	// Locks protect archive eligibility until the manifest is sealed. Exact
-	// revisions remain usable when a different revision is published meanwhile.
+	// Locks protect current eligibility through admission or checkpoint
+	// publication. Exact document revisions never float on retry.
 	keys := map[string][2]string{m.Kind + ":" + m.Document: {m.Kind, m.Document}}
 	for _, page := range m.Pages {
 		keys["report:"+page.Report] = [2]string{"report", page.Report}
@@ -70,9 +70,22 @@ func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelop
 			}
 		}
 	}
+	// Aggregate dependency pins across every group so the shared fence
+	// acquires all sorted topic locks before any source locks. Dynamic
+	// groups need the same current-source checks as frozen blocks.
+	current := reporting.Mutation{}
 	for _, group := range m.Groups {
-		if group.Kind != "block" {
+		if group.Kind == "query" {
+			if group.Origin == nil || len(group.Origin.Topics) == 0 || !group.Binding.Valid() ||
+				group.Binding.Tenant != e.Tenant() || group.Origin.Source != group.Binding.Source || group.Origin.Context != group.Binding.Context {
+				return store.ErrInvalid
+			}
+			current.Topics = append(current.Topics, group.Origin.Topics...)
+			current.Watch = append(current.Watch, reporting.Dependency{Source: group.Binding.Source, Context: group.Binding.Context, SourceRevision: group.Binding.Revision})
 			continue
+		}
+		if group.Kind != "block" {
+			return store.ErrInvalid
 		}
 		var archived bool
 		if err := tx.QueryRow(ctx, `SELECT archived FROM chartworks.block_heads WHERE tenant_id=$1 AND block_id=$2 FOR SHARE`, e.Tenant(), group.Block).Scan(&archived); err != nil {
@@ -88,6 +101,11 @@ func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelop
 		if err := reporting.CheckCompositionBlock(e, group, block); err != nil {
 			return err
 		}
+		current.Topics = append(current.Topics, block.Revision.Definition.Topics...)
+		current.Watch = append(current.Watch, block.Validation.Dependencies...)
+	}
+	if len(m.Groups) != 0 {
+		return blockCurrentFence(ctx, tx, e, current)
 	}
 	return nil
 }

@@ -31,7 +31,7 @@ func (r *phase30CheckpointInterleave) CheckpointComposition(ctx context.Context,
 }
 
 func TestPhase30AdversarialPublicationBoundary(t *testing.T) {
-	for _, change := range []string{"unchanged", "archive-report", "withdraw-child-certification"} {
+	for _, change := range []string{"unchanged", "archive-report", "withdraw-child-certification", "archive-topic", "delete-source"} {
 		t.Run(change, func(t *testing.T) {
 			f := newPhase30Fixture(t, false)
 			f.certify(t, "p30-checkpoint-child")
@@ -45,6 +45,8 @@ func TestPhase30AdversarialPublicationBoundary(t *testing.T) {
 			repo.onComplete = func() {
 				interleaved = true
 				switch change {
+				case "archive-topic", "delete-source":
+					phase30WithdrawDependency(t, f, change)
 				case "archive-report":
 					if _, err := f.domain.documents.Transition(t.Context(), f.domain.author, "report", state.ID, state.Version, 1, "archive", "Withdraw before catalog transaction"); err != nil {
 						t.Fatal(err)

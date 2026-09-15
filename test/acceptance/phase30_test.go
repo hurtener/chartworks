@@ -26,6 +26,7 @@ func TestPhase30(t *testing.T) {
 		t.Run("changed-dependencies", testPhase30ChangedDependencies)
 		t.Run("retry-current-eligibility", TestPhase30AdversarialRetryEligibility)
 		t.Run("publication-current-eligibility", TestPhase30AdversarialPublicationBoundary)
+		t.Run("dynamic-current-dependencies", TestPhase30AdversarialDynamicDependencies)
 	})
 	t.Run("AC08", testPhase30Transport)
 }
