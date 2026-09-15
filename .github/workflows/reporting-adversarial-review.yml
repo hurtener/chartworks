@@ -8,7 +8,7 @@ permissions:
 jobs:
   reproduce:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       CGO_ENABLED: '1'
       GOFLAGS: '-p=2'
@@ -54,10 +54,21 @@ jobs:
           restore-keys: |
             reporting-ubuntu24-go1264-
             phase30-31-ubuntu24-go1264-
-      - name: Regression and dynamic dependency probes after the eligibility fix
+      - name: All adversarial eligibility, dependency and consent regressions
         run: |
           set -o pipefail
           go test -race -count=1 -v -timeout=10m ./test/acceptance -run '^TestPhase(30|31)Adversarial' 2>&1 | tee /tmp/reporting-review.log
+      - name: Original scheduler, exhaustive transport and composed-report regressions
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=15m ./test/acceptance -run '^TestPhase(06|21|29)$' 2>&1 | tee /tmp/reporting-review-regressions.log
+      - name: Unchanged formatting and planning contracts
+        if: always()
+        run: |
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          make planning-check
+          git diff --exit-code
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -74,7 +85,8 @@ jobs:
         with:
           name: reporting-adversarial-review
           path: logs
-      - name: Exact reproduction outcomes
+      - name: Exact regression outcomes
         run: |
           cat logs/reporting-review-source.log
           cat logs/reporting-review.log
+          grep -E 'FAIL|\.go:|PASS: TestPhase|^ok|^PASS$' logs/reporting-review-regressions.log
