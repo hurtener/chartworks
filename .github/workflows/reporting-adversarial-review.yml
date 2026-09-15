@@ -54,7 +54,7 @@ jobs:
           restore-keys: |
             reporting-ubuntu24-go1264-
             phase30-31-ubuntu24-go1264-
-      - name: Actual eligibility and exact-publication probes
+      - name: Regression and dynamic dependency probes after the eligibility fix
         run: |
           set -o pipefail
           go test -race -count=1 -v -timeout=10m ./test/acceptance -run '^TestPhase(30|31)Adversarial' 2>&1 | tee /tmp/reporting-review.log
