@@ -373,8 +373,13 @@ func TestPhase22(t *testing.T) {
 		if err != nil || len(selected) != 5 {
 			t.Fatal("disabled groups retained", err)
 		}
-		if _, err = mcpserver.SelectGroups(f.bindings, []string{"reporting"}); err == nil {
-			t.Fatal("unbuilt group accepted")
+		// Reporting is implemented by phase 31, but this older fixture has no
+		// reporting service. Selecting the group must not invent bindings.
+		if selected, err = mcpserver.SelectGroups(f.bindings, []string{"reporting"}); err != nil || len(selected) != 0 {
+			t.Fatal("uninstalled reporting service advertised", selected, err)
+		}
+		if _, err = mcpserver.SelectGroups(f.bindings, []string{"arbitrary_code"}); err == nil {
+			t.Fatal("unsupported group accepted")
 		}
 	})
 	t.Run("AC04", func(t *testing.T) {

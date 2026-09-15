@@ -78,6 +78,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Real reporting component test runtime
+        run: |
+          node --version
+          google-chrome --version
+          node --check web/report-viewer/app.js
       - name: Reserve disk for pinned native and race-instrumented builds
         run: |
           # Unused preinstalled SDKs, not project files, caches or test fixtures.
@@ -118,7 +126,7 @@ jobs:
           go mod verify
           go mod tidy
           git diff --exit-code -- go.mod go.sum
-          test -z "$(find cmd internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
+          test -z "$(find cmd internal sdk test web -name '*.go' -print0 | xargs -0 gofmt -l)"
           test -z "$(find . -maxdepth 1 -name '.phase27*.py' -print)"
           test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' -o -name '_phase_11_12*' \) -print)"
       - name: Cumulative schema, engineering and frozen-run runtime acceptance
@@ -167,6 +175,8 @@ jobs:
           python3 scripts/run_phase_acceptance.py --phase 23
           python3 scripts/run_phase_acceptance.py --phase 27
           python3 scripts/run_phase_acceptance.py --phase 29
+          python3 scripts/run_phase_acceptance.py --phase 30
+          python3 scripts/run_phase_acceptance.py --phase 31
       - name: Compiled binary lifecycle and protected capability smoke
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
@@ -209,6 +219,12 @@ jobs:
           test ! -f .github/workflows/verification-source.yml
           test ! -f .github/workflows/phase-20-source-snapshot.yml
           test ! -f .github/workflows/phase-20-apply.yml
+          test ! -f .github/workflows/phase-30-31-edit.yml
+          test ! -f .github/workflows/phase-30-31-workspace.yml
+          test ! -f .github/workflows/phase-30-31-module-transfer.yml
+          test ! -f .github/workflows/phase-30-31-local-runtime.yml
+          test ! -f .github/workflows/phase-30-31-diagnostics.yml
+          test ! -f scripts/dev/phase-30-31-edit.py
       - name: Working tree must remain unchanged
         run: |
           git diff --exit-code

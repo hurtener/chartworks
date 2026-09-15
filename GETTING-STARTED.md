@@ -242,3 +242,27 @@ the SDK/CLI URL. The default remains `/`. Encoded or dot-segment paths are rejec
 No business call accepts a tenant/user header as authority. Generic calls require
 an explicit `--execute` flag; stdin carries JSON or upload bytes. Artifacts and
 reports cannot be invoked until their owning domains register real operations.
+
+## Reporting schedules and the Apps read viewer
+
+Use [reporting delivery v1](docs/contracts/reporting-delivery-v1.md) for the exact
+operator setup, four governed schedule targets, real test/pause/update/retire
+semantics and the five shared HTTP/MCP/SDK operations. Merge
+`examples/chartworks.reporting-delivery.json` into the existing trusted deployment;
+it contains no credentials and does not enable workers. Configure the actual
+Pengui execution binding before enabling reporting dispatch. Retained viewing
+needs neither that worker nor a model provider.
+
+Browser acceptance requires Node 22+ and an installed Chrome/Chromium executable;
+`CHARTWORKS_CHROME_BIN` may select an existing binary. The acceptance harness
+executes the bundled resource rather than a DOM substitute. Run both strict
+owners with the existing database/native fixtures:
+
+```bash
+python3 scripts/run_phase_acceptance.py --phase 30
+python3 scripts/run_phase_acceptance.py --phase 31
+```
+
+A returned catalog artifact does not prove an outbound notification was sent.
+Catalog pull is the implemented baseline; static export/iframe rendering remains
+with phase 32.

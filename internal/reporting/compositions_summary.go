@@ -19,7 +19,7 @@ func SummarizeComposition(record CompositionRecord) CompositionView {
 		groups[group.ID] = group
 	}
 	for _, saved := range m.Pages {
-		page := CompositionPageSummary{ID: saved.ID, Report: saved.Report, Revision: saved.Revision, Title: saved.Title, Widgets: []CompositionWidgetSummary{}}
+		page := CompositionPageSummary{ID: saved.ID, Report: saved.Report, Revision: saved.Revision, Title: saved.Title, Locale: saved.Locale, Timezone: saved.Timezone, Widgets: []CompositionWidgetSummary{}}
 		for _, widget := range saved.Widgets {
 			d := widget.Definition
 			w := CompositionWidgetSummary{ID: d.ID, Kind: d.Kind, State: "pending", Grid: d.Grid,

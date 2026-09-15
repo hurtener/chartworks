@@ -391,7 +391,7 @@ func headers(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 }
-func failure(w http.ResponseWriter, err error) {
+func httpFault(err error) (int, string) {
 	status, code := 503, "unavailable"
 	switch {
 	case errors.Is(err, access.ErrUnauthenticated):
@@ -419,6 +419,11 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status, code = 504, "cancelled_or_timed_out"
 	}
+	return status, code
+}
+
+func failure(w http.ResponseWriter, err error) {
+	status, code := httpFault(err)
 	headers(w)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(struct {

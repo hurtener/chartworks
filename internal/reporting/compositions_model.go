@@ -148,6 +148,8 @@ type CompositionWidgetSummary struct {
 
 // CompositionPageSummary is independently redacted under current report reach.
 type CompositionPageSummary struct {
+	Locale   string                     `json:"locale,omitempty"`
+	Timezone string                     `json:"timezone,omitempty"`
 	ID       string                     `json:"id"`
 	Report   string                     `json:"report"`
 	Revision int64                      `json:"revision"`
@@ -157,6 +159,7 @@ type CompositionPageSummary struct {
 
 // CompositionView is metadata only; opening it never executes a source or model.
 type CompositionView struct {
+	Scheduled      *ScheduledProvenance     `json:"scheduled,omitempty"`
 	ID             string                   `json:"id"`
 	Kind           string                   `json:"kind"`
 	Document       string                   `json:"document"`

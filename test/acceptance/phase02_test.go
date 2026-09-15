@@ -257,12 +257,17 @@ func TestPhase02(t *testing.T) {
 			"composition_runs", "composition_run_payloads", "composition_run_groups",
 			"composition_run_pages", "composition_run_widgets", "composition_run_references",
 		)
+		// Phases 30-31 add operational delivery/history and shared-lease views,
+		// not local identity, grants, credentials, or a parallel queue.
+		expected = append(expected, "active_execution_roots", "pending_execution_roots",
+			"job_schedule_revisions", "reporting_occurrence_delivery")
 		sort.Strings(expected)
 		if strings.Join(names, ",") != strings.Join(expected, ",") {
 			t.Fatalf("unexpected foundation schema: %v", names)
 		}
-		// reserved_tokens is a bounded model budget, not a persisted bearer credential.
-		if count(t, c, `SELECT count(*) FROM information_schema.columns WHERE table_schema='chartworks' AND NOT (table_name='frozen_runs' AND column_name='reserved_tokens') AND (column_name LIKE '%password%' OR column_name LIKE '%secret%' OR column_name LIKE '%token%' OR column_name LIKE '%role%' OR column_name LIKE '%grant%')`) != 0 {
+		// These integer ceilings/reservations are model budgets, not persisted
+		// bearer credentials; all other token/secret/IAM columns stay forbidden.
+		if count(t, c, `SELECT count(*) FROM information_schema.columns WHERE table_schema='chartworks' AND NOT ((table_name='frozen_runs' AND column_name='reserved_tokens' AND data_type='integer') OR (table_name='reporting_occurrence_delivery' AND column_name IN ('model_token_limit','model_token_reservations') AND data_type='integer')) AND (column_name LIKE '%password%' OR column_name LIKE '%secret%' OR column_name LIKE '%token%' OR column_name LIKE '%role%' OR column_name LIKE '%grant%')`) != 0 {
 			t.Fatal("local IAM/issuer material in schema")
 		}
 		tx, e := c.Begin(ctx)

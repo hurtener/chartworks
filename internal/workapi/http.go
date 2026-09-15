@@ -43,6 +43,10 @@ func Registry(models, queue bool) []Operation {
 			Operation{Method: "POST", Path: "/v1/schedules", Action: "scheduling.write", Effect: "schedule_creation"},
 			Operation{Method: "GET", Path: "/v1/schedules/{id}", Action: "scheduling.read", Effect: "metadata_read"},
 			Operation{Method: "PUT", Path: "/v1/schedules/{id}/state", Action: "scheduling.write", Effect: "schedule_state"},
+			Operation{Method: "PUT", Path: "/v1/schedules/{id}", Action: "scheduling.write", Effect: "schedule_state"},
+			Operation{Method: "POST", Path: "/v1/schedules/{id}/retire", Action: "scheduling.write", Effect: "schedule_state"},
+			Operation{Method: "POST", Path: "/v1/schedules/{id}/history", Action: "scheduling.read", Effect: "metadata_read"},
+			Operation{Method: "POST", Path: "/v1/schedules/{id}/test", Action: "scheduling.execute", Effect: "durable_admission"},
 			Operation{Method: "POST", Path: "/v1/schedules/{id}/runs", Action: "scheduling.execute", Effect: "durable_admission"},
 		)
 	}
@@ -59,7 +63,7 @@ func Handler(v *auth.Verifier, engine gateway.Engine, queue *jobs.Service, next 
 	if queue != nil && !queue.DispatchEnabled() {
 		filtered := []Operation{}
 		for _, op := range registered {
-			if op.Action == "ops.model" || op.Action == "scheduling.read" || op.Action == "scheduling.cancel" || op.Effect == "schedule_state" {
+			if op.Action == "ops.model" || op.Action == "scheduling.read" || op.Action == "scheduling.cancel" || (op.Effect == "schedule_state" && op.Path != "/v1/schedules/{id}") {
 				filtered = append(filtered, op)
 			}
 		}
@@ -139,7 +143,35 @@ func Handler(v *auth.Verifier, engine gateway.Engine, queue *jobs.Service, next 
 				out, err = queue.CreateSchedule(r.Context(), e, key, input)
 			}
 		case "/v1/schedules/{id}":
-			out, err = queue.GetSchedule(r.Context(), e, id)
+			if r.Method == http.MethodGet {
+				out, err = queue.GetSchedule(r.Context(), e, id)
+			} else {
+				var input ScheduleReplaceRequest
+				key, keyErr := idempotency(r)
+				if keyErr != nil {
+					err = keyErr
+				} else if err = body(w, r, &input); err == nil {
+					out, err = queue.ReplaceSchedule(r.Context(), e, id, input.Expected, key, input.Request)
+				}
+			}
+		case "/v1/schedules/{id}/retire":
+			var input ScheduleRevisionRequest
+			if err = body(w, r, &input); err == nil {
+				out, err = queue.RetireSchedule(r.Context(), e, id, input.Expected)
+			}
+		case "/v1/schedules/{id}/history":
+			var input jobs.ScheduleHistoryRequest
+			if err = body(w, r, &input); err == nil {
+				out, err = queue.History(r.Context(), e, id, input)
+			}
+		case "/v1/schedules/{id}/test":
+			var input ScheduleRevisionRequest
+			key, keyErr := idempotency(r)
+			if keyErr != nil {
+				err = keyErr
+			} else if err = body(w, r, &input); err == nil {
+				out, err = queue.TestSchedule(r.Context(), e, id, key, input.Expected)
+			}
 		case "/v1/schedules/{id}/state":
 			var input struct {
 				Expected int64 `json:"expected_revision"`
@@ -232,6 +264,24 @@ func closed(data []byte, typ reflect.Type) error {
 	if _, err := gateway.DecodeJSON(data, 8192); err != nil {
 		return jobs.ErrInvalid
 	}
+	for typ.Kind() == reflect.Pointer {
+		if strings.TrimSpace(string(data)) == "null" {
+			return nil
+		}
+		typ = typ.Elem()
+	}
+	if typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+		var items []json.RawMessage
+		if json.Unmarshal(data, &items) != nil {
+			return jobs.ErrInvalid
+		}
+		for _, item := range items {
+			if closed(item, typ.Elem()) != nil {
+				return jobs.ErrInvalid
+			}
+		}
+		return nil
+	}
 	if typ.Kind() != reflect.Struct || typ.PkgPath() == "time" {
 		return nil
 	}
@@ -283,7 +333,7 @@ func fail(w http.ResponseWriter, err error, receipt *gateway.Receipt) {
 		status, code = 400, "invalid_request"
 	case errors.Is(err, gateway.ErrDisabled):
 		status, code = 409, "role_disabled"
-	case errors.Is(err, jobs.ErrBusy) || errors.Is(err, gateway.ErrBusy) || errors.Is(err, gateway.ErrBudget):
+	case errors.Is(err, jobs.ErrBusy) || errors.Is(err, gateway.ErrBusy) || errors.Is(err, gateway.ErrBudget) || errors.Is(err, jobs.ErrReportingBudget):
 		status, code = 429, "budget_exceeded"
 		w.Header().Set("Retry-After", strconv.Itoa(1))
 	case errors.Is(err, gateway.ErrOutput) || errors.Is(err, gateway.ErrSpace):

@@ -142,7 +142,7 @@ func (s *Compositions) continueComposition(ctx context.Context, e identity.Envel
 		case group.Kind == "query" && group.Query.Durability == "session_bound" && !currentLimits.SessionBound:
 			result = failedGroup(group, "session_bound_disabled")
 		case group.Kind == "block":
-			result, err = s.executeBlock(ctx, e, m, group)
+			result, err = s.executeBlock(ctx, e, inv, m, group)
 		default:
 			result, record, err = s.executeQuery(ctx, e, inv, record, group)
 		}
@@ -184,7 +184,7 @@ func (s *Compositions) continueComposition(ctx context.Context, e identity.Envel
 	return err
 }
 
-func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, g CompositionGroup) (GroupResult, error) {
+func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m CompositionManifest, g CompositionGroup) (GroupResult, error) {
 	if s.runs == nil || s.documents.blocks == nil {
 		return GroupResult{}, ErrUnavailable
 	}
@@ -199,9 +199,9 @@ func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, m 
 	if m.Private {
 		policy = "private_preview"
 	}
-	child, err := s.runs.Admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID,
+	child, err := s.runs.admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID,
 		Reference: Reference{Revision: g.Revision}, Arguments: g.Arguments, Resolution: g.Resolution,
-		Outputs: g.Outputs, Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"})
+		Outputs: g.Outputs, Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"}, &inv)
 	if err != nil {
 		return GroupResult{}, err
 	}
@@ -209,7 +209,7 @@ func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, m 
 		return GroupResult{}, ErrStale
 	}
 	resume := child.Attempts > 0 && !slices.Contains([]string{"succeeded", "partial", "failed", "expired"}, child.State)
-	if _, err := s.runs.Run(ctx, e, child.ID, resume); err != nil {
+	if _, err := s.runs.run(ctx, e, child.ID, resume, &inv); err != nil {
 		return GroupResult{}, err
 	}
 	retained, err := s.runs.repo.ReadFrozenRun(ctx, e, child.ID, true)

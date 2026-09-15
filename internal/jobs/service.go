@@ -18,6 +18,7 @@ import (
 type Service struct {
 	repo      Repository
 	pipeline  PipelineExecutor
+	reporting ReportingExecutor
 	authority Authority
 	limits    Limits
 	running   atomic.Bool
@@ -61,6 +62,18 @@ func (s *Service) admission(ctx context.Context, e identity.Envelope, request Su
 	}
 	if err := access.Require(e, "scheduling.write", access.Tenant(e, "write"), access.Resource{Tenant: e.Tenant(), Kind: "execution_binding", Permission: "use", ID: request.BindingID}); err != nil {
 		return store.Scope{}, err
+	}
+	if request.Kind == ReportingKind {
+		if s.reporting == nil {
+			return store.Scope{}, ErrTransient
+		}
+		if err := request.Reporting.Require(e); err != nil {
+			return store.Scope{}, err
+		}
+		if err := s.reporting.ValidateScheduledReporting(ctx, e, *request.Reporting); err != nil {
+			return store.Scope{}, err
+		}
+		return store.NewScope(e.Tenant(), e.User())
 	}
 	if request.Kind == PipelineKind {
 		if s.pipeline == nil {
@@ -300,13 +313,21 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	if err == nil {
 		effect, stop := context.WithDeadline(work, envelope.Envelope().Deadline())
-		if lease.Job.Kind == PipelineKind {
+		switch lease.Job.Kind {
+		case PipelineKind:
 			if s.pipeline == nil {
 				err = ErrAuthority
 			} else {
 				err = s.pipeline.ExecuteScheduledPipeline(effect, lease, envelope)
 			}
-		} else {
+
+		case ReportingKind:
+			if s.reporting == nil {
+				err = ErrAuthority
+			} else {
+				err = s.reporting.ExecuteScheduledReporting(effect, lease, envelope)
+			}
+		default:
 			_, err = s.repo.CompleteJob(effect, lease, envelope)
 		}
 		stop()
@@ -321,6 +342,10 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	} // leave a recoverable lease; process shutdown is not user cancellation.
 	code, permanent := "attempt_failed", false
 	switch {
+	case errors.Is(err, ErrReportingBudget):
+		code, permanent = "reporting_budget", true
+	case errors.Is(err, ErrReportingAttention):
+		code, permanent = "reporting_attention", true
 	case errors.Is(err, ErrAuthority):
 		code, permanent = "authority_blocked", true
 	case errors.Is(err, store.ErrConflict):

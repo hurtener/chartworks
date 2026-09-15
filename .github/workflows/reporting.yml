@@ -1,0 +1,160 @@
+name: Reporting contracts
+on:
+  push:
+    branches: [main, feat/phase-30-31-reporting-delivery]
+    paths:
+      - .github/workflows/reporting.yml
+      - internal/reporting/**
+      - internal/reportingapi/**
+      - internal/jobs/**
+      - internal/store/postgres/**
+      - internal/mcpserver/**
+      - internal/config/**
+      - internal/gateway/**
+      - internal/exec/**
+      - internal/foundation/**
+      - sdk/**
+      - web/report-viewer/**
+      - test/acceptance/phase30*
+      - test/acceptance/phase31*
+      - test/viewerfixtures/**
+  pull_request:
+    paths:
+      - .github/workflows/reporting.yml
+      - internal/**
+      - sdk/**
+      - web/report-viewer/**
+      - test/**
+      - docs/plans/**
+      - go.mod
+      - go.sum
+permissions:
+  contents: read
+concurrency:
+  group: reporting-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_BRUIN_BIN: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CGO_LDFLAGS: -L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Exact source and actual browser
+        run: |
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)" | tee /tmp/reporting-source.log
+          node --version
+          google-chrome --version
+          node --check web/report-viewer/app.js
+          node --check web/report-viewer/component.test.mjs
+          go mod verify
+      - name: Reserve disk for native and race builds
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build pinned native dependencies
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/restore@v4
+        id: incremental
+        with:
+          path: /home/runner/.cache/go-build
+          key: reporting-ubuntu24-go1264-${{ github.sha }}
+          restore-keys: |
+            reporting-ubuntu24-go1264-
+            phase30-31-ubuntu24-go1264-
+      - name: Strict phase 30 real scheduling criteria
+        run: |
+          set -o pipefail
+          python3 scripts/run_phase_acceptance.py --phase 30 2>&1 | tee /tmp/reporting-phase30.log
+      - name: Strict phase 31 provider and actual browser criteria
+        if: always()
+        run: |
+          set -o pipefail
+          python3 scripts/run_phase_acceptance.py --phase 31 2>&1 | tee /tmp/reporting-phase31.log
+      - name: Error, configuration, queue, API, migration and SDK regressions
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=10m ./internal/config ./internal/calendars ./internal/jobs ./internal/gateway ./internal/reporting ./internal/reportingapi ./internal/store/postgres ./internal/workapi ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
+      - name: Planning, formatting and actual build
+        if: always()
+        run: |
+          set -o pipefail
+          make planning-check 2>&1 | tee /tmp/reporting-planning.log
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          make build 2>&1 | tee /tmp/reporting-build.log
+          make vet 2>&1 | tee /tmp/reporting-vet.log
+          git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always() && steps.incremental.outcome == 'success' && steps.incremental.outputs.cache-hit != 'true'
+        with:
+          path: /home/runner/.cache/go-build
+          key: ${{ steps.incremental.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reporting-contract-evidence
+          path: /tmp/reporting-*.log
+          retention-days: 7
+  diagnostics:
+    needs: contracts
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reporting-contract-evidence
+          path: logs
+      - name: Exact failures and acceptance totals
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          for path in sorted(Path('logs').glob('*.log')):
+            lines=path.read_text().splitlines(); print('\nFILE:',path.name)
+            records=[]
+            for line in lines:
+              try: records.append(json.loads(line))
+              except ValueError: pass
+            failed={r.get('Test','') for r in records if r.get('Action')=='fail'}
+            output=[r.get('Output','').rstrip() for r in records if r.get('Action')=='output' and r.get('Test','') in failed]
+            if output:
+              for line in output[:100]: print(line[:2500])
+            else:
+              for line in lines:
+                if any(x in line for x in ('FAIL','error:','panic:','OK:','TESTED_COMMIT=')):print(line[:2000])
+            print('\n'.join(lines[-8:]))
+          PY

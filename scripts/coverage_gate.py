@@ -27,7 +27,7 @@ def bands(text: str) -> dict[str, int]:
         if not line:
             continue
         parts = line.split()
-        if len(parts) != 2 or not re.fullmatch(r"(?:internal|cmd|sdk|eval)(?:/[A-Za-z0-9_-]+)+", parts[0]):
+        if len(parts) != 2 or not re.fullmatch(r"(?:internal|cmd|sdk|eval|web)(?:/[A-Za-z0-9_-]+)+", parts[0]):
             raise ValueError("invalid coverage band")
         if not re.fullmatch(r"[0-9]+(?:\.[0-9]{1,2})?", parts[1]):
             raise ValueError("invalid coverage threshold precision")
@@ -97,7 +97,7 @@ def main() -> int:
         limits = bands((root / "scripts/coverage-bands.conf").read_text())
         module = command(["go", "list", "-m"], root, capture=True)
         listed = command(["go", "list", "./..."], root, capture=True).splitlines()
-        packages = {name[len(module) + 1:] for name in listed if name.startswith(module + "/") and name[len(module) + 1:].split("/", 1)[0] in ("internal", "cmd", "sdk", "eval")}
+        packages = {name[len(module) + 1:] for name in listed if name.startswith(module + "/") and name[len(module) + 1:].split("/", 1)[0] in ("internal", "cmd", "sdk", "eval", "web")}
         if not packages or packages != set(limits):
             raise ValueError("production package inventory and exact coverage bands disagree")
         with tempfile.TemporaryDirectory(prefix="chartworks-coverage-") as directory:

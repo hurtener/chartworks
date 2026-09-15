@@ -1,0 +1,104 @@
+name: Reporting adversarial review
+on:
+  push:
+    branches: [feat/phase-30-31-reporting-delivery]
+    paths:
+      - .github/workflows/reporting-adversarial-review.yml
+      - test/acceptance/phase30_adversarial*.go
+      - test/acceptance/phase30_fixture_test.go
+      - test/acceptance/phase30_queue_fixture_test.go
+      - internal/store/postgres/migrations/**
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_BRUIN_BIN: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CGO_LDFLAGS: -L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Record exact source
+        run: echo "TESTED_COMMIT=$(git rev-parse HEAD)" | tee /tmp/reporting-review-source.log
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build pinned native dependencies
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/go-build
+          key: reporting-review-ubuntu24-go1264-${{ github.sha }}
+          restore-keys: |
+            reporting-ubuntu24-go1264-
+            phase30-31-ubuntu24-go1264-
+      - name: All adversarial eligibility, dependency, consent and orphan-capacity regressions
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=10m ./test/acceptance -run '^TestPhase(30|31)Adversarial' 2>&1 | tee /tmp/reporting-review.log
+      - name: Repeated live-lease, cancellation, capacity and migration regressions
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=10 -v -timeout=10m ./test/acceptance -run '^TestPhase30AdversarialOrphan' 2>&1 | tee /tmp/reporting-review-orphans.log
+          go test -race -count=1 -timeout=5m ./internal/store/postgres ./internal/jobs
+      - name: Original scheduler, exhaustive transport and composed-report regressions
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -v -timeout=15m ./test/acceptance -run '^TestPhase(06|21|29)$' 2>&1 | tee /tmp/reporting-review-regressions.log
+      - name: Unchanged formatting and planning contracts
+        if: always()
+        run: |
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          make planning-check
+          git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reporting-adversarial-review
+          path: /tmp/reporting-review*.log
+          retention-days: 7
+  summary:
+    needs: reproduce
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reporting-adversarial-review
+          path: logs
+      - name: Exact regression outcomes
+        run: |
+          cat logs/reporting-review-source.log
+          cat logs/reporting-review.log
+          grep -E 'FAIL|\.go:|PASS: TestPhase|^ok|^PASS$' logs/reporting-review-orphans.log
+          grep -E 'FAIL|\.go:|PASS: TestPhase|^ok|^PASS$' logs/reporting-review-regressions.log

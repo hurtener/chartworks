@@ -49,3 +49,11 @@ Checked 2026-09-04 for implementation syntax, not host qualification:
 - M1: https://modelcontextprotocol.io/extensions/apps/overview
 - M2: https://modelcontextprotocol.io/extensions/apps/build
 - V1: https://echarts.apache.org/handbook/en/how-to/cross-platform/server/
+
+## Implemented phase-30/31 runtime boundary
+
+The executable schedule and Apps consumer is now documented in
+[reporting delivery v1](../contracts/reporting-delivery-v1.md). That guide separates
+implemented retained-catalog delivery and the actual bundled read viewer from
+this design's later phase-32 SSR/BFF/export work. No notification-sent or production
+cutover claim follows from a catalog artifact or browser rendering test.

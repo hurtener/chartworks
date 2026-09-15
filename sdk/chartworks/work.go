@@ -11,9 +11,10 @@ import (
 
 // JobTarget is a closed implemented target. BindingID refers to Pengui-owned execution authority.
 type JobTarget struct {
-	Pipeline  *PipelineTarget `json:"pipeline,omitempty"`
-	Kind      string          `json:"kind"`
-	BindingID string          `json:"binding_id"`
+	Reporting *ScheduledReportingTarget `json:"reporting,omitempty"`
+	Pipeline  *PipelineTarget           `json:"pipeline,omitempty"`
+	Kind      string                    `json:"kind"`
+	BindingID string                    `json:"binding_id"`
 }
 
 // Recurrence is a bounded cron/interval/manual schedule, never executable custom code.
@@ -30,6 +31,7 @@ type ScheduleRequest struct {
 
 // Schedule is the retained, revisioned definition and its durable occurrence cursor.
 type Schedule struct {
+	Retired          bool            `json:"retired"`
 	ID               string          `json:"id"`
 	Revision         int64           `json:"revision"`
 	Enabled          bool            `json:"enabled"`
@@ -43,29 +45,31 @@ type Schedule struct {
 
 // Job records accepted intent and actual execution outcome separately. It contains no tokens.
 type Job struct {
-	Pipeline          *PipelineTarget `json:"pipeline,omitempty"`
-	ID                string          `json:"id"`
-	Tenant            string          `json:"tenant"`
-	Kind              string          `json:"kind"`
-	BindingID         string          `json:"binding_id"`
-	Executor          string          `json:"executor"`
-	Initiator         string          `json:"initiator"`
-	InitiatorSession  string          `json:"initiator_session"`
-	State             string          `json:"state"`
-	ErrorCode         string          `json:"error_code,omitempty"`
-	PolicyRevision    int64           `json:"policy_revision"`
-	DueAt             time.Time       `json:"due_at"`
-	WindowStart       time.Time       `json:"window_start"`
-	WindowEnd         time.Time       `json:"window_end"`
-	Cutoff            time.Time       `json:"cutoff"`
-	Batch             int             `json:"batch"`
-	Attempts          int             `json:"attempts"`
-	MaxAttempts       int             `json:"max_attempts"`
-	ScheduleID        string          `json:"schedule_id,omitempty"`
-	ScheduleRevision  int64           `json:"schedule_revision,omitempty"`
-	ManifestHash      string          `json:"manifest_hash"`
-	DeletedEvents     int64           `json:"deleted_events"`
-	DeletedOperations int64           `json:"deleted_operations"`
+	Reporting         *ScheduledReportingDispatch `json:"reporting,omitempty"`
+	Delivery          *ScheduledReportingReceipt  `json:"delivery,omitempty"`
+	Pipeline          *PipelineTarget             `json:"pipeline,omitempty"`
+	ID                string                      `json:"id"`
+	Tenant            string                      `json:"tenant"`
+	Kind              string                      `json:"kind"`
+	BindingID         string                      `json:"binding_id"`
+	Executor          string                      `json:"executor"`
+	Initiator         string                      `json:"initiator"`
+	InitiatorSession  string                      `json:"initiator_session"`
+	State             string                      `json:"state"`
+	ErrorCode         string                      `json:"error_code,omitempty"`
+	PolicyRevision    int64                       `json:"policy_revision"`
+	DueAt             time.Time                   `json:"due_at"`
+	WindowStart       time.Time                   `json:"window_start"`
+	WindowEnd         time.Time                   `json:"window_end"`
+	Cutoff            time.Time                   `json:"cutoff"`
+	Batch             int                         `json:"batch"`
+	Attempts          int                         `json:"attempts"`
+	MaxAttempts       int                         `json:"max_attempts"`
+	ScheduleID        string                      `json:"schedule_id,omitempty"`
+	ScheduleRevision  int64                       `json:"schedule_revision,omitempty"`
+	ManifestHash      string                      `json:"manifest_hash"`
+	DeletedEvents     int64                       `json:"deleted_events"`
+	DeletedOperations int64                       `json:"deleted_operations"`
 }
 
 // GatewayProbe is a fixed synthetic-input paid remote role check, not a general prompt endpoint.

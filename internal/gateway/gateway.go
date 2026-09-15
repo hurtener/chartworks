@@ -68,6 +68,13 @@ func (c Call) Valid() bool { return c.envelope.Valid() && c.partition != "" && c
 // Tenant returns the verified tenant partition.
 func (c Call) Tenant() string { return c.envelope.Tenant() }
 
+// MatchesIdentity binds a durable reservation to the current verified principal.
+// It exposes no authority bytes and grants no additional resource permissions.
+func (c Call) MatchesIdentity(e identity.Envelope) bool {
+	return c.Valid() && e.Valid() && c.envelope.Tenant() == e.Tenant() &&
+		c.envelope.User() == e.User() && c.envelope.Session() == e.Session()
+}
+
 // Deadline returns the effective validity deadline without extending it.
 func (c Call) Deadline() time.Time { return c.envelope.Deadline() }
 

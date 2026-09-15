@@ -42,7 +42,7 @@ func effectFor(effect string) (effects, bool) {
 		return effects{readOnly: true, idempotent: true}, true
 	case "caller_data_selection_optional_gateway_rank":
 		return effects{openWorld: true, paid: true}, true
-	case "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt":
+	case "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt":
 		return effects{openWorld: true, persists: true, paid: true}, true
 	}
 	return effects{}, false
@@ -50,6 +50,7 @@ func effectFor(effect string) (effects, bool) {
 
 // Binding is opaque: only Bind can connect a registered contract to a typed core.
 type Binding struct {
+	app                                *AppResource
 	name, group, description, resource string
 	definition                         api.Definition
 	input, output                      *gateway.Schema
@@ -151,7 +152,9 @@ func toolName(s string) bool {
 	}
 	return true
 }
-func groupName(s string) bool { return s == "discovery" || s == "query" || s == "byo" || s == "charts" }
+func groupName(s string) bool {
+	return s == "discovery" || s == "query" || s == "byo" || s == "charts" || s == "reporting"
+}
 
 // WithResource exposes the same pure read through an exact canonical URI or
 // template. Resource reads cannot introduce paid work or persistence.
@@ -190,6 +193,9 @@ func NewRegistry(bindings []Binding) (*Registry, error) {
 			resources[b.resource] = true
 		}
 	}
+	if err := validateApps(out); err != nil {
+		return nil, err
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
 	return &Registry{bindings: out}, nil
 }
@@ -221,7 +227,11 @@ func (r *Registry) find(name string) (Binding, bool) {
 }
 func (b Binding) tool() *mcp.Tool {
 	destructive, open := false, b.effects.openWorld
-	return &mcp.Tool{Name: b.name, Description: b.description, InputSchema: b.input.Document(), OutputSchema: b.output.Document(), Annotations: &mcp.ToolAnnotations{ReadOnlyHint: b.effects.readOnly, IdempotentHint: b.effects.idempotent, DestructiveHint: &destructive, OpenWorldHint: &open}, Meta: mcp.Meta{"chartworks/operation": b.definition.ID, "chartworks/action": b.definition.Action, "chartworks/effect": b.definition.Effect, "chartworks/audit": b.definition.Audit, "chartworks/group": b.group, "chartworks/persists": b.effects.persists, "chartworks/maySpend": b.effects.paid}}
+	out := &mcp.Tool{Name: b.name, Description: b.description, InputSchema: b.input.Document(), OutputSchema: b.output.Document(), Annotations: &mcp.ToolAnnotations{ReadOnlyHint: b.effects.readOnly, IdempotentHint: b.effects.idempotent, DestructiveHint: &destructive, OpenWorldHint: &open}, Meta: mcp.Meta{"chartworks/operation": b.definition.ID, "chartworks/action": b.definition.Action, "chartworks/effect": b.definition.Effect, "chartworks/audit": b.definition.Audit, "chartworks/group": b.group, "chartworks/persists": b.effects.persists, "chartworks/maySpend": b.effects.paid}}
+	if b.app != nil {
+		out.Meta["ui"] = map[string]any{"resourceUri": b.app.uri, "visibility": []string{"model", "app"}}
+	}
+	return out
 }
 
 // Manifest returns detached non-secret registration metadata for parity checks.

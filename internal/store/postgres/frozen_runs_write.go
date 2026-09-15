@@ -46,6 +46,10 @@ func frozenAudit(ctx context.Context, tx pgx.Tx, e identity.Envelope, action, id
 // SealFrozenRun chooses one exact manifest for an already reserved request key.
 // Quota is reserved before any query/model call, across all service replicas.
 func (d *DB) SealFrozenRun(ctx context.Context, e identity.Envelope, task jobs.RequestTask, proof reporting.PreparedRun) (out reporting.RunRecord, err error) {
+	return d.sealFrozenRun(ctx, e, task, proof, nil)
+}
+
+func (d *DB) sealFrozenRun(ctx context.Context, e identity.Envelope, task jobs.RequestTask, proof reporting.PreparedRun, invocation *jobs.Invocation) (out reporting.RunRecord, err error) {
 	m, err := proof.Checked(e)
 	if err != nil {
 		return out, err
@@ -66,6 +70,11 @@ func (d *DB) SealFrozenRun(ctx context.Context, e identity.Envelope, task jobs.R
 	}
 	defer stop()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if invocation != nil {
+			if _, err := requestFenceTx(ctx, tx, *invocation); err != nil {
+				return err
+			}
+		}
 		actual, readErr := readRequestTx(ctx, tx, e, task.ID, true)
 		if readErr != nil {
 			return readErr
@@ -85,7 +94,7 @@ func (d *DB) SealFrozenRun(ctx context.Context, e identity.Envelope, task jobs.R
 		if !errors.Is(readErr, pgx.ErrNoRows) {
 			return readErr
 		}
-		if !time.Now().Before(actual.Expires) || actual.State != "pending" {
+		if !time.Now().Before(actual.Expires) || (invocation == nil && (actual.State != "pending" || actual.Dispatch != nil)) || (invocation != nil && (actual.State != "running" || actual.Dispatch == nil)) {
 			return store.ErrExpired
 		}
 		if readErr = frozenCurrentTx(ctx, tx, e, m); readErr != nil {

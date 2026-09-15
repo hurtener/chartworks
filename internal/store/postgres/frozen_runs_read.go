@@ -159,6 +159,7 @@ func frozenValuesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 	out.Manifest = &m
 	out.View.Parameters = append([]reporting.BoundValue{}, m.Resolved.Values...)
 	out.View.Trust = m.Trust
+	out.View.Policy = m.Policy
 	if result != nil {
 		var r readexec.Result
 		if json.Unmarshal(result, &r) != nil || resultHash == nil || readexec.Hash(r) != *resultHash || len(r.Rows) > m.Limits.MaxRows || len(result) > m.Limits.MaxResultBytes {
@@ -193,6 +194,10 @@ func frozenReadTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string
 		if err = access.RequireArtifact(e, out.Reach); err != nil {
 			return reporting.RunRecord{}, err
 		}
+	}
+	out.View.Scheduled, err = scheduledProvenanceTx(ctx, tx, e.Tenant(), id, h.view.State, h.view.Expires)
+	if err != nil {
+		return reporting.RunRecord{}, err
 	}
 	out.View.QueryAttempts, err = frozenAttemptsTx(ctx, tx, e.Tenant(), h)
 	if err != nil {

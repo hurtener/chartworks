@@ -143,7 +143,7 @@ func compositionFailure(err error) string {
 		return "deadline_exceeded"
 	case errors.Is(err, access.ErrUnauthenticated), errors.Is(err, access.ErrForbidden), errors.Is(err, access.ErrNotFound):
 		return "dependency_denied"
-	case errors.Is(err, ErrBudget), errors.Is(err, exec.ErrLimit):
+	case errors.Is(err, ErrBudget), errors.Is(err, exec.ErrLimit), errors.Is(err, jobs.ErrReportingBudget):
 		return "budget_exhausted"
 	case errors.Is(err, ErrStale):
 		return "dependency_stale"
@@ -163,6 +163,12 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 	}
 	if root.State.Archived || root.PublishedAt == nil && !in.Preview {
 		return CompositionManifest{}, ErrStale
+	}
+	if task.Dispatch != nil && task.Dispatch.Kind == jobs.ReportingKind {
+		dispatch := task.Dispatch.Reporting
+		if kind != "report" || dispatch == nil || dispatch.Blocked != "" || in.Preview || root.Revision.Number != dispatch.Revision || root.Revision.Digest != dispatch.Digest {
+			return CompositionManifest{}, ErrStale
+		}
 	}
 	definition, err := ProjectStoredDocument(root.Revision.Raw, kind)
 	if err != nil {
@@ -220,6 +226,12 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		d, err := ProjectStoredDocument(source.snapshot.Revision.Raw, "report")
 		if err != nil {
 			return CompositionManifest{}, err
+		}
+		if task.Dispatch != nil && task.Dispatch.Kind == jobs.ReportingKind {
+			d, err = scheduledDefinition(d, task.Dispatch.Reporting)
+			if err != nil {
+				return CompositionManifest{}, err
+			}
 		}
 		if d.PartialFailure == "fail_closed" {
 			m.Policy = "fail_closed"

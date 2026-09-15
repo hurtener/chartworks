@@ -10,6 +10,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
+	"github.com/hurtener/chartworks/internal/calendars"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/store"
@@ -31,6 +32,7 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 			return jobs.Job{}, store.ErrInvalid
 		}
 		j.Pipeline = accepted.Pipeline
+		j.Reporting = accepted.Reporting
 		if j.Digest() != accepted.ManifestHash || j.ManifestHash != accepted.ManifestHash {
 			return jobs.Job{}, store.ErrInvalid
 		}
@@ -51,6 +53,16 @@ func queueLock(ctx context.Context, tx pgx.Tx, l jobs.Limits) error {
 	if err := tx.QueryRow(ctx, `SELECT fingerprint FROM chartworks.queue_limits WHERE singleton`).Scan(&fingerprint); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `UPDATE chartworks.queue_limits SET timezone_database=$1 WHERE singleton AND timezone_database IS NULL`, calendars.Version); err != nil {
+		return err
+	}
+	var timezoneVersion string
+	if err := tx.QueryRow(ctx, `SELECT timezone_database FROM chartworks.queue_limits WHERE singleton`).Scan(&timezoneVersion); err != nil {
+		return err
+	}
+	if timezoneVersion != calendars.Version {
+		return store.ErrConflict
+	}
 	if fingerprint != l.QueueFingerprint() {
 		return store.ErrConflict
 	}
@@ -63,7 +75,7 @@ func (d *DB) ConfigureQueue(ctx context.Context, l jobs.Limits) error {
 }
 func queueCapacity(ctx context.Context, tx pgx.Tx, tenant string, l jobs.Limits) error {
 	var global, local int
-	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.operations WHERE dispatch_mode IN ('queued','request') AND status IN ('pending','retry','running')`, tenant).Scan(&global, &local); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE tenant_id=$1) FROM chartworks.pending_execution_roots`, tenant).Scan(&global, &local); err != nil {
 		return err
 	}
 	if global >= l.MaxPending || local >= l.MaxPendingPerTenant {
@@ -161,11 +173,25 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	due = due.UTC().Truncate(time.Microsecond)
 	windowStart = windowStart.UTC().Truncate(time.Microsecond)
 	j := jobs.Job{ID: id, Tenant: scope.Tenant(), Kind: request.Kind, BindingID: request.BindingID, Executor: executor, Initiator: scope.Actor(), InitiatorSession: session, State: "pending", PolicyRevision: revision, DueAt: due, WindowStart: windowStart, WindowEnd: due, Cutoff: due.Add(-time.Duration(days) * 24 * time.Hour), Batch: l.Batch, MaxAttempts: l.MaxAttempts, ScheduleID: scheduleID, ScheduleRevision: scheduleRevision, Pipeline: request.Pipeline}
+	if request.Reporting != nil {
+		resolved, resolveErr := reportingDispatchTx(ctx, tx, scope.Tenant(), *request.Reporting)
+		if resolveErr != nil {
+			return jobs.Job{}, resolveErr
+		}
+		j.Reporting = &resolved
+		j.Reporting.Input = jobs.ReportingInput(j)
+	}
 	j.ManifestHash = j.Digest()
 	if !j.Valid() {
 		return jobs.Job{}, jobs.ErrInvalid
 	}
 	var dispatched, input []byte
+	if j.Reporting != nil {
+		dispatched, input, err = reportingDispatchJSON(j)
+		if err != nil {
+			return jobs.Job{}, err
+		}
+	}
 	if j.Pipeline != nil {
 		var published bool
 		if err := tx.QueryRow(ctx, `SELECT published_at IS NOT NULL AND manifest_hash=$4 FROM chartworks.pipeline_versions WHERE tenant_id=$1 AND pipeline_id=$2 AND version=$3 FOR SHARE`, j.Tenant, j.Pipeline.ID, j.Pipeline.Version, j.Pipeline.Digest).Scan(&published); err != nil {
@@ -182,6 +208,9 @@ func admitJob(ctx context.Context, tx pgx.Tx, scope store.Scope, session, key st
 	if err != nil {
 		return jobs.Job{}, err
 	}
+	if err = insertReportingDeliveryTx(ctx, tx, j); err != nil {
+		return jobs.Job{}, err
+	}
 	if err = auditJob(ctx, tx, scope, "job.accepted", j.ID); err != nil {
 		return jobs.Job{}, err
 	}
@@ -196,6 +225,9 @@ func (d *DB) ReadJob(ctx context.Context, scope store.Scope, id string) (out job
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var e error
 		out, e = scanJob(tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations WHERE tenant_id=$1 AND operation_id=$2 AND dispatch_mode='queued'`, scope.Tenant(), id))
+		if e == nil {
+			out.Delivery, e = reportingReceiptTx(ctx, tx, out)
+		}
 		return e
 	})
 	return out, err
@@ -220,7 +252,18 @@ func (d *DB) ListJobs(ctx context.Context, scope store.Scope, selection access.S
 			}
 			out = append(out, j)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		rows.Close()
+		for i := range out {
+			var err error
+			out[i].Delivery, err = reportingReceiptTx(ctx, tx, out[i])
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return out, err
 }
@@ -274,7 +317,7 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 			return e
 		}
 		var active int
-		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.operations WHERE dispatch_mode IN ('queued','request') AND status='running' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()`).Scan(&active); e != nil {
+		if e := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.active_execution_roots`).Scan(&active); e != nil {
 			return e
 		}
 		if active >= l.GlobalConcurrency {
@@ -282,7 +325,7 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 			return nil
 		}
 		row := tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations o WHERE dispatch_mode='queued' AND status IN ('pending','retry','running') AND next_attempt_at<=clock_timestamp() AND due_at<=clock_timestamp() AND expires_at>clock_timestamp() AND attempt_count<max_attempts AND(lease_until IS NULL OR lease_until<=clock_timestamp())
- AND(SELECT count(*) FROM chartworks.operations a WHERE a.dispatch_mode IN ('queued','request') AND a.tenant_id=o.tenant_id AND a.status='running' AND a.lease_until>clock_timestamp())<$1
+ AND(SELECT count(*) FROM chartworks.active_execution_roots a WHERE a.tenant_id=o.tenant_id)<$1
  AND(o.schedule_id IS NULL OR NOT EXISTS(SELECT 1 FROM chartworks.operations a WHERE a.tenant_id=o.tenant_id AND a.schedule_id=o.schedule_id AND a.operation_id<>o.operation_id AND a.status='running' AND a.lease_until>clock_timestamp()))
  ORDER BY next_attempt_at,due_at,operation_id LIMIT 1 FOR UPDATE OF o SKIP LOCKED`, l.TenantConcurrency)
 		j, e := scanJob(row)
@@ -327,7 +370,7 @@ func (d *DB) FinishAttempt(ctx context.Context, lease jobs.Lease, code string, p
 		return jobs.ErrInvalid
 	}
 	switch code {
-	case "authority_blocked", "attempt_failed", "attempt_timeout", "definition_changed":
+	case "authority_blocked", "attempt_failed", "attempt_timeout", "definition_changed", "reporting_budget", "reporting_attention":
 	default:
 		return jobs.ErrInvalid
 	}

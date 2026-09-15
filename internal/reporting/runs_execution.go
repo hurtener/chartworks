@@ -248,6 +248,10 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 // It uses the common leased operation runner; it does not persist bearer tokens
 // or create an unattended reporting worker ahead of the scheduling consumer.
 func (s *Runs) Run(ctx context.Context, e identity.Envelope, id string, resume bool) (RunView, error) {
+	return s.run(ctx, e, id, resume, nil)
+}
+
+func (s *Runs) run(ctx context.Context, e identity.Envelope, id string, resume bool, parent *jobs.Invocation) (RunView, error) {
 	if s == nil || ctx == nil {
 		return RunView{}, ErrInvalid
 	}
@@ -279,9 +283,19 @@ func (s *Runs) Run(ctx context.Context, e identity.Envelope, id string, resume b
 			return r.View, err
 		}
 	}
-	_, runErr := s.runner.Run(ctx, e, task, min(time.Duration(r.Manifest.Limits.Timeout), time.Duration(s.limits.Timeout)), func(work context.Context, inv jobs.Invocation) error {
-		return s.continueFrozen(work, e, inv, r)
-	})
+	handler := func(work context.Context, inv jobs.Invocation) error { return s.continueFrozen(work, e, inv, r) }
+	timeout := min(time.Duration(r.Manifest.Limits.Timeout), time.Duration(s.limits.Timeout))
+	var runErr error
+	if parent == nil {
+		_, runErr = s.runner.Run(ctx, e, task, timeout, handler)
+	} else {
+		_, runErr = s.runner.RunNested(ctx, *parent, task, timeout, handler)
+	}
+	if runErr != nil && parent != nil && ctx.Err() == nil {
+		if _, cancelErr := s.runner.Cancel(ctx, e, task.ID); cancelErr != nil && !errors.Is(cancelErr, store.ErrConflict) {
+			return r.View, errors.Join(runErr, cancelErr)
+		}
+	}
 	current, readErr := s.repo.ReadFrozenRun(ctx, e, id, true)
 	if readErr != nil {
 		if runErr != nil {

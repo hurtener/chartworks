@@ -12,12 +12,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const scheduleColumns = `schedule_id,revision,enabled,tenant_id,creator_id,creator_session,request,next_due,previous_due`
+const scheduleColumns = `schedule_id,revision,enabled,tenant_id,creator_id,creator_session,request,next_due,previous_due,retired`
 
 func scanSchedule(row pgx.Row) (jobs.Schedule, error) {
 	var s jobs.Schedule
 	var raw []byte
-	err := row.Scan(&s.ID, &s.Revision, &s.Enabled, &s.Tenant, &s.Initiator, &s.InitiatorSession, &raw, &s.NextDue, &s.PreviousDue)
+	err := row.Scan(&s.ID, &s.Revision, &s.Enabled, &s.Tenant, &s.Initiator, &s.InitiatorSession, &raw, &s.NextDue, &s.PreviousDue, &s.Retired)
 	if err != nil {
 		return s, err
 	}
@@ -115,8 +115,11 @@ func (d *DB) SetSchedule(ctx context.Context, scope store.Scope, id string, expe
 		if e != nil {
 			return e
 		}
-		if out.Revision != expected {
+		if out.Revision != expected || out.Retired {
 			return store.ErrConflict
+		}
+		if out.Enabled == enabled {
+			return nil
 		}
 		previous, next := out.PreviousDue, out.NextDue
 		// Keep the durable cursor across pause/resume. The next tick applies the declared
@@ -146,7 +149,7 @@ func (d *DB) FireSchedule(ctx context.Context, scope store.Scope, session, id, k
 		if e != nil {
 			return e
 		}
-		if !schedule.Enabled || schedule.Revision != expected {
+		if !schedule.Enabled || schedule.Retired || schedule.Revision != expected {
 			return store.ErrConflict
 		}
 		var now time.Time

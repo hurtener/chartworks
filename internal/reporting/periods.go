@@ -4,14 +4,15 @@ import (
 	"slices"
 	"strings"
 	"time"
-	_ "time/tzdata" // Named-zone behavior remains available in minimal binaries.
+
+	"github.com/hurtener/chartworks/internal/calendars"
 )
 
 func namedZone(name string) (*time.Location, error) {
 	if len(name) == 0 || len(name) > 128 || name == "Local" || strings.Contains(name, "..") || strings.HasPrefix(name, "/") || strings.ContainsAny(name, "\\\x00\r\n") {
 		return nil, ErrInvalid
 	}
-	zone, err := time.LoadLocation(name)
+	zone, err := calendars.Location(name)
 	if err != nil {
 		return nil, ErrInvalid
 	}
