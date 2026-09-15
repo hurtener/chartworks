@@ -1,0 +1,87 @@
+name: Apply reviewed eligibility fix
+on:
+  push:
+    branches: [feat/phase-30-31-reporting-delivery]
+    paths: [.github/workflows/reporting-review-patch.yml]
+permissions:
+  contents: write
+concurrency:
+  group: reporting-review-patch
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.repository == 'hurtener/chartworks' && github.ref == 'refs/heads/feat/phase-30-31-reporting-delivery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Apply only the reviewed guard and owning criterion hooks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          changes = [
+            ('internal/store/postgres/compositions_read.go',
+             '\tif err := reporting.RequireComposition(e, m); err != nil {\n\t\treturn reporting.CompositionRecord{}, err\n\t}\n\tout.State',
+             '\tif err := reporting.RequireComposition(e, m); err != nil {\n\t\treturn reporting.CompositionRecord{}, err\n\t}\n'
+             '\t// Recovery and every checkpoint of an unfinished execution must recheck\n'
+             '\t// the original definitions under current eligibility locks. Completed\n'
+             '\t// groups are evidence, not permission to publish after withdrawal.\n'
+             '\t// The separate retained-artifact read path does not enter this guard.\n'
+             '\tif h.view.State == "sealed" {\n'
+             '\t\tif err := compositionDefinitionsTx(ctx, tx, e, m); err != nil {\n'
+             '\t\t\treturn reporting.CompositionRecord{}, err\n\t\t}\n\t}\n\tout.State'),
+            ('test/acceptance/phase30_test.go',
+             '\tt.Run("AC07", testPhase30ChangedDependencies)',
+             '\tt.Run("AC07", func(t *testing.T) {\n'
+             '\t\tt.Run("changed-dependencies", testPhase30ChangedDependencies)\n'
+             '\t\tt.Run("retry-current-eligibility", TestPhase30AdversarialRetryEligibility)\n'
+             '\t\tt.Run("publication-current-eligibility", TestPhase30AdversarialPublicationBoundary)\n\t})'),
+            ('test/acceptance/phase31_test.go',
+             '\tt.Run("AC05", testPhase31ExplicitExecution)',
+             '\tt.Run("AC05", func(t *testing.T) {\n'
+             '\t\tt.Run("explicit-execution", testPhase31ExplicitExecution)\n'
+             '\t\tt.Run("exact-publication-consent", TestPhase31AdversarialPublicationConsent)\n\t})'),
+          ]
+          for name, old, new in changes:
+            p=Path(name); text=p.read_text()
+            if text.count(old)!=1: raise RuntimeError('Refuse unexpected source: '+name)
+            p.write_text(text.replace(old,new))
+          subprocess.run(['gofmt','-w',*[x[0] for x in changes],
+            'test/acceptance/phase30_adversarial_checkpoint_test.go',
+            'test/acceptance/phase30_adversarial_retry_test.go',
+            'test/acceptance/phase31_adversarial_consent_test.go'],check=True)
+          Path('.github/workflows/reporting-review-patch.yml').unlink()
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','diff','--stat'],check=True)
+          subprocess.run(['git','diff','--','internal/store/postgres/compositions_read.go'],check=True)
+          PY
+      - name: Publish exact branch delta and remove this one-use workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs=require('fs'),cp=require('child_process');
+            const owner='hurtener',repo='chartworks',ref='heads/feat/phase-30-31-reporting-delivery';
+            const base=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+            const allowed=new Set(['internal/store/postgres/compositions_read.go','test/acceptance/phase30_test.go','test/acceptance/phase31_test.go','test/acceptance/phase30_adversarial_checkpoint_test.go','test/acceptance/phase30_adversarial_retry_test.go','test/acceptance/phase31_adversarial_consent_test.go','.github/workflows/reporting-review-patch.yml']);
+            const paths=cp.execFileSync('git',['diff','--name-only','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);
+            if(!paths.length||paths.some(p=>!allowed.has(p)))throw new Error('Unexpected patch paths');
+            const current=await github.rest.git.getRef({owner,repo,ref});
+            if(current.data.object.sha!==base)throw new Error('Concurrent branch move; refuse overwrite');
+            const parent=await github.rest.git.getCommit({owner,repo,commit_sha:base});
+            const tree=[];
+            for(const path of paths){
+              if(!fs.existsSync(path)){tree.push({path,mode:'100644',type:'blob',sha:null});continue;}
+              const blob=await github.rest.git.createBlob({owner,repo,content:fs.readFileSync(path).toString('base64'),encoding:'base64'});
+              tree.push({path,mode:'100644',type:'blob',sha:blob.data.sha});
+            }
+            const next=await github.rest.git.createTree({owner,repo,base_tree:parent.data.tree.sha,tree});
+            const commit=await github.rest.git.createCommit({owner,repo,message:'fix(reporting): recheck accepted composition eligibility during recovery and publication',tree:next.data.sha,parents:[base]});
+            await github.rest.git.updateRef({owner,repo,ref,sha:commit.data.sha,force:false});
+            core.info('PATCHED_COMMIT='+commit.data.sha);
