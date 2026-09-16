@@ -1,0 +1,28 @@
+name: CW-03 isolated source snapshot
+on:
+  push:
+    branches: [feat/cw-03-reporting-output-policies]
+    paths: [.github/workflows/cw-03-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive exact committed source without credentials
+        run: |
+          mkdir -p /tmp/cw-03-snapshot
+          git rev-parse HEAD > /tmp/cw-03-snapshot/COMMIT
+          git archive --format=tar.gz --prefix=chartworks/ HEAD > /tmp/cw-03-snapshot/source.tar.gz
+          cd /tmp/cw-03-snapshot
+          sha256sum source.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw-03-source-snapshot
+          path: /tmp/cw-03-snapshot/
+          retention-days: 1
+          if-no-files-found: error
