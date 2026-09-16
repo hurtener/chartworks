@@ -134,7 +134,7 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 	return s.writeRun(ctx, e, inv, RunWrite{Kind: "result", Manifest: m, Result: report.Result, Attempt: &report.Attempt})
 }
 
-func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m RunManifest, result exec.Result, saved Output) (RetainedOutput, error) {
+func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m RunManifest, result exec.Result, saved Output, reservedCalls, reservedTokens int) (RetainedOutput, error) {
 	out := RetainedOutput{ID: saved.ID, Kind: saved.Kind, State: "succeeded", Intent: clone(saved.Intent)}
 	if saved.Intent != nil && !saved.Intent.Enabled {
 		return out, selectionError("output_disabled")
@@ -157,7 +157,11 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 		}
 	} else {
 		n := saved.Narrative
-		if n == nil || s.model == nil || m.Model != s.modelVersion || n.ModelVersion != s.modelVersion || n.SchemaVersion != "grounded-narrative-v1" {
+		available := n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && n.SchemaVersion == "grounded-narrative-v1"
+		versioned := m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || n != nil && n.PolicyVersion != ""
+		if n == nil || !available && !versioned {
+			// Preserve the legacy unavailable receipt. Versioned policies first
+			// resolve deterministic evidence exclusions, even without a model.
 			out.State, out.Code = "failed", "narrative_unavailable"
 		} else {
 			prepared, err := prepareNarrative(m, result, *n)
@@ -171,6 +175,17 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 				}
 				out.Digest = out.ContentDigest()
 				return out, nil
+			}
+			if !available {
+				out.State, out.Code = "failed", "narrative_unavailable"
+				out.Digest = out.ContentDigest()
+				return out, nil
+			}
+			// Check current and originally accepted cumulative limits only for
+			// eligible evidence. An irrelevant offline model or smaller model
+			// budget cannot change a deterministic no-evidence disposition.
+			if reservedCalls+n.MaxCalls > min(m.Limits.NarrativeCalls, s.limits.NarrativeCalls) || reservedTokens+n.MaxTokens > min(m.Limits.NarrativeTokens, s.limits.NarrativeTokens) {
+				return out, ErrBudget
 			}
 			// Persist reservations before the SDK may accept a request. A crash
 			// here leaves an honest indeterminate output, not free retry budget.
@@ -262,17 +277,12 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 			byID[saved.ID] = existing
 			continue
 		}
-		if saved.Narrative != nil && s.model != nil && saved.Narrative.ModelVersion == s.modelVersion && saved.Narrative.SchemaVersion == "grounded-narrative-v1" {
-			calls, tokens := 0, 0
-			for _, previous := range byID {
-				calls += previous.ReservedCalls
-				tokens += previous.ReservedTokens
-			}
-			if calls+saved.Narrative.MaxCalls > min(m.Limits.NarrativeCalls, s.limits.NarrativeCalls) || tokens+saved.Narrative.MaxTokens > min(m.Limits.NarrativeTokens, s.limits.NarrativeTokens) {
-				return ErrBudget
-			}
+		calls, tokens := 0, 0
+		for _, previous := range byID {
+			calls += previous.ReservedCalls
+			tokens += previous.ReservedTokens
 		}
-		output, buildErr := s.makeOutput(ctx, e, inv, m, *current.Result, saved)
+		output, buildErr := s.makeOutput(ctx, e, inv, m, *current.Result, saved, calls, tokens)
 		if buildErr != nil {
 			return buildErr
 		}

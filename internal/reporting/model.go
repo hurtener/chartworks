@@ -344,12 +344,15 @@ type View struct {
 }
 
 // SQLView is the separately authorized SQL-bearing revision projection.
+// Definition is the native, versioned authoring export, never an ordinary read
+// field. It carries authored (not resolved) policies without inventing approval.
 type SQLView struct {
-	ID         string     `json:"id"`
-	Revision   int64      `json:"revision"`
-	Digest     string     `json:"digest"`
-	SQL        string     `json:"sql"`
-	Provenance Provenance `json:"provenance"`
+	Definition *Definition `json:"definition,omitempty"`
+	ID         string      `json:"id"`
+	Revision   int64       `json:"revision"`
+	Digest     string      `json:"digest"`
+	SQL        string      `json:"sql"`
+	Provenance Provenance  `json:"provenance"`
 }
 
 // Snapshot is an internal repository result. Publication and current metadata

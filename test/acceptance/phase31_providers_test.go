@@ -204,11 +204,11 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 	composed := f.run(t, "report", "p31-report", "p31-composed")
 	beforeSource, beforeModels = f.domain.f.f.lookups.Load(), f.domain.f.model.requests.Load()
 	view, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "report", Run: composed.Run, Page: "main", Widget: "first", Limit: 1})
-	if err != nil || view.Output == nil || view.Output.Table == nil || view.Selection.Output != "table-second" || len(view.Outputs) != 1 {
+	if err != nil || view.Output == nil || view.Output.Table == nil || view.Selection.Output != "table-second" || view.Output.ID != "table-second" || len(view.Output.Table.Rows) != 1 || len(view.Outputs) != 2 || view.Outputs[0].ID != "table-main" || view.Outputs[0].Selected || view.Outputs[0].State != "omitted" || view.Outputs[1].ID != "table-second" || !view.Outputs[1].Selected || view.AcceptedSelection == nil || !reflect.DeepEqual(view.AcceptedSelection.Selected, []string{"table-second"}) {
 		t.Fatalf("selected composed output received another union member or no values: %+v %v", view, err)
 	}
-	if _, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "report", Run: composed.Run, Page: "main", Widget: "first", Output: "table-main", Limit: 1}); !errors.Is(err, access.ErrNotFound) {
-		t.Fatal("output union crossed widget selection", err)
+	if denied, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "report", Run: composed.Run, Page: "main", Widget: "first", Output: "table-main", Limit: 1}); reporting.SelectionErrorCode(err) != "output_not_selected" || denied.Output != nil || denied.Summary.Run != "" {
+		t.Fatal("output union crossed widget selection or returned partial values", denied, err)
 	}
 	runs, err = f.service.Runs(t.Context(), reader, reporting.DeliveryRunsRequest{Kind: "report", Resource: "p31-report", Limit: 20})
 	if err != nil || len(runs.Items) != 1 || runs.Items[0].Run != composed.Run {

@@ -46,7 +46,7 @@ func Registry(validation, capture, observe bool) (*api.Registry, error) {
 		{"POST", "/v1/blocks/capture", reporting.Write, "captureBlock", "Capture a completed authorized query as an unvalidated draft", reflect.TypeFor[reporting.CaptureRequest](), reflect.TypeFor[reporting.View](), "capture"},
 		{"POST", "/v1/blocks/questions/assess", reporting.Read, "assessBlockQuestions", "Assess authorized localized questions with bounded lexical matching", reflect.TypeFor[reporting.QuestionRequest](), reflect.TypeFor[reporting.Assessment](), ""},
 		{"GET", "/v1/blocks/{id}", reporting.Read, "readBlock", "Read a SQL-private published or authorized exact revision", nil, reflect.TypeFor[reporting.View](), ""},
-		{"GET", "/v1/blocks/{id}/sql", reporting.SQLRead, "readBlockSQL", "Read SQL through separately scoped inspection authority", nil, reflect.TypeFor[reporting.SQLView](), ""},
+		{"GET", "/v1/blocks/{id}/sql", reporting.SQLRead, "readBlockSQL", "Read SQL and a versioned native definition through separately scoped inspection authority", nil, reflect.TypeFor[reporting.SQLView](), ""},
 		{"GET", "/v1/blocks/{id}/history", reporting.Read, "blockHistory", "Read permission-filtered immutable lifecycle history", nil, reflect.TypeFor[reporting.History](), ""},
 		{"PUT", "/v1/blocks/{id}", reporting.Write, "editBlock", "Append a CAS-fenced private amendment without publication", reflect.TypeFor[reporting.EditRequest](), reflect.TypeFor[reporting.View](), ""},
 		{"POST", "/v1/blocks/{id}/validate", reporting.Validate, "validateBlock", "Validate an exact revision through the existing bounded read core", reflect.TypeFor[reporting.ValidateRequest](), reflect.TypeFor[reporting.ValidationResult](), "validate"},

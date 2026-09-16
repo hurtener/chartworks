@@ -92,6 +92,19 @@ func TestCW03ReportingPublicationAndExecution(t *testing.T) {
 	t.Run("SelectionLabelsFanoutAndRevisionDrift", func(t *testing.T) {
 		d := cw03Definition(t, f.base)
 		f.block(t, "cw03-intent", d)
+		exported, err := f.blocks.SQL(ctx, f.blockAuthor, "cw03-intent", reporting.Reference{Revision: 1})
+		if err != nil || exported.Definition == nil || reporting.DefinitionDigest(*exported.Definition) != exported.Digest || !reflect.DeepEqual(*exported.Definition, d) {
+			t.Fatal("native export lost original policy or array order", exported, err)
+		}
+		beforeImport := f.f.f.lookups.Load()
+		imported, err := f.blocks.Create(ctx, f.blockAuthor, reporting.CreateRequest{ID: "cw03-native-import", Definition: *exported.Definition})
+		if err != nil || !imported.Private || imported.Evidence != nil || imported.Trust.Certification != "none" || imported.Digest != exported.Digest || f.f.f.lookups.Load() != beforeImport {
+			t.Fatal("native import lost intent or fabricated validation/approval", imported, err)
+		}
+		metadataOnly := phase28Reader(t, f.f, "cw03-label-reader", "cw03-intent", d.Context)
+		if denied, err := f.blocks.SQL(ctx, metadataOnly, "cw03-intent", reporting.Reference{}); err == nil || denied.Definition != nil || denied.SQL != "" {
+			t.Fatal("readable labels granted native definition/SQL export", denied, err)
+		}
 		described, err := delivery.Describe(ctx, f.execute, reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "block", ID: "cw03-intent"}, Locale: "es-AR"})
 		if err != nil || len(described.Outputs) != 4 || described.Outputs[0].ID != "second" || described.Outputs[0].Title != "Salida second" || described.Outputs[1].State != "disabled" || described.Outputs[2].State != "omitted" {
 			t.Fatal("localized selector", described, err)
@@ -374,6 +387,33 @@ func TestCW03NarrativeSensitivityAtProviderBoundary(t *testing.T) {
 			again, err := runs.RebuildOutput(ctx, execute, done.ID, "narrative-main")
 			if err != nil || again.Digest != out.Digest || model.requests.Load() != calls || f.f.lookups.Load() != before {
 				t.Fatal("retained narrative depended on provider availability", again, err)
+			}
+			if name == "unknown" {
+				// Both operations are accepted against the original configuration.
+				// Offline services and lowered *model* limits are irrelevant when
+				// reviewed evidence cannot be sent to a provider in the first place.
+				for _, offline := range []bool{false, true} {
+					key := "cw03-unknown-lower-budget"
+					engine := model.engine
+					if offline {
+						key, engine = "cw03-unknown-offline", nil
+					}
+					accepted, err := runs.Admit(ctx, execute, created.State.ID, reporting.RunRequest{Key: key, Narrative: true, PartialPolicy: "allow_partial"})
+					if err != nil {
+						t.Fatal(err)
+					}
+					limits := config.DefaultReportingExecution()
+					limits.NarrativeTokens = 64
+					limited := phase28RunService(t, f, blocks, f.f.db, engine, limits)
+					done, err := limited.Run(ctx, execute, accepted.ID, false)
+					if err != nil || done.State != "partial" || done.ReservedCalls != 0 || done.ReservedTokens != 0 {
+						t.Fatal("irrelevant model configuration changed evidence outcome", done, err)
+					}
+					observed, err := limited.Output(ctx, execute, done.ID, "narrative-main")
+					if err != nil || observed.Code != out.Code || model.requests.Load() != calls {
+						t.Fatal("excluded evidence required a provider", observed, err)
+					}
+				}
 			}
 		})
 	}

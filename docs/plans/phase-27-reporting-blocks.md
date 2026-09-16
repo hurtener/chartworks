@@ -48,3 +48,14 @@ Implement `TestPhase27/AC01` through `TestPhase27/AC08`. Use real source validat
 ## Glossary, decisions and deviations
 
 Block, revision, validation evidence, attestation and current health are distinct shared terms. D-047 establishes required reporting scope; D-045 leaves access decisions in Pengui. The implementation and all eight named acceptance criteria are present. Review/merge status remains separate from runtime evidence; see [the adversarial record](../reviews/phase-27-adversarial.md) and [the HTTP/SDK contract](../contracts/reporting-blocks-v1.md).
+
+## CW-03 output-intent and evidence-policy continuation
+
+AC01/AC02/AC03/AC06/AC08: definition v2 and detached legacy migration; output-level localized intent; restrictive result policy; native SQL-authorized definition export/import; immutable publication and closed API/SDK schemas.
+
+Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
+[v2 field-level contract](../contracts/reporting-output-intent-v2.md). The
+[scoped adversarial record](../reviews/cw-03-adversarial.md) links real PostgreSQL,
+source execution, provider-fixture and browser checks. Keep the existing named
+phase criteria and phase status; this assignment closes only its three owned gap
+entries, not the whole phase, other reporting work, or full migration/release.

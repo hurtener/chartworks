@@ -259,3 +259,19 @@ func TestCW03NarrativeHardBoundsAndQueryCeilings(t *testing.T) {
 		}
 	}
 }
+
+func TestCW03MigrationDoesNotRepairMalformedV2(t *testing.T) {
+	d := intentFixture(t)
+	copied, err := MigrateDefinition(d)
+	if err != nil || !reflect.DeepEqual(copied, d) {
+		t.Fatal("v2 migration must be a detached identity", err)
+	}
+	copied.Outputs[0].Intent.Metadata[0].DisplayName = "Changed copy"
+	if reflect.DeepEqual(copied, d) {
+		t.Fatal("v2 candidate aliases the input")
+	}
+	d.Outputs[0].Intent = nil
+	if _, err := MigrateDefinition(d); !errors.Is(err, ErrInvalid) {
+		t.Fatal("v2 omission was silently assigned legacy intent", err)
+	}
+}

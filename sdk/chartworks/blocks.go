@@ -295,7 +295,9 @@ func (c *Client) ReadBlock(ctx context.Context, id string, in BlockReference) (o
 	return
 }
 
-// ReadBlockSQL read SQL through separately scoped inspection authority. Mutations are never automatically replayed.
+// ReadBlockSQL returns separately protected SQL and its exact native definition.
+// Import Definition through normal create/edit validation; approval never transfers.
+// Older servers may omit Definition. Mutations are never automatically replayed.
 func (c *Client) ReadBlockSQL(ctx context.Context, id string, in BlockReference) (out BlockSQLView, err error) {
 	if !identity.Identifier(id) {
 		return out, ErrBlockRequest

@@ -148,6 +148,19 @@ func MigrateDefinition(d Definition) (Definition, error) {
 		return Definition{}, ErrInvalid
 	}
 	d = clone(d)
+	if d.SchemaVersion == CurrentSchemaVersion {
+		// Migration is not repair: absent v2 intent or policy ceilings must not
+		// be filled using v1 defaults and silently change authored selection.
+		for _, output := range d.Outputs {
+			if output.Intent == nil {
+				return Definition{}, ErrInvalid
+			}
+			if output.Narrative != nil && boundedNarrativePolicy(*output.Narrative) != nil {
+				return Definition{}, ErrNarrativePolicy
+			}
+		}
+		return d, nil
+	}
 	for i := range d.Outputs {
 		if d.Outputs[i].Intent == nil {
 			v := legacyIntent(d, d.Outputs[i], i)

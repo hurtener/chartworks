@@ -185,7 +185,7 @@ func (s *Service) SQL(ctx context.Context, e identity.Envelope, id string, ref R
 	if err := ctx.Err(); err != nil {
 		return SQLView{}, err
 	}
-	return SQLView{ID: id, Revision: snapshot.Revision.Number, Digest: snapshot.Revision.Digest, SQL: snapshot.Revision.Definition.SQL, Provenance: clone(snapshot.Revision.Provenance)}, nil
+	return SQLView{Definition: clone(&snapshot.Revision.Definition), ID: id, Revision: snapshot.Revision.Number, Digest: snapshot.Revision.Digest, SQL: snapshot.Revision.Definition.SQL, Provenance: clone(snapshot.Revision.Provenance)}, nil
 }
 
 func (s *Service) newRevision(e identity.Envelope, number int64, d Definition, provenance Provenance) (Revision, error) {

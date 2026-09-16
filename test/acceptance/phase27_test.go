@@ -464,7 +464,7 @@ func TestPhase27(t *testing.T) {
 			t.Fatal("source-backed capture", captured, err)
 		}
 		capturedSQL, err := client.ReadBlockSQL(ctx, capture.ID, sdk.BlockReference{Draft: true})
-		if err != nil || capturedSQL.SQL != base.SQL || capturedSQL.Provenance.Query != planned.QueryID || capturedSQL.Provenance.Kind != "query_capture" {
+		if err != nil || capturedSQL.Definition == nil || reporting.DefinitionDigest(*capturedSQL.Definition) != capturedSQL.Digest || capturedSQL.SQL != base.SQL || capturedSQL.Provenance.Query != planned.QueryID || capturedSQL.Provenance.Kind != "query_capture" {
 			t.Fatal("capture provenance", capturedSQL, err)
 		}
 		wrongSession, err := f.f.token.verifier.Verify(ctx, phase27Token(t, f, e.User(), "other-session", phase27Scopes(e.Tenant())), auth.HTTP)
