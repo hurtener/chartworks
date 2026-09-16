@@ -1,0 +1,72 @@
+name: CW-01 runtime verification
+on:
+  push:
+    branches: [feat/cw-01-typed-runtime]
+    paths-ignore: ['.cw01/**']
+  pull_request:
+    paths:
+      - 'internal/nlq*/**'
+      - 'internal/semantics/**'
+      - 'internal/topicapi/**'
+      - 'test/acceptance/cw01*'
+      - '.github/workflows/cw-01-runtime-tests.yml'
+permissions:
+  contents: read
+concurrency:
+  group: cw01-runtime-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -p=2
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Exact tested source
+        run: |
+          git rev-parse HEAD
+          go version
+          git diff --exit-code
+      - name: Race-enabled affected package tests
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=20m -json ./internal/semantics/... ./internal/nlq ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./internal/topicapi ./sdk/chartworks ./internal/store/postgres | tee /tmp/cw01-unit.jsonl
+      - name: Existing phase and integrated clarification acceptance
+        if: success() || failure()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=20m -json ./test/acceptance -run '^Test(CW01|Phase16|Phase17|Phase18)$' | tee /tmp/cw01-acceptance.jsonl
+      - name: Bounded typed parser fuzz
+        if: success() || failure()
+        run: go test -race ./internal/semantics -run '^$' -fuzz '^FuzzClarificationDecimal$' -fuzztime=256x -parallel=2
+      - name: Planning and immutable source checks
+        if: always()
+        run: |
+          make check-mirror planning-check
+          test -z "$(find internal/nlqroute internal/nlqexec internal/semantics -name '*.go' -print0 | xargs -0 gofmt -l)"
+          git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cw01-runtime-${{ github.sha }}
+          path: /tmp/cw01-*.jsonl
+          retention-days: 7
