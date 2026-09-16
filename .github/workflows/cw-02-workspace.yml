@@ -1,0 +1,31 @@
+name: CW-02 baseline verification
+
+on:
+  push:
+    branches: [feat/cw-02-rich-chart-bindings]
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Retain exact tracked source for bounded review
+        run: git archive --format=tar.gz --output=/tmp/chartworks-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw-02-source
+          path: /tmp/chartworks-source.tar.gz
+          retention-days: 1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Existing pure specifications and compiled viewer resources
+        run: go test -race -count=1 ./internal/charts ./web/report-viewer
+      - name: Unchanged source
+        run: git diff --exit-code
