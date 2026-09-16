@@ -1,0 +1,99 @@
+name: CW-01 clarification verification
+
+on:
+  push:
+    branches: [feat/cw-01-typed-answer-effects]
+  pull_request:
+    paths:
+      - '.github/workflows/cw-01-verification.yml'
+      - 'internal/semantics/**'
+      - 'internal/nlq/**'
+      - 'internal/nlqroute/**'
+      - 'internal/nlqexec/**'
+      - 'internal/nlqapi/**'
+      - 'internal/exec/**'
+      - 'internal/store/postgres/**'
+      - 'sdk/chartworks/**'
+      - 'test/acceptance/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cw-01-answers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clarification:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -p=2
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Build the locked native parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod download
+          go mod verify
+          module="$(go list -m -f '{{.Dir}}' github.com/bruin-data/bruin)"
+          test -f "$module/pkg/sqlparser/rustffi/Cargo.lock"
+          mkdir -p "$RUNNER_TEMP/cw01-native"
+          cp -R "$module/pkg/sqlparser/rustffi/." "$RUNNER_TEMP/cw01-native/"
+          chmod -R u+w "$RUNNER_TEMP/cw01-native"
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo +1.98.1 build --release --locked --manifest-path "$RUNNER_TEMP/cw01-native/Cargo.toml"
+          echo "CGO_LDFLAGS=-L$RUNNER_TEMP/cw01-native/target/release" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/cw01-native/target/release" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/cw01-native-export"
+          find "$RUNNER_TEMP/cw01-native/target/release" -maxdepth 1 -type f \( -name 'libbruin_rustsqlparser.a' -o -name 'libbruin_rustsqlparser.so' \) -exec cp '{}' "$RUNNER_TEMP/cw01-native-export/" ';'
+          test -n "$(ls -A "$RUNNER_TEMP/cw01-native-export")"
+          go list -m github.com/bruin-data/bruin > "$RUNNER_TEMP/cw01-native-export/module.txt"
+          (cd "$RUNNER_TEMP/cw01-native-export" && sha256sum libbruin_rustsqlparser.* > SHA256SUMS)
+          tar -czf "$RUNNER_TEMP/cw01-native.tar.gz" -C "$RUNNER_TEMP/cw01-native-export" .
+      - name: Retain only public native test tooling
+        uses: actions/upload-artifact@v4
+        with:
+          name: cw01-native-parser
+          path: ${{ runner.temp }}/cw01-native.tar.gz
+          retention-days: 2
+      - name: Verify committed source without preparation or repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD
+          go mod verify
+          git diff --exit-code
+          test -z "$(find internal sdk test -name '*.go' -print0 | xargs -0 gofmt -l)"
+          make check-mirror planning-check
+      - name: Race-enabled clarification and consumer regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -race -count=1 ./internal/semantics/... ./internal/nlq ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./internal/exec ./sdk/chartworks
+      - name: Executed phase acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/run_phase_acceptance.py --phase 16
+          python3 scripts/run_phase_acceptance.py --phase 17
+          python3 scripts/run_phase_acceptance.py --phase 18
