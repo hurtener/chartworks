@@ -224,6 +224,9 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	}
 	result.Request = cloneRouteRequest(in)
 	result.Request.Question = safeQuestion
+	for i := range result.Request.Examples {
+		result.Request.Examples[i].Text = semantics.RedactClarificationText(result.Request.Examples[i].Text, in.Answers, redactions)
+	}
 	result.Request.Answers = semantics.CanonicalClarificationAnswers(result.Resolutions)
 	result.Request.AnswerContext = result.AnswerContext
 	result.Request.Choices = nil
@@ -444,7 +447,7 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	if err := s.prepareClarifications(ctx, e, in, admitted, &current); err != nil {
 		return nil, "", err
 	}
-	if current.Clarification != nil {
+	if current.Clarification != nil && previous.Clarification == nil {
 		return nil, "", current.Clarification
 	}
 	old, _ := json.Marshal(previous.Resolutions)

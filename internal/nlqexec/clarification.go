@@ -17,27 +17,29 @@ import (
 // resolutions remain historical evidence on the parent, never active filters on
 // the child. This is business provenance, not a grant or execution proof.
 type ClarificationChange struct {
-	Topic string `json:"topic"`
-	Pattern string `json:"pattern"`
-	Slot string `json:"slot"`
-	Action string `json:"action"`
+	Topic    string `json:"topic"`
+	Pattern  string `json:"pattern"`
+	Slot     string `json:"slot"`
+	Action   string `json:"action"`
 	Previous string `json:"previous,omitempty"`
-	Current string `json:"current,omitempty"`
+	Current  string `json:"current,omitempty"`
 }
 
 // ClarificationEvidence is protected query storage. Keeping the unbound base
 // separate makes a replacement/removal rebuild its predicates rather than reuse
 // old answer filters. Public consumers receive only Binding and Changes.
 type ClarificationEvidence struct {
-	SchemaVersion int `json:"schema_version"`
-	BaseSQL string `json:"base_sql"`
-	BaseParameters []exec.Parameter `json:"base_parameters"`
-	Binding exec.BusinessBindingReceipt `json:"binding"`
-	Changes []ClarificationChange `json:"changes,omitempty"`
+	SchemaVersion  int                         `json:"schema_version"`
+	BaseSQL        string                      `json:"base_sql"`
+	BaseParameters []exec.Parameter            `json:"base_parameters"`
+	Binding        exec.BusinessBindingReceipt `json:"binding"`
+	Changes        []ClarificationChange       `json:"changes,omitempty"`
 }
 
-func (ClarificationEvidence) LogValue() slog.Value { return slog.StringValue("clarification-evidence(redacted)") }
-func (ClarificationEvidence) String() string { return "clarification-evidence(redacted)" }
+func (ClarificationEvidence) LogValue() slog.Value {
+	return slog.StringValue("clarification-evidence(redacted)")
+}
+func (ClarificationEvidence) String() string     { return "clarification-evidence(redacted)" }
 func (v ClarificationEvidence) GoString() string { return v.String() }
 
 // Only the current router can reevaluate persisted business evidence. A public
@@ -71,6 +73,9 @@ func bindClarificationCandidate(ctx context.Context, a admission, candidate gene
 
 func sealClarificationCandidate(candidate *generatedCandidate, plan exec.Plan, previous, current []semantics.ClarificationResolution) error {
 	if candidate.clarification == nil {
+		if len(previous) != 0 {
+			candidate.clarification = &ClarificationEvidence{SchemaVersion: 1, Changes: clarificationChanges(previous, current)}
+		}
 		return nil
 	}
 	receipt := plan.Receipt()
@@ -106,7 +111,15 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identity.Envelope, record QueryRecord, a admission) error {
 	if len(record.Route.Resolutions) == 0 {
 		if record.Clarification != nil {
-			return exec.ErrBinding
+			evidence := record.Clarification
+			if evidence.SchemaVersion != 1 || evidence.BaseSQL != "" || len(evidence.BaseParameters) != 0 || evidence.Binding.SchemaVersion != 0 {
+				return exec.ErrBinding
+			}
+			for _, change := range evidence.Changes {
+				if change.Action != "removed" || change.Current != "" {
+					return exec.ErrBinding
+				}
+			}
 		}
 		return nil
 	}
@@ -134,24 +147,38 @@ func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identit
 }
 
 func parametersEqual(a, b []exec.Parameter) bool {
-	if len(a) != len(b) { return false }
-	for i := range a { if a[i] != b[i] { return false } }
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
 	return true
 }
 
 func publicClarificationBinding(evidence *ClarificationEvidence) *exec.BusinessBindingReceipt {
-	if evidence == nil { return nil }
+	if evidence == nil || evidence.Binding.SchemaVersion == 0 {
+		return nil
+	}
 	raw, err := json.Marshal(evidence.Binding)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	var out exec.BusinessBindingReceipt
-	if json.Unmarshal(raw, &out) != nil { return nil }
+	if json.Unmarshal(raw, &out) != nil {
+		return nil
+	}
 	return &out
 }
 
 func clarificationChanges(previous, current []semantics.ClarificationResolution) []ClarificationChange {
-	type key struct { topic, pattern, slot string }
+	type key struct{ topic, pattern, slot string }
 	old := map[key]semantics.ClarificationResolution{}
-	for _, r := range previous { old[key{r.Topic, r.Pattern, r.Slot}] = r }
+	for _, r := range previous {
+		old[key{r.Topic, r.Pattern, r.Slot}] = r
+	}
 	var out []ClarificationChange
 	for _, r := range current {
 		k := key{r.Topic, r.Pattern, r.Slot}
@@ -163,11 +190,17 @@ func clarificationChanges(previous, current []semantics.ClarificationResolution)
 		}
 		out = append(out, change)
 	}
-	for _, r := range old { out = append(out, ClarificationChange{Topic: r.Topic, Pattern: r.Pattern, Slot: r.Slot, Action: "removed", Previous: r.ID}) }
+	for _, r := range old {
+		out = append(out, ClarificationChange{Topic: r.Topic, Pattern: r.Pattern, Slot: r.Slot, Action: "removed", Previous: r.ID})
+	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
-		if a.Topic != b.Topic { return a.Topic < b.Topic }
-		if a.Pattern != b.Pattern { return a.Pattern < b.Pattern }
+		if a.Topic != b.Topic {
+			return a.Topic < b.Topic
+		}
+		if a.Pattern != b.Pattern {
+			return a.Pattern < b.Pattern
+		}
 		return a.Slot < b.Slot
 	})
 	return out
@@ -185,18 +218,27 @@ func mergeRefinementClarifications(old QueryRecord, delta QuestionRequest, out *
 		index := -1
 		for i, prior := range old.Route.Request.Answers {
 			if prior.Slot == choice.Slot && (choice.Pattern == "" || prior.Pattern == choice.Pattern) {
-				if index != -1 { return ErrInvalid }
+				if index != -1 {
+					return ErrInvalid
+				}
 				index = i
 			}
 		}
-		if index < 0 { choices = append(choices, choice); continue }
+		if index < 0 {
+			choices = append(choices, choice)
+			continue
+		}
 		prior := old.Route.Request.Answers[index]
-		if prior.Value == nil || prior.Value.OptionID == "" { return ErrInvalid }
+		if prior.Value == nil || prior.Value.OptionID == "" {
+			return ErrInvalid
+		}
 		prior.Value = &semantics.ClarificationValue{OptionID: choice.Value}
 		answers = append(answers, prior)
 	}
 	merged, err := semantics.MergeClarificationAnswers(old.Route.Request.Answers, answers)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	out.Answers, out.Choices = merged, choices
 	out.AnswerContext = old.Route.AnswerContext
 	out.previousResolutions = semantics.CloneClarificationResolutions(old.Route.Resolutions)
@@ -204,7 +246,9 @@ func mergeRefinementClarifications(old QueryRecord, delta QuestionRequest, out *
 }
 
 func clarificationResumeMessage(locale string) string {
-	if locale == "es" { return "La publicación o el contexto cambió. Volvé a evaluar la pregunta antes de confirmar respuestas." }
+	if locale == "es" {
+		return "La publicación o el contexto cambió. Volvé a evaluar la pregunta antes de confirmar respuestas."
+	}
 	return "The publication or context changed. Reevaluate the question before confirming answers."
 }
 
@@ -213,7 +257,9 @@ func clarificationResumeMessage(locale string) string {
 func redactClarificationInstructions(in QuestionRequest, route nlqroute.RouteResult) QuestionRequest {
 	redact := func(items []nlq.Instruction) []nlq.Instruction {
 		out := append([]nlq.Instruction(nil), items...)
-		for i := range out { out[i].Text = semantics.RedactClarificationText(out[i].Text, in.Answers, route.Resolutions) }
+		for i := range out {
+			out[i].Text = semantics.RedactClarificationText(out[i].Text, in.Answers, route.Resolutions)
+		}
 		return out
 	}
 	in.Question = route.Request.Question
@@ -222,4 +268,11 @@ func redactClarificationInstructions(in QuestionRequest, route nlqroute.RouteRes
 	in.ExampleInput = redact(in.ExampleInput)
 	in.Default = redact(in.Default)
 	return in
+}
+
+func publicClarificationChanges(evidence *ClarificationEvidence) []ClarificationChange {
+	if evidence == nil {
+		return nil
+	}
+	return append([]ClarificationChange(nil), evidence.Changes...)
 }
