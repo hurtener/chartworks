@@ -7,37 +7,6 @@ import (
 	"strings"
 )
 
-// CloneClarificationAnswers detaches all caller-owned union members before a
-// request is retained or used by another stage. It does not normalize invalid
-// input into a valid answer.
-func CloneClarificationAnswers(in []ClarificationAnswer) []ClarificationAnswer {
-	out := append([]ClarificationAnswer(nil), in...)
-	for i := range out {
-		if in[i].Value == nil {
-			continue
-		}
-		v := *in[i].Value
-		if v.Time != nil {
-			x := *v.Time
-			v.Time = &x
-		}
-		if v.Number != nil {
-			x := *v.Number
-			v.Number = &x
-		}
-		if v.Boolean != nil {
-			x := *v.Boolean
-			v.Boolean = &x
-		}
-		if v.Text != nil {
-			x := *v.Text
-			v.Text = &x
-		}
-		out[i].Value = &v
-	}
-	return out
-}
-
 // CloneClarificationResolutions returns a detached canonical snapshot.
 func CloneClarificationResolutions(in []ClarificationResolution) []ClarificationResolution {
 	if in == nil {
@@ -145,7 +114,7 @@ func ProviderClarificationText(resolution ClarificationResolution) (string, erro
 		Grain          string               `json:"grain,omitempty"`
 		Provenance     string               `json:"provenance"`
 		Binding        string               `json:"binding"`
-	}{resolution.ID, resolution.Topic, resolution.TopicVersion, resolution.RulesetVersion, resolution.Pattern, resolution.PatternVersion, resolution.Slot, resolution.Reference, effect, grain, resolution.Provenance, "service_owned_row_constraint; do not invent or repeat its scalar value"}
+	}{resolution.ID, resolution.Topic, resolution.TopicVersion, resolution.RulesetVersion, resolution.Pattern, resolution.PatternVersion, resolution.Slot, resolution.Reference, effect, grain, resolution.Provenance, "service_owned_constraint; do not invent or repeat its scalar value"}
 	raw, err := json.Marshal(view)
 	if err != nil || len(raw) > 16<<10 {
 		return "", invalid(CodeLimit, "clarification.context")
@@ -205,18 +174,31 @@ func RedactClarificationText(text string, answers []ClarificationAnswer, resolut
 			}
 		}
 	}
-	sort.Slice(literals, func(i, j int) bool { return len(literals[i]) > len(literals[j]) })
+	sort.Slice(literals, func(i, j int) bool {
+		if len(literals[i]) != len(literals[j]) {
+			return len(literals[i]) > len(literals[j])
+		}
+		return literals[i] < literals[j]
+	})
+	seen := map[string]bool{}
+	patterns := make([]string, 0, len(literals))
 	for _, literal := range literals {
-		if literal == "" || len(literal) > 4096 {
+		key := strings.ToLower(literal)
+		if literal == "" || len(literal) > 4096 || seen[key] {
 			continue
 		}
-		matcher, err := regexp.Compile("(?i)" + regexp.QuoteMeta(literal))
-		if err != nil {
-			continue
-		}
-		text = matcher.ReplaceAllString(text, "[redacted answer]")
+		seen[key] = true
+		patterns = append(patterns, regexp.QuoteMeta(literal))
 	}
-	return text
+	if len(patterns) == 0 {
+		return text
+	}
+	// One pass cannot reinterpret the inserted marker as another input value.
+	matcher, err := regexp.Compile("(?i)(?:" + strings.Join(patterns, "|") + ")")
+	if err != nil {
+		return "[redacted answer]"
+	}
+	return matcher.ReplaceAllString(text, "[redacted answer]")
 }
 
 // String and GoString keep ordinary structured formatting content-free. JSON
@@ -232,7 +214,7 @@ func clarificationPresentationOrder(slots []ClarificationSlot) []ClarificationSl
 		if out[i].Required != out[j].Required {
 			return out[i].Required
 		}
-		return strings.Compare(out[i].ID, out[j].ID) < 0
+		return out[i].ID < out[j].ID
 	})
 	return out
 }
