@@ -1,0 +1,25 @@
+name: CW-03 reporting validation
+on:
+  push:
+    branches: [feat/cw-03-reporting-intent-policies]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Capture exact source for local validation
+        run: |
+          git rev-parse HEAD > /tmp/chartworks-tested-source.txt
+          git archive --format=tar.gz HEAD > /tmp/chartworks-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw-03-source
+          path: |
+            /tmp/chartworks-tested-source.txt
+            /tmp/chartworks-source.tar.gz
+          retention-days: 3
