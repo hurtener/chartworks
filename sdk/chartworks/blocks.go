@@ -16,6 +16,9 @@ var ErrBlockRequest = errors.New("chartworks: invalid block coordinate")
 // BlockDefinitionVersion is the current authored reporting definition version.
 const BlockDefinitionVersion = reporting.CurrentSchemaVersion
 
+// BlockNarrativePolicyVersion pins deterministic bounded narrative rendering.
+const BlockNarrativePolicyVersion = reporting.NarrativePolicyVersion
+
 // BlockOutputMetadata is inert localized output text.
 type BlockOutputMetadata = reporting.OutputMetadata
 

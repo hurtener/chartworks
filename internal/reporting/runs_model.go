@@ -143,6 +143,7 @@ type NarrativeEvidence struct {
 // NarrativeResult retains exact text and actual provider/model usage. Rendering
 // never invokes the model again or substitutes a newer prompt/model version.
 type NarrativeResult struct {
+	PolicyVersion string              `json:"policy_version,omitempty"`
 	Text          string              `json:"text"`
 	Claims        []NarrativeClaim    `json:"claims"`
 	Evidence      []NarrativeEvidence `json:"evidence"`

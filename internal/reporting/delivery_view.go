@@ -171,6 +171,7 @@ func (s *Delivery) viewBlock(ctx context.Context, e identity.Envelope, out *Deli
 	if v.State == "expired" {
 		return nil
 	}
+	out.AcceptedSelection = clone(v.Selection)
 	out.QueryLimits, out.ResultPolicy = clone(v.QueryLimits), clone(v.ResultPolicy)
 	out.Outputs = viewerChoices(v.Selection, v.Locale)
 	if v.Selection == nil {
@@ -239,6 +240,7 @@ func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out
 		return nil
 	}
 	out.Trust, out.Observed = clone(selected.Trust), clone(selected.Observed)
+	out.AcceptedSelection = clone(selected.Selection)
 	out.QueryLimits = clone(selected.QueryLimits)
 	out.Outputs = viewerChoices(selected.Selection, out.Locale)
 	if v.State != "completed" && v.State != "partial" {

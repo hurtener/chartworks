@@ -149,6 +149,9 @@ func TestCW03ReportingPublicationAndExecution(t *testing.T) {
 			if _, err := f.runs.Output(ctx, reader, done.ID, tc.id); reporting.SelectionErrorCode(err) != tc.code {
 				t.Fatal(tc, err)
 			}
+			if _, err := f.runs.RebuildOutput(ctx, reader, done.ID, tc.id); reporting.SelectionErrorCode(err) != tc.code {
+				t.Fatal("redraw omission", tc, err)
+			}
 		}
 		if f.f.f.lookups.Load() != before || f.f.model.requests.Load() != models {
 			t.Fatal("retained reads/redraws executed source/model")
@@ -218,18 +221,19 @@ func TestCW03ReportingPublicationAndExecution(t *testing.T) {
 		d := cw03Definition(t, f.base)
 		f.block(t, "cw03-composition-block", d)
 		report := phase29Text("Scoped synthetic evidence")
+		report.PartialFailure = "allow_partial"
 		report.Widgets = []reporting.Widget{phase29BlockWidget("first", "cw03-composition-block", 0, "table-main"), phase29BlockWidget("second", "cw03-composition-block", 1, "second")}
 		for i := range report.Widgets {
 			report.Widgets[i].Block.Limits = &reporting.QueryLimits{MaxRows: 1}
 		}
 		state := f.report(t, "cw03-composition", report, true)
-		accepted, err := f.compositions.Admit(ctx, f.execute, "report", state.ID, reporting.CompositionRequest{Key: "cw03-composed-run"})
+		accepted, err := f.compositions.Admit(ctx, f.execute, "report", state.ID, reporting.CompositionRequest{Key: "cw03-composed-run", PartialFailure: "allow_partial"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		completed, err := f.compositions.Run(ctx, f.execute, accepted.ID, false)
-		if err != nil || !completed.Complete {
-			t.Fatal(completed, err)
+		if err != nil || completed.Complete || completed.State != "partial" || completed.Code != "partial_report" {
+			t.Fatal("row-capped evidence must remain visibly incomplete", completed, err)
 		}
 		raw := support.Raw(t, f.f.f.dsn)
 		var body []byte
@@ -244,7 +248,7 @@ func TestCW03ReportingPublicationAndExecution(t *testing.T) {
 			t.Fatal("fanout group lost limits/union", manifest.Groups)
 		}
 		for _, w := range completed.Pages[0].Widgets {
-			if w.Selection == nil || w.QueryLimits == nil || w.QueryLimits.MaxRows != 1 || len(w.Selection.Selected) != 1 {
+			if w.Selection == nil || w.QueryLimits == nil || w.QueryLimits.MaxRows != 1 || len(w.Selection.Selected) != 1 || w.State != "partial" || w.Code != "query_truncated" {
 				t.Fatal("widget lost its own selection", w)
 			}
 		}
@@ -280,13 +284,9 @@ func TestCW03ReportingPublicationAndExecution(t *testing.T) {
 }
 
 func TestCW03NarrativeSensitivityAtProviderBoundary(t *testing.T) {
-	for _, reviewed := range []bool{true, false} {
-		name := "unknown"
-		if reviewed {
-			name = "reviewed_and_manual_redaction"
-		}
+	for _, name := range []string{"reviewed_and_manual_redaction", "unknown", "sensitive", "conflicting", "cannot_declassify", "authored_redaction"} {
 		t.Run(name, func(t *testing.T) {
-			f := newPhase18FixtureReviewed(t, reviewed)
+			f := newCW03SensitivityFixture(t, name)
 			ctx := context.Background()
 			query, topics := newPhase18Service(t, f)
 			blocks, err := reporting.New(f.f.db, topics, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(query), config.DefaultReporting())
@@ -305,14 +305,32 @@ func TestCW03NarrativeSensitivityAtProviderBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			d.Outputs[1].Narrative.MaxClaims = 1
+			if name == "conflicting" {
+				publication, err := topics.Read(ctx, author, f.related.Topic, f.related.Version)
+				if err != nil {
+					t.Fatal(err)
+				}
+				d.Topics = append(d.Topics, reporting.TopicPin{Topic: publication.Definition.Topic, Version: publication.Definition.Version, Digest: publication.Digest})
+			}
+			if name == "cannot_declassify" {
+				d.ResultPolicy = []reporting.ResultFieldPolicy{{Field: "amount", Sensitivity: "non_sensitive"}}
+			}
+			if name == "authored_redaction" {
+				d.ResultPolicy = []reporting.ResultFieldPolicy{{Field: "amount", Redacted: true}}
+			}
 			created, err := blocks.Create(ctx, author, reporting.CreateRequest{ID: "cw03-narrative", Definition: d})
 			if err != nil {
 				t.Fatal(err)
 			}
 			_, evidence := phase27ValidatePublish(t, blocks, author, created)
-			wantPolicy := "unknown"
-			if reviewed {
+			wantPolicy := name
+			switch name {
+			case "reviewed_and_manual_redaction":
 				wantPolicy = "allowed"
+			case "cannot_declassify":
+				wantPolicy = "conflicting"
+			case "authored_redaction":
+				wantPolicy = "redacted"
 			}
 			if len(evidence.ResultPolicy) != 2 || evidence.ResultPolicy[1].Status != wantPolicy {
 				t.Fatal("reviewed policy not retained with validation", evidence.ResultPolicy)
@@ -332,7 +350,7 @@ func TestCW03NarrativeSensitivityAtProviderBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if reviewed {
+			if name == "reviewed_and_manual_redaction" {
 				if out.Narrative == nil || done.State != "succeeded" || model.requests.Load() != 1 || len(out.Narrative.Claims) != 1 {
 					t.Fatal(out, done, model.requests.Load())
 				}
@@ -348,7 +366,7 @@ func TestCW03NarrativeSensitivityAtProviderBoundary(t *testing.T) {
 					}
 				}
 			} else if done.State != "partial" || out.Code != "narrative_evidence_unavailable" || out.Narrative != nil || model.requests.Load() != 0 || done.ReservedCalls != 0 {
-				t.Fatal("unknown sensitivity reached provider", done, out, model.requests.Load())
+				t.Fatal("excluded sensitivity reached provider", name, done, out, model.requests.Load())
 			}
 			before := f.f.lookups.Load()
 			calls := model.requests.Load()

@@ -107,6 +107,9 @@ func (p PreparedRunWrite) Checked(inv jobs.Invocation) (RunWrite, error) {
 	if err = CheckFrozenPolicies(w.Manifest); err != nil {
 		return RunWrite{}, err
 	}
+	if w.Attempt != nil && w.Manifest.QueryLimits != nil && w.Attempt.Number > w.Manifest.QueryLimits.QueryAttempts {
+		return RunWrite{}, ErrBudget
+	}
 	switch w.Kind {
 	case "attempt":
 		if w.Attempt == nil || w.Result != nil || w.Output != nil || w.Outcome != "" || w.Code != "" || !w.Attempt.Manifest.Valid() || w.Attempt.Manifest.Operation != w.Manifest.ID || w.Attempt.Manifest.Session != w.Manifest.Session || w.Attempt.Number < 1 || w.Attempt.Number > 3 {

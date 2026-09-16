@@ -161,7 +161,7 @@ func testPhase31CatalogAndRetainedReads(t *testing.T) {
 		t.Fatalf("signed metadata search: %+v %v", search, err)
 	}
 	description, err := f.service.Describe(t.Context(), reader, reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "block", ID: "p31-visible"}, Outputs: []string{"table-second", "table-main"}})
-	if err != nil || len(description.Outputs) != 2 || description.Outputs[0].ID != "table-second" || description.Resource.Target.Revision != 1 {
+	if err != nil || len(description.Outputs) != 2 || description.Outputs[0].ID != "table-main" || description.Outputs[1].ID != "table-second" || description.Resource.Target.Revision != 1 || description.Selection == nil || !reflect.DeepEqual(description.Selection.Selected, []string{"table-second", "table-main"}) {
 		t.Fatalf("selected published description: %+v %v", description, err)
 	}
 	for _, payload := range []any{search, description} {

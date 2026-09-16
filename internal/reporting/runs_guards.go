@@ -130,7 +130,7 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 		return ErrInvalid
 	}
 	n, spec := o.Narrative, saved.Narrative
-	if n.PromptVersion != spec.PromptVersion || n.ModelVersion != spec.ModelVersion || n.SchemaVersion != spec.SchemaVersion || n.Locale != spec.Locale || n.Tone != spec.Tone ||
+	if n.PolicyVersion != spec.PolicyVersion || n.PromptVersion != spec.PromptVersion || n.ModelVersion != spec.ModelVersion || n.SchemaVersion != spec.SchemaVersion || n.Locale != spec.Locale || n.Tone != spec.Tone ||
 		n.EvidenceHash != digest(n.Evidence) || n.OutputHash != digest([]any{n.Text, n.Claims}) {
 		return ErrInvalid
 	}

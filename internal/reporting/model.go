@@ -141,6 +141,7 @@ type Resolved struct {
 // Narrative is a bounded saved definition only. Phase 28 owns actual generation
 // through Bifrost. No tools, executable templates, URLs or HTML can be supplied.
 type Narrative struct {
+	PolicyVersion   string   `json:"policy_version,omitempty" jsonschema:"enum=bounded-narrative-v2"`
 	MaxClaims       int      `json:"max_claims,omitempty" jsonschema:"minimum=1,maximum=32"`
 	Type            string   `json:"type" jsonschema:"enum=summary,enum=comparison,enum=explanation"`
 	Instructions    string   `json:"instructions"`

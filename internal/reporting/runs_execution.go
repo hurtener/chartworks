@@ -97,6 +97,9 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 	if err != nil {
 		return RunRecord{}, err
 	}
+	if s.queryAttempts > 0 {
+		caps.QueryAttempts = min(caps.QueryAttempts, s.queryAttempts)
+	}
 	if number > caps.QueryAttempts {
 		return RunRecord{}, ErrBudget
 	}
@@ -373,6 +376,9 @@ func (s *Runs) RebuildOutput(ctx context.Context, e identity.Envelope, id, outpu
 	}
 	if r.Manifest == nil || r.Result == nil || r.View.State != "succeeded" && r.View.State != "partial" {
 		return RetainedOutput{}, ErrIncomplete
+	}
+	if err := retainedSelectionError(r, output); err != nil {
+		return RetainedOutput{}, err
 	}
 	var retained *RetainedOutput
 	for i := range r.Outputs {

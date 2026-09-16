@@ -154,7 +154,7 @@ func MigrateDefinition(d Definition) (Definition, error) {
 			d.Outputs[i].Intent = &v
 		}
 		if n := d.Outputs[i].Narrative; n != nil {
-			if n.SchemaVersion != "grounded-narrative-v1" || !narrativeLocale(n.Locale) {
+			if n.SchemaVersion != "grounded-narrative-v1" || !narrativeLocale(n.Locale) || n.PolicyVersion != "" && n.PolicyVersion != NarrativePolicyVersion {
 				return Definition{}, ErrNarrativePolicy
 			}
 			switch n.Instructions {
@@ -165,6 +165,10 @@ func MigrateDefinition(d Definition) (Definition, error) {
 			}
 			if n.MaxClaims == 0 {
 				n.MaxClaims = 32
+			}
+			n.PolicyVersion = NarrativePolicyVersion
+			if err := boundedNarrativePolicy(*n); err != nil {
+				return Definition{}, err
 			}
 		}
 	}

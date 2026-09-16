@@ -175,22 +175,23 @@ type ViewerPage struct {
 // manifest itself, source credentials, SQL and run-authority tokens never occur.
 // A page of a table preserves its exact labels, units and retained row order.
 type DeliveryViewResult struct {
-	QueryLimits    *QueryLimits             `json:"query_limits,omitempty"`
-	ResultPolicy   []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
-	Policy         string                   `json:"policy,omitempty"`
-	Version        string                   `json:"version"`
-	Summary        DeliveryRunSummary       `json:"summary"`
-	Selection      DeliveryViewRequest      `json:"selection"`
-	Locale         string                   `json:"locale"`
-	Timezone       string                   `json:"timezone"`
-	Outputs        []ViewerOutputChoice     `json:"outputs"`
-	Pages          []CompositionPageSummary `json:"pages"`
-	Filters        []ViewerFilter           `json:"filters"`
-	Trust          *Trust                   `json:"trust,omitempty"`
-	Observed       *time.Time               `json:"observed_at,omitempty"`
-	MixedFreshness bool                     `json:"mixed_freshness"`
-	Redacted       bool                     `json:"redacted"`
-	Output         *ViewerOutput            `json:"output,omitempty"`
-	Text           *TextWidget              `json:"text,omitempty"`
-	PageBounds     ViewerPage               `json:"page_bounds"`
+	AcceptedSelection *OutputSelection         `json:"accepted_selection,omitempty"`
+	QueryLimits       *QueryLimits             `json:"query_limits,omitempty"`
+	ResultPolicy      []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
+	Policy            string                   `json:"policy,omitempty"`
+	Version           string                   `json:"version"`
+	Summary           DeliveryRunSummary       `json:"summary"`
+	Selection         DeliveryViewRequest      `json:"selection"`
+	Locale            string                   `json:"locale"`
+	Timezone          string                   `json:"timezone"`
+	Outputs           []ViewerOutputChoice     `json:"outputs"`
+	Pages             []CompositionPageSummary `json:"pages"`
+	Filters           []ViewerFilter           `json:"filters"`
+	Trust             *Trust                   `json:"trust,omitempty"`
+	Observed          *time.Time               `json:"observed_at,omitempty"`
+	MixedFreshness    bool                     `json:"mixed_freshness"`
+	Redacted          bool                     `json:"redacted"`
+	Output            *ViewerOutput            `json:"output,omitempty"`
+	Text              *TextWidget              `json:"text,omitempty"`
+	PageBounds        ViewerPage               `json:"page_bounds"`
 }

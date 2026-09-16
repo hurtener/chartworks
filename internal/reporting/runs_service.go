@@ -370,18 +370,8 @@ func (s *Runs) Output(ctx context.Context, e identity.Envelope, id, output strin
 	if !slices.Contains([]string{"succeeded", "partial"}, r.View.State) {
 		return RetainedOutput{}, ErrIncomplete
 	}
-	if r.Manifest != nil && r.Manifest.Revision.Definition.SchemaVersion == CurrentSchemaVersion && r.View.Selection != nil {
-		for _, choice := range r.View.Selection.Choices {
-			if choice.ID != output {
-				continue
-			}
-			if !choice.Intent.Enabled {
-				return RetainedOutput{}, selectionError("output_disabled")
-			}
-			if !choice.Selected {
-				return RetainedOutput{}, selectionError("output_not_selected")
-			}
-		}
+	if err := retainedSelectionError(r, output); err != nil {
+		return RetainedOutput{}, err
 	}
 	for _, item := range r.Outputs {
 		if item.ID == output {
@@ -406,4 +396,23 @@ func (s *Runs) Expire(ctx context.Context, e identity.Envelope, limit int) (int6
 		return 0, ErrInvalid
 	}
 	return s.repo.ExpireFrozenArtifacts(ctx, e, limit)
+}
+
+// retainedSelectionError checks only an already authorized retained snapshot.
+// Unknown identifiers retain not-found semantics; known omissions are typed.
+func retainedSelectionError(r RunRecord, output string) error {
+	if r.Manifest != nil && r.Manifest.Revision.Definition.SchemaVersion == CurrentSchemaVersion && r.View.Selection != nil {
+		for _, choice := range r.View.Selection.Choices {
+			if choice.ID != output {
+				continue
+			}
+			if !choice.Intent.Enabled {
+				return selectionError("output_disabled")
+			}
+			if !choice.Selected {
+				return selectionError("output_not_selected")
+			}
+		}
+	}
+	return nil
 }

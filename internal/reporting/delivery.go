@@ -202,9 +202,15 @@ func describeReportPage(id, report string, revision int64, d DocumentDefinition)
 	return page
 }
 
-func appendReportDescription(out *DeliveryDescription, page string, view DocumentView) {
+func (s *Delivery) appendReportDescription(ctx context.Context, e identity.Envelope, out *DeliveryDescription, page string, view DocumentView, wanted string) error {
 	d := view.Definition
-	out.Pages = append(out.Pages, describeReportPage(page, view.State.ID, view.Revision, d))
+	described := describeReportPage(page, view.State.ID, view.Revision, d)
+	resource := localizedResource("report", view.State.ID, view.Revision, d.Metadata, wanted)
+	described.Title, described.Locale = resource.Title, resource.Locale
+	if err := s.describeBlockSelectors(ctx, e, &described, d); err != nil {
+		return err
+	}
+	out.Pages = append(out.Pages, described)
 	for _, f := range d.Filters {
 		out.Filters = append(out.Filters, ViewerFilter{Page: page, Label: f.Label, Parameter: f.Parameter})
 	}
@@ -213,6 +219,7 @@ func appendReportDescription(out *DeliveryDescription, page string, view Documen
 			out.Dynamic = true
 		}
 	}
+	return nil
 }
 
 // Describe never returns saved SQL, query text, raw narrative instructions or a
@@ -261,7 +268,9 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 		out.Resource = localizedResource(t.Kind, t.ID, v.Revision, v.Definition.Metadata, in.Locale)
 		out.Timezone = v.Definition.Timezone
 		if t.Kind == "report" {
-			appendReportDescription(&out, "main", v)
+			if err := s.appendReportDescription(ctx, e, &out, "main", v, in.Locale); err != nil {
+				return DeliveryDescription{}, err
+			}
 		} else {
 			for _, p := range v.Definition.Pages {
 				child, err := s.documents.Read(ctx, e, "report", p.Report, DocumentReference{Revision: p.Revision})
@@ -271,7 +280,9 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 				if child.Private || child.State.Archived {
 					continue
 				}
-				appendReportDescription(&out, p.ID, child)
+				if err := s.appendReportDescription(ctx, e, &out, p.ID, child, in.Locale); err != nil {
+					return DeliveryDescription{}, err
+				}
 			}
 		}
 	}

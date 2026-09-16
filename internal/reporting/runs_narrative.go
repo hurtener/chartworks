@@ -176,6 +176,9 @@ func narrativeEvidence(result exec.Result, n Narrative) ([]NarrativeEvidence, []
 }
 
 func groundedText(answer NarrativeAnswer, evidence []NarrativeEvidence, n Narrative) (string, error) {
+	if n.PolicyVersion != "" && boundedNarrativePolicy(n) != nil {
+		return "", ErrNarrativePolicy
+	}
 	if len(answer.Claims) < 1 || len(answer.Claims) > maxClaims(n) {
 		return "", gateway.ErrOutput
 	}
@@ -188,7 +191,7 @@ func groundedText(answer NarrativeAnswer, evidence []NarrativeEvidence, n Narrat
 	seen := map[string]bool{}
 	for _, claim := range answer.Claims {
 		key := digest(claim)
-		if seen[key] || len(claim.Evidence) < 1 || len(claim.Evidence) > 2 {
+		if seen[key] || len(claim.Evidence) < 1 || len(claim.Evidence) > 2 || !slices.Contains(narrativeClaimKinds(n), claim.Kind) {
 			return "", gateway.ErrOutput
 		}
 		seen[key] = true
@@ -226,7 +229,7 @@ func groundedText(answer NarrativeAnswer, evidence []NarrativeEvidence, n Narrat
 		default:
 			return "", gateway.ErrOutput
 		}
-		lines = append(lines, line)
+		lines = append(lines, narrativeTone(line, a, n))
 	}
 	text := strings.Join(lines, "\n")
 	if n.RequireCaveats {
@@ -254,7 +257,7 @@ func prepareNarrative(m RunManifest, result exec.Result, n Narrative) (preparedN
 	if !narrativeLocale(n.Locale) || maxClaims(n) < 1 || maxClaims(n) > 32 {
 		return preparedNarrative{}, ErrNarrativePolicy
 	}
-	if m.Revision.Definition.SchemaVersion == CurrentSchemaVersion && n.Instructions != "evidence_only" {
+	if (m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || n.PolicyVersion != "") && boundedNarrativePolicy(n) != nil {
 		return preparedNarrative{}, ErrNarrativePolicy
 	}
 	policy := m.ResultPolicy
@@ -268,6 +271,9 @@ func prepareNarrative(m RunManifest, result exec.Result, n Narrative) (preparedN
 	evidence, caveats, err := narrativeEvidence(result, restricted)
 	if err != nil {
 		return preparedNarrative{}, err
+	}
+	if !narrativeClaimsAvailable(evidence, n) {
+		return preparedNarrative{}, ErrIncomplete
 	}
 	if len(restricted.Fields) != len(n.Fields) {
 		caveats = append(caveats, "sensitivity_filtered")
@@ -310,7 +316,10 @@ func (s *Runs) generatePreparedNarrative(ctx context.Context, e identity.Envelop
 	if err != nil {
 		return NarrativeResult{}, err
 	}
-	boundedSchema := strings.Replace(narrativeSchema, `"maxItems":32`, fmt.Sprintf(`"maxItems":%d`, maxClaims(n)), 1)
+	boundedSchema, err := narrativeClaimSchema(n)
+	if err != nil {
+		return NarrativeResult{}, err
+	}
 	schema, err := gateway.NewSchema("grounded_narrative_v1", []byte(boundedSchema))
 	if err != nil {
 		return NarrativeResult{}, err
@@ -336,7 +345,7 @@ func (s *Runs) generatePreparedNarrative(ctx context.Context, e identity.Envelop
 	if err = ctx.Err(); err != nil {
 		return NarrativeResult{Receipt: generated.Receipt}, err
 	}
-	return NarrativeResult{Text: text, Claims: answer.Claims, Evidence: evidence, Caveats: caveats,
+	return NarrativeResult{PolicyVersion: n.PolicyVersion, Text: text, Claims: answer.Claims, Evidence: evidence, Caveats: caveats,
 		EvidenceHash: digest(evidence), OutputHash: digest([]any{text, answer.Claims}), PromptVersion: n.PromptVersion,
 		ModelVersion: n.ModelVersion, SchemaVersion: n.SchemaVersion, Locale: n.Locale, Tone: n.Tone, Receipt: generated.Receipt}, nil
 }

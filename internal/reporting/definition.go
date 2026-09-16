@@ -168,7 +168,7 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 		if outputIDs[o.ID] {
 			return selectionError("output_duplicate")
 		}
-		if d.SchemaVersion == SchemaVersion && o.Intent != nil {
+		if d.SchemaVersion == SchemaVersion && (o.Intent != nil || o.Narrative != nil && o.Narrative.PolicyVersion != "") {
 			return ErrInvalid
 		}
 		if d.SchemaVersion == CurrentSchemaVersion {
@@ -176,7 +176,7 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 				return ErrInvalid
 			}
 			orders[o.Intent.DisplayOrder] = true
-			if n := o.Narrative; n != nil && (n.MaxClaims < 1 || n.Instructions != "evidence_only" || n.SchemaVersion != "grounded-narrative-v1" || !narrativeLocale(n.Locale)) {
+			if n := o.Narrative; n != nil && boundedNarrativePolicy(*n) != nil {
 				return ErrNarrativePolicy
 			}
 		}
