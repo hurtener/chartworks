@@ -7,6 +7,9 @@ on:
       - 'internal/nlq*/**'
       - 'internal/exec/**'
       - 'internal/store/postgres/**'
+      - 'internal/mcpserver/**'
+      - 'internal/api/**'
+      - 'internal/topicapi/**'
       - 'test/**'
       - 'sdk/**'
       - '.github/workflows/cw-01-runtime.yml'
@@ -16,6 +19,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: cw01-runtime-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   runtime:
@@ -44,7 +51,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: native-cache
         with:
           path: |
             /tmp/chartworks-native
@@ -53,16 +61,24 @@ jobs:
           key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
       - name: Build the pinned native read-parser dependency
         run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            /tmp/chartworks-native
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
       - name: Record exact committed source
         run: |
           git rev-parse HEAD
           go version
           go mod verify
       - name: Compile current runtime and consumers
-        run: go test -run '^$' ./internal/semantics/... ./internal/exec ./internal/nlq... ./sdk/... ./test/acceptance
+        run: go test -run '^$' ./internal/semantics/... ./internal/exec ./internal/nlq... ./internal/api ./internal/topicapi ./internal/mcpserver ./sdk/... ./test/acceptance
       - name: Execute semantic, routing and read lifecycle regressions
         if: success() || failure()
-        run: go test -race -count=1 -timeout=20m ./internal/semantics/... ./internal/exec ./internal/nlq... ./sdk/...
+        run: go test -race -count=1 -timeout=20m ./internal/semantics/... ./internal/exec ./internal/nlq... ./internal/api ./internal/topicapi ./internal/mcpserver ./sdk/...
       - name: Execute owned phase and CW-01 acceptance
         if: success() || failure()
         run: go test -race -count=1 -timeout=20m ./test/acceptance -run '^(TestPhase(16|17|18)|TestCW01)$' -v
