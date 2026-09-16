@@ -131,7 +131,7 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 			question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: base})
 		}
 	}
-	return s.plan(ctx, e, question, "", in.QueryID, "query.execute")
+	return s.plan(ctx, e, question, "", in.QueryID, "query.execute", old.Route.Resolutions...)
 }
 
 // Run revalidates and executes one previously planned query with idempotent operation handling.
@@ -407,7 +407,7 @@ func (s *Service) Examples(ctx context.Context, e identity.Envelope, topic strin
 	return examples, nil
 }
 
-func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent, action string) (PlanResult, error) {
+func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent, action string, previous ...semantics.ClarificationResolution) (PlanResult, error) {
 	if ctx == nil || !e.Valid() {
 		return PlanResult{}, access.ErrUnauthenticated
 	}
@@ -459,7 +459,7 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 	if err != nil {
 		return PlanResult{}, err
 	}
-	if err := sealClarificationCandidate(&candidate, validated, question.previousResolutions, admitted.route.Resolutions); err != nil {
+	if err := sealClarificationCandidate(&candidate, validated, previous, admitted.route.Resolutions); err != nil {
 		return PlanResult{}, err
 	}
 	record := queryRecord(e, id, "planned", parent, question, admitted)

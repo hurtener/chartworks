@@ -241,7 +241,6 @@ func mergeRefinementClarifications(old QueryRecord, delta QuestionRequest, out *
 	}
 	out.Answers, out.Choices = merged, choices
 	out.AnswerContext = old.Route.AnswerContext
-	out.previousResolutions = semantics.CloneClarificationResolutions(old.Route.Resolutions)
 	return nil
 }
 

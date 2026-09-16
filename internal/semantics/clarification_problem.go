@@ -9,8 +9,8 @@ import (
 // clients. It contains reviewed presentation and content-free field diagnostics,
 // never supplied values, SQL, bearer credentials or executable matchers.
 type ClarificationProblem struct {
-	Outcome   ClarificationOutcome      `json:"outcome"`
-	Reason    string                    `json:"reason"`
+	Outcome   ClarificationOutcome       `json:"outcome"`
+	Reason    string                     `json:"reason"`
 	Questions []ClarificationSlotOutcome `json:"questions,omitempty"`
 	Fields    []ClarificationFieldError  `json:"fields,omitempty"`
 }
