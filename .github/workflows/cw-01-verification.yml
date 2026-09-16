@@ -1,0 +1,43 @@
+name: CW-01 verification
+
+on:
+  push:
+    branches: [feat/cw-01-conditional-clarification]
+  pull_request:
+    paths:
+      - '.github/workflows/cw-01-verification.yml'
+      - 'internal/nlq/**'
+      - 'internal/nlqroute/**'
+      - 'internal/nlqexec/**'
+      - 'internal/semantics/**'
+      - 'internal/rules/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cw-01-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-and-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Record exact tested source
+        run: |
+          git rev-parse HEAD > /tmp/chartworks-tested-sha.txt
+          git archive --format=tar.gz HEAD > /tmp/chartworks-tested-source.tar.gz
+      - run: make check-mirror planning-check
+      - name: Retain source and contract-check evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cw-01-source-${{ github.sha }}
+          path: |
+            /tmp/chartworks-tested-sha.txt
+            /tmp/chartworks-tested-source.tar.gz
+          retention-days: 7
