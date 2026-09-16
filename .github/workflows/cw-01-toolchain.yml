@@ -1,0 +1,43 @@
+name: CW-01 offline test tooling
+
+on:
+  push:
+    branches: [feat/cw-01-conditional-typed-clarification]
+    paths: ['.github/workflows/cw-01-toolchain.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  tooling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Download pinned public module dependencies
+        run: |
+          go version
+          go mod download
+          go mod verify
+          git diff --exit-code -- go.mod go.sum
+      - name: Package compiler and public module download cache only
+        run: |
+          tar -czf /tmp/cw01-go-runtime.tar.gz -C "$(go env GOROOT)" .
+          tar -czf /tmp/cw01-module-downloads.tar.gz -C "$(go env GOMODCACHE)" cache/download
+          sha256sum /tmp/cw01-go-runtime.tar.gz /tmp/cw01-module-downloads.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw01-go-runtime
+          path: /tmp/cw01-go-runtime.tar.gz
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw01-module-downloads
+          path: /tmp/cw01-module-downloads.tar.gz
+          retention-days: 1
