@@ -1,0 +1,110 @@
+name: CW-02 scoped map object
+on:
+  push:
+    branches: [ci/cw-02-map-object]
+    paths: [.github/workflows/cw-02-map-object.yml]
+permissions:
+  contents: write
+jobs:
+  map-object:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bdcd661bedf0f6599d58b24cbb214af62e45f820
+          persist-credentials: false
+      - name: Prepare exactly one map blob; do not update any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = bdcd661bedf0f6599d58b24cbb214af62e45f820
+          test "$(git hash-object docs/gap-analysis.md)" = 0e2783f1805d78a0013753e13ae3f78890be734c
+          python3 - <<'PY'
+          import base64, json
+          from pathlib import Path
+          section = '''
+          ## CW-02 implementation status — 2026-09-16
+
+          This section is the current, scoped disposition for VIS-02 (including a/b),
+          VIS-04 (including a), and their chart binding/selection matrix requirements.
+          It supersedes the earlier scalar-only and post-selection-only descriptions of
+          those items below. Other findings, historical evidence and parallel assignments
+          are unchanged. Implementation and validation belong to PR #22; merge readiness
+          comes from its exact-source checks, not a catalog or fixture count.
+
+          | Finding | Current implementation | Evidence and remaining boundary |
+          |---|---|---|
+          | VIS-02 / VIS-02a | Closed v2 repeated measures and real categorical series; ordered retained normalization; v1 compatibility and exact saved meaning pins. | `internal/charts/rich_contract.go`, `rich_build.go`, `rich_test.go`; actual API/SDK and save/read/publication/build/view in `TestCW02RichCharts`; real viewer in `TestPhase31/AC04`. No silent first-measure fallback or SQL regeneration. |
+          | VIS-02b | Explicit numeric bubble size with area semantics; ordered hierarchy up to eight levels with exact additive prefix sums and full paths. | Shared rich fixtures include bubble series and three hierarchy levels. Null/zero/negative, duplicate path, range and expansion policies reject or disclose omissions. Eight levels is a deliberate bound, not arbitrary-depth support. |
+          | VIS-04 / VIS-04a | Bounded question cues, exact retained cardinality and semantic signals affect binding and score before suitability/floor/alternative sealing. Structured rule/candidate provenance and stable ties remain after optional gateway ranking. | `selection_intent.go`, `selection_intent_test.go`, `select.go`, and the actual gateway/API canary test. The ranker sees only classified intent and bounded descriptors, not raw question, labels, rows or source/topic pins. Fixtures do not establish live model quality or measured performance. |
+
+          ### Current chart matrix: supported binding variants
+
+          The inventory remains 12 plots plus KPI and table. These supported variants are
+          separate from the fourteen kind names; scalar inventory alone is not equivalence.
+
+          | Kind / variant | Current binding, transformation and actual viewer |
+          |---|---|
+          | Line / area | Temporal category with one or ordered multiple measures, optionally split by a real categorical series. All measures survive. Null measures and absent observed-category/series combinations break paths; declared order/grain survive. Distinct units use labeled independent scale panels. No calendar resampling or invented dates. |
+          | Bar / column / grouped bar | Ordered multiple measures without an artificial series dimension; also scalar or repeated measures with a real categorical split where the variant permits. Grouped bar without series requires at least two measures. Typed retained rows supply every observation, label, unit, original row and order. |
+          | Stacked bar / column | Existing one-value category/series tuple identity is preserved. Ambiguous tuples reject, including duplicates hidden by null values. Existing diverging signed stacks remain supported; no implicit composition percentages or repeated-measure stacking is claimed. |
+          | Scatter / bubble | Numeric x/y, optional categorical series, explicit numeric non-percentage measure size for bubbles. Area, not radius, encodes positive size. Zero size has zero area; missing coordinates/size do not become zero. Exact values remain separate from geometry. |
+          | Treemap | Scalar flat/parent-category mappings remain compatible. V2 declares 1–8 ordered levels with unique leaf paths, eligible additive measure, exact internal sums, stable path identities and contributing returned rows. Null path/value rows are retained but omitted from tree aggregation. Negative values reject. |
+          | Heatmap | Existing two categorical axes and exact value; duplicate cell tuples reject instead of choosing a row implicitly. |
+          | Pie / donut / KPI / table | Existing interfaces, exact scalar values, null handling and eligible totals remain. Positive composition rejects negatives. Rich reporting KPI math, table policies and wider locale/display-format work remain with their owners. |
+
+          ### Saved meaning, exactness and retained-consumer closure
+
+          V1 scalar mapping JSON remains readable/buildable. V2 closes `values`, `hierarchy`
+          and `size` combinations and pins every bound column's source/topic/semantic/type,
+          unit/grain/aggregation/name and revision identity. Incompatible drift fails; an
+          explicit detached rebind is review-required and does not mutate publication.
+          The current persistence, wire schemas, SDK, frozen builder and Apps consumer use
+          the shared typed contract. Frozen reuse includes the chart builder version.
+
+          Wide exact rows and original row indices remain available even when geometry is
+          undrawable. Accessible series and hierarchy tables expose full names/identities,
+          exact decimals/large integers, null gaps and contributing paths. Normalized drawing
+          coordinates may approximate; subpixel or zero regions are not enlarged into false
+          values. Retained chart paging/redraw does no source/model work. Presentation
+          selection reads only currently authorized retained artifacts.
+
+          Totals preserve additive eligibility and `returned_rows` versus `complete_result`
+          scope. Tree nodes separately disclose `returned_complete_paths`, not a whole-source
+          or all-row total. Duplicate tuples/cells/leaf paths are rejected, never last-row-wins;
+          internal hierarchy prefix `sum` is a named exact aggregation with row provenance.
+
+          JSON save/read/build compatibility is delivered. A standalone import/export or
+          static renderer is not introduced: later import must preserve ordered slots/pins,
+          reject unknown versions or lossy downgrade, and revalidate current dependencies and
+          authority. No wider report-output/narrative definition policy, local identity,
+          issuer change, framework, standalone builder or dashboard-grid redesign is added.
+
+          The current [v1/v2 chart contract](contracts/chart-specifications-v1.md) and
+          [CW-02 review record](reviews/cw-02-rich-charts.md) describe bounds, saved mapping
+          compatibility, selection provenance, actual tests and limitations. The existing
+          84 scalar goldens remain; 22 rich synthetic fixtures separately exercise the real
+          browser. Neither counts nor this status section substitute for passing CI.
+
+          ---
+
+          The remainder preserves the earlier assessment and its historical evidence. For
+          the CW-02 findings and chart matrix above, use this current disposition rather
+          than the older scalar-only limitations. Unrelated findings below are not closed
+          by this assignment.
+
+          '''
+          original = Path('docs/gap-analysis.md').read_text()
+          assert '## CW-02 implementation status — 2026-09-16' not in original
+          first, rest = original.split('\n', 1)
+          result = (first + '\n' + section + rest).encode()
+          Path('/tmp/cw02-map.md').write_bytes(result)
+          Path('/tmp/cw02-map-blob.json').write_text(json.dumps({'encoding':'base64','content':base64.b64encode(result).decode()}))
+          PY
+          test "$(git hash-object /tmp/cw02-map.md)" = 03cfd2e1cebab807685a4f6a709e6647447b1d93
+          gh api --method POST repos/hurtener/chartworks/git/blobs --input /tmp/cw02-map-blob.json --jq .sha > /tmp/cw02-map-sha
+          test "$(cat /tmp/cw02-map-sha)" = 03cfd2e1cebab807685a4f6a709e6647447b1d93
+          echo "PREPARED_MAP_BLOB=$(cat /tmp/cw02-map-sha)"
+          git diff --exit-code
