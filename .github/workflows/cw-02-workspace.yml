@@ -1,0 +1,36 @@
+name: CW-02 isolated workspace
+on:
+  push:
+    branches: [ci/cw-02-workspace]
+    paths: [.github/workflows/cw-02-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7abace5b09b670b21de9739698720a6fdddff4b0
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Archive exact tracked source and compiler only
+        run: |
+          git archive --format=tar.gz --prefix=chartworks/ HEAD > "$RUNNER_TEMP/chartworks-source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/chartworks-source-sha.txt"
+          tar -C "$(go env GOROOT)" -czf "$RUNNER_TEMP/chartworks-go.tar.gz" .
+          sha256sum "$RUNNER_TEMP/chartworks-source.tar.gz" "$RUNNER_TEMP/chartworks-go.tar.gz" > "$RUNNER_TEMP/chartworks-workspace-sha256.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw-02-isolated-workspace
+          path: |
+            ${{ runner.temp }}/chartworks-source.tar.gz
+            ${{ runner.temp }}/chartworks-source-sha.txt
+            ${{ runner.temp }}/chartworks-go.tar.gz
+            ${{ runner.temp }}/chartworks-workspace-sha256.txt
+          retention-days: 1
+          if-no-files-found: error
