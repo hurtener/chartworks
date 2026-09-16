@@ -11,7 +11,11 @@ func TestCW03NativeOutputExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	t.Cleanup(func() {
+		if err := file.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	var output BlockOutput
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()

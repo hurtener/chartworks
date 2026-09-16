@@ -244,7 +244,7 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 			return out, access.ErrNotFound
 		}
 		_, selection, err := ResolveOutputSelection(Definition{SchemaVersion: v.SchemaVersion, Metadata: v.Metadata, Outputs: v.Outputs}, in.Outputs)
-		if err != nil && !(in.Outputs == nil && SelectionErrorCode(err) == "output_selection_empty") {
+		if err != nil && (in.Outputs != nil || SelectionErrorCode(err) != "output_selection_empty") {
 			return out, err
 		}
 		out.Selection, out.SelectionCode = &selection, SelectionErrorCode(err)

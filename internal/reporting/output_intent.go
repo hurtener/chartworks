@@ -276,13 +276,14 @@ func ResolveOutputSelection(d Definition, requested []string) ([]Output, OutputS
 	}
 	for _, o := range all {
 		choice := OutputChoice{ID: o.ID, Kind: o.Kind, Intent: clone(*o.Intent), Selected: selected[o.ID], State: "omitted", Code: "not_selected"}
-		if !o.Intent.Enabled {
+		switch {
+		case !o.Intent.Enabled:
 			choice.State = "disabled"
 			choice.Code = "output_disabled"
-		} else if selected[o.ID] {
+		case selected[o.ID]:
 			choice.State = "selected"
 			choice.Code = ""
-		} else if snapshot.Mode == "defaults" {
+		case snapshot.Mode == "defaults":
 			choice.Code = "not_default"
 		}
 		snapshot.Choices = append(snapshot.Choices, choice)

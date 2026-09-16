@@ -65,8 +65,7 @@ func narrativeClaimSchema(n Narrative) (string, error) {
 		}
 	}
 	schema := strings.Replace(narrativeSchema, `"maxItems":32`, fmt.Sprintf(`"maxItems":%d`, maxClaims(n)), 1)
-	switch kinds := narrativeClaimKinds(n); len(kinds) {
-	case 1:
+	if kinds := narrativeClaimKinds(n); len(kinds) == 1 {
 		schema = strings.Replace(schema, `"enum":["value","difference"]`, fmt.Sprintf(`"enum":[%q]`, kinds[0]), 1)
 	}
 	return schema, nil

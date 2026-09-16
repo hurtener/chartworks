@@ -292,17 +292,6 @@ func prepareNarrative(m RunManifest, result exec.Result, n Narrative) (preparedN
 	return preparedNarrative{evidence: evidence, caveats: caveats, input: string(input)}, nil
 }
 
-func (s *Runs) generateNarrative(ctx context.Context, e identity.Envelope, m RunManifest, output string, result exec.Result, n Narrative) (NarrativeResult, error) {
-	if s.model == nil || n.ModelVersion != s.modelVersion || n.SchemaVersion != "grounded-narrative-v1" {
-		return NarrativeResult{}, ErrUnavailable
-	}
-	prepared, err := prepareNarrative(m, result, n)
-	if err != nil {
-		return NarrativeResult{}, err
-	}
-	return s.generatePreparedNarrative(ctx, e, m, output, n, prepared)
-}
-
 func (s *Runs) generatePreparedNarrative(ctx context.Context, e identity.Envelope, m RunManifest, output string, n Narrative, prepared preparedNarrative) (NarrativeResult, error) {
 	evidence, caveats := prepared.evidence, prepared.caveats
 	call, err := gateway.Authorize(e, "reporting.execute", digest([]any{m.Digest(), output}),

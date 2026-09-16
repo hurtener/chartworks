@@ -2,10 +2,10 @@ package postgres
 
 import (
 	"context"
-	"github.com/hurtener/chartworks/internal/config"
 	"testing"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
