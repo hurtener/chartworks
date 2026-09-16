@@ -1,0 +1,63 @@
+name: CW-01 guarded integration
+
+on:
+  push:
+    branches: [feat/cw-01-conditional-typed-clarification]
+    paths: ['.github/workflows/cw-01-integrate.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Apply exact edits on the isolated branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/feat/cw-01-conditional-typed-clarification
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head=$(git ls-remote origin refs/heads/feat/cw-01-conditional-typed-clarification | cut -f1)
+          test "$remote_head" = "$GITHUB_SHA"
+          python3 scripts/dev/cw01_integrate.py
+          gofmt -w internal/semantics/clarification*.go internal/semantics/rules.go internal/semantics/rules_compile.go internal/semantics/rulesets/clarification.go internal/semantics/topics/clarification.go internal/exec/business_model.go internal/nlqroute/service.go internal/nlqroute/clarification.go
+          git diff --check
+          git rm scripts/dev/cw01_integrate.py .github/workflows/cw-01-integrate.yml .github/workflows/cw-01-source-snapshot.yml
+          git add internal/semantics internal/exec/business_model.go internal/nlqroute
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(cw-01): integrate conditional clarification into current route admission'
+          git push origin HEAD:refs/heads/feat/cw-01-conditional-typed-clarification
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git rev-parse HEAD
+          go version
+      - name: Compile the actual committed consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -run '^$' ./internal/semantics/... ./internal/exec ./internal/nlqroute ./internal/nlqexec 2>&1 | tee /tmp/cw01-compile.log
+      - name: Execute semantic and route regressions
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -race -count=1 ./internal/semantics ./internal/semantics/rulesets ./internal/nlqroute 2>&1 | tee /tmp/cw01-regressions.log
+      - name: Verify validation did not modify committed source
+        if: always()
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cw01-integration-evidence-${{ github.sha }}
+          path: /tmp/cw01-*.log
+          retention-days: 5
