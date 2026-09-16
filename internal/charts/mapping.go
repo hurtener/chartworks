@@ -2,28 +2,30 @@ package charts
 
 import (
 	"context"
-	"encoding/json"
-	"time"
 )
 
 // Catalog returns a detached, stable inventory. No kind is a table alias.
 func Catalog() []CatalogEntry {
-	return []CatalogEntry{
-		{Area, []string{"category", "value"}, nil, "allowed", "gap"},
-		{Bar, []string{"category", "value"}, nil, "allowed", "omit"},
-		{ColumnChart, []string{"category", "value"}, nil, "allowed", "omit"},
-		{Donut, []string{"category", "value"}, nil, "rejected", "omit"},
-		{GroupedBar, []string{"category", "value", "series"}, nil, "allowed", "omit"},
-		{Heatmap, []string{"x", "y", "value"}, nil, "allowed", "omit"},
-		{KPI, []string{"value"}, nil, "allowed", "empty"},
-		{Line, []string{"category", "value"}, nil, "allowed", "gap"},
-		{Pie, []string{"category", "value"}, nil, "rejected", "omit"},
-		{Scatter, []string{"x", "y"}, []string{"series"}, "allowed", "omit"},
-		{StackedBar, []string{"category", "value", "series"}, nil, "allowed", "omit"},
-		{StackedColumn, []string{"category", "value", "series"}, nil, "allowed", "omit"},
-		{Table, []string{"columns"}, nil, "allowed", "preserve"},
-		{Treemap, []string{"category", "value"}, []string{"parent"}, "rejected", "omit"},
+	entries := []CatalogEntry{
+		{Area, []string{"category", "value"}, nil, "allowed", "gap", nil},
+		{Bar, []string{"category", "value"}, nil, "allowed", "omit", nil},
+		{ColumnChart, []string{"category", "value"}, nil, "allowed", "omit", nil},
+		{Donut, []string{"category", "value"}, nil, "rejected", "omit", nil},
+		{GroupedBar, []string{"category", "value", "series"}, nil, "allowed", "omit", nil},
+		{Heatmap, []string{"x", "y", "value"}, nil, "allowed", "omit", nil},
+		{KPI, []string{"value"}, nil, "allowed", "empty", nil},
+		{Line, []string{"category", "value"}, nil, "allowed", "gap", nil},
+		{Pie, []string{"category", "value"}, nil, "rejected", "omit", nil},
+		{Scatter, []string{"x", "y"}, []string{"series"}, "allowed", "omit", nil},
+		{StackedBar, []string{"category", "value", "series"}, nil, "allowed", "omit", nil},
+		{StackedColumn, []string{"category", "value", "series"}, nil, "allowed", "omit", nil},
+		{Table, []string{"columns"}, nil, "allowed", "preserve", nil},
+		{Treemap, []string{"category", "value"}, []string{"parent"}, "rejected", "omit", nil},
 	}
+	for i := range entries {
+		entries[i].Variants = bindingVariants(entries[i])
+	}
+	return entries
 }
 
 func entry(kind Kind) (CatalogEntry, bool) {
@@ -58,18 +60,22 @@ func slot(b Bindings, name string) string {
 }
 
 func bound(b Bindings) []string {
-	ids := make([]string, 0, 6+len(b.Columns))
-	for _, s := range []string{b.Category, b.Value, b.Series, b.X, b.Y, b.Parent} {
+	ids := make([]string, 0, 7+len(b.Columns)+len(b.Values)+len(b.Hierarchy))
+	for _, s := range []string{b.Category, b.Value, b.Series, b.X, b.Y, b.Parent, b.Size} {
 		if s != "" {
 			ids = append(ids, s)
 		}
 	}
+	ids = append(ids, b.Values...)
+	ids = append(ids, b.Hierarchy...)
 	return append(ids, b.Columns...)
 }
 
 func cloneMapping(m Mapping) Mapping {
 	m.Columns = append([]Column(nil), m.Columns...)
 	m.Bindings.Columns = append([]string(nil), m.Bindings.Columns...)
+	m.Bindings.Values = append([]string(nil), m.Bindings.Values...)
+	m.Bindings.Hierarchy = append([]string(nil), m.Bindings.Hierarchy...)
 	m.Order = append([]Order(nil), m.Order...)
 	return m
 }
@@ -80,10 +86,28 @@ func Bind(ctx context.Context, d Data, kind Kind, b Bindings, order []Order, opt
 	if err := ValidateData(ctx, d, limits); err != nil {
 		return Mapping{}, err
 	}
-	if len(b.Columns) > limits.MaxColumns || len(order) > limits.MaxColumns {
+	return bindValidated(ctx, d, kind, b, order, options, limits)
+}
+
+// The selector has already validated data and budgets once; do not rescan and
+// reserialize the entire result for each catalog candidate.
+func bindValidated(ctx context.Context, d Data, kind Kind, b Bindings, order []Order, options Options, limits Limits) (Mapping, error) {
+	if len(b.Columns) > limits.MaxColumns || len(b.Values) > limits.MaxSeries || len(b.Hierarchy) > MaxHierarchyDepth || len(bound(b)) > limits.MaxColumns || len(order) > limits.MaxColumns {
 		return Mapping{}, ErrLimit
 	}
-	m := Mapping{Version: Version, Kind: kind, Bindings: b, Order: order, Options: options}
+	version := Version
+	if richBindings(kind, b) {
+		version = RichVersion
+		if len(order) == 0 && (kind == Line || kind == Area) {
+			order = []Order{{Column: b.Category, Direction: "asc"}}
+		}
+		if len(order) == 0 && len(b.Hierarchy) > 0 {
+			for _, id := range b.Hierarchy {
+				order = append(order, Order{Column: id, Direction: "asc"})
+			}
+		}
+	}
+	m := Mapping{Version: version, Kind: kind, Bindings: b, Order: order, Options: options}
 	for _, id := range bound(b) {
 		i := columnIndex(d.Columns, id)
 		if i < 0 {
@@ -106,25 +130,18 @@ func ValidateMapping(ctx context.Context, d Data, m Mapping, limits Limits) erro
 }
 
 func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
-	if len(m.Bindings.Columns) > l.MaxColumns {
+	if len(m.Bindings.Columns) > l.MaxColumns || len(m.Bindings.Values) > l.MaxSeries || len(m.Bindings.Hierarchy) > MaxHierarchyDepth || len(bound(m.Bindings)) > l.MaxColumns {
 		return ErrLimit
 	}
 	e, ok := entry(m.Kind)
-	if !ok || m.Version != Version || len(m.Columns) == 0 || len(m.Columns) > l.MaxColumns || len(m.Order) > len(m.Columns) {
+	if !ok || (m.Version != Version && m.Version != RichVersion) || len(m.Columns) == 0 || len(m.Columns) > l.MaxColumns || len(m.Order) > len(m.Columns) {
 		return ErrInvalid
 	}
 	if err := validateOptions(m.Options, l); err != nil {
 		return err
 	}
-	for _, required := range e.RequiredSlots {
-		if slot(m.Bindings, required) == "" {
-			return ErrUnsuitable
-		}
-	}
-	for _, name := range []string{"category", "value", "series", "x", "y", "parent", "columns"} {
-		if slot(m.Bindings, name) != "" && !oneOf(name, e.RequiredSlots...) && !oneOf(name, e.OptionalSlots...) {
-			return ErrInvalid
-		}
+	if err := validateSlots(m, e); err != nil {
+		return err
 	}
 	ids := bound(m.Bindings)
 	if len(ids) != len(m.Columns) {
@@ -155,13 +172,15 @@ func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
 		ordered[o.Column] = true
 	}
 	b := m.Bindings
-	for _, id := range []string{b.Category, b.Series, b.Parent} {
+	for _, id := range append([]string{b.Category, b.Series, b.Parent}, b.Hierarchy...) {
 		if id != "" && !category(d.Columns[columnIndex(d.Columns, id)]) {
 			return ErrUnsuitable
 		}
 	}
-	if b.Value != "" && !numeric(d.Columns[columnIndex(d.Columns, b.Value)].Type) {
-		return ErrUnsuitable
+	for _, id := range append([]string{b.Value, b.Size}, b.Values...) {
+		if id != "" && !numeric(d.Columns[columnIndex(d.Columns, id)].Type) {
+			return ErrUnsuitable
+		}
 	}
 	if m.Kind == Line || m.Kind == Area {
 		if d.Columns[columnIndex(d.Columns, b.Category)].Type != "temporal" {
@@ -178,6 +197,9 @@ func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
 	}
 	if m.Kind == KPI && len(d.Rows) > 1 {
 		return ErrUnsuitable
+	}
+	if richBindings(m.Kind, b) {
+		return validateRichShape(ctx, d, m, l)
 	}
 	return validateShape(ctx, d, m, l, e)
 }
@@ -230,6 +252,19 @@ func validateShape(ctx context.Context, d Data, m Mapping, l Limits, e CatalogEn
 				}
 			}
 		}
+		if m.Kind != Scatter && m.Kind != KPI {
+			ids := []string{b.Category, b.Series, b.Parent}
+			if m.Kind == Heatmap {
+				ids = []string{b.X, b.Y}
+			}
+			if !coordinateMissing(d, row, ids) {
+				key := identityKey(d, row, ids)
+				if keys[key] {
+					return ErrUnsuitable
+				}
+				keys[key] = true
+			}
+		}
 		if omitted(d, row, m) {
 			continue
 		}
@@ -261,23 +296,7 @@ func validateShape(ctx context.Context, d Data, m Mapping, l Limits, e CatalogEn
 		if len(categories) > l.MaxCategories || len(series) > l.MaxSeries {
 			return ErrUnsuitable
 		}
-		// Scatter preserves repeated observations. Other plots require unambiguous
-		// category/series cells, rather than silently inventing an aggregation.
-		if m.Kind != Scatter {
-			parts := []Cell{at(d, row, b.Category), at(d, row, b.Series), at(d, row, b.Parent)}
-			if m.Kind == Line || m.Kind == Area {
-				instant, _ := temporal(parts[0].Value)
-				parts[0].Value = instant.UTC().Format(time.RFC3339Nano)
-			}
-			if m.Kind == Heatmap {
-				parts = []Cell{at(d, row, b.X), at(d, row, b.Y)}
-			}
-			key, _ := json.Marshal(parts)
-			if keys[string(key)] {
-				return ErrUnsuitable
-			}
-			keys[string(key)] = true
-		}
+
 	}
 	return nil
 }
@@ -319,13 +338,15 @@ func Rebind(ctx context.Context, d Data, original Mapping, limits Limits) (Propo
 		changes = append(changes, Change{From: old.ID, To: matches[0].ID})
 	}
 	b := &m.Bindings
-	for _, id := range []*string{&b.Category, &b.Value, &b.Series, &b.X, &b.Y, &b.Parent} {
+	for _, id := range []*string{&b.Category, &b.Value, &b.Series, &b.X, &b.Y, &b.Parent, &b.Size} {
 		if *id != "" {
 			*id = replacements[*id]
 		}
 	}
-	for i, id := range b.Columns {
-		b.Columns[i] = replacements[id]
+	for _, ids := range [][]string{b.Columns, b.Values, b.Hierarchy} {
+		for i, id := range ids {
+			ids[i] = replacements[id]
+		}
 	}
 	for i := range m.Order {
 		m.Order[i].Column = replacements[m.Order[i].Column]

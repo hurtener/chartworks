@@ -14,41 +14,15 @@ func Build(ctx context.Context, d Data, m Mapping, limits Limits) (Output, error
 	if err := ValidateMapping(ctx, d, m, limits); err != nil {
 		return Output{}, err
 	}
-	out := Output{Version: Version, Kind: m.Kind, Mapping: cloneMapping(m), Columns: append([]Column(nil), m.Columns...),
+	if richBindings(m.Kind, m.Bindings) {
+		return buildRich(ctx, d, m, limits)
+	}
+	out := Output{Version: m.Version, Kind: m.Kind, Mapping: cloneMapping(m), Columns: append([]Column(nil), m.Columns...),
 		Rows: [][]Cell{}, Points: []Point{}, Totals: []Total{}, State: "empty", InputRows: len(d.Rows), Completeness: d.Completeness, Warnings: []string{}}
 	if d.Completeness.Status == "truncated" {
 		out.Warnings = append(out.Warnings, "truncated_result_not_full_source")
 	}
-	indexes := make([]int, len(d.Rows))
-	for i := range indexes {
-		indexes[i] = i
-	}
-	if len(m.Order) > 0 {
-		sort.SliceStable(indexes, func(i, j int) bool {
-			if ctx.Err() != nil {
-				return false
-			}
-			for _, order := range m.Order {
-				col := columnIndex(d.Columns, order.Column)
-				a, b := d.Rows[indexes[i]][col], d.Rows[indexes[j]][col]
-				if a.Null != b.Null {
-					return !a.Null
-				}
-				if a.Null {
-					continue
-				}
-				cmp := compare(a.Value, b.Value, d.Columns[col].Type)
-				if cmp == 0 {
-					continue
-				}
-				if order.Direction == "desc" {
-					return cmp > 0
-				}
-				return cmp < 0
-			}
-			return false
-		})
-	}
+	indexes := orderedRows(ctx, d, m)
 	nonNull, positive, approximate := false, false, false
 	for _, i := range indexes {
 		if err := ctx.Err(); err != nil {
@@ -126,6 +100,40 @@ func Build(ctx context.Context, d Data, m Mapping, limits Limits) (Output, error
 		return Output{}, ErrLimit
 	}
 	return out, ctx.Err()
+}
+
+func orderedRows(ctx context.Context, d Data, m Mapping) []int {
+	indexes := make([]int, len(d.Rows))
+	for i := range indexes {
+		indexes[i] = i
+	}
+	if len(m.Order) > 0 {
+		sort.SliceStable(indexes, func(i, j int) bool {
+			if ctx.Err() != nil {
+				return false
+			}
+			for _, order := range m.Order {
+				col := columnIndex(d.Columns, order.Column)
+				a, b := d.Rows[indexes[i]][col], d.Rows[indexes[j]][col]
+				if a.Null != b.Null {
+					return !a.Null
+				}
+				if a.Null {
+					continue
+				}
+				cmp := compare(a.Value, b.Value, d.Columns[col].Type)
+				if cmp == 0 {
+					continue
+				}
+				if order.Direction == "desc" {
+					return cmp > 0
+				}
+				return cmp < 0
+			}
+			return false
+		})
+	}
+	return indexes
 }
 
 func compare(a, b, typ string) int {
