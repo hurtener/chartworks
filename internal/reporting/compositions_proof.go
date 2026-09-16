@@ -89,11 +89,17 @@ func validComposition(m CompositionManifest) bool {
 		}
 		switch g.Kind {
 		case "block":
+			if g.QueryLimits != nil {
+				caps, err := resolveQueryLimits(m.ArtifactLimits, 3, g.QueryLimits)
+				if err != nil || caps != *g.QueryLimits {
+					return false
+				}
+			}
 			if !identity.Identifier(g.Block) || g.Revision < 1 || g.Revision > 256 || !hashValid(g.Definition) || !hashValid(g.Execution) || len(g.Outputs) < 1 || len(g.Outputs) > 64 || g.Query != nil || g.Origin != nil || g.Trust == nil || !slices.Contains([]string{"published", "certified_only", "explicit_stale"}, g.Policy) || g.Resolution.At.IsZero() || g.Resolved.At.IsZero() {
 				return false
 			}
 		case "query":
-			if g.Query == nil || g.Origin == nil || !validQueryOrigin(*g.Origin, *g.Query) || g.Block != "" || g.Revision != 0 || g.Trust != nil || len(g.Outputs) != 0 || len(g.Arguments) != 0 || g.Narrative || !m.Limits.LiveQueries || g.Query.Durability == "session_bound" && (!m.Limits.SessionBound || !m.Private || g.Origin.Actor != m.Actor || g.Origin.Session != m.Session) {
+			if g.QueryLimits != nil || g.Query == nil || g.Origin == nil || !validQueryOrigin(*g.Origin, *g.Query) || g.Block != "" || g.Revision != 0 || g.Trust != nil || len(g.Outputs) != 0 || len(g.Arguments) != 0 || g.Narrative || !m.Limits.LiveQueries || g.Query.Durability == "session_bound" && (!m.Limits.SessionBound || !m.Private || g.Origin.Actor != m.Actor || g.Origin.Session != m.Session) {
 				return false
 			}
 		default:
@@ -146,6 +152,9 @@ func validComposition(m CompositionManifest) bool {
 				if w.Definition.Block.Block != g.Block || w.Definition.Block.Revision != g.Revision || len(w.Definition.Block.Outputs) == 0 {
 					return false
 				}
+				if g.QueryLimits != nil && (w.Selection == nil || digest(w.Definition.Block.Limits) != digest(g.QueryLimits) || !slices.Equal(w.Selection.Selected, w.Definition.Block.Outputs)) {
+					return false
+				}
 				for _, id := range w.Definition.Block.Outputs {
 					if !slices.Contains(g.Outputs, id) {
 						return false
@@ -160,7 +169,7 @@ func validComposition(m CompositionManifest) bool {
 }
 
 func compositionCodeValid(code string) bool {
-	return slices.Contains([]string{"dependency_unavailable", "dependency_denied", "dependency_stale", "live_queries_disabled", "session_bound_disabled", "session_unavailable", "binding_invalid", "budget_exhausted", "query_failed", "query_truncated", "output_failed", "output_incomplete", "strict_omission", "deadline_exceeded", "query_indeterminate", "partial_report"}, code)
+	return slices.Contains([]string{"dependency_unavailable", "dependency_denied", "dependency_stale", "live_queries_disabled", "session_bound_disabled", "session_unavailable", "binding_invalid", "budget_exhausted", "query_failed", "query_truncated", "output_failed", "output_incomplete", "strict_omission", "deadline_exceeded", "query_indeterminate", "partial_report", "output_selection_empty", "output_duplicate", "output_unknown", "output_disabled"}, code)
 }
 
 // PreparedComposition is an opaque in-process proof, not a persisted credential.
@@ -304,6 +313,15 @@ func CheckCompositionResult(m CompositionManifest, g CompositionGroup, r GroupRe
 		b := r.Block
 		if b == nil || r.Query != nil || r.QueryPlan != nil || b.ID != r.ChildRun || b.Block != g.Block || b.Revision != g.Revision || b.RevisionDigest != g.Definition || b.PartitionDigest != exec.Hash(g.Binding) || b.Private != g.Private || len(r.Outputs) != len(g.Outputs) || b.Observed == nil || !b.Observed.Equal(*r.Observed) {
 			return ErrInvalid
+		}
+		if g.QueryLimits != nil {
+			if b.QueryLimits == nil {
+				return ErrInvalid
+			}
+			caps, err := resolveQueryLimits(m.ArtifactLimits, 3, g.QueryLimits, b.QueryLimits)
+			if err != nil || caps != *b.QueryLimits {
+				return ErrInvalid
+			}
 		}
 		for i, output := range r.Outputs {
 			if output.ID != g.Outputs[i] || output.Digest == "" || r.State == "completed" && output.State != "succeeded" {

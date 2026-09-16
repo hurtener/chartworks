@@ -26,7 +26,7 @@ type reportingStoreFixture struct {
 
 func newReportingStoreFixture(t *testing.T) *reportingStoreFixture {
 	t.Helper()
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	query, topics := newPhase18Service(t, f)
 	blocks, err := reporting.New(f.f.db, topics, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(query), config.DefaultReporting())
 	if err != nil {
@@ -161,11 +161,11 @@ func (r *storeFrozenHooks) CheckpointFrozenRun(ctx context.Context, inv jobs.Inv
 	}
 	return r.RunRepository.CheckpointFrozenRun(ctx, inv, p)
 }
-func (r *storeFrozenHooks) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string) (reporting.RunRecord, bool, error) {
+func (r *storeFrozenHooks) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string, limits config.ReportingExecution) (reporting.RunRecord, bool, error) {
 	if r.reuse != nil {
 		return r.reuse(ctx, inv, id)
 	}
-	return r.RunRepository.ReuseFrozenRun(ctx, inv, id)
+	return r.RunRepository.ReuseFrozenRun(ctx, inv, id, limits)
 }
 
 func TestStoreFrozenCheckpointRollback(t *testing.T) {
@@ -260,7 +260,7 @@ func TestStoreFrozenReuseRollback(t *testing.T) {
 				called = true
 				before := f.frozenSnapshot(t)
 				remove := storeWriteFault(t, f.raw, tc.table, tc.operation, tc.condition)
-				out, reused, err := f.f.f.db.ReuseFrozenRun(ctx, inv, id)
+				out, reused, err := f.f.f.db.ReuseFrozenRun(ctx, inv, id, config.DefaultReportingExecution())
 				remove()
 				if reused || f.frozenSnapshot(t) != before {
 					t.Error("failed reuse committed a partial clone or reported reuse")

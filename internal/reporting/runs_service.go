@@ -20,12 +20,13 @@ import (
 // Runs composes the existing block, read, queue and model services. Its retained
 // read methods have no path to a warehouse or a model provider.
 type Runs struct {
-	blocks       *Service
-	repo         RunRepository
-	runner       *jobs.RequestRunner
-	model        gateway.Engine
-	modelVersion string
-	limits       config.ReportingExecution
+	queryAttempts int
+	blocks        *Service
+	repo          RunRepository
+	runner        *jobs.RequestRunner
+	model         gateway.Engine
+	modelVersion  string
+	limits        config.ReportingExecution
 }
 
 // NewRuns performs no source/model calls. Optional narrative availability does
@@ -42,6 +43,9 @@ func NewRuns(blocks *Service, repo RunRepository, runner *jobs.RequestRunner, mo
 
 func normalizedRunRequest(in RunRequest) (RunRequest, error) {
 	in = clone(in)
+	if in.Limits != nil && !in.Limits.valid() {
+		return RunRequest{}, ErrInvalid
+	}
 	if in.Policy == "" {
 		in.Policy = "published"
 	}
@@ -59,8 +63,11 @@ func normalizedRunRequest(in RunRequest) (RunRequest, error) {
 	}
 	seen := map[string]bool{}
 	for _, id := range in.Outputs {
-		if !identity.Identifier(id) || seen[id] {
+		if !identity.Identifier(id) {
 			return RunRequest{}, ErrInvalid
+		}
+		if seen[id] {
+			return RunRequest{}, selectionError("output_duplicate")
 		}
 		seen[id] = true
 	}
@@ -103,7 +110,7 @@ func runEligibility(e identity.Envelope, snapshot Snapshot, policy string, now t
 }
 
 func (s *Runs) selectRunOutputs(d Definition, in RunRequest) ([]Output, error) {
-	selected, err := SelectOutputs(d.Outputs, in.Outputs)
+	selected, _, err := ResolveOutputSelection(d, in.Outputs)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +222,14 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 		return RunView{}, err
 	}
 	d := snapshot.Revision.Definition
+	attempts := s.queryAttempts
+	if attempts == 0 {
+		attempts = 3
+	}
+	caps, err := resolveQueryLimits(s.limits, attempts, d.QueryLimits, in.Limits)
+	if err != nil {
+		return RunView{}, err
+	}
 	selected, err := s.selectRunOutputs(d, in)
 	if err != nil {
 		return RunView{}, err
@@ -250,7 +265,7 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 		RequestHash: requestHash, TaskHash: task.ManifestHash, Revision: clone(snapshot.Revision), Outputs: selected,
 		Resolved: resolved, Binding: binding.Clone(), Dependencies: clone(snapshot.Validation.Dependencies), References: refs,
 		Trust: project(snapshot, task.Created).Trust, Private: private, Policy: in.Policy, PartialPolicy: in.PartialPolicy,
-		Locale: language, Created: task.Created, Expires: task.Created.Add(time.Duration(retention)), Limits: s.limits,
+		Locale: language, Created: task.Created, Expires: task.Created.Add(time.Duration(retention)), Limits: limitsForQuery(s.limits, caps),
 		ReuseMaxAge: in.ReuseMaxAgeSeconds, Model: s.modelVersion, Definitions: []topics.Definition{}}
 	for _, definition := range definitions {
 		m.Definitions = append(m.Definitions, clone(definition.Definition))
@@ -259,9 +274,15 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	if private {
 		privacyActor = e.User()
 	}
+	_, selection, selectionErr := ResolveOutputSelection(d, in.Outputs)
+	if selectionErr != nil {
+		return RunView{}, selectionErr
+	}
+	m.Selection, m.QueryLimits = &selection, &caps
+	m.ResultPolicy = ResolveResultPolicy(d, m.Dependencies, m.Definitions)
 	m.ReuseKey = digest([]any{FrozenVersion, charts.Version, m.Tenant, m.Block, m.Revision.Digest,
 		m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, exec.Hash(binding), m.Private, privacyActor,
-		m.Policy, m.Trust, m.Model, m.Limits.MaxRows, m.Limits.MaxResultBytes})
+		m.Policy, m.Trust, m.Model, "reporting-output-policy-v2", m.Selection, m.QueryLimits, m.ResultPolicy, m.Limits})
 	proof, err := prepareRun(e, m)
 	if err != nil {
 		return RunView{}, err
@@ -349,6 +370,9 @@ func (s *Runs) Output(ctx context.Context, e identity.Envelope, id, output strin
 	if !slices.Contains([]string{"succeeded", "partial"}, r.View.State) {
 		return RetainedOutput{}, ErrIncomplete
 	}
+	if err := retainedSelectionError(r, output); err != nil {
+		return RetainedOutput{}, err
+	}
 	for _, item := range r.Outputs {
 		if item.ID == output {
 			return clone(item), nil
@@ -372,4 +396,23 @@ func (s *Runs) Expire(ctx context.Context, e identity.Envelope, limit int) (int6
 		return 0, ErrInvalid
 	}
 	return s.repo.ExpireFrozenArtifacts(ctx, e, limit)
+}
+
+// retainedSelectionError checks only an already authorized retained snapshot.
+// Unknown identifiers retain not-found semantics; known omissions are typed.
+func retainedSelectionError(r RunRecord, output string) error {
+	if r.Manifest != nil && r.Manifest.Revision.Definition.SchemaVersion == CurrentSchemaVersion && r.View.Selection != nil {
+		for _, choice := range r.View.Selection.Choices {
+			if choice.ID != output {
+				continue
+			}
+			if !choice.Intent.Enabled {
+				return selectionError("output_disabled")
+			}
+			if !choice.Selected {
+				return selectionError("output_not_selected")
+			}
+		}
+	}
+	return nil
 }

@@ -244,8 +244,22 @@ func frozenOutputTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 			return store.ErrInvalid
 		}
 	}
-	if !starting && !exists && o.Kind == "narrative" && (o.State != "failed" || o.Code != "narrative_unavailable" || o.ReservedCalls != 0 || o.ReservedTokens != 0) {
+	if !starting && !exists && o.Kind == "narrative" && !reporting.PreCallNarrativeFailure(o) {
 		return store.ErrConflict
+	}
+	if !starting && o.Kind == "narrative" && o.State == "succeeded" && w.Manifest.Selection != nil {
+		var raw []byte
+		var hash *string
+		var result readexec.Result
+		if err = tx.QueryRow(ctx, `SELECT result,result_digest FROM chartworks.frozen_run_payloads WHERE tenant_id=$1 AND operation_id=$2`, e.Tenant(), h.view.ID).Scan(&raw, &hash); err != nil {
+			return err
+		}
+		if len(raw) == 0 || hash == nil || json.Unmarshal(raw, &result) != nil || readexec.Hash(result) != *hash {
+			return store.ErrInvalid
+		}
+		if err = reporting.CheckFrozenNarrativeEvidence(w.Manifest, o, result); err != nil {
+			return err
+		}
 	}
 	if starting {
 		if o.ReservedCalls > w.Manifest.Limits.NarrativeCalls-h.view.ReservedCalls || o.ReservedTokens > w.Manifest.Limits.NarrativeTokens-h.view.ReservedTokens {

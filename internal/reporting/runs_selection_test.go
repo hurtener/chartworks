@@ -124,7 +124,7 @@ func TestFrozenUnavailableNarrativeReceipt(t *testing.T) {
 			m.Outputs = []Output{output}
 			// No repository, authority or result is supplied: unavailable outputs
 			// must return before any I/O, reservation or evidence access.
-			receipt, err := s.makeOutput(context.Background(), identity.Envelope{}, jobs.Invocation{}, m, exec.Result{}, output)
+			receipt, err := s.makeOutput(context.Background(), identity.Envelope{}, jobs.Invocation{}, m, exec.Result{}, output, 0, 0)
 			if err != nil || receipt.State != "failed" || receipt.Code != "narrative_unavailable" || receipt.Narrative != nil || receipt.Chart != nil || receipt.ReservedCalls != 0 || receipt.ReservedTokens != 0 || CheckFrozenOutput(m, receipt, false) != nil {
 				t.Fatal("unavailable output fabricated content, spending or an invalid receipt", receipt, err)
 			}

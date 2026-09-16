@@ -2,6 +2,14 @@
 
 Current design: RFC-002 and the active phase plans. Security is exclusively the [Pengui authority contract](../contracts/pengui-authority.md); no local roles/grants/token issuance or embed authority service exists.
 
+CW-03 adds [versioned output intent and bounded narrative policies](../contracts/reporting-output-intent-v2.md)
+under [D-073](../decisions/2026-09-16-reporting-output-policies.md). Definition v1
+remains immutable and compatible; v2 output metadata/defaults/order, sensitivity
+restrictions and accepted query/narrative caps flow through these existing
+objects. Native export stays on separately authorized SQL inspection, not ordinary
+metadata. [Review and validation evidence](../reviews/cw-03-adversarial.md) is
+scoped to BLK-01/05/07, not overall phase completion or migration parity.
+
 ## Objects and states
 
 | Contract | Fields/invariants | Owner |

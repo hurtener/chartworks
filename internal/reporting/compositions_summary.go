@@ -23,9 +23,10 @@ func SummarizeComposition(record CompositionRecord) CompositionView {
 		for _, widget := range saved.Widgets {
 			d := widget.Definition
 			w := CompositionWidgetSummary{ID: d.ID, Kind: d.Kind, State: "pending", Grid: d.Grid,
-				Presentation: clone(d.Presentation), Parameters: clone(widget.Parameters), Outputs: []string{}}
+				Presentation: clone(d.Presentation), Parameters: clone(widget.Parameters), Outputs: []string{}, Selection: clone(widget.Selection)}
 			if d.Block != nil {
 				w.Outputs = clone(d.Block.Outputs)
+				w.QueryLimits = clone(d.Block.Limits)
 			}
 			if d.Query != nil {
 				w.Durability = d.Query.Durability

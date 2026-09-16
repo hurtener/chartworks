@@ -89,10 +89,21 @@ func newPhase18Service(t *testing.T, fixture *phase17Fixture) (*nlqexec.Service,
 // but avoids the phase-17 join-cardinality stress fixture. Its purpose is to
 // exercise durable generation/execution semantics on a stable route boundary.
 func newPhase18Fixture(t *testing.T) *phase17Fixture {
+	return newPhase18FixtureReviewed(t, false)
+}
+
+func newPhase18FixtureReviewed(t *testing.T, reviewedSyntheticColumns bool) *phase17Fixture {
 	t.Helper()
 	f, draftsService, topicsService, model, pack := publicationFixture(t)
 	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
 	pack = phase17EnrichPack(t, f, pack)
+	if reviewedSyntheticColumns {
+		for dataset := range pack.Datasets {
+			for column := range pack.Datasets[dataset].Columns {
+				pack.Datasets[dataset].Columns[column].Sensitivity = "non_sensitive"
+			}
+		}
+	}
 	phase17PublishTopic(t, draftsService, topicsService, e, pack)
 	related := cloneTopic(t, pack)
 	related.Topic = "commerce-related"

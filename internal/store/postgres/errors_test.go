@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "34" || len(manifest) != 34 {
+	if err != nil || SchemaVersion() != "35" || len(manifest) != 35 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -43,6 +43,7 @@ func TestSafeErrors(t *testing.T) {
 		{31, "migrations/032_timezone_database.sql", "queue_timezone_version"},
 		{32, "migrations/033_reporting_occurrences.sql", "reporting_occurrence_delivery"},
 		{33, "migrations/034_orphaned_child_capacity.sql", "pending_execution_roots"},
+		{34, "migrations/035_reporting_output_intent.sql", "block_output_intents_check"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

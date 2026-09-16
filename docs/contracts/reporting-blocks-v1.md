@@ -101,9 +101,14 @@ predicates with an expected definition digest/version. It replaces the selected
 literals, retains unrelated SQL/comments/filters and creates an unvalidated draft.
 Ambiguous predicates, unsupported dialects and stale proposals fail closed.
 
-Stable output IDs address saved chart, KPI, table or narrative definitions. Empty
-selection means all outputs; duplicate/unknown IDs fail; selected outputs retain
-saved order. Preview uses the shared lossless read-result/chart adapter and remains
+Stable output IDs address saved chart, KPI, table or narrative definitions. V1
+empty selection preserves legacy all-output behavior; explicit selections retain
+caller execution order. V2 uses enabled defaults for omitted selection and rejects
+explicit empty/duplicate/unknown/disabled IDs. Metadata selectors always use
+explicit display order, independently of execution order. The
+[v2 contract](reporting-output-intent-v2.md) specifies detached migration and typed
+outcomes. Separately authorized SQL inspection also returns the exact native
+`definition` for authoring export; ordinary metadata reads do not. Preview uses the shared lossless read-result/chart adapter and remains
 private and ephemeral. Narratives store bounded instructions and evidence rules
 only: preview performs no narrative model call and creates no retained artifact.
 

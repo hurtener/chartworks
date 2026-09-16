@@ -3,6 +3,7 @@ package reporting
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -129,16 +130,58 @@ func (s *Delivery) Search(ctx context.Context, e identity.Envelope, in DeliveryS
 	return out, ctx.Err()
 }
 
-func outputChoices(outputs []Output) []ViewerOutputChoice {
-	out := make([]ViewerOutputChoice, 0, len(outputs))
-	for _, o := range outputs {
-		title := o.ID
-		if o.Mapping != nil && o.Mapping.Options.Title != "" {
-			title = o.Mapping.Options.Title
-		}
-		out = append(out, ViewerOutputChoice{ID: o.ID, Kind: o.Kind, Title: title})
+func viewerChoices(selection *OutputSelection, locale string) []ViewerOutputChoice {
+	out := []ViewerOutputChoice{}
+	if selection == nil {
+		return out
+	}
+	for _, choice := range selection.Choices {
+		label := LocalizedOutput(choice.Intent, locale)
+		out = append(out, ViewerOutputChoice{Metadata: clone(choice.Intent.Metadata), ID: choice.ID, Kind: choice.Kind, Title: label.DisplayName, Description: label.Description,
+			Locale: label.Locale, DisplayOrder: choice.Intent.DisplayOrder, Enabled: choice.Intent.Enabled,
+			DefaultSelected: choice.Intent.DefaultSelected, Selected: choice.Selected, State: choice.State, Code: choice.Code})
 	}
 	return out
+}
+
+func legacyViewerChoices(outputs []RetainedOutput, locale string) []ViewerOutputChoice {
+	out := make([]ViewerOutputChoice, 0, len(outputs))
+	for index, output := range outputs {
+		choice := ViewerOutputChoice{ID: output.ID, Kind: output.Kind, Title: output.ID, Locale: locale, DisplayOrder: index, Enabled: true, DefaultSelected: true, Selected: true, State: "selected"}
+		if output.Intent != nil {
+			label := LocalizedOutput(*output.Intent, locale)
+			choice.Title, choice.Description, choice.Locale = label.DisplayName, label.Description, label.Locale
+			choice.Metadata = clone(output.Intent.Metadata)
+			choice.DisplayOrder, choice.Enabled, choice.DefaultSelected = output.Intent.DisplayOrder, output.Intent.Enabled, output.Intent.DefaultSelected
+		}
+		out = append(out, choice)
+	}
+	slices.SortStableFunc(out, func(a, b ViewerOutputChoice) int { return a.DisplayOrder - b.DisplayOrder })
+	return out
+}
+
+func chooseRetainedOutput(choices []ViewerOutputChoice, requested string) (string, error) {
+	if requested == "" {
+		for _, choice := range choices {
+			if choice.Enabled && choice.Selected {
+				return choice.ID, nil
+			}
+		}
+		return "", nil
+	}
+	for _, choice := range choices {
+		if choice.ID != requested {
+			continue
+		}
+		if !choice.Enabled {
+			return "", selectionError("output_disabled")
+		}
+		if !choice.Selected {
+			return "", selectionError("output_not_selected")
+		}
+		return requested, nil
+	}
+	return "", access.ErrNotFound
 }
 
 func describeReportPage(id, report string, revision int64, d DocumentDefinition) CompositionPageSummary {
@@ -159,9 +202,15 @@ func describeReportPage(id, report string, revision int64, d DocumentDefinition)
 	return page
 }
 
-func appendReportDescription(out *DeliveryDescription, page string, view DocumentView) {
+func (s *Delivery) appendReportDescription(ctx context.Context, e identity.Envelope, out *DeliveryDescription, page string, view DocumentView, wanted string) error {
 	d := view.Definition
-	out.Pages = append(out.Pages, describeReportPage(page, view.State.ID, view.Revision, d))
+	described := describeReportPage(page, view.State.ID, view.Revision, d)
+	resource := localizedResource("report", view.State.ID, view.Revision, d.Metadata, wanted)
+	described.Title, described.Locale = resource.Title, resource.Locale
+	if err := s.describeBlockSelectors(ctx, e, &described, d); err != nil {
+		return err
+	}
+	out.Pages = append(out.Pages, described)
 	for _, f := range d.Filters {
 		out.Filters = append(out.Filters, ViewerFilter{Page: page, Label: f.Label, Parameter: f.Parameter})
 	}
@@ -170,6 +219,7 @@ func appendReportDescription(out *DeliveryDescription, page string, view Documen
 			out.Dynamic = true
 		}
 	}
+	return nil
 }
 
 // Describe never returns saved SQL, query text, raw narrative instructions or a
@@ -193,21 +243,14 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 		if v.Private || v.State.Archived {
 			return out, access.ErrNotFound
 		}
-		selected, err := SelectOutputs(v.Outputs, in.Outputs)
-		if err != nil {
+		_, selection, err := ResolveOutputSelection(Definition{SchemaVersion: v.SchemaVersion, Metadata: v.Metadata, Outputs: v.Outputs}, in.Outputs)
+		if err != nil && (in.Outputs != nil || SelectionErrorCode(err) != "output_selection_empty") {
 			return out, err
 		}
-		if len(in.Outputs) != 0 {
-			byID := map[string]Output{}
-			for _, o := range selected {
-				byID[o.ID] = o
-			}
-			for i, id := range in.Outputs {
-				selected[i] = byID[id]
-			}
-		}
+		out.Selection, out.SelectionCode = &selection, SelectionErrorCode(err)
 		out.Resource = blockResource(t.ID, v.Revision, v.Metadata, in.Locale)
-		out.Outputs, out.Trust, out.Timezone = outputChoices(selected), clone(&v.Trust), "UTC"
+		out.Outputs, out.Trust, out.Timezone = viewerChoices(&selection, out.Resource.Locale), clone(&v.Trust), "UTC"
+		out.QueryLimits, out.ResultPolicy = clone(v.QueryLimits), clone(v.ResultPolicy)
 		for _, p := range v.Parameters {
 			out.Filters = append(out.Filters, ViewerFilter{Page: "main", Label: p.Name, Parameter: p})
 		}
@@ -225,7 +268,9 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 		out.Resource = localizedResource(t.Kind, t.ID, v.Revision, v.Definition.Metadata, in.Locale)
 		out.Timezone = v.Definition.Timezone
 		if t.Kind == "report" {
-			appendReportDescription(&out, "main", v)
+			if err := s.appendReportDescription(ctx, e, &out, "main", v, in.Locale); err != nil {
+				return DeliveryDescription{}, err
+			}
 		} else {
 			for _, p := range v.Definition.Pages {
 				child, err := s.documents.Read(ctx, e, "report", p.Report, DocumentReference{Revision: p.Revision})
@@ -235,7 +280,9 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 				if child.Private || child.State.Archived {
 					continue
 				}
-				appendReportDescription(&out, p.ID, child)
+				if err := s.appendReportDescription(ctx, e, &out, p.ID, child, in.Locale); err != nil {
+					return DeliveryDescription{}, err
+				}
 			}
 		}
 	}
@@ -264,7 +311,7 @@ func (s *Delivery) Run(ctx context.Context, e identity.Envelope, in DeliveryRunR
 		if len(in.Pages) != 0 || in.Dynamic {
 			return out, ErrInvalid
 		}
-		r, err := s.runs.Admit(ctx, e, t.ID, RunRequest{Key: in.Key, Reference: Reference{Revision: t.Revision}, Arguments: in.Arguments, Resolution: resolution, Outputs: in.Outputs, Policy: in.Policy, Locale: in.Locale, Narrative: in.Narrative, PartialPolicy: in.PartialFailure})
+		r, err := s.runs.Admit(ctx, e, t.ID, RunRequest{Key: in.Key, Reference: Reference{Revision: t.Revision}, Arguments: in.Arguments, Resolution: resolution, Outputs: in.Outputs, Limits: clone(in.Limits), Policy: in.Policy, Locale: in.Locale, Narrative: in.Narrative, PartialPolicy: in.PartialFailure})
 		if err != nil {
 			return out, err
 		}
@@ -272,7 +319,7 @@ func (s *Delivery) Run(ctx context.Context, e identity.Envelope, in DeliveryRunR
 		out.Run, out.State, out.Code, out.Target.Revision = r.ID, r.State, r.Code, r.Revision
 		return out, err
 	}
-	if len(in.Arguments) != 0 || len(in.Outputs) != 0 || in.Policy != "" {
+	if in.Limits != nil || len(in.Arguments) != 0 || len(in.Outputs) != 0 || in.Policy != "" {
 		return out, ErrInvalid
 	}
 	if err := s.requireRunOptIns(ctx, e, t, in.Dynamic, in.Narrative); err != nil {
