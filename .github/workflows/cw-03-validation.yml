@@ -2,58 +2,75 @@ name: CW-03 reporting validation
 on:
   push:
     branches: [feat/cw-03-reporting-intent-policies]
+    paths: [test/acceptance/cw03_validation_test.go]
 permissions:
   contents: read
-  actions: read
 jobs:
-  dependencies:
+  contracts:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
+      CHARTWORKS_BRUIN_BIN: /tmp/chartworks-bruin/bruin
+      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
+      CGO_LDFLAGS: -L/tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: cw03-offline-dependencies
-          run-id: 35041474951
-          github-token: ${{ github.token }}
-          path: /tmp/cw03-offline
-      - name: Verify and split dependency-only archives
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Exact committed source
         run: |
-          set -euo pipefail
-          cd /tmp/cw03-offline
-          sha256sum -c SHA256SUMS
-          split -b 400m -d modules.tar.gz modules.part-
-          ls -lh
-      - uses: actions/upload-artifact@v4
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
+          go mod verify
+      - uses: actions/cache/restore@v4
+        id: native
         with:
-          name: cw03-offline-go-native
           path: |
-            /tmp/cw03-offline/go.tar.gz
-            /tmp/cw03-offline/native.tar.gz
-            /tmp/cw03-offline/SHA256SUMS
-          compression-level: 0
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build pinned native dependencies
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/restore@v4
+        id: incremental
         with:
-          name: cw03-modules-00
-          path: /tmp/cw03-offline/modules.part-00
-          compression-level: 0
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
+          path: /home/runner/.cache/go-build
+          key: cw03-ubuntu24-go1264-${{ github.sha }}
+          restore-keys: |
+            cw03-ubuntu24-go1264-
+            reporting-ubuntu24-go1264-
+            phase30-31-ubuntu24-go1264-
+      - name: Reporting and shared-contract regression tests
+        run: go test -count=1 -timeout=10m ./internal/exec ./internal/semantics/... ./internal/reporting ./internal/reportingapi ./internal/store/postgres ./sdk/chartworks
+      - name: CW-03 real persistence acceptance
+        if: always()
+        run: go test -count=1 -v -timeout=10m ./test/acceptance -run TestCW03
+      - name: Verify no source mutation
+        if: always()
+        run: git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always() && steps.incremental.outcome == 'success' && steps.incremental.outputs.cache-hit != 'true'
         with:
-          name: cw03-modules-01
-          path: /tmp/cw03-offline/modules.part-01
-          compression-level: 0
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cw03-modules-02
-          path: /tmp/cw03-offline/modules.part-02
-          compression-level: 0
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cw03-modules-03
-          path: /tmp/cw03-offline/modules.part-03
-          if-no-files-found: ignore
-          compression-level: 0
-          retention-days: 3
+          path: /home/runner/.cache/go-build
+          key: ${{ steps.incremental.outputs.cache-primary-key }}
