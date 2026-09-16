@@ -1,0 +1,33 @@
+name: CW03 pinned source snapshot
+
+on:
+  push:
+    branches: [feat/cw-03-reporting-output-policy]
+    paths: ['.github/workflows/cw03-source-snapshot.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '35027d93d68c9c2ad3afc4ef26b9deca2b28aa73'
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bundle only the accepted main baseline
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 35027d93d68c9c2ad3afc4ef26b9deca2b28aa73
+          git update-ref refs/heads/cw03-base HEAD
+          git bundle create /tmp/chartworks-source.bundle refs/heads/cw03-base
+          git bundle verify /tmp/chartworks-source.bundle
+          sha256sum /tmp/chartworks-source.bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw03-pinned-source
+          path: /tmp/chartworks-source.bundle
+          retention-days: 1
