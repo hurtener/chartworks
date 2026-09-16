@@ -49,7 +49,7 @@ func questionIntent(intent string) string {
 	cues := map[string]string{
 		"compare": "comparison", "comparison": "comparison", "comparar": "comparison", "comparación": "comparison", "comparacion": "comparison", "ranking": "comparison",
 		"trend": "trend", "trends": "trend", "evolution": "trend", "tendencia": "trend", "evolución": "trend", "evolucion": "trend", "line": "trend", "area": "trend", "área": "trend",
-		"composition": "composition", "share": "composition", "shares": "composition", "proportion": "composition", "pie": "composition", "donut": "composition", "composición": "composition", "participación": "composition", "participacion": "composition", "proporción": "composition",
+		"composition": "composition", "share": "composition", "shares": "composition", "proportion": "composition", "pie": "composition", "donut": "composition", "composición": "composition", "participación": "composition", "participacion": "composition", "proporción": "composition", //nolint:misspell // Intentional unaccented Spanish query cue.
 		"correlation": "relationship", "relationship": "relationship", "scatter": "relationship", "correlación": "relationship", "relación": "relationship",
 		"composicion": "composition",  //nolint:misspell // Intentional unaccented Spanish query cue.
 		"correlacion": "relationship", //nolint:misspell // Intentional unaccented Spanish query cue.
