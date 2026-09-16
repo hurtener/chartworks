@@ -326,7 +326,7 @@ func prepareClarificationAnswers(definition RuleSetDefinition, input Clarificati
 		}
 		pattern := patterns[key.pattern]
 		answers[key] = ClarificationAnswer{Topic: definition.Topic, TopicVersion: definition.TopicVersion, RulesetVersion: definition.Version, Pattern: key.pattern, PatternVersion: pattern.Version, Slot: key.slot, Value: &ClarificationValue{OptionID: legacy.Value}}
-		origins[key] = "legacy_reference_choice"
+		origins[key] = "answer"
 	}
 	return answers, origins, errors
 }

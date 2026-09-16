@@ -78,6 +78,9 @@ func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 }
 
 func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec.QueryRecord) error {
+	if err := nlqexec.ValidateClarificationRecord(q, scope.Tenant(), scope.Actor()); err != nil {
+		return err
+	}
 	if q.Topics == nil {
 		q.Topics = []string{}
 	}
@@ -263,7 +266,7 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 		}
 		out.Result = &parsed
 	}
-	return nil
+	return nlqexec.ValidateClarificationRecord(*out, tenantValue, actorValue)
 }
 func stringValue(value *string) string {
 	if value == nil {
@@ -274,6 +277,9 @@ func stringValue(value *string) string {
 
 // UpdateQuery advances mutable execution metadata under a query revision CAS.
 func (d *DB) UpdateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord, expected int64) error {
+	if err := nlqexec.ValidateClarificationRecord(q, scope.Tenant(), scope.Actor()); err != nil {
+		return err
+	}
 	if err := checkScope(scope); err != nil || q.ID == "" || q.Session == "" || expected < 1 || q.Revision != expected+1 {
 		return store.ErrInvalid
 	}

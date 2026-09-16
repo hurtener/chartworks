@@ -158,6 +158,7 @@ type ContextView struct {
 // RouteResult is a detached routing and context result. A Clarification or
 // StrategyNoRoute result has no Context and therefore cannot reach generation.
 type RouteResult struct {
+	ConstraintBinding     *ConstraintBindingReceipt            `json:"constraint_binding,omitempty"`
 	Resolutions           []semantics.ClarificationResolution  `json:"resolutions,omitempty"`
 	ClarificationOutcomes []semantics.ClarificationSlotOutcome `json:"clarification_outcomes,omitempty"`
 	ClarificationPins     *ClarificationPins                   `json:"clarification_pins,omitempty"`

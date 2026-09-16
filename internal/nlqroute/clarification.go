@@ -343,3 +343,15 @@ func CloneAnswers(in []semantics.ClarificationAnswer) []semantics.ClarificationA
 
 // IsClarificationFailure identifies a typed terminal repair request.
 func IsClarificationFailure(err error) bool { var c *Clarification; return errors.As(err, &c) }
+
+// ConstraintBindingReceipt is content-free evidence of a semantically bound
+// candidate and its ordinary validator-issued read receipt. It grants no access.
+type ConstraintBindingReceipt struct {
+	SchemaVersion int      `json:"schema_version"`
+	Dialect       string   `json:"dialect"`
+	ResolutionIDs []string `json:"resolution_ids"`
+	SourceBinding string   `json:"source_binding"`
+	Statement     string   `json:"statement"`
+	Parameters    string   `json:"parameters"`
+	ReadManifest  string   `json:"read_manifest"`
+}

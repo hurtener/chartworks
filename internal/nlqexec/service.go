@@ -21,12 +21,13 @@ import (
 )
 
 type admission struct {
-	route     nlqroute.RouteResult
-	assembled nlq.AssembledContext
-	binding   exec.Binding
-	source    string
-	context   string
-	resources []access.Resource
+	clarificationFields []clarificationField
+	route               nlqroute.RouteResult
+	assembled           nlq.AssembledContext
+	binding             exec.Binding
+	source              string
+	context             string
+	resources           []access.Resource
 }
 
 type generatedCandidate struct {
@@ -93,11 +94,17 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	if err != nil {
 		return PlanResult{}, err
 	}
-	if old.Session != e.Session() || old.Status == "preflight" {
+	if old.Session != e.Session() || (old.Status == "preflight" && old.Route.Clarification == nil) {
 		return PlanResult{}, ErrForeignSession
 	}
-	if old.SQL == "" {
+	if old.SQL == "" && old.Status != "preflight" {
 		return PlanResult{}, ErrNoPlan
+	}
+	if err := validateAnswerEdits(old, in.QuestionRequest); err != nil {
+		return PlanResult{}, err
+	}
+	if err := s.recheckStoredClarifications(ctx, e, old); err != nil {
+		return PlanResult{}, err
 	}
 	parent, err := s.admissionForQuery(ctx, e, old)
 	if err != nil {
@@ -112,7 +119,10 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	}
 	// The parent SQL is a protected generation base. It is injected only into
 	// the in-process edit lane; the request/response types never carry it.
-	question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: old.SQL})
+	if old.SQL != "" && len(old.Route.Resolutions) == 0 && len(in.Answers) == 0 {
+		question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: old.SQL})
+	}
+
 	return s.plan(ctx, e, question, "", in.QueryID, "query.execute")
 }
 
@@ -175,6 +185,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if record.Session != e.Session() || record.Status == "preflight" || record.SQL == "" {
 		return RunResult{}, ErrNoPlan
 	}
+	if err := s.recheckStoredClarifications(ctx, e, record); err != nil {
+		return RunResult{}, err
+	}
 	record.Operation = in.Operation
 	var current admission
 	if record.EvidenceStale {
@@ -191,6 +204,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		return RunResult{}, err
 	}
 	if err := gatewayRequirement(e, "query.execute", current.resources); err != nil {
+		return RunResult{}, err
+	}
+	if err := verifyClarificationBinding(record.Route, current.binding, record.SQL, record.Parameters); err != nil {
 		return RunResult{}, err
 	}
 	plan, err := s.validator.Validate(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: record.SQL, Parameters: record.Parameters})
@@ -434,6 +450,9 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 	if err != nil {
 		return PlanResult{}, err
 	}
+	if err := sealClarificationBinding(&admitted.route, admitted.binding, candidate, validated); err != nil {
+		return PlanResult{}, err
+	}
 	record := queryRecord(e, id, "planned", parent, question, admitted)
 	record.Operation, record.SQL, record.Parameters, record.Generation, record.Receipt, record.ValidationFixes = operation, candidate.SQL, candidate.Parameters, generation, receipt, fixes
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
@@ -447,6 +466,13 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 }
 
 func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionRequest, withBinding bool) (admission, error) {
+	pre, err := s.clarificationPreflight(ctx, e, in)
+	if err != nil {
+		return admission{}, err
+	}
+	if pre != nil && pre.route.Clarification != nil {
+		return *pre, nil
+	}
 	route, err := s.router.Route(ctx, e, in.routeRequest())
 	if err != nil {
 		// Routing evaluates the request against the current publication. Its
@@ -461,7 +487,15 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 	// RouteResult is persisted as the semantic base for later refinement. The
 	// request contains only bounded caller selections; authority and SQL remain
 	// resolved from the current/retained domain seams below.
-	route.Request = in.routeRequest()
+	if route.Request.Question == "" {
+		if len(in.Answers) > 0 {
+			return admission{}, ErrClarificationBinding
+		}
+		route.Request = in.routeRequest()
+	}
+	if pre != nil && !sameClarificationEvidence(pre.route, route) {
+		return admission{}, staleClarification(in.Locale)
+	}
 	assembled, err := route.GenerationContext()
 	if err != nil {
 		if route.Outcome == nlq.StrategyClarify || route.Outcome == nlq.StrategyNoRoute {
@@ -470,6 +504,9 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 		return admission{route: route}, err
 	}
 	result := admission{route: route, assembled: assembled}
+	if pre != nil {
+		result.clarificationFields = pre.clarificationFields
+	}
 	for _, topicID := range route.Topics {
 		contract, contractErr := s.topics.Contract(ctx, e, topicID)
 		if contractErr != nil {
@@ -507,6 +544,9 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 			return admission{}, err
 		}
 	}
+	if withBinding && pre != nil && len(pre.route.Resolutions) > 0 && exec.Hash(pre.binding) != exec.Hash(result.binding) {
+		return admission{}, ErrClarificationBinding
+	}
 	return result, nil
 }
 
@@ -523,7 +563,8 @@ func (s *Service) admissionForQuery(ctx context.Context, e identity.Envelope, q 
 func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest {
 	request := old.Route.Request
 	base := QuestionRequest{
-		Topic: request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
+		Answers: nlqroute.CloneAnswers(request.Answers),
+		Topic:   request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
 		Question: request.Question, Kinds: append([]string(nil), request.Kinds...), LimitPerKind: request.LimitPerKind,
 		References: append([]semantics.Reference(nil), request.References...), Choices: append([]nlqroute.ChoiceSelection(nil), request.Choices...),
 		Joins: append([]nlqroute.JoinChoice(nil), request.JoinChoices...), MetricIDs: append([]string(nil), request.MetricIDs...),
@@ -548,6 +589,7 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 	}
 	base.References = mergeReferences(base.References, delta.References)
 	base.Choices = mergeChoices(base.Choices, delta.Choices)
+	base.Answers = mergeAnswers(base.Answers, delta.Answers)
 	base.Joins = mergeJoins(base.Joins, delta.Joins)
 	base.MetricIDs = mergeStrings(base.MetricIDs, delta.MetricIDs)
 	base.Examples = append(base.Examples, delta.Examples...)
@@ -836,7 +878,12 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
 	}
-	plan, validateErr := s.validator.Validate(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: candidate.SQL, Parameters: candidate.Parameters})
+	candidate, bindErr := bindClarificationCandidate(a, candidate)
+	var plan exec.Plan
+	validateErr := bindErr
+	if bindErr == nil {
+		plan, validateErr = s.validator.Validate(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: candidate.SQL, Parameters: candidate.Parameters})
+	}
 	if validateErr == nil {
 		return candidate, 0, receipt, plan, nil
 	}
@@ -847,6 +894,10 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	receipt = appendReceipts(receipt, fixedReceipt)
 	if fixErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, fixErr)
+	}
+	fixed, bindErr = bindClarificationCandidate(a, fixed)
+	if bindErr != nil {
+		return generatedCandidate{}, 1, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, bindErr)
 	}
 	plan, validateErr = s.validator.Validate(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: fixed.SQL, Parameters: fixed.Parameters})
 	if validateErr != nil {
@@ -967,7 +1018,7 @@ func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequ
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {
-	return nlqroute.RouteRequest{Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank}
+	return nlqroute.RouteRequest{Answers: nlqroute.CloneAnswers(r.Answers), Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank}
 }
 
 func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
