@@ -131,7 +131,7 @@ func produce(t *testing.T) fixture {
 	})
 	created := time.Now().UTC().Truncate(time.Second)
 	target := reporting.DeliveryTarget{Kind: "block", ID: "viewer-fixture", Revision: 1}
-	choices := []reporting.ViewerOutputChoice{{ID: "table-main", Kind: "table", Title: "Table one"}, {ID: "table-second", Kind: "table", Title: "Table two"}}
+	choices := []reporting.ViewerOutputChoice{{ID: "table-main", Kind: "table", Title: "Table one", DisplayOrder: 0, Enabled: true, DefaultSelected: true, Selected: true, State: "selected"}, {ID: "table-second", Kind: "table", Title: "Table two", DisplayOrder: 1, Enabled: true, DefaultSelected: true, Selected: true, State: "selected"}}
 	filters := []reporting.ViewerFilter{{Page: "main", Label: "Minimum", Parameter: reporting.Parameter{Name: "minimum", Type: "integer", Required: true, Default: &reporting.Value{Literal: "1"}, Min: "1", Max: "2"}}}
 	next := 2
 	out.View = reporting.DeliveryViewResult{

@@ -13,6 +13,34 @@ import (
 // ErrBlockRequest rejects a malformed coordinate before any network call.
 var ErrBlockRequest = errors.New("chartworks: invalid block coordinate")
 
+// BlockDefinitionVersion is the current authored reporting definition version.
+const BlockDefinitionVersion = reporting.CurrentSchemaVersion
+
+// BlockOutputMetadata is inert localized output text.
+type BlockOutputMetadata = reporting.OutputMetadata
+
+// BlockOutputIntent carries enablement, default selection and explicit display order.
+type BlockOutputIntent = reporting.OutputIntent
+
+// BlockOutputSelection is the accepted revision-bound output selection.
+type BlockOutputSelection = reporting.OutputSelection
+
+// BlockQueryLimits are narrowing source/query ceilings, not estimated cost guarantees.
+type BlockQueryLimits = reporting.QueryLimits
+
+// BlockResultFieldPolicy can only restrict inherited reviewed sensitivity.
+type BlockResultFieldPolicy = reporting.ResultFieldPolicy
+
+// BlockEffectiveFieldPolicy is metadata, not a data-access grant.
+type BlockEffectiveFieldPolicy = reporting.EffectiveFieldPolicy
+
+// MigrateBlockDefinition makes a detached v2 draft candidate. Unsupported
+// narrative mappings return an error; nothing is saved, validated or published.
+// Submit the result through the normal EditBlock CAS and validation lifecycle.
+func MigrateBlockDefinition(d BlockDefinition) (BlockDefinition, error) {
+	return reporting.MigrateDefinition(d)
+}
+
 // BlockParameterizeRequest mirrors the common governed block wire contract.
 type BlockParameterizeRequest = reporting.ParameterizeRequest
 

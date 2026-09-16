@@ -46,11 +46,12 @@ type TextWidget struct {
 // BlockWidget may follow publication at admission (revision zero), or pin an
 // exact published revision. It cannot select a private block revision implicitly.
 type BlockWidget struct {
-	Block     string   `json:"block"`
-	Revision  int64    `json:"revision"`
-	Outputs   []string `json:"outputs"`
-	Policy    string   `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale"`
-	Narrative bool     `json:"narrative"`
+	Limits    *QueryLimits `json:"limits,omitempty"`
+	Block     string       `json:"block"`
+	Revision  int64        `json:"revision"`
+	Outputs   []string     `json:"outputs" wire:"optional"`
+	Policy    string       `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale"`
+	Narrative bool         `json:"narrative"`
 }
 
 // QueryWidget is an explicitly dynamic lane, not a block or a certificate.

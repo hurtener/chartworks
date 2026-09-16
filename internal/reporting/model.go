@@ -15,8 +15,12 @@ import (
 	"github.com/hurtener/chartworks/internal/sources"
 )
 
-// SchemaVersion identifies the closed governed-block definition format.
+// SchemaVersion is the retained v1 wire version. Existing records keep their hashes.
 const SchemaVersion = 1
+
+// CurrentSchemaVersion adds explicit output intent and bounded reporting policies.
+// Migration creates a new draft; published v1 bytes are never rewritten.
+const CurrentSchemaVersion = 2
 
 // CanonicalizationVersion identifies the canonical definition and evidence hashing contract.
 const CanonicalizationVersion = "block-definition-v1"
@@ -137,6 +141,7 @@ type Resolved struct {
 // Narrative is a bounded saved definition only. Phase 28 owns actual generation
 // through Bifrost. No tools, executable templates, URLs or HTML can be supplied.
 type Narrative struct {
+	MaxClaims       int      `json:"max_claims,omitempty" jsonschema:"minimum=1,maximum=32"`
 	Type            string   `json:"type" jsonschema:"enum=summary,enum=comparison,enum=explanation"`
 	Instructions    string   `json:"instructions"`
 	Fields          []string `json:"fields"`
@@ -160,6 +165,7 @@ type Narrative struct {
 // Output is a closed tagged union. A chart/KPI/table has exactly one saved phase
 // 20 mapping; a narrative has exactly one bounded narrative specification.
 type Output struct {
+	Intent    *OutputIntent   `json:"intent,omitempty"`
 	ID        string          `json:"id"`
 	Kind      string          `json:"kind" jsonschema:"enum=chart,enum=kpi,enum=table,enum=narrative"`
 	Mapping   *charts.Mapping `json:"mapping,omitempty"`
@@ -169,16 +175,18 @@ type Output struct {
 // Definition is private authoring/persistence input. Never return this type from
 // a normal block read: SQL has its own separately authorized projection.
 type Definition struct {
-	SchemaVersion  int          `json:"schema_version" jsonschema:"enum=1"`
-	Metadata       []Localized  `json:"metadata"`
-	Source         string       `json:"source"`
-	Context        string       `json:"context"`
-	Topics         []TopicPin   `json:"topics"`
-	Template       *TemplatePin `json:"template,omitempty"`
-	SQL            string       `json:"sql"`
-	Parameters     []Parameter  `json:"parameters"`
-	ExpectedSchema []exec.Field `json:"expected_schema"`
-	Outputs        []Output     `json:"outputs"`
+	QueryLimits    *QueryLimits        `json:"query_limits,omitempty"`
+	ResultPolicy   []ResultFieldPolicy `json:"result_policy,omitempty"`
+	SchemaVersion  int                 `json:"schema_version" jsonschema:"enum=1,enum=2"`
+	Metadata       []Localized         `json:"metadata"`
+	Source         string              `json:"source"`
+	Context        string              `json:"context"`
+	Topics         []TopicPin          `json:"topics"`
+	Template       *TemplatePin        `json:"template,omitempty"`
+	SQL            string              `json:"sql"`
+	Parameters     []Parameter         `json:"parameters"`
+	ExpectedSchema []exec.Field        `json:"expected_schema"`
+	Outputs        []Output            `json:"outputs"`
 }
 
 // Provenance records the server-derived origin of an authored revision.
@@ -238,25 +246,26 @@ type Revision struct {
 // Evidence is content-free validation evidence. Observed schema and the real
 // query attempt are retained, but SQL, parameter values and result rows are not.
 type Evidence struct {
-	ID                      string       `json:"id"`
-	Revision                int64        `json:"revision"`
-	RevisionID              string       `json:"revision_id"`
-	DefinitionDigest        string       `json:"definition_digest"`
-	ExecutionDigest         string       `json:"execution_digest"`
-	ParameterDigest         string       `json:"parameter_digest"`
-	DependencyDigest        string       `json:"dependency_digest"`
-	SchemaDigest            string       `json:"schema_digest"`
-	CanonicalizationVersion string       `json:"canonicalization_version"`
-	ValidatorVersion        string       `json:"validator_version"`
-	ValidationManifest      string       `json:"validation_manifest"`
-	Schema                  []exec.Field `json:"schema"`
-	Attempt                 exec.Attempt `json:"attempt"`
-	Actor                   string       `json:"actor"`
-	CreatedAt               time.Time    `json:"created_at"`
-	ExpiresAt               time.Time    `json:"expires_at"`
-	ResolvedAt              time.Time    `json:"resolved_at"`
-	Timezone                string       `json:"timezone"`
-	Parameters              []BoundValue `json:"parameters"`
+	ResultPolicy            []EffectiveFieldPolicy `json:"result_policy,omitempty"`
+	ID                      string                 `json:"id"`
+	Revision                int64                  `json:"revision"`
+	RevisionID              string                 `json:"revision_id"`
+	DefinitionDigest        string                 `json:"definition_digest"`
+	ExecutionDigest         string                 `json:"execution_digest"`
+	ParameterDigest         string                 `json:"parameter_digest"`
+	DependencyDigest        string                 `json:"dependency_digest"`
+	SchemaDigest            string                 `json:"schema_digest"`
+	CanonicalizationVersion string                 `json:"canonicalization_version"`
+	ValidatorVersion        string                 `json:"validator_version"`
+	ValidationManifest      string                 `json:"validation_manifest"`
+	Schema                  []exec.Field           `json:"schema"`
+	Attempt                 exec.Attempt           `json:"attempt"`
+	Actor                   string                 `json:"actor"`
+	CreatedAt               time.Time              `json:"created_at"`
+	ExpiresAt               time.Time              `json:"expires_at"`
+	ResolvedAt              time.Time              `json:"resolved_at"`
+	Timezone                string                 `json:"timezone"`
+	Parameters              []BoundValue           `json:"parameters"`
 }
 
 // ValidationRecord is private server-derived dependency evidence for persistence.
@@ -311,23 +320,26 @@ type Trust struct {
 // View deliberately has no Definition, SQL or private capture provenance field.
 // JSON reflection cannot accidentally expose them when a new field is added.
 type View struct {
-	State           State        `json:"state"`
-	Revision        int64        `json:"revision"`
-	RevisionID      string       `json:"revision_id"`
-	Digest          string       `json:"digest"`
-	ExecutionDigest string       `json:"execution_digest"`
-	Metadata        []Localized  `json:"metadata"`
-	Source          string       `json:"source"`
-	Context         string       `json:"context"`
-	Topics          []TopicPin   `json:"topics"`
-	Parameters      []Parameter  `json:"parameters"`
-	ExpectedSchema  []exec.Field `json:"expected_schema"`
-	Outputs         []Output     `json:"outputs"`
-	Actor           string       `json:"actor"`
-	CreatedAt       time.Time    `json:"created_at"`
-	Private         bool         `json:"private"`
-	Trust           Trust        `json:"trust"`
-	Evidence        *Evidence    `json:"validation,omitempty"`
+	SchemaVersion   int                    `json:"schema_version"`
+	QueryLimits     *QueryLimits           `json:"query_limits,omitempty"`
+	ResultPolicy    []EffectiveFieldPolicy `json:"result_policy"`
+	State           State                  `json:"state"`
+	Revision        int64                  `json:"revision"`
+	RevisionID      string                 `json:"revision_id"`
+	Digest          string                 `json:"digest"`
+	ExecutionDigest string                 `json:"execution_digest"`
+	Metadata        []Localized            `json:"metadata"`
+	Source          string                 `json:"source"`
+	Context         string                 `json:"context"`
+	Topics          []TopicPin             `json:"topics"`
+	Parameters      []Parameter            `json:"parameters"`
+	ExpectedSchema  []exec.Field           `json:"expected_schema"`
+	Outputs         []Output               `json:"outputs"`
+	Actor           string                 `json:"actor"`
+	CreatedAt       time.Time              `json:"created_at"`
+	Private         bool                   `json:"private"`
+	Trust           Trust                  `json:"trust"`
+	Evidence        *Evidence              `json:"validation,omitempty"`
 }
 
 // SQLView is the separately authorized SQL-bearing revision projection.
@@ -411,7 +423,7 @@ type ValidateRequest struct {
 // PreviewRequest adds an optional saved-output subset to a private validation request.
 type PreviewRequest struct {
 	ValidateRequest
-	Outputs []string `json:"outputs"`
+	Outputs []string `json:"outputs" wire:"optional"`
 }
 
 // ValidationResult returns persisted validation evidence and the resulting block state.

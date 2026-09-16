@@ -46,14 +46,23 @@ type DeliverySearchResult struct {
 type DeliveryDescribeRequest struct {
 	Target  DeliveryTarget `json:"target"`
 	Locale  string         `json:"locale"`
-	Outputs []string       `json:"outputs"`
+	Outputs []string       `json:"outputs" wire:"optional"`
 }
 
 // ViewerOutputChoice retains stable IDs/order without exposing narrative prompts.
 type ViewerOutputChoice struct {
-	ID    string `json:"id"`
-	Kind  string `json:"kind"`
-	Title string `json:"title"`
+	Metadata        []OutputMetadata `json:"metadata,omitempty"`
+	Description     string           `json:"description"`
+	Locale          string           `json:"locale"`
+	DisplayOrder    int              `json:"display_order"`
+	Enabled         bool             `json:"enabled"`
+	DefaultSelected bool             `json:"default_selected"`
+	Selected        bool             `json:"selected"`
+	State           string           `json:"state"`
+	Code            string           `json:"code,omitempty"`
+	ID              string           `json:"id"`
+	Kind            string           `json:"kind"`
+	Title           string           `json:"title"`
 }
 
 // ViewerFilter describes a business parameter, not an authorization predicate.
@@ -65,25 +74,30 @@ type ViewerFilter struct {
 
 // DeliveryDescription exposes presentation and typed business inputs only.
 type DeliveryDescription struct {
-	Version  string                   `json:"version"`
-	Resource DeliveryResource         `json:"resource"`
-	Outputs  []ViewerOutputChoice     `json:"outputs"`
-	Filters  []ViewerFilter           `json:"filters"`
-	Pages    []CompositionPageSummary `json:"pages"`
-	Trust    *Trust                   `json:"trust,omitempty"`
-	Dynamic  bool                     `json:"dynamic"`
-	Timezone string                   `json:"timezone"`
+	Selection     *OutputSelection         `json:"selection,omitempty"`
+	SelectionCode string                   `json:"selection_code,omitempty"`
+	QueryLimits   *QueryLimits             `json:"query_limits,omitempty"`
+	ResultPolicy  []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
+	Version       string                   `json:"version"`
+	Resource      DeliveryResource         `json:"resource"`
+	Outputs       []ViewerOutputChoice     `json:"outputs"`
+	Filters       []ViewerFilter           `json:"filters"`
+	Pages         []CompositionPageSummary `json:"pages"`
+	Trust         *Trust                   `json:"trust,omitempty"`
+	Dynamic       bool                     `json:"dynamic"`
+	Timezone      string                   `json:"timezone"`
 }
 
 // DeliveryRunRequest is deliberately side-effecting. It cannot contain SQL,
 // arbitrary query text, a bearer, a binding, a source URL or a replacement chart.
 // A changed filter needs a new key and fresh signed target/dependency authority.
 type DeliveryRunRequest struct {
+	Limits         *QueryLimits   `json:"limits,omitempty"`
 	Target         DeliveryTarget `json:"target"`
 	Key            string         `json:"key"`
 	Arguments      []Argument     `json:"arguments"`
 	Pages          []PageInput    `json:"pages"`
-	Outputs        []string       `json:"outputs"`
+	Outputs        []string       `json:"outputs" wire:"optional"`
 	Policy         string         `json:"policy"`
 	Locale         string         `json:"locale"`
 	Timezone       string         `json:"timezone"`
@@ -161,6 +175,8 @@ type ViewerPage struct {
 // manifest itself, source credentials, SQL and run-authority tokens never occur.
 // A page of a table preserves its exact labels, units and retained row order.
 type DeliveryViewResult struct {
+	QueryLimits    *QueryLimits             `json:"query_limits,omitempty"`
+	ResultPolicy   []EffectiveFieldPolicy   `json:"result_policy,omitempty"`
 	Policy         string                   `json:"policy,omitempty"`
 	Version        string                   `json:"version"`
 	Summary        DeliveryRunSummary       `json:"summary"`

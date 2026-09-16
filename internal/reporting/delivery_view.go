@@ -26,14 +26,17 @@ type ViewerTable struct {
 // RetainedDigest identifies the full retained output, NOT this paged response.
 // Non-table charts stay complete: the viewer must not silently sample points.
 type ViewerOutput struct {
-	ID             string           `json:"id"`
-	Kind           string           `json:"kind"`
-	State          string           `json:"state"`
-	Code           string           `json:"code"`
-	RetainedDigest string           `json:"retained_digest"`
-	Chart          *charts.Output   `json:"chart,omitempty"`
-	Table          *ViewerTable     `json:"table,omitempty"`
-	Narrative      *NarrativeResult `json:"narrative,omitempty"`
+	ResultPolicy   []EffectiveFieldPolicy `json:"result_policy,omitempty"`
+	Intent         *OutputIntent          `json:"intent,omitempty"`
+	EvidencePolicy []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
+	ID             string                 `json:"id"`
+	Kind           string                 `json:"kind"`
+	State          string                 `json:"state"`
+	Code           string                 `json:"code"`
+	RetainedDigest string                 `json:"retained_digest"`
+	Chart          *charts.Output         `json:"chart,omitempty"`
+	Table          *ViewerTable           `json:"table,omitempty"`
+	Narrative      *NarrativeResult       `json:"narrative,omitempty"`
 }
 
 func (s *Delivery) viewRequest(in DeliveryViewRequest) (DeliveryViewRequest, error) {
@@ -62,7 +65,7 @@ func tableBounds(total, offset, limit int) (ViewerPage, int, error) {
 }
 
 func (s *Delivery) projectOutput(v RetainedOutput, in DeliveryViewRequest) (*ViewerOutput, ViewerPage, error) {
-	out := &ViewerOutput{ID: v.ID, Kind: v.Kind, State: v.State, Code: v.Code, RetainedDigest: v.Digest}
+	out := &ViewerOutput{ID: v.ID, Kind: v.Kind, State: v.State, Code: v.Code, RetainedDigest: v.Digest, Intent: clone(v.Intent), EvidencePolicy: clone(v.EvidencePolicy), ResultPolicy: clone(v.ResultPolicy)}
 	bounds := ViewerPage{Offset: 0, Limit: in.Limit, Total: 0}
 	if v.State != "succeeded" {
 		if in.Offset != 0 {
@@ -168,21 +171,19 @@ func (s *Delivery) viewBlock(ctx context.Context, e identity.Envelope, out *Deli
 	if v.State == "expired" {
 		return nil
 	}
-	for _, item := range v.Outputs {
-		out.Outputs = append(out.Outputs, ViewerOutputChoice{ID: item.ID, Kind: item.Kind, Title: item.ID})
+	out.QueryLimits, out.ResultPolicy = clone(v.QueryLimits), clone(v.ResultPolicy)
+	out.Outputs = viewerChoices(v.Selection, v.Locale)
+	if v.Selection == nil {
+		for index, item := range v.Outputs {
+			out.Outputs = append(out.Outputs, ViewerOutputChoice{ID: item.ID, Kind: item.Kind, Title: item.ID, DisplayOrder: index, Enabled: true, Selected: true, DefaultSelected: true, State: "selected"})
+		}
 	}
-	if out.Selection.Output == "" && len(out.Outputs) != 0 {
-		out.Selection.Output = out.Outputs[0].ID
+	out.Selection.Output, err = chooseRetainedOutput(out.Outputs, out.Selection.Output)
+	if err != nil {
+		return err
 	}
 	if out.Selection.Output == "" {
 		return nil
-	}
-	found := false
-	for _, item := range out.Outputs {
-		found = found || item.ID == out.Selection.Output
-	}
-	if !found {
-		return access.ErrNotFound
 	}
 	if v.State != "succeeded" && v.State != "partial" {
 		return nil
@@ -238,6 +239,8 @@ func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out
 		return nil
 	}
 	out.Trust, out.Observed = clone(selected.Trust), clone(selected.Observed)
+	out.QueryLimits = clone(selected.QueryLimits)
+	out.Outputs = viewerChoices(selected.Selection, out.Locale)
 	if v.State != "completed" && v.State != "partial" {
 		return nil
 	}
@@ -261,18 +264,19 @@ func (s *Delivery) viewComposition(ctx context.Context, e identity.Envelope, out
 			return access.ErrNotFound
 		}
 		out.Selection.Output = "result"
-		out.Outputs = []ViewerOutputChoice{{ID: "result", Kind: "table", Title: selected.ID}}
+		out.Outputs = []ViewerOutputChoice{{ID: "result", Kind: "table", Title: selected.ID, Enabled: true, Selected: true, DefaultSelected: true, State: "selected"}}
 		result := payload.Query.Execution.Result
 		if result == nil {
 			return ErrIncomplete
 		}
 		return s.queryTable(ctx, out, *result)
 	}
-	for _, output := range payload.Outputs {
-		out.Outputs = append(out.Outputs, ViewerOutputChoice{ID: output.ID, Kind: output.Kind, Title: output.ID})
+	if selected.Selection == nil {
+		out.Outputs = legacyViewerChoices(payload.Outputs, out.Locale)
 	}
-	if out.Selection.Output == "" && len(payload.Outputs) != 0 {
-		out.Selection.Output = payload.Outputs[0].ID
+	out.Selection.Output, err = chooseRetainedOutput(out.Outputs, out.Selection.Output)
+	if err != nil {
+		return err
 	}
 	for _, output := range payload.Outputs {
 		if output.ID == out.Selection.Output {

@@ -156,10 +156,34 @@ func frozenValuesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 		!m.Created.Equal(h.view.Created) || !m.Expires.Equal(h.manifestExpires) || m.Limits.Validate() != nil {
 		return store.ErrInvalid
 	}
+	if reporting.CheckFrozenPolicies(m) != nil {
+		return store.ErrInvalid
+	}
 	out.Manifest = &m
 	out.View.Parameters = append([]reporting.BoundValue{}, m.Resolved.Values...)
 	out.View.Trust = m.Trust
 	out.View.Policy = m.Policy
+	out.View.Selection = m.Selection
+	out.View.QueryLimits = m.QueryLimits
+	out.View.ResultPolicy = m.ResultPolicy
+	if m.Selection == nil {
+		// Additive legacy projection only: immutable manifests and digests stay unchanged.
+		ids := make([]string, 0, len(m.Outputs))
+		for _, saved := range m.Outputs {
+			ids = append(ids, saved.ID)
+		}
+		_, selection, selectionErr := reporting.ResolveOutputSelection(m.Revision.Definition, ids)
+		if selectionErr != nil {
+			return store.ErrInvalid
+		}
+		out.View.Selection = &selection
+		caps, capsErr := reporting.RuntimeQueryLimits(m, m.Limits)
+		if capsErr != nil {
+			return store.ErrInvalid
+		}
+		out.View.QueryLimits = &caps
+		out.View.ResultPolicy = reporting.ResolveResultPolicy(m.Revision.Definition, m.Dependencies, m.Definitions)
+	}
 	if result != nil {
 		var r readexec.Result
 		if json.Unmarshal(result, &r) != nil || resultHash == nil || readexec.Hash(r) != *resultHash || len(r.Rows) > m.Limits.MaxRows || len(result) > m.Limits.MaxResultBytes {
@@ -177,6 +201,11 @@ func frozenValuesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 		var output reporting.RetainedOutput
 		if rows.Scan(&raw) != nil || json.Unmarshal(raw, &output) != nil || reporting.CheckFrozenOutput(m, output, output.State == "indeterminate") != nil {
 			return store.ErrInvalid
+		}
+		if output.Kind == "narrative" && output.State == "succeeded" && m.Selection != nil {
+			if out.Result == nil || reporting.CheckFrozenNarrativeEvidence(m, output, *out.Result) != nil {
+				return store.ErrInvalid
+			}
 		}
 		out.Outputs = append(out.Outputs, output)
 		out.View.Outputs = append(out.View.Outputs, reporting.OutputSummary{ID: output.ID, Kind: output.Kind, State: output.State, Code: output.Code, Digest: output.Digest})

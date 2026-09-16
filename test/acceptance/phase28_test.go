@@ -92,7 +92,7 @@ func (r *phase28LostReply) CheckpointFrozenRun(ctx context.Context, inv jobs.Inv
 // These criteria use actual PostgreSQL metadata, a least-privilege warehouse
 // connection, the native SQL validator/executor, and signed Pengui envelopes.
 func TestPhase28(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	query, topics := newPhase18Service(t, f)
 	blocks, err := reporting.New(f.f.db, topics, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(query), config.DefaultReporting())
 	if err != nil {

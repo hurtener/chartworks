@@ -69,7 +69,7 @@ func Registry(validation, capture, observe bool) (*api.Registry, error) {
 			return nil, err
 		}
 		d := api.Definition{Operation: api.Operation{Method: entry.method, Path: entry.path, Action: entry.action.Action(), Effect: "governed_block_metadata"}, ID: entry.id, Summary: entry.summary, ResourceLoader: "reporting.Service and PostgreSQL tenant/revision/parent/private eligibility", Audit: "block lifecycle and common read-attempt journal; no SQL in audit", Response: response, Replay: "never", Errors: []api.ErrorResponse{
-			{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthenticated"}, {Status: 401, Code: "unauthorized"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "stale_validation"}, {Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "invalid_query"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}}
+			{Status: 400, Code: "invalid_request"}, {Status: 400, Code: "output_selection_empty"}, {Status: 400, Code: "output_duplicate"}, {Status: 400, Code: "output_unknown"}, {Status: 400, Code: "output_disabled"}, {Status: 409, Code: "output_not_selected"}, {Status: 400, Code: "narrative_policy_unsupported"}, {Status: 401, Code: "unauthenticated"}, {Status: 401, Code: "unauthorized"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "stale_validation"}, {Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "invalid_query"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}}
 		if entry.in != nil {
 			d.MaxBodyBytes = MaxBodyBytes
 			d.Request, err = api.SchemaFor(entry.id+"Request", entry.in, false, api.NullableCollections)
@@ -392,6 +392,15 @@ func headers(w http.ResponseWriter) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 }
 func httpFault(err error) (int, string) {
+	if code := reporting.SelectionErrorCode(err); code != "" {
+		if code == "output_not_selected" {
+			return 409, code
+		}
+		return 400, code
+	}
+	if errors.Is(err, reporting.ErrNarrativePolicy) {
+		return 400, "narrative_policy_unsupported"
+	}
 	status, code := 503, "unavailable"
 	switch {
 	case errors.Is(err, access.ErrUnauthenticated):

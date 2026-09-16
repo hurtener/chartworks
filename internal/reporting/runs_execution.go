@@ -93,12 +93,21 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 	if err != nil {
 		return RunRecord{}, err
 	}
-	plan, err := s.pinnedPlan(ctx, e, m)
+	caps, err := RuntimeQueryLimits(m, s.limits)
 	if err != nil {
 		return RunRecord{}, err
 	}
-	report, executeErr := s.blocks.executor.Execute(ctx, e, plan, exec.Options{Operation: m.ID, Number: number,
-		Preview: m.Private, Rows: min(m.Limits.MaxRows, s.limits.MaxRows), Bytes: min(m.Limits.MaxResultBytes, s.limits.MaxResultBytes)})
+	if number > caps.QueryAttempts {
+		return RunRecord{}, ErrBudget
+	}
+	queryCtx, stop := context.WithTimeout(ctx, time.Duration(caps.TimeoutMillis)*time.Millisecond)
+	defer stop()
+	plan, err := s.pinnedPlan(queryCtx, e, m)
+	if err != nil {
+		return RunRecord{}, err
+	}
+	report, executeErr := s.blocks.executor.Execute(queryCtx, e, plan, exec.Options{Operation: m.ID, Number: number,
+		Preview: m.Private, Rows: caps.MaxRows, Bytes: caps.MaxBytes})
 	if report.Attempt.ID != "" {
 		if _, err = s.writeRun(ctx, e, inv, RunWrite{Kind: "attempt", Manifest: m, Attempt: &report.Attempt}); err != nil {
 			return RunRecord{}, err
@@ -123,7 +132,16 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 }
 
 func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m RunManifest, result exec.Result, saved Output) (RetainedOutput, error) {
-	out := RetainedOutput{ID: saved.ID, Kind: saved.Kind, State: "succeeded"}
+	out := RetainedOutput{ID: saved.ID, Kind: saved.Kind, State: "succeeded", Intent: clone(saved.Intent)}
+	if saved.Intent != nil && !saved.Intent.Enabled {
+		return out, selectionError("output_disabled")
+	}
+	if m.Selection != nil {
+		out.ResultPolicy = clone(m.ResultPolicy)
+	}
+	if saved.Narrative != nil && m.Selection != nil {
+		out.EvidencePolicy = narrativePolicy(m.ResultPolicy, *saved.Narrative)
+	}
 	if saved.Kind != "narrative" {
 		if saved.Mapping == nil {
 			return out, ErrInvalid
@@ -139,14 +157,26 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 		if n == nil || s.model == nil || m.Model != s.modelVersion || n.ModelVersion != s.modelVersion || n.SchemaVersion != "grounded-narrative-v1" {
 			out.State, out.Code = "failed", "narrative_unavailable"
 		} else {
+			prepared, err := prepareNarrative(m, result, *n)
+			if err != nil {
+				out.State, out.Code = "failed", "narrative_evidence_unavailable"
+				if errors.Is(err, ErrBudget) {
+					out.Code = "narrative_budget_exhausted"
+				}
+				if errors.Is(err, ErrNarrativePolicy) {
+					out.Code = "narrative_policy_unsupported"
+				}
+				out.Digest = out.ContentDigest()
+				return out, nil
+			}
 			// Persist reservations before the SDK may accept a request. A crash
 			// here leaves an honest indeterminate output, not free retry budget.
-			start := RetainedOutput{ID: saved.ID, Kind: "narrative", State: "indeterminate", Code: "narrative_indeterminate", ReservedCalls: n.MaxCalls, ReservedTokens: n.MaxTokens}
+			start := RetainedOutput{ResultPolicy: clone(out.ResultPolicy), ID: saved.ID, Kind: "narrative", Intent: clone(saved.Intent), EvidencePolicy: clone(out.EvidencePolicy), State: "indeterminate", Code: "narrative_indeterminate", ReservedCalls: n.MaxCalls, ReservedTokens: n.MaxTokens}
 			if _, err := s.writeRun(ctx, e, inv, RunWrite{Kind: "output_start", Manifest: m, Output: &start}); err != nil {
 				return out, err
 			}
 			out.ReservedCalls, out.ReservedTokens = start.ReservedCalls, start.ReservedTokens
-			narrative, err := s.generateNarrative(ctx, e, m, saved.ID, result, *n)
+			narrative, err := s.generatePreparedNarrative(ctx, e, m, saved.ID, *n, prepared)
 			if err != nil {
 				out.State, out.Code = "failed", "narrative_failed"
 				out.Narrative = &narrative
@@ -187,7 +217,7 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 	if current.Result == nil && m.ReuseMaxAge > 0 && len(current.View.QueryAttempts) == 0 {
 		// The repository rechecks present pins and reach without warehouse/model I/O.
 		var reused bool
-		current, reused, err = s.repo.ReuseFrozenRun(ctx, inv, m.ID)
+		current, reused, err = s.repo.ReuseFrozenRun(ctx, inv, m.ID, s.limits)
 		if err != nil {
 			return err
 		}
@@ -203,6 +233,9 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 	}
 	if current.Result == nil {
 		return ErrIncomplete
+	}
+	if err := CheckRuntimeResult(m, s.limits, *current.Result); err != nil {
+		return err
 	}
 	byID := make(map[string]RetainedOutput, len(current.Outputs))
 	for _, output := range current.Outputs {
@@ -225,6 +258,16 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 			}
 			byID[saved.ID] = existing
 			continue
+		}
+		if saved.Narrative != nil && s.model != nil && saved.Narrative.ModelVersion == s.modelVersion && saved.Narrative.SchemaVersion == "grounded-narrative-v1" {
+			calls, tokens := 0, 0
+			for _, previous := range byID {
+				calls += previous.ReservedCalls
+				tokens += previous.ReservedTokens
+			}
+			if calls+saved.Narrative.MaxCalls > min(m.Limits.NarrativeCalls, s.limits.NarrativeCalls) || tokens+saved.Narrative.MaxTokens > min(m.Limits.NarrativeTokens, s.limits.NarrativeTokens) {
+				return ErrBudget
+			}
 		}
 		output, buildErr := s.makeOutput(ctx, e, inv, m, *current.Result, saved)
 		if buildErr != nil {

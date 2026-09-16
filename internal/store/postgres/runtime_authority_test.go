@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"github.com/hurtener/chartworks/internal/config"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func TestRuntimePersistenceRequiresAuthorityBeforeStorage(t *testing.T) {
 			return err
 		},
 		"run reuse": func() error {
-			_, _, err := db.ReuseFrozenRun(ctx, jobs.Invocation{}, "run")
+			_, _, err := db.ReuseFrozenRun(ctx, jobs.Invocation{}, "run", config.DefaultReportingExecution())
 			return err
 		},
 		"run read": func() error {

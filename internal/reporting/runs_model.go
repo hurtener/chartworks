@@ -31,22 +31,26 @@ var (
 // RunRequest contains only caller-controlled intent. Replaying this exact
 // request does not resolve a newer revision or replace its accepted logical time.
 type RunRequest struct {
-	Key                string     `json:"key"`
-	Reference          Reference  `json:"reference"`
-	Arguments          []Argument `json:"arguments"`
-	Resolution         Resolution `json:"resolution"`
-	Outputs            []string   `json:"outputs"`
-	Policy             string     `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale,enum=private_preview"`
-	Locale             string     `json:"locale"`
-	Narrative          bool       `json:"narrative"`
-	PartialPolicy      string     `json:"partial_policy,omitempty" jsonschema:"enum=fail,enum=allow_partial"`
-	ReuseMaxAgeSeconds int        `json:"reuse_max_age_seconds"`
+	Limits             *QueryLimits `json:"limits,omitempty"`
+	Key                string       `json:"key"`
+	Reference          Reference    `json:"reference"`
+	Arguments          []Argument   `json:"arguments"`
+	Resolution         Resolution   `json:"resolution"`
+	Outputs            []string     `json:"outputs" wire:"optional"`
+	Policy             string       `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale,enum=private_preview"`
+	Locale             string       `json:"locale"`
+	Narrative          bool         `json:"narrative"`
+	PartialPolicy      string       `json:"partial_policy,omitempty" jsonschema:"enum=fail,enum=allow_partial"`
+	ReuseMaxAgeSeconds int          `json:"reuse_max_age_seconds"`
 }
 
 // RunManifest is private persistence input, never an ordinary API response. The
 // exact approved SQL, binds, source partition and output definitions are sealed
 // once; a serialized manifest is neither authority nor a validator-issued plan.
 type RunManifest struct {
+	Selection     *OutputSelection          `json:"selection,omitempty"`
+	QueryLimits   *QueryLimits              `json:"query_limits,omitempty"`
+	ResultPolicy  []EffectiveFieldPolicy    `json:"result_policy,omitempty"`
 	Version       string                    `json:"version"`
 	ID            string                    `json:"id"`
 	Tenant        string                    `json:"tenant"`
@@ -156,15 +160,18 @@ type NarrativeResult struct {
 // RetainedOutput is one independently checkpointed fan-out of the same logical
 // normalized result. A failed narrative is explicit, not an empty successful one.
 type RetainedOutput struct {
-	ID             string           `json:"id"`
-	Kind           string           `json:"kind"`
-	State          string           `json:"state"`
-	Code           string           `json:"code,omitempty"`
-	Digest         string           `json:"digest"`
-	Chart          *charts.Output   `json:"chart,omitempty"`
-	Narrative      *NarrativeResult `json:"narrative,omitempty"`
-	ReservedCalls  int              `json:"reserved_calls"`
-	ReservedTokens int              `json:"reserved_tokens"`
+	ResultPolicy   []EffectiveFieldPolicy `json:"result_policy,omitempty"`
+	Intent         *OutputIntent          `json:"intent,omitempty"`
+	EvidencePolicy []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
+	ID             string                 `json:"id"`
+	Kind           string                 `json:"kind"`
+	State          string                 `json:"state"`
+	Code           string                 `json:"code,omitempty"`
+	Digest         string                 `json:"digest"`
+	Chart          *charts.Output         `json:"chart,omitempty"`
+	Narrative      *NarrativeResult       `json:"narrative,omitempty"`
+	ReservedCalls  int                    `json:"reserved_calls"`
+	ReservedTokens int                    `json:"reserved_tokens"`
 }
 
 // OutputSummary excludes values and narrative text from list/summary responses.
@@ -178,35 +185,38 @@ type OutputSummary struct {
 
 // RunView has no approved SQL, raw binds, result rows or bearer credentials.
 type RunView struct {
-	Policy          string               `json:"policy,omitempty"`
-	Scheduled       *ScheduledProvenance `json:"scheduled,omitempty"`
-	ID              string               `json:"id"`
-	Block           string               `json:"block"`
-	Revision        int64                `json:"revision"`
-	RevisionDigest  string               `json:"revision_digest"`
-	ManifestDigest  string               `json:"manifest_digest"`
-	State           string               `json:"state"`
-	Code            string               `json:"code,omitempty"`
-	Private         bool                 `json:"private"`
-	Source          string               `json:"source"`
-	Context         string               `json:"context"`
-	PartitionDigest string               `json:"partition_digest"`
-	Locale          string               `json:"locale"`
-	Timezone        string               `json:"timezone"`
-	Created         time.Time            `json:"created_at"`
-	Expires         time.Time            `json:"expires_at"`
-	Observed        *time.Time           `json:"observed_at,omitempty"`
-	Finished        *time.Time           `json:"finished_at,omitempty"`
-	Attempts        int                  `json:"attempts"`
-	QueryAttempts   []exec.Attempt       `json:"query_attempts"`
-	Parameters      []BoundValue         `json:"parameters"`
-	Outputs         []OutputSummary      `json:"outputs"`
-	Trust           Trust                `json:"trust"`
-	ReusedFrom      string               `json:"reused_from,omitempty"`
-	RetainedBytes   int64                `json:"retained_bytes"`
-	ReservedCalls   int                  `json:"reserved_calls"`
-	ReservedTokens  int                  `json:"reserved_tokens"`
-	FrozenVersion   string               `json:"frozen_version"`
+	Selection       *OutputSelection       `json:"selection,omitempty"`
+	QueryLimits     *QueryLimits           `json:"query_limits,omitempty"`
+	ResultPolicy    []EffectiveFieldPolicy `json:"result_policy,omitempty"`
+	Policy          string                 `json:"policy,omitempty"`
+	Scheduled       *ScheduledProvenance   `json:"scheduled,omitempty"`
+	ID              string                 `json:"id"`
+	Block           string                 `json:"block"`
+	Revision        int64                  `json:"revision"`
+	RevisionDigest  string                 `json:"revision_digest"`
+	ManifestDigest  string                 `json:"manifest_digest"`
+	State           string                 `json:"state"`
+	Code            string                 `json:"code,omitempty"`
+	Private         bool                   `json:"private"`
+	Source          string                 `json:"source"`
+	Context         string                 `json:"context"`
+	PartitionDigest string                 `json:"partition_digest"`
+	Locale          string                 `json:"locale"`
+	Timezone        string                 `json:"timezone"`
+	Created         time.Time              `json:"created_at"`
+	Expires         time.Time              `json:"expires_at"`
+	Observed        *time.Time             `json:"observed_at,omitempty"`
+	Finished        *time.Time             `json:"finished_at,omitempty"`
+	Attempts        int                    `json:"attempts"`
+	QueryAttempts   []exec.Attempt         `json:"query_attempts"`
+	Parameters      []BoundValue           `json:"parameters"`
+	Outputs         []OutputSummary        `json:"outputs"`
+	Trust           Trust                  `json:"trust"`
+	ReusedFrom      string                 `json:"reused_from,omitempty"`
+	RetainedBytes   int64                  `json:"retained_bytes"`
+	ReservedCalls   int                    `json:"reserved_calls"`
+	ReservedTokens  int                    `json:"reserved_tokens"`
+	FrozenVersion   string                 `json:"frozen_version"`
 }
 
 // RunRecord is an internal repository result; its manifest/data are protected
@@ -243,7 +253,7 @@ type RunRepository interface {
 	ReadFrozenRun(context.Context, identity.Envelope, string, bool) (RunRecord, error)
 	SealFrozenRun(context.Context, identity.Envelope, jobs.RequestTask, PreparedRun) (RunRecord, error)
 	CheckpointFrozenRun(context.Context, jobs.Invocation, PreparedRunWrite) (RunRecord, error)
-	ReuseFrozenRun(context.Context, jobs.Invocation, string) (RunRecord, bool, error)
+	ReuseFrozenRun(context.Context, jobs.Invocation, string, config.ReportingExecution) (RunRecord, bool, error)
 	ListFrozenArtifacts(context.Context, identity.Envelope, string, int) (ArtifactList, error)
 	CancelFrozenRun(context.Context, identity.Envelope, string) (RunView, error)
 	ExpireFrozenArtifacts(context.Context, identity.Envelope, int) (int64, error)

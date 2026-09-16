@@ -41,7 +41,11 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	default:
 		return record, result, resolved, nil, ErrBusy
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(s.limits.ValidationTimeout))
+	caps, err := resolveQueryLimits(s.limits.Execution, 3, d.QueryLimits)
+	if err != nil {
+		return record, result, resolved, nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, min(time.Duration(s.limits.ValidationTimeout), time.Duration(caps.TimeoutMillis)*time.Millisecond))
 	defer cancel()
 	definitions, refs, err := s.resolveDefinitions(ctx, e, d, true)
 	if err != nil {
@@ -86,7 +90,7 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	if err != nil {
 		return record, result, resolved, nil, err
 	}
-	report, err := s.executor.Execute(ctx, e, plan, exec.Options{Operation: operation, Number: 1, Preview: true, Rows: s.limits.PreviewRows, Bytes: s.limits.PreviewBytes})
+	report, err := s.executor.Execute(ctx, e, plan, exec.Options{Operation: operation, Number: 1, Preview: true, Rows: min(s.limits.PreviewRows, caps.MaxRows), Bytes: min(s.limits.PreviewBytes, caps.MaxBytes)})
 	if err != nil {
 		return record, result, resolved, nil, err
 	}
@@ -113,6 +117,7 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	for _, publication := range definitions {
 		record.Definitions = append(record.Definitions, clone(publication.Definition))
 	}
+	record.Evidence.ResultPolicy = ResolveResultPolicy(d, record.Dependencies, record.Definitions)
 	return record, clone(*report.Result), resolved, refs, nil
 }
 
@@ -151,9 +156,15 @@ func (s *Service) Preview(ctx context.Context, e identity.Envelope, id string, i
 	if err != nil {
 		return PreviewResult{}, err
 	}
-	selected, err := SelectOutputs(snapshot.Revision.Definition.Outputs, in.Outputs)
+	selected, _, err := ResolveOutputSelection(snapshot.Revision.Definition, in.Outputs)
 	if err != nil {
 		return PreviewResult{}, err
+	}
+	if snapshot.Revision.Definition.SchemaVersion == SchemaVersion {
+		selected, err = SelectOutputs(snapshot.Revision.Definition.Outputs, in.Outputs)
+		if err != nil {
+			return PreviewResult{}, err
+		}
 	}
 	record, result, resolved, refs, err := s.validateWork(ctx, e, id, snapshot, in.ValidateRequest)
 	if err != nil {

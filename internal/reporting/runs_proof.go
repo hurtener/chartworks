@@ -19,6 +19,9 @@ type PreparedRun struct {
 }
 
 func prepareRun(e identity.Envelope, m RunManifest) (PreparedRun, error) {
+	if err := CheckFrozenPolicies(m); err != nil {
+		return PreparedRun{}, err
+	}
 	if err := RequireRunManifest(e, m); err != nil {
 		return PreparedRun{}, err
 	}
@@ -44,6 +47,9 @@ func (p PreparedRun) Checked(e identity.Envelope) (RunManifest, error) {
 		m.Created.IsZero() || !m.Expires.After(m.Created) || len(m.Outputs) == 0 || len(m.Outputs) > 32 ||
 		m.PartialPolicy != "fail" && m.PartialPolicy != "allow_partial" || !locale(m.Locale) {
 		return RunManifest{}, ErrInvalid
+	}
+	if err := CheckFrozenPolicies(m); err != nil {
+		return RunManifest{}, err
 	}
 	if err := RequireRunManifest(e, m); err != nil {
 		return RunManifest{}, err
@@ -96,6 +102,9 @@ func (p PreparedRunWrite) Checked(inv jobs.Invocation) (RunWrite, error) {
 		return RunWrite{}, access.ErrNotFound
 	}
 	if err = RequireRunManifest(e, w.Manifest); err != nil {
+		return RunWrite{}, err
+	}
+	if err = CheckFrozenPolicies(w.Manifest); err != nil {
 		return RunWrite{}, err
 	}
 	switch w.Kind {

@@ -39,6 +39,9 @@ func CheckFrozenResult(ctx context.Context, m RunManifest, result exec.Result, a
 		len(result.Rows) > m.Limits.MaxRows || result.Bytes > m.Limits.MaxResultBytes || result.Bytes < 0 {
 		return ErrInvalid
 	}
+	if m.QueryLimits != nil && a.Number > m.QueryLimits.QueryAttempts {
+		return ErrBudget
+	}
 	want := make([]string, 0, len(m.Dependencies))
 	for _, dependency := range m.Dependencies {
 		if dependency.Source != m.Binding.Source || dependency.Context != m.Binding.Context {
@@ -79,8 +82,20 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 			break
 		}
 	}
-	if saved == nil || saved.Kind != o.Kind {
+	if saved == nil || saved.Kind != o.Kind || saved.Intent != nil && !saved.Intent.Enabled {
 		return ErrInvalid
+	}
+	if m.Selection != nil {
+		if digest(o.Intent) != digest(saved.Intent) || digest(o.ResultPolicy) != digest(m.ResultPolicy) {
+			return ErrInvalid
+		}
+		var policy []EffectiveFieldPolicy
+		if saved.Narrative != nil {
+			policy = narrativePolicy(m.ResultPolicy, *saved.Narrative)
+		}
+		if digest(policy) != digest(o.EvidencePolicy) {
+			return ErrInvalid
+		}
 	}
 	if starting {
 		if saved.Narrative == nil || o.Kind != "narrative" || o.State != "indeterminate" || o.Code != "narrative_indeterminate" ||
@@ -93,7 +108,7 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 		return ErrInvalid
 	}
 	if o.State == "failed" {
-		if o.Chart != nil || !slices.Contains([]string{"narrative_unavailable", "narrative_failed", "narrative_indeterminate", "output_failed"}, o.Code) {
+		if o.Chart != nil || !slices.Contains([]string{"narrative_unavailable", "narrative_failed", "narrative_indeterminate", "narrative_evidence_unavailable", "narrative_budget_exhausted", "narrative_policy_unsupported", "output_failed"}, o.Code) {
 			return ErrInvalid
 		}
 		if o.Narrative != nil && (o.Narrative.Text != "" || len(o.Narrative.Claims) != 0 || len(o.Narrative.Evidence) != 0) {
@@ -142,4 +157,68 @@ func FrozenCompletion(m RunManifest, outputs []RetainedOutput) (string, string, 
 	}
 	state, code := frozenOutcome(outputs, m.PartialPolicy)
 	return state, code, nil
+}
+
+// CheckFrozenPolicies binds versioned output intent and effective evidence policy
+// at acceptance and every persistence checkpoint. It never mutates legacy bytes.
+func CheckFrozenPolicies(m RunManifest) error {
+	if m.Selection == nil {
+		if m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || m.QueryLimits != nil || len(m.ResultPolicy) != 0 {
+			return ErrInvalid
+		}
+		for _, output := range m.Outputs {
+			if output.Intent != nil && !output.Intent.Enabled {
+				return selectionError("output_disabled")
+			}
+		}
+		return nil
+	}
+	selected, selection, err := ResolveOutputSelection(m.Revision.Definition, m.Selection.Requested)
+	if err != nil {
+		return err
+	}
+	if digest(selection) != digest(*m.Selection) || digest(selected) != digest(m.Outputs) {
+		return ErrInvalid
+	}
+	if m.QueryLimits == nil || !m.QueryLimits.valid() || m.QueryLimits.MaxRows < 1 || m.QueryLimits.MaxBytes < 1024 || m.QueryLimits.TimeoutMillis < 1000 || m.QueryLimits.QueryAttempts < 1 {
+		return ErrInvalid
+	}
+	caps, err := resolveQueryLimits(m.Limits, 3, m.Revision.Definition.QueryLimits, m.QueryLimits)
+	if err != nil || caps != *m.QueryLimits {
+		return ErrInvalid
+	}
+	if digest(m.ResultPolicy) != digest(ResolveResultPolicy(m.Revision.Definition, m.Dependencies, m.Definitions)) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// CheckFrozenNarrativeEvidence seals the exact reduced evidence, not merely a
+// syntactically valid model-selected claim. The repository calls this against
+// its own retained normalized result before exposing newly generated narratives.
+func CheckFrozenNarrativeEvidence(m RunManifest, output RetainedOutput, result exec.Result) error {
+	if m.Selection == nil || output.Kind != "narrative" || output.State != "succeeded" {
+		return nil
+	}
+	for _, saved := range m.Outputs {
+		if saved.ID != output.ID || saved.Narrative == nil {
+			continue
+		}
+		prepared, err := prepareNarrative(m, result, *saved.Narrative)
+		if err != nil {
+			return err
+		}
+		if output.Narrative == nil || digest(output.Narrative.Evidence) != digest(prepared.evidence) || digest(output.Narrative.Caveats) != digest(prepared.caveats) {
+			return ErrInvalid
+		}
+		return nil
+	}
+	return ErrInvalid
+}
+
+// PreCallNarrativeFailure identifies closed deterministic/unavailable failures
+// that consumed no provider budget. It never permits an unreserved success.
+func PreCallNarrativeFailure(o RetainedOutput) bool {
+	return o.Kind == "narrative" && o.State == "failed" && o.ReservedCalls == 0 && o.ReservedTokens == 0 &&
+		o.Narrative == nil && slices.Contains([]string{"narrative_unavailable", "narrative_evidence_unavailable", "narrative_budget_exhausted", "narrative_policy_unsupported"}, o.Code)
 }
