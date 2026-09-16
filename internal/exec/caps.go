@@ -33,3 +33,11 @@ func (x *Executor) ExecuteCapped(ctx context.Context, e identity.Envelope, p Pla
 	}
 	return x.execute(ctx, e, p, o, &c)
 }
+
+// ConsumerCaps exposes ceilings, not execution authority. ExecuteCapped checks again.
+func (x *Executor) ConsumerCaps() (Caps, int) {
+	if x == nil {
+		return Caps{}, 0
+	}
+	return Caps{Rows: x.settings.RowsCeiling, Bytes: x.settings.BytesCeiling, Timeout: time.Duration(x.settings.Timeout), PlannerCost: x.settings.PlannerCostCeiling}, x.settings.MaxReadAttempts
+}

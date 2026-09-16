@@ -205,6 +205,7 @@ type Candidate struct {
 	dependencies  []string
 	columns       []string
 	checked       bool
+	lineage       []OutputLineage
 }
 
 // Coordinates reveals only addressed metadata for an adapter's current-state lookup.
@@ -253,14 +254,15 @@ func (p Plan) SQL(e identity.Envelope, current Binding) (string, []Parameter, er
 
 // Receipt contains only non-secret validation evidence, never an executable token.
 type Receipt struct {
-	Validated    bool     `json:"validated"`
-	Source       string   `json:"source"`
-	Context      string   `json:"context"`
-	Dialect      string   `json:"dialect,omitempty"`
-	Contract     string   `json:"contract"`
-	Dependencies []string `json:"dependencies"`
-	Columns      []string `json:"columns"`
-	Manifest     string   `json:"manifest"`
+	Validated    bool            `json:"validated"`
+	Source       string          `json:"source"`
+	Context      string          `json:"context"`
+	Dialect      string          `json:"dialect,omitempty"`
+	Contract     string          `json:"contract"`
+	Dependencies []string        `json:"dependencies"`
+	Columns      []string        `json:"columns"`
+	Manifest     string          `json:"manifest"`
+	Lineage      []OutputLineage `json:"lineage,omitempty"`
 }
 
 // Receipt returns a detached result without disclosing SQL or parameter values.
@@ -276,7 +278,10 @@ func (p Plan) Receipt() Receipt {
 	if c.privateProof != "" {
 		manifest = append(manifest, c.privateProof)
 	}
-	return Receipt{Validated: true, Source: c.binding.Source, Context: c.binding.Context, Dialect: c.binding.Dialect, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash(manifest)}
+	if len(c.lineage) > 0 {
+		manifest = append(manifest, c.lineage)
+	}
+	return Receipt{Lineage: cloneLineage(c.lineage), Validated: true, Source: c.binding.Source, Context: c.binding.Context, Dialect: c.binding.Dialect, Contract: c.binding.Contract, Dependencies: append([]string(nil), c.dependencies...), Columns: append([]string(nil), c.columns...), Manifest: Hash(manifest)}
 }
 
 // String prevents accidental SQL disclosure through ordinary logging.

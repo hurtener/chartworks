@@ -17,7 +17,7 @@ import (
 )
 
 // FrozenVersion independently versions execution, not authored block content.
-const FrozenVersion = "frozen-block-run-v1"
+const FrozenVersion = "frozen-block-run-v2"
 
 var (
 	// ErrExpired never authorizes reconstructing a missing retained result.
@@ -31,48 +31,54 @@ var (
 // RunRequest contains only caller-controlled intent. Replaying this exact
 // request does not resolve a newer revision or replace its accepted logical time.
 type RunRequest struct {
-	Key                string     `json:"key"`
-	Reference          Reference  `json:"reference"`
-	Arguments          []Argument `json:"arguments"`
-	Resolution         Resolution `json:"resolution"`
-	Outputs            []string   `json:"outputs"`
-	Policy             string     `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale,enum=private_preview"`
-	Locale             string     `json:"locale"`
-	Narrative          bool       `json:"narrative"`
-	PartialPolicy      string     `json:"partial_policy,omitempty" jsonschema:"enum=fail,enum=allow_partial"`
-	ReuseMaxAgeSeconds int        `json:"reuse_max_age_seconds"`
+	Key                string       `json:"key"`
+	Reference          Reference    `json:"reference"`
+	Arguments          []Argument   `json:"arguments"`
+	Resolution         Resolution   `json:"resolution"`
+	Outputs            []string     `json:"outputs"`
+	Policy             string       `json:"policy,omitempty" jsonschema:"enum=published,enum=certified_only,enum=explicit_stale,enum=private_preview"`
+	Locale             string       `json:"locale"`
+	Narrative          bool         `json:"narrative"`
+	PartialPolicy      string       `json:"partial_policy,omitempty" jsonschema:"enum=fail,enum=allow_partial"`
+	ReuseMaxAgeSeconds int          `json:"reuse_max_age_seconds"`
+	QueryLimits        *QueryLimits `json:"query_limits,omitempty"`
 }
 
 // RunManifest is private persistence input, never an ordinary API response. The
 // exact approved SQL, binds, source partition and output definitions are sealed
 // once; a serialized manifest is neither authority nor a validator-issued plan.
 type RunManifest struct {
-	Version       string                    `json:"version"`
-	ID            string                    `json:"id"`
-	Tenant        string                    `json:"tenant"`
-	Actor         string                    `json:"actor"`
-	Session       string                    `json:"session"`
-	Block         string                    `json:"block"`
-	RequestHash   string                    `json:"request_hash"`
-	TaskHash      string                    `json:"task_hash"`
-	Revision      Revision                  `json:"revision"`
-	Outputs       []Output                  `json:"outputs"`
-	Resolved      Resolved                  `json:"resolved"`
-	Binding       exec.Binding              `json:"binding"`
-	Definitions   []topics.Definition       `json:"definitions"`
-	Dependencies  []Dependency              `json:"dependencies"`
-	References    []ResourceReference       `json:"references"`
-	Trust         Trust                     `json:"trust"`
-	Private       bool                      `json:"private"`
-	Policy        string                    `json:"policy"`
-	PartialPolicy string                    `json:"partial_policy"`
-	Locale        string                    `json:"locale"`
-	Created       time.Time                 `json:"created_at"`
-	Expires       time.Time                 `json:"expires_at"`
-	Limits        config.ReportingExecution `json:"limits"`
-	ReuseKey      string                    `json:"reuse_key"`
-	ReuseMaxAge   int                       `json:"reuse_max_age_seconds"`
-	Model         string                    `json:"model"`
+	Version        string                    `json:"version"`
+	ID             string                    `json:"id"`
+	Tenant         string                    `json:"tenant"`
+	Actor          string                    `json:"actor"`
+	Session        string                    `json:"session"`
+	Block          string                    `json:"block"`
+	RequestHash    string                    `json:"request_hash"`
+	TaskHash       string                    `json:"task_hash"`
+	Revision       Revision                  `json:"revision"`
+	Outputs        []Output                  `json:"outputs"`
+	Resolved       Resolved                  `json:"resolved"`
+	Binding        exec.Binding              `json:"binding"`
+	Definitions    []topics.Definition       `json:"definitions"`
+	Dependencies   []Dependency              `json:"dependencies"`
+	References     []ResourceReference       `json:"references"`
+	Trust          Trust                     `json:"trust"`
+	Private        bool                      `json:"private"`
+	Policy         string                    `json:"policy"`
+	PartialPolicy  string                    `json:"partial_policy"`
+	Locale         string                    `json:"locale"`
+	Created        time.Time                 `json:"created_at"`
+	Expires        time.Time                 `json:"expires_at"`
+	Limits         config.ReportingExecution `json:"limits"`
+	ReuseKey       string                    `json:"reuse_key"`
+	ReuseMaxAge    int                       `json:"reuse_max_age_seconds"`
+	Model          string                    `json:"model"`
+	AcceptedLimits *AcceptedLimits           `json:"accepted_limits,omitempty"`
+	Selection      []OutputSelection         `json:"selection,omitempty"`
+	SelectionMode  string                    `json:"selection_mode,omitempty" jsonschema:"enum=default,enum=explicit,enum=legacy_all"`
+	ResultPolicy   []FieldPolicy             `json:"result_policy,omitempty"`
+	ResultLineage  []exec.OutputLineage      `json:"result_lineage,omitempty"`
 }
 
 // Digest binds the admitted execution separately from revision/rendition hashes.
@@ -91,7 +97,7 @@ func RequireRunManifest(e identity.Envelope, m RunManifest) error {
 	if !e.Valid() {
 		return access.ErrUnauthenticated
 	}
-	if m.Version != FrozenVersion || m.Tenant != e.Tenant() || m.Actor != e.User() || m.Session != e.Session() {
+	if (m.Version != FrozenVersion && m.Version != LegacyFrozenVersion) || m.Tenant != e.Tenant() || m.Actor != e.User() || m.Session != e.Session() {
 		return access.ErrNotFound
 	}
 	dependencies := []access.Resource{{Tenant: m.Tenant, Kind: "source", Permission: "query", ID: m.Binding.Source}}
@@ -165,15 +171,17 @@ type RetainedOutput struct {
 	Narrative      *NarrativeResult `json:"narrative,omitempty"`
 	ReservedCalls  int              `json:"reserved_calls"`
 	ReservedTokens int              `json:"reserved_tokens"`
+	Intent         *OutputIntent    `json:"intent,omitempty"`
 }
 
 // OutputSummary excludes values and narrative text from list/summary responses.
 type OutputSummary struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind"`
-	State  string `json:"state"`
-	Code   string `json:"code,omitempty"`
-	Digest string `json:"digest"`
+	ID     string        `json:"id"`
+	Kind   string        `json:"kind"`
+	State  string        `json:"state"`
+	Code   string        `json:"code,omitempty"`
+	Digest string        `json:"digest"`
+	Intent *OutputIntent `json:"intent,omitempty"`
 }
 
 // RunView has no approved SQL, raw binds, result rows or bearer credentials.
@@ -207,6 +215,11 @@ type RunView struct {
 	ReservedCalls   int                  `json:"reserved_calls"`
 	ReservedTokens  int                  `json:"reserved_tokens"`
 	FrozenVersion   string               `json:"frozen_version"`
+	AcceptedLimits  *AcceptedLimits      `json:"accepted_limits,omitempty"`
+	Selection       []OutputSelection    `json:"selection,omitempty"`
+	SelectionMode   string               `json:"selection_mode,omitempty" jsonschema:"enum=default,enum=explicit,enum=legacy_all"`
+	ExpectedSchema  []exec.Field         `json:"expected_schema,omitempty"`
+	ResultPolicy    []FieldPolicy        `json:"result_policy,omitempty"`
 }
 
 // RunRecord is an internal repository result; its manifest/data are protected

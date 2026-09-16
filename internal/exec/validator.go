@@ -159,7 +159,7 @@ func (v *Validator) validate(ctx context.Context, e identity.Envelope, r Request
 	if proof != initialProof {
 		return Plan{}, ErrBinding
 	}
-	candidate := Candidate{binding: binding.Clone(), semanticScope: scopeDigest, owner: e, authority: authority(e), private: private, privateProof: proof, statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: deps, columns: append([]string(nil), columns...), checked: true}
+	candidate := Candidate{binding: binding.Clone(), semanticScope: scopeDigest, owner: e, authority: authority(e), private: private, privateProof: proof, statement: r.SQL, parameters: append([]Parameter(nil), r.Parameters...), dependencies: deps, columns: append([]string(nil), columns...), lineage: postgresLineage(statement, scoped, columns), checked: true}
 	if err = v.adapter.Explain(ctx, e, candidate); err != nil {
 		return Plan{}, err
 	}

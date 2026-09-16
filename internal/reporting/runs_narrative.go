@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics"
 )
 
 const narrativeSchema = `{"type":"object","additionalProperties":false,"required":["claims"],"properties":{"claims":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"required":["kind","evidence"],"properties":{"kind":{"enum":["value","difference"]},"evidence":{"type":"array","minItems":1,"maxItems":2,"uniqueItems":true,"items":{"type":"string","minLength":1,"maxLength":32}}}}}}}`
@@ -91,6 +92,11 @@ func narrativeEvidence(result exec.Result, n Narrative) ([]NarrativeEvidence, []
 	}
 	for _, name := range n.RedactedFields {
 		delete(allowed, name)
+	}
+	for _, field := range result.Schema {
+		if field.Sensitivity != semantics.LiteralNonSensitive {
+			delete(allowed, field.Name)
+		}
 	}
 	items := []NarrativeEvidence{}
 	caveats := []string{"retained_observation_not_live_source", "bounded_evidence_not_full_source_total"}
@@ -176,7 +182,7 @@ func narrativeEvidence(result exec.Result, n Narrative) ([]NarrativeEvidence, []
 }
 
 func groundedText(answer NarrativeAnswer, evidence []NarrativeEvidence, n Narrative) (string, error) {
-	if len(answer.Claims) < 1 || len(answer.Claims) > 32 {
+	if len(answer.Claims) < 1 || len(answer.Claims) > narrativeClaims(n) {
 		return "", gateway.ErrOutput
 	}
 	byID := make(map[string]NarrativeEvidence, len(evidence))
@@ -246,10 +252,13 @@ func (s *Runs) generateNarrative(ctx context.Context, e identity.Envelope, m Run
 	if s.model == nil || n.ModelVersion != s.modelVersion || n.SchemaVersion != "grounded-narrative-v1" {
 		return NarrativeResult{}, ErrUnavailable
 	}
-	if !strings.HasPrefix(n.Locale, "en") && !strings.HasPrefix(n.Locale, "es") {
+	if !supportedNarrativeLocale(n.Locale) {
 		return NarrativeResult{}, ErrInvalid
 	}
-	evidence, caveats, err := narrativeEvidence(result, n)
+	if err := s.narrativeBudget(m, n); err != nil {
+		return NarrativeResult{}, err
+	}
+	evidence, caveats, err := narrativeEvidence(narrativeResult(m, result), n)
 	if err != nil {
 		return NarrativeResult{}, err
 	}
@@ -271,11 +280,14 @@ func (s *Runs) generateNarrative(ctx context.Context, e identity.Envelope, m Run
 		return NarrativeResult{}, err
 	}
 	duration := min(time.Duration(n.TimeoutMillis)*time.Millisecond, time.Duration(m.Limits.NarrativeTimeout), time.Duration(s.limits.NarrativeTimeout))
+	if m.AcceptedLimits != nil {
+		duration = min(duration, time.Duration(m.AcceptedLimits.NarrativeTimeoutMillis)*time.Millisecond)
+	}
 	budget, err := gateway.NewBudget(call, gateway.Limits{Calls: n.MaxCalls, Tokens: n.MaxTokens, Duration: duration})
 	if err != nil {
 		return NarrativeResult{}, err
 	}
-	schema, err := gateway.NewSchema("grounded_narrative_v1", []byte(narrativeSchema))
+	schema, err := gateway.NewSchema("grounded_narrative_v1", []byte(strings.Replace(narrativeSchema, `"maxItems":32`, fmt.Sprintf(`"maxItems":%d`, narrativeClaims(n)), 1)))
 	if err != nil {
 		return NarrativeResult{}, err
 	}

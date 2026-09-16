@@ -97,11 +97,14 @@ func DefinitionDigest(d Definition) string {
 	return digest(struct {
 		Version    string
 		Definition Definition
-	}{CanonicalizationVersion, d})
+	}{DefinitionCanonicalVersion(d), d})
 }
 
 // ExecutionDigest hashes execution-relevant content independently of descriptive metadata.
 func ExecutionDigest(d Definition) string {
+	if d.SchemaVersion == CurrentSchemaVersion {
+		return digest([]any{DefinitionCanonicalVersion(d), d.Source, d.Context, d.Topics, d.Template, d.SQL, d.Parameters, d.ExpectedSchema, d.QueryLimits})
+	}
 	return digest(struct {
 		Version    string
 		Source     string
@@ -115,8 +118,11 @@ func ExecutionDigest(d Definition) string {
 }
 
 func validateDefinition(ctx context.Context, d Definition, limits config.Reporting, captured bool) error {
-	if ctx == nil || limits.Validate() != nil || d.SchemaVersion != SchemaVersion || !metadataValid(d.Metadata, limits) || !identity.Identifier(d.Source) || !identity.Identifier(d.Context) || len(d.Topics) == 0 || len(d.Topics) > 8 || strings.TrimSpace(d.SQL) == "" || !text(d.SQL, limits.MaxSQLBytes) || len(d.ExpectedSchema) == 0 || len(d.ExpectedSchema) > limits.MaxSchemaColumns || len(d.Outputs) == 0 || len(d.Outputs) > limits.MaxOutputs {
+	if ctx == nil || limits.Validate() != nil || (d.SchemaVersion != SchemaVersion && d.SchemaVersion != CurrentSchemaVersion) || !metadataValid(d.Metadata, limits) || !identity.Identifier(d.Source) || !identity.Identifier(d.Context) || len(d.Topics) == 0 || len(d.Topics) > 8 || strings.TrimSpace(d.SQL) == "" || !text(d.SQL, limits.MaxSQLBytes) || len(d.ExpectedSchema) == 0 || len(d.ExpectedSchema) > limits.MaxSchemaColumns || len(d.Outputs) == 0 || len(d.Outputs) > limits.MaxOutputs {
 		return ErrInvalid
+	}
+	if err := validateOutputPolicies(d, limits); err != nil {
+		return err
 	}
 	encoded, err := json.Marshal(d)
 	if err != nil || len(encoded) > limits.MaxDefinitionBytes {
@@ -207,11 +213,11 @@ func validateOutput(ctx context.Context, o Output, fields map[string]exec.Field,
 }
 
 func validateNarrative(n Narrative, fields map[string]exec.Field) error {
-	if !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || strings.TrimSpace(n.Instructions) == "" || !text(n.Instructions, 4096) || len(n.Fields) == 0 || len(n.Fields) > 128 || len(n.RedactedFields) > 128 || !slices.Contains([]string{"first_rows", "aggregate_evidence"}, n.Reduction) || n.MaxRows < 1 || n.MaxRows > 1000 || n.MaxBytes < 128 || n.MaxBytes > 65536 || n.MaxCharacters < 1 || n.MaxCharacters > 16384 || n.MaxCalls < 1 || n.MaxCalls > 4 || n.MaxTokens < 64 || n.MaxTokens > 32768 || n.TimeoutMillis < 100 || n.TimeoutMillis > 60000 || !identity.Identifier(n.PromptVersion) || !identity.Identifier(n.ModelVersion) || !identity.Identifier(n.SchemaVersion) || !locale(n.Locale) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) || !n.RequireEvidence || !n.RequireCaveats {
+	if !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || (strings.TrimSpace(n.Instructions) == "" && n.MaxClaims == 0) || n.MaxClaims < 0 || n.MaxClaims > 32 || !text(n.Instructions, 4096) || len(n.Fields) == 0 || len(n.Fields) > 128 || len(n.RedactedFields) > 128 || !slices.Contains([]string{"first_rows", "aggregate_evidence"}, n.Reduction) || n.MaxRows < 1 || n.MaxRows > 1000 || n.MaxBytes < 128 || n.MaxBytes > 65536 || n.MaxCharacters < 1 || n.MaxCharacters > 16384 || n.MaxCalls < 1 || n.MaxCalls > 4 || n.MaxTokens < 64 || n.MaxTokens > 32768 || n.TimeoutMillis < 100 || n.TimeoutMillis > 60000 || !identity.Identifier(n.PromptVersion) || !identity.Identifier(n.ModelVersion) || !identity.Identifier(n.SchemaVersion) || !locale(n.Locale) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) || !n.RequireEvidence || !n.RequireCaveats {
 		return ErrInvalid
 	}
-	seen := map[string]bool{}
 	for _, names := range [][]string{n.Fields, n.RedactedFields} {
+		seen := map[string]bool{}
 		for _, name := range names {
 			if fields[name].Name == "" || seen[name] {
 				return ErrInvalid
@@ -222,39 +228,15 @@ func validateNarrative(n Narrative, fields map[string]exec.Field) error {
 	return nil
 }
 
-// SelectOutputs returns saved definitions in their original stable order. An
-// empty selection means all; duplicate/unknown IDs fail rather than being dropped.
+// SelectOutputs applies the versioned selection contract before execution.
 func SelectOutputs(all []Output, selected []string) ([]Output, error) {
-	if len(all) == 0 || len(all) > 64 || len(selected) > len(all) {
-		return nil, ErrInvalid
-	}
-	available := map[string]bool{}
-	for _, output := range all {
-		if !identity.Identifier(output.ID) || available[output.ID] {
-			return nil, ErrInvalid
-		}
-		available[output.ID] = true
-	}
-	wanted := map[string]bool{}
-	for _, id := range selected {
-		if !available[id] || wanted[id] {
-			return nil, ErrInvalid
-		}
-		wanted[id] = true
-	}
-	out := []Output{}
-	for _, o := range all {
-		if len(selected) == 0 || wanted[o.ID] {
-			out = append(out, clone(o))
-		}
-	}
-	return out, nil
+	return selectOutputIntent(all, selected)
 }
 
 // checkResult validates the observed schema against the exact draft and checks
 // saved mappings against the real normalized values without selecting new charts.
 func checkResult(ctx context.Context, d Definition, result exec.Result, limits config.Reporting) error {
-	if digest(result.Schema) != digest(d.ExpectedSchema) || result.Bytes > limits.PreviewBytes {
+	if digest(physicalSchema(result.Schema)) != digest(physicalSchema(d.ExpectedSchema)) || result.Bytes > limits.PreviewBytes {
 		return ErrStale
 	}
 	normalized, err := chartdata.FromReadResult(ctx, result, chartLimits(limits))

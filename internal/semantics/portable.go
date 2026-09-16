@@ -12,10 +12,11 @@ import (
 // PortableColumn has a logical slot and semantic expectations, but no physical
 // column name, native dialect type, source coordinate, or profile provenance.
 type PortableColumn struct {
-	Slot     string `json:"slot"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
-	Nullable bool   `json:"nullable"`
+	Slot        string             `json:"slot"`
+	Name        string             `json:"name"`
+	Category    string             `json:"category"`
+	Nullable    bool               `json:"nullable"`
+	Sensitivity LiteralSensitivity `json:"sensitivity,omitempty" jsonschema:"enum=non_sensitive,enum=sensitive"`
 }
 
 // PortableDataset contains logical column slots without source coordinates.
@@ -100,7 +101,7 @@ func ExportPortable(model Model, mapping []ExportDatasetSlots) (PortablePack, er
 			if !exists {
 				return PortablePack{}, invalid(CodeMissingReference, "export.mapping.columns")
 			}
-			portable.Columns = append(portable.Columns, PortableColumn{Slot: ref.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable})
+			portable.Columns = append(portable.Columns, PortableColumn{Slot: ref.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable, Sensitivity: column.Sensitivity})
 		}
 		sort.Slice(portable.Columns, func(i, j int) bool { return portable.Columns[i].Slot < portable.Columns[j].Slot })
 		out.Datasets = append(out.Datasets, portable)
@@ -213,7 +214,7 @@ func ImportDraftCandidate(input PortablePack, bindings DraftBindings) (DraftCand
 				return DraftCandidate{}, invalid(CodeEvidenceMismatch, "import.bindings.columns")
 			}
 			refs[from] = Reference{Kind: KindColumn, Dataset: bound.ID, ID: physical.ID}
-			bound.Columns = append(bound.Columns, Column{ID: physical.ID, SourceName: physical.SourceName, Name: column.Name, NativeType: physical.NativeType, Category: physical.Category, Nullable: physical.Nullable})
+			bound.Columns = append(bound.Columns, Column{ID: physical.ID, SourceName: physical.SourceName, Name: column.Name, NativeType: physical.NativeType, Category: physical.Category, Nullable: physical.Nullable, Sensitivity: column.Sensitivity})
 		}
 		p.Datasets = append(p.Datasets, bound)
 	}

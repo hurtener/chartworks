@@ -48,6 +48,9 @@ func (p PreparedRun) Checked(e identity.Envelope) (RunManifest, error) {
 	if err := RequireRunManifest(e, m); err != nil {
 		return RunManifest{}, err
 	}
+	if err := CheckRunPolicy(m); err != nil {
+		return RunManifest{}, err
+	}
 	return m, nil
 }
 
@@ -129,6 +132,9 @@ func (p PreparedRunWrite) Checked(inv jobs.Invocation) (RunWrite, error) {
 		}
 	default:
 		return RunWrite{}, ErrInvalid
+	}
+	if w.Attempt != nil && !queryAttemptWithin(w.Manifest, *w.Attempt) {
+		return RunWrite{}, ErrBudget
 	}
 	return w, nil
 }
