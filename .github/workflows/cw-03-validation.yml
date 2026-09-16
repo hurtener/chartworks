@@ -5,21 +5,68 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
+  dependencies:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Capture exact source for local validation
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+      - name: Build pinned native dependencies
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - name: Prepare dependency-only offline archives
         run: |
-          git rev-parse HEAD > /tmp/chartworks-tested-source.txt
-          git archive --format=tar.gz HEAD > /tmp/chartworks-source.tar.gz
+          set -euo pipefail
+          go mod download
+          go mod verify
+          mkdir -p /tmp/cw03-offline
+          tar -czf /tmp/cw03-offline/go.tar.gz -C "$(go env GOROOT)" .
+          tar -czf /tmp/cw03-offline/modules.tar.gz -C "$(go env GOMODCACHE)" .
+          tar -czf /tmp/cw03-offline/native.tar.gz -C /tmp/chartworks-bruin bruin source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          sha256sum /tmp/cw03-offline/*.tar.gz > /tmp/cw03-offline/SHA256SUMS
+          git diff --exit-code
       - uses: actions/upload-artifact@v4
         with:
-          name: cw-03-source
-          path: |
-            /tmp/chartworks-tested-source.txt
-            /tmp/chartworks-source.tar.gz
+          name: cw03-offline-dependencies
+          path: /tmp/cw03-offline
+          compression-level: 0
+          retention-days: 3
+  postgres:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Build isolated PostgreSQL 17 and vector extension for local tests
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch REL_17_6 https://github.com/postgres/postgres.git /tmp/pg-source
+          cd /tmp/pg-source
+          ./configure --prefix=/tmp/cw03-postgres --without-readline --without-zlib --without-icu --without-openssl --without-libxml --without-libxslt
+          make -j2
+          make install
+          git clone --depth 1 --branch v0.8.2 https://github.com/pgvector/pgvector.git /tmp/pgvector-source
+          cd /tmp/pgvector-source
+          make -j2 PG_CONFIG=/tmp/cw03-postgres/bin/pg_config
+          make install PG_CONFIG=/tmp/cw03-postgres/bin/pg_config
+          tar -czf /tmp/cw03-postgres.tar.gz -C /tmp cw03-postgres
+          sha256sum /tmp/cw03-postgres.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw03-offline-postgres
+          path: /tmp/cw03-postgres.tar.gz
+          compression-level: 0
           retention-days: 3
