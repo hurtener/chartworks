@@ -1,0 +1,49 @@
+name: CW-01 scoped integration edits
+
+on:
+  push:
+    branches: [feat/cw-01-conditional-typed-clarification]
+    paths: ['.cw01/apply.py']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cw01-scoped-edits
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.repository == 'hurtener/chartworks' && github.ref == 'refs/heads/feat/cw-01-conditional-typed-clarification'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/cw-01-conditional-typed-clarification
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Apply only the checked-in authored changes
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = feat/cw-01-conditional-typed-clarification
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 .cw01/apply.py
+          git diff --name-only --diff-filter=AM 35027d93d68c9c2ad3afc4ef26b9deca2b28aa73 -- '*.go' | while IFS= read -r file; do gofmt -w "$file"; done
+          python3 - <<'PY'
+          import subprocess
+          paths = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          allowed = ('internal/nlq', 'internal/exec/', 'internal/semantics/', 'internal/store/postgres/', 'internal/api/', 'internal/topicapi/', 'internal/mcpserver/', 'sdk/', 'test/', 'docs/', 'examples/')
+          for path in paths:
+              if not path.startswith(allowed):
+                  raise SystemExit('Out-of-scope edit: ' + path)
+          PY
+          git diff --check
+          git add -- internal/nlq* internal/exec internal/semantics internal/store/postgres internal/api internal/topicapi internal/mcpserver sdk test docs examples
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(cw-01): integrate reviewed typed clarification consumers'
+          git push origin HEAD:refs/heads/feat/cw-01-conditional-typed-clarification
+          echo "IMPLEMENTATION_HEAD=$(git rev-parse HEAD)"
