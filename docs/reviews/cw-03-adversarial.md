@@ -28,22 +28,55 @@ No new issuer, token, identity, scope grant or standalone authoring app is added
 | Unsupported migration could silently repair malformed v2 intent or lose authored policy through a read projection. | V2 migration is a detached identity and rejects missing intent/invalid policy. Exact native definition export uses existing SQL-plus-read authorization. Create/edit imports retain authored policies and require normal validation/publication. Metadata-only readers cannot export SQL/definitions. |
 | Accepted per-block and widget limits could be bypassed by later deployment or parent/child admission. | Authored/requested/authorized/deployment limits intersect at admission and again during actual execution; physical attempt checkpointing uses the current cap. Reuse/group identities include accepted caps and reject over-cap evidence rather than regenerate. Real persistence tests cover lower and higher stored caps and group segregation. |
 | Later publication or catalog failure could cause a retry to replace selected outputs/caps or redo the query. | Exact parent/child manifests retain revisions, selection, budgets and privacy. A real signed-queue/catalog-failure test republishes narrower/different definitions before retry and verifies unchanged manifest bytes and zero additional query/model work. |
-| Serializer-only migration and bound tests would miss storage/provider behavior. | Populated schema34→35 production migration, immutable triggers and invalid SQL inserts are exercised. HTTP-provider fixtures exercise claims/type/characters/rows/bytes/tokens/calls/time and failed retained redraw. |
+| Serializer-only migration and bound tests would miss storage/provider behavior. | Populated schema34-to-35 production migration, immutable triggers and invalid SQL inserts are exercised. HTTP-provider fixtures exercise claims/type/characters/rows/bytes/tokens/calls/time and failed retained redraw. |
+| The original validation record did not cover the final fixes and new acceptance cases. | The exact-source receipt now records the successful final implementation run, its artifact digest and actual pass-event counts. Historical failing runs are not presented as successful checks. |
 
 The adversarial pass also inspected cancellation, uncertain physical attempts,
 commit fences, cross-tenant and same-tenant/context negatives, private previews,
-retention tombstones and one-query fan-out. Existing phase27–31 tests remain
+retention tombstones and one-query fan-out. Existing phase27-31 tests remain
 mandatory; they were not replaced by weaker CW-03 planning/serializer checks.
+The final source review rechecked output-selection rejection, restrictive
+sensitivity before provider input, accepted/current caps, immutable revisions and
+retained no-regeneration paths. No unresolved P0/P1 finding is recorded within
+this assignment's reviewed scope; the qualification limitations below still apply.
 
 ## Executed validation and exact-source evidence
 
+At implementation head `f517ab6e2f6048632249d57c77c4783cb9a0e1a2`, Actions run
+[35061994750](https://github.com/hurtener/chartworks/actions/runs/35061994750)
+completed successfully. Its downloaded `cw-03-contract-evidence` artifact
+(ID `10433395915`) has SHA-256
+`11180043b210702e5864ea67e63f6dc59f75145c770d85834d2df1ef0ca9e5b1`.
+`reporting-source.log` identifies that exact tested commit. The
+[machine-readable receipt](cw-03-validation.json) records counts and boundaries.
+
+| Executed check | Actual result |
+|---|---|
+| CW-03 acceptance with race detection | 23 passing test/subtest events across five top-level tests; zero failures or skips |
+| Strict phase27, phase28, phase29, phase30 and phase31 runners | All 40 required AC01-AC08 criteria passed; zero unimplemented skips |
+| Actual browser | Phase31 AC08 passed with real Chrome, including localized/disabled/omitted selectors and retained filter-request selection/limit preservation |
+| Unit/race regressions | 594 passing test/subtest events across 13 packages; zero failures or skips |
+| Planning | 60 checker tests passed; coherence for 224 criteria, 63 features, 34 phases and 41 gates |
+| Build, vet, Go formatting, JavaScript syntax, module verification and clean source | Passed |
+
+Test/subtest event counts include parent tests; they are not a count of independent
+scenarios. The planning check's synthetic planned-skip fixture is not a skipped
+runtime acceptance case. Native build steps used a matching pinned cache; the
+actual test, browser, build and vet steps executed and passed.
+
+The five CW-03 top-level tests are `TestCW03PopulatedLegacyDatabaseUpgrade`,
+`TestCW03NarrativeHardBounds`, `TestCW03ReportingPublicationAndExecution`,
+`TestCW03NarrativeSensitivityAtProviderBoundary` and
+`TestCW03ScheduledCompositionRetryPins`. These include the previously unverified
+upgrade, retry, native-export and hard-bound cases. The former phase31 AC02
+selector-count failure and obsolete test-import failure are fixed at this head.
+
 The read-only [CW-03 workflow](../../.github/workflows/cw-03-validation.yml)
-records `TESTED_COMMIT`, tests committed source without mutation, and uploads
-`cw-03-contract-evidence`. It runs:
+tests committed source without mutation and runs:
 
 ```sh
 go test -race -count=1 -json -timeout=12m ./test/acceptance -run '^TestCW03'
-# Each strict runner requires every AC01–AC08 result, with no allowed skips.
+# Each strict runner requires every AC01-AC08 result, with no allowed skips.
 python3 scripts/run_phase_acceptance.py --phase 27
 python3 scripts/run_phase_acceptance.py --phase 28
 python3 scripts/run_phase_acceptance.py --phase 29
@@ -62,20 +95,13 @@ Node22.14, actual Chromium/Chrome and the repository's pinned native read driver
 The model boundary is an actual HTTP provider fixture behind the production
 gateway, not a live commercial-provider measurement.
 
-At reviewed commit `6933da6700da8cdfed3e2990b629294f46ec2731`, Actions run
-[35059166984](https://github.com/hurtener/chartworks/actions/runs/35059166984)
-passed its CW-03 acceptance cases, all phase27–30 criteria, all listed unit/race
-packages, build/vet/format/planning and phase31 AC01/03–08. Actual browser AC08
-passed. That run **failed** phase31 AC02's remaining selector-count assertion;
-this review's correction checks display metadata separately from selected data.
-The added upgrade/retry/hard-bound/native-export tests require a newer run and
-are not attributed to that historical commit. The PR records the final exact
-validated head, workflow URL and any remaining failure or blocked check.
-
-Local executed checks are formatting, diff whitespace, JavaScript syntax and
-planning/link coherence where recorded. Local Go execution is unavailable because
-the container cannot download the required toolchain/native dependencies; no
-local Go pass is claimed. Source writes use the authorized repository connection;
+This evidence applies to the exact implementation head above. A subsequent
+receipt-only documentation commit does not imply a runtime rerun at its own SHA;
+later exact-source workflow results and PR checks must be identified separately.
+The resumed local environment confirmed the artifact digest and parsed its logs.
+Local Go execution remains blocked: available Go1.23.2 cannot build the required
+Go1.26.4 module, and network/toolchain downloads are unavailable. No local Go or
+browser pass is claimed. Source writes use the authorized repository connection;
 final validation has read-only contents permissions and no source preparation or
 repair workflow.
 
