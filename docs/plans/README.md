@@ -1,5 +1,7 @@
 # Chartworks — actionable implementation plan
 
+The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
+
 Phases **01–22 are shipped**. Phases 23, 26, 27, 28, 29, 30 and 31 are in progress;
 the remaining five workstreams are planned, including the phase-25 final release
 gate. The registry maps 188 criteria to implemented or in-progress work. This is
