@@ -127,6 +127,86 @@ try{
     await check(`${body}.textContent.includes('9007199254740993.0100')`,'large exact decimal');
     await evaluate(`show(makeView(fixture.percent,'percent'))`);await waitTitle('percent');
     await check(`${body}.textContent.includes('12.3456789123456789%')`,'fraction percentage without floating-point rounding');
+    assert(fixtures.rich_cases.length >= 20,'rich variants are tested separately from catalog count'); passes++;
+    for (let i=0;i<fixtures.rich_cases.length;i++) {
+      const c=fixtures.rich_cases[i], out=c.output, tag='rich-'+i;
+      await evaluate(`show(makeView(fixture.rich_cases[${i}].output,${JSON.stringify(tag)}))`); await waitTitle(tag);
+      const rows=await evaluate(`Array.from(${body}.querySelectorAll('.retained-values tbody tr'),r=>Array.from(r.querySelectorAll('td'),c=>c.textContent))`);
+      assert.equal(rows.length,Math.min(100,c.expected_rows.length),'retained wide rows: '+c.scenario);
+      for(let r=0;r<rows.length;r++)for(let k=0;k<c.expected_rows[r].length;k++) {
+        const expected=c.expected_rows[r][k];
+        if(expected===null)assert.equal(rows[r][k],'Missing',c.scenario+' null became zero');
+        else assert(rows[r][k].includes(expected),c.scenario+' exact retained value lost');
+      }
+      passes++;
+      await check(`${body}.querySelector('.transformation')!==null`,'transformation and omission disclosure: '+c.scenario);
+      for(const col of out.columns)await check(`${body}.textContent.includes(${JSON.stringify(col.name)})`,'full rich column label: '+c.scenario);
+      if(out.state!=='ready') { await check(`${body}.querySelector('svg')===null&&${body}.querySelector('.retained-values tbody tr')!==null`,'undrawable is not unretained: '+c.scenario); continue; }
+      if(['line','area','bar','column','grouped_bar'].includes(out.kind)) {
+        const units=new Set(out.series.map(s=>JSON.stringify([s.format.unit||'',s.format.currency||'',s.format.percent||''])));
+        await check(`${body}.querySelectorAll('.scale-panel svg.chart').length===${units.size}`,'distinct units use independent scales: '+c.scenario);
+        for(const def of out.series) {
+          await check(`${body}.querySelector('.series-values').textContent.includes(${JSON.stringify(def.id)})&&${body}.textContent.includes(${JSON.stringify(def.name)})`,'ordered named series and exact identity: '+c.scenario);
+          const points=out.points.filter(p=>p.series_id===def.id), count=points.filter(p=>!p.value.null).length;
+          const glyph=['line','area'].includes(out.kind)?'circle':'rect';
+          await check(`${body}.querySelectorAll('svg ${glyph}[data-series-id="${def.id}"]').length===${count}`,'no first-measure loss: '+c.scenario);
+          if(['line','area'].includes(out.kind)) {
+            let segments=0,live=false;
+            for(const p of points){if(p.value.null)live=false;else if(!live){segments++;live=true;}}
+            await check(`${body}.querySelectorAll('svg path.line[data-series-id="${def.id}"]').length===${segments}`,'null and absent observations break paths: '+c.scenario);
+          }
+        }
+        if(['bar','column','grouped_bar'].includes(out.kind)) {
+          const positions=await evaluate(`Array.from(${body}.querySelectorAll('svg rect[data-series-id]'),r=>[r.closest('section').getAttribute('aria-label'),r.getAttribute('x'),r.getAttribute('y')].join(':'))`);
+          assert.equal(new Set(positions).size,positions.length,'repeated measures cannot overwrite/overlap a category slot');passes++;
+        }
+      }
+      if(out.kind==='scatter') {
+        const radii=await evaluate(`Array.from(${body}.querySelectorAll('svg circle[data-size]'),c=>Number(c.getAttribute('r')))`);
+        assert.equal(radii.length,out.points.length,'size/channel points drawn');
+        assert(Math.abs((radii[1]/radii[0])**2-Number(out.points[1].size.exact)/Number(out.points[0].size.exact))<1e-10,'bubble area, not radius, encodes size');passes++;
+        await check(`new Set(Array.from(${body}.querySelectorAll('svg circle[data-size]'),c=>c.getAttribute('class'))).size===2`,'bubble categorical colors');
+        await check(`${body}.textContent.includes('zero_size_not_drawn')&&${body}.textContent.includes('1.0000000000000001')`,'exact coordinate and truthful zero-size omission');
+      }
+      if(out.kind==='treemap') {
+        for(const node of out.hierarchy) {
+          if(node.value.coordinate>0)await check(`${body}.querySelector('rect[data-node-id="${node.id}"][data-depth="${node.depth}"]')!==null`,'every positive hierarchy level drawn');
+          await check(`${body}.querySelector('.hierarchy-values').textContent.includes(${JSON.stringify(node.value.exact)})`,'exact hierarchy sum, not drawing approximation');
+        }
+        await check(`${body}.querySelectorAll('rect[data-depth="2"]').length>=1&&${body}.textContent.includes('returned_complete_paths')`,'three levels and honest aggregate scope');
+      }
+      if(c.scenario==='bar_dense_series') {
+        const geometry=await evaluate(`Array.from(${body}.querySelectorAll('svg rect[data-series-id]'),r=>[Number(r.getAttribute('y')),Number(r.getAttribute('height'))]).sort((a,b)=>a[0]-b[0])`);
+        assert.equal(geometry.length,1000,'all bounded dense observations drawn');
+        for(let g=1;g<geometry.length;g++)assert(geometry[g-1][0]+geometry[g-1][1]<=geometry[g][0]+1e-8,'minimum thickness must not overlap independent slots');
+        passes++;
+      }
+      if(c.scenario==='bar_retained_paging') {
+        const before=await evaluate('calls.length');
+        await evaluate(`Array.from(${body}.querySelector('.retained-values').querySelectorAll('button')).find(b=>b.textContent==='Next').click()`);
+        await check(`${body}.querySelectorAll('.retained-values tbody tr').length===25&&${body}.querySelector('.retained-values tbody tr').dataset.sourceRow==='100'`,'local retained values paging and original row provenance');
+        await check(`calls.length===${before}`,'retained rich paging does no provider/source/model work');
+        await evaluate(`context({theme:'dark',locale:'en-US'})`);
+        await until(()=>evaluate(`${doc}.documentElement.dataset.theme==='dark'`),'rich redraw');
+        await check(`calls.length===${before}&&${body}.querySelectorAll('svg rect[data-series-id]').length===250`,'redraw preserves all rich geometry without work');
+        await evaluate(`context({theme:'light',locale:'en-US'})`);
+      }
+    }
+    // Inconsistent versions, series references, duplicate tuples and cycles
+    // cannot degrade into a plausible scalar drawing in the actual component.
+    for (const edit of [
+      "c.version=99", "c.mapping.version=1", "c.row_indices.pop()", "c.points[0].series_id='unknown'", "c.points.push(JSON.parse(JSON.stringify(c.points[0])))"
+    ]) {
+      await evaluate(`{const c=JSON.parse(JSON.stringify(fixture.rich_cases.find(c=>c.scenario==='line_two_units').output));${edit};show(makeView(c,'rich-invalid'));}`);
+      await until(()=>evaluate(`${body}.querySelector('.error')!==null`),'rich invalid output rejection');
+      await check(`${body}.querySelector('svg')===null&&${body}.querySelector('table')===null`,'invalid rich output cleared, never scalar fallback');
+    }
+    for (const edit of ["c.hierarchy[0].parent=c.hierarchy[0].id", "c.hierarchy[1].depth=8"]) {
+      await evaluate(`{const c=JSON.parse(JSON.stringify(fixture.rich_cases.find(c=>c.scenario==='hierarchy_three_levels').output));${edit};show(makeView(c,'invalid-tree'));}`);
+      await until(()=>evaluate(`${body}.querySelector('.error')!==null`),'invalid tree rejected');passes++;
+    }
+    await evaluate(`{const c=JSON.parse(JSON.stringify(fixture.rich_cases.find(c=>c.scenario==='bubble_series').output));c.points[0].size.coordinate=-1;show(makeView(c,'invalid-size'));}`);
+    await until(()=>evaluate(`${body}.querySelector('.error')!==null`),'negative size rejected');passes++;
     await check('calls.length===0','chart interpretation and local redraw never execute');
   }
 

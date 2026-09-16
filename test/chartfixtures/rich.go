@@ -1,6 +1,10 @@
 package chartfixtures
 
-import "github.com/hurtener/chartworks/internal/charts"
+import (
+	"fmt"
+
+	"github.com/hurtener/chartworks/internal/charts"
+)
 
 // RichFixture is a synthetic declared binding, not a claim about model quality.
 type RichFixture struct {
@@ -93,5 +97,41 @@ func RichCases() []RichFixture {
 	}
 	out = append(out, RichFixture{Name: "bubble_series", Kind: charts.Scatter, Data: richBubble(), Bindings: charts.Bindings{X: "x", Y: "y", Size: "size", Series: "segment"}})
 	out = append(out, RichFixture{Name: "hierarchy_three_levels", Kind: charts.Treemap, Data: richHierarchy(), Bindings: charts.Bindings{Hierarchy: []string{"region", "country", "product"}, Value: "value"}})
+	balanced := richHierarchy()
+	for i, value := range []string{"100.00", "50.00", "80.00", "7.00"} {
+		balanced.Rows[i][3].Value = value
+	}
+	out = append(out, RichFixture{Name: "hierarchy_balanced", Kind: charts.Treemap, Data: balanced, Bindings: charts.Bindings{Hierarchy: []string{"region", "country", "product"}, Value: "value"}})
+	missing := richTime(false)
+	for i := range missing.Rows {
+		missing.Rows[i][1], missing.Rows[i][2] = charts.Cell{Null: true}, charts.Cell{Null: true}
+	}
+	out = append(out, RichFixture{Name: "line_all_missing", Kind: charts.Line, Data: missing, Bindings: charts.Bindings{Category: "day", Values: []string{"revenue", "quantity"}}})
+	zero := richBubble()
+	for i := range zero.Rows {
+		zero.Rows[i][2] = charts.Cell{Value: "0"}
+	}
+	out = append(out, RichFixture{Name: "bubble_all_zero", Kind: charts.Scatter, Data: zero, Bindings: charts.Bindings{X: "x", Y: "y", Size: "size", Series: "segment"}})
+	nullPath := richHierarchy()
+	for i := range nullPath.Rows {
+		nullPath.Rows[i][0] = charts.Cell{Null: true}
+	}
+	out = append(out, RichFixture{Name: "hierarchy_all_null", Kind: charts.Treemap, Data: nullPath, Bindings: charts.Bindings{Hierarchy: []string{"region", "country", "product"}, Value: "value"}})
+	paged := richCategories(true)
+	paged.Rows = [][]charts.Cell{}
+	for category := 0; category < 25; category++ {
+		for series := 0; series < 5; series++ {
+			paged.Rows = append(paged.Rows, richRow(fmt.Sprintf("Category %02d", category), fmt.Sprint(category+1), fmt.Sprint(series+1), fmt.Sprintf("Series %d", series)))
+		}
+	}
+	out = append(out, RichFixture{Name: "bar_retained_paging", Kind: charts.Bar, Data: paged, Bindings: charts.Bindings{Category: "category", Values: []string{"ordered", "returned"}, Series: "region"}})
+	dense := richCategories(true)
+	dense.Rows = [][]charts.Cell{}
+	for category := 0; category < 100; category++ {
+		for series := 0; series < 5; series++ {
+			dense.Rows = append(dense.Rows, richRow(fmt.Sprintf("Category %02d", category), fmt.Sprint(category+1), fmt.Sprint(series+1), fmt.Sprintf("Series %d", series)))
+		}
+	}
+	out = append(out, RichFixture{Name: "bar_dense_series", Kind: charts.Bar, Data: dense, Bindings: charts.Bindings{Category: "category", Values: []string{"ordered", "returned"}, Series: "region"}})
 	return out
 }

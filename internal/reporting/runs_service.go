@@ -259,7 +259,7 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	if private {
 		privacyActor = e.User()
 	}
-	m.ReuseKey = digest([]any{FrozenVersion, charts.Version, m.Tenant, m.Block, m.Revision.Digest,
+	m.ReuseKey = digest([]any{FrozenVersion, charts.BuildVersion, m.Tenant, m.Block, m.Revision.Digest,
 		m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, exec.Hash(binding), m.Private, privacyActor,
 		m.Policy, m.Trust, m.Model, m.Limits.MaxRows, m.Limits.MaxResultBytes})
 	proof, err := prepareRun(e, m)
