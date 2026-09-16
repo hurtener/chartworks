@@ -3,12 +3,10 @@ package acceptance
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/reportingapi"
