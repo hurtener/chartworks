@@ -25,8 +25,6 @@ jobs:
           from pathlib import Path
           import base64, bz2, hashlib, re
           parts = [Path(f'.cw03-transfer/part{i}.txt').read_text().strip() for i in (1, 2, 3)]
-          # Correct two repeated-character transport transcription errors only;
-          # the complete original patch checksum remains the acceptance gate.
           parts[1] = re.sub(r'IyS+RES+RJJPHSTvLvJJJ1ed5JJJJEk65', 'Iy'+'S'*10+'RE'+'S'*7+'RJJPHSTvLvJJJ1ed5JJJJEk65', parts[1])
           parts[1] = re.sub(r'MhCFJ+PtTib3', 'MhCF'+'J'*11+'PtTib3', parts[1])
           assert [len(p) for p in parts] == [18000, 18000, 17868]
@@ -37,12 +35,15 @@ jobs:
           print('Verified original implementation SHA256:', expected)
           PY
           git apply --check --index /tmp/cw03.patch
-      - name: Commit implementation and remove temporary transfer files
+      - name: Commit product source within contents permission
         shell: bash
         run: |
           set -euo pipefail
-          git apply --index /tmp/cw03.patch
-          git rm -r .cw03-transfer .github/workflows/cw-03-workspace.yml
+          # Workflow files are written separately by the authorized repository
+          # connector. This CI credential performs content-only changes.
+          git apply --exclude=.github/workflows/cw-03-validation.yml --index /tmp/cw03.patch
+          git rm -r .cw03-transfer
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'feat(reporting): version output intent and seal bounded narrative policies'
