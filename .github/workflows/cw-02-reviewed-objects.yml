@@ -1,0 +1,50 @@
+name: CW-02 reviewed objects
+on:
+  push:
+    branches: [ci/cw-02-map-object]
+    paths: [.github/workflows/cw-02-reviewed-objects.yml]
+permissions:
+  contents: write
+jobs:
+  reviewed-objects:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bdcd661bedf0f6599d58b24cbb214af62e45f820
+          persist-credentials: false
+      - name: Prepare exact locally reviewed blobs only; no refs or commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = bdcd661bedf0f6599d58b24cbb214af62e45f820
+          python3 - <<'PY'
+          import base64, hashlib, json, subprocess
+          from pathlib import Path
+          def blob_sha(data):
+              return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          response = json.loads(subprocess.check_output(['gh','api','repos/hurtener/chartworks/git/blobs/940b69ff860dfb205e5ce301b06a79416d331925']))
+          wire = base64.b64decode(response['content'])
+          assert blob_sha(wire) == '940b69ff860dfb205e5ce301b06a79416d331925'
+          changes = json.loads(wire)
+          allowed = {'internal/charts/selection_intent.go','internal/charts/selection_intent_test.go','test/acceptance/cw02_rich_charts_test.go','web/report-viewer/component.test.mjs','web/report-viewer/styles.css','docs/plans/phase-20-charts-spec.md','docs/plans/phase-31-reporting-mcp-apps.md'}
+          assert len(changes) == 7 and {c['path'] for c in changes} == allowed
+          for change in changes:
+              original = Path(change['path']).read_bytes()
+              assert blob_sha(original) == change['base']
+              lines = original.decode().splitlines(keepends=True)
+              assert len(change['edits']) <= 32
+              for edit in reversed(change['edits']):
+                  start, count = edit['start'], edit['delete']
+                  assert 0 <= start <= len(lines) and 0 <= count <= len(lines)-start
+                  lines[start:start+count] = edit['lines']
+              result = ''.join(lines).encode()
+              assert blob_sha(result) == change['result']
+              body = json.dumps({'encoding':'base64','content':base64.b64encode(result).decode()}).encode()
+              uploaded = subprocess.check_output(['gh','api','--method','POST','repos/hurtener/chartworks/git/blobs','--input','-','--jq','.sha'],input=body).decode().strip()
+              assert uploaded == change['result']
+              print(json.dumps({'path':change['path'],'sha':uploaded}))
+          PY
+          git diff --exit-code
