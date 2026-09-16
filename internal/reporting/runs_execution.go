@@ -93,12 +93,15 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 	if err != nil {
 		return RunRecord{}, err
 	}
+	q := s.currentQuery(m)
+	if number > q.MaxAttempts {
+		return RunRecord{}, ErrBudget
+	}
 	plan, err := s.pinnedPlan(ctx, e, m)
 	if err != nil {
 		return RunRecord{}, err
 	}
-	report, executeErr := s.blocks.executor.Execute(ctx, e, plan, exec.Options{Operation: m.ID, Number: number,
-		Preview: m.Private, Rows: min(m.Limits.MaxRows, s.limits.MaxRows), Bytes: min(m.Limits.MaxResultBytes, s.limits.MaxResultBytes)})
+	report, executeErr := executeWithCaps(ctx, e, s.blocks.executor, plan, exec.Options{Operation: m.ID, Number: number, Preview: m.Private, Rows: q.MaxRows, Bytes: q.MaxBytes}, q, m.Version == FrozenVersion)
 	if report.Attempt.ID != "" {
 		if _, err = s.writeRun(ctx, e, inv, RunWrite{Kind: "attempt", Manifest: m, Attempt: &report.Attempt}); err != nil {
 			return RunRecord{}, err
@@ -123,7 +126,10 @@ func (s *Runs) queryFrozen(ctx context.Context, e identity.Envelope, inv jobs.In
 }
 
 func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m RunManifest, result exec.Result, saved Output) (RetainedOutput, error) {
-	out := RetainedOutput{ID: saved.ID, Kind: saved.Kind, State: "succeeded"}
+	out := RetainedOutput{ID: saved.ID, Kind: saved.Kind, Intent: clone(saved.Intent), State: "succeeded"}
+	if saved.Intent != nil && !saved.Intent.Enabled {
+		return out, selectionError("disabled")
+	}
 	if saved.Kind != "narrative" {
 		if saved.Mapping == nil {
 			return out, ErrInvalid
@@ -138,10 +144,15 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 		n := saved.Narrative
 		if n == nil || s.model == nil || m.Model != s.modelVersion || n.ModelVersion != s.modelVersion || n.SchemaVersion != "grounded-narrative-v1" {
 			out.State, out.Code = "failed", "narrative_unavailable"
+		} else if s.narrativeBudget(m, *n) != nil {
+			out.State, out.Code = "failed", "narrative_budget_exceeded"
+		} else if _, _, err := narrativeEvidence(narrativeResult(m, result), *n); err != nil {
+			// Filter before reservation and provider input; no implicit evidence refresh.
+			out.State, out.Code = "failed", "narrative_evidence_unavailable"
 		} else {
 			// Persist reservations before the SDK may accept a request. A crash
 			// here leaves an honest indeterminate output, not free retry budget.
-			start := RetainedOutput{ID: saved.ID, Kind: "narrative", State: "indeterminate", Code: "narrative_indeterminate", ReservedCalls: n.MaxCalls, ReservedTokens: n.MaxTokens}
+			start := RetainedOutput{ID: saved.ID, Kind: "narrative", Intent: clone(saved.Intent), State: "indeterminate", Code: "narrative_indeterminate", ReservedCalls: n.MaxCalls, ReservedTokens: n.MaxTokens}
 			if _, err := s.writeRun(ctx, e, inv, RunWrite{Kind: "output_start", Manifest: m, Output: &start}); err != nil {
 				return out, err
 			}
@@ -184,7 +195,7 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 	if err != nil {
 		return err
 	}
-	if current.Result == nil && m.ReuseMaxAge > 0 && len(current.View.QueryAttempts) == 0 {
+	if current.Result == nil && m.ReuseMaxAge > 0 && len(current.View.QueryAttempts) == 0 && s.currentQuery(m) == acceptedQuery(m) {
 		// The repository rechecks present pins and reach without warehouse/model I/O.
 		var reused bool
 		current, reused, err = s.repo.ReuseFrozenRun(ctx, inv, m.ID)
@@ -284,7 +295,7 @@ func (s *Runs) run(ctx context.Context, e identity.Envelope, id string, resume b
 		}
 	}
 	handler := func(work context.Context, inv jobs.Invocation) error { return s.continueFrozen(work, e, inv, r) }
-	timeout := min(time.Duration(r.Manifest.Limits.Timeout), time.Duration(s.limits.Timeout))
+	timeout := time.Duration(s.currentQuery(*r.Manifest).TimeoutMillis) * time.Millisecond
 	var runErr error
 	if parent == nil {
 		_, runErr = s.runner.Run(ctx, e, task, timeout, handler)

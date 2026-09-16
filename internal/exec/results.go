@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"math"
 	"strconv"
 	"strings"
@@ -16,10 +17,11 @@ var ErrType = errors.New("exec: result type or value unsupported")
 // Field describes one ordered output. Exact numbers are JSON strings, not floats.
 // NativeType is an adapter-owned type name, never a caller-supplied coercion.
 type Field struct {
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	Encoding   string `json:"encoding"`
-	NativeType string `json:"native_type"`
+	Name        string                       `json:"name"`
+	Type        string                       `json:"type"`
+	Encoding    string                       `json:"encoding"`
+	NativeType  string                       `json:"native_type"`
+	Sensitivity semantics.LiteralSensitivity `json:"sensitivity,omitempty" jsonschema:"enum=non_sensitive,enum=sensitive"`
 }
 
 // Result contains one ordered, bounded result and its completeness evidence.

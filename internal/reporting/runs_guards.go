@@ -26,6 +26,9 @@ func CheckFrozenEligibility(e identity.Envelope, m RunManifest, snapshot Snapsho
 		DependencyDigest(snapshot.Validation.Dependencies, m.Revision.Definition.Topics) != DependencyDigest(m.Dependencies, m.Revision.Definition.Topics) {
 		return ErrStale
 	}
+	if err := CheckRunPolicy(m); err != nil {
+		return err
+	}
 	return runEligibility(e, snapshot, m.Policy, now)
 }
 
@@ -38,6 +41,9 @@ func CheckFrozenResult(ctx context.Context, m RunManifest, result exec.Result, a
 		a.Manifest.Receipt.Dialect != m.Binding.Dialect || a.Rows != len(result.Rows) || a.Bytes != result.Bytes || result.Outcome != a.Status ||
 		len(result.Rows) > m.Limits.MaxRows || result.Bytes > m.Limits.MaxResultBytes || result.Bytes < 0 {
 		return ErrInvalid
+	}
+	if !queryAttemptWithin(m, a) {
+		return ErrBudget
 	}
 	want := make([]string, 0, len(m.Dependencies))
 	for _, dependency := range m.Dependencies {
@@ -58,7 +64,7 @@ func CheckFrozenResult(ctx context.Context, m RunManifest, result exec.Result, a
 	}
 	limits := config.DefaultReporting()
 	limits.PreviewRows, limits.PreviewBytes = m.Limits.MaxRows, m.Limits.MaxResultBytes
-	if digest(result.Schema) != digest(m.Revision.Definition.ExpectedSchema) {
+	if digest(physicalSchema(result.Schema)) != digest(physicalSchema(m.Revision.Definition.ExpectedSchema)) {
 		return ErrStale
 	}
 	_, err = chartdata.FromReadResult(ctx, result, chartLimits(limits))
@@ -79,7 +85,7 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 			break
 		}
 	}
-	if saved == nil || saved.Kind != o.Kind {
+	if saved == nil || saved.Kind != o.Kind || digest(saved.Intent) != digest(o.Intent) || saved.Intent != nil && !saved.Intent.Enabled {
 		return ErrInvalid
 	}
 	if starting {
@@ -93,7 +99,7 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 		return ErrInvalid
 	}
 	if o.State == "failed" {
-		if o.Chart != nil || !slices.Contains([]string{"narrative_unavailable", "narrative_failed", "narrative_indeterminate", "output_failed"}, o.Code) {
+		if o.Chart != nil || !slices.Contains([]string{"narrative_unavailable", "narrative_failed", "narrative_indeterminate", "narrative_budget_exceeded", "narrative_evidence_unavailable", "output_failed"}, o.Code) {
 			return ErrInvalid
 		}
 		if o.Narrative != nil && (o.Narrative.Text != "" || len(o.Narrative.Claims) != 0 || len(o.Narrative.Evidence) != 0) {
@@ -118,6 +124,13 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 	if n.PromptVersion != spec.PromptVersion || n.ModelVersion != spec.ModelVersion || n.SchemaVersion != spec.SchemaVersion || n.Locale != spec.Locale || n.Tone != spec.Tone ||
 		n.EvidenceHash != digest(n.Evidence) || n.OutputHash != digest([]any{n.Text, n.Claims}) {
 		return ErrInvalid
+	}
+	if m.Version == FrozenVersion && !validNarrativeEvidence(m, *spec, n.Evidence) {
+		return ErrInvalid
+	}
+	encoded, err := json.Marshal(n.Evidence)
+	if err != nil || len(encoded) > spec.MaxBytes || len(n.Evidence) > 256 {
+		return ErrBudget
 	}
 	text, err := groundedText(NarrativeAnswer{Claims: n.Claims}, n.Evidence, *spec)
 	if err != nil || text != n.Text {

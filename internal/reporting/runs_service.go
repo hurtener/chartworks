@@ -59,10 +59,16 @@ func normalizedRunRequest(in RunRequest) (RunRequest, error) {
 	}
 	seen := map[string]bool{}
 	for _, id := range in.Outputs {
-		if !identity.Identifier(id) || seen[id] {
+		if !identity.Identifier(id) {
 			return RunRequest{}, ErrInvalid
 		}
+		if seen[id] {
+			return RunRequest{}, selectionError("duplicate")
+		}
 		seen[id] = true
+	}
+	if in.QueryLimits != nil && !in.QueryLimits.Valid() {
+		return RunRequest{}, ErrInvalid
 	}
 	return in, nil
 }
@@ -109,7 +115,7 @@ func (s *Runs) selectRunOutputs(d Definition, in RunRequest) ([]Output, error) {
 	}
 	// Authoring previews use definition order. An explicit frozen-run selection
 	// seals the caller's output order, which is also the retained paging order.
-	if len(in.Outputs) > 0 {
+	if len(in.Outputs) > 0 && d.SchemaVersion == SchemaVersion {
 		byID := make(map[string]Output, len(selected))
 		for _, output := range selected {
 			byID[output.ID] = output
@@ -139,7 +145,7 @@ func (s *Runs) selectRunOutputs(d Definition, in RunRequest) ([]Output, error) {
 	if calls > s.limits.NarrativeCalls || tokens > s.limits.NarrativeTokens {
 		return nil, ErrBudget
 	}
-	return selected, nil
+	return attachOutputIntent(d, selected), nil
 }
 
 // Admit first reserves the existing operation key/hash. Only the winning
@@ -165,7 +171,7 @@ func (s *Runs) admit(ctx context.Context, e identity.Envelope, id string, input 
 	}
 	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
 	defer cancel()
-	requestHash := digest([]any{FrozenVersion, id, in})
+	requestHash := digest([]any{LegacyFrozenVersion, id, in})
 	var task jobs.RequestTask
 	request := jobs.RequestInput{Kind: "reporting.run", Target: id, InputHash: requestHash}
 	if parent == nil {
@@ -219,6 +225,10 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	if err != nil {
 		return RunView{}, err
 	}
+	accepted, err := s.acceptLimits(d, in.QueryLimits, selected)
+	if err != nil {
+		return RunView{}, err
+	}
 	if in.Resolution.At.IsZero() {
 		in.Resolution.At = task.Created
 	}
@@ -255,13 +265,21 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	for _, definition := range definitions {
 		m.Definitions = append(m.Definitions, clone(definition.Definition))
 	}
+	m.AcceptedLimits = &accepted
+	m.Selection = selectionSnapshot(d, selected)
+	m.SelectionMode = selectionMode(d, in.Outputs)
+	m.ResultLineage = clone(snapshot.Validation.Evidence.Attempt.Manifest.Receipt.Lineage)
+	m.ResultPolicy = inheritedPolicy(d, m.Definitions, m.ResultLineage)
+	if accepted.NarrativeCalls == 0 {
+		m.Model = ""
+	}
 	privacyActor := ""
 	if private {
 		privacyActor = e.User()
 	}
 	m.ReuseKey = digest([]any{FrozenVersion, charts.Version, m.Tenant, m.Block, m.Revision.Digest,
 		m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, exec.Hash(binding), m.Private, privacyActor,
-		m.Policy, m.Trust, m.Model, m.Limits.MaxRows, m.Limits.MaxResultBytes})
+		m.Policy, m.Trust, m.Model, m.AcceptedLimits, m.Selection, m.SelectionMode, m.ResultPolicy, m.Limits})
 	proof, err := prepareRun(e, m)
 	if err != nil {
 		return RunView{}, err

@@ -126,12 +126,13 @@ type SourceReference struct {
 // References use ID, so a reviewed source rename can update SourceName in a new
 // draft without rewriting every semantic reference.
 type Column struct {
-	ID         string `json:"id"`
-	SourceName string `json:"source_name"`
-	Name       string `json:"name"`
-	NativeType string `json:"native_type"`
-	Category   string `json:"category"`
-	Nullable   bool   `json:"nullable"`
+	ID          string             `json:"id"`
+	SourceName  string             `json:"source_name"`
+	Name        string             `json:"name"`
+	NativeType  string             `json:"native_type"`
+	Category    string             `json:"category"`
+	Nullable    bool               `json:"nullable"`
+	Sensitivity LiteralSensitivity `json:"sensitivity,omitempty" jsonschema:"enum=non_sensitive,enum=sensitive"`
 }
 
 // Dataset binds stable semantic columns to exact source evidence.

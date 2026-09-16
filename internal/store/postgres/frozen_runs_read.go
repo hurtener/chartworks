@@ -156,7 +156,11 @@ func frozenValuesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 		!m.Created.Equal(h.view.Created) || !m.Expires.Equal(h.manifestExpires) || m.Limits.Validate() != nil {
 		return store.ErrInvalid
 	}
+	if reporting.CheckRunPolicy(m) != nil {
+		return store.ErrInvalid
+	}
 	out.Manifest = &m
+	reporting.ProjectRunMetadata(&out.View, m)
 	out.View.Parameters = append([]reporting.BoundValue{}, m.Resolved.Values...)
 	out.View.Trust = m.Trust
 	out.View.Policy = m.Policy
@@ -179,7 +183,7 @@ func frozenValuesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 			return store.ErrInvalid
 		}
 		out.Outputs = append(out.Outputs, output)
-		out.View.Outputs = append(out.View.Outputs, reporting.OutputSummary{ID: output.ID, Kind: output.Kind, State: output.State, Code: output.Code, Digest: output.Digest})
+		out.View.Outputs = append(out.View.Outputs, reporting.OutputSummary{ID: output.ID, Kind: output.Kind, Intent: output.Intent, State: output.State, Code: output.Code, Digest: output.Digest})
 	}
 	return rows.Err()
 }
@@ -209,6 +213,11 @@ func frozenReadTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string
 	}
 	if h.view.State == "sealed" || h.view.State == "normalized" {
 		out.View.State = h.operationState
+	}
+	if !values {
+		if err = frozenIntentTx(ctx, tx, e.Tenant(), id, &out.View); err != nil {
+			return reporting.RunRecord{}, err
+		}
 	}
 	if values {
 		if err = frozenValuesTx(ctx, tx, e, h, &out); err != nil {
