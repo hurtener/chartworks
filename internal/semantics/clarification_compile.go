@@ -181,6 +181,7 @@ func validateClarificationReferences(subject RuleSubject, p RuleSetDefinition) e
 }
 
 func orderedClarificationSlots(slots []ClarificationSlot) ([]ClarificationSlot, error) {
+	slots = clarificationPresentationOrder(slots)
 	known := map[string]bool{}
 	for _, slot := range slots {
 		if !identity.Identifier(slot.ID) || known[slot.ID] {

@@ -34,18 +34,18 @@ func ResolvePublishedClarifications(topic topics.Published, published Published,
 // ClarificationPreviewRequest is a bounded synthetic authoring preview. A draft
 // is evaluated, never made applicable to production routing by this operation.
 type ClarificationPreviewRequest struct {
-	Definition semantics.RuleSetDefinition `json:"definition"`
-	Cases []semantics.ClarificationInput `json:"cases"`
+	Definition semantics.RuleSetDefinition    `json:"definition"`
+	Cases      []semantics.ClarificationInput `json:"cases"`
 }
 
 // ClarificationPreview pins deterministic preview evidence to the exact candidate
 // and currently readable topic. Publication still requires a separate review.
 type ClarificationPreview struct {
-	Topic string `json:"topic"`
-	TopicVersion string `json:"topic_version"`
-	PackDigest string `json:"pack_digest"`
-	RuleDigest string `json:"rule_digest"`
-	Cases []semantics.ClarificationEvaluation `json:"cases"`
+	Topic        string                              `json:"topic"`
+	TopicVersion string                              `json:"topic_version"`
+	PackDigest   string                              `json:"pack_digest"`
+	RuleDigest   string                              `json:"rule_digest"`
+	Cases        []semantics.ClarificationEvaluation `json:"cases"`
 }
 
 // PreviewClarifications uses the same compiler and evaluator as production. It
@@ -93,7 +93,9 @@ func ClarificationColumn(definition topics.Definition, target semantics.Referenc
 				break
 			}
 		}
-		if !found { return "", semantics.Column{}, store.ErrConflict }
+		if !found {
+			return "", semantics.Column{}, store.ErrConflict
+		}
 	} else if target.Kind == semantics.KindMeasure {
 		found := false
 		for _, measure := range definition.Measures {
@@ -102,11 +104,17 @@ func ClarificationColumn(definition topics.Definition, target semantics.Referenc
 				break
 			}
 		}
-		if !found { return "", semantics.Column{}, store.ErrConflict }
+		if !found {
+			return "", semantics.Column{}, store.ErrConflict
+		}
 	}
-	if target.Kind != semantics.KindColumn { return "", semantics.Column{}, store.ErrInvalid }
+	if target.Kind != semantics.KindColumn {
+		return "", semantics.Column{}, store.ErrInvalid
+	}
 	for _, dataset := range definition.Datasets {
-		if dataset.ID != target.Dataset { continue }
+		if dataset.ID != target.Dataset {
+			continue
+		}
 		for _, column := range dataset.Columns {
 			if column.ID == target.ID && column.SourceName != "" {
 				return dataset.ID, column, nil

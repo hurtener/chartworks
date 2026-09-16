@@ -145,12 +145,12 @@ type ClarificationSlot struct {
 // ClarificationPattern preserves exact semantic targets separately from its
 // reviewed applicability policy. Legacy patterns have no implicit new blocker.
 type ClarificationPattern struct {
-	ID         string                 `json:"id"`
-	Version    string                 `json:"version"`
-	Targets    []Reference            `json:"targets"`
-	Provenance RuleProvenance         `json:"provenance"`
-	Slots      []ClarificationSlot    `json:"slots"`
-	Policy     *ClarificationPolicy   `json:"policy,omitempty"`
+	ID         string               `json:"id"`
+	Version    string               `json:"version"`
+	Targets    []Reference          `json:"targets"`
+	Provenance RuleProvenance       `json:"provenance"`
+	Slots      []ClarificationSlot  `json:"slots"`
+	Policy     *ClarificationPolicy `json:"policy,omitempty"`
 }
 
 // RuleSetDefinition pins all rules and patterns to one exact compiled topic.

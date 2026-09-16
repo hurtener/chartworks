@@ -86,19 +86,21 @@ type ChoiceSelection struct {
 // Topic reach, source bindings, rule text and facet text are resolved from
 // current published state by Service.Route.
 type RouteRequest struct {
-	Topic        string                `json:"topic,omitempty"`
-	Topics       []string              `json:"topics,omitempty"`
-	Context      string                `json:"context"`
-	Locale       nlq.Language          `json:"locale"`
-	Question     string                `json:"question"`
-	Kinds        []string              `json:"kinds,omitempty"`
-	LimitPerKind int                   `json:"limit_per_kind,omitempty"`
-	References   []semantics.Reference `json:"references,omitempty"`
-	Choices      []ChoiceSelection     `json:"choices,omitempty"`
-	JoinChoices  []JoinChoice          `json:"joins,omitempty"`
-	MetricIDs    []string              `json:"metric_ids,omitempty"`
-	Examples     []nlq.OptionalItem    `json:"examples,omitempty"`
-	Rerank       bool                  `json:"rerank,omitempty"`
+	Answers       []semantics.ClarificationAnswer `json:"answers,omitempty"`
+	AnswerContext string                          `json:"answer_context,omitempty"`
+	Topic         string                          `json:"topic,omitempty"`
+	Topics        []string                        `json:"topics,omitempty"`
+	Context       string                          `json:"context"`
+	Locale        nlq.Language                    `json:"locale"`
+	Question      string                          `json:"question"`
+	Kinds         []string                        `json:"kinds,omitempty"`
+	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
+	References    []semantics.Reference           `json:"references,omitempty"`
+	Choices       []ChoiceSelection               `json:"choices,omitempty"`
+	JoinChoices   []JoinChoice                    `json:"joins,omitempty"`
+	MetricIDs     []string                        `json:"metric_ids,omitempty"`
+	Examples      []nlq.OptionalItem              `json:"examples,omitempty"`
+	Rerank        bool                            `json:"rerank,omitempty"`
 }
 
 // ClarificationChoice is a detached presentation choice. It is not authority
@@ -111,11 +113,15 @@ type ClarificationChoice struct {
 // Clarification is a typed terminal outcome that stops before embedding when
 // a required slot, ambiguous join, or ambiguous retrieval needs user input.
 type Clarification struct {
-	Reason  string                `json:"reason"`
-	Pattern string                `json:"pattern,omitempty"`
-	Slot    string                `json:"slot,omitempty"`
-	Prompt  string                `json:"prompt,omitempty"`
-	Choices []ClarificationChoice `json:"choices,omitempty"`
+	Outcome   semantics.ClarificationOutcome       `json:"outcome,omitempty"`
+	Why       string                               `json:"why,omitempty"`
+	Questions []semantics.ClarificationSlotOutcome `json:"questions,omitempty"`
+	Errors    []semantics.ClarificationFieldError  `json:"errors,omitempty"`
+	Reason    string                               `json:"reason"`
+	Pattern   string                               `json:"pattern,omitempty"`
+	Slot      string                               `json:"slot,omitempty"`
+	Prompt    string                               `json:"prompt,omitempty"`
+	Choices   []ClarificationChoice                `json:"choices,omitempty"`
 }
 
 func (c *Clarification) Error() string { return "nlqroute: clarification required" }
@@ -154,7 +160,13 @@ type ContextView struct {
 // RouteResult is a detached routing and context result. A Clarification or
 // StrategyNoRoute result has no Context and therefore cannot reach generation.
 type RouteResult struct {
-	Outcome nlq.Strategy `json:"outcome"`
+	AnswerContext       string                              `json:"answer_context,omitempty"`
+	SourceBindingDigest string                              `json:"source_binding_digest,omitempty"`
+	Clarifications      []semantics.ClarificationEvaluation `json:"clarifications,omitempty"`
+	Resolutions         []semantics.ClarificationResolution `json:"resolutions,omitempty"`
+	business            []readexec.BusinessConstraint
+	resolutionSeal      string
+	Outcome             nlq.Strategy `json:"outcome"`
 	// Request is the bounded, caller-selected routing input that was admitted
 	// for this result. Persisted refinements use it as their semantic base; it
 	// contains no SQL or authority material.
@@ -211,12 +223,14 @@ func New(topicsReader TopicReader, rules RuleReader, index IndexReader, engine g
 }
 
 type admittedTopic struct {
-	id          string
-	publication topics.Published
-	rules       rulesets.Published
-	hasRules    bool
-	constraints *nlq.ConstraintState
-	advisory    []nlq.OptionalItem
+	clarifications *semantics.ClarificationEvaluation
+	binding        *readexec.Binding
+	id             string
+	publication    topics.Published
+	rules          rulesets.Published
+	hasRules       bool
+	constraints    *nlq.ConstraintState
+	advisory       []nlq.OptionalItem
 }
 
 // Route performs the bounded first routing consumer. Current source and topic
@@ -257,19 +271,6 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		if err != nil {
 			return RouteResult{}, err
 		}
-		item.constraints, item.advisory, err = s.resolveRules(ctx, e, in, choiceValues, item)
-		if err != nil {
-			var clarification *Clarification
-			if errors.As(err, &clarification) {
-				result.Clarification = clarification
-				result.Outcome = nlq.StrategyClarify
-				result.RuleVersions = ruleVersions(admitted, item)
-				result.TopicVersions = topicVersions(admitted, item)
-				result.Stages = append(result.Stages, Stage{Name: "admission", DurationMS: time.Since(started).Milliseconds()})
-				return result, nil
-			}
-			return RouteResult{}, err
-		}
 		admitted = append(admitted, item)
 		result.Stages = append(result.Stages, Stage{Name: "admission", DurationMS: time.Since(started).Milliseconds()})
 	}
@@ -281,7 +282,29 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 			result.RuleVersions[i] = admitted[i].rules.State.Version
 		}
 	}
-	metrics, err := resolveMetrics(admitted, in.MetricIDs)
+	if !contextMatches(admitted, in.Context) {
+		return RouteResult{}, readexec.ErrBinding
+	}
+	if err := s.prepareClarifications(ctx, e, in, admitted, &result); err != nil {
+		return RouteResult{}, err
+	}
+	if result.Clarification != nil {
+		return result, nil
+	}
+	in = cloneRouteRequest(result.Request)
+	for i := range admitted {
+		item := &admitted[i]
+		item.constraints, item.advisory, err = s.resolveRules(ctx, e, in, choiceValues, *item)
+		if err != nil {
+			var clarification *Clarification
+			if errors.As(err, &clarification) {
+				result.Clarification, result.Outcome = clarification, nlq.StrategyClarify
+				return result, nil
+			}
+			return RouteResult{}, err
+		}
+	}
+	metrics, err := resolveMetrics(admitted, selectedClarificationMetrics(in.MetricIDs, result.Resolutions))
 	if err != nil {
 		return RouteResult{}, err
 	}
@@ -296,6 +319,10 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		return RouteResult{}, readexec.ErrBinding
 	}
 
+	minimumTier, err := s.preflightClarificationBudget(ctx, in, admitted, result, metrics)
+	if err != nil {
+		return RouteResult{}, err
+	}
 	resources := routeResources(e, admitted)
 	partition := "route:" + vindex.Digest(struct {
 		Topics  []string `json:"topics"`
@@ -431,7 +458,14 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		Advisory:     mergeAdvisory(admitted),
 		Examples:     append([]nlq.OptionalItem(nil), in.Examples...),
 	}
-	assembled, err := s.assembler.AssembleForConfidence(ctx, input, result.Confidence)
+	tier, err := nlq.TierForConfidence(result.Confidence)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if minimumTier.Budget() > tier.Budget() {
+		tier = minimumTier
+	}
+	assembled, err := s.assembler.Assemble(ctx, input, tier)
 	if err != nil {
 		return RouteResult{}, err
 	}
@@ -443,6 +477,7 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 	for i := range hits {
 		result.Evidence[i] = hits[i].hit
 	}
+	result.resolutionSeal = result.resolutionProof()
 	return result, nil
 }
 
@@ -479,7 +514,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		}
 		seen[topic] = true
 	}
-	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 {
+	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
 		return nil, ErrInvalid
 	}
 	if len(in.JoinChoices) > 0 {
@@ -551,6 +586,7 @@ func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out.Kinds = append([]string(nil), in.Kinds...)
 	out.References = append([]semantics.Reference(nil), in.References...)
 	out.Choices = append([]ChoiceSelection(nil), in.Choices...)
+	out.Answers = semantics.CloneClarificationAnswers(in.Answers)
 	out.JoinChoices = append([]JoinChoice(nil), in.JoinChoices...)
 	out.MetricIDs = append([]string(nil), in.MetricIDs...)
 	out.Examples = append([]nlq.OptionalItem(nil), in.Examples...)
@@ -581,82 +617,34 @@ func (s *Service) readRules(ctx context.Context, e identity.Envelope, topic, ver
 	return published, true, nil
 }
 
-func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in RouteRequest, choices map[string]string, item admittedTopic) (*nlq.ConstraintState, []nlq.OptionalItem, error) {
+func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in RouteRequest, _ map[string]string, item admittedTopic) (*nlq.ConstraintState, []nlq.OptionalItem, error) {
 	if !item.hasRules {
-		if len(in.References) > 0 || len(choices) > 0 {
-			// Caller selections and references are meaningful only when the
-			// current published ruleset can evaluate them. Do not silently drop
-			// a constraint on a topic that has no active ruleset.
+		if len(in.References) > 0 {
 			return nil, nil, ErrInvalid
 		}
 		return nil, nil, nil
 	}
-	definition := item.rules.Definition
 	refs := append([]semantics.Reference(nil), in.References...)
-	usedChoices := map[string]bool{}
-	slotCounts := map[string]int{}
-	for _, pattern := range definition.Patterns {
-		for _, slot := range pattern.Slots {
-			slotCounts[slot.ID]++
-		}
-	}
-	for _, pattern := range definition.Patterns {
-		for _, slot := range pattern.Slots {
-			key := pattern.ID + "." + slot.ID
-			value, ok := choices[key]
-			if !ok {
-				if slotCounts[slot.ID] > 1 {
-					if _, supplied := choices[slot.ID]; supplied {
-						return nil, nil, ErrInvalid
-					}
-				}
-				value, ok = choices[slot.ID]
-			}
-			if !ok {
-				if !slot.Required {
-					continue
-				}
-				choices := make([]ClarificationChoice, len(slot.Choices))
-				for i := range slot.Choices {
-					choices[i] = ClarificationChoice{ID: slot.Choices[i].ID, Label: slot.Choices[i].Label}
-				}
-				return nil, nil, &Clarification{Reason: "required_slot", Pattern: pattern.ID, Slot: slot.ID, Prompt: slot.Prompt, Choices: choices}
-			}
-			usedChoices[key], usedChoices[slot.ID] = true, true
-			if strings.TrimSpace(value) == "" {
-				return nil, nil, &Clarification{Reason: "required_slot", Pattern: pattern.ID, Slot: slot.ID, Prompt: slot.Prompt}
-			}
-			if slot.Kind == semantics.SlotChoice {
-				var selected *semantics.Reference
-				for i := range slot.Choices {
-					if slot.Choices[i].ID == value {
-						selected = slot.Choices[i].Target
-						break
-					}
-				}
-				if selected == nil && !choiceExists(slot.Choices, value) {
-					return nil, nil, &Clarification{Reason: "invalid_choice", Pattern: pattern.ID, Slot: slot.ID, Prompt: slot.Prompt, Choices: choicesFor(slot.Choices)}
-				}
-				if selected != nil {
-					refs = appendUniqueRef(refs, *selected)
-				}
-			}
-		}
-	}
-	for key := range choices {
-		if !usedChoices[key] {
-			return nil, nil, ErrInvalid
-		}
+	if item.clarifications != nil {
+		refs = append([]semantics.Reference(nil), item.clarifications.References...)
 	}
 	if len(refs) == 0 {
 		if len(item.publication.Definition.Datasets) == 0 {
 			return nil, nil, store.ErrConflict
 		}
-		refs = append(refs, semantics.Reference{Kind: semantics.KindDataset, ID: item.publication.Definition.Datasets[0].ID})
+		ids := make([]string, 0, len(item.publication.Definition.Datasets))
+		for _, dataset := range item.publication.Definition.Datasets {
+			ids = append(ids, dataset.ID)
+		}
+		sort.Strings(ids)
+		refs = append(refs, semantics.Reference{Kind: semantics.KindDataset, ID: ids[0]})
 	}
 	evaluation, err := s.rules.Evaluate(ctx, e, item.id, rulesets.EvaluateRequest{References: refs})
 	if err != nil {
 		return nil, nil, err
+	}
+	if evaluation.TopicVersion != item.publication.State.Version || evaluation.PackDigest != item.publication.Digest || evaluation.RuleVersion != item.rules.State.Version || evaluation.RuleDigest != item.rules.Digest {
+		return nil, nil, store.ErrConflict
 	}
 	state := &nlq.ConstraintState{Allowed: evaluation.Result.Allowed}
 	for _, ref := range evaluation.Result.Required {
@@ -666,11 +654,17 @@ func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in Rout
 		state.Excluded = append(state.Excluded, nlq.MandatoryConstraint{ID: referenceID(ref), Kind: "excluded", Text: referenceText(ref)})
 	}
 	if !state.Allowed {
-		return nil, nil, &Clarification{Reason: "mandatory_constraint", Prompt: "Choose a metric or dimension that satisfies the published rules."}
+		return nil, nil, &Clarification{Reason: "mandatory_constraint", Outcome: semantics.ClarificationMissing, Prompt: "Choose a metric or dimension that satisfies the published rules."}
+	}
+	if item.clarifications != nil {
+		state, err = appendResolvedConstraints(state, item.clarifications.Resolutions, false)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	var advisory []nlq.OptionalItem
-	for _, rule := range definition.Rules {
-		if rule.Class != semantics.RuleAdvisoryContext || rule.Guidance == nil {
+	for _, rule := range item.rules.Definition.Rules {
+		if rule.Class != semantics.RuleAdvisoryContext || rule.Guidance == nil || rule.Guidance.Sensitivity != semantics.LiteralNonSensitive {
 			continue
 		}
 		advisory = append(advisory, nlq.OptionalItem{ID: rule.ID, Text: rule.Guidance.Text, Priority: rule.Priority, Source: "rules"})
