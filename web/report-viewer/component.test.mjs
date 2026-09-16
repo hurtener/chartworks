@@ -180,6 +180,7 @@ try{
         assert.equal(geometry.length,1000,'all bounded dense observations drawn');
         for(let g=1;g<geometry.length;g++)assert(geometry[g-1][0]+geometry[g-1][1]<=geometry[g][0]+1e-8,'minimum thickness must not overlap independent slots');
         passes++;
+        await check(`Array.from(${body}.querySelectorAll('svg rect[data-series-id]')).every(r=>parseFloat(${doc}.defaultView.getComputedStyle(r).strokeWidth)===0)`,'dense bar outlines cannot exceed their slots');
       }
       if(c.scenario==='bar_retained_paging') {
         const before=await evaluate('calls.length');
@@ -197,14 +198,17 @@ try{
     for (const edit of [
       "c.version=99", "c.mapping.version=1", "c.row_indices.pop()", "c.points[0].series_id='unknown'", "c.points.push(JSON.parse(JSON.stringify(c.points[0])))"
     ]) {
+      await restore();
       await evaluate(`{const c=JSON.parse(JSON.stringify(fixture.rich_cases.find(c=>c.scenario==='line_two_units').output));${edit};show(makeView(c,'rich-invalid'));}`);
       await until(()=>evaluate(`${body}.querySelector('.error')!==null`),'rich invalid output rejection');
       await check(`${body}.querySelector('svg')===null&&${body}.querySelector('table')===null`,'invalid rich output cleared, never scalar fallback');
     }
     for (const edit of ["c.hierarchy[0].parent=c.hierarchy[0].id", "c.hierarchy[1].depth=8"]) {
+      await restore();
       await evaluate(`{const c=JSON.parse(JSON.stringify(fixture.rich_cases.find(c=>c.scenario==='hierarchy_three_levels').output));${edit};show(makeView(c,'invalid-tree'));}`);
       await until(()=>evaluate(`${body}.querySelector('.error')!==null`),'invalid tree rejected');passes++;
     }
+    await restore();
     await evaluate(`{const c=JSON.parse(JSON.stringify(fixture.rich_cases.find(c=>c.scenario==='bubble_series').output));c.points[0].size.coordinate=-1;show(makeView(c,'invalid-size'));}`);
     await until(()=>evaluate(`${body}.querySelector('.error')!==null`),'negative size rejected');passes++;
     await check('calls.length===0','chart interpretation and local redraw never execute');

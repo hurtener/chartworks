@@ -75,6 +75,16 @@ func testCW02ChartHTTP(t *testing.T) {
 	for _, candidate := range chartfixtures.RichCases() {
 		if candidate.Name == "bubble_series" {
 			out, err := ranked.client.SelectChart(t.Context(), cw.ChartSelectRequest{Data: candidate.Data, Rank: true, Intent: "Show bubble geometry SYNTHETIC_QUESTION_CANARY"})
+			if err != nil || out.Provenance.Ranking != "not_applicable" || ranker.calls.Load() != 0 || out.Selection.Selected.Mapping.Bindings.Size != "size" {
+				t.Fatal("a single suitable shape must not invoke ranking", out.Provenance, err)
+			}
+			// Repeated categorical tuples correctly excluded comparisons above.
+			// Distinct synthetic labels now permit several honest alternatives;
+			// only this case should reach the optional gateway ranker.
+			for i := range candidate.Data.Rows {
+				candidate.Data.Rows[i][3].Value += " / " + candidate.Data.Rows[i][0].Value
+			}
+			out, err = ranked.client.SelectChart(t.Context(), cw.ChartSelectRequest{Data: candidate.Data, Rank: true, Intent: "Show bubble geometry SYNTHETIC_QUESTION_CANARY"})
 			query, metadata := ranker.snapshot()
 			if err != nil || out.Provenance.Ranking != "gateway_ranked" || query != "bubble" || ranker.calls.Load() != 1 {
 				t.Fatal("bounded optional rank", out.Provenance, err)

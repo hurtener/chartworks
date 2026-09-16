@@ -154,3 +154,15 @@ func TestIntentBoundsStableTiesAndConflictingCues(t *testing.T) {
 		t.Fatal("catalog tie order changed", defaultChoice.Alternatives)
 	}
 }
+
+func TestUnaccentedSpanishIntentCompatibility(t *testing.T) {
+	composition, err := charts.SelectWithIntent(context.Background(), comparisonData(3), "composicion", charts.Defaults()) //nolint:misspell // Intentional unaccented Spanish input.
+	if err != nil || composition.Selected.Mapping.Kind != charts.Pie || composition.Evidence.Intent != "composition" {
+		t.Fatal("unaccented composition cue lost", err)
+	}
+	f := richFixture(t, "bubble_series")
+	relationship, err := charts.SelectWithIntent(context.Background(), f.Data, "correlacion", charts.Defaults()) //nolint:misspell // Intentional unaccented Spanish input.
+	if err != nil || relationship.Selected.Mapping.Kind != charts.Scatter || relationship.Selected.Mapping.Bindings.Size != "" || relationship.Evidence.Intent != "relationship" {
+		t.Fatal("unaccented relationship cue must not invent size", err)
+	}
+}

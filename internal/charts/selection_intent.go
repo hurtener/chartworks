@@ -49,9 +49,11 @@ func questionIntent(intent string) string {
 	cues := map[string]string{
 		"compare": "comparison", "comparison": "comparison", "comparar": "comparison", "comparación": "comparison", "comparacion": "comparison", "ranking": "comparison",
 		"trend": "trend", "trends": "trend", "evolution": "trend", "tendencia": "trend", "evolución": "trend", "evolucion": "trend", "line": "trend", "area": "trend", "área": "trend",
-		"composition": "composition", "share": "composition", "shares": "composition", "proportion": "composition", "pie": "composition", "donut": "composition", "composición": "composition", "composicion": "composition", "participación": "composition", "participacion": "composition", "proporción": "composition",
-		"correlation": "relationship", "relationship": "relationship", "scatter": "relationship", "correlación": "relationship", "correlacion": "relationship", "relación": "relationship",
-		"bubble": "bubble", "bubbles": "bubble", "burbuja": "bubble", "burbujas": "bubble",
+		"composition": "composition", "share": "composition", "shares": "composition", "proportion": "composition", "pie": "composition", "donut": "composition", "composición": "composition", "participación": "composition", "participacion": "composition", "proporción": "composition",
+		"correlation": "relationship", "relationship": "relationship", "scatter": "relationship", "correlación": "relationship", "relación": "relationship",
+		"composicion": "composition",  //nolint:misspell // Intentional unaccented Spanish query cue.
+		"correlacion": "relationship", //nolint:misspell // Intentional unaccented Spanish query cue.
+		"bubble":      "bubble", "bubbles": "bubble", "burbuja": "bubble", "burbujas": "bubble",
 		"hierarchy": "hierarchy", "hierarchical": "hierarchy", "treemap": "hierarchy", "jerarquía": "hierarchy", "jerarquia": "hierarchy",
 		"heatmap": "intensity", "intensity": "intensity", "intensidad": "intensity",
 		"table": "table", "tabular": "table", "tabla": "table",
@@ -260,21 +262,23 @@ func candidateScore(kind Kind, d Data, b Bindings, p shapeProfile, score int) (i
 	boost := 0
 	switch intent {
 	case "trend":
-		if kind == Line {
+		switch kind {
+		case Line:
 			boost = 5
-		} else if kind == Area {
+		case Area:
 			boost = 10
-		} else {
+		default:
 			boost = -20
 		}
 	case "comparison":
-		if kind == GroupedBar {
+		switch kind {
+		case GroupedBar:
 			boost = 5
-		} else if kind == Bar {
+		case Bar:
 			boost = 7
-		} else if kind == ColumnChart {
+		case ColumnChart:
 			boost = 9
-		} else {
+		default:
 			boost = -15
 		}
 	case "composition":
