@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "assignment": "CW-03",
+  "baseline_main": "35027d93d68c9c2ad3afc4ef26b9deca2b28aa73",
+  "reviewed_source_commit": "3a532fb40b6fe9c98a03c2afdf431cd6e9ad9273",
+  "reviewed_patch_sha256": "ce31faeedaf689773e7b6f2d4b43b8162f908926a5cdc04a991d15ca29372c4a",
+  "validation_workflow": ".github/workflows/cw-03-validation.yml",
+  "artifact": "cw-03-contract-evidence",
+  "exact_execution_identity": "reporting-source.log TESTED_COMMIT; workflow run and head recorded in PR",
+  "scope": ["BLK-01", "BLK-05", "BLK-07"],
+  "required_runtime_checks": ["TestCW03", "strict phase27 AC01-AC08", "strict phase28 AC01-AC08", "strict phase29 AC01-AC08", "strict phase30 AC01-AC08", "strict phase31 AC01-AC08 including actual browser", "workflow unit/race packages", "build", "vet"],
+  "claim_boundary": "This is source provenance, not a passing test receipt. Read exact-source workflow results and PR validation evidence. No live-provider, cloud-warehouse, stress, full coverage-band or migration/release qualification is claimed."
+}
