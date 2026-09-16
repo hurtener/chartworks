@@ -9,6 +9,7 @@ on:
       - test/**
       - web/report-viewer/**
       - docs/**
+      - examples/**
   pull_request:
     paths:
       - .github/workflows/cw-03-validation.yml
@@ -78,6 +79,13 @@ jobs:
       - name: Build pinned native dependencies
         if: steps.native.outputs.cache-hit != 'true'
         run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native.outputs.cache-hit != 'true'
+        with:
+          path: |
+            /tmp/chartworks-bruin/bruin
+            /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: chartworks-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f
       - uses: actions/cache/restore@v4
         id: incremental
         with:
@@ -89,7 +97,7 @@ jobs:
       - name: CW-03 real persistence, execution and adversarial acceptance
         run: |
           set -o pipefail
-          go test -race -count=1 -v -timeout=12m ./test/acceptance -run '^TestCW03' 2>&1 | tee /tmp/reporting-cw03.log
+          go test -race -count=1 -json -timeout=12m ./test/acceptance -run '^TestCW03' 2>&1 | tee /tmp/reporting-cw03.log
       - name: Strict phase 27 to 29 reporting regression criteria
         if: always()
         run: |
@@ -111,7 +119,7 @@ jobs:
         if: always()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=10m ./internal/api ./internal/semantics ./internal/config ./internal/calendars ./internal/jobs ./internal/gateway ./internal/reporting ./internal/reportingapi ./internal/store/postgres ./internal/workapi ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
+          go test -race -count=1 -json -timeout=10m ./internal/api ./internal/semantics ./internal/config ./internal/calendars ./internal/jobs ./internal/gateway ./internal/reporting ./internal/reportingapi ./internal/store/postgres ./internal/workapi ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
       - name: Planning, formatting and actual build
         if: always()
         run: |
