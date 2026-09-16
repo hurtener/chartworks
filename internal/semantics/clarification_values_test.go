@@ -150,7 +150,9 @@ func TestClarificationPolicyCompilation(t *testing.T) {
 		mutations := []func(*RuleSetDefinition){
 			func(d *RuleSetDefinition) { d.Patterns[0].Policy.When = ClarificationWhen{} },
 			func(d *RuleSetDefinition) { d.Patterns[0].Policy.SchemaVersion = 999 },
-			func(d *RuleSetDefinition) { d.Patterns[0].Slots[0].Default = &ClarificationValue{Number: &ClarificationNumberInput{Value: "1", Unit: "USD"}} },
+			func(d *RuleSetDefinition) {
+				d.Patterns[0].Slots[0].Default = &ClarificationValue{Number: &ClarificationNumberInput{Value: "1", Unit: "USD"}}
+			},
 			func(d *RuleSetDefinition) { d.Patterns[0].Slots[0].DependsOn = []string{"amount"} },
 			func(d *RuleSetDefinition) { d.Patterns[0].Slots[0].Effect.Target.ID = "foreign" },
 			func(d *RuleSetDefinition) { d.Patterns[0].Slots[0].Effect.Operator = "execute" },

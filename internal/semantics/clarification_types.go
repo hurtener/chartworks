@@ -78,8 +78,8 @@ type ClarificationNumberInput struct {
 // never pass through the legacy raw-string choice channel.
 type ClarificationValue struct {
 	OptionID string                    `json:"option_id,omitempty"`
-	Time     *ClarificationTimeInput    `json:"time,omitempty"`
-	Number   *ClarificationNumberInput  `json:"number,omitempty"`
+	Time     *ClarificationTimeInput   `json:"time,omitempty"`
+	Number   *ClarificationNumberInput `json:"number,omitempty"`
 	Boolean  *string                   `json:"boolean,omitempty"`
 	Text     *string                   `json:"text,omitempty"`
 	Null     bool                      `json:"null,omitempty"`
@@ -163,33 +163,33 @@ type ClarificationResolution struct {
 // ClarificationSlotOutcome is the user-facing explanation of one slot. Effects
 // contain reviewed metadata only. Values remain in protected resolution records.
 type ClarificationSlotOutcome struct {
-	Topic          string                     `json:"topic"`
-	TopicVersion   string                     `json:"topic_version"`
-	RulesetVersion string                     `json:"ruleset_version"`
-	Pattern        string                     `json:"pattern"`
-	PatternVersion string                     `json:"pattern_version"`
-	Slot           string                     `json:"slot"`
-	Outcome        ClarificationOutcome       `json:"outcome"`
-	Reason         string                     `json:"reason"`
-	Prompt         string                     `json:"prompt,omitempty"`
-	Why            string                     `json:"why,omitempty"`
-	Required       bool                       `json:"required"`
-	Kind           SlotKind                   `json:"kind"`
-	Choices        []ClarificationChoice      `json:"choices,omitempty"`
-	Effect         *ClarificationEffect       `json:"effect,omitempty"`
-	DependsOn      []string                   `json:"depends_on,omitempty"`
-	Defaulted      bool                       `json:"defaulted,omitempty"`
-	Errors         []ClarificationFieldError  `json:"errors,omitempty"`
+	Topic          string                    `json:"topic"`
+	TopicVersion   string                    `json:"topic_version"`
+	RulesetVersion string                    `json:"ruleset_version"`
+	Pattern        string                    `json:"pattern"`
+	PatternVersion string                    `json:"pattern_version"`
+	Slot           string                    `json:"slot"`
+	Outcome        ClarificationOutcome      `json:"outcome"`
+	Reason         string                    `json:"reason"`
+	Prompt         string                    `json:"prompt,omitempty"`
+	Why            string                    `json:"why,omitempty"`
+	Required       bool                      `json:"required"`
+	Kind           SlotKind                  `json:"kind"`
+	Choices        []ClarificationChoice     `json:"choices,omitempty"`
+	Effect         *ClarificationEffect      `json:"effect,omitempty"`
+	DependsOn      []string                  `json:"depends_on,omitempty"`
+	Defaulted      bool                      `json:"defaulted,omitempty"`
+	Errors         []ClarificationFieldError `json:"errors,omitempty"`
 }
 
 // ClarificationEvaluation is atomic with respect to invalid/conflicting input:
 // neither outcome returns partially accepted resolutions or reference choices.
 type ClarificationEvaluation struct {
-	SchemaVersion int                         `json:"schema_version"`
-	Outcome       ClarificationOutcome        `json:"outcome"`
-	Slots         []ClarificationSlotOutcome  `json:"slots"`
-	Resolutions   []ClarificationResolution   `json:"resolutions,omitempty"`
-	References    []Reference                 `json:"references,omitempty"`
-	Errors        []ClarificationFieldError   `json:"errors,omitempty"`
-	Dispositions  []string                    `json:"dispositions,omitempty"`
+	SchemaVersion int                        `json:"schema_version"`
+	Outcome       ClarificationOutcome       `json:"outcome"`
+	Slots         []ClarificationSlotOutcome `json:"slots"`
+	Resolutions   []ClarificationResolution  `json:"resolutions,omitempty"`
+	References    []Reference                `json:"references,omitempty"`
+	Errors        []ClarificationFieldError  `json:"errors,omitempty"`
+	Dispositions  []string                   `json:"dispositions,omitempty"`
 }

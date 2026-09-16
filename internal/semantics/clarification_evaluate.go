@@ -43,7 +43,7 @@ type rankedClarificationPattern struct {
 func ResolveClarifications(model RuleModel, input ClarificationInput) ClarificationEvaluation {
 	out := ClarificationEvaluation{SchemaVersion: ClarificationSchemaVersion, Outcome: ClarificationNotApplicable, Slots: []ClarificationSlotOutcome{}}
 	definition := model.Definition()
-	if model.Digest() == "" || (input.Locale != "en" && input.Locale != "es") || !validClarificationText(input.Question, 16<<10) || len(input.Answers)+len(input.LegacyChoices) > 64 || len(input.References) > 128 {
+	if model.Digest() == "" || (input.Locale != "en" && input.Locale != "es") || !validClarificationText(input.Question, 16<<10) || len(input.Answers)+len(input.LegacyChoices) > 64 || len(input.References) > 256 {
 		out.Outcome = ClarificationInvalid
 		out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "question", "invalid_union")}
 		return out
