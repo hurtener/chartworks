@@ -169,9 +169,9 @@ func TestCW01(t *testing.T) {
 	t.Run("AC08", func(t *testing.T) { cw01IsolationAcceptance(t) })
 	t.Run("AC09", func(t *testing.T) { cw01BudgetPrivacyAcceptance(t, f) })
 	t.Run("AC10", func(t *testing.T) {
-		cw01MigrationAcceptance(t)
-		cw01AuthoringAcceptance(t)
-		cw01ConsumerAcceptance(t)
+		t.Run("migration", cw01MigrationAcceptance)
+		t.Run("authoring", cw01AuthoringAcceptance)
+		t.Run("consumers", cw01ConsumerAcceptance)
 	})
 
 }
