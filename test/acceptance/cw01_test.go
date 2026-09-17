@@ -172,6 +172,9 @@ func TestCW01(t *testing.T) {
 		t.Run("migration", cw01MigrationAcceptance)
 		t.Run("authoring", cw01AuthoringAcceptance)
 		t.Run("consumers", cw01ConsumerAcceptance)
+		t.Run("saved-query", TestSavedQuestionReplayable)
+		t.Run("saved-selection-identity", TestSavedQuestionClarificationAndSelectionIdentity)
+		t.Run("typed-saved-query", cw01TypedSavedQueryAcceptance)
 	})
 
 }

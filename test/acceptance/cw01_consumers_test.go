@@ -46,9 +46,11 @@ func cw01ExportDenials(t *testing.T, f *cw01Fixture, server *httptest.Server) {
 	before := f.model.requests.Load()
 	for _, denied := range []struct {
 		name, remove string
+		wantError    error
+		wantStatus   int
 	}{
-		{"missing-export-action", "topics.export"},
-		{"missing-export-resource", "cw.topic.export:*"},
+		{"missing-export-action", "topics.export", access.ErrForbidden, http.StatusForbidden},
+		{"missing-export-resource", "cw.topic.export:*", access.ErrNotFound, http.StatusNotFound},
 	} {
 		t.Run(denied.name, func(t *testing.T) {
 			var scopes []string
@@ -71,8 +73,8 @@ func cw01ExportDenials(t *testing.T, f *cw01Fixture, server *httptest.Server) {
 				t.Fatal(err)
 			}
 			out, err := f.rules.ExportClarifications(ctx, envelope, f.pack.Topic, rulesets.ClarificationExportRequest{Version: f.definition.Version})
-			if !errors.Is(err, access.ErrForbidden) || out.RuleDigest != "" || out.Definition.Topic != "" {
-				t.Fatal("direct export did not enforce signed export reach")
+			if !errors.Is(err, denied.wantError) || out.RuleDigest != "" || out.Definition.Topic != "" {
+				t.Fatalf("direct export did not preserve the nondisclosing authority contract: %T %v", err, err)
 			}
 			client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
 			if err != nil {
@@ -80,8 +82,8 @@ func cw01ExportDenials(t *testing.T, f *cw01Fixture, server *httptest.Server) {
 			}
 			out, err = client.ExportClarifications(ctx, f.pack.Topic, sdk.ClarificationExportRequest{Version: f.definition.Version})
 			var status *sdk.StatusError
-			if !errors.As(err, &status) || status.Status != http.StatusForbidden || out.RuleDigest != "" || out.Definition.Topic != "" {
-				t.Fatal("HTTP export did not enforce signed export reach")
+			if !errors.As(err, &status) || status.Status != denied.wantStatus || out.RuleDigest != "" || out.Definition.Topic != "" {
+				t.Fatalf("HTTP export did not preserve the nondisclosing authority contract: %T %v", err, err)
 			}
 		})
 	}
