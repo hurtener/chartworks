@@ -41,7 +41,7 @@ func (r testRules) Read(context.Context, identity.Envelope, string, string) (rul
 	return r.published, nil
 }
 func (r testRules) Evaluate(context.Context, identity.Envelope, string, rulesets.EvaluateRequest) (rulesets.Evaluation, error) {
-	return rulesets.Evaluation{Result: semantics.ConstraintEvaluation{Allowed: true}}, nil
+	return rulesets.Evaluation{Topic: r.published.Definition.Topic, TopicVersion: r.published.Definition.TopicVersion, PackDigest: r.published.Definition.PackDigest, RuleVersion: r.published.Definition.Version, RuleDigest: r.published.Digest, Result: semantics.ConstraintEvaluation{Allowed: true}}, nil
 }
 
 type testIndex struct {

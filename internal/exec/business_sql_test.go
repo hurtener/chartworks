@@ -92,13 +92,13 @@ func TestBusinessBindingAggregatesAndNulls(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if nulls == "include" && !strings.Contains(out.SQL, "IS NULL OR") {
+			if nulls == "include" && !strings.Contains(out.SQL, `OR "sales"."amount" IS NULL`) {
 				t.Fatal("NULL inclusion not explicit")
 			}
 			if nulls == "only" && (!strings.Contains(out.SQL, "IS NULL") || len(out.Parameters) != 0) {
 				t.Fatal("null predicate bound an unused scalar")
 			}
-			if nulls == "exclude" && strings.Contains(out.SQL, "IS NULL OR") {
+			if nulls == "exclude" && strings.Contains(out.SQL, "IS NULL") {
 				t.Fatal("ordinary comparison widened NULL semantics")
 			}
 			if _, err := pgquery.ParseToJSON(out.SQL); err != nil {
