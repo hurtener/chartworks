@@ -46,7 +46,7 @@ func cw01AuthoringAcceptance(t *testing.T) {
 	cases := []semantics.ClarificationInput{{Locale: "en", Question: "Show large sales"}, {Locale: "es", Question: "Mostrá el total de ventas"}, {Locale: "en", Question: "Show turnover review"}}
 	before := f.model.requests.Load()
 	preview, err := client.PreviewClarifications(ctx, f.pack.Topic, sdk.ClarificationPreviewRequest{Definition: f.definition, Cases: cases})
-	if err != nil || len(preview.Cases) != 3 || preview.Cases[0].Outcome != semantics.ClarificationMissing || preview.Cases[1].Outcome != semantics.ClarificationSatisfied {
+	if err != nil || len(preview.Cases) != 3 || preview.Cases[0].Outcome != semantics.ClarificationMissing || preview.Cases[1].Outcome != semantics.ClarificationNotApplicable {
 		t.Fatal("HTTP draft preview did not evaluate matching/nonmatching cases", err)
 	}
 	detached, err := f.rules.Patterns(ctx, f.e, f.pack.Topic, f.definition.Version)
@@ -83,7 +83,7 @@ func cw01AuthoringAcceptance(t *testing.T) {
 		t.Fatal("retained clarification replay failed", err)
 	}
 	shadow, err := f.rules.Shadow(ctx, f.e, f.pack.Topic, rulesets.ShadowRequest{TopicVersion: f.published.State.Version, BaselineRuleVersion: f.definition.Version, CandidateRuleVersion: imported.Definition.Version, References: refs, ClarificationCases: cases})
-	if err != nil || !shadow.Changed || len(shadow.CandidateClarifications) != 3 || shadow.BaselineClarifications[2].Outcome != semantics.ClarificationSatisfied || shadow.CandidateClarifications[2].Outcome != semantics.ClarificationMissing {
+	if err != nil || !shadow.Changed || len(shadow.CandidateClarifications) != 3 || shadow.BaselineClarifications[2].Outcome != semantics.ClarificationNotApplicable || shadow.CandidateClarifications[2].Outcome != semantics.ClarificationMissing {
 		t.Fatal("shadow missed conditional behavior change", err)
 	}
 	metadata := support.Raw(t, f.f.dsn)
@@ -137,14 +137,14 @@ func cw01AuthoringAcceptance(t *testing.T) {
 	}
 	migration.LegacyDisposition = "preserve_reference_only"
 	compatible, err := f.rules.PreviewClarificationImport(ctx, f.e, f.pack.Topic, migration)
-	if err != nil || compatible.Preview.Cases[0].Outcome != semantics.ClarificationSatisfied {
+	if err != nil || compatible.Preview.Cases[0].Outcome != semantics.ClarificationNotApplicable {
 		t.Fatal("safe legacy migration introduced blocking", err)
 	}
 	if _, err = f.rules.Retire(ctx, f.e, f.pack.Topic, rulesets.RetireRequest{Expected: 3, Note: "Retire synthetic clarification policy"}); err != nil {
 		t.Fatal(err)
 	}
 	retained, err := f.rules.Replay(ctx, f.e, f.pack.Topic, rulesets.ReplayRequest{TopicVersion: f.published.State.Version, RuleVersion: legacy.Version, References: refs, ClarificationCases: migration.Cases})
-	if err != nil || retained.BaselineClarifications[0].Outcome != semantics.ClarificationSatisfied {
+	if err != nil || retained.BaselineClarifications[0].Outcome != semantics.ClarificationNotApplicable {
 		t.Fatal("retirement destroyed exact retained replay", err)
 	}
 }
