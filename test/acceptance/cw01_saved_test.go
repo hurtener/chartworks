@@ -66,7 +66,7 @@ func cw01SavedReferenceAcceptance(t *testing.T) {
 	f := newCW01Fixture(t)
 	ctx := context.Background()
 	saved := nlqexec.SavedQuestion{Durability: "replayable", Context: f.context, Question: "Show choose sales",
-		Topics: []nlqexec.SavedTopic{{Topic: f.pack.Topic, Version: f.published.State.Version, Digest: f.published.Digest}},
+		Topics:     []nlqexec.SavedTopic{{Topic: f.pack.Topic, Version: f.published.State.Version, Digest: f.published.Digest}},
 		Selections: &nlqexec.SavedSelections{Kinds: []string{"measure"}, LimitPerKind: 1, Choices: []nlqroute.ChoiceSelection{{Pattern: "metric", Slot: "metric", Value: "revenue-option"}}}}
 	evidence, err := f.query.InspectSaved(ctx, f.e, saved)
 	if err != nil {
