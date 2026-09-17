@@ -162,6 +162,7 @@ func TestCW01(t *testing.T) {
 		if strings.Contains(string(raw), "Bearer") {
 			t.Fatal("authority retained in replay request")
 		}
+		cw01BindingAcceptance(t, f)
 	})
 	t.Run("AC06", func(t *testing.T) { cw01OrderingAcceptance(t, f) })
 	t.Run("AC07", func(t *testing.T) { cw01DefaultsAcceptance(t, f) })

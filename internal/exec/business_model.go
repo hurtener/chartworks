@@ -185,6 +185,9 @@ func businessColumnCompatible(dialect string, column Column, c BusinessConstrain
 		if c.Aggregation == "count" || c.Aggregation == "distinct_count" {
 			return true
 		}
+		if strings.HasPrefix(native, "float") || strings.HasPrefix(native, "double") || native == "real" {
+			return false
+		}
 		return category == "integer" || category == "number" || category == "decimal" || category == "numeric" || strings.HasPrefix(native, "numeric") || strings.HasPrefix(native, "decimal") || strings.HasPrefix(native, "number") || native == "bigint" || native == "integer" || native == "int" || native == "smallint" || native == "int64"
 	case "boolean":
 		return category == "boolean" || native == "boolean" || native == "bool" || native == "bit"
