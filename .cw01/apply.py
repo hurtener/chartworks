@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 
 
 def edit(path,before,after,count=1):
@@ -7,31 +6,55 @@ def edit(path,before,after,count=1):
  if text.count(before)!=count:raise SystemExit(f'{path}: changed anchor {text.count(before)}')
  p.write_text(text.replace(before,after))
 
-# These two migrations are unmerged CW-01 work. Keep their SQL bytes unchanged
-# and place them after the already shipped 035 migration from current main.
-for old,new in [
- ('internal/store/postgres/migrations/036_clarification_comparison.sql','internal/store/postgres/migrations/037_clarification_comparison.sql'),
- ('internal/store/postgres/migrations/035_nlq_clarification.sql','internal/store/postgres/migrations/036_nlq_clarification.sql')]:
- if Path(new).exists():raise SystemExit(f'{new}: refusing migration overwrite')
- Path(old).rename(new)
 
-edit('internal/store/postgres/errors_test.go','SchemaVersion() != "35" || len(manifest) != 35','SchemaVersion() != "37" || len(manifest) != 37')
-edit('internal/store/postgres/errors_test.go','''		{34, "migrations/035_reporting_output_intent.sql", "block_output_intents_check"},''','''		{34, "migrations/035_reporting_output_intent.sql", "block_output_intents_check"},
-  {35,"migrations/036_nlq_clarification.sql","nlq_clarification_immutable"},
-  {36,"migrations/037_clarification_comparison.sql","baseline_clarification_bounded"},''')
-edit('internal/topicapi/http_test.go','len(r.Definitions()) != 32','len(r.Definitions()) != 35')
-p=Path('docs/contracts/chartworks-topic-draft-operations.json');manifest=json.loads(p.read_text())
-if len(manifest)!=32:raise SystemExit('topic operation inventory changed')
-for suffix,action,effect in [
- ('preview','topics.write','deterministic_draft_preview'),
- ('export','topics.export','retained_metadata_export'),
- ('import-preview','topics.write','deterministic_import_preview')]:
- path='/v1/topics/{id}/clarifications/'+suffix
- if any(x['path']==path for x in manifest):raise SystemExit('duplicate operation')
- manifest.append({'method':'POST','path':path,'action':action,'effect':effect})
-p.write_text(json.dumps(manifest,indent=2)+'\n')
+def create(path,text):
+ p=Path(path)
+ if p.exists():raise SystemExit(f'{path}: exists')
+ p.write_text(text)
 
-edit('internal/nlqroute/service_test.go','''	return rulesets.Evaluation{Result: semantics.ConstraintEvaluation{Allowed: true}}, nil''',''' return rulesets.Evaluation{Topic:r.published.Definition.Topic,TopicVersion:r.published.Definition.TopicVersion,PackDigest:r.published.Definition.PackDigest,RuleVersion:r.published.Definition.Version,RuleDigest:r.published.Digest,Result:semantics.ConstraintEvaluation{Allowed:true}},nil''')
-# Null-inclusion assertion checks the actual reviewed OR predicate position.
-edit('internal/exec/business_sql_test.go','!strings.Contains(out.SQL, "IS NULL OR")','!strings.Contains(out.SQL, `OR "sales"."amount" IS NULL`)')
-edit('internal/exec/business_sql_test.go','strings.Contains(out.SQL, "IS NULL OR")','strings.Contains(out.SQL, "IS NULL")')
+edit('internal/exec/business_sql.go','''	return BusinessBoundQuery{SQL: bound, Parameters: outParams, Receipt: BusinessBindingReceipt{SchemaVersion: 1, SourceBinding: Hash(binding), Constraints: Hash(constraints), Statement: Hash([]any{bound, outParams}), Bindings: bindings}}, ctx.Err()''',''' if err:=ctx.Err();err!=nil{return BusinessBoundQuery{},err}
+	return BusinessBoundQuery{SQL: bound, Parameters: outParams, Receipt: BusinessBindingReceipt{SchemaVersion: 1, SourceBinding: Hash(binding), Constraints: Hash(constraints), Statement: Hash([]any{bound, outParams}), Bindings: bindings}}, nil''')
+edit('test/acceptance/cw01_consumers_test.go','!strings.Contains(status.Clarification.Fields[0].Message, "Usá")','!strings.Contains(status.Clarification.Fields[0].Message, "Ingresá")')
+create('test/acceptance/cw01_migration_test.go',r'''package acceptance
+
+import (
+ "context"
+ "testing"
+
+ "github.com/hurtener/chartworks/internal/store/postgres"
+ "github.com/hurtener/chartworks/test/support"
+)
+
+// This executes the already shipped migration prefix before applying CW-01.
+// Existing checksums and tenant data must survive unchanged; a fresh database
+// alone would not detect an inserted, duplicate or renumbered old migration.
+func cw01MigrationAcceptance(t *testing.T){
+ t.Helper();ctx:=context.Background();dsn:=support.Database(t)
+ connection:=upgradeFixture(t,dsn)
+ manifest,err:=postgres.Migrations();if err!=nil{t.Fatal(err)}
+ if len(manifest)!=37 || manifest[34].Name!="migrations/035_reporting_output_intent.sql" || manifest[35].Name!="migrations/036_nlq_clarification.sql" || manifest[36].Name!="migrations/037_clarification_comparison.sql" {t.Fatal("CW-01 did not append to the shipped schema")}
+ for _,migration:=range manifest[1:35]{
+  sql(t,connection,migration.SQL)
+  sql(t,connection,`INSERT INTO chartworks.schema_migrations(version,name,checksum) VALUES($1,$2,$3)`,migration.Version,migration.Name,migration.Checksum)
+ }
+ sql(t,connection,`INSERT INTO chartworks.policy_revisions(tenant_id,revision,audit_days,operation_hours,created_by) VALUES('cw01-upgrade',1,12,48,'actor'); INSERT INTO chartworks.policies VALUES('cw01-upgrade',1)`)
+ database:=support.Open(t,dsn)
+ if err:=database.Check(ctx);err!=nil{t.Fatal(err)}
+ if count(t,connection,`SELECT count(*) FROM chartworks.schema_migrations`)!=37 {t.Fatal("upgrade did not apply exactly two new migrations")}
+ for _,migration:=range manifest[:35]{
+  var name,checksum string
+  if err:=connection.QueryRow(ctx,`SELECT name,checksum FROM chartworks.schema_migrations WHERE version=$1`,migration.Version).Scan(&name,&checksum);err!=nil || name!=migration.Name || checksum!=migration.Checksum {t.Fatal("upgrade changed a shipped migration",err)}
+ }
+ policy,err:=database.Policy(ctx,support.Scope(t,"cw01-upgrade","actor"))
+ if err!=nil || policy.AuditDays!=12 || policy.OperationHours!=48 {t.Fatal("upgrade lost retained tenant data",err)}
+ for _,column:=range [][2]string{{"nlq_queries","clarification"},{"topic_rule_comparison_evidence","baseline_clarification_result"},{"topic_rule_comparison_evidence","candidate_clarification_result"}}{
+  if count(t,connection,`SELECT count(*) FROM information_schema.columns WHERE table_schema='chartworks' AND table_name=$1 AND column_name=$2`,column[0],column[1])!=1{t.Fatal("upgrade omitted typed clarification persistence")}
+ }
+ options:=postgres.Defaults();options.MigrationPolicy="check"
+ checked,err:=postgres.Open(ctx,dsn,options);if err!=nil{t.Fatal(err)};checked.Close()
+}
+''')
+edit('test/acceptance/cw01_test.go','''cw01AuthoringAcceptance(t)
+''','''cw01MigrationAcceptance(t)
+  cw01AuthoringAcceptance(t)
+''')
