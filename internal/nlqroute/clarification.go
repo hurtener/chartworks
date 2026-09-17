@@ -236,6 +236,9 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	if len(result.Resolutions) == 0 && !missing {
 		result.Request.AnswerContext = ""
 	}
+	if err := crossTopicClarificationConflict(admitted, in.Locale); err != nil {
+		return err
+	}
 	if missing {
 		clarification := &Clarification{Reason: "required_answers", Outcome: semantics.ClarificationMissing, Why: "Each required field resolves a reviewed business constraint. Dependent fields follow their prerequisites."}
 		if in.Locale == nlq.LanguageSpanish {
@@ -254,6 +257,15 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 						clarification.Choices = append(clarification.Choices, ClarificationChoice{ID: choice.ID, Label: choice.Label})
 					}
 				}
+			}
+		}
+		sortClarificationQuestions(clarification.Questions)
+		if len(clarification.Questions) > 0 {
+			first := clarification.Questions[0]
+			clarification.Pattern, clarification.Slot, clarification.Prompt = first.Pattern, first.Slot, first.Prompt
+			clarification.Choices = nil
+			for _, choice := range first.Choices {
+				clarification.Choices = append(clarification.Choices, ClarificationChoice{ID: choice.ID, Label: choice.Label})
 			}
 		}
 		result.Clarification, result.Outcome = clarification, nlq.StrategyClarify

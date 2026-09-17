@@ -139,6 +139,8 @@ type CanonicalClarificationTime struct {
 // proof. The route seals the question and publication pins; execution still
 // requires the ordinary source-bound validator-issued read plan.
 type ClarificationResolution struct {
+	ParserVersion  string                      `json:"parser_version"`
+	Locale         string                      `json:"locale"`
 	SchemaVersion  int                         `json:"schema_version"`
 	ID             string                      `json:"id"`
 	Topic          string                      `json:"topic"`
@@ -163,6 +165,9 @@ type ClarificationResolution struct {
 // ClarificationSlotOutcome is the user-facing explanation of one slot. Effects
 // contain reviewed metadata only. Values remain in protected resolution records.
 type ClarificationSlotOutcome struct {
+	Specificity    int                       `json:"specificity"`
+	Priority       int                       `json:"priority"`
+	Order          int                       `json:"order"`
 	Topic          string                    `json:"topic"`
 	TopicVersion   string                    `json:"topic_version"`
 	RulesetVersion string                    `json:"ruleset_version"`

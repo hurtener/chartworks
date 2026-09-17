@@ -105,10 +105,14 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 			return out
 		}
 		satisfied := map[string]bool{}
-		for _, slot := range slots {
+		for slotIndex, slot := range slots {
 			key := clarificationKey{pattern.ID, slot.ID}
 			answer, supplied := answers[key]
 			state := clarificationSlotView(definition, pattern, slot, input.Locale)
+			state.Specificity, state.Order = ranked.specificity, slotIndex
+			if pattern.Policy != nil {
+				state.Priority = pattern.Policy.Priority
+			}
 			active := ranked.active
 			if pattern.Policy == nil {
 				active = supplied && slot.Kind == SlotChoice

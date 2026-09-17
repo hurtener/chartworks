@@ -77,7 +77,7 @@ func ResolveClarificationValue(slot ClarificationSlot, value ClarificationValue,
 	if members != 1 {
 		return ClarificationResolution{}, clarificationError(locale, "value", "invalid_union")
 	}
-	out := ClarificationResolution{SchemaVersion: ClarificationSchemaVersion, Sensitivity: slot.Sensitivity}
+	out := ClarificationResolution{SchemaVersion: ClarificationSchemaVersion, ParserVersion: "clarification-values-v1", Locale: locale, Sensitivity: slot.Sensitivity}
 	if slot.Kind == SlotChoice {
 		if value.OptionID == "" || len(value.OptionID) > 128 {
 			return ClarificationResolution{}, clarificationError(locale, "option_id", "invalid_choice")
