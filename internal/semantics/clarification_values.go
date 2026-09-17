@@ -390,7 +390,7 @@ func cloneClarificationValue(value *ClarificationValue) *ClarificationValue {
 func CloneClarificationAnswers(values []ClarificationAnswer) []ClarificationAnswer {
 	out := append([]ClarificationAnswer(nil), values...)
 	for i := range out {
-		out[i].Value = cloneClarificationValue(values[i].Value)
+		out[i].Value = cloneClarificationValue(out[i].Value)
 	}
 	return out
 }

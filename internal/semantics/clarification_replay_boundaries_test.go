@@ -11,7 +11,9 @@ import (
 func TestClarificationMergeRejectsUnownedAndStaleDeltasAtomically(t *testing.T) {
 	_, definition := cw01Definition(t, cw01NumberSlot())
 	original := cw01Answer(definition, "order_period", "amount", ClarificationValue{Number: &ClarificationNumberInput{Value: "10", Unit: "USD"}})
-	copyOf := func(a ClarificationAnswer) ClarificationAnswer { return CloneClarificationAnswers([]ClarificationAnswer{a})[0] }
+	copyOf := func(a ClarificationAnswer) ClarificationAnswer {
+		return CloneClarificationAnswers([]ClarificationAnswer{a})[0]
+	}
 	removal := copyOf(original)
 	removal.Remove, removal.Value = true, nil
 	missing := copyOf(removal)

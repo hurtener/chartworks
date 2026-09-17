@@ -32,17 +32,27 @@ func TestClarificationAuthoringBoundaryRejections(t *testing.T) {
 		{"empty-term", func(p *ClarificationPattern) { p.Policy.When.AnyTerms = []string{""} }},
 		{"punctuation-term", func(p *ClarificationPattern) { p.Policy.When.AnyTerms = []string{"!!!"} }},
 		{"long-term", func(p *ClarificationPattern) { p.Policy.When.AnyTerms = []string{strings.Repeat("a", 129)} }},
-		{"too-many-words", func(p *ClarificationPattern) { p.Policy.When.AnyTerms = []string{"one two three four five six seven eight nine"} }},
+		{"too-many-words", func(p *ClarificationPattern) {
+			p.Policy.When.AnyTerms = []string{"one two three four five six seven eight nine"}
+		}},
 		{"duplicate-normalized-term", func(p *ClarificationPattern) { p.Policy.When.AnyTerms = []string{"orders", "ORDERS"} }},
-		{"malformed-condition-reference", func(p *ClarificationPattern) { p.Policy.When.AnyReferences = []Reference{{Kind: KindColumn, ID: "amount"}} }},
+		{"malformed-condition-reference", func(p *ClarificationPattern) {
+			p.Policy.When.AnyReferences = []Reference{{Kind: KindColumn, ID: "amount"}}
+		}},
 		{"duplicate-condition-reference", func(p *ClarificationPattern) { p.Policy.When.AnyReferences = []Reference{p.Targets[0], p.Targets[0]} }},
-		{"foreign-condition-reference", func(p *ClarificationPattern) { p.Policy.When.AnyReferences = []Reference{{Kind: KindColumn, Dataset: "orders", ID: "unknown"}} }},
-		{"unscoped-condition-reference", func(p *ClarificationPattern) { p.Policy.When.AnyReferences = []Reference{{Kind: KindColumn, Dataset: "orders", ID: "created"}} }},
+		{"foreign-condition-reference", func(p *ClarificationPattern) {
+			p.Policy.When.AnyReferences = []Reference{{Kind: KindColumn, Dataset: "orders", ID: "unknown"}}
+		}},
+		{"unscoped-condition-reference", func(p *ClarificationPattern) {
+			p.Policy.When.AnyReferences = []Reference{{Kind: KindColumn, Dataset: "orders", ID: "created"}}
+		}},
 		{"localized-prompt", func(p *ClarificationPattern) { p.Slots[0].PromptES = "primero\nsegundo" }},
 		{"too-many-dependencies", func(p *ClarificationPattern) { p.Slots[0].DependsOn = make([]string, 17) }},
 		{"unknown-dependency", func(p *ClarificationPattern) { p.Slots[0].DependsOn = []string{"unknown"} }},
 		{"self-dependency", func(p *ClarificationPattern) { p.Slots[0].DependsOn = []string{p.Slots[0].ID} }},
-		{"required-default", func(p *ClarificationPattern) { p.Slots[0].Default = &ClarificationValue{Number: &ClarificationNumberInput{Value: "10", Unit: "USD"}} }},
+		{"required-default", func(p *ClarificationPattern) {
+			p.Slots[0].Default = &ClarificationValue{Number: &ClarificationNumberInput{Value: "10", Unit: "USD"}}
+		}},
 		{"invalid-optional-default", func(p *ClarificationPattern) {
 			p.Slots[0].Required = false
 			p.Slots[0].Default = &ClarificationValue{Number: &ClarificationNumberInput{Value: "NaN", Unit: "USD"}}
@@ -111,7 +121,9 @@ func TestClarificationEffectBoundaryRejections(t *testing.T) {
 		{"number-with-calendar", cw01NumberSlot, func(s *ClarificationSlot) { s.Effect.Calendar = "gregorian" }},
 		{"boolean-wrong-kind", cw01BoundaryBooleanSlot, func(s *ClarificationSlot) { s.Effect.Kind = "number" }},
 		{"boolean-wrong-operator", cw01BoundaryBooleanSlot, func(s *ClarificationSlot) { s.Effect.Operator = "ne" }},
-		{"boolean-with-dictionary", cw01BoundaryBooleanSlot, func(s *ClarificationSlot) { s.Effect.Values = []GovernedClarificationValue{{Canonical: "true", Label: "True"}} }},
+		{"boolean-with-dictionary", cw01BoundaryBooleanSlot, func(s *ClarificationSlot) {
+			s.Effect.Values = []GovernedClarificationValue{{Canonical: "true", Label: "True"}}
+		}},
 		{"text-wrong-kind", cw01BoundaryTextSlot, func(s *ClarificationSlot) { s.Effect.Kind = "sql" }},
 		{"text-wrong-operator", cw01BoundaryTextSlot, func(s *ClarificationSlot) { s.Effect.Operator = "gt" }},
 		{"text-empty-dictionary", cw01BoundaryTextSlot, func(s *ClarificationSlot) { s.Effect.Values = nil }},
