@@ -85,7 +85,7 @@ scope until exact expression lineage exists; unsupported mappings reject.
 | BLK-05 | Reporting | Sensitive-column metadata is missing at the narrative handoff | inherited sensitivity enforced; conservative query-dependency mapping | 27/28/33/34 |
 | BLK-06 | Reporting | Parameterization assistance supports a narrower workflow | narrowed; equivalent mapping needed | 27/28/34 |
 | BLK-07 | Reporting | Per-block limits and richer narrative policies need explicit mappings | native caps and bounded narrative mappings implemented; unsupported mappings reject | 27/28/34 |
-| CLR-01 | Clarification | Required clarification slots lack question-specific activation | confirmed gap | 16/17 |
+| CLR-01 | Clarification | Required clarification slots lack question-specific activation | conditional reviewed policy/runtime implemented; explicit legacy migration | 16/17 |
 | RUL-01 | Rules | Compound and template scopes have no equivalent current representation | confirmed gap | 16/17/18 |
 | RTE-02 | Interpretation | Value, geography and temporal normalization is not an equivalent runtime stage | confirmed gap | 17/18; source metadata 15/33 |
 | MIG-01 | Portability | Topic-only portability does not carry the calibrated topic environment | narrowed; full migration pending | 15 subset; 34 full migration |
@@ -94,7 +94,7 @@ scope until exact expression lineage exists; unsupported mappings reject.
 | VIS-03 | Formatting | Stored formatting and display labels lose authored intent | confirmed consumer gap | 20/27/31; static32/import34 |
 | VIS-04 | Selection diagnostics | Selection rationale carries less structured evidence | narrowed; equivalence decision needed | 20/24 |
 | EVAL-01 | Evaluation | Deterministic acceptance is not calibrated behavioral equivalence | explicitly pending | 24/34/25 |
-| CLR-02 | Clarification | Typed clarification answers can have no planning effect | confirmed gap | 16/17/18 |
+| CLR-02 | Clarification | Typed clarification answers can have no planning effect | typed binding and session replay implemented; bounded native SQL subset | 16/17/18 |
 | DATA-01 | Profiling to semantics | Safe profiles no longer supply governed example values to semantic authoring | intentional redesign; replacement needed | 12/15/33; consumer17 |
 | DATA-02 | Discovery and onboarding | Physical discovery is not equivalent to semantic role and relationship discovery | pending richer authoring | 15/33; coordinate26 |
 | PERF-01 | Latency and reuse | Cache behavior must be compared under the new authority model | intentional redesign; performance unmeasured | 17/24; reuse28; qualification34/25 |
@@ -258,15 +258,18 @@ scope until exact expression lineage exists; unsupported mappings reject.
 
 ### CLR-01 — Required clarification slots lack question-specific activation
 
-- **Disposition:** confirmed gap.
+- **Disposition:** conditional reviewed applicability implemented by CW-01; literal/reference matching is deterministic, not a calibrated general-language interpreter.
 - **Owner / phases:** 16/17.
 - **Reference behavior (neutral):** Original underspecification evaluates keyword/entity/regex and enriched triggers, and skips patterns whose trigger strength is zero.
-- **Current boundary:** Go ClarificationPattern defines slots but no matcher. Routing loops every published pattern and returns its first missing required slot, without matching the question or pattern targets.
+- **Sept 15 baseline boundary:** Go ClarificationPattern defines slots but no matcher. Routing loops every published pattern and returns its first missing required slot, without matching the question or pattern targets.
 - **Consequence:** A clarification intended for one ambiguous metric can interrupt unrelated questions in the same topic.
 - **Contract, storage and import impact:** Add conditional clarification activation to the published policy contract: target/effect, trigger, priority, lifecycle and version. The route must evaluate only applicable patterns and expose deterministic ordering.
 - **Closure requirements:** A metric-specific required slot fires only for its reviewed matching condition; an unrelated complete question reaches retrieval without that blocker.
 - **Source evidence IDs:** REF-CLR-01-A.
-- **Current repository evidence:** [internal/semantics/rules.go:139](../internal/semantics/rules.go#L139); [internal/nlqroute/service.go:598](../internal/nlqroute/service.go#L598); [internal/nlqroute/service_test.go:224](../internal/nlqroute/service_test.go#L224).
+- **Historical implementation pointers:** [internal/semantics/rules.go:139](../internal/semantics/rules.go#L139); [internal/nlqroute/service.go:598](../internal/nlqroute/service.go#L598); [internal/nlqroute/service_test.go:224](../internal/nlqroute/service_test.go#L224).
+
+- **CW-01 delivery:** Reviewed topic/ruleset/policy pins, literal token phrases and exact semantic references select applicable policies. Not-applicable, satisfied, missing, invalid and conflicting outcomes are distinct. Blockers use stable specificity/priority/ID ordering and dependency-aware question groups; optional defaults are visible. Legacy patterns remain explicit reference-only selections until reviewed migration, so old patterns gain no accidental new blocking.
+- **Current evidence:** [conditional evaluator](../internal/semantics/clarification_evaluate.go), [route consumer](../internal/nlqroute/clarification.go), [authoring/import](../internal/semantics/rulesets/clarification_authoring.go), and [AC01/06/07/10 acceptance](../test/acceptance/cw01_test.go). See the [versioned contract](contracts/conditional-clarification-v1.md) and [executed evidence/review](reviews/cw-01-delivery-review.md).
 
 ### RUL-01 — Compound and template scopes have no equivalent current representation
 
@@ -367,15 +370,18 @@ scope until exact expression lineage exists; unsupported mappings reject.
 
 ### CLR-02 — Typed clarification answers can have no planning effect
 
-- **Disposition:** confirmed gap.
+- **Disposition:** typed resolution, mandatory-context and native binding consumers implemented by CW-01; unsupported SQL/type combinations fail explicitly.
 - **Owner / phases:** 16/17/18.
 - **Reference behavior (neutral):** The reference workflow collects and sanitizes clarification responses, appends delta context, and uses that context in a model-driven rewrite/replan. This inspection did not establish universal typed parameter conversion.
-- **Current boundary:** Go accepts nonempty date/number/text/boolean slot answers, but only choice slots receive kind-specific handling. Non-choice values may remain in the route/request record but are not included in the assembled model context.
+- **Sept 15 baseline boundary:** Go accepts nonempty date/number/text/boolean slot answers, but only choice slots receive kind-specific handling. Non-choice values may remain in the route/request record but are not included in the assembled model context.
 - **Consequence:** A supplied date can satisfy the missing-slot check yet never constrain generation, unless the caller also rewrites it into the question. This is a concrete data-flow defect, not just less metadata.
 - **Contract, storage and import impact:** Make typed clarification resolutions first-class route/context inputs and persist their policy, slot, parser, locale, session and replacement pins. Invalid values must fail before provider work and valid values must reach validation parameters.
 - **Closure requirements:** Define a typed resolution endpoint/record for non-reference date/number/boolean/text answers, reserving semantic-reference IDs for reference choices; valid values become sealed constraints, invalid values fail before provider work, and refinements replace rather than retain stale values.
 - **Source evidence IDs:** REF-CLR-02-A.
-- **Current repository evidence:** [internal/nlqroute/service.go:603](../internal/nlqroute/service.go#L603); [internal/nlqroute/service.go:625](../internal/nlqroute/service.go#L625); [internal/nlqroute/service.go:629](../internal/nlqroute/service.go#L629); [internal/nlqroute/service.go:421](../internal/nlqroute/service.go#L421); [internal/nlq/context.go:243](../internal/nlq/context.go#L243); [internal/nlq/context.go:576](../internal/nlq/context.go#L576).
+- **Historical implementation pointers:** [internal/nlqroute/service.go:603](../internal/nlqroute/service.go#L603); [internal/nlqroute/service.go:625](../internal/nlqroute/service.go#L625); [internal/nlqroute/service.go:629](../internal/nlqroute/service.go#L629); [internal/nlqroute/service.go:421](../internal/nlqroute/service.go#L421); [internal/nlq/context.go:243](../internal/nlq/context.go#L243); [internal/nlq/context.go:576](../internal/nlq/context.go#L576).
+
+- **CW-01 delivery:** Reference options, exact numbers/ranges, explicit calendar/time windows, booleans, governed entities and bounded text resolve before provider work. Canonical evidence is pinned to the current source/topic/policy and actor/session, budgeted as a whole mandatory group, and protected before persistence. Service-owned predicates and parameters pass the existing validator and read executor; correction/removal supersedes the prior same-session value. Saved-query preparation/replay retains the protected binding evidence and checks current authority without retaining bearer tokens.
+- **Current evidence:** [value resolver](../internal/semantics/clarification_values.go), [binding](../internal/exec/business_sql.go), [query/refinement evidence](../internal/nlqexec/clarification.go), [AC02–05/08/09 acceptance](../test/acceptance/cw01_test.go), and [saved consumers](../test/acceptance/cw01_saved_test.go). See the [versioned contract](contracts/conditional-clarification-v1.md) and [executed evidence/review](reviews/cw-01-delivery-review.md).
 
 ### DATA-01 — Safe profiles no longer supply governed example values to semantic authoring
 
@@ -566,6 +572,8 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 At each dated implementation head record: implementation SHA and active phase/decision; reference behavior or target-only design; status (`preserved`, `equivalent`, `confirmed-gap`, `pending`, `unassessed` or `excluded`); synthetic reproduction and expected result; current result and evidence type; owner/dependency; contract/storage/migration impact; acceptance and negative case; approved resolution or remaining limitation. An empty evidence cell is unknown, not pass.
 
 ## Clarification and underspecification UX expansion
+
+**CW-01 delivery update (2026-09-17):** CLR-01 and CLR-02 now have a native conditional/typed implementation and actual `TestCW01/AC01`–`AC10` consumer acceptance. The [current contract](contracts/conditional-clarification-v1.md) supersedes the proposal-only runtime boundaries below. [Review evidence](reviews/cw-01-delivery-review.md) distinguishes tested commits from later review fixes and final PR checks. CLAR-AC11 remains separate, unperformed representative-user research; no comprehension, live-model quality or full foreign-cutover claim is made. Other findings and the dated original inspection remain unchanged.
 
 This section expands the parity audit’s clarification findings into a redesign brief. It preserves the useful behavior of asking only when a question is materially underspecified, while replacing an opaque authoring surface and untyped answer handling with a governed, inspectable flow.
 

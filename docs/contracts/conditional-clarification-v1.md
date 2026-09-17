@@ -174,3 +174,27 @@ typed boundaries, not fallback permission to ignore answers. Representative-user
 completion, correction time and comprehension testing (`CLAR-AC11`) was not
 performed and remains separate usability research. This change does not expand
 routing calibration, rich topic generation, chart selection or reporting policies.
+
+
+## Reviewed scalar boundary corrections
+
+Timezone is an explicit reviewed IANA location or `UTC`; empty and `Local` runtime
+defaults are rejected by authoring, value resolution and business binding. A host's
+local timezone is never a substitute for a publication pin. Native timestamp
+identity remains distinct: instant-bearing `TIMESTAMP` is not a wall-clock target
+where the adapter defines it as an instant, and wall-clock bindings use the native
+non-timezone cast rather than a session-dependent cast.
+
+Exact numeric admission checks both fractional and integral digit capacity. The
+BigQuery binding selects `NUMERIC` only when the declared scale is at most 9 and
+integral capacity at most 29; otherwise a supported declaration uses `BIGNUMERIC`,
+with at most 38 integral and 38 fractional digits. A declaration outside the fully
+representable domain fails before provider work, even when one particular answer
+is small. No rounding, floating-point conversion or partially representable extra
+digit is used to make a declaration appear supported.
+
+These corrections are covered by the native scalar-boundary regression tests in
+`internal/exec/business_temporal_test.go`, `business_timezone_test.go`, and
+`business_precision_test.go`, plus
+`internal/semantics/clarification_timezone_test.go`. They do not expand the SQL
+shape subset or qualify a live cloud deployment.
