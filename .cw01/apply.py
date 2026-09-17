@@ -1,128 +1,81 @@
-"""Apply the checked CW-01 lint remediation; do not modify runtime policy."""
+"""Apply the inspected CW-01 export-reader integration and actual consumer tests."""
 from pathlib import Path
-import re
 
 pending = {}
-
-def read(path):
-    if path not in pending:
-        pending[path] = Path(path).read_text()
-    return pending[path]
-
-def replace(path, before, after):
-    text = read(path)
+def edit(path, before, after):
+    text = pending.get(path, Path(path).read_text())
     if text.count(before) != 1:
-        raise SystemExit(f"{path}: expected exactly one reviewed replacement")
+        raise SystemExit(f"{path}: reviewed anchor changed")
     pending[path] = text.replace(before, after, 1)
 
-def document(path, declaration, comment):
-    replace(path, declaration, comment + "\n" + declaration)
+# The first actual retained clarification export uses this existing access mode.
+# publishedArgs -> topicArgs still enforces signed export action/resource reach
+# and all persisted source, dataset and execution-context dependencies.
+edit("internal/store/postgres/topic_publications.go",
+     "if a != drafts.Read && a != drafts.Write && a != drafts.Review && a != drafts.Publish {",
+     "if a != drafts.Read && a != drafts.Write && a != drafts.Review && a != drafts.Publish && a != drafts.Export {")
 
-# These six inspected import blocks contain ordinary, unaliased imports only.
-for path in (
-    "internal/nlqapi/clarification.go",
-    "internal/nlqapi/clarification_test.go",
-    "internal/nlqroute/clarification_groups.go",
-    "internal/store/postgres/clarification_comparison.go",
-    "sdk/chartworks/clarification.go",
-    "sdk/chartworks/clarification_authoring.go",
-):
-    text = read(path)
-    match = re.search(r"import \(\n(.*?)\n\)", text, re.S)
-    if match is None:
-        raise SystemExit(f"{path}: import block missing")
-    imports = [line.strip() for line in match.group(1).splitlines() if line.strip()]
-    if any(re.fullmatch(r'"[^"\n]+"', item) is None for item in imports):
-        raise SystemExit(f"{path}: unexpected import syntax")
-    standard = sorted(item for item in imports if "." not in item.strip('"').split('/')[0])
-    external = sorted(item for item in imports if item not in standard)
-    groups = ["\n".join("\t" + item for item in group) for group in (standard, external) if group]
-    pending[path] = text[:match.start()] + "import (\n" + "\n\n".join(groups) + "\n)" + text[match.end():]
-
-comments = {
-    "internal/exec/business_model.go": [
-        ("func (BusinessConstraint) String()", "// String excludes business scalar values from ordinary formatted logs."),
-        ("func (c BusinessConstraint) GoString()", "// GoString preserves value redaction for Go-syntax formatting."),
-    ],
-    "internal/exec/business_sql.go": [
-        ("type BusinessBoundQuery struct {", "// BusinessBoundQuery carries protected SQL and parameters pending ordinary read validation."),
-        ("func (BusinessBoundQuery) String()", "// String omits SQL and parameter values from ordinary formatted logs."),
-        ("func (b BusinessBoundQuery) GoString()", "// GoString preserves protected-query redaction for Go-syntax formatting."),
-    ],
-    "internal/nlqexec/clarification.go": [
-        ("func (ClarificationEvidence) LogValue()", "// LogValue omits protected clarification evidence from ordinary structured logs."),
-        ("func (v ClarificationEvidence) GoString()", "// GoString preserves evidence redaction for Go-syntax formatting."),
-    ],
-    "internal/semantics/clarification_problem.go": [
-        ("func (ClarificationProblem) LogValue()", "// LogValue excludes repair payloads from ordinary structured logs."),
-        ("func (ClarificationAnswer) LogValue()", "// LogValue excludes submitted answer values from ordinary structured logs."),
-        ("func (ClarificationResolution) LogValue()", "// LogValue excludes resolved scalar values from ordinary structured logs."),
-    ],
-    "internal/semantics/clarification_runtime.go": [
-        ("func (a ClarificationAnswer) GoString()", "// GoString preserves answer redaction for Go-syntax formatting."),
-        ("func (r ClarificationResolution) GoString()", "// GoString preserves resolution redaction for Go-syntax formatting."),
-    ],
-    "internal/semantics/rulesets/clarification_authoring.go": [
-        ("type ClarificationExportRequest struct {", "// ClarificationExportRequest selects an exact retained ruleset version."),
-        ("type ClarificationImportPreview struct {", "// ClarificationImportPreview is a review-required proposal, never an activated policy."),
-    ],
-    "sdk/chartworks/clarification.go": [
-        ("type ClarificationValue =", "// ClarificationValue preserves the service's closed typed-answer union."),
-        ("type ClarificationTimeInput =", "// ClarificationTimeInput carries explicit calendar, timezone and interval inputs."),
-        ("type ClarificationNumberInput =", "// ClarificationNumberInput preserves exact decimal text and the declared unit."),
-        ("type ClarificationProblem =", "// ClarificationProblem carries a bounded localized repair response."),
-        ("type ClarificationFieldError =", "// ClarificationFieldError identifies a field and a value-free repair message."),
-    ],
-    "sdk/chartworks/clarification_authoring.go": [
-        ("type ClarificationInput =", "// ClarificationInput is a bounded synthetic clarification-preview case."),
-        ("type ClarificationPreviewRequest =", "// ClarificationPreviewRequest pairs a draft definition with synthetic cases."),
-        ("type ClarificationPreview =", "// ClarificationPreview contains deterministic effects and case outcomes."),
-        ("type ClarificationExportRequest =", "// ClarificationExportRequest selects an exact reviewed ruleset version."),
-        ("type PortableClarifications =", "// PortableClarifications preserves rule digests and migration dispositions."),
-        ("type ClarificationImportRequest =", "// ClarificationImportRequest proposes an exact-topic portable-pack import."),
-        ("type ClarificationImportPreview =", "// ClarificationImportPreview remains subject to ordinary review and publication."),
-        ("func (c *Client) ExportClarifications(", "// ExportClarifications reads an exact retained pack under current export reach."),
-        ("func (c *Client) PreviewClarificationImport(", "// PreviewClarificationImport validates a proposed import without publishing it."),
-    ],
+path = "test/acceptance/cw01_consumers_test.go"
+edit(path, '\t"github.com/hurtener/chartworks/internal/api"',
+     '\t"github.com/hurtener/chartworks/internal/access"\n\t"github.com/hurtener/chartworks/internal/api"\n\t"github.com/hurtener/chartworks/internal/auth"')
+edit(path,
+     '\tportable, err := client.ExportClarifications(ctx, f.pack.Topic, sdk.ClarificationExportRequest{Version: f.definition.Version})',
+     '\tcw01ExportDenials(t, f, server)\n\tportable, err := client.ExportClarifications(ctx, f.pack.Topic, sdk.ClarificationExportRequest{Version: f.definition.Version})')
+helper = '''func cw01ExportDenials(t *testing.T, f *cw01Fixture, server *httptest.Server) {
+	t.Helper()
+	ctx := context.Background()
+	before := f.model.requests.Load()
+	for _, denied := range []struct {
+		name, remove string
+	}{
+		{"missing-export-action", "topics.export"},
+		{"missing-export-resource", "cw.topic.export:*"},
+	} {
+		t.Run(denied.name, func(t *testing.T) {
+			var scopes []string
+			removed := false
+			for _, scope := range phase18Scopes(f.e.Tenant(), true) {
+				if scope == denied.remove {
+					removed = true
+					continue
+				}
+				scopes = append(scopes, scope)
+			}
+			if !removed {
+				t.Fatal("denial fixture did not remove the expected export reach")
+			}
+			claims := f.model.token.claims(f.e.Tenant(), f.e.User(), scopes)
+			claims["session"] = f.e.Session()
+			token := f.model.token.sign(t, claims, nil)
+			envelope, err := f.model.token.verifier.Verify(ctx, token, auth.HTTP)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := f.rules.ExportClarifications(ctx, envelope, f.pack.Topic, rulesets.ClarificationExportRequest{Version: f.definition.Version})
+			if !errors.Is(err, access.ErrForbidden) || out.RuleDigest != "" || out.Definition.Topic != "" {
+				t.Fatal("direct export did not enforce signed export reach")
+			}
+			client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return token, nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err = client.ExportClarifications(ctx, f.pack.Topic, sdk.ClarificationExportRequest{Version: f.definition.Version})
+			var status *sdk.StatusError
+			if !errors.As(err, &status) || status.Status != http.StatusForbidden || out.RuleDigest != "" || out.Definition.Topic != "" {
+				t.Fatal("HTTP export did not enforce signed export reach")
+			}
+		})
+	}
+	if f.model.requests.Load() != before {
+		t.Fatal("denied export invoked a provider")
+	}
 }
-for path, entries in comments.items():
-    for declaration, comment in entries:
-        document(path, declaration, comment)
-replace("sdk/chartworks/clarification.go",
-    "// These aliases preserve the same versioned contract for HTTP, MCP and in-process\n// clients. Only the service can resolve them; they never confer read authority.",
-    "// ClarificationAnswer preserves the versioned HTTP, MCP and in-process input.\n// Only the service can resolve it; it never confers read authority.")
-replace("internal/semantics/clarification_types.go",
-    "const (\n\tClarificationNotApplicable ClarificationOutcome",
-    "// ClarificationNotApplicable, ClarificationSatisfied, ClarificationMissing,\n// ClarificationInvalid and ClarificationConflicting classify evaluated policy outcomes.\nconst (\n\tClarificationNotApplicable ClarificationOutcome")
-replace("internal/semantics/clarification_values.go", "notación exponencial.", "notación con exponentes.")
 
-replace("internal/exec/business_sql.go",
-    '\t\t\tif c.TemporalType == "timestamp" {',
-    '\t\t\tswitch c.TemporalType {\n\t\t\tcase "timestamp":')
-replace("internal/exec/business_sql.go",
-    '\t\t\t} else if c.TemporalType == "timestamptz" {',
-    '\t\t\tcase "timestamptz":')
-replace("internal/exec/business_sql.go",
-    'i != from+1 && !(tokens[i-1].depth == 0 && (tokens[i-1].word("join") || tokens[i-1].text == ","))',
-    'i != from+1 && (tokens[i-1].depth != 0 || !tokens[i-1].word("join") && tokens[i-1].text != ",")')
-
-# All five helpers were reported unused by the exact-head lint job. Require
-# exactly one identifier occurrence before deleting each complete definition.
-path = "internal/nlqroute/service.go"
-for name in ("appendUniqueRef", "choiceExists", "choicesFor", "topicVersions", "ruleVersions"):
-    text = read(path)
-    if len(re.findall(r"\b" + name + r"\b", text)) != 1:
-        raise SystemExit(f"{path}: {name} acquired a consumer")
-    pattern = re.compile(r"\nfunc " + name + r"\([^\n]*\{\n.*?\n\}\n?", re.S)
-    matches = list(pattern.finditer(text))
-    if len(matches) != 1:
-        raise SystemExit(f"{path}: expected one complete {name} definition")
-    pending[path] = text[:matches[0].start()] + "\n" + text[matches[0].end():]
-
-# Validate every edit before writing any source. The existing scoped workflow
-# formats these files, checks the staged diff, and commits only on this branch.
+'''
+edit(path, 'func cw01AuthoringAcceptance(t *testing.T) {', helper + 'func cw01AuthoringAcceptance(t *testing.T) {')
+edit("test/acceptance/cw01_test.go",
+     '\t\tcw01MigrationAcceptance(t)\n\t\tcw01AuthoringAcceptance(t)\n\t\tcw01ConsumerAcceptance(t)',
+     '\t\tt.Run("migration", cw01MigrationAcceptance)\n\t\tt.Run("authoring", cw01AuthoringAcceptance)\n\t\tt.Run("consumers", cw01ConsumerAcceptance)')
 for path, text in sorted(pending.items()):
-    if not path.startswith(("internal/", "sdk/")):
-        raise SystemExit("unexpected edit target")
     Path(path).write_text(text)
-print(f"Applied {len(pending)} inspected CW-01 lint remediations")
+print("Applied checked export reader and authority/consumer regressions")
