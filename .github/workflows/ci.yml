@@ -181,8 +181,11 @@ jobs:
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
         run: |
-          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzAuthorityJSON$' -fuzztime=5s -parallel=2
-          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=5s -parallel=2
+          # Count-bounded campaigns match the other native/race fuzz gates.
+          # A short wall-time budget can expire while the instrumented worker
+          # is still finishing a case; retain a separate hard hang deadline.
+          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzAuthorityJSON$' -fuzztime=256x -timeout=3m -parallel=2
+          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=256x -timeout=3m -parallel=2
           names=$(go test ./internal/exec -list '^Fuzz' | grep '^Fuzz')
           test -n "$names"
           for name in $names; do
