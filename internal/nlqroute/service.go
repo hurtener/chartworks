@@ -282,6 +282,12 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 			result.RuleVersions[i] = admitted[i].rules.State.Version
 		}
 	}
+	if len(admitted) > 1 {
+		if incompatible := confirmJoins(admitted, in.JoinChoices); incompatible != nil && incompatible.Reason == "unconfirmed_source" {
+			result.Outcome, result.Clarification = nlq.StrategyClarify, incompatible
+			return result, nil
+		}
+	}
 	if !contextMatches(admitted, in.Context) {
 		return RouteResult{}, readexec.ErrBinding
 	}

@@ -221,71 +221,82 @@ func TestRouteRejectsUnevaluatedConstraintInputsBeforeGateway(t *testing.T) {
 	}
 }
 
-func TestRouteClarifiesRequiredRuleSlotBeforeGateway(t *testing.T) {
-	published := rulesets.Published{State: rulesets.State{Topic: "topic", Version: "rules-v1", Active: true}, Digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Definition: semantics.RuleSetDefinition{
+func compiledRouteChoiceRules(t *testing.T, conditional bool) rulesets.Published {
+	t.Helper()
+	target := semantics.Reference{Kind: semantics.KindDataset, ID: "dataset"}
+	definition := semantics.RuleSetDefinition{
 		SchemaVersion: 1, ID: "rules", Version: "rules-v1", Topic: "topic", TopicVersion: "v1", PackDigest: testPublication().Digest,
-		Patterns: []semantics.ClarificationPattern{{ID: "metric-choice", Version: "pattern-v1", Targets: []semantics.Reference{{Kind: semantics.KindDataset, ID: "dataset"}}, Slots: []semantics.ClarificationSlot{{ID: "metric", Prompt: "Choose a metric", Required: true, Kind: semantics.SlotChoice, Sensitivity: semantics.LiteralNonSensitive, Choices: []semantics.ClarificationChoice{{ID: "revenue", Label: "Revenue"}, {ID: "orders", Label: "Orders"}}}}}},
-	}}
-	service, engine, _ := newTestService(t, testRules{published: published})
-	out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageSpanish, Question: "¿Qué ingresos?"})
+		Patterns: []semantics.ClarificationPattern{{ID: "metric-choice", Version: "pattern-v1", Targets: []semantics.Reference{target}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "synthetic-reviewed-choice"}, Slots: []semantics.ClarificationSlot{{ID: "metric", Prompt: "Choose a reviewed dataset", Required: true, Kind: semantics.SlotChoice, Sensitivity: semantics.LiteralNonSensitive, Choices: []semantics.ClarificationChoice{{ID: "revenue", Label: "Revenue", Target: &target}, {ID: "orders", Label: "Orders"}}}}}},
+	}
+	if conditional {
+		definition.Patterns[0].Policy = &semantics.ClarificationPolicy{SchemaVersion: 1, When: semantics.ClarificationWhen{AnyTerms: []string{"revenue", "ingresos"}}, Why: "Selects the reviewed dataset for this question."}
+		definition.Patterns[0].Slots[0].Choices[1].Target = &target
+	}
+	subject, err := semantics.NewRuleSubject(semantics.TopicPack{SchemaVersion: 1, Topic: "topic", Version: "v1", Datasets: []semantics.Dataset{{ID: "dataset"}}}, testPublication().Digest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "required_slot" || engine.embeds != 0 {
-		t.Fatalf("required slot did not stop gateway: %#v embeds=%d", out, engine.embeds)
+	model, err := semantics.CompilePublishedRules(subject, definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rulesets.Published{State: rulesets.State{Topic: "topic", Version: "rules-v1", Revision: 1, Active: true}, Digest: model.Digest(), Definition: model.Definition()}
+}
+
+func TestRouteClarifiesRequiredRuleSlotBeforeGateway(t *testing.T) {
+	published := compiledRouteChoiceRules(t, true)
+	service, engine, _ := newTestService(t, testRules{published: published})
+	out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageSpanish, Question: "¿Qué ingresos?"})
+	if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "required_answers" || engine.embeds != 0 {
+		t.Fatalf("reviewed required choice did not block: %v", err)
+	}
+	if len(out.Clarification.Questions) != 1 || out.Clarification.Questions[0].Why == "" {
+		t.Fatal("reviewed explanation missing")
+	}
+	out, err = service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "List the complete dataset"})
+	if err != nil || out.Context == nil || out.Clarification != nil || engine.embeds != 1 {
+		t.Fatal("unrelated question was interrupted", err)
 	}
 }
 
 func TestRouteEvaluatesChoiceTargetsAndRejectsUnknownChoices(t *testing.T) {
-	choiceRules := rulesets.Published{
-		State:  rulesets.State{Topic: "topic", Version: "rules-v1", Active: true},
-		Digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		Definition: semantics.RuleSetDefinition{
-			SchemaVersion: 1, ID: "rules", Version: "rules-v1", Topic: "topic", TopicVersion: "v1", PackDigest: testPublication().Digest,
-			Patterns: []semantics.ClarificationPattern{{
-				ID: "metric-choice", Version: "pattern-v1",
-				Slots: []semantics.ClarificationSlot{{
-					ID: "metric", Prompt: "Choose a metric", Required: true, Kind: semantics.SlotChoice,
-					Sensitivity: semantics.LiteralNonSensitive,
-					Choices: []semantics.ClarificationChoice{
-						{ID: "revenue", Label: "Revenue", Target: &semantics.Reference{Kind: semantics.KindDataset, ID: "dataset"}},
-						{ID: "orders", Label: "Orders"},
-					},
-				}},
-			}},
-		},
-	}
-
-	t.Run("target choice is evaluated", func(t *testing.T) {
-		service, engine, _ := newTestService(t, testRules{published: choiceRules})
-		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{
-			Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
-			Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "revenue"}},
-		})
-		if err != nil || out.Context == nil || engine.embeds != 1 {
-			t.Fatalf("target choice did not reach evaluated route: out=%#v err=%v embeds=%d", out, err, engine.embeds)
+	t.Run("exact reviewed target reaches sealed context", func(t *testing.T) {
+		service, engine, _ := newTestService(t, testRules{published: compiledRouteChoiceRules(t, true)})
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?", Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "revenue"}}})
+		if err != nil || out.Context == nil || engine.embeds != 1 || len(out.Resolutions) != 1 || out.Resolutions[0].Reference == nil || out.Resolutions[0].Reference.ID != "dataset" {
+			t.Fatal("exact choice lost its reviewed effect", err)
 		}
 	})
-
-	t.Run("known choice without target uses default reference", func(t *testing.T) {
-		service, engine, _ := newTestService(t, testRules{published: choiceRules})
-		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{
-			Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
-			Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "orders"}},
-		})
-		if err != nil || out.Context == nil || engine.embeds != 1 {
-			t.Fatalf("known choice without target did not use default reference: out=%#v err=%v embeds=%d", out, err, engine.embeds)
+	t.Run("legacy effectless choice cannot silently default", func(t *testing.T) {
+		service, engine, _ := newTestService(t, testRules{published: compiledRouteChoiceRules(t, false)})
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?", Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "orders"}}})
+		if err == nil && (out.Clarification == nil || out.Context != nil) {
+			t.Fatal("effectless legacy choice was accepted")
+		}
+		if engine.embeds != 0 {
+			t.Fatal("effectless choice reached provider")
 		}
 	})
-
-	t.Run("unknown choice returns detached clarification", func(t *testing.T) {
-		service, engine, _ := newTestService(t, testRules{published: choiceRules})
-		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{
-			Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?",
-			Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "missing"}},
-		})
-		if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "invalid_choice" || len(out.Clarification.Choices) != 2 || engine.embeds != 0 {
-			t.Fatalf("unknown choice was not rejected before gateway: out=%#v err=%v embeds=%d", out, err, engine.embeds)
+	t.Run("unknown choice fails atomically with detached repair", func(t *testing.T) {
+		published := compiledRouteChoiceRules(t, true)
+		service, engine, _ := newTestService(t, testRules{published: published})
+		_, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?", Choices: []ChoiceSelection{{Pattern: "metric-choice", Slot: "metric", Value: "missing"}}})
+		var failure *Clarification
+		if !errors.As(err, &failure) || failure.Outcome != semantics.ClarificationInvalid || len(failure.Errors) == 0 || engine.embeds != 0 {
+			t.Fatal("foreign choice was not rejected before provider", err)
+		}
+		if len(failure.Questions) > 0 && len(failure.Questions[0].Choices) > 0 {
+			failure.Questions[0].Choices[0].Label = "mutated"
+			if published.Definition.Patterns[0].Slots[0].Choices[0].Label == "mutated" {
+				t.Fatal("repair aliases publication")
+			}
+		}
+	})
+	t.Run("legacy patterns do not introduce new blockers", func(t *testing.T) {
+		service, engine, _ := newTestService(t, testRules{published: compiledRouteChoiceRules(t, false)})
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?"})
+		if err != nil || out.Context == nil || out.Clarification != nil || engine.embeds != 1 {
+			t.Fatal("legacy pattern accidentally became required", err)
 		}
 	})
 }
