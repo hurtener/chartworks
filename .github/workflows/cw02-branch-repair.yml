@@ -1,0 +1,119 @@
+name: CW-02 bounded branch synchronization
+on:
+  push:
+    branches: [feat/cw-02-rich-chart-shapes]
+    paths:
+      - .github/workflows/cw02-branch-repair.yml
+      - .github/cw02-branch-repair/**
+permissions:
+  contents: write
+concurrency:
+  group: cw02-branch-synchronization
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'hurtener/chartworks' && github.ref == 'refs/heads/feat/cw-02-rich-chart-shapes'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Apply reviewed conflict resolution to exact branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = 2219fa29093253e0c51b94c4b9de3a4e52f19ee1
+          git merge-base --is-ancestor 9fabc5d782c556c80bd8502df68109909e6289c2 HEAD
+          python3 - <<'PY'
+          import base64, gzip, hashlib
+          from pathlib import Path
+          encoded=''.join(p.read_text().strip() for p in sorted(Path('.github/cw02-branch-repair').glob('patch.*')))
+          # Correct two verified transport-only duplications before validating the patch.
+          encoded=encoded.replace('axdMypIaIa+d5','axdMypIa+d5').replace('Sim6xPSw7Sim6xPSw7','Sim6xPSw7')
+          patch=gzip.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(patch).hexdigest() == 'd915fc9dabd5100ddff58149c344a9529cf22aaee7d330d773ac9ded1f2e2563'
+          Path('/tmp/cw02-reviewed.patch').write_bytes(patch)
+          PY
+          git config user.name 'Chartworks branch synchronization'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git merge --no-commit --no-ff 2219fa29093253e0c51b94c4b9de3a4e52f19ee1; then
+            test -n "$(git diff --name-only --diff-filter=U)"
+          fi
+          python3 - <<'PY'
+          import subprocess
+          expected={'docs/gap-analysis.md','docs/plans/phase-31-reporting-mcp-apps.md','internal/reporting/runs_service.go','test/acceptance/cw02_rich_charts_test.go','test/viewerfixtures/fixtures.go','web/report-viewer/app.js','web/report-viewer/component.test.mjs'}
+          conflicts=set(subprocess.check_output(['git','diff','--name-only','--diff-filter=U'],text=True).splitlines())
+          assert conflicts <= expected, conflicts-expected
+          subprocess.run(['git','restore','--source=9fabc5d782c556c80bd8502df68109909e6289c2','--worktree','--',*sorted(expected)],check=True)
+          subprocess.run(['git','apply','--check','/tmp/cw02-reviewed.patch'],check=True)
+          subprocess.run(['git','apply','/tmp/cw02-reviewed.patch'],check=True)
+          hashes={'docs/gap-analysis.md':'ebea46e9e43a5c53525c91b8afb7cbf133815722','docs/plans/phase-31-reporting-mcp-apps.md':'1513062d4f7e353c7b8d3929113a938ae6b33456','internal/reporting/runs_service.go':'26c48b9494ee438c35c4b4360c8a8bf054c35fd2','test/acceptance/cw02_rich_charts_test.go':'9419dc2794341c586f70280f6ec9d4c0d77d9b28','test/viewerfixtures/fixtures.go':'193ef919906ad8199bb4bac368e31c78969937f5','web/report-viewer/app.js':'ce3038285624fee92dd63a1062689d2d92697f3b','web/report-viewer/component.test.mjs':'e14a3159e6148a1f31fd2964c75fe8a6ffa8613b'}
+          for path,digest in hashes.items():
+            assert subprocess.check_output(['git','hash-object',path],text=True).strip()==digest,path
+          PY
+          rm -rf .github/cw02-branch-repair
+          rm .github/workflows/cw02-branch-repair.yml
+          git add -A
+          test -z "$(git ls-files -u)"
+          git diff --cached --check
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          node --check web/report-viewer/app.js
+          node --check web/report-viewer/component.test.mjs
+          make planning-check
+      - name: Race-test the merged chart core and embedded viewer
+        run: |
+          set -o pipefail
+          go test -race -count=1 -cover ./internal/charts ./test/chartfixtures ./web/report-viewer 2>&1 | tee /tmp/cw02-core.log
+      - name: Store verified merge objects without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          base='2219fa29093253e0c51b94c4b9de3a4e52f19ee1'
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          def api(path,data=None):
+            payload=None if data is None else json.dumps(data).encode()
+            request=urllib.request.Request('https://api.github.com/repos/hurtener/chartworks/'+path,data=payload,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+            with urllib.request.urlopen(request,timeout=60) as response: return json.load(response)
+          branch=api('git/ref/heads/feat/cw-02-rich-chart-shapes')['object']['sha']
+          assert branch==os.environ['GITHUB_SHA'],'Branch advanced; refusing stale synchronization'
+          assert api('git/ref/heads/main')['object']['sha']==base,'Main advanced; review the new changes first'
+          entries=[]
+          for line in git('diff','--cached','--raw','--abbrev=40',base).splitlines():
+            metadata,path=line.split('\t',1)
+            oldmode,mode,oldsha,sha,status=metadata.split()
+            assert not path.startswith('.github/cw02-branch-repair') and path!='.github/workflows/cw02-branch-repair.yml'
+            if status=='D': entries.append({'path':path,'mode':oldmode.lstrip(':'),'type':'blob','sha':None}); continue
+            assert mode in {'100644','100755'},(mode,path)
+            content=subprocess.check_output(['git','show',':'+path]).decode('utf-8')
+            blob=api('git/blobs',{'content':content,'encoding':'utf-8'})
+            assert blob['sha']==sha,(path,blob['sha'],sha)
+            entries.append({'path':path,'mode':mode,'type':'blob','sha':sha})
+          tree=api('git/trees',{'base_tree':'028106358a8fc39599f899b95cc9b62d9ef3223d','tree':entries})
+          assert tree['sha']==git('write-tree'),'Remote tree must match reviewed and tested index'
+          commit=api('git/commits',{'message':'Merge current main into CW-02 and resolve reporting integration conflicts\n\nPreserve rich chart bindings and hierarchy fixes alongside versioned output selection, query limits and narrative policy. Separate omitted-row labels from omitted-output labels and exercise the current output-intent lifecycle. Remove the temporary branch synchronization helper.','tree':tree['sha'],'parents':[os.environ['GITHUB_SHA'],base]})
+          result={'head':commit['sha'],'tree':tree['sha'],'parent':os.environ['GITHUB_SHA'],'main':base,'core_checks':'passed','full_ci':'not yet run','branch_updated':False}
+          Path('/tmp/cw02-merge-result.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,indent=2))
+          subprocess.run('git archive '+tree['sha']+' | gzip > /tmp/cw02-integrated-source.tar.gz',shell=True,check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cw02-integrated-source
+          path: |
+            /tmp/cw02-merge-result.json
+            /tmp/cw02-integrated-source.tar.gz
+            /tmp/cw02-core.log
+          retention-days: 3
