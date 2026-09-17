@@ -199,9 +199,14 @@ func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, in
 	if m.Private {
 		policy = "private_preview"
 	}
-	child, err := s.runs.admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID,
+	childRuns := *s.runs
+	childRuns.limits = intersectExecutionLimits(m.ArtifactLimits, s.runs.limits)
+	if childRuns.limits.Validate() != nil {
+		return GroupResult{}, ErrInvalid
+	}
+	child, err := childRuns.admit(ctx, e, g.Block, RunRequest{Key: "composition:" + m.ID + ":" + g.ID,
 		Reference: Reference{Revision: g.Revision}, Arguments: g.Arguments, Resolution: g.Resolution,
-		Outputs: g.Outputs, Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"}, &inv)
+		Outputs: g.Outputs, Limits: clone(g.QueryLimits), Policy: policy, Locale: g.Locale, Narrative: g.Narrative, PartialPolicy: "allow_partial"}, &inv)
 	if err != nil {
 		return GroupResult{}, err
 	}
@@ -209,7 +214,7 @@ func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, in
 		return GroupResult{}, ErrStale
 	}
 	resume := child.Attempts > 0 && !slices.Contains([]string{"succeeded", "partial", "failed", "expired"}, child.State)
-	if _, err := s.runs.run(ctx, e, child.ID, resume, &inv); err != nil {
+	if _, err := childRuns.run(ctx, e, child.ID, resume, &inv); err != nil {
 		return GroupResult{}, err
 	}
 	retained, err := s.runs.repo.ReadFrozenRun(ctx, e, child.ID, true)

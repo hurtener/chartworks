@@ -15,7 +15,7 @@ import (
 )
 
 func TestDocumentListBoundaries(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	ctx := context.Background()
 	e := phase27Actor(t, f, f.f.e.User(), phase29DocumentScopes())
 	s, err := reporting.NewDocuments(f.f.db, nil, nil, config.DefaultReporting())
@@ -104,7 +104,7 @@ func TestDocumentListBoundaries(t *testing.T) {
 }
 
 func TestDocumentAuditRollback(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	ctx := context.Background()
 	e := phase27Actor(t, f, f.f.e.User(), phase29DocumentScopes())
 	s, err := reporting.NewDocuments(f.f.db, nil, nil, config.DefaultReporting())

@@ -378,7 +378,10 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 		paths[d.Path][strings.ToLower(d.Method)] = op
 	}
 	document := map[string]any{"openapi": "3.1.1", "info": map[string]any{"title": title, "version": version}, "servers": []any{map[string]any{"url": basePath}}, "paths": paths, "components": map[string]any{"securitySchemes": map[string]any{"penguiBearer": map[string]any{"type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "Existing Pengui bearer; signed operation and resource reach remain required."}}}}
-	return json.MarshalIndent(document, "", "  ")
+	// This is a machine-readable inventory. Indenting every nested inline
+	// reporting schema amplifies wire size without adding contract information.
+	// Keep all operations and their exact schemas inside existing client bounds.
+	return json.Marshal(document)
 }
 
 func content(schema any) map[string]any {

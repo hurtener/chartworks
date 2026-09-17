@@ -126,7 +126,7 @@ func validateShape(p TopicPack) error {
 			return invalid(CodeEvidenceMismatch, path+".source.dataset")
 		}
 		for j, c := range d.Columns {
-			if !identity.Identifier(c.ID) || !validLine(c.SourceName, 256) || !validLine(c.Name, 256) || !validLine(c.NativeType, 128) || !validLine(c.Category, 64) {
+			if c.Sensitivity != "" && !validSensitivity(c.Sensitivity) || !identity.Identifier(c.ID) || !validLine(c.SourceName, 256) || !validLine(c.Name, 256) || !validLine(c.NativeType, 128) || !validLine(c.Category, 64) {
 				return invalid(CodeInvalidValue, path+".columns["+itoa(j)+"]")
 			}
 		}

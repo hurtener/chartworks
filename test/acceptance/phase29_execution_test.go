@@ -52,7 +52,7 @@ func phase29AuthorScopes(tenant string) []string {
 
 func newPhase29Execution(t *testing.T, live bool) *phase29ExecutionFixture {
 	t.Helper()
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	query, topics := newPhase18Service(t, f)
 	limits := config.DefaultReporting()
 	limits.Composition.LiveQueries, limits.Composition.SessionBound = live, live

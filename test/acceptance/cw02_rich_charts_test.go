@@ -185,6 +185,12 @@ func testCW02SavedChartLifecycle(t *testing.T) {
 	bind("bubble", charts.Scatter, charts.Bindings{X: "exposure", Y: "response", Size: "population", Series: "region"})
 	bind("hierarchy", charts.Treemap, charts.Bindings{Hierarchy: []string{"region", "country", "product"}, Value: "revenue"})
 	bind("legacy-table", charts.Table, charts.Bindings{Columns: []string{"category", "revenue", "quantity"}})
+	// Exercise the shared rich bindings with the current authored output intent,
+	// rather than relying on the legacy empty-selection projection.
+	definition, err := cw.MigrateBlockDefinition(definition)
+	if err != nil {
+		t.Fatal("migrate rich outputs to the current authored definition", err)
+	}
 	registry, err := reportingapi.Registry(true, true, true)
 	if err != nil {
 		t.Fatal(err)
@@ -232,7 +238,7 @@ func testCW02SavedChartLifecycle(t *testing.T) {
 		t.Helper()
 		wire, err := json.Marshal([]any{reporting.FrozenVersion, buildVersion, m.Tenant, m.Block, m.Revision.Digest,
 			m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, readexec.Hash(m.Binding), m.Private, "",
-			m.Policy, m.Trust, m.Model, m.Limits.MaxRows, m.Limits.MaxResultBytes})
+			m.Policy, m.Trust, m.Model, "reporting-output-policy-v2", m.Selection, m.QueryLimits, m.ResultPolicy, m.Limits})
 		if err != nil {
 			t.Fatal(err)
 		}

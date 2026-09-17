@@ -153,15 +153,31 @@ func produce(t *testing.T) fixture {
 	})
 	created := time.Now().UTC().Truncate(time.Second)
 	target := reporting.DeliveryTarget{Kind: "block", ID: "viewer-fixture", Revision: 1}
-	choices := []reporting.ViewerOutputChoice{{ID: "table-main", Kind: "table", Title: "Table one"}, {ID: "table-second", Kind: "table", Title: "Table two"}}
+	choices := []reporting.ViewerOutputChoice{}
+	for i, id := range []string{"table-main", "table-second", "disabled", "optional"} {
+		state, code := "selected", ""
+		if id == "disabled" {
+			state, code = "disabled", "output_disabled"
+		}
+		if id == "optional" {
+			state, code = "omitted", "output_not_selected"
+		}
+		choices = append(choices, reporting.ViewerOutputChoice{ID: id, Kind: "table", Title: "Table " + id, DisplayOrder: i,
+			Enabled: id != "disabled", DefaultSelected: id != "optional", Selected: i < 2, State: state, Code: code,
+			Metadata: []reporting.OutputMetadata{{Locale: "en", DisplayName: "Table " + id, Description: "Synthetic retained data"}, {Locale: "es-AR", DisplayName: "Tabla " + id, Description: "Datos sintéticos retenidos"}}})
+	}
+	accepted := &reporting.OutputSelection{Version: 2, DefinitionVersion: 2, Mode: "explicit", Requested: []string{"table-second", "table-main"}, Selected: []string{"table-second", "table-main"}}
+	caps := &reporting.QueryLimits{MaxRows: 3, MaxBytes: 65536, TimeoutMillis: 10000, QueryAttempts: 1}
 	filters := []reporting.ViewerFilter{{Page: "main", Label: "Minimum", Parameter: reporting.Parameter{Name: "minimum", Type: "integer", Required: true, Default: &reporting.Value{Literal: "1"}, Min: "1", Max: "2"}}}
 	next := 2
 	out.View = reporting.DeliveryViewResult{
-		Policy:    "certified_only",
-		Version:   reporting.DeliveryVersion,
-		Summary:   reporting.DeliveryRunSummary{Kind: "block", Run: "viewer-run", Target: target, State: "succeeded", Created: created, Expires: created.Add(time.Hour)},
-		Selection: reporting.DeliveryViewRequest{Kind: "block", Run: "viewer-run", Output: "table-main", Limit: 2},
-		Locale:    "en", Timezone: "UTC", Outputs: choices, Pages: []reporting.CompositionPageSummary{}, Filters: filters,
+		AcceptedSelection: accepted,
+		QueryLimits:       caps,
+		Policy:            "certified_only",
+		Version:           reporting.DeliveryVersion,
+		Summary:           reporting.DeliveryRunSummary{Kind: "block", Run: "viewer-run", Target: target, State: "succeeded", Created: created, Expires: created.Add(time.Hour)},
+		Selection:         reporting.DeliveryViewRequest{Kind: "block", Run: "viewer-run", Output: "table-main", Limit: 2},
+		Locale:            "en", Timezone: "UTC", Outputs: choices, Pages: []reporting.CompositionPageSummary{}, Filters: filters,
 		Trust:    &reporting.Trust{Publication: "published", Certification: "certified", Health: reporting.Health{Status: "healthy"}},
 		Observed: &created,
 		Output: &reporting.ViewerOutput{ID: "table-main", Kind: "table", State: "succeeded", RetainedDigest: "fixture",
@@ -169,6 +185,7 @@ func produce(t *testing.T) fixture {
 		PageBounds: reporting.ViewerPage{Offset: 0, Limit: 2, Total: len(out.Table.Rows), Next: &next},
 	}
 	out.Description = reporting.DeliveryDescription{Version: reporting.DeliveryVersion,
+		Selection: accepted, QueryLimits: caps,
 		Resource: reporting.DeliveryResource{Target: target, Title: target.ID, Locale: "en"},
 		Outputs:  choices, Filters: filters, Pages: []reporting.CompositionPageSummary{}, Timezone: "UTC"}
 	out.Run = reporting.DeliveryRunResult{Version: reporting.DeliveryVersion, Kind: "block", Run: "viewer-new-run", State: "succeeded", Target: target}

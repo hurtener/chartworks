@@ -64,7 +64,7 @@ func runtimeEntry[I, O any](method, path, action, id, summary string, call func(
 	}}
 }
 func runtimeErrors() []api.ErrorResponse {
-	return []api.ErrorResponse{{Status: 400, Code: "invalid_request"}, {Status: 401, Code: "unauthorized"}, {Status: 401, Code: "unauthenticated"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "stale_validation"}, {Status: 409, Code: "incomplete"}, {Status: 410, Code: "expired"}, {Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "invalid_query"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}
+	return []api.ErrorResponse{{Status: 400, Code: "invalid_request"}, {Status: 400, Code: "output_selection_empty"}, {Status: 400, Code: "output_duplicate"}, {Status: 400, Code: "output_unknown"}, {Status: 400, Code: "output_disabled"}, {Status: 409, Code: "output_not_selected"}, {Status: 400, Code: "narrative_policy_unsupported"}, {Status: 401, Code: "unauthorized"}, {Status: 401, Code: "unauthenticated"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "stale_validation"}, {Status: 409, Code: "incomplete"}, {Status: 410, Code: "expired"}, {Status: 413, Code: "limit_exceeded"}, {Status: 422, Code: "invalid_query"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}, {Status: 504, Code: "cancelled_or_timed_out"}}
 }
 func runtimeEntries(runs *reporting.Runs, proposals *engineering.Autopilot, execution, planning bool) []runtimeEndpoint {
 	entries := []runtimeEndpoint{

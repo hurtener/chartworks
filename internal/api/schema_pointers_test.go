@@ -72,3 +72,24 @@ func TestNullableCollectionsInEmbeddedDTO(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitOptionalPresencePreservesEmptyCollections(t *testing.T) {
+	type request struct {
+		Version int      `json:"version"`
+		Outputs []string `json:"outputs" wire:"optional"`
+	}
+	schema, err := SchemaFor("explicitPresence", reflect.TypeFor[request](), false, NullableCollections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{`{"version":2}`, `{"version":2,"outputs":null}`, `{"version":2,"outputs":[]}`, `{"version":2,"outputs":["table"]}`} {
+		if err := schema.Validate([]byte(raw), 4096); err != nil {
+			t.Fatalf("valid presence %s: %v", raw, err)
+		}
+	}
+	for _, raw := range []string{`{}`, `null`, `{"version":null}`, `{"outputs":[]}`, `{"version":2,"outputs":[null]}`, `{"version":2,"unknown":true}`} {
+		if schema.Validate([]byte(raw), 4096) == nil {
+			t.Fatal("required scalar or closed shape weakened", raw)
+		}
+	}
+}

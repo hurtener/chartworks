@@ -43,7 +43,7 @@ func phase29Publish(t *testing.T, s *reporting.Documents, e identity.Envelope, s
 }
 
 func TestDocumentStorage(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	ctx := context.Background()
 	author := phase27Actor(t, f, f.f.e.User(), phase29DocumentScopes())
 	documents, err := reporting.NewDocuments(f.f.db, nil, nil, config.DefaultReporting())

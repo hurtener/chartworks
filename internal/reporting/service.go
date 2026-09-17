@@ -139,9 +139,13 @@ func project(snapshot Snapshot, now time.Time) View {
 			trust.Certification = "stale"
 		}
 	}
-	out := View{State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: clone(d.Outputs), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
+	out := View{State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
+	out.SchemaVersion = d.SchemaVersion
+	out.QueryLimits = clone(d.QueryLimits)
+	out.ResultPolicy = ResolveResultPolicy(d, nil, nil)
 	if snapshot.Validation != nil {
 		out.Evidence = clone(&snapshot.Validation.Evidence)
+		out.ResultPolicy = ResolveResultPolicy(d, snapshot.Validation.Dependencies, snapshot.Validation.Definitions)
 	}
 	return out
 }
@@ -181,7 +185,7 @@ func (s *Service) SQL(ctx context.Context, e identity.Envelope, id string, ref R
 	if err := ctx.Err(); err != nil {
 		return SQLView{}, err
 	}
-	return SQLView{ID: id, Revision: snapshot.Revision.Number, Digest: snapshot.Revision.Digest, SQL: snapshot.Revision.Definition.SQL, Provenance: clone(snapshot.Revision.Provenance)}, nil
+	return SQLView{Definition: clone(&snapshot.Revision.Definition), ID: id, Revision: snapshot.Revision.Number, Digest: snapshot.Revision.Digest, SQL: snapshot.Revision.Definition.SQL, Provenance: clone(snapshot.Revision.Provenance)}, nil
 }
 
 func (s *Service) newRevision(e identity.Envelope, number int64, d Definition, provenance Provenance) (Revision, error) {

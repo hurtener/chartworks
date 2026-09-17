@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
@@ -20,7 +21,10 @@ var _ reporting.RunRepository = (*DB)(nil)
 // ReuseFrozenRun reuses only an already readable, same-partition, exact-key
 // successful artifact. Original observation/expiry are preserved through chains;
 // original usage receipts are provenance, not another provider charge.
-func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string) (out reporting.RunRecord, reused bool, err error) {
+func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string, runtime config.ReportingExecution) (out reporting.RunRecord, reused bool, err error) {
+	if runtime.Validate() != nil {
+		return out, false, reporting.ErrInvalid
+	}
 	lease := inv.Lease()
 	e, err := inv.Current("reporting.run", lease.Task.Input.Target, lease.Task.Input.InputHash)
 	if err != nil {
@@ -63,7 +67,7 @@ func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string)
 		if readErr != nil {
 			return readErr
 		}
-		age := min(time.Duration(m.ReuseMaxAge)*time.Second, time.Duration(m.Limits.MaxReuseAge))
+		age := min(time.Duration(m.ReuseMaxAge)*time.Second, time.Duration(m.Limits.MaxReuseAge), time.Duration(runtime.MaxReuseAge))
 		var candidate string
 		readErr = tx.QueryRow(ctx, `SELECT h.operation_id`+frozenFrom+frozenEligibility+` AND h.operation_id<>$2 AND h.reuse_key=$8 AND h.state='succeeded' AND h.payload_expires_at>clock_timestamp() AND h.observed_at>=$9 ORDER BY h.observed_at DESC,h.operation_id LIMIT 1 FOR SHARE OF h`, append(args, m.ReuseKey, time.Now().Add(-age))...).Scan(&candidate)
 		if errors.Is(readErr, pgx.ErrNoRows) {
@@ -82,6 +86,9 @@ func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string)
 		if previous.View.Context != m.Binding.Context || previous.View.PartitionDigest != readexec.Hash(m.Binding) || previous.View.Private != m.Private || previous.View.Locale != m.Locale || previous.View.RevisionDigest != m.Revision.Digest {
 			return store.ErrInvalid
 		}
+		if readErr = reporting.CheckRuntimeResult(m, runtime, *previous.Result); readErr != nil {
+			return readErr
+		}
 		if _, _, readErr = reporting.FrozenCompletion(m, previous.Outputs); readErr != nil {
 			return readErr
 		}
@@ -97,6 +104,9 @@ func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string)
 				return store.ErrInvalid
 			}
 			added += int64(len(payloads[index]))
+		}
+		if h.view.RetainedBytes+added > int64(runtime.MaxArtifactBytes) {
+			return reporting.ErrBudget
 		}
 		if readErr = frozenBytesTx(ctx, tx, e, h, added); readErr != nil {
 			return readErr

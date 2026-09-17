@@ -21,7 +21,7 @@ const copy=v=>JSON.parse(JSON.stringify(v));
 const send=m=>frame.contentWindow.postMessage(m,location.origin);
 const wrapped=v=>({structuredContent:{result:copy(v)},content:[{type:'text',text:JSON.stringify({result:v})}]});
 window.show=v=>{window.current=copy(v);send({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:wrapped(v)});};
-window.makeView=(out,tag)=>{const v=copy(fixture.view);v.summary.target.id=tag;v.selection.output=out.kind;v.outputs=[{id:out.kind,kind:out.kind,title:out.kind}];v.output={id:out.kind,kind:out.kind,state:'succeeded',code:'',retained_digest:'fixture'};if(out.kind==='table'){v.output.table={columns:out.columns,rows:out.rows,totals:out.totals,completeness:out.completeness,warnings:out.warnings};v.page_bounds={offset:0,limit:100,total:out.rows.length};}else{v.output.chart=out;v.page_bounds={offset:0,limit:100,total:out.points.length};}v.filters=[];return v;};
+window.makeView=(out,tag)=>{const v=copy(fixture.view);v.summary.target.id=tag;v.selection.output=out.kind;v.outputs=[{id:out.kind,kind:out.kind,title:out.kind}];v.output={id:out.kind,kind:out.kind,state:'succeeded',code:'',retained_digest:'fixture'};if(out.kind==='table'){v.output.table={columns:out.columns,rows:out.rows,totals:out.totals,completeness:out.completeness,warnings:out.warnings};v.page_bounds={offset:0,limit:100,total:out.rows.length};}else{v.output.chart=out;v.page_bounds={offset:0,limit:100,total:out.points.length};}v.filters=[];delete v.accepted_selection;return v;};
 window.chartCase=i=>{const c=fixture.cases[i];show(makeView(c.output,'case-'+i));};
 window.context=c=>send({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:c});
 window.addEventListener('message',e=>{
@@ -216,6 +216,9 @@ try{
 
   if(suite==='all'||suite==='interaction'){
     await restore();const before=await evaluate('calls.length');
+    await check(`Array.from(${body}.querySelector('select[aria-label="Output"]').options).map(o=>o.value).join(',')==='table-main,table-second,disabled,optional'`,'authored display order is independent of accepted execution order');
+    await check(`Array.from(${body}.querySelector('select[aria-label="Output"]').options).filter(o=>o.disabled).map(o=>o.value).join(',')==='disabled,optional'`,'disabled and omitted retained outputs cannot execute or redraw');
+    await check(`${body}.querySelector('select[aria-label="Output"] option[value="optional"]').textContent==='Table optional — Not included in this run'`,'output omission has its own label, not a chart geometry omission');
     await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Next').click()`);await waitCalls(before+1);await until(()=>evaluate(`${body}.textContent.includes('3–3 / 3')`),'exact table continuation');
     await check(`calls.at(-1).name==='reporting_view'&&calls.at(-1).arguments.offset===2`,'paging is an explicit retained read');
     await check(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Next').disabled`,'last page has no invented continuation');
@@ -226,6 +229,8 @@ try{
     await until(()=>evaluate(`${doc}.documentElement.dataset.theme==='dark'`),'dark theme');
     await check(`${doc}.documentElement.lang==='es-AR'&&${body}.textContent.includes('Siguiente')`,'locale changed UI, not retained values');
     await check(`${body}.querySelector('table')?.getBoundingClientRect().height>0`,'host CSS is not executable');
+    await check(`${body}.querySelector('select[aria-label="Salida"]').options[0].textContent.includes('Tabla table-main')`,'localized output labels survive actual host locale change');
+    await check(`${body}.querySelector('select[aria-label="Salida"] option[value="optional"]').textContent==='Tabla optional — No incluida en esta ejecución'`,'localized output omission stays separate from chart omissions');
     await check(`notifications.length>0&&notifications.every(n=>n.width>=200&&n.width<=1600&&n.height>=100&&n.height<=2400)`,'bounded real resize notifications');
     await check(`Array.from(${body}.querySelectorAll('select')).every(s=>s.getAttribute('aria-label'))`,'named native controls');
     await check(`Array.from(${body}.querySelectorAll('button')).every(b=>b.getBoundingClientRect().height>=44)`,'minimum hit targets');
@@ -241,6 +246,8 @@ try{
     await check(`calls.filter(c=>c.name==='reporting_run').length===1`,'one explicit cost-bearing invocation');
     await check(`calls.filter(c=>c.name==='reporting_run')[0].arguments.arguments[0].value.literal==='2'`,'typed exact filter value');
     await check(`calls.filter(c=>c.name==='reporting_run')[0].arguments.target.revision===fixture.description.resource.target.revision`,'published revision chosen explicitly');
+    await check(`JSON.stringify(calls.filter(c=>c.name==='reporting_run')[0].arguments.outputs)===JSON.stringify(fixture.view.accepted_selection.selected)`,'filter run preserves exact accepted execution selection, not selector display order');
+    await check(`JSON.stringify(calls.filter(c=>c.name==='reporting_run')[0].arguments.limits)===JSON.stringify(fixture.view.query_limits)`,'filter run preserves accepted lower source limits');
   }
 
   if(suite==='all'||suite==='security'){
@@ -249,6 +256,13 @@ try{
     await until(()=>evaluate(`calls.filter(c=>c.name==='reporting_run').length===${policyRunCount+1}`),'certified filter run was not emitted');
     await check("calls.filter(c=>c.name==='reporting_run').at(-1).arguments.policy==='certified_only'",'filter rerun preserves the admitted trust requirement');
 
+    for(const ids of [[],['table-main','table-main'],['disabled'],['unknown']]){
+      await restore(); const runs=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
+      await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.accepted_selection.selected=${JSON.stringify(ids)};show(v);})()`);await waitTitle(fixtures.view.summary.target.id);
+      await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click()`);
+      await until(()=>evaluate(`${body}.textContent.includes('invalid_request')`),'invalid accepted selection was not rejected');
+      await check(`calls.filter(c=>c.name==='reporting_run').length===${runs}`,'malformed accepted selection cannot widen an explicit run');
+    }
     // Corrupted/misrouted provider responses must not change the resource that
     // the user explicitly selected. These run in the actual iframe component.
     await restore();const initialRuns=await evaluate("calls.filter(c=>c.name==='reporting_run').length");

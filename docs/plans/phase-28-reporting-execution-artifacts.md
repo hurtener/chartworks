@@ -54,3 +54,14 @@ Logical operation, attempt, retained artifact and rendition are separate. D-047/
 See the [runtime contract](../contracts/reviewed-engineering-and-frozen-runs.md) and
 [review and verification ledger](../reviews/phase-26-28-runtime.md). Exact-source
 acceptance and coverage are required before closure.
+
+## CW-03 output-intent and evidence-policy continuation
+
+AC01/AC03/AC04/AC05/AC06/AC07/AC08: exact accepted selection/revision and query ceilings; current-cap clamps and reuse segregation; inherited sensitivity before model input; deterministic bounded narrative claims and retained zero-work behavior.
+
+Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
+[v2 field-level contract](../contracts/reporting-output-intent-v2.md). The
+[scoped adversarial record](../reviews/cw-03-adversarial.md) links real PostgreSQL,
+source execution, provider-fixture and browser checks. Keep the existing named
+phase criteria and phase status; this assignment closes only its three owned gap
+entries, not the whole phase, other reporting work, or full migration/release.

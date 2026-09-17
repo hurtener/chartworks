@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "assignment": "CW-03",
+  "baseline_main": "35027d93d68c9c2ad3afc4ef26b9deca2b28aa73",
+  "reviewed_source_commit": "f517ab6e2f6048632249d57c77c4783cb9a0e1a2",
+  "validation_workflow": ".github/workflows/cw-03-validation.yml",
+  "workflow_run_id": 35061994750,
+  "workflow_run_url": "https://github.com/hurtener/chartworks/actions/runs/35061994750",
+  "conclusion": "success",
+  "artifact": "cw-03-contract-evidence",
+  "artifact_id": 10433395915,
+  "artifact_sha256": "11180043b210702e5864ea67e63f6dc59f75145c770d85834d2df1ef0ca9e5b1",
+  "exact_execution_identity": "reporting-source.log TESTED_COMMIT=f517ab6e2f6048632249d57c77c4783cb9a0e1a2",
+  "scope": ["BLK-01", "BLK-05", "BLK-07"],
+  "executed_results": {
+    "cw03_test_and_subtest_pass_events": 23,
+    "cw03_package_pass_events": 1,
+    "strict_phase_27_to_31_criteria": 40,
+    "unit_test_and_subtest_pass_events": 594,
+    "unit_package_pass_events": 13,
+    "runtime_test_failures": 0,
+    "runtime_test_skips": 0,
+    "browser": "actual Chrome via strict TestPhase31/AC08",
+    "planning": "60 checker tests; 224 criteria, 63 features, 34 phases and 41 gates",
+    "build": "passed",
+    "vet": "passed",
+    "formatting_and_clean_source": "passed"
+  },
+  "counting_method": "Go JSON Action=pass with Test counts parent tests and nested subtests, not independent scenarios. Package pass events are counted separately. Phase totals come from the strict runner's eight required AC results per phase. The planning check includes its own synthetic planned-skip fixture, not a skipped runtime acceptance case.",
+  "environment": "Ubuntu 24.04, PostgreSQL 17 with pgvector 0.8.2, Go 1.26.4, Node 22.14.0, actual Chrome, pinned native read dependency; production model gateway against HTTP provider fixtures",
+  "required_runtime_checks": ["TestCW03", "strict phase27 AC01-AC08", "strict phase28 AC01-AC08", "strict phase29 AC01-AC08", "strict phase30 AC01-AC08", "strict phase31 AC01-AC08 including actual browser", "workflow unit/race packages", "build", "vet"],
+  "claim_boundary": "This receipt applies only to the exact tested commit. A subsequent evidence-only documentation commit does not imply that its own SHA was executed. See PR checks for later runs. No live-provider, cloud-warehouse, stress, full coverage-band, foreign-cutover or full-release qualification is claimed. Local Go execution is blocked by the unavailable required toolchain; the passing Go and browser evidence is from Actions."
+}

@@ -18,7 +18,9 @@ type SchemaOption uint8
 const OptionalJSONFields SchemaOption = 1
 
 // NullableCollections preserves Go nil collection and optional pointer encoding while keeping request
-// scalar fields required and non-null. In particular, explicit cell null bits
+// scalar fields required and non-null. An explicit wire:"optional" tag permits
+// omission without encoding/json omitempty collapsing empty slices into nil.
+// In particular, explicit cell null bits
 // cannot be bypassed by silently decoding JSON null into an empty string.
 const NullableCollections SchemaOption = 2
 
@@ -145,6 +147,18 @@ func adjustWireSchema(schema map[string]any, t reflect.Type, optional, root bool
 				}
 				if child, ok := properties[name].(map[string]any); ok {
 					adjustWireSchema(child, field.Type, optional, false)
+					// Presence and serialization are separate: a selection may be
+					// omitted while an explicitly empty slice must round-trip as [].
+					if field.Tag.Get("wire") == "optional" {
+						required, _ := schema["required"].([]any)
+						kept := make([]any, 0, len(required))
+						for _, item := range required {
+							if item != name {
+								kept = append(kept, item)
+							}
+						}
+						schema["required"] = kept
+					}
 				}
 			}
 		}

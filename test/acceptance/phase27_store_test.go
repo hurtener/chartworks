@@ -19,7 +19,7 @@ import (
 // Exercise the repository directly: service validation must not be the only
 // protection against malformed references or missing authority.
 func TestPhase27StoreReadBoundaries(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	_, topics := newPhase18Service(t, f)
 	service, err := reporting.New(f.f.db, topics, f.f.s, f.f.validator, f.f.executor, nil, config.DefaultReporting())
 	if err != nil {

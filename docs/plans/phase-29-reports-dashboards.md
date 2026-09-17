@@ -54,3 +54,14 @@ The eight named criteria now exercise the HTTP/SDK lifecycle and cumulative Phas
 An unavailable optional narrative is an output-local failed receipt in an explicitly opted-in partial frozen run; composition still enforces its own strict/partial policy and the full declared narrative budget. Strict standalone frozen admission retains its prior fail-fast behavior. A failed strict report does not expose a completed-looking widget payload.
 
 The [runtime contract](../contracts/reporting-composition-v1.md), [runnable request fixtures](../../examples/report-create.json), and [adversarial review](../reviews/phase-29-adversarial.md) describe the implemented scope. All eight strict acceptance results and exact-source CI remain mandatory. Phase 29 does not claim the Phase 30–34 schedules/viewer/rendering/cutover capabilities or the Phase 25 release gate.
+
+## CW-03 output-intent and evidence-policy continuation
+
+AC01/AC03/AC04/AC05/AC06/AC07/AC08: each widget retains selection and query caps; eligible same-query fan-out and differing-cap segregation; output metadata reaches summaries without exposing unselected payloads.
+
+Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
+[v2 field-level contract](../contracts/reporting-output-intent-v2.md). The
+[scoped adversarial record](../reviews/cw-03-adversarial.md) links real PostgreSQL,
+source execution, provider-fixture and browser checks. Keep the existing named
+phase criteria and phase status; this assignment closes only its three owned gap
+entries, not the whole phase, other reporting work, or full migration/release.

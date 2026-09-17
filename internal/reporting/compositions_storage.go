@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
@@ -187,4 +188,35 @@ func CompositionRetainedBytes(record CompositionRecord) int64 {
 		n += int64(len(body))
 	}
 	return n
+}
+
+// CheckCompositionSelections binds each widget selector to its exact published
+// definition inside admission. Failed/omitted widgets have no executable group.
+func CheckCompositionSelections(m CompositionManifest, g CompositionGroup, snapshot Snapshot) error {
+	if g.QueryLimits == nil {
+		return nil
+	} // Previously accepted v1 composition.
+	definition := snapshot.Revision.Definition
+	caps, err := resolveQueryLimits(m.ArtifactLimits, 3, definition.QueryLimits, g.QueryLimits)
+	if err != nil || caps != *g.QueryLimits {
+		return ErrInvalid
+	}
+	for _, page := range m.Pages {
+		for _, widget := range page.Widgets {
+			if widget.Group != g.ID {
+				continue
+			}
+			if widget.Selection == nil || widget.Definition.Block == nil {
+				return ErrInvalid
+			}
+			_, selected, err := ResolveOutputSelection(definition, widget.Selection.Requested)
+			if err != nil {
+				return err
+			}
+			if digest(selected) != digest(*widget.Selection) || !slices.Equal(selected.Selected, widget.Definition.Block.Outputs) {
+				return ErrInvalid
+			}
+		}
+	}
+	return nil
 }

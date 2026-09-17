@@ -7,13 +7,13 @@ const MAX_MESSAGE = 16 * 1024 * 1024;
 const MAX_DATA = 4 * 1024 * 1024;
 const MAX_POINTS = 10000;
 const TOOLS = new Set(['reporting_search','reporting_describe','reporting_run','reporting_runs','reporting_view']);
-const ERRORS = new Set(['invalid_request','unauthorized','unauthenticated','forbidden','not_found','conflict','stale_validation','incomplete','expired','limit_exceeded','invalid_query','busy','unavailable','cancelled_or_timed_out']);
+const ERRORS = new Set(['output_selection_empty','output_duplicate','output_unknown','output_disabled','output_not_selected','narrative_policy_unsupported','invalid_request','unauthorized','unauthenticated','forbidden','not_found','conflict','stale_validation','incomplete','expired','limit_exceeded','invalid_query','busy','unavailable','cancelled_or_timed_out']);
 const words = {
-  en: {loading:'Opening retained report…',error:'Report unavailable',expired:'Retained values have expired. Opening this report does not regenerate them.',empty:'No values in this retained output.',private:'Private preview',partial:'Partial result',pages:'Page',widgets:'Widget',outputs:'Output',previous:'Previous',next:'Next',values:'Exact retained values',null:'Missing',filters:'Run with different filters',apply:'Run with these filters',consent:'Running queries may incur cost and creates a new artifact. This does not alter the retained result.',dynamic:'Allow dynamic query generation',narrative:'Allow narrative generation',refresh:'Read status again',host:'Open this viewer through an authorized MCP Apps host.',unknown:'The operation outcome is unknown. Inspect its run history before submitting another run.',geometry:'Drawing coordinates are approximate; labels and values below are exact.',default:'Use the published default',observed:'Observed',retained:'Retained until',trust:'Publication / certification / current health',redacted:'Some content is not visible under the current authority.',noscript:'The host did not provide a supported reporting result.',scope:'Total scope',table:'Table page',run:'Run',state:'State'},
-  es: {loading:'Abriendo el informe guardado…',error:'Informe no disponible',expired:'Los valores guardados vencieron. Abrir el informe no los vuelve a generar.',empty:'No hay valores en esta salida guardada.',private:'Vista previa privada',partial:'Resultado parcial',pages:'Página',widgets:'Componente',outputs:'Salida',previous:'Anterior',next:'Siguiente',values:'Valores exactos guardados',null:'Sin dato',filters:'Ejecutar con otros filtros',apply:'Ejecutar con estos filtros',consent:'La ejecución puede generar costos y crea un nuevo resultado. No modifica el resultado guardado.',dynamic:'Permitir generación de consultas dinámicas',narrative:'Permitir generación narrativa',refresh:'Leer el estado nuevamente',host:'Abrí este visor desde un host MCP Apps autorizado.',unknown:'El resultado de la operación es incierto. Revisá su historial antes de ejecutar nuevamente.',geometry:'Las coordenadas del gráfico son aproximadas; las etiquetas y los valores son exactos.',default:'Usar el valor predeterminado publicado',observed:'Observado',retained:'Guardado hasta',trust:'Publicación / certificación / estado actual',redacted:'Parte del contenido no es visible con la autorización actual.',noscript:'El host no proporcionó un resultado compatible.',scope:'Alcance del total',table:'Página de tabla',run:'Ejecución',state:'Estado'}
+  en: {loading:'Opening retained report…',error:'Report unavailable',expired:'Retained values have expired. Opening this report does not regenerate them.',empty:'No values in this retained output.',private:'Private preview',partial:'Partial result',pages:'Page',widgets:'Widget',outputs:'Output',previous:'Previous',next:'Next',values:'Exact retained values',null:'Missing',filters:'Run with different filters',apply:'Run with these filters',consent:'Running queries may incur cost and creates a new artifact. This does not alter the retained result.',dynamic:'Allow dynamic query generation',narrative:'Allow narrative generation',refresh:'Read status again',host:'Open this viewer through an authorized MCP Apps host.',unknown:'The operation outcome is unknown. Inspect its run history before submitting another run.',geometry:'Drawing coordinates are approximate; labels and values below are exact.',default:'Use the published default',observed:'Observed',retained:'Retained until',trust:'Publication / certification / current health',redacted:'Some content is not visible under the current authority.',noscript:'The host did not provide a supported reporting result.',scope:'Total scope',table:'Table page',run:'Run',state:'State',limits:'Accepted query ceilings',disabled:'Disabled',omitted:'Not included in this run'},
+  es: {loading:'Abriendo el informe guardado…',error:'Informe no disponible',expired:'Los valores guardados vencieron. Abrir el informe no los vuelve a generar.',empty:'No hay valores en esta salida guardada.',private:'Vista previa privada',partial:'Resultado parcial',pages:'Página',widgets:'Componente',outputs:'Salida',previous:'Anterior',next:'Siguiente',values:'Valores exactos guardados',null:'Sin dato',filters:'Ejecutar con otros filtros',apply:'Ejecutar con estos filtros',consent:'La ejecución puede generar costos y crea un nuevo resultado. No modifica el resultado guardado.',dynamic:'Permitir generación de consultas dinámicas',narrative:'Permitir generación narrativa',refresh:'Leer el estado nuevamente',host:'Abrí este visor desde un host MCP Apps autorizado.',unknown:'El resultado de la operación es incierto. Revisá su historial antes de ejecutar nuevamente.',geometry:'Las coordenadas del gráfico son aproximadas; las etiquetas y los valores son exactos.',default:'Usar el valor predeterminado publicado',observed:'Observado',retained:'Guardado hasta',trust:'Publicación / certificación / estado actual',redacted:'Parte del contenido no es visible con la autorización actual.',noscript:'El host no proporcionó un resultado compatible.',scope:'Alcance del total',table:'Página de tabla',run:'Ejecución',state:'Estado',limits:'Límites aceptados de consulta',disabled:'Deshabilitada',omitted:'No incluida en esta ejecución'}
 };
-Object.assign(words.en, {row:'Returned row',series:'Series',seriesID:'Series identity',measure:'Measure',category:'Category',value:'Value',path:'Hierarchy path',depth:'Level',aggregation:'Aggregation',members:'Contributing returned rows',seriesValues:'Exact series observations',hierarchyValues:'Exact hierarchy aggregates',independent:'Independent scale',unitless:'No declared unit',missingValues:'Missing measure values',gaps:'Absent observations',omitted:'Undrawn returned rows',zeroSize:'Zero-area bubbles',grain:'Time grain / order',resolution:'Zero or subpixel geometry may be invisible; the exact values below are retained.'});
-Object.assign(words.es, {row:'Fila devuelta',series:'Serie',seriesID:'Identidad de serie',measure:'Medida',category:'Categoría',value:'Valor',path:'Ruta jerárquica',depth:'Nivel',aggregation:'Agregación',members:'Filas devueltas contribuyentes',seriesValues:'Observaciones exactas por serie',hierarchyValues:'Agregados jerárquicos exactos',independent:'Escala independiente',unitless:'Sin unidad declarada',missingValues:'Valores de medida faltantes',gaps:'Observaciones ausentes',omitted:'Filas devueltas no dibujadas',zeroSize:'Burbujas de área cero',grain:'Grano temporal / orden',resolution:'La geometría nula o inferior a un píxel puede no verse; abajo se conservan los valores exactos.'});
+Object.assign(words.en, {row:'Returned row',series:'Series',seriesID:'Series identity',measure:'Measure',category:'Category',value:'Value',path:'Hierarchy path',depth:'Level',aggregation:'Aggregation',members:'Contributing returned rows',seriesValues:'Exact series observations',hierarchyValues:'Exact hierarchy aggregates',independent:'Independent scale',unitless:'No declared unit',missingValues:'Missing measure values',gaps:'Absent observations',omittedRows:'Undrawn returned rows',zeroSize:'Zero-area bubbles',grain:'Time grain / order',resolution:'Zero or subpixel geometry may be invisible; the exact values below are retained.'});
+Object.assign(words.es, {row:'Fila devuelta',series:'Serie',seriesID:'Identidad de serie',measure:'Medida',category:'Categoría',value:'Valor',path:'Ruta jerárquica',depth:'Nivel',aggregation:'Agregación',members:'Filas devueltas contribuyentes',seriesValues:'Observaciones exactas por serie',hierarchyValues:'Agregados jerárquicos exactos',independent:'Escala independiente',unitless:'Sin unidad declarada',missingValues:'Valores de medida faltantes',gaps:'Observaciones ausentes',omittedRows:'Filas devueltas no dibujadas',zeroSize:'Burbujas de área cero',grain:'Grano temporal / orden',resolution:'La geometría nula o inferior a un píxel puede no verse; abajo se conservan los valores exactos.'});
 const fail = code => { const e = new Error(ERRORS.has(code) ? code : 'unavailable'); e.code = e.message; return e; };
 const text = x => typeof x === 'string' ? x : '';
 const array = x => Array.isArray(x) ? x : [];
@@ -408,7 +408,7 @@ export function renderChart(parent, chart, language='en') {
   parent.append(element('p',w.geometry,'metadata'));
   if (chart.version === 2) {
     const t = chart.transformation;
-    parent.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omitted}: ${chart.omitted_rows} / ${chart.input_rows} · ${w.zeroSize}: ${t.zero_size_points} · ${w.scope}: ${t.scope}`,'transformation'),element('p',`${t.method} · ${t.null_policy} · ${t.duplicate_policy}`,'metadata'),element('p',w.resolution,'metadata'));
+    parent.append(element('p',`${w.missingValues}: ${t.missing_points} · ${w.gaps}: ${t.gap_points} · ${w.omittedRows}: ${chart.omitted_rows} / ${chart.input_rows} · ${w.zeroSize}: ${t.zero_size_points} · ${w.scope}: ${t.scope}`,'transformation'),element('p',`${t.method} · ${t.null_policy} · ${t.duplicate_policy}`,'metadata'),element('p',w.resolution,'metadata'));
     if (['line','area'].includes(chart.kind)) parent.append(element('p',`${columnFor(chart,'category')?.name} · ${w.grain}: ${columnFor(chart,'category')?.grain || 'unspecified'} / ${chart.mapping.order[0]?.direction}`,'metadata'));
   }
   for(const warning of array(chart.warnings))parent.append(element('p',text(warning),'metadata'));
@@ -448,7 +448,35 @@ function unwrap(result){
   if(body?.error)throw fail(body.error.code);
   const value=body?.result;boundedJSON(value);if(value?.version!==VERSION)throw fail('unavailable');return value;
 }
-function selectControl(label,items,current,onchange){const l=element('label',label),s=element('select');s.setAttribute('aria-label',label);for(const item of items){const o=element('option',text(item.title)||text(item.id));o.value=item.id;o.selected=item.id===current;s.append(o);}s.addEventListener('change',()=>onchange(s.value));l.append(s);return l;}
+function choiceLabel(item,locale) {
+  const labels=array(item.metadata), language=(locale||'en').split('-')[0].toLowerCase();
+  const label=labels.find(m=>m.locale===locale)||labels.find(m=>text(m.locale).split('-')[0].toLowerCase()===language);
+  return text(label?.display_name)||text(item.title)||text(item.id);
+}
+function selectControl(label,items,current,onchange,locale='en') {
+  const l=element('label',label),s=element('select'),w=words[locale.toLowerCase().startsWith('es')?'es':'en'];
+  s.setAttribute('aria-label',label);
+  for(const item of items){
+    const disabled=item.enabled===false,omitted=item.selected===false;
+    const suffix=disabled?w.disabled:omitted?w.omitted:'';
+    const o=element('option',choiceLabel(item,locale)+(suffix?' — '+suffix:''));
+    o.value=item.id;o.selected=item.id===current;o.disabled=disabled||omitted;
+    if(item.description)o.title=text(item.description);
+    s.append(o);
+  }
+  s.addEventListener('change',()=>{const chosen=s.selectedOptions[0];if(chosen&&!chosen.disabled)onchange(s.value);});
+  l.append(s);return l;
+}
+// Display order and accepted execution order are different contracts. A new,
+// explicitly requested filter run retains the latter and the accepted caps.
+function retainedRunOutputs(v) {
+  const choices=array(v.outputs),selected=v.accepted_selection?.selected;
+  if(selected!==undefined){
+    if(!Array.isArray(selected)||!selected.length||selected.length>64||new Set(selected).size!==selected.length||selected.some(value=>!id(value)||!choices.some(o=>o.id===value&&o.enabled!==false&&o.selected!==false)))throw fail('invalid_request');
+    return selected.slice();
+  }
+  return choices.filter(o=>o.enabled!==false&&o.selected!==false).map(o=>o.id);
+}
 function periodValue(raw){let p;try{p=JSON.parse(raw);}catch{throw fail('invalid_request');}boundedJSON(p,4096);const keys=new Set(['mode','unit','count','start','end','from_date','first_occurrence','dst_policy','month_policy']);if(!p||Array.isArray(p)||Object.keys(p).some(k=>!keys.has(k)))throw fail('invalid_request');return {period:p};}
 
 export class Viewer {
@@ -480,6 +508,7 @@ export class Viewer {
     if(v.observed_at)meta.append(element('p',`${w.observed}: ${v.observed_at}`));
     meta.append(element('p',`${w.retained}: ${v.summary.expires_at} · ${text(v.locale)} · ${text(v.timezone)}`));
     if(v.trust)meta.append(element('p',`${w.trust}: ${text(v.trust.publication)} / ${text(v.trust.certification)} / ${text(v.trust.health?.status)}`));
+    if(v.query_limits)meta.append(element('p',`${w.limits}: ${v.query_limits.max_rows} rows · ${v.query_limits.max_bytes} bytes · ${v.query_limits.timeout_ms} ms · ${v.query_limits.query_attempts} attempts`));
     if(v.mixed_freshness)meta.append(element('p','mixed_freshness'));
     if(v.summary.scheduled){const s=v.summary.scheduled;meta.append(element('p',`${text(s.schedule_id)} · ${text(s.due_at)} · [${text(s.window_start)}, ${text(s.window_end)})`),element('p',`query: ${text(s.query)} · artifact: ${text(s.artifact)} · catalog: ${text(s.catalog)} · notification: ${text(s.notification)}`));}
     if(v.summary.code)meta.append(element('p',text(v.summary.code)));this.root.append(meta);
@@ -487,7 +516,7 @@ export class Viewer {
     if(v.pages?.length)toolbar.append(selectControl(w.pages,v.pages,v.selection.page,page=>this.navigate({page,widget:'',output:'',offset:0})));
     const page=array(v.pages).find(p=>p.id===v.selection.page);
     if(page?.widgets?.length)toolbar.append(selectControl(w.widgets,page.widgets,v.selection.widget,widget=>this.navigate({widget,output:'',offset:0})));
-    if(v.outputs?.length)toolbar.append(selectControl(w.outputs,v.outputs,v.selection.output,output=>this.navigate({output,offset:0})));
+    if(v.outputs?.length)toolbar.append(selectControl(w.outputs,v.outputs,v.selection.output,output=>this.navigate({output,offset:0}),document.documentElement.lang||this.locale));
     this.root.append(toolbar);
     const content=element('section');content.setAttribute('aria-label',w.outputs);this.root.append(content);
     try{
@@ -514,12 +543,12 @@ export class Viewer {
       if(this.mutationPending||this.closed)return;this.mutationPending=true;run.disabled=true;const oldSelection={...v.selection},startingGeneration=this.generation;
       try{
         const grouped=new Map();for(const {f,input,useDefault}of controls){if(useDefault.checked)continue;const value=f.parameter.type==='relative_period'?periodValue(input.value):{literal:input.value};if(!grouped.has(f.page))grouped.set(f.page,[]);grouped.get(f.page).push({name:f.parameter.name,value});}
-        const description=unwrap(await this.bridge.call('reporting_describe',{target:v.summary.target,locale:text(v.locale),outputs:[]}));
+        const description=unwrap(await this.bridge.call('reporting_describe',{target:v.summary.target,locale:text(v.locale),outputs:v.summary.kind==='block'?retainedRunOutputs(v):null}));
         if(this.closed||startingGeneration!==this.generation)return;
         if(v.summary.kind==='block'&&!['published','certified_only'].includes(v.policy))throw fail('stale_validation');
         if(!id(description.resource?.target?.id)||description.resource.target.id!==v.summary.target.id||description.resource.target.kind!==v.summary.target.kind||description.resource.target.revision!==v.summary.target.revision)throw fail('stale_validation');
         const request={target:description.resource.target,key:crypto.randomUUID(),arguments:[],pages:[],outputs:[],policy:v.summary.kind==='block'?v.policy:'',locale:text(v.locale),timezone:text(v.timezone)||description.timezone,narrative:narrative.checked,dynamic:dynamic.checked,partial_failure:''};
-        if(v.summary.kind==='block'){request.arguments=Array.from(grouped.values()).flat();request.outputs=array(v.outputs).map(o=>o.id);}
+        if(v.summary.kind==='block'){request.arguments=Array.from(grouped.values()).flat();request.outputs=retainedRunOutputs(v);request.limits=v.query_limits??null;}
         else request.pages=Array.from(grouped,([page,filters])=>({page,filters,overrides:[]}));
         this.loading();const generation=this.generation;const response=await this.bridge.call('reporting_run',request);if(generation!==this.generation||this.closed)return;const result=unwrap(response);if(!id(result.run))throw fail('unavailable');await this.read({...oldSelection,run:result.run,offset:0});
       }catch(e){if(!this.closed)this.error(e,true);}finally{this.mutationPending=false;if(this.value&&!this.closed)this.draw();}

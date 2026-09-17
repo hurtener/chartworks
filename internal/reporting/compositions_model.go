@@ -40,10 +40,11 @@ type CompositionRequest struct {
 
 // CompositionWidget keeps per-widget provenance and its original output subset.
 type CompositionWidget struct {
-	Definition Widget       `json:"definition"`
-	Parameters []BoundValue `json:"parameters"`
-	Group      string       `json:"group,omitempty"`
-	Code       string       `json:"code,omitempty"`
+	Selection  *OutputSelection `json:"selection,omitempty"`
+	Definition Widget           `json:"definition"`
+	Parameters []BoundValue     `json:"parameters"`
+	Group      string           `json:"group,omitempty"`
+	Code       string           `json:"code,omitempty"`
 }
 
 // CompositionPage pins an exact report revision and its independently checked reach.
@@ -62,6 +63,7 @@ type CompositionPage struct {
 // CompositionGroup seals one query/value/context identity and its output union.
 // It is private persistence input, never the public metadata response.
 type CompositionGroup struct {
+	QueryLimits    *QueryLimits        `json:"query_limits,omitempty"`
 	ID             string              `json:"id"`
 	Kind           string              `json:"kind"`
 	Block          string              `json:"block,omitempty"`
@@ -131,19 +133,21 @@ type GroupResult struct {
 
 // CompositionWidgetSummary has no normalized values, SQL or hidden payload.
 type CompositionWidgetSummary struct {
-	ID             string       `json:"id"`
-	Kind           string       `json:"kind"`
-	State          string       `json:"state"`
-	Code           string       `json:"code,omitempty"`
-	Grid           GridCell     `json:"grid"`
-	Presentation   Presentation `json:"presentation"`
-	Outputs        []string     `json:"outputs"`
-	Parameters     []BoundValue `json:"parameters"`
-	Durability     string       `json:"durability,omitempty"`
-	Trust          *Trust       `json:"trust,omitempty"`
-	QueryDigest    string       `json:"query_digest,omitempty"`
-	SemanticDigest string       `json:"semantic_digest,omitempty"`
-	Observed       *time.Time   `json:"observed_at,omitempty"`
+	Selection      *OutputSelection `json:"selection,omitempty"`
+	QueryLimits    *QueryLimits     `json:"query_limits,omitempty"`
+	ID             string           `json:"id"`
+	Kind           string           `json:"kind"`
+	State          string           `json:"state"`
+	Code           string           `json:"code,omitempty"`
+	Grid           GridCell         `json:"grid"`
+	Presentation   Presentation     `json:"presentation"`
+	Outputs        []string         `json:"outputs"`
+	Parameters     []BoundValue     `json:"parameters"`
+	Durability     string           `json:"durability,omitempty"`
+	Trust          *Trust           `json:"trust,omitempty"`
+	QueryDigest    string           `json:"query_digest,omitempty"`
+	SemanticDigest string           `json:"semantic_digest,omitempty"`
+	Observed       *time.Time       `json:"observed_at,omitempty"`
 }
 
 // CompositionPageSummary is independently redacted under current report reach.
