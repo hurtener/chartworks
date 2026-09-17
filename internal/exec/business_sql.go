@@ -257,7 +257,7 @@ func businessPredicate(dialect, column string, c BusinessConstraint, scalars *[]
 			typeName := "DECIMAL(" + strconv.Itoa(c.Precision) + "," + strconv.Itoa(c.Scale) + ")"
 			if dialect == "bigquery" {
 				typeName = "NUMERIC"
-				if c.Precision > 38 || c.Scale > 9 {
+				if c.Precision-c.Scale > 29 || c.Scale > 9 {
 					typeName = "BIGNUMERIC"
 				}
 			}

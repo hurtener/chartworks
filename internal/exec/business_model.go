@@ -118,6 +118,11 @@ func ValidateBusinessConstraints(binding Binding, constraints []BusinessConstrai
 			if c.Precision < 1 || c.Precision > maxPrecision || c.Scale < 0 || c.Scale > c.Precision || c.Scale > maxScale || c.Unit == "" || len(c.Unit) > 64 {
 				return businessError(c, "precision", "unsupported_exact_precision")
 			}
+			// Native decimal capacity also bounds integral digits. Do not
+			// admit a declaration that only fits an approximate or partial digit.
+			if binding.Dialect == "bigquery" && c.Precision-c.Scale > 38 {
+				return businessError(c, "precision", "unsupported_exact_precision")
+			}
 			lower, ok := businessDecimal(c.Value, c.Precision, c.Scale)
 			if !ok {
 				return businessError(c, "value", "invalid_number")
