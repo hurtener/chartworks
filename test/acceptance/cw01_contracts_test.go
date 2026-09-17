@@ -127,8 +127,15 @@ func cw01IsolationAcceptance(t *testing.T) {
 	q := f.question("Show large sales", nlq.LanguageEnglish)
 	pending := f.preflight(t, q)
 	q.AnswerContext = pending.Route.AnswerContext
+	q.ClarificationQuery = pending.QueryID
 	q.Answers = []semantics.ClarificationAnswer{f.answer(t, "amount-required", cw01Number("10"))}
+	other := f.preflight(t, f.question("Show optional sales", nlq.LanguageEnglish))
 	before := f.model.requests.Load()
+	swapped := q
+	swapped.ClarificationQuery = other.QueryID
+	if _, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: swapped}); err == nil {
+		t.Fatal("answer borrowed a different same-session pending question")
+	}
 	stale := q
 	stale.Answers = semantics.CloneClarificationAnswers(q.Answers)
 	stale.Answers[0].PatternVersion = "old-version"
@@ -234,6 +241,7 @@ func cw01BudgetPrivacyAcceptance(t *testing.T, f *cw01Fixture) {
 	unresolved := f.question("Show named sales", nlq.LanguageEnglish)
 	pending := f.preflight(t, unresolved)
 	unresolved.AnswerContext = pending.Route.AnswerContext
+	unresolved.ClarificationQuery = pending.QueryID
 	unresolved.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("unresolved-private-731"))}
 	before := f.model.requests.Load()
 	repair, err := f.query.Preflight(ctx, f.e, nlqexec.PreflightRequest{QuestionRequest: unresolved})
@@ -263,7 +271,7 @@ func cw01BudgetPrivacyAcceptance(t *testing.T, f *cw01Fixture) {
 		bounded.publishRules(t, definition, 1)
 		before := bounded.model.requests.Load()
 		out, err := bounded.query.Plan(ctx, bounded.e, nlqexec.PlanRequest{QuestionRequest: bounded.question("Show budget sales", nlq.LanguageEnglish)})
-		if !errors.Is(err, nlq.ErrInsufficientContext) || out.QueryID != "" || out.Bindings != nil || bounded.model.requests.Load() != before {
+		if !errors.Is(err, nlq.ErrInsufficient) || out.QueryID != "" || out.Bindings != nil || bounded.model.requests.Load() != before {
 			t.Fatalf("mandatory group was partially admitted or reached provider: %v", err)
 		}
 	})

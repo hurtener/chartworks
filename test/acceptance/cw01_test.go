@@ -72,6 +72,7 @@ func TestCW01(t *testing.T) {
 				q := f.question(tc.question, nlq.LanguageEnglish)
 				p := f.preflight(t, q)
 				q.AnswerContext = p.Route.AnswerContext
+				q.ClarificationQuery = p.QueryID
 				q.Answers = []semantics.ClarificationAnswer{f.answer(t, tc.pattern, tc.value)}
 				before := f.model.requests.Load()
 				out, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
@@ -101,6 +102,7 @@ func TestCW01(t *testing.T) {
 		q := f.question("Show named sales", nlq.LanguageEnglish)
 		pending := f.preflight(t, q)
 		q.AnswerContext = pending.Route.AnswerContext
+		q.ClarificationQuery = pending.QueryID
 		q.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("not-governed"))}
 		before := f.model.requests.Load()
 		out, err := f.query.Preflight(ctx, f.e, nlqexec.PreflightRequest{QuestionRequest: q})

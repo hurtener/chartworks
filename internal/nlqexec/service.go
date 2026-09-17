@@ -59,6 +59,9 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	if err := validateQuestion(in.QuestionRequest); err != nil {
 		return PreflightResult{}, err
 	}
+	if err := s.validateClarificationOrigin(ctx, e, in.QuestionRequest, "query.preflight"); err != nil {
+		return PreflightResult{}, err
+	}
 	admitted, err := s.admit(ctx, e, in.QuestionRequest, false)
 	if err != nil {
 		return PreflightResult{}, err
@@ -70,7 +73,7 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	if err != nil {
 		return PreflightResult{}, err
 	}
-	record := queryRecord(e, id, "preflight", "", in.QuestionRequest, admitted)
+	record := queryRecord(e, id, "preflight", in.ClarificationQuery, in.QuestionRequest, admitted)
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PreflightResult{}, err
 	}
@@ -79,7 +82,10 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 
 // Plan generates one bounded candidate and validates it through the existing read core.
 func (s *Service) Plan(ctx context.Context, e identity.Envelope, in PlanRequest) (PlanResult, error) {
-	return s.plan(ctx, e, in.QuestionRequest, in.Operation, "", "query.plan")
+	if err := s.validateClarificationOrigin(ctx, e, in.QuestionRequest, "query.plan"); err != nil {
+		return PlanResult{}, err
+	}
+	return s.plan(ctx, e, in.QuestionRequest, in.Operation, in.ClarificationQuery, "query.plan")
 }
 
 // Refine creates a child plan anchored to the original query's signed session and topics.
@@ -96,6 +102,9 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	}
 	if old.Session != e.Session() {
 		return PlanResult{}, ErrForeignSession
+	}
+	if in.ClarificationQuery != "" && in.ClarificationQuery != in.QueryID {
+		return PlanResult{}, clarificationOriginError(in.Locale, "clarification_question_mismatch")
 	}
 	pending := old.Status == "preflight" && old.Route.Clarification != nil
 	if old.SQL == "" && !pending {

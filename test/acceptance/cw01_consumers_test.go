@@ -82,7 +82,7 @@ func cw01AuthoringAcceptance(t *testing.T) {
 	if err != nil || len(replay.BaselineClarifications) != 3 {
 		t.Fatal("retained clarification replay failed", err)
 	}
-	shadow, err := f.rules.Shadow(ctx, f.e, f.pack.Topic, rulesets.ShadowRequest{TopicVersion: f.published.State.Version, Baseline: f.definition.Version, Candidate: imported.Definition.Version, References: refs, ClarificationCases: cases})
+	shadow, err := f.rules.Shadow(ctx, f.e, f.pack.Topic, rulesets.ShadowRequest{TopicVersion: f.published.State.Version, BaselineRuleVersion: f.definition.Version, CandidateRuleVersion: imported.Definition.Version, References: refs, ClarificationCases: cases})
 	if err != nil || !shadow.Changed || len(shadow.CandidateClarifications) != 3 || shadow.BaselineClarifications[2].Outcome != semantics.ClarificationSatisfied || shadow.CandidateClarifications[2].Outcome != semantics.ClarificationMissing {
 		t.Fatal("shadow missed conditional behavior change", err)
 	}
@@ -160,6 +160,7 @@ func cw01ConsumerAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	question.AnswerContext = pending.Route.AnswerContext
+	question.ClarificationQuery = pending.QueryID
 	question.Answers = []semantics.ClarificationAnswer{f.answer(t, "amount-optional", cw01Number("10"))}
 	plan, err := client.PlanNLQ(ctx, sdk.NLQPlanRequest{QuestionRequest: question})
 	if err != nil || plan.Bindings == nil || plan.Bindings.Validation == nil {

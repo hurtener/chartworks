@@ -34,6 +34,11 @@ func newCW01Fixture(t *testing.T) *cw01Fixture {
 	profile := f.profile(t, engineering.ProfileSpec{ID: "cw01-typed-profile", Source: old.Source.Source, Context: old.Source.Context, Dataset: old.ID, Columns: []string{"id", "amount", "created_at", "active", "name"}, SkipLLM: true}).Profile.Profile
 	dataset := semantics.Dataset{ID: profile.Dataset, Name: "Sales", Source: semantics.SourceReference{Source: old.Source.Source, Context: old.Source.Context, Dataset: profile.Dataset, SourceRevision: profile.SourceRevision, ProfileVersion: profile.Version, ProfileDigest: profile.DeterministicHash()}}
 	for _, column := range profile.Schema {
+		switch column.Name {
+		case "id", "amount", "created_at", "active", "name":
+		default:
+			continue
+		}
 		dataset.Columns = append(dataset.Columns, semantics.Column{ID: column.Name, SourceName: column.Name, Name: column.Name, NativeType: column.NativeType, Category: column.Category, Nullable: column.Nullable})
 	}
 	pack.Datasets[0] = dataset
@@ -136,6 +141,7 @@ func (f *cw01Fixture) plan(t *testing.T, q nlqexec.QuestionRequest, pattern stri
 	t.Helper()
 	pending := f.preflight(t, q)
 	q.AnswerContext = pending.Route.AnswerContext
+	q.ClarificationQuery = pending.QueryID
 	q.Answers = []semantics.ClarificationAnswer{f.answer(t, pattern, value)}
 	out, err := f.query.Plan(context.Background(), f.e, nlqexec.PlanRequest{QuestionRequest: q})
 	if err != nil || out.QueryID == "" || out.Bindings == nil {
