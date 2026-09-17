@@ -182,7 +182,9 @@ jobs:
       - name: Bounded security mutation fuzz campaigns
         run: |
           go test -race ./test/acceptance -run '^$' -fuzz '^FuzzAuthorityJSON$' -fuzztime=5s -parallel=2
-          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=5s -parallel=2
+          # Finish a fixed mutation budget instead of racing a 5s coordinator
+          # deadline under race instrumentation. Crashes remain hard failures.
+          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=256x -timeout=3m -parallel=2
           names=$(go test ./internal/exec -list '^Fuzz' | grep '^Fuzz')
           test -n "$names"
           for name in $names; do

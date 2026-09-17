@@ -125,6 +125,12 @@ func FuzzActualVerifier(f *testing.F) {
 	f.Add("a.b.c")
 	f.Add("")
 	f.Fuzz(func(t *testing.T, token string) {
+		// Each worker owns its fixture key, issuer and clock. Check a locally
+		// signed control too, so an always-deny regression cannot pass the oracle.
+		control, controlErr := fixture.verifier.Verify(context.Background(), valid, auth.HTTP)
+		if controlErr != nil || !control.Valid() || control.Tenant() != "tenant" || control.User() != "user" || !control.Has("ops.read") {
+			t.Fatal("valid authority control rejected", controlErr)
+		}
 		e, err := fixture.verifier.Verify(context.Background(), token, auth.HTTP)
 		if err == nil && (!e.Valid() || e.Tenant() != "tenant" || e.User() != "user") {
 			t.Fatal("invalid authority accepted")
