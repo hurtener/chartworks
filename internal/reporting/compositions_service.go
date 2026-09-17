@@ -138,6 +138,9 @@ type compositionBlockSource struct {
 }
 
 func compositionFailure(err error) string {
+	if code := SelectionErrorCode(err); code != "" {
+		return code
+	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		return "deadline_exceeded"
@@ -364,7 +367,7 @@ func groupIdentity(g CompositionGroup) string {
 	if g.Kind == "query" {
 		return digest([]any{g.Kind, g.Origin, g.Query, g.Binding, g.Locale, g.Private, g.Resolution})
 	}
-	return digest([]any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Resolution})
+	return digest([]any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Resolution, g.QueryLimits})
 }
 
 func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, d DocumentDefinition, w Widget, filters, overrides []Argument, resolution Resolution, memo map[string]compositionBlockSource) (CompositionGroup, CompositionWidget, error) {
@@ -408,6 +411,20 @@ func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m 
 	if err != nil {
 		return CompositionGroup{}, cw, err
 	}
+	_, selection, err := ResolveOutputSelection(definition, w.Block.Outputs)
+	if err != nil {
+		return CompositionGroup{}, cw, err
+	}
+	attempts := s.runs.queryAttempts
+	if attempts == 0 {
+		attempts = 3
+	}
+	caps, err := resolveQueryLimits(m.ArtifactLimits, attempts, definition.QueryLimits, w.Block.Limits)
+	if err != nil {
+		return CompositionGroup{}, cw, err
+	}
+	cw.Selection = &selection
+	cw.Definition.Block.Limits = &caps
 	arguments, resolved, err := widgetArguments(definition.Parameters, d, w, filters, overrides, resolution)
 	if err != nil {
 		return CompositionGroup{}, cw, err
@@ -424,7 +441,7 @@ func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m 
 	cw.Definition.Block.Revision, cw.Definition.Block.Outputs = entry.snapshot.Revision.Number, clone(outputs)
 	cw.Parameters = clone(resolved.Values)
 	trust := project(entry.snapshot, time.Now()).Trust
-	return CompositionGroup{Kind: "block", Block: w.Block.Block, Revision: entry.snapshot.Revision.Number, Definition: entry.snapshot.Revision.Digest, Execution: entry.snapshot.Revision.ExecutionDigest,
+	return CompositionGroup{QueryLimits: &caps, Kind: "block", Block: w.Block.Block, Revision: entry.snapshot.Revision.Number, Definition: entry.snapshot.Revision.Digest, Execution: entry.snapshot.Revision.ExecutionDigest,
 		Outputs: outputs, Arguments: arguments, Resolved: resolved, Resolution: resolution, Binding: entry.binding, Locale: d.Locale, Policy: policy, Private: m.Private, Narrative: w.Block.Narrative,
 		References: clone(entry.refs), Trust: &trust, ReservedCalls: calls, ReservedTokens: tokens}, cw, nil
 }

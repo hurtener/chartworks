@@ -113,6 +113,7 @@ func scheduledExecutionLimits(original config.ReportingExecution, b jobs.Reporti
 func (s *Scheduled) bounded(t jobs.ReportingTarget) (*Runs, *Compositions) {
 	runs := *s.delivery.runs
 	runs.limits = scheduledExecutionLimits(runs.limits, t.Budget)
+	runs.queryAttempts = min(3, t.Budget.QueryAttempts)
 	documents := *s.delivery.documents
 	documents.limits.Execution = runs.limits
 	documents.limits.Composition.Timeout = min(documents.limits.Composition.Timeout, runs.limits.Timeout)

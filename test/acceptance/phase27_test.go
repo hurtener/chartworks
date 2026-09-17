@@ -32,6 +32,13 @@ import (
 	"github.com/hurtener/chartworks/test/support"
 )
 
+// Reporting fixtures explicitly review synthetic column sensitivity before
+// publication. Real unknown columns remain unknown; no production default changes.
+func newReportingFixture(t *testing.T) *phase17Fixture {
+	t.Helper()
+	return newPhase18FixtureReviewed(t, true)
+}
+
 func phase27Scopes(tenant string) []string {
 	// Reporting does not submit query feedback. Keep the issuer's 32-scope
 	// ceiling intact rather than broadening production authority for the fixture.
@@ -123,7 +130,7 @@ func phase27ValidatePublish(t *testing.T, service *reporting.Service, e identity
 // TestPhase27 uses a real PostgreSQL metadata database, least-privilege source
 // connection, native validator/executor and cryptographically verified authority.
 func TestPhase27(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	queryService, topicService := newPhase18Service(t, f)
 	service, err := reporting.New(f.f.db, topicService, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(queryService), config.DefaultReporting())
 	if err != nil {
@@ -457,7 +464,7 @@ func TestPhase27(t *testing.T) {
 			t.Fatal("source-backed capture", captured, err)
 		}
 		capturedSQL, err := client.ReadBlockSQL(ctx, capture.ID, sdk.BlockReference{Draft: true})
-		if err != nil || capturedSQL.SQL != base.SQL || capturedSQL.Provenance.Query != planned.QueryID || capturedSQL.Provenance.Kind != "query_capture" {
+		if err != nil || capturedSQL.Definition == nil || reporting.DefinitionDigest(*capturedSQL.Definition) != capturedSQL.Digest || capturedSQL.SQL != base.SQL || capturedSQL.Provenance.Query != planned.QueryID || capturedSQL.Provenance.Kind != "query_capture" {
 			t.Fatal("capture provenance", capturedSQL, err)
 		}
 		wrongSession, err := f.f.token.verifier.Verify(ctx, phase27Token(t, f, e.User(), "other-session", phase27Scopes(e.Tenant())), auth.HTTP)

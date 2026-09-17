@@ -57,6 +57,17 @@ This update rechecked every original finding against the merged target code and 
 - A final document check resolved all 138 current relative file/line links, confirmed one title heading, 29 tracked finding IDs, all 12 EXP frontiers and all 63 ledger rows; the dated source-evidence map contains every referenced `REF-*` ID.
 - No full phase acceptance, hosted CI, live model/provider, live warehouse, migration, deployment or stress test was run for this document. Historical review files retain their own exact-SHA claims and are not re-attributed here.
 
+## CW-03 implementation disposition — September 16
+
+The focused CW-03 continuation implements native output-intent and bounded
+narrative/query policy contracts for BLK-01, BLK-05 and BLK-07. The September 15
+recheck above remains a dated observation of its stated baseline, not a current
+claim that these fields are still absent. See the [versioned contract](contracts/reporting-output-intent-v2.md)
+and [adversarial/validation record](reviews/cw-03-adversarial.md). No other finding,
+phase status, reference inventory, foreign cutover or broad parity claim changes.
+The inherited sensitivity mapping is deliberately conservative at query-dependency
+scope until exact expression lineage exists; unsupported mappings reject.
+
 ## Finding index
 
 | ID | Area | Finding | Status | Owner / phases |
@@ -67,13 +78,13 @@ This update rechecked every original finding against the merged target code and 
 | RTE-01 | Routing | Routing confidence and topic choice are reduced | confirmed gap | 17/24 |
 | LRN-01 | Learning | Stored examples are not equivalent to retrieval-selected templates | confirmed gap | 15/17/18; optimization remains 24 |
 | LRN-02 | Learning | Feedback weights are fixed increments | confirmed gap | 18; evaluation 24 |
-| BLK-01 | Reporting | Output enablement and localized output metadata are missing from definitions | confirmed definition gap; frozen consumer present | 27 with 28/29/31 consumers |
+| BLK-01 | Reporting | Output enablement and localized output metadata are missing from definitions | native v2 contract implemented; immutable v1 compatibility | 27 with 28/29/31 consumers |
 | BLK-02 | Reporting | Business-rule snapshots are absent from block dependencies | confirmed gap; available dependencies now sealed | 27/28 |
 | BLK-03 | Reporting | Period wording no longer participates in certification | confirmed gap; typed execution present | 27/28 |
 | BLK-04 | Reporting | Question overlap assessment is lexical only | confirmed gap; current assessment retained | 27/29 |
-| BLK-05 | Reporting | Sensitive-column metadata is missing at the narrative handoff | runtime path present; inherited sensitivity gap | 27/28/33/34 |
+| BLK-05 | Reporting | Sensitive-column metadata is missing at the narrative handoff | inherited sensitivity enforced; conservative query-dependency mapping | 27/28/33/34 |
 | BLK-06 | Reporting | Parameterization assistance supports a narrower workflow | narrowed; equivalent mapping needed | 27/28/34 |
-| BLK-07 | Reporting | Per-block limits and richer narrative policies need explicit mappings | runtime controls present; mapping gap | 27/28/34 |
+| BLK-07 | Reporting | Per-block limits and richer narrative policies need explicit mappings | native caps and bounded narrative mappings implemented; unsupported mappings reject | 27/28/34 |
 | CLR-01 | Clarification | Required clarification slots lack question-specific activation | confirmed gap | 16/17 |
 | RUL-01 | Rules | Compound and template scopes have no equivalent current representation | confirmed gap | 16/17/18 |
 | RTE-02 | Interpretation | Value, geography and temporal normalization is not an equivalent runtime stage | confirmed gap | 17/18; source metadata 15/33 |
@@ -166,15 +177,14 @@ This update rechecked every original finding against the merged target code and 
 
 ### BLK-01 — Output enablement and localized output metadata are missing from definitions
 
-- **Disposition:** confirmed gap.
-- **Owner / phases:** 27 with current frozen/composition/viewer consumers in 28/29/31.
-- **Reference behavior (neutral):** Original output definitions include enabled state, localized name/description and display order. The execution/output builders filter disabled outputs.
-- **Current boundary:** Go Output contains ID, kind and mapping/narrative only. Empty selection means all stored outputs. Array order is preserved, but there is no disabled-output state or equivalent localized output label contract.
-- **Consequence:** An imported disabled output cannot retain its behavior without removal or a schema extension; stable ID retention matters to later widgets and schedules.
-- **Contract, storage and import impact:** Extend the block output definition with enabled state, localized labels and stable display order. Define import behavior and selected-disabled policy before frozen-run consumers read the definition.
-- **Closure requirements:** Import enabled/disabled localized outputs; default execution excludes disabled outputs, IDs/order/labels survive, and selected-disabled behavior follows one reviewed policy.
+- **Disposition:** native versioned contract implemented by CW-03; foreign cutover remains phase 34.
+- **Owner / phases:** 27 with 28/29/30/31 consumers.
+- **Reference behavior (neutral):** Output definitions retain enabled state, localized name/description and display order; disabled outputs do not execute.
+- **Current behavior:** V2 output intent carries stable IDs, localized metadata, enabled/default-selected state and unique explicit order. Omitted selection resolves enabled defaults; explicit empty/duplicate/unknown/disabled selections fail with typed errors. V1 empty-means-all is preserved. Display order differs from exact accepted execution order.
+- **Persistence and lifecycle:** Migration 035 constrains new JSON without modifying immutable v1 content/hashes. Detached migration and native SQL-authorized export retain authored policies; normal create/edit/validate/publish re-establish lifecycle. Frozen manifests, reuse identity, retained metadata, composition widgets, schedules and selectors retain exact accepted intent.
+- **Evidence:** [selection/domain tests](../internal/reporting/output_intent_test.go), [real publication/execution](../test/acceptance/cw03_reporting_test.go), [populated database upgrade](../test/acceptance/cw03_migration_test.go), [catalog retry](../test/acceptance/cw03_schedule_test.go) and [browser assertions](../web/report-viewer/component.test.mjs). Exact executed results and limitations are in the [review](reviews/cw-03-adversarial.md).
 - **Source evidence IDs:** REF-BLK-01-A, REF-BLK-01-B.
-- **Current repository evidence:** [internal/reporting/model.go:162](../internal/reporting/model.go#L162); [internal/reporting/definition.go:227](../internal/reporting/definition.go#L227); [docs/contracts/reporting-blocks-v1.md:104](../docs/contracts/reporting-blocks-v1.md#L104).
+- **Boundary:** No new authoring app, dynamic filter discovery, report deletion or chart-binding changes. Metadata visibility never authorizes raw values.
 
 ### BLK-02 — Business-rule snapshots are absent from block dependencies
 
@@ -214,15 +224,14 @@ This update rechecked every original finding against the merged target code and 
 
 ### BLK-05 — Sensitive-column metadata is missing at the narrative handoff
 
-- **Disposition:** runtime path present by inspection; inherited sensitivity remains a definition gap.
-- **Owner / phases:** 27/28/33/34.
-- **Reference behavior (neutral):** The original expected schema flags sensitive columns, and narrative evidence construction consumes those flags in addition to explicit redactions.
-- **Current boundary:** Go expected schema uses exec.Field without that sensitivity field. Narrative definitions allow explicit RedactedFields, but no equivalent inherited sensitivity contract is present.
-- **Consequence:** Define how sensitivity survives import and capture before relying on the bounded narrative path; explicit manual redactions alone are not the same inherited behavior. No live narrative result is attributed by this audit.
-- **Contract, storage and import impact:** Carry sensitivity classification from expected schema/result capture into bounded narrative evidence. Add migration rules for inherited sensitivity and ensure ordinary logs/provider inputs exclude protected values.
-- **Closure requirements:** Capture a sensitive result and narrative selection; prove only the permitted projection enters the narrative path and model input.
+- **Disposition:** inherited sensitivity is enforced by CW-03; conservative query-dependency mapping, not per-expression lineage parity.
+- **Owner / phases:** 27/28 with the existing semantic classification contract; wider onboarding/import remains 33/34.
+- **Reference behavior (neutral):** Expected result sensitivity constrains narrative evidence alongside manual redaction.
+- **Current behavior:** Reviewed column sensitivity survives shared compiled/portable semantics. Effective policy beside the existing ordered result schema propagates through output/narrative projections. Unknown/sensitive/conflicting dependency metadata and manual restrictions exclude values before reduction or model input. An authored safe label cannot declassify reviewed/unknown data.
+- **Mapping disposition:** Lacking proven expression lineage, any restricted or unknown query dependency conservatively restricts derived result fields. Do not infer lineage from an alias. Manual restrictions remain additive. Native imports revalidate current source/context/topic reach; they do not trust exported derived sensitivity as authority.
+- **Evidence:** [effective policy](../internal/reporting/sensitivity.go), [actual HTTP-provider input negatives](../test/acceptance/cw03_reporting_test.go), [synthetic reviewed fixtures](../test/acceptance/cw03_fixture_test.go) and [review results](reviews/cw-03-adversarial.md). Unknown evidence yields the same no-work result when model services/budgets are irrelevant.
 - **Source evidence IDs:** REF-BLK-05-A, REF-BLK-05-B, REF-BLK-05-C.
-- **Current repository evidence:** [internal/reporting/model.go:140](../internal/reporting/model.go#L140); [internal/reporting/model.go:179](../internal/reporting/model.go#L179).
+- **Boundary:** Metadata/SQL/raw-result authority remains separate. These checks demonstrate fixture enforcement, not live-provider privacy qualification or complete source migration.
 
 ### BLK-06 — Parameterization assistance supports a narrower workflow
 
@@ -238,15 +247,14 @@ This update rechecked every original finding against the merged target code and 
 
 ### BLK-07 — Per-block limits and richer narrative policies need explicit mappings
 
-- **Disposition:** runtime controls present by inspection; contract mapping remains open.
-- **Owner / phases:** 27/28/34.
-- **Reference behavior (neutral):** Original definitions carry query row/time caps and narrative claim ceilings, analysis types, tones and caveat policies.
-- **Current boundary:** Current block definitions have no per-block query limit fields; narratives have bounded rows/bytes/calls/tokens but a different policy vocabulary and no max-claims field.
-- **Consequence:** The current frozen-run path seals the available limits, but it still needs a field-level mapping before imported behavior can be treated as equivalent. Stricter defaults may be intentional, but silently dropping saved behavior is not a migration rule.
-- **Contract, storage and import impact:** Map per-block query limits and narrative policy fields into the frozen-run manifest. Every dropped or tightened field requires an explicit disposition, persisted audit evidence and an acceptance negative case.
-- **Closure requirements:** Dry-run nondefault query/narrative policies; enumerate transformations and prove equivalence or reviewed rejection before freezing a run manifest.
+- **Disposition:** native per-block caps and bounded policy mappings implemented by CW-03; unsupported foreign/causal/free-prose mappings reject explicitly.
+- **Owner / phases:** 27/28 with 29/30/31 consumers; foreign migration remains 34.
+- **Reference behavior (neutral):** Definitions carry query row/time caps and narrative claim ceilings, type, tone and caveat policy.
+- **Current behavior:** Authored/requested rows/bytes/time/physical-attempt ceilings intersect deployment and existing authorized budgets at acceptance, bind reuse identity, and clamp again at execution. Lower stored caps never widen and newer lower ceilings still apply. Narratives enforce allowed/redacted fields, first-row/aggregate reduction, claim/type/tone/locale/caveat policy and rows/bytes/characters/calls/tokens/time limits before/during work.
+- **Mapping disposition:** The [v2 contract](contracts/reporting-output-intent-v2.md) documents exact v1 defaults, accepted literal instruction migration, closed claim forms and explicit unsupported combinations. V2 is never silently repaired using legacy defaults. Native authored export uses existing protected SQL inspection; create/edit imports remain unvalidated until the ordinary lifecycle runs.
+- **Evidence:** [limits](../internal/reporting/query_limits.go), [versioned narrative](../internal/reporting/narrative_policy.go), [execution/reuse acceptance](../test/acceptance/cw03_reporting_test.go), [provider hard bounds](../test/acceptance/cw03_narrative_bounds_test.go), [retry pins](../test/acceptance/cw03_schedule_test.go) and [review results](reviews/cw-03-adversarial.md).
 - **Source evidence IDs:** REF-BLK-07-A, REF-BLK-07-B.
-- **Current repository evidence:** [internal/reporting/model.go:140](../internal/reporting/model.go#L140); [internal/reporting/model.go:169](../internal/reporting/model.go#L169); [docs/plans/phase-28-reporting-execution-artifacts.md:1](../docs/plans/phase-28-reporting-execution-artifacts.md#L1).
+- **Boundary:** Reservations are not measured usage; row caps are not scan/cost guarantees. Retained reads/redraws never invoke warehouse/model regeneration. Live calibration, external warehouse qualification and foreign cutover are not claimed.
 
 ### CLR-01 — Required clarification slots lack question-specific activation
 
@@ -861,23 +869,23 @@ The repository coverage map is linked here for traceability only. No mapping alo
 
 | ID | Original capability | Current assessment | Detail / next evidence | Existing AC mapping |
 |---|---|---|---|---|
-| B01 | Stable block identity, localized name/question, canonical question and aliases | partial; block metadata retained | BLK-01; per-output localized identity incomplete | 27.AC01 |
+| B01 | Stable block identity, localized name/question, canonical question and aliases | partial; block metadata retained; v2 output intent implemented | BLK-01; output-level localized identity now versioned; other semantic gaps unchanged | 27.AC01 |
 | B02 | Mutable draft versus immutable published revision | retained core inspected | CAS and immutable revisions; no new runtime rerun | 27.AC02 |
 | B03 | Publication, certification and current trust/health are separate | retained core with dependency gap | BLK-02; separate publication/certification/health exists | 27.AC04 |
 | B04 | Exact topic/template/dependency references and definition hashes | gap | BLK-02 / LRN-01; missing rule/template dependency continuity | 27.AC03, 27.AC07 |
 | B05 | Real validation evidence bound to content and observed schema | retained core with incomplete dependency domain | Real schema/query evidence exists; BLK-02 remains | 27.AC03 |
 | B06 | Read metadata without automatically exposing SQL | retained core inspected | Separate SQL-read projection and action | 27.AC06, 04.AC04 |
 | B07 | One saved query can feed chart, KPI, table and narrative outputs | Phase 28 frozen runtime is present; definition gap remains | VIS-01; saved output kinds exist, richer KPI behavior absent | 28.AC01, 28.AC02 |
-| B08 | Enabled/default output selection, output identifiers and mappings | gap | BLK-01; IDs/subsets/order retained, enabled state missing | 27.AC06, 28.AC02 |
+| B08 | Enabled/default output selection, output identifiers and mappings | native v2 implemented; v1 preserved | BLK-01; IDs, explicit order, enabled defaults and typed rejection persist through execution | 27.AC06, 28.AC02 |
 | B09 | Date/datetime/relative-period/dimension/number/integer/boolean/grain/top-N parameters | retained typed resolution; frozen runtime is present | Dates/periods/scalars/grain/top-N and explicit dimension refs | 27.AC05, 28.AC03 |
 | B10 | Locale, report timezone and explicit parameter provenance | partial | VIS-03; timezone resolution retained, formatting intent narrowed | 28.AC03 |
 | B11 | Period authoring: explicit range, previous period, rolling periods, schedule window | retained resolution with authoring gap | BLK-03/06; period maths exists, wording checks/workflow narrowed | 27.AC05, 30.AC03 |
 | B12 | Assisted parameterization and question-duplicate assessment | gap | BLK-04/06; lexical duplicate assessment and narrow parameterization | 27.AC05, 27.AC01 |
 | B13 | Exact revision and latest-published/latest-certified selection | execution policies are implemented in the inspected frozen path; release evidence remains | Exact revision reads exist; compare all floating-policy variants at run admission | 29.AC03, 30.AC04 |
 | B14 | Published/certified-only/explicit-stale/private-preview trust policies | execution policies are implemented in the inspected frozen path; equivalence/release evidence remains | The frozen path validates and enforces all four trust policies; compare legacy policy outcomes and complete release evidence | 27.AC04, 29.AC02 |
-| B15 | Expected ordered columns, types, nullability and sensitive-field metadata | partial; gap | BLK-05; ordered exact typed schema exists, sensitivity handoff missing | 28.AC03, 10.AC03 |
+| B15 | Expected ordered columns, types, nullability and sensitive-field metadata | native inherited policy; conservative mapping | BLK-05; shared ordered schema plus restrictive query-dependency sensitivity; no expression-lineage parity | 28.AC03, 10.AC03 |
 | B16 | Execution traces prove absence of interpret/generate/rewrite/select-chart stages | Phase 28 runtime inspected; fresh acceptance attribution pending | Forbidden-stage spies must cover actual frozen runtime | 28.AC01 |
-| B17 | Bounded narrative generation, approved columns, evidence, tone/locale and budgets | Phase 28 runtime is present; definition mapping remains needed | BLK-05/07; redaction, max claims, analysis/tone/caveat policies | 28.AC04 |
+| B17 | Bounded narrative generation, approved columns, evidence, tone/locale and budgets | native bounded policy implemented | BLK-05/07; inherited/manual redaction, max claims, closed type/tone/caveats and caps; unsupported mappings reject | 28.AC04 |
 | B18 | Schema/semantic impact, exact rename detection and dependent health | partial | Source/topic impact and safe rename exist; rule-only dependencies absent BLK-02 | 27.AC07 |
 | B19 | Revalidation / withdrawn approval / unavailable source | partial | Current source/topic health and withdrawal exist; rule snapshot gap BLK-02 | 27.AC04, 27.AC07 |
 | B20 | Idempotency and expired retained block outputs | Phase 28 runtime inspected; fresh acceptance attribution pending | Expired-artifact idempotent replay must not re-execute | 28.AC05, 28.AC07 |

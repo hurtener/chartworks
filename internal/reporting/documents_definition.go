@@ -149,7 +149,7 @@ func validWidget(w Widget, limits config.ReportingComposition) bool {
 	case "query":
 		return w.Query != nil && w.Block == nil && w.Text == nil && len(w.Literals)+len(w.Bindings)+len(w.Overrides) == 0 && validQuerySelections(*w.Query)
 	case "block":
-		if w.Block == nil || w.Query != nil || w.Text != nil || !identity.Identifier(w.Block.Block) || w.Block.Revision < 0 || w.Block.Revision > 256 || len(w.Block.Outputs) > 64 || !slices.Contains([]string{"", "published", "certified_only", "explicit_stale"}, w.Block.Policy) {
+		if w.Block == nil || w.Block.Limits != nil && !w.Block.Limits.valid() || w.Query != nil || w.Text != nil || !identity.Identifier(w.Block.Block) || w.Block.Revision < 0 || w.Block.Revision > 256 || len(w.Block.Outputs) > 64 || !slices.Contains([]string{"", "published", "certified_only", "explicit_stale"}, w.Block.Policy) {
 			return false
 		}
 		seen := map[string]bool{}

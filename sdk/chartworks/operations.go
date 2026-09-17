@@ -1,6 +1,7 @@
 package chartworks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -226,10 +227,17 @@ func oneContent(content operationContent) (string, json.RawMessage, bool) {
 		return "", nil, false
 	}
 	for media, value := range content {
-		if !catalogLine(media) || len(value.Schema) == 0 || len(value.Schema) > 64<<10 {
+		if !catalogLine(media) || len(value.Schema) == 0 {
 			return "", nil, false
 		}
-		return media, value.Schema, true
+		// OpenAPI indentation is transport formatting, not schema content. Keep
+		// the existing 4 MiB catalog and 64 KiB schema bounds; never increase
+		// gateway input limits to admit a pretty-printed reporting definition.
+		var compact bytes.Buffer
+		if json.Compact(&compact, value.Schema) != nil || compact.Len() > 64<<10 {
+			return "", nil, false
+		}
+		return media, json.RawMessage(compact.Bytes()), true
 	}
 	return "", nil, false
 }

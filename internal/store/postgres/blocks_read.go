@@ -92,7 +92,8 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
 		return out, err
 	}
 	var definition, provenance, references, validation, attestation, withdrawal, health []byte
-	err = tx.QueryRow(ctx, `SELECT `+blockHeadColumns+`,r.revision,r.revision_id,
+	var definitionVersion int
+	err = tx.QueryRow(ctx, `SELECT `+blockHeadColumns+`,r.revision,r.revision_id,r.definition_version,
  CASE WHEN $9 THEN r.definition ELSE r.definition-'sql' END,
  r.digest,r.execution_digest,r.actor_id,r.created_at,
  CASE WHEN $9 THEN r.provenance ELSE '{}'::jsonb END,
@@ -112,12 +113,15 @@ func blockTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, ref
  AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='topic' AND g->>'permission'=$8 AND g->>'id' IN(h.topic_id,'*'))
  AND `+blockReferenceEligibility, args...).Scan(
 		&out.State.ID, &out.State.Topic, &out.State.Version, &out.State.DraftRevision, &out.State.PublishedRevision, &out.State.DraftState, &out.State.Archived, &out.State.CreatedAt, &out.State.UpdatedAt,
-		&out.Revision.Number, &out.Revision.ID, &definition, &out.Revision.Digest, &out.Revision.ExecutionDigest, &out.Revision.Actor, &out.Revision.CreatedAt, &provenance, &references,
+		&out.Revision.Number, &out.Revision.ID, &definitionVersion, &definition, &out.Revision.Digest, &out.Revision.ExecutionDigest, &out.Revision.Actor, &out.Revision.CreatedAt, &provenance, &references,
 		&validation, &attestation, &withdrawal, &out.PublishedAt, &out.Current, &health)
 	if err != nil {
 		return out, err
 	}
 	if json.Unmarshal(definition, &out.Revision.Definition) != nil || json.Unmarshal(provenance, &out.Revision.Provenance) != nil || json.Unmarshal(references, &out.References) != nil {
+		return reporting.Snapshot{}, store.ErrInvalid
+	}
+	if out.Revision.Definition.SchemaVersion != definitionVersion {
 		return reporting.Snapshot{}, store.ErrInvalid
 	}
 	if args[8].(bool) && (reporting.DefinitionDigest(out.Revision.Definition) != out.Revision.Digest || reporting.ExecutionDigest(out.Revision.Definition) != out.Revision.ExecutionDigest) {

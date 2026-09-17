@@ -19,7 +19,7 @@ import (
 // Ordinary signed scope is necessary but cannot replace a service-prepared
 // mutation or a live operation fence. JSON cannot reconstruct those proofs.
 func TestDocumentStorageRejectsCallerPreparedProofs(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	ctx := context.Background()
 	e := phase27Actor(t, f, f.f.e.User(), phase29DocumentScopes())
 	claimed := []byte(`{"encoded":"e30=","authority":"caller-claimed","deadline":"2099-01-01T00:00:00Z","lease":{}}`)
@@ -54,7 +54,7 @@ func TestDocumentStorageRejectsCallerPreparedProofs(t *testing.T) {
 // denying authority, cancelling requests, and closing its real connection pool.
 // None of these failures may return values, mutate state, or rerun a source.
 func TestReportingCompositionStorageFailureSurfaces(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	ctx := context.Background()
 	scopes := append(phase29DocumentScopes(), "reporting.execute", "cw.report.execute:*", "cw.run.read:*", "jobs.read", "jobs.cancel", "reporting.retention", "cw.tenant.erase:*")
 	e := phase27Actor(t, f, f.f.e.User(), scopes)

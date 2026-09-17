@@ -50,7 +50,7 @@ func TestDocumentCompositionRequestWire(t *testing.T) {
 }
 
 func TestDocumentAdmissionParity(t *testing.T) {
-	f := newPhase18Fixture(t)
+	f := newReportingFixture(t)
 	ctx := context.Background()
 	scopes := append(phase29DocumentScopes(), "reporting.execute", "cw.report.execute:*", "cw.dashboard.execute:*", "cw.run.read:*")
 	author := phase27Actor(t, f, f.f.e.User(), scopes)

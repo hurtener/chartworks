@@ -81,11 +81,11 @@ func TestStoreFrozenAdmissionAndCheckpointGuards(t *testing.T) {
 		})
 		if w.Kind == "result" {
 			t.Run("reuse/cannot_redirect_operation", func(t *testing.T) {
-				_, reused, err := db.ReuseFrozenRun(ctx, inv, "another-operation")
+				_, reused, err := db.ReuseFrozenRun(ctx, inv, "another-operation", config.DefaultReportingExecution())
 				if !errors.Is(err, store.ErrInvalid) || reused {
 					t.Fatal("redirected reuse accepted", err)
 				}
-				_, reused, err = db.ReuseFrozenRun(missingContext, inv, w.Manifest.ID)
+				_, reused, err = db.ReuseFrozenRun(missingContext, inv, w.Manifest.ID, config.DefaultReportingExecution())
 				if !errors.Is(err, access.ErrUnauthenticated) || reused {
 					t.Fatal("reuse without context accepted", err)
 				}
@@ -102,7 +102,7 @@ func TestStoreFrozenAdmissionAndCheckpointGuards(t *testing.T) {
 				t.Fatal("duplicate checkpoint changed values or double-charged bytes", w.Kind, repeatErr)
 			}
 			if w.Kind == "result" {
-				ignored, reused, reuseErr := db.ReuseFrozenRun(ctx, inv, w.Manifest.ID)
+				ignored, reused, reuseErr := db.ReuseFrozenRun(ctx, inv, w.Manifest.ID, config.DefaultReportingExecution())
 				if reuseErr != nil || reused || ignored.Result == nil {
 					t.Fatal("reuse replaced an already normalized result", reuseErr)
 				}

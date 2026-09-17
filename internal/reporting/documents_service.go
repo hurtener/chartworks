@@ -102,7 +102,7 @@ func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, ki
 			if snapshot.PublishedAt == nil || snapshot.State.Archived {
 				return nil, ErrStale
 			}
-			if _, err := SelectOutputs(snapshot.Revision.Definition.Outputs, w.Block.Outputs); err != nil {
+			if _, _, err := ResolveOutputSelection(snapshot.Revision.Definition, w.Block.Outputs); err != nil {
 				return nil, err
 			}
 			if err := ValidateWidgetBindings(snapshot.Revision.Definition.Parameters, d, w); err != nil {

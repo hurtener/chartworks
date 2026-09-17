@@ -102,7 +102,7 @@ func DefinitionDigest(d Definition) string {
 
 // ExecutionDigest hashes execution-relevant content independently of descriptive metadata.
 func ExecutionDigest(d Definition) string {
-	return digest(struct {
+	base := digest(struct {
 		Version    string
 		Source     string
 		Context    string
@@ -112,10 +112,14 @@ func ExecutionDigest(d Definition) string {
 		Parameters []Parameter
 		Schema     []exec.Field
 	}{CanonicalizationVersion, d.Source, d.Context, d.Topics, d.Template, d.SQL, d.Parameters, d.ExpectedSchema})
+	if d.SchemaVersion == SchemaVersion {
+		return base
+	}
+	return digest([]any{"block-execution-policy-v2", base, d.QueryLimits, d.ResultPolicy})
 }
 
 func validateDefinition(ctx context.Context, d Definition, limits config.Reporting, captured bool) error {
-	if ctx == nil || limits.Validate() != nil || d.SchemaVersion != SchemaVersion || !metadataValid(d.Metadata, limits) || !identity.Identifier(d.Source) || !identity.Identifier(d.Context) || len(d.Topics) == 0 || len(d.Topics) > 8 || strings.TrimSpace(d.SQL) == "" || !text(d.SQL, limits.MaxSQLBytes) || len(d.ExpectedSchema) == 0 || len(d.ExpectedSchema) > limits.MaxSchemaColumns || len(d.Outputs) == 0 || len(d.Outputs) > limits.MaxOutputs {
+	if ctx == nil || limits.Validate() != nil || (d.SchemaVersion != SchemaVersion && d.SchemaVersion != CurrentSchemaVersion) || !metadataValid(d.Metadata, limits) || !identity.Identifier(d.Source) || !identity.Identifier(d.Context) || len(d.Topics) == 0 || len(d.Topics) > 8 || strings.TrimSpace(d.SQL) == "" || !text(d.SQL, limits.MaxSQLBytes) || len(d.ExpectedSchema) == 0 || len(d.ExpectedSchema) > limits.MaxSchemaColumns || len(d.Outputs) == 0 || len(d.Outputs) > limits.MaxOutputs {
 		return ErrInvalid
 	}
 	encoded, err := json.Marshal(d)
@@ -142,10 +146,39 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 		}
 		fields[f.Name] = f
 	}
-	outputIDs := map[string]bool{}
-	for _, o := range d.Outputs {
-		if !identity.Identifier(o.ID) || outputIDs[o.ID] {
+	if d.SchemaVersion == SchemaVersion && (d.QueryLimits != nil || len(d.ResultPolicy) != 0) {
+		return ErrInvalid
+	}
+	if d.QueryLimits != nil && !d.QueryLimits.valid() {
+		return ErrInvalid
+	}
+	policyFields := map[string]bool{}
+	for _, policy := range d.ResultPolicy {
+		if fields[policy.Field].Name == "" || policyFields[policy.Field] || policy.Sensitivity != "" && policy.Sensitivity != "non_sensitive" && policy.Sensitivity != "sensitive" {
 			return ErrInvalid
+		}
+		policyFields[policy.Field] = true
+	}
+	outputIDs := map[string]bool{}
+	orders := map[int]bool{}
+	for _, o := range d.Outputs {
+		if !identity.Identifier(o.ID) {
+			return ErrInvalid
+		}
+		if outputIDs[o.ID] {
+			return selectionError("output_duplicate")
+		}
+		if d.SchemaVersion == SchemaVersion && (o.Intent != nil || o.Narrative != nil && o.Narrative.PolicyVersion != "") {
+			return ErrInvalid
+		}
+		if d.SchemaVersion == CurrentSchemaVersion {
+			if o.Intent == nil || !intentValid(*o.Intent, limits) || orders[o.Intent.DisplayOrder] {
+				return ErrInvalid
+			}
+			orders[o.Intent.DisplayOrder] = true
+			if n := o.Narrative; n != nil && boundedNarrativePolicy(*n) != nil {
+				return ErrNarrativePolicy
+			}
 		}
 		outputIDs[o.ID] = true
 		if err := validateOutput(ctx, o, fields, limits); err != nil {
@@ -207,7 +240,7 @@ func validateOutput(ctx context.Context, o Output, fields map[string]exec.Field,
 }
 
 func validateNarrative(n Narrative, fields map[string]exec.Field) error {
-	if !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || strings.TrimSpace(n.Instructions) == "" || !text(n.Instructions, 4096) || len(n.Fields) == 0 || len(n.Fields) > 128 || len(n.RedactedFields) > 128 || !slices.Contains([]string{"first_rows", "aggregate_evidence"}, n.Reduction) || n.MaxRows < 1 || n.MaxRows > 1000 || n.MaxBytes < 128 || n.MaxBytes > 65536 || n.MaxCharacters < 1 || n.MaxCharacters > 16384 || n.MaxCalls < 1 || n.MaxCalls > 4 || n.MaxTokens < 64 || n.MaxTokens > 32768 || n.TimeoutMillis < 100 || n.TimeoutMillis > 60000 || !identity.Identifier(n.PromptVersion) || !identity.Identifier(n.ModelVersion) || !identity.Identifier(n.SchemaVersion) || !locale(n.Locale) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) || !n.RequireEvidence || !n.RequireCaveats {
+	if !slices.Contains([]string{"summary", "comparison", "explanation"}, n.Type) || strings.TrimSpace(n.Instructions) == "" || !text(n.Instructions, 4096) || len(n.Fields) == 0 || len(n.Fields) > 128 || len(n.RedactedFields) > 128 || !slices.Contains([]string{"first_rows", "aggregate_evidence"}, n.Reduction) || n.MaxClaims < 0 || n.MaxClaims > 32 || n.MaxRows < 1 || n.MaxRows > 1000 || n.MaxBytes < 128 || n.MaxBytes > 65536 || n.MaxCharacters < 1 || n.MaxCharacters > 16384 || n.MaxCalls < 1 || n.MaxCalls > 4 || n.MaxTokens < 64 || n.MaxTokens > 32768 || n.TimeoutMillis < 100 || n.TimeoutMillis > 60000 || !identity.Identifier(n.PromptVersion) || !identity.Identifier(n.ModelVersion) || !identity.Identifier(n.SchemaVersion) || !locale(n.Locale) || !slices.Contains([]string{"neutral", "concise", "technical"}, n.Tone) || !n.RequireEvidence || !n.RequireCaveats {
 		return ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -222,31 +255,28 @@ func validateNarrative(n Narrative, fields map[string]exec.Field) error {
 	return nil
 }
 
-// SelectOutputs returns saved definitions in their original stable order. An
-// empty selection means all; duplicate/unknown IDs fail rather than being dropped.
+// SelectOutputs returns saved definitions in stable presentation order. Legacy
+// definitions retain empty-means-all; versioned intent uses defaults for nil and
+// rejects explicit empty. Frozen execution separately retains caller order.
 func SelectOutputs(all []Output, selected []string) ([]Output, error) {
-	if len(all) == 0 || len(all) > 64 || len(selected) > len(all) {
-		return nil, ErrInvalid
-	}
-	available := map[string]bool{}
+	version := SchemaVersion
 	for _, output := range all {
-		if !identity.Identifier(output.ID) || available[output.ID] {
-			return nil, ErrInvalid
+		if output.Intent != nil {
+			version = CurrentSchemaVersion
 		}
-		available[output.ID] = true
 	}
-	wanted := map[string]bool{}
-	for _, id := range selected {
-		if !available[id] || wanted[id] {
-			return nil, ErrInvalid
-		}
-		wanted[id] = true
+	_, selection, err := ResolveOutputSelection(Definition{SchemaVersion: version, Outputs: all}, selected)
+	if err != nil {
+		return nil, err
 	}
 	out := []Output{}
-	for _, o := range all {
-		if len(selected) == 0 || wanted[o.ID] {
-			out = append(out, clone(o))
+	for _, output := range all {
+		if slices.Contains(selection.Selected, output.ID) {
+			out = append(out, clone(output))
 		}
+	}
+	if version == CurrentSchemaVersion {
+		slices.SortStableFunc(out, func(a, b Output) int { return a.Intent.DisplayOrder - b.Intent.DisplayOrder })
 	}
 	return out, nil
 }
@@ -266,7 +296,7 @@ func checkResult(ctx context.Context, d Definition, result exec.Result, limits c
 		positions[f.Name] = i
 	}
 	for _, output := range d.Outputs {
-		if output.Mapping == nil {
+		if output.Mapping == nil || output.Intent != nil && !output.Intent.Enabled {
 			continue
 		}
 		data := charts.Data{Version: charts.Version, Columns: clone(output.Mapping.Columns), Rows: make([][]charts.Cell, len(normalized.Rows)), Completeness: normalized.Completeness}

@@ -38,8 +38,14 @@ func testPhase31ExplicitExecution(t *testing.T) {
 	}
 	reader := f.reader(t, "p31-filters", "")
 	old, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "block", Run: first.Run, Output: "table-second", Limit: 10})
-	if err != nil || old.PageBounds.Total != 2 || old.Outputs[0].ID != "table-second" {
+	if err != nil || old.PageBounds.Total != 2 || len(old.Outputs) != 2 || old.Outputs[0].ID != "table-main" || old.Outputs[1].ID != "table-second" || old.Selection.Output != "table-second" || old.Output == nil || old.Output.ID != "table-second" {
 		t.Fatal("old artifact changed with filters/output order", old, err)
+	}
+	// Selector order is authored display order, not incidental execution order.
+	// The accepted explicit execution selection remains independently immutable.
+	accepted, err := f.domain.runs.Get(t.Context(), f.domain.execute, first.Run)
+	if err != nil || accepted.Selection == nil || !reflect.DeepEqual(accepted.Selection.Selected, []string{"table-second", "table-main"}) {
+		t.Fatal("explicit execution selection drift", accepted, err)
 	}
 	newer, err := f.service.View(t.Context(), reader, reporting.DeliveryViewRequest{Kind: "block", Run: second.Run, Output: "table-second", Limit: 10})
 	if err != nil || newer.PageBounds.Total != 1 || newer.Output.Table.Rows[0][0].Value != "2" {

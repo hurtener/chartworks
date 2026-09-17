@@ -52,3 +52,14 @@ Pengui supplies authority; Chartworks retains occurrence/attempt/delivery state.
 criteria have executable real-consumer tests. Exact-source results and review
 findings are recorded in the [adversarial ledger](../reviews/phase-30-31-adversarial.md);
 status remains in_progress pending review/merge, not a planned-phase skip.
+
+## CW-03 output-intent and evidence-policy continuation
+
+AC01/AC03/AC04/AC05/AC06/AC07/AC08: existing signed target budgets, original selected outputs and resolved revisions survive catalog retry; later publication never replaces an accepted manifest or silently regenerates retained evidence.
+
+Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
+[v2 field-level contract](../contracts/reporting-output-intent-v2.md). The
+[scoped adversarial record](../reviews/cw-03-adversarial.md) links real PostgreSQL,
+source execution, provider-fixture and browser checks. Keep the existing named
+phase criteria and phase status; this assignment closes only its three owned gap
+entries, not the whole phase, other reporting work, or full migration/release.

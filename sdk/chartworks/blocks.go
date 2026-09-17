@@ -13,6 +13,37 @@ import (
 // ErrBlockRequest rejects a malformed coordinate before any network call.
 var ErrBlockRequest = errors.New("chartworks: invalid block coordinate")
 
+// BlockDefinitionVersion is the current authored reporting definition version.
+const BlockDefinitionVersion = reporting.CurrentSchemaVersion
+
+// BlockNarrativePolicyVersion pins deterministic bounded narrative rendering.
+const BlockNarrativePolicyVersion = reporting.NarrativePolicyVersion
+
+// BlockOutputMetadata is inert localized output text.
+type BlockOutputMetadata = reporting.OutputMetadata
+
+// BlockOutputIntent carries enablement, default selection and explicit display order.
+type BlockOutputIntent = reporting.OutputIntent
+
+// BlockOutputSelection is the accepted revision-bound output selection.
+type BlockOutputSelection = reporting.OutputSelection
+
+// BlockQueryLimits are narrowing source/query ceilings, not estimated cost guarantees.
+type BlockQueryLimits = reporting.QueryLimits
+
+// BlockResultFieldPolicy can only restrict inherited reviewed sensitivity.
+type BlockResultFieldPolicy = reporting.ResultFieldPolicy
+
+// BlockEffectiveFieldPolicy is metadata, not a data-access grant.
+type BlockEffectiveFieldPolicy = reporting.EffectiveFieldPolicy
+
+// MigrateBlockDefinition makes a detached v2 draft candidate. Unsupported
+// narrative mappings return an error; nothing is saved, validated or published.
+// Submit the result through the normal EditBlock CAS and validation lifecycle.
+func MigrateBlockDefinition(d BlockDefinition) (BlockDefinition, error) {
+	return reporting.MigrateDefinition(d)
+}
+
 // BlockParameterizeRequest mirrors the common governed block wire contract.
 type BlockParameterizeRequest = reporting.ParameterizeRequest
 
@@ -264,7 +295,9 @@ func (c *Client) ReadBlock(ctx context.Context, id string, in BlockReference) (o
 	return
 }
 
-// ReadBlockSQL read SQL through separately scoped inspection authority. Mutations are never automatically replayed.
+// ReadBlockSQL returns separately protected SQL and its exact native definition.
+// Import Definition through normal create/edit validation; approval never transfers.
+// Older servers may omit Definition. Mutations are never automatically replayed.
 func (c *Client) ReadBlockSQL(ctx context.Context, id string, in BlockReference) (out BlockSQLView, err error) {
 	if !identity.Identifier(id) {
 		return out, ErrBlockRequest
