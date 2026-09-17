@@ -47,7 +47,7 @@ func TestClarificationTypedValues(t *testing.T) {
 			return r
 		}
 		en, es := parse("January 2026", "en"), parse("enero de 2026", "es")
-		if !reflect.DeepEqual(en, es) || en.Time.StartUTC != "2026-01-01T03:00:00Z" || en.Time.EndUTC != "2026-02-01T03:00:00Z" || en.Time.Bounds != "[)" {
+		if !reflect.DeepEqual(en.Time, es.Time) || !reflect.DeepEqual(en.Effect, es.Effect) || en.Locale != "en" || es.Locale != "es" || en.ParserVersion != es.ParserVersion || en.Time.StartUTC != "2026-01-01T03:00:00Z" || en.Time.EndUTC != "2026-02-01T03:00:00Z" || en.Time.Bounds != "[)" {
 			t.Fatalf("noncanonical bilingual bounds: %+v %+v", en.Time, es.Time)
 		}
 	})

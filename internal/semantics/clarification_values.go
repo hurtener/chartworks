@@ -30,6 +30,8 @@ func clarificationError(locale, field, code string) *ClarificationFieldError {
 		message, spanish = "Use true/false or yes/no.", "Usá verdadero/falso o sí/no."
 	case "invalid_date":
 		message, spanish = "Use a real Gregorian date (YYYY-MM-DD) or the reviewed month-period input.", "Usá una fecha gregoriana válida (AAAA-MM-DD) o el período mensual revisado."
+	case "ambiguous_calendar_boundary":
+		message, spanish = "The local midnight is missing or ambiguous in the reviewed timezone. Choose an unambiguous boundary; no offset was guessed.", "La medianoche local no existe o es ambigua en la zona horaria revisada. Elegí un límite inequívoco; no se supuso ningún desplazamiento horario."
 	case "unsupported_grain":
 		message, spanish = "Choose one of the reviewed grains and align both boundaries to it.", "Elegí una granularidad revisada y alineá ambos límites con ella."
 	case "calendar_mismatch":
@@ -288,7 +290,10 @@ func resolveClarificationTime(value ClarificationTimeInput, effect Clarification
 	if !clarificationGrainBoundary(start, value.Grain) || !clarificationGrainBoundary(end, value.Grain) {
 		return CanonicalClarificationTime{}, clarificationError(locale, "time.grain", "unsupported_grain")
 	}
-	return CanonicalClarificationTime{StartUTC: start.UTC().Format(time.RFC3339), EndUTC: end.UTC().Format(time.RFC3339), LocalStart: start.Format("2006-01-02"), LocalEnd: end.Format("2006-01-02"), Calendar: "gregorian", TimeZone: effect.TimeZone, Grain: value.Grain, Bounds: "[)"}, nil
+	if !uniqueClarificationMidnight(start) || !uniqueClarificationMidnight(end) {
+		return CanonicalClarificationTime{}, clarificationError(locale, "time.boundary", "ambiguous_calendar_boundary")
+	}
+	return CanonicalClarificationTime{BoundaryPolicy: ClarificationTimeBoundaryPolicy, StartUTC: start.UTC().Format(time.RFC3339), EndUTC: end.UTC().Format(time.RFC3339), LocalStart: start.Format("2006-01-02"), LocalEnd: end.Format("2006-01-02"), Calendar: "gregorian", TimeZone: effect.TimeZone, Grain: value.Grain, Bounds: "[)"}, nil
 }
 
 func clarificationMonth(value, locale string) time.Month {

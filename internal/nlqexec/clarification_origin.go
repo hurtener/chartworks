@@ -2,7 +2,7 @@ package nlqexec
 
 import (
 	"context"
-	"reflect"
+	"slices"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -54,7 +54,7 @@ func (s *Service) validateClarificationOrigin(ctx context.Context, e identity.En
 		topics = []string{question.Topic}
 	}
 	request := old.Route.Request
-	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !reflect.DeepEqual(topics, old.Topics) || !reflect.DeepEqual(question.References, request.References) || !reflect.DeepEqual(question.MetricIDs, request.MetricIDs) || !reflect.DeepEqual(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
+	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(question.References, request.References) || !slices.Equal(question.MetricIDs, request.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
 		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
 	}
 	return nil

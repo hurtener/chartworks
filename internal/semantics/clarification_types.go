@@ -125,14 +125,15 @@ type ClarificationFieldError struct {
 // CanonicalClarificationTime retains the local and UTC [) boundaries so replay
 // does not silently reinterpret a date under a different locale or timezone.
 type CanonicalClarificationTime struct {
-	StartUTC   string `json:"start_utc"`
-	EndUTC     string `json:"end_utc"`
-	LocalStart string `json:"local_start"`
-	LocalEnd   string `json:"local_end"`
-	Calendar   string `json:"calendar"`
-	TimeZone   string `json:"time_zone"`
-	Grain      string `json:"grain"`
-	Bounds     string `json:"bounds"`
+	BoundaryPolicy string `json:"boundary_policy"`
+	StartUTC       string `json:"start_utc"`
+	EndUTC         string `json:"end_utc"`
+	LocalStart     string `json:"local_start"`
+	LocalEnd       string `json:"local_end"`
+	Calendar       string `json:"calendar"`
+	TimeZone       string `json:"time_zone"`
+	Grain          string `json:"grain"`
+	Bounds         string `json:"bounds"`
 }
 
 // ClarificationResolution is protected query evidence, not a caller-issued

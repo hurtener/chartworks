@@ -53,6 +53,18 @@ func TestCW01(t *testing.T) {
 			t.Fatal("date correction", err)
 		}
 		f.run(t, child, 1, false)
+		t.Run("BilingualNamedPeriod", func(t *testing.T) {
+			period := func(label string) semantics.ClarificationValue {
+				return semantics.ClarificationValue{Time: &semantics.ClarificationTimeInput{Period: label, Calendar: "gregorian", TimeZone: "America/Argentina/Buenos_Aires", Grain: "month"}}
+			}
+			en := f.plan(t, f.question("Show dated sales", nlq.LanguageEnglish), "period", period("January 2026"))
+			es := f.plan(t, f.question("Mostrá ventas fechadas", nlq.LanguageSpanish), "period", period("enero de 2026"))
+			if !reflect.DeepEqual(en.Route.Resolutions[0].Time, es.Route.Resolutions[0].Time) {
+				t.Fatal("different language month inputs changed canonical business window")
+			}
+			f.run(t, en, 2, true)
+			f.run(t, es, 2, true)
+		})
 	})
 	t.Run("AC03", func(t *testing.T) {
 		cases := []struct {
