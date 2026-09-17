@@ -147,7 +147,7 @@ func (f *cw01Fixture) plan(t *testing.T, q nlqexec.QuestionRequest, pattern stri
 func (f *cw01Fixture) run(t *testing.T, plan nlqexec.PlanResult, rows int, large bool) nlqexec.RunResult {
 	t.Helper()
 	out, err := f.query.Run(context.Background(), f.e, nlqexec.RunRequest{QueryID: plan.QueryID, Operation: plan.QueryID + "-run"})
-	if err != nil || out.Execution == nil || out.Execution.Result == nil || len(out.Execution.Result.Rows) != rows {
+	if err != nil || out.Execution.Result == nil || len(out.Execution.Result.Rows) != rows {
 		t.Fatalf("constraint result: expected %d rows: %v", rows, err)
 	}
 	raw, _ := json.Marshal(out.Execution.Result.Rows)

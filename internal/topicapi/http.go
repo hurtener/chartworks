@@ -106,6 +106,9 @@ func Registry() (*api.Registry, error) {
 		{"GET", "/v1/topics/{id}/rules", "getPublishedRules", "topics.read", "retained_metadata_read", "rulesets.Service.Read", "read_only_no_domain_audit", nil, reflect.TypeFor[rulesets.Published]()},
 		{"POST", "/v1/topics/{id}/rule-versions/read", "getPublishedRuleVersion", "topics.read", "retained_metadata_read", "rulesets.Service.Read", "read_only_no_domain_audit", reflect.TypeFor[RuleVersionRequest](), reflect.TypeFor[rulesets.Published]()},
 		{"POST", "/v1/topics/{id}/rules/evaluate", "evaluateRules", "topics.read", "deterministic_constraint_read", "rulesets.Service.Evaluate", "read_only_no_domain_audit", reflect.TypeFor[rulesets.EvaluateRequest](), reflect.TypeFor[rulesets.Evaluation]()},
+		{"POST", "/v1/topics/{id}/clarifications/preview", "previewClarifications", "topics.write", "deterministic_draft_preview", "rulesets.Service.PreviewClarifications", "read_only_no_domain_audit", reflect.TypeFor[rulesets.ClarificationPreviewRequest](), reflect.TypeFor[rulesets.ClarificationPreview]()},
+		{"POST", "/v1/topics/{id}/clarifications/export", "exportClarifications", "topics.export", "retained_metadata_export", "rulesets.Service.ExportClarifications", "read_only_no_domain_audit", reflect.TypeFor[rulesets.ClarificationExportRequest](), reflect.TypeFor[rulesets.PortableClarifications]()},
+		{"POST", "/v1/topics/{id}/clarifications/import-preview", "previewClarificationImport", "topics.write", "deterministic_import_preview", "rulesets.Service.PreviewClarificationImport", "read_only_no_domain_audit", reflect.TypeFor[rulesets.ClarificationImportRequest](), reflect.TypeFor[rulesets.ClarificationImportPreview]()},
 		{"POST", "/v1/topics/{id}/rule-patterns/read", "getPublishedRulePatterns", "topics.read", "clarification_pattern_read", "rulesets.Service.Patterns", "read_only_no_domain_audit", reflect.TypeFor[RuleVersionRequest](), reflect.TypeFor[[]semantics.ClarificationPattern]()},
 		{"POST", "/v1/topics/{id}/rules/replay", "replayRules", "topics.read", "retained_rule_replay", "rulesets.Service.Replay", "read_only_no_domain_audit", reflect.TypeFor[rulesets.ReplayRequest](), reflect.TypeFor[rulesets.Comparison]()},
 		{"POST", "/v1/topics/{id}/rules/shadow", "shadowRules", "topics.read", "rule_shadow_comparison", "rulesets.Service.Shadow", "read_only_no_domain_audit", reflect.TypeFor[rulesets.ShadowRequest](), reflect.TypeFor[rulesets.Comparison]()},
@@ -121,38 +124,41 @@ func Registry() (*api.Registry, error) {
 		d := api.Definition{
 			Operation: api.Operation{Method: r.method, Path: r.path, Action: r.action, Effect: r.effect}, ID: r.id,
 			Summary: map[string]string{
-				"saveTopicDraft":           "Create or edit an immutable private topic draft",
-				"importTopicDraft":         "Map and admit a portable topic draft",
-				"onboardTopicProfile":      "Create an unresolved topic draft from active profile evidence",
-				"getTopicDraft":            "Read the current private draft",
-				"mutateTopicEntities":      "Apply atomic entity CRUD to a new private draft revision",
-				"rebindTopicDataset":       "Move a dataset to active profile evidence and rewrite references",
-				"enhanceTopicDraft":        "Advance one bounded resumable semantic generation step",
-				"getTopicDraftVersion":     "Read an exact private draft revision",
-				"getTopicDraftHistory":     "List scoped private draft revision metadata",
-				"diffTopicDraft":           "Compare two exact private draft revisions",
-				"exportTopicDraft":         "Export a scoped draft through logical binding slots",
-				"reviewTopic":              "Record an immutable review of an exact draft digest",
-				"publishTopic":             "Publish a reviewed topic with all matching facet generations",
-				"getPublishedTopic":        "Read the retained active published topic",
-				"getPublishedTopicVersion": "Read an exact retained published topic version",
-				"getTopicContract":         "Read a published topic after current source validation",
-				"getTopicHealth":           "Read the retained current-source health observation",
-				"recheckTopicHealth":       "Recheck public source continuity and commit a complete observation",
-				"rollbackTopic":            "Restore an exact retained topic version and facet set",
-				"archiveTopic":             "Archive the active topic and every matching facet head",
-				"saveRuleDraft":            "Create or edit an immutable proposed ruleset",
-				"reviewRules":              "Record an immutable review of an exact ruleset draft",
-				"listTopics":               "List authorized active topic publications without source or model work",
-				"publishRules":             "Activate an approved ruleset for the current topic version",
-				"getPublishedRules":        "Read the active published ruleset",
-				"getPublishedRuleVersion":  "Read an exact retained ruleset version",
-				"evaluateRules":            "Evaluate active hard constraints over explicit semantic references",
-				"getPublishedRulePatterns": "Read detached clarification patterns from a retained ruleset",
-				"replayRules":              "Replay deterministic constraints against exact retained rule pins",
-				"shadowRules":              "Compare deterministic constraints across retained rule pins",
-				"readRuleInvalidations":    "Read rule lifecycle fences for dependent evidence consumers",
-				"retireRules":              "Retire the active ruleset with revision CAS",
+				"saveTopicDraft":             "Create or edit an immutable private topic draft",
+				"importTopicDraft":           "Map and admit a portable topic draft",
+				"onboardTopicProfile":        "Create an unresolved topic draft from active profile evidence",
+				"getTopicDraft":              "Read the current private draft",
+				"mutateTopicEntities":        "Apply atomic entity CRUD to a new private draft revision",
+				"rebindTopicDataset":         "Move a dataset to active profile evidence and rewrite references",
+				"enhanceTopicDraft":          "Advance one bounded resumable semantic generation step",
+				"getTopicDraftVersion":       "Read an exact private draft revision",
+				"getTopicDraftHistory":       "List scoped private draft revision metadata",
+				"diffTopicDraft":             "Compare two exact private draft revisions",
+				"exportTopicDraft":           "Export a scoped draft through logical binding slots",
+				"reviewTopic":                "Record an immutable review of an exact draft digest",
+				"publishTopic":               "Publish a reviewed topic with all matching facet generations",
+				"getPublishedTopic":          "Read the retained active published topic",
+				"getPublishedTopicVersion":   "Read an exact retained published topic version",
+				"getTopicContract":           "Read a published topic after current source validation",
+				"getTopicHealth":             "Read the retained current-source health observation",
+				"recheckTopicHealth":         "Recheck public source continuity and commit a complete observation",
+				"rollbackTopic":              "Restore an exact retained topic version and facet set",
+				"archiveTopic":               "Archive the active topic and every matching facet head",
+				"saveRuleDraft":              "Create or edit an immutable proposed ruleset",
+				"reviewRules":                "Record an immutable review of an exact ruleset draft",
+				"listTopics":                 "List authorized active topic publications without source or model work",
+				"publishRules":               "Activate an approved ruleset for the current topic version",
+				"getPublishedRules":          "Read the active published ruleset",
+				"getPublishedRuleVersion":    "Read an exact retained ruleset version",
+				"evaluateRules":              "Evaluate active hard constraints over explicit semantic references",
+				"previewClarifications":      "Preview conditional questions and typed effects without publication",
+				"exportClarifications":       "Export exact reviewed rules with explicit clarification migration dispositions",
+				"previewClarificationImport": "Validate an exact-topic portable ruleset before a new reviewed draft",
+				"getPublishedRulePatterns":   "Read detached clarification patterns from a retained ruleset",
+				"replayRules":                "Replay deterministic constraints against exact retained rule pins",
+				"shadowRules":                "Compare deterministic constraints across retained rule pins",
+				"readRuleInvalidations":      "Read rule lifecycle fences for dependent evidence consumers",
+				"retireRules":                "Retire the active ruleset with revision CAS",
 			}[r.id],
 			ResourceLoader: r.owner, Audit: r.audit, Response: response,
 			Errors: []api.ErrorResponse{
@@ -216,7 +222,7 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 		}
 		if rules == nil {
 			switch selected.ID {
-			case "saveRuleDraft", "reviewRules", "publishRules", "getPublishedRules", "getPublishedRuleVersion", "evaluateRules", "getPublishedRulePatterns", "replayRules", "shadowRules", "readRuleInvalidations", "retireRules":
+			case "previewClarifications", "exportClarifications", "previewClarificationImport", "saveRuleDraft", "reviewRules", "publishRules", "getPublishedRules", "getPublishedRuleVersion", "evaluateRules", "getPublishedRulePatterns", "replayRules", "shadowRules", "readRuleInvalidations", "retireRules":
 				failure(w, store.ErrNotFound)
 				return
 			}
@@ -388,6 +394,25 @@ func Handler(verifier *auth.Verifier, service *drafts.Service, published *topics
 			if err = decode(&in); err == nil {
 				out, err = rules.Evaluate(r.Context(), e, id, in)
 			}
+		case "previewClarifications":
+			var in rulesets.ClarificationPreviewRequest
+			if err = decode(&in); err == nil {
+				if in.Definition.Topic != id {
+					err = store.ErrInvalid
+				} else {
+					out, err = rules.PreviewClarifications(r.Context(), e, in)
+				}
+			}
+		case "exportClarifications":
+			var in rulesets.ClarificationExportRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.ExportClarifications(r.Context(), e, id, in)
+			}
+		case "previewClarificationImport":
+			var in rulesets.ClarificationImportRequest
+			if err = decode(&in); err == nil {
+				out, err = rules.PreviewClarificationImport(r.Context(), e, id, in)
+			}
 		case "getPublishedRulePatterns":
 			var in RuleVersionRequest
 			if err = decode(&in); err == nil {
@@ -453,8 +478,9 @@ func failure(w http.ResponseWriter, err error) {
 	status, code := classify(err)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(struct {
-		Error string `json:"error"`
-	}{code})
+		Error  string `json:"error"`
+		Reason string `json:"reason,omitempty"`
+	}{code, rulesets.IsClarificationImportError(err)})
 }
 
 func classify(err error) (int, string) {

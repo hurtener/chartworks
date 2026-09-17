@@ -331,12 +331,25 @@ func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparis
 		return rulesets.Comparison{}, err
 	}
 	defer cancel()
+	baselineClarifications, err := clarificationComparisonJSON(comparison.BaselineClarifications, comparison.Baseline)
+	if err != nil {
+		return rulesets.Comparison{}, err
+	}
+	var candidateClarifications []byte
+	if comparison.Candidate != nil {
+		candidateClarifications, err = clarificationComparisonJSON(comparison.CandidateClarifications, *comparison.Candidate)
+		if err != nil {
+			return rulesets.Comparison{}, err
+		}
+	} else if len(comparison.CandidateClarifications) != 0 {
+		return rulesets.Comparison{}, store.ErrInvalid
+	}
 	created := comparison.CreatedAt
 	if created.IsZero() {
 		created = time.Now().UTC()
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_comparison_evidence(tenant_id,comparison_id,actor_id,session_id,topic_id,mode,topic_version,pack_digest,references_json,baseline_rule_version,baseline_result,candidate_rule_version,candidate_result,changed,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb,$14,$15)`, e.Tenant(), comparison.ID, e.User(), e.Session(), comparison.Topic, comparison.Mode, comparison.Baseline.TopicVersion, comparison.Baseline.PackDigest, references, comparison.Baseline.RuleVersion, baseline, candidateVersion, candidateResult, comparison.Changed, created)
+		_, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_comparison_evidence(tenant_id,comparison_id,actor_id,session_id,topic_id,mode,topic_version,pack_digest,references_json,baseline_rule_version,baseline_result,candidate_rule_version,candidate_result,changed,created_at,baseline_clarification_result,candidate_clarification_result) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb,$14,$15,$16::jsonb,$17::jsonb)`, e.Tenant(), comparison.ID, e.User(), e.Session(), comparison.Topic, comparison.Mode, comparison.Baseline.TopicVersion, comparison.Baseline.PackDigest, references, comparison.Baseline.RuleVersion, baseline, candidateVersion, candidateResult, comparison.Changed, created, baselineClarifications, candidateClarifications)
 		return err
 	})
 	if err != nil {

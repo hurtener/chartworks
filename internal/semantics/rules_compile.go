@@ -114,6 +114,15 @@ func validateRuleShape(p RuleSetDefinition) error {
 	if len(p.Rules) > 256 || len(p.Patterns) > 128 {
 		return invalid(CodeLimit, "ruleset")
 	}
+	conditionalSlots := 0
+	for _, pattern := range p.Patterns {
+		if pattern.Policy != nil && !pattern.Policy.Disabled {
+			conditionalSlots += len(pattern.Slots)
+		}
+	}
+	if conditionalSlots > 64 {
+		return invalid(CodeLimit, "patterns.slots")
+	}
 	for i, rule := range p.Rules {
 		path := "rules[" + itoa(i) + "]"
 		if !identity.Identifier(rule.ID) || !identity.Identifier(rule.Version) || !validProvenance(rule.Provenance) || rule.Priority < -1000 || rule.Priority > 1000 {

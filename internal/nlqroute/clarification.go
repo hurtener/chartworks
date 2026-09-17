@@ -244,7 +244,7 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 		for _, group := range result.Clarifications {
 			clarification.Errors = append(clarification.Errors, group.Errors...)
 			for _, question := range group.Slots {
-				if question.Outcome != semantics.ClarificationMissing {
+				if question.Outcome != semantics.ClarificationMissing || question.Reason == "dependency_missing" {
 					continue
 				}
 				clarification.Questions = append(clarification.Questions, question)

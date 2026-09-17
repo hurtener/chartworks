@@ -11,7 +11,7 @@ type clarificationEffectOwner struct {
 }
 
 func clarificationField(model RuleModel, target Reference) Reference {
-	if target.Kind == KindColumn {
+	if target.Kind == KindColumn || target.Kind == KindMeasure {
 		return target
 	}
 	if deps := model.graph[target]; len(deps) == 1 && deps[0].Kind == KindColumn {

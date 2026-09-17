@@ -111,7 +111,7 @@ func TestCW01(t *testing.T) {
 	t.Run("AC05", func(t *testing.T) {
 		initial := f.plan(t, f.question("Show optional sales", nlq.LanguageEnglish), "amount-optional", cw01Number("10"))
 		f.run(t, initial, 1, true)
-		if len(initial.Route.Resolutions) != 1 || initial.Bindings.Validation == "" || initial.Route.Context.Constraints == nil {
+		if len(initial.Route.Resolutions) != 1 || initial.Bindings.Validation == nil || initial.Route.Context.Constraints == nil {
 			t.Fatal("resolution did not reach validated plan receipt")
 		}
 		scope, err := store.NewScope(f.e.Tenant(), f.e.User())
