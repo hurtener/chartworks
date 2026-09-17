@@ -31,7 +31,9 @@ func newCW01Fixture(t *testing.T) *cw01Fixture {
 		t.Fatal(err)
 	}
 	old := pack.Datasets[0]
-	profile := f.profile(t, engineering.ProfileSpec{ID: "cw01-typed-profile", Source: old.Source.Source, Context: old.Source.Context, Dataset: old.ID, Columns: []string{"id", "amount", "created_at", "active", "name"}, SkipLLM: true}).Profile.Profile
+	// The topic fixture already published a profile for this source/dataset.
+	// Reprofiling must name that exact predecessor instead of bypassing its CAS.
+	profile := f.profile(t, engineering.ProfileSpec{ID: "cw01-typed-profile", Previous: old.Source.ProfileVersion, Source: old.Source.Source, Context: old.Source.Context, Dataset: old.ID, Columns: []string{"id", "amount", "created_at", "active", "name"}, SkipLLM: true}).Profile.Profile
 	dataset := semantics.Dataset{ID: profile.Dataset, Name: "Sales", Source: semantics.SourceReference{Source: old.Source.Source, Context: old.Source.Context, Dataset: profile.Dataset, SourceRevision: profile.SourceRevision, ProfileVersion: profile.Version, ProfileDigest: profile.DeterministicHash()}}
 	for _, column := range profile.Schema {
 		switch column.Name {
