@@ -33,6 +33,13 @@ func (s *Delivery) describeBlockSelectors(ctx context.Context, e identity.Envelo
 		_, selection, err := ResolveOutputSelection(Definition{SchemaVersion: block.SchemaVersion, Metadata: block.Metadata, Outputs: block.Outputs}, widget.Block.Outputs)
 		if err != nil {
 			target.Code = compositionFailure(err)
+			// A published floating block can lose all enabled defaults. Preserve
+			// its already-authorized choices for explanation, not execution.
+			// Explicit invalid requests have no resolved selection to expose.
+			if widget.Block.Outputs == nil && SelectionErrorCode(err) == "output_selection_empty" && selection.Version == 2 {
+				target.Selection = &selection
+				target.Outputs = clone(selection.Selected)
+			}
 			continue
 		}
 		caps, err := resolveQueryLimits(s.runs.limits, 3, block.QueryLimits, widget.Block.Limits)
