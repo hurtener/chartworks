@@ -1,16 +1,15 @@
-"""Apply the inspected explicit-timezone finding and bounded regression tests."""
+"""Apply the exact-decimal adapter review finding without relaxing precision."""
 from pathlib import Path
 import subprocess
 
 expected = {
-    "internal/exec/business_model.go": "33f1612d93dc511928dcfaa4c68cf7a613f7404d",
-    "internal/semantics/clarification_compile.go": "70c57ca366ab3d89bfc195a9c849ec26cde4ea9b",
-    "internal/semantics/clarification_values.go": "61362ad35d10bc9e131ef974f70e2a8a56fbde44",
+    "internal/exec/business_model.go": "0368e7bd1b6a70e765d0c2eaef9d13d403915e4b",
+    "internal/exec/business_sql.go": "77c9fe68280874d34199cc01574807bfb45135de",
 }
 pending = {}
 for path, sha in expected.items():
     if subprocess.check_output(["git", "hash-object", path], text=True).strip() != sha:
-        raise SystemExit(f"{path}: inspected source changed; re-review required")
+        raise SystemExit(f"{path}: reviewed source changed")
     pending[path] = Path(path).read_text()
 
 def replace(path, before, after):
@@ -18,96 +17,83 @@ def replace(path, before, after):
         raise SystemExit(f"{path}: reviewed anchor changed")
     pending[path] = pending[path].replace(before, after, 1)
 
-replace("internal/semantics/clarification_compile.go",
-        'len(e.TimeZone) == 0 || len(e.TimeZone) > 128',
-        'len(e.TimeZone) == 0 || e.TimeZone == "Local" || len(e.TimeZone) > 128')
-replace("internal/semantics/clarification_values.go",
-        'value.TimeZone != effect.TimeZone || len(value.TimeZone) > 128',
-        'value.TimeZone != effect.TimeZone || value.TimeZone == "" || value.TimeZone == "Local" || len(value.TimeZone) > 128')
 replace("internal/exec/business_model.go",
-        '\t\t\tif _, err := time.LoadLocation(c.TimeZone); err != nil {',
-        '\t\t\t// Empty and Local are runtime defaults, not reviewed timezone pins.\n\t\t\tif c.TimeZone == "" || c.TimeZone == "Local" {\n\t\t\t\treturn businessError(c, "time_zone", "invalid_time_zone")\n\t\t\t}\n\t\t\tif _, err := time.LoadLocation(c.TimeZone); err != nil {')
+        '\t\t\tlower, ok := businessDecimal(c.Value, c.Precision, c.Scale)',
+        '\t\t\t// Native decimal capacity also bounds integral digits. Do not\n\t\t\t// admit a declaration that only fits an approximate or partial digit.\n\t\t\tif binding.Dialect == "bigquery" && c.Precision-c.Scale > 38 {\n\t\t\t\treturn businessError(c, "precision", "unsupported_exact_precision")\n\t\t\t}\n\t\t\tlower, ok := businessDecimal(c.Value, c.Precision, c.Scale)')
+replace("internal/exec/business_sql.go",
+        'if c.Precision > 38 || c.Scale > 9 {',
+        'if c.Precision-c.Scale > 29 || c.Scale > 9 {')
 
-new_files = {
-"internal/semantics/clarification_timezone_test.go": r'''package semantics
-
-import "testing"
-
-func TestClarificationRejectsImplicitTimezones(t *testing.T) {
-	for _, zone := range []string{"", "Local"} {
-		t.Run("policy/"+zone, func(t *testing.T) {
-			slot := cw01TimeSlot()
-			slot.Effect.TimeZone = zone
-			subject, definition := cw01Definition(t, slot)
-			if _, err := CompilePublishedRules(subject, definition); err == nil {
-				t.Fatal("host-dependent temporal policy compiled")
-			}
-			for _, locale := range []string{"en", "es"} {
-				input := ClarificationValue{Time: &ClarificationTimeInput{
-					Start: "2026-01-01", End: "2026-02-01", Grain: "month",
-					Calendar: "gregorian", TimeZone: zone,
-				}}
-				out, err := ResolveClarificationValue(slot, input, locale)
-				if err == nil || err.Code != "calendar_mismatch" || err.Message == "" || out.Time != nil || out.Effect != nil {
-					t.Fatal("implicit timezone produced a partial resolution or no repair error")
-				}
-			}
-		})
-	}
-	slot := cw01TimeSlot()
-	slot.Effect.TimeZone = "UTC"
-	subject, definition := cw01Definition(t, slot)
-	if _, err := CompilePublishedRules(subject, definition); err != nil {
-		t.Fatal("explicit UTC policy rejected", err)
-	}
-	out, err := ResolveClarificationValue(slot, ClarificationValue{Time: &ClarificationTimeInput{
-		Start: "2026-01-01", End: "2026-02-01", Grain: "month", Calendar: "gregorian", TimeZone: "UTC",
-	}}, "en")
-	if err != nil || out.Time == nil || out.Time.StartUTC != "2026-01-01T00:00:00Z" || out.Time.EndUTC != "2026-02-01T00:00:00Z" {
-		t.Fatal("explicit UTC lost exact canonical boundaries", err)
-	}
-}
-''',
-"internal/exec/business_timezone_test.go": r'''package exec
+path = "internal/exec/business_precision_test.go"
+if Path(path).exists():
+    raise SystemExit("precision regression already exists; do not overwrite")
+pending[path] = r'''package exec
 
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 )
 
-func TestBusinessBindingRejectsImplicitTimezones(t *testing.T) {
+// Synthetic adapter tests verify the complete declared exact domain. They do
+// not claim live warehouse qualification or use floating-point intermediates.
+func TestBusinessDecimalNativeIntegralCapacity(t *testing.T) {
 	binding := parserBinding()
-	binding.Relations[0].Columns[1].NativeType = "timestamptz"
-	c := BusinessConstraint{
-		Resolution: Hash("reviewed-explicit-zone"), Dataset: "sales", Column: "amount", SourceRevision: 1,
-		Kind: "time_window", Operator: "range", Nulls: "exclude", Bounds: "[)",
-		TemporalType: "timestamptz", Calendar: "gregorian", Grain: "day",
-		Value: "2026-01-02T00:00:00Z", Upper: "2026-01-03T00:00:00Z",
+	binding.Dialect = "bigquery"
+	for _, tc := range []struct {
+		precision, scale int
+		cast             string
+	}{
+		{29, 0, "NUMERIC"},
+		{38, 9, "NUMERIC"},
+		{30, 0, "BIGNUMERIC"},
+		{38, 0, "BIGNUMERIC"},
+		{38, 8, "BIGNUMERIC"},
+		{39, 10, "BIGNUMERIC"},
+		{76, 38, "BIGNUMERIC"},
+		{4, 4, "NUMERIC"},
+	} {
+		t.Run(strconv.Itoa(tc.precision)+"/"+strconv.Itoa(tc.scale), func(t *testing.T) {
+			c := businessFixtureConstraint()
+			c.Precision, c.Scale = tc.precision, tc.scale
+			c.Value = strings.Repeat("9", tc.precision-tc.scale)
+			if c.Value == "" {
+				c.Value = "0"
+			}
+			if tc.scale > 0 {
+				c.Value += "." + strings.Repeat("9", tc.scale)
+			}
+			if err := ValidateBusinessConstraints(binding, []BusinessConstraint{c}); err != nil {
+				t.Fatal("representable exact declaration rejected", err)
+			}
+			out, err := BindBusinessConstraints(context.Background(), binding, "SELECT `id` FROM `analytics`.`sales`", nil, []BusinessConstraint{c})
+			if err != nil || len(out.Parameters) != 1 || out.Parameters[0].Value != c.Value || !strings.Contains(out.SQL, " AS "+tc.cast+")") {
+				t.Fatal("native decimal cast lost exact declared capacity", err)
+			}
+			if out.Receipt.Validation != nil || out.Receipt.Statement != Hash([]any{out.SQL, out.Parameters}) {
+				t.Fatal("decimal binding fabricated read proof or lost exact parameter seal")
+			}
+		})
 	}
-	for _, zone := range []string{"", "Local"} {
-		c.TimeZone = zone
+	for _, precision := range []int{39, 76} {
+		c := businessFixtureConstraint()
+		c.Precision, c.Scale = precision, 0
+		// Even a currently small value cannot make an unsupported declared
+		// domain safe for a later correction in the same reviewed policy.
+		c.Value = "1"
 		var failure *BusinessConstraintError
-		if err := ValidateBusinessConstraints(binding, []BusinessConstraint{c}); !errors.As(err, &failure) || failure.Code != "invalid_time_zone" {
-			t.Fatal("implicit zone passed pre-provider binding validation", err)
+		if err := ValidateBusinessConstraints(binding, []BusinessConstraint{c}); !errors.As(err, &failure) || failure.Code != "unsupported_exact_precision" {
+			t.Fatal("unsupported integral capacity passed pre-provider validation", err)
 		}
-		out, err := BindBusinessConstraints(context.Background(), binding, "SELECT id FROM analytics.sales", nil, []BusinessConstraint{c})
-		if !errors.Is(err, ErrBinding) || out.SQL != "" || len(out.Parameters) != 0 || len(out.Receipt.Bindings) != 0 {
-			t.Fatal("implicit zone left a partial query or predicate", err)
+		out, err := BindBusinessConstraints(context.Background(), binding, "SELECT `id` FROM `analytics`.`sales`", nil, []BusinessConstraint{c})
+		if !errors.Is(err, ErrUnsupported) || out.SQL != "" || len(out.Parameters) != 0 || len(out.Receipt.Bindings) != 0 {
+			t.Fatal("unsupported precision produced a partial constraint", err)
 		}
 	}
-	c.TimeZone = "UTC"
-	out, err := BindBusinessConstraints(context.Background(), binding, "SELECT id FROM analytics.sales", nil, []BusinessConstraint{c})
-	if err != nil || len(out.Parameters) != 2 || out.Parameters[0].Value != c.Value || out.Parameters[1].Value != c.Upper {
-		t.Fatal("explicit UTC binding lost exact interval", err)
-	}
 }
-''',
-}
-for path, text in new_files.items():
-    if Path(path).exists():
-        raise SystemExit(f"{path}: new regression already exists; do not overwrite")
-    pending[path] = text
+'''
 for path, text in sorted(pending.items()):
     Path(path).write_text(text)
-print("Applied explicit-timezone validation and source/parser regressions")
+print("Applied exact native decimal-capacity validation, cast selection and boundary tests")
