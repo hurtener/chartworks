@@ -73,6 +73,9 @@ func BindBusinessConstraints(ctx context.Context, binding Binding, statement str
 	if ctx == nil || len(statement) == 0 || len(statement) > 32<<10 || len(parameters) > 64 {
 		return BusinessBoundQuery{}, businessSQLFailure("unsupported_statement_size")
 	}
+	if err := ctx.Err(); err != nil {
+		return BusinessBoundQuery{}, err
+	}
 	if err := ValidateBusinessConstraints(binding, constraints); err != nil {
 		return BusinessBoundQuery{}, err
 	}
@@ -82,6 +85,9 @@ func BindBusinessConstraints(ctx context.Context, binding Binding, statement str
 		}
 	}
 	if len(constraints) == 0 {
+		if err := ctx.Err(); err != nil {
+			return BusinessBoundQuery{}, err
+		}
 		return BusinessBoundQuery{SQL: statement, Parameters: append([]Parameter(nil), parameters...)}, nil
 	}
 	constraints = append([]BusinessConstraint(nil), constraints...)
@@ -205,7 +211,10 @@ func BindBusinessConstraints(ctx context.Context, binding Binding, statement str
 	if len(bound) > 32<<10 || strings.ContainsRune(bound, 0x1f) {
 		return BusinessBoundQuery{}, businessSQLFailure("unsupported_statement_size")
 	}
-	return BusinessBoundQuery{SQL: bound, Parameters: outParams, Receipt: BusinessBindingReceipt{SchemaVersion: 1, SourceBinding: Hash(binding), Constraints: Hash(constraints), Statement: Hash([]any{bound, outParams}), Bindings: bindings}}, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return BusinessBoundQuery{}, err
+	}
+	return BusinessBoundQuery{SQL: bound, Parameters: outParams, Receipt: BusinessBindingReceipt{SchemaVersion: 1, SourceBinding: Hash(binding), Constraints: Hash(constraints), Statement: Hash([]any{bound, outParams}), Bindings: bindings}}, nil
 }
 
 func businessAggregate(aggregation, column string) (string, error) {
