@@ -66,3 +66,14 @@ kind count and are exercised by the actual `TestPhase31/AC04` browser component;
 `TestCW02RichCharts` also asserts persistence/publication/execution/delivery effects.
 No new framework, host protocol, standalone builder or dashboard-grid redesign is
 introduced, and the broader phase status/acceptance ownership is unchanged.
+
+## CW-03 output-intent and evidence-policy continuation
+
+AC02/AC03/AC05/AC08: localized display-ordered selectors expose selected/omitted/disabled metadata independently of selected data; retained navigation and explicit filter runs preserve accepted selection order and caps; actual browser assertions verify both.
+
+Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
+[v2 field-level contract](../contracts/reporting-output-intent-v2.md). The
+[scoped adversarial record](../reviews/cw-03-adversarial.md) links real PostgreSQL,
+source execution, provider-fixture and browser checks. Keep the existing named
+phase criteria and phase status; this assignment closes only its three owned gap
+entries, not the whole phase, other reporting work, or full migration/release.
