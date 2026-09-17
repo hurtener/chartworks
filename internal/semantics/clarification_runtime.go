@@ -203,9 +203,13 @@ func RedactClarificationText(text string, answers []ClarificationAnswer, resolut
 
 // String and GoString keep ordinary structured formatting content-free. JSON
 // serialization is reserved for the caller-owned API and protected domain store.
-func (ClarificationAnswer) String() string         { return "clarification-answer(redacted)" }
-func (a ClarificationAnswer) GoString() string     { return a.String() }
-func (ClarificationResolution) String() string     { return "clarification-resolution(redacted)" }
+func (ClarificationAnswer) String() string { return "clarification-answer(redacted)" }
+
+// GoString preserves answer redaction for Go-syntax formatting.
+func (a ClarificationAnswer) GoString() string { return a.String() }
+func (ClarificationResolution) String() string { return "clarification-resolution(redacted)" }
+
+// GoString preserves resolution redaction for Go-syntax formatting.
 func (r ClarificationResolution) GoString() string { return r.String() }
 
 func clarificationPresentationOrder(slots []ClarificationSlot) []ClarificationSlot {

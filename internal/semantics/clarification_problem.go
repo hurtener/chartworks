@@ -15,12 +15,17 @@ type ClarificationProblem struct {
 	Fields    []ClarificationFieldError  `json:"fields,omitempty"`
 }
 
+// LogValue excludes repair payloads from ordinary structured logs.
 func (ClarificationProblem) LogValue() slog.Value {
 	return slog.StringValue("clarification-problem(redacted)")
 }
+
+// LogValue excludes submitted answer values from ordinary structured logs.
 func (ClarificationAnswer) LogValue() slog.Value {
 	return slog.StringValue("clarification-answer(redacted)")
 }
+
+// LogValue excludes resolved scalar values from ordinary structured logs.
 func (ClarificationResolution) LogValue() slog.Value {
 	return slog.StringValue("clarification-resolution(redacted)")
 }

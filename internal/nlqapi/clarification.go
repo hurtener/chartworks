@@ -2,6 +2,7 @@ package nlqapi
 
 import (
 	"errors"
+
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 )

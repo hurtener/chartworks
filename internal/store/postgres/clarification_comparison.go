@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"encoding/json"
+
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/store"

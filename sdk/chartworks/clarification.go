@@ -2,18 +2,29 @@ package chartworks
 
 import (
 	"encoding/json"
+	"io"
+
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/semantics"
-	"io"
 )
 
-// These aliases preserve the same versioned contract for HTTP, MCP and in-process
-// clients. Only the service can resolve them; they never confer read authority.
+// ClarificationAnswer preserves the versioned HTTP, MCP and in-process input.
+// Only the service can resolve it; it never confers read authority.
 type ClarificationAnswer = semantics.ClarificationAnswer
+
+// ClarificationValue preserves the service's closed typed-answer union.
 type ClarificationValue = semantics.ClarificationValue
+
+// ClarificationTimeInput carries explicit calendar, timezone and interval inputs.
 type ClarificationTimeInput = semantics.ClarificationTimeInput
+
+// ClarificationNumberInput preserves exact decimal text and the declared unit.
 type ClarificationNumberInput = semantics.ClarificationNumberInput
+
+// ClarificationProblem carries a bounded localized repair response.
 type ClarificationProblem = semantics.ClarificationProblem
+
+// ClarificationFieldError identifies a field and a value-free repair message.
 type ClarificationFieldError = semantics.ClarificationFieldError
 
 // DecodeClarificationProblem validates an isolated repair payload from an HTTP

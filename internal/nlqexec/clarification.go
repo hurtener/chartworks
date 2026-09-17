@@ -36,10 +36,13 @@ type ClarificationEvidence struct {
 	Changes        []ClarificationChange       `json:"changes,omitempty"`
 }
 
+// LogValue omits protected clarification evidence from ordinary structured logs.
 func (ClarificationEvidence) LogValue() slog.Value {
 	return slog.StringValue("clarification-evidence(redacted)")
 }
-func (ClarificationEvidence) String() string     { return "clarification-evidence(redacted)" }
+func (ClarificationEvidence) String() string { return "clarification-evidence(redacted)" }
+
+// GoString preserves evidence redaction for Go-syntax formatting.
 func (v ClarificationEvidence) GoString() string { return v.String() }
 
 // Only the current router can reevaluate persisted business evidence. A public

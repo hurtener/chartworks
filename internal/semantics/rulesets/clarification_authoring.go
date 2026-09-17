@@ -32,6 +32,7 @@ type PortableClarifications struct {
 	Dispositions  []ClarificationDisposition  `json:"dispositions"`
 }
 
+// ClarificationExportRequest selects an exact retained ruleset version.
 type ClarificationExportRequest struct {
 	Version string `json:"version"`
 }
@@ -46,6 +47,7 @@ type ClarificationImportRequest struct {
 	Cases             []semantics.ClarificationInput `json:"cases"`
 }
 
+// ClarificationImportPreview is a review-required proposal, never an activated policy.
 type ClarificationImportPreview struct {
 	Definition     semantics.RuleSetDefinition `json:"definition"`
 	Preview        ClarificationPreview        `json:"preview"`

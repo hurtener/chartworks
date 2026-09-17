@@ -103,6 +103,8 @@ type ClarificationAnswer struct {
 // governed text is Missing with an explicit unresolved_value field error.
 type ClarificationOutcome string
 
+// ClarificationNotApplicable, ClarificationSatisfied, ClarificationMissing,
+// ClarificationInvalid and ClarificationConflicting classify evaluated policy outcomes.
 const (
 	ClarificationNotApplicable ClarificationOutcome = "not_applicable"
 	ClarificationSatisfied     ClarificationOutcome = "satisfied"

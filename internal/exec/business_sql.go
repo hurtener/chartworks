@@ -31,13 +31,17 @@ type BusinessBindingReceipt struct {
 	Validation    *Receipt                   `json:"validation,omitempty"`
 }
 
+// BusinessBoundQuery carries protected SQL and parameters pending ordinary read validation.
 type BusinessBoundQuery struct {
 	SQL        string                 `json:"-"`
 	Parameters []Parameter            `json:"-"`
 	Receipt    BusinessBindingReceipt `json:"receipt"`
 }
 
-func (BusinessBoundQuery) String() string     { return "business-bound-query(redacted)" }
+// String omits SQL and parameter values from ordinary formatted logs.
+func (BusinessBoundQuery) String() string { return "business-bound-query(redacted)" }
+
+// GoString preserves protected-query redaction for Go-syntax formatting.
 func (b BusinessBoundQuery) GoString() string { return b.String() }
 
 type businessRange struct {
@@ -260,7 +264,8 @@ func businessPredicate(dialect, column string, c BusinessConstraint, scalars *[]
 			return "CAST(" + marker + " AS " + typeName + ")", nil
 		case "time_window":
 			typeName := "DATE"
-			if c.TemporalType == "timestamp" {
+			switch c.TemporalType {
+			case "timestamp":
 				switch dialect {
 				case "sqlserver":
 					typeName = "DATETIME2"
@@ -271,7 +276,7 @@ func businessPredicate(dialect, column string, c BusinessConstraint, scalars *[]
 				default:
 					typeName = "TIMESTAMP"
 				}
-			} else if c.TemporalType == "timestamptz" {
+			case "timestamptz":
 				switch dialect {
 				case "postgres":
 					typeName = "TIMESTAMPTZ"
@@ -420,7 +425,7 @@ func businessLayout(statement string, tokens []businessToken, binding Binding) (
 	}
 	aliases := map[string]bool{}
 	for i := from + 1; i < fromEnd; i++ {
-		if i != from+1 && !(tokens[i-1].depth == 0 && (tokens[i-1].word("join") || tokens[i-1].text == ",")) {
+		if i != from+1 && (tokens[i-1].depth != 0 || !tokens[i-1].word("join") && tokens[i-1].text != ",") {
 			continue
 		}
 		if tokens[i].depth != 0 {

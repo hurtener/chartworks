@@ -1,9 +1,10 @@
 package nlqroute
 
 import (
+	"sort"
+
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/semantics"
-	"sort"
 )
 
 type clarificationPhysicalField struct{ Dataset, Column, Aggregation string }

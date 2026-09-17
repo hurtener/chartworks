@@ -2,11 +2,12 @@ package nlqapi
 
 import (
 	"encoding/json"
-	"github.com/hurtener/chartworks/internal/nlqroute"
-	"github.com/hurtener/chartworks/internal/semantics"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/semantics"
 )
 
 func TestClarificationRepairProjection(t *testing.T) {

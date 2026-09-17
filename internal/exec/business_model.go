@@ -50,7 +50,11 @@ func (e *BusinessConstraintError) Unwrap() error {
 	}
 	return ErrBinding
 }
-func (BusinessConstraint) String() string     { return "business-constraint(redacted)" }
+
+// String excludes business scalar values from ordinary formatted logs.
+func (BusinessConstraint) String() string { return "business-constraint(redacted)" }
+
+// GoString preserves value redaction for Go-syntax formatting.
 func (c BusinessConstraint) GoString() string { return c.String() }
 
 func businessError(c BusinessConstraint, field, code string) error {

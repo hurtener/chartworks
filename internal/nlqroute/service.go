@@ -714,32 +714,6 @@ func referenceText(ref semantics.Reference) string {
 	return text
 }
 
-func appendUniqueRef(refs []semantics.Reference, ref semantics.Reference) []semantics.Reference {
-	for _, existing := range refs {
-		if existing == ref {
-			return refs
-		}
-	}
-	return append(refs, ref)
-}
-
-func choiceExists(choices []semantics.ClarificationChoice, value string) bool {
-	for _, choice := range choices {
-		if choice.ID == value {
-			return true
-		}
-	}
-	return false
-}
-
-func choicesFor(choices []semantics.ClarificationChoice) []ClarificationChoice {
-	out := make([]ClarificationChoice, len(choices))
-	for i := range choices {
-		out[i] = ClarificationChoice{ID: choices[i].ID, Label: choices[i].Label}
-	}
-	return out
-}
-
 func confirmJoins(admitted []admittedTopic, choices []JoinChoice) *Clarification {
 	if len(choices) != len(admitted) {
 		return &Clarification{Reason: "ambiguous_join", Prompt: "Choose one confirmed join for each topic before combining them."}
@@ -1080,28 +1054,6 @@ func topicRevisions(admitted []admittedTopic) []nlq.TopicRevision {
 	out := make([]nlq.TopicRevision, len(admitted))
 	for i, item := range admitted {
 		out[i] = nlq.TopicRevision{Topic: item.id, Version: item.publication.State.Version}
-	}
-	return out
-}
-
-func topicVersions(admitted []admittedTopic, item admittedTopic) []string {
-	out := make([]string, 0, len(admitted)+1)
-	for _, existing := range admitted {
-		out = append(out, existing.publication.State.Version)
-	}
-	out = append(out, item.publication.State.Version)
-	return out
-}
-
-func ruleVersions(admitted []admittedTopic, item admittedTopic) []string {
-	out := make([]string, 0, len(admitted)+1)
-	for _, existing := range admitted {
-		if existing.hasRules {
-			out = append(out, existing.rules.State.Version)
-		}
-	}
-	if item.hasRules {
-		out = append(out, item.rules.State.Version)
 	}
 	return out
 }

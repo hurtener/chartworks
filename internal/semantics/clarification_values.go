@@ -19,7 +19,7 @@ func clarificationError(locale, field, code string) *ClarificationFieldError {
 	case "invalid_union":
 		message, spanish = "Supply exactly one typed value.", "Ingresá exactamente un valor tipado."
 	case "invalid_number":
-		message, spanish = "Use a finite decimal without grouping separators or exponent notation.", "Usá un decimal finito sin separadores de miles ni notación exponencial."
+		message, spanish = "Use a finite decimal without grouping separators or exponent notation.", "Usá un decimal finito sin separadores de miles ni notación con exponentes."
 	case "numeric_precision":
 		message, spanish = "The number exceeds the reviewed precision or scale; no rounding was applied.", "El número supera la precisión o escala revisada; no se aplicó redondeo."
 	case "invalid_range":
