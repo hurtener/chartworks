@@ -256,6 +256,13 @@ func validateRichShape(ctx context.Context, d Data, m Mapping, l Limits) error {
 		if !oneOf(c.Aggregation, "sum", "count") || c.Format.Percent != "" {
 			return ErrUnsuitable
 		}
+		// A custom sort may stop at a hierarchy prefix, but may not skip or
+		// reorder levels or place a measure before the complete path.
+		for i, order := range m.Order {
+			if i < len(b.Hierarchy) && order.Column != b.Hierarchy[i] {
+				return ErrUnsuitable
+			}
+		}
 	}
 	if m.Kind == Line || m.Kind == Area {
 		if len(m.Order) == 0 || m.Order[0].Column != b.Category {

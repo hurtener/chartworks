@@ -102,6 +102,16 @@ func RichCases() []RichFixture {
 		balanced.Rows[i][3].Value = value
 	}
 	out = append(out, RichFixture{Name: "hierarchy_balanced", Kind: charts.Treemap, Data: balanced, Bindings: charts.Bindings{Hierarchy: []string{"region", "country", "product"}, Value: "value"}})
+	// Equal typed coordinates can arrive with different exact source spellings.
+	// Shared nodes must use consistent representative labels without rewriting rows.
+	aliases := richHierarchy()
+	aliases.Columns[0].Type = "decimal"
+	aliases.Columns[1].Type = "temporal"
+	aliases.Rows = [][]charts.Cell{
+		richRow("1.0", "2026-01-01T00:00:00Z", "Device", "10.00"),
+		richRow("1e0", "2026-01-01T01:00:00+01:00", "Sensor", "20.00"),
+	}
+	out = append(out, RichFixture{Name: "hierarchy_equivalent_parents", Kind: charts.Treemap, Data: aliases, Bindings: charts.Bindings{Hierarchy: []string{"region", "country", "product"}, Value: "value"}})
 	missing := richTime(false)
 	for i := range missing.Rows {
 		missing.Rows[i][1], missing.Rows[i][2] = charts.Cell{Null: true}, charts.Cell{Null: true}

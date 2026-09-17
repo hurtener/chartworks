@@ -331,6 +331,10 @@ func buildHierarchy(ctx context.Context, d Data, m Mapping, indexes []int, out *
 				nodes[key] = a
 				ordered = append(ordered, a)
 			}
+			// Typed-equal parent coordinates share the first ordered spelling.
+			// Reuse that label in descendants so their paths agree with the
+			// shared node; out.Rows still retains every original source cell.
+			path[level] = a.node.Path[level]
 			a.sum.Add(a.sum, r)
 			if scale > a.scale {
 				a.scale = scale
