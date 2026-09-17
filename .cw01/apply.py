@@ -1,125 +1,199 @@
 from pathlib import Path
 
 
-def edit(path, before, after, count=1):
-    p=Path(path); text=p.read_text()
-    if text.count(before)!=count: raise SystemExit(f'{path}: changed anchor {text.count(before)}')
-    p.write_text(text.replace(before,after))
+def edit(path,before,after,count=1):
+ p=Path(path);text=p.read_text()
+ if text.count(before)!=count:raise SystemExit(f'{path}: changed anchor {text.count(before)}')
+ p.write_text(text.replace(before,after))
 
 
 def create(path,text):
-    p=Path(path)
-    if p.exists(): raise SystemExit(f'{path}: exists')
-    p.write_text(text)
+ p=Path(path)
+ if p.exists():raise SystemExit(f'{path}: exists')
+ p.write_text(text)
 
-edit('internal/nlqexec/clarification_origin.go','"reflect"','"slices"')
-edit('internal/nlqexec/clarification_origin.go','reflect.DeepEqual(', 'slices.Equal(',4)
-edit('internal/semantics/clarification_values_test.go','!reflect.DeepEqual(en, es) || en.Time.StartUTC', '!reflect.DeepEqual(en.Time, es.Time) || !reflect.DeepEqual(en.Effect, es.Effect) || en.Locale != "en" || es.Locale != "es" || en.ParserVersion != es.ParserVersion || en.Time.StartUTC')
-edit('internal/semantics/clarification_types.go','type CanonicalClarificationTime struct {','type CanonicalClarificationTime struct {\n BoundaryPolicy string `json:"boundary_policy"`')
-edit('internal/semantics/clarification_values.go','''	case "unsupported_grain":''',''' case "ambiguous_calendar_boundary":
-  message,spanish="The local midnight is missing or ambiguous in the reviewed timezone. Choose an unambiguous boundary; no offset was guessed.","La medianoche local no existe o es ambigua en la zona horaria revisada. Elegí un límite inequívoco; no se supuso ningún desplazamiento horario."
-	case "unsupported_grain":''')
-edit('internal/semantics/clarification_values.go','''	return CanonicalClarificationTime{StartUTC:''',''' if !uniqueClarificationMidnight(start) || !uniqueClarificationMidnight(end) {
-  return CanonicalClarificationTime{},clarificationError(locale,"time.boundary","ambiguous_calendar_boundary")
- }
-	return CanonicalClarificationTime{BoundaryPolicy: ClarificationTimeBoundaryPolicy,StartUTC:''')
+edit('internal/exec/business_model.go','''		return category == "integer" || category == "number"''','''  if strings.HasPrefix(native,"float") || strings.HasPrefix(native,"double") || native=="real" {return false}
+		return category == "integer" || category == "number"''')
 
-create('internal/semantics/clarification_calendar.go',r'''package semantics
-
-import "time"
-
-// ClarificationTimeBoundaryPolicy is part of every canonical time resolution.
-// Dates mean local calendar midnights. Gaps and folds are rejected rather than
-// delegated to time.Date's unspecified choice of an offset during transitions.
-const ClarificationTimeBoundaryPolicy = "reject_missing_or_ambiguous_midnight"
-
-func uniqueClarificationMidnight(candidate time.Time) bool {
- if candidate.Hour()!=0 || candidate.Minute()!=0 || candidate.Second()!=0 || candidate.Nanosecond()!=0 {return false}
- zone:=candidate.Location()
- year,month,day:=candidate.Date()
- wall:=time.Date(year,month,day,0,0,0,0,time.UTC)
- // Adjacent zone periods cover every possible civil offset at this boundary.
- // ZoneBounds makes the work bounded by transitions, not by elapsed seconds.
- // An unusually dense/unsupported transition table fails closed.
- cursor,limit:=candidate.Add(-48*time.Hour),candidate.Add(48*time.Hour)
- offsets:=map[int]bool{}
- complete:=false
- for transitions:=0;transitions<16;transitions++ {
-  _,offset:=cursor.In(zone).Zone()
-  if offset < -24*60*60 || offset > 24*60*60 {return false}
-  offsets[offset]=true
-  _,end:=cursor.In(zone).ZoneBounds()
-  if end.IsZero() || end.After(limit) {complete=true;break}
-  if !end.After(cursor) {return false}
-  cursor=end
- }
- if !complete{return false}
- matches:=0
- for offset:=range offsets {
-  actual:=wall.Add(-time.Duration(offset)*time.Second).In(zone)
-  y,m,d:=actual.Date()
-  if y==year && m==month && d==day && actual.Hour()==0 && actual.Minute()==0 && actual.Second()==0 && actual.Nanosecond()==0 {matches++}
- }
- return matches==1
-}
-''')
-
-create('internal/semantics/clarification_calendar_test.go',r'''package semantics
+create('internal/exec/business_sql_test.go',r'''package exec
 
 import (
+ "context"
+ "encoding/json"
+ "errors"
+ "fmt"
+ "reflect"
+ "strings"
+ "sync"
  "testing"
- "time"
+
+ pgquery "github.com/wasilibs/go-pgquery"
 )
 
-func TestClarificationCalendarTransitions(t *testing.T) {
- for _,tc:=range []struct{name,zone,start,end string; accepted bool}{
-  {"ordinary-day","America/Argentina/Buenos_Aires","2026-01-02","2026-01-03",true},
-  {"leap-day","UTC","2024-02-29","2024-03-01",true},
-  {"missing-civil-day","Pacific/Apia","2011-12-30","2012-01-01",false},
-  {"ambiguous-midnight","America/Havana","2025-11-02","2025-11-03",false},
-  {"short-day-with-unambiguous-boundaries","America/New_York","2025-03-09","2025-03-10",true},
- } {t.Run(tc.name,func(t *testing.T){
-  slot:=cw01TimeSlot();slot.Effect.TimeZone=tc.zone;slot.Effect.Grains=[]string{"day"}
-  resolution,err:=ResolveClarificationValue(slot,ClarificationValue{Time:&ClarificationTimeInput{Start:tc.start,End:tc.end,Grain:"day",Calendar:"gregorian",TimeZone:tc.zone}},"en")
-  if (err==nil)!=tc.accepted {t.Fatalf("calendar acceptance: %v",err)}
-  if !tc.accepted {if resolution.Time!=nil {t.Fatal("invalid boundary produced partial resolution")};return}
-  if resolution.Time.BoundaryPolicy!=ClarificationTimeBoundaryPolicy || resolution.Time.Bounds!="[)" {t.Fatal("boundary policy missing")}
-  if tc.name=="short-day-with-unambiguous-boundaries" {
-   start,e1:=time.Parse(time.RFC3339,resolution.Time.StartUTC);end,e2:=time.Parse(time.RFC3339,resolution.Time.EndUTC)
-   if e1!=nil || e2!=nil || end.Sub(start)!=23*time.Hour {t.Fatal("calendar day coerced to 24 elapsed hours")}
-  }
+func businessFixtureConstraint() BusinessConstraint {
+ return BusinessConstraint{Resolution:Hash("reviewed-threshold"),Dataset:"sales",Column:"amount",SourceRevision:1,Kind:"number",Operator:"gte",Nulls:"exclude",Unit:"USD",Precision:38,Scale:6,Value:"9007199254740993.125"}
+}
+
+func TestBusinessBindingConjunctionAndParameterReceipts(t *testing.T) {
+ ctx:=context.Background();binding:=parserBinding();constraint:=businessFixtureConstraint()
+ cases:=[]struct{name,sql,fragment string;params []Parameter;count int}{
+  {"plain","SELECT id FROM analytics.sales ORDER BY id",`"sales"."amount" >=`,nil,1},
+  {"or-preserved","SELECT id FROM analytics.sales WHERE id=1 OR id=2 ORDER BY id",`WHERE (id=1 OR id=2) AND (`,nil,1},
+  {"alias","SELECT s.id FROM analytics.sales AS s WHERE s.name='a''b'",`"s"."amount" >=`,nil,1},
+  {"join","SELECT s.id FROM analytics.sales s JOIN analytics.items i ON s.id=i.sale_id",`"s"."amount" >=`,nil,1},
+  {"group-and-order","SELECT active,sum(amount) FROM analytics.sales GROUP BY active ORDER BY active",`WHERE`,nil,1},
+  {"repeated-parameter","SELECT id FROM analytics.sales WHERE id=$1 OR id=$1 LIMIT 10",`WHERE (id=$1 OR id=$2) AND (`,[]Parameter{{Kind:"integer",Value:"1"}},3},
+  {"parameter-before-filter","SELECT $1 AS label,id FROM analytics.sales ORDER BY id LIMIT $2",`WHERE`,[]Parameter{{Kind:"text",Value:"public label"},{Kind:"integer",Value:"20"}},3},
+  {"trailing-semicolon","SELECT id FROM analytics.sales;",`WHERE`,nil,1},
+ }
+ for _,tc:=range cases {t.Run(tc.name,func(t *testing.T){
+  originalBinding:=binding.Clone();originalConstraint:=constraint
+  out,err:=BindBusinessConstraints(ctx,binding,tc.sql,tc.params,[]BusinessConstraint{constraint})
+  if err!=nil || !strings.Contains(out.SQL,tc.fragment) || len(out.Parameters)!=tc.count || out.Receipt.Validation!=nil || len(out.Receipt.Bindings)!=1 {t.Fatalf("closed conjunction or receipt failed: %v",err)}
+  if _,err:=pgquery.ParseToJSON(out.SQL);err!=nil {t.Fatal("transformation did not produce parsable PostgreSQL",err)}
+  indexes:=out.Receipt.Bindings[0].Parameters
+  if len(indexes)!=1 || indexes[0]<1 || indexes[0]>len(out.Parameters) || out.Parameters[indexes[0]-1].Value!=constraint.Value {t.Fatal("binding receipt does not identify exact scalar")}
+  if out.Receipt.SourceBinding!=Hash(binding) || out.Receipt.Statement!=Hash([]any{out.SQL,out.Parameters}) {t.Fatal("receipt lost exact source or parameter seal")}
+  if constraint!=originalConstraint || !reflect.DeepEqual(binding,originalBinding){t.Fatal("shared inputs mutated")}
+  wire,_:=json.Marshal(out)
+  if strings.Contains(string(wire),constraint.Value) || strings.Contains(fmt.Sprintf("%v %#v",out,out),constraint.Value) {t.Fatal("ordinary bound-query projection leaked scalar")}
  })}
 }
 
-func FuzzClarificationCalendar(f *testing.F) {
- for _,seed:=range []string{"2026-01-01","2024-02-29","2025-11-02","2011-12-30","2026-02-30","","9999-12-31"} {f.Add(seed)}
- f.Fuzz(func(t *testing.T,start string){
-  slot:=cw01TimeSlot();slot.Effect.Grains=[]string{"day"};slot.Effect.TimeZone="UTC"
-  resolution,err:=ResolveClarificationValue(slot,ClarificationValue{Time:&ClarificationTimeInput{Start:start,End:"2027-01-01",Grain:"day",Calendar:"gregorian",TimeZone:"UTC"}},"en")
-  if err!=nil {if resolution.Time!=nil {t.Fatal("failed parse returned a time constraint")};return}
-  if resolution.Time==nil || resolution.Time.LocalStart!=start || resolution.Time.BoundaryPolicy!=ClarificationTimeBoundaryPolicy {t.Fatal("calendar parser lost explicit input")}
-  roundtrip,problem:=ResolveClarificationValue(slot,ClarificationValue{Time:&ClarificationTimeInput{Start:resolution.Time.LocalStart,End:resolution.Time.LocalEnd,Grain:"day",Calendar:resolution.Time.Calendar,TimeZone:resolution.Time.TimeZone}},"es")
-  if problem!=nil || *roundtrip.Time!=*resolution.Time {t.Fatal("canonical time cannot roundtrip independently of locale")}
+func TestBusinessBindingAggregatesAndNulls(t *testing.T){
+ binding:=parserBinding();ctx:=context.Background()
+ for _,aggregation:=range []string{"sum","average","minimum","maximum","count","distinct_count"}{
+  t.Run(aggregation,func(t *testing.T){
+   c:=businessFixtureConstraint();c.Aggregation=aggregation
+   out,err:=BindBusinessConstraints(ctx,binding,"SELECT active,sum(amount) FROM analytics.sales GROUP BY active HAVING count(*)>0 OR sum(amount)>0 ORDER BY active",nil,[]BusinessConstraint{c})
+   if err!=nil || !strings.Contains(out.SQL,"HAVING (count(*)>0 OR sum(amount)>0) AND (") || strings.Contains(out.SQL," WHERE ") || out.Receipt.Bindings[0].Aggregation!=aggregation {t.Fatal("aggregate constraint fell into row-filter scope",err)}
+   if _,err:=pgquery.ParseToJSON(out.SQL);err!=nil{t.Fatal(err)}
+  })
+ }
+ for _,nulls:=range []string{"exclude","include","only"}{
+  t.Run(nulls,func(t *testing.T){
+   c:=businessFixtureConstraint();c.Nulls=nulls
+   if nulls=="only"{c.Null=true;c.Value=""}
+   out,err:=BindBusinessConstraints(ctx,binding,"SELECT id FROM analytics.sales WHERE id=1 OR id=2",nil,[]BusinessConstraint{c})
+   if err!=nil{t.Fatal(err)}
+   if nulls=="include" && !strings.Contains(out.SQL,"IS NULL OR") {t.Fatal("NULL inclusion not explicit")}
+   if nulls=="only" && (!strings.Contains(out.SQL,"IS NULL") || len(out.Parameters)!=0){t.Fatal("null predicate bound an unused scalar")}
+   if nulls=="exclude" && strings.Contains(out.SQL,"IS NULL OR"){t.Fatal("ordinary comparison widened NULL semantics")}
+   if _,err:=pgquery.ParseToJSON(out.SQL);err!=nil{t.Fatal(err)}
+  })
+ }
+ for _,bounds:=range []string{"[]","[)","(]","()"}{
+  c:=businessFixtureConstraint();c.Operator="range";c.Bounds=bounds;c.Value="1.5";c.Upper="9.75"
+  out,err:=BindBusinessConstraints(ctx,binding,"SELECT id FROM analytics.sales",nil,[]BusinessConstraint{c})
+  if err!=nil || len(out.Parameters)!=2 || out.Parameters[0].Value!="1.5" || out.Parameters[1].Value!="9.75"{t.Fatal("exact interval bound order lost",err)}
+  lower,upper:=">","<";if bounds[0]=='['{lower=">="};if bounds[1]==']'{upper="<="}
+  if !strings.Contains(out.SQL,`"amount" `+lower) || !strings.Contains(out.SQL,`"amount" `+upper){t.Fatal("interval inclusivity changed")}
+ }
+}
+
+func TestBusinessBindingRejectsAmbiguityAndForeignInputs(t *testing.T){
+ binding:=parserBinding();c:=businessFixtureConstraint();ctx:=context.Background()
+ for _,sql:=range []string{
+  "WITH q AS (SELECT * FROM analytics.sales) SELECT * FROM q",
+  "SELECT * FROM (SELECT * FROM analytics.sales) s",
+  "SELECT id FROM analytics.sales UNION ALL SELECT id FROM analytics.sales",
+  "SELECT a.id FROM analytics.sales a JOIN analytics.sales b ON a.id=b.id",
+  "SELECT id FROM sales",
+  "SELECT id FROM private.sales",
+  "SELECT id FROM analytics.items",
+  "SELECT id FROM analytics.sales --comment",
+  "SELECT id FROM analytics.sales /*comment*/",
+  "SELECT id FROM analytics.sales; SELECT 1",
+  "SELECT id FROM analytics.sales WHERE name=$$private$$",
+  "SELECT id FROM analytics.sales WHERE id=\x1f0\x1f",
+  "SELECT id FROM analytics.sales WHERE name='a\\b'",
+ }{
+  out,err:=BindBusinessConstraints(ctx,binding,sql,nil,[]BusinessConstraint{c})
+  if err==nil || out.SQL!="" || len(out.Parameters)!=0 || out.Receipt.Validation!=nil{t.Fatal("unsupported shape returned partial bound output")}
+ }
+ for _,mutate:=range []func(*BusinessConstraint){
+  func(c *BusinessConstraint){c.Dataset="foreign"},func(c *BusinessConstraint){c.Column="custom"},
+  func(c *BusinessConstraint){c.SourceRevision++},func(c *BusinessConstraint){c.Resolution="bad"},
+  func(c *BusinessConstraint){c.Nulls="coalesce"},func(c *BusinessConstraint){c.Value="1e6"},
+  func(c *BusinessConstraint){c.Value="NaN"},func(c *BusinessConstraint){c.Operator="execute"},
+  func(c *BusinessConstraint){c.Precision=77},func(c *BusinessConstraint){c.Scale=39},
+  func(c *BusinessConstraint){c.Kind="sql"},func(c *BusinessConstraint){c.Value="1'; DROP TABLE x;--"},
+ }{
+  changed:=c;mutate(&changed)
+  if err:=ValidateBusinessConstraints(binding,[]BusinessConstraint{changed});err==nil {t.Fatal("invalid typed constraint passed admission")}
+ }
+ unsafe:=binding.Clone();unsafe.Relations[0].Columns[1].NativeType="double precision";unsafe.Relations[0].Columns[1].Category="numeric"
+ if err:=ValidateBusinessConstraints(unsafe,[]BusinessConstraint{c});!errors.Is(err,ErrUnsupported){t.Fatal("exact threshold admitted an approximate warehouse column",err)}
+ cancel,cancelled:=context.WithCancel(ctx);cancelled()
+ if _,err:=BindBusinessConstraints(cancel,binding,"SELECT id FROM analytics.sales",nil,[]BusinessConstraint{c});!errors.Is(err,context.Canceled){t.Fatal("cancelled binding continued",err)}
+ for _,params:=range [][]Parameter{{{Kind:"number",Value:"NaN"}},{{Kind:"integer",Value:"1"}}}{
+  if _,err:=BindBusinessConstraints(ctx,binding,"SELECT id FROM analytics.sales",params,[]BusinessConstraint{c});err==nil{t.Fatal("invalid or unused parameter accepted")}
+ }
+ var zero Plan
+ if _,_,err:=zero.SQL(zero.candidate.owner,binding);err==nil{t.Fatal("business evidence replaced validator proof")}
+}
+
+func TestBusinessBindingDialectTransportAndConcurrentReuse(t *testing.T){
+ for _,dialect:=range []string{"postgres","mysql","sqlserver","bigquery","snowflake","databricks"}{
+  t.Run(dialect,func(t *testing.T){
+   binding:=parserBinding();binding.Dialect=dialect;c:=businessFixtureConstraint()
+   // Quoted identifiers preserve the reviewed case across warehouse dialects.
+   sql:="SELECT "+businessQuote(dialect,"id")+" FROM "+businessQuote(dialect,"analytics")+"."+businessQuote(dialect,"sales")
+   var wg sync.WaitGroup
+   for i:=0;i<12;i++{wg.Add(1);go func(){defer wg.Done()
+    out,err:=BindBusinessConstraints(context.Background(),binding,sql,nil,[]BusinessConstraint{c})
+    if err!=nil || len(out.Parameters)!=1 || out.Parameters[0].Value!=c.Value || !strings.Contains(out.SQL,businessPlaceholder(dialect,1)){t.Error("dialect transport lost exact value",err)}
+   }()};wg.Wait()
+  })
+ }
+}
+
+func FuzzBusinessConstraintStatement(f *testing.F){
+ for _,sql:=range []string{"SELECT id FROM analytics.sales","SELECT id FROM analytics.sales WHERE id=1 OR id=2","SELECT '\\' FROM analytics.sales","SELECT * FROM analytics.sales;SELECT 1","","SELECT id FROM analytics.sales WHERE id=$1"}{f.Add(sql)}
+ f.Fuzz(func(t *testing.T,sql string){
+  out,err:=BindBusinessConstraints(context.Background(),parserBinding(),sql,nil,[]BusinessConstraint{businessFixtureConstraint()})
+  if err!=nil {if out.SQL!="" || len(out.Parameters)!=0 {t.Fatal("failed transformation returned partial constraints")};return}
+  if len(out.Parameters)!=1 || out.Parameters[0].Value!=businessFixtureConstraint().Value || out.Receipt.Validation!=nil || strings.ContainsRune(out.SQL,0x1f){t.Fatal("binding lost typed scalar or fabricated execution proof")}
  })
 }
 ''')
 
-p=Path('test/acceptance/cw01_test.go'); text=p.read_text()
-anchor='''	t.Run("AC03", func(t *testing.T) {'''
-insert=''' t.Run("BilingualNamedPeriod",func(t *testing.T){
-  period:=func(label string)semantics.ClarificationValue{return semantics.ClarificationValue{Time:&semantics.ClarificationTimeInput{Period:label,Calendar:"gregorian",TimeZone:"America/Argentina/Buenos_Aires",Grain:"month"}}}
-  en:=f.plan(t,f.question("Show dated sales",nlq.LanguageEnglish),"period",period("January 2026"))
-  es:=f.plan(t,f.question("Mostrá ventas fechadas",nlq.LanguageSpanish),"period",period("enero de 2026"))
-  if !reflect.DeepEqual(en.Route.Resolutions[0].Time,es.Route.Resolutions[0].Time) {t.Fatal("different language month inputs changed canonical business window")}
-  f.run(t,en,2,true);f.run(t,es,2,true)
+create('test/acceptance/cw01_binding_test.go',r'''package acceptance
+
+import (
+ "context"
+ "testing"
+
+ "github.com/hurtener/chartworks/internal/nlq"
+ "github.com/hurtener/chartworks/internal/nlqexec"
+)
+
+func cw01BindingAcceptance(t *testing.T,f *cw01Fixture){
+ t.Helper();ctx:=context.Background()
+ defer f.model.mode.Store(phase18RawResponse(t,"SELECT id, amount FROM analytics.sales ORDER BY id"))
+ for _,tc:=range []struct{name,sql string}{
+  {"disjunction","SELECT id,amount FROM analytics.sales WHERE id=1 OR id=2 ORDER BY id"},
+  {"reviewed-alias","SELECT s.id,s.amount FROM analytics.sales AS s ORDER BY s.id"},
+  {"existing-filter","SELECT id,amount FROM analytics.sales WHERE amount>=0 ORDER BY id"},
+ }{t.Run(tc.name,func(t *testing.T){
+  f.model.mode.Store(phase18RawResponse(t,tc.sql))
+  plan:=f.plan(t,f.question("Show large sales",nlq.LanguageEnglish),"amount-required",cw01Number("10"))
+  f.run(t,plan,1,true)
+ })}
+ t.Run("unsupported-shape-no-read",func(t *testing.T){
+  f.model.mode.Store(phase18RawResponse(t,"WITH values AS (SELECT id,amount FROM analytics.sales) SELECT id,amount FROM values"))
+  q:=f.question("Show large sales",nlq.LanguageEnglish);pending:=f.preflight(t,q)
+  q.AnswerContext=pending.Route.AnswerContext;q.ClarificationQuery=pending.QueryID;q.Answers=append(q.Answers,f.answer(t,"amount-required",cw01Number("10")))
+  out,err:=f.query.Plan(ctx,f.e,nlqexec.PlanRequest{QuestionRequest:q})
+  if err==nil || out.QueryID!="" || out.Bindings!=nil {t.Fatal("unsupported shape silently dropped its typed constraint")}
  })
-'''
-# Keep the named acceptance corpus exactly AC01..AC10: this belongs under AC02.
-boundary='''		f.run(t, child, 1, false)
-	})
-'''
-if text.count(boundary)!=1: raise SystemExit('AC02 boundary changed')
-text=text.replace(boundary,'''\t\tf.run(t, child, 1, false)
-'''+insert+'''\t})
+}
 ''')
-p.write_text(text)
+edit('test/acceptance/cw01_test.go','''		if strings.Contains(string(raw), "Bearer") {
+			t.Fatal("authority retained in replay request")
+		}
+''','''		if strings.Contains(string(raw), "Bearer") {
+			t.Fatal("authority retained in replay request")
+		}
+  cw01BindingAcceptance(t,f)
+''')
