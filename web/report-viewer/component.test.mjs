@@ -256,9 +256,12 @@ try{
     await until(()=>evaluate(`calls.filter(c=>c.name==='reporting_run').length===${policyRunCount+1}`),'certified filter run was not emitted');
     await check("calls.filter(c=>c.name==='reporting_run').at(-1).arguments.policy==='certified_only'",'filter rerun preserves the admitted trust requirement');
 
-    for(const ids of [[],['table-main','table-main'],['disabled'],['unknown']]){
+    for(const [i,ids] of [[],['table-main','table-main'],['disabled'],['unknown']].entries()){
       await restore(); const runs=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
-      await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.accepted_selection.selected=${JSON.stringify(ids)};show(v);})()`);await waitTitle(fixtures.view.summary.target.id);
+      // A distinct rendered title acknowledges this hostile notification before
+      // clicking; the unchanged fixture title could still belong to restore().
+      const marker='invalid-selection-'+i;
+      await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id=${JSON.stringify(marker)};v.accepted_selection.selected=${JSON.stringify(ids)};show(v);})()`);await waitTitle(marker);
       await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click()`);
       await until(()=>evaluate(`${body}.textContent.includes('invalid_request')`),'invalid accepted selection was not rejected');
       await check(`calls.filter(c=>c.name==='reporting_run').length===${runs}`,'malformed accepted selection cannot widen an explicit run');
