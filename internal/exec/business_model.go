@@ -207,6 +207,12 @@ func businessColumnCompatible(dialect string, column Column, c BusinessConstrain
 	case "entity", "text":
 		return category == "text" || category == "string" || strings.Contains(native, "char") || native == "text" || native == "string"
 	case "time_window":
+		// MySQL TIMESTAMP is session-zone-sensitive, unlike DATETIME. Until
+		// an instant-aware binding is supported, reject it before provider work
+		// rather than admitting it as a wall-clock target and casting DATETIME.
+		if dialect == "mysql" && strings.HasPrefix(native, "timestamp") {
+			return false
+		}
 		switch c.TemporalType {
 		case "date":
 			return native == "date"
