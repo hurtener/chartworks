@@ -2,12 +2,14 @@ package semantics
 
 import "log/slog"
 
-// LogValue protects direct structured-log attributes. JSON remains the deliberate
-// authorized wire/protected-storage representation, not an ordinary log format.
-func (a ClarificationAnswer) LogValue() slog.Value     { return slog.StringValue(a.String()) }
-func (r ClarificationResolution) LogValue() slog.Value { return slog.StringValue(r.String()) }
+// LogValue excludes raw clarification values from ordinary structured logs.
+// JSON remains the explicit authorized wire and protected-storage format.
 func (ClarificationValue) LogValue() slog.Value {
 	return slog.StringValue("clarification-value(redacted)")
 }
-func (ClarificationValue) String() string     { return "clarification-value(redacted)" }
+
+// String excludes raw clarification values from ordinary formatted logs.
+func (ClarificationValue) String() string { return "clarification-value(redacted)" }
+
+// GoString preserves redaction when a value is formatted with the Go syntax verb.
 func (v ClarificationValue) GoString() string { return v.String() }
