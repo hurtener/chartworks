@@ -149,4 +149,10 @@ func TestCW01(t *testing.T) {
 			t.Fatal("authority retained in replay request")
 		}
 	})
+	t.Run("AC06", func(t *testing.T) { cw01OrderingAcceptance(t, f) })
+	t.Run("AC07", func(t *testing.T) { cw01DefaultsAcceptance(t, f) })
+	t.Run("AC08", func(t *testing.T) { cw01IsolationAcceptance(t) })
+	t.Run("AC09", func(t *testing.T) { cw01BudgetPrivacyAcceptance(t, f) })
+	t.Run("AC10", func(t *testing.T) { cw01AuthoringAcceptance(t); cw01ConsumerAcceptance(t) })
+
 }
