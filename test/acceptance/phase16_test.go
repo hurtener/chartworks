@@ -209,8 +209,18 @@ func TestPhase16(t *testing.T) {
 		if err != nil || out.Context == nil || out.Context.Locale != nlq.LanguageSpanish || out.Context.Tokens < 1 || out.Context.Tokens > out.Context.Budget {
 			t.Fatalf("real tokenizer context was not bounded: %#v %v", out, err)
 		}
-		if out.Context.Constraints == nil || len(out.Context.Constraints.Required) != 2 || out.Context.Constraints.Required[0].ID != "measure:revenue" || out.Context.Constraints.Required[1].Kind != "clarification" {
+		if out.Context.Constraints == nil || len(out.Context.Constraints.Required) != 2 {
 			t.Fatalf("active mandatory constraint was lost: %#v", out.Context.Constraints)
+		}
+		// The assembler canonically orders IDs; rule and answer constraints
+		// must both survive regardless of their relative position in that order.
+		var required, clarified bool
+		for _, constraint := range out.Context.Constraints.Required {
+			required = required || (constraint.ID == "measure:revenue" && constraint.Kind == "required")
+			clarified = clarified || (constraint.Kind == "clarification" && strings.Contains(constraint.Text, `"slot":"metric"`) && strings.Contains(constraint.Text, `"id":"revenue"`))
+		}
+		if !required || !clarified {
+			t.Fatalf("reviewed rule or selected answer was lost: %#v", out.Context.Constraints)
 		}
 		if len(out.Context.Advisory) != 1 || len(out.Context.Examples) > nlq.MaxExamples || len(out.Audit.Omitted) > nlq.MaxOmissions || out.Audit.OmittedCount == 0 {
 			t.Fatalf("advisory/example bounds were not audited: context=%#v audit=%#v", out.Context, out.Audit)
