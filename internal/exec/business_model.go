@@ -202,7 +202,7 @@ func businessColumnCompatible(dialect string, column Column, c BusinessConstrain
 		case "date":
 			return native == "date"
 		case "timestamp":
-			return native == "timestamp" && dialect != "bigquery" || strings.HasPrefix(native, "timestamp without time zone") || strings.HasPrefix(native, "timestamp_ntz") || strings.HasPrefix(native, "datetime") && !strings.HasPrefix(native, "datetimeoffset")
+			return native == "timestamp" && dialect != "bigquery" && dialect != "databricks" || strings.HasPrefix(native, "timestamp without time zone") || strings.HasPrefix(native, "timestamp_ntz") || strings.HasPrefix(native, "datetime") && !strings.HasPrefix(native, "datetimeoffset")
 		case "timestamptz":
 			return native == "timestamptz" || strings.HasPrefix(native, "timestamp with time zone") || strings.HasPrefix(native, "timestamp_tz") || strings.HasPrefix(native, "datetimeoffset") || native == "timestamp" && (dialect == "bigquery" || dialect == "databricks")
 		}

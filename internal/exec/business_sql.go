@@ -271,7 +271,7 @@ func businessPredicate(dialect, column string, c BusinessConstraint, scalars *[]
 					typeName = "DATETIME2"
 				case "mysql", "bigquery":
 					typeName = "DATETIME"
-				case "snowflake":
+				case "snowflake", "databricks":
 					typeName = "TIMESTAMP_NTZ"
 				default:
 					typeName = "TIMESTAMP"
