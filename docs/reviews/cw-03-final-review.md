@@ -1,8 +1,9 @@
 # CW-03 final review — September 17, 2026
 
-Status: follow-up source corrections with regression tests. Local structural
-checks pass; **runtime validation and CI remain pending**. This record does not
-certify green CI, merge readiness, or closure of the findings.
+Status: published as PR #26. Its first hosted run exposed regression-test
+expectations inconsistent with retained-read gating and one lint failure. The
+correction below preserves production behavior and awaits new exact-head CI;
+no green or merge-ready claim is made here.
 
 Repository baseline: `2219fa29093253e0c51b94c4b9de3a4e52f19ee1` (`main`).
 PR #24 was already merged on September 16. Its delivered head was
@@ -46,8 +47,9 @@ failures at group checkpoint and final completion. It covers unchanged, lowered
 row, and lowered byte caps at both boundaries, exact manifest/selection retention,
 unchanged child outputs and query attempts, and zero repeated warehouse/model work.
 An already checkpointed parent can complete after an explicit retry under its
-original allowable ceiling, without regenerating the child. These tests are
-written, not claimed passing.
+original allowable ceiling, without regenerating the child. The first hosted
+run passed unchanged-cap cases but stopped the four lowered-cap cases at an
+incorrect widget-read assertion; see the CI correction below.
 
 ### CW03-FR-02 — P2: independent output locale is replaced by block fallback
 
@@ -60,7 +62,8 @@ Pass the original requested locale to `viewerChoices`. Exact-tag, same-language
 and authored-first fallback remain the existing pure output-localization policy.
 `TestCW03OutputLocaleIndependentOfBlockLocale` covers English-only block metadata,
 Spanish output metadata, exact/language fallback, absent/unsupported locales, and
-no source/model calls. Runtime/browser confirmation remains outstanding.
+no source/model calls. This regression passed in the initial PR #26 hosted
+CW-03 run; that pass is not evidence for subsequent changes.
 
 ### CW03-FR-03 — verifier fuzz harness and a non-vacuous authority oracle
 
@@ -112,3 +115,36 @@ The existing [v2 contract](../contracts/reporting-output-intent-v2.md) remains t
 behavioral requirement. These corrections continue BLK-01/BLK-07 and preserve the
 BLK-05 egress boundary; they do not claim broader feature parity or independent
 security, performance, live-provider, cloud-warehouse or release qualification.
+
+## PR #26 CI correction
+
+At head `264b592e22d97b5e7ed86fb0cc0c297606a92ae3`, the hosted
+[CW-03 run](https://github.com/hurtener/chartworks/actions/runs/35263642091)
+failed the four lowered-row/byte cases in
+`TestCW03CompletedChildRetryUsesCurrentCaps`. Each failure was at the same
+widget-read assertion: `reporting: result is not complete`. The archive
+`cw-03-contract-evidence` (10516886541), verified SHA-256
+`91e5ead8422308ba245fcffb6f513c4df40fea00b0a7cb3996695d175b9364b9`,
+contains the exact JSON test events and checkout identity. Its unchanged-cap,
+independent output-locale and real retained-catalog tests passed.
+
+`CompositionWidget` deliberately refuses any parent outside completed/partial
+states before loading widget values. The test incorrectly expected a payload
+from failed or pending parents. The corrected test requires `ErrIncomplete`
+**and a zero payload** for both lowered-cap windows. It checks the typed
+`budget_exhausted` failure through the authorized internal group checkpoint,
+not by weakening the public artifact-read boundary.
+
+For pending final completion, the test now compares saved group evidence before
+and after refusal, restores the permissible ceiling, explicitly retries and
+requires a readable completed widget with the original selected-output order.
+It still compares parent/child manifests, child results, outputs and physical
+attempt counts, and requires zero repeated warehouse/model work. No production
+code, lifecycle rule, authority check or limit was relaxed.
+
+The [CI lint job](https://github.com/hurtener/chartworks/actions/runs/35263642249/job/105345266330)
+reported `gocritic/ifElseChain` in that same test. The outcome cases now use a
+switch rather than disabling the linter. Coverage thresholds, race instrumentation,
+fuzz bounds and all acceptance cases remain unchanged. Local verification covers
+exact baseline blob identity, Go parsing/formatting and patch whitespace; hosted
+runtime and coverage results for this correction must be recorded separately.

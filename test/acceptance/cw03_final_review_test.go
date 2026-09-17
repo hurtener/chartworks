@@ -112,30 +112,51 @@ func TestCW03CompletedChildRetryUsesCurrentCaps(t *testing.T) {
 				t.Fatal(err)
 			}
 			finished, runErr := bounded.Run(ctx, f.execute, admitted.ID, true)
-			payload, err := bounded.Widget(ctx, f.execute, admitted.ID, "main", "frozen")
-			if err != nil {
-				t.Fatal(err)
+			payload, widgetErr := bounded.Widget(ctx, f.execute, admitted.ID, "main", "frozen")
+			// Pending and failed parents are not readable artifacts. A budget
+			// refusal must preserve the retained child without exposing it through
+			// the incomplete parent, even when its group was checkpointed already.
+			if bound != "unchanged" && (!errors.Is(widgetErr, reporting.ErrIncomplete) || !reflect.DeepEqual(payload, reporting.CompositionPayload{})) {
+				t.Fatal("incomplete parent exposed retained widget values", payload, widgetErr)
 			}
-			if bound == "unchanged" {
-				if runErr != nil || finished.State != "completed" || len(payload.Outputs) != 2 || payload.Outputs[0].ID != "table-second" || payload.Outputs[1].ID != "table-main" {
-					t.Fatal("eligible retained child did not resume exactly", finished, payload, runErr)
+			switch {
+			case bound == "unchanged":
+				if runErr != nil || widgetErr != nil || finished.State != "completed" || !finished.Complete || len(payload.Outputs) != 2 || payload.Outputs[0].ID != "table-second" || payload.Outputs[1].ID != "table-main" {
+					t.Fatal("eligible retained child did not resume exactly", finished, payload, runErr, widgetErr)
 				}
-			} else if tc.stage == "complete" {
-				if !errors.Is(runErr, reporting.ErrBudget) || finished.Complete || len(payload.Outputs) != 2 {
-					t.Fatal("pending completion bypassed a lowered runtime ceiling or erased retained evidence", finished, payload, runErr)
+			case tc.stage == "complete":
+				if !errors.Is(runErr, reporting.ErrBudget) || finished.Complete {
+					t.Fatal("pending completion bypassed a lowered runtime ceiling", finished, runErr)
+				}
+				checkpoint, readErr := f.f.f.db.ReadComposition(ctx, f.execute, admitted.ID)
+				if readErr != nil || !reflect.DeepEqual(checkpoint.Results, parentBefore.Results) {
+					t.Fatal("budget refusal erased or rewrote checkpointed evidence", readErr)
 				}
 				// Restoring the accepted cap may complete the unchanged checkpoint;
 				// it never grants permission to repeat its physical query.
 				finished, runErr = f.compositions.Run(ctx, f.execute, admitted.ID, true)
-				if runErr != nil || finished.State != "completed" || !finished.Complete {
-					t.Fatal("eligible checkpoint could not resume without regeneration", finished, runErr)
+				payload, widgetErr = f.compositions.Widget(ctx, f.execute, admitted.ID, "main", "frozen")
+				if runErr != nil || widgetErr != nil || finished.State != "completed" || !finished.Complete || len(payload.Outputs) != 2 || payload.Outputs[0].ID != "table-second" || payload.Outputs[1].ID != "table-main" {
+					t.Fatal("eligible checkpoint could not resume without regeneration", finished, payload, runErr, widgetErr)
 				}
-			} else if !errors.Is(runErr, reporting.ErrIncomplete) || finished.State != "failed" || payload.State != "failed" || payload.Code != "budget_exhausted" || len(payload.Outputs) != 0 {
-				t.Fatal("completed child bypassed a lowered runtime ceiling", finished, payload, runErr)
+			default:
+				if !errors.Is(runErr, reporting.ErrIncomplete) || finished.State != "failed" || finished.Complete {
+					t.Fatal("completed child bypassed a lowered runtime ceiling", finished, runErr)
+				}
 			}
 			parentAfter, err := f.f.f.db.ReadComposition(ctx, f.execute, admitted.ID)
 			if err != nil || !reflect.DeepEqual(parentAfter.Manifest, parentBefore.Manifest) {
 				t.Fatal("retry rewrote accepted parent selection/revision/limits", err)
+			}
+			if tc.stage == "group" && bound != "unchanged" {
+				if len(parentAfter.Results) != 1 {
+					t.Fatal("budget refusal did not retain its typed group result")
+				}
+				for _, result := range parentAfter.Results {
+					if result.State != "failed" || result.Code != "budget_exhausted" || len(result.Outputs) != 0 || result.Block != nil {
+						t.Fatal("budget refusal lost its typed failure or retained blocked values", result)
+					}
+				}
 			}
 			childAfter, err := f.f.f.db.ReadFrozenRun(ctx, f.execute, childID, true)
 			if err != nil || !reflect.DeepEqual(childAfter.Manifest, childBefore.Manifest) || !reflect.DeepEqual(childAfter.Result, childBefore.Result) || !reflect.DeepEqual(childAfter.Outputs, childBefore.Outputs) || len(childAfter.View.QueryAttempts) != 1 {
