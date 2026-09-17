@@ -225,7 +225,14 @@ func testCW02SavedChartLifecycle(t *testing.T) {
 		t.Fatal("published mapping compatibility", err)
 	}
 	beforeModels, beforeAttempts := domain.f.model.requests.Load(), domain.attemptCount(t)
-	run := f.run(t, "block", created.State.ID, "cw02-rich-run")
+	request := phase31Request("block", created.State.ID, "cw02-rich-run")
+	// V2 uses omission for authored defaults; the legacy helper sends an
+	// explicit empty selection, which the current contract correctly rejects.
+	request.Outputs = nil
+	run, err := f.service.Run(ctx, domain.execute, request)
+	if err != nil || run.Run == "" || run.State != "succeeded" {
+		t.Fatalf("actual v2 rich reporting run: %+v %v", run, err)
+	}
 	if domain.attemptCount(t) != beforeAttempts+1 || domain.f.model.requests.Load() != beforeModels {
 		t.Fatal("rich fanout must use one query and no model")
 	}
