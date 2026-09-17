@@ -214,12 +214,12 @@ func TestPhase16(t *testing.T) {
 		}
 		// The assembler canonically orders IDs; rule and answer constraints
 		// must both survive regardless of their relative position in that order.
-		var required, clarified bool
+		var hasRequired, hasClarification bool
 		for _, constraint := range out.Context.Constraints.Required {
-			required = required || (constraint.ID == "measure:revenue" && constraint.Kind == "required")
-			clarified = clarified || (constraint.Kind == "clarification" && strings.Contains(constraint.Text, `"slot":"metric"`) && strings.Contains(constraint.Text, `"id":"revenue"`))
+			hasRequired = hasRequired || (constraint.ID == "measure:revenue" && constraint.Kind == "required")
+			hasClarification = hasClarification || (constraint.Kind == "clarification" && strings.Contains(constraint.Text, `"slot":"metric"`) && strings.Contains(constraint.Text, `"id":"revenue"`))
 		}
-		if !required || !clarified {
+		if !hasRequired || !hasClarification {
 			t.Fatalf("reviewed rule or selected answer was lost: %#v", out.Context.Constraints)
 		}
 		if len(out.Context.Advisory) != 1 || len(out.Context.Examples) > nlq.MaxExamples || len(out.Audit.Omitted) > nlq.MaxOmissions || out.Audit.OmittedCount == 0 {
