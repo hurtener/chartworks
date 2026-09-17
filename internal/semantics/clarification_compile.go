@@ -88,7 +88,7 @@ func validateClarificationEffect(slot ClarificationSlot, path string) error {
 	}
 	switch slot.Kind {
 	case SlotDate:
-		if e.Kind != "time_window" || e.Operator != "range" || e.Bounds != "[)" || e.Calendar != "gregorian" || len(e.TimeZone) == 0 || len(e.TimeZone) > 128 || len(e.Grains) == 0 || (e.TemporalType != "date" && e.TemporalType != "timestamp" && e.TemporalType != "timestamptz") {
+		if e.Kind != "time_window" || e.Operator != "range" || e.Bounds != "[)" || e.Calendar != "gregorian" || len(e.TimeZone) == 0 || e.TimeZone == "Local" || len(e.TimeZone) > 128 || len(e.Grains) == 0 || (e.TemporalType != "date" && e.TemporalType != "timestamp" && e.TemporalType != "timestamptz") {
 			return invalid(CodeInvalidValue, path+".effect.time")
 		}
 		if _, err := time.LoadLocation(e.TimeZone); err != nil {

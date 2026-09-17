@@ -242,7 +242,7 @@ func canonicalClarificationDecimal(value, locale string, precision, scale int) (
 }
 
 func resolveClarificationTime(value ClarificationTimeInput, effect ClarificationEffect, locale string) (CanonicalClarificationTime, *ClarificationFieldError) {
-	if value.Calendar != "gregorian" || value.Calendar != effect.Calendar || value.TimeZone != effect.TimeZone || len(value.TimeZone) > 128 {
+	if value.Calendar != "gregorian" || value.Calendar != effect.Calendar || value.TimeZone != effect.TimeZone || value.TimeZone == "" || value.TimeZone == "Local" || len(value.TimeZone) > 128 {
 		return CanonicalClarificationTime{}, clarificationError(locale, "time.time_zone", "calendar_mismatch")
 	}
 	if !containsClarificationString(effect.Grains, value.Grain) {

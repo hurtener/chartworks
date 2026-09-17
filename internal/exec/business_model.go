@@ -142,6 +142,10 @@ func ValidateBusinessConstraints(binding Binding, constraints []BusinessConstrai
 			if c.Operator != "range" || c.Bounds != "[)" || c.Calendar != "gregorian" || c.Grain != "day" && c.Grain != "week" && c.Grain != "month" && c.Grain != "quarter" && c.Grain != "year" {
 				return businessError(c, "time", "unsupported_time_contract")
 			}
+			// Empty and Local are runtime defaults, not reviewed timezone pins.
+			if c.TimeZone == "" || c.TimeZone == "Local" {
+				return businessError(c, "time_zone", "invalid_time_zone")
+			}
 			if _, err := time.LoadLocation(c.TimeZone); err != nil {
 				return businessError(c, "time_zone", "invalid_time_zone")
 			}
