@@ -261,6 +261,26 @@ func cw01BudgetPrivacyAcceptance(t *testing.T, f *cw01Fixture) {
 	if strings.Contains(string(raw), "unresolved-private-731") {
 		t.Fatal("unresolved raw answer persisted")
 	}
+	t.Run("redaction-marker-replay", func(t *testing.T) {
+		replay := newCW01Fixture(t)
+		definition := semantics.CloneRuleSetDefinition(replay.definition)
+		definition.Version = "marker-rules"
+		for i := range definition.Patterns {
+			if definition.Patterns[i].ID == "customer" {
+				definition.Patterns[i].Slots[0].Effect.Values[0].Canonical = "red"
+			}
+		}
+		replay.publishRules(t, definition, 1)
+		replay.definition = definition
+		plan := replay.plan(t, replay.question("Show named sales for alias-secret-731", nlq.LanguageEnglish), "customer", cw01Text("alias-secret-731"))
+		if len(plan.Route.Resolutions) != 1 || plan.Route.Resolutions[0].Value != "red" || plan.Route.Request.Question != "Show named sales for [redacted answer]" {
+			t.Fatal("marker-collision fixture did not resolve and redact the canonical constraint")
+		}
+		// No source customer is named red. A successful empty read proves the
+		// real execution path replayed the stable evidence rather than failing
+		// with a changed question digest or dropping the protected predicate.
+		replay.run(t, plan, 0, false)
+	})
 	t.Run("mandatory-group", func(t *testing.T) {
 		bounded := newCW01Fixture(t)
 		definition := semantics.CloneRuleSetDefinition(bounded.definition)

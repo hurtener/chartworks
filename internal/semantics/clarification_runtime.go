@@ -211,11 +211,16 @@ func RedactClarificationText(text string, answers []ClarificationAnswer, resolut
 	if len(patterns) == 0 {
 		return text
 	}
-	// One pass cannot reinterpret the inserted marker as another input value.
+	// The stored question is redacted again during canonical replay. Reserve
+	// the public marker so values such as "red" cannot change its digest.
+	// Longest matching still consumes a longer known sensitive phrase that
+	// begins with the marker instead of exposing that phrase's suffix.
+	patterns = append([]string{regexp.QuoteMeta("[redacted answer]")}, patterns...)
 	matcher, err := regexp.Compile("(?i)(?:" + strings.Join(patterns, "|") + ")")
 	if err != nil {
 		return "[redacted answer]"
 	}
+	matcher.Longest()
 	return matcher.ReplaceAllString(text, "[redacted answer]")
 }
 

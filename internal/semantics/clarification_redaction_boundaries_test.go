@@ -96,8 +96,32 @@ func FuzzClarificationRedactionWhitespace(f *testing.F) {
 		answer := ClarificationAnswer{Topic: "topic", Pattern: "policy", Slot: "field", Value: &ClarificationValue{Text: &raw}}
 		resolution := ClarificationResolution{Topic: "topic", Pattern: "policy", Slot: "field", Sensitivity: LiteralSensitive}
 		question := first + spaces[int(b)%len(spaces)] + second
-		if RedactClarificationText(question, []ClarificationAnswer{answer}, []ClarificationResolution{resolution}) != "[redacted answer]" {
+		redacted := RedactClarificationText(question, []ClarificationAnswer{answer}, []ClarificationResolution{resolution})
+		if redacted != "[redacted answer]" {
 			t.Fatal("known normalized sensitive spelling was not redacted")
 		}
+		if RedactClarificationText(redacted, []ClarificationAnswer{answer}, []ClarificationResolution{resolution}) != redacted {
+			t.Fatal("redacting the same evidence again changed the public marker")
+		}
 	})
+}
+
+func TestClarificationRedactionIsStableOnReplay(t *testing.T) {
+	for _, value := range []string{"red", "answer", "[red", "["} {
+		t.Run(value, func(t *testing.T) {
+			resolutions := []ClarificationResolution{{Sensitivity: LiteralSensitive, Value: value}}
+			first := RedactClarificationText("Customer: "+value, nil, resolutions)
+			if first != "Customer: [redacted answer]" {
+				t.Fatal("known value was not redacted")
+			}
+			if RedactClarificationText(first, nil, resolutions) != first {
+				t.Fatal("replaying canonical evidence changed the redacted question")
+			}
+		})
+	}
+	// Reserving the marker must not leave the suffix of a longer known value.
+	resolutions := []ClarificationResolution{{Sensitivity: LiteralSensitive, Value: "[redacted answer] private suffix"}}
+	if RedactClarificationText("Customer: [redacted answer] private suffix", nil, resolutions) != "Customer: [redacted answer]" {
+		t.Fatal("marker preservation exposed the suffix of a longer sensitive value")
+	}
 }

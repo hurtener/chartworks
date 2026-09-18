@@ -24,3 +24,13 @@ These results do not claim native-parser/PostgreSQL acceptance ran locally: thos
 ## Historical CI discrepancy
 
 Earlier reported Phase 05 persona-autofill and Phase 08 stored-rule-bind failure strings do not occur in this verified snapshot. Its Phase 05 test is gateway acceptance; its Phase 08 file is source acceptance. No production correction for those unreconciled logs is claimed. The read-only runtime workflow now retains committed source, its tree and checksums before tests; fresh final-head results must be evaluated separately from older logs.
+
+## Canonical replay marker collision
+
+A second adversarial regression found that a sensitive canonical value such as `red` is a substring of the public `[redacted answer]` marker. Redacting a persisted question a second time could mutate that marker, changing the question digest during `ReplayClarifications`. Four unit cases (`red`, `answer`, `[red`, `[`) failed before the correction.
+
+The service-owned marker is now a reserved literal alternative. Leftmost-longest matching protects an existing marker while still consuming a longer known sensitive phrase that starts with it; a dedicated suffix-negative regression prevents marker reservation from exposing the remainder. No caller can supply executable matchers. The fuzz target also checks repeated-redaction stability.
+
+The existing AC09 includes a separate reviewed-policy fixture whose canonical customer is `red` and whose submitted alias is in the question. A real execution must replay the protected evidence unchanged and return the expected empty result (the source has no such customer), not reject a changed digest or drop the predicate. Its hosted result must be inspected before being claimed as passing.
+
+After this correction, `go test -race -count=3 ./internal/semantics` passed and the extended repeated-redaction fuzz campaign passed with 2,079 actual executions (`-fuzztime=2048x -parallel=2`). These are local semantic results, not substituted native/PostgreSQL acceptance.
