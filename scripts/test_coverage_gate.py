@@ -119,7 +119,7 @@ class CoverageRunnerTests(unittest.TestCase):
         self.assertEqual(status, 0, errors)
         self.assertEqual([kwargs["timeout"] for _, kwargs in calls], [1500, 1500, 3600])
         args = calls[-1][0]
-        self.assertEqual(args[:7], ["go", "test", "-race", "-count=1", "-timeout=20m",
+        self.assertEqual(args[:7], ["go", "test", "-race", "-count=1", "-timeout=30m",
                                    "-covermode=atomic", "-coverpkg=example/internal/store"])
         self.assertEqual(args[-1], "./...")
         self.assertEqual(sum(value.startswith("-timeout=") for value in args), 1)

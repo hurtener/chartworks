@@ -56,7 +56,57 @@ func savedSelectionsMatch(q QueryRecord, in SavedQuestion) bool {
 	if in.Selections != nil {
 		expected = *in.Selections
 	}
+	if len(actual.Choices) == 0 {
+		// Current routing replaces legacy reference choices with pinned typed
+		// answers. Compare that exact evidence rather than retaining raw choices
+		// alongside answers or silently ignoring newly introduced constraints.
+		if !savedCanonicalChoicesMatch(q, expected.Choices) {
+			return false
+		}
+		actual.Choices = expected.Choices
+	} else if len(r.Answers) != 0 || len(semantics.CanonicalClarificationAnswers(q.Route.Resolutions)) != 0 {
+		return false
+	}
 	return len(r.Examples) == 0 && exec.Hash(actual) == exec.Hash(expected)
+}
+
+// savedCanonicalChoicesMatch compares retained business evidence only. It does
+// not grant authority or replace current publication checks and read validation.
+func savedCanonicalChoicesMatch(q QueryRecord, choices []nlqroute.ChoiceSelection) bool {
+	answers := semantics.CanonicalClarificationAnswers(q.Route.Resolutions)
+	if len(answers) != len(choices) || exec.Hash(answers) != exec.Hash(q.Route.Request.Answers) {
+		return false
+	}
+	for _, resolution := range q.Route.Resolutions {
+		if resolution.Provenance != "answer" && resolution.Provenance != "legacy_reference_choice" {
+			continue
+		}
+		i := slices.Index(q.Topics, resolution.Topic)
+		if i < 0 || i >= len(q.TopicVersions) || i >= len(q.RuleVersions) ||
+			resolution.TopicVersion != q.TopicVersions[i] || resolution.RulesetVersion == "" || resolution.RulesetVersion != q.RuleVersions[i] ||
+			resolution.SchemaVersion != semantics.ClarificationSchemaVersion || resolution.ID == "" || resolution.ID != semantics.ClarificationResolutionDigest(resolution) ||
+			resolution.Reference == nil || !resolution.Reference.Valid() || resolution.Effect != nil || resolution.Time != nil || resolution.Null || resolution.Upper != "" {
+			return false
+		}
+	}
+	used := make([]bool, len(answers))
+	for _, choice := range choices {
+		match := -1
+		for i, answer := range answers {
+			if answer.Slot != choice.Slot || choice.Pattern != "" && answer.Pattern != choice.Pattern {
+				continue
+			}
+			if answer.Value == nil || answer.Value.OptionID != choice.Value || match >= 0 {
+				return false
+			}
+			match = i
+		}
+		if match < 0 || used[match] {
+			return false
+		}
+		used[match] = true
+	}
+	return true
 }
 
 // ValidateSavedQuestion checks static shape using the ordinary router's bounds.

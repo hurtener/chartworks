@@ -222,7 +222,7 @@ func readPublishedTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, ve
 
 // ReadPublishedTopic returns the active or an exact retained public version.
 func (d *DB) ReadPublishedTopic(ctx context.Context, e identity.Envelope, id, version string, a drafts.Access) (out topics.Published, err error) {
-	if a != drafts.Read && a != drafts.Write && a != drafts.Review && a != drafts.Publish {
+	if a != drafts.Read && a != drafts.Write && a != drafts.Review && a != drafts.Publish && a != drafts.Export {
 		return out, store.ErrInvalid
 	}
 	ctx, cancel, err := requestContext(ctx, e)

@@ -15,6 +15,7 @@ import (
 type RuleModel struct {
 	definition RuleSetDefinition
 	digest     string
+	graph      map[Reference][]Reference
 }
 
 // RuleSubject is the public semantic reference graph needed to compile rules.
@@ -85,6 +86,9 @@ func compileRules(subject RuleSubject, input RuleSetDefinition) (RuleModel, erro
 	if err := validateRuleReferences(subject, p); err != nil {
 		return RuleModel{}, err
 	}
+	if err := validateClarificationReferences(subject, p); err != nil {
+		return RuleModel{}, err
+	}
 	if err := ruleConflicts(subject, p); err != nil {
 		return RuleModel{}, err
 	}
@@ -96,7 +100,11 @@ func compileRules(subject RuleSubject, input RuleSetDefinition) (RuleModel, erro
 		return RuleModel{}, invalid(CodeLimit, "ruleset")
 	}
 	sum := sha256.Sum256(raw)
-	return RuleModel{definition: p, digest: hex.EncodeToString(sum[:])}, nil
+	graph := make(map[Reference][]Reference, len(subject.graph))
+	for ref, deps := range subject.graph {
+		graph[ref] = append([]Reference(nil), deps...)
+	}
+	return RuleModel{definition: p, digest: hex.EncodeToString(sum[:]), graph: graph}, nil
 }
 
 func validateRuleShape(p RuleSetDefinition) error {
@@ -105,6 +113,15 @@ func validateRuleShape(p RuleSetDefinition) error {
 	}
 	if len(p.Rules) > 256 || len(p.Patterns) > 128 {
 		return invalid(CodeLimit, "ruleset")
+	}
+	conditionalSlots := 0
+	for _, pattern := range p.Patterns {
+		if pattern.Policy != nil && !pattern.Policy.Disabled {
+			conditionalSlots += len(pattern.Slots)
+		}
+	}
+	if conditionalSlots > 64 {
+		return invalid(CodeLimit, "patterns.slots")
 	}
 	for i, rule := range p.Rules {
 		path := "rules[" + itoa(i) + "]"
@@ -180,7 +197,7 @@ func validateRuleShape(p RuleSetDefinition) error {
 			}
 		}
 	}
-	return nil
+	return validateClarificationShape(p)
 }
 
 func validProvenance(p RuleProvenance) bool {
@@ -362,9 +379,13 @@ func cloneRules(p RuleSetDefinition) RuleSetDefinition {
 	for i := range p.Patterns {
 		pattern := &p.Patterns[i]
 		pattern.Targets = append([]Reference(nil), pattern.Targets...)
+		pattern.Policy = cloneClarificationPolicy(pattern.Policy)
 		pattern.Slots = append([]ClarificationSlot(nil), pattern.Slots...)
 		for j := range pattern.Slots {
 			slot := &pattern.Slots[j]
+			slot.DependsOn = append([]string(nil), slot.DependsOn...)
+			slot.Effect = cloneClarificationEffect(slot.Effect)
+			slot.Default = cloneClarificationValue(slot.Default)
 			slot.Choices = append([]ClarificationChoice(nil), slot.Choices...)
 			for k := range slot.Choices {
 				if slot.Choices[k].Target != nil {

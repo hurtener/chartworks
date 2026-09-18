@@ -117,15 +117,17 @@ const (
 	SlotDate    SlotKind = "date"
 )
 
-// ClarificationChoice is one bounded choice offered for a clarification slot.
+// ClarificationChoice is an exact reviewed reference choice, not a scalar value.
 type ClarificationChoice struct {
-	ID     string     `json:"id"`
-	Label  string     `json:"label"`
-	Target *Reference `json:"target,omitempty"`
+	ID      string     `json:"id"`
+	Label   string     `json:"label"`
+	Target  *Reference `json:"target,omitempty"`
+	LabelES string     `json:"label_es,omitempty"`
 }
 
 // ClarificationSlot defines one typed clarification input. Slot/choice order is
-// author-selected presentation order and affects the digest.
+// author-selected presentation order and affects the digest. Dependencies refine
+// that order without permitting required blockers to skip or default.
 // Sensitivity is a required declaration, not a claim of automatic PII detection.
 type ClarificationSlot struct {
 	ID          string                `json:"id"`
@@ -134,15 +136,21 @@ type ClarificationSlot struct {
 	Kind        SlotKind              `json:"kind"`
 	Sensitivity LiteralSensitivity    `json:"sensitivity"`
 	Choices     []ClarificationChoice `json:"choices"`
+	PromptES    string                `json:"prompt_es,omitempty"`
+	DependsOn   []string              `json:"depends_on,omitempty"`
+	Effect      *ClarificationEffect  `json:"effect,omitempty"`
+	Default     *ClarificationValue   `json:"default,omitempty"`
 }
 
-// ClarificationPattern defines slots only; matching a question is later work.
+// ClarificationPattern preserves exact semantic targets separately from its
+// reviewed applicability policy. Legacy patterns have no implicit new blocker.
 type ClarificationPattern struct {
-	ID         string              `json:"id"`
-	Version    string              `json:"version"`
-	Targets    []Reference         `json:"targets"`
-	Provenance RuleProvenance      `json:"provenance"`
-	Slots      []ClarificationSlot `json:"slots"`
+	ID         string               `json:"id"`
+	Version    string               `json:"version"`
+	Targets    []Reference          `json:"targets"`
+	Provenance RuleProvenance       `json:"provenance"`
+	Slots      []ClarificationSlot  `json:"slots"`
+	Policy     *ClarificationPolicy `json:"policy,omitempty"`
 }
 
 // RuleSetDefinition pins all rules and patterns to one exact compiled topic.

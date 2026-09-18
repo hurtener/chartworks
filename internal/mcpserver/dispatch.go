@@ -8,6 +8,7 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -80,6 +81,9 @@ func (s *Server) dispatch(ctx context.Context, name string, args json.RawMessage
 			f = Fault{Code: "invalid_request"}
 		}
 		f.Outcome = "unknown"
+		if f.Clarification != nil {
+			f.Clarification = semantics.PublicClarificationProblem(*f.Clarification)
+		}
 		// Receipts are bounded, structured owner output, never arbitrary error text.
 		if f.Receipt != nil {
 			receipt, encodeErr := json.Marshal(f.Receipt)
@@ -90,6 +94,7 @@ func (s *Server) dispatch(ctx context.Context, name string, args json.RawMessage
 		failed := toolFailure(f)
 		wire, encodeErr := json.Marshal(failed)
 		if encodeErr != nil || len(wire)+512 > s.settings.MaxResponseBytes {
+			f.Clarification = nil
 			f.Receipt = nil
 			failed = toolFailure(f)
 		}

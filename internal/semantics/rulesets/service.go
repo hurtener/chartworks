@@ -267,11 +267,15 @@ func (s *Service) Replay(ctx context.Context, e identity.Envelope, topic string,
 		return Comparison{}, err
 	}
 	base.EvaluatedAt = time.Now().UTC()
+	clarificationCases, err := evaluateClarificationCases(ctx, model, in.ClarificationCases)
+	if err != nil {
+		return Comparison{}, err
+	}
 	id, err := newComparisonID()
 	if err != nil {
 		return Comparison{}, err
 	}
-	return s.recordComparison(ctx, e, Comparison{ID: id, Mode: comparisonReplay, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: base, Changed: false, CreatedAt: time.Now().UTC()})
+	return s.recordComparison(ctx, e, Comparison{BaselineClarifications: clarificationCases, ID: id, Mode: comparisonReplay, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: base, Changed: false, CreatedAt: time.Now().UTC()})
 }
 
 // Shadow compares a retained baseline with either an exact retained candidate
@@ -306,11 +310,19 @@ func (s *Service) Shadow(ctx context.Context, e identity.Envelope, topic string,
 	if baseline.PackDigest != candidate.PackDigest || baseline.TopicVersion != candidate.TopicVersion {
 		return Comparison{}, store.ErrConflict
 	}
+	baselineCases, err := evaluateClarificationCases(ctx, baselineModel, in.ClarificationCases)
+	if err != nil {
+		return Comparison{}, err
+	}
+	candidateCases, err := evaluateClarificationCases(ctx, candidateModel, in.ClarificationCases)
+	if err != nil {
+		return Comparison{}, err
+	}
 	id, err := newComparisonID()
 	if err != nil {
 		return Comparison{}, err
 	}
-	return s.recordComparison(ctx, e, Comparison{ID: id, Mode: comparisonShadow, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: baseline, Candidate: &candidate, Changed: !sameConstraintEvaluation(baseline.Result, candidate.Result), CreatedAt: time.Now().UTC()})
+	return s.recordComparison(ctx, e, Comparison{BaselineClarifications: baselineCases, CandidateClarifications: candidateCases, ID: id, Mode: comparisonShadow, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: baseline, Candidate: &candidate, Changed: !sameConstraintEvaluation(baseline.Result, candidate.Result) || !sameClarificationCases(baselineCases, candidateCases), CreatedAt: time.Now().UTC()})
 }
 
 // Patterns returns detached clarification patterns from the exact or current
@@ -320,20 +332,7 @@ func (s *Service) Patterns(ctx context.Context, e identity.Envelope, topic, vers
 	if err != nil {
 		return nil, err
 	}
-	out := append([]semantics.ClarificationPattern(nil), published.Definition.Patterns...)
-	for i := range out {
-		out[i].Targets = append([]semantics.Reference(nil), out[i].Targets...)
-		out[i].Slots = append([]semantics.ClarificationSlot(nil), out[i].Slots...)
-		for j := range out[i].Slots {
-			out[i].Slots[j].Choices = append([]semantics.ClarificationChoice(nil), out[i].Slots[j].Choices...)
-			for k := range out[i].Slots[j].Choices {
-				if target := out[i].Slots[j].Choices[k].Target; target != nil {
-					copy := *target
-					out[i].Slots[j].Choices[k].Target = &copy
-				}
-			}
-		}
-	}
+	out := semantics.CloneRuleSetDefinition(published.Definition).Patterns
 	return out, nil
 }
 

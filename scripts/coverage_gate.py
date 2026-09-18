@@ -13,8 +13,11 @@ import tempfile
 
 
 DISCOVERY_TIMEOUT_SECONDS = 25 * 60
-# This is an aggregate build + all-packages budget. Go's -timeout=20m still
-# bounds each package separately; a cold race/coverpkg build is outside it.
+# The cumulative acceptance package now includes CW-01 as well as every existing
+# phase and standalone regression. Its race/coverpkg run exceeded 20 minutes
+# while starting another test, not while stuck in that test. Keep a bounded
+# 30-minute per-package budget and the unchanged aggregate 60-minute deadline.
+# A cold race/coverpkg build is outside Go's per-package test timeout.
 # Keep this bounded and below the 90-minute build-test CI job deadline.
 SUITE_TIMEOUT_SECONDS = 60 * 60
 
@@ -104,7 +107,7 @@ def main() -> int:
             profile = Path(directory) / "coverage.out"
             targets = ",".join(module + "/" + name for name in sorted(packages))
             try:
-                command(["go", "test", "-race", "-count=1", "-timeout=20m", "-covermode=atomic",
+                command(["go", "test", "-race", "-count=1", "-timeout=30m", "-covermode=atomic",
                          "-coverpkg=" + targets, "-coverprofile=" + str(profile), "./..."], root,
                         timeout_seconds=SUITE_TIMEOUT_SECONDS)
                 totals = measure(profile.read_text(), module, packages)
