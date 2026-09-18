@@ -212,7 +212,9 @@ func cw01BudgetPrivacyAcceptance(t *testing.T, f *cw01Fixture) {
 	f.model.mu.Lock()
 	start := len(f.model.requestBodies)
 	f.model.mu.Unlock()
-	sensitive := f.plan(t, f.question("Show named sales", nlq.LanguageEnglish), "customer", cw01Text("alias-secret-731"))
+	// The question contains the unpadded spelling, while the accepted answer
+	// has ASCII and Unicode padding. Both must be protected after resolution.
+	sensitive := f.plan(t, f.question("Show named sales for alias-secret-731", nlq.LanguageEnglish), "customer", cw01Text(" \talias-secret-731\u00a0"))
 	f.run(t, sensitive, 1, true)
 	f.model.mu.Lock()
 	bodies := strings.Join(append([]string(nil), f.model.requestBodies[start:]...), "\n")
@@ -229,6 +231,9 @@ func cw01BudgetPrivacyAcceptance(t *testing.T, f *cw01Fixture) {
 	record, err := f.f.db.ReadQuery(ctx, scope, sensitive.QueryID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(record.Question, "alias-secret-731") || !strings.Contains(record.Question, "[redacted answer]") {
+		t.Fatal("normalized sensitive alias reached the retained question")
 	}
 	encoded, _ := json.Marshal(record.Route.Request)
 	if strings.Contains(string(encoded), "alias-secret-731") || len(record.Route.Resolutions) != 1 || record.Route.Resolutions[0].Sensitivity != semantics.LiteralSensitive || record.Route.Resolutions[0].ParserVersion != "clarification-values-v1" || record.Route.Resolutions[0].Locale != "en" {

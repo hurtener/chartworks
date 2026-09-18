@@ -47,6 +47,9 @@ jobs:
       - name: Bounded typed-value fuzz campaign
         if: success() || failure()
         run: go test -race ./internal/semantics -run '^$' -fuzz '^FuzzClarificationDecimal$' -fuzztime=256x -parallel=2
+      - name: Bounded sensitive-spelling redaction fuzz campaign
+        if: success() || failure()
+        run: go test -race ./internal/semantics -run '^$' -fuzz '^FuzzClarificationRedactionWhitespace$' -fuzztime=256x -parallel=2
       - name: Verify tests did not rewrite committed source
         if: always()
         run: git diff --exit-code

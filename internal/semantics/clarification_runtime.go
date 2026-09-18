@@ -174,21 +174,39 @@ func RedactClarificationText(text string, answers []ClarificationAnswer, resolut
 			}
 		}
 	}
-	sort.Slice(literals, func(i, j int) bool {
-		if len(literals[i]) != len(literals[j]) {
-			return len(literals[i]) > len(literals[j])
-		}
-		return literals[i] < literals[j]
-	})
+	// Resolution accepts trimmed/collapsed Unicode whitespace. Redaction must
+	// recognize the same known spelling, rather than leaking it when the
+	// answer and question use different spacing. Normalize before sorting so
+	// padding cannot make a shorter phrase outrank a longer sensitive value.
+	normalized := make([]string, 0, len(literals))
 	seen := map[string]bool{}
-	patterns := make([]string, 0, len(literals))
 	for _, literal := range literals {
+		if len(literal) > 4096 {
+			continue
+		}
+		literal = strings.Join(strings.Fields(literal), " ")
 		key := strings.ToLower(literal)
-		if literal == "" || len(literal) > 4096 || seen[key] {
+		if literal == "" || seen[key] {
 			continue
 		}
 		seen[key] = true
-		patterns = append(patterns, regexp.QuoteMeta(literal))
+		normalized = append(normalized, literal)
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		if len(normalized[i]) != len(normalized[j]) {
+			return len(normalized[i]) > len(normalized[j])
+		}
+		return normalized[i] < normalized[j]
+	})
+	patterns := make([]string, 0, len(normalized))
+	for _, literal := range normalized {
+		words := strings.Fields(literal)
+		for i := range words {
+			words[i] = regexp.QuoteMeta(words[i])
+		}
+		// unicode.IsSpace (used by strings.Fields) consists of the Unicode
+		// separator categories plus these ASCII/control whitespace runes.
+		patterns = append(patterns, strings.Join(words, `[\t\n\v\f\r \x{0085}\p{Z}]+`))
 	}
 	if len(patterns) == 0 {
 		return text
