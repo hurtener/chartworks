@@ -249,7 +249,7 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 		}
 		out.Selection, out.SelectionCode = &selection, SelectionErrorCode(err)
 		out.Resource = blockResource(t.ID, v.Revision, v.Metadata, in.Locale)
-		out.Outputs, out.Trust, out.Timezone = viewerChoices(&selection, out.Resource.Locale), clone(&v.Trust), "UTC"
+		out.Outputs, out.Trust, out.Timezone = viewerChoices(&selection, in.Locale), clone(&v.Trust), "UTC"
 		out.QueryLimits, out.ResultPolicy = clone(v.QueryLimits), clone(v.ResultPolicy)
 		for _, p := range v.Parameters {
 			out.Filters = append(out.Filters, ViewerFilter{Page: "main", Label: p.Name, Parameter: p})
