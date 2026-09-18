@@ -71,11 +71,17 @@ jobs:
           key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
       - name: Record exact committed source
         run: |
-          git rev-parse HEAD
+          git log -1 --format='commit=%H%ntree=%T%nparents=%P'
+          git rev-parse HEAD:test/acceptance/phase05_test.go
+          sha256sum test/acceptance/phase05_test.go go.mod go.sum
+          git diff --exit-code HEAD --
           go version
           go mod verify
       - name: Compile current runtime and consumers
         run: go test -run '^$' ./internal/semantics/... ./internal/exec ./internal/nlq... ./internal/api ./internal/topicapi ./internal/mcpserver ./sdk/... ./test/acceptance
+      - name: Repeat Phase 05 gateway acceptance against committed source
+        if: success() || failure()
+        run: go test -race -count=3 -timeout=20m ./test/acceptance -run '^TestPhase05$' -v
       - name: Execute owned phase and CW-01 acceptance
         if: success() || failure()
         run: go test -race -count=1 -timeout=20m ./test/acceptance -run '^(TestPhase(16|17|18)|TestCW01)$' -v
