@@ -305,6 +305,9 @@ func testCW02SavedChartLifecycle(t *testing.T) {
 	bad.Outputs[0].Mapping.Columns[0].Provenance.SourceRevision++
 	_, err = client.CreateBlock(ctx, cw.BlockCreateRequest{ID: "cw02-invalid-origin", Definition: bad})
 	chartStatus(t, err, http.StatusBadRequest)
+	t.Run("stored-integrity", func(t *testing.T) {
+		testCW02StoredChartIntegrity(t, f, client, definition)
+	})
 	// Every JSON body has now crossed actual persistence, closed HTTP, SDK,
 	// publication, frozen build and retained Apps view, not just Go field checks.
 	wire, err := json.Marshal(published)
