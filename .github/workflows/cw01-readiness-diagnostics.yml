@@ -1,0 +1,50 @@
+name: CW01 readiness diagnostics
+
+on:
+  push:
+    branches: [ci/cw01-readiness-diagnostics]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Extract actual failed gate diagnostics
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run view 35286593649 --repo hurtener/chartworks --job 105420182907 --log > /tmp/cw01-failed-job.log
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          lines = Path('/tmp/cw01-failed-job.log').read_text().splitlines()
+          pattern = re.compile(r'--- FAIL:|FAIL\s+github\.com/|panic:|WARNING: DATA RACE|FAIL:|coverage.*(?:below|threshold)|##\[error\]', re.IGNORECASE)
+          matches = [i for i, line in enumerate(lines) if pattern.search(line)]
+          print(f'Job 105420182907: {len(lines)} log lines, {len(matches)} failure markers')
+          keep = set()
+          for index in matches:
+              keep.update(range(max(0, index - 4), min(len(lines), index + 9)))
+          if len(keep) > 600:
+              raise SystemExit('More than 600 diagnostic lines; narrow the marker set before reading')
+          for index in sorted(keep):
+              print(f'{index + 1}: {lines[index]}')
+          if not matches:
+              print('\n'.join(lines[-100:]))
+          PY
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Inspect current integration and relevant source ownership
+        run: |
+          set -euo pipefail
+          echo "PR_BASE=$(git rev-parse origin/main)"
+          echo "PR_HEAD=$(git rev-parse origin/feat/cw-01-conditional-typed-clarification)"
+          git merge-base --is-ancestor origin/main origin/feat/cw-01-conditional-typed-clarification
+          find internal docs test .github -name AGENTS.md -print
+          cat scripts/coverage.sh
