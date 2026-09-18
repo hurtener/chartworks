@@ -1,0 +1,116 @@
+name: CW01 publication comparison candidate
+
+on:
+  push:
+    branches: [ci/cw01-readiness-diagnostics]
+    paths: [.github/workflows/cw01-publication-comparison.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -p=2
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-native
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: 3692a3a64c8423c1a16614734f1ff20f4c48fb7c
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: |
+            /tmp/chartworks-native
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+      - name: Prepare pinned dependency
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            /tmp/chartworks-native
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+      - name: Prepare the single inspected test assertion replacement
+        run: |
+          test "$(git rev-parse HEAD)" = 3692a3a64c8423c1a16614734f1ff20f4c48fb7c
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('test/acceptance/topic_publications_test.go')
+          before = '''\texported, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, pack.Version, drafts.Export)
+          \tif err != nil || !reflect.DeepEqual(exported, published) {
+          \t\tt.Fatal("authorized publication export did not retain the exact version", err)
+          \t}
+          '''
+          after = '''\texported, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, pack.Version, drafts.Export)
+          \tif err != nil || !exported.PublishedAt.Equal(published.PublishedAt) {
+          \t\tt.Fatal("authorized publication export changed its publication instant", err)
+          \t}
+          \t// PostgreSQL and JSON may represent the same instant with different
+          \t// time.Location values. Normalize only that representation; every
+          \t// publication field, including the exact instant, remains compared.
+          \texported.PublishedAt = exported.PublishedAt.UTC()
+          \texpectedExport := published
+          \texpectedExport.PublishedAt = expectedExport.PublishedAt.UTC()
+          \tif !reflect.DeepEqual(exported, expectedExport) {
+          \t\tt.Fatal("authorized publication export did not retain the exact version")
+          \t}
+          '''
+          source = path.read_text()
+          if source.count(before) != 1:
+              raise SystemExit('Inspected publication assertion no longer matches exactly')
+          path.write_text(source.replace(before, after))
+          PY
+          gofmt -w test/acceptance/topic_publications_test.go
+          git diff --check
+          git diff --stat
+          git diff -- test/acceptance/topic_publications_test.go
+      - name: Validate all publication criteria and the standalone lifecycle
+        run: go test -race -count=1 -timeout=10m ./test/acceptance -run '^(TestTopicPublicationAPIAndAtomicLifecycle|TestPhase15)$' -v
+      - name: Create a candidate tree only after successful verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          path = 'test/acceptance/topic_publications_test.go'
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          if changed != [path]:
+              raise SystemExit('Unexpected candidate paths')
+          base = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip()
+          payload = {'base_tree': base, 'tree': [{'path': path, 'mode': '100644', 'type': 'blob', 'content': Path(path).read_text()}]}
+          request = Path('/tmp/cw01-publication-tree.json')
+          request.write_text(json.dumps(payload))
+          response = subprocess.check_output(['gh', 'api', '--method', 'POST', 'repos/hurtener/chartworks/git/trees', '--input', str(request)], text=True)
+          print('CANDIDATE_TREE=' + json.loads(response)['sha'])
+          print('CANDIDATE_PARENT=3692a3a64c8423c1a16614734f1ff20f4c48fb7c')
+          print('No commit or branch ref was created or changed by this workflow.')
+          print('Candidate tests are not final-head CI; committed-source CI must run after the reviewed tree is pushed.')
+          PY
