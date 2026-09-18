@@ -8,24 +8,45 @@ permissions:
 jobs:
   workspace:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 8db1c9d69a9b2ef48d6dd83e4f18e3a00e928b2e
-          fetch-depth: 2
+          ref: 40aa6452671d502ef531439ff59b327075987c1a
           persist-credentials: false
-      - name: Archive exact tracked source and Git objects only
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Archive exact committed source and toolchain without credentials
         run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 40aa6452671d502ef531439ff59b327075987c1a
           git archive --format=tar.gz --prefix=chartworks/ HEAD > "$RUNNER_TEMP/chartworks-source.tar.gz"
-          git rev-parse HEAD > "$RUNNER_TEMP/chartworks-source-sha.txt"
-          sha256sum "$RUNNER_TEMP/chartworks-source.tar.gz" > "$RUNNER_TEMP/chartworks-workspace-sha256.txt"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/chartworks-source-identity.txt"
+          tar -C "$(go env GOROOT)" -czf "$RUNNER_TEMP/chartworks-go.tar.gz" .
+          git ls-files internal/reportingapi | xargs sha256sum > "$RUNNER_TEMP/reportingapi-source-sha256.txt"
+          sha256sum "$RUNNER_TEMP/chartworks-source.tar.gz" "$RUNNER_TEMP/chartworks-go.tar.gz" > "$RUNNER_TEMP/chartworks-workspace-sha256.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: cw-02-current-source
+          name: cw-02-exact-source-40aa
           path: |
             ${{ runner.temp }}/chartworks-source.tar.gz
-            ${{ runner.temp }}/chartworks-source-sha.txt
+            ${{ runner.temp }}/chartworks-source-identity.txt
+            ${{ runner.temp }}/chartworks-go.tar.gz
+            ${{ runner.temp }}/reportingapi-source-sha256.txt
             ${{ runner.temp }}/chartworks-workspace-sha256.txt
-          retention-days: 1
+          retention-days: 3
+          if-no-files-found: error
+      - name: Unmodified reporting HTTP race diagnostic
+        run: |
+          set -euo pipefail
+          go test -race -count=10 ./internal/reportingapi 2>&1 | tee "$RUNNER_TEMP/reportingapi-race.log"
+      - name: Preserve complete diagnostic output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cw-02-reportingapi-diagnostic-40aa
+          path: ${{ runner.temp }}/reportingapi-race.log
+          retention-days: 3
           if-no-files-found: error
