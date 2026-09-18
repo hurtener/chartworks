@@ -1,0 +1,37 @@
+name: CW01 superseded run cleanup
+
+on:
+  push:
+    branches: [ci/cw01-readiness-diagnostics]
+    paths: [.github/workflows/cw01-readiness-superseded.yml]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel-superseded:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Cancel only the enumerated obsolete-head workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import subprocess
+          runs = [35306490618, 35306490563, 35306490570, 35306490611, 35306490599, 35306490592, 35306490602]
+          for run in runs:
+              path = f'repos/hurtener/chartworks/actions/runs/{run}'
+              record = json.loads(subprocess.check_output(['gh', 'api', path], text=True))
+              if record['head_sha'] != '3e71a6590681b6fff89034e41ef34ddf166e5827' or record['head_branch'] != 'feat/cw-01-conditional-typed-clarification' or record['event'] != 'pull_request':
+                  raise SystemExit(f'Unexpected workflow identity: {run}')
+              if record['status'] == 'completed':
+                  print(f'{run}: already completed ({record["conclusion"]}); preserved')
+                  continue
+              subprocess.run(['gh', 'api', '--method', 'POST', path + '/cancel'], check=True)
+              print(f'{run}: obsolete head cancelled, never counted as passing')
+          print('Current head and its workflows were not modified. Prior runtime diagnostics were preserved.')
+          PY
