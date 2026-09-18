@@ -1,0 +1,66 @@
+name: CW01 retained coverage inspection
+
+on:
+  push:
+    branches: [ci/cw01-readiness-diagnostics]
+    paths: [.github/workflows/cw01-coverage-inspection.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: f0fa46c6364751e33f6d79b1795ba21c13fbf04c
+      - name: Retrieve the already failed suite's retained instrumentation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 35286593649 --repo hurtener/chartworks --name race-coverage --dir /tmp/cw01-previous-profile
+      - name: Report diagnostic statement coverage and bounded uncovered ranges
+        run: |
+          python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from coverage_gate import bands, measure
+          files = list(Path('/tmp/cw01-previous-profile').rglob('*.out'))
+          if len(files) != 1:
+              raise SystemExit('Expected exactly one retained profile')
+          profile = files[0].read_text()
+          limits = bands(Path('scripts/coverage-bands.conf').read_text())
+          module = 'github.com/hurtener/chartworks'
+          totals = measure(profile, module, set(limits))
+          print('PARTIAL, FAILED-SUITE DIAGNOSTIC ONLY: these figures do not prove any passing gate.')
+          for package in sorted(totals):
+              covered, total = totals[package]
+              if package in ('internal/exec', 'internal/semantics') or covered * 10000 < limits[package] * total:
+                  print(f'{package}: {covered}/{total} = {100 * covered / total:.4f}%; required {limits[package] / 100:.2f}%')
+          blocks = {}
+          for line in profile.splitlines()[1:]:
+              location, count, hits = line.rsplit(' ', 2)
+              statements, observed = int(count), int(hits) != 0
+              previous = blocks.get(location)
+              blocks[location] = (statements, observed or bool(previous and previous[1]))
+          selected = []
+          for location, (statements, covered) in blocks.items():
+              if statements and not covered and any(location.startswith(module + '/' + prefix) for prefix in ('internal/exec/business_', 'internal/semantics/clarification_')):
+                  selected.append((location.removeprefix(module + '/'), statements))
+          for location, statements in sorted(selected)[:160]:
+              print(f'UNOBSERVED {location}: {statements} statements')
+          print(f'{len(selected)} unobserved ranges in the two scoped prefixes; bounded display only.')
+          for path in sorted(Path('internal/exec').glob('*.go')):
+              if path.name.endswith('_test.go'):
+                  continue
+              lines = path.read_text().splitlines()
+              for index, line in enumerate(lines):
+                  if re.search(r'^type Binding struct|^func \([^)]*Binding\) Valid|^type Column struct', line):
+                      print(f'\nSOURCE {path}:{index + 1}')
+                      print('\n'.join(lines[index:index + 65]))
+          PY
