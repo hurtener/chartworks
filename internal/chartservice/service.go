@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -93,14 +94,18 @@ func (s *Service) ConcurrencyLimit() int {
 
 // CatalogResult reports real capabilities and their active input limits.
 type CatalogResult struct {
-	Version           int                   `json:"version"`
-	Kinds             []charts.CatalogEntry `json:"kinds"`
-	Limits            charts.Limits         `json:"limits"`
-	RankingConfigured bool                  `json:"ranking_configured"`
+	Version              int                   `json:"version"`
+	Kinds                []charts.CatalogEntry `json:"kinds"`
+	Limits               charts.Limits         `json:"limits"`
+	RankingConfigured    bool                  `json:"ranking_configured"`
+	MappingVersions      []int                 `json:"mapping_versions"`
+	MaxTransformedPoints int                   `json:"max_transformed_points"`
+	MaxHierarchyDepth    int                   `json:"max_hierarchy_depth"`
 }
 
 // SelectRequest opts into paid exploratory ranking explicitly. Intent is bounded
-// author text; no rows, labels, source metadata or saved definition reach a model.
+// author text used by deterministic rules; only its closed intent classification
+// and rule descriptors, never raw question text or data, reach an optional model.
 type SelectRequest struct {
 	Data   charts.Data `json:"data"`
 	Rank   bool        `json:"rank"`
@@ -187,7 +192,7 @@ func (s *Service) Catalog(ctx context.Context, e identity.Envelope) (CatalogResu
 		return CatalogResult{}, err
 	}
 	defer done()
-	return CatalogResult{1, charts.Catalog(), s.options.Limits, s.options.RankEnabled && s.engine != nil}, finish(ctx, e, "charts.read")
+	return CatalogResult{Version: 1, Kinds: charts.Catalog(), Limits: s.options.Limits, RankingConfigured: s.options.RankEnabled && s.engine != nil, MappingVersions: []int{charts.Version, charts.RichVersion}, MaxTransformedPoints: charts.MaxTransformedPoints, MaxHierarchyDepth: charts.MaxHierarchyDepth}, finish(ctx, e, "charts.read")
 }
 
 // Select uses deterministic rules first; the ranker may only reorder that sealed
@@ -201,11 +206,11 @@ func (s *Service) Select(ctx context.Context, e identity.Envelope, in SelectRequ
 	if len(in.Intent) > 1024 || !utf8.ValidString(in.Intent) {
 		return SelectionResult{}, charts.ErrInvalid
 	}
-	selection, err := charts.Select(ctx, in.Data, s.options.Limits)
+	selection, err := charts.SelectWithIntent(ctx, in.Data, in.Intent, s.options.Limits)
 	if err != nil {
 		return SelectionResult{}, err
 	}
-	out := SelectionResult{Selection: selection, Limits: s.options.Limits, Provenance: Provenance{Input: "caller_supplied", RulesVersion: 1, Ranking: "not_requested", Ranked: []gateway.RankedItem{}, Receipt: gateway.Receipt{Calls: []gateway.Usage{}}, MaxCalls: s.options.RankCalls, MaxTokens: s.options.RankTokens, MaxDurationMS: s.options.RankTimeout.Milliseconds()}}
+	out := SelectionResult{Selection: selection, Limits: s.options.Limits, Provenance: Provenance{Input: "caller_supplied", RulesVersion: charts.RulesVersion, Ranking: "not_requested", Ranked: []gateway.RankedItem{}, Receipt: gateway.Receipt{Calls: []gateway.Usage{}}, MaxCalls: s.options.RankCalls, MaxTokens: s.options.RankTokens, MaxDurationMS: s.options.RankTimeout.Milliseconds()}}
 	if in.Rank {
 		switch {
 		case !s.options.RankEnabled || s.engine == nil:
@@ -213,7 +218,7 @@ func (s *Service) Select(ctx context.Context, e identity.Envelope, in SelectRequ
 		case selection.Fallback || len(selection.Alternatives) == 0:
 			out.Provenance.Ranking = "not_applicable"
 		default:
-			s.rank(ctx, e, in.Intent, &out)
+			s.rank(ctx, e, selection.Evidence.Intent, &out)
 		}
 	}
 	if err = finish(ctx, e, "charts.select"); err != nil {
@@ -236,7 +241,7 @@ func (s *Service) rank(ctx context.Context, e identity.Envelope, intent string, 
 	byID := make(map[string]charts.Candidate, len(ordered))
 	for i, c := range ordered {
 		id := string(c.Mapping.Kind)
-		items[i] = gateway.Candidate{ID: id, Text: id + ": " + c.Reason, Resource: access.Tenant(e, "read")}
+		items[i] = gateway.Candidate{ID: id, Text: id + ": " + c.Reason + "; " + c.Variant + "; " + strings.Join(c.Signals, ","), Resource: access.Tenant(e, "read")}
 		byID[id] = c
 	}
 	candidates, err := gateway.AdmitCandidates(call, "charts.select", items)

@@ -1,172 +1,258 @@
-# Output specifications v1
+# Output specifications v1 and v2
 
-Phase 20 produces portable drawing input, not rendered pixels, SQL or a persisted
-chart object. `internal/charts` is deterministic standard-library code;
-`internal/chartservice` applies current Pengui authority and optional existing
-Bifrost rank assistance. `internal/chartapi` and `sdk/chartworks` consume those same
-services. The [operation manifest](chartworks-chart-operations.json) is checked
-against the actual registry, which also generates `/openapi.json`.
+This is the current shared chart contract. Its filename remains stable for older
+links. `internal/charts` owns deterministic binding, suitability and retained
+transformation; `internal/chartservice`, the closed HTTP API, public SDK, saved
+reporting definitions and the current Apps viewer consume that same contract.
+The [operation manifest](chartworks-chart-operations.json) is checked against the
+registry that generates `/openapi.json`.
 
 ## Authority and data boundary
 
-Every operation requires its exact `charts.read`, `charts.select` or `charts.bind`
-action **and** `cw.tenant.read:<signed-tenant>`. No request accepts a tenant, actor,
-DSN, source handle, SQL, credential, formatter or remote resource location. These
-operations transform **caller-supplied** bounded data; column provenance is
-metadata, not proof of source access or reviewed meaning. Supplying a source/topic
-identifier never causes a lookup, validates a permission, certifies a semantic
-model, or grants the right to query that resource. The caller must obtain data
-through the separately authorized source/NLQ/BYO path. Future block/report owners
-must resolve exact definitions and data dependencies under their own authority.
+Every chart operation requires its exact `charts.read`, `charts.select` or
+`charts.bind` action and `cw.tenant.read:<signed-tenant>`. The existing verified
+identity/issuer and signed source-context boundaries are unchanged. Requests do
+not accept credentials, SQL, executable formatters, remote resources or replacement
+authority. Chart provenance is metadata, not proof of permission or certification.
+The separately authorized query path obtains data; saved reporting publication and
+execution independently validate the exact dependencies under current authority.
 
-The service independently enforces the signed tenant/action before processing;
-HTTP denies unauthorized calls before decoding. HTTP decoding and in-process work
-have bounded, nonqueued admission. A definition is not an execution capability and
-is never implicitly made current after schema drift. Nothing is stored or logged
-as chart data, SQL, model prompt or result content. These operations have no domain
-mutation audit; an attempted optional inference has an explicit usage receipt.
+Standalone chart operations transform caller-supplied bounded typed results.
+They neither persist a second chart-state store nor query a source to draw a chart.
+Saved reporting definitions persist the same mapping in immutable revisions.
+Source validation, publication, current health and current authority remain
+separate facts. A frozen refresh builds the saved outputs without question
+interpretation, chart selection or optional chart ranking.
 
-## Operations and public SDK
+## Operations, versions and closed bindings
 
 | Operation | HTTP | SDK | Behavior |
 |---|---|---|---|
-| Catalog | `GET /v1/charts/catalog` | `ChartCatalog` | Fourteen kinds, required/optional slots, negative/null policies, configured limits. |
-| Selection | `POST /v1/charts/select` | `SelectChart` | Deterministic suitable candidates; explicitly requested optional remote reordering. |
-| Explicit authoring | `POST /v1/charts/specify` | `SpecifyChart` | Bind one chosen kind and return its output; unsuitable kinds are rejected, not replaced. |
-| Saved output | `POST /v1/charts/build` | `BuildChart` | Exact saved definition applied to compatible supplied data; no selector/model/source call. |
-| Authoring rebind | `POST /v1/charts/rebind` | `RebindChart` | Detached `review_required` proposal; never approval, persistence or mutation. |
+| Catalog | `GET /v1/charts/catalog` | `ChartCatalog` | Fourteen kinds, separately described binding variants, mapping versions and limits. |
+| Selection | `POST /v1/charts/select` | `SelectChart` | Rules use bounded intent and retained-data signals before sealing candidates. |
+| Explicit authoring | `POST /v1/charts/specify` | `SpecifyChart` | Bind and build the chosen shape; unsuitable shapes do not silently become tables. |
+| Saved output | `POST /v1/charts/build` | `BuildChart` | Exact saved pins and compatible data, without a source, selector or model call. |
+| Authoring rebind | `POST /v1/charts/rebind` | `RebindChart` | Detached `review_required` proposal, not approval or mutation. |
 
-All structures are closed lower-snake-case JSON. Required scalars are non-null;
-Go nil collections are permitted where the DTO has a collection. Every cell has
-`null` and `value`; a null cell must have `value:""`. `{null:false,value:""}` is a
-real empty text value, not missing data. Binary values use even-length hexadecimal
-text; structured values contain valid JSON text (not an executable object). `ChartDataFromReadResult` preserves the
-qualified reader's exact string encodings, booleans, nulls and numeric tokens,
-without a `float64` intermediary. It does not infer units, additive aggregation,
-source authority or semantic approval. `DefaultChartOptions` supplies explicit
-safe options for authoring.
+Data, column provenance and old scalar mappings/outputs remain version 1. Rich
+bindings and their outputs use version 2. `mapping_versions` advertises `[1,2]`;
+`BuildVersion` separately identifies the transformation engine in frozen-result
+reuse keys. A retained v1 artifact is still readable; a new engine does not
+rewrite it or reuse an incompatible older build as a new result.
 
-```go
-// client already has a trusted server URL and current Pengui TokenProvider.
-// report comes from ExecuteRead / RunNLQ / the caller's explicit BYO step.
-if report.Result == nil { return errors.New("read did not return data") }
-catalog, err := client.ChartCatalog(ctx)
-if err != nil { return err }
-data, err := chartworks.ChartDataFromReadResult(ctx, *report.Result, catalog.Limits)
-if err != nil { return err }
-selection, err := client.SelectChart(ctx, chartworks.ChartSelectRequest{Data: data})
-if err != nil { return err }
-output, err := client.BuildChart(ctx, chartworks.ChartBuildRequest{
-    Data: data, Mapping: selection.Selection.Selected.Mapping,
-})
-// output.Output is declarative input for a renderer, not image bytes.
-```
+All structures use closed lower-snake-case JSON. A cell carries `null` and an
+exact string `value`; a null requires `value:""`, while a non-null empty string is
+real data. `ChartDataFromReadResult` preserves qualified read-result strings and
+numeric tokens without passing exact values through floating point. It does not
+infer units, additive semantics or authority.
 
-## Catalog, selection and shapes
+The binding object permits scalar column IDs `category`, `value`, `series`, `x`,
+`y`, `parent`, `size`, and ordered ID arrays `values`, `hierarchy`, `columns` only.
+Arrays contain column IDs, not arbitrary expressions, objects or rendering code.
+The applicable variant closes the allowed combination. `value` and `values` are
+exclusive; `hierarchy` replaces scalar `parent`/`category` for a rich treemap.
+All used IDs are distinct, including between slots. Columns are pinned in this
+canonical order: category, value, series, x, y, parent, size, values, hierarchy,
+columns. Absent slots contribute nothing. Repeated-slot order is never sorted away.
+Unknown fields/versions, malformed arrays, repeated IDs and mismatched version/shape
+combinations reject. A rich binding cannot be relabeled v1 to drop its extra slots.
 
-The fourteen distinct kinds are `area`, `bar`, `column`, `donut`, `grouped_bar`,
-`heatmap`, `kpi`, `line`, `pie`, `scatter`, `stacked_bar`, `stacked_column`, `table`
-and `treemap`. `kpi` is the KPI-card wire spelling. Selection uses stable first-fit
-qualified roles, deterministic scores and catalog tie order. It returns at most
-`max_alternatives` in addition to the primary, excluding every candidate below
-`selection_floor`. A labeled `table_fallback` is used only when no chart qualifies;
-it is not counted as implementation of any other kind. An explicitly requested
-kind never silently falls back. The frozen mapping includes its exact column pins,
-slot order, formatting and explicit sort definition.
+## Supported variants, not merely catalog names
 
-Categorical plots require unique category/series cells rather than inventing an
-aggregation. Grouped and stacked plots require a separate series column. Heatmaps
-require two categorical axes and a numeric value; their category bound covers the
-combined axis labels. Scatter preserves repeated observations. Line/area require
-parseable temporal categories, detect identical instants across different offsets,
-and retain null-value gaps. Treemap supports a flat or one-parent-level hierarchy;
-leaf/parent self-links, duplicate leaves in one parent, negative parts and excessive
-series are rejected. Pie/donut/treemap reject negatives and report
-`no_positive_values` for nonempty all-zero values. KPI has at most one row. Empty
-inputs produce `empty`, without invented zeroes. Null coordinates omitted from
-other plots are reported by count and warning; table nulls remain explicit.
+The catalog is **12 plots plus KPI and table**, not a claim that every possible
+variation of fourteen names exists. Its `variants` list describes the actual
+supported alternatives independently from legacy scalar `required_slots`.
 
-Text labels are literal UTF-8, not HTML or code. Full long labels survive; a
-renderer may use `label_max_runes` only as a visible layout hint and must retain
-accessible exact labels. Column order follows bound IDs, not original data order.
-Explicit ordering is stable and exact-numeric aware, with nulls last.
+| Kind | Compatible v1 | Rich v2 and restrictions |
+|---|---|---|
+| Line / area | Temporal category + scalar value | Ordered values, or scalar value with categorical series, or values with series. Temporal category leads explicit order; default ascending. |
+| Bar / column | Category + scalar value | Ordered values without a series dimension; scalar value plus real categorical series; or values plus series. |
+| Grouped bar | Category + value + series | Category + at least two values without an artificial dimension, or repeated values with real series. |
+| Scatter | Numeric x/y, optional categorical series | Explicit numeric size, with optional categorical series; bubble area encodes size. |
+| Treemap | Category + value, optional one-level parent | Ordered hierarchy of 1–8 levels plus a declared additive value; no scalar category/parent mixed in. |
+| Stacked bar / column | Category + series + one value | Existing exact tuple contract is preserved; no repeated-measure stacking extension. |
+| Heatmap | Categorical x/y + value | Existing unique-cell contract; not numeric scatter axes. |
+| Pie / donut | Category + value | Existing nonnegative composition contract. |
+| KPI | One scalar value, at most one row | Existing interface preserved; no new reporting KPI definition math. |
+| Table | Ordered columns | Existing exact rows/totals interface preserved; no new reporting table policy. |
 
-## Exactness and completeness
+All variants apply type, cardinality, null and numeric-range validation before
+building. Categorical/series tuples and heatmap cells must be unambiguous even if
+one duplicate has a null value. Equivalent numeric spellings and temporal instants
+are the same coordinate, not a way to evade uniqueness. Duplicate leaf paths also
+reject. No path silently takes the last row or performs implicit duplicate-row
+aggregation. Scatter observations may repeat because they are individual points.
 
-Integer/decimal labels remain strings. Numeric geometry alone may approximate to
-finite `float64`, with per-value `approximate` and a visible aggregate warning;
-underflow/overflow is unsuitable for geometry, while a table can retain the exact
-value. Currency/unit/fraction-digit and percentage hints never rewrite exact
-labels. Percent `fraction` means 0.1 represents 10%; `whole` means 10 represents
-10%. Date/time grain, aggregation, role and versioned provenance remain portable.
+Negative pie/donut/treemap components are unsuitable, including negatives on rows
+that another missing coordinate would otherwise omit. Existing signed comparison
+and diverging stacked geometry remains supported; stacks do not become a positive
+composition percentage. KPI and table retain signed values. Invalid numeric data,
+nonfinite geometry and true underflow/overflow reject rather than becoming zero.
 
-Totals use exact rational arithmetic over the **supplied result**, only for
-explicit `sum`/`count` numeric columns without percentage formatting. Unknown,
-average, minimum, maximum and distinct-count aggregations are not silently summed.
-Totals include supplied rows even when null chart coordinates prevent plotting;
-`omitted_rows` remains visible. Renderers must label the total's scope rather than
-presenting it as a total of plotted points. `complete_result` describes the full
-supplied query result, not the entire underlying source. Truncated results retain
-the reason, warn `truncated_result_not_full_source`, and mark every total
-`returned_rows`. All-null totals are null, never a fabricated zero bill/value.
+## Ordered series and retained normalization
 
-## Rebinding and immutable meaning
+For repeated measures, declared measure order is outermost; within each measure,
+real categorical breakdowns follow first appearance after the declared stable row
+order. Each series retains its measure, original breakdown cell, full name, format
+and stable identity. Column ID/type/grain/unit/provenance pins remain in the mapping.
+Hashed typed coordinate/series keys are separate from exact human-readable labels.
 
-A saved build compares every bound column with the exact stored metadata, including
-source and topic revisions, type, role, grain, aggregation, format and name. Drift
-returns `409 mapping_changed`. Explicit rebind may associate one and only one
-same-meaning column using stable topic/semantic identity and the same source,
-type/role/grain/aggregation/format. No fuzzy name matching or ranker is used.
-Changed revision/name/ID pins appear in a detached proposal; ambiguity, missing
-columns and incompatible units/types are rejected. Even an unchanged proposal is
-`review_required`. Only a later owner-controlled authoring workflow may approve and
-persist it. Future block revisions own saved definitions; phase 20 adds no store.
+Line/area align series to the union of observed category positions. A null measure
+stays null. An absent observation becomes a null gap with `row:-1`, not a fabricated
+source row or zero. The current viewer breaks both kinds of gap. It uses ordered
+observed positions, not elapsed-time-proportional spacing, interpolation, resampling
+or inference of missing calendar buckets. Declared grain and order are exposed.
 
-## Optional ranking and failure receipts
+Bar/column/grouped plots normalize every declared measure and meaningful breakdown
+from the already retained typed rows; no new SQL is generated. Distinct units,
+currencies or percentage representations use labeled independent scale panels in
+the viewer, not a misleading shared axis or an implicit conversion. Dense glyphs
+stay inside their allocated slots; subpixel geometry may be invisible and is not
+rounded up into a false value.
 
-Ranking requires `rank:true`, `charts.rank_enabled:true`, an enabled existing
-Bifrost gateway/`visual_rank` role and more than one suitable candidate. The ranker
-receives only explicitly supplied bounded author intent and kind/rule descriptors,
-not rows, labels, source/topic coordinates or saved definitions. Schema-constrained
-Bifrost output can permute only the sealed suitable set; it cannot introduce a
-kind/binding or change deterministic suitability scores. Unknown/duplicate/missing
-IDs, nonfinite scores, unavailable models, warnings, exhausted reservations and
-rank timeouts preserve the deterministic result with visible provenance.
+Rich output retains exact wide `rows`, canonical `columns` and original
+`row_indices` separately from normalized `points`. Each observation carries a
+measure, series identity, exact value and approximate drawing coordinate. The
+versioned `transformation` records method, null/duplicate policy, scope and missing,
+absent-gap and zero-size counts. Omitted coordinates do not erase their wide rows.
+Empty or undrawable states do not erase retained evidence either.
 
-`ranking` is `not_requested`, `disabled`, `not_applicable`, `rules_preserved`,
-`invalid_response` or `gateway_ranked`. Reserved calls/tokens and maximums are
-separate from observed `receipt.calls`; missing provider usage/cost remains unknown.
-An interrupted or expired request never returns candidates after authority ends,
-but an already attempted call's receipt accompanies the safe error. The SDK exposes
-that bounded metadata as `StatusError.Receipt`; `Error()` never echoes server
-content. Build, specify and rebind have no optional rank field and make zero calls
-at every inference seam. No warehouse is queried to draw a chart.
+## Bubble size and ordered hierarchy
 
-## Bounds and HTTP outcomes
+Size is a numeric measure, not a dimension, a percentage or an implicit third
+coordinate. It must be finite and nonnegative within geometry bounds. Positive
+size maps to bubble area, so radius is proportional to its square root. Zero has
+zero area and is explicitly counted as undrawn; null x/y/size/series also prevents
+geometry without replacing a value. Exact x/y/size strings, labels and returned-row
+identities remain accessible independently from approximate drawing coordinates.
 
-The [configuration reference](../configuration.md) and
-[mergeable excerpt](../../examples/chartworks.charts.json) define every limit. HTTP
-JSON bodies have an additional 10 MiB ceiling, independently of encoded data and
-closed option limits. Final serialized output is at most four times the configured
-data byte cap (at most 32 MiB). The SDK uses a 40 MiB response ceiling for that
-bounded envelope, with smaller catalog/proposal caps. There are no query parameters,
-cookies, alternate media types or content encodings for these routes. GET bodies
-are rejected. Context/authority and operation/rank deadlines cannot be extended.
+Hierarchy order is explicitly root-to-leaf. Default ordering follows these levels
+ascending; custom order must preserve the declared hierarchy prefix. Complete leaf
+paths are unique. A declared `sum` or `count` numeric, non-percentage measure permits
+named `sum` internal-node aggregation over contributing returned leaf rows.
+Each node has a stable path ID, parent, depth, full path, exact value and original
+contributing row indices. Prefix aggregation is not duplicate-leaf aggregation.
 
-Safe outcomes are 400 invalid input, 401 missing/expired bearer, 403 missing action,
-404 inaccessible tenant or unregistered path, empty 405 method mismatch, 409 saved
-mapping drift, 413 size/bounds, 422 unsuitable binding, 429 admission saturation,
-503 unavailable dependency and 504 cancellation/timeout. Literal errors do not echo
-source data. The composed registry guard blocks an unregistered protected handler
-before dispatch; resource enforcement remains the responsibility of actual services.
+Null path elements and null values are omitted from tree geometry and internal
+aggregation, not placed under an invented unknown category. Negative values reject.
+Node scope is `returned_complete_paths`, which is intentionally different from a
+total over every returned row. A truncated result cannot establish a whole-source
+hierarchy. The viewer draws nested levels and exposes exact aggregate paths,
+values, membership and scope; zero or subpixel regions remain truthful omissions.
+
+## Exactness, totals and completeness
+
+Integer/decimal labels remain exact strings. Only numeric geometry approximates
+to finite floating point; `approximate` and visible warnings disclose it. Currency,
+unit and percentage hints do not rewrite stored exact values. Fraction-percent
+versus whole-percent display remains explicit. Wider locale/display-format and
+reporting-output policy work is not introduced here.
+
+Totals use exact arithmetic over the supplied result only for explicitly additive
+`sum`/`count` numeric columns without percentage formatting. Average/minimum/maximum,
+distinct-count and unknown aggregation are not silently summed. Totals include
+returned rows whose missing chart coordinates prevent plotting. All-null totals
+remain null. `complete_result` means the complete supplied query result, not an
+entire source; a truncated result records its reason, warns
+`truncated_result_not_full_source`, and labels totals `returned_rows`. Tree-node
+`returned_complete_paths` sums never masquerade as these all-row totals.
+
+## Saved compatibility, publication and portability disposition
+
+Saved builds compare every bound column against exact ID/name/type/role/aggregation,
+unit/currency/percent/format/grain and source/topic/semantic/revision pins. Drift is
+`409 mapping_changed`, not automatic rebinding. Explicit authoring rebind requires
+one unique same-meaning match with compatible source/type/role/grain/aggregation and
+format; changed ID/name/revision pins appear in a detached proposal. Missing,
+ambiguous or incompatible meanings reject, and even an unchanged proposal remains
+`review_required`. Approving it requires the existing authoring/publication path.
+
+Both versions round-trip through JSON, the SDK, reporting draft persistence,
+immutable publication, frozen execution and actual retained delivery. There is no
+new schema table, chart-specific IAM or mutable published definition. Frozen reuse
+includes the builder version as well as existing revision, context, authority,
+privacy, policy and execution bounds.
+
+JSON save/read/build compatibility is implemented; a standalone portable
+import/export feature is not. Any later importer must preserve ordered rich slots
+and exact pins, reject unknown versions or unsupported downgrade, and resolve
+current dependencies/authority through its existing governed authoring path.
+Dropping a v2 slot to manufacture v1 compatibility is not an accepted migration.
+Static rendering, portable export and broader display policies remain separately
+owned interfaces, not completion claims from these fixtures.
+
+## Deterministic selection before sealing
+
+The selector classifies at most 1024 characters of supplied author intent into
+closed comparison/trend/composition/relationship/bubble/hierarchy/intensity/table
+cues, with bounded English/Spanish lexical handling of negation and conflicting
+cues. This is not an NLQ parser or a clarification policy. Unspecified or mixed
+intent preserves conservative rules rather than pretending certainty.
+
+Before floor/alternative limits seal the set, rules inspect typed roles, additive
+semantics, temporal fields and exact cardinality/null counts over retained rows.
+Multi-measure candidates retain every eligible measure rather than retrying the
+first measure alone. Bubble and deep-hierarchy intent can change candidate bindings
+before suitability is evaluated. Composition cardinality changes relative scores;
+semantic nonadditivity is explicit. Unsupported or excessive shapes reject with
+bounded evidence. Column order selects otherwise ambiguous axes; unused columns
+remain visible in candidate evidence, not silently claimed as represented.
+
+Stable catalog order breaks score ties. Evidence includes rules version, classified
+intent, retained row/cardinality counts, all kind admission outcomes/signals,
+suitability/floor counts and tie policy. Each candidate records its variant,
+rationale and unused columns. Below-floor/limited/unsuitable candidates cannot be
+recovered by a ranker after sealing. Only when no plot qualifies is a labeled table
+fallback used; explicit tabular intent is separately identified.
+
+Optional ranking requires `rank:true`, enabled configuration and the existing
+`visual_rank` gateway. Inputs contain only the closed classified intent and bounded
+kind/rule/variant/signals, never the raw question, rows, labels, source/topic pins or
+saved definitions. Ranking may permute only the sealed set. Invalid IDs/order/scores,
+usage warnings, unavailable models, exhausted budgets or timeout preserve the
+deterministic result with honest ranking provenance and receipts. Observed usage is
+not fabricated from reservations. Specify/build/rebind and retained viewing cannot
+invoke ranking. No fixture establishes live model quality or measured performance.
+
+## Bounds, errors and actual viewer
+
+Configured input rows/columns/bytes, category/series counts, operation/rank deadlines
+and admission limits remain enforced. Rich normalization additionally caps expanded
+points/nodes at 10,000 and hierarchy depth at eight; cross-products count against
+series/expansion limits. Incremental output accounting checks bounded work before
+large rich allocations. The existing final-output limit is four times the configured
+data cap. HTTP and SDK ceilings remain independent. The Apps provider/viewer has
+its own bounded message/result limits; an oversized retained shape fails honestly,
+not through truncating bindings or dropping measures.
+
+Existing status classes remain: 400 invalid input, 401 invalid bearer, 403 missing
+action, 404 inaccessible/unregistered resource, 405 method mismatch, 409 mapping
+drift, 413 bounds, 422 unsuitable binding, 429 saturation, 503 unavailable and 504
+cancellation/timeout. Error text does not echo data. Signed authority still bounds
+execution even after an optional ranking attempt.
+
+The established Apps protocol is unchanged. Its actual component consumes v1/v2,
+exposes exact wide rows, named-series observations and full hierarchy aggregates in
+accessible tables with full labels. Null/zero/subpixel omissions and total scope
+are visible. Local chart-table pagination, redraw and theme changes do no provider,
+source or model work; retained output/page selection uses only authorized artifact
+reads. Inconsistent versions, tuples or tree references fail instead of silently
+falling back to a scalar rendering.
 
 ## Verification boundary
 
-`TestPhase20/AC01`–`AC06` exercise the six owning criteria, 84 static kind/behavior
-goldens, all five HTTP/SDK operations, saved-map drift, numeric exactness, rank
-failures/receipt honesty, recorded actual Bifrost usage and admission/cancellation.
-`TestChartsFromQualifiedReadExecution` additionally exercises actual PostgreSQL
-validated reads through HTTP/SDK into chart/table outputs, with no source reaccess.
-`TestPhase21` and the cumulative guard test enumerate all implemented registrations.
-These are specification and recorded integration tests, not phase-31/32 pixel
-parity, live-provider quality, deployed Pengui configuration or full-release proof.
+The original 84 kind/behavior goldens and `TestPhase20/AC01`–`AC06` preserve the
+scalar catalog. Rich regressions cover ordered slots, exact values, missing gaps,
+bubble/hierarchy semantics, negative/null/duplicate data, strict drift, safe detached
+rebinding, concurrent reuse, expansion budgets and pre-seal intent/cardinality.
+
+`TestCW02RichCharts` exercises the actual closed API/SDK and all rich fixture
+bindings, then saves 13 outputs through PostgreSQL draft/read/validation/publication,
+one frozen query, exact rebuild and retained Apps delivery. It checks v1 coexistence,
+source-revision rejection, builder reuse identity and zero source/model work during
+retained reads. The actual `TestPhase31/AC04` component suite builds the shared 22
+rich synthetic variants from deserialized mappings, renders them in Chromium and
+asserts geometry, every retained measure, exact values, full labels, gaps, bubble
+area, three hierarchy levels, dense slot separation and local paging. AC05/AC06
+retain interaction and hostile-message/authority-read regressions. CI receipts,
+not this document or fixture count, determine which commands actually passed.

@@ -103,6 +103,12 @@ jobs:
         run: |
           set -o pipefail
           python3 scripts/run_phase_acceptance.py --phase 31 2>&1 | tee /tmp/reporting-phase31.log
+      - name: Rich chart saved mappings and retained consumers
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=5m ./test/acceptance -run '^TestCW02RichCharts$' 2>&1 | tee /tmp/reporting-cw02.log
+          go test -race -count=1 -cover ./internal/charts ./web/report-viewer 2>&1 | tee /tmp/reporting-charts.log
       - name: Error, configuration, queue, API, migration and SDK regressions
         if: always()
         run: |

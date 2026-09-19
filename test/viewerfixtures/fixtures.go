@@ -29,6 +29,7 @@ type chartCase struct {
 }
 
 type fixture struct {
+	RichCases   []chartCase                   `json:"rich_cases"`
 	Cases       []chartCase                   `json:"cases"`
 	View        reporting.DeliveryViewResult  `json:"view"`
 	Description reporting.DeliveryDescription `json:"description"`
@@ -54,7 +55,7 @@ func expectedRows(out charts.Output) [][]*string {
 		copy := v.Exact
 		return &copy
 	}
-	if out.Kind == charts.Table {
+	if out.Kind == charts.Table || out.Version == charts.RichVersion {
 		for _, source := range out.Rows {
 			row := []*string{}
 			for _, v := range source {
@@ -118,6 +119,27 @@ func produce(t *testing.T) fixture {
 			out.Cases = append(out.Cases, c)
 		}
 	}
+	for _, f := range chartfixtures.RichCases() {
+		mapping, err := charts.Bind(context.Background(), f.Data, f.Kind, f.Bindings, f.Order, charts.DefaultOptions(), charts.Defaults())
+		if err != nil {
+			t.Fatal(f.Name, err)
+		}
+		// The viewer receives a build from the deserialized saved contract, not
+		// hand-authored JavaScript geometry or field-presence fixtures.
+		wire, err := json.Marshal(mapping)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var saved charts.Mapping
+		if err = json.Unmarshal(wire, &saved); err != nil {
+			t.Fatal(err)
+		}
+		output, err := charts.Build(context.Background(), f.Data, saved, charts.Defaults())
+		if err != nil {
+			t.Fatal(f.Name, err)
+		}
+		out.RichCases = append(out.RichCases, chartCase{Kind: f.Kind, Scenario: f.Name, Output: &output, ExpectedRows: expectedRows(output)})
+	}
 	out.Table = build(t, charts.Table, nil)
 	out.Precision = build(t, charts.Bar, func(d *charts.Data) {
 		d.Rows[0][1].Value = "9007199254740993.0100"
@@ -163,9 +185,9 @@ func produce(t *testing.T) fixture {
 		PageBounds: reporting.ViewerPage{Offset: 0, Limit: 2, Total: len(out.Table.Rows), Next: &next},
 	}
 	out.Description = reporting.DeliveryDescription{Version: reporting.DeliveryVersion,
-		Resource:  reporting.DeliveryResource{Target: target, Title: target.ID, Locale: "en"},
 		Selection: accepted, QueryLimits: caps,
-		Outputs: choices, Filters: filters, Pages: []reporting.CompositionPageSummary{}, Timezone: "UTC"}
+		Resource: reporting.DeliveryResource{Target: target, Title: target.ID, Locale: "en"},
+		Outputs:  choices, Filters: filters, Pages: []reporting.CompositionPageSummary{}, Timezone: "UTC"}
 	out.Run = reporting.DeliveryRunResult{Version: reporting.DeliveryVersion, Kind: "block", Run: "viewer-new-run", State: "succeeded", Target: target}
 	return out
 }
