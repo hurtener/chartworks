@@ -34,7 +34,13 @@ type Fault struct {
 // and the dispatcher restrict its code to the owning HTTP operation's inventory.
 type ErrorMapper func(error) Fault
 
-type effects struct{ readOnly, idempotent, openWorld, persists, paid bool }
+type toolErrorContract struct {
+	Status  int    `json:"status"`
+	Code    string `json:"code"`
+	Receipt bool   `json:"receipt,omitempty"`
+}
+
+type effects struct{ readOnly, idempotent, destructive, openWorld, persists, paid bool }
 
 func effectFor(effect string) (effects, bool) {
 	switch effect {
@@ -46,6 +52,12 @@ func effectFor(effect string) (effects, bool) {
 		return effects{openWorld: true, paid: true}, true
 	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
+	case "retained_static_rendition":
+		return effects{openWorld: true}, true
+	case "durable_isolated_static_rendition":
+		return effects{openWorld: true, persists: true}, true
+	case "bounded_rendition_deletion":
+		return effects{destructive: true, persists: true}, true
 	}
 	return effects{}, false
 }
@@ -228,8 +240,25 @@ func (r *Registry) find(name string) (Binding, bool) {
 	return Binding{}, false
 }
 func (b Binding) tool() *mcp.Tool {
-	destructive, open := false, b.effects.openWorld
-	out := &mcp.Tool{Name: b.name, Description: b.description, InputSchema: b.input.Document(), OutputSchema: b.output.Document(), Annotations: &mcp.ToolAnnotations{ReadOnlyHint: b.effects.readOnly, IdempotentHint: b.effects.idempotent, DestructiveHint: &destructive, OpenWorldHint: &open}, Meta: mcp.Meta{"chartworks/operation": b.definition.ID, "chartworks/action": b.definition.Action, "chartworks/effect": b.definition.Effect, "chartworks/audit": b.definition.Audit, "chartworks/group": b.group, "chartworks/persists": b.effects.persists, "chartworks/maySpend": b.effects.paid}}
+	destructive, open := b.effects.destructive, b.effects.openWorld
+	var requestSchema json.RawMessage
+	if b.definition.Request != nil {
+		requestSchema = b.definition.Request.Document()
+	}
+	errors := make([]toolErrorContract, 0, len(b.definition.Errors))
+	for _, item := range b.definition.Errors {
+		errors = append(errors, toolErrorContract{Status: item.Status, Code: item.Code, Receipt: item.Receipt})
+	}
+	sort.Slice(errors, func(i, j int) bool {
+		if errors[i].Status != errors[j].Status {
+			return errors[i].Status < errors[j].Status
+		}
+		return errors[i].Code < errors[j].Code
+	})
+	out := &mcp.Tool{Name: b.name, Description: b.description, InputSchema: b.input.Document(), OutputSchema: b.output.Document(), Annotations: &mcp.ToolAnnotations{ReadOnlyHint: b.effects.readOnly, IdempotentHint: b.effects.idempotent, DestructiveHint: &destructive, OpenWorldHint: &open}, Meta: mcp.Meta{"chartworks/operation": b.definition.ID, "chartworks/action": b.definition.Action, "chartworks/effect": b.definition.Effect, "chartworks/audit": b.definition.Audit, "chartworks/group": b.group, "chartworks/persists": b.effects.persists, "chartworks/maySpend": b.effects.paid, "chartworks/resourceLoader": b.definition.ResourceLoader, "chartworks/inputSchema": json.RawMessage(b.input.Document()), "chartworks/outputSchema": json.RawMessage(b.output.Document()), "chartworks/requestSchema": requestSchema, "chartworks/resultSchema": json.RawMessage(b.definition.Response.Document()), "chartworks/errorContract": errors}}
+	if b.definition.Interaction != "" {
+		out.Meta["chartworks/interaction"] = b.definition.Interaction
+	}
 	if b.app != nil {
 		out.Meta["ui"] = map[string]any{"resourceUri": b.app.uri, "visibility": []string{"model", "app"}}
 	}

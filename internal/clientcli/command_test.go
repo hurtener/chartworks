@@ -422,6 +422,16 @@ func TestCLIOutputFailuresAndInputBounds(t *testing.T) {
 	}
 }
 
+func TestCLIStatusCodesRemainDistinctAndContentFree(t *testing.T) {
+	for _, code := range []string{"conflict", "stale"} {
+		var diagnostic bytes.Buffer
+		exit := fail(&diagnostic, &cw.StatusError{Status: http.StatusConflict, Code: code})
+		if exit != 4 || !strings.Contains(diagnostic.String(), code) || strings.Contains(diagnostic.String(), "PRIVATE") {
+			t.Fatal("registered status code collapsed", code, diagnostic.String(), exit)
+		}
+	}
+}
+
 func FuzzCLIConfiguration(f *testing.F) {
 	for _, value := range []string{"CHARTWORKS_TOKEN", "_PROVIDER_1", "bad-name", "PRIVATE\nVALUE", ""} {
 		f.Add(value)

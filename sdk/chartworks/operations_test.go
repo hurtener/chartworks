@@ -36,7 +36,7 @@ func unitOperationRegistry(t *testing.T) *api.Registry {
 	anyObject := schema("unitObject", `{"type":"object","additionalProperties":true}`)
 	binary := schema("unitBinary", `{"type":"string","format":"binary"}`)
 	text := schema("unitText", `{"type":"string"}`)
-	faults := []api.ErrorResponse{{Status: 401, Code: "unauthorized"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 410, Code: "expired"}, {Status: 422, Code: "invalid_request"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}}
+	faults := []api.ErrorResponse{{Status: 401, Code: "unauthorized"}, {Status: 403, Code: "forbidden"}, {Status: 404, Code: "not_found"}, {Status: 409, Code: "conflict"}, {Status: 409, Code: "stale"}, {Status: 410, Code: "expired"}, {Status: 422, Code: "invalid_request"}, {Status: 429, Code: "busy"}, {Status: 503, Code: "unavailable"}}
 	definition := func(id, method, path, effect string) api.Definition {
 		return api.Definition{Operation: api.Operation{Method: method, Path: path, Action: "ops.read", Effect: effect}, ID: id, Summary: "Synthetic registered transport operation", ResourceLoader: "unit.transport", Audit: "unit.metadata", Response: value, Errors: faults}
 	}
@@ -261,6 +261,35 @@ func TestExplicitRetryPreservesKeyBodyAndFreshProvider(t *testing.T) {
 	}
 }
 
+func TestInvocationPreservesAndValidatesRegisteredErrorCodes(t *testing.T) {
+	var body atomic.Value
+	body.Store(`{"error":"conflict"}`)
+	client, _, _ := unitOperationServer(t, "", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = io.WriteString(w, body.Load().(string))
+	})
+	for _, code := range []string{"conflict", "stale"} {
+		body.Store(`{"error":"` + code + `"}`)
+		_, err := client.Invoke(t.Context(), "readFixture", CallOptions{ResourceID: "item"})
+		var rejected *StatusError
+		if !errors.As(err, &rejected) || rejected.Status != http.StatusConflict || rejected.Code != code || strings.Contains(err.Error(), code) {
+			t.Fatalf("registered same-status code lost: code=%s error=%v", code, err)
+		}
+	}
+	body.Store(`{"error":"invented","detail":"PRIVATE_SQL"}`)
+	if _, err := client.Invoke(t.Context(), "readFixture", CallOptions{ResourceID: "item"}); !errors.Is(err, ErrInvalidCatalog) || strings.Contains(err.Error(), "PRIVATE") || strings.Contains(err.Error(), "invented") {
+		t.Fatalf("unregistered error accepted: %v", err)
+	}
+	for _, invalid := range []string{`{"error":1,"detail":"PRIVATE_ROW"}`, `{"error":"conflict","error":"stale"}`, strings.Repeat("x", (128<<10)+1)} {
+		body.Store(invalid)
+		_, err := client.Invoke(t.Context(), "readFixture", CallOptions{ResourceID: "item"})
+		var rejected *StatusError
+		if !errors.As(err, &rejected) || rejected.Code != "" || strings.Contains(err.Error(), "PRIVATE") {
+			t.Fatalf("malformed error content escaped: %v", err)
+		}
+	}
+}
+
 func TestCatalogRejectsAmbiguousOrForeignMetadata(t *testing.T) {
 	document, err := unitOperationRegistry(t).OpenAPI("Synthetic fixture", "1")
 	if err != nil {
@@ -322,11 +351,30 @@ func TestCatalogRejectsAmbiguousOrForeignMetadata(t *testing.T) {
 
 func TestOperationMatrixMatchesBothSuppliedAudiences(t *testing.T) {
 	var mode atomic.Int64
+	document, err := unitOperationRegistry(t).OpenAPI("Synthetic transport fixture", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := ParseOperations(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var owner OperationInfo
+	for _, row := range rows {
+		if row.ID == "readFixture" {
+			owner = row
+		}
+	}
+	input := json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"}},"required":["id"]}`)
+	output := json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"result":{"type":"object"}},"required":["result"]}`)
 	client, server, _ := unitOperationServer(t, "", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/mcp" || r.Header.Get("Authorization") != "Bearer synthetic-mcp" || r.Header.Get("Mcp-Protocol-Version") == "" {
 			t.Error("MCP audience or mount lost")
 		}
-		id, action := "readFixture", "ops.read"
+		id, action, loader := "readFixture", "ops.read", owner.ResourceLoader
+		toolInput, toolOutput := input, output
+		resultSchema := owner.ResponseSchema
+		errorContract := owner.Errors
 		if mode.Load() == 1 {
 			id = "unbuiltReport"
 		}
@@ -337,18 +385,31 @@ func TestOperationMatrixMatchesBothSuppliedAudiences(t *testing.T) {
 			_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"error":{"code":-32603}}`)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"tools": []any{map[string]any{"name": "read_fixture", "_meta": map[string]any{"chartworks/operation": id, "chartworks/action": action, "chartworks/effect": "read", "chartworks/audit": "unit.metadata"}}}}})
+		switch mode.Load() {
+		case 4:
+			toolInput = json.RawMessage(`{"type":"object"}`)
+		case 5:
+			toolOutput = json.RawMessage(`{"type":"object"}`)
+		case 6:
+			resultSchema = json.RawMessage(`{"type":"object"}`)
+		case 7:
+			loader = "other.Owner"
+		case 8:
+			errorContract = append([]OperationError(nil), owner.Errors...)
+			errorContract[0].Code = "invented"
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"tools": []any{map[string]any{"name": "read_fixture", "inputSchema": toolInput, "outputSchema": toolOutput, "_meta": map[string]any{"chartworks/operation": id, "chartworks/action": action, "chartworks/effect": owner.Effect, "chartworks/audit": owner.Audit, "chartworks/interaction": owner.Interaction, "chartworks/resourceLoader": loader, "chartworks/inputSchema": input, "chartworks/outputSchema": output, "chartworks/requestSchema": nil, "chartworks/resultSchema": resultSchema, "chartworks/errorContract": errorContract}}}}})
 	})
 	mcp, err := New(server.URL, server.Client(), func(context.Context) (string, error) { return "synthetic-mcp", nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := client.OperationMatrix(t.Context(), mcp)
+	matrixRows, err := client.OperationMatrix(t.Context(), mcp)
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
-	for _, row := range rows {
+	for _, row := range matrixRows {
 		if row.ID == "readFixture" {
 			found = row.MCPTool == "read_fixture" && row.SDKMethod == "Invoke"
 		}
@@ -359,7 +420,7 @@ func TestOperationMatrixMatchesBothSuppliedAudiences(t *testing.T) {
 	if _, err = client.OperationMatrix(t.Context(), nil); err != nil {
 		t.Fatal("optional MCP lookup", err)
 	}
-	for _, bad := range []int64{1, 2, 3} {
+	for _, bad := range []int64{1, 2, 3, 4, 5, 6, 7, 8} {
 		mode.Store(bad)
 		if _, err = client.OperationMatrix(t.Context(), mcp); !errors.Is(err, ErrInvalidCatalog) {
 			t.Fatal("MCP contract drift accepted", bad, err)

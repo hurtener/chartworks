@@ -16,5 +16,18 @@ func ExecutionAPIRegistry() (*api.Registry, error) {
 		{operation("POST", "/v1/read-executions/{id}/cancel", "sources.query", "cancel_intent_and_backend_signal"), "cancelRead", "Record cancellation and signal owned read", "exec.Executor.Control", "read.cancel_requested; read outcome journal", reflect.TypeFor[struct{}](), reflect.TypeFor[readexec.ControlReceipt]()},
 		{operation("POST", "/v1/read-executions/{id}/reconcile", "sources.query", "remote_observation_and_attempt_reconciliation"), "reconcileRead", "Observe and reconcile an uncertain read", "exec.Executor.Control", "read outcome journal", reflect.TypeFor[struct{}](), reflect.TypeFor[readexec.ControlReceipt]()},
 	}
-	return compileRegistrations(definitions, sourceErrors(), sourceRequestMaxBytes, false, 0)
+	registry, err := compileRegistrations(definitions, sourceErrors(), sourceRequestMaxBytes, false, 0)
+	if err != nil {
+		return nil, err
+	}
+	compiled := registry.Definitions()
+	for i := range compiled {
+		switch compiled[i].ID {
+		case "readExecution":
+			compiled[i].Interaction = "query_result"
+		case "cancelRead":
+			compiled[i].Interaction = "query_cancel"
+		}
+	}
+	return api.New(compiled)
 }

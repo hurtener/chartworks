@@ -75,7 +75,20 @@ func DeliveryRegistry(execution bool, static ...bool) (*api.Registry, error) {
 	if len(static) >= 2 && static[1] {
 		renderer, _ = rendering.NewManaged(registryViewer{}, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 16 << 20}, 16<<20, rendering.Options{WorkerVersion: "registry-v1", ThemeVersion: "theme-v1", MaxTime: time.Second, MaxMemoryBytes: 64 << 20, MaxInputBytes: 16 << 20, MaxOutputBytes: 16 << 20, MaxConcurrent: 1, MaxWidgets: 100, Retention: time.Hour, Isolation: "development"})
 	}
-	return registryForEntries(deliveryEntries(nil, execution, renderer))
+	registry, err := registryForEntries(deliveryEntries(nil, execution, renderer))
+	if err != nil {
+		return nil, err
+	}
+	definitions := registry.Definitions()
+	for i := range definitions {
+		switch definitions[i].ID {
+		case "reportingView":
+			definitions[i].Interaction = "query_view"
+		case "reportingRun":
+			definitions[i].Interaction = "query_start_or_clarify"
+		}
+	}
+	return api.New(definitions)
 }
 
 type registryViewer struct{}
