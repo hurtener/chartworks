@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/hurtener/chartworks/internal/gateway"
@@ -37,6 +38,15 @@ type OperationParameter struct {
 	Schema      json.RawMessage `json:"schema"`
 }
 
+// OperationError is one stable owner-registered HTTP failure. Receipt marks
+// failures that may carry bounded usage evidence; native diagnostics, prompts,
+// SQL and result values are never part of the operation catalog.
+type OperationError struct {
+	Status  int    `json:"status"`
+	Code    string `json:"code"`
+	Receipt bool   `json:"receipt,omitempty"`
+}
+
 // OperationInfo is one row of the generated HTTP/MCP/SDK/CLI operation matrix.
 // The HTTP inventory describes installed routes, not the caller's permissions.
 // MCPTool is populated only when a separately authorized MCP catalog is supplied.
@@ -53,10 +63,13 @@ type OperationInfo struct {
 	Public              bool                 `json:"public"`
 	Audience            string               `json:"audience"`
 	Replay              string               `json:"replay"`
+	Interaction         string               `json:"interaction,omitempty"`
+	MCPDisposition      string               `json:"mcp_disposition"`
 	MaxBodyBytes        int                  `json:"max_body_bytes,omitempty"`
 	RequestContentType  string               `json:"request_content_type,omitempty"`
 	ResponseContentType string               `json:"response_content_type,omitempty"`
 	Parameters          []OperationParameter `json:"parameters,omitempty"`
+	Errors              []OperationError     `json:"errors,omitempty"`
 	RequestSchema       json.RawMessage      `json:"request_schema,omitempty"`
 	ResponseSchema      json.RawMessage      `json:"response_schema,omitempty"`
 	SDKMethod           string               `json:"sdk_method"`
@@ -116,6 +129,7 @@ type operationContent map[string]struct {
 
 type operationDocument struct {
 	Replay         string               `json:"x-chartworks-replay"`
+	Interaction    string               `json:"x-chartworks-interaction"`
 	ID             string               `json:"operationId"`
 	Summary        string               `json:"summary"`
 	Auth           string               `json:"x-chartworks-auth"`
@@ -146,12 +160,15 @@ func parseOperation(method, path string, raw json.RawMessage) (OperationInfo, er
 	if d.Auth == "bearer" && !strings.HasPrefix(path, "/v1/") && path != "/metrics" || d.Auth == "none" && strings.HasPrefix(path, "/v1/") {
 		return OperationInfo{}, ErrInvalidCatalog
 	}
-	row := OperationInfo{ID: d.ID, Method: method, Path: path, Summary: d.Summary, Action: d.Action, Effect: d.Effect, Audit: d.Audit, ResourceLoader: d.ResourceLoader, Public: d.Auth == "none", Audience: d.Audience, Replay: "never", MaxBodyBytes: d.MaxBodyBytes, Parameters: d.Parameters, SDKMethod: "Invoke", CLICommand: "client call " + d.ID}
+	if !interactionRole(d.Interaction) {
+		return OperationInfo{}, ErrInvalidCatalog
+	}
+	row := OperationInfo{ID: d.ID, Method: method, Path: path, Summary: d.Summary, Action: d.Action, Effect: d.Effect, Audit: d.Audit, ResourceLoader: d.ResourceLoader, Public: d.Auth == "none", Audience: d.Audience, Replay: "never", Interaction: d.Interaction, MCPDisposition: "not_queried", MaxBodyBytes: d.MaxBodyBytes, Parameters: d.Parameters, SDKMethod: "Invoke", CLICommand: "client call " + d.ID}
 	if row.Audience == "" {
 		row.Audience = "http"
 	}
 	if row.Audience == "mcp" {
-		row.SDKMethod, row.CLICommand = "MCP", "client mcp"
+		row.SDKMethod, row.CLICommand, row.MCPDisposition = "MCP", "client mcp", "transport"
 	}
 	switch method {
 	case http.MethodGet, http.MethodHead:
@@ -181,6 +198,45 @@ func parseOperation(method, path string, raw json.RawMessage) (OperationInfo, er
 			return OperationInfo{}, ErrInvalidCatalog
 		}
 		row.ResponseContentType, row.ResponseSchema = media, schema
+	}
+	for statusText, response := range d.Responses {
+		status, err := strconv.Atoi(statusText)
+		if err != nil || status < 200 || status > 599 {
+			return OperationInfo{}, ErrInvalidCatalog
+		}
+		if status < 400 || status == http.StatusMethodNotAllowed {
+			continue
+		}
+		_, schema, ok := oneContent(response.Content)
+		if !ok {
+			return OperationInfo{}, ErrInvalidCatalog
+		}
+		var fault struct {
+			Properties map[string]struct {
+				Enum []string `json:"enum"`
+			} `json:"properties"`
+		}
+		if json.Unmarshal(schema, &fault) != nil || len(fault.Properties["error"].Enum) == 0 || len(fault.Properties["error"].Enum) > 32 {
+			return OperationInfo{}, ErrInvalidCatalog
+		}
+		_, receipt := fault.Properties["receipt"]
+		codes := map[string]bool{}
+		for _, code := range fault.Properties["error"].Enum {
+			if !wireID(code) || codes[code] {
+				return OperationInfo{}, ErrInvalidCatalog
+			}
+			codes[code] = true
+			row.Errors = append(row.Errors, OperationError{Status: status, Code: code, Receipt: receipt})
+		}
+	}
+	sort.Slice(row.Errors, func(i, j int) bool {
+		if row.Errors[i].Status != row.Errors[j].Status {
+			return row.Errors[i].Status < row.Errors[j].Status
+		}
+		return row.Errors[i].Code < row.Errors[j].Code
+	})
+	if !row.Public && (!hasOperationError(row.Errors, 401) || !hasOperationError(row.Errors, 403)) {
+		return OperationInfo{}, ErrInvalidCatalog
 	}
 	if len(d.Parameters) > 64 {
 		return OperationInfo{}, ErrInvalidCatalog
@@ -220,6 +276,24 @@ func parseOperation(method, path string, raw json.RawMessage) (OperationInfo, er
 		row.Replay = "never"
 	}
 	return row, nil
+}
+
+func interactionRole(value string) bool {
+	switch value {
+	case "", "query_start_or_clarify", "query_progress_or_clarify", "query_cancel", "query_result", "query_view", "query_feedback", "query_refine_or_clarify":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasOperationError(errors []OperationError, status int) bool {
+	for _, item := range errors {
+		if item.Status == status {
+			return true
+		}
+	}
+	return false
 }
 
 func oneContent(content operationContent) (string, json.RawMessage, bool) {

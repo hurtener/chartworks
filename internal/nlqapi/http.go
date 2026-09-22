@@ -46,6 +46,7 @@ func Registry() (*api.Registry, error) {
 		Summary:        "Route an authorized question into bounded semantic context",
 		ResourceLoader: "nlqroute.Service.Route",
 		Audit:          "read_only_no_domain_audit",
+		Interaction:    "query_start_or_clarify",
 		MaxBodyBytes:   MaxBodyBytes,
 		Request:        request,
 		Response:       response,

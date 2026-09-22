@@ -43,7 +43,7 @@ Implement `TestPhase24/AC01` through `TestPhase24/AC06`, including deliberately 
 
 ## Glossary, decisions and deviations
 
-Quality score, execution success and security correctness are separate outcomes. D-049 and D-085 apply. The deterministic runtime, protected persistence, CLI and six named acceptance tests are implemented for review. Live calibrated owner workloads and cross-system comparison remain Phase 34/25 evidence, not fixture-derived claims.
+Quality score, execution success and security correctness are separate outcomes. D-049 and D-087 apply. The deterministic runtime, protected persistence, CLI and six named acceptance tests are implemented for review. Live calibrated owner workloads and cross-system comparison remain Phase 34/25 evidence, not fixture-derived claims.
 
 ## CW-07 evaluation input
 

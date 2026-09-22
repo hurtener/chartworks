@@ -1,4 +1,4 @@
-### D-085 — Evaluation evidence is mode-separated, content-protected and review-promoted
+### D-087 — Evaluation evidence is mode-separated, content-protected and review-promoted
 
 Phase 24 uses one versioned suite and report contract for routing, context, SQL semantics, validation, charts, reports, replay, shadow, adversarial behavior and consumer parity. Fixture and live evidence are distinct modes. Security failures have zero tolerance. A suite is authored as an immutable draft and only a distinct authenticated actor can accept its exact revision and digest; caller booleans are not review evidence. A quality threshold requires actual quality cases, while unknown owner calibration remains explicitly unknown and cannot pass a gate. Inputs and outputs are retained by protected digest; ordinary evidence contains no prompt, SQL or row content.
 

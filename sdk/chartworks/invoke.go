@@ -88,7 +88,7 @@ func (c *Client) Invoke(ctx context.Context, operationID string, in CallOptions)
 			return CallResult{}, err
 		}
 		var output string
-		err = c.callReader(ctx, row.Method, path, in.IdempotencyKey, row.RequestContentType, bytes.NewReader(body), &output, 32<<20)
+		err = c.exchange(ctx, row.Method, path, in.IdempotencyKey, row.RequestContentType, bytes.NewReader(body), &output, 32<<20, wireOptions{errors: row.Errors})
 		if err == nil {
 			result := CallResult{ContentType: row.ResponseContentType, Body: []byte(output)}
 			if outputSchema != nil && outputSchema.ValidateResponse(result.Body, 32<<20) != nil {

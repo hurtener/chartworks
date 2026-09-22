@@ -60,6 +60,18 @@ func ExecutionRegistry() (*api.Registry, error) {
 			Response:       response,
 			Errors:         errors,
 		})
+		switch item.id {
+		case "preflightNLQ":
+			out[len(out)-1].Interaction = "query_start_or_clarify"
+		case "planNLQ":
+			out[len(out)-1].Interaction = "query_progress_or_clarify"
+		case "runNLQ":
+			out[len(out)-1].Interaction = "query_result"
+		case "refineNLQ":
+			out[len(out)-1].Interaction = "query_refine_or_clarify"
+		case "feedbackNLQ":
+			out[len(out)-1].Interaction = "query_feedback"
+		}
 	}
 	return api.New(out)
 }

@@ -787,4 +787,6 @@ Static rendering continuation: [D-083 isolated durable retained-artifact renditi
 
 Guided onboarding continuation: [D-084 private durable composition with explicit human gates](decisions/2026-09-22-guided-onboarding.md).
 
-Evaluation continuation: [D-085 immutable reviewed suites, durable terminal evidence and reviewed pack selection](decisions/2026-09-22-evaluation-calibration.md).
+Consumer conformance continuation: [D-086 installed-operation interaction and surface parity](decisions/2026-09-22-consumer-conformance.md).
+
+Evaluation continuation: [D-087 immutable reviewed suites, durable terminal evidence and reviewed pack selection](decisions/2026-09-22-evaluation-calibration.md).

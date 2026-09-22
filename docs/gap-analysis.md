@@ -577,12 +577,12 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-03 — Query interaction and diagnostics; 18/21/22/23/31
 
-- **Status:** Phase 24 consumer/typed-failure evidence lane implemented; supported-surface journey evidence remains pending.
+- **Status:** equivalent contract/runtime behavior implemented by D-086; external product UX research remains outside this runtime gap.
 - **Boundary:** Core cancellation/refinement exists; historical UI had SQL/table/chart, confidence/risk, feedback, progress and fallback interactions (research brief06). Ownership of a standalone authoring app has intentionally changed.
 - **Contract, storage and import impact:** Consumer event schemas, cancellation/error states and stale-response rules must be shared by every supported surface; no standalone authoring product is implied.
 - **Required comparison and closure evidence:** Contract journey: start, progress, clarify, cancel, inspect result, switch view, send feedback, refine. Verify stale responses cannot replace newer results; disconnect differs from explicit cancellation; truncated/empty/failed/uncertain are distinguishable. Plain-language actions must map to actual operations through each supported consumer. No requirement to recreate a standalone app or IAM.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
+- **Current repository evidence:** The installed OpenAPI registry now assigns closed start/clarify, progress/clarify, explicit-cancel, result, retained-view, feedback and refine/clarify roles. `sdk/chartworks.ApplyInteraction` rejects stale generations/sequences, keeps disconnect separate from cancellation, and preserves empty/truncated/failed/uncertain/cancelled/timed-out/interrupted outcomes without carrying prompt, SQL or rows. `TestEXP03InteractionOrderingAndOutcomeRichness` and `TestEXP11CumulativeRegisteredConsumerMatrix` provide synthetic executable evidence. This closes the shared runtime contract, not standalone UI ownership or representative-user research.
 
 ### EXP-04 — Upload fidelity and downstream closure; 11/12/15/33/34
 
@@ -649,12 +649,12 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-11 — Consumer parity after later phases; 21/22/23 plus each domain
 
-- **Status:** Phase 24 consumer-parity evidence lane implemented; each later operation still owes an actual end-user journey in Phase 34/25.
+- **Status:** preserved/equivalent through the generated installed-operation matrix; deployment-specific MCP visibility remains observable rather than assumed.
 - **Boundary:** Current phase29–31 registries, SDK/MCP bindings and viewer consumers are present; cross-surface behavior for the newly merged operations was not rerun in this audit.
 - **Contract, storage and import impact:** Every new operation needs registration, scope, schema/error, client exposure, idempotency and cancellation checks in one conformance matrix.
 - **Required comparison and closure evidence:** After every new domain operation, verify registration, scope loader, schema/error, SDK/CLI/MCP accessibility, idempotency and cancellation meaning. Complete end-user journeys, not endpoint-count equality. Data/SQL visibility and export scopes remain distinct.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
+- **Current repository evidence:** `sdk/chartworks.ParseOperations` now retains stable status/code/receipt error inventory plus interaction role for every installed operation. Generic SDK/CLI coverage is generated for every HTTP row; a separately authorized MCP catalog produces explicit bound/public/transport/HTTP-only dispositions and rejects action/effect/audit/interaction drift. The cumulative conformance test includes selectable filters, static/durable rendition operations and guided onboarding. Domain runtime/authority tests remain required; matrix equality alone does not prove deployment or resource access.
 
 ### EXP-12 — Rendering/export fidelity and interaction; 20/28/31/32
 

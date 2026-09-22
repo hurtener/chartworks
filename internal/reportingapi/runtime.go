@@ -143,6 +143,18 @@ func runtimeEntries(runs *reporting.Runs, proposals *engineering.Autopilot, exec
 		d := &entries[i].definition
 		switch d.ID {
 		case "admitReportingRun":
+			d.Interaction = "query_start_or_clarify"
+		case "inspectReportingRun":
+			d.Interaction = "query_progress_or_clarify"
+		case "cancelReportingRun":
+			d.Interaction = "query_cancel"
+		case "executeReportingRun", "readReportingRun":
+			d.Interaction = "query_result"
+		case "reportingRunRows", "reportingRunOutput":
+			d.Interaction = "query_view"
+		}
+		switch d.ID {
+		case "admitReportingRun":
 			d.Effect = "frozen_manifest_reservation"
 		case "executeReportingRun":
 			d.Effect = "bounded_source_read_optional_model_retained_artifact"

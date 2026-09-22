@@ -60,6 +60,10 @@ type Definition struct {
 	// read for GET/HEAD, or keyed for a proven required-header idempotent service.
 	// Merely accepting an Idempotency-Key header never proves replay safety.
 	Replay string
+	// Interaction classifies an operation's role in the shared query-consumer
+	// journey. Empty means the operation is outside that journey. It is
+	// descriptive metadata and never grants authority.
+	Interaction string
 	Operation
 	// Surface defaults to HTTP; MCP mounts explicitly require the MCP audience.
 	Surface        auth.Surface
@@ -114,7 +118,7 @@ func New(definitions []Definition) (*Registry, error) {
 		if d.Surface != 0 && d.Surface != auth.HTTP && d.Surface != auth.MCP || d.Public && d.Surface != 0 {
 			return nil, ErrRegistration
 		}
-		if !identity.Identifier(d.ID) || !line(d.Summary) || !line(d.ResourceLoader) || !line(d.Audit) || (!d.Public && !line(d.Action)) || !line(d.Effect) || !validPath(d.Path, d.Public) || d.Response == nil || d.Response.Name() == "" || len(d.Errors) < 1 || len(d.Errors) > 32 {
+		if !identity.Identifier(d.ID) || !line(d.Summary) || !line(d.ResourceLoader) || !line(d.Audit) || (!d.Public && !line(d.Action)) || !line(d.Effect) || !validInteraction(d.Interaction) || !validPath(d.Path, d.Public) || d.Response == nil || d.Response.Name() == "" || len(d.Errors) < 1 || len(d.Errors) > 32 {
 			return nil, ErrRegistration
 		}
 		switch d.Method {
@@ -351,6 +355,9 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 		// The existing router's authenticated wrong-method response has no body.
 		responses["405"] = map[string]any{"description": "Method not allowed; empty response body"}
 		op := map[string]any{"operationId": d.ID, "summary": d.Summary, "responses": responses, "x-chartworks-auth": "bearer", "x-chartworks-effect": d.Effect, "x-chartworks-resource-loader": d.ResourceLoader, "x-chartworks-audit": d.Audit, "x-chartworks-replay": d.ReplayPolicy()}
+		if d.Interaction != "" {
+			op["x-chartworks-interaction"] = d.Interaction
+		}
 		if d.Public {
 			op["x-chartworks-auth"] = "none"
 		} else {
@@ -464,4 +471,13 @@ func validReplay(d Definition) bool {
 		}
 	}
 	return false
+}
+
+func validInteraction(value string) bool {
+	switch value {
+	case "", "query_start_or_clarify", "query_progress_or_clarify", "query_cancel", "query_result", "query_view", "query_feedback", "query_refine_or_clarify":
+		return true
+	default:
+		return false
+	}
 }

@@ -65,14 +65,22 @@ proves server termination.
 `tools/list` result by exact operation ID/action/effect/audit. No MCP client means
 MCP was not queried; an empty MCP column is not a compatibility verdict.
 
-Each row includes method/path, action, resource loader, audit/effect, replay
-classification, body bound, parameter and request/response schemas, the concrete
-SDK dispatch method and CLI command. Every HTTP operation is represented;
+Each row includes method/path, action, resource loader, audit/effect, replay and
+interaction classification, body bound, parameter and request/response schemas,
+the complete stable error inventory, and the concrete SDK dispatch method and CLI
+command. Every HTTP operation is represented;
 MCP's protocol mount is explicitly dispatched by `MCP`, not generic HTTP `Invoke`.
 The matrix describes installed contracts, **not resource access permission**.
 Later reporting/domain owners extend registration and their tests in their own
 change. No report, artifact, rendition or identity-management operation is
 invented merely because its phase is planned.
+
+When MCP is queried, every row receives an explicit disposition: `bound`,
+`public_http`, `transport`, or `http_only_no_registered_mcp_binding`. Without an
+MCP query it remains `not_queried`; absence is not interpreted as incompatibility.
+The [query interaction contract](query-interactions-v1.md) defines the generated
+start/clarify/progress/cancel/result/view/feedback/refine roles and stale-response
+ordering shared by clients.
 
 `Invoke(ctx, operationID, CallOptions)` obtains the current contract; it accepts no
 arbitrary URL or authorization headers and does not trust editable returned rows.
