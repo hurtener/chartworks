@@ -11,7 +11,9 @@ The transaction scrubs authored definition payloads and external import mappings
 erases document-owned composition payloads plus exact nested frozen/query values,
 fences root and `nested_parent` operations, expires their receipts, and retires only schedules whose
 closed reporting target addresses the deleted report. Accepted work is fenced by
-the tombstone and expired run state. Schedule history, non-secret dependency
+the tombstone and expired run state. Active nested/dynamic read journals retain
+durable cancellation intent so physical cancellation and uncertain reconciliation
+remain possible without retaining result values. Schedule history, non-secret dependency
 evidence and the deletion tombstone remain. This makes no claim about erasing
 database backups, replicas or WAL.
 

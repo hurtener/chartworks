@@ -193,7 +193,9 @@ Deletion scrubs live definition payloads and external import mappings, erases re
 fences root and `nested_parent` operations, erases their nested frozen values and
 exact root-owned dynamic query rows, expires their bounded receipts, retires matching report/saved-question schedules,
 and retains schedule history plus a deletion tombstone. Stale execution cannot
-complete after the tombstone. Shared blocks/topics are preserved. Dashboard
+complete after the tombstone. Active owned read-attempt control journals remain
+with durable cancellation intent for physical cancellation and reconciliation;
+they retain no result values and late success is recorded as cancelled. Shared blocks/topics are preserved. Dashboard
 deletion does not infer ownership or cascade to reports; report deletion preserves
 dashboard history while current page projection omits the deleted report. Identical
 replay returns the tombstone and changed intent conflicts. Backups, replicas and

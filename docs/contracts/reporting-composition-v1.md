@@ -86,6 +86,9 @@ targets a deleted report, owns its `operations.nested_parent` children and dynam
 query rows whose operation is exactly `composition:<root>:<group>`. The delete
 transaction locks and fences the root and children, cancels active attempts, erases
 their retained values and expires bounded receipts before tombstoning the document.
+Active nested and dynamic read-attempt journals are retained with
+`cancel_requested=true` so the physical cancellation/reconciliation path remains
+observable; a late success resolves to cancelled with no row/byte result counts.
 Workers holding an earlier fence cannot publish after commit. Independently admitted
 block runs, authoring queries, shared blocks/topics and dashboard definitions are not
 transitive children and keep their independent lifecycle.

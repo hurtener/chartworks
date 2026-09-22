@@ -183,9 +183,20 @@ func eraseDocumentOwnedRunMaterial(ctx context.Context, tx pgx.Tx, tenant string
 			return 0, 0, err
 		}
 	}
+	// Read attempts are the physical cancellation/reconciliation journal. Keep
+	// active rows and persist intent before erasing document-owned values. This
+	// covers both nested block operations and dynamic queries, whose operation
+	// coordinate is carried directly by the read attempt rather than operations.
+	if _, err = tx.Exec(ctx, `UPDATE chartworks.read_attempts SET cancel_requested=true
+ WHERE tenant_id=$1 AND status IN('accepted','dispatching','running','uncertain')
+ AND (operation_id=ANY($2::text[]) OR EXISTS(
+  SELECT 1 FROM unnest($3::text[]) root WHERE operation_id LIKE 'composition:'||root||':%'))`, tenant, children, roots); err != nil {
+		return 0, 0, err
+	}
 	if len(children) != 0 {
 		for _, statement := range []string{
-			`DELETE FROM chartworks.read_attempts WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
+			`DELETE FROM chartworks.read_attempts WHERE tenant_id=$1 AND operation_id=ANY($2::text[])
+ AND status NOT IN('accepted','dispatching','running','uncertain')`,
 			`DELETE FROM chartworks.frozen_run_outputs WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
 			`DELETE FROM chartworks.frozen_run_attempts WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
 			`DELETE FROM chartworks.frozen_run_payloads WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,

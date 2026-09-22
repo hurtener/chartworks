@@ -55,6 +55,19 @@ func TestCW11ReportingLifecycleAndCatalog(t *testing.T) {
 	if completed, err := f.domain.compositions.Run(ctx, f.domain.execute, run.ID, false); err != nil || !completed.Complete {
 		t.Fatal("complete document-owned child", completed, err)
 	}
+	raw := support.Raw(t, f.domain.f.f.dsn)
+	var activeChild string
+	if err := raw.QueryRow(ctx, `SELECT operation_id FROM chartworks.operations WHERE tenant_id=$1 AND nested_parent=$2 ORDER BY operation_id LIMIT 1`, f.domain.execute.Tenant(), run.ID).Scan(&activeChild); err != nil {
+		t.Fatal("locate owned child", err)
+	}
+	if _, err := raw.Exec(ctx, `INSERT INTO chartworks.read_attempts
+ (tenant_id,actor_id,attempt_id,operation_id,attempt_number,source_id,context_id,manifest,manifest_hash,status,remote_query,remote_state,cancel_requested,created_at,deadline)
+	SELECT tenant_id,actor_id,'22222222222222222222222222222222',$2,2,source_id,context_id,manifest,manifest_hash,
+ 'running',remote_query,'running',false,clock_timestamp(),clock_timestamp()+interval '30 seconds'
+ FROM chartworks.read_attempts WHERE tenant_id=$1 AND operation_id=$2 ORDER BY attempt_number LIMIT 1`,
+		f.domain.execute.Tenant(), activeChild); err != nil {
+		t.Fatal("seed active child read", err)
+	}
 	activeRun, err := f.domain.compositions.Admit(ctx, f.domain.execute, "report", state.ID, reporting.CompositionRequest{Key: "cw11-active-root"})
 	if err != nil {
 		t.Fatal("seal active root", err)
@@ -118,6 +131,9 @@ func TestCW11ReportingLifecycleAndCatalog(t *testing.T) {
 	if _, err := f.domain.compositions.Run(ctx, f.domain.execute, activeRun.ID, false); err == nil {
 		t.Fatal("active root completed after deletion")
 	}
+	if _, err := f.domain.runs.Run(ctx, f.domain.execute, activeChild, true); err == nil {
+		t.Fatal("active nested child completed after deletion")
+	}
 	if preserved, err := f.domain.f.f.db.ReadFrozenRun(ctx, f.domain.execute, independent.ID, true); err != nil || preserved.View.State != "succeeded" || preserved.Result == nil {
 		t.Fatal("independently owned retained artifact was erased", preserved.View, err)
 	}
@@ -130,7 +146,23 @@ func TestCW11ReportingLifecycleAndCatalog(t *testing.T) {
 		t.Fatal("unrelated schedule changed", untouched, err)
 	}
 	var definitions, payloads, childPayloads int
-	raw := support.Raw(t, f.domain.f.f.dsn)
+	var childCancel bool
+	if err := raw.QueryRow(ctx, `SELECT cancel_requested FROM chartworks.read_attempts WHERE tenant_id=$1 AND attempt_id='22222222222222222222222222222222'`, deleter.Tenant()).Scan(&childCancel); err != nil || !childCancel {
+		t.Fatal("active child lost durable cancellation journal", childCancel, err)
+	}
+	childScope, _ := store.NewScope(f.domain.execute.Tenant(), f.domain.execute.User())
+	childAttempt, err := f.domain.f.f.db.GetRead(ctx, childScope, "22222222222222222222222222222222")
+	if err != nil {
+		t.Fatal("read retained child cancellation journal", err)
+	}
+	finished := childAttempt.Deadline.Add(-1)
+	childAttempt.Status, childAttempt.RemoteState, childAttempt.Finished = "succeeded", "stopped", &finished
+	if err := f.domain.f.f.db.FinishRead(ctx, childScope, childAttempt, false); err != nil {
+		t.Fatal("late child completion could not reconcile", err)
+	}
+	if childAttempt, err = f.domain.f.f.db.GetRead(ctx, childScope, childAttempt.ID); err != nil || childAttempt.Status != "cancelled" || childAttempt.Rows != 0 || childAttempt.Bytes != 0 {
+		t.Fatal("late child completion escaped cancellation fence", childAttempt, err)
+	}
 	if err := raw.QueryRow(ctx, `SELECT count(*) FROM chartworks.document_revisions WHERE tenant_id=$1 AND kind='report' AND document_id=$2 AND definition<>jsonb_build_object('deleted',true)`, deleter.Tenant(), state.ID).Scan(&definitions); err != nil {
 		t.Fatal(err)
 	}
@@ -171,6 +203,14 @@ func TestCW11ReportingLifecycleAndCatalog(t *testing.T) {
 
 func TestCW11DeletionErasesOwnedDynamicQueries(t *testing.T) {
 	f := newPhase29Execution(t, true)
+	f.block(t, "cw11-dynamic-journal-source", f.base)
+	journal, err := f.runs.Admit(t.Context(), f.execute, "cw11-dynamic-journal-source", reporting.RunRequest{Key: "cw11-dynamic-journal", Outputs: []string{"table-main"}})
+	if err != nil {
+		t.Fatal("admit journal source", err)
+	}
+	if journal, err = f.runs.Run(t.Context(), f.execute, journal.ID, false); err != nil || journal.State != "succeeded" {
+		t.Fatal("complete journal source", journal, err)
+	}
 	definition := phase29Text("Dynamic owned query")
 	definition.Widgets = append(definition.Widgets, f.queryWidget())
 	state := f.report(t, "cw11-dynamic-owned", definition, true)
@@ -192,6 +232,15 @@ func TestCW11DeletionErasesOwnedDynamicQueries(t *testing.T) {
 		f.execute.Tenant(), f.execute.User(), f.execute.Session(), "composition:"+run.ID+":dynamic", f.base.Context); err != nil {
 		t.Fatal("seed owned query", err)
 	}
+	dynamicOperation := "composition:" + run.ID + ":dynamic"
+	if _, err := raw.Exec(t.Context(), `INSERT INTO chartworks.read_attempts
+ (tenant_id,actor_id,attempt_id,operation_id,attempt_number,source_id,context_id,manifest,manifest_hash,status,remote_query,remote_state,cancel_requested,created_at,deadline)
+	SELECT tenant_id,actor_id,'33333333333333333333333333333333',$2,1,source_id,context_id,manifest,manifest_hash,
+ 'running',remote_query,'running',false,clock_timestamp(),clock_timestamp()+interval '30 seconds'
+ FROM chartworks.read_attempts WHERE tenant_id=$1 AND operation_id=$3 ORDER BY attempt_number LIMIT 1`,
+		f.execute.Tenant(), dynamicOperation, journal.ID); err != nil {
+		t.Fatal("seed active dynamic read", err)
+	}
 	deleted, err := f.documents.Delete(t.Context(), f.author, "report", state.ID, reporting.DocumentDeleteRequest{
 		ExpectedVersion: state.Version, Key: "cw11-dynamic-delete", Reason: "Erase document-owned query material",
 	})
@@ -202,6 +251,23 @@ func TestCW11DeletionErasesOwnedDynamicQueries(t *testing.T) {
 	if err := raw.QueryRow(t.Context(), `SELECT count(*) FROM chartworks.nlq_queries
  WHERE tenant_id=$1 AND operation LIKE $2`, f.author.Tenant(), "composition:"+run.ID+":%").Scan(&remaining); err != nil || remaining != 0 {
 		t.Fatal("document-owned query retained", remaining, err)
+	}
+	var dynamicCancel bool
+	if err := raw.QueryRow(t.Context(), `SELECT cancel_requested FROM chartworks.read_attempts WHERE tenant_id=$1 AND attempt_id='33333333333333333333333333333333'`, f.author.Tenant()).Scan(&dynamicCancel); err != nil || !dynamicCancel {
+		t.Fatal("active dynamic query lost durable cancellation journal", dynamicCancel, err)
+	}
+	dynamicScope, _ := store.NewScope(f.execute.Tenant(), f.execute.User())
+	dynamicAttempt, err := f.f.f.db.GetRead(t.Context(), dynamicScope, "33333333333333333333333333333333")
+	if err != nil {
+		t.Fatal("read retained dynamic cancellation journal", err)
+	}
+	finished := dynamicAttempt.Deadline.Add(-1)
+	dynamicAttempt.Status, dynamicAttempt.RemoteState, dynamicAttempt.Finished = "succeeded", "stopped", &finished
+	if err := f.f.f.db.FinishRead(t.Context(), dynamicScope, dynamicAttempt, false); err != nil {
+		t.Fatal("late dynamic completion could not reconcile", err)
+	}
+	if dynamicAttempt, err = f.f.f.db.GetRead(t.Context(), dynamicScope, dynamicAttempt.ID); err != nil || dynamicAttempt.Status != "cancelled" || dynamicAttempt.Rows != 0 || dynamicAttempt.Bytes != 0 {
+		t.Fatal("late dynamic completion escaped cancellation fence", dynamicAttempt, err)
 	}
 }
 
