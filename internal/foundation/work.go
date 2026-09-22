@@ -267,6 +267,11 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+	runs, err = runs.WithReviewedNarrativePacks(db)
+	if err != nil {
+		w.close()
+		return nil, err
+	}
 
 	documentRegistry, documents, delivery, renderer, handler, err := mountDocuments(v.Reporting, v.Rendering, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
 	if err != nil {

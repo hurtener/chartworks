@@ -34,6 +34,22 @@ preserves request order; an empty selection uses definition order. Narratives
 are opt-in and use the shared gateway's `narrative` role. Their reviewed model
 policy version must match `reporting.execution.model_version`; their response
 schema is `grounded-narrative-v1`. Allowed and redacted field lists are disjoint.
+In the production composition, narrative admission additionally resolves the
+current accepted Phase 24 runtime-pack selection under signed execution reach.
+The frozen manifest pins the exact pack/runtime/configuration digests and the
+reviewed narrative role model. Execution and reusable-result selection recheck
+that accepted selection; the gateway applies the reviewed configuration and a
+successful narrative receipt must report the exact narrative role, requested
+model and configuration digest. The accepted pack must explicitly bind the
+`narrative` role; a default model alone cannot qualify it. Changed or rejected
+selections close execution. If no pack has yet been selected, explicit partial
+mode retains deterministic outputs with a failed, model-free narrative receipt
+and disables cross-run reuse for that manifest. Deterministic frozen work remains
+model-free. Earlier unpinned narrative manifests remain readable. If executed
+under the reviewed-pack policy, their deterministic outputs can still be
+retained, but the narrative is marked unavailable without a model call; they
+cannot be used for cross-run result reuse. The selected pack read also verifies
+the approved proposal and its distinct reviewer receipt.
 The bounded provider response selects evidence claims; local formatting only
 emits supported claims with retained model, prompt, schema and usage provenance.
 No query tools, SQL correction or chart selection run in this lane.

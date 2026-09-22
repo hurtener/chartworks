@@ -161,7 +161,8 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 		}
 	} else {
 		n := saved.Narrative
-		available := n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && n.SchemaVersion == "grounded-narrative-v1"
+		available := !m.NarrativePackUnavailable && (s.packSelector == nil || m.NarrativePack != nil) &&
+			n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && n.SchemaVersion == "grounded-narrative-v1"
 		versioned := m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || n != nil && n.PolicyVersion != ""
 		if n == nil || !available && !versioned {
 			// Preserve the legacy unavailable receipt. Versioned policies first
@@ -218,6 +219,15 @@ func (s *Runs) continueFrozen(ctx context.Context, e identity.Envelope, inv jobs
 	m := *initial.Manifest
 	if err := RequireRunManifest(e, m); err != nil {
 		return err
+	}
+	if m.NarrativePack != nil {
+		if s.packSelector == nil {
+			return ErrUnavailable
+		}
+		selected, selectErr := s.packSelector.SelectedNarrativePack(ctx, e, m)
+		if selectErr != nil || !selected.Valid() || selected.Pin != *m.NarrativePack {
+			return ErrStale
+		}
 	}
 	if !time.Now().Before(m.Expires) {
 		return ErrExpired

@@ -25,7 +25,14 @@ type Runs struct {
 	runner        *jobs.RequestRunner
 	model         gateway.Engine
 	modelVersion  string
+	packSelector  NarrativePackSelector
 	limits        config.ReportingExecution
+}
+
+// NarrativePackSelector resolves the current accepted server-owned selection
+// under the same signed execution reach as the frozen run.
+type NarrativePackSelector interface {
+	SelectedNarrativePack(context.Context, identity.Envelope, RunManifest) (NarrativeRuntime, error)
 }
 
 // NewRuns performs no source/model calls. Optional narrative availability does
@@ -38,6 +45,17 @@ func NewRuns(blocks *Service, repo RunRepository, runner *jobs.RequestRunner, mo
 		model = nil
 	}
 	return &Runs{blocks: blocks, repo: repo, runner: runner, model: model, modelVersion: modelVersion, limits: limits}, nil
+}
+
+// WithReviewedNarrativePacks returns a configured copy before service use.
+// Deterministic runs continue to use the ordinary model-free path.
+func (s *Runs) WithReviewedNarrativePacks(selector NarrativePackSelector) (*Runs, error) {
+	if s == nil || nilValue(selector) {
+		return nil, ErrInvalid
+	}
+	configured := *s
+	configured.packSelector = selector
+	return &configured, nil
 }
 
 func normalizedRunRequest(in RunRequest) (RunRequest, error) {
@@ -279,6 +297,17 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	}
 	m.Selection, m.QueryLimits = &selection, &caps
 	m.ResultPolicy = ResolveResultPolicy(d, m.Dependencies, m.Definitions)
+	if hasNarrativeOutput(m.Outputs) && s.packSelector != nil {
+		runtime, selectErr := s.packSelector.SelectedNarrativePack(ctx, e, m)
+		if selectErr != nil || !runtime.Valid() {
+			if in.PartialPolicy != "allow_partial" || !errors.Is(selectErr, store.ErrNotFound) {
+				return RunView{}, ErrUnavailable
+			}
+			m.NarrativePackUnavailable = true
+		} else {
+			m.NarrativePack = &runtime.Pin
+		}
+	}
 	m.ReuseKey = ReuseIdentity(m)
 	proof, err := prepareRun(e, m)
 	if err != nil {
