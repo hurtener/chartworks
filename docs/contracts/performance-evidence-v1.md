@@ -9,6 +9,12 @@ service, source and model time, source/model calls, retries, tokens and cost.
 Unknown model time, token usage or cost remains absent. Summary percentiles are
 derived from the retained raw observations and never replace them.
 
+P95 uses the nearest-rank definition `ceil(0.95*n)-1` for zero-based samples.
+Measurement uses at most the declared concurrency as joined workers;
+cancellation is context-bound and does not create one goroutine per iteration.
+The evidence hash seals the complete persisted report, including schema,
+manifest identity/digest, environment, start/end time, samples and summaries.
+
 The immutable reuse identity contains hashes of tenant, signed context reach,
 signed actions, source revision, reviewed rule revision, topic publication and
 reviewed runtime pack. The required profile exercises cold, warm, repeated and
@@ -17,6 +23,15 @@ topic and runtime pack. Cross-tenant and same-tenant/different-context cases
 and altered signed-action cases must deny before source or model work. Concurrent cold access must produce one
 physical execution for one exact identity; broader or stale reuse is a failed
 gate, not a timing sample.
+
+`allowed` is only the reviewed expected outcome. The synthetic boundary creates
+a verified-envelope fixture and calls the same resolved-resource execution
+enforcer as the protected runtime; it never branches on `allowed`. Concrete
+adapters return independently collected source/model receipts. The harness
+derives execution when a receipt contains physical calls and derives reuse only
+when it does not. Every permitted measured request is exactly one of executed
+or reused. Reuse permits service overhead only and rejects source/model time,
+calls, retries, tokens or cost. Denials independently record zero physical work.
 
 Evidence modes are explicit. `synthetic` uses no source or model and measures
 only the harness and identity-aware reuse implementation. `integration` uses a

@@ -6,22 +6,26 @@ import (
 	"encoding/hex"
 	"sync"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/identity"
 )
 
 // syntheticPerformanceRunner is deliberately small and deterministic. It
 // measures harness/reuse overhead only; its reports are never live source or
 // model evidence.
 type syntheticPerformanceRunner struct {
-	mu    sync.Mutex
-	cache map[string]string
+	mu        sync.Mutex
+	cache     map[string]string
+	authority func(context.Context, PerformanceAuthorityFixture) (identity.Envelope, error)
 }
 
 func newSyntheticPerformanceRunner() *syntheticPerformanceRunner {
-	return &syntheticPerformanceRunner{cache: map[string]string{}}
+	return &syntheticPerformanceRunner{cache: map[string]string{}, authority: verifiedPerformanceFixture}
 }
 
-func (r *syntheticPerformanceRunner) Check(_ context.Context, step PerformanceStep) (PerformanceObservation, error) {
-	return syntheticPerformanceObservation(step, false, false, PerformanceUsage{}), nil
+func (r *syntheticPerformanceRunner) Check(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
+	return r.authorize(ctx, step)
 }
 
 func (r *syntheticPerformanceRunner) Reset(_ context.Context) error {
@@ -31,12 +35,13 @@ func (r *syntheticPerformanceRunner) Reset(_ context.Context) error {
 	return nil
 }
 
-func (r *syntheticPerformanceRunner) Run(ctx context.Context, step PerformanceStep, _ int) (PerformanceObservation, error) {
+func (r *syntheticPerformanceRunner) Run(ctx context.Context, step PerformanceStep, _ int) (PerformanceAdapterResult, error) {
 	if err := ctx.Err(); err != nil {
-		return PerformanceObservation{}, err
+		return PerformanceAdapterResult{}, err
 	}
-	if !step.Allowed {
-		return syntheticPerformanceObservation(step, false, false, PerformanceUsage{}), nil
+	result, err := r.authorize(ctx, step)
+	if err != nil || result.Denied {
+		return result, err
 	}
 	started := time.Now()
 	key := step.Binding.digest()
@@ -44,7 +49,9 @@ func (r *syntheticPerformanceRunner) Run(ctx context.Context, step PerformanceSt
 	if value, ok := r.cache[key]; ok {
 		r.mu.Unlock()
 		usage := PerformanceUsage{ServiceNS: time.Since(started).Nanoseconds()}
-		return PerformanceObservation{SemanticDigest: value, BindingDigest: key, Reused: true, Usage: usage}, nil
+		result.SemanticDigest = value
+		result.Receipt.Usage = usage
+		return result, nil
 	}
 	sourceStarted := time.Now()
 	digest := syntheticWorkloadDigest(step.Workload)
@@ -52,11 +59,33 @@ func (r *syntheticPerformanceRunner) Run(ctx context.Context, step PerformanceSt
 	r.cache[key] = digest
 	r.mu.Unlock()
 	usage := PerformanceUsage{ServiceNS: time.Since(started).Nanoseconds(), SourceNS: &sourceNS, SourceCalls: 1}
-	return PerformanceObservation{SemanticDigest: digest, BindingDigest: key, Executed: true, Usage: usage}, nil
+	result.SemanticDigest = digest
+	result.Receipt.Usage = usage
+	return result, nil
 }
 
-func syntheticPerformanceObservation(step PerformanceStep, executed, reused bool, usage PerformanceUsage) PerformanceObservation {
-	return PerformanceObservation{SemanticDigest: syntheticWorkloadDigest(step.Workload), BindingDigest: step.Binding.digest(), Blocked: !step.Allowed, Executed: executed, Reused: reused, Usage: usage}
+func (r *syntheticPerformanceRunner) authorize(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
+	result := PerformanceAdapterResult{SemanticDigest: syntheticWorkloadDigest(step.Workload), BindingDigest: step.Binding.digest()}
+	if step.AuthorityOverride == nil {
+		return PerformanceAdapterResult{}, ErrInvalid
+	}
+	e, err := r.authority(ctx, *step.AuthorityOverride)
+	if err != nil {
+		return PerformanceAdapterResult{}, err
+	}
+	a := *step.AuthorityOverride
+	err = access.RequireExecution(e, access.Execution{
+		Target:       access.Resource{Tenant: a.TargetTenant, Kind: "report", Permission: "execute", ID: a.ReportID},
+		Dependencies: []access.Resource{{Tenant: a.TargetTenant, Kind: "source", Permission: "query", ID: a.SourceID}},
+		Contexts:     []access.Resource{{Tenant: a.TargetTenant, Kind: "execution_context", Permission: "use", ID: a.ContextID}},
+	})
+	result.Denied = err != nil
+	return result, nil
+}
+
+func verifiedPerformanceFixture(_ context.Context, a PerformanceAuthorityFixture) (identity.Envelope, error) {
+	now := time.Now()
+	return identity.FromVerified(a.Tenant, a.User, a.Session, a.Scopes, now.Add(time.Hour), func() time.Time { return now })
 }
 
 func syntheticWorkloadDigest(workload string) string {

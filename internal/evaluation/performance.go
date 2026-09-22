@@ -67,32 +67,49 @@ type PerformanceEnvironment struct {
 	EvaluationReport string `json:"evaluation_report_hash"`
 }
 
+// PerformanceAuthorityFixture is a content-free fixture representing one
+// already verified authority envelope and the resolved resources presented to
+// the real access enforcer. Allowed remains an expectation; it never controls
+// the authorization decision.
+type PerformanceAuthorityFixture struct {
+	Tenant       string   `json:"tenant"`
+	User         string   `json:"user"`
+	Session      string   `json:"session"`
+	Scopes       []string `json:"scopes"`
+	TargetTenant string   `json:"target_tenant"`
+	ReportID     string   `json:"report_id"`
+	SourceID     string   `json:"source_id"`
+	ContextID    string   `json:"context_id"`
+}
+
 // PerformanceStep is one ordered cold/warm/reuse/invalidation experiment.
 // ExpectedExecutions counts physical source/model pipeline executions; blocked
 // authority negatives must expect zero.
 type PerformanceStep struct {
-	ID                 string             `json:"id"`
-	Kind               string             `json:"kind"`
-	Binding            PerformanceBinding `json:"binding"`
-	Allowed            bool               `json:"allowed"`
-	ResetBefore        bool               `json:"reset_before"`
-	Iterations         int                `json:"iterations"`
-	Concurrency        int                `json:"concurrency"`
-	Workload           string             `json:"workload"`
-	ExpectedDigest     string             `json:"expected_digest"`
-	ExpectedExecutions int                `json:"expected_executions"`
-	ExpectedBlocks     int                `json:"expected_blocks"`
+	ID                 string                       `json:"id"`
+	Kind               string                       `json:"kind"`
+	Binding            PerformanceBinding           `json:"binding"`
+	Allowed            bool                         `json:"allowed"`
+	ResetBefore        bool                         `json:"reset_before"`
+	Iterations         int                          `json:"iterations"`
+	Concurrency        int                          `json:"concurrency"`
+	Workload           string                       `json:"workload"`
+	ExpectedDigest     string                       `json:"expected_digest"`
+	ExpectedExecutions int                          `json:"expected_executions"`
+	ExpectedBlocks     int                          `json:"expected_blocks"`
+	AuthorityOverride  *PerformanceAuthorityFixture `json:"authority_override,omitempty"`
 }
 
 // PerformanceManifest is immutable input for a bounded measurement.
 type PerformanceManifest struct {
-	SchemaVersion int                     `json:"schema_version"`
-	ID            string                  `json:"id"`
-	Kind          PerformanceProfileKind  `json:"kind"`
-	EvidenceMode  PerformanceEvidenceMode `json:"evidence_mode"`
-	Environment   PerformanceEnvironment  `json:"environment"`
-	Steps         []PerformanceStep       `json:"steps"`
-	MaxDurationMS int64                   `json:"max_duration_ms"`
+	SchemaVersion int                         `json:"schema_version"`
+	ID            string                      `json:"id"`
+	Kind          PerformanceProfileKind      `json:"kind"`
+	EvidenceMode  PerformanceEvidenceMode     `json:"evidence_mode"`
+	Environment   PerformanceEnvironment      `json:"environment"`
+	Authority     PerformanceAuthorityFixture `json:"authority"`
+	Steps         []PerformanceStep           `json:"steps"`
+	MaxDurationMS int64                       `json:"max_duration_ms"`
 }
 
 var requiredPerformanceKinds = []string{
@@ -126,7 +143,7 @@ func (m PerformanceManifest) Validate() error {
 			return ErrInvalid
 		}
 	}
-	if len(m.Steps) < len(requiredPerformanceKinds) || len(m.Steps) > 64 {
+	if !validPerformanceAuthorityFixture(m.Authority) || len(m.Steps) < len(requiredPerformanceKinds) || len(m.Steps) > 64 {
 		return ErrInvalid
 	}
 	limitIterations, limitConcurrency := 32, 32
@@ -140,6 +157,9 @@ func (m PerformanceManifest) Validate() error {
 			return ErrInvalid
 		}
 		if !validPerformanceBinding(s.Binding) || s.Allowed && s.ExpectedBlocks != 0 || !s.Allowed && (s.ExpectedBlocks != s.Iterations || s.ExpectedExecutions != 0) {
+			return ErrInvalid
+		}
+		if s.AuthorityOverride != nil && !validPerformanceAuthorityFixture(*s.AuthorityOverride) {
 			return ErrInvalid
 		}
 		ids[s.ID] = true
@@ -178,10 +198,37 @@ func (m PerformanceManifest) Validate() error {
 	if kinds["concurrent"].Concurrency < 2 || kinds["tenant_negative"].Allowed || kinds["context_negative"].Allowed || kinds["actions_negative"].Allowed {
 		return ErrInvalid
 	}
+	for _, kind := range []string{"tenant_negative", "context_negative", "actions_negative"} {
+		if kinds[kind].AuthorityOverride == nil {
+			return ErrInvalid
+		}
+	}
 	if m.Kind == PerformanceFinalStress && (m.MaxDurationMS != int64(time.Hour/time.Millisecond) || !validFinalPerformanceShape(kinds)) {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func validPerformanceAuthorityFixture(a PerformanceAuthorityFixture) bool {
+	if !identifier(a.Tenant) || !identifier(a.User) || !identifier(a.Session) || !identifier(a.TargetTenant) || !identifier(a.ReportID) || !identifier(a.SourceID) || !identifier(a.ContextID) || len(a.Scopes) == 0 || len(a.Scopes) > 32 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, scope := range a.Scopes {
+		if scope == "" || len(scope) > 256 || seen[scope] {
+			return false
+		}
+		seen[scope] = true
+	}
+	return true
+}
+
+func (m PerformanceManifest) effectiveStep(step PerformanceStep) PerformanceStep {
+	if step.AuthorityOverride == nil {
+		authority := m.Authority
+		step.AuthorityOverride = &authority
+	}
+	return step
 }
 
 func validFinalPerformanceShape(steps map[string]PerformanceStep) bool {
@@ -235,7 +282,22 @@ type PerformanceUsage struct {
 	CostUSD     *float64 `json:"cost_usd,omitempty"`
 }
 
-// PerformanceObservation is returned by a concrete synthetic/real adapter.
+// PerformanceReceipt is independently collected by a concrete adapter around
+// its source and gateway seams. The harness derives executed versus reused from
+// this receipt; an adapter cannot declare its own outcome.
+type PerformanceReceipt struct {
+	Usage PerformanceUsage `json:"usage"`
+}
+
+// PerformanceAdapterResult is returned by a concrete synthetic/real adapter.
+type PerformanceAdapterResult struct {
+	SemanticDigest string             `json:"semantic_digest"`
+	BindingDigest  string             `json:"binding_digest"`
+	Denied         bool               `json:"denied"`
+	Receipt        PerformanceReceipt `json:"receipt"`
+}
+
+// PerformanceObservation contains the harness-derived terminal outcome.
 type PerformanceObservation struct {
 	SemanticDigest string           `json:"semantic_digest"`
 	BindingDigest  string           `json:"binding_digest"`
@@ -248,9 +310,9 @@ type PerformanceObservation struct {
 // PerformanceRunner is implemented by synthetic smoke, real PostgreSQL/source,
 // and recorded/live model adapters. Check must not populate a measured cache.
 type PerformanceRunner interface {
-	Check(context.Context, PerformanceStep) (PerformanceObservation, error)
+	Check(context.Context, PerformanceStep) (PerformanceAdapterResult, error)
 	Reset(context.Context) error
-	Run(context.Context, PerformanceStep, int) (PerformanceObservation, error)
+	Run(context.Context, PerformanceStep, int) (PerformanceAdapterResult, error)
 }
 
 // PerformanceSample is one raw measured request.
@@ -312,7 +374,7 @@ func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
 	for _, sample := range r.Samples {
 		step, ok := steps[sample.StepID]
 		o := PerformanceObservation{SemanticDigest: sample.SemanticDigest, BindingDigest: sample.BindingDigest, Blocked: sample.Blocked, Executed: sample.Executed, Reused: sample.Reused, Usage: sample.Usage}
-		if !ok || sample.Iteration < 0 || sample.WallNS < 0 || validatePerformanceObservation(manifest.Environment, step, o) != nil {
+		if !ok || sample.Iteration < 0 || sample.WallNS < 0 || validatePerformanceObservation(manifest.Environment, manifest.effectiveStep(step), o, true) != nil {
 			return ErrInvalid
 		}
 		byStep[sample.StepID] = append(byStep[sample.StepID], sample)
@@ -353,8 +415,10 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	sum := sha256.Sum256(raw)
 	report := PerformanceReport{SchemaVersion: 1, ManifestID: manifest.ID, ManifestDigest: hex.EncodeToString(sum[:]), Kind: manifest.Kind, EvidenceMode: manifest.EvidenceMode, Environment: manifest.Environment, StartedAt: clock().UTC()}
 	for _, step := range manifest.Steps {
-		o, err := runner.Check(ctx, step)
-		if err != nil || validatePerformanceObservation(manifest.Environment, step, o) != nil {
+		step = manifest.effectiveStep(step)
+		result, err := runner.Check(ctx, step)
+		o, outcomeErr := derivePerformanceObservation(manifest.Environment, step, result, false)
+		if err != nil || outcomeErr != nil || validatePerformanceObservation(manifest.Environment, step, o, false) != nil {
 			report.CompletedAt = clock().UTC()
 			return sealPerformanceReport(report), ErrGate
 		}
@@ -363,6 +427,7 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	deadlineCtx, cancel := context.WithTimeout(ctx, time.Duration(manifest.MaxDurationMS)*time.Millisecond)
 	defer cancel()
 	for _, step := range manifest.Steps {
+		step = manifest.effectiveStep(step)
 		if step.ResetBefore {
 			if err := runner.Reset(deadlineCtx); err != nil {
 				return sealPerformanceReport(report), err
@@ -387,33 +452,43 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 }
 
 func measurePerformanceStep(ctx context.Context, environment PerformanceEnvironment, step PerformanceStep, runner PerformanceRunner) ([]PerformanceSample, error) {
-	start := make(chan struct{})
 	results := make(chan PerformanceSample, step.Iterations)
 	errs := make(chan error, step.Iterations)
-	sem := make(chan struct{}, step.Concurrency)
-	var wg sync.WaitGroup
+	jobs := make(chan int, step.Iterations)
 	for i := 0; i < step.Iterations; i++ {
-		wg.Add(1)
-		go func(iteration int) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			<-start
-			began := time.Now()
-			o, err := runner.Run(ctx, step, iteration)
-			wall := time.Since(began).Nanoseconds()
-			if err != nil {
-				errs <- err
-				return
-			}
-			if err = validatePerformanceObservation(environment, step, o); err != nil {
-				errs <- err
-				return
-			}
-			results <- PerformanceSample{StepID: step.ID, Iteration: iteration, WallNS: wall, SemanticDigest: o.SemanticDigest, BindingDigest: o.BindingDigest, Blocked: o.Blocked, Executed: o.Executed, Reused: o.Reused, Usage: o.Usage}
-		}(i)
+		jobs <- i
 	}
-	close(start)
+	close(jobs)
+	var wg sync.WaitGroup
+	for worker := 0; worker < step.Concurrency; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case iteration, ok := <-jobs:
+					if !ok {
+						return
+					}
+					began := time.Now()
+					result, err := runner.Run(ctx, step, iteration)
+					wall := time.Since(began).Nanoseconds()
+					if err != nil {
+						errs <- err
+						return
+					}
+					o, err := derivePerformanceObservation(environment, step, result, true)
+					if err != nil || validatePerformanceObservation(environment, step, o, true) != nil {
+						errs <- ErrInvalid
+						return
+					}
+					results <- PerformanceSample{StepID: step.ID, Iteration: iteration, WallNS: wall, SemanticDigest: o.SemanticDigest, BindingDigest: o.BindingDigest, Blocked: o.Blocked, Executed: o.Executed, Reused: o.Reused, Usage: o.Usage}
+				}
+			}
+		}()
+	}
 	wg.Wait()
 	close(results)
 	close(errs)
@@ -436,17 +511,37 @@ func measurePerformanceStep(ctx context.Context, environment PerformanceEnvironm
 	return out, nil
 }
 
-func validatePerformanceObservation(environment PerformanceEnvironment, step PerformanceStep, o PerformanceObservation) error {
+func derivePerformanceObservation(environment PerformanceEnvironment, step PerformanceStep, result PerformanceAdapterResult, measured bool) (PerformanceObservation, error) {
+	u := result.Receipt.Usage
+	physical := u.SourceCalls > 0 || u.ModelCalls > 0
+	o := PerformanceObservation{SemanticDigest: result.SemanticDigest, BindingDigest: result.BindingDigest, Blocked: result.Denied, Usage: u}
+	if measured && !result.Denied {
+		o.Executed = physical
+		o.Reused = !physical
+	}
+	if result.Denied && physical {
+		return PerformanceObservation{}, ErrInvalid
+	}
+	if environment.ModelMode == "none" && (u.ModelCalls != 0 || u.ModelNS != nil || u.Tokens != nil || u.CostUSD != nil) {
+		return PerformanceObservation{}, ErrInvalid
+	}
+	return o, nil
+}
+
+func validatePerformanceObservation(environment PerformanceEnvironment, step PerformanceStep, o PerformanceObservation, measured bool) error {
 	if o.SemanticDigest != step.ExpectedDigest || o.BindingDigest != step.Binding.digest() || o.Blocked != !step.Allowed || o.Executed && o.Reused || o.Usage.ServiceNS < 0 || o.Usage.SourceNS != nil && *o.Usage.SourceNS < 0 || o.Usage.ModelNS != nil && *o.Usage.ModelNS < 0 || o.Usage.SourceCalls < 0 || o.Usage.ModelCalls < 0 || o.Usage.Retries < 0 || o.Usage.Tokens != nil && *o.Usage.Tokens < 0 || o.Usage.CostUSD != nil && *o.Usage.CostUSD < 0 {
 		return ErrInvalid
 	}
-	if o.Blocked && (o.Executed || o.Reused || o.Usage.SourceCalls != 0 || o.Usage.ModelCalls != 0 || o.Usage.SourceNS != nil && *o.Usage.SourceNS != 0 || o.Usage.ModelNS != nil && *o.Usage.ModelNS != 0) {
+	if measured && !o.Blocked && o.Executed == o.Reused {
+		return ErrInvalid
+	}
+	if o.Blocked && (o.Executed || o.Reused || o.Usage.SourceCalls != 0 || o.Usage.ModelCalls != 0 || o.Usage.SourceNS != nil && *o.Usage.SourceNS != 0 || o.Usage.ModelNS != nil && *o.Usage.ModelNS != 0 || o.Usage.Retries != 0 || o.Usage.Tokens != nil && *o.Usage.Tokens != 0 || o.Usage.CostUSD != nil && *o.Usage.CostUSD != 0) {
+		return ErrInvalid
+	}
+	if o.Reused && (o.Usage.SourceCalls != 0 || o.Usage.ModelCalls != 0 || o.Usage.SourceNS != nil && *o.Usage.SourceNS != 0 || o.Usage.ModelNS != nil && *o.Usage.ModelNS != 0 || o.Usage.Retries != 0 || o.Usage.Tokens != nil && *o.Usage.Tokens != 0 || o.Usage.CostUSD != nil && *o.Usage.CostUSD != 0) {
 		return ErrInvalid
 	}
 	if !o.Blocked && o.Executed && environment.SourceMode == "real_postgres" && (o.Usage.SourceNS == nil || o.Usage.SourceCalls < 1) {
-		return ErrInvalid
-	}
-	if environment.ModelMode == "none" && (o.Usage.ModelNS != nil || o.Usage.ModelCalls != 0 || o.Usage.Tokens != nil || o.Usage.CostUSD != nil) {
 		return ErrInvalid
 	}
 	if !o.Blocked && o.Executed && (environment.ModelMode == "recorded" || environment.ModelMode == "live") && (o.Usage.ModelNS == nil || o.Usage.ModelCalls < 1) {
@@ -471,22 +566,15 @@ func summarizePerformance(id string, samples []PerformanceSample) PerformanceSum
 	if len(walls) > 0 {
 		s.MinWallNS, s.MaxWallNS = walls[0], walls[len(walls)-1]
 		s.MedianWallNS = walls[(len(walls)-1)/2]
-		s.P95WallNS = walls[((len(walls)-1)*95)/100]
+		// Nearest-rank percentile: ceil(0.95*n)-1 in zero-based indexing.
+		s.P95WallNS = walls[((95*len(walls)+99)/100)-1]
 	}
 	return s
 }
 
 func sealPerformanceReport(r PerformanceReport) PerformanceReport {
-	material := struct {
-		Manifest    string
-		Kind        PerformanceProfileKind
-		Mode        PerformanceEvidenceMode
-		Environment PerformanceEnvironment
-		Correctness bool
-		Samples     []PerformanceSample
-		Summaries   []PerformanceSummary
-	}{r.ManifestDigest, r.Kind, r.EvidenceMode, r.Environment, r.CorrectnessPassed, r.Samples, r.Summaries}
-	raw, _ := json.Marshal(material)
+	r.EvidenceHash = ""
+	raw, _ := json.Marshal(r)
 	sum := sha256.Sum256(raw)
 	r.EvidenceHash = hex.EncodeToString(sum[:])
 	return r
