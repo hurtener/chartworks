@@ -11,6 +11,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -91,6 +92,25 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 	return out, err
 }
 
+// timedReadObserver subtracts the journal's synchronous dispatch and status
+// checks from the native read clock. The attempt ledger still owns those calls.
+type timedReadObserver struct {
+	readexec.Observer
+	durationNS atomic.Int64
+}
+
+func (o *timedReadObserver) Dispatch(ctx context.Context, q readexec.RemoteQuery, accepted bool) error {
+	started := time.Now()
+	defer func() { o.durationNS.Add(time.Since(started).Nanoseconds()) }()
+	return o.Observer.Dispatch(ctx, q, accepted)
+}
+
+func (o *timedReadObserver) Check(ctx context.Context) error {
+	started := time.Now()
+	defer func() { o.durationNS.Add(time.Since(started).Nanoseconds()) }()
+	return o.Observer.Check(ctx)
+}
+
 func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (out readexec.NativeResult, err error) {
 	switch c.Dialect {
 	case "mysql":
@@ -115,6 +135,27 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 		return out, safe(err)
 	}
 	defer conn.Release()
+	// The PostgreSQL source clock starts only after a physical connection is
+	// acquired. Secret/config resolution and pool queue time are service overhead.
+	var journal *timedReadObserver
+	if observer != nil {
+		journal = &timedReadObserver{Observer: observer}
+		observer = journal
+	}
+	clockStarted := time.Now()
+	defer func() {
+		// This defer runs after transaction rollback, including bounded cleanup.
+		if out.RemoteState != "stopped" {
+			return
+		}
+		duration := time.Since(clockStarted).Nanoseconds()
+		if journal != nil {
+			duration -= journal.durationNS.Load()
+		}
+		if duration > 0 {
+			out.SourceDurationNS = &duration
+		}
+	}()
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return out, safe(err)

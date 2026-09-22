@@ -18,11 +18,11 @@ var _ readexec.AttemptStore = (*DB)(nil)
 // ReadCapacity lets the executor reserve independent journal/control connections.
 func (d *DB) ReadCapacity() int { return int(d.pool.Config().MaxConns) }
 
-const readAttemptColumns = `attempt_id,attempt_number,manifest,status,remote_query,remote_state,cancel_requested,created_at,deadline,finished_at,rows_returned,bytes_returned,code`
+const readAttemptColumns = `attempt_id,attempt_number,manifest,status,remote_query,remote_state,cancel_requested,created_at,deadline,finished_at,rows_returned,bytes_returned,source_duration_ns,code`
 
 func scanRead(row pgx.Row) (a readexec.Attempt, err error) {
 	var manifest, remote []byte
-	err = row.Scan(&a.ID, &a.Number, &manifest, &a.Status, &remote, &a.RemoteState, &a.CancelRequested, &a.Created, &a.Deadline, &a.Finished, &a.Rows, &a.Bytes, &a.Code)
+	err = row.Scan(&a.ID, &a.Number, &manifest, &a.Status, &remote, &a.RemoteState, &a.CancelRequested, &a.Created, &a.Deadline, &a.Finished, &a.Rows, &a.Bytes, &a.SourceDurationNS, &a.Code)
 	if err != nil {
 		return a, err
 	}
@@ -195,7 +195,7 @@ func (d *DB) FinishRead(ctx context.Context, s store.Scope, a readexec.Attempt, 
 	if !s.Valid() {
 		return store.ErrScope
 	}
-	if !identity.Identifier(a.ID) || !a.Manifest.Valid() || a.Finished == nil || a.Rows < 0 || a.Rows > a.Manifest.Limits.Rows || a.Bytes < 0 || a.Bytes > a.Manifest.Limits.Bytes {
+	if !identity.Identifier(a.ID) || !a.Manifest.Valid() || a.Finished == nil || a.Rows < 0 || a.Rows > a.Manifest.Limits.Rows || a.Bytes < 0 || a.Bytes > a.Manifest.Limits.Bytes || a.SourceDurationNS != nil && (*a.SourceDurationNS <= 0 || *a.SourceDurationNS > int64(5*time.Minute) || a.RemoteState != "stopped" || a.Remote == nil || reconcile) {
 		return store.ErrInvalid
 	}
 	switch a.Status {
@@ -207,7 +207,7 @@ func (d *DB) FinishRead(ctx context.Context, s store.Scope, a readexec.Attempt, 
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $4 END,remote_state=$5,finished_at=$6,rows_returned=CASE WHEN cancel_requested THEN 0 ELSE $7 END,bytes_returned=CASE WHEN cancel_requested THEN 0 ELSE $8 END,code=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $9 END WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND manifest_hash=$10 AND (finished_at IS NULL OR status='uncertain') AND (NOT $11 OR status='uncertain' OR deadline + $12::bigint * interval '1 microsecond'<clock_timestamp())`, s.Tenant(), s.Actor(), a.ID, a.Status, a.RemoteState, a.Finished, a.Rows, a.Bytes, a.Code, readexec.Hash(a.Manifest), reconcile, a.Manifest.Limits.CancelGrace.Microseconds())
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.read_attempts SET status=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $4 END,remote_state=$5,finished_at=$6,rows_returned=CASE WHEN cancel_requested THEN 0 ELSE $7 END,bytes_returned=CASE WHEN cancel_requested THEN 0 ELSE $8 END,code=CASE WHEN cancel_requested AND $4 NOT IN ('uncertain','interrupted') THEN 'cancelled' ELSE $9 END,source_duration_ns=$13 WHERE tenant_id=$1 AND actor_id=$2 AND attempt_id=$3 AND manifest_hash=$10 AND (finished_at IS NULL OR status='uncertain') AND (NOT $11 OR status='uncertain' OR deadline + $12::bigint * interval '1 microsecond'<clock_timestamp())`, s.Tenant(), s.Actor(), a.ID, a.Status, a.RemoteState, a.Finished, a.Rows, a.Bytes, a.Code, readexec.Hash(a.Manifest), reconcile, a.Manifest.Limits.CancelGrace.Microseconds(), a.SourceDurationNS)
 		if err != nil {
 			return err
 		}
