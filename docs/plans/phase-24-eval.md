@@ -69,3 +69,13 @@ Phase 24 still owns held-out and representative-user evaluation of conflict
 explanation comprehension and live-model behavior. Those measurements must pin
 the exact topic, ruleset, source/context and model revisions; synthetic contract
 fixtures alone cannot close that quality boundary.
+
+## PERF-01 measurement substrate
+
+The [performance evidence contract](../contracts/performance-evidence-v1.md)
+binds cold/warm/repeat/concurrent and exact invalidation measurements to the
+accepted Phase 24 suite and report hashes. It separates synthetic,
+real-PostgreSQL/recorded-model and live evidence, preserves raw service/source/
+model values and refuses timing when correctness or authority negatives fail.
+The bounded synthetic smoke is available during development. Phase 25 still
+owns execution of the final stress profile after Phase 34 is selected.

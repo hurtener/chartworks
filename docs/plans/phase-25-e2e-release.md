@@ -44,3 +44,10 @@ Implement `TestPhase25/AC01` through `TestPhase25/AC06`. Release mode runs every
 ## Glossary, decisions and deviations
 
 Record measured limits and accepted support boundaries. D-050 makes this the final cumulative gate. No release, tag, deployment or runtime test completion is claimed by this planning change.
+
+The [performance evidence contract](../contracts/performance-evidence-v1.md)
+defines the required final-stress scenario counts, authority/revision identity,
+correctness-first gate and raw measurement schema. The release candidate must
+materialize the actual Phase 24 suite/report hashes and post-Phase-34 source,
+rule, topic, context and runtime-pack revisions. The checked-in synthetic smoke
+does not satisfy AC03.
