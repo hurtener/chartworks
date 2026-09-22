@@ -11,6 +11,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/chartservice"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
@@ -58,6 +59,10 @@ type queryRuntime interface {
 	Plan(context.Context, identity.Envelope, nlqexec.PlanRequest) (nlqexec.PlanResult, error)
 	Run(context.Context, identity.Envelope, nlqexec.RunRequest) (nlqexec.RunResult, error)
 	InspectSaved(context.Context, identity.Envelope, nlqexec.SavedQuestion) (nlqexec.SavedEvidence, error)
+}
+
+type compositePlanRunRuntime interface {
+	PlanAndRun(context.Context, identity.Envelope, nlqexec.PlanRequest, nlqexec.RunRequest) (nlqexec.PlanResult, nlqexec.RunResult, error)
 }
 type chartRuntime interface {
 	Select(context.Context, identity.Envelope, chartservice.SelectRequest) (chartservice.SelectionResult, error)
@@ -114,8 +119,8 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	}
 	var result any
 	var receipt gateway.Receipt
-	var sourceMS *int64
 	blocked := false
+	var sourceCalls int
 	switch x.Case.Stage {
 	case StageRouting:
 		if g.Routing == nil || in.Route == nil {
@@ -207,14 +212,53 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 		if g.Query == nil || in.Run == nil {
 			return Observation{}, ErrMode
 		}
-		r, e := g.Query.Run(ctx, x.Envelope, *in.Run)
-		result, err = r, e
-		if r.Execution.Attempt.Finished != nil {
-			v := r.Execution.Attempt.Finished.Sub(r.Execution.Attempt.Created).Milliseconds()
-			if v < 0 {
-				v = 0
+		runRequest := *in.Run
+		if in.Question != nil {
+			if !identity.Identifier(runRequest.Operation) {
+				return Observation{}, ErrMode
 			}
-			sourceMS = &v
+			composite, ok := g.Query.(compositePlanRunRuntime)
+			if !ok {
+				return Observation{}, ErrMode
+			}
+			planned, r, runErr := composite.PlanAndRun(ctx, x.Envelope, nlqexec.PlanRequest{QuestionRequest: *in.Question, Operation: runRequest.Operation}, runRequest)
+			if runErr != nil {
+				return Observation{}, runErr
+			}
+			if !identity.Identifier(planned.QueryID) || r.QueryID != planned.QueryID {
+				return Observation{}, ErrMode
+			}
+			result, err, receipt = r, nil, planned.Receipt
+			if r.ExecutionFixes > 0 {
+				// The current run result preserves the final attempt but not every
+				// failed source attempt's duration. Do not seal partial timings.
+				return Observation{}, ErrMode
+			}
+			if r.Execution.Attempt.ID != "" && r.Execution.Attempt.Finished != nil {
+				// Attempt wall time includes the journal and finalization. It is
+				// evidence of a physical call, never a source-only duration.
+				if r.Execution.Attempt.Manifest.Receipt.Dialect == "postgres" {
+					sourceCalls = 1
+				}
+			}
+			if len(planned.Receipt.Calls) > 0 {
+				extra, ok := gatewayReceiptSuffix(planned.Receipt, r.Receipt)
+				if !ok {
+					return Observation{}, ErrReview
+				}
+				receipt.Calls = append(receipt.Calls, extra.Calls...)
+				if extra.Warning != "" {
+					receipt.Warning = extra.Warning
+				}
+			}
+		} else {
+			r, runErr := g.Query.Run(ctx, x.Envelope, runRequest)
+			result, err = r, runErr
+			if r.Execution.Attempt.ID != "" && r.Execution.Attempt.Finished != nil {
+				if r.Execution.Attempt.Manifest.Receipt.Dialect == "postgres" {
+					sourceCalls = 1
+				}
+			}
 		}
 	case StageReport:
 		if g.Reports == nil || !identifier(in.ReportID) {
@@ -230,7 +274,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	if reserved.Calls > usage.Calls {
 		usage.Calls, usage.Retries, usage.Tokens = reserved.Calls, reserved.Retries, reserved.Tokens
 	}
-	usage.SourceMS = sourceMS
+	usage.SourceCalls = sourceCalls
 	usage.ServiceMS = clock().Sub(started).Milliseconds()
 	if !receiptMatchesPack(receipt, x.Pack) {
 		return Observation{Usage: usage}, ErrReview
@@ -238,7 +282,19 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	if err != nil {
 		return Observation{Usage: usage}, err
 	}
-	raw, err := json.Marshal(result)
+	semantic := result
+	if x.Case.Stage == StageConsumer && in.Question != nil {
+		run, ok := result.(nlqexec.RunResult)
+		if !ok || run.Execution.Result == nil {
+			return Observation{Usage: usage}, ErrMode
+		}
+		semantic = struct {
+			Status        string           `json:"status"`
+			EvidenceStale bool             `json:"evidence_stale"`
+			Result        *readexec.Result `json:"result"`
+		}{run.Status, run.EvidenceStale, run.Execution.Result}
+	}
+	raw, err := json.Marshal(semantic)
 	if err != nil {
 		return Observation{}, ErrInvalid
 	}
@@ -250,6 +306,24 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 		return Observation{Decision: "completed", SemanticDigest: hex.EncodeToString(sum[:]), Usage: usage}, nil
 	}
 	return Observation{Decision: "completed", SemanticDigest: hex.EncodeToString(sum[:]), Usage: usage}, nil
+}
+
+func gatewayReceiptSuffix(prefix, complete gateway.Receipt) (gateway.Receipt, bool) {
+	if len(complete.Calls) < len(prefix.Calls) {
+		return gateway.Receipt{}, false
+	}
+	for i := range prefix.Calls {
+		left, leftErr := json.Marshal(prefix.Calls[i])
+		right, rightErr := json.Marshal(complete.Calls[i])
+		if leftErr != nil || rightErr != nil || string(left) != string(right) {
+			return gateway.Receipt{}, false
+		}
+	}
+	out := gateway.Receipt{Calls: append([]gateway.Usage(nil), complete.Calls[len(prefix.Calls):]...)}
+	if complete.Warning != prefix.Warning {
+		out.Warning = complete.Warning
+	}
+	return out, true
 }
 
 func receiptMatchesPack(receipt gateway.Receipt, pack PackRevision) bool {

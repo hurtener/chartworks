@@ -174,13 +174,25 @@ func writePerformanceReport(path string, report PerformanceReport) error {
 		err = closeErr
 	}
 	if err == nil {
-		err = os.Rename(tmpPath, path)
+		err = os.Link(tmpPath, path)
 	}
 	if err != nil {
 		return err
 	}
+	if err = os.Remove(tmpPath); err != nil {
+		return err
+	}
 	ok = true
 	return nil
+}
+
+// PersistPerformanceReport validates and atomically creates a private report
+// file. Existing evidence is never replaced by a later run.
+func PersistPerformanceReport(path string, manifest PerformanceManifest, report PerformanceReport) error {
+	if report.Validate(manifest) != nil {
+		return ErrInvalid
+	}
+	return writePerformanceReport(path, report)
 }
 
 func encodeOutput(w io.Writer, v any) int {

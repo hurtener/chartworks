@@ -126,6 +126,11 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 // Space returns the complete immutable embedding-space identifier.
 func (e *Engine) Space() string { return e.space }
 
+// PerformanceModelMode marks this concrete provider-backed engine as live.
+// Recorded evidence must be supplied by an explicitly recorded Engine at the
+// composition root; a profile cannot relabel this provider route.
+func (e *Engine) PerformanceModelMode() string { return "live" }
+
 // EmbeddingSpace returns the exact descriptor used by this immutable engine.
 func (e *Engine) EmbeddingSpace() gateway.EmbeddingSpace { return e.embedding }
 
