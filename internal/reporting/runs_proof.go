@@ -41,7 +41,7 @@ func (p PreparedRun) Checked(e identity.Envelope) (RunManifest, error) {
 		return m, access.ErrUnauthenticated
 	}
 	if json.Unmarshal(p.encoded, &m) != nil || !identity.Identifier(m.ID) || !hashValid(m.RequestHash) || !hashValid(m.TaskHash) ||
-		!hashValid(m.ReuseKey) || m.Revision.Number < 1 || m.Revision.Digest != DefinitionDigest(m.Revision.Definition) ||
+		!hashValid(m.ReuseKey) || m.ReuseKey != ReuseIdentity(m) || m.Revision.Number < 1 || m.Revision.Digest != DefinitionDigest(m.Revision.Definition) ||
 		m.Revision.ExecutionDigest != ExecutionDigest(m.Revision.Definition) || m.Limits.Validate() != nil ||
 		!m.Binding.Valid() || m.Binding.Tenant != m.Tenant || m.Binding.Source != m.Revision.Definition.Source || m.Binding.Context != m.Revision.Definition.Context ||
 		m.Created.IsZero() || !m.Expires.After(m.Created) || len(m.Outputs) == 0 || len(m.Outputs) > 32 ||

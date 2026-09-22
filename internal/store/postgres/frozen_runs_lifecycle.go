@@ -57,6 +57,11 @@ func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string,
 		if m.ReuseMaxAge <= 0 || out.Result != nil || h.view.State != "sealed" {
 			return nil
 		}
+		// Older manifests remain readable and executable, but cannot supply
+		// evidence for cross-run reuse under the complete v2 identity.
+		if m.ReuseKey != reporting.ReuseIdentity(m) {
+			return nil
+		}
 		if readErr = frozenCurrentTx(ctx, tx, e, m); readErr != nil {
 			return readErr
 		}
@@ -82,6 +87,9 @@ func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string,
 		}
 		if previous.Manifest == nil || previous.Result == nil || previous.View.Observed == nil || previous.Manifest.ReuseKey != m.ReuseKey || previous.View.State != "succeeded" {
 			return store.ErrConflict
+		}
+		if previous.Manifest.ReuseKey != reporting.ReuseIdentity(*previous.Manifest) {
+			return nil
 		}
 		if previous.View.Context != m.Binding.Context || previous.View.PartitionDigest != readexec.Hash(m.Binding) || previous.View.Private != m.Private || previous.View.Locale != m.Locale || previous.View.RevisionDigest != m.Revision.Digest {
 			return store.ErrInvalid
