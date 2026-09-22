@@ -1,27 +1,13 @@
 name: CW-01 runtime acceptance
 
 on:
-  pull_request:
-    paths:
-      - 'internal/semantics/**'
-      - 'internal/nlq*/**'
-      - 'internal/exec/**'
-      - 'internal/store/postgres/**'
-      - 'internal/mcpserver/**'
-      - 'internal/api/**'
-      - 'internal/topicapi/**'
-      - 'test/**'
-      - 'sdk/**'
-      - '.github/workflows/cw-01-runtime.yml'
-  push:
-    branches: [feat/cw-01-conditional-typed-clarification]
-    paths: ['.github/workflows/cw-01-runtime.yml']
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: cw01-runtime-${{ github.ref }}
+  group: cw01-runtime-final-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:

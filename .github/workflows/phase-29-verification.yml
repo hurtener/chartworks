@@ -1,30 +1,13 @@
 name: Reports and dashboards verification
 
 on:
-  push:
-    branches: [feat/phase-29-reports-dashboards]
-  pull_request:
-    paths:
-      - 'internal/reporting/**'
-      - 'internal/reportingapi/**'
-      - 'internal/nlqexec/saved*'
-      - 'internal/nlqroute/request_validation.go'
-      - 'internal/config/reporting*'
-      - 'internal/foundation/**'
-      - 'internal/store/postgres/documents*'
-      - 'internal/store/postgres/compositions*'
-      - 'internal/store/postgres/saved*'
-      - 'internal/store/postgres/migrations/029*'
-      - 'internal/store/postgres/migrations/030*'
-      - 'sdk/chartworks/documents*'
-      - 'test/acceptance/phase29*'
-      - '.github/workflows/phase-29-verification.yml'
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: phase-29-${{ github.ref }}
+  group: phase-29-final-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:

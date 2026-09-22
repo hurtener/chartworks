@@ -765,3 +765,5 @@ Output specification continuation: [D-069 bounded provider-neutral output specif
 Client parity continuation: [D-070 canonical mounts, registered SDK/CLI consumers and explicit owner replay](decisions/2026-09-09-client-parity.md).
 
 Reporting contract continuation: [D-073 immutable output intent and bounded narrative evidence policies](decisions/2026-09-16-reporting-output-policies.md).
+
+CI verification continuation: [D-074 fast pull-request checks and explicit final-gap qualification](decisions/2026-09-22-ci-verification.md).

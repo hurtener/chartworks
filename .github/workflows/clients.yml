@@ -1,15 +1,13 @@
 name: Clients
 
 on:
-  pull_request:
-  push:
-    branches: [main, feat/phase-23-sdk-cli-parity]
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: clients-${{ github.ref }}
+  group: clients-final-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:

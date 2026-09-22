@@ -1,21 +1,13 @@
 name: CW-01 clarification tests
 
 on:
-  push:
-    branches: [feat/cw-01-conditional-typed-clarification]
-  pull_request:
-    paths:
-      - 'internal/semantics/**'
-      - 'internal/nlq/**'
-      - 'internal/nlqroute/**'
-      - 'internal/nlqexec/**'
-      - '.github/workflows/cw-01-tests.yml'
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: cw01-tests-${{ github.ref }}
+  group: cw01-tests-final-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:

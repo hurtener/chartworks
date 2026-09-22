@@ -1,0 +1,36 @@
+name: Final gap and release verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why the exact commit is being qualified
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-gap-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  core:
+    uses: ./.github/workflows/final-core.yml
+  clients:
+    uses: ./.github/workflows/clients.yml
+  cw01-runtime:
+    uses: ./.github/workflows/cw-01-runtime.yml
+  cw01-typed-values:
+    uses: ./.github/workflows/cw-01-tests.yml
+  cw03-reporting:
+    uses: ./.github/workflows/cw-03-validation.yml
+  mcp:
+    uses: ./.github/workflows/mcp.yml
+  phase29:
+    uses: ./.github/workflows/phase-29-verification.yml
+  reporting-adversarial:
+    uses: ./.github/workflows/reporting-adversarial-review.yml
+  reporting-contracts:
+    uses: ./.github/workflows/reporting.yml

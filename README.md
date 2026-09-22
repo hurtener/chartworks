@@ -57,7 +57,7 @@ make preflight-full  # Named implemented-phase acceptance; planned phases explic
 make release-check   # Final gate: every phase shipped, all criteria pass, no skips.
 ```
 
-Real database, native-runner and source fixtures are required for their tests. Missing dependencies are failures, not evidence of passing integration. CI tests committed source without repair scripts. Planning checks and the status registry are bookkeeping, not runtime proof.
+Real database, native-runner and source fixtures are required for their tests. Missing dependencies are failures, not evidence of passing integration. CI tests committed source without repair scripts. Planning checks and the status registry are bookkeeping, not runtime proof. The [CI verification lanes](docs/ci-verification.md) distinguish fast pull-request feedback from the manually dispatched full final-gap/release qualification; a green fast lane does not imply the full suite passed.
 
 ## MCP tools and metadata resources
 
