@@ -24,6 +24,9 @@ remain a pull-request gate.
 | Frame ancestors had unused Chartworks configuration | Remove it from Chartworks and keep exact HTTPS parent parsing in the client-owned BFF where the header is emitted. |
 | Ordinary artifact expiry could leave derivative rendition bytes | Delete exact run-owned renditions in the frozen/composition expiry transactions and exercise both ordinary retention paths. |
 | Full SVG composition omitted tables and returned requested height | Render table/KPI widgets through the same worker and bind rendition height to computed page geometry. |
+| Linux acceptance selected the non-Linux development mode | Select `linux_namespaces` under the Linux build tag and build static worker/probe executables so process tests cross the real namespace/chroot boundary. |
+| The empty chroot omitted system zoneinfo | Embed IANA tzdata and assert non-UTC date rollover plus the repeated DST hour through the real worker protocol. |
+| Lexical event checks allowed whitespace/entity/case evasions | Parse HTML and SVG and enforce explicit element/attribute/CSS allowlists; adversarial tests cover casing, whitespace, entities, event handlers, scripts and external URLs. |
 | Durable creation inherited read-only audit metadata and retention had no per-record receipt | Append content-free `rendition.created`/`rendition.expired` audit events transactionally and advertise the actual effect. |
 
 ## Executed evidence

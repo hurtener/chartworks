@@ -7,11 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -82,10 +79,6 @@ func phase32Actor(t *testing.T, scopes ...string) identity.Envelope {
 	}
 	return e
 }
-func phase32Options() rendering.Options {
-	return rendering.Options{WorkerVersion: "worker-v1", ThemeVersion: "theme-v1", MaxTime: 5 * time.Second, MaxMemoryBytes: 1 << 30, MaxInputBytes: 4 << 20, MaxOutputBytes: 4 << 20, MaxConcurrent: 2, MaxWidgets: 100, Retention: time.Hour, Isolation: "development"}
-}
-
 func phase32Authority(t *testing.T) {
 	v := &phase32Viewer{value: phase32View()}
 	s, _ := rendering.NewManaged(v, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 1 << 20}, 1<<20, phase32Options())
@@ -147,6 +140,17 @@ func phase32StaticWorker(t *testing.T) {
 	}
 	if strings.Contains(out.Content, "<script src") || !strings.Contains(out.Content, "<table>") {
 		t.Fatal("not genuine static content")
+	}
+	dstView := phase32View()
+	dstView.Timezone = "America/New_York"
+	dstView.PageBounds = reporting.ViewerPage{Limit: 3, Total: 3}
+	dstView.Output.Table = &reporting.ViewerTable{Columns: []charts.Column{{ID: "observed", Name: "observed", Type: "temporal", Format: charts.Format{DatePattern: "datetime_short", Locale: "en-US"}}}, Rows: [][]charts.Cell{{{Value: "2026-11-01T05:30:00Z"}}, {{Value: "2026-11-01T06:30:00Z"}}, {{Value: "2026-01-01T02:30:00Z"}}}}
+	dstService, _ := rendering.NewManaged(&phase32Viewer{value: dstView}, rendering.NewMemoryRepository(), p, 4<<20, phase32Options())
+	dstRequest := phase32Request("html")
+	dstRequest.View.Limit = 3
+	dst, err := dstService.Generate(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), dstRequest)
+	if err != nil || strings.Count(dst.Content, "Nov 01, 2026 01:30") != 2 || !strings.Contains(dst.Content, "Dec 31, 2025 21:30") {
+		t.Fatal("isolated worker timezone/DST boundary", err, dst.Content)
 	}
 	root := phase32View()
 	root.Output = nil
@@ -223,54 +227,61 @@ func phase32Injection(t *testing.T) {
 }
 
 func phase32ProcessLimits(t *testing.T) {
-	dir := t.TempDir()
-	crash := filepath.Join(dir, "crash")
-	sleep := filepath.Join(dir, "sleep")
-	large := filepath.Join(dir, "large")
-	clean := filepath.Join(dir, "clean-env")
-	if os.WriteFile(crash, []byte("#!/bin/sh\nexit 9\n"), 0700) != nil || os.WriteFile(sleep, []byte("#!/bin/sh\n/bin/sleep 2\n"), 0700) != nil {
-		t.Fatal("script")
-	}
+	worker := mustExecutable32(t)
+	crash := phase32Probe(t, "crash", worker)
+	sleep := phase32Probe(t, "sleep", worker)
+	large := phase32Probe(t, "large", worker)
+	clean := phase32Probe(t, "clean", worker)
 	work := rendering.SealedWork{Version: rendering.WorkerProtocolVersion, Request: phase32Request("html"), View: phase32View()}
 	t.Setenv("SECRET_CANARY", "must-not-cross")
-	cleanScript := fmt.Sprintf("#!/bin/sh\n[ -z \"$SECRET_CANARY\" ] || exit 7\nexec %q --sealed-render-worker\n", mustExecutable32(t))
-	if os.WriteFile(clean, []byte(cleanScript), 0700) != nil {
-		t.Fatal("environment probe")
+	cleanProcess, err := rendering.NewProcess(clean, phase32Options())
+	if err != nil {
+		t.Fatal(err)
 	}
-	cleanProcess, _ := rendering.NewProcess(clean, phase32Options())
 	if _, err := cleanProcess.Process(t.Context(), work); err != nil {
 		t.Fatal("credential environment crossed worker boundary", err)
 	}
 	opts := phase32Options()
-	p, _ := rendering.NewProcess(crash, opts)
+	p, err := rendering.NewProcess(crash, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := p.Process(t.Context(), work); !errors.Is(err, rendering.ErrWorker) {
 		t.Fatal(err)
 	}
 	opts.MaxTime = 100 * time.Millisecond
-	p, _ = rendering.NewProcess(sleep, opts)
+	p, err = rendering.NewProcess(sleep, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := p.Process(t.Context(), work); !errors.Is(err, rendering.ErrTimeout) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	p, _ = rendering.NewProcess(mustExecutable32(t), phase32Options())
+	p, err = rendering.NewProcess(worker, phase32Options())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := p.Process(ctx, work); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if os.WriteFile(large, []byte("#!/bin/sh\n/usr/bin/head -c 4096 /dev/zero\n"), 0700) != nil {
-		t.Fatal("large script")
-	}
 	opts = phase32Options()
 	opts.MaxOutputBytes = 1024
-	p, _ = rendering.NewProcess(large, opts)
+	p, err = rendering.NewProcess(large, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := p.Process(t.Context(), work); !errors.Is(err, rendering.ErrOutputLimit) {
 		t.Fatal("output limit", err)
 	}
 	opts = phase32Options()
 	opts.MaxConcurrent = 1
-	p, _ = rendering.NewProcess(sleep, opts)
-	started := make(chan struct{})
-	done := make(chan struct{})
+	p, err = rendering.NewProcess(sleep, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, done := make(chan struct{}), make(chan struct{})
 	blockCtx, stopBlock := context.WithCancel(t.Context())
 	go func() { close(started); _, _ = p.Process(blockCtx, work); close(done) }()
 	<-started
@@ -281,7 +292,6 @@ func phase32ProcessLimits(t *testing.T) {
 	stopBlock()
 	<-done
 }
-
 func phase32ExactFidelity(t *testing.T) {
 	v := &phase32Viewer{value: phase32View()}
 	s, _ := rendering.NewManaged(v, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 1 << 20}, 1<<20, phase32Options())
@@ -390,12 +400,4 @@ func mustJSON32(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
-}
-func mustExecutable32(t *testing.T) string {
-	t.Helper()
-	p, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return p
 }

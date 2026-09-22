@@ -60,3 +60,6 @@ catalog: table and KPI presentations plus geometry for every twelve chart kinds.
 The reference deployment requires a statically linked Linux worker and creates a
 fresh user/mount/network/IPC/UTS/PID namespace plus an empty chroot per request.
 Non-Linux construction fails closed unless tests explicitly select development mode.
+The worker embeds the IANA timezone database so non-UTC and DST formatting remains
+deterministic inside the empty chroot. HTML/SVG output crosses a parsed element and
+attribute allowlist before the parent accepts it.

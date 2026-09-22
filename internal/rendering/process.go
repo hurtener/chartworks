@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +13,6 @@ import (
 	"reflect"
 	"runtime/debug"
 	"strconv"
-	"strings"
 
 	"github.com/hurtener/chartworks/internal/reporting"
 )
@@ -165,48 +163,6 @@ func validateWorkerRendition(work SealedWork, r Rendition) error {
 	}
 	return nil
 }
-func safeStatic(format, content string) bool {
-	lower := strings.ToLower(content)
-	for _, bad := range []string{"<script", "<foreignobject", "<iframe", "<object", "<embed", "<link", "javascript:", "data:text/html", "href=\"http", "href='http", "src=\"http", "src='http", "url(http", "@import"} {
-		if strings.Contains(lower, bad) {
-			return false
-		}
-	}
-	for rest := lower; ; {
-		i := strings.Index(rest, " on")
-		if i < 0 {
-			break
-		}
-		rest = rest[i+3:]
-		j := 0
-		for j < len(rest) && rest[j] >= 'a' && rest[j] <= 'z' {
-			j++
-		}
-		if j > 0 && j < len(rest) && rest[j] == '=' {
-			return false
-		}
-	}
-	if format == "html" {
-		return strings.HasPrefix(lower, "<!doctype html>") && strings.Contains(lower, "<html") && strings.Contains(lower, "</html>")
-	}
-	if format == "svg" {
-		if !strings.HasPrefix(lower, "<svg ") || !strings.HasSuffix(lower, "</svg>") {
-			return false
-		}
-		d := xml.NewDecoder(strings.NewReader(content))
-		for {
-			_, err := d.Token()
-			if err == io.EOF {
-				return true
-			}
-			if err != nil {
-				return false
-			}
-		}
-	}
-	return false
-}
-
 func WorkerMain(stdin io.Reader, stdout io.Writer, maxInput, maxOutput int, memory int64) error {
 	if stdin == nil || stdout == nil || maxInput < 1024 || maxInput > 64<<20 || maxOutput < 1024 || maxOutput > 64<<20 || memory < 32<<20 {
 		return ErrInvalid
