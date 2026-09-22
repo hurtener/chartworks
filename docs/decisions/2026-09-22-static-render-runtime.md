@@ -13,6 +13,7 @@ isolation. No URL, script, source, model or bearer is part of the worker protoco
 Renditions are immutable PostgreSQL records keyed by artifact projection,
 renderer/theme version, format and viewport. Reads recheck current artifact reach;
 expiry deletes bytes and regeneration under a new renderer/theme version creates
-a distinct identity. JSON/CSV/HTML/SVG are the complete export matrix. PDF and PNG
-remain absent. The client-owned BFF forwards a fresh Pengui bearer server-side and
-Chartworks adds no embed token/session/issuer surface.
+a distinct identity. Creation and expiry append content-free audit events. JSON/CSV/
+HTML/SVG are the complete export matrix. PDF and PNG remain absent. The client-owned
+BFF forwards a fresh Pengui bearer server-side and Chartworks adds no embed token/
+session/issuer surface.

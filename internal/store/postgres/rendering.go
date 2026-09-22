@@ -14,6 +14,10 @@ import (
 
 // PutRendition idempotently inserts one immutable tenant rendition.
 func (d *DB) PutRendition(ctx context.Context, r rendering.Record) (out rendering.Record, err error) {
+	eventID, e := newID()
+	if e != nil {
+		return out, store.ErrUnavailable
+	}
 	request, e := json.Marshal(r.Request)
 	if e != nil {
 		return out, store.ErrInvalid
@@ -38,6 +42,9 @@ func (d *DB) PutRendition(ctx context.Context, r rendering.Record) (out renderin
 				return store.ErrInvalid
 			}
 			return nil
+		}
+		if _, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES($1,$2,$3,'rendition.created',$4)`, r.Tenant, eventID, r.Actor, r.Rendition.ID); e != nil {
+			return e
 		}
 		out = r
 		return nil
@@ -85,13 +92,37 @@ func (d *DB) ListRenditions(ctx context.Context, tenant, after string, limit int
 }
 
 // ExpireRenditions deletes one locked bounded tenant expiry page.
-func (d *DB) ExpireRenditions(ctx context.Context, tenant string, as time.Time, limit int) (count int64, err error) {
+func (d *DB) ExpireRenditions(ctx context.Context, tenant, actor string, as time.Time, limit int) (count int64, err error) {
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, e := tx.Exec(ctx, `DELETE FROM chartworks.render_renditions WHERE (tenant_id,rendition_id) IN (SELECT tenant_id,rendition_id FROM chartworks.render_renditions WHERE tenant_id=$1 AND expires_at<=$2 ORDER BY expires_at,rendition_id LIMIT $3 FOR UPDATE SKIP LOCKED)`, tenant, as, limit)
-		if e == nil {
-			count = tag.RowsAffected()
+		rows, e := tx.Query(ctx, `DELETE FROM chartworks.render_renditions WHERE (tenant_id,rendition_id) IN (SELECT tenant_id,rendition_id FROM chartworks.render_renditions WHERE tenant_id=$1 AND expires_at<=$2 ORDER BY expires_at,rendition_id LIMIT $3 FOR UPDATE SKIP LOCKED) RETURNING rendition_id`, tenant, as, limit)
+		if e != nil {
+			return e
 		}
-		return e
+		ids := []string{}
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				rows.Close()
+				return e
+			}
+			ids = append(ids, id)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		for _, id := range ids {
+			eventID, idErr := newID()
+			if idErr != nil {
+				return idErr
+			}
+			if _, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES($1,$2,$3,'rendition.expired',$4)`, tenant, eventID, actor, id); e != nil {
+				return e
+			}
+		}
+		count = int64(len(ids))
+		return nil
 	})
 	return count, safe(err)
 }

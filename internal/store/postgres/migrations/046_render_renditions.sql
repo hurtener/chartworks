@@ -25,3 +25,10 @@ CREATE FUNCTION chartworks.protect_render_rendition() RETURNS trigger LANGUAGE p
  RAISE EXCEPTION 'rendition is immutable' USING ERRCODE='23514';
 END $$;
 CREATE TRIGGER render_rendition_immutable BEFORE UPDATE ON chartworks.render_renditions FOR EACH ROW EXECUTE FUNCTION chartworks.protect_render_rendition();
+
+DO $$ DECLARE previous text; BEGIN
+ SELECT pg_get_constraintdef(oid) INTO previous FROM pg_constraint
+ WHERE conrelid='chartworks.audit_events'::regclass AND conname='audit_events_action_check';
+ ALTER TABLE chartworks.audit_events DROP CONSTRAINT audit_events_action_check;
+ EXECUTE format('ALTER TABLE chartworks.audit_events ADD CONSTRAINT audit_events_action_check CHECK ((%s) OR action IN (''rendition.created'',''rendition.expired''))',previous);
+END $$;

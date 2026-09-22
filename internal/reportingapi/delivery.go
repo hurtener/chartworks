@@ -40,11 +40,13 @@ func deliveryEntries(service *reporting.Delivery, execution bool, renderer ...*r
 			generate := deliveryEntry("/v1/reporting/renditions", "reportingRenditionCreate", "Create or idempotently reuse one durable isolated static rendition", renderer[0].Generate)
 			generate.definition.Action = "reporting.export"
 			generate.definition.Effect = "durable_isolated_static_rendition"
+			generate.definition.Audit = "immutable rendition creation event; no retained values, SQL or credentials"
 			read := deliveryEntry("/v1/reporting/renditions/read", "reportingRenditionRead", "Read one current-authorized retained rendition without execution", renderer[0].Read)
 			list := deliveryEntry("/v1/reporting/renditions/list", "reportingRenditionList", "List current-authorized retained renditions without execution", renderer[0].List)
 			expire := deliveryEntry("/v1/reporting/renditions/expire", "reportingRenditionExpire", "Delete expired rendition bytes in a bounded tenant pass", renderer[0].Expire)
 			expire.definition.Action = "reporting.retention"
 			expire.definition.Effect = "bounded_rendition_deletion"
+			expire.definition.Audit = "one rendition expiry event per deleted record; no retained values"
 			entries = append(entries, generate, read, list, expire)
 		}
 	}

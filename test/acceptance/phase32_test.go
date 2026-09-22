@@ -275,7 +275,8 @@ func phase32ExactFidelity(t *testing.T) {
 }
 
 func phase32Lifecycle(t *testing.T) {
-	repo := support.Open(t, support.Database(t))
+	dsn := support.Database(t)
+	repo := support.Open(t, dsn)
 	view := phase32View()
 	view.Summary.Expires = time.Now().Add(150 * time.Millisecond)
 	v := &phase32Viewer{value: view}
@@ -307,6 +308,11 @@ func phase32Lifecycle(t *testing.T) {
 	}
 	if _, err = s.Read(t.Context(), actor, rendering.ReadRequest{ID: a.ID}); err == nil {
 		t.Fatal("deleted rendition remained readable")
+	}
+	raw := support.Raw(t, dsn)
+	var created, erased int
+	if err = raw.QueryRow(t.Context(), `SELECT count(*) FILTER(WHERE action='rendition.created'),count(*) FILTER(WHERE action='rendition.expired') FROM chartworks.audit_events WHERE tenant_id='tenant'`).Scan(&created, &erased); err != nil || created != 2 || erased != 2 {
+		t.Fatal("rendition audit lifecycle", created, erased, err)
 	}
 	fixture := newPhase31Fixture(t, false)
 	bindings, err := reportingapi.DeliveryMCPBindings(fixture.service, true, s)

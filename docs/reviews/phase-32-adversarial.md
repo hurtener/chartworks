@@ -18,6 +18,7 @@ remain a pull-request gate.
 | The iframe sample trusted an inconsistent upstream envelope | Require exact format/media type/byte count/content digest, bounded single JSON response and no redirects. |
 | Host credentials could cross into the renderer environment | Replace the environment with the two memory-limit variables; AC05 launches a real probe process with a credential canary. |
 | Frame ancestors accepted path/query variants | Parse exact HTTPS origins in both service configuration and the client-owned BFF example. |
+| Durable creation inherited read-only audit metadata and retention had no per-record receipt | Append content-free `rendition.created`/`rendition.expired` audit events transactionally and advertise the actual effect. |
 
 ## Executed evidence
 

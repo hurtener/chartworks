@@ -67,7 +67,7 @@ type Repository interface {
 	PutRendition(context.Context, Record) (Record, error)
 	ReadRendition(context.Context, string, string) (Record, error)
 	ListRenditions(context.Context, string, string, int) ([]Record, error)
-	ExpireRenditions(context.Context, string, time.Time, int) (int64, error)
+	ExpireRenditions(context.Context, string, string, time.Time, int) (int64, error)
 }
 
 // NewManaged constructs a durable isolated rendition service.
@@ -207,7 +207,7 @@ func (s *Service) Expire(ctx context.Context, e identity.Envelope, in ExpireRequ
 	if in.Limit < 1 || in.Limit > 1000 {
 		return ExpireResult{}, ErrInvalid
 	}
-	n, err := s.repository.ExpireRenditions(ctx, e.Tenant(), time.Now(), in.Limit)
+	n, err := s.repository.ExpireRenditions(ctx, e.Tenant(), e.User(), time.Now(), in.Limit)
 	return ExpireResult{Count: n}, err
 }
 
@@ -265,7 +265,7 @@ func (m *MemoryRepository) ListRenditions(_ context.Context, t, after string, li
 }
 
 // ExpireRenditions deletes one bounded tenant-exact expiry page.
-func (m *MemoryRepository) ExpireRenditions(_ context.Context, t string, as time.Time, limit int) (int64, error) {
+func (m *MemoryRepository) ExpireRenditions(_ context.Context, t, _ string, as time.Time, limit int) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var n int64
