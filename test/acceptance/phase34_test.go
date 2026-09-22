@@ -2,6 +2,8 @@ package acceptance
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,6 +58,9 @@ func (a *phase34Adapter) Apply(_ context.Context, _ identity.Envelope, o migrati
 	defer a.mu.Unlock()
 	a.applied = append(a.applied, o.Kind)
 	if m.Destination != "" {
+		if o.Kind == migration.KindSchedule {
+			return m.Destination + ":v1", nil
+		}
 		return m.Destination, nil
 	}
 	return "dst-" + o.ExternalRef, nil
@@ -63,8 +68,16 @@ func (a *phase34Adapter) Apply(_ context.Context, _ identity.Envelope, o migrati
 
 func phase34Actor(t *testing.T, tenant string, scopes ...string) identity.Envelope {
 	t.Helper()
-	base := []string{"cw.tenant.read:" + tenant, "cw.tenant.write:" + tenant, "cw.tenant.erase:" + tenant}
-	e, err := identity.FromVerified(tenant, "operator", "session", append(base, scopes...), time.Now().Add(time.Hour), time.Now)
+	base := []string{"cw.tenant.read:" + tenant, "cw.tenant.write:" + tenant, "cw.tenant.erase:" + tenant, "cw.tenant.export:" + tenant, "ops.read"}
+	seen := map[string]bool{}
+	all := make([]string, 0, len(base)+len(scopes))
+	for _, scope := range append(base, scopes...) {
+		if !seen[scope] {
+			seen[scope] = true
+			all = append(all, scope)
+		}
+	}
+	e, err := identity.FromVerified(tenant, "operator", "session", all, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +101,6 @@ func phase34Manifest(suffix string) migration.Manifest {
 	runtime, suite := phase34EvaluationMaterial()
 	runtimeRaw, _ := json.Marshal(runtime)
 	suiteRaw, _ := json.Marshal(suite)
-	runtimeDigest, _ := runtime.Digest()
 	suiteDigest, _ := suite.Digest()
 	snapshot := strings.Repeat("c", 64)
 	kinds := []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindRun, migration.KindArtifact, migration.KindRendition, migration.KindCertificate, migration.KindTombstone, migration.KindCalibration}
@@ -140,12 +152,11 @@ func phase34Manifest(suffix string) migration.Manifest {
 	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
 		for i := 1; i <= group.count; i++ {
 			feature := group.prefix + fmt.Sprintf("%02d", i)
-			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "evidence-" + strings.ToLower(feature), Source: "evaluation", SourceVersion: suiteDigest, EvidenceHash: strings.Repeat("b", 64)})
+			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: feature, Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "evidence-" + strings.ToLower(feature), Source: "evaluation", SourceVersion: suiteDigest, EvidenceHash: strings.Repeat("b", 64), ComparisonHash: strings.Repeat("d", 64), Engine: "postgres", Dialect: "postgres", SourceSnapshot: snapshot, SourceRevision: 1})
 		}
 	}
 	evidence = append(evidence, migration.Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discarded-stub", Source: "synthetic", SourceVersion: suiteDigest, EvidenceHash: strings.Repeat("b", 64)})
-	calibration := fmt.Sprintf(`{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}],"evaluation_suite_digest":"%s","evaluation_run_digest":"%s","runtime_pack_digest":"%s"}`, suiteDigest, strings.Repeat("b", 64), runtimeDigest)
-	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-" + suffix, Cohort: "cohort-" + suffix, SourceSnapshot: snapshot, Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source-" + suffix, Destination: "mapped-source", Revision: 1}}, Objects: objects, Fields: fields, Evidence: evidence, Calibration: &migration.Calibration{Revision: "cal-one", ModelVersion: "model-one", EmbeddingSpace: "space-one", BudgetVersion: "budget-one", Payload: calibration, State: "review_candidate"}, Boundary: &migration.OccurrenceBoundary{Stream: "stream-" + suffix, LastAccepted: "occurrence-prior", LastDue: now.Add(-time.Hour), ResumeAfter: now, ScheduleVersion: 1}}
+	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-" + suffix, Cohort: "cohort-" + suffix, SourceSnapshot: snapshot, Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source-" + suffix, Destination: "mapped-source", Revision: 1}}, Objects: objects, Fields: fields, Evidence: evidence, Boundary: &migration.OccurrenceBoundary{Stream: "stream-" + suffix, LastAccepted: "occurrence-prior", LastDue: now.Add(-time.Hour), ResumeAfter: now, ScheduleVersion: 1}}
 }
 func ptrTime(t time.Time) *time.Time { return &t }
 
@@ -167,7 +178,7 @@ func phase34Service(t *testing.T, suffix string) (*migration.Service, *phase34Ad
 	if err != nil {
 		t.Fatal(err)
 	}
-	return service, adapter, phase34Actor(t, "tenant-"+suffix, "migration.read", "migration.write", "migration.cutover", "migration.erase"), dsn
+	return service, adapter, phase34Actor(t, "tenant-"+suffix, "migration.read", "migration.write", "migration.cutover", "migration.erase", "scheduling.write", "cw.schedule.write:*"), dsn
 }
 
 func phase34DryRunReplay(t *testing.T) {
@@ -207,6 +218,11 @@ func phase34DryRunReplay(t *testing.T) {
 func phase34GraphNormalization(t *testing.T) {
 	s, a, e, _ := phase34Service(t, "ac02")
 	m := phase34Manifest("ac02")
+	ignoredCalibration := m
+	ignoredCalibration.Calibration = &migration.Calibration{Revision: "candidate", State: "review_candidate", Payload: `{}`}
+	if _, err := s.DryRun(t.Context(), e, migration.DryRunRequest{Manifest: ignoredCalibration}); !errors.Is(err, migration.ErrUnsupported) {
+		t.Fatal("non-operative top-level calibration was accepted", err)
+	}
 	out, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m})
 	if err != nil || out.Total != 19 || out.Applied != 15 || out.Quarantined != 4 {
 		t.Fatal(err, out)
@@ -266,7 +282,7 @@ func phase34EvaluationDrafts(t *testing.T) {
 	if _, err = eval.Author(t.Context(), actor, suite); err != nil {
 		t.Fatal(err)
 	}
-	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-ac02-evaluation", Cohort: "cohort-ac02-evaluation", SourceSnapshot: "snapshot-ac02-evaluation", Engine: "postgres", Dialect: "postgres", Objects: objects, Fields: fields, Evidence: phase34Manifest("ac02-evidence").Evidence}
+	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-ac02-evaluation", Cohort: "cohort-ac02-evaluation", SourceSnapshot: strings.Repeat("c", 64), Engine: "postgres", Dialect: "postgres", Objects: objects, Fields: fields, Evidence: phase34Manifest("ac02-evidence").Evidence}
 	batch, err := service.Import(t.Context(), actor, migration.ImportRequest{Manifest: manifest})
 	if err != nil || batch.State != "complete" || batch.Applied != 2 || batch.Quarantined != 0 {
 		t.Fatal("evaluation drafts were not reconciled", err, batch)
@@ -389,7 +405,7 @@ func phase34CalibrationImport(t *testing.T) {
 	for key := range top {
 		fields = append(fields, migration.FieldDisposition{Path: ref + "." + key, Status: "retained"})
 	}
-	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-ac02-calibration", Cohort: "cohort-ac02-calibration", SourceSnapshot: "calibration-snapshot", Engine: "postgres", Dialect: "postgres", Objects: []migration.Object{{Kind: migration.KindCalibration, ExternalRef: ref, Revision: 1, PayloadVersion: "v1", Payload: string(payload), Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: migration.Retention{ExpiresAt: ptrTime(time.Now().Add(time.Hour))}}}, Fields: fields, Evidence: phase34Manifest("ac02-calibration-evidence").Evidence}
+	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-ac02-calibration", Cohort: "cohort-ac02-calibration", SourceSnapshot: strings.Repeat("c", 64), Engine: "postgres", Dialect: "postgres", Objects: []migration.Object{{Kind: migration.KindCalibration, ExternalRef: ref, Revision: 1, PayloadVersion: "v1", Payload: string(payload), Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: migration.Retention{ExpiresAt: ptrTime(time.Now().Add(time.Hour))}}}, Fields: fields, Evidence: phase34Manifest("ac02-calibration-evidence").Evidence}
 	service, err := migration.New(db, migration.EvaluationAdapters(eval), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -479,19 +495,58 @@ func phase34LiveOwnerEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	tenant := "tenant-ac04-live"
-	author := phase34Actor(t, tenant, "ops.write", "ops.read", "migration.read", "migration.write", "migration.cutover")
+	author := phase34Actor(t, tenant, "ops.write", "migration.read", "migration.write", "migration.cutover", "scheduling.write", "cw.schedule.write:*")
 	reviewer, err := identity.FromVerified(tenant, "reviewer", "review-session", []string{"ops.audit", "cw.tenant.certify:" + tenant}, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pack, _ := evalRuntimePack(t, eval, author, reviewer, "phase34-pack", true)
-	record := evalAcceptedLiveSuite(t, eval, author, reviewer, "phase34-suite", pack, 1)
+	manifest := phase34Manifest("ac04-live")
+	ref, err := eval.RegisterInput(t.Context(), author, "protected", evaluation.LiveInput{Pack: pack, Route: &nlqroute.RouteRequest{Context: "context", Locale: "en", Question: "synthetic parity comparison"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := make([]evaluation.Case, 0, 62)
+	expected := map[string]string{}
+	for _, evidence := range manifest.Evidence {
+		if evidence.Disposition != "required" {
+			continue
+		}
+		sum := sha256.Sum256([]byte("phase34-synthetic-" + evidence.Feature))
+		digest := hex.EncodeToString(sum[:])
+		expected[evidence.Feature] = digest
+		stage := evaluation.StageRouting
+		switch evidence.Feature[0] {
+		case 'B':
+			stage = evaluation.StageContext
+		case 'R':
+			stage = evaluation.StageReport
+		case 'Q':
+			stage = evaluation.StageSQL
+		}
+		cases = append(cases, evaluation.Case{ID: evidence.Feature, Stage: stage, Locale: "en", HeldOut: true, Input: ref, BindingDigest: manifest.SourceSnapshot, Expected: []evaluation.Expected{{Decision: "expected", SemanticDigest: digest}}})
+	}
+	suite := evalSuite(evaluation.Live, cases)
+	suite.ID = "phase34-suite"
+	suite.Packs = []evaluation.PackRevision{pack}
+	suite.Provenance.SourceSnapshot = manifest.SourceSnapshot
+	suite.Provenance.SourceRevision = 1
+	costCap := 2.0
+	suite.Limits.CostUSD = &costCap
+	draft, err := eval.Author(t.Context(), author, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := eval.Review(t.Context(), reviewer, suite.ID, evaluation.SuiteReviewRequest{Revision: suite.Revision, Digest: draft.Digest, Decision: evaluation.Accepted})
+	if err != nil {
+		t.Fatal(err)
+	}
 	cost := 0.02
 	tokens := 1
-	report, err := eval.Run(t.Context(), author, evaluation.RunRequest{RunID: "phase34-evidence", SuiteID: record.Suite.ID, SuiteRevision: record.Suite.Revision, SuiteDigest: record.Digest, PackDigest: pack.Digest}, evaluation.RunnerFunc(func(context.Context, evaluation.Execution) (evaluation.Observation, error) {
-		return evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Usage: evaluation.Usage{ServiceMS: 1, Calls: 1, Tokens: &tokens, CostUSD: &cost}}, nil
+	report, err := eval.Run(t.Context(), author, evaluation.RunRequest{RunID: "phase34-evidence", SuiteID: record.Suite.ID, SuiteRevision: record.Suite.Revision, SuiteDigest: record.Digest, PackDigest: pack.Digest}, evaluation.RunnerFunc(func(_ context.Context, execution evaluation.Execution) (evaluation.Observation, error) {
+		return evaluation.Observation{Decision: "expected", SemanticDigest: expected[execution.Case.ID], Usage: evaluation.Usage{ServiceMS: 1, Calls: 1, Tokens: &tokens, CostUSD: &cost}}, nil
 	}))
-	if err != nil || !report.GatePassed {
+	if err != nil || !report.GatePassed || len(report.Cases) != 62 {
 		t.Fatal("live owner evidence", err, report)
 	}
 	adapter := &phase34Adapter{}
@@ -500,23 +555,39 @@ func phase34LiveOwnerEvidence(t *testing.T) {
 		adapters[kind] = adapter
 	}
 	verifier := migration.EvidenceVerifierFunc(func(ctx context.Context, e identity.Envelope, x migration.Evidence) error {
-		return eval.VerifyMigrationEvidence(ctx, e, x.OwnerFeature, x.Reference, x.SourceVersion, x.EvidenceHash)
+		return eval.VerifyMigrationEvidence(ctx, e, evaluation.MigrationComparison{Feature: x.Feature, RunID: x.Reference, SuiteDigest: x.SourceVersion, EvidenceHash: x.EvidenceHash, ComparisonHash: x.ComparisonHash, Engine: x.Engine, Dialect: x.Dialect, SourceSnapshot: x.SourceSnapshot, SourceRevision: x.SourceRevision})
 	})
 	service, err := migration.New(db, adapters, nil, verifier)
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := phase34Manifest("ac04-live")
 	for i := range manifest.Evidence {
+		if manifest.Evidence[i].Disposition != "required" {
+			continue
+		}
+		comparison, compareErr := eval.MigrationComparison(t.Context(), author, manifest.Evidence[i].Feature, report.RunID, manifest.Engine, manifest.Dialect, manifest.SourceSnapshot, 1)
+		if compareErr != nil {
+			t.Fatal("missing owner case comparison", manifest.Evidence[i].Feature, compareErr)
+		}
 		manifest.Evidence[i].Reference = report.RunID
 		manifest.Evidence[i].SourceVersion = report.SuiteDigest
 		manifest.Evidence[i].EvidenceHash = report.EvidenceHash
+		manifest.Evidence[i].ComparisonHash = comparison.ComparisonHash
+	}
+	oldRoute, newRoute, accepted, _, _ := phase34ScheduleRoutes(t, dsn, tenant)
+	manifest.Boundary.LastAccepted, manifest.Boundary.LastDue = accepted.ID, accepted.DueAt
+	manifest.Boundary.ResumeAfter = accepted.DueAt.Add(time.Minute)
+	manifest.Mappings = append(manifest.Mappings, migration.Mapping{Kind: migration.KindSchedule, ExternalRef: "schedule-ac04-live", Destination: newRoute, Revision: 1})
+	badComparison := manifest
+	badComparison.Evidence = slices.Clone(manifest.Evidence)
+	badComparison.Evidence[0].ComparisonHash = badComparison.Evidence[1].ComparisonHash
+	if badPlan, badErr := service.DryRun(t.Context(), author, migration.DryRunRequest{Manifest: badComparison}); badErr != nil || badPlan.Ready {
+		t.Fatal("one case comparison certified another feature", badErr, badPlan)
 	}
 	plan, err := service.DryRun(t.Context(), author, migration.DryRunRequest{Manifest: manifest})
 	if err != nil || !plan.Ready {
 		t.Fatal("verified live evidence did not unlock readiness", err, plan.Limitations)
 	}
-	oldRoute, newRoute, _, _ := phase34ScheduleRoutes(t, dsn, tenant)
 	batch, err := service.Import(t.Context(), author, migration.ImportRequest{Manifest: manifest})
 	if err != nil || batch.State != "complete" {
 		t.Fatal("owner-evidenced import did not complete", err, batch)
@@ -552,6 +623,13 @@ func phase34RetentionErasure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	limited, err := identity.FromVerified(e.Tenant(), "reader", "session", []string{"migration.read", "ops.read", "cw.tenant.read:" + e.Tenant()}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Export(t.Context(), limited, migration.ExportRequest{Batch: m.Batch, Limit: 1}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatal("tenant read leaked private manifest payload", err)
+	}
 	raw := support.Raw(t, dsn)
 	var refs int
 	if err = raw.QueryRow(t.Context(), `SELECT count(*) FROM chartworks.migration_external_refs WHERE tenant_id=$1`, e.Tenant()).Scan(&refs); err != nil || refs != batch.Total {
@@ -586,18 +664,98 @@ func phase34RetentionErasure(t *testing.T) {
 	if _, err = s.Erase(t.Context(), e, migration.EraseRequest{Batch: hold.Batch, Limit: 100}); !errors.Is(err, migration.ErrConflict) {
 		t.Fatal("legal hold erased", err)
 	}
+	phase34ExternalRefAndExpiredExport(t)
+}
+
+func phase34ExternalRefAndExpiredExport(t *testing.T) {
+	t.Helper()
+	s, adapter, actor, _ := phase34Service(t, "ac05mapping")
+	m := phase34Manifest("ac05mapping")
+	m.Objects = m.Objects[:1]
+	m.Fields = slices.DeleteFunc(m.Fields, func(field migration.FieldDisposition) bool {
+		return !strings.HasPrefix(field.Path, m.Objects[0].ExternalRef+".")
+	})
+	m.Boundary = nil
+	if _, err := s.Import(t.Context(), actor, migration.ImportRequest{Manifest: m}); err != nil {
+		t.Fatal(err)
+	}
+	before := len(adapter.applied)
+	repoint := m
+	repoint.Batch, repoint.Cohort = "repoint-ac05", "repoint-ac05"
+	repoint.Mappings = slices.Clone(m.Mappings)
+	repoint.Mappings[0].Destination = "other-source"
+	if _, err := s.Import(t.Context(), actor, migration.ImportRequest{Manifest: repoint}); !errors.Is(err, migration.ErrConflict) || len(adapter.applied) != before {
+		t.Fatal("same source revision repointed after adapter effects", err, adapter.applied)
+	}
+	racingService, racingAdapter, racingActor, _ := phase34Service(t, "ac05race")
+	racing := phase34Manifest("ac05race")
+	racing.Objects = racing.Objects[:1]
+	racing.Fields = slices.DeleteFunc(racing.Fields, func(field migration.FieldDisposition) bool {
+		return !strings.HasPrefix(field.Path, racing.Objects[0].ExternalRef+".")
+	})
+	racing.Boundary = nil
+	other := racing
+	other.Batch, other.Cohort = "other-ac05race", "other-ac05race"
+	other.Mappings = slices.Clone(racing.Mappings)
+	other.Mappings[0].Destination = "other-source"
+	results := make(chan error, 2)
+	for _, contender := range []migration.Manifest{racing, other} {
+		go func(contender migration.Manifest) {
+			_, importErr := racingService.Import(t.Context(), racingActor, migration.ImportRequest{Manifest: contender})
+			results <- importErr
+		}(contender)
+	}
+	successes, conflicts := 0, 0
+	for range 2 {
+		switch importErr := <-results; {
+		case importErr == nil:
+			successes++
+		case errors.Is(importErr, migration.ErrConflict):
+			conflicts++
+		default:
+			t.Fatal("concurrent mapping result", importErr)
+		}
+	}
+	racingAdapter.mu.Lock()
+	applied := len(racingAdapter.applied)
+	racingAdapter.mu.Unlock()
+	if successes != 1 || conflicts != 1 || applied != 1 {
+		t.Fatal("concurrent remap reached an adapter", successes, conflicts, applied)
+	}
+	expiredService, _, expiredActor, _ := phase34Service(t, "ac05expired")
+	expired := phase34Manifest("ac05expired")
+	expired.Objects[0].Retention.ExpiresAt = ptrTime(time.Now().Add(-time.Minute))
+	if _, err := expiredService.Import(t.Context(), expiredActor, migration.ImportRequest{Manifest: expired}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := expiredService.Export(t.Context(), expiredActor, migration.ExportRequest{Batch: expired.Batch, Limit: 1}); !errors.Is(err, migration.ErrNotReady) {
+		t.Fatal("expired private payload exported", err)
+	}
 }
 
 func phase34CutoverRollback(t *testing.T) {
 	s, _, e, dsn := phase34Service(t, "ac06")
 	m := phase34Manifest("ac06")
-	oldRoute, newRoute, queueDB, scope := phase34ScheduleRoutes(t, dsn, e.Tenant())
+	oldRoute, newRoute, accepted, queueDB, scope := phase34ScheduleRoutes(t, dsn, e.Tenant())
 	m.Boundary.ResumeAfter = time.Now().UTC().Add(time.Hour)
-	m.Boundary.LastDue = m.Boundary.ResumeAfter.Add(-time.Minute)
+	m.Boundary.LastAccepted, m.Boundary.LastDue = accepted.ID, accepted.DueAt
+	m.Mappings = append(m.Mappings, migration.Mapping{Kind: migration.KindSchedule, ExternalRef: "schedule-ac06", Destination: newRoute, Revision: 1})
 	if _, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m}); err != nil {
 		t.Fatal(err)
 	}
 	request := migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "cutover-drill", Expected: 0}
+	narrow, err := identity.FromVerified(e.Tenant(), "narrow", "session", []string{"migration.cutover", "scheduling.write", "cw.tenant.write:" + e.Tenant(), "cw.schedule.write:" + newRoute}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Cutover(t.Context(), narrow, request); !errors.Is(err, access.ErrNotFound) {
+		t.Fatal("target-only schedule reach toggled prior route", err)
+	}
+	wrongPrior := request
+	wrongPrior.PreviousRoute = newRoute
+	if _, err = s.Cutover(t.Context(), e, wrongPrior); !errors.Is(err, migration.ErrConflict) {
+		t.Fatal("unproven prior route was accepted", err)
+	}
 	competingSchedule, err := queueDB.CreateSchedule(t.Context(), scope, "session", "competing-route", jobs.ScheduleRequest{Target: jobs.Submission{Kind: jobs.MaintenanceKind, BindingID: "maintenance"}, Spec: jobs.Spec{Type: "manual", Timezone: "UTC", Missed: "skip", Overlap: "queue"}}, jobs.Defaults())
 	if err != nil {
 		t.Fatal("create competing migration route", err)
@@ -693,9 +851,43 @@ func phase34CutoverRollback(t *testing.T) {
 	if _, err = raw.Exec(t.Context(), `UPDATE chartworks.migration_cutovers SET boundary=jsonb_set(boundary,'{resume_after}',to_jsonb($3::timestamptz)) WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort, boundary); err != nil {
 		t.Fatal("restore cutover boundary", err)
 	}
-	rolled, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
+	// Hold the same advisory transaction fence as ClaimJob. Queue rollback first,
+	// then a claim, and release it only after both sessions are waiting. The claim
+	// must observe the committed rollback generation rather than the old route.
+	lockTx, err := raw.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lockTx.Rollback(t.Context()) }()
+	if _, err = lockTx.Exec(t.Context(), `SELECT pg_advisory_xact_lock(7214060601)`); err != nil {
+		t.Fatal(err)
+	}
+	type rollbackResult struct {
+		cut migration.Cutover
+		err error
+	}
+	rollbackDone := make(chan rollbackResult, 1)
+	go func() {
+		cut, rollbackErr := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
+		rollbackDone <- rollbackResult{cut: cut, err: rollbackErr}
+	}()
+	waitPhase34AdvisoryWaiters(t, dsn, 1)
+	claimDone := make(chan error, 1)
+	go func() {
+		_, claimErr := queueDB.ClaimJob(t.Context(), "phase34-racing-worker", jobs.Defaults())
+		claimDone <- claimErr
+	}()
+	waitPhase34AdvisoryWaiters(t, dsn, 2)
+	if err = lockTx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	rollbackOutcome := <-rollbackDone
+	rolled, err := rollbackOutcome.cut, rollbackOutcome.err
 	if err != nil || rolled.State != "rolled_back" || len(rolled.IrreversibleEffects) != 1 {
 		t.Fatal(err, rolled)
+	}
+	if claimErr := <-claimDone; !errors.Is(claimErr, jobs.ErrEmpty) {
+		t.Fatal("claim leased a stale target occurrence across rollback", claimErr)
 	}
 	oldSchedule, err = queueDB.ReadSchedule(t.Context(), scope, oldRoute)
 	if err != nil {
@@ -728,7 +920,7 @@ func phase34CutoverRollback(t *testing.T) {
 	}
 }
 
-func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, *postgres.DB, store.Scope) {
+func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, jobs.Job, *postgres.DB, store.Scope) {
 	t.Helper()
 	db := support.Open(t, dsn)
 	limits := jobs.Defaults()
@@ -747,11 +939,38 @@ func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, *p
 	if err != nil {
 		t.Fatal("create previous migration route", err)
 	}
-	newSchedule, err := db.CreateSchedule(t.Context(), scope, "session", "new-route", request, limits)
+	accepted, err := db.FireSchedule(t.Context(), scope, "session", oldSchedule.ID, "last-accepted", oldSchedule.Revision, limits)
+	if err != nil {
+		t.Fatal("admit prior route boundary", err)
+	}
+	newSchedule, err := db.CreateImportedSchedule(t.Context(), scope, "session", "new-route", request, limits)
 	if err != nil {
 		t.Fatal("create target migration route", err)
 	}
-	return oldSchedule.ID, newSchedule.ID, db, scope
+	if newSchedule.Enabled {
+		t.Fatal("imported schedule was enabled at commit")
+	}
+	if _, err = db.FireSchedule(t.Context(), scope, "session", newSchedule.ID, "premature", newSchedule.Revision, limits); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("disabled imported schedule admitted an occurrence", err)
+	}
+	return oldSchedule.ID, newSchedule.ID, accepted, db, scope
+}
+
+func waitPhase34AdvisoryWaiters(t *testing.T, dsn string, want int) {
+	t.Helper()
+	raw := support.Raw(t, dsn)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var waiting int
+		if err := raw.QueryRow(t.Context(), `SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND NOT granted`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected %d advisory lock waiters", want)
 }
 
 func phase34FeatureClosure(t *testing.T) {
@@ -769,12 +988,34 @@ func phase34FeatureClosure(t *testing.T) {
 	if _, err = s.DryRun(t.Context(), e, migration.DryRunRequest{Manifest: bad}); !errors.Is(err, migration.ErrInvalid) {
 		t.Fatal("discarded stub advertised supported", err)
 	}
+	for _, kind := range []migration.Kind{migration.KindSource, migration.KindSchedule} {
+		fixture := phase34Manifest("ac07-" + string(kind))
+		for i := range fixture.Objects {
+			if fixture.Objects[i].Kind == kind {
+				fixture.Objects[i].Retention.ExpiresAt = ptrTime(time.Now().Add(-time.Minute))
+			}
+		}
+		plan, dryErr := s.DryRun(t.Context(), e, migration.DryRunRequest{Manifest: fixture})
+		if dryErr != nil || plan.Ready {
+			t.Fatal("critical quarantined object declared ready", kind, dryErr, plan)
+		}
+		batch, importErr := s.Import(t.Context(), e, migration.ImportRequest{Manifest: fixture})
+		if importErr != nil || batch.State != "complete" {
+			t.Fatal("quarantined batch was not inspectable", kind, importErr, batch)
+		}
+		if _, cutErr := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: batch.ID, Route: "target", PreviousRoute: "prior", OperatorRef: "quarantine"}); !errors.Is(cutErr, migration.ErrNotReady) {
+			t.Fatal("critical quarantine cut over", kind, cutErr)
+		}
+	}
 }
 
 func phase34OperationalBoundaries(t *testing.T) {
 	s, _, e, dsn := phase34Service(t, "ac08")
 	m := phase34Manifest("ac08")
-	oldRoute, newRoute, _, _ := phase34ScheduleRoutes(t, dsn, e.Tenant())
+	oldRoute, newRoute, accepted, _, _ := phase34ScheduleRoutes(t, dsn, e.Tenant())
+	m.Boundary.LastAccepted, m.Boundary.LastDue = accepted.ID, accepted.DueAt
+	m.Boundary.ResumeAfter = accepted.DueAt.Add(time.Minute)
+	m.Mappings = append(m.Mappings, migration.Mapping{Kind: migration.KindSchedule, ExternalRef: "schedule-ac08", Destination: newRoute, Revision: 1})
 	if _, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m}); err != nil {
 		t.Fatal(err)
 	}

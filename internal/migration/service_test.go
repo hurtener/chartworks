@@ -41,7 +41,7 @@ func (a *adapterTest) Apply(_ context.Context, _ identity.Envelope, o Object, m 
 
 func actorTest(t *testing.T, scopes ...string) identity.Envelope {
 	t.Helper()
-	base := []string{"cw.tenant.read:t", "cw.tenant.write:t", "cw.tenant.erase:t"}
+	base := []string{"cw.tenant.read:t", "cw.tenant.write:t", "cw.tenant.erase:t", "cw.tenant.export:t", "ops.read"}
 	e, err := identity.FromVerified("t", "a", "s", append(base, scopes...), time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func evidenceTest() []Evidence {
 	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
 		for i := 1; i <= p.n; i++ {
 			f := fmt.Sprintf("%s%02d", p.s, i)
-			out = append(out, Evidence{Feature: f, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "ref-" + f, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash})
+			out = append(out, Evidence{Feature: f, OwnerFeature: f, Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "ref-" + f, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash, ComparisonHash: hash, Engine: "postgres", Dialect: "postgres", SourceSnapshot: hash, SourceRevision: 1})
 		}
 	}
 	return append(out, Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discard", Source: "synthetic", SourceVersion: hash, EvidenceHash: hash})
@@ -66,7 +66,7 @@ func manifestTest(id string) Manifest {
 	at := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	hash := strings.Repeat("a", 64)
 	sourcePayload := fmt.Sprintf(`{"engine":"postgres","dialect":"postgres","snapshot":"%s","context":"source:v1","revision":1}`, hash)
-	return Manifest{Version: ManifestVersion, Batch: "batch-" + id, Cohort: "cohort-" + id, SourceSnapshot: hash, Engine: "postgres", Dialect: "postgres", Mappings: []Mapping{{Kind: KindSource, ExternalRef: "src-" + id, Destination: "source", Revision: 1}}, Objects: []Object{{Kind: KindSource, ExternalRef: "src-" + id, Revision: 1, PayloadVersion: "v1", Payload: sourcePayload, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindTopic, ExternalRef: "topic-" + id, Parents: []string{"src-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"topic"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindCertificate, ExternalRef: "cert-" + id, Parents: []string{"topic-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"certificate"}`, Lifecycle: "historical", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}}, Fields: []FieldDisposition{{Path: "src-" + id + ".engine", Status: "retained"}, {Path: "src-" + id + ".dialect", Status: "retained"}, {Path: "src-" + id + ".snapshot", Status: "retained"}, {Path: "src-" + id + ".context", Status: "retained"}, {Path: "src-" + id + ".revision", Status: "retained"}, {Path: "topic-" + id + ".name", Status: "transformed", Reason: "coordinate remap"}, {Path: "cert-" + id + ".name", Status: "retained"}}, Evidence: evidenceTest(), Calibration: &Calibration{Revision: "c1", ModelVersion: "m1", EmbeddingSpace: "e1", BudgetVersion: "b1", Payload: `{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}],"evaluation_suite_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","evaluation_run_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","runtime_pack_digest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}`, State: "review_candidate"}, Boundary: &OccurrenceBoundary{Stream: "stream-" + id, ResumeAfter: at, ScheduleVersion: 1}}
+	return Manifest{Version: ManifestVersion, Batch: "batch-" + id, Cohort: "cohort-" + id, SourceSnapshot: hash, Engine: "postgres", Dialect: "postgres", Mappings: []Mapping{{Kind: KindSource, ExternalRef: "src-" + id, Destination: "source", Revision: 1}}, Objects: []Object{{Kind: KindSource, ExternalRef: "src-" + id, Revision: 1, PayloadVersion: "v1", Payload: sourcePayload, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindTopic, ExternalRef: "topic-" + id, Parents: []string{"src-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"topic"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindCertificate, ExternalRef: "cert-" + id, Parents: []string{"topic-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"certificate"}`, Lifecycle: "historical", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}}, Fields: []FieldDisposition{{Path: "src-" + id + ".engine", Status: "retained"}, {Path: "src-" + id + ".dialect", Status: "retained"}, {Path: "src-" + id + ".snapshot", Status: "retained"}, {Path: "src-" + id + ".context", Status: "retained"}, {Path: "src-" + id + ".revision", Status: "retained"}, {Path: "topic-" + id + ".name", Status: "transformed", Reason: "coordinate remap"}, {Path: "cert-" + id + ".name", Status: "retained"}}, Evidence: evidenceTest(), Boundary: &OccurrenceBoundary{Stream: "stream-" + id, ResumeAfter: at, ScheduleVersion: 1}}
 }
 
 func serviceTest(t *testing.T, a *adapterTest) (*Service, *MemoryRepository, identity.Envelope) {
@@ -191,7 +191,7 @@ func TestValidationAndAuthority(t *testing.T) {
 		x.Objects = append([]Object(nil), m.Objects...)
 		x.Fields = append([]FieldDisposition(nil), m.Fields...)
 		x.Evidence = append([]Evidence(nil), m.Evidence...)
-		c := *m.Calibration
+		c := Calibration{Revision: "candidate", State: "review_candidate", Payload: `{}`}
 		x.Calibration = &c
 		b := *m.Boundary
 		x.Boundary = &b

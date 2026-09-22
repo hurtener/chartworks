@@ -1,7 +1,6 @@
 package migration
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -47,26 +46,6 @@ var requiredFeatures = func() map[string]bool {
 	}
 	return out
 }()
-
-type calibrationThreshold struct {
-	Template  string  `json:"template"`
-	Threshold float64 `json:"threshold"`
-}
-
-type calibrationPayload struct {
-	PromptPack            string                 `json:"prompt_pack"`
-	FallbackPromptPack    string                 `json:"fallback_prompt_pack,omitempty"`
-	OptimizationRevision  string                 `json:"optimization_revision"`
-	Locale                string                 `json:"locale"`
-	Temperature           float64                `json:"temperature"`
-	MaxOutputTokens       int                    `json:"max_output_tokens"`
-	ExamplePolicyRevision string                 `json:"example_policy_revision"`
-	TemplateThresholds    []calibrationThreshold `json:"template_thresholds"`
-	EvaluationSuiteDigest string                 `json:"evaluation_suite_digest"`
-	EvaluationRunDigest   string                 `json:"evaluation_run_digest"`
-	RuntimePackDigest     string                 `json:"runtime_pack_digest"`
-	HeldoutLineageDigest  string                 `json:"heldout_lineage_digest,omitempty"`
-}
 
 type sourceBindingPayload struct {
 	Engine   string `json:"engine"`
@@ -174,6 +153,12 @@ func validateManifest(m Manifest) (string, error) {
 		}
 	}
 	features := map[string]bool{}
+	sourceRevisions := map[int64]bool{}
+	for _, object := range m.Objects {
+		if object.Kind == KindSource {
+			sourceRevisions[object.Revision] = true
+		}
+	}
 	for _, e := range m.Evidence {
 		known := requiredFeatures[e.Feature] || e.Feature == "Q11"
 		if !known || features[e.Feature] || !identity.Identifier(e.OwnerFeature) || (e.Disposition != "required" && e.Disposition != "excluded") || (e.Outcome != "passed" && e.Outcome != "failed" && e.Outcome != "unsupported") || !identity.Identifier(e.Reference) || !identity.Identifier(e.Source) || !validHash(e.SourceVersion) || !validHash(e.EvidenceHash) {
@@ -182,7 +167,7 @@ func validateManifest(m Manifest) (string, error) {
 		if e.Feature == "Q11" && (e.Disposition != "excluded" || e.Outcome != "unsupported") || e.Feature != "Q11" && e.Disposition != "required" {
 			return "", ErrInvalid
 		}
-		if e.Disposition == "required" && (e.EvidenceType != "live" || e.Source != "evaluation") {
+		if e.Disposition == "required" && (e.EvidenceType != "live" || e.Source != "evaluation" || e.OwnerFeature != e.Feature || !validHash(e.ComparisonHash) || e.Engine != m.Engine || e.Dialect != m.Dialect || e.SourceSnapshot != m.SourceSnapshot || e.SourceRevision < 1 || len(sourceRevisions) > 0 && !sourceRevisions[e.SourceRevision]) {
 			return "", ErrInvalid
 		}
 		features[e.Feature] = true
@@ -195,23 +180,10 @@ func validateManifest(m Manifest) (string, error) {
 	if !features["Q11"] {
 		return "", ErrInvalid
 	}
+	// The legacy top-level calibration has no owning apply/checkpoint seam.
+	// Calibration candidates must be ordinary KindCalibration objects.
 	if m.Calibration != nil {
-		c := m.Calibration
-		if c.State != "review_candidate" || !identity.Identifier(c.Revision) || !identity.Identifier(c.ModelVersion) || !identity.Identifier(c.EmbeddingSpace) || !identity.Identifier(c.BudgetVersion) || len(c.Payload) > 1<<20 || !json.Valid([]byte(c.Payload)) {
-			return "", ErrInvalid
-		}
-		var payload any
-		if json.Unmarshal([]byte(c.Payload), &payload) != nil || containsForbidden(payload) || !validCalibrationPayload(c.Payload) {
-			return "", ErrInvalid
-		}
-		var calibration calibrationPayload
-		if json.Unmarshal([]byte(c.Payload), &calibration) != nil {
-			return "", ErrInvalid
-		}
-		runtimePacks, suites, digestErr := evaluationObjectDigests(m.Objects)
-		if digestErr != nil || len(runtimePacks) > 0 && !runtimePacks[calibration.RuntimePackDigest] || len(suites) > 0 && !suites[calibration.EvaluationSuiteDigest] {
-			return "", ErrInvalid
-		}
+		return "", ErrUnsupported
 	}
 	if m.Boundary != nil {
 		b := m.Boundary
@@ -232,23 +204,6 @@ func validateManifest(m Manifest) (string, error) {
 	canonicalRaw, _ := json.Marshal(canonical)
 	sum := sha256.Sum256(canonicalRaw)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-func validCalibrationPayload(raw string) bool {
-	var payload calibrationPayload
-	decoder := json.NewDecoder(bytes.NewBufferString(raw))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&payload) != nil || !identity.Identifier(payload.PromptPack) || payload.FallbackPromptPack != "" && !identity.Identifier(payload.FallbackPromptPack) || !identity.Identifier(payload.OptimizationRevision) || !identity.Identifier(payload.Locale) || !identity.Identifier(payload.ExamplePolicyRevision) || payload.Temperature < 0 || payload.Temperature > 2 || payload.MaxOutputTokens < 1 || payload.MaxOutputTokens > 1_000_000 || len(payload.TemplateThresholds) < 1 || len(payload.TemplateThresholds) > 256 || !validHash(payload.EvaluationSuiteDigest) || !validHash(payload.EvaluationRunDigest) || !validHash(payload.RuntimePackDigest) || payload.HeldoutLineageDigest != "" && !validHash(payload.HeldoutLineageDigest) {
-		return false
-	}
-	seen := map[string]bool{}
-	for _, threshold := range payload.TemplateThresholds {
-		if !identity.Identifier(threshold.Template) || threshold.Threshold < 0 || threshold.Threshold > 1 || seen[threshold.Template] {
-			return false
-		}
-		seen[threshold.Template] = true
-	}
-	return true
 }
 
 func validHash(value string) bool {

@@ -61,10 +61,12 @@ live owner evidence resolution, PostgreSQL replay/CAS, bounded erasure and the
 worker-consumed occurrence cutover/rollback fence. Phases 24 and 33 are integrated. Evaluation
 suites and server-owned runtime packs import through the Phase 24 public service as
 drafts and reconcile exact retry conflicts without importing acceptance or selection.
-Runtime packs and suites remain drafts; calibration material becomes a durable
-private optimization candidate and cannot transfer review or selection. Imported
-schedules remain paused until an exact two-route cutover. Owner comparison results
-are resolved from accepted live Phase 24 reports rather than manifest status text.
+Runtime packs and suites remain drafts; calibration objects become durable private
+optimization candidates and cannot transfer review or selection. A top-level
+calibration member is rejected as non-operative. Imported schedules are disabled in
+their creation transaction until an exact two-route cutover. Owner comparison
+results are resolved from distinct held-out feature cases in accepted live Phase 24
+reports, with source revision and engine binding, rather than manifest status text.
 Phase 34 remains `in_progress` until the complete private evidence set and Phase 25
 release gates pass.
 

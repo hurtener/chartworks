@@ -130,6 +130,9 @@ func (s *Service) dryRun(ctx context.Context, e identity.Envelope, manifest Mani
 		case o.Retention.ExpiresAt != nil && !s.now().UTC().Before(o.Retention.ExpiresAt.UTC()):
 			p.Action, p.Reason = "retention_quarantine", "source retention expired before import"
 			plan.Limitations = append(plan.Limitations, "expired object quarantined: "+o.ExternalRef)
+			if o.Kind == KindSource || o.Kind == KindSchedule {
+				plan.Ready = false
+			}
 		case o.Kind == KindCertificate || o.Kind == KindRun || o.Kind == KindArtifact || o.Kind == KindRendition:
 			p.Action, p.Reason = "historical_quarantine", "historical evidence requires current authority and fresh attestation"
 		case o.Kind == KindTombstone || o.Lifecycle == "deleted":
@@ -151,6 +154,9 @@ func (s *Service) dryRun(ctx context.Context, e identity.Envelope, manifest Mani
 			}
 		}
 		plan.Objects = append(plan.Objects, p)
+		if (o.Kind == KindSource || o.Kind == KindSchedule) && p.Action != "install_private" {
+			plan.Ready = false
+		}
 	}
 	sort.Strings(plan.Limitations)
 	return plan, nil
@@ -263,10 +269,34 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in ExportRequ
 	if err := require(e, "migration.read", "read"); err != nil {
 		return Export{}, err
 	}
+	if err := access.Require(e, "ops.read", access.Tenant(e, "export")); err != nil {
+		return Export{}, err
+	}
 	if in.Limit < 1 || in.Limit > 1000 {
 		return Export{}, ErrInvalid
 	}
-	return s.repo.Export(ctx, e, in.Batch, in.After, in.Limit)
+	batch, manifest, _, err := s.repo.Batch(ctx, e, in.Batch)
+	if err != nil {
+		return Export{}, err
+	}
+	for _, object := range manifest.Objects {
+		if object.Retention.ExpiresAt != nil && !s.now().UTC().Before(object.Retention.ExpiresAt.UTC()) {
+			return Export{}, ErrNotReady
+		}
+	}
+	out, err := s.repo.Export(ctx, e, in.Batch, in.After, in.Limit)
+	if err != nil {
+		return Export{}, err
+	}
+	if out.Batch.ID != batch.ID || out.Batch.Digest != batch.Digest {
+		return Export{}, ErrConflict
+	}
+	for _, object := range manifest.Objects {
+		if object.Retention.ExpiresAt != nil && !s.now().UTC().Before(object.Retention.ExpiresAt.UTC()) {
+			return Export{}, ErrNotReady
+		}
+	}
+	return out, nil
 }
 
 func (s *Service) Cutover(ctx context.Context, e identity.Envelope, in CutoverRequest) (Cutover, error) {
@@ -279,6 +309,11 @@ func (s *Service) Cutover(ctx context.Context, e identity.Envelope, in CutoverRe
 	}
 	if !plan.Ready || batch.State != "complete" || manifest.Boundary == nil || !identity.Identifier(in.Route) || in.Expected == 0 && !identity.Identifier(in.PreviousRoute) || !identity.Identifier(in.OperatorRef) {
 		return Cutover{}, ErrNotReady
+	}
+	for _, object := range manifest.Objects {
+		if (object.Kind == KindSource || object.Kind == KindSchedule) && object.Retention.ExpiresAt != nil && !s.now().UTC().Before(object.Retention.ExpiresAt.UTC()) {
+			return Cutover{}, ErrNotReady
+		}
 	}
 	if s.evidence == nil {
 		return Cutover{}, ErrNotReady

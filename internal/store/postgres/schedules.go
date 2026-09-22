@@ -43,6 +43,15 @@ func scheduleTimes(spec jobs.Spec, now time.Time) (previous, next *time.Time, er
 
 // CreateSchedule stores or replays a fixed target and validated recurrence under tenant scope.
 func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key string, request jobs.ScheduleRequest, l jobs.Limits) (out jobs.Schedule, err error) {
+	return d.createSchedule(ctx, scope, session, key, request, l, true)
+}
+
+// CreateImportedSchedule inserts disabled in the same transaction as creation.
+func (d *DB) CreateImportedSchedule(ctx context.Context, scope store.Scope, session, key string, request jobs.ScheduleRequest, l jobs.Limits) (jobs.Schedule, error) {
+	return d.createSchedule(ctx, scope, session, key, request, l, false)
+}
+
+func (d *DB) createSchedule(ctx context.Context, scope store.Scope, session, key string, request jobs.ScheduleRequest, l jobs.Limits, enabled bool) (out jobs.Schedule, err error) {
 	if !scope.Valid() || !identity.Identifier(session) || !identity.Identifier(key) || request.Validate() != nil || l.Validate() != nil {
 		return out, jobs.ErrInvalid
 	}
@@ -53,7 +62,7 @@ func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key
 		}
 		existing, e := scanSchedule(tx.QueryRow(ctx, `SELECT `+scheduleColumns+` FROM chartworks.job_schedules WHERE tenant_id=$1 AND creator_id=$2 AND client_key=$3`, scope.Tenant(), scope.Actor(), key))
 		if e == nil {
-			if digestValue(existing.Request) != hash {
+			if digestValue(existing.Request) != hash || existing.Enabled != enabled || existing.Retired {
 				return store.ErrConflict
 			}
 			out = existing
@@ -81,11 +90,11 @@ func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key
 		if e != nil {
 			return e
 		}
-		_, e = tx.Exec(ctx, `INSERT INTO chartworks.job_schedules(tenant_id,schedule_id,creator_id,creator_session,client_key,request_hash,request,previous_due,next_due) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, scope.Tenant(), id, scope.Actor(), session, key, hash, request.JSON(), previous, next)
+		_, e = tx.Exec(ctx, `INSERT INTO chartworks.job_schedules(tenant_id,schedule_id,creator_id,creator_session,client_key,request_hash,request,previous_due,next_due,enabled) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, scope.Tenant(), id, scope.Actor(), session, key, hash, request.JSON(), previous, next, enabled)
 		if e != nil {
 			return e
 		}
-		out = jobs.Schedule{ID: id, Revision: 1, Enabled: true, Tenant: scope.Tenant(), Initiator: scope.Actor(), InitiatorSession: session, Request: request, NextDue: next, PreviousDue: previous}
+		out = jobs.Schedule{ID: id, Revision: 1, Enabled: enabled, Tenant: scope.Tenant(), Initiator: scope.Actor(), InitiatorSession: session, Request: request, NextDue: next, PreviousDue: previous}
 		return auditJob(ctx, tx, scope, "schedule.created", id)
 	})
 	return out, err

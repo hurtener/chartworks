@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/migration"
 	"github.com/hurtener/chartworks/internal/store"
@@ -35,20 +37,22 @@ func (d *DB) Begin(ctx context.Context, e identity.Envelope, manifest migration.
 				keys, refs = append(keys, string(item.Deletes.Kind)), append(refs, item.Deletes.ExternalRef)
 			}
 		}
-		rows, x := tx.Query(ctx, `SELECT kind,external_ref,source_revision,object_digest,tombstoned FROM chartworks.migration_external_refs WHERE tenant_id=$1 AND (kind,external_ref) IN (SELECT * FROM unnest($2::text[],$3::text[]))`, e.Tenant(), keys, refs)
+		rows, x := tx.Query(ctx, `SELECT kind,external_ref,source_revision,object_digest,manifest_digest,destination_result,tombstoned FROM chartworks.migration_external_refs WHERE tenant_id=$1 AND (kind,external_ref) IN (SELECT * FROM unnest($2::text[],$3::text[]))`, e.Tenant(), keys, refs)
 		if x != nil {
 			return x
 		}
 		type prior struct {
-			revision   int64
-			digest     string
-			tombstoned bool
+			revision    int64
+			digest      string
+			manifest    string
+			destination string
+			tombstoned  bool
 		}
 		priorByRef := map[string]prior{}
 		for rows.Next() {
 			var kind, ref string
 			var old prior
-			if x = rows.Scan(&kind, &ref, &old.revision, &old.digest, &old.tombstoned); x != nil {
+			if x = rows.Scan(&kind, &ref, &old.revision, &old.digest, &old.manifest, &old.destination, &old.tombstoned); x != nil {
 				rows.Close()
 				return x
 			}
@@ -59,13 +63,23 @@ func (d *DB) Begin(ctx context.Context, e identity.Envelope, manifest migration.
 			return rows.Err()
 		}
 		for _, item := range plan.Objects {
-			if old, ok := priorByRef[string(item.Kind)+"\x00"+item.ExternalRef]; ok && (old.tombstoned || item.Revision < old.revision || item.Revision == old.revision && item.Digest != old.digest) {
+			if old, ok := priorByRef[string(item.Kind)+"\x00"+item.ExternalRef]; ok && (old.tombstoned || item.Revision < old.revision || item.Revision == old.revision && (item.Digest != old.digest || old.manifest != digest || item.Destination != "" && item.Destination != old.destination && item.Destination+":applied" != old.destination)) {
 				return store.ErrConflict
 			}
 			if item.Deletes != nil {
 				old, ok := priorByRef[string(item.Deletes.Kind)+"\x00"+item.Deletes.ExternalRef]
 				if ok && (item.Deletes.Revision < old.revision || old.tombstoned && (item.Deletes.Revision != old.revision || item.Digest != old.digest)) {
 					return store.ErrConflict
+				}
+			}
+		}
+		for _, item := range plan.Objects {
+			if x := reserveMigrationRef(ctx, tx, e.Tenant(), string(item.Kind), item.ExternalRef, digest, item.Revision, item.Digest, item.Destination, false); x != nil {
+				return x
+			}
+			if item.Deletes != nil {
+				if x := reserveMigrationRef(ctx, tx, e.Tenant(), string(item.Deletes.Kind), item.Deletes.ExternalRef, digest, item.Deletes.Revision, item.Digest, "delete:"+item.ExternalRef, true); x != nil {
+					return x
 				}
 			}
 		}
@@ -88,6 +102,22 @@ func (d *DB) Begin(ctx context.Context, e identity.Envelope, manifest migration.
 		return migration.Batch{}, false, mapMigration(err)
 	}
 	return out, existing, nil
+}
+
+func reserveMigrationRef(ctx context.Context, tx pgx.Tx, tenant, kind, ref, manifest string, revision int64, objectDigest, destination string, tombstone bool) error {
+	tag, err := tx.Exec(ctx, `INSERT INTO chartworks.migration_ref_reservations(tenant_id,kind,external_ref,manifest_digest,source_revision,object_digest,destination_mapping,tombstoned)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+ ON CONFLICT(tenant_id,kind,external_ref) DO UPDATE SET manifest_digest=excluded.manifest_digest,source_revision=excluded.source_revision,object_digest=excluded.object_digest,destination_mapping=excluded.destination_mapping,tombstoned=excluded.tombstoned
+ WHERE (excluded.tombstoned AND NOT chartworks.migration_ref_reservations.tombstoned AND excluded.source_revision>=chartworks.migration_ref_reservations.source_revision)
+ OR (NOT chartworks.migration_ref_reservations.tombstoned AND excluded.source_revision>chartworks.migration_ref_reservations.source_revision)
+ OR (excluded.source_revision=chartworks.migration_ref_reservations.source_revision AND excluded.manifest_digest=chartworks.migration_ref_reservations.manifest_digest AND excluded.object_digest=chartworks.migration_ref_reservations.object_digest AND excluded.destination_mapping=chartworks.migration_ref_reservations.destination_mapping AND excluded.tombstoned=chartworks.migration_ref_reservations.tombstoned)`, tenant, kind, ref, manifest, revision, objectDigest, destination, tombstone)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return store.ErrConflict
+	}
+	return nil
 }
 
 type rowScanner interface{ Scan(...any) error }
@@ -135,7 +165,7 @@ func (d *DB) Checkpoint(ctx context.Context, e identity.Envelope, id string, exp
 			return x
 		}
 		tombstoned := item.Action == "tombstone"
-		command, x := tx.Exec(ctx, `INSERT INTO chartworks.migration_external_refs(tenant_id,kind,external_ref,manifest_digest,source_revision,object_digest,destination_result,tombstoned) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(tenant_id,kind,external_ref) DO UPDATE SET manifest_digest=excluded.manifest_digest,source_revision=excluded.source_revision,object_digest=excluded.object_digest,destination_result=excluded.destination_result,tombstoned=excluded.tombstoned,updated_at=clock_timestamp() WHERE NOT chartworks.migration_external_refs.tombstoned AND (excluded.source_revision>chartworks.migration_external_refs.source_revision OR excluded.source_revision=chartworks.migration_external_refs.source_revision AND excluded.object_digest=chartworks.migration_external_refs.object_digest)`, e.Tenant(), string(item.Kind), item.ExternalRef, out.Digest, item.Revision, item.Digest, result, tombstoned)
+		command, x := tx.Exec(ctx, `INSERT INTO chartworks.migration_external_refs(tenant_id,kind,external_ref,manifest_digest,source_revision,object_digest,destination_result,tombstoned) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(tenant_id,kind,external_ref) DO UPDATE SET manifest_digest=excluded.manifest_digest,source_revision=excluded.source_revision,object_digest=excluded.object_digest,destination_result=excluded.destination_result,tombstoned=excluded.tombstoned,updated_at=clock_timestamp() WHERE NOT chartworks.migration_external_refs.tombstoned AND (excluded.source_revision>chartworks.migration_external_refs.source_revision OR excluded.source_revision=chartworks.migration_external_refs.source_revision AND excluded.object_digest=chartworks.migration_external_refs.object_digest AND excluded.manifest_digest=chartworks.migration_external_refs.manifest_digest AND excluded.destination_result=chartworks.migration_external_refs.destination_result)`, e.Tenant(), string(item.Kind), item.ExternalRef, out.Digest, item.Revision, item.Digest, result, tombstoned)
 		if x != nil {
 			return x
 		}
@@ -213,6 +243,16 @@ func (d *DB) Export(ctx context.Context, e identity.Envelope, id, after string, 
 
 func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch, expected int64, route, previousRoute, operator string, boundary migration.OccurrenceBoundary) (out migration.Cutover, err error) {
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if x := migrationRouteLock(ctx, tx); x != nil {
+			return x
+		}
+		var batchState, batchDigest string
+		if x := tx.QueryRow(ctx, `SELECT state,manifest_digest FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2 FOR SHARE`, e.Tenant(), b.ID).Scan(&batchState, &batchDigest); x != nil {
+			return x
+		}
+		if batchState != "complete" || batchDigest != b.Digest {
+			return store.ErrConflict
+		}
 		var old migration.Cutover
 		var boundaryRaw, effectsRaw []byte
 		x := tx.QueryRow(ctx, `SELECT batch_id,route,previous_route,state,generation,boundary,irreversible_effects,operator_reference,updated_at FROM chartworks.migration_cutovers WHERE tenant_id=$1 AND cohort_id=$2 FOR UPDATE`, e.Tenant(), b.Cohort).Scan(&old.Batch, &old.Route, &old.PreviousRoute, &old.State, &old.Generation, &boundaryRaw, &effectsRaw, &old.OperatorReference, &old.UpdatedAt)
@@ -220,6 +260,9 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 			return x
 		}
 		if old.Batch == b.ID && old.Route == route && old.State == "active" {
+			if x = access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: old.Route}, access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: old.PreviousRoute}); x != nil {
+				return x
+			}
 			if (old.Generation != expected && old.Generation != expected+1) || old.OperatorReference != operator {
 				return store.ErrConflict
 			}
@@ -233,18 +276,44 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 			out.Cohort = b.Cohort
 			return nil
 		}
-		if old.Generation != expected {
+		if old.Generation != expected || expected > 0 && previousRoute != "" && previousRoute != old.Route {
 			return store.ErrConflict
 		}
 		previous := old.Route
 		if expected == 0 {
 			previous = previousRoute
 		}
-		var targetRevision, previousRevision int64
-		if x = tx.QueryRow(ctx, `SELECT revision FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2 FOR SHARE`, e.Tenant(), route).Scan(&targetRevision); x != nil {
+		if route == previous || boundary.LastAccepted == "" || boundary.LastDue.IsZero() {
 			return store.ErrConflict
 		}
-		if x = tx.QueryRow(ctx, `SELECT revision FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2 FOR SHARE`, e.Tenant(), previous).Scan(&previousRevision); x != nil {
+		if x = access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: route}, access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: previous}); x != nil {
+			return x
+		}
+		var sourceCount, scheduleCount, blocked int
+		if x = tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE kind='source'),count(*) FILTER(WHERE kind='schedule'),count(*) FILTER(WHERE kind IN ('source','schedule') AND action<>'install_private') FROM chartworks.migration_checkpoints WHERE tenant_id=$1 AND batch_id=$2`, e.Tenant(), b.ID).Scan(&sourceCount, &scheduleCount, &blocked); x != nil {
+			return x
+		}
+		if sourceCount == 0 || scheduleCount != 1 || blocked != 0 {
+			return store.ErrConflict
+		}
+		var checkpointResult string
+		if x = tx.QueryRow(ctx, `SELECT destination_result FROM chartworks.migration_checkpoints WHERE tenant_id=$1 AND batch_id=$2 AND kind='schedule' AND action='install_private'`, e.Tenant(), b.ID).Scan(&checkpointResult); x != nil {
+			return x
+		}
+		var targetRevision, previousRevision int64
+		var targetEnabled, targetRetired, previousEnabled, previousRetired bool
+		if x = tx.QueryRow(ctx, `SELECT revision,enabled,retired FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2 FOR UPDATE`, e.Tenant(), route).Scan(&targetRevision, &targetEnabled, &targetRetired); x != nil {
+			return store.ErrConflict
+		}
+		if x = tx.QueryRow(ctx, `SELECT revision,enabled,retired FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2 FOR UPDATE`, e.Tenant(), previous).Scan(&previousRevision, &previousEnabled, &previousRetired); x != nil {
+			return store.ErrConflict
+		}
+		if checkpointResult != fmt.Sprintf("%s:v%d:applied", route, targetRevision) || targetEnabled || targetRetired || !previousEnabled || previousRetired || previousRevision != boundary.ScheduleVersion {
+			return store.ErrConflict
+		}
+		var lastID string
+		var lastDue time.Time
+		if x = tx.QueryRow(ctx, `SELECT operation_id,due_at FROM chartworks.job_occurrences WHERE tenant_id=$1 AND schedule_id=$2 AND disposition='queued' ORDER BY due_at DESC LIMIT 1`, e.Tenant(), previous).Scan(&lastID, &lastDue); x != nil || lastID != boundary.LastAccepted || !lastDue.Equal(boundary.LastDue) {
 			return store.ErrConflict
 		}
 		out = migration.Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: previous, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: time.Now().UTC()}
@@ -300,6 +369,9 @@ func (d *DB) CurrentCutover(ctx context.Context, e identity.Envelope, cohort str
 
 func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, expected int64, operator string, effects []string) (out migration.Cutover, err error) {
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if x := migrationRouteLock(ctx, tx); x != nil {
+			return x
+		}
 		var braw, oldEffects []byte
 		out.Cohort = cohort
 		if x := tx.QueryRow(ctx, `SELECT batch_id,route,previous_route,state,generation,boundary,irreversible_effects,operator_reference,updated_at FROM chartworks.migration_cutovers WHERE tenant_id=$1 AND cohort_id=$2 FOR UPDATE`, e.Tenant(), cohort).Scan(&out.Batch, &out.Route, &out.PreviousRoute, &out.State, &out.Generation, &braw, &oldEffects, &out.OperatorReference, &out.UpdatedAt); x != nil {
@@ -309,6 +381,9 @@ func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, e
 			return store.ErrConflict
 		}
 		if out.State == "rolled_back" {
+			if x := access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: out.Route}, access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: out.PreviousRoute}); x != nil {
+				return x
+			}
 			if (out.Generation != expected && out.Generation != expected+1) || out.OperatorReference != operator || !slices.Equal(out.IrreversibleEffects, effects) {
 				return store.ErrConflict
 			}
@@ -316,6 +391,9 @@ func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, e
 		}
 		if out.Generation != expected || out.State != "active" {
 			return store.ErrConflict
+		}
+		if x := access.Require(e, "scheduling.write", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: out.Route}, access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "write", ID: out.PreviousRoute}); x != nil {
+			return x
 		}
 		out.Route, out.PreviousRoute = out.PreviousRoute, out.Route
 		out.State = "rolled_back"
@@ -343,6 +421,13 @@ func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, e
 		return migration.Cutover{}, mapMigration(err)
 	}
 	return out, nil
+}
+
+// The dispatch queue takes this advisory transaction lock before reading route
+// state and leasing work. Route changes take the same lock through commit.
+func migrationRouteLock(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(7214060601)`)
+	return err
 }
 
 func (d *DB) Erase(ctx context.Context, e identity.Envelope, id string, limit int) (out migration.EraseResult, err error) {

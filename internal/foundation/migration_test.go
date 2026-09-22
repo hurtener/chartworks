@@ -21,3 +21,10 @@ func TestMigrationPayloadDecoderRejectsUnknownFields(t *testing.T) {
 		}
 	}
 }
+
+func TestMigrationScheduleKeyBindsEachObject(t *testing.T) {
+	a := migrationScheduleKey("manifest", "schedule-a", "")
+	if a == migrationScheduleKey("manifest", "schedule-b", "") || a == migrationScheduleKey("changed", "schedule-a", "") || a != migrationScheduleKey("manifest", "schedule-a", "") {
+		t.Fatal("migration schedule idempotency key lost object or manifest identity")
+	}
+}

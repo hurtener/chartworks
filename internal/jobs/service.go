@@ -161,6 +161,27 @@ func (s *Service) CreateSchedule(ctx context.Context, e identity.Envelope, key s
 	return s.repo.CreateSchedule(ctx, scope, e.Session(), key, request, s.limits)
 }
 
+// CreateImportedSchedule commits a migration candidate in the disabled state.
+// It cannot be admitted by a tick or a worker before a reviewed cutover.
+func (s *Service) CreateImportedSchedule(ctx context.Context, e identity.Envelope, key string, request ScheduleRequest) (Schedule, error) {
+	if ctx == nil || request.Validate() != nil || !identity.Identifier(key) {
+		return Schedule{}, ErrInvalid
+	}
+	ctx, stop := context.WithDeadline(ctx, e.Deadline())
+	defer stop()
+	scope, err := s.admission(ctx, e, request.Target)
+	if err != nil {
+		return Schedule{}, err
+	}
+	repo, ok := s.repo.(interface {
+		CreateImportedSchedule(context.Context, store.Scope, string, string, ScheduleRequest, Limits) (Schedule, error)
+	})
+	if !ok {
+		return Schedule{}, ErrTransient
+	}
+	return repo.CreateImportedSchedule(ctx, scope, e.Session(), key, request, s.limits)
+}
+
 // GetSchedule requires signed schedule read reach before loading its metadata.
 func (s *Service) GetSchedule(ctx context.Context, e identity.Envelope, id string) (Schedule, error) {
 	if err := access.Require(e, "scheduling.read", access.Resource{Tenant: e.Tenant(), Kind: "schedule", Permission: "read", ID: id}); err != nil {

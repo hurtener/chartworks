@@ -93,15 +93,20 @@ type Calibration struct {
 }
 
 type Evidence struct {
-	Feature       string `json:"feature"`
-	OwnerFeature  string `json:"owner_feature"`
-	Disposition   string `json:"disposition" jsonschema:"enum=required,enum=excluded"`
-	Outcome       string `json:"outcome" jsonschema:"enum=passed,enum=failed,enum=unsupported"`
-	EvidenceType  string `json:"evidence_type" jsonschema:"enum=runtime,enum=live,enum=recorded_fixture,enum=operator"`
-	Reference     string `json:"reference"`
-	Source        string `json:"source"`
-	SourceVersion string `json:"source_version"`
-	EvidenceHash  string `json:"evidence_hash"`
+	Feature        string `json:"feature"`
+	OwnerFeature   string `json:"owner_feature"`
+	Disposition    string `json:"disposition" jsonschema:"enum=required,enum=excluded"`
+	Outcome        string `json:"outcome" jsonschema:"enum=passed,enum=failed,enum=unsupported"`
+	EvidenceType   string `json:"evidence_type" jsonschema:"enum=runtime,enum=live,enum=recorded_fixture,enum=operator"`
+	Reference      string `json:"reference"`
+	Source         string `json:"source"`
+	SourceVersion  string `json:"source_version"`
+	EvidenceHash   string `json:"evidence_hash"`
+	ComparisonHash string `json:"comparison_hash,omitempty"`
+	Engine         string `json:"engine,omitempty"`
+	Dialect        string `json:"dialect,omitempty"`
+	SourceSnapshot string `json:"source_snapshot,omitempty"`
+	SourceRevision int64  `json:"source_revision,omitempty"`
 }
 
 type OccurrenceBoundary struct {

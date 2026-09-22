@@ -6,17 +6,22 @@
    occurrence boundary.
 2. Call `migrationDryRun`. Resolve every rejected mapping and every failed or
    unsupported required row. Each required row must resolve to an accepted live
-   owner evaluation report, exact suite digest and evidence hash; typed `passed`
-   text alone is insufficient. Save the returned digest and loss ledger with the
+   owner evaluation report, a passed held-out comparison case for that exact
+   feature, source engine/dialect/snapshot/revision, exact suite/run/evidence and
+   comparison hashes; typed `passed` text alone is insufficient. Save the returned digest and loss ledger with the
    operator change record. Dry run performs no import.
 3. Call `migrationImport` with `expected_revision: 0`. If the call ends without a
    result, read the operator record and call `migrationResume` with the last returned
    exact revision. Do not create a new batch ID to conceal an uncertain attempt.
-4. Export bounded pages and compare the stored digest, object count, quarantine
+4. With current `migration.read`, `ops.read` and signed tenant export reach, export
+   bounded pages and compare the stored digest, object count, quarantine
    count, retention, dialect/source mapping and occurrence boundary. Exercise normal
    domain reads with current scoped bearers; migration authority is insufficient.
 5. Stop the old cohort dispatcher after its recorded `last_accepted` occurrence.
    Confirm the target scheduler will resume strictly after the manifest boundary.
+   Confirm the prior route's actual last accepted operation, due time and revision
+   equal the manifest boundary. Confirm the disabled target is the schedule
+   checkpointed by this batch, and obtain signed `scheduling.write` reach to both.
    Call `migrationCutover` with generation 0, both the prior and target schedule IDs,
    and the external change/drill reference. Later exact replays use the current
    generation. The transaction activates only the target route.
@@ -33,4 +38,6 @@
 
 Abort cutover when the plan is not ready, a destination mapping changes, current
 authority is missing, a source/profile revision moved, an unsupported engine is
-present, the batch is incomplete, or the scheduler boundary cannot be proved.
+present, a source or schedule is quarantined or expired, the batch is incomplete,
+or the scheduler boundary cannot be proved. Put calibration review candidates in
+`calibration` objects; a top-level `calibration` member is rejected.

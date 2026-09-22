@@ -184,7 +184,7 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
 		for i := 1; i <= group.count; i++ {
 			feature := fmt.Sprintf("%s%02d", group.prefix, i)
-			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "evidence-" + feature, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash})
+			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: feature, Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "evidence-" + feature, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash, ComparisonHash: hash, Engine: "postgres", Dialect: "postgres", SourceSnapshot: hash, SourceRevision: 1})
 		}
 	}
 	evidence = append(evidence, migration.Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "excluded", Source: "synthetic", SourceVersion: hash, EvidenceHash: hash})
@@ -193,14 +193,27 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 		t.Fatal("register migration destination source", err)
 	}
 	snapshot := sourceSnapshot(registered)
+	sourceEvidence := append([]migration.Evidence(nil), evidence...)
+	for i := range sourceEvidence {
+		if sourceEvidence[i].Disposition == "required" {
+			sourceEvidence[i].Engine, sourceEvidence[i].Dialect = registered.Dialect, registered.Dialect
+			sourceEvidence[i].SourceSnapshot, sourceEvidence[i].SourceRevision = snapshot, registered.Revision
+		}
+	}
 	sourceRaw, _ := json.Marshal(sourceImport{Engine: registered.Dialect, Dialect: registered.Dialect, Snapshot: snapshot, Context: registered.ContextID, Revision: registered.Revision})
-	sourceManifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "work-source", Cohort: "work-source", SourceSnapshot: snapshot, Engine: registered.Dialect, Dialect: registered.Dialect, Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source", Destination: registered.ID, Revision: registered.Revision}}, Objects: []migration.Object{{Kind: migration.KindSource, ExternalRef: "source", Revision: registered.Revision, PayloadVersion: "v1", Payload: string(sourceRaw), Lifecycle: "private_draft", Private: true, Origin: "synthetic"}}, Fields: []migration.FieldDisposition{{Path: "source.engine", Status: "retained"}, {Path: "source.dialect", Status: "retained"}, {Path: "source.snapshot", Status: "retained"}, {Path: "source.context", Status: "retained"}, {Path: "source.revision", Status: "retained"}}, Evidence: evidence}
+	sourceManifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "work-source", Cohort: "work-source", SourceSnapshot: snapshot, Engine: registered.Dialect, Dialect: registered.Dialect, Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source", Destination: registered.ID, Revision: registered.Revision}}, Objects: []migration.Object{{Kind: migration.KindSource, ExternalRef: "source", Revision: registered.Revision, PayloadVersion: "v1", Payload: string(sourceRaw), Lifecycle: "private_draft", Private: true, Origin: "synthetic"}}, Fields: []migration.FieldDisposition{{Path: "source.engine", Status: "retained"}, {Path: "source.dialect", Status: "retained"}, {Path: "source.snapshot", Status: "retained"}, {Path: "source.context", Status: "retained"}, {Path: "source.revision", Status: "retained"}}, Evidence: sourceEvidence}
 	if batch, importErr := w.migrations.Import(t.Context(), actor, migration.ImportRequest{Manifest: sourceManifest}); importErr != nil || batch.Applied != 1 {
 		t.Fatal("migration did not validate actual source binding", importErr, batch)
 	}
 	drifted := sourceManifest
 	drifted.Batch, drifted.Cohort = "work-source-drift", "work-source-drift"
 	drifted.SourceSnapshot = strings.Repeat("b", 64)
+	drifted.Evidence = append([]migration.Evidence(nil), sourceEvidence...)
+	for i := range drifted.Evidence {
+		if drifted.Evidence[i].Disposition == "required" {
+			drifted.Evidence[i].SourceSnapshot = drifted.SourceSnapshot
+		}
+	}
 	drifted.Objects = append([]migration.Object(nil), sourceManifest.Objects...)
 	driftedRaw, _ := json.Marshal(sourceImport{Engine: registered.Dialect, Dialect: registered.Dialect, Snapshot: drifted.SourceSnapshot, Context: registered.ContextID, Revision: registered.Revision})
 	drifted.Objects[0].Payload = string(driftedRaw)
@@ -210,6 +223,12 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	mismatchedEngine := sourceManifest
 	mismatchedEngine.Batch, mismatchedEngine.Cohort = "work-source-engine", "work-source-engine"
 	mismatchedEngine.Engine, mismatchedEngine.Dialect = "mysql", "mysql"
+	mismatchedEngine.Evidence = append([]migration.Evidence(nil), sourceEvidence...)
+	for i := range mismatchedEngine.Evidence {
+		if mismatchedEngine.Evidence[i].Disposition == "required" {
+			mismatchedEngine.Evidence[i].Engine, mismatchedEngine.Evidence[i].Dialect = "mysql", "mysql"
+		}
+	}
 	mismatchedEngine.Objects = append([]migration.Object(nil), sourceManifest.Objects...)
 	mismatchedSource, _ := json.Marshal(sourceImport{Engine: "mysql", Dialect: "mysql", Snapshot: snapshot, Context: registered.ContextID, Revision: registered.Revision})
 	mismatchedEngine.Objects[0].Payload = string(mismatchedSource)
@@ -224,11 +243,12 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 		t.Fatal("migration accepted a stale mapped source revision", revisionErr)
 	}
 	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "work-schedule", Cohort: "work-schedule", SourceSnapshot: hash, Engine: "postgres", Dialect: "postgres", Objects: []migration.Object{{Kind: migration.KindSchedule, ExternalRef: "schedule", Revision: 1, PayloadVersion: "v1", Payload: string(scheduleRaw), Lifecycle: "private_draft", Private: true, Origin: "synthetic"}}, Fields: []migration.FieldDisposition{{Path: "schedule.key", Status: "retained"}, {Path: "schedule.request", Status: "retained"}}, Evidence: evidence}
-	if batch, importErr := w.migrations.Import(t.Context(), actor, migration.ImportRequest{Manifest: manifest}); importErr != nil || batch.Applied != 1 {
-		t.Fatal("migration did not use dispatch queue", importErr, batch)
+	scheduleBatch, importErr := w.migrations.Import(t.Context(), actor, migration.ImportRequest{Manifest: manifest})
+	if importErr != nil || scheduleBatch.Applied != 1 {
+		t.Fatal("migration did not use dispatch queue", importErr, scheduleBatch)
 	}
 	var imported int
-	if err = support.Raw(t, workDSN).QueryRow(t.Context(), `SELECT count(*) FROM chartworks.job_schedules WHERE tenant_id='tenant' AND client_key='migration-work-schedule' AND NOT enabled`).Scan(&imported); err != nil || imported != 1 {
+	if err = support.Raw(t, workDSN).QueryRow(t.Context(), `SELECT count(*) FROM chartworks.job_schedules WHERE tenant_id='tenant' AND client_key=$1 AND NOT enabled`, migrationScheduleKey(scheduleBatch.Digest, "schedule", "migration-work-schedule")).Scan(&imported); err != nil || imported != 1 {
 		t.Fatal("migration schedule missing", err, imported)
 	}
 	// SDK construction makes no model request; an empty durable queue makes no broker pull.

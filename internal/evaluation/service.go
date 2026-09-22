@@ -353,33 +353,81 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, id string) (Rep
 	return s.repo.ReadReport(ctx, scope, id)
 }
 
-// VerifyMigrationEvidence resolves one exact live owner report and its accepted
-// suite frontier. Caller supplied status text is deliberately ignored.
-func (s *Service) VerifyMigrationEvidence(ctx context.Context, e identity.Envelope, feature, runID, suiteDigest, evidenceHash string) error {
-	if ctx == nil || !identifier(feature) || !identifier(runID) || !validDigest(suiteDigest) || !validDigest(evidenceHash) {
-		return ErrInvalid
+// MigrationComparison resolves a persisted, owner-produced case comparison from
+// an accepted live suite and run. The hash binds its expected and observed values
+// to the exact source revision; a suite frontier alone is not parity evidence.
+func (s *Service) MigrationComparison(ctx context.Context, e identity.Envelope, feature, runID, engine, dialect, snapshot string, revision int64) (MigrationComparison, error) {
+	if ctx == nil || !identifier(feature) || !identifier(runID) || !identifier(engine) || !identifier(dialect) || !validDigest(snapshot) || revision < 1 {
+		return MigrationComparison{}, ErrInvalid
 	}
 	scope, err := access.StoreScope(e, "ops.read", "read")
 	if err != nil {
-		return err
+		return MigrationComparison{}, err
 	}
 	report, err := s.repo.ReadReport(ctx, scope, runID)
 	if err != nil {
-		return err
+		return MigrationComparison{}, err
 	}
-	if report.Validate() != nil || report.Mode != Live || report.Status != "passed" || !report.GatePassed || report.SecurityFailures != 0 || report.SuiteDigest != suiteDigest || report.EvidenceHash != evidenceHash {
-		return ErrGate
+	if report.Validate() != nil || report.Mode != Live || report.Status != "passed" || !report.GatePassed || report.SecurityFailures != 0 {
+		return MigrationComparison{}, ErrGate
 	}
-	record, err := s.repo.AcceptedSuite(ctx, scope, report.SuiteID, report.SuiteRevision, suiteDigest)
+	record, err := s.repo.AcceptedSuite(ctx, scope, report.SuiteID, report.SuiteRevision, report.SuiteDigest)
+	if err != nil {
+		return MigrationComparison{}, err
+	}
+	suite := record.Suite
+	if suite.Mode != Live || suite.Provenance.SourceSnapshot != snapshot || suite.Provenance.SourceRevision != revision {
+		return MigrationComparison{}, ErrGate
+	}
+	measured := false
+	for _, source := range suite.Provenance.DialectMatrix {
+		if source.Engine == engine && source.Dialect == dialect && source.Mode == Live && source.Status == "measured" {
+			measured = true
+			break
+		}
+	}
+	if !measured {
+		return MigrationComparison{}, ErrGate
+	}
+	for _, c := range suite.Cases {
+		if c.ID != feature || !c.HeldOut || c.Critical || c.BindingDigest == "" {
+			continue
+		}
+		for _, result := range report.Cases {
+			if result.ID != feature || !result.HeldOut || !result.Passed || result.Critical || result.Stage != c.Stage || result.Locale != c.Locale {
+				continue
+			}
+			hash, hashErr := digest(struct {
+				Feature      string
+				Engine       string
+				Dialect      string
+				Snapshot     string
+				Revision     int64
+				SuiteDigest  string
+				EvidenceHash string
+				Expected     Case
+				Observed     CaseResult
+			}{feature, engine, dialect, snapshot, revision, report.SuiteDigest, report.EvidenceHash, c, result})
+			if hashErr != nil {
+				return MigrationComparison{}, hashErr
+			}
+			return MigrationComparison{Feature: feature, RunID: runID, SuiteDigest: report.SuiteDigest, EvidenceHash: report.EvidenceHash, ComparisonHash: hash, Engine: engine, Dialect: dialect, SourceSnapshot: snapshot, SourceRevision: revision}, nil
+		}
+	}
+	return MigrationComparison{}, ErrGate
+}
+
+// VerifyMigrationEvidence repeats the owner lookup and compares the complete
+// artifact identity supplied by the migration manifest.
+func (s *Service) VerifyMigrationEvidence(ctx context.Context, e identity.Envelope, expected MigrationComparison) error {
+	actual, err := s.MigrationComparison(ctx, e, expected.Feature, expected.RunID, expected.Engine, expected.Dialect, expected.SourceSnapshot, expected.SourceRevision)
 	if err != nil {
 		return err
 	}
-	for _, frontier := range record.Suite.Frontiers {
-		if frontier == feature {
-			return nil
-		}
+	if actual != expected {
+		return ErrGate
 	}
-	return ErrGate
+	return nil
 }
 
 // DraftOptimization resolves only an unreviewed durable candidate. Migration

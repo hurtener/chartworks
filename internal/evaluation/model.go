@@ -258,6 +258,7 @@ type Provenance struct {
 	RuleVersion         string            `json:"rule_version"`
 	TemplateVersion     string            `json:"template_version,omitempty"`
 	SourceSnapshot      string            `json:"source_snapshot"`
+	SourceRevision      int64             `json:"source_revision,omitempty"`
 	DialectMatrix       []DialectEvidence `json:"dialect_matrix"`
 }
 
@@ -345,6 +346,20 @@ type CaseResult struct {
 	Passed      bool        `json:"passed"`
 	Reason      string      `json:"reason"`
 	Observation Observation `json:"observation"`
+}
+
+// MigrationComparison identifies one persisted live case comparison and source
+// binding. It contains hashes and coordinates, never protected inputs or rows.
+type MigrationComparison struct {
+	Feature        string
+	RunID          string
+	SuiteDigest    string
+	EvidenceHash   string
+	ComparisonHash string
+	Engine         string
+	Dialect        string
+	SourceSnapshot string
+	SourceRevision int64
 }
 
 // Report is reproducible content-free evaluation evidence.

@@ -43,15 +43,12 @@ or `unsupported` disposition. Non-retained fields require a reason. Unknown fiel
 are rejected because they have no loss-ledger row. Token, password, secret, API-key,
 credential, user, role and grant shaped keys are recursively rejected after case
 and punctuation normalization, including camel-case and separator variants. Every
-object is private; public import is rejected before persistence. Calibration is
-versioned, credential-free and imported through the evaluation service as a durable
-optimization candidate; it never
-activates a prompt, model, threshold or learned example. Its closed schema contains
-only prompt-pack and optional fallback references, optimization/example-policy
-revisions, locale, temperature, maximum output tokens, unique per-template
-thresholds and exact Phase 24 suite/run/runtime-pack evidence digests. An optional
-reviewed heldout-lineage digest is also retained. Unknown keys, malformed digests,
-out-of-range values and duplicate template thresholds are rejected.
+object is private; public import is rejected before persistence. A calibration
+candidate is a `calibration` object whose closed payload is the owning evaluation
+service's proposal request. It is imported as a durable private, unreviewed
+optimization candidate and never activates a prompt, model, threshold or learned
+example. The legacy top-level `calibration` member is rejected because it has no
+apply/checkpoint path; its presence cannot produce a completed import.
 
 Installed typed payloads also pass the owning closed decoder, so a ledger row
 cannot make an unknown nested domain field silently disappear. An object whose
@@ -64,11 +61,16 @@ stored dry-run plan is never treated as current authority.
 
 The bundle contains exactly the required B01-B20, R01-R16, Q01-Q10 and N01-N16
 feature rows plus Q11. Required rows must be marked `required`; a cohort is ready
-only when each row resolves to a current owner-produced live evaluation report with
-an accepted suite frontier, exact suite digest, exact evidence hash, passed gate and
-zero security failures. Caller-provided outcome text cannot unlock readiness. Q11
+only when each row resolves to a distinct owner-produced case comparison inside a
+current accepted live evaluation suite and report. The exact feature case must be
+held out and passed, with its expected and observed values bound by a comparison
+hash to the source engine, dialect, snapshot and revision. The exact suite digest,
+run ID and report evidence hash must match, with a passed gate and zero security
+failures. A suite frontier or caller-provided outcome text cannot unlock readiness. Q11
 is always `excluded` and `unsupported`. Evidence records identify their migration
-feature, owner frontier, source, exact source version, reference and evidence hash.
+feature, source, exact source version, reference, evidence hash and case-comparison
+hash. `owner_feature` must equal the migration feature, so it cannot redirect a row
+to a generic suite frontier.
 A file name or inventory does not count as a passing comparison. Private owner-run
 comparisons can supply references without placing private fixtures in this repository.
 
@@ -76,12 +78,16 @@ Dry run validates the complete graph, current destination reach, mappings, field
 ledger and evidence. It writes no domain state. Import stores the immutable manifest
 and plan, then applies dependency-ordered checkpoints with exact revision CAS.
 Replaying the same batch and digest returns the existing result; changing the digest,
-external revision, destination or tombstone state fails closed. Domain adapters are
+external revision, destination or tombstone state fails closed before domain effects.
+The same external reference and source revision cannot be repointed by a new
+manifest. Domain adapters are
 required to reconcile their stable destination or use an owning idempotency seam
 before returning success; local checkpointing is not a claim of cross-system
 exactly-once execution.
 
-Export returns bounded pages of the stored neutral manifest. It does not export a
+Export returns bounded pages of the stored neutral manifest only with both
+`migration.read` and the existing `ops.read` plus signed `cw.tenant.export` reach.
+It rechecks object retention before disclosing any page. It does not export a
 bearer, current approval, warehouse secret or new certificate. Erasure is bounded,
 requires current `erase` reach, refuses an active cutover, removes online manifest
 payload/checkpoints and retains only the non-secret external-reference/tombstone
@@ -107,15 +113,20 @@ privacy and current signed reach.
 
 ## Schedule handoff, cutover and rollback
 
-A cutover requires a completed batch, all required evidence verified, exact target
-and prior schedule routes and an occurrence boundary containing one stream identifier, schedule version,
-last accepted occurrence/due time and resume-after time. The cohort generation CAS selects one active route. Replaying the identical route
+A cutover requires a completed batch, all required evidence verified, one imported
+and checkpointed disabled target schedule, a current enabled prior schedule, and
+signed `scheduling.write` reach to both. The prior route revision and actual last
+accepted operation/due time must equal the manifest boundary. Critical source or
+schedule quarantine, including expiry after import, blocks cutover. The boundary
+contains one stream identifier, prior schedule version, last accepted
+occurrence/due time and resume-after time. The cohort generation CAS selects one active route. Replaying the identical route
 is idempotent; a stale or competing generation conflicts. The cutover transaction
 disables the prior schedule and enables the target. Occurrence admission locks the
 current generation, rejects the inactive route and due times at or before the resume
 boundary, and deduplicates both schedules by logical stream and exact due time.
 Queue claim repeats the stream, generation, route, schedule revision and resume
-boundary checks against the durable occurrence admission. Rollback advances the
+boundary checks against the durable occurrence admission. Claims and route changes
+share the queue's transaction advisory fence. Rollback advances the
 generation and route revisions, so queued work from the prior route cannot be
 claimed afterward. Imported schedules are created paused.
 

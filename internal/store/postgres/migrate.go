@@ -135,7 +135,7 @@ func requiredRelations(ctx context.Context, tx pgx.Tx) error {
 		"nlq_examples", "nlq_feedback", "nlq_queries", "nlq_sessions",
 		"byo_context_bundles", "block_heads", "block_revisions", "block_revision_references", "block_topic_pins", "block_rule_pins", "block_source_pins", "block_validations", "block_publications", "block_attestations", "block_withdrawals", "block_events", "block_health", "byo_steps",
 		"document_deletion_tombstones", "render_renditions", "onboarding_runs", "evaluation_feedback_exports", "evaluation_inputs", "evaluation_pack_selection", "evaluation_proposals", "evaluation_runs", "evaluation_suites",
-		"migration_batches", "migration_checkpoints", "migration_external_refs", "migration_cutovers", "migration_cutover_events", "migration_schedule_routes", "migration_occurrence_admissions",
+		"migration_batches", "migration_checkpoints", "migration_external_refs", "migration_ref_reservations", "migration_cutovers", "migration_cutover_events", "migration_schedule_routes", "migration_occurrence_admissions",
 	}
 	var count int
 	if e := tx.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='chartworks' AND c.relkind='r' AND c.relname=ANY($1::text[])`, relations).Scan(&count); e != nil {

@@ -263,18 +263,10 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 			if err := decodeMigrationPayload(o.Payload, &in); err != nil {
 				return "", err
 			}
-			if in.Key == "" {
-				in.Key = "mig-" + digest[:24]
-			}
-			v, err := d.schedules.CreateSchedule(ctx, e, in.Key, in.Request)
+			in.Key = migrationScheduleKey(digest, o.ExternalRef, in.Key)
+			v, err := d.schedules.CreateImportedSchedule(ctx, e, in.Key, in.Request)
 			if err != nil {
 				return "", err
-			}
-			if v.Enabled {
-				v, err = d.schedules.SetSchedule(ctx, e, v.ID, v.Revision, false)
-				if err != nil {
-					return "", err
-				}
 			}
 			if v.Enabled {
 				return "", migration.ErrConflict
@@ -286,9 +278,14 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 		if d.evaluation == nil || evidence.EvidenceType != "live" || evidence.Source != "evaluation" || evidence.Outcome != "passed" {
 			return migration.ErrNotReady
 		}
-		return d.evaluation.VerifyMigrationEvidence(ctx, e, evidence.OwnerFeature, evidence.Reference, evidence.SourceVersion, evidence.EvidenceHash)
+		return d.evaluation.VerifyMigrationEvidence(ctx, e, evaluation.MigrationComparison{Feature: evidence.Feature, RunID: evidence.Reference, SuiteDigest: evidence.SourceVersion, EvidenceHash: evidence.EvidenceHash, ComparisonHash: evidence.ComparisonHash, Engine: evidence.Engine, Dialect: evidence.Dialect, SourceSnapshot: evidence.SourceSnapshot, SourceRevision: evidence.SourceRevision})
 	})
 	return migration.New(db, adapters, nil, verifier)
+}
+
+func migrationScheduleKey(manifestDigest, externalRef, suppliedKey string) string {
+	sum := sha256.Sum256([]byte(manifestDigest + ":" + externalRef + ":" + suppliedKey))
+	return "mig-" + hex.EncodeToString(sum[:24])
 }
 
 func decodeMigrationPayload(raw string, out any) error {

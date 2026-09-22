@@ -45,6 +45,20 @@ CREATE TABLE chartworks.migration_external_refs (
  PRIMARY KEY(tenant_id,kind,external_ref)
 );
 
+-- Reserve stable source coordinates before any owning adapter is invoked. The
+-- committed reservation also fences concurrent batches with different mappings.
+CREATE TABLE chartworks.migration_ref_reservations (
+ tenant_id text NOT NULL,
+ kind text NOT NULL,
+ external_ref text NOT NULL,
+ manifest_digest text NOT NULL CHECK(length(manifest_digest)=64),
+ source_revision bigint NOT NULL CHECK(source_revision>0),
+ object_digest text NOT NULL CHECK(length(object_digest)=64),
+ destination_mapping text NOT NULL,
+ tombstoned boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(tenant_id,kind,external_ref)
+);
+
 CREATE TABLE chartworks.migration_cutovers (
  tenant_id text NOT NULL,
  cohort_id text NOT NULL,
@@ -114,7 +128,7 @@ DO $$ DECLARE previous text; BEGIN
  EXECUTE format('ALTER TABLE chartworks.audit_events ADD CONSTRAINT audit_events_action_check CHECK ((%s) OR action IN (''migration.started'',''migration.checkpointed'',''migration.cutover'',''migration.rolled_back'',''migration.erased''))',previous);
 END $$;
 
-REVOKE ALL ON chartworks.migration_batches,chartworks.migration_checkpoints,chartworks.migration_external_refs,chartworks.migration_cutovers,chartworks.migration_cutover_events,chartworks.migration_schedule_routes,chartworks.migration_occurrence_admissions FROM PUBLIC;
+REVOKE ALL ON chartworks.migration_batches,chartworks.migration_checkpoints,chartworks.migration_external_refs,chartworks.migration_ref_reservations,chartworks.migration_cutovers,chartworks.migration_cutover_events,chartworks.migration_schedule_routes,chartworks.migration_occurrence_admissions FROM PUBLIC;
 
 -- The reporting target guard applies only to reporting schedules. SQL NULL from
 -- maintenance/pipeline payloads must take the non-reporting branch explicitly.

@@ -163,6 +163,10 @@ four explicit opaque actions. `migration.read` requires
 tenant write; `migration.erase` requires tenant erase. They are separate so an
 export-only operator cannot import, cut over or erase a cohort. Operators must add
 these action strings deliberately to the relevant Pengui capability policy.
+Private manifest export additionally requires the existing `ops.read` action and
+signed `cw.tenant.export:<signed-tenant>` reach. Cutover and rollback additionally
+require `scheduling.write` and signed `cw.schedule.write` reach to both affected
+schedule IDs, resolved from the current route and imported checkpoint.
 
 The coordinator then invokes each owning public service, which still requires its
 normal source/topic/reporting/job actions and exact resource/context reaches. A
