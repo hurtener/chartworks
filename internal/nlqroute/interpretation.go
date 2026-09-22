@@ -523,11 +523,14 @@ func namedMonthConnector(word string) bool {
 }
 
 func numericYear(word string) bool {
-	if len(word) != 4 {
-		return false
+	digits := 0
+	for _, r := range word {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+		digits++
 	}
-	_, err := strconv.Atoi(word)
-	return err == nil
+	return digits == 4
 }
 
 func temporalBoundaryValues(start, end, zoneName, temporalType string) (string, string, error) {
