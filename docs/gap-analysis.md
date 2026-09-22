@@ -137,7 +137,7 @@ This update rechecked every original finding against the merged target code and 
 | LRN-01, LRN-02, CLR-01, CLR-02, RUL-01 | **Learning, clarification and rule-scope runtime gaps are implemented; final human/live evidence remains.** | CW-08 adds reviewed exact-origin retrieval, deterministic precedence, immutable selection/shadow provenance and bounded positive/negative evidence. Phase 24 still owns live calibration and decay evaluation. CW-01/CW-06 retain conditional clarification and closed rule scopes. [learning contract](contracts/learning-lifecycle-v1.md), [clarification contract](contracts/conditional-clarification-v1.md), [rule evaluator](../internal/semantics/rules_evaluate.go) |
 | BLK-01, BLK-03, BLK-04, BLK-06 | **Implemented; final manual integration evidence remains.** | CW-03 closes BLK-01. CW-09 adds bilingual period certification findings, reviewed intent overlap evidence, fixed-slot list binds and dialect-bound assistance dispositions with immutable provenance. [period review](../internal/reporting/period_language.go), [question intent](../internal/reporting/question_intent.go), [assistance](../internal/reporting/assistance.go) |
 | BLK-05, BLK-07 | **Runtime path inspected; inherited fields and policy mapping remain open.** | Bounded narratives use retained redacted evidence and receipts, and manifests seal deployment limits. Expected schema still lacks inherited sensitivity; authored maximum-claims and source-query policy mappings remain absent. No fresh runtime result is attributed here. [narrative evidence](../internal/reporting/runs_narrative.go#L82), [narrative definition](../internal/reporting/model.go#L137), [sealed limits](../internal/reporting/runs_model.go#L46) |
-| MIG-01, EVAL-01, PERF-01 | **Pending or unmeasured.** | The dated manifest is provenance only. Calibration, import/cutover, warm/cold authority-aware reuse and live latency/cost still require Phase 24/34/25 evidence. [evaluation plan](../docs/plans/phase-24-eval.md#L17), [cutover plan](../docs/plans/phase-34-migration-parity-cutover.md#L38), [routing cache boundary](../internal/nlqroute/service.go#L192) |
+| MIG-01, EVAL-01, PERF-01 | **Migration runtime implemented; owner evidence and performance remain pending.** | Phase 34 now has an exhaustive neutral manifest, dependency-ordered public-service import, quarantine, retention and fenced cutover/rollback runtime. It deliberately cannot manufacture the Phase 24 owner comparison rows or Phase 25 live latency/cost proof. [migration contract](contracts/migration-cutover-v1.md), [evaluation plan](../docs/plans/phase-24-eval.md#L17), [routing cache boundary](../internal/nlqroute/service.go#L192) |
 | VIS-01, VIS-02, VIS-03, VIS-04 | **VIS-01/03 are implemented by CW-05; VIS-02/04 are implemented by CW-02. Final qualification remains.** | Versioned mappings retain rich KPI/table and per-column display intent; retained viewer and static/export consumers apply it. Full Phase 32 composition/worker/rendition persistence and Phase 34 import remain open. [chart mapping](../internal/charts/model.go), [retained renderer](../internal/rendering/render.go), [viewer formatter](../web/report-viewer/app.js) |
 
 ### Current bounded validation record
@@ -396,15 +396,15 @@ phase 24/34/25 manual-suite obligations.
 
 ### MIG-01 — Topic-only portability does not carry the calibrated topic environment
 
-- **Disposition:** narrowed; full migration pending.
+- **Disposition:** runtime contract implemented; dependency integration and owner-run evidence pending.
 - **Owner / phases:** 15 subset; 34 full migration.
 - **Reference behavior (neutral):** Original topic export includes template closure, semantic samples, applicable rules, reporting blocks and dependent records.
-- **Current boundary:** Go PortablePack intentionally transfers a safe semantic subset through explicit destination mappings. Broader migration is assigned to phase34.
+- **Current boundary:** Go PortablePack remains the safe topic projection. Phase34 wraps it in a closed manifest spanning sources/uploads/profiles/topics/rules/templates/blocks/reports/dashboards/filters/schedules/runs/artifacts/renditions/certificates/tombstones/calibration, with exact mappings, retention, a complete field-loss ledger and all 63 feature evidence rows. Historical evidence is quarantined and calibration remains a review candidate. Private owner comparison references and pending Phase24/33 heads still gate readiness.
 - **Consequence:** A successful topic import cannot be treated as a migrated calibrated system. Keep the safe mapping, but explicitly transfer the surrounding authored/learned behavior with lifecycle revalidation.
 - **Contract, storage and import impact:** Define a bundle manifest covering semantic, rules, examples/templates and dependent outputs. Import must enumerate carried/transformed/rejected fields, revalidate current authority and never treat a topic-only import as calibrated-system migration.
 - **Closure requirements:** Export/import templates, rules, examples and dependent mappings; report every carried/transformed/rejected record and verify behavior after reauthorization.
 - **Source evidence IDs:** REF-MIG-01-A, REF-MIG-01-B.
-- **Current repository evidence:** [internal/semantics/portable.go:28](../internal/semantics/portable.go#L28); [docs/plans/phase-34-migration-parity-cutover.md:17](../docs/plans/phase-34-migration-parity-cutover.md#L17).
+- **Current repository evidence:** [migration runtime](../internal/migration/service.go); [manifest validation](../internal/migration/validate.go); [migration contract](contracts/migration-cutover-v1.md); [Phase34 acceptance](../test/acceptance/phase34_test.go).
 
 ### VIS-01 — Rich KPI and table authoring options are absent
 
@@ -569,12 +569,12 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-02 — Calibrated operating configuration; 05/18/24/34
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** credential-free manifest and review-candidate import implemented; calibrated owner workload evidence pending.
 - **Boundary:** Reference has active/fallback prompt packs, template thresholds and optimization records. Source checkout is not the owner's calibrated deployed database.
 - **Contract, storage and import impact:** Calibration manifests must be externalized as versioned configuration/state with no credentials; import/export and rollback need explicit unknown-field handling.
 - **Required comparison and closure evidence:** Inventory approved prompts/settings/example weights/model and embedding versions outside repo; map every retained setting and explicitly reject unknown ones. Reproduce a held-out result set before/after rollback. Record exact revisions, model configuration, source/data snapshot and budget. Never import credentials or auto-promote old calibration.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
+- **Current repository evidence:** Phase34 rejects credential/identity-policy keys recursively, requires explicit model/embedding/budget revisions and imports calibration only as a review candidate. [manifest validation](../internal/migration/validate.go); [contract](contracts/migration-cutover-v1.md). Phase24 owner evidence remains required.
 
 ### EXP-03 — Query interaction and diagnostics; 18/21/22/23/31
 
@@ -587,12 +587,12 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-04 — Upload fidelity and downstream closure; 11/12/15/33/34
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** migration mapping and loss diagnostics implemented; Phase33 journey/evidence pending.
 - **Boundary:** Phase11 supports bounded CSV/XLSX/Parquet, exact declared values and explicit sheet selection; parser subset limitations are documented.
 - **Contract, storage and import impact:** Upload parser, profile, semantic draft, query, report and erasure contracts must preserve supported format decisions and explicit unsupported diagnostics.
 - **Required comparison and closure evidence:** Matrix of supported encodings/delimiters/headers, sheet choices, null/empty, locale decimals, timestamps/timezones, large identifiers and unsupported formulas/encodings. Follow representative upload through profile, semantic draft, clarification, query and report. Verify full erasure across derived data and retained outputs; unsupported variants get explicit diagnostics. Do not mark arbitrary spreadsheet execution as parity.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** [docs/plans/phase-11-uploads-workspace.md:31](../docs/plans/phase-11-uploads-workspace.md#L31); [docs/plans/phase-12-engineering-profiling.md:31](../docs/plans/phase-12-engineering-profiling.md#L31).
+- **Current repository evidence:** Upload/profile rows map to currently authorized governed objects; uploaded bytes and credentials are excluded, unsupported fields quarantine the cohort, and tombstone/retention rows survive the graph. [domain adapters](../internal/foundation/migration.go); [manifest contract](contracts/migration-cutover-v1.md). Phase33 still owns the end-user setup journey.
 
 ### EXP-05 — Rule interaction and semantic edits; 15/16/17/24
 
@@ -605,30 +605,30 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-06 — Report filter and layout semantics; 28/29/31/34
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** versioned document import and loss-ledger path implemented; owner equivalence evidence pending.
 - **Boundary:** Phase 28/29/31 consumers are present in the merged baseline; field-level filter/layout equivalence and release evidence remain unassessed.
 - **Contract, storage and import impact:** Report filter/layout/run-manifest contracts must preserve precedence, distinct parameterized runs, empty states, locale labels and private previews.
 - **Required comparison and closure evidence:** Table of global/local/default/explicit values, typed parameter bindings and precedence. Shared block with distinct parameters must run separately; truly equivalent approved runs may share only within exact authority/context. Test empty selections, zero visible pages, locale labels, partial failure, widget order and private preview retained after publication.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
+- **Current repository evidence:** Reports/dashboards use their existing version-one external import seam, filters remain immutable document JSON with exact coordinate checkpoints, and unsupported layouts quarantine rather than approximate. [domain adapters](../internal/foundation/migration.go); [contract](contracts/migration-cutover-v1.md). Private equivalence results remain external evidence.
 
 ### EXP-07 — Scheduled business windows and delivery; 06/28/30/34
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** single-stream cutover/rollback contract implemented; live calendar/delivery drill pending.
 - **Boundary:** Shared queue foundation and reporting schedule handlers are present in the merged baseline; this audit did not rerun a live calendar workload.
 - **Contract, storage and import impact:** Occurrence, authority, artifact and delivery records must be separate and idempotent, with accepted windows and revisions pinned across retries.
 - **Required comparison and closure evidence:** First/prior occurrence, DST gap/fold, leap boundaries, missed windows, retry after midnight, pause/edit/resume and latest-published pinning. Compare accepted due time/window and exact manifest across crashes. Artifact creation, catalog delivery and notification receipts are separate outcomes. Cutover creates one logical occurrence stream. Excluded event/condition stubs stay excluded.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** Owner evidence is still required at this implementation head; source inspection alone does not close this frontier.
+- **Current repository evidence:** Manifests pin stream, last accepted occurrence/due time, resume-after and schedule revision. Generation CAS admits one cohort route and rollback records irreversible delivery effects. [PostgreSQL cutover store](../internal/store/postgres/migration.go); [operator runbook](runbooks/migration-cutover.md).
 
 ### EXP-08 — Portability, retention and provenance; 28/29/32/34
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** neutral bundle, retention, provenance and online erasure runtime implemented; backup/operator evidence pending.
 - **Boundary:** Safe topic portability exists; calibrated report import and rendition retention remain pending in phases 32/34.
 - **Contract, storage and import impact:** Portability manifests must include provenance, retention and erasure dispositions at every dependent layer, with idempotent import.
 - **Required comparison and closure evidence:** Inventory fields at every layer: topic, rule, clarification, templates/examples, chart bindings/formats, block, report, schedule and historical certificate. Dry run must report every dropped/transformed/unsupported field, not merely valid JSON. Replay import idempotently. Erase source-derived retained payloads/renditions without claiming backup overwrite or deleting unrelated objects. Imported certificates remain historical, not current approval.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** [internal/semantics/portable.go:28](../internal/semantics/portable.go#L28); [docs/plans/phase-34-migration-parity-cutover.md:17](../docs/plans/phase-34-migration-parity-cutover.md#L17).
+- **Current repository evidence:** The immutable manifest carries full dependency/provenance/retention state, dry run enumerates loss, replay is digest/CAS fenced, certificates remain historical and bounded erase reports the backup/WAL boundary. [migration schema](../internal/store/postgres/migrations/047_migration_cutover.sql); [Phase34 acceptance](../test/acceptance/phase34_test.go).
 
 ### EXP-09 — Source and dialect semantic equivalence; 09/10/14/18/19/24/34
 
@@ -657,14 +657,14 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
 - **Current repository evidence:** `sdk/chartworks.ParseOperations` now retains stable status/code/receipt error inventory plus interaction role for every installed operation. Generic SDK/CLI coverage is generated for every HTTP row; a separately authorized MCP catalog produces explicit bound/public/transport/HTTP-only dispositions and rejects action/effect/audit/interaction drift. The cumulative conformance test includes selectable filters, static/durable rendition operations and guided onboarding. Domain runtime/authority tests remain required; matrix equality alone does not prove deployment or resource access.
 
-### EXP-12 — Rendering/export fidelity and interaction; 20/28/31/32
+### EXP-12 — Rendering/export fidelity and interaction; 20/28/31/32/34
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
-- **Boundary:** The current specification layer has a real Phase 31 selector/viewer consumer; static rendering/export remain Phase 32 scope, while whole-page layout requires an approved viewer/host expansion decision.
+- **Status:** native static rendering shipped and migration provenance/quarantine implemented; owner comparison remains pending.
+- **Boundary:** Phase32 supplies retained-only durable static rendering. Phase34 carries exact artifact/rendition origin, retention and renderer provenance as historical quarantine, never as a current certificate; it does not rerender during import. Whole-page layout still requires an approved viewer/host expansion decision.
 - **Contract, storage and import impact:** Chart specification, output policy, viewer, static renderer and export fields must be versioned together; read/render paths must remain source/model-free.
 - **Required comparison and closure evidence:** Compare supported data shape × chart/output × locale × interactive/static/export. Exact values, order, unit, omissions, nulls, labels and provenance must agree. Viewer redraw and retained pagination make no model/source call; filters that change data create explicit authorized runs. SVG/HTML/CSV safety and credential-free rendering stay required. PNG/PDF support must be explicitly scoped, not inferred from predecessor UI export.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** [internal/charts/model.go:135](../internal/charts/model.go#L135); [docs/plans/phase-32-reporting-rendering-embed.md:17](../docs/plans/phase-32-reporting-rendering-embed.md#L17).
+- **Current repository evidence:** [internal/charts/model.go:135](../internal/charts/model.go#L135); [static rendering plan](../docs/plans/phase-32-reporting-rendering-embed.md); [migration contract](contracts/migration-cutover-v1.md).
 
 ### Frontier rebaseline worksheet
 
