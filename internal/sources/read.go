@@ -76,24 +76,7 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 		if err != nil {
 			return err
 		}
-		// Native execution owns the physical connection, query and its cleanup.
-		// Admission, metadata fencing and the durable journal are outside this clock.
-		started := time.Now()
-		var journal *timedReadObserver
-		if observer != nil {
-			journal = &timedReadObserver{Observer: observer}
-			observer = journal
-		}
 		out, err = s.executeNative(ctx, e, p, record, connection, l, id, observer)
-		if out.RemoteState == "stopped" {
-			duration := time.Since(started).Nanoseconds()
-			if journal != nil {
-				duration -= journal.durationNS.Load()
-			}
-			if duration > 0 {
-				out.SourceDurationNS = &duration
-			}
-		}
 		if err == nil && ctx.Err() != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				err = readexec.ErrTimeout
@@ -152,6 +135,27 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 		return out, safe(err)
 	}
 	defer conn.Release()
+	// The PostgreSQL source clock starts only after a physical connection is
+	// acquired. Secret/config resolution and pool queue time are service overhead.
+	var journal *timedReadObserver
+	if observer != nil {
+		journal = &timedReadObserver{Observer: observer}
+		observer = journal
+	}
+	clockStarted := time.Now()
+	defer func() {
+		// This defer runs after transaction rollback, including bounded cleanup.
+		if out.RemoteState != "stopped" {
+			return
+		}
+		duration := time.Since(clockStarted).Nanoseconds()
+		if journal != nil {
+			duration -= journal.durationNS.Load()
+		}
+		if duration > 0 {
+			out.SourceDurationNS = &duration
+		}
+	}()
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return out, safe(err)

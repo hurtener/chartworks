@@ -532,6 +532,10 @@ func (x *Executor) execute(ctx context.Context, e identity.Envelope, p Plan, o O
 	if native.RemoteState == "unknown" {
 		status, code = "uncertain", "remote_outcome_unknown"
 	}
+	if status == "uncertain" || native.RemoteState != "stopped" {
+		// An unconfirmed remote outcome cannot carry a trusted source timing.
+		native.SourceDurationNS = nil
+	}
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), limits.CancelGrace)
 	defer stop()
 	current, err := x.repo.GetRead(cleanup, scope, a.ID)
@@ -662,6 +666,8 @@ func (x *Executor) Control(ctx context.Context, e identity.Envelope, id string, 
 		a.Status = "interrupted"
 		a.Code = "result_not_retained"
 		a.RemoteState = state
+		// Reconciliation proves termination, not the original read duration.
+		a.SourceDurationNS = nil
 		now := time.Now().UTC()
 		a.Finished = &now
 		if err = x.repo.FinishRead(ctx, scope, a, true); err != nil {

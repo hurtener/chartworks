@@ -106,9 +106,10 @@ as well as timed observations. A permitted integration/live correctness probe
 must carry physical source and model receipts before any timed sample starts.
 Read-attempt `created_at` to `finished_at` spans journaling, source work and
 finalization; it is never labeled `source_ns`. A nullable `source_duration_ns`
-on the physical read attempt measures the native source call through its cleanup
-and subtracts synchronous read journal calls. It survives the durable execution
-receipt. Legacy, unissued and uncertain
+on a PostgreSQL physical read attempt measures the native source work after
+connection acquisition through transaction cleanup and subtracts synchronous
+read journal calls. It survives the durable execution receipt. Legacy,
+unissued and uncertain
 attempts remain unknown. The current query adapter does not consume this receipt,
 so its physical-source timing gate still fails closed until the production
 composition wires the exact attempt duration into performance usage.
