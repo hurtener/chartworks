@@ -83,12 +83,12 @@ func phase32Actor(t *testing.T, scopes ...string) identity.Envelope {
 	return e
 }
 func phase32Options() rendering.Options {
-	return rendering.Options{WorkerVersion: "worker-v1", ThemeVersion: "theme-v1", MaxTime: 5 * time.Second, MaxMemoryBytes: 1 << 30, MaxInputBytes: 4 << 20, MaxOutputBytes: 4 << 20, MaxConcurrent: 2, Retention: time.Hour}
+	return rendering.Options{WorkerVersion: "worker-v1", ThemeVersion: "theme-v1", MaxTime: 5 * time.Second, MaxMemoryBytes: 1 << 30, MaxInputBytes: 4 << 20, MaxOutputBytes: 4 << 20, MaxConcurrent: 2, MaxWidgets: 100, Retention: time.Hour, Isolation: "development"}
 }
 
 func phase32Authority(t *testing.T) {
 	v := &phase32Viewer{value: phase32View()}
-	s, _ := rendering.New(v, 1<<20)
+	s, _ := rendering.NewManaged(v, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 1 << 20}, 1<<20, phase32Options())
 	in := phase32Request("html")
 	denied := phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:other")
 	if _, err := s.Export(t.Context(), denied, in); err == nil || v.calls != 0 {
@@ -106,10 +106,13 @@ func phase32BFF(t *testing.T) {
 		gotAuth = r.Header.Get("Authorization")
 		content := "<p>sealed</p>"
 		digest := sha256.Sum256([]byte(content))
-		_ = json.NewEncoder(w).Encode(rendering.Rendition{Format: "html", MediaType: "text/html; charset=utf-8", Content: content, Bytes: len(content), Digest: hex.EncodeToString(digest[:])})
+		_ = json.NewEncoder(w).Encode(rendering.Rendition{State: "succeeded", Version: rendering.Version, Format: "html", MediaType: "text/html; charset=utf-8", Theme: "light", Width: 800, Height: 420, Content: content, Bytes: len(content), Digest: hex.EncodeToString(digest[:])})
 	}))
 	defer up.Close()
-	h, err := bffexample.New(up.URL, up.Client(), func(context.Context) (string, error) { return "pengui-server-token", nil }, []string{"https://console.example"})
+	binding := bffexample.Binding{Tenant: "tenant", User: "user", Session: "session"}
+	h, err := bffexample.New(up.URL, up.Client(), func(context.Context, *http.Request) (bffexample.Binding, error) { return binding, nil }, func(context.Context, bffexample.Binding) (bffexample.ScopedToken, error) {
+		return bffexample.ScopedToken{Bearer: "pengui-server-token", Binding: binding}, nil
+	}, []string{"https://console.example"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,8 +177,27 @@ func phase32StaticWorker(t *testing.T) {
 	textService, _ := rendering.NewManaged(textViewer, rendering.NewMemoryRepository(), p, 4<<20, phase32Options())
 	full.Format = "svg"
 	graphic, err := textService.Generate(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), full)
-	if err != nil || !strings.Contains(graphic.Content, `x="141"`) || !strings.Contains(graphic.Content, "Exact &lt;text&gt;") {
+	if err != nil || graphic.Height != 408 || !strings.Contains(graphic.Content, `height="408"`) || !strings.Contains(graphic.Content, `x="141"`) || !strings.Contains(graphic.Content, "Exact &lt;text&gt;") {
 		t.Fatal("svg composition geometry", err, graphic.Content)
+	}
+	tableGraphic, err := compositionService.Generate(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), full)
+	if err != nil || !strings.Contains(tableGraphic.Content, `data-kind="table"`) || !strings.Contains(tableGraphic.Content, "12,345,678,901,234,567,890.12 USD") {
+		t.Fatal("svg table composition", err, tableGraphic.Content)
+	}
+	boundedRoot := root
+	boundedRoot.Pages = append([]reporting.CompositionPageSummary(nil), root.Pages...)
+	boundedRoot.Pages[0].Widgets = append(boundedRoot.Pages[0].Widgets, reporting.CompositionWidgetSummary{ID: "w2", Kind: "block", State: "completed", Grid: reporting.GridCell{Column: 8, Row: 3, Width: 4, Height: 6}})
+	boundedViewer := &phase32Viewer{fn: func(request reporting.DeliveryViewRequest) (reporting.DeliveryViewResult, error) {
+		if request.Widget == "" {
+			return boundedRoot, nil
+		}
+		return phase32View(), nil
+	}}
+	boundedOptions := phase32Options()
+	boundedOptions.MaxWidgets = 1
+	boundedService, _ := rendering.NewManaged(boundedViewer, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 4 << 20}, 4<<20, boundedOptions)
+	if _, err := boundedService.Export(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), full); !errors.Is(err, reporting.ErrBudget) {
+		t.Fatal("aggregate widget budget", err)
 	}
 }
 
@@ -183,7 +205,7 @@ func phase32Injection(t *testing.T) {
 	view := phase32View()
 	view.Output.Table.Columns[0].DisplayLabel = `<img src=x onerror=alert(1)>`
 	v := &phase32Viewer{value: view}
-	s, _ := rendering.New(v, 1<<20)
+	s, _ := rendering.NewManaged(v, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 1 << 20}, 1<<20, phase32Options())
 	out, err := s.Export(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), phase32Request("html"))
 	if err != nil || !strings.Contains(out.Content, "&lt;img") {
 		t.Fatal(err, out.Content)
@@ -262,7 +284,7 @@ func phase32ProcessLimits(t *testing.T) {
 
 func phase32ExactFidelity(t *testing.T) {
 	v := &phase32Viewer{value: phase32View()}
-	s, _ := rendering.New(v, 1<<20)
+	s, _ := rendering.NewManaged(v, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 1 << 20}, 1<<20, phase32Options())
 	actor := phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run")
 	j, err := s.Export(t.Context(), actor, phase32Request("json"))
 	if err != nil || !strings.Contains(j.Content, "12345678901234567890.12") || !strings.Contains(j.Content, "\"null\":true") {
@@ -323,7 +345,7 @@ func phase32Lifecycle(t *testing.T) {
 
 func phase32ExportMatrix(t *testing.T) {
 	v := &phase32Viewer{value: phase32View()}
-	s, _ := rendering.New(v, 1<<20)
+	s, _ := rendering.NewManaged(v, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 1 << 20}, 1<<20, phase32Options())
 	actor := phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run")
 	for _, format := range []string{"json", "csv", "html"} {
 		if _, err := s.Export(t.Context(), actor, phase32Request(format)); err != nil {

@@ -13,12 +13,22 @@ func main() {
 		os.Exit(64)
 	}
 	memory := int64(256 << 20)
+	maxInput, maxOutput := 16<<20, 16<<20
 	if raw := os.Getenv("GOMEMLIMIT_BYTES"); raw != "" {
 		if n, e := strconv.ParseInt(raw, 10, 64); e == nil {
 			memory = n
 		}
 	}
-	if err := rendering.WorkerMain(os.Stdin, os.Stdout, 16<<20, 16<<20, memory); err != nil {
+	for key, target := range map[string]*int{"RENDER_MAX_INPUT_BYTES": &maxInput, "RENDER_MAX_OUTPUT_BYTES": &maxOutput} {
+		if raw := os.Getenv(key); raw != "" {
+			if n, e := strconv.Atoi(raw); e == nil && n >= 1024 && n <= 64<<20 {
+				*target = n
+			} else {
+				os.Exit(64)
+			}
+		}
+	}
+	if err := rendering.WorkerMain(os.Stdin, os.Stdout, maxInput, maxOutput, memory); err != nil {
 		os.Exit(1)
 	}
 }

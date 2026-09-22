@@ -17,7 +17,7 @@ Delete the earlier Chartworks embed-grant/bootstrap-code/view-token proposal. No
 ## Scope and implementation tasks
 
 1. Add authenticated artifact HTML/SVG/rendition endpoints; reuse the viewer contract and a Pengui/client-owned BFF iframe integration.
-2. Render tables/KPIs/text in Go and charts using an optional isolated pinned ECharts SVG worker; consume sealed values, never a URL/query.
+2. Render every static HTML/SVG output through the mandatory pinned worker; consume sealed values, never a URL/query.
 3. Retain rendition version/theme/viewport metadata, sanitize content and bound resources; declare supported exports separately from paginated documents.
 
 Render jobs contain artifact/spec/data/theme/viewport/version only. The renderer has no source/model credentials, arbitrary script or network egress. The process boundary is supervised with resource/time/output limits, returning typed failures. Canonical exact numbers feed labels/tables/exports even when chart geometry uses numeric approximation. The BFF forwards a scoped Pengui bearer server-side and serves the authorized iframe route with approved parent policy; Chartworks issues nothing.
@@ -28,7 +28,7 @@ No standalone page builder, headless browser for every chart, arbitrary remote U
 
 ## Config and persistence
 
-`rendering.enabled`, worker_path/version, max time/memory/output/concurrency, safe theme/assets; trusted BFF frame-ancestor configuration. No signing/bootstrap cookie configuration. Persist rendition version and artifact reference plus bounded bytes in the existing artifact retention path. A BFF example is a concrete consumer, not a new IAM endpoint.
+`rendering.enabled`, worker path/version, Linux namespace isolation, aggregate max time/input/output/widgets, memory/concurrency, retention and safe theme assets. Disabled rendering registers no static endpoint. The client-owned BFF configures its own trusted frame ancestors. No signing/bootstrap cookie configuration. Persist rendition version and artifact reference plus bounded bytes in the existing artifact retention path. A BFF example is a concrete consumer, not a new IAM endpoint.
 
 ## Acceptance criteria
 
@@ -51,9 +51,12 @@ Iframe is delivery; SSR is where content is rendered. Neither requires Chartwork
 
 ## Runtime evidence, 2026-09-22
 
-D-079 supplies the exact static projection. D-082 adds the isolated worker,
+D-079 supplies the exact static projection. D-083 adds the isolated worker,
 PostgreSQL rendition lifecycle, report/dashboard geometry, current-authority reads,
 HTTP/MCP/SDK/CLI registration and concrete client-owned BFF example. TestPhase32
 owns AC01–AC08, including real process/crash/timeout boundaries and the explicit
 JSON/CSV/HTML/SVG-only matrix. Static HTML/SVG covers the complete fourteen-kind
 catalog: table and KPI presentations plus geometry for every twelve chart kinds.
+The reference deployment requires a statically linked Linux worker and creates a
+fresh user/mount/network/IPC/UTS/PID namespace plus an empty chroot per request.
+Non-Linux construction fails closed unless tests explicitly select development mode.

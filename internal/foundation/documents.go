@@ -35,9 +35,9 @@ func mountDocuments(limits config.Reporting, renderConfig config.Rendering, db *
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	renderer, err := rendering.New(delivery, 16<<20)
+	var renderer *rendering.Service
 	if renderConfig.Enabled {
-		options := rendering.Options{WorkerVersion: renderConfig.WorkerVersion, ThemeVersion: renderConfig.ThemeVersion, MaxTime: time.Duration(renderConfig.MaxTime), MaxMemoryBytes: renderConfig.MaxMemoryBytes, MaxInputBytes: renderConfig.MaxInputBytes, MaxOutputBytes: renderConfig.MaxOutputBytes, MaxConcurrent: renderConfig.MaxConcurrent, Retention: time.Duration(renderConfig.Retention)}
+		options := rendering.Options{WorkerVersion: renderConfig.WorkerVersion, ThemeVersion: renderConfig.ThemeVersion, MaxTime: time.Duration(renderConfig.MaxTime), MaxMemoryBytes: renderConfig.MaxMemoryBytes, MaxInputBytes: renderConfig.MaxInputBytes, MaxOutputBytes: renderConfig.MaxOutputBytes, MaxConcurrent: renderConfig.MaxConcurrent, MaxWidgets: renderConfig.MaxWidgets, Retention: time.Duration(renderConfig.Retention), Isolation: renderConfig.Isolation}
 		worker, workerErr := rendering.NewProcess(renderConfig.WorkerPath, options)
 		if workerErr != nil {
 			return nil, nil, nil, nil, workerErr
@@ -47,7 +47,7 @@ func mountDocuments(limits config.Reporting, renderConfig config.Rendering, db *
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	deliveryRegistry, err := reportingapi.DeliveryRegistry(delivery.CanExecute(), true, renderer.Durable())
+	deliveryRegistry, err := reportingapi.DeliveryRegistry(delivery.CanExecute(), renderer != nil, renderer != nil && renderer.Durable())
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

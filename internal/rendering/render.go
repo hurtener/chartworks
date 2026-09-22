@@ -107,6 +107,14 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 	if !oneOf(in.Format, "json", "csv", "html", "svg") || !oneOf(in.Theme, "light", "dark") || in.Width < 320 || in.Width > 4096 || in.Height < 200 || in.Height > 4096 || in.View.Limit < 0 || in.View.Limit > 1000 {
 		return Rendition{}, ErrInvalid
 	}
+	if (in.Format == "html" || in.Format == "svg") && s.processor == nil {
+		return Rendition{}, ErrInvalid
+	}
+	if s.processor != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.options.MaxTime)
+		defer cancel()
+	}
 	if err := access.Require(e, "reporting.export", access.Resource{Tenant: e.Tenant(), Kind: "run", Permission: "export", ID: in.View.Run}); err != nil {
 		return Rendition{}, err
 	}
@@ -128,7 +136,9 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 
 func (s *Service) render(ctx context.Context, in Request, view reporting.DeliveryViewResult) (Rendition, error) {
 	if s.processor != nil && (in.Format == "html" || in.Format == "svg") {
-		out, err := s.processor.Process(ctx, SealedWork{Version: WorkerProtocolVersion, Request: in, View: view})
+		work := SealedWork{Version: WorkerProtocolVersion, Request: in, View: view}
+		work.Digest = sealedDigest(work)
+		out, err := s.processor.Process(ctx, work)
 		if err != nil {
 			return Rendition{}, err
 		}
@@ -384,6 +394,9 @@ func formatValue(value charts.Value, column charts.Column, timezone string) stri
 }
 
 func renderSVG(out *reporting.ViewerOutput, theme string, width, height int, timezone string) ([]byte, error) {
+	if out.Table != nil {
+		return []byte(renderTableSVG(out, theme, width, height, timezone)), nil
+	}
 	if out.Chart == nil {
 		return nil, ErrInvalid
 	}
@@ -392,6 +405,32 @@ func renderSVG(out *reporting.ViewerOutput, theme string, width, height int, tim
 		return nil, err
 	}
 	return []byte(body), nil
+}
+func renderTableSVG(out *reporting.ViewerOutput, theme string, width, height int, timezone string) string {
+	background, foreground := "#ffffff", "#17211f"
+	if theme == "dark" {
+		background, foreground = "#17211f", "#f6f1e7"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"table\" data-kind=\"table\" data-theme=\"%s\" viewBox=\"0 0 %d %d\"><rect width=\"%d\" height=\"%d\" fill=\"%s\"/><g fill=\"%s\">", theme, width, height, width, height, background, foreground)
+	cols := max(1, len(out.Table.Columns))
+	cellWidth := max(48, width/cols)
+	for i, column := range out.Table.Columns {
+		fmt.Fprintf(&b, "<text x=\"%d\" y=\"22\" font-weight=\"bold\">%s</text>", 8+i*cellWidth, html.EscapeString(label(column)))
+	}
+	for rowIndex, row := range out.Table.Rows {
+		if rowIndex >= max(1, (height-30)/22) {
+			break
+		}
+		for i, cell := range row {
+			if i >= len(out.Table.Columns) {
+				break
+			}
+			fmt.Fprintf(&b, "<text x=\"%d\" y=\"%d\">%s</text>", 8+i*cellWidth, 46+rowIndex*22, html.EscapeString(formatCell(cell, out.Table.Columns[i], timezone)))
+		}
+	}
+	b.WriteString("</g></svg>")
+	return b.String()
 }
 func renderChartSVG(c *charts.Output, theme string, width, height int, timezone string) (string, error) {
 	if c == nil || c.Mapping.Kind != c.Kind || c.Version != c.Mapping.Version {

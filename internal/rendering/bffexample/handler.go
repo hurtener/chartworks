@@ -13,26 +13,38 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/hurtener/chartworks/internal/rendering"
 )
 
-// TokenProvider obtains one fresh scoped Pengui bearer on the server side.
-type TokenProvider func(context.Context) (string, error)
+// Binding is the already-authenticated browser identity/session coordinate.
+type Binding struct{ Tenant, User, Session string }
+
+// Authorizer verifies the client-owned browser session before any token lookup.
+type Authorizer func(context.Context, *http.Request) (Binding, error)
+
+// ScopedToken is a fresh bearer explicitly bound to the authenticated browser coordinate.
+type ScopedToken struct {
+	Bearer  string
+	Binding Binding
+}
+type TokenProvider func(context.Context, Binding) (ScopedToken, error)
 
 // Handler forwards a sealed render request and returns only static content.
 type Handler struct {
-	upstream string
-	client   *http.Client
-	token    TokenProvider
-	parents  string
+	upstream  string
+	client    *http.Client
+	token     TokenProvider
+	authorize Authorizer
+	parents   string
 }
 
 // New constructs a strict client-owned iframe BFF example.
-func New(upstream string, client *http.Client, token TokenProvider, parents []string) (*Handler, error) {
+func New(upstream string, client *http.Client, authorize Authorizer, token TokenProvider, parents []string) (*Handler, error) {
 	u, err := url.Parse(upstream)
-	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Hostname() == "" || token == nil {
+	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Hostname() == "" || token == nil || authorize == nil {
 		return nil, errors.New("bff: invalid configuration")
 	}
 	if u.Scheme != "https" && (u.Scheme != "http" || u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") {
@@ -52,12 +64,17 @@ func New(upstream string, client *http.Client, token TokenProvider, parents []st
 	}
 	copyClient := *client
 	copyClient.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("bff: redirect refused") }
-	return &Handler{strings.TrimSuffix(upstream, "/"), &copyClient, token, strings.Join(parents, " ")}, nil
+	return &Handler{upstream: strings.TrimSuffix(upstream, "/"), client: &copyClient, token: token, authorize: authorize, parents: strings.Join(parents, " ")}, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || r.URL.Path != "/iframe/render" || r.URL.RawQuery != "" {
 		http.NotFound(w, r)
+		return
+	}
+	binding, err := h.authorize(r.Context(), r)
+	if err != nil || binding.Tenant == "" || binding.User == "" || binding.Session == "" {
+		http.Error(w, "unauthenticated", http.StatusUnauthorized)
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -72,8 +89,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", 400)
 		return
 	}
-	token, err := h.token(r.Context())
-	if err != nil || token == "" || strings.ContainsAny(token, " \r\n\t") {
+	token, err := h.token(r.Context(), binding)
+	if err != nil || token.Binding != binding || token.Bearer == "" || strings.ContainsAny(token.Bearer, " \r\n\t") {
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
@@ -82,7 +99,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+token.Bearer)
 	req.Header.Set("Content-Type", "application/json")
 	response, err := h.client.Do(req)
 	if err != nil {
@@ -108,7 +125,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	wantMedia := map[string]string{"html": "text/html; charset=utf-8", "svg": "image/svg+xml"}[in.Format]
 	digest := sha256.Sum256([]byte(out.Content))
-	if out.Content == "" || out.Format != in.Format || out.MediaType != wantMedia || out.Bytes != len(out.Content) || out.Digest != hex.EncodeToString(digest[:]) {
+	heightOK := out.Height == in.Height || in.Full && in.Format == "svg" && out.Height > 0 && out.Height <= 1_000_000 && strings.Contains(out.Content, "height=\""+strconv.Itoa(out.Height)+"\"")
+	if out.Content == "" || out.State != "succeeded" || out.Version != rendering.Version || out.Format != in.Format || out.MediaType != wantMedia || out.Theme != in.Theme || out.Width != in.Width || !heightOK || out.Bytes != len(out.Content) || out.Digest != hex.EncodeToString(digest[:]) {
 		http.Error(w, "invalid upstream response", http.StatusBadGateway)
 		return
 	}

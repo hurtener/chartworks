@@ -19,10 +19,16 @@ func drawChartGeometry(b *strings.Builder, c *charts.Output, width, height int, 
 	switch c.Kind {
 	case charts.Line, charts.Area:
 		drawLines(b, c, box, c.Kind == charts.Area, timezone)
-	case charts.Bar, charts.GroupedBar, charts.StackedBar:
+	case charts.Bar:
 		drawBars(b, c, box, true, timezone)
-	case charts.ColumnChart, charts.StackedColumn:
+	case charts.ColumnChart:
 		drawBars(b, c, box, false, timezone)
+	case charts.GroupedBar:
+		drawGroupedBars(b, c, box, true, timezone)
+	case charts.StackedBar:
+		drawStackedBars(b, c, box, true, timezone)
+	case charts.StackedColumn:
+		drawStackedBars(b, c, box, false, timezone)
 	case charts.Scatter:
 		drawScatter(b, c, box, timezone)
 	case charts.Heatmap:
@@ -39,6 +45,131 @@ func drawChartGeometry(b *strings.Builder, c *charts.Output, width, height int, 
 	}
 	drawExactLabels(b, c, foreground, timezone)
 	return nil
+}
+
+func categoryKey(p charts.Point) string {
+	if p.CategoryKey != "" {
+		return p.CategoryKey
+	}
+	return p.Category.Value
+}
+func seriesKey(p charts.Point) string {
+	if p.SeriesID != "" {
+		return p.SeriesID
+	}
+	if p.Series.Value != "" {
+		return p.Series.Value
+	}
+	return p.Measure
+}
+func orderedGroups(points []charts.Point) ([]string, []string, map[string][]charts.Point) {
+	categories, series := []string{}, []string{}
+	seenC, seenS := map[string]bool{}, map[string]bool{}
+	groups := map[string][]charts.Point{}
+	for _, p := range points {
+		c, s := categoryKey(p), seriesKey(p)
+		if !seenC[c] {
+			seenC[c] = true
+			categories = append(categories, c)
+		}
+		if !seenS[s] {
+			seenS[s] = true
+			series = append(series, s)
+		}
+		groups[c] = append(groups[c], p)
+	}
+	return categories, series, groups
+}
+
+func drawGroupedBars(b *strings.Builder, c *charts.Output, box plotBox, horizontal bool, timezone string) {
+	lo, hi, found := valueRange(c.Points, func(p charts.Point) charts.Value { return p.Value }, true)
+	if !found {
+		return
+	}
+	categories, series, groups := orderedGroups(c.Points)
+	outer := map[bool]float64{true: box.h / float64(max(1, len(categories))), false: box.w / float64(max(1, len(categories)))}[horizontal]
+	inner := outer / float64(max(1, len(series)))
+	zeroX := scaled(0, lo, hi, box.x, box.w)
+	zeroY := box.y + box.h - scaled(0, lo, hi, 0, box.h)
+	seriesIndex := map[string]int{}
+	for i, s := range series {
+		seriesIndex[s] = i
+	}
+	for ci, category := range categories {
+		for _, p := range groups[category] {
+			value, ok := coordinate(p.Value)
+			if !ok {
+				continue
+			}
+			si := seriesIndex[seriesKey(p)]
+			color := chartPalette[si%len(chartPalette)]
+			label := html.EscapeString(pointLabel(c, p, timezone))
+			if horizontal {
+				x := scaled(value, lo, hi, box.x, box.w)
+				fmt.Fprintf(b, "<rect class=\"bar\" data-layout=\"grouped\" data-category=\"%s\" data-series=\"%s\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), html.EscapeString(seriesKey(p)), math.Min(x, zeroX), box.y+float64(ci)*outer+float64(si)*inner+1, math.Abs(x-zeroX), math.Max(1, inner-2), color, label)
+			} else {
+				y := box.y + box.h - scaled(value, lo, hi, 0, box.h)
+				fmt.Fprintf(b, "<rect class=\"column\" data-layout=\"grouped\" data-category=\"%s\" data-series=\"%s\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), html.EscapeString(seriesKey(p)), box.x+float64(ci)*outer+float64(si)*inner+1, math.Min(y, zeroY), math.Max(1, inner-2), math.Abs(y-zeroY), color, label)
+			}
+		}
+	}
+}
+
+func drawStackedBars(b *strings.Builder, c *charts.Output, box plotBox, horizontal bool, timezone string) {
+	categories, series, groups := orderedGroups(c.Points)
+	lo, hi, found := 0.0, 0.0, false
+	for _, category := range categories {
+		pos, neg := 0.0, 0.0
+		for _, p := range groups[category] {
+			if v, ok := coordinate(p.Value); ok {
+				found = true
+				if v >= 0 {
+					pos += v
+				} else {
+					neg += v
+				}
+			}
+		}
+		lo = math.Min(lo, neg)
+		hi = math.Max(hi, pos)
+	}
+	if !found {
+		return
+	}
+	if lo == hi {
+		hi = lo + 1
+	}
+	band := map[bool]float64{true: box.h / float64(max(1, len(categories))), false: box.w / float64(max(1, len(categories)))}[horizontal]
+	seriesIndex := map[string]int{}
+	for i, s := range series {
+		seriesIndex[s] = i
+	}
+	for ci, category := range categories {
+		pos, neg := 0.0, 0.0
+		for _, p := range groups[category] {
+			v, ok := coordinate(p.Value)
+			if !ok {
+				continue
+			}
+			start := pos
+			if v >= 0 {
+				pos += v
+			} else {
+				start = neg
+				neg += v
+			}
+			end := start + v
+			color := chartPalette[seriesIndex[seriesKey(p)]%len(chartPalette)]
+			label := html.EscapeString(pointLabel(c, p, timezone))
+			if horizontal {
+				x1, x2 := scaled(start, lo, hi, box.x, box.w), scaled(end, lo, hi, box.x, box.w)
+				fmt.Fprintf(b, "<rect class=\"bar\" data-layout=\"stacked\" data-category=\"%s\" data-start=\"%.6g\" data-end=\"%.6g\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), start, end, math.Min(x1, x2), box.y+float64(ci)*band+2, math.Abs(x2-x1), math.Max(1, band-4), color, label)
+			} else {
+				y1, y2 := box.y+box.h-scaled(start, lo, hi, 0, box.h), box.y+box.h-scaled(end, lo, hi, 0, box.h)
+				fmt.Fprintf(b, "<rect class=\"column\" data-layout=\"stacked\" data-category=\"%s\" data-start=\"%.6g\" data-end=\"%.6g\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), start, end, box.x+float64(ci)*band+2, math.Min(y1, y2), math.Max(1, band-4), math.Abs(y2-y1), color, label)
+			}
+		}
+	}
 }
 
 func drawExactLabels(b *strings.Builder, c *charts.Output, foreground, timezone string) {
@@ -215,16 +346,40 @@ func drawHeatmap(b *strings.Builder, c *charts.Output, box plotBox, timezone str
 	if !found {
 		return
 	}
-	count := max(1, len(c.Points))
-	columns := max(1, int(math.Ceil(math.Sqrt(float64(count)))))
-	cellW, cellH := box.w/float64(columns), box.h/float64((count+columns-1)/columns)
-	for index, point := range c.Points {
+	if lo == hi {
+		hi = lo + 1
+	}
+	xs, ys := []string{}, []string{}
+	xi, yi := map[string]int{}, map[string]int{}
+	axis := func(v charts.Value) string {
+		if v.Exact != "" {
+			return v.Exact
+		}
+		if n, ok := coordinate(v); ok {
+			return fmt.Sprintf("%.12g", n)
+		}
+		return ""
+	}
+	for _, point := range c.Points {
+		x, y := axis(point.X), axis(point.Y)
+		if _, ok := xi[x]; !ok {
+			xi[x] = len(xs)
+			xs = append(xs, x)
+		}
+		if _, ok := yi[y]; !ok {
+			yi[y] = len(ys)
+			ys = append(ys, y)
+		}
+	}
+	cellW, cellH := box.w/float64(max(1, len(xs))), box.h/float64(max(1, len(ys)))
+	for _, point := range c.Points {
 		value, ok := coordinate(point.Value)
 		if !ok {
 			continue
 		}
 		opacity := 0.2 + 0.8*(value-lo)/(hi-lo)
-		fmt.Fprintf(b, "<rect class=\"heatmap\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"#16877c\" fill-opacity=\"%.3f\"><title>%s</title></rect>", box.x+float64(index%columns)*cellW, box.y+float64(index/columns)*cellH, math.Max(1, cellW-2), math.Max(1, cellH-2), opacity, html.EscapeString(pointLabel(c, point, timezone)))
+		x, y := axis(point.X), axis(point.Y)
+		fmt.Fprintf(b, "<rect class=\"heatmap\" data-x=\"%s\" data-y=\"%s\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"#16877c\" fill-opacity=\"%.3f\"><title>%s</title></rect>", html.EscapeString(x), html.EscapeString(y), box.x+float64(xi[x])*cellW, box.y+float64(yi[y])*cellH, math.Max(1, cellW-2), math.Max(1, cellH-2), opacity, html.EscapeString(pointLabel(c, point, timezone)))
 	}
 }
 

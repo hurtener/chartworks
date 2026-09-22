@@ -35,18 +35,27 @@ type Options struct {
 	MaxTime                                      time.Duration
 	MaxMemoryBytes                               int64
 	MaxInputBytes, MaxOutputBytes, MaxConcurrent int
+	MaxWidgets                                   int
 	Retention                                    time.Duration
+	Isolation                                    string
 }
 
 func (o Options) valid() bool {
-	return o.WorkerVersion != "" && o.ThemeVersion != "" && o.MaxTime >= 100*time.Millisecond && o.MaxTime <= time.Minute && o.MaxMemoryBytes >= 32<<20 && o.MaxMemoryBytes <= 2<<30 && o.MaxInputBytes >= 1024 && o.MaxInputBytes <= 64<<20 && o.MaxOutputBytes >= 1024 && o.MaxOutputBytes <= 64<<20 && o.MaxConcurrent >= 1 && o.MaxConcurrent <= 16 && o.Retention >= time.Minute && o.Retention <= 90*24*time.Hour
+	return o.WorkerVersion != "" && o.ThemeVersion != "" && o.MaxTime >= 100*time.Millisecond && o.MaxTime <= time.Minute && o.MaxMemoryBytes >= 32<<20 && o.MaxMemoryBytes <= 2<<30 && o.MaxInputBytes >= 1024 && o.MaxInputBytes <= 64<<20 && o.MaxOutputBytes >= 1024 && o.MaxOutputBytes <= 64<<20 && o.MaxConcurrent >= 1 && o.MaxConcurrent <= 16 && o.MaxWidgets >= 1 && o.MaxWidgets <= 1000 && o.Retention >= time.Minute && o.Retention <= 90*24*time.Hour && (o.Isolation == "linux_namespaces" || o.Isolation == "development")
 }
 
 // SealedWork is the complete credential-free worker input.
 type SealedWork struct {
-	Version string                       `json:"version"`
-	Request Request                      `json:"request"`
-	View    reporting.DeliveryViewResult `json:"view"`
+	Version     string                       `json:"version"`
+	Digest      string                       `json:"request_digest"`
+	Request     Request                      `json:"request"`
+	View        reporting.DeliveryViewResult `json:"view"`
+	Composition *SealedComposition           `json:"composition,omitempty"`
+}
+
+type SealedComposition struct {
+	Content      string `json:"content"`
+	SourceDigest string `json:"source_digest"`
 }
 
 // Processor transforms one sealed retained view into static bytes.
@@ -226,7 +235,10 @@ func (m *MemoryRepository) PutRendition(_ context.Context, r Record) (Record, er
 	defer m.mu.Unlock()
 	k := r.Tenant + "/" + r.Rendition.ID
 	if old, ok := m.rows[k]; ok {
-		return old, nil
+		if old.Rendition.ExpiresAt.After(r.Rendition.CreatedAt) {
+			return old, nil
+		}
+		delete(m.rows, k)
 	}
 	m.rows[k] = r
 	return r, nil

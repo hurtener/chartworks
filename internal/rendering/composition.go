@@ -21,6 +21,18 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 		return Rendition{}, ErrInvalid
 	}
 	pages := append([]reporting.CompositionPageSummary(nil), root.Pages...)
+	widgetCount := 0
+	for _, page := range pages {
+		widgetCount += len(page.Widgets)
+	}
+	if widgetCount > s.options.MaxWidgets {
+		return Rendition{}, reporting.ErrBudget
+	}
+	inputBytes := 0
+	actualHeight := in.Height
+	if in.Format == "svg" {
+		actualHeight = compositionHeight(pages)
+	}
 	provenance := sha256.New()
 	rootWire, _ := json.Marshal(struct {
 		Summary reporting.DeliveryRunSummary
@@ -31,7 +43,7 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 	if in.Format == "html" {
 		fmt.Fprintf(&b, "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\"><style>body{margin:0}main{width:%dpx}.page{display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:32px;gap:8px}.widget{overflow:hidden;border:1px solid #ddd;padding:8px}</style></head><body><main>", in.Width)
 	} else {
-		fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" width=\"%d\" height=\"%d\" viewBox=\"0 0 %d %d\">", in.Width, in.Height, in.Width, compositionHeight(pages))
+		fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" width=\"%d\" height=\"%d\" viewBox=\"0 0 %d %d\">", in.Width, actualHeight, in.Width, actualHeight)
 	}
 	pageY := 0
 	for _, page := range pages {
@@ -63,6 +75,11 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 				return Rendition{}, err
 			}
 			content := ""
+			viewWire, _ := json.Marshal(view)
+			inputBytes += len(viewWire)
+			if inputBytes > s.options.MaxInputBytes {
+				return Rendition{}, reporting.ErrBudget
+			}
 			switch {
 			case view.Text != nil:
 				content = html.EscapeString(view.Text.Text)
@@ -74,9 +91,12 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 					return Rendition{}, renderErr
 				}
 				content = rendered.Content
-				_, _ = provenance.Write([]byte(rendered.SourceDigest))
+				_, _ = provenance.Write([]byte(view.Output.RetainedDigest))
 			default:
 				continue
+			}
+			if b.Len()+len(content) > s.maxBytes {
+				return Rendition{}, reporting.ErrBudget
 			}
 			if in.Format == "html" {
 				fmt.Fprintf(&b, "<article class=\"widget\" data-widget=\"%s\" style=\"grid-column:%d/span %d;grid-row:%d/span %d\"><h2>%s</h2>%s</article>", html.EscapeString(widget.ID), widget.Grid.Column+1, widget.Grid.Width, widget.Grid.Row+2, widget.Grid.Height, html.EscapeString(widget.Presentation.Title), htmlFragment(content, view.Text != nil))
@@ -108,8 +128,11 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 	if len(content) > s.maxBytes {
 		return Rendition{}, reporting.ErrBudget
 	}
-	sum := sha256.Sum256([]byte(content))
-	return Rendition{State: "succeeded", Version: Version, Format: in.Format, MediaType: map[bool]string{true: "text/html; charset=utf-8", false: "image/svg+xml"}[in.Format == "html"], Theme: in.Theme, Width: in.Width, Height: in.Height, SourceDigest: hex.EncodeToString(provenance.Sum(nil)), Digest: hex.EncodeToString(sum[:]), Bytes: len(content), Content: content}, nil
+	request := in
+	request.Height = actualHeight
+	work := SealedWork{Version: WorkerProtocolVersion, Request: request, View: root, Composition: &SealedComposition{Content: content, SourceDigest: hex.EncodeToString(provenance.Sum(nil))}}
+	work.Digest = sealedDigest(work)
+	return s.processor.Process(ctx, work)
 }
 
 func htmlFragment(s string, text bool) string {

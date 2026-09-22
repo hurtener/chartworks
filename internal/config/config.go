@@ -173,7 +173,6 @@ func (c Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.values) }
 // Values returns a deep copy, so consumers cannot race by mutating the live snapshot.
 func (c Config) Values() Values {
 	v := c.values
-	v.Rendering.FrameAncestors = append([]string{}, c.values.Rendering.FrameAncestors...)
 	v.MCP = c.values.MCP.Clone()
 	v.Server.CORSAllowlist = append([]string{}, c.values.Server.CORSAllowlist...)
 	v.Sources = c.values.Sources.Clone()

@@ -27,6 +27,9 @@ func (d *DB) PutRendition(ctx context.Context, r rendering.Record) (out renderin
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, e = tx.Exec(ctx, `DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND rendition_id=$2 AND expires_at<=$3`, r.Tenant, r.Rendition.ID, r.Rendition.CreatedAt); e != nil {
+			return e
+		}
 		tag, e := tx.Exec(ctx, `INSERT INTO chartworks.render_renditions(tenant_id,rendition_id,run_id,output_id,actor_id,session_id,private,source_digest,renderer_version,theme_version,format,request,rendition,content_digest,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT DO NOTHING`, r.Tenant, r.Rendition.ID, r.Request.View.Run, r.Request.View.Output, r.Actor, r.Session, r.Private, r.Rendition.SourceDigest, r.Rendition.WorkerVersion, r.Rendition.ThemeVersion, r.Rendition.Format, request, body, r.Rendition.Digest, r.Rendition.CreatedAt, r.Rendition.ExpiresAt)
 		if e != nil {
 			return e

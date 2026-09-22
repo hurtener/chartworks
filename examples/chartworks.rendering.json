@@ -1,5 +1,7 @@
 {
-  "features": { "renderer": true },
+  "features": {
+    "renderer": true
+  },
   "rendering": {
     "enabled": true,
     "worker_path": "/opt/chartworks/bin/chartworks-renderer",
@@ -11,6 +13,7 @@
     "max_output_bytes": 16777216,
     "max_concurrent": 2,
     "retention": "24h",
-    "frame_ancestors": ["https://pengui.example"]
+    "max_widgets": 100,
+    "isolation": "linux_namespaces"
   }
 }
