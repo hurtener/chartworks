@@ -27,6 +27,7 @@ type Enhancement struct {
 	Name         string           `json:"name"`
 	Aggregation  Aggregation      `json:"aggregation,omitempty"`
 	Role         DimensionRole    `json:"role,omitempty"`
+	Geography    bool             `json:"geography,omitempty"`
 	Reason       string           `json:"reason,omitempty"`
 	Description  string           `json:"description,omitempty"`
 	Aliases      []string         `json:"aliases,omitempty"`
@@ -91,15 +92,15 @@ func ApplyRichEnhancements(model Model, version string, proposals []Enhancement,
 		}
 		switch item.Kind {
 		case EnhancementMeasure:
-			if !validLine(item.Name, 256) || !item.Aggregation.valid() || item.Role != "" || item.Reason != "" || !validText(item.Description, 4096) || !validAliases(item.Aliases) || !validOptionalLine(item.Unit, 64) || !item.SemanticRole.valid() || len(item.Values) != 0 || item.Temporal != nil || !validFilters(item.Filters) {
+			if !validLine(item.Name, 256) || !item.Aggregation.valid() || item.Role != "" || item.Geography || item.Reason != "" || !validText(item.Description, 4096) || !validAliases(item.Aliases) || !validOptionalLine(item.Unit, 64) || !item.SemanticRole.valid() || len(item.Values) != 0 || item.Temporal != nil || !validFilters(item.Filters) {
 				return Model{}, invalid(CodeInvalidValue, "enhancements.measure")
 			}
 		case EnhancementDimension:
-			if !validLine(item.Name, 256) || !item.Role.valid() || item.Aggregation != "" || item.Reason != "" || !validText(item.Description, 4096) || !validAliases(item.Aliases) || item.Unit != "" || !item.SemanticRole.valid() || !validGovernedValues(item.Values) || !validTemporal(item.Temporal, item.Role) || !validFilters(item.Filters) {
+			if !validLine(item.Name, 256) || !item.Role.valid() || item.Geography && item.Role != DimensionCategorical || item.Aggregation != "" || item.Reason != "" || !validText(item.Description, 4096) || !validAliases(item.Aliases) || item.Unit != "" || !item.SemanticRole.valid() || !validGovernedValues(item.Values) || !validTemporal(item.Temporal, item.Role) || !validFilters(item.Filters) {
 				return Model{}, invalid(CodeInvalidValue, "enhancements.dimension")
 			}
 		case EnhancementUnresolved:
-			if item.Name != "" || item.Aggregation != "" || item.Role != "" || !validLine(item.Reason, 256) || item.Description != "" || len(item.Aliases) != 0 || item.Unit != "" || item.SemanticRole != "" || len(item.Values) != 0 || item.Temporal != nil || len(item.Filters) != 0 {
+			if item.Name != "" || item.Aggregation != "" || item.Role != "" || item.Geography || !validLine(item.Reason, 256) || item.Description != "" || len(item.Aliases) != 0 || item.Unit != "" || item.SemanticRole != "" || len(item.Values) != 0 || item.Temporal != nil || len(item.Filters) != 0 {
 				return Model{}, invalid(CodeInvalidValue, "enhancements.unresolved")
 			}
 		default:
@@ -127,7 +128,7 @@ func ApplyRichEnhancements(model Model, version string, proposals []Enhancement,
 		case EnhancementMeasure:
 			p.Measures = append(p.Measures, Measure{ID: id, Name: item.Name, Description: item.Description, Field: ref, Aggregation: item.Aggregation, Unit: item.Unit, Aliases: append([]string(nil), item.Aliases...), Filters: cloneFilters(item.Filters)})
 		case EnhancementDimension:
-			p.Dimensions = append(p.Dimensions, Dimension{ID: id, Name: item.Name, Description: item.Description, Field: ref, Role: item.Role, Aliases: append([]string(nil), item.Aliases...), Values: append([]GovernedValue(nil), item.Values...), Temporal: item.Temporal, Filters: cloneFilters(item.Filters)})
+			p.Dimensions = append(p.Dimensions, Dimension{ID: id, Name: item.Name, Description: item.Description, Field: ref, Role: item.Role, Geography: item.Geography, Aliases: append([]string(nil), item.Aliases...), Values: append([]GovernedValue(nil), item.Values...), Temporal: item.Temporal, Filters: cloneFilters(item.Filters)})
 		case EnhancementUnresolved:
 			p.Unresolved = append(p.Unresolved, UnresolvedSemantic{ID: id, Dataset: item.Dataset, Column: item.Column, Reason: item.Reason})
 		}

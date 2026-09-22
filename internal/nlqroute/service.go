@@ -56,6 +56,13 @@ type TopicReader interface {
 	Contract(context.Context, identity.Envelope, string) (topics.Contract, error)
 }
 
+// TopicCatalog is the authority-constrained current-publication catalog used
+// when a caller does not pin a topic. The production topic service applies
+// signed topic/source/dataset/context reach before returning any candidate.
+type TopicCatalog interface {
+	List(context.Context, identity.Envelope, topics.ListRequest) ([]topics.Summary, error)
+}
+
 // RuleReader is the reviewed phase-16 lifecycle seam. The routing package does
 // not compile or evaluate rules itself.
 type RuleReader interface {
@@ -105,6 +112,10 @@ type RouteRequest struct {
 	MetricIDs     []string                        `json:"metric_ids,omitempty"`
 	Examples      []nlq.OptionalItem              `json:"examples,omitempty"`
 	Rerank        bool                            `json:"rerank,omitempty"`
+	// InterpretationAnchor pins relative and month-only temporal language. An
+	// omitted anchor is set by the server and retained in Request for replay.
+	InterpretationAnchor string               `json:"interpretation_anchor,omitempty"`
+	InterpretationEdits  []InterpretationEdit `json:"interpretation_edits,omitempty"`
 }
 
 // ClarificationChoice is a detached presentation choice. It is not authority
@@ -174,21 +185,23 @@ type RouteResult struct {
 	// Request is the bounded, caller-selected routing input that was admitted
 	// for this result. Persisted refinements use it as their semantic base; it
 	// contains no SQL or authority material.
-	Request       RouteRequest                 `json:"request,omitempty"`
-	Topic         string                       `json:"topic"`
-	Topics        []string                     `json:"topics"`
-	TopicVersions []string                     `json:"topic_versions"`
-	RuleVersions  []string                     `json:"rule_versions,omitempty"`
-	Templates     []rulesets.TemplateSelection `json:"templates,omitempty"`
-	Confidence    float64                      `json:"confidence"`
-	Tier          nlq.Tier                     `json:"tier,omitempty"`
-	Context       *ContextView                 `json:"context,omitempty"`
-	Audit         nlq.AssemblyAudit            `json:"audit,omitempty"`
-	Evidence      []vindex.Hit                 `json:"evidence,omitempty"`
-	Warnings      []string                     `json:"warnings,omitempty"`
-	RemoteCalls   []gateway.Usage              `json:"remote_calls,omitempty"`
-	Stages        []Stage                      `json:"stages"`
-	Clarification *Clarification               `json:"clarification,omitempty"`
+	Request        RouteRequest                 `json:"request,omitempty"`
+	Topic          string                       `json:"topic"`
+	Topics         []string                     `json:"topics"`
+	TopicVersions  []string                     `json:"topic_versions"`
+	RuleVersions   []string                     `json:"rule_versions,omitempty"`
+	Templates      []rulesets.TemplateSelection `json:"templates,omitempty"`
+	Confidence     float64                      `json:"confidence"`
+	Decision       *RoutingDecision             `json:"routing_decision,omitempty"`
+	Interpretation *Interpretation              `json:"interpretation,omitempty"`
+	Tier           nlq.Tier                     `json:"tier,omitempty"`
+	Context        *ContextView                 `json:"context,omitempty"`
+	Audit          nlq.AssemblyAudit            `json:"audit,omitempty"`
+	Evidence       []vindex.Hit                 `json:"evidence,omitempty"`
+	Warnings       []string                     `json:"warnings,omitempty"`
+	RemoteCalls    []gateway.Usage              `json:"remote_calls,omitempty"`
+	Stages         []Stage                      `json:"stages"`
+	Clarification  *Clarification               `json:"clarification,omitempty"`
 	// assembled is an in-process sealed context. It deliberately has no JSON
 	// representation: generation must consume the context produced by this
 	// route, never a caller-provided ContextView.
@@ -242,6 +255,39 @@ type admittedTopic struct {
 // Route performs the bounded first routing consumer. Current source and topic
 // checks occur before Embed; only authorized vindex hits enter Rerank.
 func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteRequest) (RouteResult, error) {
+	if ctx == nil || s == nil || s.topics == nil || s.rules == nil || s.index == nil || s.engine == nil || s.assembler == nil {
+		return RouteResult{}, ErrInvalid
+	}
+	if !e.Valid() {
+		return RouteResult{}, access.ErrUnauthenticated
+	}
+	ids, err := normalizeRequest(in)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if len(ids) == 0 {
+		resolved, decision, err := s.discoverTopic(ctx, e, in)
+		if err != nil {
+			return RouteResult{}, err
+		}
+		if decision.Outcome == nlq.StrategyClarify || decision.Outcome == nlq.StrategyNoRoute {
+			return RouteResult{Outcome: decision.Outcome, Request: cloneRouteRequest(in), Confidence: decision.Confidence, Decision: &decision, Clarification: decision.Clarification, Stages: decision.Stages, RemoteCalls: append([]gateway.Usage(nil), decision.RemoteCalls...)}, nil
+		}
+		in.Topic = resolved
+		in.Topics = []string{resolved}
+		result, err := s.routeResolved(ctx, e, in, &decision.Confidence)
+		if err != nil {
+			return RouteResult{}, err
+		}
+		result.Decision = &decision
+		result.Confidence = decision.Confidence
+		result.RemoteCalls = append(append([]gateway.Usage(nil), decision.RemoteCalls...), result.RemoteCalls...)
+		return result, nil
+	}
+	return s.routeResolved(ctx, e, in, nil)
+}
+
+func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in RouteRequest, confidenceOverride *float64) (RouteResult, error) {
 	if ctx == nil || s == nil || s.topics == nil || s.rules == nil || s.index == nil || s.engine == nil || s.assembler == nil {
 		return RouteResult{}, ErrInvalid
 	}
@@ -308,6 +354,22 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 	if !contextMatches(admitted, in.Context) {
 		return RouteResult{}, readexec.ErrBinding
 	}
+	interpretation, interpretationConstraints, err := s.interpret(ctx, e, &in, admitted)
+	if err != nil {
+		var clarification *Clarification
+		if errors.As(err, &clarification) {
+			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
+			result.Request = cloneRouteRequest(in)
+			return result, nil
+		}
+		return RouteResult{}, err
+	}
+	result.Interpretation = interpretation
+	result.business = append(result.business, interpretationConstraints...)
+	if interpretation != nil {
+		result.SourceBindingDigest = interpretation.BindingDigest
+	}
+	result.Request = cloneRouteRequest(in)
 	if err := s.prepareClarifications(ctx, e, in, admitted, &result); err != nil {
 		return RouteResult{}, err
 	}
@@ -436,6 +498,9 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		return result, nil
 	}
 	result.Confidence = confidence(hits)
+	if confidenceOverride != nil {
+		result.Confidence = *confidenceOverride
+	}
 	if ambiguous(hits) && !in.Rerank {
 		result.Outcome = nlq.StrategyClarify
 		result.Clarification = &Clarification{Reason: "ambiguous_retrieval", Prompt: "Choose which retrieved meaning should answer this question."}
@@ -476,7 +541,7 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		Topics:       topicRevisions(admitted),
 		Question:     in.Question,
 		Evidence:     makeEvidence(hits),
-		Constraints:  mergeConstraints(admitted),
+		Constraints:  mergeInterpretationConstraints(mergeConstraints(admitted), interpretation),
 		Metrics:      metrics,
 		Advisory:     mergeAdvisory(admitted),
 		Examples:     append([]nlq.OptionalItem(nil), in.Examples...),
@@ -527,7 +592,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 	}
-	if len(topicsIDs) < 1 || len(topicsIDs) > maxTopics {
+	if len(topicsIDs) > maxTopics {
 		return nil, ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -537,7 +602,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		}
 		seen[topic] = true
 	}
-	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
+	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || len(in.InterpretationEdits) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
 		return nil, ErrInvalid
 	}
 	if len(in.JoinChoices) > 0 {
@@ -607,6 +672,18 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 	}
+	if in.InterpretationAnchor != "" {
+		if parsed, err := time.Parse("2006-01-02", in.InterpretationAnchor); err != nil || parsed.Format("2006-01-02") != in.InterpretationAnchor {
+			return nil, ErrInvalid
+		}
+	}
+	seenEdits := map[string]bool{}
+	for _, edit := range in.InterpretationEdits {
+		if !edit.valid() || seenEdits[edit.Target] {
+			return nil, ErrInvalid
+		}
+		seenEdits[edit.Target] = true
+	}
 	return topicsIDs, nil
 }
 
@@ -621,6 +698,7 @@ func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out.JoinChoices = append([]JoinChoice(nil), in.JoinChoices...)
 	out.MetricIDs = append([]string(nil), in.MetricIDs...)
 	out.Examples = append([]nlq.OptionalItem(nil), in.Examples...)
+	out.InterpretationEdits = append([]InterpretationEdit(nil), in.InterpretationEdits...)
 	for i := range out.Examples {
 		if out.Examples[i].Confidence != nil {
 			confidence := *out.Examples[i].Confidence
@@ -972,7 +1050,7 @@ func confidence(hits []hitWithTopic) float64 {
 }
 
 func ambiguous(hits []hitWithTopic) bool {
-	return len(hits) > 1 && math.Abs(hits[0].hit.Distance-hits[1].hit.Distance) < 0.05
+	return len(hits) > 1 && hits[0].topic != hits[1].topic && math.Abs(hits[0].hit.Distance-hits[1].hit.Distance) < 0.05
 }
 
 func reorderHits(hits []hitWithTopic, ranked []gateway.RankedItem) error {

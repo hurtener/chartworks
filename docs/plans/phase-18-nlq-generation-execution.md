@@ -87,3 +87,15 @@ unchanged and continue to run. [CW-01 delivery evidence](../reviews/cw-01-delive
 records exact executed checks and review corrections. No CLAR-AC11 comprehension
 study, live cloud/model quality measurement or general SQL-shape expansion is
 claimed by these software tests.
+
+## CW-07 interpreted execution constraints
+
+Governed values and temporal spans now reach generation as mandatory typed context
+and reach execution only as sealed `BusinessConstraint` values over exact reviewed
+dataset/column/source revisions. Immediate planning binds the in-process seal;
+retained run/refinement reconstructs it through current authorized publications and
+source bindings, requires the protected base candidate and exact binding receipt,
+and fails on publication/parser/vocabulary/source drift before ordinary or terminal
+execution. Refinement inherits the anchor and replaces
+same-target correction/removal edits. Interpretation still cannot issue a plan or
+bypass the existing validator, native source planning or read-only execution.

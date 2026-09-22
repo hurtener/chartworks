@@ -504,8 +504,8 @@ func TestServiceValidationAndMetadataBoundaries(t *testing.T) {
 	if !errors.Is(requireQuestionAction(identity.Envelope{}, "query.plan", validQuestion), access.ErrForbidden) {
 		t.Fatal("unauthorized question action accepted")
 	}
-	if !errors.Is(requireQuestionAction(e, "query.plan", QuestionRequest{Context: "context", Locale: nlq.LanguageEnglish, Question: "question"}), ErrInvalid) {
-		t.Fatal("question without topic accepted")
+	if err := requireQuestionAction(e, "query.plan", QuestionRequest{Context: "context", Locale: nlq.LanguageEnglish, Question: "question"}); err != nil {
+		t.Fatal("server-selected topic request rejected", err)
 	}
 	if err := requireQuestionAction(e, "query.plan", QuestionRequest{Topic: "topic", Topics: []string{"topic", "topic"}, Context: "context"}); err != nil {
 		t.Fatal("duplicate topic reach rejected", err)

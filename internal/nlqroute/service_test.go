@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
@@ -22,13 +23,26 @@ import (
 )
 
 type testTopics struct {
-	contract topics.Contract
-	events   *[]string
+	contract  topics.Contract
+	events    *[]string
+	binding   readexec.Binding
+	summaries []topics.Summary
 }
 
 func (t *testTopics) Contract(context.Context, identity.Envelope, string) (topics.Contract, error) {
 	*t.events = append(*t.events, "contract")
 	return t.contract, nil
+}
+
+func (t *testTopics) List(context.Context, identity.Envelope, topics.ListRequest) ([]topics.Summary, error) {
+	return append([]topics.Summary(nil), t.summaries...), nil
+}
+
+func (t *testTopics) ClarificationBinding(context.Context, identity.Envelope, string, string) (readexec.Binding, error) {
+	if !t.binding.Valid() {
+		return readexec.Binding{}, readexec.ErrBinding
+	}
+	return t.binding.Clone(), nil
 }
 
 type testRules struct {

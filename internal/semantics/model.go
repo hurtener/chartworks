@@ -290,15 +290,18 @@ func (r DimensionRole) valid() bool {
 
 // Dimension defines one reviewed grouping field.
 type Dimension struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	Field       Reference        `json:"field"`
-	Role        DimensionRole    `json:"role"`
-	Aliases     []string         `json:"aliases,omitempty"`
-	Values      []GovernedValue  `json:"values,omitempty"`
-	Temporal    *TemporalPolicy  `json:"temporal,omitempty"`
-	Filters     []SemanticFilter `json:"filters,omitempty"`
+	ID          string        `json:"id"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Field       Reference     `json:"field"`
+	Role        DimensionRole `json:"role"`
+	// Geography is an explicit reviewed designation. Names and aliases never
+	// infer it, and false means unclassified rather than non-geographic proof.
+	Geography bool             `json:"geography,omitempty"`
+	Aliases   []string         `json:"aliases,omitempty"`
+	Values    []GovernedValue  `json:"values,omitempty"`
+	Temporal  *TemporalPolicy  `json:"temporal,omitempty"`
+	Filters   []SemanticFilter `json:"filters,omitempty"`
 }
 
 // KPI carries a business expression and an exact dependency list. Expression is

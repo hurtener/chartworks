@@ -141,7 +141,7 @@ func validateEntities(p TopicPack) error {
 		}
 	}
 	for i, v := range p.Dimensions {
-		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Role.valid() || !validAliases(v.Aliases) || !validGovernedValues(v.Values) || !validTemporal(v.Temporal, v.Role) || !validFilters(v.Filters) {
+		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Role.valid() || v.Geography && v.Role != DimensionCategorical || !validAliases(v.Aliases) || !validGovernedValues(v.Values) || !validTemporal(v.Temporal, v.Role) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "dimensions["+itoa(i)+"]")
 		}
 		if !governedValuesUnambiguous(v.Values) {

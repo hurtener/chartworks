@@ -336,7 +336,7 @@ func businessConstraint(item admittedTopic, resolution semantics.ClarificationRe
 }
 
 func (r RouteResult) resolutionProof() string {
-	return readexec.Hash([]any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.business})
+	return readexec.Hash([]any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business})
 }
 
 // ResolvedBusinessConstraints is available only from the in-process sealed
@@ -360,6 +360,19 @@ func (r RouteResult) ResolvedBusinessConstraints() ([]readexec.BusinessConstrain
 		}
 		if !found {
 			return nil, readexec.ErrBinding
+		}
+	}
+	if r.Interpretation != nil {
+		for _, id := range interpretationConstraintIDs(r.Interpretation) {
+			found := false
+			if r.Context.Constraints != nil {
+				for _, constraint := range r.Context.Constraints.Required {
+					found = found || constraint.ID == "interpretation-"+id
+				}
+			}
+			if !found {
+				return nil, readexec.ErrBinding
+			}
 		}
 	}
 	return append([]readexec.BusinessConstraint(nil), r.business...), nil
@@ -396,6 +409,7 @@ func (s *Service) preflightClarificationBudget(ctx context.Context, in RouteRequ
 		}
 		constraints.Required = kept
 	}
+	constraints = mergeInterpretationConstraints(constraints, result.Interpretation)
 	constraints, err := appendResolvedConstraints(constraints, result.Resolutions, true)
 	if err != nil {
 		return "", err
@@ -456,6 +470,15 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 		return nil, "", readexec.ErrBinding
 	}
 	current := RouteResult{Outcome: previous.Outcome}
+	interpretation, constraints, err := s.interpret(ctx, e, &in, admitted)
+	if err != nil {
+		return nil, "", err
+	}
+	current.Interpretation = interpretation
+	current.business = append(current.business, constraints...)
+	if interpretation != nil {
+		current.SourceBindingDigest = interpretation.BindingDigest
+	}
 	if err := s.prepareClarifications(ctx, e, in, admitted, &current); err != nil {
 		return nil, "", err
 	}
@@ -464,7 +487,9 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	}
 	old, _ := json.Marshal(previous.Resolutions)
 	fresh, _ := json.Marshal(current.Resolutions)
-	if string(old) != string(fresh) || previous.AnswerContext != current.AnswerContext || previous.SourceBindingDigest != current.SourceBindingDigest {
+	oldInterpretation, _ := json.Marshal(previous.Interpretation)
+	freshInterpretation, _ := json.Marshal(current.Interpretation)
+	if string(old) != string(fresh) || string(oldInterpretation) != string(freshInterpretation) || previous.AnswerContext != current.AnswerContext || previous.SourceBindingDigest != current.SourceBindingDigest {
 		return nil, "", clarificationFailure(in.Locale, "answers", "stale_answer_resolution")
 	}
 	return append([]readexec.BusinessConstraint(nil), current.business...), current.SourceBindingDigest, nil

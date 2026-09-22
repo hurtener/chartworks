@@ -11,7 +11,9 @@ import (
 
 func portableFixture(t *testing.T) (Model, []ExportDatasetSlots, PortablePack, DraftBindings) {
 	t.Helper()
-	model, err := Compile(testPack())
+	pack := testPack()
+	pack.Dimensions[0].Geography = true
+	model, err := Compile(pack)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +77,7 @@ func TestPortableDraftRoundTripRemapsEveryColumnReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	pack := candidate.Pack()
-	if pack.Version != bindings.Version || pack.Datasets[0].Source.Source != "destination" || pack.Measures[1].Field != (Reference{Kind: KindColumn, Dataset: "purchases_data", ID: "total"}) || pack.Dimensions[0].Field != (Reference{Kind: KindColumn, Dataset: "buyers_data", ID: "area_name"}) {
+	if pack.Version != bindings.Version || pack.Datasets[0].Source.Source != "destination" || pack.Measures[1].Field != (Reference{Kind: KindColumn, Dataset: "purchases_data", ID: "total"}) || pack.Dimensions[0].Field != (Reference{Kind: KindColumn, Dataset: "buyers_data", ID: "area_name"}) || !pack.Dimensions[0].Geography {
 		t.Fatalf("destination mapping was not complete: %#v", pack)
 	}
 	if pack.Joins[0].Left.Dataset != "purchases_data" || pack.Joins[0].Right.Dataset != "buyers_data" || pack.CanonicalEntities[0].Keys[0].Dataset != "purchases_data" || pack.CanonicalEntities[0].Keys[1].Dataset != "buyers_data" || pack.CanonicalEntities[0].Revision != 2 {

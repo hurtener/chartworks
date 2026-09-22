@@ -53,7 +53,7 @@ Numbers identify workstreams, not chronology. Phases21–23 extend the early tra
 | 14 | [Warehouse drivers](phase-14-warehouse-drivers.md) | 08,09,10 | Six-engine contracts and applicable source evidence |
 | 15 | [Topics](phase-15-topics-lifecycle.md) | 04,05,07,12,21 | Versioned semantics, ready-facet publication, health/portability |
 | 16 | [Rules/clarification](phase-16-rules-clarification.md) | 05,15 | Rules/slots, constraints, replay/shadow |
-| 17 | [Routing/context](phase-17-nlq-routing-context.md) | 05,07,15,16 | Compact budgets, remote rerank, pins, languages and confirmed joins |
+| 17 | [Routing/context](phase-17-nlq-routing-context.md) | 05,07,15,16 | Authorized topic decisions, sealed interpretation, compact budgets, rerank, pins, languages and confirmed joins |
 | 18 | [NLQ](phase-18-nlq-generation-execution.md) | 09,10,17 | Plan/run/refine/templates/correction/learning |
 | 19 | [BYO](phase-19-byo-mode.md) | 02,10,17 | Stored context references and identical submit safety |
 | 20 | [Output specifications](phase-20-charts-spec.md) | 10,15 | Fourteen-kind catalog and saved mappings/formats |

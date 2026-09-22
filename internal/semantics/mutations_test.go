@@ -195,6 +195,7 @@ func TestDatasetReplacementRichValuesRequireDestinationSensitivityEvidence(t *te
 		old = pack.Datasets[i]
 	}
 	pack.Dimensions[0].Values = []GovernedValue{{ID: "north", Value: "N", Aliases: []string{"North"}, Sensitivity: LiteralNonSensitive, Provenance: ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v2", Policy: "low_cardinality"}}}
+	pack.Dimensions[0].Geography = true
 	pack.Dimensions[0].Filters = []SemanticFilter{{ID: "north_only", Field: Reference{Kind: KindColumn, Dataset: old.ID, ID: "region"}, Operator: "eq", Values: []string{"N"}}}
 	model, err := Compile(pack)
 	if err != nil {
@@ -223,7 +224,7 @@ func TestDatasetReplacementRichValuesRequireDestinationSensitivityEvidence(t *te
 		t.Fatal(err)
 	}
 	got := rebound.Pack()
-	if got.Dimensions[0].Field.Dataset != source.Dataset || got.Dimensions[0].Values[0].ID != "north" || got.Dimensions[0].Filters[0].Field.Dataset != source.Dataset {
+	if got.Dimensions[0].Field.Dataset != source.Dataset || got.Dimensions[0].Values[0].ID != "north" || !got.Dimensions[0].Geography || got.Dimensions[0].Filters[0].Field.Dataset != source.Dataset {
 		t.Fatalf("evidence-backed rebind lost stable rich meaning: %#v", got.Dimensions[0])
 	}
 }

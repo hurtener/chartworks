@@ -58,3 +58,12 @@ publication and portability lifecycle. The bounded enhancement role has a first 
 consumer for rich column/KPI/relationship proposals. This does not mark phase 33
 shipped: its resumable connect-to-publish composition, progress/answer operations,
 managed-transformation branch and full real-source acceptance remain outstanding.
+
+## CW-07 downstream consumer
+
+Published reviewed governed values, aliases, explicit categorical geography
+designations, temporal policies and relationship
+evidence now have a first query-time consumer. Routing never promotes onboarding
+proposals or unresolved fields: only the exact active publication participates, and
+candidate/rejected relationships remain non-executable. The broader resumable phase
+33 workflow remains outstanding.

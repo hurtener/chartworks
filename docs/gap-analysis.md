@@ -114,7 +114,8 @@ This update rechecked every original finding against the merged target code and 
 |---|---|---|
 | SEM-01, CTX-01 | **CW-04 implementation closes the authored-contract and sealed-context gaps; final manual integration evidence remains.** | Topic packs now retain aliases, governed non-sensitive value mappings, temporal calendars/grains, units and filters through lifecycle/portability. Selected measures/KPIs resolve a typed transitive closure admitted as one mandatory tokenizer group or fail before provider work. [rich semantic model](../internal/semantics/model.go), [metric closure](../internal/nlqroute/service.go), [context assembly](../internal/nlq/context.go), [contract](contracts/rich-semantics-v1.md) |
 | SEM-02, DATA-01, DATA-02 | **CW-04 implementation closes the model/generation boundary; phase 33 orchestration remains separately planned.** | Bounded enhancement now proposes descriptions, aliases, units, roles, temporal policy, KPIs and candidate/rejected relationship evidence. Explicit reviewed governed values replace raw profile samples; sensitive/unknown values are rejected. Draft/publication/import/export/SDK consumers share the same contract. [enhancement](../internal/semantics/drafts/service.go), [compiler](../internal/semantics/compile.go), [portability](../internal/semantics/portable.go), [contract](contracts/rich-semantics-v1.md) |
-| RTE-01, RTE-02, LRN-01, LRN-02, CLR-01, CLR-02 | **Still open or narrowed.** | Caller topic selection, hit-distance confidence, topic examples, fixed feedback increments and remaining interpretation gaps remain. CW-01 narrows clarification, CW-04 enriches reviewed semantic context, and CW-06 closes RUL-01 with compound-AND and canonical reviewed-template scopes. [rule evaluator](../internal/semantics/rules_evaluate.go), [route boundary](../internal/nlqroute/service.go), [rich contract](contracts/rich-semantics-v1.md) |
+| RTE-01, RTE-02 | **CW-07 implements the native routing and interpretation contracts; live calibration remains phase 24/final-gap evidence.** | Authority-constrained current-topic discovery, multi-facet evidence, bounded reranking, typed ambiguity and sealed governed-value/geography/month constraints now feed generation and validator-bound execution. [topic decision](../internal/nlqroute/discovery.go), [interpretation](../internal/nlqroute/interpretation.go), [contract](contracts/routing-interpretation-v1.md) |
+| LRN-01, LRN-02, CLR-01, CLR-02, RUL-01 | **Learning gaps remain; clarification and rule scopes are implemented by CW-01/CW-06.** | Template lifecycle and evidence-aware feedback remain separate work. Conditional typed clarification plus compound-AND and canonical reviewed-template scopes are implemented; the representative-user comprehension study remains unperformed. [clarification contract](contracts/conditional-clarification-v1.md), [rule evaluator](../internal/semantics/rules_evaluate.go) |
 | BLK-01, BLK-03, BLK-04, BLK-06 | **Still open or narrowed at the authored-contract boundary.** | CW-03 closes BLK-01 and CW-06 closes BLK-02. Phase 28 seals selected outputs, source/context/topic/rule dependencies and typed period resolution; certification language checks, semantic overlap and broader assistance remain. [rule snapshots](../internal/reporting/dependencies.go), [run manifest](../internal/reporting/runs_model.go), [question assessment](../internal/reporting/service.go) |
 | BLK-05, BLK-07 | **Runtime path inspected; inherited fields and policy mapping remain open.** | Bounded narratives use retained redacted evidence and receipts, and manifests seal deployment limits. Expected schema still lacks inherited sensitivity; authored maximum-claims and source-query policy mappings remain absent. No fresh runtime result is attributed here. [narrative evidence](../internal/reporting/runs_narrative.go#L82), [narrative definition](../internal/reporting/model.go#L137), [sealed limits](../internal/reporting/runs_model.go#L46) |
 | MIG-01, EVAL-01, PERF-01 | **Pending or unmeasured.** | The dated manifest is provenance only. Calibration, import/cutover, warm/cold authority-aware reuse and live latency/cost still require Phase 24/34/25 evidence. [evaluation plan](../docs/plans/phase-24-eval.md#L17), [cutover plan](../docs/plans/phase-34-migration-parity-cutover.md#L38), [routing cache boundary](../internal/nlqroute/service.go#L192) |
@@ -139,6 +140,19 @@ phase status, reference inventory, foreign cutover or broad parity claim changes
 The inherited sensitivity mapping is deliberately conservative at query-dependency
 scope until exact expression lineage exists; unsupported mappings reject.
 
+## CW-07 implementation disposition — September 22
+
+CW-07 closes the native implementation gaps RTE-01 and RTE-02 on top of CW-04.
+Routes can select among complete signed-reachable current topic publications using
+versioned multi-facet evidence and optional authorized reranking, with explicit
+floor/margin outcomes. Reviewed non-sensitive value/geography aliases and supported
+English/Spanish month spans become sealed, replayable generation and execution
+constraints with source/topic/context pins and correction/removal semantics. See
+the [contract](contracts/routing-interpretation-v1.md) and `TestCW07/AC01`–`AC09`.
+This does not claim live confidence calibration, arbitrary date/place extraction,
+cloud-source qualification or final stress/performance evidence; those remain
+phase 24/34/25 manual-suite obligations.
+
 ## Finding index
 
 | ID | Area | Finding | Status | Owner / phases |
@@ -146,7 +160,7 @@ scope until exact expression lineage exists; unsupported mappings reject.
 | SEM-01 | Semantics | Rich semantic fields are not represented end to end | implemented by CW-04; manual final-suite evidence pending | 15/17 with 33 generation and 34 import |
 | CTX-01 | Context | Selected metrics do not retain their full dependency context | implemented by CW-04; manual final-suite evidence pending | 17/18 |
 | SEM-02 | Semantics | Enhancement is column classification rather than rich semantic authoring | implemented by CW-04; full phase-33 workflow remains separate | 15/33 |
-| RTE-01 | Routing | Routing confidence and topic choice are reduced | confirmed gap | 17/24 |
+| RTE-01 | Routing | Routing confidence and topic choice are reduced | implemented by CW-07; live calibration pending phase 24/final suite | 17/24 |
 | LRN-01 | Learning | Stored examples are not equivalent to retrieval-selected templates | confirmed gap | 15/17/18; optimization remains 24 |
 | LRN-02 | Learning | Feedback weights are fixed increments | confirmed gap | 18; evaluation 24 |
 | BLK-01 | Reporting | Output enablement and localized output metadata are missing from definitions | native v2 contract implemented; immutable v1 compatibility | 27 with 28/29/31 consumers |
@@ -158,7 +172,7 @@ scope until exact expression lineage exists; unsupported mappings reject.
 | BLK-07 | Reporting | Per-block limits and richer narrative policies need explicit mappings | native caps and bounded narrative mappings implemented; unsupported mappings reject | 27/28/34 |
 | CLR-01 | Clarification | Required clarification slots lack question-specific activation | conditional reviewed policy/runtime implemented; explicit legacy migration | 16/17 |
 | RUL-01 | Rules | Compound and template scopes have no equivalent current representation | implemented by CW-06; final manual qualification pending | 16/17/18 |
-| RTE-02 | Interpretation | Value, geography and temporal normalization is not an equivalent runtime stage | confirmed gap | 17/18; source metadata 15/33 |
+| RTE-02 | Interpretation | Value, geography and temporal normalization is not an equivalent runtime stage | implemented by CW-07 over reviewed rich semantics; broader grammar/live evidence pending | 17/18; source metadata 15/33 |
 | MIG-01 | Portability | Topic-only portability does not carry the calibrated topic environment | narrowed; full migration pending | 15 subset; 34 full migration |
 | VIS-01 | Outputs | Rich KPI and table authoring options are absent | confirmed definition gap; consumers present | 20/27; consume 28/29/31; static32 |
 | VIS-02 | Charts | Multi-measure chart slots are reduced to singular bindings | confirmed model gap; viewer present | 20/27/31; static32 |
@@ -212,15 +226,15 @@ scope until exact expression lineage exists; unsupported mappings reject.
 
 ### RTE-01 — Routing confidence and topic choice are reduced
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-07; live calibration remains explicit final evidence.
 - **Owner / phases:** 17/24.
 - **Reference behavior (neutral):** The original routes using span/evidence aggregation and explicit topic decisions.
-- **Current boundary:** The Go route requires caller-selected topics, derives confidence from the closest facet distance, and considers the top two global facets ambiguous within a fixed distance margin. Reranking does not recalibrate this confidence.
-- **Consequence:** Two complementary facets from one topic may cause clarification; reported confidence is not demonstrated calibrated query correctness.
-- **Contract, storage and import impact:** Define routing evidence, topic choice, confidence and clarification outcomes as versioned route metadata. Preserve same-topic complementary evidence and make calibration/replay artifacts inspectable without weakening authority.
-- **Closure requirements:** Compare competing topics and same-topic complementary facets before/after reranking; assert route, clarification, confidence and context tier with calibration evidence.
+- **Current behavior:** Omitted-topic routes enumerate only complete signed-reachable current publications, aggregate complementary facet evidence per topic, optionally rerank authorized topic summaries, and retain policy/version/floor/margin, exact topic pins, pre/post-rerank evidence and typed no-route/ambiguity outcomes. Same-topic complementary hits do not trigger cross-topic ambiguity. Explicit multi-topic routing retains confirmed same-source relationship gates.
+- **Evidence boundary:** `evidence-v1` is reproducible policy evidence, not a claim of live calibrated correctness. Phase 24/final qualification must measure its floor/margin on representative held-out traffic.
+- **Contract and replay:** The exact decision is stored in the route and survives query persistence/refinement. Candidate overflow fails instead of silently truncating; current publication/source/context fences are rechecked.
+- **Closure evidence:** `TestCW07/AC01`, `AC02` and `AC06` cover pre/post-rerank selection, competing-topic ambiguity and pre-provider authority denial; existing phase-17 acceptance covers confirmed multi-topic joins and context tiers.
 - **Source evidence IDs:** REF-RTE-01-A.
-- **Current repository evidence:** [internal/nlqroute/service.go:457](../internal/nlqroute/service.go#L457); [internal/nlqroute/service.go:388](../internal/nlqroute/service.go#L388); [internal/nlqroute/service.go:914](../internal/nlqroute/service.go#L914).
+- **Current repository evidence:** [topic discovery](../internal/nlqroute/discovery.go), [route integration](../internal/nlqroute/service.go), [contract](contracts/routing-interpretation-v1.md), [focused acceptance](../internal/nlqroute/cw07_test.go).
 
 ### LRN-01 — Stored examples are not equivalent to retrieval-selected templates
 
@@ -355,15 +369,14 @@ scope until exact expression lineage exists; unsupported mappings reject.
 
 ### RTE-02 — Value, geography and temporal normalization is not an equivalent runtime stage
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-07 over reviewed non-sensitive rich semantics; broader date grammar/live-source evidence remains final-suite work.
 - **Owner / phases:** 17/18; source metadata 15/33.
 - **Reference behavior (neutral):** Original context packing infers governed value filters, normalizes geography aliases and injects temporal dimensions based on extracted spans.
-- **Current boundary:** Go embeds the raw question once and receives explicit references/choices; it has no equivalent deterministic span-to-filter stage. Embeddings and the generator may still infer some intent, which is different from preserving the mechanism.
-- **Consequence:** The model must rediscover calibrated value/time decisions, and those decisions cannot be inspected or replayed at the same stage.
-- **Contract, storage and import impact:** Introduce a sealed interpretation result for governed values, geography and temporal spans. Persist canonical values, locale/parser versions and source/topic pins, then feed only typed constraints into generation and validation.
-- **Closure requirements:** Run aliases, negated geography, ambiguous places and month-only dates; compare normalized filters and selected dimensions before SQL generation.
+- **Current behavior:** The resolved route deterministically matches reviewed English/Spanish governed aliases and negation, plus named/relative month spans and supported `of`/`de`/`del` year connectors against one pinned anchor. Geography is emitted only from an explicit reviewed categorical-dimension designation. Date/wall-clock bounds retain calendar dates; instant bounds use reviewed-zone RFC3339 UTC and reject missing/folded midnights. It persists canonical values, locale/parser/anchor, exact topic/source/context revisions, provenance and a digest. Ambiguous values/temporal dimensions and unsupported calendars clarify before provider work.
+- **Generation/execution:** Interpretations are mandatory sealed context constraints and closed business constraints over exact physical columns. Active clarification or interpretation evidence requires protected base SQL/parameters and an exact binding receipt, replays under current authority/semantic/source state before ordinary and terminal execution, and then passes fresh SQL validation. Refinement supports stable removal/replacement with reviewed value IDs.
+- **Closure evidence:** `TestCW07/AC03` through `AC05`, `AC07` and `AC09`, plus `TestCW07InterpretationBusinessEvidencePlanRunAndDrift`, cover bilingual negated reviewed geography, neutral label non-inference, connector/month-anchor periods, date/instant encoding, DST gaps/folds, correction/removal, ordinary and saved-clone execution, source/publication/vocabulary/parser drift, exact receipts, ambiguity and deterministic replay.
 - **Source evidence IDs:** REF-RTE-02-A, REF-RTE-02-B, REF-RTE-02-C.
-- **Current repository evidence:** [internal/nlqroute/service.go:345](../internal/nlqroute/service.go#L345); [internal/nlqroute/service.go:431](../internal/nlqroute/service.go#L431).
+- **Current repository evidence:** [interpretation](../internal/nlqroute/interpretation.go), [execution binding](../internal/nlqexec/clarification.go), [contract](contracts/routing-interpretation-v1.md), [focused acceptance](../internal/nlqroute/cw07_test.go).
 
 ### MIG-01 — Topic-only portability does not carry the calibrated topic environment
 
@@ -994,9 +1007,9 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | Q09 | Catalog delivery, partial-delivery policy and recipient metadata | core retained at phase30 over shared06 foundation; live/release evidence pending | The receipt separates query, retained artifact, catalog and notification outcomes; the delivery facade reads metadata/retained results while recipient values remain delivery intent rather than proof of notification. [reporting receipt](../internal/jobs/reporting_runtime.go#L50); [delivery facade](../internal/reporting/delivery.go#L14) | 30.AC06 |
 | Q10 | Evidence/report-artifact/output retention cleanup | shared foundation; reporting cleanup partial | Bounded composition/run expiry exists; rendition/export retention remains Phase 32 scope | 06.AC03, 28.AC07 |
 | Q11 | Event and condition trigger enum variants | intentional exclusion | Original event/condition stubs; do not implement to satisfy an enum inventory | 06.AC03, 30.AC08 |
-| N01 | Routing and span/entity extraction | gap | RTE-01/02; caller topic selection and missing interpretation stages | 17.AC01, 17.AC02 |
+| N01 | Routing and span/entity extraction | native implementation; live calibration pending | CW-07 supplies current authorized topic decisions and sealed value/geography/month interpretation; broader grammar and live thresholds remain final evidence | 17.AC01, 17.AC02 |
 | N02 | Lean context engineering | gap | CTX-01; budget mechanics retained, dependency closure lost | 17.AC03, 17.AC04 |
-| N03 | Semantic retrieval and batching | partial | Authorized batches retained; richer selection inputs absent SEM-01/RTE-02; cache PERF-01 | 07.AC03, 17.AC02 |
+| N03 | Semantic retrieval and batching | core enriched; cache/performance pending | Authorized batches now consume CW-04 rich facets and CW-07 topic/interpretation evidence; cache PERF-01 remains | 07.AC03, 17.AC02 |
 | N04 | Template precedence and lifecycle | gap | LRN-01/02; lane precedence is not template lifecycle or calibrated selection | 18.AC02, 18.AC05 |
 | N05 | SQL validation and bounded correction | retained/reworked with explicit constraints | Opaque plans and bounded corrections; engine/dialect/live matrix still requires per-behavior comparison | 09.AC02, 18.AC03 |
 | N06 | Clarification, underspecification and follow-up refinement | partial; gap | Prior SQL/session safety retained; CLR-01/02 typed/triggered clarification incomplete | 16.AC03, 18.AC01, 18.AC06 |

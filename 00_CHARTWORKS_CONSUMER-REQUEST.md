@@ -18,7 +18,7 @@ All learned-model operations use the embedded Bifrost Go SDK with configured rem
 
 ## Functional continuity
 
-Preserve semantic topics/entities/joins/versions, source health and rechecks, compact context and explicit metric pins, multilingual question/refinement flows, templates, governed rules, replay/shadow evaluation, feedback/examples and bounded optimization. Externally generated SQL uses the same source/context/safety constraints as internal generation. Uploaded datasets enter the ordinary governed path.
+Preserve semantic topics/entities/joins/versions, source health and rechecks, authorized server-side topic decisions, inspected/replayable governed value/geography/time interpretation, compact context and explicit metric pins, multilingual question/refinement flows, templates, governed rules, replay/shadow evaluation, feedback/examples and bounded optimization. Interpretation supplies typed constraints and never replaces Pengui authority or validated SQL. Externally generated SQL uses the same source/context/safety constraints as internal generation. Uploaded datasets enter the ordinary governed path.
 
 Preserve block identities and aliases, mutable drafts versus immutable publications, exact validation evidence, separate certification/current health, parameter types/period policies, output subsets, protected SQL inspection, one logical result feeding several outputs, bounded narratives and dependency impact. Published query definitions are not regenerated during refresh.
 

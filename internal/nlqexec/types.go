@@ -184,27 +184,29 @@ type ExampleRecord struct {
 type QuestionRequest struct {
 	// ClarificationQuery anchors a typed submission to a retained preflight in
 	// the current actor/session. The ID grants no authority and is rechecked.
-	ClarificationQuery string                          `json:"clarification_query,omitempty"`
-	Answers            []semantics.ClarificationAnswer `json:"answers,omitempty"`
-	AnswerContext      string                          `json:"answer_context,omitempty"`
-	Topic              string                          `json:"topic,omitempty"`
-	Topics             []string                        `json:"topics,omitempty"`
-	Context            string                          `json:"context"`
-	Locale             nlq.Language                    `json:"locale"`
-	Question           string                          `json:"question"`
-	Templates          []rulesets.TemplateSelection    `json:"templates,omitempty"`
-	Kinds              []string                        `json:"kinds,omitempty"`
-	LimitPerKind       int                             `json:"limit_per_kind,omitempty"`
-	References         []semantics.Reference           `json:"references,omitempty"`
-	Choices            []nlqroute.ChoiceSelection      `json:"choices,omitempty"`
-	Joins              []nlqroute.JoinChoice           `json:"joins,omitempty"`
-	MetricIDs          []string                        `json:"metric_ids,omitempty"`
-	Examples           []nlq.OptionalItem              `json:"examples,omitempty"`
-	Rerank             bool                            `json:"rerank,omitempty"`
-	EditBase           []nlq.Instruction               `json:"edit_base,omitempty"`
-	Hints              []nlq.Instruction               `json:"hints,omitempty"`
-	ExampleInput       []nlq.Instruction               `json:"example_instructions,omitempty"`
-	Default            []nlq.Instruction               `json:"default_instructions,omitempty"`
+	ClarificationQuery   string                          `json:"clarification_query,omitempty"`
+	Answers              []semantics.ClarificationAnswer `json:"answers,omitempty"`
+	AnswerContext        string                          `json:"answer_context,omitempty"`
+	Topic                string                          `json:"topic,omitempty"`
+	Topics               []string                        `json:"topics,omitempty"`
+	Context              string                          `json:"context"`
+	Locale               nlq.Language                    `json:"locale"`
+	Question             string                          `json:"question"`
+	Templates            []rulesets.TemplateSelection    `json:"templates,omitempty"`
+	Kinds                []string                        `json:"kinds,omitempty"`
+	LimitPerKind         int                             `json:"limit_per_kind,omitempty"`
+	References           []semantics.Reference           `json:"references,omitempty"`
+	Choices              []nlqroute.ChoiceSelection      `json:"choices,omitempty"`
+	Joins                []nlqroute.JoinChoice           `json:"joins,omitempty"`
+	MetricIDs            []string                        `json:"metric_ids,omitempty"`
+	Examples             []nlq.OptionalItem              `json:"examples,omitempty"`
+	Rerank               bool                            `json:"rerank,omitempty"`
+	InterpretationAnchor string                          `json:"interpretation_anchor,omitempty"`
+	InterpretationEdits  []nlqroute.InterpretationEdit   `json:"interpretation_edits,omitempty"`
+	EditBase             []nlq.Instruction               `json:"edit_base,omitempty"`
+	Hints                []nlq.Instruction               `json:"hints,omitempty"`
+	ExampleInput         []nlq.Instruction               `json:"example_instructions,omitempty"`
+	Default              []nlq.Instruction               `json:"default_instructions,omitempty"`
 }
 
 // SemanticReference is accepted through the semantic package's typed value. This
