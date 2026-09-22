@@ -246,9 +246,9 @@ func (d *DB) RecoverRun(ctx context.Context, scope store.Scope, id string, compl
 	return out, err
 }
 
-// SaveFeedbackExport stores one immutable training candidate ledger.
+// SaveFeedbackExport stores one immutable unassigned candidate ledger.
 func (d *DB) SaveFeedbackExport(ctx context.Context, scope store.Scope, x evaluation.CandidateExport) error {
-	if checkScope(scope) != nil || x.ValidateExport() != nil || x.Split != "training" || x.Author != scope.Actor() {
+	if checkScope(scope) != nil || x.ValidateExport() != nil || x.Split != "candidate" || x.Author != scope.Actor() {
 		return store.ErrInvalid
 	}
 	raw, _ := json.Marshal(x)
@@ -282,26 +282,52 @@ func (d *DB) ReadFeedbackExport(ctx context.Context, scope store.Scope, id strin
 	return out, err
 }
 
-// ReviewFeedbackSplit atomically creates a distinct immutable heldout child ledger.
-func (d *DB) ReviewFeedbackSplit(ctx context.Context, scope store.Scope, trainingID, trainingDigest string, out evaluation.CandidateExport) error {
-	if checkScope(scope) != nil || out.ValidateExport() != nil || out.Split != "heldout" || out.Reviewer != scope.Actor() || out.ParentDigest != trainingDigest {
+// ReviewFeedbackSplit atomically creates disjoint training and heldout children from an unexposed candidate.
+func (d *DB) ReviewFeedbackSplit(ctx context.Context, scope store.Scope, candidateID, candidateDigest string, out evaluation.FeedbackSplit) error {
+	if checkScope(scope) != nil || out.ValidateSplit() != nil || out.Training.Reviewer != scope.Actor() || out.CandidateDigest != candidateDigest || out.CandidateID != candidateID {
 		return store.ErrInvalid
 	}
-	raw, _ := json.Marshal(out)
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var author string
-		if err := tx.QueryRow(ctx, `SELECT actor_id FROM chartworks.evaluation_feedback_exports WHERE tenant_id=$1 AND export_id=$2 AND evidence_hash=$3 AND split='training' FOR UPDATE`, scope.Tenant(), trainingID, trainingDigest).Scan(&author); err != nil {
+		var candidateRaw []byte
+		if err := tx.QueryRow(ctx, `SELECT actor_id,manifest FROM chartworks.evaluation_feedback_exports WHERE tenant_id=$1 AND export_id=$2 AND evidence_hash=$3 AND split='candidate' FOR UPDATE`, scope.Tenant(), candidateID, candidateDigest).Scan(&author, &candidateRaw); err != nil {
 			return err
 		}
 		if author == scope.Actor() {
 			return store.ErrConflict
 		}
-		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_feedback_exports(tenant_id,actor_id,export_id,evidence_hash,split,parent_digest,reviewer_id,reviewed_at,manifest,created_at) VALUES($1,$2,$3,$4,'heldout',$5,$6,$7,$8::jsonb,$9) ON CONFLICT DO NOTHING`, scope.Tenant(), author, out.ID, out.EvidenceHash, trainingDigest, scope.Actor(), out.ReviewedAt, raw, out.CreatedAt)
-		if err != nil {
-			return err
-		}
-		if tag.RowsAffected() != 1 {
+		if out.Training.Author != author || out.Heldout.Author != author {
 			return store.ErrConflict
+		}
+		var candidate evaluation.CandidateExport
+		if json.Unmarshal(candidateRaw, &candidate) != nil || candidate.ValidateExport() != nil {
+			return store.ErrMigration
+		}
+		want := map[string]string{}
+		for _, c := range candidate.Cases {
+			want[c.ID] = c.Input.Digest
+		}
+		seen := map[string]bool{}
+		for _, child := range []evaluation.CandidateExport{out.Training, out.Heldout} {
+			for _, c := range child.Cases {
+				if seen[c.ID] || want[c.ID] != c.Input.Digest {
+					return store.ErrConflict
+				}
+				seen[c.ID] = true
+			}
+		}
+		if len(seen) != len(want) {
+			return store.ErrConflict
+		}
+		for _, child := range []evaluation.CandidateExport{out.Training, out.Heldout} {
+			raw, _ := json.Marshal(child)
+			tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_feedback_exports(tenant_id,actor_id,export_id,evidence_hash,split,parent_digest,reviewer_id,reviewed_at,manifest,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) ON CONFLICT DO NOTHING`, scope.Tenant(), author, child.ID, child.EvidenceHash, child.Split, candidateDigest, scope.Actor(), child.ReviewedAt, raw, child.CreatedAt)
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() != 1 {
+				return store.ErrConflict
+			}
 		}
 		return nil
 	})
@@ -317,13 +343,47 @@ func (d *DB) ValidateHeldoutCases(ctx context.Context, scope store.Scope, cases 
 	})
 }
 
+// ValidateOptimizationHeldout requires every optimized case to originate in one independently reviewed heldout ledger.
+func (d *DB) ValidateOptimizationHeldout(ctx context.Context, scope store.Scope, suite evaluation.Suite) error {
+	if checkScope(scope) != nil || suite.Mode != evaluation.Live || suite.HeldoutLineageDigest == "" {
+		return store.ErrInvalid
+	}
+	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var raw []byte
+		if err := tx.QueryRow(ctx, `SELECT manifest FROM chartworks.evaluation_feedback_exports WHERE tenant_id=$1 AND evidence_hash=$2 AND split='heldout'`, scope.Tenant(), suite.HeldoutLineageDigest).Scan(&raw); err != nil {
+			return err
+		}
+		var export evaluation.CandidateExport
+		if json.Unmarshal(raw, &export) != nil || export.ValidateExport() != nil {
+			return store.ErrMigration
+		}
+		allowed := map[string]bool{}
+		for _, c := range export.Cases {
+			allowed[c.Input.Digest] = true
+		}
+		count := 0
+		for _, c := range suite.Cases {
+			if c.HeldOut {
+				count++
+				if !allowed[c.Input.Digest] {
+					return store.ErrConflict
+				}
+			}
+		}
+		if count == 0 {
+			return store.ErrConflict
+		}
+		return nil
+	})
+}
+
 func validateHeldoutTx(ctx context.Context, tx pgx.Tx, tenant string, cases []evaluation.Case) error {
 	rows, err := tx.Query(ctx, `SELECT manifest FROM chartworks.evaluation_feedback_exports WHERE tenant_id=$1`, tenant)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	training, heldout := map[string]bool{}, map[string]bool{}
+	candidate, training, heldout := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for rows.Next() {
 		var raw []byte
 		var x evaluation.CandidateExport
@@ -332,6 +392,8 @@ func validateHeldoutTx(ctx context.Context, tx pgx.Tx, tenant string, cases []ev
 		}
 		for _, c := range x.Cases {
 			switch x.Split {
+			case "candidate":
+				candidate[c.Input.Digest] = true
 			case "training":
 				training[c.Input.Digest] = true
 			case "heldout":
@@ -340,8 +402,11 @@ func validateHeldoutTx(ctx context.Context, tx pgx.Tx, tenant string, cases []ev
 		}
 	}
 	for _, c := range cases {
-		if c.HeldOut && training[c.Input.Digest] && !heldout[c.Input.Digest] {
+		if c.HeldOut && (candidate[c.Input.Digest] || training[c.Input.Digest]) && !heldout[c.Input.Digest] {
 			return store.ErrConflict
+		}
+		if training[c.Input.Digest] && heldout[c.Input.Digest] {
+			return store.ErrMigration
 		}
 	}
 	return rows.Err()
@@ -425,6 +490,17 @@ func (d *DB) SelectPack(ctx context.Context, scope store.Scope, x evaluation.Pac
 		}
 		out = x
 		return nil
+	})
+	return out, err
+}
+
+// SelectedPack returns the current approved production configuration pointer.
+func (d *DB) SelectedPack(ctx context.Context, scope store.Scope) (out evaluation.PackSelection, err error) {
+	if checkScope(scope) != nil {
+		return out, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT revision,pack_digest,proposal_id,actor_id,selected_at FROM chartworks.evaluation_pack_selection WHERE tenant_id=$1`, scope.Tenant()).Scan(&out.Revision, &out.PackDigest, &out.ProposalID, &out.Actor, &out.SelectedAt)
 	})
 	return out, err
 }

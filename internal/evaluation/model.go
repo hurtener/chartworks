@@ -114,16 +114,35 @@ type RunRequest struct {
 	SuiteID       string `json:"suite_id"`
 	SuiteRevision int64  `json:"suite_revision"`
 	SuiteDigest   string `json:"suite_digest"`
-	PackDigest    string `json:"pack_digest"`
+	PackDigest    string `json:"pack_digest,omitempty"`
 }
 
 // PackRevision is one immutable prompt/model/configuration revision admitted by a suite.
 type PackRevision struct {
-	ID                  string `json:"id"`
-	Revision            int64  `json:"revision"`
-	Digest              string `json:"digest"`
-	Model               string `json:"model"`
-	ConfigurationDigest string `json:"configuration_digest"`
+	ID                  string      `json:"id"`
+	Revision            int64       `json:"revision"`
+	Digest              string      `json:"digest"`
+	Model               string      `json:"model"`
+	Models              []PackModel `json:"models,omitempty"`
+	ConfigurationDigest string      `json:"configuration_digest"`
+}
+
+// PackModel binds a gateway role to the exact reviewed model for that role.
+type PackModel struct {
+	Role  string `json:"role"`
+	Model string `json:"model"`
+}
+
+// CanonicalDigest binds a pack identity to its exact prompt/model/configuration revision.
+func (p PackRevision) CanonicalDigest() string {
+	d, _ := digest(struct {
+		ID                  string      `json:"id"`
+		Revision            int64       `json:"revision"`
+		Model               string      `json:"model"`
+		Models              []PackModel `json:"models,omitempty"`
+		ConfigurationDigest string      `json:"configuration_digest"`
+	}{p.ID, p.Revision, p.Model, p.Models, p.ConfigurationDigest})
+	return d
 }
 
 // Provenance pins governed suite inputs and environment.
@@ -178,18 +197,19 @@ type Case struct {
 
 // Suite is an immutable versioned evaluation manifest.
 type Suite struct {
-	SchemaVersion int            `json:"schema_version"`
-	ID            string         `json:"id"`
-	Revision      int64          `json:"revision"`
-	Mode          Mode           `json:"mode"`
-	Seed          int64          `json:"seed"`
-	Calibration   string         `json:"calibration"` // reviewed or unknown
-	Threshold     Threshold      `json:"threshold"`
-	Limits        Limits         `json:"limits"`
-	Provenance    Provenance     `json:"provenance"`
-	Packs         []PackRevision `json:"packs"`
-	Frontiers     []string       `json:"frontiers"`
-	Cases         []Case         `json:"cases"`
+	SchemaVersion        int            `json:"schema_version"`
+	ID                   string         `json:"id"`
+	Revision             int64          `json:"revision"`
+	Mode                 Mode           `json:"mode"`
+	Seed                 int64          `json:"seed"`
+	Calibration          string         `json:"calibration"` // reviewed or unknown
+	Threshold            Threshold      `json:"threshold"`
+	Limits               Limits         `json:"limits"`
+	Provenance           Provenance     `json:"provenance"`
+	Packs                []PackRevision `json:"packs"`
+	Frontiers            []string       `json:"frontiers"`
+	HeldoutLineageDigest string         `json:"heldout_lineage_digest,omitempty"`
+	Cases                []Case         `json:"cases"`
 }
 
 // Usage separates service, source, and model observations.
@@ -281,6 +301,9 @@ func identifier(s string) bool {
 // Validate checks manifest bounds, provenance, and mode rules.
 func (s Suite) Validate() error {
 	if s.SchemaVersion != SchemaVersion || !identifier(s.ID) || s.Revision < 1 || (s.Mode != Fixture && s.Mode != Live) || s.Seed == 0 || (s.Calibration != "reviewed" && s.Calibration != "unknown") {
+		return ErrInvalid
+	}
+	if s.HeldoutLineageDigest != "" && !validDigest(s.HeldoutLineageDigest) {
 		return ErrInvalid
 	}
 	if s.Limits.Cases < 1 || s.Limits.Cases > 10000 || s.Limits.Calls < 0 || s.Limits.Calls > 100000 || s.Limits.Tokens < 0 || s.Limits.Tokens > 1<<30 || s.Limits.Retries < 0 || s.Limits.Retries > 8 || s.Limits.CostUSD != nil && (*s.Limits.CostUSD < 0 || *s.Limits.CostUSD > 1000000) || s.Limits.DurationMS < 1 || s.Limits.DurationMS > int64((24*time.Hour)/time.Millisecond) || len(s.Cases) == 0 || len(s.Cases) > s.Limits.Cases {
@@ -435,7 +458,17 @@ func (r Report) Validate() error {
 }
 
 func validPack(p PackRevision) bool {
-	return identifier(p.ID) && p.Revision > 0 && validDigest(p.Digest) && identifier(p.Model) && validDigest(p.ConfigurationDigest)
+	if !identifier(p.ID) || p.Revision < 1 || !validDigest(p.Digest) || !identifier(p.Model) || !validDigest(p.ConfigurationDigest) || len(p.Models) > 16 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, binding := range p.Models {
+		if !identifier(binding.Role) || !identifier(binding.Model) || seen[binding.Role] {
+			return false
+		}
+		seen[binding.Role] = true
+	}
+	return p.Digest == p.CanonicalDigest()
 }
 
 func (s Suite) pack(digest string) (PackRevision, bool) {

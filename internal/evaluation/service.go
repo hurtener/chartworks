@@ -23,12 +23,14 @@ type Repository interface {
 	RecoverRun(context.Context, store.Scope, string, time.Time) (Report, error)
 	SaveFeedbackExport(context.Context, store.Scope, CandidateExport) error
 	ReadFeedbackExport(context.Context, store.Scope, string) (CandidateExport, error)
-	ReviewFeedbackSplit(context.Context, store.Scope, string, string, CandidateExport) error
+	ReviewFeedbackSplit(context.Context, store.Scope, string, string, FeedbackSplit) error
 	ValidateHeldoutCases(context.Context, store.Scope, []Case) error
+	ValidateOptimizationHeldout(context.Context, store.Scope, Suite) error
 	SaveProposal(context.Context, store.Scope, OptimizationProposal) error
 	ReadProposal(context.Context, store.Scope, string) (OptimizationProposal, error)
 	ReviewProposal(context.Context, store.Scope, ReviewReceipt) error
 	SelectPack(context.Context, store.Scope, PackSelection, int64) (PackSelection, error)
+	SelectedPack(context.Context, store.Scope) (PackSelection, error)
 }
 
 // RegisterInput stores protected live material and returns its canonical reference.
@@ -62,7 +64,7 @@ type FeedbackEvidence struct {
 	CreatedAt                                                              time.Time
 }
 
-// CandidateExport is an immutable training ledger, never a heldout assignment.
+// CandidateExport is an immutable feedback or assigned split ledger.
 type CandidateExport struct {
 	SchemaVersion int        `json:"schema_version"`
 	ID            string     `json:"id"`
@@ -78,13 +80,13 @@ type CandidateExport struct {
 }
 
 func (x CandidateExport) validate() error {
-	if x.SchemaVersion != SchemaVersion || !identifier(x.ID) || !identifier(x.Author) || !validDigest(x.EvidenceHash) || x.CreatedAt.IsZero() || len(x.Cases) == 0 || (x.Split != "training" && x.Split != "heldout") {
+	if x.SchemaVersion != SchemaVersion || !identifier(x.ID) || !identifier(x.Author) || !validDigest(x.EvidenceHash) || x.CreatedAt.IsZero() || len(x.Cases) == 0 || (x.Split != "candidate" && x.Split != "training" && x.Split != "heldout") {
 		return ErrInvalid
 	}
-	if x.Split == "training" && (x.Status != "candidate" || x.ParentDigest != "" || x.Reviewer != "" || x.ReviewedAt != nil) {
+	if x.Split == "candidate" && (x.Status != "pending" || x.ParentDigest != "" || x.Reviewer != "" || x.ReviewedAt != nil) {
 		return ErrInvalid
 	}
-	if x.Split == "heldout" && (x.Status != "reviewed" || !validDigest(x.ParentDigest) || !identifier(x.Reviewer) || x.ReviewedAt == nil) {
+	if (x.Split == "training" || x.Split == "heldout") && (x.Status != "reviewed" || !validDigest(x.ParentDigest) || !identifier(x.Reviewer) || x.ReviewedAt == nil) {
 		return ErrInvalid
 	}
 	for _, c := range x.Cases {
@@ -94,6 +96,40 @@ func (x CandidateExport) validate() error {
 	}
 	return nil
 }
+
+// FeedbackSplit is an independently assigned, disjoint and immutable partition.
+type FeedbackSplit struct {
+	CandidateID      string          `json:"candidate_id"`
+	CandidateDigest  string          `json:"candidate_digest"`
+	AssignmentDigest string          `json:"assignment_digest"`
+	Training         CandidateExport `json:"training"`
+	Heldout          CandidateExport `json:"heldout"`
+}
+
+func (x FeedbackSplit) validate() error {
+	if !identifier(x.CandidateID) || !validDigest(x.CandidateDigest) || !validDigest(x.AssignmentDigest) || x.Training.validate() != nil || x.Heldout.validate() != nil || x.Training.ParentDigest != x.CandidateDigest || x.Heldout.ParentDigest != x.CandidateDigest || x.Training.Reviewer != x.Heldout.Reviewer {
+		return ErrInvalid
+	}
+	seen, digests := map[string]bool{}, map[string]bool{}
+	for _, c := range x.Training.Cases {
+		seen[c.ID] = true
+		digests[c.Input.Digest] = true
+	}
+	for _, c := range x.Heldout.Cases {
+		if seen[c.ID] || digests[c.Input.Digest] {
+			return ErrInvalid
+		}
+		seen[c.ID] = true
+	}
+	want, _ := digest(struct{ Candidate, Training, Heldout string }{x.CandidateDigest, x.Training.EvidenceHash, x.Heldout.EvidenceHash})
+	if want != x.AssignmentDigest {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// ValidateSplit checks immutable assignment evidence at persistence boundaries.
+func (x FeedbackSplit) ValidateSplit() error { return x.validate() }
 
 // ValidateExport checks immutable feedback split lineage without exposing content.
 func (x CandidateExport) ValidateExport() error { return x.validate() }
@@ -152,7 +188,7 @@ func (s *Service) Review(ctx context.Context, e identity.Envelope, id string, in
 
 // Run loads the exact accepted revision from protected storage before any work.
 func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, runner Runner) (Report, error) {
-	if ctx == nil || !identifier(in.RunID) || !identifier(in.SuiteID) || in.SuiteRevision < 1 || !validDigest(in.SuiteDigest) || !validDigest(in.PackDigest) {
+	if ctx == nil || !identifier(in.RunID) || !identifier(in.SuiteID) || in.SuiteRevision < 1 || !validDigest(in.SuiteDigest) || in.PackDigest != "" && !validDigest(in.PackDigest) {
 		return Report{}, ErrInvalid
 	}
 	scope, err := access.StoreScope(e, "ops.write", "write")
@@ -168,6 +204,13 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 	}
 	if record.Suite.Threshold.QualityMin == nil {
 		return Report{}, ErrReview
+	}
+	if in.PackDigest == "" {
+		selected, selectErr := s.repo.SelectedPack(ctx, scope)
+		if selectErr != nil {
+			return Report{}, selectErr
+		}
+		in.PackDigest = selected.PackDigest
 	}
 	pack, ok := record.Suite.pack(in.PackDigest)
 	if !ok {
@@ -245,7 +288,7 @@ func (s *Service) Recover(ctx context.Context, e identity.Envelope, id string) (
 	return s.repo.RecoverRun(ctx, scope, id, s.clock().UTC())
 }
 
-// ExportFeedback emits an immutable training candidate ledger. Heldout assignment requires a later independent split review.
+// ExportFeedback emits an immutable unassigned candidate ledger. Training and heldout assignment require a later independent split review.
 func (s *Service) ExportFeedback(ctx context.Context, e identity.Envelope, id, topic string, limit int) (CandidateExport, error) {
 	if s.feedback == nil || !identifier(id) || !identifier(topic) || limit < 1 || limit > 1000 {
 		return CandidateExport{}, ErrInvalid
@@ -258,7 +301,7 @@ func (s *Service) ExportFeedback(ctx context.Context, e identity.Envelope, id, t
 	if err != nil {
 		return CandidateExport{}, err
 	}
-	out := CandidateExport{SchemaVersion: SchemaVersion, ID: id, Status: "candidate", Split: "training", Cases: []Case{}, Author: e.User(), CreatedAt: s.clock().UTC()}
+	out := CandidateExport{SchemaVersion: SchemaVersion, ID: id, Status: "pending", Split: "candidate", Cases: []Case{}, Author: e.User(), CreatedAt: s.clock().UTC()}
 	for _, r := range rows {
 		if !identifier(r.ID) || !validDigest(r.InputDigest) || !validDigest(r.ExpectedDigest) || !validDigest(r.SourceBindingDigest) || (r.Locale != "en" && r.Locale != "es") {
 			return CandidateExport{}, ErrInvalid
@@ -278,37 +321,62 @@ func (s *Service) ExportFeedback(ctx context.Context, e identity.Envelope, id, t
 	return out, nil
 }
 
-// ReviewFeedbackSplit creates a new immutable heldout ledger from an exact training export.
-func (s *Service) ReviewFeedbackSplit(ctx context.Context, e identity.Envelope, trainingID, trainingDigest, heldoutID string) (CandidateExport, error) {
-	if !identifier(trainingID) || !validDigest(trainingDigest) || !identifier(heldoutID) || trainingID == heldoutID {
-		return CandidateExport{}, ErrInvalid
+// ReviewFeedbackSplit independently partitions a pending candidate before either case set becomes training evidence.
+func (s *Service) ReviewFeedbackSplit(ctx context.Context, e identity.Envelope, candidateID, candidateDigest, trainingID, heldoutID string, heldoutCaseIDs []string) (FeedbackSplit, error) {
+	if !identifier(candidateID) || !validDigest(candidateDigest) || !identifier(trainingID) || !identifier(heldoutID) || candidateID == trainingID || candidateID == heldoutID || trainingID == heldoutID || len(heldoutCaseIDs) == 0 {
+		return FeedbackSplit{}, ErrInvalid
 	}
 	scope, err := access.StoreScope(e, "ops.audit", "certify")
 	if err != nil {
-		return CandidateExport{}, err
+		return FeedbackSplit{}, err
 	}
-	training, err := s.repo.ReadFeedbackExport(ctx, scope, trainingID)
+	candidate, err := s.repo.ReadFeedbackExport(ctx, scope, candidateID)
 	if err != nil {
-		return CandidateExport{}, err
+		return FeedbackSplit{}, err
 	}
-	if training.Split != "training" || training.EvidenceHash != trainingDigest || training.Author == e.User() {
-		return CandidateExport{}, ErrReview
+	if candidate.Split != "candidate" || candidate.Status != "pending" || candidate.EvidenceHash != candidateDigest || candidate.Author == e.User() {
+		return FeedbackSplit{}, ErrReview
+	}
+	heldoutIDs := map[string]bool{}
+	for _, id := range heldoutCaseIDs {
+		if !identifier(id) || heldoutIDs[id] {
+			return FeedbackSplit{}, ErrInvalid
+		}
+		heldoutIDs[id] = true
 	}
 	now := s.clock().UTC()
-	out := CandidateExport{SchemaVersion: SchemaVersion, ID: heldoutID, Status: "reviewed", Split: "heldout", ParentDigest: training.EvidenceHash, Author: training.Author, Reviewer: e.User(), ReviewedAt: &now, CreatedAt: now, Cases: append([]Case(nil), training.Cases...)}
-	for i := range out.Cases {
-		out.Cases[i].HeldOut = true
+	training := CandidateExport{SchemaVersion: SchemaVersion, ID: trainingID, Status: "reviewed", Split: "training", ParentDigest: candidate.EvidenceHash, Author: candidate.Author, Reviewer: e.User(), ReviewedAt: &now, CreatedAt: now}
+	heldout := CandidateExport{SchemaVersion: SchemaVersion, ID: heldoutID, Status: "reviewed", Split: "heldout", ParentDigest: candidate.EvidenceHash, Author: candidate.Author, Reviewer: e.User(), ReviewedAt: &now, CreatedAt: now}
+	for _, c := range candidate.Cases {
+		if heldoutIDs[c.ID] {
+			c.HeldOut = true
+			heldout.Cases = append(heldout.Cases, c)
+			delete(heldoutIDs, c.ID)
+		} else {
+			c.HeldOut = false
+			training.Cases = append(training.Cases, c)
+		}
 	}
-	out.EvidenceHash, _ = digest(struct {
+	if len(heldoutIDs) != 0 || len(training.Cases) == 0 || len(heldout.Cases) == 0 {
+		return FeedbackSplit{}, ErrInvalid
+	}
+	training.EvidenceHash, _ = digest(struct {
 		ID, Split, Parent string
 		Cases             []Case
 		Reviewer          string
-	}{out.ID, out.Split, out.ParentDigest, out.Cases, out.Reviewer})
+	}{training.ID, training.Split, training.ParentDigest, training.Cases, training.Reviewer})
+	heldout.EvidenceHash, _ = digest(struct {
+		ID, Split, Parent string
+		Cases             []Case
+		Reviewer          string
+	}{heldout.ID, heldout.Split, heldout.ParentDigest, heldout.Cases, heldout.Reviewer})
+	out := FeedbackSplit{CandidateID: candidateID, CandidateDigest: candidateDigest, Training: training, Heldout: heldout}
+	out.AssignmentDigest, _ = digest(struct{ Candidate, Training, Heldout string }{candidateDigest, training.EvidenceHash, heldout.EvidenceHash})
 	if out.validate() != nil {
-		return CandidateExport{}, ErrInvalid
+		return FeedbackSplit{}, ErrInvalid
 	}
-	if err = s.repo.ReviewFeedbackSplit(ctx, scope, trainingID, trainingDigest, out); err != nil {
-		return CandidateExport{}, err
+	if err = s.repo.ReviewFeedbackSplit(ctx, scope, candidateID, candidateDigest, out); err != nil {
+		return FeedbackSplit{}, err
 	}
 	return out, nil
 }
@@ -332,6 +400,9 @@ func (s *Service) ProposeOptimization(ctx context.Context, e identity.Envelope, 
 	}
 	candidate, err := s.repo.ReadReport(ctx, scope, in.CandidateRun)
 	if err != nil {
+		return OptimizationProposal{}, err
+	}
+	if err = s.repo.ValidateOptimizationHeldout(ctx, scope, suite.Suite); err != nil {
 		return OptimizationProposal{}, err
 	}
 	p, err := ProposeOptimization(in.ID, suite.Suite, base, candidate, s.clock())

@@ -18,7 +18,11 @@ const evalDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 func evalPtr[T any](v T) *T { return &v }
 func evalSuite(mode evaluation.Mode, cases []evaluation.Case) evaluation.Suite {
 	q := 1.0
-	return evaluation.Suite{SchemaVersion: 1, ID: "phase24", Revision: 1, Mode: mode, Seed: 24001, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 100, Calls: 100, Tokens: 10000, Retries: 4, DurationMS: 60000}, Provenance: evaluation.Provenance{Implementation: "acceptance-head", EnvironmentDigest: evalDigest, ConfigurationDigest: evalDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", TemplateVersion: "template-v1", SourceSnapshot: evalDigest, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: mode, EvidenceDigest: evalDigest, Status: "measured"}, {Engine: "mysql", Dialect: "mysql", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "sqlserver", Dialect: "sqlserver", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "bigquery", Dialect: "bigquery", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "snowflake", Dialect: "snowflake", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "databricks", Dialect: "databricks", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}}}, Packs: []evaluation.PackRevision{{ID: "baseline", Revision: 1, Digest: evalDigest, Model: "model-v1", ConfigurationDigest: evalDigest}, {ID: "candidate", Revision: 1, Digest: strings.Repeat("c", 64), Model: "model-v2", ConfigurationDigest: strings.Repeat("c", 64)}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: cases}
+	packs := []evaluation.PackRevision{{ID: "baseline", Revision: 1, Model: "model-v1", ConfigurationDigest: evalDigest}, {ID: "candidate", Revision: 1, Model: "model-v2", ConfigurationDigest: strings.Repeat("c", 64)}}
+	for i := range packs {
+		packs[i].Digest = packs[i].CanonicalDigest()
+	}
+	return evaluation.Suite{SchemaVersion: 1, ID: "phase24", Revision: 1, Mode: mode, Seed: 24001, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 100, Calls: 100, Tokens: 10000, Retries: 4, DurationMS: 60000}, Provenance: evaluation.Provenance{Implementation: "acceptance-head", EnvironmentDigest: evalDigest, ConfigurationDigest: evalDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", TemplateVersion: "template-v1", SourceSnapshot: evalDigest, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: mode, EvidenceDigest: evalDigest, Status: "measured"}, {Engine: "mysql", Dialect: "mysql", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "sqlserver", Dialect: "sqlserver", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "bigquery", Dialect: "bigquery", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "snowflake", Dialect: "snowflake", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "databricks", Dialect: "databricks", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}}}, Packs: packs, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: cases}
 }
 func evalCase(id string, stage evaluation.Stage, locale string, critical bool, category string) evaluation.Case {
 	o := evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Blocked: critical, Usage: evaluation.Usage{ServiceMS: 1, SourceMS: evalPtr(int64(0)), ModelMS: evalPtr(int64(0)), Tokens: evalPtr(0), CostUSD: nil}}
@@ -98,6 +102,9 @@ func TestPhase24(t *testing.T) {
 		cases := []evaluation.Case{evalCase("replay", evaluation.StageReplay, "en", false, ""), evalCase("shadow", evaluation.StageShadow, "es", false, "")}
 		s := evalSuite(evaluation.Fixture, cases)
 		s.Mode = evaluation.Live
+		s.HeldoutLineageDigest = strings.Repeat("d", 64)
+		q := 0.5
+		s.Threshold.QualityMin = &q
 		for i := range s.Cases {
 			s.Cases[i].Fixture = nil
 		}
@@ -151,7 +158,7 @@ func TestPhase24(t *testing.T) {
 
 	t.Run("AC06", func(t *testing.T) {
 		db := support.Open(t, support.Database(t))
-		feedback := evalFeedback{{ID: "feedback-1", Locale: "es", InputDigest: evalDigest, ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: evalDigest}}
+		feedback := evalFeedback{{ID: "feedback-training", Locale: "en", InputDigest: strings.Repeat("b", 64), ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: evalDigest}, {ID: "feedback-heldout", Locale: "es", InputDigest: evalDigest, ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: evalDigest}}
 		svc, err := evaluation.New(db, feedback, evalClock)
 		if err != nil {
 			t.Fatal(err)
@@ -182,18 +189,15 @@ func TestPhase24(t *testing.T) {
 			t.Fatal(got, err)
 		}
 		export, err := svc.ExportFeedback(context.Background(), e, "feedback-export", "topic", 10)
-		if err != nil || export.Status != "candidate" || export.Split != "training" || len(export.Cases) != 1 || export.Cases[0].HeldOut || export.EvidenceHash == "" {
+		if err != nil || export.Status != "pending" || export.Split != "candidate" || len(export.Cases) != 2 || export.Cases[0].HeldOut || export.EvidenceHash == "" {
 			t.Fatal(export, err)
+		}
+		split, err := svc.ReviewFeedbackSplit(context.Background(), evalReviewer(t), export.ID, export.EvidenceHash, "feedback-training-split", "feedback-heldout-split", []string{"feedback-heldout"})
+		if err != nil || split.Heldout.ParentDigest != export.EvidenceHash || !split.Heldout.Cases[0].HeldOut || split.Training.Cases[0].HeldOut {
+			t.Fatal(split, err)
 		}
 		trainingReuse := evalSuite(evaluation.Fixture, []evaluation.Case{evalCase("feedback-reuse", evaluation.StageSQL, "es", false, "")})
 		trainingReuse.ID = "training-reuse"
-		if _, err = svc.Author(context.Background(), e, trainingReuse); !errors.Is(err, store.ErrConflict) {
-			t.Fatal("training evidence copied directly into heldout suite", err)
-		}
-		heldout, err := svc.ReviewFeedbackSplit(context.Background(), evalReviewer(t), export.ID, export.EvidenceHash, "feedback-heldout")
-		if err != nil || heldout.ParentDigest != export.EvidenceHash || !heldout.Cases[0].HeldOut {
-			t.Fatal(heldout, err)
-		}
 		if _, err = svc.Author(context.Background(), e, trainingReuse); err != nil {
 			t.Fatal("reviewed heldout lineage rejected", err)
 		}

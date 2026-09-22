@@ -14,18 +14,47 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
+	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
 const testDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func ptr[T any](v T) *T { return &v }
+func testRuntimeConfig(model string) gateway.RuntimeConfig {
+	cfg := gateway.RuntimeConfig{Model: model, SystemInstruction: "reviewed instruction", AttemptCostUSD: 0.01}
+	cfg.Digest = gateway.ConfigurationDigest(cfg)
+	return cfg
+}
 func testSuite() Suite {
 	q := 1.0
 	obs := Observation{Decision: "route", SemanticDigest: testDigest, Usage: Usage{SourceMS: ptr(int64(2)), ModelMS: ptr(int64(3)), Tokens: ptr(5), CostUSD: ptr(0.01), Calls: 1, ServiceMS: 6}}
 	critical := Observation{Decision: "blocked", SemanticDigest: testDigest, ErrorClass: "unsafe", Blocked: true, Usage: Usage{ServiceMS: 1, SourceMS: ptr(int64(0)), ModelMS: ptr(int64(0)), Tokens: ptr(0), CostUSD: ptr(0.0)}}
-	return Suite{SchemaVersion: 1, ID: "suite", Revision: 1, Mode: Fixture, Seed: 42, Calibration: "reviewed", Threshold: Threshold{QualityMin: &q}, Limits: Limits{Cases: 10, Calls: 10, Tokens: 100, Retries: 2, DurationMS: 10000}, Provenance: Provenance{Implementation: "sha", EnvironmentDigest: testDigest, ConfigurationDigest: testDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", SourceSnapshot: testDigest, DialectMatrix: []DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: Fixture, EvidenceDigest: testDigest, Status: "measured"}}}, Packs: []PackRevision{{ID: "baseline", Revision: 1, Digest: testDigest, Model: "model-v1", ConfigurationDigest: testDigest}, {ID: "candidate", Revision: 1, Digest: strings.Repeat("c", 64), Model: "model-v2", ConfigurationDigest: strings.Repeat("c", 64)}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: []Case{{ID: "quality", Stage: StageRouting, Locale: "en", HeldOut: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"route", testDigest, ""}}, Fixture: &obs}, {ID: "security", Stage: StageAdversarial, Category: "injection", Locale: "es", Critical: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"blocked", testDigest, "unsafe"}}, Fixture: &critical}}}
+	baseCfg, candCfg := testRuntimeConfig("model-v1"), testRuntimeConfig("model-v2")
+	packs := []PackRevision{{ID: "baseline", Revision: 1, Model: "model-v1", ConfigurationDigest: baseCfg.Digest}, {ID: "candidate", Revision: 1, Model: "model-v2", ConfigurationDigest: candCfg.Digest}}
+	for i := range packs {
+		packs[i].Digest = packs[i].CanonicalDigest()
+	}
+	return Suite{SchemaVersion: 1, ID: "suite", Revision: 1, Mode: Fixture, Seed: 42, Calibration: "reviewed", Threshold: Threshold{QualityMin: &q}, Limits: Limits{Cases: 10, Calls: 10, Tokens: 100, Retries: 2, DurationMS: 10000}, Provenance: Provenance{Implementation: "sha", EnvironmentDigest: testDigest, ConfigurationDigest: testDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", SourceSnapshot: testDigest, DialectMatrix: []DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: Fixture, EvidenceDigest: testDigest, Status: "measured"}}}, Packs: packs, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: []Case{{ID: "quality", Stage: StageRouting, Locale: "en", HeldOut: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"route", testDigest, ""}}, Fixture: &obs}, {ID: "security", Stage: StageAdversarial, Category: "injection", Locale: "es", Critical: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"blocked", testDigest, "unsafe"}}, Fixture: &critical}}}
+}
+
+func optimizationSuite() Suite {
+	s := testSuite()
+	s.Mode = Live
+	s.HeldoutLineageDigest = strings.Repeat("d", 64)
+	q := 0.5
+	s.Threshold.QualityMin = &q
+	second := s.Cases[0]
+	second.ID = "quality-control"
+	second.Input.Digest = strings.Repeat("e", 64)
+	s.Cases = append([]Case{s.Cases[0], second}, s.Cases[1])
+	for i := range s.Cases {
+		s.Cases[i].Fixture = nil
+	}
+	s.Provenance.DialectMatrix[0].Mode = Live
+	return s
 }
 
 func TestEvaluateGateAndReproducibility(t *testing.T) {
@@ -104,18 +133,13 @@ func TestValidationModesAndBudgets(t *testing.T) {
 }
 
 func TestOptimizationNeedsHeldOutImprovementAndReview(t *testing.T) {
-	s := testSuite()
-	s.Mode = Live
-	for i := range s.Cases {
-		s.Cases[i].Fixture = nil
-	}
-	s.Provenance.DialectMatrix[0].Mode = Live
+	s := optimizationSuite()
 	run := RunnerFunc(func(_ context.Context, x Execution) (Observation, error) {
 		if x.Case.Critical {
 			return Observation{Decision: "blocked", SemanticDigest: testDigest, ErrorClass: "unsafe", Blocked: true}, nil
 		}
 		d := testDigest
-		if x.Pack.ID == "baseline" {
+		if x.Pack.ID == "baseline" && x.Case.ID == "quality" {
 			d = strings.Repeat("b", 64)
 		}
 		return Observation{Decision: "route", SemanticDigest: d, Usage: Usage{Calls: 1}}, nil
@@ -131,6 +155,25 @@ func TestOptimizationNeedsHeldOutImprovementAndReview(t *testing.T) {
 	}
 	if _, err = proposalReceipt(p, "reviewer", "publish", time.Now()); !errors.Is(err, ErrReview) {
 		t.Fatal("automatic promotion possible")
+	}
+	fixture := testSuite()
+	if _, err = ProposeOptimization("fixture", fixture, base, cand, time.Now()); !errors.Is(err, ErrInvalid) {
+		t.Fatal("fixture evidence admitted for optimization", err)
+	}
+	failed := base
+	failed.Status, failed.GatePassed, failed.FailureClass = "failed", false, "quality_threshold"
+	evidence := struct {
+		Suite   string
+		Pack    PackRevision
+		Seed    int64
+		Cases   []CaseResult
+		Mode    Mode
+		Status  string
+		Failure string
+	}{failed.SuiteDigest, failed.Pack, failed.Seed, failed.Cases, failed.Mode, failed.Status, failed.FailureClass}
+	failed.EvidenceHash, _ = digest(evidence)
+	if _, err = ProposeOptimization("failed", s, failed, cand, time.Now()); !errors.Is(err, ErrGate) {
+		t.Fatal("failing report admitted for optimization", err)
 	}
 }
 
@@ -167,6 +210,7 @@ type testRepo struct {
 	exports   map[string]CandidateExport
 	proposals map[string]OptimizationProposal
 	selection int64
+	selected  PackSelection
 }
 
 func (r *testRepo) CreateSuite(_ context.Context, _ store.Scope, v SuiteRecord) error {
@@ -211,11 +255,13 @@ func (r *testRepo) ReadFeedbackExport(_ context.Context, _ store.Scope, id strin
 	}
 	return x, nil
 }
-func (r *testRepo) ReviewFeedbackSplit(_ context.Context, _ store.Scope, _ string, _ string, x CandidateExport) error {
-	r.exports[x.ID] = x
+func (r *testRepo) ReviewFeedbackSplit(_ context.Context, _ store.Scope, _ string, _ string, x FeedbackSplit) error {
+	r.exports[x.Training.ID] = x.Training
+	r.exports[x.Heldout.ID] = x.Heldout
 	return nil
 }
-func (*testRepo) ValidateHeldoutCases(context.Context, store.Scope, []Case) error { return nil }
+func (*testRepo) ValidateHeldoutCases(context.Context, store.Scope, []Case) error       { return nil }
+func (*testRepo) ValidateOptimizationHeldout(context.Context, store.Scope, Suite) error { return nil }
 func (r *testRepo) SaveProposal(_ context.Context, _ store.Scope, p OptimizationProposal) error {
 	r.proposals[p.ID] = p
 	return nil
@@ -234,7 +280,14 @@ func (r *testRepo) SelectPack(_ context.Context, _ store.Scope, x PackSelection,
 	}
 	x.Revision = expected + 1
 	r.selection = x.Revision
+	r.selected = x
 	return x, nil
+}
+func (r *testRepo) SelectedPack(context.Context, store.Scope) (PackSelection, error) {
+	if r.selected.PackDigest == "" {
+		return PackSelection{}, store.ErrNotFound
+	}
+	return r.selected, nil
 }
 func (r *testRepo) ReadReport(_ context.Context, _ store.Scope, id string) (Report, error) {
 	v, ok := r.reports[id]
@@ -268,7 +321,7 @@ func testAuthority(t *testing.T, actor string, export bool) identity.Envelope {
 
 func TestServicePersistenceAndProtectedFeedback(t *testing.T) {
 	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
-	svc, err := New(repo, testFeedback{{ID: "feedback", Locale: "en", InputDigest: testDigest, ExpectedDigest: testDigest, Decision: "route", SourceBindingDigest: testDigest}}, func() time.Time { return time.Unix(5, 0) })
+	svc, err := New(repo, testFeedback{{ID: "training-case", Locale: "en", InputDigest: testDigest, ExpectedDigest: testDigest, Decision: "route", SourceBindingDigest: testDigest}, {ID: "heldout-case", Locale: "es", InputDigest: strings.Repeat("b", 64), ExpectedDigest: testDigest, Decision: "route", SourceBindingDigest: testDigest}}, func() time.Time { return time.Unix(5, 0) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,15 +340,15 @@ func TestServicePersistenceAndProtectedFeedback(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	out, err := svc.ExportFeedback(context.Background(), testAuthority(t, "actor", true), "export", "topic", 10)
-	if err != nil || out.Status != "candidate" || out.Split != "training" || len(out.Cases) != 1 || out.Cases[0].HeldOut {
+	if err != nil || out.Status != "pending" || out.Split != "candidate" || len(out.Cases) != 2 || out.Cases[0].HeldOut {
 		t.Fatal(out, err)
 	}
-	if _, err = svc.ReviewFeedbackSplit(context.Background(), testAuthority(t, "actor", true), out.ID, out.EvidenceHash, "heldout-self"); err == nil {
+	if _, err = svc.ReviewFeedbackSplit(context.Background(), testAuthority(t, "actor", true), out.ID, out.EvidenceHash, "training-self", "heldout-self", []string{"heldout-case"}); err == nil {
 		t.Fatal("author reviewed own split")
 	}
-	heldout, err := svc.ReviewFeedbackSplit(context.Background(), testAuthority(t, "reviewer", true), out.ID, out.EvidenceHash, "heldout")
-	if err != nil || heldout.Split != "heldout" || heldout.ParentDigest != out.EvidenceHash || !heldout.Cases[0].HeldOut || repo.exports[out.ID].Cases[0].HeldOut {
-		t.Fatal(heldout, err)
+	split, err := svc.ReviewFeedbackSplit(context.Background(), testAuthority(t, "reviewer", true), out.ID, out.EvidenceHash, "training", "heldout", []string{"heldout-case"})
+	if err != nil || split.Heldout.Split != "heldout" || split.Heldout.ParentDigest != out.EvidenceHash || !split.Heldout.Cases[0].HeldOut || len(split.Training.Cases) != 1 || split.Training.Cases[0].HeldOut || repo.exports[out.ID].Cases[0].HeldOut {
+		t.Fatal(split, err)
 	}
 	if _, err = svc.ExportFeedback(context.Background(), testAuthority(t, "actor", false), "export2", "topic", 10); err == nil {
 		t.Fatal("unscoped export")
@@ -337,18 +390,13 @@ func TestAcceptedLifecycleAndEarlyBudgetEvidence(t *testing.T) {
 func TestOptimizationServiceAndRecoverySurfaces(t *testing.T) {
 	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
 	svc, _ := New(repo, nil, func() time.Time { return time.Unix(11, 0) })
-	s := testSuite()
-	s.Mode = Live
-	for i := range s.Cases {
-		s.Cases[i].Fixture = nil
-	}
-	s.Provenance.DialectMatrix[0].Mode = Live
+	s := optimizationSuite()
 	run := RunnerFunc(func(_ context.Context, x Execution) (Observation, error) {
 		if x.Case.Critical {
 			return Observation{Decision: "blocked", SemanticDigest: testDigest, ErrorClass: "unsafe", Blocked: true}, nil
 		}
 		d := testDigest
-		if x.Pack.ID == "baseline" {
+		if x.Pack.ID == "baseline" && x.Case.ID == "quality" {
 			d = strings.Repeat("b", 64)
 		}
 		return Observation{Decision: "route", SemanticDigest: d, Usage: Usage{Calls: 1}}, nil
@@ -420,6 +468,73 @@ func TestGatewayReservationRejectsBeforeProviderAttempt(t *testing.T) {
 	}
 }
 
+func TestDollarReservationAndUnknownCostFailClosed(t *testing.T) {
+	e := testAuthority(t, "actor", false)
+	call, err := gateway.Authorize(e, "ops.write", "evaluation", access.Tenant(e, "write"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cap := 0.015
+	r := &gatewayReservation{limit: Reservation{Calls: 3, Tokens: 100, Retries: 2, CostUSD: &cap, Deadline: time.Now().Add(time.Minute)}}
+	ctx, err := gateway.WithAttemptReservation(context.Background(), r.reserve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err = gateway.WithRuntimeConfig(ctx, testRuntimeConfig("model-v1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget, _ := gateway.NewBudget(call, gateway.Limits{Calls: 3, Tokens: 100, Duration: time.Minute})
+	providerCalls := 0
+	invoke := func() error {
+		if err := gateway.ReserveAttempt(ctx, budget, call, 1); err != nil {
+			return err
+		}
+		providerCalls++
+		return nil
+	}
+	if err := invoke(); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke(); !errors.Is(err, gateway.ErrBudget) || providerCalls != 1 {
+		t.Fatal(providerCalls, err)
+	}
+
+	s := testSuite()
+	s.Mode = Live
+	s.Limits.CostUSD = &cap
+	for i := range s.Cases {
+		s.Cases[i].Fixture = nil
+	}
+	s.Provenance.DialectMatrix[0].Mode = Live
+	report, err := EvaluateWithPack(context.Background(), "unknown-cost", s, s.Packs[0], RunnerFunc(func(context.Context, Execution) (Observation, error) {
+		return Observation{Decision: "route", SemanticDigest: testDigest, Usage: Usage{Calls: 1}}, nil
+	}), func() time.Time { return time.Unix(1, 0) })
+	if !errors.Is(err, ErrBudget) || report.Status != "dependency_failed" || report.FailureClass != "unknown_cost" || report.EvidenceHash == "" {
+		t.Fatal(report, err)
+	}
+	s.Limits.CostUSD = nil
+	report, err = EvaluateWithPack(context.Background(), "provider-reservation", s, s.Packs[0], RunnerFunc(func(context.Context, Execution) (Observation, error) {
+		return Observation{}, gateway.ErrBudget
+	}), func() time.Time { return time.Unix(1, 0) })
+	if !errors.Is(err, ErrBudget) || report.Status != "budget_exhausted" || report.FailureClass != "reservation_exceeded" || report.EvidenceHash == "" {
+		t.Fatal(report, err)
+	}
+}
+
+func TestSelectedPackChangesDefaultRun(t *testing.T) {
+	s := testSuite()
+	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}, selected: PackSelection{Revision: 2, PackDigest: s.Packs[1].Digest, ProposalID: "approved"}}
+	svc, _ := New(repo, nil, func() time.Time { return time.Unix(10, 0) })
+	d, _ := s.Digest()
+	review := SuiteReview{SuiteID: s.ID, Revision: s.Revision, Digest: d, Decision: Accepted, Reviewer: "reviewer", ReviewedAt: time.Unix(9, 0)}
+	repo.suites[d] = SuiteRecord{Suite: s, Digest: d, State: Accepted, Author: "author", Review: &review}
+	r, err := svc.Run(context.Background(), testAuthority(t, "actor", false), RunRequest{RunID: "selected-default", SuiteID: s.ID, SuiteRevision: s.Revision, SuiteDigest: d}, nil)
+	if err != nil || r.Pack.Digest != repo.selected.PackDigest {
+		t.Fatal(r.Pack, err)
+	}
+}
+
 type staticInputResolver struct{ in LiveInput }
 
 func (r staticInputResolver) ResolveEvaluationInput(context.Context, identity.Envelope, ProtectedRef) (LiveInput, error) {
@@ -431,6 +546,64 @@ type savedInspector struct{ calls int }
 func (s *savedInspector) InspectSaved(context.Context, identity.Envelope, nlqexec.SavedQuestion) (nlqexec.SavedEvidence, error) {
 	s.calls++
 	return nlqexec.SavedEvidence{Source: "source", Context: "context", SemanticDigest: testDigest, QueryDigest: testDigest}, nil
+}
+
+type adversarialQuery struct{ calls int }
+
+func (q *adversarialQuery) Preflight(context.Context, identity.Envelope, nlqexec.PreflightRequest) (nlqexec.PreflightResult, error) {
+	return nlqexec.PreflightResult{}, nlqexec.ErrInvalid
+}
+func (q *adversarialQuery) Plan(context.Context, identity.Envelope, nlqexec.PlanRequest) (nlqexec.PlanResult, error) {
+	q.calls++
+	return nlqexec.PlanResult{}, nlqexec.ErrInvalid
+}
+func (q *adversarialQuery) Run(context.Context, identity.Envelope, nlqexec.RunRequest) (nlqexec.RunResult, error) {
+	return nlqexec.RunResult{}, nlqexec.ErrInvalid
+}
+func (q *adversarialQuery) InspectSaved(context.Context, identity.Envelope, nlqexec.SavedQuestion) (nlqexec.SavedEvidence, error) {
+	return nlqexec.SavedEvidence{}, nlqexec.ErrInvalid
+}
+
+type adversarialReports struct{ calls int }
+
+func (r *adversarialReports) Read(_ context.Context, _ identity.Envelope, id string, _ reporting.Reference) (reporting.View, error) {
+	r.calls++
+	if id == "frozen" {
+		return reporting.View{}, nil
+	}
+	return reporting.View{}, access.ErrForbidden
+}
+
+type adversarialBYO struct{ calls int }
+
+func (b *adversarialBYO) Submit(context.Context, identity.Envelope, nlqbyo.SubmitRequest) (nlqbyo.SubmitResult, error) {
+	b.calls++
+	return nlqbyo.SubmitResult{}, nlqbyo.ErrInvalid
+}
+
+func TestGovernedRunnerExercisesSixAdversarialBoundaries(t *testing.T) {
+	s := testSuite()
+	q, reports, byo := &adversarialQuery{}, &adversarialReports{}, &adversarialBYO{}
+	question, submit := &nlqexec.QuestionRequest{}, &nlqbyo.SubmitRequest{}
+	in := LiveInput{Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Question: question, BYO: submit, ReportID: "denied"}
+	runner := &GovernedRunner{Inputs: staticInputResolver{in: in}, Query: q, Reports: reports, BYO: byo}
+	x := Execution{Suite: s, Pack: s.Packs[0], Reservation: Reservation{Calls: 4, Tokens: 100, Retries: 2, Deadline: time.Now().Add(time.Minute)}, Envelope: testAuthority(t, "actor", false)}
+	for _, category := range []string{"identity_scope", "injection", "dialect_escape", "resource_exhaustion", "byo"} {
+		x.Case = Case{Stage: StageAdversarial, Category: category, Input: ProtectedRef{Digest: testDigest, Retention: "protected"}}
+		o, err := runner.Observe(context.Background(), x)
+		if err != nil || !o.Blocked || o.ErrorClass != category {
+			t.Fatalf("%s: %#v %v", category, o, err)
+		}
+	}
+	in.ReportID = "frozen"
+	runner.Inputs = staticInputResolver{in: in}
+	x.Case = Case{Stage: StageAdversarial, Category: "frozen_report", Input: ProtectedRef{Digest: testDigest, Retention: "protected"}}
+	if o, err := runner.Observe(context.Background(), x); err != nil || !o.Blocked || o.ErrorClass != "frozen_report" {
+		t.Fatal(o, err)
+	}
+	if q.calls != 3 || reports.calls != 2 || byo.calls != 1 {
+		t.Fatal(q.calls, reports.calls, byo.calls)
+	}
 }
 func TestFailureReportAndLiveRunnerBoundaries(t *testing.T) {
 	s := testSuite()
@@ -444,7 +617,7 @@ func TestFailureReportAndLiveRunnerBoundaries(t *testing.T) {
 	if _, err = (*GovernedRunner)(nil).Observe(context.Background(), Execution{}); !errors.Is(err, ErrMode) {
 		t.Fatal(err)
 	}
-	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0]}}}
+	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model)}}}
 	_, err = g.Observe(context.Background(), Execution{Suite: s, Pack: s.Packs[0], Case: s.Cases[0], Envelope: testAuthority(t, "actor", false)})
 	if !errors.Is(err, ErrMode) {
 		t.Fatal(err)
@@ -475,7 +648,7 @@ func TestGovernedRunnerUsesRetainedReplayAndShadow(t *testing.T) {
 	s := testSuite()
 	inspector := &savedInspector{}
 	q := nlqexec.SavedQuestion{Durability: "session_bound", Context: "context", Query: "query"}
-	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0], Replay: &q, Shadow: &ShadowInput{Baseline: q, Candidate: q}}}, Saved: inspector}
+	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Replay: &q, Shadow: &ShadowInput{Baseline: q, Candidate: q}}}, Saved: inspector}
 	x := Execution{Suite: s, Pack: s.Packs[0], Reservation: Reservation{Calls: 1, Tokens: 1, Deadline: time.Now().Add(time.Minute)}, Envelope: testAuthority(t, "actor", false)}
 	x.Case = Case{Stage: StageReplay, Input: ProtectedRef{Digest: testDigest, Retention: "protected"}}
 	if o, err := g.Observe(context.Background(), x); err != nil || !validDigest(o.SemanticDigest) || inspector.calls != 1 {
@@ -512,7 +685,7 @@ func TestPackExportAndAdversarialBoundaryHelpers(t *testing.T) {
 	if adversarialDenied(errors.New("transport unavailable")) {
 		t.Fatal("dependency failure classified as safety denial")
 	}
-	if !receiptMatchesPack(gateway.Receipt{}, s.Packs[0]) || receiptMatchesPack(gateway.Receipt{Calls: []gateway.Usage{{RequestedModel: "other"}}}, s.Packs[0]) || !receiptMatchesPack(gateway.Receipt{Calls: []gateway.Usage{{RequestedModel: s.Packs[0].Model}}}, s.Packs[0]) {
+	if !receiptMatchesPack(gateway.Receipt{}, s.Packs[0]) || receiptMatchesPack(gateway.Receipt{Calls: []gateway.Usage{{Role: "sql_generation", RequestedModel: "other", ConfigurationDigest: s.Packs[0].ConfigurationDigest}}}, s.Packs[0]) || !receiptMatchesPack(gateway.Receipt{Calls: []gateway.Usage{{Role: "sql_generation", RequestedModel: s.Packs[0].Model, ConfigurationDigest: s.Packs[0].ConfigurationDigest}}}, s.Packs[0]) {
 		t.Fatal("provider receipt was not bound to requested pack model")
 	}
 	called := false

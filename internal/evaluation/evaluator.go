@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 )
 
@@ -153,10 +154,16 @@ func EvaluateWithPack(ctx context.Context, runID string, suite Suite, pack PackR
 			if errors.Is(err, context.Canceled) {
 				return finish("cancelled", "cancelled", err)
 			}
+			if errors.Is(err, gateway.ErrBudget) || errors.Is(err, ErrBudget) {
+				return finish("budget_exhausted", "reservation_exceeded", ErrBudget)
+			}
 			o = Observation{ErrorClass: "dependency_unavailable", Usage: o.Usage}
 		}
 		if validateObservation(o) != nil {
 			return finish("dependency_failed", "invalid_observation", ErrInvalid)
+		}
+		if reserve.CostUSD != nil && o.Usage.Calls > 0 && o.Usage.CostUSD == nil {
+			return finish("dependency_failed", "unknown_cost", ErrBudget)
 		}
 		if o.Usage.Calls > reserve.Calls || o.Usage.Retries > reserve.Retries || o.Usage.Tokens != nil && *o.Usage.Tokens > reserve.Tokens || reserve.CostUSD != nil && o.Usage.CostUSD != nil && *o.Usage.CostUSD > *reserve.CostUSD {
 			return finish("budget_exhausted", "reservation_exceeded", ErrBudget)

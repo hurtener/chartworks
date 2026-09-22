@@ -41,6 +41,9 @@ type EvaluationCancelResult struct {
 // EvaluationCandidateExport is an immutable feedback split ledger.
 type EvaluationCandidateExport = evaluation.CandidateExport
 
+// EvaluationFeedbackSplit is an independently assigned training/heldout partition.
+type EvaluationFeedbackSplit = evaluation.FeedbackSplit
+
 // EvaluationOptimizationProposal is a persisted exact-report comparison.
 type EvaluationOptimizationProposal = evaluation.OptimizationProposal
 
@@ -56,9 +59,11 @@ type evaluationFeedbackExportInput struct {
 	Limit int    `json:"limit"`
 }
 type evaluationFeedbackSplitInput struct {
-	TrainingID     string `json:"training_id"`
-	TrainingDigest string `json:"training_digest"`
-	HeldoutID      string `json:"heldout_id"`
+	CandidateID     string   `json:"candidate_id"`
+	CandidateDigest string   `json:"candidate_digest"`
+	TrainingID      string   `json:"training_id"`
+	HeldoutID       string   `json:"heldout_id"`
+	HeldoutCaseIDs  []string `json:"heldout_case_ids"`
 }
 type evaluationProposalReviewInput struct {
 	ProposalID string                           `json:"proposal_id"`
@@ -139,7 +144,7 @@ func (c *Client) RecoverEvaluation(ctx context.Context, runID string) (Evaluatio
 	return out, err
 }
 
-// ExportEvaluationFeedback creates immutable training evidence.
+// ExportEvaluationFeedback creates immutable pending split evidence.
 func (c *Client) ExportEvaluationFeedback(ctx context.Context, id, topic string, limit int) (EvaluationCandidateExport, error) {
 	var out EvaluationCandidateExport
 	raw, err := json.Marshal(evaluationFeedbackExportInput{id, topic, limit})
@@ -150,10 +155,10 @@ func (c *Client) ExportEvaluationFeedback(ctx context.Context, id, topic string,
 	return out, err
 }
 
-// ReviewEvaluationSplit creates an independently reviewed heldout child ledger.
-func (c *Client) ReviewEvaluationSplit(ctx context.Context, trainingID, digest, heldoutID string) (EvaluationCandidateExport, error) {
-	var out EvaluationCandidateExport
-	raw, err := json.Marshal(evaluationFeedbackSplitInput{trainingID, digest, heldoutID})
+// ReviewEvaluationSplit creates independently reviewed disjoint training and heldout ledgers.
+func (c *Client) ReviewEvaluationSplit(ctx context.Context, candidateID, digest, trainingID, heldoutID string, heldoutCaseIDs []string) (EvaluationFeedbackSplit, error) {
+	var out EvaluationFeedbackSplit
+	raw, err := json.Marshal(evaluationFeedbackSplitInput{candidateID, digest, trainingID, heldoutID, heldoutCaseIDs})
 	if err != nil {
 		return out, err
 	}

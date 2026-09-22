@@ -32,12 +32,12 @@ CREATE TABLE chartworks.evaluation_runs (
 CREATE TABLE chartworks.evaluation_feedback_exports (
     tenant_id text NOT NULL, actor_id text NOT NULL, export_id text NOT NULL,
     evidence_hash text NOT NULL CHECK (length(evidence_hash)=64),
-    split text NOT NULL CHECK (split IN ('training','heldout')), parent_digest text CHECK(parent_digest IS NULL OR length(parent_digest)=64),
+    split text NOT NULL CHECK (split IN ('candidate','training','heldout')), parent_digest text CHECK(parent_digest IS NULL OR length(parent_digest)=64),
     reviewer_id text, reviewed_at timestamptz, manifest jsonb NOT NULL, created_at timestamptz NOT NULL,
-    PRIMARY KEY (tenant_id, export_id), UNIQUE(tenant_id,evidence_hash),
+    PRIMARY KEY (tenant_id, export_id), UNIQUE(tenant_id,evidence_hash), UNIQUE(tenant_id,parent_digest,split),
     FOREIGN KEY(tenant_id,parent_digest) REFERENCES chartworks.evaluation_feedback_exports(tenant_id,evidence_hash),
-    CHECK((split='training' AND parent_digest IS NULL AND reviewer_id IS NULL AND reviewed_at IS NULL) OR
-          (split='heldout' AND parent_digest IS NOT NULL AND reviewer_id IS NOT NULL AND reviewed_at IS NOT NULL))
+    CHECK((split='candidate' AND parent_digest IS NULL AND reviewer_id IS NULL AND reviewed_at IS NULL) OR
+          (split IN ('training','heldout') AND parent_digest IS NOT NULL AND reviewer_id IS NOT NULL AND reviewed_at IS NOT NULL))
 );
 
 CREATE TABLE chartworks.evaluation_proposals (

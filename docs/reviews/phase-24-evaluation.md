@@ -2,7 +2,7 @@
 
 Date: 2026-09-22. Status: implementation submitted for adversarial review; not release qualification.
 
-The implementation adds the `internal/evaluation` suite, deterministic gate, governed live runner, durable suite and optimization review lifecycles, protected feedback export and fixture-only local CLI. Migration 046 stores immutable tenant-scoped suite revisions, distinct authenticated review receipts, admitted and terminal runs, cancel intent, protected inputs, training export ledgers, proposals and the reviewed pack-selection pointer. HTTP, MCP and SDK consumers use the same service for suite author/review and run/read/cancel.
+The implementation adds the `internal/evaluation` suite, deterministic gate, governed live runner, durable suite and optimization review lifecycles, protected feedback export and fixture-only local CLI. Migration 048 stores immutable tenant-scoped suite revisions, distinct authenticated review receipts, admitted and terminal runs, cancel intent, protected inputs, pre-training candidate and independently assigned split ledgers, proposals and the reviewed pack-selection pointer. HTTP, MCP and SDK consumers use the same service for suite author/review and run/read/cancel.
 
 `TestPhase24/AC01`–`AC06` exercise a deliberately failing regression, semantic alternatives and pinned bilingual stage evidence, six adversarial categories, replay/shadow proposal provenance, fixture/live separation with unknown cost, and durable reviewed-suite/export history. Package tests cover strict JSON, duplicate fields, CLI live refusal, distinct author/reviewer enforcement, pre-call reservations, typed terminal evidence and deterministic hashes.
 

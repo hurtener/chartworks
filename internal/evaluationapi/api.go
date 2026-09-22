@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"reflect"
@@ -36,18 +37,20 @@ type CancelResult struct {
 	Cancelled bool `json:"cancelled"`
 }
 
-// FeedbackExportInput selects reviewed feedback for an immutable training ledger.
+// FeedbackExportInput selects reviewed feedback for an immutable unassigned candidate ledger.
 type FeedbackExportInput struct {
 	ID    string `json:"id"`
 	Topic string `json:"topic"`
 	Limit int    `json:"limit"`
 }
 
-// FeedbackSplitInput binds independent split review to an exact training digest.
+// FeedbackSplitInput binds independent partitioning to an exact candidate digest.
 type FeedbackSplitInput struct {
-	TrainingID     string `json:"training_id"`
-	TrainingDigest string `json:"training_digest"`
-	HeldoutID      string `json:"heldout_id"`
+	CandidateID     string   `json:"candidate_id"`
+	CandidateDigest string   `json:"candidate_digest"`
+	TrainingID      string   `json:"training_id"`
+	HeldoutID       string   `json:"heldout_id"`
+	HeldoutCaseIDs  []string `json:"heldout_case_ids"`
 }
 
 // ProposalInput wraps an optimization proposal request.
@@ -95,11 +98,11 @@ func Registry() (*api.Registry, error) {
 		struct {
 			id, path, action, effect, summary, loader string
 			req, resp                                 reflect.Type
-		}{"exportEvaluationFeedback", "/v1/evaluations/feedback/export", "ops.read", "evaluation_feedback_export", "Export reviewed feedback as training evidence", "evaluation.Service.ExportFeedback", reflect.TypeFor[FeedbackExportInput](), reflect.TypeFor[evaluation.CandidateExport]()},
+		}{"exportEvaluationFeedback", "/v1/evaluations/feedback/export", "ops.read", "evaluation_feedback_export", "Export reviewed feedback as pending split evidence", "evaluation.Service.ExportFeedback", reflect.TypeFor[FeedbackExportInput](), reflect.TypeFor[evaluation.CandidateExport]()},
 		struct {
 			id, path, action, effect, summary, loader string
 			req, resp                                 reflect.Type
-		}{"reviewEvaluationSplit", "/v1/evaluations/feedback/review", "ops.audit", "evaluation_split_review_commit", "Create a heldout child after independent review", "evaluation.Service.ReviewFeedbackSplit", reflect.TypeFor[FeedbackSplitInput](), reflect.TypeFor[evaluation.CandidateExport]()},
+		}{"reviewEvaluationSplit", "/v1/evaluations/feedback/review", "ops.audit", "evaluation_split_review_commit", "Assign disjoint training and heldout children", "evaluation.Service.ReviewFeedbackSplit", reflect.TypeFor[FeedbackSplitInput](), reflect.TypeFor[evaluation.FeedbackSplit]()},
 		struct {
 			id, path, action, effect, summary, loader string
 			req, resp                                 reflect.Type
@@ -117,15 +120,30 @@ func Registry() (*api.Registry, error) {
 	for _, x := range rows {
 		req, err := api.SchemaFor(x.id+"Request", x.req, false, api.OptionalJSONFields)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s request: %w", x.id, err)
 		}
 		resp, err := api.SchemaFor(x.id+"Response", x.resp, true)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s response: %w", x.id, err)
 		}
-		defs = append(defs, api.Definition{Operation: api.Operation{Method: http.MethodPost, Path: x.path, Action: x.action, Effect: x.effect}, ID: x.id, Summary: x.summary, ResourceLoader: x.loader, Audit: "evaluation lifecycle audit", MaxBodyBytes: maxBody, Request: req, Response: resp, Errors: errs})
+		definition := api.Definition{Operation: api.Operation{Method: http.MethodPost, Path: x.path, Action: x.action, Effect: x.effect}, ID: x.id, Summary: x.summary, ResourceLoader: x.loader, Audit: "evaluation lifecycle audit", MaxBodyBytes: maxBody, Request: req, Response: resp, Errors: errs}
+		if _, err := api.New([]api.Definition{definition}); err != nil {
+			return nil, fmt.Errorf("%s: %w", x.id, err)
+		}
+		defs = append(defs, definition)
 	}
-	return api.New(defs)
+	for i := range defs {
+		for j := i + 1; j < len(defs); j++ {
+			if defs[i].ID == defs[j].ID || defs[i].Path == defs[j].Path {
+				return nil, fmt.Errorf("evaluation registry collision %s/%s", defs[i].ID, defs[j].ID)
+			}
+		}
+	}
+	registry, err := api.New(defs)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation registry: %w", err)
+	}
+	return registry, nil
 }
 
 // Handler mounts the authority-verified HTTP consumers.
@@ -212,7 +230,7 @@ func Handler(verifier *auth.Verifier, svc *evaluation.Service, runner evaluation
 			var in FeedbackSplitInput
 			err = decode(w, r, d.Request, &in)
 			if err == nil {
-				out, err = svc.ReviewFeedbackSplit(r.Context(), e, in.TrainingID, in.TrainingDigest, in.HeldoutID)
+				out, err = svc.ReviewFeedbackSplit(r.Context(), e, in.CandidateID, in.CandidateDigest, in.TrainingID, in.HeldoutID, in.HeldoutCaseIDs)
 			}
 		case "proposeEvaluationOptimization":
 			var in ProposalInput
@@ -325,14 +343,14 @@ func MCPBindings(svc *evaluation.Service, runner evaluation.Runner) ([]mcpserver
 	if err != nil {
 		return nil, err
 	}
-	f, err := mcpserver.Bind(reg, "exportEvaluationFeedback", "export_evaluation_feedback", "evaluation", "Export reviewed feedback as immutable training evidence.", func(ctx context.Context, e identity.Envelope, in FeedbackExportInput) (evaluation.CandidateExport, error) {
+	f, err := mcpserver.Bind(reg, "exportEvaluationFeedback", "export_evaluation_feedback", "evaluation", "Export reviewed feedback as immutable pending split evidence.", func(ctx context.Context, e identity.Envelope, in FeedbackExportInput) (evaluation.CandidateExport, error) {
 		return svc.ExportFeedback(ctx, e, in.ID, in.Topic, in.Limit)
 	}, mapper)
 	if err != nil {
 		return nil, err
 	}
-	g, err := mcpserver.Bind(reg, "reviewEvaluationSplit", "review_evaluation_split", "evaluation", "Create an immutable heldout child after independent review.", func(ctx context.Context, e identity.Envelope, in FeedbackSplitInput) (evaluation.CandidateExport, error) {
-		return svc.ReviewFeedbackSplit(ctx, e, in.TrainingID, in.TrainingDigest, in.HeldoutID)
+	g, err := mcpserver.Bind(reg, "reviewEvaluationSplit", "review_evaluation_split", "evaluation", "Assign immutable disjoint training and heldout ledgers.", func(ctx context.Context, e identity.Envelope, in FeedbackSplitInput) (evaluation.FeedbackSplit, error) {
+		return svc.ReviewFeedbackSplit(ctx, e, in.CandidateID, in.CandidateDigest, in.TrainingID, in.HeldoutID, in.HeldoutCaseIDs)
 	}, mapper)
 	if err != nil {
 		return nil, err

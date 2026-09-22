@@ -22,16 +22,17 @@ import (
 
 // LiveInput is protected execution material. It is never retained in reports or logs.
 type LiveInput struct {
-	Pack      PackRevision                `json:"pack"`
-	Route     *nlqroute.RouteRequest      `json:"route,omitempty"`
-	Question  *nlqexec.QuestionRequest    `json:"question,omitempty"`
-	Run       *nlqexec.RunRequest         `json:"run,omitempty"`
-	Replay    *nlqexec.SavedQuestion      `json:"replay,omitempty"`
-	Shadow    *ShadowInput                `json:"shadow,omitempty"`
-	BYO       *nlqbyo.SubmitRequest       `json:"byo,omitempty"`
-	Chart     *chartservice.SelectRequest `json:"chart,omitempty"`
-	ReportID  string                      `json:"report_id,omitempty"`
-	ReportRef reporting.Reference         `json:"report_ref,omitempty"`
+	Pack          PackRevision                `json:"pack"`
+	RuntimeConfig gateway.RuntimeConfig       `json:"runtime_config"`
+	Route         *nlqroute.RouteRequest      `json:"route,omitempty"`
+	Question      *nlqexec.QuestionRequest    `json:"question,omitempty"`
+	Run           *nlqexec.RunRequest         `json:"run,omitempty"`
+	Replay        *nlqexec.SavedQuestion      `json:"replay,omitempty"`
+	Shadow        *ShadowInput                `json:"shadow,omitempty"`
+	BYO           *nlqbyo.SubmitRequest       `json:"byo,omitempty"`
+	Chart         *chartservice.SelectRequest `json:"chart,omitempty"`
+	ReportID      string                      `json:"report_id,omitempty"`
+	ReportRef     reporting.Reference         `json:"report_ref,omitempty"`
 }
 
 // ShadowInput compares two retained definitions without fresh planning or provider work.
@@ -50,15 +51,34 @@ type SavedInspector interface {
 	InspectSaved(context.Context, identity.Envelope, nlqexec.SavedQuestion) (nlqexec.SavedEvidence, error)
 }
 
+type routingRuntime interface {
+	Route(context.Context, identity.Envelope, nlqroute.RouteRequest) (nlqroute.RouteResult, error)
+}
+type queryRuntime interface {
+	Preflight(context.Context, identity.Envelope, nlqexec.PreflightRequest) (nlqexec.PreflightResult, error)
+	Plan(context.Context, identity.Envelope, nlqexec.PlanRequest) (nlqexec.PlanResult, error)
+	Run(context.Context, identity.Envelope, nlqexec.RunRequest) (nlqexec.RunResult, error)
+	InspectSaved(context.Context, identity.Envelope, nlqexec.SavedQuestion) (nlqexec.SavedEvidence, error)
+}
+type chartRuntime interface {
+	Select(context.Context, identity.Envelope, chartservice.SelectRequest) (chartservice.SelectionResult, error)
+}
+type reportRuntime interface {
+	Read(context.Context, identity.Envelope, string, reporting.Reference) (reporting.View, error)
+}
+type byoRuntime interface {
+	Submit(context.Context, identity.Envelope, nlqbyo.SubmitRequest) (nlqbyo.SubmitResult, error)
+}
+
 // GovernedRunner invokes the existing governed services; it does not introduce a second gateway, validator, or executor.
 type GovernedRunner struct {
 	Inputs  LiveInputResolver
-	Routing *nlqroute.Service
-	Query   *nlqexec.Service
+	Routing routingRuntime
+	Query   queryRuntime
 	Saved   SavedInspector
-	Charts  *chartservice.Service
-	Reports *reporting.Service
-	BYO     *nlqbyo.Service
+	Charts  chartRuntime
+	Reports reportRuntime
+	BYO     byoRuntime
 	Clock   Clock
 }
 
@@ -84,6 +104,13 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	wantPack, _ := digest(x.Pack)
 	gotPack, _ := digest(in.Pack)
 	if !validPack(in.Pack) || wantPack != gotPack {
+		return Observation{Usage: reservation.usage()}, ErrReview
+	}
+	if in.RuntimeConfig.Digest != x.Pack.ConfigurationDigest || !packModelsMatchConfig(x.Pack, in.RuntimeConfig) {
+		return Observation{Usage: reservation.usage()}, ErrReview
+	}
+	ctx, err = gateway.WithRuntimeConfig(ctx, in.RuntimeConfig)
+	if err != nil {
 		return Observation{Usage: reservation.usage()}, ErrReview
 	}
 	var result any
@@ -228,7 +255,36 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 
 func receiptMatchesPack(receipt gateway.Receipt, pack PackRevision) bool {
 	for _, call := range receipt.Calls {
-		if call.RequestedModel == "" || call.RequestedModel != pack.Model {
+		model := pack.Model
+		for _, binding := range pack.Models {
+			if binding.Role == call.Role {
+				model = binding.Model
+				break
+			}
+		}
+		if call.RequestedModel == "" || call.RequestedModel != model || call.ConfigurationDigest != pack.ConfigurationDigest {
+			return false
+		}
+	}
+	return true
+}
+
+func packModelsMatchConfig(pack PackRevision, cfg gateway.RuntimeConfig) bool {
+	if cfg.Digest != gateway.ConfigurationDigest(cfg) {
+		return false
+	}
+	if cfg.Model != pack.Model || len(cfg.Models) != len(pack.Models) {
+		return false
+	}
+	for _, binding := range pack.Models {
+		found := false
+		for _, configured := range cfg.Models {
+			if binding.Role == configured.Role && binding.Model == configured.Model {
+				found = true
+				break
+			}
+		}
+		if !found {
 			return false
 		}
 	}
@@ -246,16 +302,21 @@ type gatewayReservation struct {
 	limit  Reservation
 	calls  int
 	tokens int
+	cost   float64
 }
 
 func (r *gatewayReservation) reserve(ctx context.Context, call gateway.Call, tokens int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !call.Valid() || ctx.Err() != nil || r.calls+1 > r.limit.Calls || r.tokens+tokens > r.limit.Tokens || max(0, r.calls) > r.limit.Retries {
+	attemptCost, costKnown := gateway.RuntimeAttemptCost(ctx)
+	if !call.Valid() || ctx.Err() != nil || r.calls+1 > r.limit.Calls || r.tokens+tokens > r.limit.Tokens || max(0, r.calls) > r.limit.Retries || r.limit.CostUSD != nil && (!costKnown || r.cost+attemptCost > *r.limit.CostUSD) {
 		return gateway.ErrBudget
 	}
 	r.calls++
 	r.tokens += tokens
+	if r.limit.CostUSD != nil {
+		r.cost += attemptCost
+	}
 	return nil
 }
 
