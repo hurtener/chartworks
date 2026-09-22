@@ -321,6 +321,15 @@ func (r *unitRepository) CreateQuery(_ context.Context, _ store.Scope, value Que
 	if _, exists := r.queries[value.ID]; exists {
 		return store.ErrConflict
 	}
+	if value.Parent != "" {
+		parent, exists := r.queries[value.Parent]
+		if !exists {
+			return store.ErrNotFound
+		}
+		if value.ParentRevision != parent.Revision || value.ParentDigest != QueryLineageDigest(parent) {
+			return store.ErrConflict
+		}
+	}
 	r.queries[value.ID] = value
 	return nil
 }

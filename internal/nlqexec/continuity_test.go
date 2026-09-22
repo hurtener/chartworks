@@ -6,9 +6,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/store"
 )
 
 func TestRefinementSelectionEditsAreExplicitAndLossless(t *testing.T) {
@@ -55,6 +57,73 @@ func TestRefinementSelectionEditsRejectAmbiguousOrForeignTargets(t *testing.T) {
 				t.Fatalf("metric edit returned %v", err)
 			}
 		})
+	}
+}
+
+func TestRefinementMetricReferenceCoherenceFailsClosed(t *testing.T) {
+	revenue := semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}
+	margin := semantics.Reference{Kind: semantics.KindMeasure, ID: "margin"}
+	q := QuestionRequest{References: []semantics.Reference{revenue}, MetricIDs: []string{"revenue"}}
+	if err := applyReferenceEdits(&q, []ReferenceEdit{{Action: "replace", Target: revenue, Replacement: &margin}}); err != nil {
+		t.Fatal(err)
+	}
+	canonicalizeQuestion(&q)
+	if err := validateMetricReferenceCoherence(q, []ReferenceEdit{{Action: "replace", Target: revenue, Replacement: &margin}}, nil); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unpaired semantic replacement returned %v", err)
+	}
+	if err := applyMetricEdits(&q, []MetricEdit{{Action: "replace", Target: "revenue", Replacement: "margin"}}); err != nil {
+		t.Fatal(err)
+	}
+	canonicalizeQuestion(&q)
+	if err := validateMetricReferenceCoherence(q, nil, []MetricEdit{{Action: "replace", Target: "revenue", Replacement: "margin"}}); err != nil {
+		t.Fatalf("paired semantic replacement rejected: %v", err)
+	}
+}
+
+func TestCanonicalSelectionsArePermutationEquivalent(t *testing.T) {
+	a := QuestionRequest{References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "margin"}, {Kind: semantics.KindDimension, ID: "region"}}, MetricIDs: []string{"volume", "margin"}}
+	b := QuestionRequest{References: []semantics.Reference{{Kind: semantics.KindDimension, ID: "region"}, {Kind: semantics.KindMeasure, ID: "margin"}}, MetricIDs: []string{"margin", "volume"}}
+	canonicalizeQuestion(&a)
+	canonicalizeQuestion(&b)
+	if !reflect.DeepEqual(a.References, b.References) || !reflect.DeepEqual(a.MetricIDs, b.MetricIDs) || exec.Hash(a.routeRequest()) != exec.Hash(b.routeRequest()) {
+		t.Fatalf("permutations produced different canonical routing inputs: %#v %#v", a, b)
+	}
+}
+
+func TestChildCreationFencesExactObservedParent(t *testing.T) {
+	e := unitEnvelope(t)
+	repo := newUnitRepository()
+	parent := unitQuery(e, "parent", "topic", "v1", "context", false)
+	repo.queries[parent.ID] = parent
+	child := unitQuery(e, "child", "topic", "v1", "context", false)
+	child.Parent = parent.ID
+	bindParentLineage(&child, &parent)
+	mutated := parent
+	mutated.Status = "executed"
+	mutated.Revision++
+	repo.queries[parent.ID] = mutated
+	if err := repo.CreateQuery(context.Background(), mustScope(e), child); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("stale parent lineage committed: %v", err)
+	}
+	bindParentLineage(&child, &mutated)
+	if err := repo.CreateQuery(context.Background(), mustScope(e), child); err != nil {
+		t.Fatalf("current parent lineage rejected: %v", err)
+	}
+}
+
+func TestLineageDigestIncludesProtectedParentState(t *testing.T) {
+	e := unitEnvelope(t)
+	parent := unitQuery(e, "parent", "topic", "v1", "context", false)
+	parent.SQL = "SELECT 1"
+	baseline := QueryLineageDigest(parent)
+	parent.SQL = "SELECT 2"
+	if QueryLineageDigest(parent) == baseline {
+		t.Fatal("protected SQL mutation did not change lineage digest")
+	}
+	parent.SQL = "SELECT 1"
+	parent.Parameters = []exec.Parameter{{Kind: "text", Value: "synthetic"}}
+	if QueryLineageDigest(parent) == baseline {
+		t.Fatal("protected parameter mutation did not change lineage digest")
 	}
 }
 

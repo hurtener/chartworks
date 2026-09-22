@@ -72,12 +72,19 @@ func TestEXP01ConversationalContinuity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	beforeRejected := fixture.base.model.requests.Load()
+	margin := semantics.Reference{Kind: semantics.KindMeasure, ID: "margin"}
+	if _, err = fixture.query.Refine(ctx, e, nlqexec.RefineRequest{QueryID: initial.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Show margin"}, ReferenceEdits: []nlqexec.ReferenceEdit{{Action: "replace", Target: revenue, Replacement: &margin}}}); !errors.Is(err, nlqexec.ErrInvalid) {
+		t.Fatalf("unpaired metric/reference edit returned %v", err)
+	}
+	if after := fixture.base.model.requests.Load(); after != beforeRejected {
+		t.Fatalf("incoherent refinement reached model gateway: before=%d after=%d", beforeRejected, after)
+	}
 
 	withDimension, err := fixture.query.Refine(ctx, e, nlqexec.RefineRequest{QueryID: initial.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Show revenue by region"}, ReferenceEdits: []nlqexec.ReferenceEdit{{Action: "add", Target: region}}})
 	if err != nil {
 		t.Fatal("add dimension", err)
 	}
-	margin := semantics.Reference{Kind: semantics.KindMeasure, ID: "margin"}
 	changedMetric, err := fixture.query.Refine(ctx, e, nlqexec.RefineRequest{QueryID: withDimension.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Ahora muestra el margen por región"}, ReferenceEdits: []nlqexec.ReferenceEdit{{Action: "replace", Target: revenue, Replacement: &margin}}, MetricEdits: []nlqexec.MetricEdit{{Action: "replace", Target: "revenue", Replacement: "margin"}}})
 	if err != nil {
 		t.Fatal("change metric", err)
@@ -95,8 +102,27 @@ func TestEXP01ConversationalContinuity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(record.Route.Request.References, []semantics.Reference{margin}) || !reflect.DeepEqual(record.Route.Request.MetricIDs, []string{"margin"}) || record.Parent != changedMetric.QueryID {
+	parentRecord, err := fixture.base.f.db.ReadQuery(ctx, scope, changedMetric.QueryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(record.Route.Request.References, []semantics.Reference{margin}) || !reflect.DeepEqual(record.Route.Request.MetricIDs, []string{"margin"}) || record.Parent != changedMetric.QueryID || record.ParentRevision != parentRecord.Revision || record.ParentDigest != nlqexec.QueryLineageDigest(parentRecord) {
 		t.Fatalf("stored continuity evidence retained stale selections: %#v", record.Route.Request)
+	}
+	staleChild := record
+	staleChild.ID = "stale-child"
+	staleChild.Parent = record.ID
+	staleChild.ParentRevision = record.Revision
+	staleChild.ParentDigest = nlqexec.QueryLineageDigest(record)
+	staleChild.Revision = 1
+	mutatedParent := record
+	mutatedParent.Status = "executed"
+	mutatedParent.Revision++
+	if err := fixture.base.f.db.UpdateQuery(ctx, scope, mutatedParent, record.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.base.f.db.CreateQuery(ctx, scope, staleChild); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("stale child lineage committed after concurrent parent update: %v", err)
 	}
 	spanishSession := phase18Envelope(t, fixture.base, fixture.base.f.e.User(), "exp01-spanish-session", true)
 	spanishQuestion := phase18Question(fixture.base, nlq.LanguageSpanish, fixture.base.pack.Topic)

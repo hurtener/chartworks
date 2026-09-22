@@ -122,6 +122,9 @@ protected repository under the current tenant, actor and session. Cross-session
 or cross-context ancestry fails closed; a cycle or exhausted bound returns the
 typed `new_question_required` outcome. A changed semantic publication returns
 `context_changed`, requiring a fresh routed question instead of carrying the old
-route into a new publication. Canonical child requests persist the resulting
-semantic selections while prior SQL remains protected edit context only. See
+route into a new publication. Measure/KPI references and metric IDs remain paired,
+and full typed reference coordinates plus metric IDs are sorted before routing.
+Canonical child requests persist the resulting semantic selections and exact
+observed parent revision/digest; the child insert locks and rechecks the parent so
+concurrent mutation fails closed. Prior SQL remains protected edit context only. See
 [conversational continuity v1](../contracts/conversational-continuity-v1.md).

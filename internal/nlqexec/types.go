@@ -146,6 +146,8 @@ type QueryRecord struct {
 	ID               string                       `json:"id"`
 	Session          string                       `json:"session"`
 	Parent           string                       `json:"parent,omitempty"`
+	ParentRevision   int64                        `json:"parent_revision,omitempty"`
+	ParentDigest     string                       `json:"parent_digest,omitempty"`
 	Operation        string                       `json:"operation,omitempty"`
 	Topic            string                       `json:"topic"`
 	Topics           []string                     `json:"topics"`
