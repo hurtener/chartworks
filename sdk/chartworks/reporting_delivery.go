@@ -39,6 +39,12 @@ type ReportingOutputChoice = reporting.ViewerOutputChoice
 // ReportingFilter describes a business input, never an authorization predicate.
 type ReportingFilter = reporting.ViewerFilter
 
+// ReportingFilterOptionsRequest selects choices for one exact published report filter.
+type ReportingFilterOptionsRequest = reporting.DeliveryFilterOptionsRequest
+
+// ReportingFilterOptionsPage preserves typed values and its authority-bound continuation.
+type ReportingFilterOptionsPage = reporting.FilterOptionsPage
+
 // ReportingDeliveryRunRequest explicitly requests a new authorized execution.
 type ReportingDeliveryRunRequest = reporting.DeliveryRunRequest
 
@@ -104,6 +110,16 @@ func (c *Client) DescribeReporting(ctx context.Context, in ReportingDescribeRequ
 		return out, ErrReportingRequest
 	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting/describe", "", in, &out, 4<<20)
+	return
+}
+
+// ReportingFilterOptions performs one bounded validated source read and never
+// invokes a model. A continuation is valid only for the unchanged request and authority.
+func (c *Client) ReportingFilterOptions(ctx context.Context, in ReportingFilterOptionsRequest) (out ReportingFilterOptionsPage, err error) {
+	if !identity.Identifier(in.Report) || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || len(in.Cursor) > 16<<10 {
+		return out, ErrReportingRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/reporting/filter-options", "", in, &out, 2<<20)
 	return
 }
 

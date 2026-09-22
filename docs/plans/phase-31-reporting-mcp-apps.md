@@ -16,7 +16,7 @@ No compatibility spike, host transcript requirement or unrelated protocol upgrad
 
 ## Scope and implementation tasks
 
-1. Register reporting_search/describe/run/runs/view over the shared domain/API and selected published outputs; supply the versioned bundled Apps resource.
+1. Register reporting_search/describe/run/runs/view/filter_options over the shared domain/API and selected published outputs; supply the versioned bundled Apps resource.
 2. Build the shared small read viewer for block/report/dashboard outputs, filters, pagination, locale/theme and run/approval/freshness/error states.
 3. Use the established host bridge; keep resources free of credentials and tenant values. A data-changing filter explicitly invokes an authorized run; retained-result pagination/redraw makes no query/model call.
 4. Add content escaping, message/data size limits and component/provider tests. The viewer stores no authoritative duplicate report state.
@@ -37,7 +37,7 @@ Viewer row/message/output bounds, constrained theme tokens and resource version.
 2. **AC02** — Search/describe omit unauthorized resources and SQL; run is explicitly side-effecting while view/runs make zero data/model executions.
 3. **AC03** — Artifact loading/error/partial/expired/private states and output/page navigation work without shared bearers in resource code, arguments or storage.
 4. **AC04** — Every supported chart/KPI/table/narrative displays exact labels/units/order and trust state; redraw does not re-execute a query.
-5. **AC05** — Data-changing filters create explicit authorized runs; app visibility cannot bypass provider-side signed scope checks.
+5. **AC05** — Revision-bound filter choices use an explicit bounded authorized source read, while data-changing filters create explicit authorized runs; app visibility cannot bypass provider-side signed scope checks.
 6. **AC06** — Theme/locale/resize/accessibility and bounded paging work through established bridge component/provider fixtures.
 7. **AC07** — API/MCP/SDK result/error/selection schemas agree; structured/text fallback remains useful and interactive results work without a scheduler.
 8. **AC08** — Untrusted data/labels/narratives cannot inject scripts, remote resources or credentials; resource/message/output limits and safe errors are enforced in the actual viewer/provider implementation.
@@ -66,6 +66,13 @@ kind count and are exercised by the actual `TestPhase31/AC04` browser component;
 `TestCW02RichCharts` also asserts persistence/publication/execution/delivery effects.
 No new framework, host protocol, standalone builder or dashboard-grid redesign is
 introduced, and the broader phase status/acceptance ownership is unchanged.
+
+## CW-10 selectable filter options
+
+The viewer/provider exposes `reporting_filter_options` only when validated source
+execution is mounted. Its closed request contains report/revision/filter/search/
+cursor/limit/locale, never SQL or a physical relation. D-081 binds each page to
+current signed reach and source revision; retained view/redraw remains source-free.
 
 ## CW-03 output-intent and evidence-policy continuation
 

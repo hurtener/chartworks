@@ -57,6 +57,15 @@ func (s *Delivery) begin(ctx context.Context, e identity.Envelope, action string
 	return ctx, cancel, nil
 }
 
+// FilterOptions is the shared viewer/MCP projection of the document service's
+// explicit warehouse read. Retained artifact navigation never calls this method.
+func (s *Delivery) FilterOptions(ctx context.Context, e identity.Envelope, in DeliveryFilterOptionsRequest) (FilterOptionsPage, error) {
+	if s == nil || s.documents == nil {
+		return FilterOptionsPage{}, ErrUnavailable
+	}
+	return s.documents.FilterOptions(ctx, e, in.Report, FilterOptionsRequest{Revision: in.Revision, Filter: in.Filter, Search: in.Search, Cursor: in.Cursor, Limit: in.Limit, Locale: in.Locale})
+}
+
 func deliveryText(s string, maxBytes int) bool {
 	return len(s) <= maxBytes && utf8.ValidString(s) && !strings.ContainsRune(s, 0)
 }

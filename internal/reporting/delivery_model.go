@@ -7,6 +7,18 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 )
 
+// DeliveryFilterOptionsRequest is the HTTP/MCP viewer consumer for one exact
+// report filter source. It contains no SQL or physical relation coordinates.
+type DeliveryFilterOptionsRequest struct {
+	Report   string `json:"report"`
+	Revision int64  `json:"revision"`
+	Filter   string `json:"filter"`
+	Search   string `json:"search,omitempty"`
+	Cursor   string `json:"cursor,omitempty"`
+	Limit    int    `json:"limit"`
+	Locale   string `json:"locale"`
+}
+
 // DeliveryVersion is shared by HTTP, MCP, SDK and the bundled read viewer.
 const DeliveryVersion = "reporting-view-v1"
 

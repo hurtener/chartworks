@@ -77,6 +77,11 @@ func documentEntries(documents *reporting.Documents, runs *reporting.Composition
 			runtimeEntry("POST", path+"/{id}/runs", "reporting.execute", "admit_"+kind+"_run", "Reserve a key and seal exact "+kind+" composition inputs", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in reporting.CompositionRequest) (reporting.CompositionView, error) {
 				return runs.Admit(ctx, e, kind, id, in)
 			}))
+		if kind == "report" {
+			entries = append(entries, runtimeEntry("POST", path+"/{id}/filter-options", "reporting.execute", "report_filter_options", "Read bounded revision-bound selectable filter values", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in reporting.FilterOptionsRequest) (reporting.FilterOptionsPage, error) {
+				return documents.FilterOptions(ctx, e, id, in)
+			}))
+		}
 		for _, transition := range []string{"review", "publish", "reject", "archive"} {
 			action := "reporting.write"
 			if transition == "publish" || transition == "reject" {
@@ -121,6 +126,9 @@ func documentEntries(documents *reporting.Documents, runs *reporting.Composition
 			d.Effect = "immutable_composition_manifest_reservation"
 		case "execute_composition_run":
 			d.Effect = "bounded_source_read_optional_model_retained_composition"
+		case "report_filter_options":
+			d.Effect = "bounded_validated_distinct_source_read"
+			d.Audit = "read attempt receipt; no SQL, values or credentials"
 		case "cancel_composition_run":
 			d.Effect = "durable_cancellation_intent"
 		case "expire_composition_artifacts":

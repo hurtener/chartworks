@@ -71,6 +71,10 @@ contract. Read response decoding has its own bounded 100,000-item mode; the
 model/request decoder's existing 65,536-item bound is unchanged. No row/byte,
 coverage, native validation or authority gate is lowered.
 
+CW-10 extends the same actual-operation matrix with typed
+`ReportFilterOptions`; generic CLI invocation discovers the registered closed
+operation and cannot supply arbitrary SQL, source coordinates or authorization.
+
 The [adversarial record](../reviews/phase-23-adversarial.md) identifies corrections,
 verification commands and exact-source evidence boundaries. All six named tests
 must pass; the registry does not excuse missing runtime assertions.

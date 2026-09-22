@@ -37,6 +37,11 @@ func deliveryEntries(service *reporting.Delivery, execution bool, renderer ...*r
 		entries = append(entries, entry)
 	}
 	if execution {
+		options := deliveryEntry("/v1/reporting/filter-options", "reportingFilterOptions", "Read bounded revision-bound selectable filter values", service.FilterOptions)
+		options.definition.Action = "reporting.execute"
+		options.definition.Effect = "bounded_validated_distinct_source_read"
+		options.definition.Audit = "read attempt receipt; no SQL, values or credentials"
+		entries = append(entries, options)
 		entry := deliveryEntry("/v1/reporting/run", "reportingRun", "Explicitly run a published reporting revision with fresh signed execution authority", service.Run)
 		entry.definition.Action = "reporting.execute"
 		entry.definition.Effect = "bounded_source_read_optional_model_retained_artifact"
@@ -122,6 +127,15 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer .
 		out = append(out, export)
 	}
 	if execution {
+		options, err := mcpserver.Bind(registry, "reportingFilterOptions", "reporting_filter_options", "reporting", "Read searchable typed choices for one exact published report revision and filter. This performs a bounded governed source read and never invokes a model.", service.FilterOptions, mapper)
+		if err != nil {
+			return nil, err
+		}
+		options, err = mcpserver.WithAppResource(options, resource)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, options)
 		run, err := mcpserver.Bind(registry, "reportingRun", "reporting_run", "reporting", "Explicitly execute a published reporting revision. May query data, spend model tokens and persist an artifact. New filters require a new key and current signed authority; do not retry unknown outcomes blindly.", service.Run, mapper)
 		if err != nil {
 			return nil, err

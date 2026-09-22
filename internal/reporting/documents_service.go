@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"slices"
 	"time"
@@ -22,10 +23,11 @@ type DocumentQueryCatalog interface {
 // Documents owns report/dashboard authoring. Execution is a separate consumer
 // of these exact revisions and the existing block/query services.
 type Documents struct {
-	repo    DocumentRepository
-	blocks  *Service
-	queries DocumentQueryCatalog
-	limits  config.Reporting
+	repo      DocumentRepository
+	blocks    *Service
+	queries   DocumentQueryCatalog
+	limits    config.Reporting
+	cursorKey [32]byte
 }
 
 // NewDocuments performs no metadata, warehouse or model work. Text-only
@@ -37,7 +39,11 @@ func NewDocuments(repo DocumentRepository, blocks *Service, queries DocumentQuer
 	if nilValue(queries) {
 		queries = nil
 	}
-	return &Documents{repo: repo, blocks: blocks, queries: queries, limits: limits}, nil
+	var cursorKey [32]byte
+	if _, err := rand.Read(cursorKey[:]); err != nil {
+		return nil, ErrUnavailable
+	}
+	return &Documents{repo: repo, blocks: blocks, queries: queries, limits: limits, cursorKey: cursorKey}, nil
 }
 
 // ProjectStoredDocument applies hard format bounds, not mutable operator limits.
@@ -80,6 +86,7 @@ func (s *Documents) begin(ctx context.Context, e identity.Envelope, kind, id str
 func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, kind string, d DocumentDefinition) ([]QueryOrigin, error) {
 	origins := []QueryOrigin{}
 	parameters := map[string]bool{}
+	optionBlocks := map[string]map[int64]bool{}
 	for _, page := range d.Pages {
 		view, err := s.repo.ReadDocument(ctx, e, "report", page.Report, DocumentReference{Revision: page.Revision}, Read, false)
 		if err != nil {
@@ -102,6 +109,10 @@ func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, ki
 			if snapshot.PublishedAt == nil || snapshot.State.Archived {
 				return nil, ErrStale
 			}
+			if optionBlocks[w.Block.Block] == nil {
+				optionBlocks[w.Block.Block] = map[int64]bool{}
+			}
+			optionBlocks[w.Block.Block][snapshot.Revision.Number] = true
 			if _, _, err := ResolveOutputSelection(snapshot.Revision.Definition, w.Block.Outputs); err != nil {
 				return nil, err
 			}
@@ -124,6 +135,31 @@ func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, ki
 				return nil, ErrInvalid
 			}
 			origins = append(origins, clone(origin))
+		}
+	}
+	for _, filter := range d.Filters {
+		if filter.Options == nil {
+			continue
+		}
+		if s.blocks == nil {
+			return nil, ErrUnavailable
+		}
+		source := filter.Options
+		if !optionBlocks[source.Block][source.BlockRevision] {
+			return nil, ErrInvalid
+		}
+		snapshot, err := s.blocks.repo.ReadBlock(ctx, e, source.Block, Reference{Revision: source.BlockRevision}, Read)
+		if err != nil {
+			return nil, err
+		}
+		found := false
+		for _, pin := range snapshot.Revision.Definition.Topics {
+			if pin.Topic == source.Topic && pin.Version == source.TopicVersion {
+				found = true
+			}
+		}
+		if !found {
+			return nil, ErrInvalid
 		}
 	}
 	for _, a := range d.Defaults {

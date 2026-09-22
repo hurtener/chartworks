@@ -89,8 +89,50 @@ type Widget struct {
 
 // ReportFilter reuses the exact scalar/period type system used by frozen blocks.
 type ReportFilter struct {
-	Parameter Parameter `json:"parameter"`
-	Label     string    `json:"label"`
+	Parameter Parameter           `json:"parameter"`
+	Label     string              `json:"label"`
+	Options   *FilterOptionSource `json:"options,omitempty"`
+}
+
+// FilterOptionSource binds selectable values to reviewed immutable semantics.
+// Physical relation names are resolved server-side from the pinned topic and
+// current source binding; labels never become SQL identifiers.
+type FilterOptionSource struct {
+	Version       int    `json:"version" jsonschema:"enum=1"`
+	Block         string `json:"block"`
+	BlockRevision int64  `json:"block_revision"`
+	Topic         string `json:"topic"`
+	TopicVersion  string `json:"topic_version"`
+	Dataset       string `json:"dataset"`
+	Column        string `json:"column"`
+}
+
+// FilterOptionsRequest is a closed, bounded distinct-value query intent.
+type FilterOptionsRequest struct {
+	Revision int64  `json:"revision"`
+	Filter   string `json:"filter"`
+	Search   string `json:"search,omitempty"`
+	Cursor   string `json:"cursor,omitempty"`
+	Limit    int    `json:"limit"`
+	Locale   string `json:"locale"`
+}
+
+// FilterOption preserves exact normalized JSON type and a bounded display label.
+type FilterOption struct {
+	Value json.RawMessage `json:"value"`
+	Label string          `json:"label"`
+}
+
+// FilterOptionsPage is tied to one exact immutable report revision and source
+// revision. Next is opaque, authenticated, authority-bound and short-lived.
+type FilterOptionsPage struct {
+	Report         string         `json:"report"`
+	Revision       int64          `json:"revision"`
+	Filter         string         `json:"filter"`
+	SourceRevision int64          `json:"source_revision"`
+	Options        []FilterOption `json:"options"`
+	Next           string         `json:"next,omitempty"`
+	Complete       bool           `json:"complete"`
 }
 
 // DocumentPage orders an exact report revision. Page names are held with the

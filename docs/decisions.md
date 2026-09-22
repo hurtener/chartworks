@@ -779,3 +779,5 @@ Learning continuation: [D-078 version-pinned reviewed examples and evidence-base
 Rich output continuation: [D-079 reviewed KPI/table display intent and retained-only static export](decisions/2026-09-22-rich-output-display.md).
 
 Governed block depth continuation: [D-080 certification wording, reviewed overlap and dialect-bound assistance](decisions/2026-09-22-governed-block-depth.md).
+
+Report filter continuation: [D-081 explicit revision-bound selectable values through validated reads](decisions/2026-09-22-report-filter-options.md).
