@@ -341,6 +341,8 @@ func testCW07TemporalConnectorsAndInstantBoundaries(t *testing.T) {
 		{nlq.LanguageEnglish, "Revenue in March 20"},
 		{nlq.LanguageEnglish, "Revenue in March de 2025"},
 		{nlq.LanguageEnglish, "Revenue in March of 2025 or 2026"},
+		{nlq.LanguageEnglish, "Revenue in 2025 March"},
+		{nlq.LanguageSpanish, "Ingresos en 2025 marzo"},
 	} {
 		service, engine := cw07Service(t, cw07Publication("topic"), cw07Binding(1))
 		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, InterpretationAnchor: "2026-09-22"})

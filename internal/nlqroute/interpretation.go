@@ -441,6 +441,7 @@ type parsedSpan struct{ start, end, grain, provenance string }
 func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parsedSpan, bool, error) {
 	words := strings.Fields(question)
 	yearTokens := 0
+	consumedYearTokens := 0
 	for _, word := range words {
 		if numericYear(word) {
 			yearTokens++
@@ -474,6 +475,7 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 					return parsedSpan{}, false, &Clarification{Reason: "invalid_temporal_span", Outcome: semantics.ClarificationInvalid, Prompt: "Provide one supported month and four-digit year."}
 				}
 				year, provenance = candidate, "explicit_month_year"
+				consumedYearTokens++
 			} else if next != i+1 {
 				return parsedSpan{}, false, &Clarification{Reason: "invalid_temporal_span", Outcome: semantics.ClarificationInvalid, Prompt: "Provide one four-digit year after the month connector."}
 			}
@@ -484,6 +486,9 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 			seen[key] = true
 			named = append(named, parsedSpan{key, start.AddDate(0, 1, 0).Format("2006-01-02"), "month", provenance})
 		}
+	}
+	if consumedYearTokens != yearTokens {
+		return parsedSpan{}, false, &Clarification{Reason: "invalid_temporal_span", Outcome: semantics.ClarificationInvalid, Prompt: "Provide one supported month and four-digit year."}
 	}
 	expressions := len(named)
 	if lastMonth {
