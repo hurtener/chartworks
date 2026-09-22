@@ -18,7 +18,7 @@ const evalDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 func evalPtr[T any](v T) *T { return &v }
 func evalSuite(mode evaluation.Mode, cases []evaluation.Case) evaluation.Suite {
 	q := 1.0
-	return evaluation.Suite{SchemaVersion: 1, ID: "phase24", Revision: 1, Mode: mode, Seed: 24001, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 100, Calls: 100, Tokens: 10000, Retries: 4, DurationMS: 60000}, Provenance: evaluation.Provenance{Implementation: "acceptance-head", EnvironmentDigest: evalDigest, ConfigurationDigest: evalDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", TemplateVersion: "template-v1", SourceSnapshot: evalDigest, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: mode, EvidenceDigest: evalDigest, Status: "measured"}, {Engine: "mysql", Dialect: "mysql", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "sqlserver", Dialect: "sqlserver", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "bigquery", Dialect: "bigquery", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "snowflake", Dialect: "snowflake", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "databricks", Dialect: "databricks", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: cases}
+	return evaluation.Suite{SchemaVersion: 1, ID: "phase24", Revision: 1, Mode: mode, Seed: 24001, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 100, Calls: 100, Tokens: 10000, Retries: 4, DurationMS: 60000}, Provenance: evaluation.Provenance{Implementation: "acceptance-head", EnvironmentDigest: evalDigest, ConfigurationDigest: evalDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", TemplateVersion: "template-v1", SourceSnapshot: evalDigest, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: mode, EvidenceDigest: evalDigest, Status: "measured"}, {Engine: "mysql", Dialect: "mysql", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "sqlserver", Dialect: "sqlserver", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "bigquery", Dialect: "bigquery", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "snowflake", Dialect: "snowflake", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "databricks", Dialect: "databricks", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}}}, Packs: []evaluation.PackRevision{{ID: "baseline", Revision: 1, Digest: evalDigest, Model: "model-v1", ConfigurationDigest: evalDigest}, {ID: "candidate", Revision: 1, Digest: strings.Repeat("c", 64), Model: "model-v2", ConfigurationDigest: strings.Repeat("c", 64)}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: cases}
 }
 func evalCase(id string, stage evaluation.Stage, locale string, critical bool, category string) evaluation.Case {
 	o := evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Blocked: critical, Usage: evaluation.Usage{ServiceMS: 1, SourceMS: evalPtr(int64(0)), ModelMS: evalPtr(int64(0)), Tokens: evalPtr(0), CostUSD: nil}}
@@ -113,9 +113,9 @@ func TestPhase24(t *testing.T) {
 				return evaluation.Observation{Decision: "expected", SemanticDigest: d, Usage: evaluation.Usage{Calls: 1}}, nil
 			})
 		}
-		candidate, _ := evaluation.Evaluate(context.Background(), "candidate", s, run(false), evalClock)
-		baseline, _ := evaluation.Evaluate(context.Background(), "baseline", s, run(true), evalClock)
-		p, err := evaluation.ProposeOptimization("proposal", s, baseline, candidate, evalDigest, strings.Repeat("c", 64), evalClock())
+		candidate, _ := evaluation.EvaluateWithPack(context.Background(), "candidate", s, s.Packs[1], run(false), evalClock)
+		baseline, _ := evaluation.EvaluateWithPack(context.Background(), "baseline", s, s.Packs[0], run(true), evalClock)
+		p, err := evaluation.ProposeOptimization("proposal", s, baseline, candidate, evalClock())
 		if err != nil || p.State != "candidate" {
 			t.Fatal(p, err)
 		}
@@ -158,14 +158,22 @@ func TestPhase24(t *testing.T) {
 		}
 		e := evalEnvelope(t, true)
 		c := evalCase("durable", evaluation.StageConsumer, "en", false, "")
-		draft, err := svc.Author(context.Background(), e, evalSuite(evaluation.Fixture, []evaluation.Case{c}))
+		suite := evalSuite(evaluation.Fixture, []evaluation.Case{c})
+		inputRef, err := svc.RegisterInput(context.Background(), e, "protected", evaluation.LiveInput{Pack: suite.Packs[0]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.ResolveEvaluationInput(context.Background(), evalEnvelopeActor(t, "other-actor", false), inputRef); !errors.Is(err, store.ErrNotFound) {
+			t.Fatal("protected input actor boundary widened", err)
+		}
+		draft, err := svc.Author(context.Background(), e, suite)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err = svc.Review(context.Background(), evalReviewer(t), draft.Suite.ID, evaluation.SuiteReviewRequest{Revision: draft.Suite.Revision, Digest: draft.Digest, Decision: evaluation.Accepted}); err != nil {
 			t.Fatal(err)
 		}
-		r, err := svc.Run(context.Background(), e, evaluation.RunRequest{RunID: "durable-run", SuiteID: draft.Suite.ID, SuiteRevision: draft.Suite.Revision, SuiteDigest: draft.Digest}, nil)
+		r, err := svc.Run(context.Background(), e, evaluation.RunRequest{RunID: "durable-run", SuiteID: draft.Suite.ID, SuiteRevision: draft.Suite.Revision, SuiteDigest: draft.Digest, PackDigest: draft.Suite.Packs[0].Digest}, nil)
 		if err != nil {
 			t.Fatal("run not durable", r, err)
 		}
@@ -177,11 +185,26 @@ func TestPhase24(t *testing.T) {
 		if err != nil || export.Status != "candidate" || export.Split != "training" || len(export.Cases) != 1 || export.Cases[0].HeldOut || export.EvidenceHash == "" {
 			t.Fatal(export, err)
 		}
+		trainingReuse := evalSuite(evaluation.Fixture, []evaluation.Case{evalCase("feedback-reuse", evaluation.StageSQL, "es", false, "")})
+		trainingReuse.ID = "training-reuse"
+		if _, err = svc.Author(context.Background(), e, trainingReuse); !errors.Is(err, store.ErrConflict) {
+			t.Fatal("training evidence copied directly into heldout suite", err)
+		}
+		heldout, err := svc.ReviewFeedbackSplit(context.Background(), evalReviewer(t), export.ID, export.EvidenceHash, "feedback-heldout")
+		if err != nil || heldout.ParentDigest != export.EvidenceHash || !heldout.Cases[0].HeldOut {
+			t.Fatal(heldout, err)
+		}
+		if _, err = svc.Author(context.Background(), e, trainingReuse); err != nil {
+			t.Fatal("reviewed heldout lineage rejected", err)
+		}
 		if _, err = svc.ExportFeedback(context.Background(), evalEnvelope(t, false), "feedback-export-2", "topic", 10); err == nil {
 			t.Fatal("feedback exported without signed reach")
 		}
 		if _, err = svc.Read(context.Background(), evalOtherTenant(t), "durable-run"); !errors.Is(err, store.ErrNotFound) {
 			t.Fatal("tenant boundary widened", err)
+		}
+		if _, err = svc.Read(context.Background(), evalEnvelopeActor(t, "other-actor", false), "durable-run"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatal("actor boundary widened", err)
 		}
 	})
 }

@@ -8,15 +8,16 @@ CREATE TABLE chartworks.evaluation_suites (
     CHECK ((state = 'draft' AND review IS NULL) OR (state <> 'draft' AND review IS NOT NULL))
 );
 CREATE TABLE chartworks.evaluation_inputs (
-    tenant_id text NOT NULL, input_digest text NOT NULL CHECK(length(input_digest)=64),
+    tenant_id text NOT NULL, actor_id text NOT NULL, input_digest text NOT NULL CHECK(length(input_digest)=64),
     material jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    PRIMARY KEY(tenant_id,input_digest)
+    PRIMARY KEY(tenant_id,actor_id,input_digest)
 );
 
 CREATE TABLE chartworks.evaluation_runs (
     tenant_id text NOT NULL, actor_id text NOT NULL, run_id text NOT NULL,
     suite_id text NOT NULL, suite_revision bigint NOT NULL CHECK (suite_revision > 0),
     suite_digest text NOT NULL CHECK (length(suite_digest) = 64),
+    pack_digest text NOT NULL CHECK (length(pack_digest) = 64),
     evidence_hash text CHECK (evidence_hash IS NULL OR length(evidence_hash) = 64),
     mode text CHECK (mode IS NULL OR mode IN ('fixture','live')), gate_passed boolean,
     status text NOT NULL CHECK (status IN ('running','passed','failed','cancelled','timed_out','budget_exhausted','dependency_failed')),
@@ -31,8 +32,12 @@ CREATE TABLE chartworks.evaluation_runs (
 CREATE TABLE chartworks.evaluation_feedback_exports (
     tenant_id text NOT NULL, actor_id text NOT NULL, export_id text NOT NULL,
     evidence_hash text NOT NULL CHECK (length(evidence_hash)=64),
-    split text NOT NULL CHECK (split='training'), manifest jsonb NOT NULL, created_at timestamptz NOT NULL,
-    PRIMARY KEY (tenant_id, export_id)
+    split text NOT NULL CHECK (split IN ('training','heldout')), parent_digest text CHECK(parent_digest IS NULL OR length(parent_digest)=64),
+    reviewer_id text, reviewed_at timestamptz, manifest jsonb NOT NULL, created_at timestamptz NOT NULL,
+    PRIMARY KEY (tenant_id, export_id), UNIQUE(tenant_id,evidence_hash),
+    FOREIGN KEY(tenant_id,parent_digest) REFERENCES chartworks.evaluation_feedback_exports(tenant_id,evidence_hash),
+    CHECK((split='training' AND parent_digest IS NULL AND reviewer_id IS NULL AND reviewed_at IS NULL) OR
+          (split='heldout' AND parent_digest IS NOT NULL AND reviewer_id IS NOT NULL AND reviewed_at IS NOT NULL))
 );
 
 CREATE TABLE chartworks.evaluation_proposals (

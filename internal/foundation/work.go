@@ -243,7 +243,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	evaluationRunner := &evaluation.GovernedRunner{Inputs: db, Routing: routing, Query: w.nlq, Charts: chartService, Reports: blockService}
+	evaluationRunner := &evaluation.GovernedRunner{Inputs: db, Routing: routing, Query: w.nlq, Charts: chartService, Reports: blockService, BYO: byo}
 	w.handler = evaluationapi.Handler(verifier, evaluationService, evaluationRunner, w.handler)
 	evaluationRegistry, err := evaluationapi.Registry()
 	if err != nil {

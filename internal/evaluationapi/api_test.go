@@ -24,15 +24,18 @@ import (
 const d = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 type apiRepo struct {
-	s evaluation.SuiteRecord
-	r map[string]evaluation.Report
+	s     evaluation.SuiteRecord
+	r     map[string]evaluation.Report
+	input bool
 }
 
 func (x *apiRepo) CreateSuite(_ context.Context, _ store.Scope, v evaluation.SuiteRecord) error {
 	x.s = v
 	return nil
 }
-func (*apiRepo) SaveInput(context.Context, store.Scope, evaluation.ProtectedRef, evaluation.LiveInput) error {
+
+func (x *apiRepo) SaveInput(context.Context, store.Scope, evaluation.ProtectedRef, evaluation.LiveInput) error {
+	x.input = true
 	return nil
 }
 func (x *apiRepo) ReviewSuite(_ context.Context, _ store.Scope, v evaluation.SuiteReview) (evaluation.SuiteRecord, error) {
@@ -65,6 +68,15 @@ func (*apiRepo) RecoverRun(context.Context, store.Scope, string, time.Time) (eva
 func (*apiRepo) SaveFeedbackExport(context.Context, store.Scope, evaluation.CandidateExport) error {
 	return nil
 }
+func (*apiRepo) ReadFeedbackExport(context.Context, store.Scope, string) (evaluation.CandidateExport, error) {
+	return evaluation.CandidateExport{}, store.ErrNotFound
+}
+func (*apiRepo) ReviewFeedbackSplit(context.Context, store.Scope, string, string, evaluation.CandidateExport) error {
+	return nil
+}
+func (*apiRepo) ValidateHeldoutCases(context.Context, store.Scope, []evaluation.Case) error {
+	return nil
+}
 func (*apiRepo) SaveProposal(context.Context, store.Scope, evaluation.OptimizationProposal) error {
 	return nil
 }
@@ -83,7 +95,7 @@ func TestRegistryIncludesReviewedLifecycleAndRunConsumers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"authorEvaluationSuite": false, "reviewEvaluationSuite": false, "runEvaluation": false, "readEvaluation": false, "cancelEvaluation": false}
+	want := map[string]bool{"registerEvaluationInput": false, "authorEvaluationSuite": false, "reviewEvaluationSuite": false, "runEvaluation": false, "readEvaluation": false, "cancelEvaluation": false, "recoverEvaluation": false, "exportEvaluationFeedback": false, "reviewEvaluationSplit": false, "proposeEvaluationOptimization": false, "reviewEvaluationOptimization": false, "selectEvaluationPack": false}
 	for _, v := range r.Definitions() {
 		if _, ok := want[v.ID]; ok {
 			want[v.ID] = true
@@ -103,10 +115,15 @@ func TestHTTPReviewedSuiteRunAndRead(t *testing.T) {
 	defer server.Close()
 	q := 1.0
 	obs := evaluation.Observation{Decision: "ok", SemanticDigest: d}
-	suite := evaluation.Suite{SchemaVersion: 1, ID: "suite", Revision: 1, Mode: evaluation.Fixture, Seed: 1, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 1, Calls: 1, Tokens: 1, DurationMS: 1000}, Provenance: evaluation.Provenance{Implementation: "head", EnvironmentDigest: d, ConfigurationDigest: d, SemanticVersion: "v1", RuleVersion: "v1", SourceSnapshot: d, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: evaluation.Fixture, EvidenceDigest: d, Status: "measured"}}}, Frontiers: []string{"EVAL-01"}, Cases: []evaluation.Case{{ID: "case", Stage: evaluation.StageRouting, Locale: "en", HeldOut: true, Input: evaluation.ProtectedRef{Digest: d, Retention: "protected"}, Expected: []evaluation.Expected{{Decision: "ok", SemanticDigest: d}}, Fixture: &obs}}}
+	suite := evaluation.Suite{SchemaVersion: 1, ID: "suite", Revision: 1, Mode: evaluation.Fixture, Seed: 1, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 1, Calls: 1, Tokens: 1, DurationMS: 1000}, Provenance: evaluation.Provenance{Implementation: "head", EnvironmentDigest: d, ConfigurationDigest: d, SemanticVersion: "v1", RuleVersion: "v1", SourceSnapshot: d, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: evaluation.Fixture, EvidenceDigest: d, Status: "measured"}}}, Packs: []evaluation.PackRevision{{ID: "default", Revision: 1, Digest: d, Model: "model-v1", ConfigurationDigest: d}}, Frontiers: []string{"EVAL-01"}, Cases: []evaluation.Case{{ID: "case", Stage: evaluation.StageRouting, Locale: "en", HeldOut: true, Input: evaluation.ProtectedRef{Digest: d, Retention: "protected"}, Expected: []evaluation.Expected{{Decision: "ok", SemanticDigest: d}}, Fixture: &obs}}}
 	author := apiToken(t, key, issuer, now, "author", []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant"})
 	if _, err := verifier.Verify(context.Background(), author, auth.HTTP); err != nil {
 		t.Fatalf("verify: %v", err)
+	}
+	var inputRef evaluation.ProtectedRef
+	apiPost(t, server.URL+"/v1/evaluations/inputs", author, ProtectedInputRequest{Retention: "protected", Material: `{"pack":{"id":"default","revision":1,"digest":"` + d + `","model":"model-v1","configuration_digest":"` + d + `"}}`}, &inputRef)
+	if !repo.input || inputRef.Digest == "" {
+		t.Fatal("protected input consumer not wired", inputRef)
 	}
 	var draft evaluation.SuiteRecord
 	apiPost(t, server.URL+"/v1/evaluations/suites", author, suite, &draft)
@@ -114,7 +131,7 @@ func TestHTTPReviewedSuiteRunAndRead(t *testing.T) {
 	var accepted evaluation.SuiteRecord
 	apiPost(t, server.URL+"/v1/evaluations/suites/review", reviewer, SuiteReviewInput{SuiteID: "suite", Request: evaluation.SuiteReviewRequest{Revision: 1, Digest: draft.Digest, Decision: evaluation.Accepted}}, &accepted)
 	var report evaluation.Report
-	apiPost(t, server.URL+"/v1/evaluations/runs", author, evaluation.RunRequest{RunID: "run", SuiteID: "suite", SuiteRevision: 1, SuiteDigest: draft.Digest}, &report)
+	apiPost(t, server.URL+"/v1/evaluations/runs", author, evaluation.RunRequest{RunID: "run", SuiteID: "suite", SuiteRevision: 1, SuiteDigest: draft.Digest, PackDigest: draft.Suite.Packs[0].Digest}, &report)
 	if report.Status != "passed" {
 		t.Fatal(report)
 	}

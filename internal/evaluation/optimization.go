@@ -35,7 +35,7 @@ type ReviewReceipt struct {
 	ReviewedAt     time.Time `json:"reviewed_at"`
 }
 
-// ProposalRequest pins stored reports, suite revision, and pack digests.
+// ProposalRequest pins stored reports and suite revision; pack evidence comes only from reports.
 type ProposalRequest struct {
 	ID            string `json:"id"`
 	SuiteID       string `json:"suite_id"`
@@ -43,8 +43,6 @@ type ProposalRequest struct {
 	SuiteDigest   string `json:"suite_digest"`
 	BaselineRun   string `json:"baseline_run"`
 	CandidateRun  string `json:"candidate_run"`
-	BaselinePack  string `json:"baseline_pack"`
-	CandidatePack string `json:"candidate_pack"`
 }
 
 // ProposalReviewRequest binds a decision to the exact proposal digest.
@@ -79,8 +77,14 @@ func (p OptimizationProposal) Validate() error {
 }
 
 // ProposeOptimization validates complete report evidence and exact heldout provenance.
-func ProposeOptimization(id string, s Suite, baseline, candidate Report, baselinePack, candidatePack string, now time.Time) (OptimizationProposal, error) {
-	if !identifier(id) || s.Validate() != nil || baseline.Validate() != nil || candidate.Validate() != nil || !validDigest(baselinePack) || !validDigest(candidatePack) || baselinePack == candidatePack {
+func ProposeOptimization(id string, s Suite, baseline, candidate Report, now time.Time) (OptimizationProposal, error) {
+	if !identifier(id) || s.Validate() != nil || baseline.Validate() != nil || candidate.Validate() != nil || baseline.Pack.Digest == candidate.Pack.Digest {
+		return OptimizationProposal{}, ErrInvalid
+	}
+	if _, ok := s.pack(baseline.Pack.Digest); !ok {
+		return OptimizationProposal{}, ErrInvalid
+	}
+	if _, ok := s.pack(candidate.Pack.Digest); !ok {
 		return OptimizationProposal{}, ErrInvalid
 	}
 	for _, r := range []Report{baseline, candidate} {
@@ -106,7 +110,7 @@ func ProposeOptimization(id string, s Suite, baseline, candidate Report, baselin
 		return OptimizationProposal{}, ErrInvalid
 	}
 	d, _ := s.Digest()
-	p := OptimizationProposal{SchemaVersion: SchemaVersion, ID: id, SuiteID: s.ID, SuiteRevision: s.Revision, SuiteDigest: d, Mode: s.Mode, Seed: s.Seed, Baseline: CandidateScore{ID: baseline.RunID, PackDigest: baselinePack, Passed: bs.Passed, Total: bs.Total, EvidenceHash: baseline.EvidenceHash}, Candidate: CandidateScore{ID: candidate.RunID, PackDigest: candidatePack, Passed: cs.Passed, Total: cs.Total, EvidenceHash: candidate.EvidenceHash}, State: "candidate", CreatedAt: now.UTC()}
+	p := OptimizationProposal{SchemaVersion: SchemaVersion, ID: id, SuiteID: s.ID, SuiteRevision: s.Revision, SuiteDigest: d, Mode: s.Mode, Seed: s.Seed, Baseline: CandidateScore{ID: baseline.RunID, PackDigest: baseline.Pack.Digest, Passed: bs.Passed, Total: bs.Total, EvidenceHash: baseline.EvidenceHash}, Candidate: CandidateScore{ID: candidate.RunID, PackDigest: candidate.Pack.Digest, Passed: cs.Passed, Total: cs.Total, EvidenceHash: candidate.EvidenceHash}, State: "candidate", CreatedAt: now.UTC()}
 	if p.Validate() != nil {
 		return OptimizationProposal{}, ErrInvalid
 	}

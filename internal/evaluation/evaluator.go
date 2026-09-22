@@ -14,6 +14,7 @@ type Reservation struct {
 	Calls    int       `json:"calls"`
 	Tokens   int       `json:"tokens"`
 	Retries  int       `json:"retries"`
+	CostUSD  *float64  `json:"cost_usd,omitempty"`
 	Deadline time.Time `json:"deadline"`
 }
 
@@ -21,6 +22,7 @@ type Reservation struct {
 type Execution struct {
 	Suite       Suite
 	Case        Case
+	Pack        PackRevision
 	Reservation Reservation
 	Envelope    identity.Envelope
 }
@@ -41,29 +43,46 @@ type Clock func() time.Time
 
 // FailureReport builds reproducible terminal evidence for an admitted run recovered after a crash.
 func FailureReport(runID string, suite Suite, status, failure string, started, completed time.Time) (Report, error) {
-	if !identifier(runID) || suite.Validate() != nil || !validReportStatus(status) || status == "passed" || failure == "" {
+	if len(suite.Packs) == 0 {
+		return Report{}, ErrInvalid
+	}
+	return FailureReportWithPack(runID, suite, suite.Packs[0], status, failure, started, completed)
+}
+
+// FailureReportWithPack binds crash evidence to the exact admitted pack.
+func FailureReportWithPack(runID string, suite Suite, pack PackRevision, status, failure string, started, completed time.Time) (Report, error) {
+	if !identifier(runID) || suite.Validate() != nil || !validPack(pack) || !validReportStatus(status) || status == "passed" || failure == "" {
 		return Report{}, ErrInvalid
 	}
 	sd, _ := suite.Digest()
-	r := Report{SchemaVersion: SchemaVersion, RunID: runID, SuiteID: suite.ID, SuiteRevision: suite.Revision, Mode: suite.Mode, Seed: suite.Seed, SuiteDigest: sd, Status: status, FailureClass: failure, StartedAt: started.UTC(), CompletedAt: completed.UTC(), Cases: []CaseResult{}}
+	r := Report{SchemaVersion: SchemaVersion, RunID: runID, SuiteID: suite.ID, SuiteRevision: suite.Revision, Mode: suite.Mode, Seed: suite.Seed, SuiteDigest: sd, Pack: pack, Status: status, FailureClass: failure, StartedAt: started.UTC(), CompletedAt: completed.UTC(), Cases: []CaseResult{}}
 	if r.CompletedAt.Before(r.StartedAt) {
 		return Report{}, ErrInvalid
 	}
 	e := struct {
 		Suite   string
+		Pack    PackRevision
 		Seed    int64
 		Cases   []CaseResult
 		Mode    Mode
 		Status  string
 		Failure string
-	}{sd, suite.Seed, r.Cases, suite.Mode, status, failure}
+	}{sd, pack, suite.Seed, r.Cases, suite.Mode, status, failure}
 	r.EvidenceHash, _ = digest(e)
 	return r, nil
 }
 
 // Evaluate always returns hashable terminal evidence after admission, including failures.
-func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clock Clock) (report Report, retErr error) {
-	if ctx == nil || !identifier(runID) || suite.Validate() != nil {
+func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clock Clock) (Report, error) {
+	if len(suite.Packs) == 0 {
+		return Report{}, ErrInvalid
+	}
+	return EvaluateWithPack(ctx, runID, suite, suite.Packs[0], runner, clock)
+}
+
+// EvaluateWithPack runs a suite with one exact immutable admitted pack revision.
+func EvaluateWithPack(ctx context.Context, runID string, suite Suite, pack PackRevision, runner Runner, clock Clock) (report Report, retErr error) {
+	if ctx == nil || !identifier(runID) || suite.Validate() != nil || !validPack(pack) {
 		return Report{}, ErrInvalid
 	}
 	if clock == nil {
@@ -74,7 +93,7 @@ func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clo
 	}
 	started := clock().UTC()
 	suiteDigest, _ := digest(suite)
-	report = Report{SchemaVersion: SchemaVersion, RunID: runID, SuiteID: suite.ID, SuiteRevision: suite.Revision, Mode: suite.Mode, Seed: suite.Seed, SuiteDigest: suiteDigest, StartedAt: started, Cases: []CaseResult{}, Status: "failed"}
+	report = Report{SchemaVersion: SchemaVersion, RunID: runID, SuiteID: suite.ID, SuiteRevision: suite.Revision, Mode: suite.Mode, Seed: suite.Seed, SuiteDigest: suiteDigest, Pack: pack, StartedAt: started, Cases: []CaseResult{}, Status: "failed"}
 	finish := func(status, failure string, err error) (Report, error) {
 		report.Status, report.FailureClass, report.CompletedAt = status, failure, clock().UTC()
 		if report.CompletedAt.Before(report.StartedAt) {
@@ -82,12 +101,13 @@ func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clo
 		}
 		evidence := struct {
 			Suite   string
+			Pack    PackRevision
 			Seed    int64
 			Cases   []CaseResult
 			Mode    Mode
 			Status  string
 			Failure string
-		}{suiteDigest, suite.Seed, report.Cases, suite.Mode, status, failure}
+		}{suiteDigest, pack, suite.Seed, report.Cases, suite.Mode, status, failure}
 		report.EvidenceHash, _ = digest(evidence)
 		return report, err
 	}
@@ -97,6 +117,7 @@ func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clo
 	}
 	cases := stableCases(suite.Cases)
 	remainingCalls, remainingTokens, remainingRetries := suite.Limits.Calls, suite.Limits.Tokens, suite.Limits.Retries
+	remainingCost := suite.Limits.CostUSD
 	for i, c := range cases {
 		if err := ctx.Err(); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -109,6 +130,10 @@ func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clo
 		}
 		left := len(cases) - i
 		reserve := Reservation{Calls: remainingCalls / left, Tokens: remainingTokens / left, Retries: remainingRetries / left, Deadline: deadline}
+		if remainingCost != nil {
+			v := *remainingCost / float64(left)
+			reserve.CostUSD = &v
+		}
 		if suite.Mode == Live && reserve.Calls < 1 {
 			return finish("budget_exhausted", "calls_exhausted", ErrBudget)
 		}
@@ -118,7 +143,7 @@ func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clo
 			o = *c.Fixture
 		} else {
 			caseCtx, cancel := context.WithDeadline(ctx, reserve.Deadline)
-			o, err = runner.Observe(caseCtx, Execution{Suite: suite, Case: c, Reservation: reserve})
+			o, err = runner.Observe(caseCtx, Execution{Suite: suite, Case: c, Pack: pack, Reservation: reserve})
 			cancel()
 		}
 		if err != nil {
@@ -133,13 +158,17 @@ func Evaluate(ctx context.Context, runID string, suite Suite, runner Runner, clo
 		if validateObservation(o) != nil {
 			return finish("dependency_failed", "invalid_observation", ErrInvalid)
 		}
-		if o.Usage.Calls > reserve.Calls || o.Usage.Retries > reserve.Retries || o.Usage.Tokens != nil && *o.Usage.Tokens > reserve.Tokens {
+		if o.Usage.Calls > reserve.Calls || o.Usage.Retries > reserve.Retries || o.Usage.Tokens != nil && *o.Usage.Tokens > reserve.Tokens || reserve.CostUSD != nil && o.Usage.CostUSD != nil && *o.Usage.CostUSD > *reserve.CostUSD {
 			return finish("budget_exhausted", "reservation_exceeded", ErrBudget)
 		}
 		remainingCalls -= o.Usage.Calls
 		remainingRetries -= o.Usage.Retries
 		if o.Usage.Tokens != nil {
 			remainingTokens -= *o.Usage.Tokens
+		}
+		if remainingCost != nil && o.Usage.CostUSD != nil {
+			v := *remainingCost - *o.Usage.CostUSD
+			remainingCost = &v
 		}
 		passed, reason := match(c, o)
 		if c.Critical && !o.Blocked {

@@ -55,11 +55,12 @@ const (
 
 // Limits bounds total suite work.
 type Limits struct {
-	Cases      int   `json:"cases"`
-	Calls      int   `json:"calls"`
-	Tokens     int   `json:"tokens"`
-	Retries    int   `json:"retries"`
-	DurationMS int64 `json:"duration_ms"`
+	Cases      int      `json:"cases"`
+	Calls      int      `json:"calls"`
+	Tokens     int      `json:"tokens"`
+	Retries    int      `json:"retries"`
+	CostUSD    *float64 `json:"cost_usd,omitempty"`
+	DurationMS int64    `json:"duration_ms"`
 }
 
 // Threshold contains reviewed gate values.
@@ -113,6 +114,16 @@ type RunRequest struct {
 	SuiteID       string `json:"suite_id"`
 	SuiteRevision int64  `json:"suite_revision"`
 	SuiteDigest   string `json:"suite_digest"`
+	PackDigest    string `json:"pack_digest"`
+}
+
+// PackRevision is one immutable prompt/model/configuration revision admitted by a suite.
+type PackRevision struct {
+	ID                  string `json:"id"`
+	Revision            int64  `json:"revision"`
+	Digest              string `json:"digest"`
+	Model               string `json:"model"`
+	ConfigurationDigest string `json:"configuration_digest"`
 }
 
 // Provenance pins governed suite inputs and environment.
@@ -167,17 +178,18 @@ type Case struct {
 
 // Suite is an immutable versioned evaluation manifest.
 type Suite struct {
-	SchemaVersion int        `json:"schema_version"`
-	ID            string     `json:"id"`
-	Revision      int64      `json:"revision"`
-	Mode          Mode       `json:"mode"`
-	Seed          int64      `json:"seed"`
-	Calibration   string     `json:"calibration"` // reviewed or unknown
-	Threshold     Threshold  `json:"threshold"`
-	Limits        Limits     `json:"limits"`
-	Provenance    Provenance `json:"provenance"`
-	Frontiers     []string   `json:"frontiers"`
-	Cases         []Case     `json:"cases"`
+	SchemaVersion int            `json:"schema_version"`
+	ID            string         `json:"id"`
+	Revision      int64          `json:"revision"`
+	Mode          Mode           `json:"mode"`
+	Seed          int64          `json:"seed"`
+	Calibration   string         `json:"calibration"` // reviewed or unknown
+	Threshold     Threshold      `json:"threshold"`
+	Limits        Limits         `json:"limits"`
+	Provenance    Provenance     `json:"provenance"`
+	Packs         []PackRevision `json:"packs"`
+	Frontiers     []string       `json:"frontiers"`
+	Cases         []Case         `json:"cases"`
 }
 
 // Usage separates service, source, and model observations.
@@ -222,6 +234,7 @@ type Report struct {
 	Mode             Mode         `json:"mode"`
 	Seed             int64        `json:"seed"`
 	SuiteDigest      string       `json:"suite_digest"`
+	Pack             PackRevision `json:"pack"`
 	EvidenceHash     string       `json:"evidence_hash"`
 	Status           string       `json:"status"`
 	FailureClass     string       `json:"failure_class,omitempty"`
@@ -270,7 +283,7 @@ func (s Suite) Validate() error {
 	if s.SchemaVersion != SchemaVersion || !identifier(s.ID) || s.Revision < 1 || (s.Mode != Fixture && s.Mode != Live) || s.Seed == 0 || (s.Calibration != "reviewed" && s.Calibration != "unknown") {
 		return ErrInvalid
 	}
-	if s.Limits.Cases < 1 || s.Limits.Cases > 10000 || s.Limits.Calls < 0 || s.Limits.Calls > 100000 || s.Limits.Tokens < 0 || s.Limits.Tokens > 1<<30 || s.Limits.Retries < 0 || s.Limits.Retries > 8 || s.Limits.DurationMS < 1 || s.Limits.DurationMS > int64((24*time.Hour)/time.Millisecond) || len(s.Cases) == 0 || len(s.Cases) > s.Limits.Cases {
+	if s.Limits.Cases < 1 || s.Limits.Cases > 10000 || s.Limits.Calls < 0 || s.Limits.Calls > 100000 || s.Limits.Tokens < 0 || s.Limits.Tokens > 1<<30 || s.Limits.Retries < 0 || s.Limits.Retries > 8 || s.Limits.CostUSD != nil && (*s.Limits.CostUSD < 0 || *s.Limits.CostUSD > 1000000) || s.Limits.DurationMS < 1 || s.Limits.DurationMS > int64((24*time.Hour)/time.Millisecond) || len(s.Cases) == 0 || len(s.Cases) > s.Limits.Cases {
 		return ErrInvalid
 	}
 	if s.Threshold.SecurityFailures != 0 {
@@ -288,6 +301,16 @@ func (s Suite) Validate() error {
 	}
 	if len(p.DialectMatrix) == 0 || len(p.DialectMatrix) > 32 {
 		return ErrInvalid
+	}
+	if len(s.Packs) == 0 || len(s.Packs) > 32 {
+		return ErrInvalid
+	}
+	packs := map[string]bool{}
+	for _, pack := range s.Packs {
+		if !identifier(pack.ID) || pack.Revision < 1 || !validDigest(pack.Digest) || !identifier(pack.Model) || !validDigest(pack.ConfigurationDigest) || packs[pack.Digest] {
+			return ErrInvalid
+		}
+		packs[pack.Digest] = true
 	}
 	dialects := map[string]bool{}
 	for _, d := range p.DialectMatrix {
@@ -359,7 +382,7 @@ func (s Suite) Digest() (string, error) {
 
 // Validate checks a completed report and its reproducible evidence hash.
 func (r Report) Validate() error {
-	if r.SchemaVersion != SchemaVersion || !identifier(r.RunID) || !identifier(r.SuiteID) || r.SuiteRevision < 1 || (r.Mode != Fixture && r.Mode != Live) || r.Seed == 0 || !validDigest(r.SuiteDigest) || !validDigest(r.EvidenceHash) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) || !validReportStatus(r.Status) {
+	if r.SchemaVersion != SchemaVersion || !identifier(r.RunID) || !identifier(r.SuiteID) || r.SuiteRevision < 1 || (r.Mode != Fixture && r.Mode != Live) || r.Seed == 0 || !validDigest(r.SuiteDigest) || !validDigest(r.EvidenceHash) || !validPack(r.Pack) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) || !validReportStatus(r.Status) {
 		return ErrInvalid
 	}
 	qualityPassed, qualityTotal, securityFailures := 0, 0, 0
@@ -397,18 +420,35 @@ func (r Report) Validate() error {
 	}
 	evidence := struct {
 		Suite   string
+		Pack    PackRevision
 		Seed    int64
 		Cases   []CaseResult
 		Mode    Mode
 		Status  string
 		Failure string
-	}{r.SuiteDigest, r.Seed, r.Cases, r.Mode, r.Status, r.FailureClass}
+	}{r.SuiteDigest, r.Pack, r.Seed, r.Cases, r.Mode, r.Status, r.FailureClass}
 	want, _ := digest(evidence)
 	if want != r.EvidenceHash {
 		return ErrInvalid
 	}
 	return nil
 }
+
+func validPack(p PackRevision) bool {
+	return identifier(p.ID) && p.Revision > 0 && validDigest(p.Digest) && identifier(p.Model) && validDigest(p.ConfigurationDigest)
+}
+
+func (s Suite) pack(digest string) (PackRevision, bool) {
+	for _, p := range s.Packs {
+		if p.Digest == digest {
+			return p, true
+		}
+	}
+	return PackRevision{}, false
+}
+
+// PackByDigest returns an exact pack revision from this immutable suite.
+func (s Suite) PackByDigest(digest string) (PackRevision, bool) { return s.pack(digest) }
 
 func validReportStatus(s string) bool {
 	switch s {

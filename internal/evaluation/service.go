@@ -22,6 +22,9 @@ type Repository interface {
 	RequestCancel(context.Context, store.Scope, string) error
 	RecoverRun(context.Context, store.Scope, string, time.Time) (Report, error)
 	SaveFeedbackExport(context.Context, store.Scope, CandidateExport) error
+	ReadFeedbackExport(context.Context, store.Scope, string) (CandidateExport, error)
+	ReviewFeedbackSplit(context.Context, store.Scope, string, string, CandidateExport) error
+	ValidateHeldoutCases(context.Context, store.Scope, []Case) error
 	SaveProposal(context.Context, store.Scope, OptimizationProposal) error
 	ReadProposal(context.Context, store.Scope, string) (OptimizationProposal, error)
 	ReviewProposal(context.Context, store.Scope, ReviewReceipt) error
@@ -30,7 +33,7 @@ type Repository interface {
 
 // RegisterInput stores protected live material and returns its canonical reference.
 func (s *Service) RegisterInput(ctx context.Context, e identity.Envelope, retention string, in LiveInput) (ProtectedRef, error) {
-	if ctx == nil || !identifier(retention) {
+	if ctx == nil || !identifier(retention) || !validPack(in.Pack) {
 		return ProtectedRef{}, ErrInvalid
 	}
 	d, err := digest(in)
@@ -61,14 +64,39 @@ type FeedbackEvidence struct {
 
 // CandidateExport is an immutable training ledger, never a heldout assignment.
 type CandidateExport struct {
-	SchemaVersion int       `json:"schema_version"`
-	ID            string    `json:"id"`
-	Status        string    `json:"status"`
-	Split         string    `json:"split"`
-	Cases         []Case    `json:"cases"`
-	EvidenceHash  string    `json:"evidence_hash"`
-	CreatedAt     time.Time `json:"created_at"`
+	SchemaVersion int        `json:"schema_version"`
+	ID            string     `json:"id"`
+	Status        string     `json:"status"`
+	Split         string     `json:"split"`
+	Cases         []Case     `json:"cases"`
+	EvidenceHash  string     `json:"evidence_hash"`
+	ParentDigest  string     `json:"parent_digest,omitempty"`
+	Author        string     `json:"author"`
+	Reviewer      string     `json:"reviewer,omitempty"`
+	ReviewedAt    *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
+
+func (x CandidateExport) validate() error {
+	if x.SchemaVersion != SchemaVersion || !identifier(x.ID) || !identifier(x.Author) || !validDigest(x.EvidenceHash) || x.CreatedAt.IsZero() || len(x.Cases) == 0 || (x.Split != "training" && x.Split != "heldout") {
+		return ErrInvalid
+	}
+	if x.Split == "training" && (x.Status != "candidate" || x.ParentDigest != "" || x.Reviewer != "" || x.ReviewedAt != nil) {
+		return ErrInvalid
+	}
+	if x.Split == "heldout" && (x.Status != "reviewed" || !validDigest(x.ParentDigest) || !identifier(x.Reviewer) || x.ReviewedAt == nil) {
+		return ErrInvalid
+	}
+	for _, c := range x.Cases {
+		if !validDigest(c.Input.Digest) || c.HeldOut != (x.Split == "heldout") {
+			return ErrInvalid
+		}
+	}
+	return nil
+}
+
+// ValidateExport checks immutable feedback split lineage without exposing content.
+func (x CandidateExport) ValidateExport() error { return x.validate() }
 
 // Service owns evaluated suite and optimization lifecycles.
 type Service struct {
@@ -99,6 +127,9 @@ func (s *Service) Author(ctx context.Context, e identity.Envelope, suite Suite) 
 	if err != nil {
 		return SuiteRecord{}, err
 	}
+	if err = s.repo.ValidateHeldoutCases(ctx, scope, suite.Cases); err != nil {
+		return SuiteRecord{}, err
+	}
 	d, _ := suite.Digest()
 	r := SuiteRecord{Suite: suite, Digest: d, State: Draft, Author: e.User(), CreatedAt: s.clock().UTC()}
 	if err = s.repo.CreateSuite(ctx, scope, r); err != nil {
@@ -121,7 +152,7 @@ func (s *Service) Review(ctx context.Context, e identity.Envelope, id string, in
 
 // Run loads the exact accepted revision from protected storage before any work.
 func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, runner Runner) (Report, error) {
-	if ctx == nil || !identifier(in.RunID) || !identifier(in.SuiteID) || in.SuiteRevision < 1 || !validDigest(in.SuiteDigest) {
+	if ctx == nil || !identifier(in.RunID) || !identifier(in.SuiteID) || in.SuiteRevision < 1 || !validDigest(in.SuiteDigest) || !validDigest(in.PackDigest) {
 		return Report{}, ErrInvalid
 	}
 	scope, err := access.StoreScope(e, "ops.write", "write")
@@ -136,6 +167,10 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 		return Report{}, ErrReview
 	}
 	if record.Suite.Threshold.QualityMin == nil {
+		return Report{}, ErrReview
+	}
+	pack, ok := record.Suite.pack(in.PackDigest)
+	if !ok {
 		return Report{}, ErrReview
 	}
 	if err = s.repo.BeginRun(ctx, scope, in); err != nil {
@@ -154,7 +189,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 	if runner != nil {
 		runner = authorityRunner{Envelope: e, Next: runner}
 	}
-	r, evalErr := Evaluate(runCtx, in.RunID, record.Suite, runner, s.clock)
+	r, evalErr := EvaluateWithPack(runCtx, in.RunID, record.Suite, pack, runner, s.clock)
 	if r.EvidenceHash != "" {
 		if saveErr := s.repo.SaveReport(context.WithoutCancel(ctx), scope, r); saveErr != nil {
 			return Report{}, saveErr
@@ -223,7 +258,7 @@ func (s *Service) ExportFeedback(ctx context.Context, e identity.Envelope, id, t
 	if err != nil {
 		return CandidateExport{}, err
 	}
-	out := CandidateExport{SchemaVersion: SchemaVersion, ID: id, Status: "candidate", Split: "training", Cases: []Case{}, CreatedAt: s.clock().UTC()}
+	out := CandidateExport{SchemaVersion: SchemaVersion, ID: id, Status: "candidate", Split: "training", Cases: []Case{}, Author: e.User(), CreatedAt: s.clock().UTC()}
 	for _, r := range rows {
 		if !identifier(r.ID) || !validDigest(r.InputDigest) || !validDigest(r.ExpectedDigest) || !validDigest(r.SourceBindingDigest) || (r.Locale != "en" && r.Locale != "es") {
 			return CandidateExport{}, ErrInvalid
@@ -234,7 +269,45 @@ func (s *Service) ExportFeedback(ctx context.Context, e identity.Envelope, id, t
 		ID, Split string
 		Cases     []Case
 	}{out.ID, out.Split, out.Cases})
+	if out.validate() != nil {
+		return CandidateExport{}, ErrInvalid
+	}
 	if err = s.repo.SaveFeedbackExport(ctx, scope, out); err != nil {
+		return CandidateExport{}, err
+	}
+	return out, nil
+}
+
+// ReviewFeedbackSplit creates a new immutable heldout ledger from an exact training export.
+func (s *Service) ReviewFeedbackSplit(ctx context.Context, e identity.Envelope, trainingID, trainingDigest, heldoutID string) (CandidateExport, error) {
+	if !identifier(trainingID) || !validDigest(trainingDigest) || !identifier(heldoutID) || trainingID == heldoutID {
+		return CandidateExport{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.audit", "certify")
+	if err != nil {
+		return CandidateExport{}, err
+	}
+	training, err := s.repo.ReadFeedbackExport(ctx, scope, trainingID)
+	if err != nil {
+		return CandidateExport{}, err
+	}
+	if training.Split != "training" || training.EvidenceHash != trainingDigest || training.Author == e.User() {
+		return CandidateExport{}, ErrReview
+	}
+	now := s.clock().UTC()
+	out := CandidateExport{SchemaVersion: SchemaVersion, ID: heldoutID, Status: "reviewed", Split: "heldout", ParentDigest: training.EvidenceHash, Author: training.Author, Reviewer: e.User(), ReviewedAt: &now, CreatedAt: now, Cases: append([]Case(nil), training.Cases...)}
+	for i := range out.Cases {
+		out.Cases[i].HeldOut = true
+	}
+	out.EvidenceHash, _ = digest(struct {
+		ID, Split, Parent string
+		Cases             []Case
+		Reviewer          string
+	}{out.ID, out.Split, out.ParentDigest, out.Cases, out.Reviewer})
+	if out.validate() != nil {
+		return CandidateExport{}, ErrInvalid
+	}
+	if err = s.repo.ReviewFeedbackSplit(ctx, scope, trainingID, trainingDigest, out); err != nil {
 		return CandidateExport{}, err
 	}
 	return out, nil
@@ -261,7 +334,7 @@ func (s *Service) ProposeOptimization(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return OptimizationProposal{}, err
 	}
-	p, err := ProposeOptimization(in.ID, suite.Suite, base, candidate, in.BaselinePack, in.CandidatePack, s.clock())
+	p, err := ProposeOptimization(in.ID, suite.Suite, base, candidate, s.clock())
 	if err != nil {
 		return OptimizationProposal{}, err
 	}

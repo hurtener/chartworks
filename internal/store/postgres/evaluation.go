@@ -31,7 +31,7 @@ func (d *DB) SaveInput(ctx context.Context, scope store.Scope, ref evaluation.Pr
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_inputs(tenant_id,input_digest,material) VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING`, scope.Tenant(), ref.Digest, raw)
+		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_inputs(tenant_id,actor_id,input_digest,material) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT DO NOTHING`, scope.Tenant(), scope.Actor(), ref.Digest, raw)
 		if err != nil {
 			return err
 		}
@@ -52,7 +52,7 @@ func (d *DB) ResolveEvaluationInput(ctx context.Context, e identity.Envelope, re
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var raw []byte
-		if err := tx.QueryRow(ctx, `SELECT material FROM chartworks.evaluation_inputs WHERE tenant_id=$1 AND input_digest=$2`, e.Tenant(), ref.Digest).Scan(&raw); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT material FROM chartworks.evaluation_inputs WHERE tenant_id=$1 AND actor_id=$2 AND input_digest=$3`, e.Tenant(), e.User(), ref.Digest).Scan(&raw); err != nil {
 			return err
 		}
 		if json.Unmarshal(raw, &out) != nil {
@@ -99,6 +99,10 @@ func (d *DB) ReviewSuite(ctx context.Context, scope store.Scope, r evaluation.Su
 		if state != "draft" || dig != r.Digest || author == r.Reviewer {
 			return store.ErrConflict
 		}
+		var suite evaluation.Suite
+		if json.Unmarshal(raw, &suite) != nil || validateHeldoutTx(ctx, tx, scope.Tenant(), suite.Cases) != nil {
+			return store.ErrConflict
+		}
 		reviewRaw, _ := json.Marshal(r)
 		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_suites SET state=$5,review=$6::jsonb WHERE tenant_id=$1 AND suite_id=$2 AND revision=$3 AND manifest_digest=$4 AND state='draft'`, scope.Tenant(), r.SuiteID, r.Revision, r.Digest, r.Decision, reviewRaw)
 		if err != nil || tag.RowsAffected() != 1 {
@@ -140,7 +144,7 @@ func (d *DB) BeginRun(ctx context.Context, scope store.Scope, in evaluation.RunR
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_runs(tenant_id,actor_id,run_id,suite_id,suite_revision,suite_digest,status) VALUES($1,$2,$3,$4,$5,$6,'running') ON CONFLICT DO NOTHING`, scope.Tenant(), scope.Actor(), in.RunID, in.SuiteID, in.SuiteRevision, in.SuiteDigest)
+		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_runs(tenant_id,actor_id,run_id,suite_id,suite_revision,suite_digest,pack_digest,status) VALUES($1,$2,$3,$4,$5,$6,$7,'running') ON CONFLICT DO NOTHING`, scope.Tenant(), scope.Actor(), in.RunID, in.SuiteID, in.SuiteRevision, in.SuiteDigest, in.PackDigest)
 		if err != nil {
 			return err
 		}
@@ -158,7 +162,7 @@ func (d *DB) SaveReport(ctx context.Context, scope store.Scope, r evaluation.Rep
 	}
 	raw, _ := json.Marshal(r)
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_runs SET evidence_hash=$4,mode=$5,gate_passed=$6,report=$7::jsonb,status=$8,completed_at=$9 WHERE tenant_id=$1 AND actor_id=$2 AND run_id=$3 AND status='running'`, scope.Tenant(), scope.Actor(), r.RunID, r.EvidenceHash, r.Mode, r.GatePassed, raw, r.Status, r.CompletedAt)
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_runs SET evidence_hash=$4,mode=$5,gate_passed=$6,report=$7::jsonb,status=$8,completed_at=$9 WHERE tenant_id=$1 AND actor_id=$2 AND run_id=$3 AND status='running' AND pack_digest=$10`, scope.Tenant(), scope.Actor(), r.RunID, r.EvidenceHash, r.Mode, r.GatePassed, raw, r.Status, r.CompletedAt, r.Pack.Digest)
 		if err != nil {
 			return err
 		}
@@ -169,14 +173,14 @@ func (d *DB) SaveReport(ctx context.Context, scope store.Scope, r evaluation.Rep
 	})
 }
 
-// ReadReport reads tenant-scoped terminal evidence.
+// ReadReport reads actor-scoped terminal evidence.
 func (d *DB) ReadReport(ctx context.Context, scope store.Scope, id string) (out evaluation.Report, err error) {
 	if checkScope(scope) != nil {
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var raw []byte
-		if err := tx.QueryRow(ctx, `SELECT report FROM chartworks.evaluation_runs WHERE tenant_id=$1 AND run_id=$2 AND report IS NOT NULL`, scope.Tenant(), id).Scan(&raw); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT report FROM chartworks.evaluation_runs WHERE tenant_id=$1 AND actor_id=$2 AND run_id=$3 AND report IS NOT NULL`, scope.Tenant(), scope.Actor(), id).Scan(&raw); err != nil {
 			return err
 		}
 		if json.Unmarshal(raw, &out) != nil || out.Validate() != nil {
@@ -193,7 +197,7 @@ func (d *DB) RequestCancel(ctx context.Context, scope store.Scope, id string) er
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_runs SET cancel_requested=true WHERE tenant_id=$1 AND run_id=$2 AND status='running'`, scope.Tenant(), id)
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_runs SET cancel_requested=true WHERE tenant_id=$1 AND actor_id=$2 AND run_id=$3 AND status='running'`, scope.Tenant(), scope.Actor(), id)
 		if err != nil {
 			return err
 		}
@@ -212,19 +216,24 @@ func (d *DB) RecoverRun(ctx context.Context, scope store.Scope, id string, compl
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var raw []byte
 		var started time.Time
-		if err := tx.QueryRow(ctx, `SELECT s.manifest,r.created_at FROM chartworks.evaluation_runs r JOIN chartworks.evaluation_suites s ON s.tenant_id=r.tenant_id AND s.suite_id=r.suite_id AND s.revision=r.suite_revision AND s.manifest_digest=r.suite_digest WHERE r.tenant_id=$1 AND r.run_id=$2 AND r.status='running' FOR UPDATE OF r`, scope.Tenant(), id).Scan(&raw, &started); err != nil {
+		var packDigest string
+		if err := tx.QueryRow(ctx, `SELECT s.manifest,r.created_at,r.pack_digest FROM chartworks.evaluation_runs r JOIN chartworks.evaluation_suites s ON s.tenant_id=r.tenant_id AND s.suite_id=r.suite_id AND s.revision=r.suite_revision AND s.manifest_digest=r.suite_digest WHERE r.tenant_id=$1 AND r.actor_id=$2 AND r.run_id=$3 AND r.status='running' FOR UPDATE OF r`, scope.Tenant(), scope.Actor(), id).Scan(&raw, &started, &packDigest); err != nil {
 			return err
 		}
 		var suite evaluation.Suite
 		if json.Unmarshal(raw, &suite) != nil {
 			return store.ErrMigration
 		}
-		report, makeErr := evaluation.FailureReport(id, suite, "dependency_failed", "crash_recovered", started, completed)
+		pack, ok := suite.PackByDigest(packDigest)
+		if !ok {
+			return store.ErrMigration
+		}
+		report, makeErr := evaluation.FailureReportWithPack(id, suite, pack, "dependency_failed", "crash_recovered", started, completed)
 		if makeErr != nil {
 			return store.ErrMigration
 		}
 		reportRaw, _ := json.Marshal(report)
-		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_runs SET evidence_hash=$3,mode=$4,gate_passed=false,report=$5::jsonb,status='dependency_failed',completed_at=$6 WHERE tenant_id=$1 AND run_id=$2 AND status='running'`, scope.Tenant(), id, report.EvidenceHash, report.Mode, reportRaw, report.CompletedAt)
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_runs SET evidence_hash=$4,mode=$5,gate_passed=false,report=$6::jsonb,status='dependency_failed',completed_at=$7 WHERE tenant_id=$1 AND actor_id=$2 AND run_id=$3 AND status='running'`, scope.Tenant(), scope.Actor(), id, report.EvidenceHash, report.Mode, reportRaw, report.CompletedAt)
 		if err != nil {
 			return err
 		}
@@ -239,7 +248,7 @@ func (d *DB) RecoverRun(ctx context.Context, scope store.Scope, id string, compl
 
 // SaveFeedbackExport stores one immutable training candidate ledger.
 func (d *DB) SaveFeedbackExport(ctx context.Context, scope store.Scope, x evaluation.CandidateExport) error {
-	if checkScope(scope) != nil {
+	if checkScope(scope) != nil || x.ValidateExport() != nil || x.Split != "training" || x.Author != scope.Actor() {
 		return store.ErrInvalid
 	}
 	raw, _ := json.Marshal(x)
@@ -253,6 +262,89 @@ func (d *DB) SaveFeedbackExport(ctx context.Context, scope store.Scope, x evalua
 		}
 		return nil
 	})
+}
+
+// ReadFeedbackExport reads one exact protected split ledger.
+func (d *DB) ReadFeedbackExport(ctx context.Context, scope store.Scope, id string) (out evaluation.CandidateExport, err error) {
+	if checkScope(scope) != nil {
+		return out, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var raw []byte
+		if err := tx.QueryRow(ctx, `SELECT manifest FROM chartworks.evaluation_feedback_exports WHERE tenant_id=$1 AND export_id=$2`, scope.Tenant(), id).Scan(&raw); err != nil {
+			return err
+		}
+		if json.Unmarshal(raw, &out) != nil {
+			return store.ErrMigration
+		}
+		return nil
+	})
+	return out, err
+}
+
+// ReviewFeedbackSplit atomically creates a distinct immutable heldout child ledger.
+func (d *DB) ReviewFeedbackSplit(ctx context.Context, scope store.Scope, trainingID, trainingDigest string, out evaluation.CandidateExport) error {
+	if checkScope(scope) != nil || out.ValidateExport() != nil || out.Split != "heldout" || out.Reviewer != scope.Actor() || out.ParentDigest != trainingDigest {
+		return store.ErrInvalid
+	}
+	raw, _ := json.Marshal(out)
+	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var author string
+		if err := tx.QueryRow(ctx, `SELECT actor_id FROM chartworks.evaluation_feedback_exports WHERE tenant_id=$1 AND export_id=$2 AND evidence_hash=$3 AND split='training' FOR UPDATE`, scope.Tenant(), trainingID, trainingDigest).Scan(&author); err != nil {
+			return err
+		}
+		if author == scope.Actor() {
+			return store.ErrConflict
+		}
+		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_feedback_exports(tenant_id,actor_id,export_id,evidence_hash,split,parent_digest,reviewer_id,reviewed_at,manifest,created_at) VALUES($1,$2,$3,$4,'heldout',$5,$6,$7,$8::jsonb,$9) ON CONFLICT DO NOTHING`, scope.Tenant(), author, out.ID, out.EvidenceHash, trainingDigest, scope.Actor(), out.ReviewedAt, raw, out.CreatedAt)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return store.ErrConflict
+		}
+		return nil
+	})
+}
+
+// ValidateHeldoutCases rejects training-origin material without a reviewed heldout child.
+func (d *DB) ValidateHeldoutCases(ctx context.Context, scope store.Scope, cases []evaluation.Case) error {
+	if checkScope(scope) != nil {
+		return store.ErrInvalid
+	}
+	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return validateHeldoutTx(ctx, tx, scope.Tenant(), cases)
+	})
+}
+
+func validateHeldoutTx(ctx context.Context, tx pgx.Tx, tenant string, cases []evaluation.Case) error {
+	rows, err := tx.Query(ctx, `SELECT manifest FROM chartworks.evaluation_feedback_exports WHERE tenant_id=$1`, tenant)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	training, heldout := map[string]bool{}, map[string]bool{}
+	for rows.Next() {
+		var raw []byte
+		var x evaluation.CandidateExport
+		if rows.Scan(&raw) != nil || json.Unmarshal(raw, &x) != nil {
+			return store.ErrMigration
+		}
+		for _, c := range x.Cases {
+			switch x.Split {
+			case "training":
+				training[c.Input.Digest] = true
+			case "heldout":
+				heldout[c.Input.Digest] = true
+			}
+		}
+	}
+	for _, c := range cases {
+		if c.HeldOut && training[c.Input.Digest] && !heldout[c.Input.Digest] {
+			return store.ErrConflict
+		}
+	}
+	return rows.Err()
 }
 
 // SaveProposal stores one immutable optimization candidate.
