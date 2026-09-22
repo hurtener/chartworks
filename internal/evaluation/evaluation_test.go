@@ -512,6 +512,9 @@ func TestPackExportAndAdversarialBoundaryHelpers(t *testing.T) {
 	if adversarialDenied(errors.New("transport unavailable")) {
 		t.Fatal("dependency failure classified as safety denial")
 	}
+	if !receiptMatchesPack(gateway.Receipt{}, s.Packs[0]) || receiptMatchesPack(gateway.Receipt{Calls: []gateway.Usage{{RequestedModel: "other"}}}, s.Packs[0]) || !receiptMatchesPack(gateway.Receipt{Calls: []gateway.Usage{{RequestedModel: s.Packs[0].Model}}}, s.Packs[0]) {
+		t.Fatal("provider receipt was not bound to requested pack model")
+	}
 	called := false
 	a := authorityRunner{Envelope: testAuthority(t, "actor", false), Next: RunnerFunc(func(_ context.Context, x Execution) (Observation, error) {
 		called = x.Envelope.Valid()

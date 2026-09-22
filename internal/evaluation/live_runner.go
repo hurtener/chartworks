@@ -206,6 +206,9 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	}
 	usage.SourceMS = sourceMS
 	usage.ServiceMS = clock().Sub(started).Milliseconds()
+	if !receiptMatchesPack(receipt, x.Pack) {
+		return Observation{Usage: usage}, ErrReview
+	}
 	if err != nil {
 		return Observation{Usage: usage}, err
 	}
@@ -221,6 +224,15 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 		return Observation{Decision: "completed", SemanticDigest: hex.EncodeToString(sum[:]), Usage: usage}, nil
 	}
 	return Observation{Decision: "completed", SemanticDigest: hex.EncodeToString(sum[:]), Usage: usage}, nil
+}
+
+func receiptMatchesPack(receipt gateway.Receipt, pack PackRevision) bool {
+	for _, call := range receipt.Calls {
+		if call.RequestedModel == "" || call.RequestedModel != pack.Model {
+			return false
+		}
+	}
+	return true
 }
 
 func adversarialDenied(err error) bool {
