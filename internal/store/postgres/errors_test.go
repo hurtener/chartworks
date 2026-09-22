@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "42" || len(manifest) != 42 {
+	if err != nil || SchemaVersion() != "43" || len(manifest) != 43 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -51,6 +51,7 @@ func TestSafeErrors(t *testing.T) {
 		{39, "migrations/040_reporting_template_selections.sql", "block_template_selections_shape"},
 		{40, "migrations/041_reporting_output_locale_bounds.sql", "octet_length(label->>'locale') NOT BETWEEN 2 AND 64"},
 		{41, "migrations/042_learning_templates.sql", "example_selection"},
+		{42, "migrations/043_reporting_display_intent.sql", "block_display_intent_check"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

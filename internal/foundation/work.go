@@ -243,7 +243,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 
-	documentRegistry, delivery, handler, err := mountDocuments(v.Reporting, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
+	documentRegistry, delivery, renderer, handler, err := mountDocuments(v.Reporting, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
 	if err != nil {
 		w.close()
 		return nil, err
@@ -329,7 +329,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, delivery)
+	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{delivery: delivery, renderer: renderer})
 	if err != nil {
 		w.close()
 		return nil, err

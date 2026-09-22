@@ -775,3 +775,5 @@ Rule/reporting dependency continuation: [D-076 closed compound/template scopes a
 Routing and interpretation continuation: [D-077 versioned topic choice and sealed semantic spans](decisions/2026-09-22-routing-interpretation.md).
 
 Learning continuation: [D-078 version-pinned reviewed examples and evidence-based feedback](decisions/2026-09-22-reviewed-learning.md).
+
+Rich output continuation: [D-079 reviewed KPI/table display intent and retained-only static export](decisions/2026-09-22-rich-output-display.md).

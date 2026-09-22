@@ -60,8 +60,8 @@ func slot(b Bindings, name string) string {
 }
 
 func bound(b Bindings) []string {
-	ids := make([]string, 0, 7+len(b.Columns)+len(b.Values)+len(b.Hierarchy))
-	for _, s := range []string{b.Category, b.Value, b.Series, b.X, b.Y, b.Parent, b.Size} {
+	ids := make([]string, 0, 9+len(b.Columns)+len(b.Values)+len(b.Hierarchy))
+	for _, s := range []string{b.Category, b.Value, b.Series, b.X, b.Y, b.Parent, b.Size, b.Comparison, b.Target} {
 		if s != "" {
 			ids = append(ids, s)
 		}
@@ -77,6 +77,16 @@ func cloneMapping(m Mapping) Mapping {
 	m.Bindings.Values = append([]string(nil), m.Bindings.Values...)
 	m.Bindings.Hierarchy = append([]string(nil), m.Bindings.Hierarchy...)
 	m.Order = append([]Order(nil), m.Order...)
+	if m.KPI != nil {
+		copy := *m.KPI
+		copy.Thresholds = append([]KPIThreshold(nil), m.KPI.Thresholds...)
+		m.KPI = &copy
+	}
+	if m.Table != nil {
+		copy := *m.Table
+		copy.Columns = append([]TableColumnIntent(nil), m.Table.Columns...)
+		m.Table = &copy
+	}
 	return m
 }
 
@@ -87,6 +97,29 @@ func Bind(ctx context.Context, d Data, kind Kind, b Bindings, order []Order, opt
 		return Mapping{}, err
 	}
 	return bindValidated(ctx, d, kind, b, order, options, limits)
+}
+
+// BindDisplay constructs a version-three KPI/table mapping with reviewed
+// display intent. Other kinds reject display policy fields explicitly.
+func BindDisplay(ctx context.Context, d Data, kind Kind, b Bindings, order []Order, options Options, kpi *KPIOptions, table *TableOptions, limits Limits) (Mapping, error) {
+	if err := ValidateData(ctx, d, limits); err != nil {
+		return Mapping{}, err
+	}
+	if len(bound(b)) > limits.MaxColumns || len(order) > limits.MaxColumns {
+		return Mapping{}, ErrLimit
+	}
+	m := Mapping{Version: DisplayVersion, Kind: kind, Bindings: b, Order: order, Options: options, KPI: kpi, Table: table}
+	for _, id := range bound(b) {
+		i := columnIndex(d.Columns, id)
+		if i < 0 {
+			return Mapping{}, ErrInvalid
+		}
+		m.Columns = append(m.Columns, d.Columns[i])
+	}
+	if err := validateMapping(ctx, d, m, limits); err != nil {
+		return Mapping{}, err
+	}
+	return cloneMapping(m), nil
 }
 
 // The selector has already validated data and budgets once; do not rescan and
@@ -134,13 +167,16 @@ func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
 		return ErrLimit
 	}
 	e, ok := entry(m.Kind)
-	if !ok || (m.Version != Version && m.Version != RichVersion) || len(m.Columns) == 0 || len(m.Columns) > l.MaxColumns || len(m.Order) > len(m.Columns) {
+	if !ok || (m.Version != Version && m.Version != RichVersion && m.Version != DisplayVersion) || len(m.Columns) == 0 || len(m.Columns) > l.MaxColumns || len(m.Order) > len(m.Columns) {
 		return ErrInvalid
 	}
 	if err := validateOptions(m.Options, l); err != nil {
 		return err
 	}
 	if err := validateSlots(m, e); err != nil {
+		return err
+	}
+	if err := validateDisplay(m); err != nil {
 		return err
 	}
 	ids := bound(m.Bindings)
@@ -177,7 +213,7 @@ func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
 			return ErrUnsuitable
 		}
 	}
-	for _, id := range append([]string{b.Value, b.Size}, b.Values...) {
+	for _, id := range append([]string{b.Value, b.Size, b.Comparison, b.Target}, b.Values...) {
 		if id != "" && !numeric(d.Columns[columnIndex(d.Columns, id)].Type) {
 			return ErrUnsuitable
 		}
@@ -195,13 +231,64 @@ func validateMapping(ctx context.Context, d Data, m Mapping, l Limits) error {
 			}
 		}
 	}
-	if m.Kind == KPI && len(d.Rows) > 1 {
+	if m.Kind == KPI && m.Version < DisplayVersion && len(d.Rows) > 1 {
 		return ErrUnsuitable
 	}
 	if richBindings(m.Kind, b) {
 		return validateRichShape(ctx, d, m, l)
 	}
 	return validateShape(ctx, d, m, l, e)
+}
+
+func validateDisplay(m Mapping) error {
+	if m.Version < DisplayVersion {
+		if m.KPI != nil || m.Table != nil || m.Bindings.Comparison != "" || m.Bindings.Target != "" {
+			return ErrInvalid
+		}
+		return nil
+	}
+	switch m.Kind {
+	case KPI:
+		if m.KPI == nil || m.Table != nil {
+			return ErrInvalid
+		}
+		o := m.KPI
+		if !oneOf(o.ValueRow, "first", "last") || !oneOf(o.ComparisonMode, "none", "previous_row", "comparison_column") || len(o.Thresholds) > 16 ||
+			o.ComparisonMode == "comparison_column" && m.Bindings.Comparison == "" || o.ComparisonMode != "comparison_column" && m.Bindings.Comparison != "" ||
+			o.ShowTargetDifference != (m.Bindings.Target != "") || o.Sparkline && m.Bindings.Category == "" {
+			return ErrInvalid
+		}
+		for _, threshold := range o.Thresholds {
+			if !oneOf(threshold.Operator, "lt", "lte", "gt", "gte") || !identifier(threshold.State) || !optionText(threshold.Label) {
+				return ErrInvalid
+			}
+			if _, _, err := decimal(threshold.Value); err != nil {
+				return ErrInvalid
+			}
+		}
+	case Table:
+		if m.Table == nil || m.KPI != nil || m.Bindings.Comparison != "" || m.Bindings.Target != "" || m.Table.PageSize < 1 || m.Table.PageSize > 1000 || len(m.Table.Columns) != len(m.Bindings.Columns) {
+			return ErrInvalid
+		}
+		seen, visible := map[string]bool{}, 0
+		for i, column := range m.Table.Columns {
+			if column.Column != m.Bindings.Columns[i] || seen[column.Column] {
+				return ErrInvalid
+			}
+			seen[column.Column] = true
+			if column.Visible {
+				visible++
+			}
+		}
+		if visible == 0 {
+			return ErrInvalid
+		}
+	default:
+		if m.KPI != nil || m.Table != nil || m.Bindings.Comparison != "" || m.Bindings.Target != "" {
+			return ErrInvalid
+		}
+	}
+	return nil
 }
 
 func at(d Data, row []Cell, id string) Cell {
@@ -338,7 +425,7 @@ func Rebind(ctx context.Context, d Data, original Mapping, limits Limits) (Propo
 		changes = append(changes, Change{From: old.ID, To: matches[0].ID})
 	}
 	b := &m.Bindings
-	for _, id := range []*string{&b.Category, &b.Value, &b.Series, &b.X, &b.Y, &b.Parent, &b.Size} {
+	for _, id := range []*string{&b.Category, &b.Value, &b.Series, &b.X, &b.Y, &b.Parent, &b.Size, &b.Comparison, &b.Target} {
 		if *id != "" {
 			*id = replacements[*id]
 		}
@@ -350,6 +437,11 @@ func Rebind(ctx context.Context, d Data, original Mapping, limits Limits) (Propo
 	}
 	for i := range m.Order {
 		m.Order[i].Column = replacements[m.Order[i].Column]
+	}
+	if m.Table != nil {
+		for i := range m.Table.Columns {
+			m.Table.Columns[i].Column = replacements[m.Table.Columns[i].Column]
+		}
 	}
 	m.Columns = nil
 	for _, id := range bound(m.Bindings) {

@@ -46,6 +46,16 @@ type (
 	ChartHierarchyNode = charts.HierarchyNode
 	// ChartTransformation records deterministic normalization and truthful omissions.
 	ChartTransformation = charts.Transformation
+	// ChartKPIOptions is the closed reviewed KPI display policy.
+	ChartKPIOptions = charts.KPIOptions
+	// ChartKPIThreshold maps one exact boundary to a display state.
+	ChartKPIThreshold = charts.KPIThreshold
+	// ChartTableOptions is the closed reviewed table display policy.
+	ChartTableOptions = charts.TableOptions
+	// ChartTableColumnIntent preserves ordered column visibility.
+	ChartTableColumnIntent = charts.TableColumnIntent
+	// ChartKPIResult carries exact deterministic KPI evidence.
+	ChartKPIResult = charts.KPIResult
 	// ChartSelectionEvidence explains suitability before optional model ranking.
 	ChartSelectionEvidence = charts.SelectionEvidence
 	// ChartOutput separates exact labels and optional approximate coordinates.
@@ -71,21 +81,22 @@ const (
 	// ChartScalarVersion keeps previously saved mappings compatible.
 	ChartScalarVersion = charts.Version
 	// ChartRichVersion is required for repeated measures, bubbles and hierarchy.
-	ChartRichVersion   = charts.RichVersion
-	ChartArea          = charts.Area
-	ChartBar           = charts.Bar
-	ChartColumnKind    = charts.ColumnChart
-	ChartDonut         = charts.Donut
-	ChartGroupedBar    = charts.GroupedBar
-	ChartHeatmap       = charts.Heatmap
-	ChartKPI           = charts.KPI
-	ChartLine          = charts.Line
-	ChartPie           = charts.Pie
-	ChartScatter       = charts.Scatter
-	ChartStackedBar    = charts.StackedBar
-	ChartStackedColumn = charts.StackedColumn
-	ChartTable         = charts.Table
-	ChartTreemap       = charts.Treemap
+	ChartRichVersion    = charts.RichVersion
+	ChartDisplayVersion = charts.DisplayVersion
+	ChartArea           = charts.Area
+	ChartBar            = charts.Bar
+	ChartColumnKind     = charts.ColumnChart
+	ChartDonut          = charts.Donut
+	ChartGroupedBar     = charts.GroupedBar
+	ChartHeatmap        = charts.Heatmap
+	ChartKPI            = charts.KPI
+	ChartLine           = charts.Line
+	ChartPie            = charts.Pie
+	ChartScatter        = charts.Scatter
+	ChartStackedBar     = charts.StackedBar
+	ChartStackedColumn  = charts.StackedColumn
+	ChartTable          = charts.Table
+	ChartTreemap        = charts.Treemap
 )
 
 // DefaultChartOptions returns the same literal options as the common core.

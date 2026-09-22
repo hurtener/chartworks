@@ -14,6 +14,9 @@ func Build(ctx context.Context, d Data, m Mapping, limits Limits) (Output, error
 	if err := ValidateMapping(ctx, d, m, limits); err != nil {
 		return Output{}, err
 	}
+	if m.Version == DisplayVersion {
+		return buildDisplay(ctx, d, m, limits)
+	}
 	if richBindings(m.Kind, m.Bindings) {
 		return buildRich(ctx, d, m, limits)
 	}

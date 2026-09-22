@@ -14,9 +14,13 @@ const Version = 1
 // Data and column provenance remain version one; scalar mappings stay readable.
 const RichVersion = 2
 
+// DisplayVersion pins reviewed KPI/table behavior and authored display metadata.
+// Earlier mappings remain byte-compatible and retain their original defaults.
+const DisplayVersion = 3
+
 // BuildVersion invalidates frozen-output reuse after a transformation contract
 // change without rewriting immutable scalar definitions or old retained views.
-const BuildVersion = 2
+const BuildVersion = 3
 
 var (
 	// ErrInvalid rejects malformed data, definitions and configuration.
@@ -89,8 +93,11 @@ func (l Limits) Validate() error {
 type Format struct {
 	Unit           string `json:"unit"`
 	Currency       string `json:"currency"`
+	CurrencySymbol string `json:"currency_symbol,omitempty"`
 	Percent        string `json:"percent"`
 	FractionDigits int    `json:"fraction_digits"`
+	Locale         string `json:"locale,omitempty"`
+	DatePattern    string `json:"date_pattern,omitempty" jsonschema:"enum=,enum=date_short,enum=date_medium,enum=date_long,enum=datetime_short,enum=year_month"`
 }
 
 // Provenance pins reviewed meaning separately from a mutable display label.
@@ -108,14 +115,15 @@ type Provenance struct {
 // Role is unknown, identifier, dimension, time, measure or kpi. Aggregation is
 // explicit; averages, distinct counts and percentages are never summed implicitly.
 type Column struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Type        string     `json:"type"`
-	Role        string     `json:"role"`
-	Grain       string     `json:"grain"`
-	Aggregation string     `json:"aggregation"`
-	Format      Format     `json:"format"`
-	Provenance  Provenance `json:"provenance"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	DisplayLabel string     `json:"display_label,omitempty"`
+	Type         string     `json:"type"`
+	Role         string     `json:"role"`
+	Grain        string     `json:"grain"`
+	Aggregation  string     `json:"aggregation"`
+	Format       Format     `json:"format"`
+	Provenance   Provenance `json:"provenance"`
 }
 
 // Cell uses an explicit null bit and lossless text, including exact numeric text.
@@ -146,16 +154,54 @@ type Data struct {
 // root-to-leaf columns, exclusive with Category/Parent. Size encodes bubble area.
 // These extensions, and category/series line and base-bar variants, require v2.
 type Bindings struct {
-	Category  string   `json:"category,omitempty"`
-	Value     string   `json:"value,omitempty"`
-	Series    string   `json:"series,omitempty"`
-	X         string   `json:"x,omitempty"`
-	Y         string   `json:"y,omitempty"`
-	Parent    string   `json:"parent,omitempty"`
-	Columns   []string `json:"columns,omitempty"`
-	Values    []string `json:"values,omitempty"`
-	Hierarchy []string `json:"hierarchy,omitempty"`
-	Size      string   `json:"size,omitempty"`
+	Category   string   `json:"category,omitempty"`
+	Value      string   `json:"value,omitempty"`
+	Series     string   `json:"series,omitempty"`
+	X          string   `json:"x,omitempty"`
+	Y          string   `json:"y,omitempty"`
+	Parent     string   `json:"parent,omitempty"`
+	Columns    []string `json:"columns,omitempty"`
+	Values     []string `json:"values,omitempty"`
+	Hierarchy  []string `json:"hierarchy,omitempty"`
+	Size       string   `json:"size,omitempty"`
+	Comparison string   `json:"comparison,omitempty"`
+	Target     string   `json:"target,omitempty"`
+}
+
+// KPIThreshold maps an exact numeric boundary to a reviewed display state.
+type KPIThreshold struct {
+	Operator string `json:"operator" jsonschema:"enum=lt,enum=lte,enum=gt,enum=gte"`
+	Value    string `json:"value"`
+	State    string `json:"state"`
+	Label    string `json:"label,omitempty"`
+}
+
+// KPIOptions describes deterministic retained calculations. ComparisonColumn
+// uses the comparison binding; previous_row compares the selected row to the
+// immediately preceding ordered row. Sparkline consumes the ordered value rows.
+type KPIOptions struct {
+	ValueRow             string         `json:"value_row" jsonschema:"enum=first,enum=last"`
+	ComparisonMode       string         `json:"comparison_mode" jsonschema:"enum=none,enum=previous_row,enum=comparison_column"`
+	ShowDelta            bool           `json:"show_delta"`
+	ShowPercentDelta     bool           `json:"show_percent_delta"`
+	ShowTargetDifference bool           `json:"show_target_difference"`
+	Sparkline            bool           `json:"sparkline"`
+	Thresholds           []KPIThreshold `json:"thresholds"`
+}
+
+// TableColumnIntent keeps authored visibility independently from query/schema
+// presence. Hidden columns may still participate in the immutable saved sort.
+type TableColumnIntent struct {
+	Column  string `json:"column"`
+	Visible bool   `json:"visible"`
+}
+
+// TableOptions carries reviewed display controls; page size is presentation
+// intent and never widens retained-result or HTTP paging limits.
+type TableOptions struct {
+	Columns    []TableColumnIntent `json:"columns"`
+	PageSize   int                 `json:"page_size"`
+	ShowTotals bool                `json:"show_totals"`
 }
 
 // Order is an explicit, stable sort over a bound column. Nulls sort last.
@@ -185,12 +231,14 @@ func DefaultOptions() Options {
 // Mapping is a portable saved definition. Columns pins every bound column's
 // type and semantic metadata; approved mappings are never rebound in place.
 type Mapping struct {
-	Version  int      `json:"version"`
-	Kind     Kind     `json:"kind"`
-	Columns  []Column `json:"columns"`
-	Bindings Bindings `json:"bindings"`
-	Order    []Order  `json:"order"`
-	Options  Options  `json:"options"`
+	Version  int           `json:"version"`
+	Kind     Kind          `json:"kind"`
+	Columns  []Column      `json:"columns"`
+	Bindings Bindings      `json:"bindings"`
+	Order    []Order       `json:"order"`
+	Options  Options       `json:"options"`
+	KPI      *KPIOptions   `json:"kpi,omitempty"`
+	Table    *TableOptions `json:"table,omitempty"`
 }
 
 // CatalogEntry describes real slot requirements and data semantics for one kind.
@@ -254,6 +302,20 @@ type Total struct {
 	Scope  string `json:"scope"`
 }
 
+// KPIResult is exact retained display evidence. Coordinates are supplied only
+// for drawing the sparkline; all displayed labels use Exact.
+type KPIResult struct {
+	Value            Value   `json:"value"`
+	Comparison       *Value  `json:"comparison,omitempty"`
+	Delta            *Value  `json:"delta,omitempty"`
+	PercentDelta     *Value  `json:"percent_delta,omitempty"`
+	Target           *Value  `json:"target,omitempty"`
+	TargetDifference *Value  `json:"target_difference,omitempty"`
+	ThresholdState   string  `json:"threshold_state,omitempty"`
+	ThresholdLabel   string  `json:"threshold_label,omitempty"`
+	Sparkline        []Value `json:"sparkline"`
+}
+
 // Output is sealed typed input for later renderers. Kind is never replaced with
 // table behind the caller's back. Empty states remain specifications of that kind.
 type Output struct {
@@ -273,6 +335,9 @@ type Output struct {
 	Hierarchy      []HierarchyNode    `json:"hierarchy,omitempty"`
 	RowIndices     []int              `json:"row_indices,omitempty"`
 	Transformation *Transformation    `json:"transformation,omitempty"`
+	KPIResult      *KPIResult         `json:"kpi_result,omitempty"`
+	TablePageSize  int                `json:"table_page_size,omitempty"`
+	ShowTotals     bool               `json:"show_totals,omitempty"`
 }
 
 // Change describes one proposed column replacement, never an applied publication.

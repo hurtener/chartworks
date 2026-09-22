@@ -136,11 +136,13 @@ type SelectionResult struct {
 
 // SpecifyRequest creates a new explicit authoring definition, not a saved rebind.
 type SpecifyRequest struct {
-	Data     charts.Data     `json:"data"`
-	Kind     charts.Kind     `json:"kind"`
-	Bindings charts.Bindings `json:"bindings"`
-	Order    []charts.Order  `json:"order"`
-	Options  charts.Options  `json:"options"`
+	Data     charts.Data          `json:"data"`
+	Kind     charts.Kind          `json:"kind"`
+	Bindings charts.Bindings      `json:"bindings"`
+	Order    []charts.Order       `json:"order"`
+	Options  charts.Options       `json:"options"`
+	KPI      *charts.KPIOptions   `json:"kpi,omitempty"`
+	Table    *charts.TableOptions `json:"table,omitempty"`
 }
 
 // BuildRequest applies an exact saved mapping. It has no rank or SQL field.
@@ -192,7 +194,7 @@ func (s *Service) Catalog(ctx context.Context, e identity.Envelope) (CatalogResu
 		return CatalogResult{}, err
 	}
 	defer done()
-	return CatalogResult{Version: 1, Kinds: charts.Catalog(), Limits: s.options.Limits, RankingConfigured: s.options.RankEnabled && s.engine != nil, MappingVersions: []int{charts.Version, charts.RichVersion}, MaxTransformedPoints: charts.MaxTransformedPoints, MaxHierarchyDepth: charts.MaxHierarchyDepth}, finish(ctx, e, "charts.read")
+	return CatalogResult{Version: 1, Kinds: charts.Catalog(), Limits: s.options.Limits, RankingConfigured: s.options.RankEnabled && s.engine != nil, MappingVersions: []int{charts.Version, charts.RichVersion, charts.DisplayVersion}, MaxTransformedPoints: charts.MaxTransformedPoints, MaxHierarchyDepth: charts.MaxHierarchyDepth}, finish(ctx, e, "charts.read")
 }
 
 // Select uses deterministic rules first; the ranker may only reorder that sealed
@@ -297,7 +299,12 @@ func (s *Service) Specify(ctx context.Context, e identity.Envelope, in SpecifyRe
 		return BuildResult{}, err
 	}
 	defer done()
-	m, err := charts.Bind(ctx, in.Data, in.Kind, in.Bindings, in.Order, in.Options, s.options.Limits)
+	var m charts.Mapping
+	if in.KPI != nil || in.Table != nil {
+		m, err = charts.BindDisplay(ctx, in.Data, in.Kind, in.Bindings, in.Order, in.Options, in.KPI, in.Table, s.options.Limits)
+	} else {
+		m, err = charts.Bind(ctx, in.Data, in.Kind, in.Bindings, in.Order, in.Options, s.options.Limits)
+	}
 	if err != nil {
 		return BuildResult{}, err
 	}

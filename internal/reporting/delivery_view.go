@@ -76,7 +76,11 @@ func (s *Delivery) projectOutput(v RetainedOutput, in DeliveryViewRequest) (*Vie
 	if v.Chart != nil {
 		c := v.Chart
 		if c.Kind == charts.Kind("table") {
-			b, end, err := tableBounds(len(c.Rows), in.Offset, in.Limit)
+			limit := in.Limit
+			if c.Version == charts.DisplayVersion && c.TablePageSize > 0 && c.TablePageSize < limit {
+				limit = c.TablePageSize
+			}
+			b, end, err := tableBounds(len(c.Rows), in.Offset, limit)
 			if err != nil {
 				return nil, bounds, err
 			}
