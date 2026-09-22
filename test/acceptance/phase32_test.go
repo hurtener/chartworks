@@ -3,6 +3,8 @@ package acceptance
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -102,7 +104,9 @@ func phase32BFF(t *testing.T) {
 	var gotAuth string
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		_ = json.NewEncoder(w).Encode(rendering.Rendition{MediaType: "text/html; charset=utf-8", Content: "<p>sealed</p>"})
+		content := "<p>sealed</p>"
+		digest := sha256.Sum256([]byte(content))
+		_ = json.NewEncoder(w).Encode(rendering.Rendition{Format: "html", MediaType: "text/html; charset=utf-8", Content: content, Bytes: len(content), Digest: hex.EncodeToString(digest[:])})
 	}))
 	defer up.Close()
 	h, err := bffexample.New(up.URL, up.Client(), func(context.Context) (string, error) { return "pengui-server-token", nil }, []string{"https://console.example"})

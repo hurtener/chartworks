@@ -6,6 +6,8 @@ package bffexample
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -92,8 +94,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream rejected", response.StatusCode)
 		return
 	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 20<<20+1))
+	if err != nil || len(body) > 20<<20 {
+		http.Error(w, "invalid upstream response", http.StatusBadGateway)
+		return
+	}
 	var out rendering.Rendition
-	if json.NewDecoder(io.LimitReader(response.Body, 20<<20)).Decode(&out) != nil || out.Content == "" {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&out) != nil || decoder.Decode(new(any)) != io.EOF {
+		http.Error(w, "invalid upstream response", http.StatusBadGateway)
+		return
+	}
+	wantMedia := map[string]string{"html": "text/html; charset=utf-8", "svg": "image/svg+xml"}[in.Format]
+	digest := sha256.Sum256([]byte(out.Content))
+	if out.Content == "" || out.Format != in.Format || out.MediaType != wantMedia || out.Bytes != len(out.Content) || out.Digest != hex.EncodeToString(digest[:]) {
 		http.Error(w, "invalid upstream response", http.StatusBadGateway)
 		return
 	}
