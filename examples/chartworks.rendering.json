@@ -6,7 +6,7 @@
     "worker_version": "chartworks-svg-worker-v1",
     "theme_version": "chartworks-theme-v1",
     "max_time": "10s",
-    "max_memory_bytes": 268435456,
+    "max_memory_bytes": 1073741824,
     "max_input_bytes": 16777216,
     "max_output_bytes": 16777216,
     "max_concurrent": 2,

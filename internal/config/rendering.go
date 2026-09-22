@@ -22,7 +22,7 @@ type Rendering struct {
 }
 
 func DefaultRendering() Rendering {
-	return Rendering{WorkerVersion: "chartworks-svg-worker-v1", ThemeVersion: "chartworks-theme-v1", MaxTime: Duration(10 * time.Second), MaxMemoryBytes: 256 << 20, MaxInputBytes: 16 << 20, MaxOutputBytes: 16 << 20, MaxConcurrent: 2, Retention: Duration(24 * time.Hour), FrameAncestors: []string{}}
+	return Rendering{WorkerVersion: "chartworks-svg-worker-v1", ThemeVersion: "chartworks-theme-v1", MaxTime: Duration(10 * time.Second), MaxMemoryBytes: 1 << 30, MaxInputBytes: 16 << 20, MaxOutputBytes: 16 << 20, MaxConcurrent: 2, Retention: Duration(24 * time.Hour), FrameAncestors: []string{}}
 }
 
 func (c Rendering) Validate() error {

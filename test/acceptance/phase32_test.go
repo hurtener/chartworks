@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -144,7 +145,7 @@ func phase32StaticWorker(t *testing.T) {
 	root.Output = nil
 	root.Summary.Kind = "report"
 	root.Summary.Target.Kind = "report"
-	root.Pages = []reporting.CompositionPageSummary{{ID: "main", Title: "Executive <page>", Widgets: []reporting.CompositionWidgetSummary{{ID: "w1", Kind: "block", State: "completed", Grid: reporting.GridCell{Column: 2, Row: 3, Width: 12, Height: 6}, Presentation: reporting.Presentation{Title: "Revenue <widget>"}}}}}
+	root.Pages = []reporting.CompositionPageSummary{{ID: "main", Title: "Executive <page>", Widgets: []reporting.CompositionWidgetSummary{{ID: "w1", Kind: "block", State: "completed", Grid: reporting.GridCell{Column: 2, Row: 3, Width: 6, Height: 6}, Presentation: reporting.Presentation{Title: "Revenue <widget>"}}}}}
 	compositionViewer := &phase32Viewer{fn: func(request reporting.DeliveryViewRequest) (reporting.DeliveryViewResult, error) {
 		if request.Widget == "" {
 			return root, nil
@@ -157,8 +158,20 @@ func phase32StaticWorker(t *testing.T) {
 	full.View.Kind = "report"
 	full.View.Output = ""
 	page, err := compositionService.Generate(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), full)
-	if err != nil || !strings.Contains(page.Content, "grid-column:3/span 12") || !strings.Contains(page.Content, "Executive &lt;page&gt;") || !strings.Contains(page.Content, "Revenue &lt;widget&gt;") {
+	if err != nil || !strings.Contains(page.Content, "grid-column:3/span 6") || strings.Count(page.Content, "<!doctype html>") != 1 || !strings.Contains(page.Content, "Executive &lt;page&gt;") || !strings.Contains(page.Content, "Revenue &lt;widget&gt;") {
 		t.Fatal("composition geometry", err, page.Content)
+	}
+	textViewer := &phase32Viewer{fn: func(request reporting.DeliveryViewRequest) (reporting.DeliveryViewResult, error) {
+		if request.Widget == "" {
+			return root, nil
+		}
+		return reporting.DeliveryViewResult{Text: &reporting.TextWidget{Format: "plain", Text: "Exact <text>"}}, nil
+	}}
+	textService, _ := rendering.NewManaged(textViewer, rendering.NewMemoryRepository(), p, 4<<20, phase32Options())
+	full.Format = "svg"
+	graphic, err := textService.Generate(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), full)
+	if err != nil || !strings.Contains(graphic.Content, `x="141"`) || !strings.Contains(graphic.Content, "Exact &lt;text&gt;") {
+		t.Fatal("svg composition geometry", err, graphic.Content)
 	}
 }
 
@@ -176,6 +189,11 @@ func phase32Injection(t *testing.T) {
 	if _, err = s.Export(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), hostile); err == nil {
 		t.Fatal("external theme accepted")
 	}
+	sealed := []byte(`{"version":"chartworks-render-worker-v1","request":{"view":{"kind":"block","run":"run","page":"","widget":"","output":"table","offset":0,"limit":2},"format":"html","theme":"light","width":800,"height":420,"network_url":"https://example.invalid"},"view":{}}`)
+	var worker bytes.Buffer
+	if err := rendering.WorkerMain(bytes.NewReader(sealed), &worker, 1<<20, 1<<20, 1<<30); !errors.Is(err, rendering.ErrInvalid) || worker.Len() != 0 {
+		t.Fatal("open worker input accepted", err, worker.String())
+	}
 }
 
 func phase32ProcessLimits(t *testing.T) {
@@ -183,10 +201,20 @@ func phase32ProcessLimits(t *testing.T) {
 	crash := filepath.Join(dir, "crash")
 	sleep := filepath.Join(dir, "sleep")
 	large := filepath.Join(dir, "large")
+	clean := filepath.Join(dir, "clean-env")
 	if os.WriteFile(crash, []byte("#!/bin/sh\nexit 9\n"), 0700) != nil || os.WriteFile(sleep, []byte("#!/bin/sh\n/bin/sleep 2\n"), 0700) != nil {
 		t.Fatal("script")
 	}
 	work := rendering.SealedWork{Version: rendering.WorkerProtocolVersion, Request: phase32Request("html"), View: phase32View()}
+	t.Setenv("SECRET_CANARY", "must-not-cross")
+	cleanScript := fmt.Sprintf("#!/bin/sh\n[ -z \"$SECRET_CANARY\" ] || exit 7\nexec %q --sealed-render-worker\n", mustExecutable32(t))
+	if os.WriteFile(clean, []byte(cleanScript), 0700) != nil {
+		t.Fatal("environment probe")
+	}
+	cleanProcess, _ := rendering.NewProcess(clean, phase32Options())
+	if _, err := cleanProcess.Process(t.Context(), work); err != nil {
+		t.Fatal("credential environment crossed worker boundary", err)
+	}
 	opts := phase32Options()
 	p, _ := rendering.NewProcess(crash, opts)
 	if _, err := p.Process(t.Context(), work); !errors.Is(err, rendering.ErrWorker) {

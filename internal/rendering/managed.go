@@ -126,6 +126,9 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, in ReadRequest)
 	if s == nil || s.repository == nil || !e.Valid() {
 		return Rendition{}, access.ErrUnauthenticated
 	}
+	if !identity.Identifier(in.ID) {
+		return Rendition{}, ErrInvalid
+	}
 	if !e.Has("reporting.read") {
 		return Rendition{}, access.ErrForbidden
 	}
@@ -144,7 +147,7 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, in ReadRequest)
 }
 
 func (s *Service) List(ctx context.Context, e identity.Envelope, in ListRequest) (ListResult, error) {
-	if !e.Valid() {
+	if s == nil || s.repository == nil || !e.Valid() {
 		return ListResult{}, access.ErrUnauthenticated
 	}
 	if !e.Has("reporting.read") {
@@ -153,7 +156,7 @@ func (s *Service) List(ctx context.Context, e identity.Envelope, in ListRequest)
 	if in.Limit == 0 {
 		in.Limit = 20
 	}
-	if in.Limit < 1 || in.Limit > 100 {
+	if in.Limit < 1 || in.Limit > 100 || in.After != "" && !identity.Identifier(in.After) {
 		return ListResult{}, ErrInvalid
 	}
 	records, err := s.repository.ListRenditions(ctx, e.Tenant(), in.After, in.Limit)
@@ -170,7 +173,7 @@ func (s *Service) List(ctx context.Context, e identity.Envelope, in ListRequest)
 }
 
 func (s *Service) Expire(ctx context.Context, e identity.Envelope, in ExpireRequest) (ExpireResult, error) {
-	if !e.Valid() {
+	if s == nil || s.repository == nil || !e.Valid() {
 		return ExpireResult{}, access.ErrUnauthenticated
 	}
 	if err := access.Require(e, "reporting.retention", access.Resource{Tenant: e.Tenant(), Kind: "tenant", Permission: "erase", ID: e.Tenant()}); err != nil {
