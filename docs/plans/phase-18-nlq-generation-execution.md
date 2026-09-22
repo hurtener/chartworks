@@ -111,6 +111,6 @@ active current rows and persists exact selection/exclusion provenance before SQL
 work. Retirement is the rollback path and cannot rewrite frozen queries.
 
 Protected export and revalidated candidate-only import are registered through HTTP,
-MCP, SDK and the generated CLI operation surface. Migration 041 preserves legacy
+MCP, SDK and the generated CLI operation surface. Migration 042 preserves legacy
 rows as inapplicable candidates, and portable import replay cannot amplify evidence.
 See [learning lifecycle v1](../contracts/learning-lifecycle-v1.md).

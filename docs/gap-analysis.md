@@ -243,10 +243,10 @@ phase 24/34/25 manual-suite obligations.
 - **Reference behavior (neutral):** The original has template selection, similarity/weight/diversity controls and active/fallback prompt packs.
 - **Current boundary:** Active examples require explicit review and exact topic/source/context/rule/template/locale origin. A bounded deterministic lexical/posterior pass and optional single-gateway rerank select candidates after routing. Every selection and typed exclusion is persisted on the immutable query.
 - **Consequence:** Invalid, stale, cross-context or unreviewed rows cannot silently affect generation; deterministic lane precedence remains `edit_base`, hints, examples, default.
-- **Contract, storage and import impact:** Migration 041 adds versioned origins, evidence and review state. Protected export and revalidated candidate-only import preserve provenance and make replay idempotent.
+- **Contract, storage and import impact:** Migration 042 adds versioned origins, evidence and review state. Protected export and revalidated candidate-only import preserve provenance and make replay idempotent.
 - **Remaining evidence:** Phase 24 must measure live retrieval quality, diversity and held-out calibration; software acceptance does not claim those measurements.
 - **Source evidence IDs:** REF-LRN-01-A, REF-LRN-01-B.
-- **Current repository evidence:** [selection service](../internal/nlqexec/service.go); [durable store](../internal/store/postgres/nlq_runtime.go); [contract](contracts/learning-lifecycle-v1.md); [migration](../internal/store/postgres/migrations/041_learning_templates.sql).
+- **Current repository evidence:** [selection service](../internal/nlqexec/service.go); [durable store](../internal/store/postgres/nlq_runtime.go); [contract](contracts/learning-lifecycle-v1.md); [migration](../internal/store/postgres/migrations/042_learning_templates.sql).
 
 ### LRN-02 — Feedback weights are fixed increments
 

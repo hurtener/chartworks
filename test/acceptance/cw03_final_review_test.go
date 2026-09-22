@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -208,6 +209,83 @@ func TestCW03OutputLocaleIndependentOfBlockLocale(t *testing.T) {
 	}
 	if f.attemptCount(t) != queries || f.f.model.requests.Load() != models {
 		t.Fatal("metadata localization performed source/model work")
+	}
+}
+
+// A report legitimately published against enabled defaults may later resolve a
+// floating block revision with no defaults. Preserve the metadata-only selector
+// explanation without guessing a replacement or executing any output.
+func TestCW03EmptyDefaultSelectorRetainsChoices(t *testing.T) {
+	f := newPhase29Execution(t, false)
+	delivery, err := reporting.NewDelivery(f.blocks, f.runs, f.documents, f.compositions, f.f.f.db, config.DefaultReportingViewer())
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := cw03Definition(t, f.base)
+	f.block(t, "cw03-no-default-block", d)
+	report := phase29Text("Synthetic floating defaults")
+	report.Widgets = []reporting.Widget{phase29BlockWidget("data", "cw03-no-default-block", 0)}
+	state := f.report(t, "cw03-no-default-report", report, true)
+	current, err := f.blocks.Read(t.Context(), f.blockAuthor, "cw03-no-default-block", reporting.Reference{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range d.Outputs {
+		d.Outputs[i].Intent.DefaultSelected = false
+	}
+	draft, err := f.blocks.Edit(t.Context(), f.blockAuthor, current.State.ID, reporting.EditRequest{ExpectedVersion: current.State.Version, Definition: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	phase27ValidatePublish(t, f.blocks, f.blockAuthor, draft)
+	queries, models := f.attemptCount(t), f.f.model.requests.Load()
+	description, err := delivery.Describe(t.Context(), f.execute, reporting.DeliveryDescribeRequest{Target: reporting.DeliveryTarget{Kind: "report", ID: state.ID}, Locale: "es-AR"})
+	if err != nil || len(description.Pages) != 1 || len(description.Pages[0].Widgets) != 1 {
+		t.Fatal(description, err)
+	}
+	widget := description.Pages[0].Widgets[0]
+	if widget.Code != "output_selection_empty" || widget.Selection == nil || widget.Selection.Mode != "defaults" || len(widget.Selection.Selected) != 0 || len(widget.Selection.Choices) != 4 || widget.Selection.Choices[1].State != "disabled" {
+		t.Fatal("empty defaults lost authorized disabled/omitted choices", widget)
+	}
+	if _, err = f.runs.Admit(t.Context(), f.execute, current.State.ID, reporting.RunRequest{Key: "cw03-no-default-run"}); reporting.SelectionErrorCode(err) != "output_selection_empty" {
+		t.Fatal("empty defaults became an implicit execution", err)
+	}
+	if f.attemptCount(t) != queries || f.f.model.requests.Load() != models {
+		t.Fatal("omission description/rejection performed warehouse/model work")
+	}
+}
+
+// Persistence accepts the same canonical locale-byte bound as the domain.
+func TestCW03OutputLocalePersistenceBounds(t *testing.T) {
+	f := newPhase29Execution(t, false)
+	legacy := phase27Copy(t, f.base)
+	const extended = "en-x-aaaaaaa-bbbbbbb-ccccccc-ddddddd-eeeeeee-fffffff"
+	legacy.Metadata = append(legacy.Metadata, reporting.Localized{Locale: extended, Title: "Extended locale", Description: "Synthetic locale fixture", Question: "Which observations were retained?"})
+	definition, err := reporting.MigrateDefinition(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.block(t, "cw03-extended-locale", definition)
+	exported, err := f.blocks.SQL(t.Context(), f.blockAuthor, "cw03-extended-locale", reporting.Reference{Revision: 1})
+	if err != nil || exported.Definition == nil || !reflect.DeepEqual(*exported.Definition, definition) {
+		t.Fatal("native locale migration/publication/export lost authored intent", exported, err)
+	}
+	invalid := phase27Copy(t, definition)
+	invalid.Outputs[0].Intent.Metadata[0].Locale = "en-x-" + strings.Repeat("aaaaaaa-", 8) + "a"
+	if len(invalid.Outputs[0].Intent.Metadata[0].Locale) <= 64 {
+		t.Fatal("oversize fixture must cross the domain ceiling")
+	}
+	if _, err = f.blocks.Create(t.Context(), f.blockAuthor, reporting.CreateRequest{ID: "cw03-overlong-locale", Definition: invalid}); !errors.Is(err, reporting.ErrInvalid) {
+		t.Fatal("domain accepted an overlong locale", err)
+	}
+	raw := support.Raw(t, f.f.f.dsn)
+	body, err := json.Marshal(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var valid bool
+	if err = raw.QueryRow(t.Context(), `SELECT chartworks.reporting_output_intents_valid($1::jsonb)`, body).Scan(&valid); err != nil || valid {
+		t.Fatal("storage locale ceiling diverged", valid, err)
 	}
 }
 

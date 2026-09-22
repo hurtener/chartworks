@@ -115,3 +115,12 @@ whole reviewed query dependency set. Reservations are not measured usage.
 Unsupported causal/unrestricted prose and unmapped legacy instructions fail
 explicitly. No new notifications, deletion, dynamic option discovery, richer KPI,
 table styling, chart-binding or clarification implementation is included.
+
+## Final CI follow-up after owner merge
+
+The last repository-wide run did not finish green. The verified original logs,
+concrete final-review findings, forward-only locale migration and regression
+coverage are recorded in [the final adversarial follow-up](cw-03-final-adversarial.md).
+Its PR records the final new-head fast and manually dispatched evidence actually
+obtained; earlier exact-SHA receipts above remain historical and are not rewritten
+as passing evidence for newer changes.
