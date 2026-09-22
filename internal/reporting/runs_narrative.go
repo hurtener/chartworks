@@ -294,6 +294,9 @@ func prepareNarrative(m RunManifest, result exec.Result, n Narrative) (preparedN
 
 func (s *Runs) generatePreparedNarrative(ctx context.Context, e identity.Envelope, m RunManifest, output string, n Narrative, prepared preparedNarrative) (NarrativeResult, error) {
 	evidence, caveats := prepared.evidence, prepared.caveats
+	if s.packSelector != nil && m.NarrativePack == nil {
+		return NarrativeResult{}, ErrUnavailable
+	}
 	if m.NarrativePack != nil {
 		if s.packSelector == nil {
 			return NarrativeResult{}, ErrUnavailable

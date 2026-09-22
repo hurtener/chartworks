@@ -104,8 +104,11 @@ The sealed manifest and v2 reuse identity pin its exact pack/runtime/configurati
 digests and narrative role model. Execution and PostgreSQL reuse re-read the
 current accepted selection; the Bifrost narrative call applies its reviewed
 configuration and its actual role/model/configuration receipt is checked before
-the narrative can be retained. Legacy unpinned narratives can still execute but
-cannot supply cross-run reuse evidence. Deterministic runs select no pack and
+the narrative can be retained. Legacy unpinned manifests stay readable and
+their deterministic outputs can execute under the reviewed-pack policy, while
+their narrative is marked unavailable without a model call or cross-run reuse.
+The selected pack must also carry an exact approved proposal and reviewer
+receipt. Deterministic runs select no pack and
 make no model call. The real PostgreSQL and recorded-gateway regression covers
 two accepted packs, same-pack reuse, changed/rejected selections and signed
 context denial. With no selected pack, explicit partial mode retains deterministic

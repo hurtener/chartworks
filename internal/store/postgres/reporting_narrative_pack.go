@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/evaluation"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -37,13 +38,17 @@ func (d *DB) SelectedNarrativePack(ctx context.Context, e identity.Envelope, m r
 }
 
 func selectedNarrativePackTx(ctx context.Context, tx pgx.Tx, tenant string) (reporting.NarrativeRuntime, error) {
-	var raw, reviewRaw []byte
-	var state, runtimeDigest, configDigest, packDigest string
-	err := tx.QueryRow(ctx, `SELECT p.material,p.review,p.state,p.runtime_digest,p.configuration_digest,s.pack_digest
+	var raw, reviewRaw, proposalRaw, proposalReviewRaw []byte
+	var state, runtimeDigest, configDigest, packDigest, proposalID, proposalDigest, proposalState, proposalAuthor, selectionActor string
+	var selectedAt time.Time
+	err := tx.QueryRow(ctx, `SELECT p.material,p.review,p.state,p.runtime_digest,p.configuration_digest,s.pack_digest,
+ s.proposal_id,s.actor_id,s.selected_at,q.proposal,q.proposal_digest,q.state,q.review,q.author_id
  FROM chartworks.evaluation_pack_selection s
  JOIN chartworks.evaluation_runtime_packs p ON (p.tenant_id,p.pack_digest)=(s.tenant_id,s.pack_digest)
- WHERE s.tenant_id=$1 FOR SHARE OF s,p`, tenant).
-		Scan(&raw, &reviewRaw, &state, &runtimeDigest, &configDigest, &packDigest)
+ JOIN chartworks.evaluation_proposals q ON (q.tenant_id,q.proposal_id)=(s.tenant_id,s.proposal_id)
+ WHERE s.tenant_id=$1 FOR SHARE OF s,p,q`, tenant).
+		Scan(&raw, &reviewRaw, &state, &runtimeDigest, &configDigest, &packDigest,
+			&proposalID, &selectionActor, &selectedAt, &proposalRaw, &proposalDigest, &proposalState, &proposalReviewRaw, &proposalAuthor)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return reporting.NarrativeRuntime{}, store.ErrNotFound
@@ -51,6 +56,21 @@ func selectedNarrativePackTx(ctx context.Context, tx pgx.Tx, tenant string) (rep
 		return reporting.NarrativeRuntime{}, err
 	}
 	if state != string(evaluation.Accepted) {
+		return reporting.NarrativeRuntime{}, store.ErrConflict
+	}
+	var proposal evaluation.OptimizationProposal
+	var proposalReview evaluation.ReviewReceipt
+	if json.Unmarshal(proposalRaw, &proposal) != nil || json.Unmarshal(proposalReviewRaw, &proposalReview) != nil {
+		return reporting.NarrativeRuntime{}, store.ErrMigration
+	}
+	computedProposalDigest, digestErr := digestJSON(proposal)
+	if digestErr != nil || proposal.Validate() != nil || proposal.Mode != evaluation.Live ||
+		proposal.ID != proposalID || computedProposalDigest != proposalDigest ||
+		proposal.Candidate.PackDigest != packDigest || proposalState != "approve" ||
+		proposalReview.ProposalID != proposalID || proposalReview.ProposalDigest != proposalDigest ||
+		proposalReview.Decision != "approve" || proposalReview.Reviewer == "" ||
+		proposalReview.Reviewer == proposalAuthor || proposalReview.ReviewedAt.IsZero() ||
+		selectionActor == "" || selectedAt.IsZero() {
 		return reporting.NarrativeRuntime{}, store.ErrConflict
 	}
 	var record evaluation.RuntimePackRecord

@@ -161,7 +161,8 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 		}
 	} else {
 		n := saved.Narrative
-		available := !m.NarrativePackUnavailable && n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && n.SchemaVersion == "grounded-narrative-v1"
+		available := !m.NarrativePackUnavailable && (s.packSelector == nil || m.NarrativePack != nil) &&
+			n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && n.SchemaVersion == "grounded-narrative-v1"
 		versioned := m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || n != nil && n.PolicyVersion != ""
 		if n == nil || !available && !versioned {
 			// Preserve the legacy unavailable receipt. Versioned policies first

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
@@ -16,9 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// The accepted record is created through Phase 24's real review service. The
-// selection fixture advances the tenant CAS pointer directly so this test can
-// isolate reporting's consumer without fabricating heldout optimization reports.
+// The accepted record is created through Phase 24's real review service.
 func reviewedNarrativePack(t *testing.T, f *phase17Fixture, id, role, model string, accepted bool) evaluation.RuntimePackRecord {
 	t.Helper()
 	tenant := f.f.e.Tenant()
@@ -52,22 +51,49 @@ func reviewedNarrativePack(t *testing.T, f *phase17Fixture, id, role, model stri
 	return out
 }
 
-func selectNarrativePack(t *testing.T, raw *pgx.Conn, tenant string, pack evaluation.RuntimePackRecord, revision int) {
+func selectNarrativePack(t *testing.T, f *phase17Fixture, raw *pgx.Conn, pack evaluation.RuntimePackRecord, revision int64) {
 	t.Helper()
 	ctx := context.Background()
+	tenant := f.f.e.Tenant()
 	proposal := "reviewed-narrative-" + pack.Pack.ID
-	_, err := raw.Exec(ctx, `INSERT INTO chartworks.evaluation_proposals(tenant_id,proposal_id,author_id,proposal_digest,proposal,state,review,created_at)
- VALUES($1,$2,'runtime-author',$3,$4::jsonb,'approve','{}'::jsonb,clock_timestamp()) ON CONFLICT DO NOTHING`,
-		tenant, proposal, strings.Repeat("a", 64), `{"candidate":{"pack_digest":"`+pack.Pack.Digest+`"}}`)
+	author := phase27Actor(t, f, "proposal-author", []string{"ops.write", "cw.tenant.write:" + tenant})
+	reviewer := phase27Actor(t, f, "proposal-reviewer", []string{"ops.audit", "cw.tenant.certify:" + tenant})
+	selector := phase27Actor(t, f, "proposal-selector", []string{"ops.write", "cw.tenant.write:" + tenant})
+	scope, err := store.NewScope(tenant, author.User())
 	if err != nil {
-		t.Fatal("selected-pack proposal fixture", err)
+		t.Fatal(err)
 	}
-	_, err = raw.Exec(ctx, `INSERT INTO chartworks.evaluation_pack_selection(tenant_id,revision,pack_digest,proposal_id,actor_id,selected_at)
- VALUES($1,$2,$3,$4,'runtime-reviewer',clock_timestamp()) ON CONFLICT(tenant_id) DO UPDATE
- SET revision=EXCLUDED.revision,pack_digest=EXCLUDED.pack_digest,proposal_id=EXCLUDED.proposal_id,actor_id=EXCLUDED.actor_id,selected_at=EXCLUDED.selected_at`,
-		tenant, revision, pack.Pack.Digest, proposal)
+	digestA, digestB, evidence, lineage := strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 64), strings.Repeat("d", 64)
+	p := evaluation.OptimizationProposal{SchemaVersion: evaluation.SchemaVersion, ID: proposal, SuiteID: "narrative-suite", SuiteRevision: 1,
+		SuiteDigest: digestA, Mode: evaluation.Live, Seed: 1, State: "candidate", CreatedAt: time.Now().UTC(),
+		Baseline:  evaluation.CandidateScore{ID: "baseline-" + pack.Pack.ID, PackDigest: digestB, Passed: 0, Total: 1, EvidenceHash: evidence, HeldoutLineageDigest: lineage},
+		Candidate: evaluation.CandidateScore{ID: "candidate-" + pack.Pack.ID, PackDigest: pack.Pack.Digest, Passed: 1, Total: 1, EvidenceHash: evidence, HeldoutLineageDigest: lineage}}
+	svc, err := evaluation.New(f.f.db, nil, nil)
 	if err != nil {
-		t.Fatal("select reviewed pack fixture", err)
+		t.Fatal(err)
+	}
+	if err = f.f.db.SaveProposal(ctx, scope, p); err == nil {
+		var proposalDigest string
+		if err = raw.QueryRow(ctx, `SELECT proposal_digest FROM chartworks.evaluation_proposals WHERE tenant_id=$1 AND proposal_id=$2`, tenant, proposal).Scan(&proposalDigest); err != nil {
+			t.Fatal("read stored proposal digest", err)
+		}
+		if _, err = svc.ReviewOptimization(ctx, reviewer, proposal, evaluation.ProposalReviewRequest{Digest: proposalDigest, Decision: "approve"}); err != nil {
+			t.Fatal("review optimization proposal", err)
+		}
+	} else if errors.Is(err, store.ErrConflict) {
+		previous, readErr := f.f.db.ReadProposal(ctx, scope, proposal)
+		if readErr != nil || previous.Candidate.PackDigest != pack.Pack.Digest {
+			t.Fatal("existing approved proposal did not match the selected pack", readErr)
+		}
+	} else {
+		t.Fatal("save structured proposal fixture", err)
+	}
+	selection, err := svc.SelectPack(ctx, selector, proposal, revision-1)
+	if err != nil {
+		t.Fatal("select approved pack", err)
+	}
+	if selection.Revision != revision || selection.PackDigest != pack.Pack.Digest {
+		t.Fatal("selected pack did not advance the expected revision", selection)
 	}
 }
 
@@ -125,7 +151,32 @@ func TestReviewedNarrativePackFrozenReuse(t *testing.T) {
 		t.Fatal("deterministic table was lost with unavailable optional narrative", err)
 	}
 	request.PartialPolicy = "fail"
-	selectNarrativePack(t, raw, execute.Tenant(), packA, 1)
+	selectNarrativePack(t, f, raw, packA, 1)
+	legacyPartialRequest := reporting.RunRequest{Key: "legacy-sealed-partial", Narrative: true, PartialPolicy: "allow_partial"}
+	legacyPartial, err := plain.Admit(context.Background(), execute, created.State.ID, legacyPartialRequest)
+	if err != nil {
+		t.Fatal("seal pre-policy narrative", err)
+	}
+	legacyPartial, err = runs.Run(context.Background(), execute, legacyPartial.ID, false)
+	if err != nil || legacyPartial.State != "partial" || len(legacyPartial.QueryAttempts) != 1 || model.requests.Load() != 0 {
+		t.Fatal("legacy sealed narrative reached model under reviewed-pack policy", err, legacyPartial.State)
+	}
+	legacyTable, err := runs.Output(context.Background(), partialReader, legacyPartial.ID, "table-main")
+	if err != nil || legacyTable.State != "succeeded" || legacyTable.Chart == nil {
+		t.Fatal("legacy deterministic artifact was not retained", err)
+	}
+	legacyNarrative, err := runs.Output(context.Background(), partialReader, legacyPartial.ID, "narrative-main")
+	if err != nil || legacyNarrative.State != "failed" || legacyNarrative.Code != "narrative_unavailable" {
+		t.Fatal("legacy narrative did not record a model-free unavailable result", err, legacyNarrative.Code)
+	}
+	legacyFail, err := plain.Admit(context.Background(), execute, created.State.ID, reporting.RunRequest{Key: "legacy-sealed-fail", Narrative: true, PartialPolicy: "fail"})
+	if err != nil {
+		t.Fatal("seal fail-policy legacy narrative", err)
+	}
+	legacyFail, err = runs.Run(context.Background(), execute, legacyFail.ID, false)
+	if !errors.Is(err, reporting.ErrIncomplete) || legacyFail.State != "failed" || model.requests.Load() != 0 {
+		t.Fatal("fail-policy legacy narrative reached model", err, legacyFail.State)
+	}
 	model.mode.Store(phase28Chat(t, "reviewed-narrative-a", `{"claims":[{"kind":"value","evidence":["e1"]}]}`))
 	first, err := admit("reviewed-first")
 	if err != nil {
@@ -155,7 +206,7 @@ func TestReviewedNarrativePackFrozenReuse(t *testing.T) {
 	if err != nil || second.State != "succeeded" || second.ReusedFrom != first.ID || len(second.QueryAttempts) != 0 || model.requests.Load() != 1 {
 		t.Fatal("same accepted pack did not reuse a distinct frozen run", err, second.ReusedFrom, second.QueryAttempts)
 	}
-	selectNarrativePack(t, raw, execute.Tenant(), packB, 2)
+	selectNarrativePack(t, f, raw, packB, 2)
 	model.mode.Store(phase28Chat(t, "reviewed-narrative-b", `{"claims":[{"kind":"value","evidence":["e1"]}]}`))
 	third, err := admit("reviewed-third")
 	if err != nil {
@@ -181,13 +232,13 @@ func TestReviewedNarrativePackFrozenReuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selectNarrativePack(t, raw, execute.Tenant(), packA, 3)
+	selectNarrativePack(t, f, raw, packA, 3)
 	before := model.requests.Load()
 	_, err = runs.Run(context.Background(), execute, stale.ID, false)
 	if !errors.Is(err, reporting.ErrStale) || model.requests.Load() != before {
 		t.Fatal("selection changed after seal without a closed failure", err)
 	}
-	selectNarrativePack(t, raw, execute.Tenant(), packRejected, 4)
+	selectNarrativePack(t, f, raw, packRejected, 4)
 	if _, err = admit("rejected-selection"); err == nil || model.requests.Load() != before {
 		t.Fatal("rejected selected pack admitted or reached provider", err)
 	}
@@ -196,9 +247,17 @@ func TestReviewedNarrativePackFrozenReuse(t *testing.T) {
 		t.Fatal("partial mode hid a rejected selected pack", err)
 	}
 	request.PartialPolicy = "fail"
-	selectNarrativePack(t, raw, execute.Tenant(), packUnbound, 5)
+	selectNarrativePack(t, f, raw, packUnbound, 5)
 	if _, err = admit("unbound-narrative-role"); err == nil || model.requests.Load() != before {
 		t.Fatal("accepted pack without a narrative role reached reporting", err)
+	}
+	selectNarrativePack(t, f, raw, packA, 6)
+	if _, err = raw.Exec(context.Background(), `UPDATE chartworks.evaluation_proposals SET review='{}'::jsonb WHERE tenant_id=$1 AND proposal_id=$2`,
+		execute.Tenant(), "reviewed-narrative-"+packA.Pack.ID); err != nil {
+		t.Fatal("tamper review receipt fixture", err)
+	}
+	if _, err = admit("tampered-proposal-review"); err == nil || model.requests.Load() != before {
+		t.Fatal("selected pack without an exact approved reviewer receipt was admitted", err)
 	}
 	denied := phase27Actor(t, f, execute.User(), []string{"reporting.execute", "cw.block.execute:*", "cw.source.query:*", "cw.dataset.query:*", "cw.execution_context.use:other-context"})
 	request.Key = "unauthorized-selection"
