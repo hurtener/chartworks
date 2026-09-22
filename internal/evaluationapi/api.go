@@ -228,10 +228,8 @@ func Handler(verifier *auth.Verifier, svc *evaluation.Service, runner evaluation
 			var in ProtectedInputRequest
 			err = decode(w, r, d.Request, &in)
 			if err == nil {
-				var material evaluation.LiveInput
-				dec := json.NewDecoder(bytes.NewReader([]byte(in.Material)))
-				dec.DisallowUnknownFields()
-				if dec.Decode(&material) != nil || dec.Decode(&struct{}{}) != io.EOF {
+				material, decodeErr := decodeLiveInput(in.Material)
+				if decodeErr != nil {
 					err = evaluation.ErrInvalid
 				} else {
 					out, err = svc.RegisterInput(r.Context(), e, in.Retention, material)
@@ -337,6 +335,18 @@ func MCPBindings(svc *evaluation.Service, runner evaluation.Runner) ([]mcpserver
 		return nil, err
 	}
 	mapper := func(err error) mcpserver.Fault { _, code := classify(err); return mcpserver.Fault{Code: code} }
+	runtimeAuthor, err := mcpserver.Bind(reg, "authorEvaluationRuntimePack", "author_evaluation_runtime_pack", "evaluation", "Store one immutable server-owned evaluation runtime configuration draft for independent review.", func(ctx context.Context, e identity.Envelope, in evaluation.RuntimePackAuthorRequest) (evaluation.RuntimePackRecord, error) {
+		return svc.AuthorRuntimePack(ctx, e, in.Pack, in.Config)
+	}, mapper)
+	if err != nil {
+		return nil, err
+	}
+	runtimeReview, err := mcpserver.Bind(reg, "reviewEvaluationRuntimePack", "review_evaluation_runtime_pack", "evaluation", "Review one exact evaluation runtime pack revision including its trusted model routing and attempt cost.", func(ctx context.Context, e identity.Envelope, in RuntimePackReviewInput) (evaluation.RuntimePackRecord, error) {
+		return svc.ReviewRuntimePack(ctx, e, in.PackDigest, in.Request)
+	}, mapper)
+	if err != nil {
+		return nil, err
+	}
 	a, err := mcpserver.Bind(reg, "runEvaluation", "run_evaluation", "evaluation", "Run one accepted exact evaluation revision with bounded calls and durable terminal evidence.", func(ctx context.Context, e identity.Envelope, in evaluation.RunRequest) (evaluation.Report, error) {
 		return svc.Run(ctx, e, in, runner)
 	}, mapper)
@@ -401,8 +411,8 @@ func MCPBindings(svc *evaluation.Service, runner evaluation.Runner) ([]mcpserver
 		return nil, err
 	}
 	l, err := mcpserver.Bind(reg, "registerEvaluationInput", "register_evaluation_input", "evaluation", "Store protected actor-scoped live material and return only its digest reference.", func(ctx context.Context, e identity.Envelope, in ProtectedInputRequest) (evaluation.ProtectedRef, error) {
-		var material evaluation.LiveInput
-		if json.Unmarshal([]byte(in.Material), &material) != nil {
+		material, err := decodeLiveInput(in.Material)
+		if err != nil {
 			return evaluation.ProtectedRef{}, evaluation.ErrInvalid
 		}
 		return svc.RegisterInput(ctx, e, in.Retention, material)
@@ -410,7 +420,20 @@ func MCPBindings(svc *evaluation.Service, runner evaluation.Runner) ([]mcpserver
 	if err != nil {
 		return nil, err
 	}
-	return []mcpserver.Binding{d, eb, a, b, c, f, g, h, i, j, k, l}, nil
+	return []mcpserver.Binding{runtimeAuthor, runtimeReview, d, eb, a, b, c, f, g, h, i, j, k, l}, nil
+}
+
+func decodeLiveInput(raw string) (evaluation.LiveInput, error) {
+	var material evaluation.LiveInput
+	dec := json.NewDecoder(bytes.NewReader([]byte(raw)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&material); err != nil {
+		return evaluation.LiveInput{}, err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return evaluation.LiveInput{}, evaluation.ErrInvalid
+	}
+	return material, nil
 }
 func classify(err error) (int, string) {
 	switch {
@@ -426,6 +449,8 @@ func classify(err error) (int, string) {
 		return 401, "unauthenticated"
 	case errors.Is(err, store.ErrNotFound):
 		return 404, "not_found"
+	case errors.Is(err, store.ErrConflict):
+		return 409, "conflict"
 	}
 	return 503, "unavailable"
 }

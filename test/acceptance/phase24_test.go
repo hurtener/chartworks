@@ -7,9 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/evaluation"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
 )
@@ -33,6 +36,73 @@ func evalCase(id string, stage evaluation.Stage, locale string, critical bool, c
 	return evaluation.Case{ID: id, Stage: stage, Category: category, Locale: locale, Critical: critical, HeldOut: !critical, Input: evaluation.ProtectedRef{Digest: evalDigest, Retention: "protected"}, Expected: []evaluation.Expected{{Decision: o.Decision, SemanticDigest: o.SemanticDigest, ErrorClass: o.ErrorClass}}, Fixture: &o}
 }
 func evalClock() time.Time { return time.Unix(2400, 0) }
+
+type evalCostRouting struct {
+	providerCalls int
+	model         string
+	instruction   string
+	digest        string
+	cost          float64
+	costKnown     bool
+}
+
+func (r *evalCostRouting) Route(ctx context.Context, e identity.Envelope, _ nlqroute.RouteRequest) (nlqroute.RouteResult, error) {
+	r.model, r.instruction, r.digest = gateway.ApplyRuntimeConfig(ctx, "sql_generation", "unreviewed-model", "base")
+	r.cost, r.costKnown = gateway.RuntimeAttemptCost(ctx)
+	call, err := gateway.Authorize(e, "ops.write", "evaluation-live", access.Tenant(e, "write"))
+	if err != nil {
+		return nlqroute.RouteResult{}, err
+	}
+	budget, err := gateway.NewBudget(call, gateway.Limits{Calls: 1, Tokens: 16, Duration: time.Second})
+	if err != nil {
+		return nlqroute.RouteResult{}, err
+	}
+	if err = gateway.ReserveAttempt(ctx, budget, call, 1); err != nil {
+		return nlqroute.RouteResult{}, err
+	}
+	r.providerCalls++
+	return nlqroute.RouteResult{}, nil
+}
+
+func evalAcceptedLiveSuite(t *testing.T, svc *evaluation.Service, author, reviewer identity.Envelope, id string, pack evaluation.PackRevision, costCap float64) evaluation.SuiteRecord {
+	t.Helper()
+	ref, err := svc.RegisterInput(context.Background(), author, "protected", evaluation.LiveInput{Pack: pack, Route: &nlqroute.RouteRequest{Context: "context", Locale: nlq.LanguageEnglish, Question: "What is reviewed revenue?"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := evalCase(id+"-case", evaluation.StageRouting, "en", false, "")
+	c.Fixture, c.Input = nil, ref
+	suite := evalSuite(evaluation.Live, []evaluation.Case{c})
+	suite.ID, suite.Packs, suite.Limits.CostUSD = id, []evaluation.PackRevision{pack}, &costCap
+	draft, err := svc.Author(context.Background(), author, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := svc.Review(context.Background(), reviewer, draft.Suite.ID, evaluation.SuiteReviewRequest{Revision: draft.Suite.Revision, Digest: draft.Digest, Decision: evaluation.Accepted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return accepted
+}
+
+func evalRuntimePack(t *testing.T, svc *evaluation.Service, author, reviewer identity.Envelope, id string, review bool) (evaluation.PackRevision, gateway.RuntimeConfig) {
+	t.Helper()
+	cfg := gateway.RuntimeConfig{Model: "model-v1", Models: []gateway.RuntimeModel{{Role: "sql_generation", Model: "model-v1"}}, SystemInstruction: "reviewed " + id + " instruction", AttemptCostUSD: 0.02}
+	cfg.Digest = gateway.ConfigurationDigest(cfg)
+	pack := evaluation.PackRevision{ID: id, Revision: 1, Model: cfg.Model, Models: []evaluation.PackModel{{Role: "sql_generation", Model: "model-v1"}}, ConfigurationDigest: cfg.Digest}
+	pack.Digest = pack.CanonicalDigest()
+	draft, err := svc.AuthorRuntimePack(context.Background(), author, pack, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review {
+		_, err = svc.ReviewRuntimePack(context.Background(), reviewer, pack.Digest, evaluation.RuntimePackReviewRequest{PackID: pack.ID, PackRevision: pack.Revision, RuntimeDigest: draft.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, Models: cfg.Models, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: evaluation.Accepted})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return pack, cfg
+}
 
 func TestPhase24(t *testing.T) {
 	t.Run("AC01", func(t *testing.T) {
@@ -158,7 +228,8 @@ func TestPhase24(t *testing.T) {
 	})
 
 	t.Run("AC06", func(t *testing.T) {
-		db := support.Open(t, support.Database(t))
+		dsn := support.Database(t)
+		db := support.Open(t, dsn)
 		feedback := evalFeedback{{ID: "feedback-training", Locale: "en", InputDigest: strings.Repeat("b", 64), ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: evalDigest}, {ID: "feedback-heldout", Locale: "es", InputDigest: evalDigest, ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: evalDigest}}
 		svc, err := evaluation.New(db, feedback, evalClock)
 		if err != nil {
@@ -182,6 +253,58 @@ func TestPhase24(t *testing.T) {
 		acceptedRuntime, err := svc.ReviewRuntimePack(context.Background(), evalReviewer(t), pack.Digest, exact)
 		if err != nil || acceptedRuntime.State != evaluation.Accepted || acceptedRuntime.Review == nil || acceptedRuntime.Review.Reviewer == acceptedRuntime.Author {
 			t.Fatal(acceptedRuntime, err)
+		}
+		liveSvc, err := evaluation.New(db, feedback, time.Now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reviewer := evalReviewer(t)
+		liveSuite := evalAcceptedLiveSuite(t, liveSvc, e, reviewer, "runtime-over-cap", pack, 0.01)
+		probe := &evalCostRouting{}
+		governed := &evaluation.GovernedRunner{Inputs: db, Routing: probe, Clock: time.Now}
+		report, runErr := liveSvc.Run(context.Background(), e, evaluation.RunRequest{RunID: "runtime-over-cap", SuiteID: liveSuite.Suite.ID, SuiteRevision: liveSuite.Suite.Revision, SuiteDigest: liveSuite.Digest, PackDigest: pack.Digest}, governed)
+		if !errors.Is(runErr, evaluation.ErrBudget) || report.Status != "budget_exhausted" || report.FailureClass != "reservation_exceeded" || probe.providerCalls != 0 || !probe.costKnown || probe.cost != cfg.AttemptCostUSD || probe.model != cfg.Model || probe.digest != cfg.Digest || !strings.Contains(probe.instruction, cfg.SystemInstruction) {
+			t.Fatal("accepted DB runtime did not govern pre-provider reservation", report, runErr, probe)
+		}
+
+		rawDB := support.Raw(t, dsn)
+		for _, test := range []struct {
+			name     string
+			author   bool
+			review   bool
+			mutation string
+		}{
+			{name: "missing"},
+			{name: "unaccepted", author: true},
+			{name: "tampered", author: true, review: true, mutation: `material=jsonb_set(material,'{config,system_instruction}',to_jsonb('tampered'::text))`},
+			{name: "revision-mismatch", author: true, review: true, mutation: `review=jsonb_set(review,'{pack_revision}','2'::jsonb)`},
+			{name: "model-mismatch", author: true, review: true, mutation: `review=jsonb_set(review,'{model}',to_jsonb('other-model'::text))`},
+			{name: "cost-mismatch", author: true, review: true, mutation: `review=jsonb_set(review,'{max_attempt_cost_usd}','0.001'::jsonb)`},
+			{name: "unknown-cost", author: true, review: true, mutation: `material=jsonb_set(material,'{config,attempt_cost_usd}','0'::jsonb)`},
+		} {
+			t.Run("runtime-pack-"+test.name, func(t *testing.T) {
+				var candidate evaluation.PackRevision
+				if test.author {
+					candidate, _ = evalRuntimePack(t, liveSvc, e, reviewer, "runtime-"+test.name, test.review)
+				} else {
+					candidateCfg := gateway.RuntimeConfig{Model: "model-v1", SystemInstruction: "missing", AttemptCostUSD: 0.02}
+					candidateCfg.Digest = gateway.ConfigurationDigest(candidateCfg)
+					candidate = evaluation.PackRevision{ID: "runtime-missing", Revision: 1, Model: candidateCfg.Model, ConfigurationDigest: candidateCfg.Digest}
+					candidate.Digest = candidate.CanonicalDigest()
+				}
+				if test.mutation != "" {
+					if _, mutationErr := rawDB.Exec(context.Background(), `UPDATE chartworks.evaluation_runtime_packs SET `+test.mutation+` WHERE tenant_id=$1 AND pack_digest=$2`, e.Tenant(), candidate.Digest); mutationErr != nil {
+						t.Fatal(mutationErr)
+					}
+				}
+				suiteRecord := evalAcceptedLiveSuite(t, liveSvc, e, reviewer, "suite-"+test.name, candidate, 0.01)
+				blockedProbe := &evalCostRouting{}
+				blockedRunner := &evaluation.GovernedRunner{Inputs: db, Routing: blockedProbe, Clock: time.Now}
+				_, runErr := liveSvc.Run(context.Background(), e, evaluation.RunRequest{RunID: "run-" + test.name, SuiteID: suiteRecord.Suite.ID, SuiteRevision: suiteRecord.Suite.Revision, SuiteDigest: suiteRecord.Digest, PackDigest: candidate.Digest}, blockedRunner)
+				if runErr == nil || blockedProbe.providerCalls != 0 {
+					t.Fatal("untrusted runtime pack reached provider", runErr, blockedProbe.providerCalls)
+				}
+			})
 		}
 		c := evalCase("durable", evaluation.StageConsumer, "en", false, "")
 		suite := evalSuite(evaluation.Fixture, []evaluation.Case{c})

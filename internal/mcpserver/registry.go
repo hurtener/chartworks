@@ -38,7 +38,7 @@ type effects struct{ readOnly, idempotent, openWorld, persists, paid bool }
 
 func effectFor(effect string) (effects, bool) {
 	switch effect {
-	case "metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read":
+	case "metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "evaluation_evidence_read":
 		return effects{readOnly: true, idempotent: true}, true
 	case "caller_data_transform_no_persistence":
 		return effects{readOnly: true, idempotent: true}, true
@@ -46,6 +46,10 @@ func effectFor(effect string) (effects, bool) {
 		return effects{openWorld: true, paid: true}, true
 	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
+	case "evaluation_live_or_fixture_run":
+		return effects{openWorld: true, persists: true, paid: true}, true
+	case "evaluation_suite_draft_commit", "evaluation_runtime_pack_draft_commit", "evaluation_runtime_pack_review_commit", "evaluation_suite_review_commit", "evaluation_cancel_request", "evaluation_input_commit", "evaluation_recovery_commit", "evaluation_feedback_export", "evaluation_split_review_commit", "evaluation_proposal_commit", "evaluation_proposal_review_commit", "evaluation_pack_cas_commit":
+		return effects{persists: true}, true
 	}
 	return effects{}, false
 }
@@ -155,7 +159,7 @@ func toolName(s string) bool {
 	return true
 }
 func groupName(s string) bool {
-	return s == "discovery" || s == "query" || s == "byo" || s == "charts" || s == "reporting" || s == "onboarding"
+	return s == "discovery" || s == "query" || s == "byo" || s == "charts" || s == "reporting" || s == "onboarding" || s == "evaluation"
 }
 
 // WithResource exposes the same pure read through an exact canonical URI or

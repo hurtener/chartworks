@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sort"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/evaluation"
 	"github.com/hurtener/chartworks/internal/gateway"
+	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -36,6 +38,9 @@ func (x *apiRepo) CreateRuntimePack(_ context.Context, _ store.Scope, v evaluati
 	return nil
 }
 func (x *apiRepo) ReviewRuntimePack(_ context.Context, _ store.Scope, v evaluation.RuntimePackReview) (evaluation.RuntimePackRecord, error) {
+	if x.pack.State != evaluation.Draft || x.pack.Author == v.Reviewer || x.pack.Pack.Digest != v.PackDigest || x.pack.Digest != v.RuntimeDigest || x.pack.Config.Digest != v.ConfigurationDigest || x.pack.Config.AttemptCostUSD != v.MaxAttemptCostUSD {
+		return evaluation.RuntimePackRecord{}, store.ErrConflict
+	}
 	x.pack.State = v.Decision
 	x.pack.Review = &v
 	return x.pack, nil
@@ -129,6 +134,91 @@ func TestRegistryIncludesReviewedLifecycleAndRunConsumers(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing %s", id)
 		}
+	}
+}
+
+func TestMCPRuntimePackLifecycleManifestAuthorityAndStrictInput(t *testing.T) {
+	verifier, key, issuer, now := apiVerifier(t)
+	repo := &apiRepo{r: map[string]evaluation.Report{}}
+	svc, err := evaluation.New(repo, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := MCPBindings(svc, nil)
+	if err != nil || len(bindings) != 14 {
+		t.Fatal(len(bindings), err)
+	}
+	mcpRegistry, err := mcpserver.NewRegistry(bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpRegistry, _ := Registry()
+	definitions := map[string]json.RawMessage{}
+	for _, definition := range httpRegistry.Definitions() {
+		definitions[definition.ID] = definition.Request.Document()
+	}
+	want := map[string]string{
+		"author_evaluation_runtime_pack": "authorEvaluationRuntimePack",
+		"review_evaluation_runtime_pack": "reviewEvaluationRuntimePack",
+	}
+	wantAction := map[string]string{"authorEvaluationRuntimePack": "ops.write", "reviewEvaluationRuntimePack": "ops.audit"}
+	wantEffect := map[string]string{"authorEvaluationRuntimePack": "evaluation_runtime_pack_draft_commit", "reviewEvaluationRuntimePack": "evaluation_runtime_pack_review_commit"}
+	for _, tool := range mcpRegistry.Manifest() {
+		operation, _ := tool.Meta["chartworks/operation"].(string)
+		expectedOperation, ok := want[tool.Name]
+		if !ok {
+			continue
+		}
+		if operation != expectedOperation || tool.Meta["chartworks/action"] != wantAction[operation] || tool.Meta["chartworks/effect"] != wantEffect[operation] || tool.Meta["chartworks/group"] != "evaluation" || tool.Meta["chartworks/persists"] != true || tool.Annotations == nil || tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint {
+			t.Fatalf("runtime manifest drift: %#v", tool)
+		}
+		gotSchema, _ := json.Marshal(tool.InputSchema)
+		var got, expected any
+		if json.Unmarshal(gotSchema, &got) != nil || json.Unmarshal(definitions[operation], &expected) != nil || !reflect.DeepEqual(got, expected) {
+			t.Fatalf("MCP/HTTP DTO drift for %s", operation)
+		}
+		delete(want, tool.Name)
+	}
+	if len(want) != 0 {
+		t.Fatal("missing runtime pack MCP manifests", want)
+	}
+	mcpServer, err := mcpserver.New(verifier, mcpRegistry, config.Defaults().MCP, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := "author"
+	bearer := apiTokenAudience(t, key, issuer, now, actor, "chartworks:mcp", []string{"mcp.use", "ops.write", "ops.audit", "cw.tenant.write:tenant", "cw.tenant.certify:tenant"})
+	client, err := mcpServer.Client(func(context.Context) (string, error) { return bearer, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := gateway.RuntimeConfig{Model: "model-v1", Models: []gateway.RuntimeModel{{Role: "sql_generation", Model: "model-v1"}}, SystemInstruction: "reviewed MCP instruction", AttemptCostUSD: 0.02}
+	cfg.Digest = gateway.ConfigurationDigest(cfg)
+	pack := evaluation.PackRevision{ID: "mcp-runtime", Revision: 1, Model: cfg.Model, Models: []evaluation.PackModel{{Role: "sql_generation", Model: "model-v1"}}, ConfigurationDigest: cfg.Digest}
+	pack.Digest = pack.CanonicalDigest()
+	raw, _ := json.Marshal(evaluation.RuntimePackAuthorRequest{Pack: pack, Config: cfg})
+	result, err := client.CallTool(t.Context(), "author_evaluation_runtime_pack", raw)
+	if err != nil || result == nil || result.IsError || repo.pack.Digest == "" || repo.pack.Author != actor {
+		t.Fatal("runtime author MCP lifecycle failed", result, err, repo.pack)
+	}
+	review := RuntimePackReviewInput{PackDigest: pack.Digest, Request: evaluation.RuntimePackReviewRequest{PackID: pack.ID, PackRevision: pack.Revision, RuntimeDigest: repo.pack.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, Models: cfg.Models, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: evaluation.Accepted}}
+	raw, _ = json.Marshal(review)
+	result, err = client.CallTool(t.Context(), "review_evaluation_runtime_pack", raw)
+	if err != nil || result == nil || !result.IsError || repo.pack.State != evaluation.Draft {
+		t.Fatal("same actor review was not denied", result, err, repo.pack)
+	}
+	bearer = apiTokenAudience(t, key, issuer, now, "reviewer", "chartworks:mcp", []string{"mcp.use", "ops.audit", "cw.tenant.certify:tenant"})
+	result, err = client.CallTool(t.Context(), "review_evaluation_runtime_pack", raw)
+	if err != nil || result == nil || result.IsError || repo.pack.State != evaluation.Accepted || repo.pack.Review == nil || repo.pack.Review.Reviewer != "reviewer" {
+		t.Fatal("distinct MCP runtime review failed", result, err, repo.pack)
+	}
+	repo.input = false
+	legacy, _ := json.Marshal(map[string]any{"pack": pack, "runtime_config": cfg})
+	raw, _ = json.Marshal(ProtectedInputRequest{Retention: "protected", Material: string(legacy)})
+	bearer = apiTokenAudience(t, key, issuer, now, actor, "chartworks:mcp", []string{"mcp.use", "ops.write", "cw.tenant.write:tenant"})
+	result, err = client.CallTool(t.Context(), "register_evaluation_input", raw)
+	if err != nil || result == nil || !result.IsError || repo.input {
+		t.Fatal("MCP accepted caller runtime_config", result, err)
 	}
 }
 func TestHTTPReviewedSuiteRunAndRead(t *testing.T) {
@@ -269,9 +359,13 @@ func apiVerifier(t *testing.T) (*auth.Verifier, *ecdsa.PrivateKey, string, time.
 	return v, key, cfg.Issuer, now
 }
 func apiToken(t *testing.T, key *ecdsa.PrivateKey, issuer string, now time.Time, user string, scopes []string) string {
+	return apiTokenAudience(t, key, issuer, now, user, "chartworks:http", scopes)
+}
+
+func apiTokenAudience(t *testing.T, key *ecdsa.PrivateKey, issuer string, now time.Time, user, audience string, scopes []string) string {
 	t.Helper()
 	sort.Strings(scopes)
-	claims := jwt.MapClaims{"iss": issuer, "aud": "chartworks:http", "sub": user, "tenant": "tenant", "user": user, "session": "session-" + user, "iat": now.Unix(), "nbf": now.Add(-time.Minute).Unix(), "exp": now.Add(5 * time.Minute).Unix(), "scopes": scopes}
+	claims := jwt.MapClaims{"iss": issuer, "aud": audience, "sub": user, "tenant": "tenant", "user": user, "session": "session-" + user, "iat": now.Unix(), "nbf": now.Add(-time.Minute).Unix(), "exp": now.Add(5 * time.Minute).Unix(), "scopes": scopes}
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 	tok.Header["kid"] = "key"
 	s, err := tok.SignedString(key)
