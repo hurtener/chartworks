@@ -54,6 +54,19 @@ criteria have executable real-consumer tests. Exact-source results and review
 findings are recorded in the [adversarial ledger](../reviews/phase-30-31-adversarial.md);
 status remains in_progress pending review/merge, not a planned-phase skip.
 
+## CW-02 retained rich shapes, 2026-09-16
+
+The current viewer consumes the [shared v1/v2 chart contract](../contracts/chart-specifications-v1.md):
+ordered multi-measure/category-series lines and bars, independently labeled unit
+scales, area-sized bubbles and ordered deep hierarchies. Exact wide rows, series
+identities, original row provenance and hierarchy aggregates remain accessible
+when geometry omits null, zero or subpixel values. Retained paging/redraw does no
+source or model work. The 22 rich synthetic cases are separate from the fourteen
+kind count and are exercised by the actual `TestPhase31/AC04` browser component;
+`TestCW02RichCharts` also asserts persistence/publication/execution/delivery effects.
+No new framework, host protocol, standalone builder or dashboard-grid redesign is
+introduced, and the broader phase status/acceptance ownership is unchanged.
+
 ## CW-03 output-intent and evidence-policy continuation
 
 AC02/AC03/AC05/AC08: localized display-ordered selectors expose selected/omitted/disabled metadata independently of selected data; retained navigation and explicit filter runs preserve accepted selection order and caps; actual browser assertions verify both.

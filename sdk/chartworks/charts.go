@@ -38,6 +38,16 @@ type (
 	ChartLegend = charts.Legend
 	// ChartMapping is an exact portable saved definition.
 	ChartMapping = charts.Mapping
+	// ChartBindingVariant describes a supported shape independently of kind count.
+	ChartBindingVariant = charts.BindingVariant
+	// ChartSeriesDefinition preserves ordered measure and breakdown identity.
+	ChartSeriesDefinition = charts.SeriesDefinition
+	// ChartHierarchyNode records an exact aggregate and its retained-row membership.
+	ChartHierarchyNode = charts.HierarchyNode
+	// ChartTransformation records deterministic normalization and truthful omissions.
+	ChartTransformation = charts.Transformation
+	// ChartSelectionEvidence explains suitability before optional model ranking.
+	ChartSelectionEvidence = charts.SelectionEvidence
 	// ChartOutput separates exact labels and optional approximate coordinates.
 	ChartOutput = charts.Output
 	// ChartProposal is detached and requires explicit author review.
@@ -58,6 +68,10 @@ type (
 
 // The catalog has fourteen distinct kinds; table fallback is never chart parity.
 const (
+	// ChartScalarVersion keeps previously saved mappings compatible.
+	ChartScalarVersion = charts.Version
+	// ChartRichVersion is required for repeated measures, bubbles and hierarchy.
+	ChartRichVersion   = charts.RichVersion
 	ChartArea          = charts.Area
 	ChartBar           = charts.Bar
 	ChartColumnKind    = charts.ColumnChart

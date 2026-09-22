@@ -280,7 +280,7 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	}
 	m.Selection, m.QueryLimits = &selection, &caps
 	m.ResultPolicy = ResolveResultPolicy(d, m.Dependencies, m.Definitions)
-	m.ReuseKey = digest([]any{FrozenVersion, charts.Version, m.Tenant, m.Block, m.Revision.Digest,
+	m.ReuseKey = digest([]any{FrozenVersion, charts.BuildVersion, m.Tenant, m.Block, m.Revision.Digest,
 		m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, exec.Hash(binding), m.Private, privacyActor,
 		m.Policy, m.Trust, m.Model, "reporting-output-policy-v2", m.Selection, m.QueryLimits, m.ResultPolicy, m.Limits})
 	proof, err := prepareRun(e, m)

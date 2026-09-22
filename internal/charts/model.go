@@ -7,8 +7,16 @@ import (
 	"errors"
 )
 
-// Version pins the data, mapping and output wire contracts.
+// Version pins the original data, provenance, scalar mapping and output contracts.
 const Version = 1
+
+// RichVersion pins repeated bindings and their retained drawing representation.
+// Data and column provenance remain version one; scalar mappings stay readable.
+const RichVersion = 2
+
+// BuildVersion invalidates frozen-output reuse after a transformation contract
+// change without rewriting immutable scalar definitions or old retained views.
+const BuildVersion = 2
 
 var (
 	// ErrInvalid rejects malformed data, definitions and configuration.
@@ -134,15 +142,20 @@ type Data struct {
 
 // Bindings uses closed slots rather than arbitrary renderer option objects.
 // Category/value cover categorical/time plots. X/Y cover scatter and heatmap.
-// Series is required for grouped/stacked plots. Parent adds one treemap level.
+// Values is an ordered measure list, exclusive with Value. Hierarchy declares
+// root-to-leaf columns, exclusive with Category/Parent. Size encodes bubble area.
+// These extensions, and category/series line and base-bar variants, require v2.
 type Bindings struct {
-	Category string   `json:"category,omitempty"`
-	Value    string   `json:"value,omitempty"`
-	Series   string   `json:"series,omitempty"`
-	X        string   `json:"x,omitempty"`
-	Y        string   `json:"y,omitempty"`
-	Parent   string   `json:"parent,omitempty"`
-	Columns  []string `json:"columns,omitempty"`
+	Category  string   `json:"category,omitempty"`
+	Value     string   `json:"value,omitempty"`
+	Series    string   `json:"series,omitempty"`
+	X         string   `json:"x,omitempty"`
+	Y         string   `json:"y,omitempty"`
+	Parent    string   `json:"parent,omitempty"`
+	Columns   []string `json:"columns,omitempty"`
+	Values    []string `json:"values,omitempty"`
+	Hierarchy []string `json:"hierarchy,omitempty"`
+	Size      string   `json:"size,omitempty"`
 }
 
 // Order is an explicit, stable sort over a bound column. Nulls sort last.
@@ -182,26 +195,31 @@ type Mapping struct {
 
 // CatalogEntry describes real slot requirements and data semantics for one kind.
 type CatalogEntry struct {
-	Kind          Kind     `json:"kind"`
-	RequiredSlots []string `json:"required_slots"`
-	OptionalSlots []string `json:"optional_slots"`
-	Negative      string   `json:"negative"`
-	Nulls         string   `json:"nulls"`
+	Kind          Kind             `json:"kind"`
+	RequiredSlots []string         `json:"required_slots"`
+	OptionalSlots []string         `json:"optional_slots"`
+	Negative      string           `json:"negative"`
+	Nulls         string           `json:"nulls"`
+	Variants      []BindingVariant `json:"variants"`
 }
 
 // Candidate retains deterministic rules evidence even after optional ranking.
 type Candidate struct {
-	Mapping Mapping `json:"mapping"`
-	Score   int     `json:"score"`
-	Reason  string  `json:"reason"`
+	Mapping       Mapping  `json:"mapping"`
+	Score         int      `json:"score"`
+	Reason        string   `json:"reason"`
+	Variant       string   `json:"variant,omitempty"`
+	Signals       []string `json:"signals,omitempty"`
+	UnusedColumns []string `json:"unused_columns,omitempty"`
 }
 
 // Selection contains only validated candidates; table fallback is visibly labeled.
 type Selection struct {
-	Selected     Candidate   `json:"selected"`
-	Alternatives []Candidate `json:"alternatives"`
-	Fallback     bool        `json:"fallback"`
-	Reason       string      `json:"reason"`
+	Selected     Candidate          `json:"selected"`
+	Alternatives []Candidate        `json:"alternatives"`
+	Fallback     bool               `json:"fallback"`
+	Reason       string             `json:"reason"`
+	Evidence     *SelectionEvidence `json:"evidence,omitempty"`
 }
 
 // Value separates exact labels from optional approximate geometric coordinates.
@@ -215,13 +233,18 @@ type Value struct {
 // Point contains exact category/series/hierarchy labels and numeric coordinates.
 // Missing values remain missing: charts never substitute zero or connect gaps.
 type Point struct {
-	Row      int   `json:"row"`
-	Category Cell  `json:"category"`
-	Series   Cell  `json:"series"`
-	Parent   Cell  `json:"parent"`
-	X        Value `json:"x"`
-	Y        Value `json:"y"`
-	Value    Value `json:"value"`
+	Row         int    `json:"row"`
+	Category    Cell   `json:"category"`
+	Series      Cell   `json:"series"`
+	Parent      Cell   `json:"parent"`
+	X           Value  `json:"x"`
+	Y           Value  `json:"y"`
+	Value       Value  `json:"value"`
+	Measure     string `json:"measure,omitempty"`
+	SeriesID    string `json:"series_id,omitempty"`
+	CategoryKey string `json:"category_key,omitempty"`
+	Size        *Value `json:"size,omitempty"`
+	Path        []Cell `json:"path,omitempty"`
 }
 
 // Total is an exact additive total over returned rows, not a guessed warehouse total.
@@ -234,18 +257,22 @@ type Total struct {
 // Output is sealed typed input for later renderers. Kind is never replaced with
 // table behind the caller's back. Empty states remain specifications of that kind.
 type Output struct {
-	Version      int          `json:"version"`
-	Kind         Kind         `json:"kind"`
-	Mapping      Mapping      `json:"mapping"`
-	Columns      []Column     `json:"columns"`
-	Rows         [][]Cell     `json:"rows"`
-	Points       []Point      `json:"points"`
-	Totals       []Total      `json:"totals"`
-	State        string       `json:"state"`
-	InputRows    int          `json:"input_rows"`
-	OmittedRows  int          `json:"omitted_rows"`
-	Completeness Completeness `json:"completeness"`
-	Warnings     []string     `json:"warnings"`
+	Version        int                `json:"version"`
+	Kind           Kind               `json:"kind"`
+	Mapping        Mapping            `json:"mapping"`
+	Columns        []Column           `json:"columns"`
+	Rows           [][]Cell           `json:"rows"`
+	Points         []Point            `json:"points"`
+	Totals         []Total            `json:"totals"`
+	State          string             `json:"state"`
+	InputRows      int                `json:"input_rows"`
+	OmittedRows    int                `json:"omitted_rows"`
+	Completeness   Completeness       `json:"completeness"`
+	Warnings       []string           `json:"warnings"`
+	Series         []SeriesDefinition `json:"series,omitempty"`
+	Hierarchy      []HierarchyNode    `json:"hierarchy,omitempty"`
+	RowIndices     []int              `json:"row_indices,omitempty"`
+	Transformation *Transformation    `json:"transformation,omitempty"`
 }
 
 // Change describes one proposed column replacement, never an applied publication.
