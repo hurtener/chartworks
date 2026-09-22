@@ -74,7 +74,7 @@ func TestExecutionRegistryManifestSchemasAndOpenAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Definitions()) != 7 {
+	if len(r.Definitions()) != 9 {
 		t.Fatalf("execution operation inventory=%d", len(r.Definitions()))
 	}
 	raw, err := os.ReadFile("../../docs/contracts/chartworks-nlq-execution-operations.json")

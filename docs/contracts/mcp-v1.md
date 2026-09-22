@@ -39,7 +39,7 @@ and [Pengui registration guide](pengui-provider-registration.md).
 Only installed services in enabled groups are registered. `tools/list` filters
 this metadata by the caller's current domain actions. Resource restrictions are
 checked again at invocation, not inferred from tool visibility. A production
-composition with all implemented services has eighteen bindings:
+composition with all implemented services has twenty-two bindings:
 
 | Group | MCP tool | Existing HTTP operation ID | Signed domain action |
 |---|---|---|---|
@@ -53,6 +53,10 @@ composition with all implemented services has eighteen bindings:
 | query | `run_question` | `runNLQ` | `query.execute` |
 | query | `refine_question` | `refineNLQ` | `query.execute` |
 | query | `submit_feedback` | `feedbackNLQ` | `feedback.write` |
+| query | `review_example` | `exampleStateNLQ` | `feedback.write` |
+| query | `list_examples` | `examplesNLQ` | `query.plan` |
+| query | `export_examples` | `exportExamplesNLQ` | `feedback.write` |
+| query | `import_example` | `importExampleNLQ` | `feedback.write` |
 | byo | `get_query_context` | `getQueryContext` | `query.context` |
 | byo | `read_query_context` | `readQueryContext` | `query.context` |
 | byo | `submit_sql` | `submitSQL` | `query.submit` |
@@ -62,10 +66,11 @@ composition with all implemented services has eighteen bindings:
 | charts | `build_chart` | `buildChart` | `charts.bind` |
 | charts | `rebind_chart` | `rebindChart` | `charts.bind` |
 
-The eleven established contracts are list/describe topics and datasets;
+The fifteen established contracts are list/describe topics and datasets;
 preflight/plan/run/refine question; get context/submit SQL; and submit feedback.
+Reviewed example state, bounded listing and protected import/export complete the learning lifecycle.
 Source listing, retained context lookup and chart specification bindings are real
-additional consumers, not substitutes for those eleven. Context creation is
+additional consumers, not substitutes for those fifteen. Context creation is
 absent when its routing service is unavailable. No reporting, scheduling, admin,
 renderer, shell or unimplemented tool is advertised.
 
@@ -162,7 +167,7 @@ scope or credential path added here.
 
 ## Verification
 
-`TestPhase22/AC01`–`AC06` cover the eleven real operations, eighteen binding
+`TestPhase22/AC01`–`AC06` cover the fifteen real operations, twenty-two binding
 contracts, resource reads, action/audience/tenant/session/context isolation,
 provider/source work boundaries, exact output schemas, BYO replay and shared-client
 concurrency. Fixtures use real PostgreSQL/pgvector, the pinned native validator/read

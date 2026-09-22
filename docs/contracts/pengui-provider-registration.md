@@ -125,7 +125,7 @@ A transport session or enabled tool group cannot confer permission. Existing
 same-audience configuration remains an explicit operator choice, not an alias
 created by the adapter.
 
-The [MCP contract](mcp-v1.md) maps eighteen real tools to the actual HTTP operation
+The [MCP contract](mcp-v1.md) maps twenty-two real tools to the actual HTTP operation
 IDs and signed action spellings. `tools/list` derives schemas/effects/audit metadata
 from those registrations and filters by current actions. Topic and dataset metadata
 resources reuse the same services and require their normal reach; none is a local

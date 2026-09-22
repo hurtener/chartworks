@@ -51,7 +51,7 @@ Iframe is delivery; SSR is where content is rendered. Neither requires Chartwork
 
 ## CW-05 bounded static/export slice, 2026-09-22
 
-D-078 implements a retained-only subset of AC01/AC03/AC04/AC06/AC08: registered
+D-079 implements a retained-only subset of AC01/AC03/AC04/AC06/AC08: registered
 JSON/CSV/static HTML/SVG export, exact run-export reach, escaped inert content,
 deny-all HTML CSP and no source/model/network seam. Tables/KPIs render as HTML and
 charts/KPIs as SVG without client JavaScript. This does not change the phase status:

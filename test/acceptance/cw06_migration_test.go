@@ -24,7 +24,7 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	dsn := support.Database(t)
 	raw := upgradeFixture(t, dsn)
 	manifest, err := postgres.Migrations()
-	if err != nil || len(manifest) != 41 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" {
+	if err != nil || len(manifest) != 42 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" {
 		t.Fatal("CW-06 migration was not appended to the shipped schema", err)
 	}
 	for _, migration := range manifest[1:38] {
@@ -68,8 +68,8 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	if _, err = database.ReadQuery(ctx, scope, "66666666666666666666666666666666"); !errors.Is(err, store.ErrMigration) {
 		t.Fatal("backfill accepted partially present empty selection evidence", err)
 	}
-	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,template_selections,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
- VALUES('cw06-upgrade','actor','session',repeat('7',32),'topic','["topic"]','["v1"]','["rules-v1"]','[null]','context','en','Malformed evidence','{"templates":[null],"request":{"templates":[null]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
+	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
+ VALUES('cw06-upgrade','actor','session',repeat('7',32),'topic','["topic"]','["v1"]','["rules-v1"]','[null]','{}','context','en','Malformed evidence','{"templates":[null],"request":{"templates":[null]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
 	if _, err = database.ReadQuery(ctx, scope, "77777777777777777777777777777777"); !errors.Is(err, store.ErrMigration) {
 		t.Fatal("new-schema decoder accepted a malformed selection element", err)
 	}

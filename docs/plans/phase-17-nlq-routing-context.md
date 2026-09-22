@@ -101,3 +101,12 @@ topic/source/context revisions, canonical values and corrections are sealed into
 route and mandatory context. Two complementary facets from one topic no longer
 trigger cross-topic ambiguity. `TestCW07/AC01` through `AC09` are the focused
 acceptance; live population calibration remains phase-24/final-gap evidence.
+
+## CW-08 retrieval-selected learning
+
+The admitted route selects only active, reviewed examples whose topic, locale,
+source/context binding, rules and templates exactly match current governed evidence.
+A bounded 64-row candidate pool uses deterministic lexical/posterior ordering and,
+when configured, the one Bifrost gateway to rerank only authorized question text.
+Selected and excluded IDs, versions, reasons, scores and the model receipt are
+sealed into the query. Selection does not change routing confidence or authority.

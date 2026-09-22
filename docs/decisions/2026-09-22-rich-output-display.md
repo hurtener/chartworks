@@ -1,6 +1,6 @@
 # Rich KPI, table and display-intent decision
 
-### D-078 — Reviewed display intent is versioned data and static export consumes retained evidence
+### D-079 — Reviewed display intent is versioned data and static export consumes retained evidence
 
 Status: implemented for review, 2026-09-22. Owns the CW-05 continuation of
 phases 20, 27, 28 and 31 plus a bounded Phase 32 slice.
@@ -21,7 +21,7 @@ export actions and exact signed `cw.run.export` reach before reading storage. JS
 CSV, static HTML and static SVG are bounded deterministic outputs. No renderer input
 accepts an arbitrary URL, script, formatter, source/model client or credential.
 
-Version 1 and 2 mappings remain readable. Migration 042 adds forward shape/bounds
+Version 1 and 2 mappings remain readable. Migration 043 adds forward shape/bounds
 checks for version 3 without rewriting an existing published revision. An explicit
 rebind remains review-required; a label/format or KPI/table policy change cannot
 silently mutate publication.

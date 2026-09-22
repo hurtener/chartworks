@@ -84,4 +84,4 @@ AC04/AC06/AC08: the Apps viewer consumes v3 KPI/table output and applies retaine
 display labels, fraction digits, locale/date and currency fallback as inert text.
 KPI comparison, target, threshold and sparkline evidence is shown without source or
 model work. The closed formatter and actual retained shapes are shared with the
-bounded static/export slice described by [D-078](../decisions/2026-09-22-rich-output-display.md).
+bounded static/export slice described by [D-079](../decisions/2026-09-22-rich-output-display.md).

@@ -36,6 +36,8 @@ func ExecutionRegistry() (*api.Registry, error) {
 		{http.MethodPost, "/v1/nlq/feedback", "feedback.write", "nlq_feedback_commit", "feedbackNLQ", "Record bounded feedback for a governed query", "nlqexec.Service.Feedback", reflect.TypeFor[nlqexec.FeedbackRequest](), reflect.TypeFor[FeedbackResult]()},
 		{http.MethodPost, "/v1/nlq/examples/state", "feedback.write", "nlq_example_state_commit", "exampleStateNLQ", "Advance one reviewed NLQ example state", "nlqexec.Service.ExampleState", reflect.TypeFor[nlqexec.ExampleStateRequest](), reflect.TypeFor[nlqexec.ExampleRecord]()},
 		{http.MethodPost, "/v1/nlq/examples/read", "query.plan", "nlq_examples_read", "examplesNLQ", "Read bounded tenant-scoped NLQ examples", "nlqexec.Service.Examples", reflect.TypeFor[ExampleListRequest](), reflect.TypeFor[[]nlqexec.ExampleRecord]()},
+		{http.MethodPost, "/v1/nlq/examples/export", "feedback.write", "nlq_examples_export", "exportExamplesNLQ", "Export a protected neutral learning bundle", "nlqexec.Service.ExportExamples", reflect.TypeFor[nlqexec.ExampleExportRequest](), reflect.TypeFor[nlqexec.ExampleBundle]()},
+		{http.MethodPost, "/v1/nlq/examples/import", "feedback.write", "nlq_example_import", "importExampleNLQ", "Import and revalidate one neutral learning candidate", "nlqexec.Service.ImportExample", reflect.TypeFor[nlqexec.ExampleImportRequest](), reflect.TypeFor[nlqexec.ExampleRecord]()},
 	}
 	out := make([]api.Definition, 0, len(definitions))
 	for _, item := range definitions {

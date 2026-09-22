@@ -52,3 +52,11 @@ position, policy floor/margin and `semantic-interpretation-v1` digests. These ar
 reproducible inputs for AC02 and later differential calibration. Focused fixtures
 prove policy behavior and fail-closed ambiguity; they do not establish live query
 correctness calibration, which remains an explicit phase-24/final-gap measurement.
+
+## CW-08 evaluation substrate
+
+The runtime records bounded positive/negative evidence, posterior score,
+uncertainty and immutable selection provenance, and exports a protected neutral
+case bundle without promoting it. Phase 24 still owns held-out calibration,
+time-decay policy, live quality measurement and optimizer decisions; none may
+auto-publish an example or alter a frozen query.

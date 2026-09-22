@@ -324,10 +324,10 @@ func TestPhase22(t *testing.T) {
 	})
 	t.Run("AC03", func(t *testing.T) {
 		inventory := f.registry.Manifest()
-		if len(inventory) != 18 {
+		if len(inventory) != 22 {
 			t.Fatal("missing concrete bindings", len(inventory))
 		}
-		expected := []string{"list_topics", "describe_topic", "list_datasets", "describe_dataset", "preflight_question", "plan_question", "run_question", "refine_question", "get_query_context", "submit_sql", "submit_feedback"}
+		expected := []string{"list_topics", "describe_topic", "list_datasets", "describe_dataset", "preflight_question", "plan_question", "run_question", "refine_question", "get_query_context", "submit_sql", "submit_feedback", "review_example", "list_examples", "export_examples", "import_example"}
 		seen := map[string]bool{}
 		httpRegistry := phase21Registry(t)
 		definitions := map[string]api.Definition{}
@@ -349,7 +349,7 @@ func TestPhase22(t *testing.T) {
 			if (paid || persists) && tool.Annotations.ReadOnlyHint {
 				t.Fatal("paid/persisted operation advertised as pure", tool.Name)
 			}
-			if strings.Contains(tool.Name, "question") || tool.Name == "submit_sql" || tool.Name == "submit_feedback" || tool.Name == "get_query_context" {
+			if strings.Contains(tool.Name, "question") || tool.Name == "submit_sql" || tool.Name == "submit_feedback" || tool.Name == "review_example" || tool.Name == "import_example" || tool.Name == "get_query_context" {
 				if !persists {
 					t.Fatal("persistence omitted", tool.Name)
 				}

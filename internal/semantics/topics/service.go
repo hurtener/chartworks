@@ -25,6 +25,10 @@ type Service struct {
 	engine gateway.Engine
 }
 
+type reviewContractConfirmer interface {
+	ConfirmReviewTopicContract(context.Context, identity.Envelope, string, int64) (Published, error)
+}
+
 // New constructs the reviewed publication service.
 func New(repo Repository, source *sources.Service, index *vindex.Service, engine gateway.Engine) (*Service, error) {
 	if repo == nil || source == nil || index == nil {
@@ -47,13 +51,17 @@ func (s *Service) Review(ctx context.Context, e identity.Envelope, topic string,
 // currentSources performs actual discovery, independently of private profile
 // authorization. Retained published definition reads do not invoke this method.
 func (s *Service) currentSources(ctx context.Context, e identity.Envelope, d Definition) error {
+	return s.currentSourcesWith(ctx, e, d, s.source.Discover)
+}
+
+func (s *Service) currentSourcesWith(ctx context.Context, e identity.Envelope, d Definition, discover func(context.Context, identity.Envelope, string) (sources.Discovery, error)) error {
 	catalogs := map[string]sources.Discovery{}
 	for _, dataset := range d.Datasets {
 		binding := dataset.Source
 		catalog, ok := catalogs[binding.Source]
 		if !ok {
 			var err error
-			catalog, err = s.source.Discover(ctx, e, binding.Source)
+			catalog, err = discover(ctx, e, binding.Source)
 			if err != nil {
 				return err
 			}
@@ -216,6 +224,36 @@ func (s *Service) Contract(ctx context.Context, e identity.Envelope, topic strin
 		return Contract{}, err
 	}
 	after, err := s.repo.ConfirmTopicContract(ctx, e, topic, current.State.Revision)
+	if err != nil {
+		return Contract{}, err
+	}
+	return Contract{after, time.Now().UTC()}, nil
+}
+
+// ReviewContract verifies the same current publication and live source
+// continuity under feedback.write plus exact dependency reach. It exists for
+// learned-example review and does not grant general topic reads.
+func (s *Service) ReviewContract(ctx context.Context, e identity.Envelope, topic string) (Contract, error) {
+	if ctx == nil {
+		return Contract{}, store.ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	current, err := s.repo.ReadPublishedTopic(ctx, e, topic, "", drafts.FeedbackRead)
+	if err != nil {
+		return Contract{}, err
+	}
+	if current.State.Archived {
+		return Contract{}, store.ErrNotFound
+	}
+	if err = s.currentSourcesWith(ctx, e, current.Definition, s.source.ReviewDiscover); err != nil {
+		return Contract{}, err
+	}
+	confirmer, ok := s.repo.(reviewContractConfirmer)
+	if !ok {
+		return Contract{}, store.ErrInvalid
+	}
+	after, err := confirmer.ConfirmReviewTopicContract(ctx, e, topic, current.State.Revision)
 	if err != nil {
 		return Contract{}, err
 	}

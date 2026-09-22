@@ -162,3 +162,12 @@ roles, temporal policy, KPI formulas and candidate/rejected relationship evidenc
 The latter remain non-executable until explicit entity authoring and the existing
 human review/publication lifecycle. The gateway never receives sample rows or
 sensitive values. See [rich semantics v1](../contracts/rich-semantics-v1.md).
+
+## CW-08 reviewed learning origin
+
+Learned examples carry an exact, versioned origin across the topic publication,
+source execution context and binding digest, selected rule revisions, template
+selections and locale. They are reviewable evidence rather than topic publication
+content: importing or recording an example cannot amend semantics or expand signed
+reach. Stale or incomplete origins remain inspectable candidates but cannot enter
+generation. See [learning lifecycle v1](../contracts/learning-lifecycle-v1.md).

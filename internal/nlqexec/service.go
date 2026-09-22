@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 	pgquery "github.com/wasilibs/go-pgquery"
 )
@@ -324,6 +327,9 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	if q.Status == "preflight" || q.SQL == "" {
 		return ErrNoPlan
 	}
+	if len(q.TopicVersions) == 0 {
+		return store.ErrMigration
+	}
 	admitted, admissionErr := s.currentAdmission(ctx, e, q)
 	if admissionErr != nil {
 		return admissionErr
@@ -331,36 +337,53 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	if err = gatewayRequirement(e, "feedback.write", admitted.resources); err != nil {
 		return err
 	}
+	currentBindingDigest := exec.Hash(admitted.binding)
+	if q.Route.SourceBindingDigest != "" && q.Route.SourceBindingDigest != currentBindingDigest {
+		return exec.ErrBinding
+	}
 	correction := strings.TrimSpace(in.Correction)
+	sqlText := q.SQL
 	if correction != "" {
-		if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: correction, Parameters: q.Parameters}); err != nil {
-			return err
-		}
+		sqlText = correction
 	}
-	feedbackID, err := newID()
-	if err != nil {
+	// Feedback may outlive the source pool that produced the plan. Validate the
+	// exact stored or corrected SQL against the current binding before attaching
+	// current-origin evidence; a retained binding digest, when present, must also
+	// match exactly.
+	if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: sqlText, Parameters: q.Parameters}); err != nil {
 		return err
 	}
-	if err = s.repo.RecordFeedback(ctx, sc, FeedbackRecord{ID: feedbackID, QueryID: q.ID, Session: e.Session(), Verdict: in.Verdict, Correction: correction, Note: in.Note, Provenance: "phase18.feedback", Created: time.Now().UTC()}); err != nil {
-		return err
-	}
-	if len(q.Route.Resolutions) == 0 && (in.Verdict == "positive" || correction != "") {
+	feedbackID := deterministicFeedbackID(e, q, in)
+	feedback := FeedbackRecord{ID: feedbackID, QueryID: q.ID, Session: e.Session(), Verdict: in.Verdict, Correction: correction, Note: in.Note, Provenance: "phase18.feedback", Created: time.Now().UTC()}
+	var example ExampleRecord
+	if len(q.Route.Resolutions) == 0 {
 		id, idErr := newID()
 		if idErr != nil {
 			return idErr
 		}
-		sqlText := q.SQL
-		if correction != "" {
-			sqlText = correction
+		positive, negative := 0, 0
+		if in.Verdict == "positive" || correction != "" {
+			positive = 1
+		} else {
+			negative = 1
 		}
-		_, err = s.repo.UpsertExample(ctx, sc, ExampleRecord{ID: id, Topic: q.Topic, Question: q.Question, SQL: sqlText, Digest: exampleDigest(q.Topic, q.Question, sqlText), State: "candidate", Weight: 0.5, EvidenceCount: 1, Provenance: "feedback:" + feedbackID, Created: time.Now().UTC(), Updated: time.Now().UTC()})
+		now := time.Now().UTC()
+		example = ExampleRecord{
+			ID: id, Topic: q.Topic, Question: q.Question, SQL: sqlText,
+			Digest: exampleDigest(q.Topic, q.Question, sqlText), State: "candidate",
+			Weight: evidenceScore(positive, negative), Uncertainty: evidenceUncertainty(positive, negative),
+			EvidenceCount: 1, PositiveEvidence: positive, NegativeEvidence: negative, EvidenceOutcome: in.Verdict,
+			Origin:  ExampleOrigin{SchemaVersion: 1, Locale: q.Locale, TopicVersion: q.TopicVersions[0], Context: q.Context, SourceBindingDigest: currentBindingDigest, RuleVersions: append([]string(nil), q.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), q.Templates...)},
+			Version: 1, Provenance: "feedback:" + feedbackID, Created: now, Updated: now,
+		}
 	}
+	_, _, err = s.repo.ApplyFeedback(ctx, sc, feedback, example)
 	return err
 }
 
 // ExampleState advances one retained learning example through its explicit review state.
 func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in ExampleStateRequest) (ExampleRecord, error) {
-	if ctx == nil || !e.Valid() || !identity.Identifier(in.ExampleID) || (in.State != "candidate" && in.State != "active" && in.State != "retired") {
+	if ctx == nil || !e.Valid() || !identity.Identifier(in.ExampleID) || (in.State != "candidate" && in.State != "active" && in.State != "retired") || len(in.ReviewNote) > maxFeedbackNote || strings.ContainsRune(in.ReviewNote, 0) {
 		return ExampleRecord{}, ErrInvalid
 	}
 	if !e.Has("feedback.write") {
@@ -374,18 +397,56 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	if err != nil {
 		return ExampleRecord{}, err
 	}
-	q, err := s.learningQuery(ctx, e, example.Topic)
-	if err != nil {
-		return ExampleRecord{}, err
+	var q QueryRecord
+	if in.State == "active" {
+		verifier, ok := s.router.(originVerifier)
+		if !ok {
+			return ExampleRecord{}, store.ErrInvalid
+		}
+		route, routeErr := verifier.VerifyOrigin(ctx, e, nlqroute.RouteRequest{Topic: example.Topic, Context: example.Origin.Context, Locale: example.Origin.Locale, Question: example.Question, Templates: append([]rulesets.TemplateSelection(nil), example.Origin.Templates...)})
+		if routeErr != nil {
+			return ExampleRecord{}, routeErr
+		}
+		if route.Topic != example.Topic || len(route.Topics) == 0 || route.Context == nil || (route.Outcome != nlq.StrategySingleTopic && route.Outcome != nlq.StrategyMultiTopic) {
+			return ExampleRecord{}, exec.ErrBinding
+		}
+		q = QueryRecord{Topic: route.Topic, Topics: append([]string(nil), route.Topics...), TopicVersions: append([]string(nil), route.TopicVersions...), Context: example.Origin.Context, Route: route}
+	} else {
+		q, err = s.learningQuery(ctx, e, example.Topic)
+		if err != nil {
+			return ExampleRecord{}, err
+		}
 	}
-	admitted, err := s.currentAdmission(ctx, e, q)
+	var admitted admission
+	if in.State == "active" {
+		admitted, err = s.reviewAdmission(ctx, e, q)
+	} else {
+		admitted, err = s.currentAdmission(ctx, e, q)
+	}
 	if err != nil {
 		return ExampleRecord{}, err
 	}
 	if err = gatewayRequirement(e, "feedback.write", admitted.resources); err != nil {
 		return ExampleRecord{}, err
 	}
-	updated, err := s.repo.SetExampleState(ctx, sc, in.ExampleID, in.State)
+	if in.State == "active" {
+		candidate := example
+		candidate.State = "active"
+		if reason := exampleApplicabilityReason(candidate, admitted, exec.Hash(admitted.binding)); reason != "" {
+			return ExampleRecord{}, exec.ErrBinding
+		}
+	}
+	if in.ExpectedVersion != 0 && in.ExpectedVersion != example.Version {
+		return ExampleRecord{}, store.ErrConflict
+	}
+	if in.State == "active" && (strings.TrimSpace(in.ReviewNote) == "" || example.PositiveEvidence < 1 || example.Weight < 0.60 || example.NegativeEvidence >= example.PositiveEvidence) {
+		return ExampleRecord{}, store.ErrConflict
+	}
+	// Always CAS the row read above. The store repeats activation eligibility in
+	// the same UPDATE so concurrent negative feedback either wins first and
+	// blocks activation, or observes the completed activation afterwards.
+	in.ExpectedVersion = example.Version
+	updated, err := s.repo.SetExampleState(ctx, sc, in, e.User())
 	if err != nil {
 		return ExampleRecord{}, err
 	}
@@ -421,6 +482,86 @@ func (s *Service) Examples(ctx context.Context, e identity.Envelope, topic strin
 		}
 	}
 	return examples, nil
+}
+
+// ExportExamples returns a bounded protected migration bundle. Ordinary list
+// operations continue to redact SQL without the separate inspection scope.
+func (s *Service) ExportExamples(ctx context.Context, e identity.Envelope, in ExampleExportRequest) (ExampleBundle, error) {
+	if ctx == nil || !e.Valid() || !identity.Identifier(in.Topic) || in.Limit < 1 || in.Limit > maxExampleResults {
+		return ExampleBundle{}, ErrInvalid
+	}
+	if !e.Has("feedback.write") || !canInspect(e) {
+		return ExampleBundle{}, access.ErrForbidden
+	}
+	anchor, err := s.learningQuery(ctx, e, in.Topic)
+	if err != nil {
+		return ExampleBundle{}, err
+	}
+	admitted, err := s.currentAdmission(ctx, e, anchor)
+	if err != nil {
+		return ExampleBundle{}, err
+	}
+	if err = gatewayRequirement(e, "feedback.write", admitted.resources); err != nil {
+		return ExampleBundle{}, err
+	}
+	examples, err := s.repo.ListExamples(ctx, mustScope(e), in.Topic, in.Limit)
+	if err != nil {
+		return ExampleBundle{}, err
+	}
+	bundle := ExampleBundle{SchemaVersion: 1, Topic: in.Topic, Examples: make([]PortableExample, 0, len(examples))}
+	for _, example := range examples {
+		bundle.Examples = append(bundle.Examples, PortableExample{SchemaVersion: 1, Question: example.Question, SQL: example.SQL, Digest: example.Digest, Origin: example.Origin, PositiveEvidence: example.PositiveEvidence, NegativeEvidence: example.NegativeEvidence})
+	}
+	return bundle, nil
+}
+
+// ImportExample revalidates one neutral row against a freshly routed semantic
+// environment and the native SQL validator. Imported evidence is always a
+// candidate and requires a separate explicit review before activation.
+func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in ExampleImportRequest) (ExampleRecord, error) {
+	if ctx == nil || !e.Valid() || in.Example.SchemaVersion != 1 || !topics.DigestValid(in.Example.Digest) || in.Example.PositiveEvidence < 0 || in.Example.NegativeEvidence < 0 || in.Example.PositiveEvidence+in.Example.NegativeEvidence < 1 || in.Example.PositiveEvidence+in.Example.NegativeEvidence > 1000 {
+		return ExampleRecord{}, ErrInvalid
+	}
+	if !e.Has("feedback.write") || !canInspect(e) {
+		return ExampleRecord{}, access.ErrForbidden
+	}
+	if err := requireQuestionAction(e, "query.plan", in.Anchor); err != nil {
+		return ExampleRecord{}, err
+	}
+	if err := validateQuestion(in.Anchor); err != nil {
+		return ExampleRecord{}, err
+	}
+	admitted, err := s.admit(ctx, e, in.Anchor, true)
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	if admitted.route.Context == nil || admitted.route.Topic == "" {
+		return ExampleRecord{}, nlqroute.ErrNoRoute
+	}
+	if reason := exampleApplicabilityReason(ExampleRecord{State: "active", Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Weight: 1, PositiveEvidence: 1, Origin: in.Example.Origin}, admitted, exec.Hash(admitted.binding)); reason != "" {
+		return ExampleRecord{}, exec.ErrBinding
+	}
+	if in.Example.Digest != exampleDigest(admitted.route.Topic, in.Example.Question, in.Example.SQL) {
+		return ExampleRecord{}, ErrInvalid
+	}
+	if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: in.Example.SQL}); err != nil {
+		return ExampleRecord{}, err
+	}
+	id, err := newID()
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	positive, negative := in.Example.PositiveEvidence, in.Example.NegativeEvidence
+	outcome := "negative"
+	if positive > 0 {
+		outcome = "positive"
+	}
+	now := time.Now().UTC()
+	stored, _, err := s.repo.ImportExample(ctx, mustScope(e), ExampleRecord{ID: id, Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Digest: in.Example.Digest, State: "candidate", Weight: evidenceScore(positive, negative), Uncertainty: evidenceUncertainty(positive, negative), EvidenceCount: positive + negative, PositiveEvidence: positive, NegativeEvidence: negative, EvidenceOutcome: outcome, Origin: in.Example.Origin, Version: 1, Provenance: "neutral-import-v1", Created: now, Updated: now})
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	return redactExample(stored, true), nil
 }
 
 func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent, action string, previous ...semantics.ClarificationResolution) (PlanResult, error) {
@@ -462,7 +603,10 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 	if err != nil {
 		return PlanResult{}, err
 	}
-	learned := s.learnedInstructions(ctx, e, admitted.route.Topic)
+	learned, selection, selectionReceipt, err := s.selectLearnedInstructions(ctx, e, admitted, question.Question, question.Rerank, call, budget)
+	if err != nil {
+		return PlanResult{}, err
+	}
 	generation, err := assembler.ResolvePrecedence(ctx, nlq.GenerationInput{Context: admitted.assembled, EditBase: question.EditBase, Hints: question.Hints, Examples: append(learned, question.ExampleInput...), Default: question.Default})
 	if err != nil {
 		return PlanResult{}, err
@@ -480,7 +624,8 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 	}
 	record := queryRecord(e, id, "planned", parent, question, admitted)
 	record.Clarification = candidate.clarification
-	record.Operation, record.SQL, record.Parameters, record.Generation, record.Receipt, record.ValidationFixes = operation, candidate.SQL, candidate.Parameters, generation, receipt, fixes
+	receipt = appendReceipts(selectionReceipt, receipt)
+	record.Operation, record.SQL, record.Parameters, record.Generation, record.Receipt, record.ValidationFixes, record.ExampleSelection = operation, candidate.SQL, candidate.Parameters, generation, receipt, fixes, selection
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PlanResult{}, err
 	}
@@ -797,13 +942,29 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord) (nlq.As
 }
 
 func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	return s.admissionWith(ctx, e, q, s.topics.Contract, s.sources.Binding)
+}
+
+func (s *Service) reviewAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	topicsReader, ok := s.topics.(reviewTopicReader)
+	if !ok {
+		return admission{}, store.ErrInvalid
+	}
+	sourcesReader, ok := s.sources.(reviewSourceReader)
+	if !ok {
+		return admission{}, store.ErrInvalid
+	}
+	return s.admissionWith(ctx, e, q, topicsReader.ReviewContract, sourcesReader.ReviewBinding)
+}
+
+func (s *Service) admissionWith(ctx context.Context, e identity.Envelope, q QueryRecord, contract func(context.Context, identity.Envelope, string) (topics.Contract, error), binding func(context.Context, identity.Envelope, string, string) (exec.Binding, error)) (admission, error) {
 	result := admission{route: q.Route}
 	for i, topicID := range q.Topics {
-		contract, err := s.topics.Contract(ctx, e, topicID)
+		contractValue, err := contract(ctx, e, topicID)
 		if err != nil {
 			return admission{}, err
 		}
-		publication := contract.Publication
+		publication := contractValue.Publication
 		if publication.State.Topic != topicID || publication.State.Archived || !publication.State.Active || i >= len(q.TopicVersions) || publication.State.Version != q.TopicVersions[i] {
 			return admission{}, exec.ErrBinding
 		}
@@ -826,7 +987,7 @@ func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q Q
 		return admission{}, store.ErrInvalid
 	}
 	var err error
-	result.binding, err = s.sources.Binding(ctx, e, result.source, result.context)
+	result.binding, err = binding(ctx, e, result.source, result.context)
 	if err != nil {
 		return admission{}, err
 	}
@@ -1028,21 +1189,166 @@ func (s *Service) runResult(q QueryRecord, report exec.ExecutionReport, inspect 
 	return out
 }
 
-func (s *Service) learnedInstructions(ctx context.Context, e identity.Envelope, topic string) []nlq.Instruction {
+func (s *Service) selectLearnedInstructions(ctx context.Context, e identity.Envelope, admitted admission, question string, rerank bool, call gateway.Call, budget *gateway.Budget) ([]nlq.Instruction, ExampleSelectionEvidence, gateway.Receipt, error) {
+	evidence := ExampleSelectionEvidence{SchemaVersion: 1, PolicyVersion: "bayes-jaccard-v1"}
 	sc, err := scope(e)
 	if err != nil {
-		return nil
+		return nil, evidence, gateway.Receipt{}, err
 	}
-	examples, err := s.repo.ListExamples(ctx, sc, topic, nlq.MaxExamples)
+	examples, err := s.repo.ListExamples(ctx, sc, admitted.route.Topic, maxLearningCandidates)
 	if err != nil {
-		return nil
+		return nil, evidence, gateway.Receipt{}, err
 	}
-	result := make([]nlq.Instruction, 0, len(examples))
+	type applicable struct {
+		record     ExampleRecord
+		similarity float64
+		rankScore  *float64
+	}
+	candidates := make([]applicable, 0, len(examples))
+	bindingDigest := exec.Hash(admitted.binding)
 	for _, example := range examples {
-		if example.State != "active" || example.SQL == "" || example.Question == "" {
+		selection := ExampleSelection{ExampleID: example.ID, Version: example.Version, Lane: "examples", Score: example.Weight, Uncertainty: example.Uncertainty}
+		if reason := exampleApplicabilityReason(example, admitted, bindingDigest); reason != "" {
+			selection.Decision, selection.Reason = "excluded", reason
+			evidence.Excluded = append(evidence.Excluded, selection)
 			continue
 		}
-		result = append(result, nlq.Instruction{Key: "learned-" + example.ID, Text: "question:" + example.Question + " sql:" + example.SQL})
+		candidates = append(candidates, applicable{record: example, similarity: lexicalSimilarity(question, example.Question)})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		left := candidates[i].similarity*0.7 + candidates[i].record.Weight*0.3
+		right := candidates[j].similarity*0.7 + candidates[j].record.Weight*0.3
+		if left != right {
+			return left > right
+		}
+		return candidates[i].record.ID < candidates[j].record.ID
+	})
+	for i, candidate := range candidates {
+		evidence.ShadowBaseline = append(evidence.ShadowBaseline, ExampleSelection{ExampleID: candidate.record.ID, Version: candidate.record.Version, Lane: "examples", Position: i + 1, Decision: "baseline", Score: candidate.record.Weight, Uncertainty: candidate.record.Uncertainty})
+	}
+	var receipt gateway.Receipt
+	if rerank && len(candidates) > 1 {
+		items := make([]gateway.Candidate, len(candidates))
+		for i := range candidates {
+			items[i] = gateway.Candidate{ID: candidates[i].record.ID, Text: candidates[i].record.Question, Resource: access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: admitted.route.Topic}}
+		}
+		sealed, sealErr := gateway.AdmitCandidates(call, "query.plan", items)
+		if sealErr != nil {
+			return nil, evidence, receipt, sealErr
+		}
+		ranked, rankErr := s.engine.Rerank(ctx, call, budget, question, sealed)
+		if rankErr != nil {
+			return nil, evidence, ranked.Receipt, rankErr
+		}
+		receipt = ranked.Receipt
+		byID := make(map[string]applicable, len(candidates))
+		for _, candidate := range candidates {
+			byID[candidate.record.ID] = candidate
+		}
+		seen := make(map[string]bool, len(candidates))
+		reordered := make([]applicable, 0, len(candidates))
+		for _, item := range ranked.Items {
+			if item.Score != nil && (math.IsNaN(*item.Score) || math.IsInf(*item.Score, 0)) {
+				return nil, evidence, receipt, gateway.ErrOutput
+			}
+			candidate, ok := byID[item.ID]
+			if !ok || seen[item.ID] {
+				return nil, evidence, receipt, gateway.ErrOutput
+			}
+			seen[item.ID] = true
+			candidate.rankScore = item.Score
+			reordered = append(reordered, candidate)
+		}
+		if len(reordered) != len(candidates) {
+			return nil, evidence, receipt, gateway.ErrOutput
+		}
+		candidates = reordered
+	}
+	if len(candidates) > nlq.MaxExamples {
+		for _, candidate := range candidates[nlq.MaxExamples:] {
+			evidence.Excluded = append(evidence.Excluded, ExampleSelection{ExampleID: candidate.record.ID, Version: candidate.record.Version, Lane: "examples", Decision: "excluded", Reason: "candidate_limit", Score: candidate.record.Weight, Uncertainty: candidate.record.Uncertainty, RankScore: candidate.rankScore})
+		}
+		candidates = candidates[:nlq.MaxExamples]
+	}
+	result := make([]nlq.Instruction, 0, len(candidates))
+	for i, candidate := range candidates {
+		record := candidate.record
+		evidence.Selected = append(evidence.Selected, ExampleSelection{ExampleID: record.ID, Version: record.Version, Lane: "examples", Position: i + 1, Decision: "selected", Score: record.Weight, Uncertainty: record.Uncertainty, RankScore: candidate.rankScore})
+		result = append(result, nlq.Instruction{Key: "learned-" + record.ID, Text: "question:" + record.Question + " sql:" + record.SQL})
+	}
+	evidence.Receipt = receipt
+	return result, evidence, receipt, nil
+}
+
+func deterministicFeedbackID(e identity.Envelope, q QueryRecord, in FeedbackRequest) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{e.Tenant(), e.User(), e.Session(), q.ID, in.Verdict, strings.TrimSpace(in.Correction), in.Note}, "\x00")))
+	return hex.EncodeToString(sum[:16])
+}
+
+func evidenceScore(positive, negative int) float64 {
+	return float64(positive+1) / float64(positive+negative+2)
+}
+
+func evidenceUncertainty(positive, negative int) float64 {
+	return 1 / math.Sqrt(float64(positive+negative+2))
+}
+
+func exampleApplicabilityReason(example ExampleRecord, admitted admission, bindingDigest string) string {
+	if example.State != "active" {
+		return "not_active"
+	}
+	if example.SQL == "" || example.Question == "" {
+		return "invalid_content"
+	}
+	if example.Origin.SchemaVersion != 1 {
+		return "unsupported_origin"
+	}
+	if example.Origin.Context != admitted.context {
+		return "context_changed"
+	}
+	if admitted.route.Context != nil && example.Origin.Locale != admitted.route.Context.Locale {
+		return "locale_changed"
+	}
+	if example.Origin.SourceBindingDigest != bindingDigest {
+		return "source_changed"
+	}
+	if example.Origin.TopicVersion != routeVersion(admitted.route, example.Topic) {
+		return "topic_changed"
+	}
+	if exec.Hash(example.Origin.RuleVersions) != exec.Hash(admitted.route.RuleVersions) {
+		return "rules_changed"
+	}
+	if exec.Hash(example.Origin.Templates) != exec.Hash(admitted.route.Templates) {
+		return "templates_changed"
+	}
+	if example.PositiveEvidence < 1 || example.Weight < 0.60 || example.NegativeEvidence >= example.PositiveEvidence {
+		return "insufficient_evidence"
+	}
+	return ""
+}
+
+func lexicalSimilarity(left, right string) float64 {
+	a, b := tokenSet(left), tokenSet(right)
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+	intersection := 0
+	for token := range a {
+		if b[token] {
+			intersection++
+		}
+	}
+	return float64(intersection) / float64(len(a)+len(b)-intersection)
+}
+
+func tokenSet(value string) map[string]bool {
+	result := map[string]bool{}
+	for _, token := range strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r < 0x80
+	}) {
+		if token != "" {
+			result[token] = true
+		}
 	}
 	return result
 }

@@ -77,6 +77,6 @@ the [block contract](../contracts/reporting-blocks-v1.md), and the
 
 AC01/AC02/AC06/AC08: immutable block revisions may store closed v3 KPI/table and
 column display intent. Existing JSON digests and drift checks include the complete
-mapping; migration 042 adds forward bounds without rewriting v1/v2 publications.
+mapping; migration 043 adds forward bounds without rewriting v1/v2 publications.
 Definition transfer remains native and exact. Foreign mapping belongs to Phase 34.
-See [D-078](../decisions/2026-09-22-rich-output-display.md).
+See [D-079](../decisions/2026-09-22-rich-output-display.md).

@@ -222,7 +222,7 @@ func readPublishedTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, ve
 
 // ReadPublishedTopic returns the active or an exact retained public version.
 func (d *DB) ReadPublishedTopic(ctx context.Context, e identity.Envelope, id, version string, a drafts.Access) (out topics.Published, err error) {
-	if a != drafts.Read && a != drafts.Write && a != drafts.Review && a != drafts.Publish && a != drafts.Export {
+	if a != drafts.Read && a != drafts.Write && a != drafts.Review && a != drafts.Publish && a != drafts.Export && a != drafts.FeedbackRead {
 		return out, store.ErrInvalid
 	}
 	ctx, cancel, err := requestContext(ctx, e)
@@ -510,6 +510,16 @@ func (d *DB) ArchiveTopic(ctx context.Context, e identity.Envelope, id string, e
 
 // ConfirmTopicContract fences retained output against current source revisions.
 func (d *DB) ConfirmTopicContract(ctx context.Context, e identity.Envelope, id string, expected int64) (out topics.Published, err error) {
+	return d.confirmTopicContract(ctx, e, id, expected, drafts.Read)
+}
+
+// ConfirmReviewTopicContract repeats the current pointer/source fence under
+// the feedback review action used by learned-example activation.
+func (d *DB) ConfirmReviewTopicContract(ctx context.Context, e identity.Envelope, id string, expected int64) (out topics.Published, err error) {
+	return d.confirmTopicContract(ctx, e, id, expected, drafts.FeedbackRead)
+}
+
+func (d *DB) confirmTopicContract(ctx context.Context, e identity.Envelope, id string, expected int64, accessMode drafts.Access) (out topics.Published, err error) {
 	ctx, cancel, err := requestContext(ctx, e)
 	if err != nil {
 		return out, err
@@ -524,7 +534,7 @@ func (d *DB) ConfirmTopicContract(ctx context.Context, e identity.Envelope, id s
 			return store.ErrConflict
 		}
 		var err error
-		out, err = readPublishedTx(ctx, tx, e, id, "", drafts.Read)
+		out, err = readPublishedTx(ctx, tx, e, id, "", accessMode)
 		if err != nil {
 			return err
 		}
