@@ -20,6 +20,9 @@ note, optional version CAS, at least one positive observation, posterior score
 of at least 0.60, and strictly more positive than negative evidence. Retirement
 removes the example from new selection. Retained query evidence is immutable,
 so activation, retirement, or later feedback cannot change a frozen plan.
+Activation reroutes the example against current topic/source/context/locale/rule
+and template evidence, then forces the observed row version and evidence threshold
+into one store update so concurrent negative feedback cannot satisfy a stale review.
 
 ## Evidence aggregation and anti-gaming
 
@@ -35,6 +38,9 @@ counts cannot be lost or multiplied by replay.
 
 Notes do not enter scores, generation prompts, metrics labels, or normal logs.
 Feedback never publishes a rule, semantic topic, or example by itself.
+Stored SQL feedback also requires its retained source-binding digest to match the
+current binding when present, and every stored or corrected SQL candidate is
+revalidated before current-origin evidence is written.
 
 ## Retrieval and precedence
 
@@ -45,7 +51,8 @@ changed rule, and changed template candidates receive typed exclusion reasons.
 The deterministic baseline combines bounded token-set similarity with the
 posterior score and stable ID ties. When the request enables reranking, only
 already authorized candidate questions enter the one Bifrost gateway; a complete
-permutation is required. SQL, raw result values, credentials, and private notes
+duplicate-free known-ID permutation is required and observed scores must be finite.
+SQL, raw result values, credentials, and private notes
 never enter reranking.
 
 Generation keeps the existing lane order:

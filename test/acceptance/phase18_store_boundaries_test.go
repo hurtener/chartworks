@@ -350,5 +350,27 @@ func TestPhase18PostgresRuntimeBoundaries(t *testing.T) {
 		if concurrent.EvidenceCount != 6 || concurrent.PositiveEvidence != 6 || concurrent.NegativeEvidence != 0 || concurrent.Weight != 7.0/8.0 {
 			t.Fatalf("concurrent evidence aggregate was lost or overcounted: %#v", concurrent)
 		}
+
+		// Model the losing half of an activation/feedback race: the reviewer
+		// read version 1, then negative evidence committed before its UPDATE.
+		// Both the forced CAS and the in-statement eligibility predicate must
+		// reject activation; omitting ExpectedVersion must not bypass eligibility.
+		raceExample := nlqexec.ExampleRecord{ID: phase18StoreID("9"), Topic: topic, Question: "Race candidate", SQL: "SELECT amount FROM analytics.sales", Digest: strings.Repeat("9", 64), State: "candidate", Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, EvidenceOutcome: "positive", Origin: concurrentOrigin, Version: 1, Provenance: "cw08-race", Created: now, Updated: now}
+		if _, err = fixture.f.db.UpsertExample(ctx, scope, raceExample); err != nil {
+			t.Fatal("create activation race candidate", err)
+		}
+		raceQueryID := strings.Repeat("a", 31) + "9"
+		if err = fixture.f.db.CreateQuery(ctx, scope, phase18StoreQuery(raceQueryID, "phase18-store-session", topic, contextID, "phase18-race", nil, now)); err != nil {
+			t.Fatal("create activation race query", err)
+		}
+		negative := nlqexec.ExampleRecord{ID: strings.Repeat("b", 31) + "9", Topic: topic, Question: raceExample.Question, SQL: raceExample.SQL, Digest: raceExample.Digest, State: "candidate", Weight: 1.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, NegativeEvidence: 1, EvidenceOutcome: "negative", Origin: concurrentOrigin, Version: 1, Provenance: "cw08-race", Created: now, Updated: now}
+		if _, applied, applyErr := fixture.f.db.ApplyFeedback(ctx, scope, nlqexec.FeedbackRecord{ID: strings.Repeat("c", 31) + "9", QueryID: raceQueryID, Session: "phase18-store-session", Verdict: "negative", Provenance: "cw08-race", Created: now}, negative); applyErr != nil || !applied {
+			t.Fatal("commit concurrent negative evidence", applyErr)
+		}
+		for _, expected := range []int64{raceExample.Version, 0} {
+			if _, err = fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: raceExample.ID, State: "active", ExpectedVersion: expected, ReviewNote: "stale review"}, scope.Actor()); !errors.Is(err, store.ErrConflict) {
+				t.Fatalf("stale/ineligible activation expected_version=%d returned %v", expected, err)
+			}
+		}
 	})
 }

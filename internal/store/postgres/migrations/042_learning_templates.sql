@@ -11,6 +11,24 @@ ALTER TABLE chartworks.nlq_examples
  ADD COLUMN review_note text NOT NULL DEFAULT '' CHECK(octet_length(review_note)<=4096),
  ADD COLUMN reviewed_at timestamptz;
 
+-- The migration may encounter active rows protected by migration 017's
+-- active-to-candidate guard. Replace that function while ALTER TABLE still
+-- holds the table lock with a guard that permits only this exact legacy
+-- normalization; the final lifecycle guard below replaces it before commit.
+CREATE OR REPLACE FUNCTION chartworks.protect_nlq_example() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' OR NEW.tenant_id<>OLD.tenant_id OR NEW.example_id<>OLD.example_id OR NEW.topic_id<>OLD.topic_id OR
+    NEW.question<>OLD.question OR NEW.sql_text<>OLD.sql_text OR NEW.digest<>OLD.digest OR NEW.created_at<>OLD.created_at OR
+    NOT (NEW.state='candidate' AND NEW.evidence_count=OLD.evidence_count AND NEW.positive_evidence=OLD.evidence_count AND
+      NEW.negative_evidence=0 AND NEW.weight=(OLD.evidence_count+1)::double precision/(OLD.evidence_count+2) AND
+      NEW.uncertainty=1/sqrt((OLD.evidence_count+2)::double precision) AND NEW.origin=OLD.origin AND
+      NEW.version=OLD.version AND NEW.reviewed_by=OLD.reviewed_by AND NEW.review_note=OLD.review_note AND
+      NEW.reviewed_at IS NOT DISTINCT FROM OLD.reviewed_at AND NEW.provenance=OLD.provenance AND NEW.updated_at=OLD.updated_at) THEN
+  RAISE EXCEPTION 'nlq example immutable fields changed' USING ERRCODE='55000';
+ END IF;
+ RETURN NEW;
+END $$;
+
 UPDATE chartworks.nlq_examples
  SET positive_evidence=evidence_count,
      negative_evidence=0,

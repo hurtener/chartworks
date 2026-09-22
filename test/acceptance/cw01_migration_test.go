@@ -31,8 +31,8 @@ func cw01MigrationAcceptance(t *testing.T) {
 	if err := database.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if count(t, connection, `SELECT count(*) FROM chartworks.schema_migrations`) != 41 {
-		t.Fatal("upgrade did not apply exactly six new migrations")
+	if count(t, connection, `SELECT count(*) FROM chartworks.schema_migrations`) != 42 {
+		t.Fatal("upgrade did not apply exactly seven new migrations")
 	}
 	for _, migration := range manifest[:35] {
 		var name, checksum string

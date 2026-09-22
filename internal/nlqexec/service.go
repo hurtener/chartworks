@@ -337,11 +337,21 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	if err = gatewayRequirement(e, "feedback.write", admitted.resources); err != nil {
 		return err
 	}
+	currentBindingDigest := exec.Hash(admitted.binding)
+	if q.Route.SourceBindingDigest != "" && q.Route.SourceBindingDigest != currentBindingDigest {
+		return exec.ErrBinding
+	}
 	correction := strings.TrimSpace(in.Correction)
+	sqlText := q.SQL
 	if correction != "" {
-		if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: correction, Parameters: q.Parameters}); err != nil {
-			return err
-		}
+		sqlText = correction
+	}
+	// Feedback may outlive the source pool that produced the plan. Validate the
+	// exact stored or corrected SQL against the current binding before attaching
+	// current-origin evidence; a retained binding digest, when present, must also
+	// match exactly.
+	if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: sqlText, Parameters: q.Parameters}); err != nil {
+		return err
 	}
 	feedbackID := deterministicFeedbackID(e, q, in)
 	feedback := FeedbackRecord{ID: feedbackID, QueryID: q.ID, Session: e.Session(), Verdict: in.Verdict, Correction: correction, Note: in.Note, Provenance: "phase18.feedback", Created: time.Now().UTC()}
@@ -350,10 +360,6 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 		id, idErr := newID()
 		if idErr != nil {
 			return idErr
-		}
-		sqlText := q.SQL
-		if correction != "" {
-			sqlText = correction
 		}
 		positive, negative := 0, 0
 		if in.Verdict == "positive" || correction != "" {
@@ -367,7 +373,7 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 			Digest: exampleDigest(q.Topic, q.Question, sqlText), State: "candidate",
 			Weight: evidenceScore(positive, negative), Uncertainty: evidenceUncertainty(positive, negative),
 			EvidenceCount: 1, PositiveEvidence: positive, NegativeEvidence: negative, EvidenceOutcome: in.Verdict,
-			Origin:  ExampleOrigin{SchemaVersion: 1, Locale: q.Locale, TopicVersion: q.TopicVersions[0], Context: q.Context, SourceBindingDigest: exec.Hash(admitted.binding), RuleVersions: append([]string(nil), q.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), q.Templates...)},
+			Origin:  ExampleOrigin{SchemaVersion: 1, Locale: q.Locale, TopicVersion: q.TopicVersions[0], Context: q.Context, SourceBindingDigest: currentBindingDigest, RuleVersions: append([]string(nil), q.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), q.Templates...)},
 			Version: 1, Provenance: "feedback:" + feedbackID, Created: now, Updated: now,
 		}
 	}
@@ -391,9 +397,24 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	if err != nil {
 		return ExampleRecord{}, err
 	}
-	q, err := s.learningQuery(ctx, e, example.Topic)
-	if err != nil {
-		return ExampleRecord{}, err
+	var q QueryRecord
+	if in.State == "active" {
+		if s.router == nil {
+			return ExampleRecord{}, store.ErrInvalid
+		}
+		route, routeErr := s.router.Route(ctx, e, nlqroute.RouteRequest{Topic: example.Topic, Context: example.Origin.Context, Locale: example.Origin.Locale, Question: example.Question, Templates: append([]rulesets.TemplateSelection(nil), example.Origin.Templates...)})
+		if routeErr != nil {
+			return ExampleRecord{}, routeErr
+		}
+		if route.Topic != example.Topic || len(route.Topics) == 0 || route.Context == nil || (route.Outcome != nlq.StrategySingleTopic && route.Outcome != nlq.StrategyMultiTopic) {
+			return ExampleRecord{}, exec.ErrBinding
+		}
+		q = QueryRecord{Topic: route.Topic, Topics: append([]string(nil), route.Topics...), TopicVersions: append([]string(nil), route.TopicVersions...), Context: example.Origin.Context, Route: route}
+	} else {
+		q, err = s.learningQuery(ctx, e, example.Topic)
+		if err != nil {
+			return ExampleRecord{}, err
+		}
 	}
 	admitted, err := s.currentAdmission(ctx, e, q)
 	if err != nil {
@@ -402,12 +423,23 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	if err = gatewayRequirement(e, "feedback.write", admitted.resources); err != nil {
 		return ExampleRecord{}, err
 	}
+	if in.State == "active" {
+		candidate := example
+		candidate.State = "active"
+		if reason := exampleApplicabilityReason(candidate, admitted, exec.Hash(admitted.binding)); reason != "" {
+			return ExampleRecord{}, exec.ErrBinding
+		}
+	}
 	if in.ExpectedVersion != 0 && in.ExpectedVersion != example.Version {
 		return ExampleRecord{}, store.ErrConflict
 	}
 	if in.State == "active" && (strings.TrimSpace(in.ReviewNote) == "" || example.PositiveEvidence < 1 || example.Weight < 0.60 || example.NegativeEvidence >= example.PositiveEvidence) {
 		return ExampleRecord{}, store.ErrConflict
 	}
+	// Always CAS the row read above. The store repeats activation eligibility in
+	// the same UPDATE so concurrent negative feedback either wins first and
+	// blocks activation, or observes the completed activation afterwards.
+	in.ExpectedVersion = example.Version
 	updated, err := s.repo.SetExampleState(ctx, sc, in, e.User())
 	if err != nil {
 		return ExampleRecord{}, err
@@ -1191,14 +1223,22 @@ func (s *Service) selectLearnedInstructions(ctx context.Context, e identity.Enve
 		for _, candidate := range candidates {
 			byID[candidate.record.ID] = candidate
 		}
+		seen := make(map[string]bool, len(candidates))
 		reordered := make([]applicable, 0, len(candidates))
 		for _, item := range ranked.Items {
-			candidate, ok := byID[item.ID]
-			if !ok {
+			if item.Score != nil && (math.IsNaN(*item.Score) || math.IsInf(*item.Score, 0)) {
 				return nil, evidence, receipt, gateway.ErrOutput
 			}
+			candidate, ok := byID[item.ID]
+			if !ok || seen[item.ID] {
+				return nil, evidence, receipt, gateway.ErrOutput
+			}
+			seen[item.ID] = true
 			candidate.rankScore = item.Score
 			reordered = append(reordered, candidate)
+		}
+		if len(reordered) != len(candidates) {
+			return nil, evidence, receipt, gateway.ErrOutput
 		}
 		candidates = reordered
 	}
