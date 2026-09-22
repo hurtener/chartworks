@@ -39,7 +39,7 @@ func Registry(validation, capture, observe bool) (*api.Registry, error) {
 		feature      string
 	}{
 		{"POST", "/v1/blocks/{id}/parameters/assist", reporting.Write, "parameterizeBlock", "Append an AST-verified typed period amendment without publication", reflect.TypeFor[reporting.ParameterizeRequest](), reflect.TypeFor[reporting.View](), "observe"},
-		{"POST", "/v1/blocks/{id}/parameters/propose", reporting.Read, "proposeBlockParameterization", "Verify a dialect-aware period amendment or return an explicit unsupported disposition without mutation", reflect.TypeFor[reporting.ParameterizationProposalRequest](), reflect.TypeFor[reporting.ParameterizationProposal](), "observe"},
+		{"POST", "/v1/blocks/{id}/parameters/propose", reporting.Write, "proposeBlockParameterization", "Verify a dialect-aware period amendment or return an explicit unsupported disposition without mutation", reflect.TypeFor[reporting.ParameterizationProposalRequest](), reflect.TypeFor[reporting.ParameterizationProposal](), "observe"},
 		{"POST", "/v1/blocks/{id}/impact", reporting.Read, "recheckBlockImpact", "Explicitly observe dependency impact without altering definitions", reflect.TypeFor[reporting.ImpactRequest](), reflect.TypeFor[reporting.Impact](), "observe"},
 		{"POST", "/v1/blocks/{id}/impact/apply", reporting.Write, "applyBlockImpact", "Create a private draft for an exact current dependency proposal", reflect.TypeFor[reporting.ApplyImpactRequest](), reflect.TypeFor[reporting.View](), "observe"},
 		{"POST", "/v1/blocks", reporting.Write, "createBlock", "Create an unvalidated private block draft", reflect.TypeFor[reporting.CreateRequest](), reflect.TypeFor[reporting.View](), ""},

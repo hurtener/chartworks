@@ -34,7 +34,7 @@ func validQuestionIntent(in *QuestionIntent) bool {
 		if (filter.Operator == "is_null" || filter.Operator == "not_null") != (filter.Value == "") {
 			return false
 		}
-		key := filter.Dimension + "\x00" + filter.Operator + "\x00" + filter.Value
+		key := normalizeQuestion(filter.Dimension) + "\x00" + strings.ToLower(filter.Operator) + "\x00" + normalizeQuestion(filter.Value)
 		if seen[key] {
 			return false
 		}

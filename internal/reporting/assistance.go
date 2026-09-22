@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -29,6 +30,11 @@ type ParameterizeRequest struct {
 // dialects return an explicit disposition without changing any revision.
 type ParameterizationProposal struct {
 	Dialect          string   `json:"dialect"`
+	Source           string   `json:"source"`
+	Context          string   `json:"context"`
+	SourceRevision   int64    `json:"source_revision"`
+	BindingDigest    string   `json:"binding_digest"`
+	TopicsDigest     string   `json:"topics_digest"`
 	Disposition      string   `json:"disposition"`
 	Reason           string   `json:"reason,omitempty"`
 	DefinitionDigest string   `json:"definition_digest"`
@@ -50,18 +56,19 @@ func parameterizationDisposition(dialect string) (string, string) {
 	return "unsupported", "dialect_ast_edit_not_available"
 }
 
-func proposalDigest(definition, dialect string, column []string, parameter Parameter, disposition string) string {
+func proposalDigest(definition string, binding exec.Binding, topics []TopicPin, column []string, parameter Parameter, disposition string) string {
 	return digest(struct {
-		Version, Definition, Dialect, Disposition string
-		Column                                    []string
-		Parameter                                 Parameter
-	}{"block-parameterization-proposal-v1", definition, dialect, disposition, column, parameter})
+		Version, Definition, Dialect, Source, Context, Binding, Topics, Disposition string
+		SourceRevision                                                              int64
+		Column                                                                      []string
+		Parameter                                                                   Parameter
+	}{"block-parameterization-proposal-v2", definition, binding.Dialect, binding.Source, binding.Context, exec.Hash(binding), digest(topics), disposition, binding.Revision, column, parameter})
 }
 
 // ProposeParameterization verifies the selected immutable draft and source
 // binding. It performs no write, publication, query execution or model call.
 func (s *Service) ProposeParameterization(ctx context.Context, e identity.Envelope, id string, in ParameterizationProposalRequest) (ParameterizationProposal, error) {
-	ctx, cancel, err := s.begin(ctx, e, id, Read)
+	ctx, cancel, err := s.begin(ctx, e, id, Write)
 	if err != nil {
 		return ParameterizationProposal{}, err
 	}
@@ -69,7 +76,7 @@ func (s *Service) ProposeParameterization(ctx context.Context, e identity.Envelo
 	if !hashValid(in.DefinitionDigest) || !parameterizationColumnValid(in.Column) || in.Parameter.Type != "relative_period" || in.Parameter.Default == nil || in.Parameter.Default.Period == nil || validateDeclarations([]Parameter{in.Parameter}, 1) != nil {
 		return ParameterizationProposal{}, ErrInvalid
 	}
-	snapshot, err := s.repo.ReadBlock(ctx, e, id, Reference{Draft: true}, Read)
+	snapshot, err := s.repo.ReadBlock(ctx, e, id, Reference{Draft: true}, Write)
 	if err != nil {
 		return ParameterizationProposal{}, err
 	}
@@ -83,9 +90,12 @@ func (s *Service) ProposeParameterization(ctx context.Context, e identity.Envelo
 	if err != nil {
 		return ParameterizationProposal{}, err
 	}
+	if !binding.Valid() || binding.Tenant != e.Tenant() || binding.Source != snapshot.Revision.Definition.Source || binding.Context != snapshot.Revision.Definition.Context {
+		return ParameterizationProposal{}, ErrInvalid
+	}
 	disposition, reason := parameterizationDisposition(binding.Dialect)
-	out := ParameterizationProposal{Dialect: binding.Dialect, Disposition: disposition, Reason: reason, DefinitionDigest: in.DefinitionDigest, Column: clone(in.Column)}
-	out.ProposalDigest = proposalDigest(in.DefinitionDigest, binding.Dialect, in.Column, in.Parameter, disposition)
+	out := ParameterizationProposal{Dialect: binding.Dialect, Source: binding.Source, Context: binding.Context, SourceRevision: binding.Revision, BindingDigest: exec.Hash(binding), TopicsDigest: digest(snapshot.Revision.Definition.Topics), Disposition: disposition, Reason: reason, DefinitionDigest: in.DefinitionDigest, Column: clone(in.Column)}
+	out.ProposalDigest = proposalDigest(in.DefinitionDigest, binding, snapshot.Revision.Definition.Topics, in.Column, in.Parameter, disposition)
 	if disposition == "supported" {
 		if _, err := parameterizePeriod(ctx, snapshot.Revision.Definition.SQL, in.Column, scalarSlots(snapshot.Revision.Definition.Parameters)+1); err != nil {
 			return ParameterizationProposal{}, err
@@ -102,7 +112,7 @@ func (s *Service) Parameterize(ctx context.Context, e identity.Envelope, id stri
 		return View{}, err
 	}
 	defer cancel()
-	if !note(in.Note) || !hashValid(in.DefinitionDigest) || !parameterizationColumnValid(in.Column) || in.Parameter.Type != "relative_period" || in.Parameter.Default == nil || in.Parameter.Default.Period == nil || !parameterizationIntentValid(in, false) {
+	if !note(in.Note) || !hashValid(in.DefinitionDigest) || !hashValid(in.ProposalDigest) || !parameterizationColumnValid(in.Column) || in.Parameter.Type != "relative_period" || in.Parameter.Default == nil || in.Parameter.Default.Period == nil || !parameterizationIntentValid(in) {
 		return View{}, ErrInvalid
 	}
 	snapshot, err := s.repo.ReadBlock(ctx, e, id, Reference{Draft: true}, Write)
@@ -115,9 +125,6 @@ func (s *Service) Parameterize(ctx context.Context, e identity.Envelope, id stri
 	if snapshot.State.Archived || snapshot.Revision.Digest != in.DefinitionDigest {
 		return View{}, store.ErrConflict
 	}
-	if snapshot.Revision.Definition.SchemaVersion == CurrentSchemaVersion && (!hashValid(in.ProposalDigest) || !parameterizationIntentValid(in, true)) {
-		return View{}, ErrInvalid
-	}
 	if s.sources == nil {
 		return View{}, ErrUnavailable
 	}
@@ -126,12 +133,12 @@ func (s *Service) Parameterize(ctx context.Context, e identity.Envelope, id stri
 	if err != nil {
 		return View{}, err
 	}
-	if binding.Dialect != "postgres" {
+	if !binding.Valid() || binding.Tenant != e.Tenant() || binding.Source != d.Source || binding.Context != d.Context || binding.Dialect != "postgres" {
 		return View{}, ErrInvalid
 	}
 	disposition, _ := parameterizationDisposition(binding.Dialect)
-	proposal := proposalDigest(in.DefinitionDigest, binding.Dialect, in.Column, in.Parameter, disposition)
-	if in.ProposalDigest != "" && in.ProposalDigest != proposal {
+	proposal := proposalDigest(in.DefinitionDigest, binding, d.Topics, in.Column, in.Parameter, disposition)
+	if in.ProposalDigest != proposal {
 		return View{}, store.ErrConflict
 	}
 	select {
@@ -167,7 +174,7 @@ func (s *Service) Parameterize(ctx context.Context, e identity.Envelope, id stri
 		Column        []string
 		Parameter     Parameter
 	}{snapshot.Revision.Digest, DefinitionDigest(d), in.Column, in.Parameter})
-	provenance.Parameterization = &ParameterizationEvidence{ProposalDigest: proposal, Dialect: binding.Dialect, OriginalQuestion: in.OriginalQuestion, QuestionDisposition: in.QuestionDisposition, TemplateDisposition: in.TemplateDisposition, ParaphraseDisposition: in.ParaphraseDisposition}
+	provenance.Parameterization = &ParameterizationEvidence{ProposalDigest: proposal, Dialect: binding.Dialect, Source: binding.Source, Context: binding.Context, SourceRevision: binding.Revision, BindingDigest: exec.Hash(binding), TopicsDigest: digest(d.Topics), OriginalQuestion: in.OriginalQuestion, QuestionDisposition: in.QuestionDisposition, TemplateDisposition: in.TemplateDisposition, ParaphraseDisposition: in.ParaphraseDisposition}
 	r, err := s.newRevision(e, snapshot.State.DraftRevision+1, d, provenance)
 	if err != nil {
 		return View{}, err
@@ -179,7 +186,7 @@ func (s *Service) Parameterize(ctx context.Context, e identity.Envelope, id stri
 	return project(Snapshot{State: state, Revision: r}, time.Now()), nil
 }
 
-func parameterizationIntentValid(in ParameterizeRequest, required bool) bool {
+func parameterizationIntentValid(in ParameterizeRequest) bool {
 	if !text(in.OriginalQuestion, 2048) {
 		return false
 	}
@@ -189,7 +196,7 @@ func parameterizationIntentValid(in ParameterizeRequest, required bool) bool {
 	if !allowed(in.QuestionDisposition) || !allowed(in.TemplateDisposition) || !allowed(in.ParaphraseDisposition) {
 		return false
 	}
-	return !required || strings.TrimSpace(in.OriginalQuestion) != "" && in.QuestionDisposition != "" && in.TemplateDisposition != "" && in.ParaphraseDisposition != ""
+	return strings.TrimSpace(in.OriginalQuestion) != "" && in.QuestionDisposition != "" && in.TemplateDisposition != "" && in.ParaphraseDisposition != ""
 }
 
 func parameterizationColumnValid(column []string) bool {

@@ -399,7 +399,8 @@ func (s *Service) AssessQuestions(ctx context.Context, e identity.Envelope, in Q
 	if err != nil {
 		return Assessment{}, err
 	}
-	out := Assessment{Matches: []QuestionMatch{}, Complete: page.Next == "", Threshold: s.limits.QuestionThreshold, Method: "lexical_fallback"}
+	authorityDigest := assessmentAuthorityDigest(e)
+	out := Assessment{Matches: []QuestionMatch{}, Complete: page.Next == "", Threshold: s.limits.QuestionThreshold, AuthorityDigest: authorityDigest, Method: "lexical_fallback"}
 	scope := []any{}
 	semantic, fallback := false, false
 	for _, item := range page.Items {
@@ -454,18 +455,43 @@ func (s *Service) AssessQuestions(ctx context.Context, e identity.Envelope, in Q
 		out.Matches, out.Complete = out.Matches[:100], false
 	}
 	out.EvidenceDigest = digest(struct {
-		Version, Request, Scope, Method string
-		Complete                        bool
-		Matches                         []QuestionMatch
-	}{"question-assessment-v1", digest(in), out.CandidateScopeDigest, out.Method, out.Complete, out.Matches})
-	out.ID = digest(struct{ Version, Tenant, Actor, Session, Evidence string }{"question-assessment-id-v1", e.Tenant(), e.User(), e.Session(), out.EvidenceDigest})[:32]
+		Version, Request, Scope, Authority, Method string
+		Threshold                                  float64
+		Complete                                   bool
+		Matches                                    []QuestionMatch
+	}{"question-assessment-v2", digest(in), out.CandidateScopeDigest, authorityDigest, out.Method, out.Threshold, out.Complete, out.Matches})
+	out.ID = questionAssessmentID(e, authorityDigest, out.EvidenceDigest)
 	if recorder, ok := s.repo.(QuestionAssessmentRepository); ok {
-		record := QuestionAssessmentRecord{ID: out.ID, RequestDigest: digest(in), CandidateScopeDigest: out.CandidateScopeDigest, EvidenceDigest: out.EvidenceDigest, Method: out.Method, Matches: clone(out.Matches), Complete: out.Complete, CreatedAt: time.Now().UTC()}
+		record := QuestionAssessmentRecord{ID: out.ID, RequestDigest: digest(in), CandidateScopeDigest: out.CandidateScopeDigest, EvidenceDigest: out.EvidenceDigest, AuthorityDigest: authorityDigest, Threshold: out.Threshold, Method: out.Method, Matches: clone(out.Matches), Complete: out.Complete, CreatedAt: time.Now().UTC()}
 		if err := recorder.RecordQuestionAssessment(ctx, e, record); err != nil {
 			return Assessment{}, err
 		}
 	}
 	return out, nil
+}
+
+func questionAssessmentID(e identity.Envelope, authorityDigest, evidenceDigest string) string {
+	return digest(struct{ Version, Tenant, Actor, Session, Authority, Evidence string }{"question-assessment-id-v2", e.Tenant(), e.User(), e.Session(), authorityDigest, evidenceDigest})[:32]
+}
+
+func assessmentAuthorityDigest(e identity.Envelope) string {
+	scopes := e.Scopes()
+	sort.Strings(scopes)
+	reach := e.Reach()
+	sort.Slice(reach, func(i, j int) bool {
+		if reach[i].Kind != reach[j].Kind {
+			return reach[i].Kind < reach[j].Kind
+		}
+		if reach[i].Permission != reach[j].Permission {
+			return reach[i].Permission < reach[j].Permission
+		}
+		return reach[i].ID < reach[j].ID
+	})
+	return digest(struct {
+		Version string
+		Scopes  []string
+		Reach   []identity.Reach
+	}{"question-assessment-authority-v1", scopes, reach})
 }
 
 func acceptedResolution(in Resolution) Resolution {

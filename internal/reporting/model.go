@@ -262,6 +262,11 @@ type Provenance struct {
 type ParameterizationEvidence struct {
 	ProposalDigest        string `json:"proposal_digest"`
 	Dialect               string `json:"dialect"`
+	Source                string `json:"source"`
+	Context               string `json:"context"`
+	SourceRevision        int64  `json:"source_revision"`
+	BindingDigest         string `json:"binding_digest"`
+	TopicsDigest          string `json:"topics_digest"`
 	OriginalQuestion      string `json:"original_question,omitempty"`
 	QuestionDisposition   string `json:"question_disposition"`
 	TemplateDisposition   string `json:"template_disposition"`
@@ -606,6 +611,7 @@ type Assessment struct {
 	Matches              []QuestionMatch `json:"matches"`
 	Complete             bool            `json:"complete"`
 	Threshold            float64         `json:"threshold"`
+	AuthorityDigest      string          `json:"authority_digest"`
 	Method               string          `json:"method"`
 	CandidateScopeDigest string          `json:"candidate_scope_digest"`
 	EvidenceDigest       string          `json:"evidence_digest"`
@@ -618,6 +624,8 @@ type QuestionAssessmentRecord struct {
 	RequestDigest        string          `json:"request_digest"`
 	CandidateScopeDigest string          `json:"candidate_scope_digest"`
 	EvidenceDigest       string          `json:"evidence_digest"`
+	AuthorityDigest      string          `json:"authority_digest"`
+	Threshold            float64         `json:"threshold"`
 	Method               string          `json:"method"`
 	Matches              []QuestionMatch `json:"matches"`
 	Complete             bool            `json:"complete"`

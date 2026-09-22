@@ -16,3 +16,12 @@ the native AST-equivalence edit; other dialects return an explicit unsupported
 disposition without mutation. A successful private amendment retains the original
 question and closed question/template/paraphrase dispositions. Published refresh
 never invokes authoring assistance, NLQ, repair, routing or chart selection.
+
+The accepted implementation requires proposal evidence for every amendment,
+including retained v1 drafts, and binds it to source/context revision, complete
+binding, topic pins and dialect. Proposal inspection requires write authority and
+uses the existing full private-draft repository projection; public reads remain
+SQL-redacted. Durable question assessments bind exact signed scope/resource reach
+and the configured threshold. Current-period wording is an explicit unsupported
+finding, while singular Spanish completed-period wording is classified as
+previous rather than rolling.

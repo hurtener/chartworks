@@ -8,6 +8,8 @@ CREATE TABLE chartworks.block_question_assessments (
  request_digest text NOT NULL CHECK(request_digest ~ '^[a-f0-9]{64}$'),
  candidate_scope_digest text NOT NULL CHECK(candidate_scope_digest ~ '^[a-f0-9]{64}$'),
  evidence_digest text NOT NULL CHECK(evidence_digest ~ '^[a-f0-9]{64}$'),
+ authority_digest text NOT NULL CHECK(authority_digest ~ '^[a-f0-9]{64}$'),
+ question_threshold double precision NOT NULL CHECK(question_threshold>=0 AND question_threshold<=1),
  record jsonb NOT NULL CHECK(jsonb_typeof(record)='object' AND octet_length(record::text)<=262144),
  created_at timestamptz NOT NULL,
  PRIMARY KEY(tenant_id,assessment_id)

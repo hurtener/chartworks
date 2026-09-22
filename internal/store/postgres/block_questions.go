@@ -27,9 +27,9 @@ func (d *DB) RecordQuestionAssessment(ctx context.Context, e identity.Envelope, 
 	defer cancel()
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO chartworks.block_question_assessments
- (tenant_id,assessment_id,actor_id,session_id,request_digest,candidate_scope_digest,evidence_digest,record,created_at)
-	VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-	ON CONFLICT(tenant_id,assessment_id) DO NOTHING`, e.Tenant(), record.ID, e.User(), e.Session(), record.RequestDigest, record.CandidateScopeDigest, record.EvidenceDigest, raw, record.CreatedAt)
+ (tenant_id,assessment_id,actor_id,session_id,request_digest,candidate_scope_digest,evidence_digest,authority_digest,question_threshold,record,created_at)
+	VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	ON CONFLICT(tenant_id,assessment_id) DO NOTHING`, e.Tenant(), record.ID, e.User(), e.Session(), record.RequestDigest, record.CandidateScopeDigest, record.EvidenceDigest, record.AuthorityDigest, record.Threshold, raw, record.CreatedAt)
 		return err
 	})
 }

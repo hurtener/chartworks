@@ -57,6 +57,25 @@ func periodWords(locale, question string) []periodMention {
 	}
 	mentions := []periodMention{}
 	for i, word := range words {
+		// Current-period wording is recognized explicitly even though the governed
+		// relative-period union has no current mode. Certification must surface it.
+		if (word == "this" || word == "current" || word == "este" || word == "esta" || word == "estos" || word == "estas") && i+1 < len(words) {
+			if u := unit(words[i+1]); u != "" {
+				mentions = append(mentions, periodMention{mode: "current", unit: u, count: 1})
+				continue
+			}
+		}
+		if u := unit(word); u != "" && i+1 < len(words) {
+			switch words[i+1] {
+			case "actual":
+				mentions = append(mentions, periodMention{mode: "current", unit: u, count: 1})
+				continue
+			case "pasado", "pasada":
+				// Postposed singular Spanish means the previous completed period.
+				mentions = append(mentions, periodMention{mode: "previous", unit: u, count: 1})
+				continue
+			}
+		}
 		mode := ""
 		switch word {
 		case "last", "previous", "último", "última", "últimos", "últimas", "anterior", "anteriores":
@@ -118,7 +137,9 @@ func periodFindings(d Definition) []PeriodFinding {
 				code, observed = "ambiguous_period_wording", digest(mentions)
 			} else {
 				observed = fmt.Sprintf("%s:%s:%d", mentions[0].mode, mentions[0].unit, mentions[0].count)
-				if mentions[0].mode != target.period.Mode || mentions[0].unit != target.period.Unit || mentions[0].count != target.period.Count {
+				if mentions[0].mode == "current" {
+					code = "unsupported_period_wording"
+				} else if mentions[0].mode != target.period.Mode || mentions[0].unit != target.period.Unit || mentions[0].count != target.period.Count {
 					code = "period_wording_mismatch"
 				}
 			}

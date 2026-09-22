@@ -57,7 +57,7 @@ SDK/CLI operation matrix. Under the configured mount, the concrete routes are:
 | POST `/v1/blocks/{id}/archive` | `ArchiveBlock` | `reporting.write` |
 | POST `/v1/blocks/{id}/parameters/resolve` | `ResolveBlockParameters` | `reporting.read` |
 | POST `/v1/blocks/{id}/parameters/assist` | `ParameterizeBlock` | `reporting.write` |
-| POST `/v1/blocks/{id}/parameters/propose` | `ProposeBlockParameterization` | `reporting.read` |
+| POST `/v1/blocks/{id}/parameters/propose` | `ProposeBlockParameterization` | `reporting.write` |
 | POST `/v1/blocks/{id}/impact` | `RecheckBlockImpact` | `reporting.read` |
 | POST `/v1/blocks/{id}/impact/apply` | `ApplyBlockImpact` | `reporting.write` |
 
@@ -101,11 +101,15 @@ work; invocation cannot change list shape. The execution contract allows at most
 The pure resolver takes an explicit logical time and IANA timezone. Periods use
 half-open windows, explicit DST-fold and month-end policies, and declared first
 schedule-window behavior. Calendar/DST/leap-year fixtures are not a running
-scheduler. Parameter assistance first returns a definition- and dialect-bound
-proposal. PostgreSQL can return `supported`; every other configured dialect
-returns an explicit non-mutating `unsupported` disposition. Applying a supported
-proposal accepts only exact, native-parsed PostgreSQL date predicates with an
-expected definition digest/version. It replaces the selected literals, retains
+scheduler. Parameter assistance first performs a write-authorized internal draft
+read and returns a proposal bound to the definition, source/context revision and
+binding, topic pins, and dialect. Ordinary metadata reads remain SQL-redacted.
+PostgreSQL can return `supported`; every other configured dialect returns an
+explicit non-mutating `unsupported` disposition. Applying a supported proposal,
+for legacy v1 and v2 drafts alike, requires its exact digest plus the original
+question and nonempty closed question/template/paraphrase dispositions. It
+accepts only exact, native-parsed PostgreSQL date predicates with an expected
+definition digest/version and current binding. It replaces the selected literals, retains
 unrelated SQL/comments/filters and creates an unvalidated draft whose provenance
 retains the original question and closed question/template/paraphrase
 dispositions. Ambiguous predicates and stale or cross-dialect proposals fail
@@ -115,9 +119,12 @@ selection.
 Certification exposes deterministic period-language findings for one exact
 published revision before attestation. A closed bilingual vocabulary compares
 localized canonical questions with authored relative-period defaults.
-Contradictory or ambiguous wording yields digest-bound findings; certification
-requires one `accepted_exception` disposition per finding and stores both in the
-immutable attestation. The check does not infer SQL or alter period resolution.
+Contradictory, ambiguous, or unsupported current-period wording yields
+digest-bound findings; certification requires one `accepted_exception`
+disposition per finding and stores both in the immutable attestation.
+`this/current month`, `este mes`, and corresponding supported unit forms are
+recognized as current wording; `mes pasado` is the previous completed month
+rather than a rolling window. The check does not infer SQL or alter period resolution.
 
 Stable output IDs address saved chart, KPI, table or narrative definitions. V1
 empty selection preserves legacy all-output behavior; explicit selections retain
@@ -155,7 +162,10 @@ can carry bounded metric, grain, population, filter and period components.
 Discovery classifies authorized candidates as duplicate, overlap or unique from
 exact reviewed components and labels lexical comparison as fallback when either
 side lacks intent. Migration 043 stores request, authorized candidate-scope and
-decision digests with protected bounded evidence. Incomplete scans remain explicit
+decision digests with protected bounded evidence. Assessment identity and evidence
+also bind the exact signed scope/resource reach and configured question threshold;
+narrowed and wildcard authority cannot share a durable assessment identity.
+Incomplete scans remain explicit
 and never claim global uniqueness.
 
 `TestPhase27/AC01`–`AC08`, `TestPhase21CumulativeRegistryGuard`, the unit regression
