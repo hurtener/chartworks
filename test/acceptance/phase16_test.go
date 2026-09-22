@@ -30,6 +30,8 @@ type phase16AcceptanceFixture struct {
 	route     *nlqroute.Service
 	model     *gatewayFixture
 	client    *sdk.Client
+	endpoint  string
+	http      *http.Client
 	pending   rulesets.Draft
 }
 
@@ -75,7 +77,7 @@ func newPhase16AcceptanceFixture(t *testing.T) *phase16AcceptanceFixture {
 	if err != nil {
 		t.Fatal("topic client", err)
 	}
-	return &phase16AcceptanceFixture{f: f, e: e, pack: pack, published: published, rules: rules, route: route, model: model, client: client}
+	return &phase16AcceptanceFixture{f: f, e: e, pack: pack, published: published, rules: rules, route: route, model: model, client: client, endpoint: server.URL, http: server.Client()}
 }
 
 func phase16PublicPack(p topics.Published) semantics.TopicPack {
@@ -274,15 +276,25 @@ func TestPhase16(t *testing.T) {
 		if err != nil || replay.Baseline.RuleVersion != "rules-v1" || !replay.Baseline.Result.Allowed || replay.Baseline.PackDigest != fixture.published.Digest {
 			t.Fatalf("historical replay lost its retained pin: %#v %v", replay, err)
 		}
-		wrongContext := fixture.f.token.envelope(t, fixture.e.Tenant(), fixture.e.User(), "topics.read", "cw.topic.read:"+fixture.pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:wrong-context")
-		if _, err = fixture.rules.Replay(ctx, wrongContext, fixture.pack.Topic, rulesets.ReplayRequest{RuleVersion: "rules-v1", TopicVersion: fixture.pack.Version, References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}}); err == nil {
-			t.Fatal("historical replay ignored current signed execution-context reach")
+		metadata := support.Raw(t, fixture.f.dsn)
+		beforeDenied := count(t, metadata, `SELECT count(*) FROM chartworks.topic_rule_comparison_evidence WHERE tenant_id=$1`, fixture.e.Tenant())
+		wrongContextClient, clientErr := sdk.New(fixture.endpoint, fixture.http, func(context.Context) (string, error) {
+			claims := fixture.f.token.claims(fixture.e.Tenant(), fixture.e.User(), []string{"topics.read", "cw.topic.read:" + fixture.pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:wrong-context"})
+			return fixture.f.token.sign(t, claims, nil), nil
+		})
+		if clientErr != nil {
+			t.Fatal("wrong-context SDK client", clientErr)
+		}
+		if _, err = wrongContextClient.ReplayRules(ctx, fixture.pack.Topic, sdk.RuleReplayRequest{RuleVersion: "rules-v1", TopicVersion: fixture.pack.Version, References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}}); err == nil {
+			t.Fatal("protected HTTP replay ignored current signed execution-context reach")
+		}
+		if afterDenied := count(t, metadata, `SELECT count(*) FROM chartworks.topic_rule_comparison_evidence WHERE tenant_id=$1`, fixture.e.Tenant()); afterDenied != beforeDenied {
+			t.Fatalf("denied replay persisted comparison evidence: before=%d after=%d", beforeDenied, afterDenied)
 		}
 		current, err := fixture.client.PublishedRules(ctx, fixture.pack.Topic)
 		if err != nil || current.State.Version != "rules-v2" {
 			t.Fatalf("shadow changed active production rules: %#v %v", current, err)
 		}
-		metadata := support.Raw(t, fixture.f.dsn)
 		if _, err = metadata.Exec(ctx, `UPDATE chartworks.topic_rule_comparison_evidence SET changed=NOT changed WHERE tenant_id=$1 AND comparison_id=$2`, fixture.e.Tenant(), comparison.ID); err == nil {
 			t.Fatal("comparison evidence was mutable")
 		}

@@ -103,8 +103,11 @@ real-PostgreSQL regressions. Simultaneous rule matches retain sorted selection,
 required, excluded and violation evidence. Dependency conflicts (including an
 exclusion beneath a pinned metric) reject before draft persistence. Template
 scopes expose exact match/mismatch reasons and require canonical selection pins.
-Relationship removal and changed semantic digests cannot silently rebind an old
-rule publication; a new reviewed topic/digest pin is required. Historical
+Compiler-level relationship removal and changed-digest regressions cannot
+silently rebind an old rule definition; a new reviewed topic/digest pin is
+required. Public lifecycle coverage separately proves exact topic/ruleset
+replacement and rollback; relationship-specific publication remains final
+qualification evidence. Historical
 replay remains immutable across replacement, retirement and rollback while
 rechecking the caller's current source/context reach. Reporting capture and
 migration-040 regressions cover template provenance removal/recapture and

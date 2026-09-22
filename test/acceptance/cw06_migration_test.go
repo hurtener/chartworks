@@ -53,15 +53,17 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
  INSERT INTO chartworks.topic_publication_heads(tenant_id,topic_id) VALUES('cw06-upgrade','topic');
  INSERT INTO chartworks.block_heads(tenant_id,block_id,topic_id,version,draft_revision,draft_state) VALUES('cw06-upgrade','legacy-template','topic',1,1,'draft');
  INSERT INTO chartworks.block_revisions(tenant_id,block_id,revision,revision_id,definition,digest,execution_digest,actor_id,session_id,provenance,created_at)
- VALUES('cw06-upgrade','legacy-template',1,repeat('e',32),$1,$2,$3,'actor','session','{}',clock_timestamp())`, encodedBlock, reporting.DefinitionDigest(legacyBlock), reporting.ExecutionDigest(legacyBlock)); err != nil {
+ VALUES('cw06-upgrade','legacy-template',1,repeat('e',32),$1,$2,$3,'actor','session','{}',clock_timestamp());
+ INSERT INTO chartworks.block_revision_references(tenant_id,block_id,revision,kind,permission,resource_id)
+ VALUES('cw06-upgrade','legacy-template',1,'topic','read','topic')`, encodedBlock, reporting.DefinitionDigest(legacyBlock), reporting.ExecutionDigest(legacyBlock)); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal("populate pre-040 reporting revision", err)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var beforeBlock string
-	if err = raw.QueryRow(ctx, `SELECT definition::text FROM chartworks.block_revisions WHERE tenant_id='cw06-upgrade' AND block_id='legacy-template'`).Scan(&beforeBlock); err != nil {
+	var beforeBlock, beforeDefinitionDigest, beforeExecutionDigest string
+	if err = raw.QueryRow(ctx, `SELECT definition::text,digest,execution_digest FROM chartworks.block_revisions WHERE tenant_id='cw06-upgrade' AND block_id='legacy-template'`).Scan(&beforeBlock, &beforeDefinitionDigest, &beforeExecutionDigest); err != nil {
 		t.Fatal(err)
 	}
 	sql(t, raw, `INSERT INTO chartworks.nlq_sessions(tenant_id,actor_id,session_id,context_id,topics,locale) VALUES('cw06-upgrade','actor','session','context','["topic"]','en')`)
@@ -79,9 +81,14 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	if err = database.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var afterBlock string
-	if err = raw.QueryRow(ctx, `SELECT definition::text FROM chartworks.block_revisions WHERE tenant_id='cw06-upgrade' AND block_id='legacy-template'`).Scan(&afterBlock); err != nil || beforeBlock != afterBlock {
+	var afterBlock, afterDefinitionDigest, afterExecutionDigest string
+	if err = raw.QueryRow(ctx, `SELECT definition::text,digest,execution_digest FROM chartworks.block_revisions WHERE tenant_id='cw06-upgrade' AND block_id='legacy-template'`).Scan(&afterBlock, &afterDefinitionDigest, &afterExecutionDigest); err != nil || beforeBlock != afterBlock || beforeDefinitionDigest != afterDefinitionDigest || beforeExecutionDigest != afterExecutionDigest {
 		t.Fatal("migration 040 rewrote a populated immutable legacy template revision", err)
+	}
+	reader := fixture.f.f.token.envelope(t, "cw06-upgrade", "actor", phase27Scopes("cw06-upgrade")...)
+	retainedBlock, err := database.ReadBlock(ctx, reader, "legacy-template", reporting.Reference{Draft: true}, reporting.SQLRead)
+	if err != nil || retainedBlock.Revision.Definition.Template == nil || *retainedBlock.Revision.Definition.Template != *legacyBlock.Template || len(retainedBlock.Revision.Definition.Templates) != 0 || retainedBlock.Revision.Digest != beforeDefinitionDigest || retainedBlock.Revision.ExecutionDigest != beforeExecutionDigest || retainedBlock.Revision.Digest != reporting.DefinitionDigest(retainedBlock.Revision.Definition) || retainedBlock.Revision.ExecutionDigest != reporting.ExecutionDigest(retainedBlock.Revision.Definition) {
+		t.Fatalf("production PostgreSQL reader lost legacy template or digest consistency: %#v %v", retainedBlock.Revision, err)
 	}
 	mixedBlock := phase27Copy(t, legacyBlock)
 	mixedBlock.Templates = []reporting.TemplateSelection{{ID: "reviewed", Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "rules-v1", RuleDigest: strings.Repeat("b", 64)}}
