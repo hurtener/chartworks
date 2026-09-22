@@ -11,3 +11,10 @@ complete request, signed authority snapshot and current source revision. Values
 are not cached. Binary/structured columns and text search on non-string values
 are explicit unsupported/invalid outcomes. Viewer navigation remains retained
 and source-free; only the explicit filter-options operation performs this read.
+
+Publication and every request intersect the selected option field with the exact
+active semantic publication and current physical binding, including source,
+context, dataset, revision, native type, category, nullability and safety. Closed
+dialect builders cover every supported read connector. Truncated results and
+scalars beyond the cursor-safe bound fail explicitly rather than presenting an
+incomplete set as complete.

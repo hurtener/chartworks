@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"slices"
 	"sort"
 	"strconv"
@@ -17,13 +17,16 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
 const (
-	filterCursorMax = 16 << 10
-	filterValueMax  = 4096
-	filterLabelMax  = 1024
+	filterCursorMax  = 16 << 10
+	filterScalarMax  = 1024
+	filterEncodedMax = 6*filterScalarMax + 2
+	filterLabelMax   = 1024
 )
 
 type filterCursor struct {
@@ -63,11 +66,11 @@ func (s *Documents) decodeFilterCursor(encoded string) (filterCursor, error) {
 	}
 	parts := strings.Split(encoded, ".")
 	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil || len(raw) > filterCursorMax/2 {
+	if err != nil || len(raw) > filterCursorMax/2 || base64.RawURLEncoding.EncodeToString(raw) != parts[0] {
 		return out, ErrInvalid
 	}
 	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
+	if err != nil || base64.RawURLEncoding.EncodeToString(sig) != parts[1] {
 		return out, ErrInvalid
 	}
 	mac := hmac.New(sha256.New, s.cursorKey[:])
@@ -78,12 +81,105 @@ func (s *Documents) decodeFilterCursor(encoded string) (filterCursor, error) {
 	return out, nil
 }
 
-func filterSQLName(value string) string {
-	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+func filterSQLName(dialect, value string) string {
+	switch dialect {
+	case "mysql", "bigquery", "databricks":
+		return "`" + value + "`"
+	case "sqlserver":
+		return "[" + value + "]"
+	default:
+		return `"` + value + `"`
+	}
+}
+
+func filterPlaceholder(dialect string, index int) string {
+	switch dialect {
+	case "postgres":
+		return "$" + strconv.Itoa(index)
+	case "sqlserver", "bigquery":
+		return "@p" + strconv.Itoa(index)
+	default:
+		return "?"
+	}
+}
+
+func filterQualified(binding exec.Binding, relation exec.Relation) (string, error) {
+	parts := []string{relation.Schema, relation.Name}
+	if binding.Catalog != "" && slices.Contains([]string{"sqlserver", "bigquery", "snowflake", "databricks"}, binding.Dialect) {
+		parts = append([]string{binding.Catalog}, parts...)
+	}
+	if binding.Dialect == "bigquery" {
+		for _, part := range parts {
+			if !exec.SQLIdentifierForDialect(binding.Dialect, part) {
+				return "", ErrStale
+			}
+		}
+		return "`" + strings.Join(parts, ".") + "`", nil
+	}
+	quoted := make([]string, len(parts))
+	for i, part := range parts {
+		if !exec.SQLIdentifierForDialect(binding.Dialect, part) {
+			return "", ErrStale
+		}
+		quoted[i] = filterSQLName(binding.Dialect, part)
+	}
+	return strings.Join(quoted, "."), nil
+}
+
+func filterOptionStatement(binding exec.Binding, relation exec.Relation, column exec.Column, search, cursor bool, limit int) (string, error) {
+	if !slices.Contains([]string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"}, binding.Dialect) || limit < 1 || limit > 201 || !exec.SQLIdentifierForDialect(binding.Dialect, column.Name) {
+		return "", ErrUnavailable
+	}
+	qualified, err := filterQualified(binding, relation)
+	if err != nil {
+		return "", err
+	}
+	name, alias := filterSQLName(binding.Dialect, column.Name), filterSQLName(binding.Dialect, "value")
+	prefix := "SELECT DISTINCT "
+	if binding.Dialect == "sqlserver" {
+		prefix += "TOP (" + strconv.Itoa(limit) + ") "
+	}
+	statement := prefix + name + " AS " + alias + " FROM " + qualified
+	where := []string{}
+	parameter := 0
+	if search {
+		parameter++
+		where = append(where, "LOWER("+name+") LIKE LOWER("+filterPlaceholder(binding.Dialect, parameter)+") ESCAPE '!'")
+	}
+	if cursor {
+		parameter++
+		marker := filterPlaceholder(binding.Dialect, parameter)
+		operator := ">"
+		if binding.Dialect == "mysql" || binding.Dialect == "sqlserver" {
+			operator = "<"
+		}
+		predicate := name + " " + operator + " " + marker
+		if !search {
+			predicate += " OR " + name + " IS NULL"
+		}
+		where = append(where, predicate)
+	}
+	if len(where) > 0 {
+		statement += " WHERE " + strings.Join(where, " AND ")
+	}
+	switch binding.Dialect {
+	case "mysql":
+		statement += " ORDER BY " + name + " DESC"
+	case "sqlserver":
+		// SQL Server sorts NULL first in ascending order and has no NULLS LAST.
+		// Descending order supplies the same deterministic null-last keyset shape.
+		statement += " ORDER BY " + name + " DESC"
+	default:
+		statement += " ORDER BY " + name + " ASC NULLS LAST"
+	}
+	if binding.Dialect != "sqlserver" {
+		statement += " LIMIT " + strconv.Itoa(limit)
+	}
+	return statement, nil
 }
 
 func filterParameter(kind string, raw json.RawMessage) (exec.Parameter, error) {
-	if len(raw) == 0 || len(raw) > filterValueMax || string(raw) == "null" {
+	if len(raw) == 0 || len(raw) > filterEncodedMax || string(raw) == "null" {
 		return exec.Parameter{}, ErrInvalid
 	}
 	var value string
@@ -91,6 +187,9 @@ func filterParameter(kind string, raw json.RawMessage) (exec.Parameter, error) {
 	case "integer", "decimal", "text", "temporal":
 		if json.Unmarshal(raw, &value) != nil {
 			return exec.Parameter{}, ErrInvalid
+		}
+		if len(value) > filterScalarMax || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
+			return exec.Parameter{}, ErrBudget
 		}
 		parameterKind := kind
 		if kind == "decimal" {
@@ -101,6 +200,9 @@ func filterParameter(kind string, raw json.RawMessage) (exec.Parameter, error) {
 		}
 		return exec.Parameter{Kind: parameterKind, Value: value}, nil
 	case "boolean", "number":
+		if len(raw) > filterScalarMax {
+			return exec.Parameter{}, ErrBudget
+		}
 		return exec.Parameter{Kind: kind, Value: string(raw)}, nil
 	default:
 		return exec.Parameter{}, ErrUnavailable
@@ -115,7 +217,7 @@ func filterLabel(raw json.RawMessage, locale string) (string, error) {
 		return "Null", nil
 	}
 	var value string
-	if len(raw) == 0 || len(raw) > filterValueMax {
+	if len(raw) == 0 || len(raw) > filterEncodedMax {
 		return "", ErrBudget
 	}
 	if raw[0] == '"' {
@@ -129,6 +231,125 @@ func filterLabel(raw json.RawMessage, locale string) (string, error) {
 		return "", ErrBudget
 	}
 	return value, nil
+}
+
+type filterOptionResolution struct {
+	binding      exec.Binding
+	relation     exec.Relation
+	physical     exec.Column
+	semantic     semantics.Column
+	publications []topics.Published
+	scope        []exec.RelationScope
+}
+
+func validateFilterOptionResult(result *exec.Result, limit int) error {
+	if result == nil || len(result.Schema) != 1 || result.Schema[0].Name != "value" || len(result.Rows) > limit+1 {
+		return ErrStale
+	}
+	if result.Outcome == "truncated" || result.Truncation != "" {
+		return ErrBudget
+	}
+	if result.Outcome != "succeeded" && result.Outcome != "empty" {
+		return ErrStale
+	}
+	return nil
+}
+
+func filterResultMatches(parameter Parameter, field exec.Field) bool {
+	kind := parameter.Type
+	if scalar := listScalarType(kind); scalar != "" {
+		kind = scalar
+	}
+	switch kind {
+	case "dimension_value":
+		return field.Type == "text"
+	case "number":
+		return field.Type == "decimal" || field.Type == "number" || field.Type == "integer"
+	case "integer":
+		return field.Type == "integer"
+	case "boolean":
+		return field.Type == "boolean"
+	case "date", "datetime":
+		return field.Type == "temporal"
+	default:
+		return false
+	}
+}
+
+func filterOptionType(parameter Parameter, column semantics.Column) bool {
+	kind := parameter.Type
+	if scalar := listScalarType(kind); scalar != "" {
+		kind = scalar
+	}
+	category, native := strings.ToLower(column.Category), strings.ToLower(column.NativeType)
+	switch kind {
+	case "dimension_value":
+		return category == "text" || category == "string"
+	case "number":
+		return category == "decimal" || category == "number" || category == "numeric"
+	case "integer":
+		return category == "integer" || category == "numeric" && slices.Contains([]string{"smallint", "integer", "bigint", "int2", "int4", "int8", "tinyint", "int", "int64"}, native)
+	case "boolean":
+		return category == "boolean"
+	case "date":
+		return category == "date" || category == "temporal" && strings.Contains(native, "date") && !strings.Contains(native, "time")
+	case "datetime":
+		return category == "datetime" || category == "temporal" && (strings.Contains(native, "time") || strings.Contains(native, "timestamp"))
+	default:
+		return false
+	}
+}
+
+func (s *Documents) resolveFilterOption(ctx context.Context, e identity.Envelope, definition Definition, source FilterOptionSource, parameter Parameter) (filterOptionResolution, error) {
+	publications, _, err := s.blocks.resolveDefinitions(ctx, e, definition, true)
+	if err != nil {
+		return filterOptionResolution{}, err
+	}
+	binding, err := s.blocks.sources.ContextBinding(ctx, e, definition.Source, definition.Context)
+	if err != nil {
+		if errors.Is(err, exec.ErrBinding) {
+			return filterOptionResolution{}, ErrStale
+		}
+		return filterOptionResolution{}, err
+	}
+	scope, err := validationScope(binding, publications)
+	if err != nil {
+		return filterOptionResolution{}, err
+	}
+	var semantic semantics.Column
+	foundSemantic := false
+	for _, publication := range publications {
+		if publication.Definition.Topic != source.Topic || publication.Definition.Version != source.TopicVersion {
+			continue
+		}
+		for _, dataset := range publication.Definition.Datasets {
+			if dataset.ID != source.Dataset || dataset.Source.Source != definition.Source || dataset.Source.Context != definition.Context || dataset.Source.SourceRevision != binding.Revision {
+				continue
+			}
+			for _, column := range dataset.Columns {
+				if column.ID == source.Column {
+					semantic, foundSemantic = column, true
+				}
+			}
+		}
+	}
+	if !foundSemantic || !filterOptionType(parameter, semantic) {
+		return filterOptionResolution{}, ErrStale
+	}
+	relation, physical, foundPhysical := filterColumn(binding, source.Dataset, semantic.SourceName)
+	if !foundPhysical || physical.NativeType != semantic.NativeType || physical.Category != semantic.Category || physical.Nullable != semantic.Nullable || !physical.Safe || slices.Contains([]string{"binary", "structured"}, physical.Category) {
+		return filterOptionResolution{}, ErrStale
+	}
+	allowed := false
+	for _, item := range scope {
+		if item.Dataset == source.Dataset && slices.Contains(item.Columns, physical.Name) {
+			allowed = true
+		}
+	}
+	if !allowed {
+		return filterOptionResolution{}, ErrStale
+	}
+	return filterOptionResolution{binding: binding, relation: relation, physical: physical, semantic: semantic, publications: publications, scope: scope}, nil
 }
 
 func filterColumn(binding exec.Binding, dataset, name string) (exec.Relation, exec.Column, bool) {
@@ -194,56 +415,25 @@ func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, repo
 		return out, ErrStale
 	}
 	blockDefinition := block.Revision.Definition
-	publications, _, err := s.blocks.resolveDefinitions(ctx, e, blockDefinition, true)
-	if err != nil {
-		return out, err
-	}
-	var physical string
-	found := false
-	for _, publication := range publications {
-		if publication.Definition.Topic != source.Topic || publication.Definition.Version != source.TopicVersion {
-			continue
-		}
-		for _, dataset := range publication.Definition.Datasets {
-			if dataset.ID != source.Dataset {
-				continue
-			}
-			for _, column := range dataset.Columns {
-				if column.ID == source.Column {
-					physical, found = column.SourceName, true
-				}
-			}
-		}
-	}
-	if !found {
-		return out, ErrStale
-	}
 	if err := access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: blockDefinition.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: blockDefinition.Context}, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: source.Dataset}); err != nil {
 		return out, err
 	}
-	binding, err := s.blocks.sources.ContextBinding(ctx, e, blockDefinition.Source, blockDefinition.Context)
+	resolved, err := s.resolveFilterOption(ctx, e, blockDefinition, source, filter.Parameter)
 	if err != nil {
 		return out, err
 	}
-	relation, column, ok := filterColumn(binding, source.Dataset, physical)
-	if !ok || slices.Contains([]string{"binary", "structured"}, column.Category) {
-		return out, ErrUnavailable
-	}
-	out.SourceRevision = binding.Revision
-	columnSQL := filterSQLName(column.Name)
-	where := []string{}
+	out.SourceRevision = resolved.binding.Revision
 	parameters := []exec.Parameter{}
 	if in.Search != "" {
-		if column.Category != "text" {
+		if resolved.physical.Category != "text" {
 			return out, ErrInvalid
 		}
-		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(in.Search)
+		escaped := strings.NewReplacer(`!`, `!!`, `%`, `!%`, `_`, `!_`).Replace(in.Search)
 		parameters = append(parameters, exec.Parameter{Kind: "text", Value: "%" + escaped + "%"})
-		where = append(where, "LOWER("+columnSQL+") LIKE LOWER($1)")
 	}
 	if in.Cursor != "" {
 		cursor, cursorErr := s.decodeFilterCursor(in.Cursor)
-		if cursorErr != nil || cursor.Report != report || cursor.Revision != in.Revision || cursor.Filter != in.Filter || cursor.Search != in.Search || cursor.Limit != in.Limit || cursor.Locale != in.Locale || cursor.SourceRevision != binding.Revision || cursor.Authority != filterAuthority(e) {
+		if cursorErr != nil || cursor.Report != report || cursor.Revision != in.Revision || cursor.Filter != in.Filter || cursor.Search != in.Search || cursor.Limit != in.Limit || cursor.Locale != in.Locale || cursor.SourceRevision != resolved.binding.Revision || cursor.Authority != filterAuthority(e) {
 			return out, ErrStale
 		}
 		parameter, parameterErr := filterParameter(cursor.Type, cursor.Last)
@@ -251,14 +441,12 @@ func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, repo
 			return out, parameterErr
 		}
 		parameters = append(parameters, parameter)
-		where = append(where, fmt.Sprintf("(%s > $%d OR %s IS NULL)", columnSQL, len(parameters), columnSQL))
 	}
-	statement := "SELECT DISTINCT " + columnSQL + " AS value FROM " + filterSQLName(relation.Schema) + "." + filterSQLName(relation.Name)
-	if len(where) > 0 {
-		statement += " WHERE " + strings.Join(where, " AND ")
+	statement, err := filterOptionStatement(resolved.binding, resolved.relation, resolved.physical, in.Search != "", in.Cursor != "", in.Limit+1)
+	if err != nil {
+		return out, err
 	}
-	statement += " ORDER BY " + columnSQL + " ASC NULLS LAST LIMIT " + strconv.Itoa(in.Limit+1)
-	plan, err := s.blocks.validator.ValidateWithin(ctx, e, exec.Request{Source: blockDefinition.Source, Context: blockDefinition.Context, SQL: statement, Parameters: parameters}, []exec.RelationScope{{Dataset: source.Dataset, Columns: []string{column.Name}}})
+	plan, err := s.blocks.validator.ValidateWithin(ctx, e, exec.Request{Source: blockDefinition.Source, Context: blockDefinition.Context, SQL: statement, Parameters: parameters}, resolved.scope)
 	if err != nil {
 		return out, err
 	}
@@ -270,10 +458,16 @@ func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, repo
 	if err != nil {
 		return out, err
 	}
-	if !successful(reportResult.Attempt.Status) || reportResult.Result == nil || len(reportResult.Result.Schema) != 1 || reportResult.Result.Schema[0].Name != "value" || len(reportResult.Result.Rows) > in.Limit+1 {
+	if !successful(reportResult.Attempt.Status) {
 		return out, ErrStale
 	}
 	result := reportResult.Result
+	if err := validateFilterOptionResult(result, in.Limit); err != nil {
+		return FilterOptionsPage{}, err
+	}
+	if !filterResultMatches(filter.Parameter, result.Schema[0]) {
+		return FilterOptionsPage{}, ErrStale
+	}
 	for _, row := range result.Rows[:min(len(result.Rows), in.Limit)] {
 		if len(row) != 1 {
 			return FilterOptionsPage{}, ErrStale
@@ -290,20 +484,20 @@ func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, repo
 		if string(last) == "null" {
 			return FilterOptionsPage{}, ErrStale
 		}
-		out.Next, err = s.encodeFilterCursor(filterCursor{Report: report, Revision: in.Revision, Filter: in.Filter, Search: in.Search, Limit: in.Limit, Locale: in.Locale, SourceRevision: binding.Revision, Authority: filterAuthority(e), Type: result.Schema[0].Type, Last: append(json.RawMessage(nil), last...), Expires: time.Now().Add(5 * time.Minute).Unix()})
+		if _, parameterErr := filterParameter(result.Schema[0].Type, last); parameterErr != nil {
+			return FilterOptionsPage{}, parameterErr
+		}
+		out.Next, err = s.encodeFilterCursor(filterCursor{Report: report, Revision: in.Revision, Filter: in.Filter, Search: in.Search, Limit: in.Limit, Locale: in.Locale, SourceRevision: resolved.binding.Revision, Authority: filterAuthority(e), Type: result.Schema[0].Type, Last: append(json.RawMessage(nil), last...), Expires: time.Now().Add(5 * time.Minute).Unix()})
 		if err != nil {
 			return FilterOptionsPage{}, err
 		}
-	}
-	if current, currentErr := s.blocks.sources.ContextBinding(ctx, e, blockDefinition.Source, blockDefinition.Context); currentErr != nil || exec.Hash(current) != exec.Hash(binding) {
-		return FilterOptionsPage{}, ErrStale
 	}
 	currentBlock, currentErr := s.blocks.repo.ReadBlock(ctx, e, source.Block, Reference{Revision: source.BlockRevision}, Read)
 	if currentErr != nil || currentBlock.PublishedAt == nil || currentBlock.State.Archived || currentBlock.Revision.Digest != block.Revision.Digest {
 		return FilterOptionsPage{}, ErrStale
 	}
-	currentPublications, _, currentErr := s.blocks.resolveDefinitions(ctx, e, currentBlock.Revision.Definition, true)
-	if currentErr != nil || exec.Hash(currentPublications) != exec.Hash(publications) {
+	currentResolution, currentErr := s.resolveFilterOption(ctx, e, currentBlock.Revision.Definition, source, filter.Parameter)
+	if currentErr != nil || exec.Hash(currentResolution.binding) != exec.Hash(resolved.binding) || exec.Hash(currentResolution.publications) != exec.Hash(resolved.publications) || exec.Hash(currentResolution.scope) != exec.Hash(resolved.scope) || exec.Hash(currentResolution.semantic) != exec.Hash(resolved.semantic) || exec.Hash(currentResolution.physical) != exec.Hash(resolved.physical) {
 		return FilterOptionsPage{}, ErrStale
 	}
 	currentDocument, currentErr := s.repo.ReadDocument(ctx, e, "report", report, DocumentReference{Revision: in.Revision}, Read, false)

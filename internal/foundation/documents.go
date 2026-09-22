@@ -26,7 +26,7 @@ func mountDocuments(limits config.Reporting, db *postgres.DB, verifier *auth.Ver
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	registry, err := reportingapi.DocumentsRegistry()
+	registry, err := reportingapi.DocumentsRegistry(documents.CanFilterOptions())
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

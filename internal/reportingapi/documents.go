@@ -46,7 +46,7 @@ func documentReference(q url.Values) (reporting.DocumentReference, error) {
 	return reporting.DocumentReference{Revision: int64(revision), Stage: q.Get("stage")}, nil
 }
 
-func documentEntries(documents *reporting.Documents, runs *reporting.Compositions) []runtimeEndpoint {
+func documentEntries(documents *reporting.Documents, runs *reporting.Compositions, execution bool) []runtimeEndpoint {
 	entries := []runtimeEndpoint{}
 	for _, kind := range []string{"report", "dashboard"} {
 		path := "/v1/" + kind + "s"
@@ -83,7 +83,7 @@ func documentEntries(documents *reporting.Documents, runs *reporting.Composition
 			runtimeEntry("POST", path+"/{id}/runs", "reporting.execute", "admit_"+kind+"_run", "Reserve a key and seal exact "+kind+" composition inputs", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in reporting.CompositionRequest) (reporting.CompositionView, error) {
 				return runs.Admit(ctx, e, kind, id, in)
 			}))
-		if kind == "report" {
+		if kind == "report" && execution {
 			entries = append(entries, runtimeEntry("POST", path+"/{id}/filter-options", "reporting.execute", "report_filter_options", "Read bounded revision-bound selectable filter values", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in reporting.FilterOptionsRequest) (reporting.FilterOptionsPage, error) {
 				return documents.FilterOptions(ctx, e, id, in)
 			}))
@@ -150,8 +150,8 @@ func documentEntries(documents *reporting.Documents, runs *reporting.Composition
 
 // DocumentsRegistry describes the same closed DTOs consumed by the live handler.
 // Text-only authoring, composition and retained reads need no model provider.
-func DocumentsRegistry() (*api.Registry, error) {
-	entries := documentEntries(nil, nil)
+func DocumentsRegistry(execution bool) (*api.Registry, error) {
+	entries := documentEntries(nil, nil, execution)
 	definitions := make([]api.Definition, 0, len(entries))
 	for _, entry := range entries {
 		if entry.schemaErr != nil {

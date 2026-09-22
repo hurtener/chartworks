@@ -30,6 +30,12 @@ type Documents struct {
 	cursorKey [32]byte
 }
 
+// CanFilterOptions reports configured validated source execution capability.
+// It grants no caller authority and performs no I/O.
+func (s *Documents) CanFilterOptions() bool {
+	return s != nil && s.blocks != nil && s.blocks.CanValidate()
+}
+
 // NewDocuments performs no metadata, warehouse or model work. Text-only
 // documents remain available when optional query execution is disabled.
 func NewDocuments(repo DocumentRepository, blocks *Service, queries DocumentQueryCatalog, limits config.Reporting) (*Documents, error) {
@@ -152,14 +158,11 @@ func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, ki
 		if err != nil {
 			return nil, err
 		}
-		found := false
-		for _, pin := range snapshot.Revision.Definition.Topics {
-			if pin.Topic == source.Topic && pin.Version == source.TopicVersion {
-				found = true
-			}
+		if snapshot.PublishedAt == nil || snapshot.State.Archived {
+			return nil, ErrStale
 		}
-		if !found {
-			return nil, ErrInvalid
+		if _, err := s.resolveFilterOption(ctx, e, snapshot.Revision.Definition, *source, filter.Parameter); err != nil {
+			return nil, err
 		}
 	}
 	for _, a := range d.Defaults {
@@ -261,6 +264,19 @@ func (s *Documents) Transition(ctx context.Context, e identity.Envelope, kind, i
 		return DocumentState{}, err
 	}
 	defer cancel()
+	if operation == "publish" {
+		snapshot, err := s.repo.ReadDocument(ctx, e, kind, id, DocumentReference{Revision: revision}, Publish, false)
+		if err != nil {
+			return DocumentState{}, err
+		}
+		definition, err := ProjectStoredDocument(snapshot.Revision.Raw, kind)
+		if err != nil {
+			return DocumentState{}, err
+		}
+		if _, err := s.checkReferences(ctx, e, kind, definition); err != nil {
+			return DocumentState{}, err
+		}
+	}
 	return s.write(ctx, e, DocumentMutation{Kind: kind, ID: id, Operation: operation, ExpectedVersion: expected, TargetRevision: revision, Note: note})
 }
 

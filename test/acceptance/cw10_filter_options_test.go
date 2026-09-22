@@ -207,14 +207,17 @@ func TestCW10FilterOptionSearchAndOversize(t *testing.T) {
 	author := phase27Actor(t, f.phase17Fixture, f.actor.User(), phase29AuthorScopes(f.actor.Tenant()))
 	execute := phase27Actor(t, f.phase17Fixture, f.actor.User(), phase29RuntimeScopes(f.actor.Tenant()))
 	dataset := f.pack.Datasets[0]
-	var column string
+	var column, amountColumn string
 	for _, candidate := range dataset.Columns {
 		if candidate.SourceName == "name" {
 			column = candidate.ID
 		}
+		if candidate.SourceName == "amount" {
+			amountColumn = candidate.ID
+		}
 	}
-	if column == "" {
-		t.Fatal("reviewed name column absent")
+	if column == "" || amountColumn == "" {
+		t.Fatal("reviewed option columns absent")
 	}
 	d := phase29Text("Searchable choices")
 	d.Filters = []reporting.ReportFilter{{Label: "Category", Parameter: block.Parameters[0], Options: &reporting.FilterOptionSource{Version: 1, Block: created.State.ID, BlockRevision: 1, Topic: f.pack.Topic, TopicVersion: f.pack.Version, Dataset: dataset.ID, Column: column}}}
@@ -222,6 +225,13 @@ func TestCW10FilterOptionSearchAndOversize(t *testing.T) {
 	widget.Block.Revision = 1
 	widget.Bindings = []reporting.FilterBinding{{Filter: "category", Parameter: "category"}}
 	d.Widgets = append(d.Widgets, widget)
+	for _, invalid := range []struct{ id, column string }{{"cw10-missing-option", "missing"}, {"cw10-wrong-option-type", amountColumn}} {
+		bad := phase27Copy(t, d)
+		bad.Filters[0].Options.Column = invalid.column
+		if _, err := documents.Create(ctx, author, "report", invalid.id, bad); !errors.Is(err, reporting.ErrStale) {
+			t.Fatal("publication accepted an invalid semantic option chain", invalid.id, err)
+		}
+	}
 	state, err := documents.Create(ctx, author, "report", "cw10-search-report", d)
 	if err != nil {
 		t.Fatal(err)
@@ -231,11 +241,32 @@ func TestCW10FilterOptionSearchAndOversize(t *testing.T) {
 	if err != nil || !page.Complete || len(page.Options) != 1 || string(page.Options[0].Value) != `"two"` || page.Options[0].Label != "two" {
 		t.Fatal("escaped case-insensitive search", page, err)
 	}
+	if _, err = f.f.admin.Exec(ctx, `INSERT INTO analytics.sales(id,amount,name) VALUES(76,7,'rate%')`); err != nil {
+		t.Fatal(err)
+	}
+	page, err = documents.FilterOptions(ctx, execute, state.ID, reporting.FilterOptionsRequest{Revision: state.PublishedRevision, Filter: "category", Search: "%", Limit: 10, Locale: "en-US"})
+	if err != nil || len(page.Options) != 1 || string(page.Options[0].Value) != `"rate%"` {
+		t.Fatal("LIKE wildcard was not treated literally", page, err)
+	}
 	oversize := strings.Repeat("z", 1025)
 	if _, err = f.f.admin.Exec(ctx, `INSERT INTO analytics.sales(id,amount,name) VALUES(77,7,$1)`, oversize); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = documents.FilterOptions(ctx, execute, state.ID, reporting.FilterOptionsRequest{Revision: state.PublishedRevision, Filter: "category", Search: "zzz", Limit: 10, Locale: "en-US"}); !errors.Is(err, reporting.ErrBudget) {
 		t.Fatal("oversized label was not rejected", err)
+	}
+	drift, err := documents.Create(ctx, author, "report", "cw10-publish-drift", d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drift, err = documents.Transition(ctx, author, "report", drift.ID, drift.Version, drift.LatestRevision, "review", "Ready before source rotation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.f.s.Rotate(ctx, f.f.e, dataset.Source.Source, dataset.Source.SourceRevision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = documents.Transition(ctx, author, "report", drift.ID, drift.Version, drift.ReviewRevision, "publish", "Must revalidate exact source revision"); !errors.Is(err, reporting.ErrStale) {
+		t.Fatal("publication accepted stale source/semantic option chain", err)
 	}
 }

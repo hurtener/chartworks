@@ -12,7 +12,10 @@ columns.
 report read reach, `sources.query`, source query reach, context use reach, topic
 read reach, block read reach and dataset query reach. The domain service resolves
 the current source binding, active exact topic publication and safe physical
-column before constructing a single-column `SELECT DISTINCT`. The ordinary
+column before constructing a single-column `SELECT DISTINCT`. Closed builders
+cover PostgreSQL, MySQL, SQL Server, BigQuery, Snowflake and Databricks with
+connector-specific qualification, quoting, placeholders, literal LIKE escape,
+NULL-last keysets and row-limit syntax. The ordinary
 validator issues the only executable plan and the ordinary read executor applies
 read-only credentials, planner admission, deadlines, row/byte caps, cancellation
 and attempt receipts. No model is called and no SQL, values or credentials enter
@@ -24,6 +27,9 @@ NULL remains JSON null. Binary and structured values are explicitly unsupported.
 Search is bounded to reviewed string columns, uses an escaped bound parameter and
 starts a new keyset sequence. Database collation controls ordering; the requested
 locale controls presentation of NULL only and is part of the cursor identity.
+Values exceed the cursor-safe 1,024-byte scalar ceiling fail with a typed budget
+error before a page is exposed. Any row/byte-truncated source result also fails
+with a budget outcome and can never be labeled complete.
 
 Continuation cursors are opaque HMAC-authenticated process-local envelopes with a
 five-minute lifetime. They bind tenant, user, session, complete signed scope set,
@@ -33,7 +39,9 @@ or changed request coordinates fail closed before execution. Chartworks does not
 cache option values: every page repeats current authority, semantic and source
 revision checks. This avoids tenant-only or stale value reuse.
 
-Import/export needs no parallel mapping. The option binding is part of the
+The document route is registered only when validated source execution is mounted,
+matching the delivery/MCP capability boundary. Import/export needs no parallel
+mapping. The option binding is part of the
 existing immutable document definition JSON and therefore survives the ordinary
 versioned document import/export path. Historical definitions without the
 optional field retain their original behavior and do not acquire a source read.

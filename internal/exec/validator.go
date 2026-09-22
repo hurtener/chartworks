@@ -185,7 +185,11 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return Plan{}, ErrUnsafe
 	}
-	if inspection.Parameters != len(r.Parameters) || len(inspection.Outputs) < 1 || len(inspection.Outputs) > 256 {
+	parameters := inspection.Parameters
+	if parameters != len(r.Parameters) {
+		parameters, err = warehouseParameterCount(ctx, r.SQL, binding.Dialect)
+	}
+	if err != nil || parameters != len(r.Parameters) || len(inspection.Outputs) < 1 || len(inspection.Outputs) > 256 {
 		return Plan{}, ErrBinding
 	}
 	dependencies := make([]string, 0, len(inspection.Tables))
@@ -243,6 +247,35 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 		return Plan{}, err
 	}
 	return Plan{candidate: candidate, nativeChecked: true}, nil
+}
+
+// warehouseParameterCount compensates only for native inspection omissions in
+// otherwise parsed read trees (currently LIKE ... ESCAPE). It does not parse or
+// authorize SQL; the native inspection above remains mandatory for the tree.
+func warehouseParameterCount(ctx context.Context, statement, dialect string) (int, error) {
+	tokens, err := businessScan(ctx, statement, true)
+	if err != nil {
+		return 0, err
+	}
+	seen := map[int]bool{}
+	positional := 0
+	for _, token := range tokens {
+		if token.kind != 'p' {
+			continue
+		}
+		positional++
+		index, err := businessParameterIndex(token.text, dialect, positional)
+		if err != nil || index < 1 || index > 64 {
+			return 0, ErrBinding
+		}
+		seen[index] = true
+	}
+	for i := 1; i <= len(seen); i++ {
+		if !seen[i] {
+			return 0, ErrBinding
+		}
+	}
+	return len(seen), nil
 }
 
 func warehouseRelationMatches(binding Binding, relation Relation, name string, allowBare bool) bool {

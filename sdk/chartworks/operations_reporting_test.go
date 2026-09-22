@@ -22,7 +22,7 @@ func TestCW03ReportingOperationCatalog(t *testing.T) {
 	factories := []func() (*api.Registry, error){
 		func() (*api.Registry, error) { return reportingapi.Registry(true, true, true) },
 		func() (*api.Registry, error) { return reportingapi.RuntimeRegistry(true, true) },
-		reportingapi.DocumentsRegistry,
+		func() (*api.Registry, error) { return reportingapi.DocumentsRegistry(true) },
 		func() (*api.Registry, error) { return reportingapi.DeliveryRegistry(true, true) },
 	}
 	registries := make([]*api.Registry, 0, len(factories))

@@ -12,12 +12,12 @@ import (
 // of endpoints that the running application cannot actually expose.
 func TestDocumentCombinedRegistry(t *testing.T) {
 	base := phase21Registry(t)
-	documents, err := reportingapi.DocumentsRegistry()
+	documents, err := reportingapi.DocumentsRegistry(false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	combined, err := api.Compose(base, documents)
-	if err != nil || len(combined.Definitions()) != len(base.Definitions())+31 {
+	if err != nil || len(combined.Definitions()) != len(base.Definitions())+30 {
 		t.Fatal("document endpoints do not compose with the full phase 21 inventory", err)
 	}
 	body, err := combined.OpenAPI("Chartworks", "phase29")
