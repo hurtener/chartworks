@@ -55,4 +55,5 @@ D-079 supplies the exact static projection. D-082 adds the isolated worker,
 PostgreSQL rendition lifecycle, report/dashboard geometry, current-authority reads,
 HTTP/MCP/SDK/CLI registration and concrete client-owned BFF example. TestPhase32
 owns AC01–AC08, including real process/crash/timeout boundaries and the explicit
-JSON/CSV/HTML/SVG-only matrix.
+JSON/CSV/HTML/SVG-only matrix. Static HTML/SVG covers the complete fourteen-kind
+catalog: table and KPI presentations plus geometry for every twelve chart kinds.

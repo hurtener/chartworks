@@ -402,9 +402,10 @@ func renderChartSVG(c *charts.Output, theme string, width, height int, timezone 
 	if theme == "dark" {
 		background, foreground = "#17211f", "#f6f1e7"
 	}
-	fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" data-theme=\"%s\" viewBox=\"0 0 %d %d\"><title>%s</title><rect width=\"%d\" height=\"%d\" fill=\"%s\"/><g fill=\"%s\">", theme, width, height, html.EscapeString(c.Mapping.Options.Title), width, height, background, foreground)
-	y := 28
+	fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" data-kind=\"%s\" data-theme=\"%s\" viewBox=\"0 0 %d %d\"><title>%s</title><rect width=\"%d\" height=\"%d\" fill=\"%s\"/>", c.Kind, theme, width, height, html.EscapeString(c.Mapping.Options.Title), width, height, background)
 	if c.Kind == charts.KPI && c.KPIResult != nil {
+		b.WriteString("<g fill=\"" + foreground + "\">")
+		y := 28
 		for _, line := range kpiLines(c, timezone) {
 			if y > height-8 {
 				break
@@ -412,33 +413,14 @@ func renderChartSVG(c *charts.Output, theme string, width, height int, timezone 
 			fmt.Fprintf(&b, "<text x=\"16\" y=\"%d\" data-kind=\"%s\">%s</text>", y, html.EscapeString(line.kind), html.EscapeString(line.text))
 			y += 18
 		}
+		b.WriteString("</g>")
+		drawSparkline(&b, c.KPIResult.Sparkline, width, height)
 	} else {
-		for _, p := range c.Points {
-			if y > height-8 {
-				break
-			}
-			parts := []string{}
-			if !p.Category.Null {
-				parts = append(parts, formatCell(p.Category, chartColumn(c, c.Mapping.Bindings.Category), timezone))
-			}
-			for _, item := range []struct {
-				value   charts.Value
-				id      string
-				measure bool
-			}{{p.X, c.Mapping.Bindings.X, false}, {p.Y, c.Mapping.Bindings.Y, false}, {p.Value, c.Mapping.Bindings.Value, true}} {
-				if !item.value.Null && item.value.Exact != "" {
-					column := chartColumn(c, item.id)
-					if p.Measure != "" && item.measure {
-						column = chartColumn(c, p.Measure)
-					}
-					parts = append(parts, formatValue(item.value, column, timezone))
-				}
-			}
-			fmt.Fprintf(&b, "<text x=\"16\" y=\"%d\">%s</text>", y, html.EscapeString(strings.Join(parts, " · ")))
-			y += 18
+		if err := drawChartGeometry(&b, c, width, height, foreground, background, timezone); err != nil {
+			return "", err
 		}
 	}
-	b.WriteString("</g></svg>")
+	b.WriteString("</svg>")
 	return b.String(), nil
 }
 
