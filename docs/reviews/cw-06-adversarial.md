@@ -63,10 +63,14 @@ from manual final-gap qualification.
 10. **Shadow equality ignored selection-only changes.** The comparator now includes
     sorted rule-selection evidence, so changed advisory applicability or an
     equivalent hard-constraint outcome cannot be reported unchanged.
+11. **Current main assigned D-075 while this branch was under review.** Main's rich
+    semantic decision remains D-075; this workstream is now uniquely D-076 and
+    the active plan/gap links point to the correct decision.
 
 ## Executed evidence
 
 - `CGO_ENABLED=0 go test ./internal/semantics ./internal/semantics/rulesets ./internal/nlqroute ./internal/nlqexec ./internal/reporting ./internal/store/postgres`
+- `CGO_ENABLED=0 go test ./internal/topicapi ./internal/nlqapi ./internal/reportingapi ./sdk/chartworks`
 - `CGO_ENABLED=0 go test ./test/acceptance -run '^$'` (acceptance package
   compilation only)
 - `CGO_ENABLED=0 go test ./... -run '^$'` (all package compilation)
@@ -74,8 +78,9 @@ from manual final-gap qualification.
 - `make planning-check` with a canonical macOS private temporary path
 
 The fix round reran the focused ruleset/router/NLQ/reporting/store/API/SDK tests
-and acceptance-package compilation successfully. Formatting and broader checks
-listed below are rerun on the final fix head before publication.
+and acceptance-package compilation successfully after merging current main.
+Formatting, vet, all-package compilation, planning coherence, mirror and diff
+checks also passed on the integrated candidate.
 
 ## Remaining qualification
 
