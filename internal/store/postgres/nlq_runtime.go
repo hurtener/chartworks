@@ -96,14 +96,30 @@ func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 
 // WithPlanOperationLock serializes one scoped operation callback. The session
 // lock is acquired on a reserved connection while the callback uses the
-// ordinary pool; waiters release their connections while the key is held so
-// bounded pools cannot deadlock. The callback persists the plan before
-// returning, and no result or authority is cached here.
+// ordinary pool. A per-pool slot bounds simultaneous holders to MaxConns-1,
+// leaving at least one connection for callbacks even when keys differ.
+// Waiters release their connections while a key is held. The callback persists
+// the plan before returning, and no result or authority is cached here.
 func (d *DB) WithPlanOperationLock(ctx context.Context, scope store.Scope, operation string, callback func() error) (retErr error) {
-	if ctx == nil || !scope.Valid() || !identity.Identifier(operation) || callback == nil || d.closed.Load() || d.pool.Config().MaxConns < 2 {
+	if d == nil || ctx == nil || !scope.Valid() || !identity.Identifier(operation) || callback == nil || d.closed.Load() || d.planOperationSlots == nil {
 		return store.ErrUnavailable
 	}
-	lockKey := scope.Tenant() + "\x00" + scope.Actor() + "\x00" + operation
+	select {
+	case d.planOperationSlots <- struct{}{}:
+		defer func() { <-d.planOperationSlots }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// PostgreSQL text parameters reject NUL bytes. JSON keeps the tuple
+	// unambiguous while producing a valid, printable advisory-lock key.
+	lockKeyBytes, err := json.Marshal([3]string{scope.Tenant(), scope.Actor(), operation})
+	if err != nil {
+		return store.ErrUnavailable
+	}
+	lockKey := string(lockKeyBytes)
 	var conn *pgxpool.Conn
 	for {
 		acquired, err := d.pool.Acquire(ctx)
