@@ -18,12 +18,13 @@ func DocumentsHandler(verifier *auth.Verifier, documents *reporting.Documents, r
 	if verifier == nil || documents == nil || runs == nil || next == nil {
 		return http.NotFoundHandler()
 	}
-	registry, err := DocumentsRegistry()
+	execution := documents.CanFilterOptions()
+	registry, err := DocumentsRegistry(execution)
 	if err != nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { failure(w, err) })
 	}
 	calls := map[string]runtimeEndpoint{}
-	for _, entry := range documentEntries(documents, runs) {
+	for _, entry := range documentEntries(documents, runs, execution) {
 		calls[entry.definition.ID] = entry
 	}
 	slots := make(chan struct{}, 16)

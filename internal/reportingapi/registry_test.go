@@ -46,3 +46,22 @@ func TestDeliveryRegistryAdvertisesStaticExportOnlyWhenMounted(t *testing.T) {
 		t.Fatal("static exporter not registered with exact authority/effect")
 	}
 }
+
+func TestFilterOptionsAdvertisedOnlyWithValidatedExecution(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		registry, err := DeliveryRegistry(enabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, definition := range registry.Definitions() {
+			if definition.ID != "reportingFilterOptions" {
+				continue
+			}
+			found = definition.Action == "reporting.execute" && definition.Effect == "bounded_validated_distinct_source_read" && definition.Request != nil && definition.Response != nil
+		}
+		if found != enabled {
+			t.Fatal("filter option capability registration mismatch", enabled, found)
+		}
+	}
+}

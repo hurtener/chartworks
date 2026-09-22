@@ -15,7 +15,7 @@ import (
 )
 
 func TestDocumentCompositionRequestWire(t *testing.T) {
-	registry, err := reportingapi.DocumentsRegistry()
+	registry, err := reportingapi.DocumentsRegistry(false)
 	if err != nil {
 		t.Fatal(err)
 	}

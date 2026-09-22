@@ -135,6 +135,21 @@ func validGrid(g GridCell) bool {
 	return g.Column >= 0 && g.Column < 12 && g.Row >= 0 && g.Row < 10000 && g.Width >= 1 && g.Width <= 12-g.Column && g.Height >= 1 && g.Height <= 100 && g.Row+g.Height <= 10000
 }
 
+func validFilterOptionSource(p Parameter, source *FilterOptionSource) bool {
+	if source == nil {
+		return true
+	}
+	if source.Version != 1 || !identity.Identifier(source.Block) || source.BlockRevision < 1 || source.BlockRevision > 256 || !identity.Identifier(source.Topic) || !identity.Identifier(source.TopicVersion) || !identity.Identifier(source.Dataset) || !identity.Identifier(source.Column) {
+		return false
+	}
+	switch p.Type {
+	case "dimension_value", "dimension_list", "number", "number_list", "integer", "integer_list", "boolean", "date", "datetime":
+		return true
+	default:
+		return false
+	}
+}
+
 func overlapping(a, b GridCell) bool {
 	return a.Column < b.Column+b.Width && b.Column < a.Column+a.Width && a.Row < b.Row+b.Height && b.Row < a.Row+a.Height
 }
@@ -215,7 +230,7 @@ func ValidateDocument(kind string, d DocumentDefinition, limits config.Reporting
 	filters, used := map[string]Parameter{}, map[string]bool{}
 	for _, filter := range d.Filters {
 		p := filter.Parameter
-		if filters[p.Name].Name != "" || validateDeclarations([]Parameter{p}, 1) != nil || !text(filter.Label, 256) {
+		if filters[p.Name].Name != "" || validateDeclarations([]Parameter{p}, 1) != nil || !text(filter.Label, 256) || !validFilterOptionSource(p, filter.Options) {
 			return ErrInvalid
 		}
 		filters[p.Name] = p

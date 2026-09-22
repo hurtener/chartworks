@@ -103,3 +103,30 @@ func TestScopedValidatorUsesCommonProofAndPhysicalBinding(t *testing.T) {
 		})
 	}
 }
+
+func TestWarehouseParameterFallbackIsClosed(t *testing.T) {
+	for _, test := range []struct {
+		dialect, statement string
+		want               int
+	}{
+		{"mysql", "SELECT id FROM analytics.sales WHERE name LIKE ? ESCAPE '!'", 1},
+		{"sqlserver", "SELECT id FROM analytics.sales WHERE name LIKE @p1 ESCAPE '!' AND id>@p2", 2},
+		{"bigquery", "SELECT id FROM `warehouse.analytics.sales` WHERE name LIKE @p1 ESCAPE '!'", 1},
+		{"snowflake", "SELECT id FROM warehouse.analytics.sales WHERE name LIKE ? ESCAPE '!'", 1},
+		{"databricks", "SELECT id FROM warehouse.analytics.sales WHERE name LIKE ? ESCAPE '!'", 1},
+	} {
+		got, err := warehouseParameterCount(t.Context(), test.statement, test.dialect)
+		if err != nil || got != test.want {
+			t.Fatal(test.dialect, got, err)
+		}
+	}
+	if got, err := warehouseParameterCount(t.Context(), "SELECT '@p1', id FROM analytics.sales", "sqlserver"); err != nil || got != 0 {
+		t.Fatal("literal marker counted", got, err)
+	}
+	if _, err := warehouseParameterCount(t.Context(), "SELECT id FROM analytics.sales -- @p1\n", "sqlserver"); err == nil {
+		t.Fatal("comment-bearing fallback accepted")
+	}
+	if _, err := warehouseParameterCount(t.Context(), "SELECT id FROM analytics.sales WHERE id>@p2", "sqlserver"); err == nil {
+		t.Fatal("non-contiguous marker accepted")
+	}
+}

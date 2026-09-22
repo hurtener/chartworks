@@ -12,7 +12,7 @@ import (
 // of endpoints that the running application cannot actually expose.
 func TestDocumentCombinedRegistry(t *testing.T) {
 	base := phase21Registry(t)
-	documents, err := reportingapi.DocumentsRegistry()
+	documents, err := reportingapi.DocumentsRegistry(false)
 	if err != nil {
 		t.Fatal(err)
 	}

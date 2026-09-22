@@ -19,8 +19,9 @@ Publishing the enclosing report cannot certify dynamically generated SQL or make
 1. Add report/revision and dashboard/revision domain storage with grid/filter/widget definitions, exact page references and publication workflows.
 2. Compose block, explicitly dynamic replayable/session-bound query, and safe text widgets; normalize older section layouts into the canonical read projection.
 3. Resolve run references/filter bindings once, deduplicate equivalent block execution, preserve per-widget trust/provenance and explicit partial failure.
-4. Keep archive distinct from exact-CAS deletion. Deletion retains an audit tombstone and dependency evidence, erases live document/composition payloads, fences stale completion, retires only matching report schedules and never infers dashboard ownership of shared reports.
-5. Project bounded catalog relationships and creator/editor display labels through a descriptive platform seam. Labels and delivery metadata never grant resource reach.
+4. Resolve optional selectable filter values only from an exact versioned block/topic/dataset/column binding through the common validated read core; bind bounded keyset cursors to current authority, immutable report revision and source revision.
+5. Keep archive distinct from exact-CAS deletion. Deletion retains an audit tombstone and dependency evidence, erases live document/composition payloads, fences stale completion, retires only matching report schedules and never infers dashboard ownership of shared reports.
+6. Project bounded catalog relationships and creator/editor display labels through a descriptive platform seam. Labels and delivery metadata never grant resource reach.
 
 A report run resolves all floating pointers once before execution. Deduplicate only within identical query/parameter/context semantics and fan out the union of selected outputs; changed output subsets remain explicit. Query widgets carry their own query/semantic evidence and never inherit a block's certificate. Static text is sanitized plain/Markdown, not a custom script. Page redaction omits unauthorized content without disclosing hidden names.
 
@@ -39,7 +40,7 @@ Reports widgets/filters/pages default ceilings=100, live_queries=false, session_
 3. **AC03** — Floating references resolve once into a manifest; page order/exact revisions and shared-block output fan-out stay stable during concurrent publication.
 4. **AC04** — Dynamic widgets require explicit enablement and query authority; replayable versus session-bound context is distinguished and never mislabeled certified.
 5. **AC05** — Strict/partial policies record omissions, output errors, mixed freshness and budget failures without a false complete result.
-6. **AC06** — Filter-to-parameter typing/precedence, safe presentation overrides and grid/text limits are validated; filters are not row-security authority.
+6. **AC06** — Filter-to-parameter typing/precedence, revision-bound selectable options, safe presentation overrides and grid/text limits are validated; filters are not row-security authority.
 7. **AC07** — Legacy section projection and external-reference/version semantics preserve meaning without mutating old revisions; unsupported records are quarantined.
 8. **AC08** — Dashboard redaction discloses no hidden page names/data and may return zero visible pages; metadata summaries do not fetch raw results.
 
@@ -56,6 +57,10 @@ The eight named criteria now exercise the HTTP/SDK lifecycle and cumulative Phas
 An unavailable optional narrative is an output-local failed receipt in an explicitly opted-in partial frozen run; composition still enforces its own strict/partial policy and the full declared narrative budget. Strict standalone frozen admission retains its prior fail-fast behavior. A failed strict report does not expose a completed-looking widget payload.
 
 The [runtime contract](../contracts/reporting-composition-v1.md), [runnable request fixtures](../../examples/report-create.json), and [adversarial review](../reviews/phase-29-adversarial.md) describe the implemented scope. All eight strict acceptance results and exact-source CI remain mandatory. Phase 29 does not claim the Phase 30–34 schedules/viewer/rendering/cutover capabilities or the Phase 25 release gate.
+
+[D-082](../decisions/2026-09-22-report-filter-options.md) and the
+[filter-options contract](../contracts/report-filter-options-v1.md) add the REP-01
+consumer without turning retained artifact reads into warehouse work.
 
 D-081 adds the REP-02/REP-03 lifecycle/catalog continuation without changing the
 eight original phase criteria: AC01 owns the exact-CAS lifecycle and audit,

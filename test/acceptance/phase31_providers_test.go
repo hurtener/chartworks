@@ -31,19 +31,20 @@ func testPhase31AppsDiscovery(t *testing.T) {
 	if err := json.Unmarshal(phase22RPC(t, client, "tools/list", map[string]any{}), &tools); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 5 {
+	if len(tools.Tools) != 6 {
 		t.Fatalf("actual reporting tools: %+v", tools.Tools)
 	}
 	seen := map[string]bool{}
 	for _, tool := range tools.Tools {
 		seen[tool.Name] = true
-		if tool.Name == "reporting_run" && tool.Annotations.ReadOnly {
-			t.Fatal("paid run advertised as read-only")
+		executes := tool.Name == "reporting_run" || tool.Name == "reporting_filter_options"
+		if executes && tool.Annotations.ReadOnly {
+			t.Fatal("source execution advertised as read-only", tool.Name)
 		}
-		if tool.Name != "reporting_run" && !tool.Annotations.ReadOnly {
+		if !executes && !tool.Annotations.ReadOnly {
 			t.Fatal("retained/catalog read advertised as an execution")
 		}
-		if tool.Name == "reporting_run" || tool.Name == "reporting_view" {
+		if tool.Name == "reporting_run" || tool.Name == "reporting_filter_options" || tool.Name == "reporting_view" {
 			var ui struct {
 				URI        string   `json:"resourceUri"`
 				Visibility []string `json:"visibility"`
@@ -53,7 +54,7 @@ func testPhase31AppsDiscovery(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"reporting_search", "reporting_describe", "reporting_run", "reporting_runs", "reporting_view"} {
+	for _, name := range []string{"reporting_search", "reporting_describe", "reporting_filter_options", "reporting_run", "reporting_runs", "reporting_view"} {
 		if !seen[name] {
 			t.Fatal("missing actual tool", name)
 		}

@@ -33,7 +33,7 @@ func TestDocumentHTTPContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := reportingapi.DocumentsRegistry()
+	registry, err := reportingapi.DocumentsRegistry(false)
 	if err != nil || len(registry.Definitions()) != 30 {
 		t.Fatal("closed report/dashboard transport inventory", err)
 	}

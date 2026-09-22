@@ -7,7 +7,7 @@ import (
 )
 
 func TestDocumentAPIRegistry(t *testing.T) {
-	registry, err := DocumentsRegistry()
+	registry, err := DocumentsRegistry(false)
 	if err != nil {
 		t.Fatal("closed document schemas", err)
 	}
@@ -32,5 +32,21 @@ func TestDocumentAPIRegistry(t *testing.T) {
 	}
 	if _, err := api.Compose(blocks, runtime, registry); err != nil {
 		t.Fatal("document routes collide with existing phase 27/28 surfaces", err)
+	}
+}
+
+func TestDocumentFilterOptionsRegistrationRequiresExecution(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		registry, err := DocumentsRegistry(enabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, definition := range registry.Definitions() {
+			found = found || definition.ID == "report_filter_options"
+		}
+		if found != enabled {
+			t.Fatal("document filter options capability mismatch", enabled, found)
+		}
 	}
 }

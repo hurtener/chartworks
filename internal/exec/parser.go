@@ -419,7 +419,7 @@ func safeFunction(parts []string) bool {
 		return false
 	}
 	switch parts[0] {
-	case "count", "sum", "avg", "min", "max", "abs", "round", "ceil", "ceiling", "floor", "lower", "upper", "length", "char_length", "octet_length", "trim", "btrim", "ltrim", "rtrim", "substring", "substr", "replace", "date_trunc", "date_part", "extract", "row_number", "rank", "dense_rank", "lag", "lead", "first_value", "last_value", "nth_value", "ntile", "percent_rank", "cume_dist":
+	case "count", "sum", "avg", "min", "max", "abs", "round", "ceil", "ceiling", "floor", "lower", "upper", "length", "char_length", "octet_length", "trim", "btrim", "ltrim", "rtrim", "substring", "substr", "replace", "like_escape", "date_trunc", "date_part", "extract", "row_number", "rank", "dense_rank", "lag", "lead", "first_value", "last_value", "nth_value", "ntile", "percent_rank", "cume_dist":
 		return true
 	}
 	return false

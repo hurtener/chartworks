@@ -52,6 +52,18 @@ type DocumentQuery = reporting.QueryWidget
 // DocumentFilter uses the exact governed block parameter type system.
 type DocumentFilter = reporting.ReportFilter
 
+// DocumentFilterOptionSource pins one reviewed semantic column.
+type DocumentFilterOptionSource = reporting.FilterOptionSource
+
+// DocumentFilterOption preserves exact typed JSON and its bounded label.
+type DocumentFilterOption = reporting.FilterOption
+
+// DocumentFilterOptionsPage is one deterministic keyset page.
+type DocumentFilterOptionsPage = reporting.FilterOptionsPage
+
+// DocumentFilterOptionsRequest selects one exact report revision and filter.
+type DocumentFilterOptionsRequest = reporting.FilterOptionsRequest
+
 // DocumentFilterBinding maps a report filter to a block parameter, not security policy.
 type DocumentFilterBinding = reporting.FilterBinding
 
@@ -191,6 +203,17 @@ func (c *Client) ListDocuments(ctx context.Context, kind DocumentKind, after str
 		q.Set("after", after)
 	}
 	err = c.callLimit(ctx, "GET", path+"?"+q.Encode(), "", nil, &out, 4<<20)
+	return
+}
+
+// ReportFilterOptions performs one explicit bounded source read. Cursors cannot
+// be reused with changed report, revision, filter, search, limit or authority.
+func (c *Client) ReportFilterOptions(ctx context.Context, report string, in DocumentFilterOptionsRequest) (out DocumentFilterOptionsPage, err error) {
+	path, pathErr := documentPath(ReportDocument, report)
+	if pathErr != nil || report == "" || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || len(in.Cursor) > 16<<10 {
+		return out, ErrDocumentRequest
+	}
+	err = c.callLimit(ctx, "POST", path+"/filter-options", "", in, &out, 2<<20)
 	return
 }
 

@@ -73,3 +73,11 @@ that reroutes current authority, rechecks exact semantic/source/context/rule/tem
 origin, validates SQL natively and creates only a review candidate. Replays are
 idempotent. Phase 34 still owns external manifests, coordinate remapping, cohort
 dry-runs, unsupported-record ledgers and cutover/rollback evidence.
+
+## CW-10 selectable filter binding portability
+
+The optional filter-options binding is ordinary immutable document JSON and
+therefore survives the existing versioned import/export path. Phase 34 must map
+its exact block/topic/dataset/column coordinates, quarantine unresolved bindings
+and prove source-revision/current-authority revalidation; it must not replace the
+binding with profile samples or a label-derived physical column.
