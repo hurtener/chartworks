@@ -4,8 +4,9 @@ Status: bounded PERF-01 harness and authority-bound Phase 25 prerequisite
 implemented for review, 2026-09-22. The query adapter composes Plan→Run under
 a PostgreSQL-scoped operation lock and can distinguish physical attempts from
 idempotent replay. It fails closed for final stress: this path does not exercise
-the product's frozen-run reuse identity, and the current read attempt has no
-source-only duration receipt. The Phase-34 current-revision resolver and
+the product's frozen-run reuse identity, and the production performance adapter
+does not yet consume the PostgreSQL read attempt's source-only duration receipt.
+The Phase-34 current-revision resolver and
 production release composition also remain required. Phase 25 still owns the
 final stress execution and decision.
 
@@ -105,10 +106,14 @@ path is never replaced. The one-hour profile bound includes correctness probes
 as well as timed observations. A permitted integration/live correctness probe
 must carry physical source and model receipts before any timed sample starts.
 Read-attempt `created_at` to `finished_at` spans journaling, source work and
-finalization; it is never labeled `source_ns`. The current query adapter leaves
-source time unknown, so the required physical-source timing gate fails closed.
-A future PostgreSQL source receipt must measure the actual native read boundary
-and persist that duration through the execution result before AC03 can pass.
+finalization; it is never labeled `source_ns`. A nullable `source_duration_ns`
+on a PostgreSQL physical read attempt measures the native source work after
+connection acquisition through transaction cleanup and subtracts synchronous
+read journal calls. It survives the durable execution receipt. Legacy,
+unissued and uncertain
+attempts remain unknown. The current query adapter does not consume this receipt,
+so its physical-source timing gate still fails closed until the production
+composition wires the exact attempt duration into performance usage.
 The signed-action negative needs a second short-lived Pengui bearer for the
 same subject/reach with exactly `query.plan` or `query.execute` removed. Both
 bearers are verified; the altered envelope is passed through governed
