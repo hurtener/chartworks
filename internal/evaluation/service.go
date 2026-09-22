@@ -13,6 +13,7 @@ import (
 // Repository persists immutable revisions, review receipts, and terminal run evidence.
 type Repository interface {
 	CreateSuite(context.Context, store.Scope, SuiteRecord) error
+	SaveInput(context.Context, store.Scope, ProtectedRef, LiveInput) error
 	ReviewSuite(context.Context, store.Scope, SuiteReview) (SuiteRecord, error)
 	AcceptedSuite(context.Context, store.Scope, string, int64, string) (SuiteRecord, error)
 	BeginRun(context.Context, store.Scope, RunRequest) error
@@ -25,6 +26,26 @@ type Repository interface {
 	ReadProposal(context.Context, store.Scope, string) (OptimizationProposal, error)
 	ReviewProposal(context.Context, store.Scope, ReviewReceipt) error
 	SelectPack(context.Context, store.Scope, PackSelection, int64) (PackSelection, error)
+}
+
+// RegisterInput stores protected live material and returns its canonical reference.
+func (s *Service) RegisterInput(ctx context.Context, e identity.Envelope, retention string, in LiveInput) (ProtectedRef, error) {
+	if ctx == nil || !identifier(retention) {
+		return ProtectedRef{}, ErrInvalid
+	}
+	d, err := digest(in)
+	if err != nil {
+		return ProtectedRef{}, ErrInvalid
+	}
+	ref := ProtectedRef{Digest: d, Retention: retention}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return ProtectedRef{}, err
+	}
+	if err = s.repo.SaveInput(ctx, scope, ref, in); err != nil {
+		return ProtectedRef{}, err
+	}
+	return ref, nil
 }
 
 // FeedbackSource reads reviewed learning evidence under the original authority.

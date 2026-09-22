@@ -172,6 +172,7 @@ func (r *testRepo) CreateSuite(_ context.Context, _ store.Scope, v SuiteRecord) 
 	r.suites[v.Digest] = v
 	return nil
 }
+func (*testRepo) SaveInput(context.Context, store.Scope, ProtectedRef, LiveInput) error { return nil }
 func (r *testRepo) ReviewSuite(_ context.Context, _ store.Scope, v SuiteReview) (SuiteRecord, error) {
 	x := r.suites[v.Digest]
 	if x.Author == v.Reviewer {
@@ -381,6 +382,22 @@ func TestFailureReportAndLiveRunnerBoundaries(t *testing.T) {
 	u := gatewayUsage(gateway.Receipt{Calls: []gateway.Usage{{Attempts: 2, DurationMS: 3, InputTokens: ptr(2), OutputTokens: ptr(4), CostUSD: ptr(0.1)}}})
 	if u.Calls != 2 || u.Retries != 1 || u.Tokens == nil || *u.Tokens != 6 || u.ModelMS == nil || *u.ModelMS != 3 {
 		t.Fatal(u)
+	}
+	unknown := gatewayUsage(gateway.Receipt{Calls: []gateway.Usage{{Attempts: 1}}})
+	if unknown.Tokens != nil || unknown.CostUSD != nil {
+		t.Fatal(unknown)
+	}
+	if (OptimizationProposal{}).Validate() == nil {
+		t.Fatal("invalid proposal")
+	}
+	if _, err = (NLQFeedbackSource{}).ReviewedFeedback(context.Background(), testAuthority(t, "actor", false), "topic", 1); !errors.Is(err, ErrInvalid) {
+		t.Fatal(err)
+	}
+	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
+	svc, _ := New(repo, nil, nil)
+	ref, err := svc.RegisterInput(context.Background(), testAuthority(t, "actor", false), "protected", LiveInput{})
+	if err != nil || !validDigest(ref.Digest) {
+		t.Fatal(ref, err)
 	}
 }
 

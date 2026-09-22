@@ -22,6 +22,7 @@ type EvaluationSuiteRecord = evaluation.SuiteRecord
 
 // EvaluationSuiteReviewRequest pins a decision to exact suite material.
 type EvaluationSuiteReviewRequest = evaluation.SuiteReviewRequest
+
 type evaluationSuiteReviewInput struct {
 	SuiteID string                       `json:"suite_id"`
 	Request EvaluationSuiteReviewRequest `json:"request"`

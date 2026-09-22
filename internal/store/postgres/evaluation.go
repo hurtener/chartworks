@@ -17,6 +17,31 @@ import (
 var _ evaluation.Repository = (*DB)(nil)
 var _ evaluation.LiveInputResolver = (*DB)(nil)
 
+// SaveInput stores protected live material under its canonical digest.
+func (d *DB) SaveInput(ctx context.Context, scope store.Scope, ref evaluation.ProtectedRef, in evaluation.LiveInput) error {
+	if checkScope(scope) != nil {
+		return store.ErrInvalid
+	}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return store.ErrInvalid
+	}
+	sum := sha256.Sum256(raw)
+	if hex.EncodeToString(sum[:]) != ref.Digest {
+		return store.ErrInvalid
+	}
+	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_inputs(tenant_id,input_digest,material) VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING`, scope.Tenant(), ref.Digest, raw)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return store.ErrConflict
+		}
+		return nil
+	})
+}
+
 // ResolveEvaluationInput reads protected material only after current signed tenant authority.
 func (d *DB) ResolveEvaluationInput(ctx context.Context, e identity.Envelope, ref evaluation.ProtectedRef) (out evaluation.LiveInput, err error) {
 	if !e.Valid() || ref.Digest == "" {

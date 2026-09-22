@@ -32,6 +32,9 @@ func (x *apiRepo) CreateSuite(_ context.Context, _ store.Scope, v evaluation.Sui
 	x.s = v
 	return nil
 }
+func (*apiRepo) SaveInput(context.Context, store.Scope, evaluation.ProtectedRef, evaluation.LiveInput) error {
+	return nil
+}
 func (x *apiRepo) ReviewSuite(_ context.Context, _ store.Scope, v evaluation.SuiteReview) (evaluation.SuiteRecord, error) {
 	x.s.State = v.Decision
 	x.s.Review = &v
