@@ -52,6 +52,10 @@ func (r *evidenceBoundaryRepository) SaveRuleDraft(context.Context, identity.Env
 	return Draft{}, store.ErrUnavailable
 }
 
+func (r *evidenceBoundaryRepository) ReadRuleDraft(context.Context, identity.Envelope, string, int64, drafts.Access) (Draft, error) {
+	return Draft{}, store.ErrNotFound
+}
+
 func (r *evidenceBoundaryRepository) ReviewRuleDraft(context.Context, identity.Envelope, topics.Published, string, ReviewRequest) (Review, error) {
 	return Review{}, store.ErrUnavailable
 }

@@ -96,6 +96,31 @@ func (d *DB) SaveRuleDraft(ctx context.Context, e identity.Envelope, published t
 	return
 }
 
+// ReadRuleDraft returns one exact private authoring revision for crash-resume
+// reconciliation by callers that already hold topic draft write reach.
+func (d *DB) ReadRuleDraft(ctx context.Context, e identity.Envelope, topic string, revision int64, access drafts.Access) (out rulesets.Draft, err error) {
+	if !identity.Identifier(topic) || revision < 1 || revision >= 1<<62 {
+		return out, store.ErrInvalid
+	}
+	if err = requireRuleAccess(e, topic, access); err != nil {
+		return out, err
+	}
+	ctx, cancel, err := requestContext(ctx, e)
+	if err != nil {
+		return out, err
+	}
+	defer cancel()
+	var raw []byte
+	err = d.pool.QueryRow(ctx, `SELECT topic_id,revision,digest,definition,change_note,created_at FROM chartworks.topic_rule_draft_versions WHERE tenant_id=$1 AND topic_id=$2 AND actor_id=$3 AND session_id=$4 AND revision=$5`, e.Tenant(), topic, e.User(), e.Session(), revision).Scan(&out.Topic, &out.Revision, &out.Digest, &raw, &out.Change, &out.CreatedAt)
+	if err != nil {
+		return out, safe(err)
+	}
+	if err = json.Unmarshal(raw, &out.Definition); err != nil {
+		return rulesets.Draft{}, store.ErrUnavailable
+	}
+	return out, nil
+}
+
 // ReviewRuleDraft persists a review decision for a version-pinned rule draft.
 func (d *DB) ReviewRuleDraft(ctx context.Context, e identity.Envelope, published topics.Published, topic string, in rulesets.ReviewRequest) (out rulesets.Review, err error) {
 	if err = requireRuleAccess(e, topic, drafts.Review); err != nil {

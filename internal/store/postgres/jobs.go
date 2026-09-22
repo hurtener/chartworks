@@ -327,6 +327,16 @@ func (d *DB) ClaimJob(ctx context.Context, owner string, l jobs.Limits) (out job
 		row := tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM chartworks.operations o WHERE dispatch_mode='queued' AND status IN ('pending','retry','running') AND next_attempt_at<=clock_timestamp() AND due_at<=clock_timestamp() AND expires_at>clock_timestamp() AND attempt_count<max_attempts AND(lease_until IS NULL OR lease_until<=clock_timestamp())
  AND(SELECT count(*) FROM chartworks.active_execution_roots a WHERE a.tenant_id=o.tenant_id)<$1
  AND(o.schedule_id IS NULL OR NOT EXISTS(SELECT 1 FROM chartworks.operations a WHERE a.tenant_id=o.tenant_id AND a.schedule_id=o.schedule_id AND a.operation_id<>o.operation_id AND a.status='running' AND a.lease_until>clock_timestamp()))
+ AND(o.schedule_id IS NULL OR NOT EXISTS(SELECT 1 FROM chartworks.migration_schedule_routes r WHERE r.tenant_id=o.tenant_id AND r.schedule_id=o.schedule_id) OR EXISTS(
+  SELECT 1 FROM chartworks.migration_schedule_routes r
+  JOIN chartworks.migration_cutovers c USING(tenant_id,cohort_id)
+  JOIN chartworks.migration_occurrence_admissions a
+    ON a.tenant_id=r.tenant_id AND a.cohort_id=r.cohort_id AND a.stream_id=r.stream_id
+   AND a.schedule_id=r.schedule_id AND a.due_at=o.due_at
+  WHERE r.tenant_id=o.tenant_id AND r.schedule_id=o.schedule_id
+   AND c.route=o.schedule_id AND r.schedule_revision=o.schedule_revision
+   AND a.generation=c.generation AND a.stream_id=(c.boundary->>'stream')
+   AND o.due_at>(c.boundary->>'resume_after')::timestamptz))
  ORDER BY next_attempt_at,due_at,operation_id LIMIT 1 FOR UPDATE OF o SKIP LOCKED`, l.TenantConcurrency)
 		j, e := scanJob(row)
 		if errors.Is(e, pgx.ErrNoRows) {
