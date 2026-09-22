@@ -403,13 +403,17 @@ func TestRegistrationAndResourceAmbiguity(t *testing.T) {
 	if !json.Valid(reg.Manifest()[0].InputSchema.(json.RawMessage)) {
 		t.Fatal("mutable schema")
 	}
-	for _, effect := range []string{"metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "caller_data_transform_no_persistence", "caller_data_selection_optional_gateway_rank", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration", "retained_static_rendition", "durable_isolated_static_rendition", "bounded_rendition_deletion"} {
+	for _, effect := range []string{"metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "caller_data_transform_no_persistence", "caller_data_selection_optional_gateway_rank", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_state_commit", "nlq_examples_read", "nlq_examples_export", "nlq_example_import", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration", "retained_static_rendition", "durable_isolated_static_rendition", "bounded_rendition_deletion"} {
 		ef, ok := effectFor(effect)
 		if !ok || ef.readOnly && (ef.paid || ef.persists) {
 			t.Fatal("unsafe annotation", effect)
 		}
 	}
 	for effect, check := range map[string]func(effects) bool{
+		"nlq_example_state_commit":          func(e effects) bool { return e.persists && !e.readOnly && !e.openWorld && !e.paid },
+		"nlq_examples_read":                 func(e effects) bool { return e.readOnly && e.idempotent && !e.openWorld && !e.persists && !e.paid },
+		"nlq_examples_export":               func(e effects) bool { return e.readOnly && e.idempotent && !e.openWorld && !e.persists && !e.paid },
+		"nlq_example_import":                func(e effects) bool { return e.openWorld && e.persists && e.paid && !e.readOnly && !e.destructive },
 		"retained_static_rendition":         func(e effects) bool { return e.openWorld && !e.readOnly && !e.persists && !e.destructive },
 		"durable_isolated_static_rendition": func(e effects) bool { return e.openWorld && e.persists && !e.readOnly && !e.destructive },
 		"bounded_rendition_deletion":        func(e effects) bool { return e.destructive && e.persists && !e.readOnly && !e.openWorld },

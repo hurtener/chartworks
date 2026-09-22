@@ -1216,6 +1216,9 @@ func validateMetricReferenceCoherence(question QuestionRequest, referenceEdits [
 // before any gateway work. Read-derived freshness markers are deliberately
 // excluded because they are not persisted query mutations.
 func QueryLineageDigest(q QueryRecord) string {
+	// Saved-query reads intentionally redact result rows. Lineage binds only
+	// protected metadata, so the digest must remain stable across that projection.
+	q.Result = nil
 	if q.EvidenceStale {
 		errors := make([]string, 0, len(q.Errors))
 		for _, code := range q.Errors {

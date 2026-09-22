@@ -2,6 +2,7 @@ package nlqexec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -114,6 +115,13 @@ func TestChildCreationFencesExactObservedParent(t *testing.T) {
 func TestLineageDigestIncludesProtectedParentState(t *testing.T) {
 	e := unitEnvelope(t)
 	parent := unitQuery(e, "parent", "topic", "v1", "context", false)
+	parent.Result = &exec.Result{Rows: [][]json.RawMessage{{json.RawMessage(`"synthetic-private-value"`)}}}
+	redacted := parent
+	redacted.Result = nil
+	if QueryLineageDigest(parent) != QueryLineageDigest(redacted) {
+		t.Fatal("redacted saved-query projection changed parent lineage identity")
+	}
+
 	parent.SQL = "SELECT 1"
 	baseline := QueryLineageDigest(parent)
 	parent.SQL = "SELECT 2"
