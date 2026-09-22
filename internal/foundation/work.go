@@ -271,7 +271,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = handler
-	migrations, err := newMigrationService(db, migrationDomains{sources: w.sourceService, engineering: w.engineering, topics: topics, rules: rules, blocks: blockService, documents: documents, queries: w.nlq, schedules: w.queue})
+	migrations, err := newMigrationService(db, migrationDomains{sources: w.sourceService, engineering: w.engineering, topics: topics, rules: rules, blocks: blockService, documents: documents, queries: w.nlq, schedules: w.queue, evaluation: evaluationService})
 	if err != nil {
 		w.close()
 		return nil, err

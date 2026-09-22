@@ -18,4 +18,6 @@ Cutover activates one cohort route at an explicit scheduler occurrence boundary.
 Rollback restores the retained prior route and records effects that cannot be undone;
 it never claims that a delivered notification or external commit was reversed.
 Passing synthetic acceptance demonstrates the runtime contract. Owner-run private
-comparisons, Phase 24 evaluation and Phase 25 release evidence remain separate facts.
+comparisons and Phase 25 release evidence remain separate facts. The merged Phase 24
+draft services are migration consumers; their accepted review
+receipts, pack selection and historical run authority are never imported.

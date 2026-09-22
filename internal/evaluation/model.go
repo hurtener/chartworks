@@ -153,6 +153,23 @@ type RuntimePackAuthorRequest struct {
 	Config gateway.RuntimeConfig `json:"config"`
 }
 
+// Validate checks draft material without persisting it or assigning actor state.
+func (r RuntimePackAuthorRequest) Validate() error {
+	record := RuntimePackRecord{Pack: r.Pack, Config: r.Config, Digest: runtimePackDigest(r.Pack, r.Config), State: Draft, Author: "migration-validator", CreatedAt: time.Unix(1, 0).UTC()}
+	if !validRuntimePack(record) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// Digest binds the exact draft pack and server-owned runtime configuration.
+func (r RuntimePackAuthorRequest) Digest() (string, error) {
+	if err := r.Validate(); err != nil {
+		return "", err
+	}
+	return runtimePackDigest(r.Pack, r.Config), nil
+}
+
 // RuntimePackReview binds a distinct reviewer to the exact effective model,
 // role bindings, instruction configuration, and pessimistic per-attempt cost.
 type RuntimePackReview struct {

@@ -13,7 +13,7 @@ encoded as a bounded string on the public wire,
 explicit lifecycle, privacy flag, origin, retention, exhaustive top-level field
 ledger and zero or more dependency references. The closed dependency order is:
 
-`source -> upload -> profile -> topic -> rule -> template -> block -> report -> dashboard -> filter -> schedule -> run -> artifact -> rendition -> certificate -> tombstone -> calibration`.
+`source -> upload -> profile -> topic -> rule -> template -> runtime_pack -> evaluation_suite -> block -> report -> dashboard -> filter -> schedule -> run -> artifact -> rendition -> certificate -> tombstone -> calibration`.
 
 Parents must exist earlier in that order and the graph must be acyclic. A tombstone
 also identifies the exact target kind, external reference and source revision; its
@@ -28,6 +28,13 @@ and have a separate reference checkpoint. Historical runs, artifacts, renditions
 and certificates remain private quarantined evidence until a new operation checks
 current signed authority and creates fresh target evidence.
 
+Phase 24 runtime packs and evaluation suites use the owning evaluation service.
+Both import only as immutable drafts. An exact conflict is reconciled through that
+public service after a crash between its commit and the migration checkpoint;
+different material fails closed. Imported runtime packs never select a default,
+and imported suites never gain an acceptance receipt. Historical evaluation runs
+remain ordinary quarantined `run` evidence.
+
 Each top-level payload field has exactly one `retained`, `transformed`, `dropped`
 or `unsupported` disposition. Non-retained fields require a reason. Unknown fields
 are rejected because they have no loss-ledger row. Token, password, secret, API-key,
@@ -35,9 +42,10 @@ credential, user, role and grant shaped keys are recursively rejected. Calibrati
 is versioned, credential-free and imported only as a `review_candidate`; it never
 activates a prompt, model, threshold or learned example. Its closed schema contains
 only prompt-pack and optional fallback references, optimization/example-policy
-revisions, locale, temperature, maximum output tokens and unique per-template
-thresholds. Unknown keys, out-of-range values and duplicate template thresholds
-are rejected.
+revisions, locale, temperature, maximum output tokens, unique per-template
+thresholds and exact Phase 24 suite/run/runtime-pack evidence digests. An optional
+reviewed heldout-lineage digest is also retained. Unknown keys, malformed digests,
+out-of-range values and duplicate template thresholds are rejected.
 
 Installed typed payloads also pass the owning closed decoder, so a ledger row
 cannot make an unknown nested domain field silently disappear. An object whose
@@ -119,7 +127,7 @@ redacted as 503/504. Migration state never stores raw SQL, result rows or creden
 unless they already belong to a protected domain definition accepted by that
 domain's public seam.
 
-Phase 24 supplies owner-run quality evidence and Phase 33 supplies guided setup
-objects through these neutral hooks when they are present. Their absence or a
-planning status cannot be converted into passed Phase 34 evidence. Phase 25 remains
-the final release and operational qualification gate.
+Phase 24 supplies the reviewed suite/runtime-pack lifecycle and Phase 33 supplies
+guided setup objects through these neutral hooks. Owner-run live comparison hashes
+remain required and cannot be replaced by fixture or planning status. Phase 25
+remains the final release and operational qualification gate.

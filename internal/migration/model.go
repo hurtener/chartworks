@@ -29,6 +29,8 @@ const (
 	KindTopic       Kind = "topic"
 	KindRule        Kind = "rule"
 	KindTemplate    Kind = "template"
+	KindRuntimePack Kind = "runtime_pack"
+	KindEvalSuite   Kind = "evaluation_suite"
 	KindBlock       Kind = "block"
 	KindReport      Kind = "report"
 	KindDashboard   Kind = "dashboard"
