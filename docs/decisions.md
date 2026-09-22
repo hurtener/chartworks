@@ -773,3 +773,5 @@ Rich semantic continuation: [D-075 reviewed rich fields and atomic metric depend
 Rule/reporting dependency continuation: [D-076 closed compound/template scopes and immutable reporting rule snapshots](decisions/2026-09-22-rule-scopes-reporting-snapshots.md).
 
 Routing and interpretation continuation: [D-077 versioned topic choice and sealed semantic spans](decisions/2026-09-22-routing-interpretation.md).
+
+Learning continuation: [D-078 version-pinned reviewed examples and evidence-based feedback](decisions/2026-09-22-reviewed-learning.md).

@@ -169,13 +169,19 @@ func (executionRepository) UpdateQuery(context.Context, store.Scope, nlqexec.Que
 func (executionRepository) RecordFeedback(context.Context, store.Scope, nlqexec.FeedbackRecord) error {
 	return nil
 }
+func (executionRepository) ApplyFeedback(context.Context, store.Scope, nlqexec.FeedbackRecord, nlqexec.ExampleRecord) (nlqexec.ExampleRecord, bool, error) {
+	return nlqexec.ExampleRecord{}, true, nil
+}
 func (executionRepository) UpsertExample(context.Context, store.Scope, nlqexec.ExampleRecord) (nlqexec.ExampleRecord, error) {
 	return nlqexec.ExampleRecord{}, store.ErrNotFound
+}
+func (executionRepository) ImportExample(context.Context, store.Scope, nlqexec.ExampleRecord) (nlqexec.ExampleRecord, bool, error) {
+	return nlqexec.ExampleRecord{}, true, nil
 }
 func (executionRepository) ListExamples(context.Context, store.Scope, string, int) ([]nlqexec.ExampleRecord, error) {
 	return nil, store.ErrNotFound
 }
-func (executionRepository) SetExampleState(context.Context, store.Scope, string, string) (nlqexec.ExampleRecord, error) {
+func (executionRepository) SetExampleState(context.Context, store.Scope, nlqexec.ExampleStateRequest, string) (nlqexec.ExampleRecord, error) {
 	return nlqexec.ExampleRecord{}, store.ErrNotFound
 }
 

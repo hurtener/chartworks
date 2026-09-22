@@ -69,6 +69,9 @@ type NLQExampleStateRequest = nlqexec.ExampleStateRequest
 
 // NLQExample is one detached, tenant-scoped learning example.
 type NLQExample = nlqexec.ExampleRecord
+type NLQExampleBundle = nlqexec.ExampleBundle
+type NLQExampleExportRequest = nlqexec.ExampleExportRequest
+type NLQExampleImportRequest = nlqexec.ExampleImportRequest
 
 // NLQExamplesRequest selects bounded examples for one topic.
 type NLQExamplesRequest struct {
@@ -144,5 +147,20 @@ func (c *Client) ExamplesNLQ(ctx context.Context, in NLQExamplesRequest) (out []
 		return out, errors.New("chartworks: invalid example query")
 	}
 	err = c.callLimit(ctx, "POST", "/v1/nlq/examples/read", "", in, &out, 2<<20)
+	return
+}
+
+// ExportExamplesNLQ exports a protected neutral learning bundle.
+func (c *Client) ExportExamplesNLQ(ctx context.Context, in NLQExampleExportRequest) (out NLQExampleBundle, err error) {
+	if !wireID(in.Topic) || in.Limit < 1 || in.Limit > nlq.MaxExamples+1 {
+		return out, errors.New("chartworks: invalid example export")
+	}
+	err = c.callLimit(ctx, "POST", "/v1/nlq/examples/export", "", in, &out, 2<<20)
+	return
+}
+
+// ImportExampleNLQ revalidates one portable row as a reviewed candidate.
+func (c *Client) ImportExampleNLQ(ctx context.Context, in NLQExampleImportRequest) (out NLQExample, err error) {
+	err = c.callLimit(ctx, "POST", "/v1/nlq/examples/import", "", in, &out, 2<<20)
 	return
 }

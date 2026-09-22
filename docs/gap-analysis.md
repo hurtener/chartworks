@@ -115,7 +115,7 @@ This update rechecked every original finding against the merged target code and 
 | SEM-01, CTX-01 | **CW-04 implementation closes the authored-contract and sealed-context gaps; final manual integration evidence remains.** | Topic packs now retain aliases, governed non-sensitive value mappings, temporal calendars/grains, units and filters through lifecycle/portability. Selected measures/KPIs resolve a typed transitive closure admitted as one mandatory tokenizer group or fail before provider work. [rich semantic model](../internal/semantics/model.go), [metric closure](../internal/nlqroute/service.go), [context assembly](../internal/nlq/context.go), [contract](contracts/rich-semantics-v1.md) |
 | SEM-02, DATA-01, DATA-02 | **CW-04 implementation closes the model/generation boundary; phase 33 orchestration remains separately planned.** | Bounded enhancement now proposes descriptions, aliases, units, roles, temporal policy, KPIs and candidate/rejected relationship evidence. Explicit reviewed governed values replace raw profile samples; sensitive/unknown values are rejected. Draft/publication/import/export/SDK consumers share the same contract. [enhancement](../internal/semantics/drafts/service.go), [compiler](../internal/semantics/compile.go), [portability](../internal/semantics/portable.go), [contract](contracts/rich-semantics-v1.md) |
 | RTE-01, RTE-02 | **CW-07 implements the native routing and interpretation contracts; live calibration remains phase 24/final-gap evidence.** | Authority-constrained current-topic discovery, multi-facet evidence, bounded reranking, typed ambiguity and sealed governed-value/geography/month constraints now feed generation and validator-bound execution. [topic decision](../internal/nlqroute/discovery.go), [interpretation](../internal/nlqroute/interpretation.go), [contract](contracts/routing-interpretation-v1.md) |
-| LRN-01, LRN-02, CLR-01, CLR-02, RUL-01 | **Learning gaps remain; clarification and rule scopes are implemented by CW-01/CW-06.** | Template lifecycle and evidence-aware feedback remain separate work. Conditional typed clarification plus compound-AND and canonical reviewed-template scopes are implemented; the representative-user comprehension study remains unperformed. [clarification contract](contracts/conditional-clarification-v1.md), [rule evaluator](../internal/semantics/rules_evaluate.go) |
+| LRN-01, LRN-02, CLR-01, CLR-02, RUL-01 | **Learning, clarification and rule-scope runtime gaps are implemented; final human/live evidence remains.** | CW-08 adds reviewed exact-origin retrieval, deterministic precedence, immutable selection/shadow provenance and bounded positive/negative evidence. Phase 24 still owns live calibration and decay evaluation. CW-01/CW-06 retain conditional clarification and closed rule scopes. [learning contract](contracts/learning-lifecycle-v1.md), [clarification contract](contracts/conditional-clarification-v1.md), [rule evaluator](../internal/semantics/rules_evaluate.go) |
 | BLK-01, BLK-03, BLK-04, BLK-06 | **Still open or narrowed at the authored-contract boundary.** | CW-03 closes BLK-01 and CW-06 closes BLK-02. Phase 28 seals selected outputs, source/context/topic/rule dependencies and typed period resolution; certification language checks, semantic overlap and broader assistance remain. [rule snapshots](../internal/reporting/dependencies.go), [run manifest](../internal/reporting/runs_model.go), [question assessment](../internal/reporting/service.go) |
 | BLK-05, BLK-07 | **Runtime path inspected; inherited fields and policy mapping remain open.** | Bounded narratives use retained redacted evidence and receipts, and manifests seal deployment limits. Expected schema still lacks inherited sensitivity; authored maximum-claims and source-query policy mappings remain absent. No fresh runtime result is attributed here. [narrative evidence](../internal/reporting/runs_narrative.go#L82), [narrative definition](../internal/reporting/model.go#L137), [sealed limits](../internal/reporting/runs_model.go#L46) |
 | MIG-01, EVAL-01, PERF-01 | **Pending or unmeasured.** | The dated manifest is provenance only. Calibration, import/cutover, warm/cold authority-aware reuse and live latency/cost still require Phase 24/34/25 evidence. [evaluation plan](../docs/plans/phase-24-eval.md#L17), [cutover plan](../docs/plans/phase-34-migration-parity-cutover.md#L38), [routing cache boundary](../internal/nlqroute/service.go#L192) |
@@ -161,8 +161,8 @@ phase 24/34/25 manual-suite obligations.
 | CTX-01 | Context | Selected metrics do not retain their full dependency context | implemented by CW-04; manual final-suite evidence pending | 17/18 |
 | SEM-02 | Semantics | Enhancement is column classification rather than rich semantic authoring | implemented by CW-04; full phase-33 workflow remains separate | 15/33 |
 | RTE-01 | Routing | Routing confidence and topic choice are reduced | implemented by CW-07; live calibration pending phase 24/final suite | 17/24 |
-| LRN-01 | Learning | Stored examples are not equivalent to retrieval-selected templates | confirmed gap | 15/17/18; optimization remains 24 |
-| LRN-02 | Learning | Feedback weights are fixed increments | confirmed gap | 18; evaluation 24 |
+| LRN-01 | Learning | Stored examples are not equivalent to retrieval-selected templates | implemented by CW-08; live quality remains phase 24 | 15/17/18; optimization remains 24 |
+| LRN-02 | Learning | Feedback weights are fixed increments | implemented by CW-08; decay/calibration remains phase 24 | 18; evaluation 24 |
 | BLK-01 | Reporting | Output enablement and localized output metadata are missing from definitions | native v2 contract implemented; immutable v1 compatibility | 27 with 28/29/31 consumers |
 | BLK-02 | Reporting | Business-rule snapshots are absent from block dependencies | implemented by CW-06; final manual qualification pending | 16/27/28/30 |
 | BLK-03 | Reporting | Period wording no longer participates in certification | confirmed gap; typed execution present | 27/28 |
@@ -238,25 +238,25 @@ phase 24/34/25 manual-suite obligations.
 
 ### LRN-01 — Stored examples are not equivalent to retrieval-selected templates
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-08; final live quality qualification remains.
 - **Owner / phases:** 15/17/18; optimization remains 24.
 - **Reference behavior (neutral):** The original has template selection, similarity/weight/diversity controls and active/fallback prompt packs.
-- **Current boundary:** Generation reads topic examples and turns active entries into question/SQL instructions. The topic definition and facet publisher have no equivalent query-pattern/template lifecycle.
-- **Consequence:** The tested precedence function preserves the order of supplied instruction lanes but does not preserve how the system discovers and selects the appropriate SQL pattern.
-- **Contract, storage and import impact:** Add a versioned template/pattern/example selection contract, including active/fallback state, relevance, diversity and provenance. Import/export must report unsupported records and generation must persist the selected rationale.
-- **Closure requirements:** Replay structurally different verified examples and a follow-up; assert exact/adapt/few-shot choice, version validity, deduplication, diversity and provenance.
+- **Current boundary:** Active examples require explicit review and exact topic/source/context/rule/template/locale origin. A bounded deterministic lexical/posterior pass and optional single-gateway rerank select candidates after routing. Every selection and typed exclusion is persisted on the immutable query.
+- **Consequence:** Invalid, stale, cross-context or unreviewed rows cannot silently affect generation; deterministic lane precedence remains `edit_base`, hints, examples, default.
+- **Contract, storage and import impact:** Migration 041 adds versioned origins, evidence and review state. Protected export and revalidated candidate-only import preserve provenance and make replay idempotent.
+- **Remaining evidence:** Phase 24 must measure live retrieval quality, diversity and held-out calibration; software acceptance does not claim those measurements.
 - **Source evidence IDs:** REF-LRN-01-A, REF-LRN-01-B.
-- **Current repository evidence:** [internal/nlqexec/service.go:425](../internal/nlqexec/service.go#L425); [internal/nlqexec/service.go:946](../internal/nlqexec/service.go#L946); [internal/semantics/topics/facets.go:30](../internal/semantics/topics/facets.go#L30).
+- **Current repository evidence:** [selection service](../internal/nlqexec/service.go); [durable store](../internal/store/postgres/nlq_runtime.go); [contract](contracts/learning-lifecycle-v1.md); [migration](../internal/store/postgres/migrations/041_learning_templates.sql).
 
 ### LRN-02 — Feedback weights are fixed increments
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-08; decay/calibration evaluation remains phase 24.
 - **Owner / phases:** 18; evaluation 24.
 - **Reference behavior (neutral):** The original contains evidence-aware template weighting; the current RFC explicitly retains Wilson/recency/evidence weighting.
-- **Current boundary:** Positive/corrected feedback creates an example at 0.5; duplicates add 0.05, capped at 1. Selection orders stored weight/evidence/update time. Negative feedback has no equivalent weight reduction in this path.
-- **Consequence:** Repeated evidence can promote confidence without preserving the prior calibration or response to negative outcomes.
-- **Contract, storage and import impact:** Define feedback outcome, evidence, aging and negative-signal storage before changing ranking. Keep bounded labels, tenant scope and reproducible replay; update the selection and evaluation contracts together.
-- **Closure requirements:** Replay identical positive, negative, aged and contradictory feedback; compare eligibility, bounded weight and selection, including a documented policy for negative evidence.
+- **Current boundary:** Positive and negative outcomes update one atomic aggregate. A beta posterior `(positive+1)/(positive+negative+2)` and bounded uncertainty replace increments; duplicate outcomes cannot amplify evidence, and concurrent updates use database conflict serialization.
+- **Consequence:** Promotion requires positive evidence to exceed negative evidence, score at least 0.60 and explicit review. Negative, contradictory and uncertain candidates remain excluded until evidence and review permit publication.
+- **Contract, storage and import impact:** Counts, uncertainty, review CAS and exact origin are durable. Ordinary logs and list projections omit protected SQL; import replay cannot add counts.
+- **Remaining evidence:** Phase 24 owns empirically calibrated thresholds and any time decay; current deterministic policy is reproducible rather than claimed statistically optimal.
 - **Source evidence IDs:** REF-LRN-02-A.
 - **Current repository evidence:** [internal/nlqexec/service.go:266](../internal/nlqexec/service.go#L266); [internal/store/postgres/nlq_runtime.go:354](../internal/store/postgres/nlq_runtime.go#L354); [internal/store/postgres/nlq_runtime.go:384](../internal/store/postgres/nlq_runtime.go#L384); [current authority/design RFC:111](../RFC-001-Chartworks.md#L111).
 
@@ -963,7 +963,7 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | B01 | Stable block identity, localized name/question, canonical question and aliases | partial; block metadata retained; v2 output intent implemented | BLK-01; output-level localized identity now versioned; other semantic gaps unchanged | 27.AC01 |
 | B02 | Mutable draft versus immutable published revision | retained core inspected | CAS and immutable revisions; no new runtime rerun | 27.AC02 |
 | B03 | Publication, certification and current trust/health are separate | retained core; rule invalidation implemented | CW-06 marks current health/approval stale without mutating historical attestation | 27.AC04 |
-| B04 | Exact topic/template/dependency references and definition hashes | partial | CW-06 closes rule dependency continuity; LRN-01 still owns template lifecycle/provenance selection | 27.AC03, 27.AC07 |
+| B04 | Exact topic/template/dependency references and definition hashes | implemented across rule and learning maps | CW-06 closes rule dependencies; CW-08 persists exact learning origin and selection provenance | 27.AC03, 27.AC07 |
 | B05 | Real validation evidence bound to content and observed schema | retained core with rule dependencies | Validation binds exact source/topic/rule pins and observed schema | 27.AC03 |
 | B06 | Read metadata without automatically exposing SQL | retained core inspected | Separate SQL-read projection and action | 27.AC06, 04.AC04 |
 | B07 | One saved query can feed chart, KPI, table and narrative outputs | Phase 28 frozen runtime is present; definition gap remains | VIS-01; saved output kinds exist, richer KPI behavior absent | 28.AC01, 28.AC02 |
@@ -1010,12 +1010,12 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | N01 | Routing and span/entity extraction | native implementation; live calibration pending | CW-07 supplies current authorized topic decisions and sealed value/geography/month interpretation; broader grammar and live thresholds remain final evidence | 17.AC01, 17.AC02 |
 | N02 | Lean context engineering | gap | CTX-01; budget mechanics retained, dependency closure lost | 17.AC03, 17.AC04 |
 | N03 | Semantic retrieval and batching | core enriched; cache/performance pending | Authorized batches now consume CW-04 rich facets and CW-07 topic/interpretation evidence; cache PERF-01 remains | 07.AC03, 17.AC02 |
-| N04 | Template precedence and lifecycle | gap | LRN-01/02; lane precedence is not template lifecycle or calibrated selection | 18.AC02, 18.AC05 |
+| N04 | Template precedence and lifecycle | implemented by CW-08; live calibration pending24 | Exact reviewed origin, deterministic lane/retrieval precedence, exclusions and rollback | 18.AC02, 18.AC05 |
 | N05 | SQL validation and bounded correction | retained/reworked with explicit constraints | Opaque plans and bounded corrections; engine/dialect/live matrix still requires per-behavior comparison | 09.AC02, 18.AC03 |
 | N06 | Clarification, underspecification and follow-up refinement | partial; gap | Prior SQL/session safety retained; CLR-01/02 typed/triggered clarification incomplete | 16.AC03, 18.AC01, 18.AC06 |
 | N07 | Multi-topic relationships / queries | narrowed | Confirmed same-source one-to-one only; other cardinalities need evidence and explicit safe disposition | 17.AC05, 18.AC01 |
 | N08 | Business rules, replay/shadow comparisons and feedback | partial; CW-06 scope/snapshot gaps closed | Compound/template selection and reporting rule pins exist; broader SQL/result replay remains pending24 | 16.AC05, 16.AC06 |
-| N09 | Learned examples, positive feedback and evaluation/optimization | partial; gap and pending24 | LRN-01/02 and EVAL-01; feedback persistence exists, calibrated weighting/optimization incomplete | 18.AC05, 24.AC04 |
+| N09 | Learned examples, positive/negative feedback and evaluation/optimization | runtime lifecycle implemented; evaluation pending24 | CW-08 closes LRN-01/02 with bounded evidence and replay; EVAL-01 calibration/optimization remains | 18.AC05, 24.AC04 |
 | N10 | Topic generation and entity editing | partial; gap | SEM-01/02; strong lifecycle, narrower rich generation/model | 15.AC02, 15.AC03, 15.AC05 |
 | N11 | Source health, table rename/reference rewrite and source recheck | retained core; broader authoring pending | Safe source recheck/rename and immutable amendments; richer relationship semantics DATA-02 | 15.AC03, 15.AC04 |
 | N12 | Sharing, access groups, portability and onboarding profiles | intentional ownership change; full bundle pending | the authority provider owns authority; safe semantic portability exists; MIG-01 broader bundle34 | 15.AC06, 04.AC01, 34.AC03 |

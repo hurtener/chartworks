@@ -65,3 +65,11 @@ topic policy version, locale/parser/anchor, exact topic/source pins, interpretat
 digest and reviewed correction edits. A foreign raw span or topic score cannot be
 trusted directly: import replays it against current authority and publication/source
 state. The external bundle and cohort migration remain phase-34 work.
+
+## CW-08 learning portability substrate
+
+Versioned learning rows have protected neutral export and destination-side import
+that reroutes current authority, rechecks exact semantic/source/context/rule/template
+origin, validates SQL natively and creates only a review candidate. Replays are
+idempotent. Phase 34 still owns external manifests, coordinate remapping, cohort
+dry-runs, unsupported-record ledgers and cutover/rollback evidence.

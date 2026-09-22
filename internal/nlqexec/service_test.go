@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -339,17 +340,73 @@ func (r *unitRepository) RecordFeedback(_ context.Context, _ store.Scope, value 
 	return nil
 }
 
+func (r *unitRepository) ApplyFeedback(ctx context.Context, scope store.Scope, feedback FeedbackRecord, example ExampleRecord) (ExampleRecord, bool, error) {
+	for _, existing := range r.feedback {
+		if existing.ID == feedback.ID || (existing.QueryID == feedback.QueryID && existing.Verdict == feedback.Verdict && existing.Correction == feedback.Correction) {
+			return ExampleRecord{}, false, nil
+		}
+	}
+	r.feedback = append(r.feedback, feedback)
+	if example.ID == "" {
+		return ExampleRecord{}, true, nil
+	}
+	stored, err := r.UpsertExample(ctx, scope, example)
+	if err != nil {
+		r.feedback = r.feedback[:len(r.feedback)-1]
+		return ExampleRecord{}, false, err
+	}
+	return stored, true, nil
+}
+
 func (r *unitRepository) UpsertExample(_ context.Context, _ store.Scope, value ExampleRecord) (ExampleRecord, error) {
 	for id, existing := range r.examples {
 		if existing.Topic == value.Topic && existing.Digest == value.Digest {
-			existing.EvidenceCount++
-			existing.Weight += 0.05
+			if exec.Hash(existing.Origin) != exec.Hash(value.Origin) {
+				return ExampleRecord{}, store.ErrConflict
+			}
+			existing.PositiveEvidence += value.PositiveEvidence
+			existing.NegativeEvidence += value.NegativeEvidence
+			existing.EvidenceCount = existing.PositiveEvidence + existing.NegativeEvidence
+			existing.Weight = evidenceScore(existing.PositiveEvidence, existing.NegativeEvidence)
+			existing.Uncertainty = evidenceUncertainty(existing.PositiveEvidence, existing.NegativeEvidence)
+			existing.Version++
 			r.examples[id] = existing
 			return existing, nil
 		}
 	}
 	r.examples[value.ID] = value
 	return value, nil
+}
+
+func (r *unitRepository) ImportExample(_ context.Context, _ store.Scope, value ExampleRecord) (ExampleRecord, bool, error) {
+	for _, existing := range r.examples {
+		if existing.Topic == value.Topic && existing.Digest == value.Digest {
+			if exec.Hash(existing.Origin) != exec.Hash(value.Origin) {
+				return ExampleRecord{}, false, store.ErrConflict
+			}
+			return existing, false, nil
+		}
+	}
+	r.examples[value.ID] = value
+	return value, true, nil
+}
+
+func TestPortableImportReplayDoesNotAmplifyEvidence(t *testing.T) {
+	repo := newUnitRepository()
+	value := ExampleRecord{ID: "portable-1", Topic: "topic", Question: "¿Cuáles son los ingresos?", SQL: "SELECT amount FROM analytics.sales", Digest: strings.Repeat("d", 64), State: "candidate", Weight: 0.75, Uncertainty: 0.5, EvidenceCount: 2, PositiveEvidence: 2, EvidenceOutcome: "positive", Origin: ExampleOrigin{SchemaVersion: 1, Locale: "es", TopicVersion: "v1", Context: "context", SourceBindingDigest: strings.Repeat("a", 64), RuleVersions: []string{"rule:v1"}}, Version: 1}
+	first, applied, err := repo.ImportExample(context.Background(), store.Scope{}, value)
+	if err != nil || !applied || first.EvidenceCount != 2 {
+		t.Fatalf("first portable import: %#v applied=%v err=%v", first, applied, err)
+	}
+	value.ID = "portable-retry"
+	second, applied, err := repo.ImportExample(context.Background(), store.Scope{}, value)
+	if err != nil || applied || second.ID != first.ID || second.EvidenceCount != 2 || second.Version != 1 {
+		t.Fatalf("portable replay amplified or replaced evidence: %#v applied=%v err=%v", second, applied, err)
+	}
+	value.Origin.Context = "other-context"
+	if _, _, err = repo.ImportExample(context.Background(), store.Scope{}, value); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("portable origin collision returned %v", err)
+	}
 }
 
 func (r *unitRepository) ListExamples(_ context.Context, _ store.Scope, topic string, limit int) ([]ExampleRecord, error) {
@@ -365,13 +422,22 @@ func (r *unitRepository) ListExamples(_ context.Context, _ store.Scope, topic st
 	return out, nil
 }
 
-func (r *unitRepository) SetExampleState(_ context.Context, _ store.Scope, id, state string) (ExampleRecord, error) {
-	value, ok := r.examples[id]
+func (r *unitRepository) SetExampleState(_ context.Context, _ store.Scope, in ExampleStateRequest, reviewer string) (ExampleRecord, error) {
+	value, ok := r.examples[in.ExampleID]
 	if !ok {
 		return ExampleRecord{}, store.ErrNotFound
 	}
-	value.State = state
-	r.examples[id] = value
+	if in.ExpectedVersion != 0 && in.ExpectedVersion != value.Version {
+		return ExampleRecord{}, store.ErrConflict
+	}
+	value.State = in.State
+	value.Version++
+	if in.State == "active" {
+		now := time.Now().UTC()
+		value.ReviewedAt, value.ReviewedBy = &now, reviewer
+		value.ReviewNote = in.ReviewNote
+	}
+	r.examples[in.ExampleID] = value
 	return value, nil
 }
 
@@ -459,6 +525,65 @@ func unitQuery(e identity.Envelope, id, topic, version, contextID string, stale 
 
 func unitResult(status string) exec.ExecutionReport {
 	return exec.ExecutionReport{Attempt: exec.Attempt{Status: status}, Result: &exec.Result{Outcome: "complete", Schema: []exec.Field{{Name: "id", Type: "integer"}}, Rows: [][]json.RawMessage{{json.RawMessage(`1`)}}, Bytes: 1}}
+}
+
+func TestLearningSelectionPinsEvidenceAndExcludesStaleCandidates(t *testing.T) {
+	e := unitEnvelope(t)
+	repo := newUnitRepository()
+	binding := exec.Binding{}
+	origin := ExampleOrigin{SchemaVersion: 1, Locale: nlq.LanguageSpanish, TopicVersion: "v1", Context: "context", SourceBindingDigest: exec.Hash(binding)}
+	now := time.Now().UTC()
+	repo.examples["ventas"] = ExampleRecord{ID: "ventas", Topic: "topic", Question: "ingresos mensuales por región", SQL: "SELECT region, sum(amount) FROM sales GROUP BY region", State: "active", Weight: .75, Uncertainty: .25, EvidenceCount: 4, PositiveEvidence: 4, Origin: origin, Version: 3, Created: now, Updated: now}
+	repo.examples["other"] = ExampleRecord{ID: "other", Topic: "topic", Question: "weekly inventory", SQL: "SELECT week, sum(stock) FROM inventory GROUP BY week", State: "active", Weight: .75, Uncertainty: .25, EvidenceCount: 4, PositiveEvidence: 4, Origin: origin, Version: 2, Created: now, Updated: now}
+	staleOrigin := origin
+	staleOrigin.TopicVersion = "v0"
+	repo.examples["stale"] = ExampleRecord{ID: "stale", Topic: "topic", Question: "ingresos", SQL: "SELECT amount FROM old_sales", State: "active", Weight: .95, Uncertainty: .1, EvidenceCount: 20, PositiveEvidence: 20, Origin: staleOrigin, Version: 8, Created: now, Updated: now}
+	low := origin
+	repo.examples["negative"] = ExampleRecord{ID: "negative", Topic: "topic", Question: "ingresos mensuales", SQL: "SELECT amount FROM sales", State: "active", Weight: .4, Uncertainty: .4, EvidenceCount: 3, PositiveEvidence: 1, NegativeEvidence: 2, Origin: low, Version: 4, Created: now, Updated: now}
+	admitted := admission{binding: binding, context: "context", route: nlqroute.RouteResult{Topic: "topic", Topics: []string{"topic"}, TopicVersions: []string{"v1"}, Context: &nlqroute.ContextView{Locale: nlq.LanguageSpanish}}}
+	service := &Service{repo: repo}
+	instructions, evidence, receipt, err := service.selectLearnedInstructions(context.Background(), e, admitted, "ingresos mensuales", false, gateway.Call{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.Calls) != 0 || len(instructions) != 2 || instructions[0].Key != "learned-ventas" {
+		t.Fatalf("unexpected deterministic selection: %#v %#v", instructions, receipt)
+	}
+	if len(evidence.Selected) != 2 || evidence.Selected[0].ExampleID != "ventas" || evidence.Selected[0].Version != 3 {
+		t.Fatalf("selection provenance was not exact: %#v", evidence.Selected)
+	}
+	if len(evidence.ShadowBaseline) != 2 || evidence.ShadowBaseline[0].ExampleID != "ventas" || evidence.ShadowBaseline[0].Position != 1 || evidence.Selected[0].Position != 1 {
+		t.Fatalf("deterministic shadow baseline was not retained: %#v", evidence.ShadowBaseline)
+	}
+	reasons := map[string]string{}
+	for _, excluded := range evidence.Excluded {
+		reasons[excluded.ExampleID] = excluded.Reason
+	}
+	if reasons["stale"] != "topic_changed" || reasons["negative"] != "insufficient_evidence" {
+		t.Fatalf("stale/negative evidence was not explained: %#v", reasons)
+	}
+	clone := evidence
+	if exec.Hash(clone) != exec.Hash(evidence) {
+		t.Fatal("selection evidence was not replay-stable")
+	}
+}
+
+func TestEvidenceScoreRespondsToPositiveNegativeAndDuplicateSignals(t *testing.T) {
+	if got := evidenceScore(1, 0); got <= .5 || got >= 1 {
+		t.Fatalf("positive score outside calibrated bounds: %v", got)
+	}
+	if got := evidenceScore(1, 1); got != .5 {
+		t.Fatalf("contradictory evidence should be uncertain: %v", got)
+	}
+	if evidenceScore(2, 1) <= evidenceScore(1, 1) || evidenceUncertainty(2, 1) >= evidenceUncertainty(1, 1) {
+		t.Fatal("additional evidence did not improve score and reduce uncertainty")
+	}
+	e := unitEnvelope(t)
+	q := unitQuery(e, "query", "topic", "v1", "context", false)
+	in := FeedbackRequest{QueryID: q.ID, Verdict: "positive", Note: "reviewed"}
+	if deterministicFeedbackID(e, q, in) != deterministicFeedbackID(e, q, in) || deterministicFeedbackID(e, q, in) == deterministicFeedbackID(e, q, FeedbackRequest{QueryID: q.ID, Verdict: "negative", Note: "reviewed"}) {
+		t.Fatal("feedback idempotency identity was unstable or outcome-blind")
+	}
 }
 
 func TestServiceValidationAndMetadataBoundaries(t *testing.T) {
@@ -729,6 +854,13 @@ func TestServiceDurableFailureBoundaries(t *testing.T) {
 	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: feedbackQuery.ID, Verdict: "positive", Correction: "SELECT id FROM analytics.sales"}); err != nil {
 		t.Fatal("validated correction feedback", err)
 	}
+	positiveQuery := feedbackQuery
+	positiveQuery.ID = "query-feedback-positive"
+	positiveQuery.Question = "What is monthly revenue?"
+	repo.queries[positiveQuery.ID] = positiveQuery
+	if err = service.Feedback(context.Background(), e, FeedbackRequest{QueryID: positiveQuery.ID, Verdict: "positive", Note: "independent reviewed evidence"}); err != nil {
+		t.Fatal("independent positive feedback", err)
+	}
 	for _, in := range []FeedbackRequest{{QueryID: "missing", Verdict: "positive"}, {QueryID: feedbackQuery.ID, Verdict: "bad"}, {QueryID: feedbackQuery.ID, Verdict: "positive", Note: string([]byte{0})}} {
 		if err = service.Feedback(context.Background(), e, in); !errors.Is(err, ErrInvalid) && !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("invalid feedback result: %v", err)
@@ -749,14 +881,16 @@ func TestServiceDurableFailureBoundaries(t *testing.T) {
 	}
 
 	var exampleID string
-	for id := range repo.examples {
-		exampleID = id
+	for id, example := range repo.examples {
+		if example.PositiveEvidence > example.NegativeEvidence && example.Weight >= 0.60 {
+			exampleID = id
+		}
 	}
-	active, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: exampleID, State: "active"})
+	active, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: exampleID, State: "active", ReviewNote: "reviewed positive evidence"})
 	if err != nil || active.State != "active" {
 		t.Fatalf("example state transition: %#v %v", active, err)
 	}
-	if listed, listErr := service.Examples(context.Background(), e, "topic", 2); listErr != nil || len(listed) != 1 || listed[0].State != "active" {
+	if listed, listErr := service.Examples(context.Background(), e, "topic", 2); listErr != nil || len(listed) != 2 || active.State != "active" {
 		t.Fatalf("example listing: %#v %v", listed, listErr)
 	}
 	if _, err = service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "missing", State: "active"}); !errors.Is(err, store.ErrNotFound) {
@@ -1052,13 +1186,13 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	e := unitEnvelope(t)
 	reader := &unitTopicReader{current: map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)}}
 	repo := newUnitRepository()
-	repo.examples["example-1"] = ExampleRecord{ID: "example-1", Topic: "topic", Question: "What is revenue?", SQL: "SELECT secret", State: "candidate", Digest: strings.Repeat("a", 64), EvidenceCount: 1}
+	repo.examples["example-1"] = ExampleRecord{ID: "example-1", Topic: "topic", Question: "What is revenue?", SQL: "SELECT secret", State: "candidate", Digest: strings.Repeat("a", 64), Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, Origin: ExampleOrigin{SchemaVersion: 1, Locale: "en", TopicVersion: "v1", Context: "context", SourceBindingDigest: strings.Repeat("a", 64)}, Version: 1}
 	service := &Service{topics: reader, sources: retainedSourceReader{}, repo: repo}
 	noInspection, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := service.ExampleState(context.Background(), noInspection, ExampleStateRequest{ExampleID: "example-1", State: "active"})
+	updated, err := service.ExampleState(context.Background(), noInspection, ExampleStateRequest{ExampleID: "example-1", State: "active", ReviewNote: "reviewed positive evidence"})
 	if err != nil || updated.SQL != "" || updated.State != "active" {
 		t.Fatalf("example state leaked protected SQL or failed: %#v %v", updated, err)
 	}

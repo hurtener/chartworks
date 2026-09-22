@@ -99,3 +99,18 @@ and fails on publication/parser/vocabulary/source drift before ordinary or termi
 execution. Refinement inherits the anchor and replaces
 same-target correction/removal edits. Interpretation still cannot issue a plan or
 bypass the existing validator, native source planning or read-only execution.
+
+## CW-08 reviewed learning lifecycle
+
+Feedback storage and its example effect are one transaction. Exact retries and
+same-outcome retries are no-ops; distinct corrected outcomes remain explicit.
+Positive and negative counts produce a bounded beta posterior and uncertainty,
+replacing fixed increments. Promotion requires a current exact origin, sufficient
+positive evidence, a reviewer, a review note and CAS version. Generation admits only
+active current rows and persists exact selection/exclusion provenance before SQL
+work. Retirement is the rollback path and cannot rewrite frozen queries.
+
+Protected export and revalidated candidate-only import are registered through HTTP,
+MCP, SDK and the generated CLI operation surface. Migration 041 preserves legacy
+rows as inapplicable candidates, and portable import replay cannot amplify evidence.
+See [learning lifecycle v1](../contracts/learning-lifecycle-v1.md).
