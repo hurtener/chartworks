@@ -55,14 +55,15 @@ func NewFrozenPerformanceReleaseAdapterFactory(inputs LiveInputResolver, runs fr
 // ObserveBounded exercises a protected frozen consumer with a caller-selected
 // unique operation key. The caller must separately establish accepted Phase 24
 // report and current Phase 34 revision evidence before release use.
-func (f *FrozenPerformanceReleaseAdapterFactory) ObserveBounded(ctx context.Context, e identity.Envelope, ref ProtectedRef, pack PackRevision, cfg gateway.RuntimeConfig, operationKey string, reuseAge int) (FrozenRunMeasurement, error) {
-	return f.observe(ctx, e, ref, pack, cfg, operationKey, reuseAge, nil)
+func (f *FrozenPerformanceReleaseAdapterFactory) ObserveBounded(ctx context.Context, e identity.Envelope, ref ProtectedRef, runtime RuntimePackRecord, operationKey string, reuseAge int) (FrozenRunMeasurement, error) {
+	return f.observe(ctx, e, ref, runtime, operationKey, reuseAge, nil)
 }
 
-func (f *FrozenPerformanceReleaseAdapterFactory) observe(ctx context.Context, e identity.Envelope, ref ProtectedRef, pack PackRevision, cfg gateway.RuntimeConfig, operationKey string, reuseAge int, revisions *PerformanceRevisionEvidence) (FrozenRunMeasurement, error) {
-	if f == nil || ctx == nil || !e.Valid() || !identity.Identifier(operationKey) || reuseAge < 0 || reuseAge > 86400 || !validPack(pack) || cfg.Digest != pack.ConfigurationDigest || !packModelsMatchConfig(pack, cfg) {
-		return FrozenRunMeasurement{}, fmt.Errorf("%w: selected pack or configuration", ErrPerformanceEvidence)
+func (f *FrozenPerformanceReleaseAdapterFactory) observe(ctx context.Context, e identity.Envelope, ref ProtectedRef, runtime RuntimePackRecord, operationKey string, reuseAge int, revisions *PerformanceRevisionEvidence) (FrozenRunMeasurement, error) {
+	if f == nil || ctx == nil || !e.Valid() || !identity.Identifier(operationKey) || reuseAge < 0 || reuseAge > 86400 || runtime.Validate() != nil || runtime.State != Accepted || runtime.Review == nil || runtime.Review.Reviewer == runtime.Author {
+		return FrozenRunMeasurement{}, fmt.Errorf("%w: accepted runtime pack", ErrPerformanceEvidence)
 	}
+	pack, cfg := runtime.Pack, runtime.Config
 	input, err := f.Inputs.ResolveEvaluationInput(ctx, e, ref)
 	if err != nil || input.Frozen == nil || input.Question != nil || input.Run != nil || !validPack(input.Pack) {
 		return FrozenRunMeasurement{}, fmt.Errorf("%w: protected frozen input", ErrPerformanceEvidence)
@@ -80,7 +81,16 @@ func (f *FrozenPerformanceReleaseAdapterFactory) observe(ctx context.Context, e 
 		return FrozenRunMeasurement{}, ErrReview
 	}
 	started := time.Now()
-	record, err := runFrozenInput(ctx, e, f.Runs, f.Store, runInput)
+	record, err := runFrozenInputChecked(ctx, e, f.Runs, f.Store, runInput, func(m reporting.RunManifest) error {
+		want, valid := expectedNarrativePin(pack, cfg, runtime.Digest)
+		if !valid || m.NarrativePackUnavailable || m.NarrativePack == nil || *m.NarrativePack != want || m.ReuseKey != reporting.ReuseIdentity(m) {
+			return fmt.Errorf("%w: selected frozen narrative pack", ErrPerformanceEvidence)
+		}
+		if revisions != nil && !frozenMatchesRevisions(reporting.RunRecord{Manifest: &m}, *revisions) {
+			return fmt.Errorf("%w: current frozen pins", ErrPerformanceEvidence)
+		}
+		return nil
+	})
 	if err != nil {
 		return FrozenRunMeasurement{}, err
 	}
@@ -212,7 +222,7 @@ func (a *frozenReleaseAdapter) run(ctx context.Context, step PerformanceStep, st
 		return PerformanceAdapterResult{}, ErrPerformanceEvidence
 	}
 	key := "p25:" + digestBytes([]byte(a.nonce + ":" + stage + ":" + step.ID + ":" + strconv.FormatUint(a.epoch.Load(), 10) + ":" + strconv.Itoa(iteration)))[:56]
-	result, err := a.factory.observe(ctx, a.envelope, scenario.Evidence.Case.Input, scenario.Evidence.RuntimePack.Pack, scenario.Evidence.RuntimePack.Config, key, age, &scenario.Revisions)
+	result, err := a.factory.observe(ctx, a.envelope, scenario.Evidence.Case.Input, scenario.Evidence.RuntimePack, key, age, &scenario.Revisions)
 	if err != nil {
 		return PerformanceAdapterResult{}, err
 	}

@@ -229,7 +229,7 @@ func (a *governedPerformanceReleaseAdapter) observe(ctx context.Context, step Pe
 	runner := a.runner
 	runner.Inputs = input
 	serviceStarted := time.Now()
-	observation, err := runner.Observe(operationCtx, Execution{Suite: evidence.Suite.Suite, Case: evidence.Case, Pack: evidence.RuntimePack.Pack, RuntimeConfig: evidence.RuntimePack.Config, Reservation: reservation, Envelope: a.envelope})
+	observation, err := runner.Observe(operationCtx, Execution{Suite: evidence.Suite.Suite, Case: evidence.Case, Pack: evidence.RuntimePack.Pack, RuntimeConfig: evidence.RuntimePack.Config, RuntimeDigest: evidence.RuntimePack.Digest, Reservation: reservation, Envelope: a.envelope})
 	serviceNS := time.Since(serviceStarted).Nanoseconds()
 	if err != nil {
 		return PerformanceAdapterResult{}, err

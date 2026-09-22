@@ -27,6 +27,7 @@ type Execution struct {
 	Reservation   Reservation
 	Envelope      identity.Envelope
 	RuntimeConfig gateway.RuntimeConfig `json:"-"`
+	RuntimeDigest string                `json:"-"`
 }
 
 // Runner observes a pre-admitted live case.

@@ -87,16 +87,25 @@ reads the protected `RunRecord`, validates `RunManifest.ReuseKey` against
 The protected Phase 24 consumer uses the same frozen result digest. A reused
 output's copied narrative receipt is not counted as another model call.
 `releaseprofile.NewIntegration` composes a recorded gateway, published block,
-request runner and PostgreSQL frozen-run repository. Its resolver selects
+request runner, PostgreSQL frozen-run repository and its reviewed narrative-pack
+selector. Before executing a selected Phase 24 consumer, the adapter reads the
+product-sealed manifest and requires its selected pack, runtime, configuration
+and narrative-model pin to equal the exact accepted runtime record. A stale
+pin fails before source/model execution or timing. Its resolver selects
 one reviewed Phase-34 cohort for each accepted Phase-24 consumer case, reloads
 the active cutover and its source adapter, checks current topic/rule/source and
 signed context reach, and hashes all rows of a bounded native PostgreSQL
 dataset's validator-safe column projection. Multi-dataset source snapshots fail
 closed until a shared native
 transaction exists. Missing or changed owner evidence fails closed. The
-required `runtime_pack_changed` branch still returns
-`ErrPerformanceReuseUnproven`: the frozen narrative does not select its model
-from an accepted pack in the product path. Final AC03 still needs a real
+required `runtime_pack_changed` final-profile branch still returns
+`ErrPerformanceReuseUnproven`. A bounded real-PostgreSQL recorded test now
+selects two independently reviewed packs through the product selector and
+observes a changed reuse identity with fresh source/model receipts. Final
+stress still needs accepted Phase 24 case/report evidence for the changed pack
+and an authorized, ordered selection transition during the profile; one
+tenant-wide current selection cannot prove both baseline and changed pack
+steps simultaneously. Final AC03 also needs a real
 accepted Phase 24 case/report for each selected revision, one-field current
 invalidation and stale-key substitution through the final correctness gate,
 the exact final profile, and live owner evidence. Neither this composition nor

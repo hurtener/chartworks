@@ -66,6 +66,14 @@ func NewIntegration(c Integration) (*evaluation.PerformanceReleaseRuntime, error
 	if err != nil {
 		return nil, err
 	}
+	selector, ok := c.FrozenStore.(reporting.NarrativePackSelector)
+	if !ok {
+		return nil, evaluation.ErrMode
+	}
+	runs, err = runs.WithReviewedNarrativePacks(selector)
+	if err != nil {
+		return nil, err
+	}
 	factory, err := evaluation.NewFrozenPerformanceReleaseAdapterFactory(c.Inputs, runs, c.FrozenStore, "recorded", c.Clock)
 	if err != nil {
 		return nil, err

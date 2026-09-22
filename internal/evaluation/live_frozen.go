@@ -18,13 +18,34 @@ type FrozenRunInput struct {
 	Request reporting.RunRequest `json:"request"`
 }
 
-func runFrozenInput(ctx context.Context, e identity.Envelope, runs frozenRunRuntime, repo frozenRunReader, in FrozenRunInput) (reporting.RunRecord, error) {
+func expectedNarrativePin(pack PackRevision, cfg gateway.RuntimeConfig, runtimeDigest string) (reporting.NarrativePackPin, bool) {
+	for _, binding := range cfg.Models {
+		if binding.Role == "narrative" {
+			pin := reporting.NarrativePackPin{PackDigest: pack.Digest, RuntimeDigest: runtimeDigest, ConfigurationDigest: cfg.Digest, Model: binding.Model}
+			return pin, pin.Valid()
+		}
+	}
+	return reporting.NarrativePackPin{}, false
+}
+
+// The check sees the product-sealed manifest before any source or model work.
+// Release callers use it to reject a stale selected runtime pack before timing.
+func runFrozenInputChecked(ctx context.Context, e identity.Envelope, runs frozenRunRuntime, repo frozenRunReader, in FrozenRunInput, check func(reporting.RunManifest) error) (reporting.RunRecord, error) {
 	if ctx == nil || !e.Valid() || runs == nil || repo == nil || !identity.Identifier(in.BlockID) || !identity.Identifier(in.Request.Key) {
 		return reporting.RunRecord{}, ErrMode
 	}
 	admitted, err := runs.Admit(ctx, e, in.BlockID, in.Request)
 	if err != nil || !identity.Identifier(admitted.ID) || admitted.Block != in.BlockID {
 		return reporting.RunRecord{}, fmt.Errorf("%w: frozen admission: %v", ErrPerformanceEvidence, err)
+	}
+	if check != nil {
+		sealed, readErr := repo.ReadFrozenRun(ctx, e, admitted.ID, true)
+		if readErr != nil || sealed.Manifest == nil || sealed.View.ID != admitted.ID || sealed.View.ManifestDigest != sealed.Manifest.Digest() {
+			return reporting.RunRecord{}, fmt.Errorf("%w: sealed frozen manifest: %v", ErrPerformanceEvidence, readErr)
+		}
+		if err := check(*sealed.Manifest); err != nil {
+			return reporting.RunRecord{}, err
+		}
 	}
 	finished, err := runs.Run(ctx, e, admitted.ID, false)
 	if err != nil || finished.ID != admitted.ID || finished.State != "succeeded" {

@@ -224,7 +224,16 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 			if in.Run != nil || g.Frozen == nil || g.FrozenStore == nil {
 				return Observation{}, ErrMode
 			}
-			record, runErr := runFrozenInput(ctx, x.Envelope, g.Frozen, g.FrozenStore, *in.Frozen)
+			record, runErr := runFrozenInputChecked(ctx, x.Envelope, g.Frozen, g.FrozenStore, *in.Frozen, func(m reporting.RunManifest) error {
+				if !in.Frozen.Request.Narrative {
+					return nil
+				}
+				want, valid := expectedNarrativePin(x.Pack, x.RuntimeConfig, x.RuntimeDigest)
+				if !valid || m.NarrativePackUnavailable || m.NarrativePack == nil || *m.NarrativePack != want || m.ReuseKey != reporting.ReuseIdentity(m) {
+					return ErrReview
+				}
+				return nil
+			})
 			if runErr != nil {
 				return Observation{}, runErr
 			}

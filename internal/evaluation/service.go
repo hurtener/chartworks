@@ -299,6 +299,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 		return Report{}, ErrReview
 	}
 	var runtimeConfig gateway.RuntimeConfig
+	var runtimeDigest string
 	if record.Suite.Mode == Live {
 		runtime, runtimeErr := s.repo.AcceptedRuntimePack(ctx, scope, pack.Digest, pack.ConfigurationDigest)
 		if runtimeErr != nil {
@@ -308,6 +309,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 			return Report{}, ErrReview
 		}
 		runtimeConfig = runtime.Config
+		runtimeDigest = runtime.Digest
 	}
 	if err = s.repo.BeginRun(ctx, scope, in); err != nil {
 		return Report{}, err
@@ -323,7 +325,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 	s.mu.Unlock()
 	defer func() { cancel(); s.mu.Lock(); delete(s.running, in.RunID); s.mu.Unlock() }()
 	if runner != nil {
-		runner = authorityRunner{Envelope: e, RuntimeConfig: runtimeConfig, Next: runner}
+		runner = authorityRunner{Envelope: e, RuntimeConfig: runtimeConfig, RuntimeDigest: runtimeDigest, Next: runner}
 	}
 	r, evalErr := EvaluateWithPack(runCtx, in.RunID, record.Suite, pack, runner, s.clock)
 	if r.EvidenceHash != "" {
@@ -337,12 +339,14 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 type authorityRunner struct {
 	Envelope      identity.Envelope
 	RuntimeConfig gateway.RuntimeConfig
+	RuntimeDigest string
 	Next          Runner
 }
 
 func (a authorityRunner) Observe(ctx context.Context, x Execution) (Observation, error) {
 	x.Envelope = a.Envelope
 	x.RuntimeConfig = a.RuntimeConfig
+	x.RuntimeDigest = a.RuntimeDigest
 	return a.Next.Observe(ctx, x)
 }
 func (s *Service) Read(ctx context.Context, e identity.Envelope, id string) (Report, error) {

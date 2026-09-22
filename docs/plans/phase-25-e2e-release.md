@@ -80,7 +80,10 @@ consumer and bounded performance adapter now enter `reporting.Runs` with
 distinct IDs, read canonical `RunManifest.ReuseKey` and `ReusedFrom`, and
 consume nullable persisted source-only duration plus physical narrative
 receipts. A real-PG17 recorded-model prerequisite test covers cold, warm,
-repeat and concurrent reuse and rejects incomplete evidence. The
+repeat and concurrent reuse, two selected accepted runtime packs, and rejects
+incomplete evidence. The product-sealed reviewed-pack pin is checked against
+the accepted Phase 24 runtime record before source or model execution; a stale
+pin fails before timing. The
 signed-action negative can remove `reporting.execute` for the frozen consumer;
 it sends the altered verified bearer through that same service. Each
 invalidation step pins a consumer case and exact
@@ -99,10 +102,11 @@ integration seam, not a live model or final stress run.
 Final AC03 must still run the exact stress profile against accepted Phase 24
 case/report evidence for every changed source/rule/context/topic cohort, then
 prove one-field current invalidation and a stale-key negative before timing.
-The runtime-pack dimension needs an actual reviewed accepted-pack pin in the
-frozen narrative consumer and its reuse identity before it can be claimed.
-No manifest-selected pack digest substitutes for a reviewed pack selected by
-the actual frozen narrative consumer. This dimension remains fail closed until
-that product seam exists and its invalidation is observed.
+The runtime-pack dimension has a product-selected accepted-pack pin in the
+frozen narrative consumer and reuse identity, with bounded recorded invalidation
+evidence. The final profile remains fail closed because its changed-pack case
+still needs its own accepted Phase 24 report and a controlled, authorized
+selection transition from baseline to changed pack across correctness probes
+and measured steps. A manifest-selected digest cannot make that transition.
 Phase 25 remains in progress until the real release profile executes and is reviewed;
 this change does not claim a final stress run or release acceptance.

@@ -13,8 +13,26 @@ import (
 	"github.com/hurtener/chartworks/internal/evaluation"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/gateway/recorded"
+	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/reporting"
 )
+
+type staleFrozenReader struct {
+	inner interface {
+		ReadFrozenRun(context.Context, identity.Envelope, string, bool) (reporting.RunRecord, error)
+	}
+	key string
+}
+
+func (r staleFrozenReader) ReadFrozenRun(ctx context.Context, e identity.Envelope, id string, execution bool) (reporting.RunRecord, error) {
+	record, err := r.inner.ReadFrozenRun(ctx, e, id, execution)
+	if err == nil && record.Manifest != nil {
+		manifest := *record.Manifest
+		manifest.ReuseKey = r.key
+		record.Manifest = &manifest
+	}
+	return record, err
+}
 
 type frozenNarrativeCapture struct {
 	gateway.Engine
@@ -70,14 +88,47 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	cfg.Digest = gateway.ConfigurationDigest(cfg)
 	pack := evaluation.PackRevision{ID: "p25-recorded", Revision: 1, Model: cfg.Model, Models: []evaluation.PackModel{{Role: "narrative", Model: "model-narrative"}, {Role: "embedding", Model: "model-embed"}}, ConfigurationDigest: cfg.Digest}
 	pack.Digest = pack.CanonicalDigest()
+	evaluationService, err := evaluation.New(f.f.f.db, nil, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewer := phase27Actor(t, f.f, "p25-reviewer", []string{"ops.audit", "cw.tenant.certify:" + operator.Tenant()})
+	reviewPack := func(pack evaluation.PackRevision, cfg gateway.RuntimeConfig) evaluation.RuntimePackRecord {
+		t.Helper()
+		draft, authorErr := evaluationService.AuthorRuntimePack(ctx, operator, pack, cfg)
+		if authorErr != nil {
+			t.Fatal("author runtime pack", authorErr)
+		}
+		accepted, reviewErr := evaluationService.ReviewRuntimePack(ctx, reviewer, pack.Digest, evaluation.RuntimePackReviewRequest{
+			PackID: pack.ID, PackRevision: pack.Revision, RuntimeDigest: draft.Digest, ConfigurationDigest: cfg.Digest,
+			Model: cfg.Model, Models: cfg.Models, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: evaluation.Accepted,
+		})
+		if reviewErr != nil || accepted.State != evaluation.Accepted {
+			t.Fatal("review runtime pack", reviewErr)
+		}
+		return accepted
+	}
+	acceptedPack := reviewPack(pack, cfg)
+	cfgB := cfg
+	cfgB.SystemInstruction = "Use only the bounded evidence in the changed reviewed pack."
+	cfgB.Digest = gateway.ConfigurationDigest(cfgB)
+	packB := pack
+	packB.ID, packB.ConfigurationDigest = "p25-recorded-changed", cfgB.Digest
+	packB.Digest = packB.CanonicalDigest()
+	acceptedPackB := reviewPack(packB, cfgB)
+	selectNarrativePack(t, f.f, f.raw, acceptedPack, 1)
 	configuredCtx, err := gateway.WithRuntimeConfig(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	request := reporting.RunRequest{Outputs: []string{"table-main", "narrative-main"}, Narrative: true, Resolution: reporting.Resolution{At: time.Now().UTC().Truncate(time.Second), Timezone: "UTC"}}
-	// Capture the exact authorized narrative input once, outside measurement.
+	// Capture each selected pack's exact authorized narrative input outside measurement.
 	capture := &frozenNarrativeCapture{}
 	captureRuns := phase28RunService(t, f.f, f.blocks, f.f.f.db, capture, config.DefaultReportingExecution())
+	captureRuns, err = captureRuns.WithReviewedNarrativePacks(f.f.f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	request.Key = "p25-cassette-capture"
 	seed, err := captureRuns.Admit(configuredCtx, operator, block, request)
 	if err != nil {
@@ -87,22 +138,38 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	if err != nil || seed.State != "succeeded" || len(capture.key) != 64 {
 		t.Fatal("capture actual narrative input", err, seed.State)
 	}
+	captureA := *capture
+	selectNarrativePack(t, f.f, f.raw, acceptedPackB, 2)
+	request.Key = "p25-cassette-capture-changed"
+	seedB, err := captureRuns.Admit(ctx, operator, block, request)
+	if err != nil {
+		t.Fatal("changed-pack capture admit", err)
+	}
+	seedB, err = captureRuns.Run(ctx, operator, seedB.ID, false)
+	if err != nil || seedB.State != "succeeded" || len(capture.key) != 64 || capture.key == captureA.key {
+		t.Fatal("changed reviewed pack did not change the actual narrative input", err, seedB.State)
+	}
+	captureB := *capture
+	selectNarrativePack(t, f.f, f.raw, acceptedPack, 3)
 	space := gateway.EmbeddingSpace{Provider: "recorded", Route: "integration", Endpoint: "local", Model: "model-embed", Revision: "fixture-v1", Dimensions: 2, Preprocessing: "utf8-exact;float32-finite", InputType: "text", Normalization: "no-normalization"}
-	engine, err := recorded.New(space, map[string]string{"narrative": "model-narrative", "embedding": "model-embed"}, []recorded.Recording{{Role: "narrative", InputDigest: capture.key, JSON: json.RawMessage(`{"claims":[{"kind":"value","evidence":["e1"]}]}`)}})
+	engine, err := recorded.New(space, map[string]string{"narrative": "model-narrative", "embedding": "model-embed"}, []recorded.Recording{
+		{Role: "narrative", InputDigest: captureA.key, JSON: json.RawMessage(`{"claims":[{"kind":"value","evidence":["e1"]}]}`)},
+		{Role: "narrative", InputDigest: captureB.key, JSON: json.RawMessage(`{"claims":[{"kind":"value","evidence":["e1"]}]}`)},
+	})
 	if err != nil {
 		t.Fatal("recorded gateway", err)
 	}
-	budget, err := gateway.NewBudget(capture.call, gateway.Limits{Calls: 1, Tokens: 4096, Duration: time.Minute})
+	budget, err := gateway.NewBudget(captureA.call, gateway.Limits{Calls: 1, Tokens: 4096, Duration: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engine.Generate(configuredCtx, capture.call, budget, "narrative", capture.system, capture.prompt, capture.schema); err != nil {
+	if _, err := engine.Generate(configuredCtx, captureA.call, budget, "narrative", captureA.system, captureA.prompt, captureA.schema); err != nil {
 		t.Fatal("captured cassette did not replay exact input", err)
 	}
 	t.Cleanup(engine.Close)
 	diagnostic := &frozenRecordedDiagnostic{Engine: engine}
 	runs := phase28RunService(t, f.f, f.blocks, f.f.f.db, diagnostic, config.DefaultReportingExecution())
-	evaluationService, err := evaluation.New(f.f.f.db, nil, time.Now)
+	runs, err = runs.WithReviewedNarrativePacks(f.f.f.db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,15 +178,19 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	if err != nil {
 		t.Fatal("register protected frozen consumer", err)
 	}
+	refB, err := evaluationService.RegisterInput(ctx, operator, "protected", evaluation.LiveInput{Pack: packB, Frozen: &evaluation.FrozenRunInput{BlockID: block, Request: request}})
+	if err != nil {
+		t.Fatal("register changed reviewed-pack consumer", err)
+	}
 	adapter, err := evaluation.NewFrozenPerformanceReleaseAdapterFactory(f.f.f.db, runs, f.f.f.db, "recorded", time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	observe := func(key string, age int) evaluation.FrozenRunMeasurement {
 		t.Helper()
-		result, observeErr := adapter.ObserveBounded(ctx, operator, ref, pack, cfg, key, age)
+		result, observeErr := adapter.ObserveBounded(ctx, operator, ref, acceptedPack, key, age)
 		if observeErr != nil {
-			t.Fatal("actual frozen observation", key, observeErr, diagnostic.keys, diagnostic.errs, "cassette match", len(diagnostic.keys) > 0 && diagnostic.keys[0] == capture.key)
+			t.Fatal("actual frozen observation", key, observeErr, diagnostic.keys, diagnostic.errs, "cassette match", len(diagnostic.keys) > 0 && diagnostic.keys[0] == captureA.key)
 		}
 		return result
 	}
@@ -138,7 +209,8 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	if warm.ReusedFrom != cold.RunID || repeat.ReusedFrom != cold.RunID && repeat.ReusedFrom != warm.RunID {
 		t.Fatal("warm/repeat reuse did not lead to measured physical origin", warm.ReusedFrom, repeat.ReusedFrom)
 	}
-	const peers = 3
+	// The reference queue permits two simultaneous requests per tenant.
+	const peers = 2
 	var wg sync.WaitGroup
 	results := make([]evaluation.FrozenRunMeasurement, peers)
 	errs := make([]error, peers)
@@ -148,7 +220,7 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			results[i], errs[i] = adapter.ObserveBounded(ctx, operator, ref, pack, cfg, "p25-frozen-peer-"+string(rune('a'+i)), 60)
+			results[i], errs[i] = adapter.ObserveBounded(ctx, operator, ref, acceptedPack, "p25-frozen-peer-"+string(rune('a'+i)), 60)
 		}(i)
 	}
 	close(start)
@@ -173,18 +245,6 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	// Admit the same protected consumer through a real reviewed Phase 24 suite
 	// and persist its passing report. The release resolver later binds this
 	// exact report hash, never a profile-supplied observation.
-	reviewer := phase27Actor(t, f.f, "p25-reviewer", []string{"ops.audit", "cw.tenant.certify:" + operator.Tenant()})
-	runtimeDraft, err := evaluationService.AuthorRuntimePack(ctx, operator, pack, cfg)
-	if err != nil {
-		t.Fatal("author runtime pack", err)
-	}
-	acceptedPack, err := evaluationService.ReviewRuntimePack(ctx, reviewer, pack.Digest, evaluation.RuntimePackReviewRequest{
-		PackID: pack.ID, PackRevision: pack.Revision, RuntimeDigest: runtimeDraft.Digest, ConfigurationDigest: cfg.Digest,
-		Model: cfg.Model, Models: cfg.Models, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: evaluation.Accepted,
-	})
-	if err != nil || acceptedPack.State != evaluation.Accepted {
-		t.Fatal("review runtime pack", err)
-	}
 	caseProof := evalCase("p25-frozen-consumer", evaluation.StageConsumer, "en", false, "")
 	caseProof.Fixture, caseProof.Input = nil, ref
 	caseProof.Expected = []evaluation.Expected{{Decision: "completed", SemanticDigest: cold.SemanticDigest}}
@@ -217,6 +277,9 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 		func(m *reporting.RunManifest) { m.Binding.Revision++ },
 		func(m *reporting.RunManifest) { m.Rules = append(m.Rules, reporting.RulePin{Topic: "other-topic"}) },
 		func(m *reporting.RunManifest) { m.Definitions[0].Version = "other-version" },
+		func(m *reporting.RunManifest) {
+			m.NarrativePack = &reporting.NarrativePackPin{PackDigest: packB.Digest, RuntimeDigest: acceptedPackB.Digest, ConfigurationDigest: cfgB.Digest, Model: "model-narrative"}
+		},
 	} {
 		copy := phase27Copy(t, *stored.Manifest)
 		mutate(&copy)
@@ -224,15 +287,44 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 			t.Fatal("changed product dimension kept old canonical reuse key")
 		}
 	}
-	wrong := pack
-	wrong.Digest = evalDigest
-	if _, err := adapter.ObserveBounded(ctx, operator, ref, wrong, cfg, "p25-frozen-wrong-pack", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) {
+	wrong := acceptedPack
+	wrong.Pack.Digest = evalDigest
+	if _, err := adapter.ObserveBounded(ctx, operator, ref, wrong, "p25-frozen-wrong-pack", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) {
 		t.Fatal("unreviewed pack substituted", err)
+	}
+	selectNarrativePack(t, f.f, f.raw, acceptedPackB, 4)
+	beforeChanged := f.f.f.lookups.Load()
+	if _, err := adapter.ObserveBounded(ctx, operator, ref, acceptedPack, "p25-frozen-stale-key", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) || f.f.f.lookups.Load() != beforeChanged {
+		t.Fatal("stale reviewed-pack input reached source before correctness gate", err)
+	}
+	staleAdapter, err := evaluation.NewFrozenPerformanceReleaseAdapterFactory(f.f.f.db, runs, staleFrozenReader{inner: f.f.f.db, key: cold.ReuseKey}, "recorded", time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := staleAdapter.ObserveBounded(ctx, operator, refB, acceptedPackB, "p25-frozen-stale-substitution", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) || f.f.f.lookups.Load() != beforeChanged {
+		t.Fatal("stale repository reuse key reached source before correctness gate", err)
+	}
+	staleRequest := request
+	staleRequest.Key = "p25-phase24-stale-pack"
+	staleRef, err := evaluationService.RegisterInput(ctx, operator, "protected", evaluation.LiveInput{Pack: pack, Frozen: &evaluation.FrozenRunInput{BlockID: block, Request: staleRequest}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleCase := caseProof
+	staleCase.Input = staleRef
+	_, err = phase24.Observe(ctx, evaluation.Execution{Case: staleCase, Pack: pack, RuntimeConfig: cfg, RuntimeDigest: acceptedPack.Digest,
+		Envelope: operator, Reservation: evaluation.Reservation{Calls: 1, Tokens: 8192, Deadline: time.Now().Add(time.Minute)}})
+	if !errors.Is(err, evaluation.ErrReview) || f.f.f.lookups.Load() != beforeChanged {
+		t.Fatal("Phase 24 frozen report could claim a different selected pack", err)
+	}
+	changed, err := adapter.ObserveBounded(ctx, operator, refB, acceptedPackB, "p25-frozen-changed-pack", 0)
+	if err != nil || changed.ReuseKey == cold.ReuseKey || changed.ReusedFrom != "" || changed.Usage.SourceCalls != 1 || changed.Usage.SourceNS == nil || changed.Usage.ModelCalls != 1 || changed.SemanticDigest != cold.SemanticDigest {
+		t.Fatal("selected reviewed-pack change did not invalidate product reuse", err, changed)
 	}
 	deniedScopes := slices.DeleteFunc(append([]string(nil), scopes...), func(s string) bool { return s == "reporting.execute" })
 	denied := phase27Actor(t, f.f, operator.User(), deniedScopes)
 	before := f.f.f.lookups.Load()
-	_, err = adapter.ObserveBounded(ctx, denied, ref, pack, cfg, "p25-frozen-denied", 60)
+	_, err = adapter.ObserveBounded(ctx, denied, refB, acceptedPackB, "p25-frozen-denied", 60)
 	if err == nil || f.f.f.lookups.Load() != before {
 		t.Fatal("missing signed action reached source", err)
 	}
