@@ -17,44 +17,44 @@ import (
 
 // mountDocuments shares the existing query, block, source, model and operation
 // services. The metadata/retained-read surface remains available without them.
-func mountDocuments(limits config.Reporting, renderConfig config.Rendering, db *postgres.DB, verifier *auth.Verifier, blocks *reporting.Service, runs *reporting.Runs, query *nlqexec.Service, runner *jobs.RequestRunner, next http.Handler) (*api.Registry, *reporting.Delivery, *rendering.Service, http.Handler, error) {
+func mountDocuments(limits config.Reporting, renderConfig config.Rendering, db *postgres.DB, verifier *auth.Verifier, blocks *reporting.Service, runs *reporting.Runs, query *nlqexec.Service, runner *jobs.RequestRunner, next http.Handler) (*api.Registry, *reporting.Documents, *reporting.Delivery, *rendering.Service, http.Handler, error) {
 	queries := reporting.DocumentsFromQueries(query)
 	documents, err := reporting.NewDocuments(db, blocks, queries, limits)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	compositions, err := reporting.NewCompositions(documents, db, runs, queries, runner)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	registry, err := reportingapi.DocumentsRegistry(documents.CanFilterOptions())
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	delivery, err := reporting.NewDelivery(blocks, runs, documents, compositions, db, limits.Viewer)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	var renderer *rendering.Service
 	if renderConfig.Enabled {
 		options := rendering.Options{WorkerVersion: renderConfig.WorkerVersion, ThemeVersion: renderConfig.ThemeVersion, MaxTime: time.Duration(renderConfig.MaxTime), MaxMemoryBytes: renderConfig.MaxMemoryBytes, MaxInputBytes: renderConfig.MaxInputBytes, MaxOutputBytes: renderConfig.MaxOutputBytes, MaxConcurrent: renderConfig.MaxConcurrent, MaxWidgets: renderConfig.MaxWidgets, Retention: time.Duration(renderConfig.Retention), Isolation: renderConfig.Isolation}
 		worker, workerErr := rendering.NewProcess(renderConfig.WorkerPath, options)
 		if workerErr != nil {
-			return nil, nil, nil, nil, workerErr
+			return nil, nil, nil, nil, nil, workerErr
 		}
 		renderer, err = rendering.NewManaged(delivery, db, worker, renderConfig.MaxOutputBytes, options)
 	}
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	deliveryRegistry, err := reportingapi.DeliveryRegistry(delivery.CanExecute(), renderer != nil, renderer != nil && renderer.Durable())
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	registry, err = api.Compose(registry, deliveryRegistry)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	handler := reportingapi.DocumentsHandler(verifier, documents, compositions, next)
-	return registry, delivery, renderer, reportingapi.DeliveryHandler(verifier, delivery, delivery.CanExecute(), handler, renderer), nil
+	return registry, documents, delivery, renderer, reportingapi.DeliveryHandler(verifier, delivery, delivery.CanExecute(), handler, renderer), nil
 }

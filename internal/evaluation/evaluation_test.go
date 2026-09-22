@@ -222,6 +222,13 @@ func (r *testRepo) CreateRuntimePack(_ context.Context, _ store.Scope, x Runtime
 	r.runtimePacks[x.Pack.Digest] = x
 	return nil
 }
+func (r *testRepo) DraftRuntimePack(_ context.Context, _ store.Scope, digest string) (RuntimePackRecord, error) {
+	x, ok := r.runtimePacks[digest]
+	if !ok || x.State != Draft || x.Review != nil {
+		return x, store.ErrNotFound
+	}
+	return x, nil
+}
 func (r *testRepo) ReviewRuntimePack(_ context.Context, _ store.Scope, v RuntimePackReview) (RuntimePackRecord, error) {
 	x, ok := r.runtimePacks[v.PackDigest]
 	if !ok || x.State != Draft || x.Author == v.Reviewer || x.Pack.ID != v.PackID || x.Pack.Revision != v.PackRevision || x.Digest != v.RuntimeDigest || x.Config.Digest != v.ConfigurationDigest || x.Config.Model != v.Model || x.Config.SystemInstruction != v.SystemInstruction || x.Config.AttemptCostUSD != v.MaxAttemptCostUSD || len(x.Config.Models) != len(v.Models) {
@@ -353,6 +360,14 @@ func (r *testRepo) AcceptedRuntimePack(_ context.Context, _ store.Scope, pack, c
 func (r *testRepo) CreateSuite(_ context.Context, _ store.Scope, v SuiteRecord) error {
 	r.suites[v.Digest] = v
 	return nil
+}
+func (r *testRepo) DraftSuite(_ context.Context, _ store.Scope, id string, revision int64) (SuiteRecord, error) {
+	for _, x := range r.suites {
+		if x.Suite.ID == id && x.Suite.Revision == revision && x.State == Draft && x.Review == nil {
+			return x, nil
+		}
+	}
+	return SuiteRecord{}, store.ErrNotFound
 }
 func (*testRepo) SaveInput(context.Context, store.Scope, ProtectedRef, LiveInput) error { return nil }
 func (r *testRepo) ReviewSuite(_ context.Context, _ store.Scope, v SuiteReview) (SuiteRecord, error) {

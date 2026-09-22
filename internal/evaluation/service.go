@@ -14,9 +14,11 @@ import (
 // Repository persists immutable revisions, review receipts, and terminal run evidence.
 type Repository interface {
 	CreateRuntimePack(context.Context, store.Scope, RuntimePackRecord) error
+	DraftRuntimePack(context.Context, store.Scope, string) (RuntimePackRecord, error)
 	ReviewRuntimePack(context.Context, store.Scope, RuntimePackReview) (RuntimePackRecord, error)
 	AcceptedRuntimePack(context.Context, store.Scope, string, string) (RuntimePackRecord, error)
 	CreateSuite(context.Context, store.Scope, SuiteRecord) error
+	DraftSuite(context.Context, store.Scope, string, int64) (SuiteRecord, error)
 	SaveInput(context.Context, store.Scope, ProtectedRef, LiveInput) error
 	ReviewSuite(context.Context, store.Scope, SuiteReview) (SuiteRecord, error)
 	AcceptedSuite(context.Context, store.Scope, string, int64, string) (SuiteRecord, error)
@@ -35,6 +37,48 @@ type Repository interface {
 	ReviewProposal(context.Context, store.Scope, ReviewReceipt) error
 	SelectPack(context.Context, store.Scope, PackSelection, int64) (PackSelection, error)
 	SelectedPack(context.Context, store.Scope) (PackSelection, error)
+}
+
+// DraftRuntimePack resolves one exact unreviewed runtime pack for idempotent
+// migration reconciliation. It uses write authority because the material can
+// include protected instructions and is not a general read surface.
+func (s *Service) DraftRuntimePack(ctx context.Context, e identity.Envelope, packDigest string) (RuntimePackRecord, error) {
+	if ctx == nil || !validDigest(packDigest) {
+		return RuntimePackRecord{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return RuntimePackRecord{}, err
+	}
+	r, err := s.repo.DraftRuntimePack(ctx, scope, packDigest)
+	if err != nil {
+		return RuntimePackRecord{}, err
+	}
+	if r.State != Draft || r.Review != nil || r.Validate() != nil {
+		return RuntimePackRecord{}, store.ErrConflict
+	}
+	return r, nil
+}
+
+// DraftSuite resolves one exact unreviewed suite for idempotent migration
+// reconciliation. It cannot return accepted or rejected authority state.
+func (s *Service) DraftSuite(ctx context.Context, e identity.Envelope, id string, revision int64) (SuiteRecord, error) {
+	if ctx == nil || !identifier(id) || revision < 1 {
+		return SuiteRecord{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return SuiteRecord{}, err
+	}
+	r, err := s.repo.DraftSuite(ctx, scope, id, revision)
+	if err != nil {
+		return SuiteRecord{}, err
+	}
+	want, digestErr := r.Suite.Digest()
+	if digestErr != nil || r.State != Draft || r.Review != nil || r.Digest != want {
+		return SuiteRecord{}, store.ErrConflict
+	}
+	return r, nil
 }
 
 // AuthorRuntimePack stores an immutable server-owned runtime configuration draft.
@@ -309,6 +353,103 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, id string) (Rep
 	return s.repo.ReadReport(ctx, scope, id)
 }
 
+// MigrationComparison resolves a persisted, owner-produced case comparison from
+// an accepted live suite and run. The hash binds its expected and observed values
+// to the exact source revision; a suite frontier alone is not parity evidence.
+func (s *Service) MigrationComparison(ctx context.Context, e identity.Envelope, feature, runID, engine, dialect, snapshot string, revision int64) (MigrationComparison, error) {
+	if ctx == nil || !identifier(feature) || !identifier(runID) || !identifier(engine) || !identifier(dialect) || !validDigest(snapshot) || revision < 1 {
+		return MigrationComparison{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.read", "read")
+	if err != nil {
+		return MigrationComparison{}, err
+	}
+	report, err := s.repo.ReadReport(ctx, scope, runID)
+	if err != nil {
+		return MigrationComparison{}, err
+	}
+	if report.Validate() != nil || report.Mode != Live || report.Status != "passed" || !report.GatePassed || report.SecurityFailures != 0 {
+		return MigrationComparison{}, ErrGate
+	}
+	record, err := s.repo.AcceptedSuite(ctx, scope, report.SuiteID, report.SuiteRevision, report.SuiteDigest)
+	if err != nil {
+		return MigrationComparison{}, err
+	}
+	suite := record.Suite
+	if suite.Mode != Live || suite.Provenance.SourceSnapshot != snapshot || suite.Provenance.SourceRevision != revision {
+		return MigrationComparison{}, ErrGate
+	}
+	measured := false
+	for _, source := range suite.Provenance.DialectMatrix {
+		if source.Engine == engine && source.Dialect == dialect && source.Mode == Live && source.Status == "measured" {
+			measured = true
+			break
+		}
+	}
+	if !measured {
+		return MigrationComparison{}, ErrGate
+	}
+	for _, c := range suite.Cases {
+		if c.ID != feature || !c.HeldOut || c.Critical || c.BindingDigest == "" {
+			continue
+		}
+		for _, result := range report.Cases {
+			if result.ID != feature || !result.HeldOut || !result.Passed || result.Critical || result.Stage != c.Stage || result.Locale != c.Locale {
+				continue
+			}
+			hash, hashErr := digest(struct {
+				Feature      string
+				Engine       string
+				Dialect      string
+				Snapshot     string
+				Revision     int64
+				SuiteDigest  string
+				EvidenceHash string
+				Expected     Case
+				Observed     CaseResult
+			}{feature, engine, dialect, snapshot, revision, report.SuiteDigest, report.EvidenceHash, c, result})
+			if hashErr != nil {
+				return MigrationComparison{}, hashErr
+			}
+			return MigrationComparison{Feature: feature, RunID: runID, SuiteDigest: report.SuiteDigest, EvidenceHash: report.EvidenceHash, ComparisonHash: hash, Engine: engine, Dialect: dialect, SourceSnapshot: snapshot, SourceRevision: revision}, nil
+		}
+	}
+	return MigrationComparison{}, ErrGate
+}
+
+// VerifyMigrationEvidence repeats the owner lookup and compares the complete
+// artifact identity supplied by the migration manifest.
+func (s *Service) VerifyMigrationEvidence(ctx context.Context, e identity.Envelope, expected MigrationComparison) error {
+	actual, err := s.MigrationComparison(ctx, e, expected.Feature, expected.RunID, expected.Engine, expected.Dialect, expected.SourceSnapshot, expected.SourceRevision)
+	if err != nil {
+		return err
+	}
+	if actual != expected {
+		return ErrGate
+	}
+	return nil
+}
+
+// DraftOptimization resolves only an unreviewed durable candidate. Migration
+// reconciliation cannot import a review or active pack selection.
+func (s *Service) DraftOptimization(ctx context.Context, e identity.Envelope, id string) (OptimizationProposal, error) {
+	if ctx == nil || !identifier(id) {
+		return OptimizationProposal{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return OptimizationProposal{}, err
+	}
+	p, err := s.repo.ReadProposal(ctx, scope, id)
+	if err != nil {
+		return OptimizationProposal{}, err
+	}
+	if p.Validate() != nil || p.State != "candidate" {
+		return OptimizationProposal{}, store.ErrConflict
+	}
+	return p, nil
+}
+
 // Cancel persists intent before signalling a locally owned run.
 func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string) error {
 	if !identifier(id) {
@@ -432,31 +573,45 @@ func (s *Service) ReviewFeedbackSplit(ctx context.Context, e identity.Envelope, 
 	return out, nil
 }
 
-// ProposeOptimization loads all evidence from protected storage and persists the proposal.
-func (s *Service) ProposeOptimization(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, error) {
+func (s *Service) optimizationCandidate(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, store.Scope, error) {
 	if !identifier(in.ID) || !identifier(in.BaselineRun) || !identifier(in.CandidateRun) {
-		return OptimizationProposal{}, ErrInvalid
+		return OptimizationProposal{}, store.Scope{}, ErrInvalid
 	}
 	scope, err := access.StoreScope(e, "ops.write", "write")
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	suite, err := s.repo.AcceptedSuite(ctx, scope, in.SuiteID, in.SuiteRevision, in.SuiteDigest)
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	base, err := s.repo.ReadReport(ctx, scope, in.BaselineRun)
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	candidate, err := s.repo.ReadReport(ctx, scope, in.CandidateRun)
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	if err = s.repo.ValidateOptimizationHeldout(ctx, scope, suite.Suite); err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	p, err := ProposeOptimization(in.ID, suite.Suite, base, candidate, s.clock())
+	if err != nil {
+		return OptimizationProposal{}, store.Scope{}, err
+	}
+	return p, scope, nil
+}
+
+// PreviewOptimization resolves all live evidence without persisting authority.
+func (s *Service) PreviewOptimization(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, error) {
+	p, _, err := s.optimizationCandidate(ctx, e, in)
+	return p, err
+}
+
+// ProposeOptimization loads all evidence from protected storage and persists the proposal.
+func (s *Service) ProposeOptimization(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, error) {
+	p, scope, err := s.optimizationCandidate(ctx, e, in)
 	if err != nil {
 		return OptimizationProposal{}, err
 	}

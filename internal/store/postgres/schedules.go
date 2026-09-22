@@ -43,6 +43,15 @@ func scheduleTimes(spec jobs.Spec, now time.Time) (previous, next *time.Time, er
 
 // CreateSchedule stores or replays a fixed target and validated recurrence under tenant scope.
 func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key string, request jobs.ScheduleRequest, l jobs.Limits) (out jobs.Schedule, err error) {
+	return d.createSchedule(ctx, scope, session, key, request, l, true)
+}
+
+// CreateImportedSchedule inserts disabled in the same transaction as creation.
+func (d *DB) CreateImportedSchedule(ctx context.Context, scope store.Scope, session, key string, request jobs.ScheduleRequest, l jobs.Limits) (jobs.Schedule, error) {
+	return d.createSchedule(ctx, scope, session, key, request, l, false)
+}
+
+func (d *DB) createSchedule(ctx context.Context, scope store.Scope, session, key string, request jobs.ScheduleRequest, l jobs.Limits, enabled bool) (out jobs.Schedule, err error) {
 	if !scope.Valid() || !identity.Identifier(session) || !identity.Identifier(key) || request.Validate() != nil || l.Validate() != nil {
 		return out, jobs.ErrInvalid
 	}
@@ -53,7 +62,7 @@ func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key
 		}
 		existing, e := scanSchedule(tx.QueryRow(ctx, `SELECT `+scheduleColumns+` FROM chartworks.job_schedules WHERE tenant_id=$1 AND creator_id=$2 AND client_key=$3`, scope.Tenant(), scope.Actor(), key))
 		if e == nil {
-			if digestValue(existing.Request) != hash {
+			if digestValue(existing.Request) != hash || existing.Retired || !enabled && existing.Enabled {
 				return store.ErrConflict
 			}
 			out = existing
@@ -81,11 +90,11 @@ func (d *DB) CreateSchedule(ctx context.Context, scope store.Scope, session, key
 		if e != nil {
 			return e
 		}
-		_, e = tx.Exec(ctx, `INSERT INTO chartworks.job_schedules(tenant_id,schedule_id,creator_id,creator_session,client_key,request_hash,request,previous_due,next_due) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, scope.Tenant(), id, scope.Actor(), session, key, hash, request.JSON(), previous, next)
+		_, e = tx.Exec(ctx, `INSERT INTO chartworks.job_schedules(tenant_id,schedule_id,creator_id,creator_session,client_key,request_hash,request,previous_due,next_due,enabled) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, scope.Tenant(), id, scope.Actor(), session, key, hash, request.JSON(), previous, next, enabled)
 		if e != nil {
 			return e
 		}
-		out = jobs.Schedule{ID: id, Revision: 1, Enabled: true, Tenant: scope.Tenant(), Initiator: scope.Actor(), InitiatorSession: session, Request: request, NextDue: next, PreviousDue: previous}
+		out = jobs.Schedule{ID: id, Revision: 1, Enabled: enabled, Tenant: scope.Tenant(), Initiator: scope.Actor(), InitiatorSession: session, Request: request, NextDue: next, PreviousDue: previous}
 		return auditJob(ctx, tx, scope, "schedule.created", id)
 	})
 	return out, err
@@ -156,6 +165,13 @@ func (d *DB) FireSchedule(ctx context.Context, scope store.Scope, session, id, k
 		if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
 			return e
 		}
+		allowed, e := admitCutoverOccurrence(ctx, tx, schedule, now)
+		if e != nil {
+			return e
+		}
+		if !allowed {
+			return store.ErrConflict
+		}
 		out, e = admitJob(ctx, tx, scope, session, "manual:"+digestValue([]string{id, key}), schedule.Request.Target, l, now, now, id, schedule.Revision)
 		if e != nil {
 			return e
@@ -173,6 +189,24 @@ func activeSchedule(ctx context.Context, tx pgx.Tx, tenant, id string) (bool, er
 func skippedOccurrence(ctx context.Context, tx pgx.Tx, s jobs.Schedule, due, start, end, through time.Time, reason string) error {
 	_, err := tx.Exec(ctx, `INSERT INTO chartworks.job_occurrences(tenant_id,schedule_id,due_at,window_start,window_end,skipped_through,disposition) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, s.Tenant, s.ID, due, start, end, through, reason)
 	return err
+}
+
+func admitCutoverOccurrence(ctx context.Context, tx pgx.Tx, s jobs.Schedule, due time.Time) (bool, error) {
+	var stream, cohort, active, boundaryStream string
+	var generation, revision int64
+	var resumeAfter time.Time
+	err := tx.QueryRow(ctx, `SELECT r.stream_id,r.cohort_id,r.schedule_revision,c.route,c.generation,c.boundary->>'stream',(c.boundary->>'resume_after')::timestamptz FROM chartworks.migration_schedule_routes r JOIN chartworks.migration_cutovers c USING(tenant_id,cohort_id) WHERE r.tenant_id=$1 AND r.schedule_id=$2 FOR SHARE OF c`, s.Tenant, s.ID).Scan(&stream, &cohort, &revision, &active, &generation, &boundaryStream, &resumeAfter)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if active != s.ID || revision != s.Revision || boundaryStream != stream || !due.After(resumeAfter) {
+		return false, nil
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO chartworks.migration_occurrence_admissions(tenant_id,stream_id,due_at,cohort_id,generation,schedule_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, s.Tenant, stream, due.UTC(), cohort, generation, s.ID)
+	return err == nil && tag.RowsAffected() == 1, err
 }
 
 // TickSchedules advances at most 32 definitions and 32 catch-up occurrences per definition.
@@ -234,6 +268,22 @@ func (d *DB) TickSchedules(ctx context.Context, l jobs.Limits) (admitted int, er
 					}
 					previous, due = last, next
 					break
+				}
+				allowed, e := admitCutoverOccurrence(ctx, tx, s, due)
+				if e != nil {
+					return e
+				}
+				if !allowed {
+					if e = skippedOccurrence(ctx, tx, s, due, previous, due, due, "cutover_fenced"); e != nil {
+						return e
+					}
+					processed++
+					previous = due
+					due, e = s.Request.Spec.Next(due)
+					if e != nil {
+						return e
+					}
+					continue
 				}
 				active, e := activeSchedule(ctx, tx, s.Tenant, s.ID)
 				if e != nil {

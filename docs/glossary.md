@@ -50,6 +50,9 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | Rendition | Rendered representation of an artifact under a recorded renderer/theme/viewport version, inheriting privacy/expiry. |
 | Preview | Private draft/review execution; remains private after later report publication. |
 | Idempotency | Same accepted key/request resolves to the same logical operation, not a universal remote exactly-once promise. |
+| Migration manifest | Credential-free versioned graph of external references, mappings, field loss dispositions, retention and feature evidence. It carries no current authority. |
+| Cohort | Objects and one schedule occurrence stream migrated and cut over as a single evidence-gated unit. |
+| Quarantine | Private retained import evidence that cannot become a current publication, certificate or authority without a separate authorized lifecycle operation. |
 | Occurrence | Schedule due time with exact target revisions and half-open period preserved across retries. |
 | Catalog delivery | Authorized pull access to a retained result; recipients in metadata do not prove outbound email. |
 | SSR | Actual server-generated visual content, not an HTML shell requiring client chart JavaScript. |

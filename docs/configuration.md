@@ -236,7 +236,7 @@ merges into the ordinary operator-owned configuration; it does not create author
 | `mcp.max_response_bytes` | integer bytes | 16 MiB | 16 KiB–32 MiB; text plus structured results and final protocol encoding are bounded. |
 | `mcp.max_concurrent` | integer calls | 16 | 1–64; exhaustion returns 429, with no unbounded waiting queue. |
 | `mcp.timeout` | duration | `1m5s` | 1–65 seconds; when enabled, strictly shorter than `server.write_timeout`. Caller cancellation and current bearer expiry may shorten it. |
-| `mcp.groups` | string array | discovery, query, byo, charts, reporting | 1–5 distinct implemented group names. Only installed services are exposed; selecting no real bindings fails startup. |
+| `mcp.groups` | string array | discovery, query, byo, charts, reporting, onboarding, evaluation, migration | 1–8 distinct implemented group names. Only installed services are exposed; selecting no real bindings fails startup. |
 | `mcp.allowed_hosts` | string array | localhost, 127.0.0.1, ::1 | 1–16 unique canonical lower-case DNS names or IP literals; no wildcard, scheme, port or forwarding-header substitution. |
 
 Every request uses `auth.audiences.mcp` (or the explicitly configured shared
@@ -281,7 +281,7 @@ authority and catalog-only delivery. All new fields below are non-secret.
 
 | Key | Units / default | Closed bounds and behavior |
 |---|---|---|
-| `mcp.groups` | Array; discovery, query, byo, charts, reporting | 1–5 distinct implemented names. The reporting group registers real services only; `features.mcp` still defaults false. |
+| `mcp.groups` | Array; discovery, query, byo, charts, reporting, onboarding, evaluation, migration | 1–8 distinct implemented names. The reporting, onboarding, evaluation and migration groups register real services only; `features.mcp` still defaults false. |
 | `reporting.viewer.max_message_bytes` | Bytes; 2097152 | 16384–4194304. Enforced for search/describe/runs/view; over-budget replies contain no partial data. MCP's transport cap independently applies. |
 | `reporting.viewer.max_rows` | Rows; 500 | 1–1000 per selected table page, not a new source limit. |
 | `reporting.viewer.page_rows` | Rows; 100 | 1 through max_rows; default page selection. |
