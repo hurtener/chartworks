@@ -48,7 +48,7 @@ Implement `TestPhase34/AC01` through `TestPhase34/AC08`; test import replay/CAS,
 ## Current implementation boundary
 
 The in-progress runtime is owned by `internal/migration`, `internal/migrationapi`,
-`internal/store/postgres/migration.go`, migration 047 and the typed SDK. It exposes
+`internal/store/postgres/migration.go`, migration 048 and the typed SDK. It exposes
 seven registered HTTP/CLI operations and seven optional MCP bindings. The
 [v1 contract](../contracts/migration-cutover-v1.md),
 [operation manifest](../contracts/chartworks-migration-operations.json) and
@@ -57,9 +57,9 @@ loss ledger, quarantine, retention and schedule handoff behavior.
 
 `TestPhase34/AC01`–`AC08` exercise the immutable bundle, full dependent graph,
 current-authority quarantine, all 63 feature dispositions, PostgreSQL replay/CAS,
-bounded erasure and cutover/rollback. This runtime does not supply the still-required
-Phase 24 owner comparison results or the pending Phase 33 setup payloads. Until
-those dependency heads are integrated and the private evidence references pass,
+bounded erasure and cutover/rollback. Phase 33 is integrated. This runtime does not
+supply the still-required Phase 24 owner comparison results. Until that dependency
+head is integrated and the private evidence references pass,
 Phase 34 remains `in_progress` and no cohort or final release is declared ready.
 
 ## Glossary, decisions and deviations
