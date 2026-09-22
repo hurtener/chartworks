@@ -65,19 +65,22 @@ func requireDependencies(e identity.Envelope, action string, r Run) error {
 	)
 }
 
-func (s *Service) authorizeRun(ctx context.Context, e identity.Envelope, action string, r Run) error {
+func (s *Service) authorizeRun(ctx context.Context, e identity.Envelope, action string, r Run, requireExact bool) ([]RunAuthority, error) {
 	coordinates, err := s.adapter.ResolveRunAuthority(ctx, e, r)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(coordinates) == 0 || coordinates[0].Source != r.Input.Source {
-		return store.ErrConflict
+	if len(coordinates) == 0 {
+		return nil, store.ErrConflict
 	}
 	resources := []access.Resource{}
 	seen := map[string]bool{}
 	for _, coordinate := range coordinates {
-		if !identity.Identifier(coordinate.Source) || !identity.Identifier(coordinate.Context) {
-			return store.ErrInvalid
+		if !identity.Identifier(coordinate.Source) || !identity.Identifier(coordinate.Context) || coordinate.Revision < 1 || (coordinate.Dataset != "" && !identity.Identifier(coordinate.Dataset)) {
+			return nil, store.ErrInvalid
+		}
+		if requireExact && !coordinate.Exact {
+			return nil, store.ErrConflict
 		}
 		key := coordinate.Source + "\x00" + coordinate.Context
 		if !seen[key] {
@@ -87,8 +90,14 @@ func (s *Service) authorizeRun(ctx context.Context, e identity.Envelope, action 
 			)
 			seen[key] = true
 		}
+		if coordinate.Dataset != "" {
+			resources = append(resources, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: coordinate.Dataset})
+		}
 	}
-	return access.Require(e, action, resources...)
+	if err = access.Require(e, action, resources...); err != nil {
+		return nil, err
+	}
+	return coordinates, nil
 }
 
 func validText(v string, max int) bool {
@@ -269,7 +278,7 @@ func (s *Service) Get(ctx context.Context, e identity.Envelope, id string) (Run,
 	if err != nil {
 		return Run{}, err
 	}
-	if err = s.authorizeRun(ctx, e, "onboarding.read", r); err != nil {
+	if _, err = s.authorizeRun(ctx, e, "onboarding.read", r, false); err != nil {
 		return Run{}, err
 	}
 	return r, nil
@@ -286,7 +295,7 @@ func (s *Service) Resume(ctx context.Context, e identity.Envelope, id string, in
 	if err != nil {
 		return Run{}, err
 	}
-	if err = requireDependencies(e, "onboarding.write", r); err != nil {
+	if _, err = s.authorizeRun(ctx, e, "onboarding.write", r, true); err != nil {
 		return Run{}, err
 	}
 	if r.Version != in.ExpectedVersion {
@@ -403,7 +412,7 @@ func (s *Service) Answer(ctx context.Context, e identity.Envelope, id string, in
 	if err != nil {
 		return Run{}, err
 	}
-	if err = requireDependencies(e, "onboarding.write", r); err != nil {
+	if _, err = s.authorizeRun(ctx, e, "onboarding.write", r, true); err != nil {
 		return Run{}, err
 	}
 	if r.Version != in.ExpectedVersion {
@@ -535,7 +544,7 @@ func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string, in
 	if err != nil {
 		return Run{}, err
 	}
-	if err = s.authorizeRun(ctx, e, "onboarding.cancel", r); err != nil {
+	if _, err = s.authorizeRun(ctx, e, "onboarding.cancel", r, false); err != nil {
 		return Run{}, err
 	}
 	if r.Version != in.ExpectedVersion {
@@ -577,14 +586,15 @@ func (s *Service) Drift(ctx context.Context, e identity.Envelope, id string, in 
 	if err != nil {
 		return Amendment{}, err
 	}
-	if err = requireDependencies(e, "onboarding.write", r); err != nil {
+	coordinates, err := s.authorizeRun(ctx, e, "onboarding.write", r, false)
+	if err != nil {
 		return Amendment{}, err
 	}
 	if r.Version != in.ExpectedVersion {
 		if r.Version == in.ExpectedVersion+1 && len(r.Amendments) > 0 {
 			last := r.Amendments[len(r.Amendments)-1]
 			if last.RunVersion == r.Version {
-				if err = access.Require(e, "onboarding.write", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: last.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: last.Context}); err != nil {
+				if err = access.Require(e, "onboarding.write", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: last.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: last.Context}, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: last.Dataset}); err != nil {
 					return Amendment{}, err
 				}
 				return last, nil
@@ -602,7 +612,14 @@ func (s *Service) Drift(ctx context.Context, e identity.Envelope, id string, in 
 	if err != nil {
 		return Amendment{}, err
 	}
-	if out.Run != r.ID || out.Source != r.Input.Source || !identity.Identifier(out.Context) || out.SourceRevision <= r.SourceRevision || (out.Observation != "schema_changed" && out.Observation != "binding_changed") || !out.ExistingIntact || out.RequiredAction != "review_amendment" || !identity.Identifier(out.Proposal.ID) || len(out.Changes) == 0 || len(out.Changes) > r.Limits.MaxEntities || len(out.Affected) == 0 || len(out.Affected) > r.Limits.MaxEntities || len(out.ImpactEvidence) != len(out.Affected) {
+	effective, ok := effectiveDriftReference(r)
+	current := RunAuthority{}
+	for _, coordinate := range coordinates {
+		if coordinate.Source == effective.Source && coordinate.Dataset == effective.Dataset {
+			current = coordinate
+		}
+	}
+	if !ok || current.Source == "" || out.Run != r.ID || out.Source != effective.Source || out.Dataset != effective.Dataset || out.Context != current.Context || out.SourceRevision != current.Revision || out.SourceRevision < effective.SourceRevision || out.SourceRevision == effective.SourceRevision && out.Context == effective.Context || (out.Observation != "schema_changed" && out.Observation != "binding_changed") || !out.ExistingIntact || out.RequiredAction != "review_amendment" || !identity.Identifier(out.Proposal.ID) || out.Proposal.Source != out.Source || out.Proposal.Context != out.Context || out.Proposal.Dataset != out.Dataset || out.Proposal.SourceRevision != out.SourceRevision || len(out.Changes) == 0 || len(out.Changes) > r.Limits.MaxEntities || len(out.Affected) == 0 || len(out.Affected) > r.Limits.MaxEntities || len(out.ImpactEvidence) != len(out.Affected) {
 		return Amendment{}, ErrInvalid
 	}
 	for i, impact := range out.ImpactEvidence {
@@ -615,11 +632,11 @@ func (s *Service) Drift(ctx context.Context, e identity.Envelope, id string, in 
 			}
 		}
 	}
-	if err = access.Require(e, "onboarding.write", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: out.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: out.Context}); err != nil {
+	if err = access.Require(e, "onboarding.write", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: out.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: out.Context}, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: out.Dataset}); err != nil {
 		return Amendment{}, err
 	}
 	for _, amendment := range r.Amendments {
-		if amendment.SourceRevision == out.SourceRevision && amendment.Observation == out.Observation {
+		if amendment.Source == out.Source && amendment.Dataset == out.Dataset && amendment.SourceRevision == out.SourceRevision && amendment.Observation == out.Observation {
 			return amendment, nil
 		}
 	}
@@ -638,7 +655,7 @@ func validateStep(v StepResult, l Limits, used, delta Usage) error {
 		return ErrBudget
 	}
 	for _, r := range v.References {
-		if !identity.Identifier(r.ID) || r.Kind == "" || len(r.Digest) > 64 || len(r.Columns) > l.MaxEntities || len(r.DependsOn) > 16 || (r.Source != "" && !identity.Identifier(r.Source)) || (r.Context != "" && !identity.Identifier(r.Context)) || (r.Dataset != "" && !identity.Identifier(r.Dataset)) {
+		if !identity.Identifier(r.ID) || r.Kind == "" || len(r.Digest) > 64 || len(r.Columns) > l.MaxEntities || len(r.DependsOn) > 16 || r.SourceRevision < 0 || (r.Source != "" && (!identity.Identifier(r.Source) || !identity.Identifier(r.Context) || r.SourceRevision < 1)) || (r.Dataset != "" && !identity.Identifier(r.Dataset)) {
 			return ErrInvalid
 		}
 		for _, value := range append(append([]string{}, r.Columns...), r.DependsOn...) {

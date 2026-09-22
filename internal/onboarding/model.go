@@ -122,16 +122,17 @@ type ReviewReference struct {
 // private proposal coordinate retained by this onboarding run. Proposal
 // coordinates grant no block/report authority and contain no authored content.
 type Reference struct {
-	Kind      string   `json:"kind"`
-	ID        string   `json:"id"`
-	Revision  int64    `json:"revision,omitempty"`
-	Digest    string   `json:"digest,omitempty"`
-	Private   bool     `json:"private"`
-	Source    string   `json:"source,omitempty"`
-	Context   string   `json:"context,omitempty"`
-	Dataset   string   `json:"dataset,omitempty"`
-	Columns   []string `json:"columns,omitempty"`
-	DependsOn []string `json:"depends_on,omitempty"`
+	Kind           string   `json:"kind"`
+	ID             string   `json:"id"`
+	Revision       int64    `json:"revision,omitempty"`
+	SourceRevision int64    `json:"source_revision,omitempty"`
+	Digest         string   `json:"digest,omitempty"`
+	Private        bool     `json:"private"`
+	Source         string   `json:"source,omitempty"`
+	Context        string   `json:"context,omitempty"`
+	Dataset        string   `json:"dataset,omitempty"`
+	Columns        []string `json:"columns,omitempty"`
+	DependsOn      []string `json:"depends_on,omitempty"`
 }
 
 // Evidence records why a proposed semantic entity exists without retaining rows,
@@ -191,8 +192,11 @@ type Progress struct {
 // RunAuthority is a server-resolved current source binding needed before any
 // persisted run projection can be returned.
 type RunAuthority struct {
-	Source  string
-	Context string
+	Source   string
+	Context  string
+	Dataset  string
+	Revision int64
+	Exact    bool
 }
 
 // Run is actor/session private. It contains references and bounded evidence only.
@@ -237,6 +241,7 @@ type Amendment struct {
 	Observation    string           `json:"observation"`
 	Source         string           `json:"source"`
 	Context        string           `json:"context"`
+	Dataset        string           `json:"dataset"`
 	SourceRevision int64            `json:"source_revision"`
 	Changes        []string         `json:"changes"`
 	Affected       []Reference      `json:"affected"`

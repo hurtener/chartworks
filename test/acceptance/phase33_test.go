@@ -76,7 +76,11 @@ type phase33FailureAdapter struct {
 }
 
 func (a *phase33FailureAdapter) ResolveRunAuthority(_ context.Context, _ identity.Envelope, r onboarding.Run) ([]onboarding.RunAuthority, error) {
-	return []onboarding.RunAuthority{{Source: r.Input.Source, Context: r.Input.Context}}, nil
+	revision, exact := int64(1), true
+	if r.Status == onboarding.StatusComplete {
+		revision, exact = 2, false
+	}
+	return []onboarding.RunAuthority{{Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, Revision: revision, Exact: exact}}, nil
 }
 
 func newPhase33FailureAdapter() *phase33FailureAdapter {
@@ -97,24 +101,24 @@ func (a *phase33FailureAdapter) step(stage onboarding.Stage, r onboarding.Run) (
 	}
 	switch stage {
 	case onboarding.StageConnect:
-		result.References = []onboarding.Reference{{Kind: "source", ID: r.Input.Source, Revision: 1}}
+		result.References = []onboarding.Reference{{Kind: "source", ID: r.Input.Source, Revision: 1, SourceRevision: 1, Source: r.Input.Source, Context: r.Input.Context}}
 	case onboarding.StageInspect:
-		result.References = []onboarding.Reference{{Kind: "dataset", ID: r.Input.Dataset, Revision: 1}}
-		result.Evidence = []onboarding.Evidence{{Entity: "amount", Kind: "column", Basis: []string{"catalog_revision:1"}, Confidence: "observed"}}
+		result.References = []onboarding.Reference{{Kind: "dataset", ID: r.Input.Dataset, Revision: 1, SourceRevision: 1, Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, Columns: []string{"amount"}}}
+		result.Evidence = []onboarding.Evidence{{Entity: "amount", Kind: "column", Basis: []string{"catalog_revision:1", "source:" + r.Input.Source, "dataset:" + r.Input.Dataset, "schema_digest:old"}, Confidence: "observed"}}
 	case onboarding.StageProfile:
-		result.References = []onboarding.Reference{{Kind: "profile", ID: r.Input.Profile, Revision: 1, Private: true}}
+		result.References = []onboarding.Reference{{Kind: "profile", ID: r.Input.Profile, Revision: 1, SourceRevision: 1, Private: true, Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, Columns: []string{"amount"}}}
 		result.Evidence = []onboarding.Evidence{{Entity: "amount", Kind: "profile_column", Basis: []string{"bounded_sample"}, Confidence: "observed", Uncertainty: "currency and null meaning require review"}}
 		if r.Input.Transformation && phase33AnswerValue(r.Answers, "approve_transformation") == "" {
 			result.Questions = []onboarding.Question{{ID: "approve_transformation", Prompt: "Review managed transformation", Evidence: []string{"managed_write_review_required"}, Required: true}}
 		}
 	case onboarding.StageSemantic:
-		result.References = []onboarding.Reference{{Kind: "topic_draft", ID: r.Input.Topic, Revision: 1, Digest: strings.Repeat("a", 64), Private: true}}
+		result.References = []onboarding.Reference{{Kind: "topic_draft", ID: r.Input.Topic, Revision: 1, SourceRevision: 1, Digest: strings.Repeat("a", 64), Private: true, Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, Columns: []string{"amount"}, DependsOn: []string{"profile:" + r.Input.Profile}}}
 		result.Evidence = []onboarding.Evidence{{Entity: "amount", Kind: "measure", Basis: []string{"profile:" + r.Input.Profile}, Confidence: "unresolved", Uncertainty: "unit, grain and null semantics require review", Sensitive: true}}
 		if phase33AnswerValue(r.Answers, "grain") == "" {
 			result.Questions = []onboarding.Question{{ID: "grain", Prompt: "Confirm grain", Evidence: []string{"profile:" + r.Input.Profile}, Required: true}, {ID: "kpis", Prompt: "Confirm units and KPIs", Evidence: []string{"profile:" + r.Input.Profile}, Required: true}}
 		}
 	case onboarding.StageProposals:
-		result.References = []onboarding.Reference{{Kind: "onboarding_query_intent", ID: r.ID + "-query", Private: true}, {Kind: "onboarding_block_intent", ID: r.Input.Block, Private: true}, {Kind: "onboarding_report_intent", ID: r.Input.Report, Private: true}}
+		result.References = []onboarding.Reference{{Kind: "onboarding_query_intent", ID: r.ID + "-query", SourceRevision: 1, Private: true, Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, DependsOn: []string{"topic:" + r.Input.Topic}}, {Kind: "onboarding_block_intent", ID: r.Input.Block, SourceRevision: 1, Private: true, Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, DependsOn: []string{"topic:" + r.Input.Topic}}, {Kind: "onboarding_report_intent", ID: r.Input.Report, SourceRevision: 1, Private: true, Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, DependsOn: []string{"topic:" + r.Input.Topic}}}
 	}
 	return result, nil
 }
@@ -134,13 +138,15 @@ func (a *phase33FailureAdapter) PublishReviewed(_ context.Context, _ identity.En
 	a.mu.Lock()
 	a.calls[onboarding.StageReview]++
 	a.mu.Unlock()
-	return onboarding.StepResult{References: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1, Digest: review.Digest}}, Evidence: []onboarding.Evidence{{Entity: r.Input.Topic, Kind: "publication", Basis: []string{"independent_review:" + review.ID}, Confidence: "observed"}}}, nil
+	return onboarding.StepResult{References: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1, SourceRevision: 1, Digest: review.Digest, Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, Columns: []string{"amount"}, DependsOn: []string{"topic_draft:" + r.Input.Topic}}}, Evidence: []onboarding.Evidence{{Entity: r.Input.Topic, Kind: "publication", Basis: []string{"independent_review:" + review.ID}, Confidence: "observed"}}}, nil
 }
 func (a *phase33FailureAdapter) ProposeQueriesBlocksReports(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
 	return a.step(onboarding.StageProposals, r)
 }
 func (a *phase33FailureAdapter) ProposeDriftAmendment(_ context.Context, _ identity.Envelope, r onboarding.Run, in onboarding.DriftRequest, _ string) (onboarding.Amendment, error) {
-	return onboarding.Amendment{Run: r.ID, Observation: "schema_changed", Source: r.Input.Source, Context: r.Input.Context, SourceRevision: r.SourceRevision + 1, Changes: []string{"amount"}, Affected: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1}}, ImpactEvidence: []onboarding.ImpactEvidence{{Kind: "topic", ID: r.Input.Topic, Basis: []string{"column:amount"}}}, Proposal: onboarding.Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+	effective := r.References[len(r.References)-4]
+	revision := effective.SourceRevision + 1
+	return onboarding.Amendment{Run: r.ID, Observation: "schema_changed", Source: effective.Source, Context: effective.Context, Dataset: effective.Dataset, SourceRevision: revision, Changes: []string{"amount"}, Affected: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1}}, ImpactEvidence: []onboarding.ImpactEvidence{{Kind: "topic", ID: r.Input.Topic, Basis: []string{"column:amount"}}}, Proposal: onboarding.Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend", SourceRevision: revision, Private: true, Source: effective.Source, Context: effective.Context, Dataset: effective.Dataset}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
 }
 
 type phase33Fixture struct {
@@ -152,7 +158,7 @@ type phase33Fixture struct {
 }
 
 func phase33Scopes(id string) []string {
-	return []string{"onboarding.read", "onboarding.write", "onboarding.cancel", "cw.tenant.write:*", "cw.onboarding.read:" + id, "cw.onboarding.write:" + id, "cw.onboarding.cancel:" + id, "cw.source.read:source-a", "cw.execution_context.use:context-a"}
+	return []string{"onboarding.read", "onboarding.write", "onboarding.cancel", "cw.tenant.write:*", "cw.onboarding.read:" + id, "cw.onboarding.write:" + id, "cw.onboarding.cancel:" + id, "cw.source.read:source-a", "cw.execution_context.use:context-a", "cw.dataset.query:sales"}
 }
 func newPhase33Fixture(t *testing.T, id, locale string) *phase33Fixture {
 	t.Helper()

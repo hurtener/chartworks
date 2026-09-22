@@ -62,28 +62,58 @@ func NewDomains(s sourceDomains, p profileDomains, d draftDomains, t topicDomain
 }
 
 func (d *Domains) ResolveRunAuthority(ctx context.Context, e identity.Envelope, r Run) ([]RunAuthority, error) {
-	source, err := d.sources.Get(ctx, e, r.Input.Source)
-	if err != nil {
-		return nil, err
+	type retainedCoordinate struct {
+		source, context, dataset string
+		revision                 int64
 	}
-	if source.ID != r.Input.Source || !identity.Identifier(source.ContextID) || source.Status != "registered" {
+	coordinates := map[string]retainedCoordinate{}
+	inconsistent := false
+	add := func(source, context, dataset string, revision int64) {
+		if source == "" {
+			return
+		}
+		key := source + "\x00" + dataset
+		prior, ok := coordinates[key]
+		if ok && (prior.context != context || prior.revision > 0 && revision > 0 && prior.revision != revision) {
+			inconsistent = true
+			return
+		}
+		if !ok || revision > prior.revision {
+			coordinates[key] = retainedCoordinate{source: source, context: context, dataset: dataset, revision: revision}
+		}
+	}
+	rootRevision := int64(0)
+	for _, ref := range r.References {
+		revision := ref.SourceRevision
+		if revision == 0 && (ref.Kind == "source" || ref.Kind == "dataset" || ref.Kind == "profile") {
+			revision = ref.Revision
+		}
+		if ref.Source == r.Input.Source && revision > rootRevision {
+			rootRevision = revision
+		}
+		add(ref.Source, ref.Context, ref.Dataset, revision)
+	}
+	add(r.Input.Source, r.Input.Context, r.Input.Dataset, rootRevision)
+	if inconsistent {
 		return nil, store.ErrConflict
 	}
-	out := []RunAuthority{{Source: source.ID, Context: source.ContextID}}
-	seen := map[string]bool{source.ID: true}
-	for _, ref := range r.References {
-		if ref.Source == "" || ref.Source == source.ID || seen[ref.Source] {
-			continue
+	keys := make([]string, 0, len(coordinates))
+	for key := range coordinates {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]RunAuthority, 0, len(keys))
+	for _, key := range keys {
+		retained := coordinates[key]
+		current, err := d.sources.Get(ctx, e, retained.source)
+		if err != nil {
+			return nil, err
 		}
-		current, readErr := d.sources.Get(ctx, e, ref.Source)
-		if readErr != nil {
-			return nil, readErr
-		}
-		if current.ID != ref.Source || current.Status != "registered" || !identity.Identifier(current.ContextID) {
+		if current.ID != retained.source || current.Status != "registered" || !identity.Identifier(current.ContextID) || current.Revision < 1 {
 			return nil, store.ErrConflict
 		}
-		out = append(out, RunAuthority{Source: current.ID, Context: current.ContextID})
-		seen[current.ID] = true
+		exactRevision := retained.revision == 0 || retained.revision == current.Revision
+		out = append(out, RunAuthority{Source: current.ID, Context: current.ContextID, Dataset: retained.dataset, Revision: current.Revision, Exact: retained.context == current.ContextID && exactRevision})
 	}
 	return out, nil
 }
@@ -105,7 +135,7 @@ func (d *Domains) Connect(ctx context.Context, e identity.Envelope, in StartRequ
 	if s.ContextID != in.Context || s.Status != "registered" {
 		return StepResult{}, store.ErrConflict
 	}
-	return StepResult{References: []Reference{{Kind: "source", ID: s.ID, Revision: s.Revision, Source: s.ID, Context: s.ContextID}}, Evidence: []Evidence{{Entity: s.ID, Kind: "connectivity", Basis: []string{"registered_source", "exact_execution_context"}, Confidence: "observed"}}}, nil
+	return StepResult{References: []Reference{{Kind: "source", ID: s.ID, Revision: s.Revision, SourceRevision: s.Revision, Source: s.ID, Context: s.ContextID}}, Evidence: []Evidence{{Entity: s.ID, Kind: "connectivity", Basis: []string{"registered_source", "exact_execution_context"}, Confidence: "observed"}}}, nil
 }
 
 func (d *Domains) Inspect(ctx context.Context, e identity.Envelope, r Run, _ string) (StepResult, error) {
@@ -131,7 +161,7 @@ func (d *Domains) Inspect(ctx context.Context, e identity.Envelope, r Run, _ str
 					confidence = "unresolved"
 					uncertainty = "column excluded by source safety policy"
 				}
-				evidence = append(evidence, Evidence{Entity: col.Name, Kind: "column", Basis: []string{"source_catalog", "schema_digest:" + readexec.Hash(col)}, Confidence: confidence, Uncertainty: uncertainty, Sensitive: !col.Safe})
+				evidence = append(evidence, Evidence{Entity: col.Name, Kind: "column", Basis: []string{"source_catalog", "source:" + r.Input.Source, "dataset:" + r.Input.Dataset, "schema_digest:" + readexec.Hash(col)}, Confidence: confidence, Uncertainty: uncertainty, Sensitive: !col.Safe})
 				entities++
 			}
 		}
@@ -141,11 +171,12 @@ func (d *Domains) Inspect(ctx context.Context, e identity.Envelope, r Run, _ str
 	}
 	_ = entities
 	sort.Strings(columns)
-	return StepResult{References: []Reference{{Kind: "dataset", ID: r.Input.Dataset, Revision: o.Revision, Source: r.Input.Source, Context: o.ContextID, Dataset: r.Input.Dataset, Columns: columns}}, Evidence: evidence}, nil
+	return StepResult{References: []Reference{{Kind: "dataset", ID: r.Input.Dataset, Revision: o.Revision, SourceRevision: o.Revision, Source: r.Input.Source, Context: o.ContextID, Dataset: r.Input.Dataset, Columns: columns}}, Evidence: evidence}, nil
 }
 
 func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key string) (StepResult, error) {
 	source, contextID, dataset := r.Input.Source, r.Input.Context, r.Input.Dataset
+	sourceRevision := r.SourceRevision
 	var transformation *engineering.AutopilotProposal
 	if r.Input.Transformation {
 		proposal, err := d.autopilot.Get(ctx, e, r.Input.TransformationProposal)
@@ -205,6 +236,7 @@ func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key s
 			return StepResult{}, store.ErrConflict
 		}
 		source, contextID, dataset = output.ID, output.ContextID, outputRelation.ID
+		sourceRevision = output.Revision
 		transformation = &proposal
 	}
 	status, inspectErr := d.profiles.InspectProfile(ctx, e, r.Input.Profile)
@@ -230,15 +262,19 @@ func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key s
 		}
 		p = run.Profile.Profile
 	}
-	if p.Source != source || p.Context != contextID || p.Dataset != dataset || p.SourceRevision < 1 {
+	if p.Source != source || p.Context != contextID || p.Dataset != dataset || p.SourceRevision < 1 || p.SourceRevision != sourceRevision {
 		return StepResult{}, store.ErrConflict
 	}
 	evidence := make([]Evidence, 0, len(p.Columns))
 	profileColumns := make([]string, 0, len(p.Columns))
 	questions := []Question{}
+	schemaDigests := make(map[string]string, len(p.Schema))
+	for _, column := range p.Schema {
+		schemaDigests[column.Name] = readexec.Hash(column)
+	}
 	for _, col := range p.Columns {
 		profileColumns = append(profileColumns, col.Name)
-		basis := []string{"bounded_profile", "sample_rows:" + fmt.Sprint(p.Sampling.Rows)}
+		basis := []string{"bounded_profile", "source:" + source, "dataset:" + dataset, "schema_digest:" + schemaDigests[col.Name], "sample_rows:" + fmt.Sprint(p.Sampling.Rows)}
 		confidence := "observed"
 		uncertainty := ""
 		if col.Nullable && col.Nulls > 0 {
@@ -253,9 +289,9 @@ func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key s
 	sort.Strings(profileColumns)
 	if transformation != nil {
 		proposalKey := "engineering_proposal:" + transformation.ID
-		return StepResult{References: []Reference{{Kind: "engineering_proposal", ID: transformation.ID, Revision: transformation.Revision, Digest: transformation.Digest, Private: true, Source: source, Context: contextID, Dataset: dataset, DependsOn: []string{"dataset:" + r.Input.Dataset}}, {Kind: "profile", ID: p.Version, Revision: p.SourceRevision, Private: true, Source: source, Context: contextID, Dataset: dataset, Columns: profileColumns, DependsOn: []string{proposalKey}}}, Evidence: append(evidence, Evidence{Entity: transformation.ID, Kind: "managed_transformation", Basis: []string{"reviewed_engineering_applied", "output_source:" + source, "output_dataset:" + dataset}, Confidence: "observed"}), Questions: questions}, nil
+		return StepResult{References: []Reference{{Kind: "engineering_proposal", ID: transformation.ID, Revision: transformation.Revision, SourceRevision: p.SourceRevision, Digest: transformation.Digest, Private: true, Source: source, Context: contextID, Dataset: dataset, DependsOn: []string{"dataset:" + r.Input.Dataset}}, {Kind: "profile", ID: p.Version, Revision: p.SourceRevision, SourceRevision: p.SourceRevision, Private: true, Source: source, Context: contextID, Dataset: dataset, Columns: profileColumns, DependsOn: []string{proposalKey}}}, Evidence: append(evidence, Evidence{Entity: transformation.ID, Kind: "managed_transformation", Basis: []string{"reviewed_engineering_applied", "output_source:" + source, "output_dataset:" + dataset}, Confidence: "observed"}), Questions: questions}, nil
 	}
-	return StepResult{References: []Reference{{Kind: "profile", ID: p.Version, Revision: p.SourceRevision, Private: true, Source: source, Context: contextID, Dataset: dataset, Columns: profileColumns, DependsOn: []string{"dataset:" + dataset}}}, Evidence: evidence, Questions: questions}, nil
+	return StepResult{References: []Reference{{Kind: "profile", ID: p.Version, Revision: p.SourceRevision, SourceRevision: p.SourceRevision, Private: true, Source: source, Context: contextID, Dataset: dataset, Columns: profileColumns, DependsOn: []string{"dataset:" + dataset}}}, Evidence: evidence, Questions: questions}, nil
 }
 
 func (d *Domains) DraftSemantics(ctx context.Context, e identity.Envelope, r Run, _ string) (StepResult, error) {
@@ -295,9 +331,11 @@ func (d *Domains) DraftSemantics(ctx context.Context, e identity.Envelope, r Run
 	}
 	semanticColumns := []string{}
 	semanticSource, semanticContext, semanticDataset := "", "", ""
+	semanticSourceRevision := int64(0)
 	for _, ds := range v.Pack.Datasets {
 		if ds.Source.ProfileVersion == r.Input.Profile {
 			semanticSource, semanticContext, semanticDataset = ds.Source.Source, ds.Source.Context, ds.ID
+			semanticSourceRevision = ds.Source.SourceRevision
 			for _, col := range ds.Columns {
 				name := col.SourceName
 				if name == "" {
@@ -307,11 +345,11 @@ func (d *Domains) DraftSemantics(ctx context.Context, e identity.Envelope, r Run
 			}
 		}
 	}
-	if semanticSource == "" || semanticContext == "" || semanticDataset == "" {
+	if semanticSource == "" || semanticContext == "" || semanticDataset == "" || semanticSourceRevision < 1 {
 		return StepResult{}, store.ErrConflict
 	}
 	sort.Strings(semanticColumns)
-	return StepResult{References: []Reference{{Kind: "topic_draft", ID: v.Metadata.Topic, Revision: v.Metadata.Revision, Digest: v.Metadata.Digest, Private: true, Source: semanticSource, Context: semanticContext, Dataset: semanticDataset, Columns: semanticColumns, DependsOn: []string{"profile:" + r.Input.Profile}}}, Evidence: evidence, Questions: questions}, nil
+	return StepResult{References: []Reference{{Kind: "topic_draft", ID: v.Metadata.Topic, Revision: v.Metadata.Revision, SourceRevision: semanticSourceRevision, Digest: v.Metadata.Digest, Private: true, Source: semanticSource, Context: semanticContext, Dataset: semanticDataset, Columns: semanticColumns, DependsOn: []string{"profile:" + r.Input.Profile}}}, Evidence: evidence, Questions: questions}, nil
 }
 
 func (d *Domains) PublishReviewed(ctx context.Context, e identity.Envelope, r Run, review ReviewReference, _ string) (StepResult, error) {
@@ -374,7 +412,7 @@ func publicationStep(p topics.Published, review ReviewReference, r Run) (StepRes
 	if coordinate.Source == "" || coordinate.Context == "" || coordinate.Dataset == "" || len(coordinate.Columns) == 0 {
 		return StepResult{}, store.ErrConflict
 	}
-	return StepResult{References: []Reference{{Kind: "topic", ID: p.State.Topic, Revision: p.State.Revision, Digest: p.Digest, Source: coordinate.Source, Context: coordinate.Context, Dataset: coordinate.Dataset, Columns: append([]string(nil), coordinate.Columns...), DependsOn: []string{"topic_draft:" + p.State.Topic}}}, Evidence: []Evidence{{Entity: p.State.Topic, Kind: "publication", Basis: []string{"independent_review:" + review.ID}, Confidence: "observed"}}, Receipt: p.Receipt}, nil
+	return StepResult{References: []Reference{{Kind: "topic", ID: p.State.Topic, Revision: p.State.Revision, SourceRevision: coordinate.SourceRevision, Digest: p.Digest, Source: coordinate.Source, Context: coordinate.Context, Dataset: coordinate.Dataset, Columns: append([]string(nil), coordinate.Columns...), DependsOn: []string{"topic_draft:" + p.State.Topic}}}, Evidence: []Evidence{{Entity: p.State.Topic, Kind: "publication", Basis: []string{"independent_review:" + review.ID}, Confidence: "observed"}}, Receipt: p.Receipt}, nil
 }
 
 func (d *Domains) ProposeQueriesBlocksReports(_ context.Context, _ identity.Envelope, r Run, _ string) (StepResult, error) {
@@ -391,17 +429,24 @@ func (d *Domains) ProposeQueriesBlocksReports(_ context.Context, _ identity.Enve
 	}
 	digest := readexec.Hash([]any{topic.Source, topic.Context, topic.Dataset, r.Input.Topic})
 	coordinate := func(kind, id string) Reference {
-		return Reference{Kind: kind, ID: id, Digest: digest, Private: true, Source: topic.Source, Context: topic.Context, Dataset: topic.Dataset, DependsOn: dependency}
+		return Reference{Kind: kind, ID: id, SourceRevision: topic.SourceRevision, Digest: digest, Private: true, Source: topic.Source, Context: topic.Context, Dataset: topic.Dataset, DependsOn: dependency}
 	}
 	return StepResult{References: []Reference{coordinate("onboarding_query_intent", r.ID+"-query"), coordinate("onboarding_block_intent", r.Input.Block), coordinate("onboarding_report_intent", r.Input.Report)}, Evidence: []Evidence{{Entity: r.Input.Block, Kind: "proposal", Basis: basis, Confidence: "unresolved", Uncertainty: "run-owned intent only; ordinary authoring, SQL, output selection, publication and certification remain separate reviewed operations"}}}, nil
 }
 
 func (d *Domains) ProposeDriftAmendment(ctx context.Context, e identity.Envelope, r Run, _ DriftRequest, _ string) (Amendment, error) {
-	source, err := d.sources.Get(ctx, e, r.Input.Source)
+	effective, ok := effectiveDriftReference(r)
+	if !ok {
+		return Amendment{}, store.ErrConflict
+	}
+	source, err := d.sources.Get(ctx, e, effective.Source)
 	if err != nil {
 		return Amendment{}, err
 	}
-	if source.Revision <= r.SourceRevision {
+	if source.ID != effective.Source || source.Status != "registered" || source.Revision < 1 || !identity.Identifier(source.ContextID) {
+		return Amendment{}, store.ErrConflict
+	}
+	if source.Revision <= effective.SourceRevision && source.ContextID == effective.Context {
 		return Amendment{}, store.ErrConflict
 	}
 	discovery, err := d.sources.Discover(ctx, e, source.ID)
@@ -413,18 +458,31 @@ func (d *Domains) ProposeDriftAmendment(ctx context.Context, e identity.Envelope
 	}
 	old := map[string]string{}
 	for _, ev := range r.Evidence {
-		if ev.Kind == "column" {
-			for _, basis := range ev.Basis {
-				if strings.HasPrefix(basis, "schema_digest:") {
-					old[ev.Entity] = strings.TrimPrefix(basis, "schema_digest:")
-				}
+		if ev.Kind != "column" && ev.Kind != "profile_column" {
+			continue
+		}
+		matchingSource, matchingDataset, schemaDigest := false, false, ""
+		for _, basis := range ev.Basis {
+			switch {
+			case basis == "source:"+effective.Source:
+				matchingSource = true
+			case basis == "dataset:"+effective.Dataset:
+				matchingDataset = true
+			case strings.HasPrefix(basis, "schema_digest:"):
+				schemaDigest = strings.TrimPrefix(basis, "schema_digest:")
 			}
 		}
+		if matchingSource && matchingDataset && schemaDigest != "" {
+			old[ev.Entity] = schemaDigest
+		}
+	}
+	if len(old) == 0 {
+		return Amendment{}, store.ErrConflict
 	}
 	current := map[string]string{}
 	found := false
 	for _, rel := range discovery.Relations {
-		if rel.ID == r.Input.Dataset {
+		if rel.ID == effective.Dataset {
 			found = true
 			for _, col := range rel.Columns {
 				current[col.Name] = readexec.Hash(col)
@@ -446,7 +504,7 @@ func (d *Domains) ProposeDriftAmendment(ctx context.Context, e identity.Envelope
 		}
 	}
 	observation := "schema_changed"
-	if source.ContextID != r.Input.Context {
+	if source.ContextID != effective.Context {
 		observation = "binding_changed"
 		changes = append(changes, "execution_context")
 	}
@@ -472,7 +530,7 @@ func (d *Domains) ProposeDriftAmendment(ctx context.Context, e identity.Envelope
 		impact = append(impact, ImpactEvidence{Kind: ref.Kind, ID: ref.ID, Basis: basis, Conservative: conservative})
 	}
 	for _, ref := range r.References {
-		if ref.Source != source.ID || ref.Dataset != r.Input.Dataset {
+		if ref.Source != source.ID || ref.Dataset != effective.Dataset {
 			continue
 		}
 		if observation == "binding_changed" {
@@ -513,8 +571,21 @@ func (d *Domains) ProposeDriftAmendment(ctx context.Context, e identity.Envelope
 	if len(affected) == 0 {
 		return Amendment{}, store.ErrConflict
 	}
-	digest := shortID(source.ID + "\x00" + source.ContextID + "\x00" + fmt.Sprint(source.Revision) + "\x00" + strings.Join(changes, "\x00"))
-	return Amendment{Run: r.ID, Observation: observation, Source: source.ID, Context: source.ContextID, SourceRevision: source.Revision, Changes: changes, Affected: affected, ImpactEvidence: impact, Proposal: Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend-" + digest, Digest: readexec.Hash(changes), Private: true, Source: source.ID, Context: source.ContextID, Dataset: r.Input.Dataset}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+	digest := shortID(source.ID + "\x00" + source.ContextID + "\x00" + effective.Dataset + "\x00" + fmt.Sprint(source.Revision) + "\x00" + strings.Join(changes, "\x00"))
+	return Amendment{Run: r.ID, Observation: observation, Source: source.ID, Context: source.ContextID, Dataset: effective.Dataset, SourceRevision: source.Revision, Changes: changes, Affected: affected, ImpactEvidence: impact, Proposal: Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend-" + digest, SourceRevision: source.Revision, Digest: readexec.Hash(changes), Private: true, Source: source.ID, Context: source.ContextID, Dataset: effective.Dataset}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+}
+
+func effectiveDriftReference(r Run) (Reference, bool) {
+	priority := map[string]int{"dataset": 1, "profile": 2, "topic_draft": 3, "topic": 4}
+	selected, selectedPriority := Reference{}, 0
+	for _, ref := range r.References {
+		p := priority[ref.Kind]
+		if p < selectedPriority || ref.Source == "" || ref.Context == "" || ref.Dataset == "" || ref.SourceRevision < 1 {
+			continue
+		}
+		selected, selectedPriority = ref, p
+	}
+	return selected, selectedPriority > 0
 }
 
 func shortID(v string) string { s := sha256.Sum256([]byte(v)); return hex.EncodeToString(s[:6]) }

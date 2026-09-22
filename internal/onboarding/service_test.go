@@ -57,12 +57,20 @@ func (m *memoryRepository) SaveOnboarding(_ context.Context, _ identity.Envelope
 }
 
 type serviceAdapter struct {
-	fail   bool
-	tokens int
+	fail        bool
+	tokens      int
+	authorities []RunAuthority
 }
 
 func (a *serviceAdapter) ResolveRunAuthority(_ context.Context, _ identity.Envelope, r Run) ([]RunAuthority, error) {
-	return []RunAuthority{{Source: r.Input.Source, Context: r.Input.Context}}, nil
+	if len(a.authorities) > 0 {
+		return append([]RunAuthority(nil), a.authorities...), nil
+	}
+	revision, exact := int64(1), true
+	if r.Status == StatusComplete {
+		revision, exact = 2, false
+	}
+	return []RunAuthority{{Source: r.Input.Source, Context: r.Input.Context, Dataset: r.Input.Dataset, Revision: revision, Exact: exact}}, nil
 }
 
 type blockingAdapter struct {
@@ -123,19 +131,19 @@ func (a *serviceAdapter) result(stage Stage, run Run) (StepResult, error) {
 	}
 	switch stage {
 	case StageConnect:
-		return StepResult{References: []Reference{{Kind: "source", ID: run.Input.Source, Revision: 1}}, Evidence: []Evidence{{Entity: run.Input.Source, Kind: "connectivity", Basis: []string{"registered"}, Confidence: "observed"}}, Receipt: usageReceipt(a.tokens)}, nil
+		return StepResult{References: []Reference{{Kind: "source", ID: run.Input.Source, Revision: 1, SourceRevision: 1, Source: run.Input.Source, Context: run.Input.Context}}, Evidence: []Evidence{{Entity: run.Input.Source, Kind: "connectivity", Basis: []string{"registered"}, Confidence: "observed"}}, Receipt: usageReceipt(a.tokens)}, nil
 	case StageInspect:
-		return StepResult{References: []Reference{{Kind: "dataset", ID: run.Input.Dataset, Revision: 1}}, Evidence: []Evidence{{Entity: "amount", Kind: "column", Basis: []string{"catalog"}, Confidence: "observed"}}}, nil
+		return StepResult{References: []Reference{{Kind: "dataset", ID: run.Input.Dataset, Revision: 1, SourceRevision: 1, Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, Columns: []string{"amount"}}}, Evidence: []Evidence{{Entity: "amount", Kind: "column", Basis: []string{"catalog", "source:" + run.Input.Source, "dataset:" + run.Input.Dataset, "schema_digest:old"}, Confidence: "observed"}}}, nil
 	case StageProfile:
-		return StepResult{References: []Reference{{Kind: "profile", ID: run.Input.Profile, Revision: 1, Private: true}}}, nil
+		return StepResult{References: []Reference{{Kind: "profile", ID: run.Input.Profile, Revision: 1, SourceRevision: 1, Private: true, Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, Columns: []string{"amount"}}}}, nil
 	case StageSemantic:
 		questions := []Question{}
 		if answerValue(run.Answers, "grain") == "" {
 			questions = append(questions, Question{ID: "grain", Prompt: "Confirm the grain", Evidence: []string{"profile"}, Required: true})
 		}
-		return StepResult{References: []Reference{{Kind: "topic_draft", ID: run.Input.Topic, Revision: 1, Digest: strings.Repeat("a", 64), Private: true}}, Questions: questions}, nil
+		return StepResult{References: []Reference{{Kind: "topic_draft", ID: run.Input.Topic, Revision: 1, SourceRevision: 1, Digest: strings.Repeat("a", 64), Private: true, Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, Columns: []string{"amount"}, DependsOn: []string{"profile:" + run.Input.Profile}}}, Questions: questions}, nil
 	case StageProposals:
-		return StepResult{References: []Reference{{Kind: "onboarding_query_intent", ID: run.ID + "-query", Private: true}, {Kind: "onboarding_block_intent", ID: run.Input.Block, Private: true}, {Kind: "onboarding_report_intent", ID: run.Input.Report, Private: true}}}, nil
+		return StepResult{References: []Reference{{Kind: "onboarding_query_intent", ID: run.ID + "-query", SourceRevision: 1, Private: true, Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, DependsOn: []string{"topic:" + run.Input.Topic}}, {Kind: "onboarding_block_intent", ID: run.Input.Block, SourceRevision: 1, Private: true, Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, DependsOn: []string{"topic:" + run.Input.Topic}}, {Kind: "onboarding_report_intent", ID: run.Input.Report, SourceRevision: 1, Private: true, Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, DependsOn: []string{"topic:" + run.Input.Topic}}}}, nil
 	default:
 		return StepResult{}, ErrInvalid
 	}
@@ -153,18 +161,25 @@ func (a *serviceAdapter) DraftSemantics(_ context.Context, _ identity.Envelope, 
 	return a.result(StageSemantic, run)
 }
 func (a *serviceAdapter) PublishReviewed(_ context.Context, _ identity.Envelope, run Run, review ReviewReference, _ string) (StepResult, error) {
-	return StepResult{References: []Reference{{Kind: "topic", ID: run.Input.Topic, Revision: 1, Digest: review.Digest}}, Evidence: []Evidence{{Entity: run.Input.Topic, Kind: "publication", Basis: []string{"review:" + review.ID}, Confidence: "observed"}}, Receipt: usageReceipt(max(a.tokens, 1))}, nil
+	return StepResult{References: []Reference{{Kind: "topic", ID: run.Input.Topic, Revision: 1, SourceRevision: 1, Digest: review.Digest, Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, Columns: []string{"amount"}, DependsOn: []string{"topic_draft:" + run.Input.Topic}}}, Evidence: []Evidence{{Entity: run.Input.Topic, Kind: "publication", Basis: []string{"review:" + review.ID}, Confidence: "observed"}}, Receipt: usageReceipt(max(a.tokens, 1))}, nil
 }
 func (a *serviceAdapter) ProposeQueriesBlocksReports(_ context.Context, _ identity.Envelope, run Run, _ string) (StepResult, error) {
 	return a.result(StageProposals, run)
 }
 func (a *serviceAdapter) ProposeDriftAmendment(_ context.Context, _ identity.Envelope, run Run, in DriftRequest, _ string) (Amendment, error) {
-	return Amendment{Run: run.ID, Observation: "schema_changed", Source: run.Input.Source, Context: run.Input.Context, SourceRevision: run.SourceRevision + 1, Changes: []string{"amount"}, Affected: []Reference{{Kind: "topic", ID: run.Input.Topic}}, ImpactEvidence: []ImpactEvidence{{Kind: "topic", ID: run.Input.Topic, Basis: []string{"column:amount"}}}, Proposal: Reference{Kind: "topic_amendment", ID: run.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+	effective, _ := effectiveDriftReference(run)
+	contextID, revision := effective.Context, effective.SourceRevision+1
+	for _, coordinate := range a.authorities {
+		if coordinate.Source == effective.Source && coordinate.Dataset == effective.Dataset {
+			contextID, revision = coordinate.Context, coordinate.Revision
+		}
+	}
+	return Amendment{Run: run.ID, Observation: "schema_changed", Source: effective.Source, Context: contextID, Dataset: effective.Dataset, SourceRevision: revision, Changes: []string{"amount"}, Affected: []Reference{{Kind: "topic", ID: run.Input.Topic}}, ImpactEvidence: []ImpactEvidence{{Kind: "topic", ID: run.Input.Topic, Basis: []string{"column:amount"}}}, Proposal: Reference{Kind: "topic_amendment", ID: run.Input.Topic + "-amend", SourceRevision: revision, Private: true, Source: effective.Source, Context: contextID, Dataset: effective.Dataset}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
 }
 
 func serviceEnvelope(t *testing.T, id string) identity.Envelope {
 	t.Helper()
-	e, err := identity.FromVerified("tenant", "actor", "session", []string{"onboarding.read", "onboarding.write", "onboarding.cancel", "cw.tenant.write:*", "cw.onboarding.read:" + id, "cw.onboarding.write:" + id, "cw.onboarding.cancel:" + id, "cw.source.read:source", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"onboarding.read", "onboarding.write", "onboarding.cancel", "cw.tenant.write:*", "cw.onboarding.read:" + id, "cw.onboarding.write:" + id, "cw.onboarding.cancel:" + id, "cw.source.read:*", "cw.execution_context.use:*", "cw.dataset.query:*"}, time.Now().Add(time.Hour), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,6 +264,74 @@ func TestServiceJourneyRecoveryAndDrift(t *testing.T) {
 	if replay, replayErr := service.Drift(t.Context(), e, run.ID, DriftRequest{ExpectedVersion: run.Version}); replayErr != nil || replay.Proposal.ID != amendment.Proposal.ID {
 		t.Fatal("drift replay", replay, replayErr)
 	}
+}
+
+func TestServiceTransformedOutputAuthorityGuardsEveryContinuation(t *testing.T) {
+	makeRun := func(id string, stage Stage, status Status) Run {
+		in := serviceStart(id)
+		return Run{ID: id, Key: id + "-key", Version: 1, Stage: stage, Status: status, Locale: "en", Input: in, References: []Reference{
+			{Kind: "dataset", ID: in.Dataset, Revision: 1, SourceRevision: 1, Source: in.Source, Context: in.Context, Dataset: in.Dataset, Columns: []string{"amount"}},
+			{Kind: "profile", ID: in.Profile, Revision: 2, SourceRevision: 2, Private: true, Source: "managed-output", Context: "managed-output:v2", Dataset: "managed-dataset", Columns: []string{"amount"}},
+			{Kind: "topic", ID: in.Topic, Revision: 1, SourceRevision: 2, Source: "managed-output", Context: "managed-output:v2", Dataset: "managed-dataset", Columns: []string{"amount"}, DependsOn: []string{"profile:" + in.Profile}},
+		}, Evidence: []Evidence{{Entity: "amount", Kind: "profile_column", Basis: []string{"source:managed-output", "dataset:managed-dataset", "schema_digest:old"}, Confidence: "observed"}}, Limits: DefaultLimits(), Deadline: time.Now().Add(time.Hour), CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	}
+	methods := []struct {
+		name   string
+		stage  Stage
+		status Status
+		call   func(*Service, identity.Envelope, Run) error
+	}{
+		{"resume", StageProfile, StatusReady, func(s *Service, e identity.Envelope, r Run) error {
+			_, err := s.Resume(t.Context(), e, r.ID, ResumeRequest{ExpectedVersion: r.Version})
+			return err
+		}},
+		{"answer-review", StageReview, StatusAttention, func(s *Service, e identity.Envelope, r Run) error {
+			_, err := s.Answer(t.Context(), e, r.ID, AnswerRequest{ExpectedVersion: r.Version, Review: &ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}})
+			return err
+		}},
+		{"drift", StageComplete, StatusComplete, func(s *Service, e identity.Envelope, r Run) error {
+			_, err := s.Drift(t.Context(), e, r.ID, DriftRequest{ExpectedVersion: r.Version})
+			return err
+		}},
+	}
+	for _, tc := range methods {
+		t.Run(tc.name+"-revoked", func(t *testing.T) {
+			run := makeRun("output-"+strings.ReplaceAll(tc.name, "-", "_"), tc.stage, tc.status)
+			repo := &memoryRepository{runs: map[string]Run{run.ID: run}, digests: map[string]string{}}
+			adapter := &serviceAdapter{authorities: []RunAuthority{{Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, Revision: 1, Exact: true}, {Source: "managed-output", Context: "managed-output:v2", Dataset: "managed-dataset", Revision: 2, Exact: true}}}
+			service, _ := New(repo, adapter, DefaultLimits())
+			scopes := []string{"onboarding.write", "cw.onboarding.write:" + run.ID, "cw.source.read:" + run.Input.Source, "cw.execution_context.use:" + run.Input.Context, "cw.dataset.query:" + run.Input.Dataset}
+			e, _ := identity.FromVerified("tenant", "actor", "session", scopes, time.Now().Add(time.Hour), nil)
+			if err := tc.call(service, e, run); !errors.Is(err, access.ErrNotFound) {
+				t.Fatal("continuation accepted after managed output reach revocation", err)
+			}
+		})
+	}
+	for _, tc := range methods[:2] {
+		t.Run(tc.name+"-rotated", func(t *testing.T) {
+			run := makeRun("rotated-"+strings.ReplaceAll(tc.name, "-", "_"), tc.stage, tc.status)
+			repo := &memoryRepository{runs: map[string]Run{run.ID: run}, digests: map[string]string{}}
+			adapter := &serviceAdapter{authorities: []RunAuthority{{Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, Revision: 1, Exact: true}, {Source: "managed-output", Context: "managed-output:v3", Dataset: "managed-dataset", Revision: 3, Exact: false}}}
+			service, _ := New(repo, adapter, DefaultLimits())
+			scopes := []string{"onboarding.write", "cw.onboarding.write:" + run.ID, "cw.source.read:*", "cw.execution_context.use:*", "cw.dataset.query:*"}
+			e, _ := identity.FromVerified("tenant", "actor", "session", scopes, time.Now().Add(time.Hour), nil)
+			if err := tc.call(service, e, run); !errors.Is(err, store.ErrConflict) {
+				t.Fatal("continuation crossed transformed output revision fence", err)
+			}
+		})
+	}
+	t.Run("drift-uses-current-rotated-output", func(t *testing.T) {
+		run := makeRun("rotated-drift", StageComplete, StatusComplete)
+		repo := &memoryRepository{runs: map[string]Run{run.ID: run}, digests: map[string]string{}}
+		adapter := &serviceAdapter{authorities: []RunAuthority{{Source: run.Input.Source, Context: run.Input.Context, Dataset: run.Input.Dataset, Revision: 1, Exact: true}, {Source: "managed-output", Context: "managed-output:v3", Dataset: "managed-dataset", Revision: 3, Exact: false}}}
+		service, _ := New(repo, adapter, DefaultLimits())
+		scopes := []string{"onboarding.write", "cw.onboarding.write:" + run.ID, "cw.source.read:*", "cw.execution_context.use:*", "cw.dataset.query:*"}
+		e, _ := identity.FromVerified("tenant", "actor", "session", scopes, time.Now().Add(time.Hour), nil)
+		amendment, err := service.Drift(t.Context(), e, run.ID, DriftRequest{ExpectedVersion: run.Version})
+		if err != nil || amendment.Source != "managed-output" || amendment.Context != "managed-output:v3" || amendment.Dataset != "managed-dataset" || amendment.SourceRevision != 3 {
+			t.Fatal("drift did not bind server-resolved managed output", amendment, err)
+		}
+	})
 }
 
 func TestServiceAuthorityBudgetAndCancellation(t *testing.T) {

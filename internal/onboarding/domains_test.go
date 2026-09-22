@@ -19,19 +19,21 @@ import (
 )
 
 type domainSources struct {
-	source    sources.Source
-	discovery sources.Discovery
+	source          sources.Source
+	discovery       sources.Discovery
+	output          sources.Source
+	outputDiscovery sources.Discovery
 }
 
 func (f domainSources) Get(_ context.Context, _ identity.Envelope, id string) (sources.Source, error) {
 	if id == "pipeline.dataset" {
-		return sources.Source{ID: id, ContextID: "pipeline.dataset:v3", Revision: 3, Status: "registered"}, nil
+		return f.output, nil
 	}
 	return f.source, nil
 }
 func (f domainSources) Discover(_ context.Context, _ identity.Envelope, id string) (sources.Discovery, error) {
 	if id == "pipeline.dataset" {
-		return sources.Discovery{SourceID: id, ContextID: "pipeline.dataset:v3", Revision: 3, Relations: f.discovery.Relations}, nil
+		return f.outputDiscovery, nil
 	}
 	return f.discovery, nil
 }
@@ -151,6 +153,9 @@ func domainFixture(t *testing.T, applied bool) (*Domains, Run, identity.Envelope
 		source: source,
 		discovery: sources.Discovery{SourceID: "source", ContextID: "context", Revision: 2,
 			Relations: []readexec.Relation{{ID: "dataset", Columns: []readexec.Column{column}}}},
+		output: sources.Source{ID: "pipeline.dataset", ContextID: "pipeline.dataset:v3", Revision: 3, Status: "registered"},
+		outputDiscovery: sources.Discovery{SourceID: "pipeline.dataset", ContextID: "pipeline.dataset:v3", Revision: 3,
+			Relations: []readexec.Relation{{ID: "dataset", Columns: []readexec.Column{column}}}},
 	}
 	profileService := &domainProfiles{
 		upload:  engineering.UploadStatus{ID: "upload", State: "active", Source: &source},
@@ -257,7 +262,7 @@ func TestDomainsTransformationAndNegativeBoundaries(t *testing.T) {
 		t.Fatal(result, err)
 	}
 	run.References = result.References
-	if authority, authorityErr := domains.ResolveRunAuthority(t.Context(), envelope, run); authorityErr != nil || len(authority) != 2 || authority[1].Source != "pipeline.dataset" || authority[1].Context != "pipeline.dataset:v3" {
+	if authority, authorityErr := domains.ResolveRunAuthority(t.Context(), envelope, run); authorityErr != nil || len(authority) != 2 || authority[0].Source != "pipeline.dataset" || authority[0].Context != "pipeline.dataset:v3" || authority[0].Dataset != "dataset" || !authority[0].Exact {
 		t.Fatal("managed output authority resolution", authority, authorityErr)
 	}
 	unrelated := domains.autopilot.(domainAutopilot)
@@ -292,6 +297,65 @@ func TestDomainsTransformationAndNegativeBoundaries(t *testing.T) {
 	run.References = []Reference{{Kind: "topic_draft", ID: "topic", Source: "source", Context: "context", Dataset: "dataset", Columns: []string{"amount"}}}
 	if _, err = domains.PublishReviewed(t.Context(), envelope, run, ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}, "publish"); err != nil {
 		t.Fatal("direct reviewed publication", err)
+	}
+}
+
+func TestDomainsTransformationDriftTracksEffectiveOutput(t *testing.T) {
+	domains, run, envelope := domainFixture(t, true)
+	run.Input.Transformation, run.Input.TransformationProposal = true, "transform"
+	profiled, err := domains.Profile(t.Context(), envelope, run, "profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := profiled.References[len(profiled.References)-1]
+	topicDraft := Reference{Kind: "topic_draft", ID: run.Input.Topic, Revision: 1, SourceRevision: output.SourceRevision, Private: true, Source: output.Source, Context: output.Context, Dataset: output.Dataset, Columns: []string{"amount"}, DependsOn: []string{"profile:" + run.Input.Profile}}
+	topic := Reference{Kind: "topic", ID: run.Input.Topic, Revision: 1, SourceRevision: output.SourceRevision, Source: output.Source, Context: output.Context, Dataset: output.Dataset, Columns: []string{"amount"}, DependsOn: []string{"topic_draft:" + run.Input.Topic}}
+	query := Reference{Kind: "onboarding_query_intent", ID: run.ID + "-query", SourceRevision: output.SourceRevision, Private: true, Source: output.Source, Context: output.Context, Dataset: output.Dataset, DependsOn: []string{"topic:" + run.Input.Topic}}
+	run.References = profiled.References
+	run.References = append(run.References, topicDraft, topic, query)
+	run.Evidence = profiled.Evidence
+	if _, unchangedErr := domains.ProposeDriftAmendment(t.Context(), envelope, run, DriftRequest{}, "drift"); !errors.Is(unchangedErr, store.ErrConflict) {
+		t.Fatal("unchanged managed output produced amendment", unchangedErr)
+	}
+	sourceAdapter := domains.sources.(domainSources)
+	sourceAdapter.output.Revision = 4
+	sourceAdapter.output.ContextID = "pipeline.dataset:v4"
+	sourceAdapter.outputDiscovery.Revision = 4
+	sourceAdapter.outputDiscovery.ContextID = "pipeline.dataset:v4"
+	sourceAdapter.outputDiscovery.Relations[0].Columns[0].Nullable = false
+	domains.sources = sourceAdapter
+	amendment, err := domains.ProposeDriftAmendment(t.Context(), envelope, run, DriftRequest{}, "drift")
+	if err != nil || amendment.Source != output.Source || amendment.Dataset != output.Dataset || amendment.Context != "pipeline.dataset:v4" || amendment.SourceRevision != 4 || amendment.Observation != "binding_changed" {
+		t.Fatal("managed output drift did not bind effective source", amendment, err)
+	}
+	if strings.Join(amendment.Changes, ",") != "amount,execution_context" {
+		t.Fatal("managed output schema and context changes were not both retained", amendment.Changes)
+	}
+	if sourceAdapter.source.Revision != 2 || sourceAdapter.source.ContextID != "context" {
+		t.Fatal("test accidentally drifted original input source", sourceAdapter.source)
+	}
+	affected := map[string]bool{}
+	for _, ref := range amendment.Affected {
+		affected[ref.Kind+":"+ref.ID] = true
+		if ref.Source != output.Source || ref.Dataset != output.Dataset {
+			t.Fatal("amendment crossed effective output coordinate", ref)
+		}
+	}
+	if !affected["topic:"+run.Input.Topic] || !affected["onboarding_query_intent:"+run.ID+"-query"] {
+		t.Fatal("dependent semantic closure missing", amendment.Affected)
+	}
+	authority, authorityErr := domains.ResolveRunAuthority(t.Context(), envelope, run)
+	if authorityErr != nil {
+		t.Fatal(authorityErr)
+	}
+	outputDrifted := false
+	for _, coordinate := range authority {
+		if coordinate.Source == output.Source {
+			outputDrifted = !coordinate.Exact && coordinate.Context == "pipeline.dataset:v4" && coordinate.Revision == 4
+		}
+	}
+	if !outputDrifted {
+		t.Fatal("current managed output revision was not server resolved", authority)
 	}
 }
 
