@@ -2,17 +2,26 @@
 
 The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
 
-Phases **01–22 and 32 are shipped**. Phases 23, 24, 26, 27, 28, 29, 30, 31, 33 and 34 are in progress;
-the remaining workstream is the planned phase-25 final release gate. The registry maps 224 criteria to implemented or in-progress work. This is
+Phases **01–22 and 32 are shipped**. Phases 23, 24, 26–31, 33 and 34 are in progress;
+phase 25 is the planned final release gate. The registry maps 224 criteria to
+planned, implemented or in-progress work. This is
 bookkeeping, not evidence that every implementation has passed its release gates.
 
 The [phase-23 review](../reviews/phase-23-adversarial.md),
 [phase-27 review](../reviews/phase-27-adversarial.md),
-[phase-26/28 ledger](../reviews/phase-26-28-runtime.md), and
-[phase-29 review](../reviews/phase-29-adversarial.md), and
-[phase-30/31 review](../reviews/phase-30-31-adversarial.md) record verification
+[phase-26/28 ledger](../reviews/phase-26-28-runtime.md),
+[phase-29 review](../reviews/phase-29-adversarial.md),
+[phase-30/31 review](../reviews/phase-30-31-adversarial.md),
+[phase-24 evaluation review](../reviews/phase-24-evaluation.md) and
+[phase-32 review](../reviews/phase-32-adversarial.md) record verification
 boundaries. Real named tests and exact-source CI establish acceptance. Historical
 superseded plans remain under `docs/archive/phase0-plans/`.
+
+Phase 34's [merged migration runtime](../contracts/migration-cutover-v1.md)
+adds a neutral manifest, private import/quarantine, evidence-bound readiness and
+fenced schedule cutover/rollback. Its registry status remains `in_progress`
+pending the owner comparison and operational evidence; Phase 25 remains the
+planned full-release gate.
 
 ## Fixed decisions
 
@@ -28,7 +37,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–22 and32 are shipped; phases23, 24, 26, 27, 28, 29, 30, 31, 33 and34 are in progress, leaving only phase25 planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented.
+There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. The current registry records 23 shipped phases (01–22 and 32), ten in progress (23, 24, 26–31, 33 and 34), and one planned (25). Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented on main.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 
