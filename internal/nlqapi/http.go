@@ -143,8 +143,9 @@ func failure(w http.ResponseWriter, err error) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(struct {
-		Error string `json:"error"`
-	}{code})
+		Error         string                          `json:"error"`
+		Clarification *semantics.ClarificationProblem `json:"clarification,omitempty"`
+	}{code, clarificationProblem(err)})
 }
 
 func isClarification(err error) bool {

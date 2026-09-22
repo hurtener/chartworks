@@ -52,3 +52,22 @@ handling, feedback and generation integration. This contract does not claim live
 provider quality or release readiness. PR #11 records Phase 16 as shipped
 conditionally; that status becomes effective after every required hosted check
 passes and the PR merges.
+
+
+## CW-01 conditional clarification extension
+
+The [conditional clarification v1 contract](conditional-clarification-v1.md)
+supersedes the initial slot-only clarification description above. Reviewed policies
+now select applicable questions; accepted answers become exact references or typed
+business constraints. The existing draft/review/publication and current signed
+source/context checks remain mandatory. Legacy definitions retain their digest and
+explicit reference-only migration disposition; they do not acquire new required
+blockers or inferred non-reference effects.
+
+Typed resolution, dependency-aware questions, whole-group tokenizer admission,
+protected persistence, native binding, correction/removal and current-authority
+replay are implemented through the existing routing/query services. Draft preview,
+replay/shadow and exact-topic import/export have API/SDK consumers. This extension
+adds no issuer, grants, alternative validator or model gateway. Actual software
+acceptance and bounded review are in the [CW-01 evidence](../reviews/cw-01-delivery-review.md);
+representative-user comprehension remains a separate, unperformed study.

@@ -1,0 +1,61 @@
+name: CW-01 clarification tests
+
+on:
+  push:
+    branches: [feat/cw-01-conditional-typed-clarification]
+  pull_request:
+    paths:
+      - 'internal/semantics/**'
+      - 'internal/nlq/**'
+      - 'internal/nlqroute/**'
+      - 'internal/nlqexec/**'
+      - '.github/workflows/cw-01-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cw01-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typed-values:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Record exact source and check formatting
+        run: |
+          git rev-parse HEAD
+          go version
+          status=0
+          gofmt -d internal/semantics/clarification*.go internal/semantics/rules.go internal/semantics/rules_compile.go > /tmp/cw01-format.diff || status=$?
+          cat /tmp/cw01-format.diff
+          test ! -s /tmp/cw01-format.diff
+          exit "$status"
+      - name: Race-enabled semantic and typed-value tests
+        if: success() || failure()
+        run: go test -race -count=1 -v ./internal/semantics
+      - name: Bounded typed-value fuzz campaign
+        if: success() || failure()
+        run: go test -race ./internal/semantics -run '^$' -fuzz '^FuzzClarificationDecimal$' -fuzztime=256x -parallel=2
+      - name: Bounded sensitive-spelling redaction fuzz campaign
+        if: success() || failure()
+        run: go test -race ./internal/semantics -run '^$' -fuzz '^FuzzClarificationRedactionWhitespace$' -fuzztime=256x -parallel=2
+      - name: Verify tests did not rewrite committed source
+        if: always()
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cw01-format-${{ github.sha }}
+          path: /tmp/cw01-format.diff
+          retention-days: 3

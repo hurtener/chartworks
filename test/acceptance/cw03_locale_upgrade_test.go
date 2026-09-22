@@ -82,12 +82,13 @@ func TestCW03PopulatedV2LocaleUpgrade(t *testing.T) {
 	if err = raw.QueryRow(t.Context(), `SELECT chartworks.reporting_output_intents_valid($1::jsonb)`, encoded).Scan(&allowed); err != nil || allowed {
 		t.Fatal("did not exercise the old narrower storage constraint", allowed, err)
 	}
-	// Production migration runner verifies every old checksum and advances to 36.
+	// Production migration runner verifies every old checksum, preserves the
+	// intervening clarification migrations and advances to the locale fix at 38.
 	db := support.Open(t, dsn)
 	if err = db.Check(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=36`) != 1 {
+	if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=38`) != 1 {
 		t.Fatal("locale migration did not apply exactly once")
 	}
 	if err = raw.QueryRow(t.Context(), read).Scan(&after[0], &after[1], &after[2]); err != nil || before != after {

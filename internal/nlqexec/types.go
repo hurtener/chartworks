@@ -118,33 +118,34 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
-	ID              string                `json:"id"`
-	Session         string                `json:"session"`
-	Parent          string                `json:"parent,omitempty"`
-	Operation       string                `json:"operation,omitempty"`
-	Topic           string                `json:"topic"`
-	Topics          []string              `json:"topics"`
-	TopicVersions   []string              `json:"topic_versions"`
-	RuleVersions    []string              `json:"rule_versions,omitempty"`
-	Context         string                `json:"context"`
-	Locale          nlq.Language          `json:"locale"`
-	Question        string                `json:"question"`
-	Route           nlqroute.RouteResult  `json:"route"`
-	Generation      nlq.GenerationContext `json:"generation"`
-	SQL             string                `json:"-"`
-	Parameters      []exec.Parameter      `json:"-"`
-	Receipt         gateway.Receipt       `json:"receipt"`
-	Status          string                `json:"status"`
-	EvidenceStale   bool                  `json:"evidence_stale,omitempty"`
-	Result          *exec.Result          `json:"result,omitempty"`
-	Assumptions     []string              `json:"assumptions,omitempty"`
-	Ambiguities     []string              `json:"ambiguities,omitempty"`
-	Errors          []string              `json:"errors,omitempty"`
-	ValidationFixes int                   `json:"validation_fixes"`
-	ExecutionFixes  int                   `json:"execution_fixes"`
-	Revision        int64                 `json:"revision"`
-	Created         time.Time             `json:"created_at"`
-	Updated         time.Time             `json:"updated_at"`
+	Clarification   *ClarificationEvidence `json:"-"`
+	ID              string                 `json:"id"`
+	Session         string                 `json:"session"`
+	Parent          string                 `json:"parent,omitempty"`
+	Operation       string                 `json:"operation,omitempty"`
+	Topic           string                 `json:"topic"`
+	Topics          []string               `json:"topics"`
+	TopicVersions   []string               `json:"topic_versions"`
+	RuleVersions    []string               `json:"rule_versions,omitempty"`
+	Context         string                 `json:"context"`
+	Locale          nlq.Language           `json:"locale"`
+	Question        string                 `json:"question"`
+	Route           nlqroute.RouteResult   `json:"route"`
+	Generation      nlq.GenerationContext  `json:"generation"`
+	SQL             string                 `json:"-"`
+	Parameters      []exec.Parameter       `json:"-"`
+	Receipt         gateway.Receipt        `json:"receipt"`
+	Status          string                 `json:"status"`
+	EvidenceStale   bool                   `json:"evidence_stale,omitempty"`
+	Result          *exec.Result           `json:"result,omitempty"`
+	Assumptions     []string               `json:"assumptions,omitempty"`
+	Ambiguities     []string               `json:"ambiguities,omitempty"`
+	Errors          []string               `json:"errors,omitempty"`
+	ValidationFixes int                    `json:"validation_fixes"`
+	ExecutionFixes  int                    `json:"execution_fixes"`
+	Revision        int64                  `json:"revision"`
+	Created         time.Time              `json:"created_at"`
+	Updated         time.Time              `json:"updated_at"`
 }
 
 // FeedbackRecord is a reviewable correction. Recording it never publishes a
@@ -179,23 +180,28 @@ type ExampleRecord struct {
 // QuestionRequest is shared by preflight and plan. The verified envelope
 // supplies tenant, actor and session; none of those are accepted from JSON.
 type QuestionRequest struct {
-	Topic        string                     `json:"topic,omitempty"`
-	Topics       []string                   `json:"topics,omitempty"`
-	Context      string                     `json:"context"`
-	Locale       nlq.Language               `json:"locale"`
-	Question     string                     `json:"question"`
-	Kinds        []string                   `json:"kinds,omitempty"`
-	LimitPerKind int                        `json:"limit_per_kind,omitempty"`
-	References   []semantics.Reference      `json:"references,omitempty"`
-	Choices      []nlqroute.ChoiceSelection `json:"choices,omitempty"`
-	Joins        []nlqroute.JoinChoice      `json:"joins,omitempty"`
-	MetricIDs    []string                   `json:"metric_ids,omitempty"`
-	Examples     []nlq.OptionalItem         `json:"examples,omitempty"`
-	Rerank       bool                       `json:"rerank,omitempty"`
-	EditBase     []nlq.Instruction          `json:"edit_base,omitempty"`
-	Hints        []nlq.Instruction          `json:"hints,omitempty"`
-	ExampleInput []nlq.Instruction          `json:"example_instructions,omitempty"`
-	Default      []nlq.Instruction          `json:"default_instructions,omitempty"`
+	// ClarificationQuery anchors a typed submission to a retained preflight in
+	// the current actor/session. The ID grants no authority and is rechecked.
+	ClarificationQuery string                          `json:"clarification_query,omitempty"`
+	Answers            []semantics.ClarificationAnswer `json:"answers,omitempty"`
+	AnswerContext      string                          `json:"answer_context,omitempty"`
+	Topic              string                          `json:"topic,omitempty"`
+	Topics             []string                        `json:"topics,omitempty"`
+	Context            string                          `json:"context"`
+	Locale             nlq.Language                    `json:"locale"`
+	Question           string                          `json:"question"`
+	Kinds              []string                        `json:"kinds,omitempty"`
+	LimitPerKind       int                             `json:"limit_per_kind,omitempty"`
+	References         []semantics.Reference           `json:"references,omitempty"`
+	Choices            []nlqroute.ChoiceSelection      `json:"choices,omitempty"`
+	Joins              []nlqroute.JoinChoice           `json:"joins,omitempty"`
+	MetricIDs          []string                        `json:"metric_ids,omitempty"`
+	Examples           []nlq.OptionalItem              `json:"examples,omitempty"`
+	Rerank             bool                            `json:"rerank,omitempty"`
+	EditBase           []nlq.Instruction               `json:"edit_base,omitempty"`
+	Hints              []nlq.Instruction               `json:"hints,omitempty"`
+	ExampleInput       []nlq.Instruction               `json:"example_instructions,omitempty"`
+	Default            []nlq.Instruction               `json:"default_instructions,omitempty"`
 }
 
 // SemanticReference is accepted through the semantic package's typed value. This
@@ -256,35 +262,39 @@ type PreflightResult struct {
 // PlanResult contains a validated plan receipt. SQL is included only when the
 // caller has the separate reporting.sql.read authority.
 type PlanResult struct {
-	QueryID         string               `json:"query_id"`
-	SessionID       string               `json:"session_id"`
-	Status          string               `json:"status"`
-	Route           nlqroute.RouteResult `json:"route"`
-	Confidence      float64              `json:"confidence"`
-	Generation      string               `json:"generation"`
-	ValidationFixes int                  `json:"validation_fixes"`
-	Assumptions     []string             `json:"assumptions,omitempty"`
-	Ambiguities     []string             `json:"ambiguities,omitempty"`
-	SQL             string               `json:"sql,omitempty"`
-	Receipt         gateway.Receipt      `json:"receipt"`
+	Bindings        *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
+	AnswerChanges   []ClarificationChange        `json:"answer_changes,omitempty"`
+	QueryID         string                       `json:"query_id"`
+	SessionID       string                       `json:"session_id"`
+	Status          string                       `json:"status"`
+	Route           nlqroute.RouteResult         `json:"route"`
+	Confidence      float64                      `json:"confidence"`
+	Generation      string                       `json:"generation"`
+	ValidationFixes int                          `json:"validation_fixes"`
+	Assumptions     []string                     `json:"assumptions,omitempty"`
+	Ambiguities     []string                     `json:"ambiguities,omitempty"`
+	SQL             string                       `json:"sql,omitempty"`
+	Receipt         gateway.Receipt              `json:"receipt"`
 	validated       exec.Plan
 }
 
 // RunResult contains the opaque executor receipt and normalized rows. The
 // underlying attempt journal remains the source of cancellation/reconciliation.
 type RunResult struct {
-	QueryID         string               `json:"query_id"`
-	SessionID       string               `json:"session_id"`
-	Status          string               `json:"status"`
-	EvidenceStale   bool                 `json:"evidence_stale,omitempty"`
-	Route           nlqroute.RouteResult `json:"route"`
-	Confidence      float64              `json:"confidence"`
-	Assumptions     []string             `json:"assumptions,omitempty"`
-	Ambiguities     []string             `json:"ambiguities,omitempty"`
-	Execution       exec.ExecutionReport `json:"execution"`
-	ValidationFixes int                  `json:"validation_fixes"`
-	ExecutionFixes  int                  `json:"execution_fixes"`
-	SQL             string               `json:"sql,omitempty"`
+	Bindings        *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
+	AnswerChanges   []ClarificationChange        `json:"answer_changes,omitempty"`
+	QueryID         string                       `json:"query_id"`
+	SessionID       string                       `json:"session_id"`
+	Status          string                       `json:"status"`
+	EvidenceStale   bool                         `json:"evidence_stale,omitempty"`
+	Route           nlqroute.RouteResult         `json:"route"`
+	Confidence      float64                      `json:"confidence"`
+	Assumptions     []string                     `json:"assumptions,omitempty"`
+	Ambiguities     []string                     `json:"ambiguities,omitempty"`
+	Execution       exec.ExecutionReport         `json:"execution"`
+	ValidationFixes int                          `json:"validation_fixes"`
+	ExecutionFixes  int                          `json:"execution_fixes"`
+	SQL             string                       `json:"sql,omitempty"`
 }
 
 // Service composes only existing authority, routing, gateway and read seams.

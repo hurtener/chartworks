@@ -154,7 +154,17 @@ func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec
 	if q.SQL != "" {
 		sqlText = q.SQL
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19,$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), operation, q.Topic, topics, versions, rules, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated)
+	var clarification any
+	if q.Clarification != nil {
+		if q.Clarification.SchemaVersion != 1 {
+			return store.ErrInvalid
+		}
+		clarification, e = marshalNLQ(q.Clarification)
+		if e != nil {
+			return e
+		}
+	}
+	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19,$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29::jsonb)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), operation, q.Topic, topics, versions, rules, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated, clarification)
 	return e
 }
 
@@ -165,7 +175,7 @@ func nullableString(value string) any {
 	return value
 }
 
-const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at`
+const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification`
 
 // ReadQuery returns protected query metadata and consumes rule invalidation fences.
 func (d *DB) ReadQuery(ctx context.Context, scope store.Scope, id string) (out nlqexec.QueryRecord, err error) {
@@ -237,8 +247,8 @@ func markRuleEvidenceStale(ctx context.Context, tx pgx.Tx, tenant string, out *n
 func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 	var tenantValue, actorValue string
 	var parent, operation, sqlText *string
-	var topics, versions, rules, route, generation, params, receipt, result, assumptions, ambiguities, queryErrors []byte
-	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &operation, &out.Topic, &topics, &versions, &rules, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated); err != nil {
+	var topics, versions, rules, route, generation, params, receipt, result, assumptions, ambiguities, queryErrors, clarification []byte
+	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &operation, &out.Topic, &topics, &versions, &rules, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated, &clarification); err != nil {
 		return err
 	}
 	_ = tenantValue
@@ -255,6 +265,13 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 		if len(value.raw) == 0 || json.Unmarshal(value.raw, value.target) != nil {
 			return store.ErrMigration
 		}
+	}
+	if len(clarification) > 0 && string(clarification) != "null" {
+		var evidence nlqexec.ClarificationEvidence
+		if json.Unmarshal(clarification, &evidence) != nil || evidence.SchemaVersion != 1 {
+			return store.ErrMigration
+		}
+		out.Clarification = &evidence
 	}
 	if len(result) > 0 {
 		var parsed exec.Result

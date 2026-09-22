@@ -69,3 +69,21 @@ Implement `TestPhase18/AC01` through `TestPhase18/AC06` with real semantic/sourc
 ## Glossary, decisions and deviations
 
 Refinement and self-curation remain explicit governed exploration. D-049 applies. No runtime completion is claimed.
+
+
+## CW-01 delivered clarification extension
+
+The [conditional clarification contract](../contracts/conditional-clarification-v1.md)
+extends this phase's existing core, without changing authority ownership, immutable
+publication, source partitions or validated-read prerequisites. It supplies reviewed
+conditional applicability and typed answer resolution, mandatory-group token/privacy
+handling, source-bound parameter effects, session correction/removal and retained
+consumer replay. Preview, replay/shadow and safe import dispositions use the existing
+API/SDK surfaces rather than a new authoring application.
+
+`TestCW01/AC01` through `TestCW01/AC10` add the clarification acceptance corpus;
+the six existing `TestPhase16`, `TestPhase17` and `TestPhase18` criteria remain
+unchanged and continue to run. [CW-01 delivery evidence](../reviews/cw-01-delivery-review.md)
+records exact executed checks and review corrections. No CLAR-AC11 comprehension
+study, live cloud/model quality measurement or general SQL-shape expansion is
+claimed by these software tests.

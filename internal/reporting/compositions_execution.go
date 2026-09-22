@@ -116,6 +116,11 @@ func (s *Compositions) continueComposition(ctx context.Context, e identity.Envel
 	omit := strictCompositionOmission(m)
 	completed := map[string]bool{}
 	for _, result := range record.Results {
+		// A checkpoint is not final publication. A pending parent must still
+		// enforce current caps before consuming an already completed child.
+		if err := s.checkCompletedBlockBudget(ctx, e, inv, m, result); err != nil {
+			return err
+		}
 		completed[result.Group] = true
 		omit = omit || m.Policy == "fail_closed" && result.State != "completed"
 	}
@@ -184,6 +189,39 @@ func (s *Compositions) continueComposition(ctx context.Context, e identity.Envel
 	return err
 }
 
+// checkCompletedBlockBudget applies only while completing a pending composition.
+// Ordinary terminal artifact reads stay independent of execution configuration.
+// An over-cap retained checkpoint is not erased, rewritten, or regenerated.
+func (s *Compositions) checkCompletedBlockBudget(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m CompositionManifest, result GroupResult) error {
+	if result.Kind != "block" || result.State == "failed" {
+		return nil
+	}
+	if _, err := inv.Current(m.Kind+".run", m.Document, m.RequestHash); err != nil {
+		return err
+	}
+	if s.runs == nil {
+		return ErrUnavailable
+	}
+	if result.Block == nil || result.ChildRun == "" {
+		return ErrInvalid
+	}
+	retained, err := s.runs.repo.ReadFrozenRun(ctx, e, result.ChildRun, true)
+	if err != nil {
+		return err
+	}
+	if retained.View.State == "expired" {
+		return ErrExpired
+	}
+	if retained.Manifest == nil || retained.Result == nil {
+		return ErrIncomplete
+	}
+	if retained.View.ManifestDigest != result.Block.ManifestDigest {
+		return ErrStale
+	}
+	limits := intersectExecutionLimits(m.ArtifactLimits, s.runs.limits)
+	return CheckRuntimeResult(*retained.Manifest, limits, *retained.Result)
+}
+
 func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, inv jobs.Invocation, m CompositionManifest, g CompositionGroup) (GroupResult, error) {
 	if s.runs == nil || s.documents.blocks == nil {
 		return GroupResult{}, ErrUnavailable
@@ -223,6 +261,12 @@ func (s *Compositions) executeBlock(ctx context.Context, e identity.Envelope, in
 	}
 	if retained.Manifest == nil || retained.Result == nil || retained.View.Observed == nil || retained.Manifest.Revision.Digest != g.Definition || retained.Manifest.Binding.Context != g.Binding.Context || exec.Hash(retained.Manifest.Binding) != exec.Hash(g.Binding) || digest(retained.Manifest.Resolved.Parameters) != digest(g.Resolved.Parameters) || retained.View.Private != m.Private {
 		return GroupResult{}, ErrStale
+	}
+	// A completed child may outlive a failed parent checkpoint. run returns its
+	// retained receipt without executing again; that read must not bypass the
+	// current ceilings when its values are consumed by this pending composition.
+	if err := CheckRuntimeResult(*retained.Manifest, childRuns.limits, *retained.Result); err != nil {
+		return GroupResult{}, err
 	}
 	// The original widget policy remains checked even for a private child run.
 	snapshot, err = s.documents.blocks.repo.ReadBlock(ctx, e, g.Block, Reference{Revision: g.Revision}, Execute)

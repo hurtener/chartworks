@@ -91,8 +91,17 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	if _, err := f.db.ReadPublishedTopic(ctx, identity.Envelope{}, pack.Topic, "", drafts.Read); !errors.Is(err, access.ErrUnauthenticated) {
 		t.Fatal("invalid publication envelope accepted", err)
 	}
-	if _, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, "", drafts.Export); !errors.Is(err, store.ErrInvalid) {
-		t.Fatal("invalid publication access accepted", err)
+	for _, invalid := range []drafts.Access{0, 255} {
+		if _, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, "", invalid); !errors.Is(err, store.ErrInvalid) {
+			t.Fatal("invalid publication access accepted", err)
+		}
+	}
+	// Export is now a supported protected operation, not an invalid access mode.
+	if _, err := f.db.ReadPublishedTopic(ctx, unauthorized, pack.Topic, "", drafts.Export); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("publication export omitted its own action and resource permission", err)
+	}
+	if _, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, "", drafts.Export); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("authorized export without a publication did not preserve missing state", err)
 	}
 	if _, err := f.db.RollbackTopic(ctx, e, pack.Topic, topics.TransitionRequest{}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("invalid store rollback accepted", err)
@@ -189,6 +198,19 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 	exact, err := client.PublishedTopicVersion(ctx, pack.Topic, pack.Version)
 	if err != nil || !reflect.DeepEqual(exact, published) {
 		t.Fatal("exact retained read", err)
+	}
+	exported, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, pack.Version, drafts.Export)
+	if err != nil || !reflect.DeepEqual(exported, published) {
+		t.Fatal("authorized publication export did not retain the exact version", err)
+	}
+	for _, exportScopes := range [][]string{
+		{"topics.export", "sources.read", "cw.topic.read:" + pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"},
+		{"topics.read", "sources.read", "cw.topic.export:" + pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"},
+	} {
+		exportDenied := f.token.envelope(t, f.e.Tenant(), f.e.User(), exportScopes...)
+		if _, err := f.db.ReadPublishedTopic(ctx, exportDenied, pack.Topic, pack.Version, drafts.Export); !errors.Is(err, access.ErrForbidden) && !errors.Is(err, access.ErrNotFound) {
+			t.Fatal("publication export accepted incomplete action or resource authority", err)
+		}
 	}
 	contract, err := client.TopicContract(ctx, pack.Topic)
 	if err != nil || contract.Publication.State.Version != pack.Version || contract.ObservedAt.IsZero() {

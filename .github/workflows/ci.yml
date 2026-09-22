@@ -181,9 +181,9 @@ jobs:
         run: make foundation-smoke
       - name: Bounded security mutation fuzz campaigns
         run: |
-          # Count-bounded campaigns match the other native/race fuzz gates.
-          # A short wall-time budget can expire while the instrumented worker
-          # is still finishing a case; retain a separate hard hang deadline.
+          # Finish fixed mutation budgets instead of racing a short coordinator
+          # deadline under race instrumentation. Crashes remain hard failures;
+          # the separate timeout is only a hard hang bound.
           go test -race ./test/acceptance -run '^$' -fuzz '^FuzzAuthorityJSON$' -fuzztime=256x -timeout=3m -parallel=2
           go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=256x -timeout=3m -parallel=2
           names=$(go test ./internal/exec -list '^Fuzz' | grep '^Fuzz')

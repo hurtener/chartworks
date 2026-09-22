@@ -28,7 +28,7 @@ No arbitrary chart JavaScript/formatter, remote resource URLs, warehouse requery
 
 ## Config and persistence
 
-Charts category/series/options-depth limits, selection floor and alternatives; optional exploratory ranker with gateway limits. Persist selected output definitions in block revisions later, not a second chart-state store. Carry units/currency/percent/grain and exact-value labels explicitly.
+Charts category/series/options-depth limits, selection floor and alternatives; optional exploratory ranker with gateway limits. Selected output definitions persist in existing block revisions, not a second chart-state store. Carry units/currency/percent/grain and exact-value labels explicitly.
 
 ## Acceptance criteria
 
@@ -68,3 +68,19 @@ runtime evidence; read-only exact-source CI, not this paragraph, establishes
 readiness. The phase is shipped following PR #13; its current criteria also run
 in cumulative CI. Renderer and full
 release gates remain in their owning later workstreams.
+
+## CW-02 rich binding continuation, 2026-09-16
+
+The [shared v1/v2 contract](../contracts/chart-specifications-v1.md) separates the
+12-plot plus KPI/table catalog from supported variants. Closed repeated measures,
+real categorical series, explicit bubble size and ordered hierarchy now flow
+through saved pins, exact retained transformation and the current Apps consumer.
+Scalar v1 mappings remain compatible; incompatible drift requires author review.
+Deterministic intent/cardinality/semantic signals participate before candidate
+sealing; optional gateway ranking receives bounded metadata only.
+
+`TestCW02RichCharts` traces API/SDK save/read/publication/build/view effects;
+`TestPhase31/AC04` consumes the shared rich fixtures in the actual browser. The
+original scalar goldens remain unchanged. Rich reporting KPI/table definitions,
+narrative policies, broader locale/display formats and static export remain in
+their owning assignments; no whole-product parity or live-model claim is made.
