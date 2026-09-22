@@ -360,7 +360,11 @@ func fail(writer io.Writer, err error) int {
 		}
 	}
 	if status != nil {
-		_, _ = fmt.Fprintf(writer, "chartworks: request rejected (HTTP %d)\n", status.Status)
+		if status.Code != "" {
+			_, _ = fmt.Fprintf(writer, "chartworks: request rejected (HTTP %d, %s)\n", status.Status, status.Code)
+		} else {
+			_, _ = fmt.Fprintf(writer, "chartworks: request rejected (HTTP %d)\n", status.Status)
+		}
 	} else {
 		_, _ = io.WriteString(writer, "chartworks: command failed; check supplied configuration, authority and operation status\n")
 	}

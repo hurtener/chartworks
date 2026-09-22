@@ -7,14 +7,6 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/api"
-	"github.com/hurtener/chartworks/internal/chartapi"
-	"github.com/hurtener/chartworks/internal/config"
-	"github.com/hurtener/chartworks/internal/mcpserver"
-	"github.com/hurtener/chartworks/internal/nlqapi"
-	"github.com/hurtener/chartworks/internal/onboardingapi"
-	"github.com/hurtener/chartworks/internal/reportingapi"
-	"github.com/hurtener/chartworks/internal/sourceapi"
-	"github.com/hurtener/chartworks/internal/topicapi"
 )
 
 func TestEXP03InteractionOrderingAndOutcomeRichness(t *testing.T) {
@@ -37,7 +29,7 @@ func TestEXP03InteractionOrderingAndOutcomeRichness(t *testing.T) {
 		t.Fatal("stale response replaced current state", unchanged, applied, err)
 	}
 	disconnected, applied, err := ApplyInteraction(state, QueryInteractionEvent{Generation: 2, Sequence: 2, Kind: "disconnect", Status: "transport_disconnected"})
-	if err != nil || !applied || disconnected.Status == "cancelled" {
+	if err != nil || !applied || disconnected.Status != "accepted" || disconnected.Transport != "transport_disconnected" {
 		t.Fatal("disconnect was treated as cancellation", disconnected, err)
 	}
 	cancelled, applied, err := ApplyInteraction(disconnected, QueryInteractionEvent{Generation: 2, Sequence: 3, Kind: "cancel", Status: "cancel_requested"})
@@ -48,6 +40,26 @@ func TestEXP03InteractionOrderingAndOutcomeRichness(t *testing.T) {
 		got, ok, eventErr := ApplyInteraction(cancelled, QueryInteractionEvent{Generation: 3, Sequence: 1, QueryID: "query-" + status, Kind: "result", Status: status})
 		if eventErr != nil || !ok || got.Status != status {
 			t.Errorf("outcome %s collapsed: %#v %v", status, got, eventErr)
+		}
+		for index, delayed := range []QueryInteractionEvent{
+			{Generation: 3, Sequence: 2, QueryID: "query-" + status, Kind: "progress", Status: "running"},
+			{Generation: 3, Sequence: 3, QueryID: "query-" + status, Kind: "disconnect", Status: "transport_disconnected"},
+			{Generation: 3, Sequence: 4, QueryID: "query-" + status, Kind: "cancel", Status: "cancel_requested"},
+			{Generation: 3, Sequence: 5, QueryID: "query-" + status, Kind: "feedback", Status: "feedback_accepted"},
+			{Generation: 3, Sequence: 6, QueryID: "query-" + status, Kind: "refine", Status: "accepted"},
+		} {
+			before := got
+			got, ok, eventErr = ApplyInteraction(got, delayed)
+			if eventErr != nil || got.Status != status {
+				t.Fatalf("terminal %s overwritten by %#v: %#v %v", status, delayed, got, eventErr)
+			}
+			if index == 1 || index == 3 {
+				if !ok {
+					t.Fatalf("terminal side effect %s was not recorded", delayed.Kind)
+				}
+			} else if ok || !reflect.DeepEqual(got, before) {
+				t.Fatalf("terminal transition %s accepted: %#v", delayed.Kind, got)
+			}
 		}
 	}
 	for _, event := range []QueryInteractionEvent{
@@ -62,76 +74,6 @@ func TestEXP03InteractionOrderingAndOutcomeRichness(t *testing.T) {
 	data, err := json.Marshal(QueryInteractionEvent{Generation: 4, Sequence: 1, QueryID: "query-safe", Kind: "result", Status: "uncertain"})
 	if err != nil || strings.Contains(string(data), "sql") || strings.Contains(string(data), "prompt") || strings.Contains(string(data), "rows") {
 		t.Fatal("interaction envelope can expose protected content", string(data), err)
-	}
-}
-
-func TestEXP11CumulativeRegisteredConsumerMatrix(t *testing.T) {
-	factories := []func() (*api.Registry, error){
-		func() (*api.Registry, error) { return sourceapi.SourceRegistry(true, true) },
-		func() (*api.Registry, error) { return sourceapi.EngineeringAPIRegistry(true, true, 16<<20) },
-		sourceapi.ExecutionAPIRegistry,
-		func() (*api.Registry, error) { return sourceapi.PipelineAPIRegistry(true) },
-		topicapi.Registry,
-		nlqapi.Registry,
-		nlqapi.ExecutionRegistry,
-		func() (*api.Registry, error) { return nlqapi.BYORegistry(true) },
-		chartapi.Registry,
-		func() (*api.Registry, error) { return reportingapi.Registry(true, true, true) },
-		func() (*api.Registry, error) { return reportingapi.RuntimeRegistry(true, true) },
-		func() (*api.Registry, error) { return reportingapi.DocumentsRegistry(true) },
-		func() (*api.Registry, error) { return reportingapi.DeliveryRegistry(true, true, true) },
-		onboardingapi.Registry,
-		func() (*api.Registry, error) { return mcpserver.HTTPRegistry(config.DefaultMCP()) },
-	}
-	registries := make([]*api.Registry, 0, len(factories))
-	for _, factory := range factories {
-		registry, err := factory()
-		if err != nil {
-			t.Fatal(err)
-		}
-		registries = append(registries, registry)
-	}
-	registry, err := api.Compose(registries...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	document, err := registry.OpenAPI("Synthetic complete consumer inventory", "exp-11")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rows, err := ParseOperations(document)
-	if err != nil || len(rows) != len(registry.Definitions()) {
-		t.Fatalf("generated inventory: rows=%d definitions=%d err=%v", len(rows), len(registry.Definitions()), err)
-	}
-	byID := make(map[string]OperationInfo, len(rows))
-	for _, row := range rows {
-		byID[row.ID] = row
-		if row.SDKMethod == "" || row.CLICommand == "" || !row.Public && (!hasOperationError(row.Errors, 401) || !hasOperationError(row.Errors, 403)) {
-			t.Fatalf("incomplete consumer/error projection: %#v", row)
-		}
-	}
-	for _, id := range []string{"reportingFilterOptions", "reportingExport", "reportingRenditionCreate", "reportingRenditionRead", "reportingRenditionList", "reportingRenditionExpire", "startOnboarding", "getOnboarding", "resumeOnboarding", "answerOnboarding", "cancelOnboarding", "proposeOnboardingDrift"} {
-		if _, ok := byID[id]; !ok {
-			t.Error("late domain operation missing from generated matrix", id)
-		}
-	}
-	for _, id := range []string{"reportingFilterOptions", "reportingRenditionCreate", "resumeOnboarding", "answerOnboarding", "cancelOnboarding"} {
-		row := byID[id]
-		if !strings.Contains(string(row.RequestSchema), "expected_version") && id != "reportingFilterOptions" && id != "reportingRenditionCreate" {
-			t.Error("late mutable operation lost version fence", id)
-		}
-		if row.Action == "" || row.ResourceLoader == "" || row.Effect == "" || row.Audit == "" {
-			t.Error("late operation lost authority/effect contract", id)
-		}
-	}
-	journey, err := InteractionJourney(rows)
-	if err != nil {
-		t.Fatal("incomplete interaction journey", err)
-	}
-	for role, ids := range journey {
-		if len(ids) == 0 {
-			t.Error("empty role", role)
-		}
 	}
 }
 

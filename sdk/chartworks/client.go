@@ -54,6 +54,7 @@ type GatewayReceipt = gateway.Receipt
 type StatusError struct {
 	Clarification *ClarificationProblem
 	Status        int
+	Code          string
 	Receipt       *GatewayReceipt
 }
 
@@ -203,10 +204,14 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 	}
 	if resp.StatusCode != http.StatusOK {
 		rejected := &StatusError{Status: resp.StatusCode}
+		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, (128<<10)+1))
+		if readErr == nil && len(raw) <= 128<<10 {
+			rejected.Code, _ = readStatusCode(raw)
+		}
 		if path == "/v1/charts/select" {
-			rejected.Receipt = readFailureReceipt(resp.Body)
+			rejected.Receipt = readFailureReceipt(bytes.NewReader(raw))
 		} else if strings.HasPrefix(path, "/v1/nlq/") {
-			rejected.Clarification = readClarificationProblem(resp.Body)
+			rejected.Clarification = readClarificationProblem(bytes.NewReader(raw))
 		}
 		return rejected
 	}
@@ -224,6 +229,25 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 		return errors.New("chartworks: invalid response")
 	}
 	return nil
+}
+
+// readStatusCode accepts only the bounded registered wire shape's stable code.
+// Unknown fields are deliberately ignored here because receipt and clarification
+// variants add their own typed members; arbitrary text is never retained.
+func readStatusCode(raw []byte) (string, bool) {
+	if len(raw) == 0 {
+		return "", false
+	}
+	if _, err := gateway.DecodeJSON(raw, 128<<10); err != nil {
+		return "", false
+	}
+	var value struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(raw, &value) != nil || !wireID(value.Error) || len(value.Error) > 128 {
+		return "", false
+	}
+	return value.Error, true
 }
 
 // RetentionPolicy reads only the caller's signed tenant configuration.

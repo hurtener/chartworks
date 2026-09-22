@@ -81,8 +81,11 @@ func DeliveryRegistry(execution bool, static ...bool) (*api.Registry, error) {
 	}
 	definitions := registry.Definitions()
 	for i := range definitions {
-		if definitions[i].ID == "reportingView" {
+		switch definitions[i].ID {
+		case "reportingView":
 			definitions[i].Interaction = "query_view"
+		case "reportingRun":
+			definitions[i].Interaction = "query_start_or_clarify"
 		}
 	}
 	return api.New(definitions)

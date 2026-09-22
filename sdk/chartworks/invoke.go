@@ -97,6 +97,9 @@ func (c *Client) Invoke(ctx context.Context, operationID string, in CallOptions)
 			return result, nil
 		}
 		var status *StatusError
+		if errors.As(err, &status) && !registeredStatusError(row.Errors, status) {
+			return CallResult{}, ErrInvalidCatalog
+		}
 		if attempt+1 == attempts || !errors.As(err, &status) || !retryStatus(status.Status) {
 			return CallResult{}, err
 		}
@@ -111,6 +114,21 @@ func (c *Client) Invoke(ctx context.Context, operationID string, in CallOptions)
 		}
 	}
 	return CallResult{}, err
+}
+
+func registeredStatusError(inventory []OperationError, status *StatusError) bool {
+	if status == nil {
+		return false
+	}
+	if status.Code == "" {
+		return true
+	}
+	for _, item := range inventory {
+		if item.Status == status.Status && item.Code == status.Code {
+			return true
+		}
+	}
+	return false
 }
 
 func retryStatus(status int) bool {

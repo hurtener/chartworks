@@ -3,6 +3,7 @@ package chartworks
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 
 	"github.com/hurtener/chartworks/internal/gateway"
 )
@@ -38,8 +39,10 @@ func (c *Client) OperationMatrix(ctx context.Context, mcpClient *Client) ([]Oper
 		Error   json.RawMessage `json:"error"`
 		Result  *struct {
 			Tools []struct {
-				Name string                     `json:"name"`
-				Meta map[string]json.RawMessage `json:"_meta"`
+				Name         string                     `json:"name"`
+				InputSchema  json.RawMessage            `json:"inputSchema"`
+				OutputSchema json.RawMessage            `json:"outputSchema"`
+				Meta         map[string]json.RawMessage `json:"_meta"`
 			} `json:"tools"`
 		} `json:"result"`
 	}
@@ -64,7 +67,7 @@ func (c *Client) OperationMatrix(ctx context.Context, mcpClient *Client) ([]Oper
 			return value
 		}
 		i, exists := byID[get("chartworks/operation")]
-		if !exists || rows[i].MCPTool != "" || rows[i].Action != get("chartworks/action") || rows[i].Effect != get("chartworks/effect") || rows[i].Audit != get("chartworks/audit") || rows[i].Interaction != get("chartworks/interaction") {
+		if !exists || rows[i].MCPTool != "" || rows[i].Action != get("chartworks/action") || rows[i].Effect != get("chartworks/effect") || rows[i].Audit != get("chartworks/audit") || rows[i].Interaction != get("chartworks/interaction") || rows[i].ResourceLoader != get("chartworks/resourceLoader") || !canonicalEqual(tool.InputSchema, tool.Meta["chartworks/inputSchema"]) || !canonicalEqual(tool.OutputSchema, tool.Meta["chartworks/outputSchema"]) || !canonicalEqual(rows[i].RequestSchema, tool.Meta["chartworks/requestSchema"]) || !canonicalEqual(rows[i].ResponseSchema, tool.Meta["chartworks/resultSchema"]) || !errorContractEqual(rows[i].Errors, tool.Meta["chartworks/errorContract"]) {
 			return nil, ErrInvalidCatalog
 		}
 		rows[i].MCPTool, rows[i].MCPDisposition = tool.Name, "bound"
@@ -79,4 +82,32 @@ func (c *Client) OperationMatrix(ctx context.Context, mcpClient *Client) ([]Oper
 		}
 	}
 	return rows, nil
+}
+
+func canonicalEqual(left, right json.RawMessage) bool {
+	if len(left) == 0 {
+		left = json.RawMessage("null")
+	}
+	if len(right) == 0 {
+		return false
+	}
+	a, err := gateway.DecodeJSON(left, 64<<10)
+	if err != nil {
+		return false
+	}
+	b, err := gateway.DecodeJSON(right, 64<<10)
+	return err == nil && reflect.DeepEqual(a, b)
+}
+
+func errorContractEqual(expected []OperationError, raw json.RawMessage) bool {
+	var actual []OperationError
+	if json.Unmarshal(raw, &actual) != nil || len(actual) != len(expected) {
+		return false
+	}
+	for i := range expected {
+		if actual[i] != expected[i] {
+			return false
+		}
+	}
+	return true
 }

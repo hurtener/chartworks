@@ -389,6 +389,11 @@ func TestRegistrationAndResourceAmbiguity(t *testing.T) {
 		t.Fatal("disabled group retained", err)
 	}
 	detached := reg.Manifest()
+	for _, key := range []string{"chartworks/resourceLoader", "chartworks/inputSchema", "chartworks/outputSchema", "chartworks/requestSchema", "chartworks/resultSchema", "chartworks/errorContract"} {
+		if _, ok := detached[0].Meta[key]; !ok {
+			t.Fatal("bound tool omitted owner parity metadata", key)
+		}
+	}
 	detached[0].Name = "tampered"
 	detached[0].Meta["chartworks/action"] = "other"
 	detached[0].InputSchema.(json.RawMessage)[0] = 'x'
@@ -398,10 +403,20 @@ func TestRegistrationAndResourceAmbiguity(t *testing.T) {
 	if !json.Valid(reg.Manifest()[0].InputSchema.(json.RawMessage)) {
 		t.Fatal("mutable schema")
 	}
-	for _, effect := range []string{"metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "caller_data_transform_no_persistence", "caller_data_selection_optional_gateway_rank", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration"} {
+	for _, effect := range []string{"metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "caller_data_transform_no_persistence", "caller_data_selection_optional_gateway_rank", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration", "retained_static_rendition", "durable_isolated_static_rendition", "bounded_rendition_deletion"} {
 		ef, ok := effectFor(effect)
 		if !ok || ef.readOnly && (ef.paid || ef.persists) {
 			t.Fatal("unsafe annotation", effect)
+		}
+	}
+	for effect, check := range map[string]func(effects) bool{
+		"retained_static_rendition":         func(e effects) bool { return e.openWorld && !e.readOnly && !e.persists && !e.destructive },
+		"durable_isolated_static_rendition": func(e effects) bool { return e.openWorld && e.persists && !e.readOnly && !e.destructive },
+		"bounded_rendition_deletion":        func(e effects) bool { return e.destructive && e.persists && !e.readOnly && !e.openWorld },
+	} {
+		effectMetadata, ok := effectFor(effect)
+		if !ok || !check(effectMetadata) {
+			t.Fatal("rendition effect weakened", effect, effectMetadata)
 		}
 	}
 	if _, ok := effectFor("unclassified"); ok {
@@ -434,6 +449,35 @@ func TestRegistrationAndResourceAmbiguity(t *testing.T) {
 	}
 	if !toolName("a_1") || toolName("") || toolName(strings.Repeat("a", 49)) {
 		t.Fatal("name bounds")
+	}
+}
+
+func TestRenditionEffectBindingsInvokeWithConservativeAnnotations(t *testing.T) {
+	base := testRegistry(t, func(context.Context, identity.Envelope, testInput) (testOutput, error) {
+		return testOutput{Item: "synthetic"}, nil
+	}).bindings[0]
+	for _, effect := range []string{"retained_static_rendition", "durable_isolated_static_rendition", "bounded_rendition_deletion"} {
+		definition := base.definition
+		definition.ID = "fixture" + strings.ReplaceAll(effect, "_", "")
+		definition.Effect = effect
+		owner, err := api.New([]api.Definition{definition})
+		if err != nil {
+			t.Fatal(effect, err)
+		}
+		binding, err := Bind(owner, definition.ID, "fixture_"+effect, "reporting", "Invoke one synthetic retained rendition lifecycle fixture.", func(context.Context, identity.Envelope, testInput) (testOutput, error) {
+			return testOutput{Item: effect}, nil
+		}, func(error) Fault { return Fault{Code: "unavailable"} })
+		if err != nil {
+			t.Fatal(effect, err)
+		}
+		result, err := binding.invoke(t.Context(), identity.Envelope{}, json.RawMessage(`{"item":"synthetic"}`))
+		if err != nil || !strings.Contains(string(result), effect) {
+			t.Fatal("rendition binding did not invoke", effect, string(result), err)
+		}
+		tool := binding.tool()
+		if tool.Annotations == nil || tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint != (effect == "bounded_rendition_deletion") {
+			t.Fatal("rendition destructive annotation", effect, tool.Annotations)
+		}
 	}
 }
 

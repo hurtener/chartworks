@@ -46,6 +46,8 @@ type QueryInteractionState struct {
 	QueryID    string `json:"query_id,omitempty"`
 	Status     string `json:"status"`
 	View       string `json:"view,omitempty"`
+	Transport  string `json:"transport,omitempty"`
+	SideEffect string `json:"side_effect,omitempty"`
 }
 
 // QueryInteractionEvent carries only bounded lifecycle metadata. Disconnect is
@@ -73,47 +75,77 @@ func ApplyInteraction(current QueryInteractionState, event QueryInteractionEvent
 	if event.QueryID != "" && !wireID(event.QueryID) || current.QueryID != "" && event.Generation == current.Generation && event.QueryID != "" && event.QueryID != current.QueryID {
 		return current, false, ErrInvalidInteraction
 	}
-	next := QueryInteractionState{Generation: event.Generation, Sequence: event.Sequence, QueryID: event.QueryID, Status: event.Status, View: event.View}
+	next := current
+	next.Generation, next.Sequence = event.Generation, event.Sequence
+	next.QueryID = event.QueryID
 	if next.QueryID == "" && event.Generation == current.Generation {
 		next.QueryID = current.QueryID
 	}
+	if event.Generation > current.Generation {
+		next.Status, next.View, next.Transport, next.SideEffect = "", "", "", ""
+	}
+	terminal := event.Generation == current.Generation && queryOutcome(current.Status)
 	switch event.Kind {
 	case "start":
 		if event.Status != "accepted" || event.View != "" {
 			return current, false, ErrInvalidInteraction
 		}
+		next.Status = event.Status
 	case "progress":
 		if event.Status != "routing" && event.Status != "planning" && event.Status != "running" {
 			return current, false, ErrInvalidInteraction
 		}
+		if terminal {
+			return current, false, nil
+		}
+		next.Status = event.Status
 	case "clarify":
 		if event.Status != "needs_clarification" {
 			return current, false, ErrInvalidInteraction
 		}
+		if terminal {
+			return current, false, nil
+		}
+		next.Status = event.Status
 	case "cancel":
 		if event.Status != "cancel_requested" && event.Status != "cancelled" {
 			return current, false, ErrInvalidInteraction
 		}
+		if terminal {
+			return current, false, nil
+		}
+		next.Status = event.Status
 	case "disconnect":
 		if event.Status != "transport_disconnected" {
 			return current, false, ErrInvalidInteraction
 		}
+		next.Transport = event.Status
 	case "result":
 		if !queryOutcome(event.Status) {
 			return current, false, ErrInvalidInteraction
 		}
+		if terminal {
+			return current, false, nil
+		}
+		next.Status = event.Status
 	case "view":
 		if event.Status != current.Status || event.View != "table" && event.View != "chart" && event.View != "sql" {
 			return current, false, ErrInvalidInteraction
 		}
+		next.View = event.View
 	case "feedback":
 		if event.Status != "feedback_accepted" {
 			return current, false, ErrInvalidInteraction
 		}
+		next.SideEffect = event.Status
 	case "refine":
 		if event.Status != "accepted" && event.Status != "needs_clarification" {
 			return current, false, ErrInvalidInteraction
 		}
+		if terminal {
+			return current, false, nil
+		}
+		next.Status = event.Status
 	default:
 		return current, false, ErrInvalidInteraction
 	}

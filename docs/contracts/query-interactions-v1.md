@@ -19,6 +19,14 @@ joined and each row becomes `bound`, `public_http`, `transport`, or
 surface disposition: no typed owner binding was installed, so clients use the
 registered HTTP SDK/CLI operation. No MCP tool is synthesized.
 
+A bound MCP tool publishes and must match the owner resource loader, input,
+output and result schemas, and sorted status/code/receipt error contract in
+addition to action, effect, audit and interaction metadata. Schema comparisons
+are canonical JSON comparisons, so formatting cannot hide drift. The SDK decodes
+only a bounded stable HTTP error code and validates a decoded code against that
+operation's registered status/code pair. The CLI may display that safe code but
+never the rejection body.
+
 Late-domain conformance includes selectable report filters, static and durable
 renditions, and guided onboarding. Their schemas, authority, errors and generic
 client paths come from the same registrations as their handlers.
@@ -52,21 +60,27 @@ from replacing the result for a newer question or refinement.
 shown only after an explicit registered cancellation response. Terminal results
 retain `succeeded`, `empty`, `truncated`, `failed`, `uncertain`, `cancelled`,
 `timed_out` and `interrupted` as separate values. Missing output is never coerced
-to empty success. View switches carry only `table`, `chart` or `sql` selection and
+to empty success. Once one of those outcomes is observed, delayed progress,
+cancellation and refinement events cannot overwrite it. A later disconnect or
+feedback acknowledgement may update its separate transport or side-effect field
+while the terminal status remains unchanged. View switches carry only `table`, `chart` or `sql` selection and
 do not call a model or source. SQL remains subject to its separate read scope.
 
 The ordering envelope structurally contains only generation, sequence, query ID,
-kind, status and view. Raw prompts, SQL, rows, tokens and native diagnostics cannot
-enter it. Owner result DTOs remain the authoritative typed data contract.
+kind, status, view, transport and side-effect status. Raw prompts, SQL, rows,
+tokens and native diagnostics cannot enter it. Owner result DTOs remain the
+authoritative typed data contract.
 
 ## Evidence and limits
 
-The cumulative synthetic registry test composes every analytical domain registry,
-including filter, rendition and onboarding operations, then parses the generated
-OpenAPI matrix and verifies error/SDK/CLI completeness. Interaction tests cover
-stale replacement, disconnect versus explicit cancel, all terminal states and the
-content-free envelope. Existing phase 21/22/23 domain tests retain real authority,
-PostgreSQL, source, MCP and CLI behavior.
+The cumulative synthetic registry test composes public foundation, operational
+security, work scheduling/gateway and every analytical domain registry, including
+filter, rendition and onboarding operations. It parses the generated OpenAPI
+matrix and verifies error/SDK/CLI completeness plus exact operation assignments
+for every interaction family. Interaction tests cover stale replacement,
+disconnect versus explicit cancel, delayed events after every terminal state and
+the content-free envelope. Existing phase 21/22/23 domain tests retain real
+authority, PostgreSQL, source, MCP and CLI behavior.
 
 This is contract/runtime conformance, not a claim that a separate authoring UI or
 live external MCP host was deployed. Feature-disabled operations remain absent.
