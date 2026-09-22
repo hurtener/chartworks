@@ -44,3 +44,11 @@ Implement `TestPhase24/AC01` through `TestPhase24/AC06`, including deliberately 
 ## Glossary, decisions and deviations
 
 Quality score, execution success and security correctness are separate outcomes. D-049 applies. No runtime completion is claimed.
+
+## CW-08 evaluation substrate
+
+The runtime records bounded positive/negative evidence, posterior score,
+uncertainty and immutable selection provenance, and exports a protected neutral
+case bundle without promoting it. Phase 24 still owns held-out calibration,
+time-decay policy, live quality measurement and optimizer decisions; none may
+auto-publish an example or alter a frozen query.

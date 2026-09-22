@@ -89,3 +89,12 @@ insufficiency before gateway work; optional facet evidence cannot leave a label 
 missing dependencies. The phase-18 generator continues to accept only that sealed
 context before validator-issued execution. See
 [rich semantics v1](../contracts/rich-semantics-v1.md).
+
+## CW-08 retrieval-selected learning
+
+The admitted route selects only active, reviewed examples whose topic, locale,
+source/context binding, rules and templates exactly match current governed evidence.
+A bounded 64-row candidate pool uses deterministic lexical/posterior ordering and,
+when configured, the one Bifrost gateway to rerank only authorized question text.
+Selected and excluded IDs, versions, reasons, scores and the model receipt are
+sealed into the query. Selection does not change routing confidence or authority.

@@ -31,7 +31,8 @@ const (
 	// candidate than the seven-item model-context cap. The extra row is
 	// inspectable learning state and is never admitted into generation by
 	// default.
-	maxExampleResults = nlq.MaxExamples + 1
+	maxExampleResults     = nlq.MaxExamples + 1
+	maxLearningCandidates = 64
 )
 
 var (
@@ -99,9 +100,11 @@ type Repository interface {
 	ReadExample(context.Context, store.Scope, string) (ExampleRecord, error)
 	UpdateQuery(context.Context, store.Scope, QueryRecord, int64) error
 	RecordFeedback(context.Context, store.Scope, FeedbackRecord) error
+	ApplyFeedback(context.Context, store.Scope, FeedbackRecord, ExampleRecord) (ExampleRecord, bool, error)
 	UpsertExample(context.Context, store.Scope, ExampleRecord) (ExampleRecord, error)
+	ImportExample(context.Context, store.Scope, ExampleRecord) (ExampleRecord, bool, error)
 	ListExamples(context.Context, store.Scope, string, int) ([]ExampleRecord, error)
-	SetExampleState(context.Context, store.Scope, string, string) (ExampleRecord, error)
+	SetExampleState(context.Context, store.Scope, ExampleStateRequest, string) (ExampleRecord, error)
 }
 
 // SessionRecord is the durable identity and semantic anchor for one session.
@@ -119,35 +122,36 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
-	Clarification   *ClarificationEvidence       `json:"-"`
-	ID              string                       `json:"id"`
-	Session         string                       `json:"session"`
-	Parent          string                       `json:"parent,omitempty"`
-	Operation       string                       `json:"operation,omitempty"`
-	Topic           string                       `json:"topic"`
-	Topics          []string                     `json:"topics"`
-	TopicVersions   []string                     `json:"topic_versions"`
-	RuleVersions    []string                     `json:"rule_versions,omitempty"`
-	Templates       []rulesets.TemplateSelection `json:"templates,omitempty"`
-	Context         string                       `json:"context"`
-	Locale          nlq.Language                 `json:"locale"`
-	Question        string                       `json:"question"`
-	Route           nlqroute.RouteResult         `json:"route"`
-	Generation      nlq.GenerationContext        `json:"generation"`
-	SQL             string                       `json:"-"`
-	Parameters      []exec.Parameter             `json:"-"`
-	Receipt         gateway.Receipt              `json:"receipt"`
-	Status          string                       `json:"status"`
-	EvidenceStale   bool                         `json:"evidence_stale,omitempty"`
-	Result          *exec.Result                 `json:"result,omitempty"`
-	Assumptions     []string                     `json:"assumptions,omitempty"`
-	Ambiguities     []string                     `json:"ambiguities,omitempty"`
-	Errors          []string                     `json:"errors,omitempty"`
-	ValidationFixes int                          `json:"validation_fixes"`
-	ExecutionFixes  int                          `json:"execution_fixes"`
-	Revision        int64                        `json:"revision"`
-	Created         time.Time                    `json:"created_at"`
-	Updated         time.Time                    `json:"updated_at"`
+	Clarification    *ClarificationEvidence       `json:"-"`
+	ID               string                       `json:"id"`
+	Session          string                       `json:"session"`
+	Parent           string                       `json:"parent,omitempty"`
+	Operation        string                       `json:"operation,omitempty"`
+	Topic            string                       `json:"topic"`
+	Topics           []string                     `json:"topics"`
+	TopicVersions    []string                     `json:"topic_versions"`
+	RuleVersions     []string                     `json:"rule_versions,omitempty"`
+	Templates        []rulesets.TemplateSelection `json:"templates,omitempty"`
+	ExampleSelection ExampleSelectionEvidence     `json:"example_selection,omitempty"`
+	Context          string                       `json:"context"`
+	Locale           nlq.Language                 `json:"locale"`
+	Question         string                       `json:"question"`
+	Route            nlqroute.RouteResult         `json:"route"`
+	Generation       nlq.GenerationContext        `json:"generation"`
+	SQL              string                       `json:"-"`
+	Parameters       []exec.Parameter             `json:"-"`
+	Receipt          gateway.Receipt              `json:"receipt"`
+	Status           string                       `json:"status"`
+	EvidenceStale    bool                         `json:"evidence_stale,omitempty"`
+	Result           *exec.Result                 `json:"result,omitempty"`
+	Assumptions      []string                     `json:"assumptions,omitempty"`
+	Ambiguities      []string                     `json:"ambiguities,omitempty"`
+	Errors           []string                     `json:"errors,omitempty"`
+	ValidationFixes  int                          `json:"validation_fixes"`
+	ExecutionFixes   int                          `json:"execution_fixes"`
+	Revision         int64                        `json:"revision"`
+	Created          time.Time                    `json:"created_at"`
+	Updated          time.Time                    `json:"updated_at"`
 }
 
 // FeedbackRecord is a reviewable correction. Recording it never publishes a
@@ -163,20 +167,67 @@ type FeedbackRecord struct {
 	Created    time.Time `json:"created_at"`
 }
 
+// ExampleOrigin pins learned material to the exact governed environment that
+// produced it. A matching display name or tenant is never enough to make an
+// example applicable to a later generation.
+type ExampleOrigin struct {
+	SchemaVersion       int                          `json:"schema_version"`
+	Locale              nlq.Language                 `json:"locale"`
+	TopicVersion        string                       `json:"topic_version"`
+	Context             string                       `json:"context"`
+	SourceBindingDigest string                       `json:"source_binding_digest"`
+	RuleVersions        []string                     `json:"rule_versions,omitempty"`
+	Templates           []rulesets.TemplateSelection `json:"templates,omitempty"`
+}
+
+// ExampleSelection records one candidate's deterministic applicability and
+// optional gateway ranking. It contains no SQL, raw prompt, or result value.
+type ExampleSelection struct {
+	ExampleID   string   `json:"example_id"`
+	Version     int64    `json:"version"`
+	Lane        string   `json:"lane"`
+	Position    int      `json:"position,omitempty"`
+	Decision    string   `json:"decision"`
+	Reason      string   `json:"reason,omitempty"`
+	Score       float64  `json:"score"`
+	Uncertainty float64  `json:"uncertainty"`
+	RankScore   *float64 `json:"rank_score,omitempty"`
+}
+
+// ExampleSelectionEvidence is frozen with the query. Replaying or running a
+// retained plan never reselects examples against mutable learning state.
+type ExampleSelectionEvidence struct {
+	SchemaVersion  int                `json:"schema_version,omitempty"`
+	PolicyVersion  string             `json:"policy_version,omitempty"`
+	Selected       []ExampleSelection `json:"selected,omitempty"`
+	Excluded       []ExampleSelection `json:"excluded,omitempty"`
+	ShadowBaseline []ExampleSelection `json:"shadow_baseline,omitempty"`
+	Receipt        gateway.Receipt    `json:"receipt,omitempty"`
+}
+
 // ExampleRecord is the DB-first learning projection. State changes are
 // explicit and audited; feedback only creates or strengthens a candidate.
 type ExampleRecord struct {
-	ID            string    `json:"id"`
-	Topic         string    `json:"topic"`
-	Question      string    `json:"question"`
-	SQL           string    `json:"-"`
-	Digest        string    `json:"digest"`
-	State         string    `json:"state"`
-	Weight        float64   `json:"weight"`
-	EvidenceCount int       `json:"evidence_count"`
-	Provenance    string    `json:"provenance"`
-	Created       time.Time `json:"created_at"`
-	Updated       time.Time `json:"updated_at"`
+	ID               string        `json:"id"`
+	Topic            string        `json:"topic"`
+	Question         string        `json:"question"`
+	SQL              string        `json:"-"`
+	Digest           string        `json:"digest"`
+	State            string        `json:"state"`
+	Weight           float64       `json:"weight"`
+	Uncertainty      float64       `json:"uncertainty"`
+	EvidenceCount    int           `json:"evidence_count"`
+	PositiveEvidence int           `json:"positive_evidence"`
+	NegativeEvidence int           `json:"negative_evidence"`
+	EvidenceOutcome  string        `json:"-"`
+	Origin           ExampleOrigin `json:"origin"`
+	Version          int64         `json:"version"`
+	ReviewedBy       string        `json:"reviewed_by,omitempty"`
+	ReviewNote       string        `json:"-"`
+	ReviewedAt       *time.Time    `json:"reviewed_at,omitempty"`
+	Provenance       string        `json:"provenance"`
+	Created          time.Time     `json:"created_at"`
+	Updated          time.Time     `json:"updated_at"`
 }
 
 // QuestionRequest is shared by preflight and plan. The verified envelope
@@ -247,8 +298,41 @@ type FeedbackRequest struct {
 
 // ExampleStateRequest advances one candidate through its reviewed lifecycle.
 type ExampleStateRequest struct {
-	ExampleID string `json:"example_id"`
-	State     string `json:"state"`
+	ExampleID       string `json:"example_id"`
+	State           string `json:"state"`
+	ExpectedVersion int64  `json:"expected_version,omitempty"`
+	ReviewNote      string `json:"review_note,omitempty"`
+}
+
+// PortableExample is the protected, neutral learning interchange row. SQL is
+// present only on the explicit export/import operations, never ordinary list
+// projections or logs.
+type PortableExample struct {
+	SchemaVersion    int           `json:"schema_version"`
+	Question         string        `json:"question"`
+	SQL              string        `json:"sql"`
+	Digest           string        `json:"digest"`
+	Origin           ExampleOrigin `json:"origin"`
+	PositiveEvidence int           `json:"positive_evidence"`
+	NegativeEvidence int           `json:"negative_evidence"`
+}
+
+type ExampleExportRequest struct {
+	Topic string `json:"topic"`
+	Limit int    `json:"limit"`
+}
+
+type ExampleBundle struct {
+	SchemaVersion int               `json:"schema_version"`
+	Topic         string            `json:"topic"`
+	Examples      []PortableExample `json:"examples"`
+}
+
+// ExampleImportRequest routes the anchor through the current governed context
+// before validating and retaining one portable example as a candidate.
+type ExampleImportRequest struct {
+	Anchor  QuestionRequest `json:"anchor"`
+	Example PortableExample `json:"example"`
 }
 
 // PreflightResult exposes routing evidence and typed clarification data only.

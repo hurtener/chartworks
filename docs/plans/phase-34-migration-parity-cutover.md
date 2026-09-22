@@ -57,3 +57,11 @@ every reference-bearing rich field to destination coordinates before compilation
 This supplies the semantic field-level substrate for AC01/AC02. It does not implement
 phase 34's external manifest, cohort dry run, history/state normalization, schedule
 handoff, owner-run shadow comparison or rollback drill.
+
+## CW-08 learning portability substrate
+
+Versioned learning rows have protected neutral export and destination-side import
+that reroutes current authority, rechecks exact semantic/source/context/rule/template
+origin, validates SQL natively and creates only a review candidate. Replays are
+idempotent. Phase 34 still owns external manifests, coordinate remapping, cohort
+dry-runs, unsupported-record ledgers and cutover/rollback evidence.

@@ -96,6 +96,18 @@ func ExecutionHandler(verifier *auth.Verifier, service *nlqexec.Service, next ht
 			if err == nil {
 				out, err = service.Examples(r.Context(), e, in.Topic, in.Limit)
 			}
+		case "exportExamplesNLQ":
+			var in nlqexec.ExampleExportRequest
+			err = decodeBody(w, r, selected.Request, &in)
+			if err == nil {
+				out, err = service.ExportExamples(r.Context(), e, in)
+			}
+		case "importExampleNLQ":
+			var in nlqexec.ExampleImportRequest
+			err = decodeBody(w, r, selected.Request, &in)
+			if err == nil {
+				out, err = service.ImportExample(r.Context(), e, in)
+			}
 		default:
 			err = store.ErrInvalid
 		}

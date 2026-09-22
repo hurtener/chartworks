@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -232,13 +234,14 @@ func TestPhase18PostgresRuntimeBoundaries(t *testing.T) {
 			t.Fatal("remove feedback failure fixture", err)
 		}
 
-		example := nlqexec.ExampleRecord{ID: phase18StoreID("1"), Topic: topic, Question: "What is revenue?", SQL: "SELECT amount FROM analytics.sales", Digest: strings.Repeat("1", 64), State: "candidate", Weight: 0.5, EvidenceCount: 1, Provenance: "phase18-store-example", Created: now, Updated: now}
+		origin := nlqexec.ExampleOrigin{SchemaVersion: 1, Locale: "en", TopicVersion: "v1", Context: contextID, SourceBindingDigest: strings.Repeat("a", 64)}
+		example := nlqexec.ExampleRecord{ID: phase18StoreID("1"), Topic: topic, Question: "What is revenue?", SQL: "SELECT amount FROM analytics.sales", Digest: strings.Repeat("1", 64), State: "candidate", Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, EvidenceOutcome: "positive", Origin: origin, Version: 1, Provenance: "phase18-store-example", Created: now, Updated: now}
 		stored, err := fixture.f.db.UpsertExample(ctx, scope, example)
 		if err != nil || stored.ID != example.ID || stored.EvidenceCount != 1 {
 			t.Fatalf("initial example was not retained: %#v %v", stored, err)
 		}
-		stored, err = fixture.f.db.UpsertExample(ctx, scope, nlqexec.ExampleRecord{ID: phase18StoreID("2"), Topic: topic, Question: example.Question, SQL: example.SQL, Digest: example.Digest, State: "candidate", Weight: 0.1, EvidenceCount: 1, Provenance: "phase18-store-example-duplicate", Created: now, Updated: now})
-		if err != nil || stored.ID != example.ID || stored.EvidenceCount != 2 || stored.Weight < 0.55 {
+		stored, err = fixture.f.db.UpsertExample(ctx, scope, nlqexec.ExampleRecord{ID: phase18StoreID("2"), Topic: topic, Question: example.Question, SQL: example.SQL, Digest: example.Digest, State: "candidate", Weight: 1.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, NegativeEvidence: 1, EvidenceOutcome: "negative", Origin: origin, Version: 1, Provenance: "phase18-store-example-duplicate", Created: now, Updated: now})
+		if err != nil || stored.ID != example.ID || stored.EvidenceCount != 2 || stored.Weight != 0.5 {
 			t.Fatalf("duplicate example was not DB-first/deduplicated: %#v %v", stored, err)
 		}
 		listed, err := fixture.f.db.ListExamples(ctx, scope, topic, 8)
@@ -262,25 +265,25 @@ func TestPhase18PostgresRuntimeBoundaries(t *testing.T) {
 		if _, err = fixture.f.db.UpsertExample(ctx, scope, nlqexec.ExampleRecord{ID: phase18StoreID("3"), Topic: topic, State: "candidate"}); !errors.Is(err, store.ErrInvalid) {
 			t.Fatalf("malformed example was accepted: %v", err)
 		}
-		if _, err = fixture.f.db.SetExampleState(ctx, scope, example.ID, "unsupported"); !errors.Is(err, store.ErrInvalid) {
+		if _, err = fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "unsupported"}, scope.Actor()); !errors.Is(err, store.ErrInvalid) {
 			t.Fatalf("unsupported example state was accepted: %v", err)
 		}
-		active, err := fixture.f.db.SetExampleState(ctx, scope, example.ID, "active")
+		active, err := fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "active", ExpectedVersion: stored.Version, ReviewNote: "reviewed"}, scope.Actor())
 		if err != nil || active.State != "active" {
 			t.Fatalf("candidate activation failed: %#v %v", active, err)
 		}
-		retired, err := fixture.f.db.SetExampleState(ctx, scope, example.ID, "retired")
+		retired, err := fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "retired", ExpectedVersion: active.Version}, scope.Actor())
 		if err != nil || retired.State != "retired" {
 			t.Fatalf("active retirement failed: %#v %v", retired, err)
 		}
 		if _, err = fixture.f.db.ReadExample(ctx, scope, "missing-example"); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("missing example read was not non-disclosing: %v", err)
 		}
-		if _, err = fixture.f.db.SetExampleState(ctx, scope, "missing-example", "active"); !errors.Is(err, store.ErrNotFound) {
+		if _, err = fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: "missing-example", State: "active"}, scope.Actor()); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("missing example state change was not non-disclosing: %v", err)
 		}
 
-		atomicExample := nlqexec.ExampleRecord{ID: phase18StoreID("4"), Topic: topic, Question: "What is cash?", SQL: "SELECT cash FROM analytics.sales", Digest: strings.Repeat("2", 64), State: "candidate", Weight: 0.4, EvidenceCount: 1, Provenance: "phase18-store-atomic", Created: now, Updated: now}
+		atomicExample := nlqexec.ExampleRecord{ID: phase18StoreID("4"), Topic: topic, Question: "What is cash?", SQL: "SELECT cash FROM analytics.sales", Digest: strings.Repeat("2", 64), State: "candidate", Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, EvidenceOutcome: "positive", Origin: origin, Version: 1, Provenance: "phase18-store-atomic", Created: now, Updated: now}
 		if _, err = fixture.f.db.UpsertExample(ctx, scope, atomicExample); err != nil {
 			t.Fatal("create atomic example", err)
 		}
@@ -290,7 +293,7 @@ func TestPhase18PostgresRuntimeBoundaries(t *testing.T) {
 		t.Cleanup(func() {
 			_, _ = metadata.Exec(context.Background(), `DROP TRIGGER IF EXISTS reject_phase18_example_audit ON chartworks.audit_events; DROP FUNCTION IF EXISTS chartworks.reject_phase18_example_audit()`)
 		})
-		if _, err = fixture.f.db.SetExampleState(ctx, scope, atomicExample.ID, "active"); err == nil {
+		if _, err = fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: atomicExample.ID, State: "active", ReviewNote: "reviewed"}, scope.Actor()); err == nil {
 			t.Fatal("audit failure did not abort example state transaction")
 		}
 		unchanged, err := fixture.f.db.ReadExample(ctx, scope, atomicExample.ID)
@@ -299,6 +302,53 @@ func TestPhase18PostgresRuntimeBoundaries(t *testing.T) {
 		}
 		if _, err = metadata.Exec(ctx, `DROP TRIGGER reject_phase18_example_audit ON chartworks.audit_events; DROP FUNCTION chartworks.reject_phase18_example_audit()`); err != nil {
 			t.Fatal("remove example failure fixture", err)
+		}
+
+		concurrentOrigin := nlqexec.ExampleOrigin{SchemaVersion: 1, Locale: "en", TopicVersion: "v1", Context: contextID, SourceBindingDigest: strings.Repeat("b", 64)}
+		var wg sync.WaitGroup
+		errs := make(chan error, 6)
+		for i, char := range []string{"3", "4", "5", "6", "7", "8"} {
+			queryID := phase18StoreID(char)
+			query := phase18StoreQuery(queryID, "phase18-store-session", topic, contextID, "phase18-learning-"+char, nil, now)
+			if err = fixture.f.db.CreateQuery(ctx, scope, query); err != nil {
+				t.Fatal("create concurrent feedback query", i, err)
+			}
+			wg.Add(1)
+			go func(char, queryID string) {
+				defer wg.Done()
+				exampleID := strings.Repeat(char, 31) + "0"
+				feedback := nlqexec.FeedbackRecord{ID: exampleID, QueryID: queryID, Session: "phase18-store-session", Verdict: "positive", Provenance: "cw08-concurrent", Created: now}
+				candidate := nlqexec.ExampleRecord{ID: exampleID, Topic: topic, Question: "Monthly revenue by region", SQL: "SELECT region, sum(amount) FROM analytics.sales GROUP BY region", Digest: strings.Repeat("3", 64), State: "candidate", Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, EvidenceOutcome: "positive", Origin: concurrentOrigin, Version: 1, Provenance: "cw08-concurrent", Created: now, Updated: now}
+				_, applied, applyErr := fixture.f.db.ApplyFeedback(context.Background(), scope, feedback, candidate)
+				if applyErr != nil || !applied {
+					errs <- errors.Join(applyErr, errors.New("feedback was not applied"))
+					return
+				}
+				_, replayed, replayErr := fixture.f.db.ApplyFeedback(context.Background(), scope, feedback, candidate)
+				if replayErr != nil || replayed {
+					errs <- errors.Join(replayErr, errors.New("duplicate feedback amplified evidence"))
+				}
+			}(char, queryID)
+		}
+		wg.Wait()
+		close(errs)
+		for concurrentErr := range errs {
+			if concurrentErr != nil {
+				t.Fatal(concurrentErr)
+			}
+		}
+		listed, err = fixture.f.db.ListExamples(ctx, scope, topic, 8)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var concurrent nlqexec.ExampleRecord
+		for _, item := range listed {
+			if item.Digest == strings.Repeat("3", 64) {
+				concurrent = item
+			}
+		}
+		if concurrent.EvidenceCount != 6 || concurrent.PositiveEvidence != 6 || concurrent.NegativeEvidence != 0 || concurrent.Weight != 7.0/8.0 {
+			t.Fatalf("concurrent evidence aggregate was lost or overcounted: %#v", concurrent)
 		}
 	})
 }
