@@ -794,3 +794,5 @@ Evaluation continuation: [D-087 immutable reviewed suites, durable terminal evid
 Performance continuation: [D-088 authority-bound measurements and deferred final stress](decisions/2026-09-22-performance-evidence.md).
 
 Migration and cutover continuation: [D-089 neutral manifests import private state and cut over one fenced occurrence stream](decisions/2026-09-22-migration-cutover.md).
+
+Model gateway continuation: [D-090 OpenRouter rerank through a bounded Bifrost custom provider](decisions/2026-09-22-openrouter-rerank.md).

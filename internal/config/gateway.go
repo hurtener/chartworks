@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"strings"
 	"time"
 )
@@ -31,7 +32,7 @@ func RoleNames() []string {
 	return []string{"embedding", "enhance", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank"}
 }
 
-// NativeProvider resolves the trusted route alias to its native Bifrost provider.
+// NativeProvider resolves the trusted route alias to its Bifrost provider type.
 func NativeProvider(p Provider) string {
 	if p.Type != "" {
 		return p.Type
@@ -57,7 +58,7 @@ func ValidateGateway(g Gateway, enabled bool) error {
 			return invalid("gateway.bifrost.providers", "unique bounded route names required")
 		}
 		switch NativeProvider(p) {
-		case "openai", "openrouter", "cohere":
+		case "openai", "openrouter", "cohere", "openrouter_rerank":
 		default:
 			return invalid("gateway.bifrost.providers", "unsupported remote SDK provider")
 		}
@@ -67,6 +68,12 @@ func ValidateGateway(g Gateway, enabled bool) error {
 		if p.BaseURL != "" && !secureURL(p.BaseURL) {
 			return invalid("gateway.bifrost.providers.base_url", "trusted HTTPS endpoint required")
 		}
+		if NativeProvider(p) == "openrouter_rerank" && p.BaseURL != "" {
+			u, _ := url.Parse(p.BaseURL)
+			if u.Path != "" && u.Path != "/" {
+				return invalid("gateway.bifrost.providers.base_url", "OpenRouter rerank endpoint must be an origin")
+			}
+		}
 		providers[p.Name] = p
 	}
 	names := map[string]bool{}
@@ -75,6 +82,7 @@ func ValidateGateway(g Gateway, enabled bool) error {
 	}
 	for name, r := range g.Roles {
 		p, ok := providers[r.Provider]
+		providerType := NativeProvider(p)
 		if r.MaxTokens < 0 || r.MaxTokens > 65536 {
 			return invalid("gateway.roles.max_tokens", "output-token bound exceeded")
 		}
@@ -86,18 +94,18 @@ func ValidateGateway(g Gateway, enabled bool) error {
 		}
 		switch name {
 		case "embedding":
-			if NativeProvider(p) == "cohere" || r.Dimensions < 1 || r.Dimensions > 16384 || r.MaxBatchItems < 1 || r.MaxBatchItems > 1024 || r.MaxBatchBytes < 1 || r.MaxBatchBytes > 4<<20 {
+			if providerType == "cohere" || providerType == "openrouter_rerank" || r.Dimensions < 1 || r.Dimensions > 16384 || r.MaxBatchItems < 1 || r.MaxBatchItems > 1024 || r.MaxBatchBytes < 1 || r.MaxBatchBytes > 4<<20 {
 				return invalid("gateway.roles.embedding", "invalid embedding limits or provider")
 			}
 			if enabled && (r.ModelRevision == "" || len(r.ModelRevision) > 128) {
 				return invalid("gateway.roles.embedding.model_revision", "operator-owned generation revision required")
 			}
 		case "rerank":
-			if NativeProvider(p) != "cohere" || r.MaxCandidates < 1 || r.MaxCandidates > 1024 {
+			if (providerType != "cohere" && providerType != "openrouter_rerank") || r.MaxCandidates < 1 || r.MaxCandidates > 1024 || (providerType == "openrouter_rerank" && r.Model != "cohere/rerank-4-fast") {
 				return invalid("gateway.roles.rerank", "rerank-capable route and bounded candidates required")
 			}
 		default:
-			if NativeProvider(p) == "cohere" || r.MaxTokens < 1 || r.MaxTokens > 65536 {
+			if providerType == "cohere" || providerType == "openrouter_rerank" || r.MaxTokens < 1 || r.MaxTokens > 65536 {
 				return invalid("gateway.roles", "structured role requires a chat route and output-token cap")
 			}
 		}
