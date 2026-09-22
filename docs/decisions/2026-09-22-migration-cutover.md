@@ -1,4 +1,4 @@
-### D-088 — Neutral manifests import private state and cut over one fenced occurrence stream
+### D-089 — Neutral manifests import private state and cut over one fenced occurrence stream
 
 Phase 34 uses one closed, credential-free manifest for the dependent source,
 semantic, reporting, schedule and retained-evidence graph. Every top-level field
