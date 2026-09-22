@@ -197,6 +197,27 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, topic, version 
 	return s.repo.ReadPublishedRules(ctx, e, topic, pin.RuleVersion, drafts.Read, version == "")
 }
 
+// ReviewRead returns current rule evidence under feedback.write for learned
+// example activation. It retains exact topic/dependency reach and exposes no
+// rule authoring capability.
+func (s *Service) ReviewRead(ctx context.Context, e identity.Envelope, topic string) (Published, error) {
+	if ctx == nil || !identity.Identifier(topic) {
+		return Published{}, store.ErrInvalid
+	}
+	pin, err := s.repo.RuleVersionPin(ctx, e, topic, "", drafts.FeedbackRead)
+	if err != nil {
+		return Published{}, err
+	}
+	topicVersion, err := s.topics.ReadPublishedTopic(ctx, e, topic, pin.TopicVersion, drafts.FeedbackRead)
+	if err != nil {
+		return Published{}, err
+	}
+	if !topicVersion.State.Active {
+		return Published{}, store.ErrConflict
+	}
+	return s.repo.ReadPublishedRules(ctx, e, topic, pin.RuleVersion, drafts.FeedbackRead, true)
+}
+
 // Retire removes the active rule pointer after checking the current topic pin.
 func (s *Service) Retire(ctx context.Context, e identity.Envelope, topic string, in RetireRequest) (State, error) {
 	if ctx == nil || !identity.Identifier(topic) || in.Expected < 1 || in.Expected >= 1<<62 || !textValid(in.Note) {

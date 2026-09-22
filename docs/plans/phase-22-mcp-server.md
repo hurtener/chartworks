@@ -33,7 +33,7 @@ MCP listen/shared-port mount, request/size limits and enabled real tool groups; 
 ## Acceptance criteria
 
 1. **AC01** — Every registered tool/resource uses the shared verified envelope and policy enforcement with no per-tool bypass.
-2. **AC02** — The established eleven core operation contracts bind to real services as their owner phases land; unbuilt operations are absent, never success-returning placeholders.
+2. **AC02** — The established fifteen core operation contracts bind to real services as their owner phases land; unbuilt operations are absent, never success-returning placeholders.
 3. **AC03** — Annotations distinguish persisted/paid operations from pure reads; unknown annotations/registration omissions fail tests.
 4. **AC04** — MCP errors/panic boundaries disclose no stack/secret/foreign metadata; intended audience is enforced.
 5. **AC05** — Transport and in-process clients preserve per-request identity/context without shared-token cross-talk; no separate local credential channel is introduced.
@@ -53,9 +53,9 @@ below implements Chartworks behavior without changing either decision.
 `internal/mcpserver` supplies one immutable typed binding registry, bounded
 stateless Streamable HTTP mount and verified in-process adapter. Source, topic,
 NLQ, BYO and chart owners bind their actual services to shared phase-21 schemas,
-actions, error inventories and effect/audit metadata. All eleven core contracts
+actions, error inventories and effect/audit metadata. All fifteen core contracts
 have real consumers; source listing, retained context lookup and five chart
-operations bring the all-services inventory to eighteen. Three metadata resource
+operations, including four reviewed-learning operations, bring the all-services inventory to twenty-two. Three metadata resource
 bindings invoke those same pure services. No reporting Apps resource is claimed.
 
 Configuration defaults MCP off and bounds groups, hosts, request/response bytes,
@@ -66,7 +66,7 @@ Fresh caller-supplied tokens are required by HTTP and in-process clients.
 
 `TestPhase22/AC01`–`AC06` are implemented with real PostgreSQL/pgvector, native
 validation/read execution and recorded Bifrost provider responses. They exercise
-all eleven contracts, binding parity/effects, three resource reads, private/foreign
+all fifteen contracts, binding parity/effects, three resource reads, private/foreign
 reach denials, replay and concurrent caller isolation. Additional package tests
 cover malformed envelopes, ambiguous resource templates, protocol/panic redaction,
 expiry/cancellation, output bounds and overload; `FuzzMCPBoundaries` covers the parse
@@ -85,4 +85,4 @@ owns the reporting Apps resource/viewer.
 
 PR #14 was merged at `d6dbd31899449f6e042b4ab069c9c30c01fb844b`. This records that delivered
 baseline, not a new test result. Phase 23 extends cumulative client and large-output
-parity while preserving the existing eighteen bindings and authority checks.
+parity while preserving the existing twenty-two bindings and authority checks.

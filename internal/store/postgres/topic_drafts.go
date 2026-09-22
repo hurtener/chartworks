@@ -39,7 +39,11 @@ func topicArgs(e identity.Envelope, id string, a drafts.Access) ([]any, error) {
 	if err := drafts.Require(e, id, a); err != nil {
 		return nil, err
 	}
-	s, err := access.Constrain(e, a.Action(), "source", "read")
+	sourcePermission := "read"
+	if a == drafts.FeedbackRead {
+		sourcePermission = "query"
+	}
+	s, err := access.Constrain(e, a.Action(), "source", sourcePermission)
 	if err != nil {
 		return nil, err
 	}

@@ -114,7 +114,7 @@ SQL validation combines bounded decoding, positive whole-tree statement/relation
 
 Read execution combines read-only credentials/session restrictions, server-side and context deadlines, cancellation/reconciliation where supported, cursor row/byte caps, stable ordering and lossless normalized results. Do not string-wrap LIMIT or rebind changed columns silently. Record source query IDs/attempts; physical exactly-once behavior is not assumed.
 
-Feedback, corrected examples, deduplication, DB-first Wilson/recency/evidence weights, rule proposals, shadow comparison, historical replay, evaluation-case seeding and bounded prompt-pack optimization belong to phases16/18/24. Model-assisted optimization also uses Bifrost remote inference; no local training runtime. Promotion is reviewed rather than feedback auto-publishing business semantics.
+Feedback, corrected examples, deduplication, evidence weights, rule proposals, shadow comparison, historical replay, evaluation-case seeding and bounded prompt-pack optimization belong to phases16/18/24. D-078 supplies exact-origin reviewed examples with bounded beta-posterior evidence and uncertainty; phase 24 retains held-out calibration and any decay-policy replacement. Model-assisted optimization also uses Bifrost remote inference; no local training runtime. Promotion is reviewed rather than feedback auto-publishing business semantics.
 
 ## 10. Outputs and rendering
 

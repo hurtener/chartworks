@@ -51,6 +51,28 @@ func ExecutionMCPBindings(service *nlqexec.Service) ([]mcpserver.Binding, error)
 		return nil, err
 	}
 	bindings = append(bindings, b4)
+	b5, err := mcpserver.Bind(registry, "exampleStateNLQ", "review_example", "query", "Review and advance one versioned learning example under current topic and dependency authority. Activation requires bounded positive evidence and an explicit review note; it never publishes rules or semantics.", service.ExampleState, mapper)
+	if err != nil {
+		return nil, err
+	}
+	bindings = append(bindings, b5)
+	b6, err := mcpserver.Bind(registry, "examplesNLQ", "list_examples", "query", "Inspect bounded versioned learning examples for one currently authorized topic. Protected SQL remains redacted without separate inspection authority.", func(ctx context.Context, e identity.Envelope, in ExampleListRequest) ([]nlqexec.ExampleRecord, error) {
+		return service.Examples(ctx, e, in.Topic, in.Limit)
+	}, mapper)
+	if err != nil {
+		return nil, err
+	}
+	bindings = append(bindings, b6)
+	b7, err := mcpserver.Bind(registry, "exportExamplesNLQ", "export_examples", "query", "Export a bounded protected learning bundle under current topic, dependency, feedback and SQL-inspection authority. It performs no source or model work.", service.ExportExamples, mapper)
+	if err != nil {
+		return nil, err
+	}
+	bindings = append(bindings, b7)
+	b8, err := mcpserver.Bind(registry, "importExampleNLQ", "import_example", "query", "Revalidate one portable example against current routing, authority, exact origin and native SQL safety, then persist it as an unreviewed candidate. It never activates imported evidence.", service.ImportExample, mapper)
+	if err != nil {
+		return nil, err
+	}
+	bindings = append(bindings, b8)
 	return bindings, nil
 }
 

@@ -121,6 +121,10 @@ func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec
 	if e != nil {
 		return e
 	}
+	selection, e := marshalNLQ(q.ExampleSelection)
+	if e != nil {
+		return e
+	}
 	route, e := marshalNLQ(q.Route)
 	if e != nil {
 		return e
@@ -174,7 +178,7 @@ func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec
 			return e
 		}
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,template_selections,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14,$15::jsonb,$16::jsonb,$17,$18::jsonb,$19::jsonb,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24::jsonb,$25,$26,$27,$28,$29,$30::jsonb)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), operation, q.Topic, topics, versions, rules, templates, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated, clarification)
+	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19::jsonb,$20::jsonb,$21,$22::jsonb,$23::jsonb,$24::jsonb,$25::jsonb,$26,$27,$28,$29,$30,$31::jsonb)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), operation, q.Topic, topics, versions, rules, templates, selection, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated, clarification)
 	return e
 }
 
@@ -185,7 +189,7 @@ func nullableString(value string) any {
 	return value
 }
 
-const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,template_selections,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification`
+const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification`
 
 // ReadQuery returns protected query metadata and consumes rule invalidation fences.
 func (d *DB) ReadQuery(ctx context.Context, scope store.Scope, id string) (out nlqexec.QueryRecord, err error) {
@@ -257,8 +261,8 @@ func markRuleEvidenceStale(ctx context.Context, tx pgx.Tx, tenant string, out *n
 func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 	var tenantValue, actorValue string
 	var parent, operation, sqlText *string
-	var topics, versions, rules, templates, route, generation, params, receipt, result, assumptions, ambiguities, queryErrors, clarification []byte
-	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &operation, &out.Topic, &topics, &versions, &rules, &templates, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated, &clarification); err != nil {
+	var topics, versions, rules, templates, selection, route, generation, params, receipt, result, assumptions, ambiguities, queryErrors, clarification []byte
+	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &operation, &out.Topic, &topics, &versions, &rules, &templates, &selection, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated, &clarification); err != nil {
 		return err
 	}
 	_ = tenantValue
@@ -268,7 +272,7 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 		raw    []byte
 		target any
 	}{
-		{topics, &out.Topics}, {versions, &out.TopicVersions}, {rules, &out.RuleVersions}, {templates, &out.Templates}, {route, &out.Route},
+		{topics, &out.Topics}, {versions, &out.TopicVersions}, {rules, &out.RuleVersions}, {templates, &out.Templates}, {selection, &out.ExampleSelection}, {route, &out.Route},
 		{generation, &out.Generation}, {params, &out.Parameters}, {receipt, &out.Receipt}, {assumptions, &out.Assumptions},
 		{ambiguities, &out.Ambiguities}, {queryErrors, &out.Errors},
 	} {
@@ -490,20 +494,116 @@ func (d *DB) RecordFeedback(ctx context.Context, scope store.Scope, f nlqexec.Fe
 	})
 }
 
-// UpsertExample deduplicates one candidate learning example by topic and digest.
-func (d *DB) UpsertExample(ctx context.Context, scope store.Scope, x nlqexec.ExampleRecord) (out nlqexec.ExampleRecord, err error) {
-	if err = checkScope(scope); err != nil || x.ID == "" || x.Topic == "" || x.Question == "" || x.SQL == "" || x.Digest == "" || x.State != "candidate" {
-		return out, store.ErrInvalid
+// ApplyFeedback atomically stores a feedback receipt and its learning effect.
+// An exact or same-outcome replay is a successful no-op, so retries cannot
+// amplify evidence.
+func (d *DB) ApplyFeedback(ctx context.Context, scope store.Scope, f nlqexec.FeedbackRecord, x nlqexec.ExampleRecord) (out nlqexec.ExampleRecord, applied bool, err error) {
+	if err = checkScope(scope); err != nil || f.ID == "" || f.Session == "" || f.QueryID == "" || (f.Verdict != "positive" && f.Verdict != "negative") {
+		return out, false, store.ErrInvalid
+	}
+	if x.ID != "" && (x.Topic == "" || x.Question == "" || x.SQL == "" || x.Digest == "" || x.State != "candidate" || x.Version != 1 || x.Origin.SchemaVersion != 1 || (x.EvidenceOutcome != "positive" && x.EvidenceOutcome != "negative")) {
+		return out, false, store.ErrInvalid
+	}
+	var origin []byte
+	if x.ID != "" {
+		origin, err = marshalNLQ(x.Origin)
+		if err != nil {
+			return out, false, err
+		}
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		e := tx.QueryRow(ctx, `INSERT INTO chartworks.nlq_examples(tenant_id,example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,'candidate',$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,topic_id,digest) DO UPDATE SET evidence_count=chartworks.nlq_examples.evidence_count+1,weight=LEAST(1.0,GREATEST(chartworks.nlq_examples.weight,EXCLUDED.weight)+0.05),provenance=EXCLUDED.provenance,updated_at=clock_timestamp() RETURNING example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at`, scope.Tenant(), x.ID, x.Topic, x.Question, x.SQL, x.Digest, x.Weight, x.EvidenceCount, x.Provenance, x.Created, x.Updated)
-		return scanExample(e, &out)
+		tag, e := tx.Exec(ctx, `INSERT INTO chartworks.nlq_feedback(tenant_id,actor_id,session_id,feedback_id,query_id,verdict,correction_sql,note,provenance,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`, scope.Tenant(), scope.Actor(), f.Session, f.ID, f.QueryID, f.Verdict, nullableString(f.Correction), nullableString(f.Note), f.Provenance, f.Created)
+		if e != nil {
+			return e
+		}
+		if tag.RowsAffected() == 0 {
+			return nil
+		}
+		applied = true
+		if x.ID != "" {
+			row := tx.QueryRow(ctx, `INSERT INTO chartworks.nlq_examples(tenant_id,example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at,uncertainty,positive_evidence,negative_evidence,origin,version) VALUES($1,$2,$3,$4,$5,$6,'candidate',$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,1) ON CONFLICT(tenant_id,topic_id,digest) DO UPDATE SET evidence_count=chartworks.nlq_examples.evidence_count+1,positive_evidence=chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence,negative_evidence=chartworks.nlq_examples.negative_evidence+EXCLUDED.negative_evidence,weight=(chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence+1)::double precision/(chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence+chartworks.nlq_examples.negative_evidence+EXCLUDED.negative_evidence+2),uncertainty=1/sqrt((chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence+chartworks.nlq_examples.negative_evidence+EXCLUDED.negative_evidence+2)::double precision),provenance=EXCLUDED.provenance,updated_at=clock_timestamp(),version=chartworks.nlq_examples.version+1 WHERE chartworks.nlq_examples.origin=EXCLUDED.origin RETURNING example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,uncertainty,positive_evidence,negative_evidence,origin,version,reviewed_by,review_note,reviewed_at,provenance,created_at,updated_at`, scope.Tenant(), x.ID, x.Topic, x.Question, x.SQL, x.Digest, x.Weight, x.EvidenceCount, x.Provenance, x.Created, x.Updated, x.Uncertainty, x.PositiveEvidence, x.NegativeEvidence, origin)
+			if e = scanExample(row, &out); e != nil {
+				if e == pgx.ErrNoRows {
+					return store.ErrConflict
+				}
+				return e
+			}
+		}
+		event, e := newID()
+		if e != nil {
+			return e
+		}
+		_, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES($1,$2,$3,'nlq.feedback_recorded',$4)`, scope.Tenant(), event, scope.Actor(), f.QueryID)
+		return e
+	})
+	if err != nil {
+		applied = false
+	}
+	return out, applied, err
+}
+
+// UpsertExample deduplicates one candidate learning example by topic and digest.
+func (d *DB) UpsertExample(ctx context.Context, scope store.Scope, x nlqexec.ExampleRecord) (out nlqexec.ExampleRecord, err error) {
+	if err = checkScope(scope); err != nil || x.ID == "" || x.Topic == "" || x.Question == "" || x.SQL == "" || x.Digest == "" || x.State != "candidate" || x.Version != 1 || x.Origin.SchemaVersion != 1 || (x.EvidenceOutcome != "positive" && x.EvidenceOutcome != "negative") {
+		return out, store.ErrInvalid
+	}
+	origin, err := marshalNLQ(x.Origin)
+	if err != nil {
+		return out, err
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		e := tx.QueryRow(ctx, `INSERT INTO chartworks.nlq_examples(tenant_id,example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at,uncertainty,positive_evidence,negative_evidence,origin,version) VALUES($1,$2,$3,$4,$5,$6,'candidate',$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,1) ON CONFLICT(tenant_id,topic_id,digest) DO UPDATE SET evidence_count=chartworks.nlq_examples.evidence_count+1,positive_evidence=chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence,negative_evidence=chartworks.nlq_examples.negative_evidence+EXCLUDED.negative_evidence,weight=(chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence+1)::double precision/(chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence+chartworks.nlq_examples.negative_evidence+EXCLUDED.negative_evidence+2),uncertainty=1/sqrt((chartworks.nlq_examples.positive_evidence+EXCLUDED.positive_evidence+chartworks.nlq_examples.negative_evidence+EXCLUDED.negative_evidence+2)::double precision),provenance=EXCLUDED.provenance,updated_at=clock_timestamp(),version=chartworks.nlq_examples.version+1 WHERE chartworks.nlq_examples.origin=EXCLUDED.origin RETURNING example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,uncertainty,positive_evidence,negative_evidence,origin,version,reviewed_by,review_note,reviewed_at,provenance,created_at,updated_at`, scope.Tenant(), x.ID, x.Topic, x.Question, x.SQL, x.Digest, x.Weight, x.EvidenceCount, x.Provenance, x.Created, x.Updated, x.Uncertainty, x.PositiveEvidence, x.NegativeEvidence, origin)
+		if e := scanExample(e, &out); e != nil {
+			if e == pgx.ErrNoRows {
+				return store.ErrConflict
+			}
+			return e
+		}
+		return nil
 	})
 	return out, err
 }
 
+// ImportExample inserts a portable candidate once. A replay returns the exact
+// existing row without adding evidence, and a digest collision with another
+// origin fails closed.
+func (d *DB) ImportExample(ctx context.Context, scope store.Scope, x nlqexec.ExampleRecord) (out nlqexec.ExampleRecord, applied bool, err error) {
+	if err = checkScope(scope); err != nil || x.ID == "" || x.Topic == "" || x.Question == "" || x.SQL == "" || x.Digest == "" || x.State != "candidate" || x.Version != 1 || x.Origin.SchemaVersion != 1 {
+		return out, false, store.ErrInvalid
+	}
+	origin, err := marshalNLQ(x.Origin)
+	if err != nil {
+		return out, false, err
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		tag, e := tx.Exec(ctx, `INSERT INTO chartworks.nlq_examples(tenant_id,example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at,uncertainty,positive_evidence,negative_evidence,origin,version) VALUES($1,$2,$3,$4,$5,$6,'candidate',$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,1) ON CONFLICT(tenant_id,topic_id,digest) DO NOTHING`, scope.Tenant(), x.ID, x.Topic, x.Question, x.SQL, x.Digest, x.Weight, x.EvidenceCount, x.Provenance, x.Created, x.Updated, x.Uncertainty, x.PositiveEvidence, x.NegativeEvidence, origin)
+		if e != nil {
+			return e
+		}
+		applied = tag.RowsAffected() == 1
+		if e = scanExample(tx.QueryRow(ctx, `SELECT example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,uncertainty,positive_evidence,negative_evidence,origin,version,reviewed_by,review_note,reviewed_at,provenance,created_at,updated_at FROM chartworks.nlq_examples WHERE tenant_id=$1 AND topic_id=$2 AND digest=$3`, scope.Tenant(), x.Topic, x.Digest), &out); e != nil {
+			return e
+		}
+		if exec.Hash(out.Origin) != exec.Hash(x.Origin) {
+			return store.ErrConflict
+		}
+		return nil
+	})
+	if err != nil {
+		applied = false
+	}
+	return out, applied, err
+}
+
 func scanExample(row pgx.Row, out *nlqexec.ExampleRecord) error {
-	return row.Scan(&out.ID, &out.Topic, &out.Question, &out.SQL, &out.Digest, &out.State, &out.Weight, &out.EvidenceCount, &out.Provenance, &out.Created, &out.Updated)
+	var origin []byte
+	if err := row.Scan(&out.ID, &out.Topic, &out.Question, &out.SQL, &out.Digest, &out.State, &out.Weight, &out.EvidenceCount, &out.Uncertainty, &out.PositiveEvidence, &out.NegativeEvidence, &origin, &out.Version, &out.ReviewedBy, &out.ReviewNote, &out.ReviewedAt, &out.Provenance, &out.Created, &out.Updated); err != nil {
+		return err
+	}
+	if json.Unmarshal(origin, &out.Origin) != nil || out.Origin.SchemaVersion != 1 {
+		return store.ErrMigration
+	}
+	return nil
 }
 
 // ReadExample loads one exact tenant-scoped learning row for a state change.
@@ -515,7 +615,7 @@ func (d *DB) ReadExample(ctx context.Context, scope store.Scope, id string) (out
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return scanExample(tx.QueryRow(ctx, `SELECT example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at FROM chartworks.nlq_examples WHERE tenant_id=$1 AND example_id=$2`, scope.Tenant(), id), &out)
+		return scanExample(tx.QueryRow(ctx, `SELECT example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,uncertainty,positive_evidence,negative_evidence,origin,version,reviewed_by,review_note,reviewed_at,provenance,created_at,updated_at FROM chartworks.nlq_examples WHERE tenant_id=$1 AND example_id=$2`, scope.Tenant(), id), &out)
 	})
 	return out, err
 }
@@ -527,7 +627,7 @@ func (d *DB) ListExamples(ctx context.Context, scope store.Scope, topic string, 
 	}
 	out = []nlqexec.ExampleRecord{}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at FROM chartworks.nlq_examples WHERE tenant_id=$1 AND topic_id=$2 AND state IN('candidate','active') ORDER BY weight DESC,evidence_count DESC,updated_at DESC,example_id LIMIT $3`, scope.Tenant(), topic, limit)
+		rows, e := tx.Query(ctx, `SELECT example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,uncertainty,positive_evidence,negative_evidence,origin,version,reviewed_by,review_note,reviewed_at,provenance,created_at,updated_at FROM chartworks.nlq_examples WHERE tenant_id=$1 AND topic_id=$2 AND state IN('candidate','active') ORDER BY weight DESC,evidence_count DESC,updated_at DESC,example_id LIMIT $3`, scope.Tenant(), topic, limit)
 		if e != nil {
 			return e
 		}
@@ -545,19 +645,29 @@ func (d *DB) ListExamples(ctx context.Context, scope store.Scope, topic string, 
 }
 
 // SetExampleState advances one candidate example through its explicit review state.
-func (d *DB) SetExampleState(ctx context.Context, scope store.Scope, id, state string) (out nlqexec.ExampleRecord, err error) {
-	if err = checkScope(scope); err != nil || id == "" || (state != "candidate" && state != "active" && state != "retired") {
+func (d *DB) SetExampleState(ctx context.Context, scope store.Scope, in nlqexec.ExampleStateRequest, reviewer string) (out nlqexec.ExampleRecord, err error) {
+	if err = checkScope(scope); err != nil || in.ExampleID == "" || reviewer == "" || (in.State != "candidate" && in.State != "active" && in.State != "retired") {
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if e := scanExample(tx.QueryRow(ctx, `UPDATE chartworks.nlq_examples SET state=$3,updated_at=clock_timestamp() WHERE tenant_id=$1 AND example_id=$2 RETURNING example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,provenance,created_at,updated_at`, scope.Tenant(), id, state), &out); e != nil {
+		if e := scanExample(tx.QueryRow(ctx, `UPDATE chartworks.nlq_examples SET state=$3,reviewed_by=CASE WHEN $3='active' THEN $4 ELSE reviewed_by END,review_note=CASE WHEN $3='active' THEN $5 ELSE review_note END,reviewed_at=CASE WHEN $3='active' THEN clock_timestamp() ELSE reviewed_at END,updated_at=clock_timestamp(),version=version+1 WHERE tenant_id=$1 AND example_id=$2 AND ($6=0 OR version=$6) AND ($3<>'active' OR (positive_evidence>=1 AND weight>=0.60 AND positive_evidence>negative_evidence)) RETURNING example_id,topic_id,question,sql_text,digest,state,weight,evidence_count,uncertainty,positive_evidence,negative_evidence,origin,version,reviewed_by,review_note,reviewed_at,provenance,created_at,updated_at`, scope.Tenant(), in.ExampleID, in.State, reviewer, in.ReviewNote, in.ExpectedVersion), &out); e != nil {
+			if e == pgx.ErrNoRows {
+				var exists bool
+				if existsErr := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.nlq_examples WHERE tenant_id=$1 AND example_id=$2)`, scope.Tenant(), in.ExampleID).Scan(&exists); existsErr != nil {
+					return existsErr
+				}
+				if !exists {
+					return store.ErrNotFound
+				}
+				return store.ErrConflict
+			}
 			return e
 		}
 		event, e := newID()
 		if e != nil {
 			return e
 		}
-		_, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES($1,$2,$3,'nlq.example_changed',$4)`, scope.Tenant(), event, scope.Actor(), id)
+		_, e = tx.Exec(ctx, `INSERT INTO chartworks.audit_events(tenant_id,event_id,actor_id,action,resource_id) VALUES($1,$2,$3,'nlq.example_changed',$4)`, scope.Tenant(), event, scope.Actor(), in.ExampleID)
 		return e
 	})
 	return out, err

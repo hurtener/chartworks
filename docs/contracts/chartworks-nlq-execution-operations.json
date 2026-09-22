@@ -5,5 +5,7 @@
   {"method":"POST","path":"/v1/nlq/refinements","action":"query.execute","effect":"nlq_refine_generation_and_plan_commit"},
   {"method":"POST","path":"/v1/nlq/feedback","action":"feedback.write","effect":"nlq_feedback_commit"},
   {"method":"POST","path":"/v1/nlq/examples/state","action":"feedback.write","effect":"nlq_example_state_commit"},
-  {"method":"POST","path":"/v1/nlq/examples/read","action":"query.plan","effect":"nlq_examples_read"}
+  {"method":"POST","path":"/v1/nlq/examples/read","action":"query.plan","effect":"nlq_examples_read"},
+  {"method":"POST","path":"/v1/nlq/examples/export","action":"feedback.write","effect":"nlq_examples_export"},
+  {"method":"POST","path":"/v1/nlq/examples/import","action":"feedback.write","effect":"nlq_example_import"}
 ]

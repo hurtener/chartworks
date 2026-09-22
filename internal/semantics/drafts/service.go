@@ -37,6 +37,9 @@ const (
 	Review
 	// Publish selects publication mutation access.
 	Publish
+	// FeedbackRead selects current published evidence needed to review learned
+	// examples. It grants no topic lifecycle mutation.
+	FeedbackRead
 )
 
 // Action returns the fixed Pengui action for this access mode.
@@ -52,6 +55,8 @@ func (a Access) Action() string {
 		return "topics.review"
 	case Publish:
 		return "topics.publish"
+	case FeedbackRead:
+		return "feedback.write"
 	}
 	return ""
 }
@@ -67,6 +72,8 @@ func (a Access) Permission() string {
 		return "export"
 	case Review, Publish:
 		return "publish"
+	case FeedbackRead:
+		return "read"
 	}
 	return ""
 }
