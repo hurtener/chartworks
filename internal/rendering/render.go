@@ -191,7 +191,7 @@ func label(c charts.Column) string {
 }
 func exportCell(v string) string {
 	trim := strings.TrimLeftFunc(v, func(r rune) bool {
-		return unicode.IsSpace(r) || r == '\ufeff' || r >= '\u200e' && r <= '\u200f' || r >= '\u202a' && r <= '\u202e' || r >= '\u2066' && r <= '\u2069' || r < 0x20 || r == 0x7f
+		return unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
 	})
 	if trim != "" && strings.ContainsRune("=+-@", rune(trim[0])) {
 		return "'" + v
@@ -313,7 +313,7 @@ func renderKPIHTML(b *strings.Builder, c *charts.Output, timezone string) {
 		b.WriteString("<p data-threshold=\"")
 		b.WriteString(html.EscapeString(c.KPIResult.ThresholdState))
 		b.WriteString("\">")
-		b.WriteString(html.EscapeString(c.KPIResult.ThresholdLabel))
+		b.WriteString(html.EscapeString(strings.TrimSpace(c.KPIResult.ThresholdLabel + " " + c.KPIResult.ThresholdState)))
 		b.WriteString("</p>")
 	}
 	if len(c.KPIResult.Sparkline) > 0 {

@@ -31,7 +31,8 @@ existing definition, manifest, output and reuse digests. Frozen execution applie
 the saved mapping to the one normalized retained result; it does not interpret a
 question, choose a chart, query a source or call a model.
 
-Migration 043 validates version-3 KPI/table shape and bounded formatter fields on
+Migration 043 validates required version-3 KPI/table bindings and options, table
+visibility/page bounds, and the closed formatter keys/enums/bounds on
 new block revisions. It does not rewrite v1/v2 publications. Unknown mapping versions,
 missing visible table columns, unbound KPI comparison/target fields and executable or
 unbounded formatter values reject. Foreign mappings remain Phase 34 work.
@@ -46,8 +47,8 @@ unit and percent semantics. It treats all labels and cells as inert text.
 expose retained-only JSON, CSV, static HTML and static SVG. The service first requires
 both `reporting.read` and `reporting.export`, plus `cw.run.export:<run>`, then delegates
 the retained read to the normal artifact authority path. CSV neutralizes spreadsheet
-formula prefixes in headers and cells, including when Unicode BOM, bidi marks or
-control characters precede the formula. HTML permits only its generated inline style
+formula prefixes in headers and cells, including when Unicode Cc/Cf characters such
+as BOM, bidi marks, C1 controls or zero-width marks precede the formula. HTML permits only its generated inline style
 under CSP; all other content and network sources are denied. HTML/SVG escape data,
 carry no client JavaScript and make no network, source or model call. Date/time fields
 interpret offset-bearing timestamps in the sealed report timezone; naive dates and

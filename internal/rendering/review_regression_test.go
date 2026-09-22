@@ -60,8 +60,13 @@ func TestPagedExportIdentifiesExactProjection(t *testing.T) {
 
 func TestCSVNeutralizesHostileHeadersAndCells(t *testing.T) {
 	view := tableView()
-	view.Output.Table.Columns[0].DisplayLabel = "\ufeff\u202e\x01=SUM(A:A)"
-	view.Output.Table.Rows = [][]charts.Cell{{{Value: "\ufeff\u2066\x02+cmd"}}}
+	prefixes := []string{"\ufeff", "\u202e", "\x01", "\u0085", "\u200b", "\u2060"}
+	view.Output.Table.Columns = make([]charts.Column, len(prefixes))
+	view.Output.Table.Rows = [][]charts.Cell{make([]charts.Cell, len(prefixes))}
+	for i, prefix := range prefixes {
+		view.Output.Table.Columns[i] = charts.Column{ID: "column" + string(rune('a'+i)), Name: "column", DisplayLabel: prefix + "=SUM(A:A)", Type: "text"}
+		view.Output.Table.Rows[0][i] = charts.Cell{Value: prefix + "+cmd"}
+	}
 	view.PageBounds = reporting.ViewerPage{Limit: 1, Total: 1}
 	f := &fixtureViewer{value: view}
 	s, _ := New(f, 1<<20)
@@ -70,7 +75,17 @@ func TestCSVNeutralizesHostileHeadersAndCells(t *testing.T) {
 		t.Fatal(err)
 	}
 	records, err := csv.NewReader(strings.NewReader(r.Content)).ReadAll()
-	if err != nil || !strings.HasPrefix(records[0][0], "'") || !strings.HasPrefix(records[1][0], "'") {
+	if err != nil {
+		t.Fatal(err)
+	}
+	for row := range records {
+		for column := range records[row] {
+			if !strings.HasPrefix(records[row][column], "'") {
+				t.Fatalf("hostile formula prefix survived row=%d column=%d value=%q", row, column, records[row][column])
+			}
+		}
+	}
+	if len(records) != 2 || len(records[0]) != len(prefixes) {
 		t.Fatalf("hostile formula prefix survived: %#v %v", records, err)
 	}
 }
@@ -94,6 +109,19 @@ func TestStaticKPIHTMLAndSVGCarryAllRetainedFields(t *testing.T) {
 			if !strings.Contains(r.Content, want) {
 				t.Fatalf("%s omitted %q: %s", format, want, r.Content)
 			}
+		}
+	}
+}
+
+func TestStaticKPIThresholdStateIsVisibleWithoutLabel(t *testing.T) {
+	column := charts.Column{ID: "actual", Name: "actual", Type: "decimal"}
+	chart := &charts.Output{Version: charts.DisplayVersion, Kind: charts.KPI, State: "ready", Columns: []charts.Column{column}, Mapping: charts.Mapping{Version: charts.DisplayVersion, Kind: charts.KPI, Columns: []charts.Column{column}, Bindings: charts.Bindings{Value: "actual"}}, KPIResult: &charts.KPIResult{Value: charts.Value{Exact: "10"}, ThresholdState: "critical"}}
+	f := &fixtureViewer{value: reporting.DeliveryViewResult{Timezone: "UTC", Output: &reporting.ViewerOutput{State: "succeeded", RetainedDigest: strings.Repeat("d", 64), Chart: chart}}}
+	s, _ := New(f, 1<<20)
+	for _, format := range []string{"html", "svg"} {
+		r, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), exportRequest(format))
+		if err != nil || !strings.Contains(r.Content, ">critical<") {
+			t.Fatalf("%s hid threshold state without label: %s %v", format, r.Content, err)
 		}
 	}
 }
