@@ -16,6 +16,12 @@ import (
 )
 
 func frozenCurrentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting.RunManifest) error {
+	if m.NarrativePack != nil {
+		selected, err := selectedNarrativePackTx(ctx, tx, e.Tenant())
+		if err != nil || selected.Pin != *m.NarrativePack {
+			return reporting.ErrStale
+		}
+	}
 	var id string
 	if err := tx.QueryRow(ctx, `SELECT block_id FROM chartworks.block_heads WHERE tenant_id=$1 AND block_id=$2 FOR SHARE`, e.Tenant(), m.Block).Scan(&id); err != nil {
 		return err

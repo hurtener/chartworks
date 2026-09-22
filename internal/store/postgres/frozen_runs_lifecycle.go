@@ -57,6 +57,15 @@ func (d *DB) ReuseFrozenRun(ctx context.Context, inv jobs.Invocation, id string,
 		if m.ReuseMaxAge <= 0 || out.Result != nil || h.view.State != "sealed" {
 			return nil
 		}
+		// An older unpinned narrative cannot be reused as reviewed-pack
+		// evidence. Deterministic legacy runs retain their existing behavior.
+		if m.NarrativePack == nil {
+			for _, output := range m.Outputs {
+				if output.Kind == "narrative" {
+					return nil
+				}
+			}
+		}
 		// Older manifests remain readable and executable, but cannot supply
 		// evidence for cross-run reuse under the complete v2 identity.
 		if m.ReuseKey != reporting.ReuseIdentity(m) {

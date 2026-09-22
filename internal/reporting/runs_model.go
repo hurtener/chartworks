@@ -48,36 +48,72 @@ type RunRequest struct {
 // exact approved SQL, binds, source partition and output definitions are sealed
 // once; a serialized manifest is neither authority nor a validator-issued plan.
 type RunManifest struct {
-	Selection     *OutputSelection          `json:"selection,omitempty"`
-	QueryLimits   *QueryLimits              `json:"query_limits,omitempty"`
-	ResultPolicy  []EffectiveFieldPolicy    `json:"result_policy,omitempty"`
-	Version       string                    `json:"version"`
-	ID            string                    `json:"id"`
-	Tenant        string                    `json:"tenant"`
-	Actor         string                    `json:"actor"`
-	Session       string                    `json:"session"`
-	Block         string                    `json:"block"`
-	RequestHash   string                    `json:"request_hash"`
-	TaskHash      string                    `json:"task_hash"`
-	Revision      Revision                  `json:"revision"`
-	Outputs       []Output                  `json:"outputs"`
-	Resolved      Resolved                  `json:"resolved"`
-	Binding       exec.Binding              `json:"binding"`
-	Definitions   []topics.Definition       `json:"definitions"`
-	Rules         []RulePin                 `json:"rules,omitempty"`
-	Dependencies  []Dependency              `json:"dependencies"`
-	References    []ResourceReference       `json:"references"`
-	Trust         Trust                     `json:"trust"`
-	Private       bool                      `json:"private"`
-	Policy        string                    `json:"policy"`
-	PartialPolicy string                    `json:"partial_policy"`
-	Locale        string                    `json:"locale"`
-	Created       time.Time                 `json:"created_at"`
-	Expires       time.Time                 `json:"expires_at"`
-	Limits        config.ReportingExecution `json:"limits"`
-	ReuseKey      string                    `json:"reuse_key"`
-	ReuseMaxAge   int                       `json:"reuse_max_age_seconds"`
-	Model         string                    `json:"model"`
+	Selection                *OutputSelection          `json:"selection,omitempty"`
+	QueryLimits              *QueryLimits              `json:"query_limits,omitempty"`
+	ResultPolicy             []EffectiveFieldPolicy    `json:"result_policy,omitempty"`
+	Version                  string                    `json:"version"`
+	ID                       string                    `json:"id"`
+	Tenant                   string                    `json:"tenant"`
+	Actor                    string                    `json:"actor"`
+	Session                  string                    `json:"session"`
+	Block                    string                    `json:"block"`
+	RequestHash              string                    `json:"request_hash"`
+	TaskHash                 string                    `json:"task_hash"`
+	Revision                 Revision                  `json:"revision"`
+	Outputs                  []Output                  `json:"outputs"`
+	Resolved                 Resolved                  `json:"resolved"`
+	Binding                  exec.Binding              `json:"binding"`
+	Definitions              []topics.Definition       `json:"definitions"`
+	Rules                    []RulePin                 `json:"rules,omitempty"`
+	Dependencies             []Dependency              `json:"dependencies"`
+	References               []ResourceReference       `json:"references"`
+	Trust                    Trust                     `json:"trust"`
+	Private                  bool                      `json:"private"`
+	Policy                   string                    `json:"policy"`
+	PartialPolicy            string                    `json:"partial_policy"`
+	Locale                   string                    `json:"locale"`
+	Created                  time.Time                 `json:"created_at"`
+	Expires                  time.Time                 `json:"expires_at"`
+	Limits                   config.ReportingExecution `json:"limits"`
+	ReuseKey                 string                    `json:"reuse_key"`
+	ReuseMaxAge              int                       `json:"reuse_max_age_seconds"`
+	Model                    string                    `json:"model"`
+	NarrativePack            *NarrativePackPin         `json:"narrative_pack,omitempty"`
+	NarrativePackUnavailable bool                      `json:"narrative_pack_unavailable,omitempty"`
+}
+
+// NarrativePackPin is selected from an accepted server-owned runtime pack.
+// It is execution provenance, never a caller supplied run parameter.
+type NarrativePackPin struct {
+	PackDigest          string `json:"pack_digest"`
+	RuntimeDigest       string `json:"runtime_digest"`
+	ConfigurationDigest string `json:"configuration_digest"`
+	Model               string `json:"model"`
+}
+
+func (p NarrativePackPin) Valid() bool {
+	return hashValid(p.PackDigest) && hashValid(p.RuntimeDigest) && hashValid(p.ConfigurationDigest) &&
+		p.Model != "" && len(p.Model) <= 256
+}
+
+// NarrativeRuntime is an exact reviewed selection plus its protected gateway
+// configuration. Only the pin is persisted in the frozen manifest.
+type NarrativeRuntime struct {
+	Pin    NarrativePackPin
+	Config gateway.RuntimeConfig
+}
+
+func (r NarrativeRuntime) Valid() bool {
+	if !r.Pin.Valid() || r.Config.Digest != r.Pin.ConfigurationDigest ||
+		gateway.ConfigurationDigest(r.Config) != r.Config.Digest {
+		return false
+	}
+	for _, binding := range r.Config.Models {
+		if binding.Role == "narrative" {
+			return binding.Model == r.Pin.Model
+		}
+	}
+	return false
 }
 
 // Digest binds the admitted execution separately from revision/rendition hashes.
@@ -94,13 +130,19 @@ func ReuseIdentity(m RunManifest) string {
 	if m.Private {
 		privacyActor = m.Actor
 	}
-	return digest([]any{"frozen-result-reuse-v2", FrozenVersion, charts.BuildVersion,
+	parts := []any{"frozen-result-reuse-v2", FrozenVersion, charts.BuildVersion,
 		m.Tenant, m.Block, m.Revision.Digest, m.Definitions, m.Rules,
 		m.Dependencies, m.References, m.Outputs, m.Resolved.Values, m.Resolved.Parameters,
 		m.Resolved.Timezone, m.Locale, exec.Hash(m.Binding), m.Private,
 		privacyActor, m.Policy, m.PartialPolicy, m.Trust, m.Model,
 		"reporting-output-policy-v2", m.Selection, m.QueryLimits,
-		m.ResultPolicy, m.Limits})
+		m.ResultPolicy, m.Limits}
+	if m.NarrativePack != nil {
+		parts = append(parts, "reviewed-narrative-pack-v1", m.NarrativePack)
+	} else if m.NarrativePackUnavailable {
+		parts = append(parts, "reviewed-narrative-pack-unavailable-v1")
+	}
+	return digest(parts)
 }
 
 // Reach contains only the authority projection needed by a retained-value read.
