@@ -93,10 +93,10 @@ type PerformanceReleaseRuntime struct {
 }
 
 // Measure resolves the immutable current evidence and executes a final profile
-// only with a verifier-produced envelope and a source/model adapter for the
-// declared evidence mode.
-func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer string, manifest PerformanceManifest) (PerformanceReport, error) {
-	if r == nil || ctx == nil || bearer == "" || r.Verifier == nil || r.Service == nil || r.Revisions == nil || r.Adapters == nil || manifest.Kind != PerformanceFinalStress || manifest.EvidenceMode == PerformanceSynthetic {
+// only with verifier-produced envelopes. The second short-lived bearer carries
+// the same subject/reach with one query action removed for the governed denial.
+func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionNegativeBearer string, manifest PerformanceManifest) (PerformanceReport, error) {
+	if r == nil || ctx == nil || bearer == "" || actionNegativeBearer == "" || r.Verifier == nil || r.Service == nil || r.Revisions == nil || r.Adapters == nil || manifest.Kind != PerformanceFinalStress || manifest.EvidenceMode == PerformanceSynthetic {
 		return PerformanceReport{}, ErrMode
 	}
 	envelope, err := r.Verifier.Verify(ctx, bearer, auth.HTTP)
@@ -108,6 +108,14 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer string, 
 	}
 	if manifest.Validate() != nil {
 		return PerformanceReport{}, ErrInvalid
+	}
+	actionStep, ok := performanceStep(manifest.Steps, "actions_negative")
+	if !ok || actionStep.AuthorityOverride == nil {
+		return PerformanceReport{}, ErrInvalid
+	}
+	actionEnvelope, err := r.Verifier.Verify(ctx, actionNegativeBearer, auth.HTTP)
+	if err != nil || !actionEnvelope.Valid() || actionEnvelope.Tenant() != envelope.Tenant() || actionEnvelope.User() != envelope.User() || actionEnvelope.Session() != envelope.Session() || !sameStrings(actionEnvelope.Scopes(), actionStep.AuthorityOverride.Scopes) || actionEnvelope.Has(actionStep.DeniedAction) {
+		return PerformanceReport{}, ErrPerformanceAuthority
 	}
 	host := RuntimePerformanceEnvironment(manifest.Environment.RunnerLabel)
 	if manifest.Environment.OS != host.OS || manifest.Environment.Architecture != host.Architecture || manifest.Environment.CPUs != host.CPUs || manifest.Environment.GoVersion != host.GoVersion {
@@ -124,6 +132,9 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer string, 
 	if err = validatePerformanceReleaseInputs(envelope, manifest, evidence, revisions); err != nil {
 		return PerformanceReport{}, err
 	}
+	if performanceCurrentBinding(actionEnvelope, revisions.ContextID, evidence, revisions) != actionStep.Binding {
+		return PerformanceReport{}, ErrPerformanceEvidence
+	}
 	scenarios, err := r.resolvePerformanceScenarios(ctx, envelope, manifest, evidence, revisions)
 	if err != nil {
 		return PerformanceReport{}, err
@@ -132,10 +143,13 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer string, 
 		return PerformanceReport{}, err
 	}
 	adapter, err := r.Adapters.NewPerformanceReleaseAdapter(ctx, envelope, manifest, scenarios)
+	if errors.Is(err, ErrPerformanceReuseUnproven) {
+		return PerformanceReport{}, err
+	}
 	if err != nil || adapter == nil || adapter.EvidenceMode() != manifest.EvidenceMode || adapter.SourceMode() != manifest.Environment.SourceMode || adapter.ModelMode() != manifest.Environment.ModelMode {
 		return PerformanceReport{}, ErrMode
 	}
-	bound := &authorityBoundPerformanceRunner{envelope: envelope, manifest: manifest, next: adapter}
+	bound := &authorityBoundPerformanceRunner{envelope: envelope, actionEnvelope: actionEnvelope, manifest: manifest, next: adapter}
 	report, err := MeasurePerformance(ctx, manifest, bound, r.Clock)
 	if err != nil {
 		return report, err
@@ -356,12 +370,16 @@ func sameStrings(a, b []string) bool {
 }
 
 type authorityBoundPerformanceRunner struct {
-	envelope identity.Envelope
-	manifest PerformanceManifest
-	next     PerformanceReleaseAdapter
+	envelope       identity.Envelope
+	actionEnvelope identity.Envelope
+	manifest       PerformanceManifest
+	next           PerformanceReleaseAdapter
 }
 
 func (r *authorityBoundPerformanceRunner) Check(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
+	if step.Kind == "actions_negative" {
+		return r.probeDeniedAction(ctx, step)
+	}
 	denied, err := r.authorize(step)
 	if err != nil || denied {
 		return blockedPerformanceResult(step), err
@@ -377,11 +395,29 @@ func (r *authorityBoundPerformanceRunner) Reset(ctx context.Context) error {
 }
 
 func (r *authorityBoundPerformanceRunner) Run(ctx context.Context, step PerformanceStep, iteration int) (PerformanceAdapterResult, error) {
+	if step.Kind == "actions_negative" {
+		return r.probeDeniedAction(ctx, step)
+	}
 	denied, err := r.authorize(step)
 	if err != nil || denied {
 		return blockedPerformanceResult(step), err
 	}
 	return r.next.Run(ctx, step, iteration)
+}
+
+type performanceDeniedActionProbe interface {
+	ProbeDeniedAction(context.Context, PerformanceStep, identity.Envelope) (PerformanceAdapterResult, error)
+}
+
+func (r *authorityBoundPerformanceRunner) probeDeniedAction(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
+	if r == nil || !r.envelope.Valid() || !r.actionEnvelope.Valid() || r.next == nil || step.Allowed || step.AuthorityOverride == nil || r.actionEnvelope.Has(step.DeniedAction) || !sameStrings(r.actionEnvelope.Scopes(), step.AuthorityOverride.Scopes) {
+		return PerformanceAdapterResult{}, ErrPerformanceAuthority
+	}
+	probe, ok := r.next.(performanceDeniedActionProbe)
+	if !ok {
+		return PerformanceAdapterResult{}, ErrPerformanceAuthority
+	}
+	return probe.ProbeDeniedAction(ctx, step, r.actionEnvelope)
 }
 
 func blockedPerformanceResult(step PerformanceStep) PerformanceAdapterResult {
@@ -390,16 +426,6 @@ func blockedPerformanceResult(step PerformanceStep) PerformanceAdapterResult {
 
 func (r *authorityBoundPerformanceRunner) authorize(step PerformanceStep) (bool, error) {
 	if r == nil || !r.envelope.Valid() || r.next == nil {
-		return false, ErrPerformanceAuthority
-	}
-	if step.Kind == "actions_negative" {
-		if step.Allowed || step.DeniedAction == "" || r.envelope.Has(step.DeniedAction) {
-			return false, ErrPerformanceAuthority
-		}
-		err := access.Require(r.envelope, step.DeniedAction, access.Tenant(r.envelope, "write"))
-		if errors.Is(err, access.ErrForbidden) {
-			return true, nil
-		}
 		return false, ErrPerformanceAuthority
 	}
 	fixture := r.manifest.Authority

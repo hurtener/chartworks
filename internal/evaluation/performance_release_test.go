@@ -25,25 +25,30 @@ func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t
 	if err != nil {
 		t.Fatal(err)
 	}
+	actionScopes := withoutPerformanceScope(scopes, "query.execute")
+	actionEnvelope, err := identity.FromVerified("tenant", "actor", "session", actionScopes, now.Add(time.Hour), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
 	repo, manifest, revisions := performanceReleaseFixture(t, envelope, now)
 	service, err := New(repo, nil, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifier := &releaseTestVerifier{envelope: envelope, wantBearer: "verified-current-bearer"}
+	verifier := &releaseTestVerifier{envelope: envelope, wantBearer: "verified-current-bearer", actionEnvelope: actionEnvelope, actionBearer: "verified-action-bearer"}
 	adapter := &releaseTestAdapter{mode: PerformanceIntegration, cache: map[string]bool{}}
 	factory := &releaseTestAdapterFactory{adapter: adapter}
 	revisionCalls := map[string]int{}
 	runtime := &PerformanceReleaseRuntime{Verifier: verifier, Service: service, Revisions: releaseTestRevisionResolver{evidence: revisions, byCase: performanceReleaseRevisionVariants(revisions), calls: revisionCalls}, Adapters: factory}
 
-	report, err := runtime.Measure(context.Background(), "verified-current-bearer", manifest)
+	report, err := runtime.Measure(context.Background(), "verified-current-bearer", "verified-action-bearer", manifest)
 	if err != nil || !report.CorrectnessPassed || report.Validate(manifest) != nil {
 		t.Fatal("release run failed", err, report.EvidenceHash)
 	}
 	if report.CurrentBinding != coldPerformanceBinding(manifest) {
 		t.Fatal("sealed report did not retain the current revision binding")
 	}
-	if verifier.lastSurface != auth.HTTP || verifier.calls != 1 || factory.calls != 1 || adapter.mode != manifest.EvidenceMode {
+	if verifier.lastSurface != auth.HTTP || verifier.calls != 2 || factory.calls != 1 || adapter.mode != manifest.EvidenceMode {
 		t.Fatal("runtime did not use the configured verifier and matching adapter", verifier, factory.calls, adapter.mode)
 	}
 	for _, caseID := range []string{"case-base", "case-source", "case-rule", "case-context", "case-topic", "case-runtime"} {
@@ -53,7 +58,7 @@ func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t
 	}
 	wrongRevisionRuntime := *runtime
 	wrongRevisionRuntime.Revisions = releaseTestRevisionResolver{evidence: revisions}
-	if _, err = wrongRevisionRuntime.Measure(context.Background(), "verified-current-bearer", manifest); !errors.Is(err, ErrPerformanceEvidence) || factory.calls != 1 {
+	if _, err = wrongRevisionRuntime.Measure(context.Background(), "verified-current-bearer", "verified-action-bearer", manifest); !errors.Is(err, ErrPerformanceEvidence) || factory.calls != 1 {
 		t.Fatal("changed-binding scenario passed with the cold scenario's revisions", err, factory.calls)
 	}
 	if adapter.measuredPhysical != 7 {
@@ -73,25 +78,28 @@ func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t
 
 	probeOnly := &releaseTestAdapter{mode: PerformanceIntegration, cache: map[string]bool{}, skipProbeReceipt: true}
 	factory.adapter = probeOnly
-	probeReport, probeErr := runtime.Measure(context.Background(), "verified-current-bearer", manifest)
+	probeReport, probeErr := runtime.Measure(context.Background(), "verified-current-bearer", "verified-action-bearer", manifest)
 	if !errors.Is(probeErr, ErrGate) || probeReport.CorrectnessPassed || len(probeReport.Samples) != 0 || probeOnly.runCalls != 0 {
 		t.Fatal("timing began without a physical correctness probe", probeErr, len(probeReport.Samples), probeOnly.runCalls)
 	}
 
 	wrongBoundary := &releaseTestAdapter{mode: PerformanceIntegration, sourceMode: "synthetic", cache: map[string]bool{}}
 	factory.adapter = wrongBoundary
-	if _, err = runtime.Measure(context.Background(), "verified-current-bearer", manifest); !errors.Is(err, ErrMode) || wrongBoundary.runCalls != 0 {
+	if _, err = runtime.Measure(context.Background(), "verified-current-bearer", "verified-action-bearer", manifest); !errors.Is(err, ErrMode) || wrongBoundary.runCalls != 0 {
 		t.Fatal("adapter with non-PostgreSQL boundary was accepted", err, wrongBoundary.runCalls)
 	}
 
 	// Profile claims cannot add reach absent from the verifier-produced envelope.
 	tampered := manifest
 	tampered.Authority.Scopes = append(append([]string(nil), manifest.Authority.Scopes...), "report.publish")
-	if _, err = runtime.Measure(context.Background(), "verified-current-bearer", tampered); !errors.Is(err, ErrPerformanceAuthority) || factory.calls != 3 {
+	if _, err = runtime.Measure(context.Background(), "verified-current-bearer", "verified-action-bearer", tampered); !errors.Is(err, ErrPerformanceAuthority) || factory.calls != 3 {
 		t.Fatal("manifest widened verified authority or reached the adapter", err, factory.calls)
 	}
-	if _, err = runtime.Measure(context.Background(), "manifest-bearer", manifest); !errors.Is(err, ErrPerformanceAuthority) || factory.calls != 3 {
+	if _, err = runtime.Measure(context.Background(), "manifest-bearer", "verified-action-bearer", manifest); !errors.Is(err, ErrPerformanceAuthority) || factory.calls != 3 {
 		t.Fatal("manifest-selected bearer was accepted", err, factory.calls)
+	}
+	if _, err = runtime.Measure(context.Background(), "verified-current-bearer", "verified-current-bearer", manifest); !errors.Is(err, ErrPerformanceAuthority) || factory.calls != 3 {
+		t.Fatal("full-action bearer was accepted for the denial", err, factory.calls)
 	}
 }
 
@@ -99,7 +107,7 @@ func TestPerformanceReleaseRunnerBlocksBeforeAdapterWork(t *testing.T) {
 	now := time.Now()
 	e, err := identity.FromVerified("tenant", "actor", "session", []string{
 		"ops.write", "cw.tenant.write:tenant", "reporting.execute", "cw.report.execute:workload-report",
-		"cw.source.query:source-a", "cw.execution_context.use:context-a",
+		"cw.source.query:source-a", "cw.execution_context.use:context-a", "query.plan", "query.execute",
 	}, now.Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +118,11 @@ func TestPerformanceReleaseRunnerBlocksBeforeAdapterWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	adapter := &releaseTestAdapter{mode: PerformanceIntegration, cache: map[string]bool{}}
-	bound := &authorityBoundPerformanceRunner{envelope: e, manifest: m, next: adapter}
+	actionEnvelope, err := identity.FromVerified(e.Tenant(), e.User(), e.Session(), withoutPerformanceScope(e.Scopes(), "query.execute"), now.Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound := &authorityBoundPerformanceRunner{envelope: e, actionEnvelope: actionEnvelope, manifest: m, next: adapter}
 	for _, index := range []int{9, 10, 11} {
 		result, runErr := bound.Run(context.Background(), m.Steps[index], 0)
 		if runErr != nil || !result.Denied || result.Receipt.Usage.SourceCalls != 0 || result.Receipt.Usage.ModelCalls != 0 {
@@ -156,19 +168,34 @@ func TestPerformanceReportPersistenceIsCreateOnly(t *testing.T) {
 }
 
 type releaseTestVerifier struct {
-	envelope    identity.Envelope
-	wantBearer  string
-	calls       int
-	lastSurface auth.Surface
+	envelope       identity.Envelope
+	actionEnvelope identity.Envelope
+	wantBearer     string
+	actionBearer   string
+	calls          int
+	lastSurface    auth.Surface
 }
 
 func (v *releaseTestVerifier) Verify(_ context.Context, bearer string, surface auth.Surface) (identity.Envelope, error) {
 	v.calls++
 	v.lastSurface = surface
 	if bearer != v.wantBearer {
+		if bearer == v.actionBearer {
+			return v.actionEnvelope, nil
+		}
 		return identity.Envelope{}, ErrPerformanceAuthority
 	}
 	return v.envelope, nil
+}
+
+func withoutPerformanceScope(scopes []string, removed string) []string {
+	out := make([]string, 0, len(scopes)-1)
+	for _, scope := range scopes {
+		if scope != removed {
+			out = append(out, scope)
+		}
+	}
+	return out
 }
 
 type releaseTestRevisionResolver struct {
@@ -233,6 +260,12 @@ func (a *releaseTestAdapter) Check(_ context.Context, step PerformanceStep) (Per
 		return PerformanceAdapterResult{SemanticDigest: step.ExpectedDigest, BindingDigest: step.Binding.digest()}, nil
 	}
 	return releaseTestPhysicalResult(step), nil
+}
+func (a *releaseTestAdapter) ProbeDeniedAction(_ context.Context, step PerformanceStep, e identity.Envelope) (PerformanceAdapterResult, error) {
+	if !e.Valid() || e.Has(step.DeniedAction) {
+		return PerformanceAdapterResult{}, ErrPerformanceAuthority
+	}
+	return blockedPerformanceResult(step), nil
 }
 func (a *releaseTestAdapter) Reset(context.Context) error {
 	a.mu.Lock()
@@ -370,7 +403,7 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 		case "tenant_negative":
 			binding.TenantDigest = strings.Repeat("5", 64)
 		case "actions_negative":
-			binding.ActionsDigest = strings.Repeat("6", 64)
+			binding.ActionsDigest = performanceValueDigest(canonicalStrings(withoutPerformanceScope(e.Scopes(), "query.execute")))
 		}
 		scenarioRevisions := revisions
 		caseID := manifest.Environment.WorkloadCaseID
@@ -424,9 +457,9 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 			override.ContextID = "context-c"
 			step.AuthorityOverride = &override
 		} else if shape.kind == "actions_negative" {
-			step.DeniedAction = "report.publish"
+			step.DeniedAction = "query.execute"
 			override := authority
-			override.Scopes = []string{"cw.report.execute:workload-report", "cw.source.query:source-a", "cw.execution_context.use:context-a"}
+			override.Scopes = withoutPerformanceScope(e.Scopes(), "query.execute")
 			step.AuthorityOverride = &override
 		}
 		manifest.Steps = append(manifest.Steps, step)

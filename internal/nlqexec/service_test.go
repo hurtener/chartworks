@@ -27,6 +27,32 @@ type sequenceValidator struct {
 	calls  int
 }
 
+func TestPlanAndRunRejectsRevokedQueryActionBeforeAnyDependency(t *testing.T) {
+	for _, removed := range []string{"query.plan", "query.execute"} {
+		t.Run(removed, func(t *testing.T) {
+			scopes := []string{"query.plan", "query.execute"}
+			var remaining []string
+			for _, scope := range scopes {
+				if scope != removed {
+					remaining = append(remaining, scope)
+				}
+			}
+			e, err := identity.FromVerified("tenant", "actor", "session", remaining, time.Now().Add(time.Hour), time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// A missing dependency would panic if authorization passed and
+			// touched the repository, gateway, validator or source executor.
+			svc := &Service{}
+			plan := PlanRequest{QuestionRequest: QuestionRequest{Context: "context", Locale: nlq.LanguageEnglish, Question: "count records"}, Operation: "denied-operation"}
+			planned, run, err := svc.PlanAndRun(context.Background(), e, plan, RunRequest{Operation: plan.Operation})
+			if !errors.Is(err, access.ErrForbidden) || planned.QueryID != "" || run.QueryID != "" || run.Execution.Attempt.ID != "" || len(planned.Receipt.Calls) != 0 || len(run.Receipt.Calls) != 0 {
+				t.Fatalf("revoked %s touched governed work: %+v %+v %v", removed, planned, run, err)
+			}
+		})
+	}
+}
+
 func (v *sequenceValidator) Validate(context.Context, identity.Envelope, exec.Request) (exec.Plan, error) {
 	v.calls++
 	if len(v.errors) == 0 {

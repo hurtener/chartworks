@@ -1,11 +1,13 @@
 # Performance evidence v1
 
-Status: bounded PERF-01 harness and authority-bound Phase 25 release orchestration
-implemented for review, 2026-09-22. The governed adapter now composes Plan→Run
-under a PostgreSQL-scoped operation lock and records the matching model and
-source receipts. The Phase-34 current-revision resolver and production release
-composition remain required before a release run is executable. Phase 25 still
-owns the final stress execution and decision.
+Status: bounded PERF-01 harness and authority-bound Phase 25 prerequisite
+implemented for review, 2026-09-22. The query adapter composes Plan→Run under
+a PostgreSQL-scoped operation lock and can distinguish physical attempts from
+idempotent replay. It fails closed for final stress: this path does not exercise
+the product's frozen-run reuse identity, and the current read attempt has no
+source-only duration receipt. The Phase-34 current-revision resolver and
+production release composition also remain required. Phase 25 still owns the
+final stress execution and decision.
 
 Performance evidence is valid only after every case passes a correctness probe.
 The harness then records every raw wall-time observation and separately retains
@@ -19,12 +21,14 @@ cancellation is context-bound and does not create one goroutine per iteration.
 The evidence hash seals the complete persisted report, including schema,
 manifest identity/digest, environment, start/end time, samples and summaries.
 
-The immutable reuse identity contains hashes of tenant, signed context reach,
-signed actions, source revision, reviewed rule revision, topic publication and
-reviewed runtime pack. The required profile exercises cold, warm, repeated and
-concurrent access plus an exact one-field change for source, rule, context,
-topic and runtime pack. Cross-tenant and same-tenant/different-context cases
-and altered signed-action cases must deny before source or model work.
+The profile binding records hashes of tenant, signed context reach, signed
+actions, source revision, reviewed rule revision, topic publication and
+reviewed runtime pack. A binding digest supplied by the harness is not proof
+that the product uses that key for reuse. The required profile exercises cold,
+warm, repeated and concurrent access plus an exact one-field change for source,
+rule, context, topic and runtime pack. Cross-tenant and
+same-tenant/different-context cases and altered signed-action cases must deny
+before source or model work.
 Concurrent cold access must produce one physical execution for one exact
 identity; broader or stale reuse is a failed gate, not a timing sample.
 
@@ -68,15 +72,27 @@ resolved scenario; its selected source, context, rule, topic and dataset
 evidence must produce the step's binding. The runtime-pack scenario resolves a
 separate report so its selected pack and protected input also change together.
 The harness rejects a changed binding when the resolver returns only the cold
-scenario's evidence.
+scenario's evidence. This evidence selection alone does not prove cache
+invalidation.
 
 The runtime requires a current source/rule/topic/context revision resolver and
 an adapter whose declared evidence, source and model modes match `integration`
 or `live`. Every permitted correctness probe and physical execution must carry
-real source and selected model receipts. The concrete adapter factory binds the
-existing governed query service's Plan→Run operation to its durable query/read
-ledgers and requires the PostgreSQL cross-process operation lock. The configured
-Bifrost engine attests `live`; `integration` requires a `gateway.Engine` backed
+real source and selected model receipts. The query adapter binds the existing
+governed Plan→Run operation to durable query/read ledgers and requires the
+PostgreSQL cross-process operation lock. Plan→Run has an idempotency ledger, not
+a product result cache: a new operation on each changed binding trivially forces
+work and cannot prove invalidation. The concrete factory rejects all required
+changed-binding steps with `ErrPerformanceReuseUnproven`. Final AC03 requires an
+adapter over reporting's frozen-run path: seal distinct run IDs for the same
+approved block and inputs, exercise `Runs.continueFrozen` and PostgreSQL
+`ReuseFrozenRun`, and observe the actual `RunManifest.ReuseKey`, `ReusedFrom`,
+and physical source attempts. Preload a reusable baseline, then vary exactly
+one current source, rule, context, topic or runtime-pack revision while keeping
+other inputs and signed reach fixed; require one physical call for each changed
+case and zero reuse from the stale baseline. A negative test must substitute a
+reuse key that omits the changed dimension and show that the correctness gate
+fails. The configured Bifrost engine attests `live`; `integration` requires a `gateway.Engine` backed
 by recorded model responses that explicitly attests `recorded`. No production
 recorded engine is included here, so integration mode remains unavailable until
 the composition root supplies that engine. Phase 34 must supply selected
@@ -88,6 +104,16 @@ Release reports are atomically created as private `0600` files and an existing
 path is never replaced. The one-hour profile bound includes correctness probes
 as well as timed observations. A permitted integration/live correctness probe
 must carry physical source and model receipts before any timed sample starts.
+Read-attempt `created_at` to `finished_at` spans journaling, source work and
+finalization; it is never labeled `source_ns`. The current query adapter leaves
+source time unknown, so the required physical-source timing gate fails closed.
+A future PostgreSQL source receipt must measure the actual native read boundary
+and persist that duration through the execution result before AC03 can pass.
+The signed-action negative needs a second short-lived Pengui bearer for the
+same subject/reach with exactly `query.plan` or `query.execute` removed. Both
+bearers are verified; the altered envelope is passed through governed
+Plan→Run, and denial with zero source/model work is required. Fixture scopes do
+not construct the envelope.
 
 The checked-in smoke profile caps each step at 32 requests/concurrency and ten
 seconds overall. The final release profile uses these required scenarios:

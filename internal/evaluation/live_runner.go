@@ -236,11 +236,8 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 				return Observation{}, ErrMode
 			}
 			if r.Execution.Attempt.ID != "" && r.Execution.Attempt.Finished != nil {
-				v := r.Execution.Attempt.Finished.Sub(r.Execution.Attempt.Created).Milliseconds()
-				if v < 0 {
-					v = 0
-				}
-				sourceMS = &v
+				// Attempt wall time includes the journal and finalization. It is
+				// evidence of a physical call, never a source-only duration.
 				if r.Execution.Attempt.Manifest.Receipt.Dialect == "postgres" {
 					sourceCalls = 1
 				}
@@ -259,11 +256,6 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 			r, runErr := g.Query.Run(ctx, x.Envelope, runRequest)
 			result, err = r, runErr
 			if r.Execution.Attempt.ID != "" && r.Execution.Attempt.Finished != nil {
-				v := r.Execution.Attempt.Finished.Sub(r.Execution.Attempt.Created).Milliseconds()
-				if v < 0 {
-					v = 0
-				}
-				sourceMS = &v
 				if r.Execution.Attempt.Manifest.Receipt.Dialect == "postgres" {
 					sourceCalls = 1
 				}

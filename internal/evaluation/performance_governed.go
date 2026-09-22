@@ -5,11 +5,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"math"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 )
@@ -25,6 +28,10 @@ type GovernedPerformanceReleaseAdapterFactory struct {
 	ModelMode    string
 	Clock        Clock
 }
+
+// ErrPerformanceReuseUnproven means Plan→Run's operation ledger cannot prove
+// invalidation of the product's frozen-run reuse key. Final stress stays open.
+var ErrPerformanceReuseUnproven = errors.New("evaluation: product reuse invalidation unproven")
 
 // NewGovernedPerformanceReleaseAdapterFactory binds an existing governed
 // runner to one explicitly selected PostgreSQL/model evidence mode. It does
@@ -56,9 +63,13 @@ func (f *GovernedPerformanceReleaseAdapterFactory) NewPerformanceReleaseAdapter(
 		return nil, ErrMode
 	}
 	prepared := make(map[string]governedPerformanceScenario, len(scenarios))
+	requiresProductReuse := false
 	for _, step := range manifest.Steps {
 		if !step.Allowed {
 			continue
+		}
+		if strings.HasSuffix(step.Kind, "_changed") {
+			requiresProductReuse = true
 		}
 		scenario, ok := scenarios[step.ID]
 		if !ok {
@@ -84,6 +95,11 @@ func (f *GovernedPerformanceReleaseAdapterFactory) NewPerformanceReleaseAdapter(
 			return nil, ErrPerformanceEvidence
 		}
 		prepared[step.ID] = governedPerformanceScenario{evidence: evidence, revisions: revisions}
+	}
+	if requiresProductReuse {
+		// A distinct operation would force a new Plan→Run even if product
+		// reuse were stale. This adapter does not enter ReuseFrozenRun.
+		return nil, ErrPerformanceReuseUnproven
 	}
 	var runID [16]byte
 	if _, err := rand.Read(runID[:]); err != nil {
@@ -114,9 +130,53 @@ func (a *governedPerformanceReleaseAdapter) EvidenceMode() PerformanceEvidenceMo
 func (a *governedPerformanceReleaseAdapter) SourceMode() string                    { return a.sourceMode }
 func (a *governedPerformanceReleaseAdapter) ModelMode() string                     { return a.modelMode }
 
+// ProbeDeniedAction sends the altered verifier-produced authority through the
+// same governed Plan→Run entry point. A denial is evidence only when it occurs
+// before any query, source or gateway receipt is produced.
+func (a *governedPerformanceReleaseAdapter) ProbeDeniedAction(ctx context.Context, step PerformanceStep, denied identity.Envelope) (PerformanceAdapterResult, error) {
+	if a == nil || ctx == nil || !a.envelope.Valid() || !denied.Valid() || step.Allowed || (step.DeniedAction != "query.plan" && step.DeniedAction != "query.execute") || denied.Has(step.DeniedAction) || denied.Tenant() != a.envelope.Tenant() || denied.User() != a.envelope.User() || denied.Session() != a.envelope.Session() {
+		return PerformanceAdapterResult{}, ErrPerformanceAuthority
+	}
+	var scenario governedPerformanceScenario
+	found := false
+	for _, candidate := range a.scenarios {
+		if candidate.evidence.Case.ID == step.Workload && performanceCurrentBinding(denied, candidate.revisions.ContextID, candidate.evidence, candidate.revisions) == step.Binding {
+			scenario, found = candidate, true
+			break
+		}
+	}
+	if !found {
+		return PerformanceAdapterResult{}, ErrPerformanceEvidence
+	}
+	input, err := a.runner.Inputs.ResolveEvaluationInput(ctx, a.envelope, scenario.evidence.Case.Input)
+	if err != nil || input.Question == nil || input.Run == nil || input.Question.Context != scenario.revisions.ContextID {
+		return PerformanceAdapterResult{}, ErrPerformanceEvidence
+	}
+	wantPack, wantErr := digest(scenario.evidence.RuntimePack.Pack)
+	gotPack, gotErr := digest(input.Pack)
+	if wantErr != nil || gotErr != nil || wantPack != gotPack {
+		return PerformanceAdapterResult{}, ErrPerformanceEvidence
+	}
+	composite, ok := a.runner.Query.(compositePlanRunRuntime)
+	if !ok {
+		return PerformanceAdapterResult{}, ErrMode
+	}
+	operation := performanceRunOperation(a.runID, "denial", step, a.epoch.Load())
+	run := *input.Run
+	run.Operation = operation
+	planned, result, err := composite.PlanAndRun(ctx, denied, nlqexec.PlanRequest{QuestionRequest: *input.Question, Operation: operation}, run)
+	if !errors.Is(err, access.ErrForbidden) || planned.QueryID != "" || len(planned.Receipt.Calls) != 0 || result.QueryID != "" || result.Execution.Attempt.ID != "" || result.Execution.Result != nil || len(result.Receipt.Calls) != 0 {
+		return PerformanceAdapterResult{}, ErrGate
+	}
+	return blockedPerformanceResult(step), nil
+}
+
 func (a *governedPerformanceReleaseAdapter) Check(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
 	if !step.Allowed {
 		return PerformanceAdapterResult{}, ErrPerformanceAuthority
+	}
+	if strings.HasSuffix(step.Kind, "_changed") {
+		return PerformanceAdapterResult{}, ErrPerformanceReuseUnproven
 	}
 	return a.observe(ctx, step, performanceRunOperation(a.runID, "probe", step, a.epoch.Load()))
 }
@@ -137,6 +197,9 @@ func (a *governedPerformanceReleaseAdapter) Reset(ctx context.Context) error {
 func (a *governedPerformanceReleaseAdapter) Run(ctx context.Context, step PerformanceStep, iteration int) (PerformanceAdapterResult, error) {
 	if iteration < 0 || !step.Allowed {
 		return PerformanceAdapterResult{}, ErrPerformanceAuthority
+	}
+	if strings.HasSuffix(step.Kind, "_changed") {
+		return PerformanceAdapterResult{}, ErrPerformanceReuseUnproven
 	}
 	return a.observe(ctx, step, performanceRunOperation(a.runID, "measure", step, a.epoch.Load()))
 }

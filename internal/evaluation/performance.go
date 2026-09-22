@@ -36,8 +36,9 @@ const (
 	PerformanceLive PerformanceEvidenceMode = "live"
 )
 
-// PerformanceBinding is the complete cache/reuse identity exercised by the
-// harness. Digests are content-free references to reviewed material.
+// PerformanceBinding is the required revision/authority identity in the
+// profile. Digests are content-free references to reviewed material; the
+// product reuse key must be observed independently by a concrete adapter.
 type PerformanceBinding struct {
 	TenantDigest      string `json:"tenant_digest"`
 	ContextDigest     string `json:"context_digest"`
@@ -253,15 +254,41 @@ func (m PerformanceManifest) Validate() error {
 	if actionsNegative.TargetTenant != m.Authority.TargetTenant || actionsNegative.ReportID != m.Authority.ReportID || actionsNegative.SourceID != m.Authority.SourceID || actionsNegative.ContextID != m.Authority.ContextID || actionsNegative.Tenant != m.Authority.Tenant || actionsNegative.User != m.Authority.User || actionsNegative.Session != m.Authority.Session || sameStrings(actionsNegative.Scopes, m.Authority.Scopes) {
 		return ErrInvalid
 	}
-	for _, scope := range m.Authority.Scopes {
-		if scope == kinds["actions_negative"].DeniedAction {
+	deniedAction := kinds["actions_negative"].DeniedAction
+	if m.Kind == PerformanceFinalStress {
+		if deniedAction != "query.plan" && deniedAction != "query.execute" {
 			return ErrInvalid
+		}
+		if !onlyScopeRemoved(m.Authority.Scopes, actionsNegative.Scopes, deniedAction) {
+			return ErrInvalid
+		}
+	} else {
+		for _, scope := range m.Authority.Scopes {
+			if scope == deniedAction {
+				return ErrInvalid
+			}
 		}
 	}
 	if m.Kind == PerformanceFinalStress && (m.MaxDurationMS != int64(time.Hour/time.Millisecond) || !validFinalPerformanceShape(kinds)) {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func onlyScopeRemoved(base, altered []string, removed string) bool {
+	if len(base) != len(altered)+1 {
+		return false
+	}
+	want := make([]string, 0, len(altered))
+	found := false
+	for _, scope := range base {
+		if scope == removed {
+			found = true
+			continue
+		}
+		want = append(want, scope)
+	}
+	return found && sameStrings(want, altered)
 }
 
 func validPerformanceAuthorityFixture(a PerformanceAuthorityFixture) bool {

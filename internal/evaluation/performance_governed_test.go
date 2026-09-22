@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -37,8 +38,12 @@ func TestGovernedPerformanceAdapterMeasuresCompositePlanAndRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Receipt.Usage.SourceCalls != 1 || first.Receipt.Usage.ModelCalls != 1 || first.Receipt.Usage.SourceNS == nil || *first.Receipt.Usage.SourceNS != int64(7*time.Millisecond) || first.Receipt.Usage.ModelNS == nil || *first.Receipt.Usage.ModelNS != int64(3*time.Millisecond) {
+	if first.Receipt.Usage.SourceCalls != 1 || first.Receipt.Usage.ModelCalls != 1 || first.Receipt.Usage.SourceNS != nil || first.Receipt.Usage.ModelNS == nil || *first.Receipt.Usage.ModelNS != int64(3*time.Millisecond) {
 		t.Fatalf("composite receipts were not collected from both services: %+v", first.Receipt.Usage)
+	}
+	measured, err := derivePerformanceObservation(PerformanceEnvironment{SourceMode: "real_postgres", ModelMode: "recorded"}, cold, first, true)
+	if err != nil || !errors.Is(validatePerformanceObservation(PerformanceEnvironment{SourceMode: "real_postgres", ModelMode: "recorded"}, cold, measured, true), ErrInvalid) {
+		t.Fatal("attempt wall time or unknown source time passed the physical timing gate", measured, err)
 	}
 	warm := cold
 	warm.ID, warm.Kind = "warm", "warm"
@@ -153,7 +158,7 @@ func TestGovernedPerformanceAdapterRequiresProtectedPlanAndRunInputs(t *testing.
 	}
 }
 
-func TestGovernedPerformanceAdapterUsesEachAcceptedScenarioInputAndPack(t *testing.T) {
+func TestGovernedPerformanceAdapterRejectsUnsupportedInvalidation(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	envelope, err := identity.FromVerified("tenant", "actor", "session", []string{
 		"ops.write", "cw.tenant.write:tenant", "reporting.execute", "cw.report.execute:workload-report",
@@ -198,9 +203,8 @@ func TestGovernedPerformanceAdapterUsesEachAcceptedScenarioInputAndPack(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := factory.NewPerformanceReleaseAdapter(context.Background(), envelope, manifest, scenarios)
-	if err != nil {
-		t.Fatal("governed adapter rejected accepted per-step inputs", err)
+	if _, err := factory.NewPerformanceReleaseAdapter(context.Background(), envelope, manifest, scenarios); !errors.Is(err, ErrPerformanceReuseUnproven) {
+		t.Fatalf("Plan→Run operation changes were accepted as product reuse invalidation: %v", err)
 	}
 	var contextStep, runtimeStep PerformanceStep
 	for _, step := range manifest.Steps {
@@ -211,16 +215,67 @@ func TestGovernedPerformanceAdapterUsesEachAcceptedScenarioInputAndPack(t *testi
 			runtimeStep = step
 		}
 	}
+	adapter := &governedPerformanceReleaseAdapter{runner: *runner, envelope: envelope, scenarios: map[string]governedPerformanceScenario{}, mode: PerformanceIntegration, sourceMode: "real_postgres", modelMode: "recorded", runID: "invalidation-negative"}
 	for _, step := range []PerformanceStep{contextStep, runtimeStep} {
-		if _, err = adapter.Run(context.Background(), step, 0); err != nil {
-			t.Fatalf("scenario %s did not execute through Plan→Run: %v", step.Kind, err)
+		if _, err = adapter.Run(context.Background(), step, 0); !errors.Is(err, ErrPerformanceReuseUnproven) {
+			t.Fatalf("stale-cache test step %s was not rejected: %v", step.Kind, err)
 		}
 	}
 	query.mu.Lock()
 	defer query.mu.Unlock()
-	if len(query.scenarios) != 2 || query.scenarios[0].context != "context-b" || query.scenarios[1].context != "context-a" || query.scenarios[0].model != base.Suite.Suite.Packs[0].Model || query.scenarios[1].model != "model-v2" {
-		t.Fatalf("plan inputs did not track the accepted step case and selected runtime pack: %+v", query.scenarios)
+	if len(query.scenarios) != 0 || query.planCalls != 0 || query.runCalls != 0 {
+		t.Fatalf("unsupported invalidation reached Plan→Run: %+v", query.scenarios)
 	}
+}
+
+func TestGovernedPerformanceActionDenialUsesPlanRun(t *testing.T) {
+	now := time.Now().UTC()
+	baseScopes := []string{"query.plan", "query.execute"}
+	positive, err := identity.FromVerified("tenant", "actor", "session", baseScopes, now.Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suite := testSuite()
+	pack := suite.Packs[0]
+	caseDef := Case{ID: "workload", Stage: StageConsumer, Input: ProtectedRef{Digest: testDigest, Retention: "protected"}}
+	scenario := governedPerformanceTestScenario(positive, suite, caseDef, pack, testRuntimeConfig(pack.Model), "context")
+	query := &performanceCompositeQuery{plans: map[string]string{}, executed: map[string]bool{}}
+	input := LiveInput{Pack: pack, Question: &nlqexec.QuestionRequest{Context: "context", Locale: nlq.LanguageEnglish, Question: "count records"}, Run: &nlqexec.RunRequest{QueryID: "protected-query", Rows: 20, Bytes: 4096}}
+	adapter := &governedPerformanceReleaseAdapter{runner: GovernedRunner{Inputs: staticInputResolver{in: input}, Query: query}, envelope: positive, scenarios: map[string]governedPerformanceScenario{"cold": scenario}, mode: PerformanceIntegration, sourceMode: "real_postgres", modelMode: "recorded", runID: "denied-release-run"}
+	var deniedExecute identity.Envelope
+	var executeStep PerformanceStep
+	for _, removed := range baseScopes {
+		denied, err := identity.FromVerified("tenant", "actor", "session", withoutPerformanceScope(baseScopes, removed), now.Add(time.Hour), time.Now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		step := PerformanceStep{ID: "actions-negative", Kind: "actions_negative", Binding: performanceCurrentBinding(denied, "context", scenario.evidence, scenario.revisions), Workload: caseDef.ID, ExpectedDigest: testDigest, DeniedAction: removed}
+		fixture := PerformanceAuthorityFixture{Tenant: denied.Tenant(), User: denied.User(), Session: denied.Session(), Scopes: denied.Scopes(), TargetTenant: denied.Tenant(), ReportID: "workload-report", SourceID: "source", ContextID: "context"}
+		step.AuthorityOverride = &fixture
+		if removed == "query.execute" {
+			deniedExecute, executeStep = denied, step
+		}
+		bound := &authorityBoundPerformanceRunner{envelope: positive, actionEnvelope: denied, next: adapter}
+		for _, probe := range []func(context.Context, PerformanceStep) (PerformanceAdapterResult, error){bound.Check, func(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
+			return bound.Run(ctx, step, 0)
+		}} {
+			result, err := probe(context.Background(), step)
+			if err != nil || !result.Denied || result.Receipt.Usage.SourceCalls != 0 || result.Receipt.Usage.ModelCalls != 0 {
+				t.Fatalf("altered %s did not deny before physical work: %+v %v", removed, result, err)
+			}
+		}
+	}
+	query.mu.Lock()
+	defer query.mu.Unlock()
+	if query.denialCalls != 4 || query.planCalls != 0 || query.runCalls != 0 {
+		t.Fatalf("action denial bypassed Plan→Run or reached model/source: denials=%d plans=%d runs=%d", query.denialCalls, query.planCalls, query.runCalls)
+	}
+	query.denyAfterWork = true
+	query.mu.Unlock()
+	if _, err := adapter.ProbeDeniedAction(context.Background(), executeStep, deniedExecute); !errors.Is(err, ErrGate) {
+		t.Fatalf("denial after physical work was accepted: %v", err)
+	}
+	query.mu.Lock()
 }
 
 type performanceScenarioInputResolver map[string]LiveInput
@@ -274,14 +329,16 @@ func governedPerformanceTestScenario(e identity.Envelope, suite Suite, workload 
 }
 
 type performanceCompositeQuery struct {
-	mu        sync.Mutex
-	composeMu sync.Mutex
-	plans     map[string]string
-	executed  map[string]bool
-	planCalls int
-	runCalls  int
-	receipt   gateway.Receipt
-	scenarios []performanceCompositeScenario
+	mu            sync.Mutex
+	composeMu     sync.Mutex
+	plans         map[string]string
+	executed      map[string]bool
+	planCalls     int
+	runCalls      int
+	denialCalls   int
+	denyAfterWork bool
+	receipt       gateway.Receipt
+	scenarios     []performanceCompositeScenario
 }
 
 type performanceCompositeScenario struct {
@@ -295,6 +352,16 @@ func (q *performanceCompositeQuery) PerformancePlanRunIsolated() bool { return t
 func (q *performanceCompositeQuery) PlanAndRun(ctx context.Context, e identity.Envelope, plan nlqexec.PlanRequest, run nlqexec.RunRequest) (nlqexec.PlanResult, nlqexec.RunResult, error) {
 	q.composeMu.Lock()
 	defer q.composeMu.Unlock()
+	if !e.Has("query.plan") || !e.Has("query.execute") {
+		q.mu.Lock()
+		q.denialCalls++
+		late := q.denyAfterWork
+		q.mu.Unlock()
+		if late {
+			return nlqexec.PlanResult{}, nlqexec.RunResult{Execution: readexec.ExecutionReport{Attempt: readexec.Attempt{ID: "late-physical-attempt"}}}, access.ErrForbidden
+		}
+		return nlqexec.PlanResult{}, nlqexec.RunResult{}, access.ErrForbidden
+	}
 	model, _, _ := gateway.ApplyRuntimeConfig(ctx, "sqlgen", "configured", "")
 	q.mu.Lock()
 	q.scenarios = append(q.scenarios, performanceCompositeScenario{context: plan.Context, model: model})
