@@ -196,8 +196,34 @@ func TestCW06RulesReporting(t *testing.T) {
 	if _, err = blocks.Edit(ctx, e, captured.State.ID, reporting.EditRequest{ExpectedVersion: captured.State.Version, Definition: orphaned}); !errors.Is(err, reporting.ErrInvalid) {
 		t.Fatalf("edit retained orphaned template provenance: %v", err)
 	}
-	capturedState, capturedEvidence := phase27ValidatePublish(t, blocks, e, captured)
-	if _, err = blocks.Certify(ctx, e, captured.State.ID, reporting.CertifyRequest{ExpectedVersion: capturedState.Version, Revision: capturedState.PublishedRevision, Evidence: capturedEvidence.ID, Note: "Reviewed recaptured template coordinates"}); err != nil {
+	// An ordinary edit may deliberately clear captured template provenance. Once
+	// cleared, a later edit cannot manufacture it again: only a fresh query
+	// capture can establish the server-verified selection coordinates.
+	cleared := *capturedSQL.Definition
+	cleared.Templates = nil
+	clearedView, err := blocks.Edit(ctx, e, captured.State.ID, reporting.EditRequest{ExpectedVersion: captured.State.Version, Definition: cleared})
+	if err != nil {
+		t.Fatalf("clear-via-edit retained template provenance: %#v %v", clearedView, err)
+	}
+	clearedSQL, err := blocks.SQL(ctx, e, clearedView.State.ID, reporting.Reference{Draft: true})
+	if err != nil || clearedSQL.Definition == nil || len(clearedSQL.Definition.Templates) != 0 || clearedSQL.Provenance.Templates != nil {
+		t.Fatalf("clear-via-edit retained template provenance: %#v %v", clearedSQL, err)
+	}
+	readded := cleared
+	readded.Templates = append([]reporting.TemplateSelection(nil), capturedSQL.Definition.Templates...)
+	if _, err = blocks.Edit(ctx, e, captured.State.ID, reporting.EditRequest{ExpectedVersion: clearedView.State.Version, Definition: readded}); !errors.Is(err, reporting.ErrInvalid) {
+		t.Fatalf("edit re-added cleared template provenance without capture: %v", err)
+	}
+	recaptured, err := blocks.CaptureQuery(ctx, e, reporting.CaptureRequest{ID: "cw06-template-recapture", Query: templatePlan.QueryID, Metadata: definition.Metadata, Outputs: definition.Outputs})
+	if err != nil {
+		t.Fatalf("fresh capture did not restore verified template provenance: %#v %v", recaptured, err)
+	}
+	recapturedSQL, err := blocks.SQL(ctx, e, recaptured.State.ID, reporting.Reference{Draft: true})
+	if err != nil || recapturedSQL.Definition == nil || len(recapturedSQL.Definition.Templates) != 1 || recapturedSQL.Definition.Templates[0] != capturedSQL.Definition.Templates[0] || len(recapturedSQL.Provenance.Templates) != 1 {
+		t.Fatalf("fresh capture did not restore verified template provenance: %#v %v", recapturedSQL, err)
+	}
+	capturedState, capturedEvidence := phase27ValidatePublish(t, blocks, e, recaptured)
+	if _, err = blocks.Certify(ctx, e, recaptured.State.ID, reporting.CertifyRequest{ExpectedVersion: capturedState.Version, Revision: capturedState.PublishedRevision, Evidence: capturedEvidence.ID, Note: "Reviewed recaptured template coordinates"}); err != nil {
 		t.Fatal("recaptured template could not validate and certify", err)
 	}
 
@@ -241,13 +267,13 @@ func TestCW06RulesReporting(t *testing.T) {
 	}
 	executor := phase27Actor(t, f, f.f.e.User(), phase28Scopes(f.f.e.Tenant()))
 	runs := phase28RunService(t, f, blocks, f.f.db, nil, config.DefaultReportingExecution())
-	if _, err = runs.Admit(ctx, executor, captured.State.ID, reporting.RunRequest{Key: "cw06-publish-during-seal"}); !errors.Is(err, reporting.ErrStale) {
+	if _, err = runs.Admit(ctx, executor, recaptured.State.ID, reporting.RunRequest{Key: "cw06-publish-during-seal"}); !errors.Is(err, reporting.ErrStale) {
 		t.Fatalf("publish during frozen seal returned %v", err)
 	}
 	if err = <-publishErr; err != nil {
 		t.Fatal("publish seal-race replacement", err)
 	}
-	if got := count(t, raw, `SELECT count(*) FROM chartworks.frozen_runs WHERE tenant_id=$1 AND block_id=$2`, e.Tenant(), captured.State.ID); got != 0 {
+	if got := count(t, raw, `SELECT count(*) FROM chartworks.frozen_runs WHERE tenant_id=$1 AND block_id=$2`, e.Tenant(), recaptured.State.ID); got != 0 {
 		t.Fatalf("stale frozen seal left %d manifests", got)
 	}
 	historical, err := rules.Read(ctx, e, f.pack.Topic, publishedRules.State.Version)

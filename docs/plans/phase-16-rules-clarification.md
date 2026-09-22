@@ -95,3 +95,21 @@ fail closed. No executable SQL, regular-expression or authority mechanism was
 added. Focused truth-table and conflict coverage supplements AC02/AC05/AC06;
 full race, fuzz, PostgreSQL and release qualification remains in the manual final
 gap workflow described by D-074.
+
+## EXP-05 interaction and semantic-edit qualification
+
+The deterministic runtime portion of EXP-05 is covered by public lifecycle and
+real-PostgreSQL regressions. Simultaneous rule matches retain sorted selection,
+required, excluded and violation evidence. Dependency conflicts (including an
+exclusion beneath a pinned metric) reject before draft persistence. Template
+scopes expose exact match/mismatch reasons and require canonical selection pins.
+Compiler-level relationship removal and changed-digest regressions cannot
+silently rebind an old rule definition; a new reviewed topic/digest pin is
+required. Public lifecycle coverage separately proves exact topic/ruleset
+replacement and rollback; relationship-specific publication remains final
+qualification evidence. Historical
+replay remains immutable across replacement, retirement and rollback while
+rechecking the caller's current source/context reach. Reporting capture and
+migration-040 regressions cover template provenance removal/recapture and
+populated legacy revision shapes. The executed boundary and remaining human/live
+calibration are recorded in [the EXP-05 review](../reviews/exp05-rule-interactions.md).
