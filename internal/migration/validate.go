@@ -31,6 +31,8 @@ var forbiddenKeys = map[string]bool{
 	"password": true, "secret": true, "client_secret": true, "api_key": true,
 	"private_key": true, "credential": true, "credentials": true, "grant": true,
 	"role": true, "roles": true, "user": true, "users": true,
+	"authorization": true, "proxy_authorization": true, "cookie": true, "set_cookie": true,
+	"dsn": true, "connection_string": true,
 }
 
 var requiredFeatures = func() map[string]bool {
@@ -76,6 +78,7 @@ func validateManifest(m Manifest) (string, error) {
 	}
 	refs := map[string]Object{}
 	mappings := map[string]Mapping{}
+	consumedFields := map[string]bool{}
 	for _, x := range m.Mappings {
 		if _, ok := kindRank[x.Kind]; !ok || !identity.Identifier(x.ExternalRef) || !identity.Identifier(x.Destination) || x.Revision < 1 || mappings[x.ExternalRef].ExternalRef != "" {
 			return "", ErrInvalid
@@ -109,14 +112,25 @@ func validateManifest(m Manifest) (string, error) {
 			return "", ErrInvalid
 		}
 		for key := range object {
-			if !fieldPaths[o.ExternalRef+"."+key] {
+			path := o.ExternalRef + "." + key
+			if !fieldPaths[path] {
 				return "", ErrInvalid
 			}
+			consumedFields[path] = true
 		}
 		if o.Retention.ExpiresAt != nil && (o.Retention.ExpiresAt.IsZero() || o.Retention.ExpiresAt.Before(time.Unix(0, 0))) {
 			return "", ErrInvalid
 		}
 		refs[o.ExternalRef] = o
+	}
+	if len(consumedFields) != len(fieldPaths) {
+		return "", ErrInvalid
+	}
+	for ref, mapping := range mappings {
+		object, ok := refs[ref]
+		if !ok || object.Kind != mapping.Kind {
+			return "", ErrInvalid
+		}
 	}
 	for _, o := range m.Objects {
 		seen := map[string]bool{}
@@ -207,7 +221,7 @@ func containsForbidden(v any) bool {
 	case map[string]any:
 		for key, value := range x {
 			n := strings.ToLower(strings.TrimSpace(key))
-			if forbiddenKeys[n] || strings.Contains(n, "credential") || strings.HasSuffix(n, "_token") || containsForbidden(value) {
+			if forbiddenKeys[n] || strings.Contains(n, "credential") || strings.Contains(n, "password") || strings.Contains(n, "secret") || strings.HasSuffix(n, "_token") || containsForbidden(value) {
 				return true
 			}
 		}

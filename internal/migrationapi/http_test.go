@@ -140,7 +140,7 @@ func TestHTTPFailureAndDecodeAreClosed(t *testing.T) {
 	for _, test := range []struct {
 		err    error
 		status int
-	}{{access.ErrUnauthenticated, 401}, {access.ErrForbidden, 403}, {migration.ErrNotFound, 404}, {store.ErrConflict, 409}, {migration.ErrLimit, 413}, {migration.ErrNotReady, 422}, {migration.ErrInvalid, 400}, {context.Canceled, 504}, {errors.New("PRIVATE"), 503}} {
+	}{{access.ErrUnauthenticated, 401}, {access.ErrForbidden, 403}, {access.ErrNotFound, 404}, {migration.ErrNotFound, 404}, {store.ErrConflict, 409}, {migration.ErrLimit, 413}, {migration.ErrNotReady, 422}, {migration.ErrInvalid, 400}, {store.ErrInvalid, 400}, {context.Canceled, 504}, {errors.New("PRIVATE"), 503}} {
 		w := httptest.NewRecorder()
 		failure(w, test.err)
 		if w.Code != test.status || strings.Contains(w.Body.String(), "PRIVATE") {

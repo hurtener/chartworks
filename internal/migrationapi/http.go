@@ -186,7 +186,7 @@ func classify(err error) (int, string) {
 		return 401, "unauthenticated"
 	case errors.Is(err, access.ErrForbidden):
 		return 403, "forbidden"
-	case errors.Is(err, migration.ErrNotFound), errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, migration.ErrNotFound), errors.Is(err, store.ErrNotFound), errors.Is(err, access.ErrNotFound):
 		return 404, "not_found"
 	case errors.Is(err, migration.ErrConflict), errors.Is(err, store.ErrConflict):
 		return 409, "conflict"
@@ -194,7 +194,7 @@ func classify(err error) (int, string) {
 		return 413, "limit_exceeded"
 	case errors.Is(err, migration.ErrUnsupported), errors.Is(err, migration.ErrNotReady):
 		return 422, "unsupported_or_not_ready"
-	case errors.Is(err, migration.ErrInvalid):
+	case errors.Is(err, migration.ErrInvalid), errors.Is(err, store.ErrInvalid):
 		return 400, "invalid_request"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return 504, "cancelled_or_timed_out"
