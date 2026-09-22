@@ -11,6 +11,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
@@ -75,7 +76,24 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 		if err != nil {
 			return err
 		}
+		// Native execution owns the physical connection, query and its cleanup.
+		// Admission, metadata fencing and the durable journal are outside this clock.
+		started := time.Now()
+		var journal *timedReadObserver
+		if observer != nil {
+			journal = &timedReadObserver{Observer: observer}
+			observer = journal
+		}
 		out, err = s.executeNative(ctx, e, p, record, connection, l, id, observer)
+		if out.RemoteState == "stopped" {
+			duration := time.Since(started).Nanoseconds()
+			if journal != nil {
+				duration -= journal.durationNS.Load()
+			}
+			if duration > 0 {
+				out.SourceDurationNS = &duration
+			}
+		}
 		if err == nil && ctx.Err() != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				err = readexec.ErrTimeout
@@ -89,6 +107,25 @@ func (s *Service) ExecuteRead(ctx context.Context, e identity.Envelope, p readex
 		out.Result = readexec.Result{}
 	}
 	return out, err
+}
+
+// timedReadObserver subtracts the journal's synchronous dispatch and status
+// checks from the native read clock. The attempt ledger still owns those calls.
+type timedReadObserver struct {
+	readexec.Observer
+	durationNS atomic.Int64
+}
+
+func (o *timedReadObserver) Dispatch(ctx context.Context, q readexec.RemoteQuery, accepted bool) error {
+	started := time.Now()
+	defer func() { o.durationNS.Add(time.Since(started).Nanoseconds()) }()
+	return o.Observer.Dispatch(ctx, q, accepted)
+}
+
+func (o *timedReadObserver) Check(ctx context.Context) error {
+	started := time.Now()
+	defer func() { o.durationNS.Add(time.Since(started).Nanoseconds()) }()
+	return o.Observer.Check(ctx)
 }
 
 func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p readexec.Plan, record Record, c config.SourceConnection, l readexec.Limits, id string, observer readexec.Observer) (out readexec.NativeResult, err error) {

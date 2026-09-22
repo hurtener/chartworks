@@ -328,7 +328,10 @@ type Attempt struct {
 	Finished        *time.Time   `json:"finished_at"`
 	Rows            int          `json:"rows_returned"`
 	Bytes           int          `json:"bytes_returned"`
-	Code            string       `json:"code"`
+	// SourceDurationNS is measured only at the native source boundary. Nil means
+	// no trustworthy physical-source duration was observed, never zero work.
+	SourceDurationNS *int64 `json:"source_duration_ns,omitempty"`
+	Code             string `json:"code"`
 }
 
 // AttemptStore journals physical attempts independently from the source-revision
@@ -352,8 +355,9 @@ type Observer interface {
 
 // NativeResult reports termination separately from the logical result.
 type NativeResult struct {
-	Result      Result
-	RemoteState string
+	Result           Result
+	RemoteState      string
+	SourceDurationNS *int64
 }
 
 // ExecutionAdapter is the plan-only concrete source boundary. It contains no raw SQL API.
@@ -541,6 +545,7 @@ func (x *Executor) execute(ctx context.Context, e identity.Envelope, p Plan, o O
 	current.Status = status
 	current.Code = code
 	current.RemoteState = native.RemoteState
+	current.SourceDurationNS = native.SourceDurationNS
 	if current.RemoteState == "" {
 		current.RemoteState = "not_issued"
 	}

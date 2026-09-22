@@ -59,8 +59,9 @@ composes the existing query service's Plan→Run path and requires the PostgreSQ
 cross-process operation lock. The operation ledger does not exercise the
 frozen-run product reuse key, so the factory rejects the required invalidation
 steps; a fresh operation per changed binding cannot satisfy AC03. The read
-attempt exposes physical-call evidence but no source-only duration, and the
-timing gate also fails closed. The signed-action negative uses a separately
+attempt exposes physical-call evidence and a nullable source-only duration;
+the performance adapter still needs to consume that exact attempt receipt, so
+the timing gate remains closed. The signed-action negative uses a separately
 verified bearer with one query action removed and sends it through Plan→Run;
 it cannot be satisfied by testing an unrelated action. Each invalidation step pins a consumer case and exact
 accepted report hash; the resolver must provide the matching current revision
@@ -72,7 +73,7 @@ and the composition root must provide the recorded engine for integration mode.
 An AC03 adapter must instead exercise distinct frozen run IDs over the same
 approved block via the real `ReuseFrozenRun` path, observe its reuse key and
 `ReusedFrom`, then assert physical source calls across one-field changes. It
-also needs a persisted native PostgreSQL read duration that excludes journal
+must consume the persisted native PostgreSQL read duration, which excludes journal
 and finalization time. The runtime-pack dimension needs an actual reviewed
 pack pin in that frozen-run identity before it can be claimed.
 Phase 25 remains planned until the real release profile executes and is reviewed;

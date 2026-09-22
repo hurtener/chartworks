@@ -105,10 +105,13 @@ path is never replaced. The one-hour profile bound includes correctness probes
 as well as timed observations. A permitted integration/live correctness probe
 must carry physical source and model receipts before any timed sample starts.
 Read-attempt `created_at` to `finished_at` spans journaling, source work and
-finalization; it is never labeled `source_ns`. The current query adapter leaves
-source time unknown, so the required physical-source timing gate fails closed.
-A future PostgreSQL source receipt must measure the actual native read boundary
-and persist that duration through the execution result before AC03 can pass.
+finalization; it is never labeled `source_ns`. A nullable `source_duration_ns`
+on the physical read attempt measures the native source call through its cleanup
+and subtracts synchronous read journal calls. It survives the durable execution
+receipt. Legacy, unissued and uncertain
+attempts remain unknown. The current query adapter does not consume this receipt,
+so its physical-source timing gate still fails closed until the production
+composition wires the exact attempt duration into performance usage.
 The signed-action negative needs a second short-lived Pengui bearer for the
 same subject/reach with exactly `query.plan` or `query.execute` removed. Both
 bearers are verified; the altered envelope is passed through governed
