@@ -72,6 +72,25 @@ func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 			return err
 		}
 	}
+	for _, pin := range r.Definition.Rules {
+		var active string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(active_version,'') FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 FOR SHARE`, e.Tenant(), pin.Topic).Scan(&active); err != nil {
+			return err
+		}
+		if active != pin.RuleVersion {
+			return reporting.ErrStale
+		}
+		var topicVersion, packDigest, ruleDigest string
+		if err := tx.QueryRow(ctx, `SELECT topic_version,pack_digest,digest FROM chartworks.topic_rule_published_versions WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3`, e.Tenant(), pin.Topic, pin.RuleVersion).Scan(&topicVersion, &packDigest, &ruleDigest); err != nil {
+			return err
+		}
+		if topicVersion != pin.TopicVersion || packDigest != pin.PackDigest || ruleDigest != pin.RuleDigest {
+			return reporting.ErrStale
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.block_rule_pins(tenant_id,block_id,revision,topic_id,topic_version,pack_digest,rule_version,rule_digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, e.Tenant(), m.ID, r.Number, pin.Topic, pin.TopicVersion, pin.PackDigest, pin.RuleVersion, pin.RuleDigest); err != nil {
+			return err
+		}
+	}
 	if len(sources) == 0 {
 		return store.ErrInvalid
 	}
@@ -93,10 +112,17 @@ func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 
 // Topic locks precede source locks, matching topic publication's lock order.
 // These shared locks last until the block pointer/evidence/audit transaction ends.
+func blockFenceCoordinates(m reporting.Mutation) error {
+	if m.ID == "" && m.TargetRevision == 0 || identity.Identifier(m.ID) && m.TargetRevision > 0 {
+		return nil
+	}
+	return store.ErrInvalid
+}
+
 func blockCurrentFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting.Mutation) error {
 	pins := append([]reporting.TopicPin(nil), m.Topics...)
 	sort.Slice(pins, func(i, j int) bool { return pins[i].Topic < pins[j].Topic })
-	if len(pins) == 0 || len(m.Watch) == 0 {
+	if len(pins) == 0 || len(m.Watch) == 0 || blockFenceCoordinates(m) != nil {
 		return store.ErrInvalid
 	}
 	for _, pin := range pins {
@@ -107,6 +133,25 @@ func blockCurrentFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, m re
 		}
 		if archived || version != pin.Version || digest != pin.Digest {
 			return reporting.ErrStale
+		}
+	}
+	if m.ID != "" {
+		rows, err := tx.Query(ctx, `SELECT p.topic_id,p.rule_version,COALESCE(h.active_version,'') FROM chartworks.block_rule_pins p JOIN chartworks.topic_rule_publication_heads h ON(h.tenant_id,h.topic_id)=(p.tenant_id,p.topic_id) WHERE (p.tenant_id,p.block_id,p.revision)=($1,$2,$3) ORDER BY p.topic_id FOR SHARE OF h`, e.Tenant(), m.ID, m.TargetRevision)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var topic, pinned, active string
+			if err := rows.Scan(&topic, &pinned, &active); err != nil {
+				return err
+			}
+			if active != pinned {
+				return reporting.ErrStale
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
 		}
 	}
 	watched := map[string]reporting.Dependency{}
@@ -141,7 +186,7 @@ func verifyBlockAttempt(ctx context.Context, tx pgx.Tx, e identity.Envelope, m r
 		return store.ErrInvalid
 	}
 	a := v.Evidence.Attempt
-	if v.Evidence.Revision != snapshot.Revision.Number || v.Evidence.RevisionID != snapshot.Revision.ID || v.Evidence.DefinitionDigest != snapshot.Revision.Digest || v.Evidence.ExecutionDigest != snapshot.Revision.ExecutionDigest || v.Evidence.Actor != e.User() || v.Evidence.DependencyDigest != reporting.DependencyDigest(v.Dependencies, v.Topics) || v.Evidence.SchemaDigest != readexec.Hash(v.Evidence.Schema) || v.Evidence.ValidationManifest != a.Manifest.Receipt.Manifest || a.Manifest.Session != e.Session() || !a.Manifest.Preview || !a.Manifest.Valid() || v.BindingDigest != readexec.Hash(v.Binding) || v.Evidence.ExpiresAt.After(v.Evidence.CreatedAt.Add(7*24*time.Hour)) || !time.Now().Before(v.Evidence.ExpiresAt) {
+	if v.Evidence.Revision != snapshot.Revision.Number || v.Evidence.RevisionID != snapshot.Revision.ID || v.Evidence.DefinitionDigest != snapshot.Revision.Digest || v.Evidence.ExecutionDigest != snapshot.Revision.ExecutionDigest || v.Evidence.Actor != e.User() || v.Evidence.DependencyDigest != reporting.DependencyDigest(v.Dependencies, v.Topics, v.Rules) || v.Evidence.SchemaDigest != readexec.Hash(v.Evidence.Schema) || v.Evidence.ValidationManifest != a.Manifest.Receipt.Manifest || a.Manifest.Session != e.Session() || !a.Manifest.Preview || !a.Manifest.Valid() || v.BindingDigest != readexec.Hash(v.Binding) || v.Evidence.ExpiresAt.After(v.Evidence.CreatedAt.Add(7*24*time.Hour)) || !time.Now().Before(v.Evidence.ExpiresAt) {
 		return store.ErrInvalid
 	}
 	manifest, err := json.Marshal(a.Manifest)
@@ -159,7 +204,7 @@ func blockFresh(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting
 	if err := tx.QueryRow(ctx, `SELECT record FROM chartworks.block_validations WHERE tenant_id=$1 AND block_id=$2 AND revision=$3 AND evidence_id=$4 AND expires_at>clock_timestamp()`, e.Tenant(), m.ID, m.TargetRevision, m.Evidence).Scan(&raw); err != nil {
 		return v, err
 	}
-	if json.Unmarshal(raw, &v) != nil || snapshot.Health.Status != "healthy" || snapshot.Health.DependencyDigest != v.Evidence.DependencyDigest || v.Evidence.DefinitionDigest != snapshot.Revision.Digest || v.Evidence.RevisionID != snapshot.Revision.ID || v.Evidence.ExecutionDigest != snapshot.Revision.ExecutionDigest || v.Evidence.DependencyDigest != reporting.DependencyDigest(m.Watch, m.Topics) || v.Evidence.CanonicalizationVersion != reporting.CanonicalizationVersion {
+	if json.Unmarshal(raw, &v) != nil || snapshot.Health.Status != "healthy" || snapshot.Health.DependencyDigest != v.Evidence.DependencyDigest || v.Evidence.DefinitionDigest != snapshot.Revision.Digest || v.Evidence.RevisionID != snapshot.Revision.ID || v.Evidence.ExecutionDigest != snapshot.Revision.ExecutionDigest || v.Evidence.DependencyDigest != reporting.DependencyDigest(m.Watch, m.Topics, v.Rules) || v.Evidence.CanonicalizationVersion != reporting.CanonicalizationVersion {
 		return v, reporting.ErrStale
 	}
 	return v, nil

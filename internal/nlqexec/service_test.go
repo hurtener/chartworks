@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -607,15 +608,20 @@ func TestServicePublicBoundaryValidation(t *testing.T) {
 
 func TestPreflightDetachesRouteExampleConfidence(t *testing.T) {
 	confidence := 0.73
+	routeConfidence := confidence
+	template := rulesets.TemplateSelection{ID: "monthly-sales", Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "rules-v1", RuleDigest: strings.Repeat("b", 64)}
 	request := QuestionRequest{
 		Topic: "topic", Context: "context", Locale: nlq.LanguageEnglish, Question: "show revenue",
-		Examples: []nlq.OptionalItem{{ID: "example", Text: "approved comparison", Priority: 1, Confidence: &confidence}},
+		Templates: []rulesets.TemplateSelection{template},
+		Examples:  []nlq.OptionalItem{{ID: "example", Text: "approved comparison", Priority: 1, Confidence: &confidence}},
 	}
 	router := &preflightRouter{result: nlqroute.RouteResult{
 		Outcome:       nlq.StrategyClarify,
 		Topic:         "topic",
 		Topics:        []string{"topic"},
 		TopicVersions: []string{"v1"},
+		Templates:     []rulesets.TemplateSelection{template},
+		Request:       nlqroute.RouteRequest{Question: request.Question, Templates: []rulesets.TemplateSelection{template}, Examples: []nlq.OptionalItem{{ID: "example", Text: "approved comparison", Priority: 1, Confidence: &routeConfidence}}},
 		Clarification: &nlqroute.Clarification{Reason: "choose_metric"},
 	}}
 	repo := newUnitRepository()
@@ -648,6 +654,9 @@ func TestPreflightDetachesRouteExampleConfidence(t *testing.T) {
 		t.Fatalf("preflight did not persist route examples: %#v", stored.Route.Request.Examples)
 	}
 	check("persisted", stored.Route.Request.Examples[0])
+	if len(router.request.Templates) != 1 || router.request.Templates[0] != template || len(result.Route.Templates) != 1 || result.Route.Templates[0] != template || len(stored.Templates) != 1 || stored.Templates[0] != template {
+		t.Fatalf("preflight lost the canonical reviewed template: request=%#v result=%#v stored=%#v", router.request.Templates, result.Route.Templates, stored.Templates)
+	}
 }
 
 func TestServiceDurableFailureBoundaries(t *testing.T) {
@@ -888,9 +897,11 @@ func TestServiceRunFailureAndAdmissionBranches(t *testing.T) {
 func TestRefinementPreservesGovernedRouteSelections(t *testing.T) {
 	e := unitEnvelope(t)
 	old := unitQuery(e, "query-refine", "topic", "v1", "context", false)
+	template := rulesets.TemplateSelection{ID: "monthly-sales", Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "rules-v1", RuleDigest: strings.Repeat("b", 64)}
+	old.Templates = []rulesets.TemplateSelection{template}
 	old.Route.Request = nlqroute.RouteRequest{
 		Topic: "topic", Topics: []string{"topic"}, Context: "context", Locale: nlq.LanguageEnglish,
-		Question: "What is revenue?", Kinds: []string{"measure"}, LimitPerKind: 2,
+		Question: "What is revenue?", Templates: []rulesets.TemplateSelection{template}, Kinds: []string{"measure"}, LimitPerKind: 2,
 		References:  []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}},
 		Choices:     []nlqroute.ChoiceSelection{{Pattern: "sales", Slot: "period", Value: "month"}},
 		JoinChoices: []nlqroute.JoinChoice{{Topic: "topic", JoinID: "sales-items"}},
@@ -903,6 +914,9 @@ func TestRefinementPreservesGovernedRouteSelections(t *testing.T) {
 	})
 	if question.Topic != old.Topic || !reflect.DeepEqual(question.Topics, old.Topics) || question.Context != old.Context || question.Locale != old.Locale || question.Question != "Show revenue by month" {
 		t.Fatalf("refinement changed the signed session anchor: %#v", question)
+	}
+	if !reflect.DeepEqual(question.Templates, []rulesets.TemplateSelection{template}) {
+		t.Fatalf("refinement lost the sealed reviewed template: %#v", question.Templates)
 	}
 	if !reflect.DeepEqual(question.References, []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}, {Kind: semantics.KindDimension, ID: "month"}}) {
 		t.Fatalf("reference base+delta was not retained: %#v", question.References)

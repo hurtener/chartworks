@@ -64,8 +64,8 @@ portable round-trip, enhancement and rebind suites.
 Focused verification at the reviewed worktree head:
 
 ```text
-CGO_ENABLED=0 go test ./internal/semantics ./internal/semantics/drafts ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./sdk/chartworks
-CGO_ENABLED=0 go vet ./internal/semantics ./internal/semantics/drafts ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./sdk/chartworks
+CGO_ENABLED=0 go test ./internal/semantics ./internal/semantics/drafts ./internal/semantics/rulesets ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./internal/reporting ./sdk/chartworks
+CGO_ENABLED=0 go vet ./internal/semantics ./internal/semantics/drafts ./internal/semantics/rulesets ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./internal/reporting ./sdk/chartworks
 TMPDIR=/private/tmp make planning-check check-mirror
 git diff --check
 ```

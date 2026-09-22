@@ -26,6 +26,9 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 		return record, result, resolved, nil, err
 	}
 	d := snapshot.Revision.Definition
+	if _, err := templateSelections(d); err != nil {
+		return record, result, resolved, nil, err
+	}
 	if err := access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: d.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: d.Context}); err != nil {
 		return record, result, resolved, nil, err
 	}
@@ -48,6 +51,10 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 	ctx, cancel := context.WithTimeout(ctx, min(time.Duration(s.limits.ValidationTimeout), time.Duration(caps.TimeoutMillis)*time.Millisecond))
 	defer cancel()
 	definitions, refs, err := s.resolveDefinitions(ctx, e, d, true)
+	if err != nil {
+		return record, result, resolved, nil, err
+	}
+	rules, err := s.resolveRules(ctx, e, d, true)
 	if err != nil {
 		return record, result, resolved, nil, err
 	}
@@ -109,7 +116,7 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 		return record, result, resolved, nil, err
 	}
 	now := time.Now().UTC()
-	record = ValidationRecord{Evidence: Evidence{ID: evidenceID, Revision: snapshot.Revision.Number, RevisionID: snapshot.Revision.ID, DefinitionDigest: snapshot.Revision.Digest, ExecutionDigest: snapshot.Revision.ExecutionDigest, ParameterDigest: parameterDigest(resolved.Parameters), DependencyDigest: DependencyDigest(dependencies, d.Topics), SchemaDigest: digest(report.Result.Schema), CanonicalizationVersion: CanonicalizationVersion, ValidatorVersion: binding.Contract, ValidationManifest: receipt.Manifest, Schema: clone(report.Result.Schema), Attempt: clone(attempt), Actor: e.User(), CreatedAt: now, ExpiresAt: now.Add(time.Duration(s.limits.EvidenceTTL))}, Dependencies: dependencies, BindingDigest: exec.Hash(binding), Topics: clone(d.Topics), Binding: binding.Clone(), Definitions: []topics.Definition{}}
+	record = ValidationRecord{Evidence: Evidence{ID: evidenceID, Revision: snapshot.Revision.Number, RevisionID: snapshot.Revision.ID, DefinitionDigest: snapshot.Revision.Digest, ExecutionDigest: snapshot.Revision.ExecutionDigest, ParameterDigest: parameterDigest(resolved.Parameters), DependencyDigest: DependencyDigest(dependencies, d.Topics, rules), SchemaDigest: digest(report.Result.Schema), CanonicalizationVersion: CanonicalizationVersion, ValidatorVersion: binding.Contract, ValidationManifest: receipt.Manifest, Schema: clone(report.Result.Schema), Attempt: clone(attempt), Actor: e.User(), CreatedAt: now, ExpiresAt: now.Add(time.Duration(s.limits.EvidenceTTL))}, Dependencies: dependencies, BindingDigest: exec.Hash(binding), Topics: clone(d.Topics), Rules: clone(rules), Binding: binding.Clone(), Definitions: []topics.Definition{}}
 	record.Catalog = clone(catalog)
 	record.Evidence.ResolvedAt = resolved.At
 	record.Evidence.Timezone = resolved.Timezone
@@ -180,7 +187,7 @@ func (s *Service) Preview(ctx context.Context, e identity.Envelope, id string, i
 func freshValidation(snapshot Snapshot, evidenceID string, now time.Time) error {
 	r := snapshot.Revision
 	v := snapshot.Validation
-	if v == nil || v.Evidence.ID != evidenceID || !hashValid(v.Evidence.DefinitionDigest) || v.Evidence.DefinitionDigest != r.Digest || v.Evidence.ExecutionDigest != r.ExecutionDigest || v.Evidence.Revision != r.Number || v.Evidence.RevisionID != r.ID || v.Evidence.CanonicalizationVersion != CanonicalizationVersion || v.Evidence.DependencyDigest != DependencyDigest(v.Dependencies, r.Definition.Topics) || !now.Before(v.Evidence.ExpiresAt) || !snapshot.Current || snapshot.Health.Status != "healthy" || snapshot.Health.DependencyDigest != v.Evidence.DependencyDigest || !successful(v.Evidence.Attempt.Status) {
+	if v == nil || v.Evidence.ID != evidenceID || !hashValid(v.Evidence.DefinitionDigest) || v.Evidence.DefinitionDigest != r.Digest || v.Evidence.ExecutionDigest != r.ExecutionDigest || v.Evidence.Revision != r.Number || v.Evidence.RevisionID != r.ID || v.Evidence.CanonicalizationVersion != CanonicalizationVersion || v.Evidence.DependencyDigest != DependencyDigest(v.Dependencies, r.Definition.Topics, v.Rules) || digest(v.Rules) != digest(r.Definition.Rules) || !now.Before(v.Evidence.ExpiresAt) || !snapshot.Current || snapshot.Health.Status != "healthy" || snapshot.Health.DependencyDigest != v.Evidence.DependencyDigest || !successful(v.Evidence.Attempt.Status) {
 		return ErrStale
 	}
 	return nil

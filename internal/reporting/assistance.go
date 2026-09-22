@@ -68,6 +68,7 @@ func (s *Service) Parameterize(ctx context.Context, e identity.Envelope, id stri
 		return View{}, err
 	}
 	d.Template = nil
+	d.Templates = nil
 	if err := validateDefinition(ctx, d, s.limits, false); err != nil {
 		return View{}, err
 	}

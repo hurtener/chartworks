@@ -57,6 +57,9 @@ func (s *Service) Certify(ctx context.Context, e identity.Envelope, id string, i
 	if snapshot.State.Archived || snapshot.PublishedAt == nil {
 		return Attestation{}, store.ErrConflict
 	}
+	if _, err := templateSelections(snapshot.Revision.Definition); err != nil {
+		return Attestation{}, err
+	}
 	if err := freshValidation(snapshot, in.Evidence, time.Now()); err != nil {
 		return Attestation{}, err
 	}

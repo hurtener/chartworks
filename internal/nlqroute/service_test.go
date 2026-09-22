@@ -483,6 +483,36 @@ func TestRouteRejectsUnqualifiedAmbiguousRuleSlot(t *testing.T) {
 	}
 }
 
+func TestRouteRequiresCanonicalReviewedTemplateBeforeGeneration(t *testing.T) {
+	published := compiledRouteChoiceRules(t, false)
+	published.Definition.Rules = append(published.Definition.Rules, semantics.RuleDefinition{ID: "monthly-template", Version: "v1", Category: semantics.RuleSemantic, Class: semantics.RuleAdvisoryContext, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTemplate, Template: "monthly_sales"}, Priority: 10, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "review-monthly"}, Guidance: &semantics.AdvisoryGuidance{Text: "Use the reviewed monthly context.", Sensitivity: semantics.LiteralNonSensitive}})
+	subject, err := semantics.NewRuleSubject(semantics.TopicPack{SchemaVersion: 1, Topic: "topic", Version: "v1", Datasets: []semantics.Dataset{{ID: "dataset"}}}, testPublication().Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := semantics.CompilePublishedRules(subject, published.Definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published.Digest = model.Digest()
+	service, engine, _ := newTestService(t, testRules{published: published})
+	base := RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?"}
+	omitted, err := service.Route(context.Background(), testEnvelope(t, true), base)
+	if err != nil || omitted.Outcome != nlq.StrategyClarify || omitted.Clarification == nil || omitted.Clarification.Reason != "reviewed_template_required" || engine.embeds != 0 {
+		t.Fatalf("template omission reached generation: %#v %v", omitted, err)
+	}
+	pin := rulesets.TemplateSelection{ID: "monthly_sales", Topic: "topic", TopicVersion: "v1", PackDigest: testPublication().Digest, RuleVersion: "rules-v1", RuleDigest: published.Digest}
+	base.Templates = []rulesets.TemplateSelection{pin}
+	selected, err := service.Route(context.Background(), testEnvelope(t, true), base)
+	if err != nil || selected.Context == nil || len(selected.Templates) != 1 || selected.Templates[0] != pin || selected.Request.Templates[0] != pin {
+		t.Fatalf("reviewed template did not survive route sealing: %#v %v", selected, err)
+	}
+	base.Templates[0].RuleDigest = strings.Repeat("c", 64)
+	if _, err := service.Route(context.Background(), testEnvelope(t, true), base); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("substituted template pin was accepted: %v", err)
+	}
+}
+
 func TestReferenceIdentityPreservesRevision(t *testing.T) {
 	first := semantics.Reference{Kind: semantics.KindCanonicalEntity, ID: "customer", Revision: 1}
 	second := first

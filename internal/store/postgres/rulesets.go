@@ -15,6 +15,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+func invalidateReportingRulePins(ctx context.Context, tx pgx.Tx, tenant, topic, version string) error {
+	_, err := tx.Exec(ctx, `UPDATE chartworks.block_health h SET observation=jsonb_set(jsonb_set(jsonb_set(h.observation,'{status}','"stale"'::jsonb),'{reason}','"rule_publication_changed"'::jsonb),'{observed_at}',to_jsonb(clock_timestamp())) FROM chartworks.block_rule_pins p WHERE (p.tenant_id,p.block_id,p.revision)=(h.tenant_id,h.block_id,h.revision) AND p.tenant_id=$1 AND p.topic_id=$2 AND p.rule_version=$3`, tenant, topic, version)
+	return err
+}
+
 var _ rulesets.Repository = (*DB)(nil)
 var _ rulesets.EvidenceRepository = (*DB)(nil)
 
@@ -183,6 +188,11 @@ func (d *DB) PublishRules(ctx context.Context, e identity.Envelope, published to
 		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_evidence_invalidations(tenant_id,invalidation_id,topic_id,revision,kind,old_rule_version,new_rule_version,topic_version,pack_digest) VALUES($1,$2,$3,$4,'publish',$5,$6,$7,$8)`, e.Tenant(), invalidationID, published.State.Topic, expected+1, oldVersion, version, published.State.Version, published.Digest); err != nil {
 			return err
 		}
+		if oldVersion != nil {
+			if err = invalidateReportingRulePins(ctx, tx, e.Tenant(), published.State.Topic, *oldVersion); err != nil {
+				return err
+			}
+		}
 		scope, _ := store.NewScope(e.Tenant(), e.User())
 		if err = auditJob(ctx, tx, scope, "rules.published", published.State.Topic); err != nil {
 			return err
@@ -289,6 +299,9 @@ func (d *DB) RetireRules(ctx context.Context, e identity.Envelope, published top
 		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_evidence_invalidations(tenant_id,invalidation_id,topic_id,revision,kind,old_rule_version,new_rule_version,topic_version,pack_digest) VALUES($1,$2,$3,$4,'retire',$5,NULL,$6,$7)`, e.Tenant(), invalidationID, published.State.Topic, expected+1, *active, published.State.Version, published.Digest); err != nil {
 			return err
 		}
+		if err = invalidateReportingRulePins(ctx, tx, e.Tenant(), published.State.Topic, *active); err != nil {
+			return err
+		}
 		scope, _ := store.NewScope(e.Tenant(), e.User())
 		if err := auditJob(ctx, tx, scope, "rules.retired", published.State.Topic); err != nil {
 			return err
@@ -317,6 +330,16 @@ func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparis
 	baseline, err := json.Marshal(comparison.Baseline.Result)
 	if err != nil {
 		return rulesets.Comparison{}, store.ErrInvalid
+	}
+	var template any
+	if comparison.Template != nil {
+		if comparison.Template.Topic != comparison.Topic || comparison.Template.TopicVersion != comparison.Baseline.TopicVersion || comparison.Template.PackDigest != comparison.Baseline.PackDigest || comparison.Template.RuleVersion != comparison.Baseline.RuleVersion || comparison.Template.RuleDigest != comparison.Baseline.RuleDigest {
+			return rulesets.Comparison{}, store.ErrInvalid
+		}
+		template, err = json.Marshal(comparison.Template)
+		if err != nil {
+			return rulesets.Comparison{}, store.ErrInvalid
+		}
 	}
 	var candidateVersion, candidateResult any
 	if comparison.Candidate != nil {
@@ -349,7 +372,7 @@ func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparis
 		created = time.Now().UTC()
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_comparison_evidence(tenant_id,comparison_id,actor_id,session_id,topic_id,mode,topic_version,pack_digest,references_json,baseline_rule_version,baseline_result,candidate_rule_version,candidate_result,changed,created_at,baseline_clarification_result,candidate_clarification_result) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb,$14,$15,$16::jsonb,$17::jsonb)`, e.Tenant(), comparison.ID, e.User(), e.Session(), comparison.Topic, comparison.Mode, comparison.Baseline.TopicVersion, comparison.Baseline.PackDigest, references, comparison.Baseline.RuleVersion, baseline, candidateVersion, candidateResult, comparison.Changed, created, baselineClarifications, candidateClarifications)
+		_, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_comparison_evidence(tenant_id,comparison_id,actor_id,session_id,topic_id,mode,topic_version,pack_digest,references_json,baseline_rule_version,baseline_result,candidate_rule_version,candidate_result,changed,created_at,baseline_clarification_result,candidate_clarification_result,template_selection) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb,$14,$15,$16::jsonb,$17::jsonb,$18::jsonb)`, e.Tenant(), comparison.ID, e.User(), e.Session(), comparison.Topic, comparison.Mode, comparison.Baseline.TopicVersion, comparison.Baseline.PackDigest, references, comparison.Baseline.RuleVersion, baseline, candidateVersion, candidateResult, comparison.Changed, created, baselineClarifications, candidateClarifications, template)
 		return err
 	})
 	if err != nil {

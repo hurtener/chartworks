@@ -63,7 +63,7 @@ func validReferences(refs []semantics.Reference) error {
 }
 
 func sameConstraintEvaluation(a, b semantics.ConstraintEvaluation) bool {
-	if a.Allowed != b.Allowed || len(a.Required) != len(b.Required) || len(a.Excluded) != len(b.Excluded) || len(a.Violations) != len(b.Violations) {
+	if a.Allowed != b.Allowed || len(a.Required) != len(b.Required) || len(a.Excluded) != len(b.Excluded) || len(a.Violations) != len(b.Violations) || len(a.Selection) != len(b.Selection) {
 		return false
 	}
 	for i := range a.Required {
@@ -81,7 +81,46 @@ func sameConstraintEvaluation(a, b semantics.ConstraintEvaluation) bool {
 			return false
 		}
 	}
+	for i := range a.Selection {
+		if a.Selection[i] != b.Selection[i] {
+			return false
+		}
+	}
 	return true
+}
+
+func templateInModel(model semantics.RuleModel, id string) (bool, bool) {
+	hasTemplates := false
+	for _, rule := range model.Definition().Rules {
+		if rule.Scope.Kind != semantics.RuleScopeTemplate {
+			continue
+		}
+		hasTemplates = true
+		if rule.Scope.Template == id {
+			return true, true
+		}
+	}
+	return false, hasTemplates
+}
+
+func canonicalTemplate(e Evaluation, model semantics.RuleModel, in *TemplateSelection) (*TemplateSelection, error) {
+	matched, hasTemplates := templateInModel(model, func() string {
+		if in == nil {
+			return ""
+		}
+		return in.ID
+	}())
+	if !hasTemplates && in == nil {
+		return nil, nil
+	}
+	if in == nil || !matched || !identity.Identifier(in.ID) {
+		return nil, store.ErrInvalid
+	}
+	if in.Topic != e.Topic || in.TopicVersion != e.TopicVersion || in.PackDigest != e.PackDigest || in.RuleVersion != e.RuleVersion || in.RuleDigest != e.RuleDigest {
+		return nil, store.ErrConflict
+	}
+	out := *in
+	return &out, nil
 }
 
 func publishedSubject(p topics.Published) (semantics.RuleSubject, error) {
@@ -196,11 +235,21 @@ func (s *Service) Evaluate(ctx context.Context, e identity.Envelope, topic strin
 	if err != nil {
 		return Evaluation{}, err
 	}
-	result, err := semantics.EvaluateConstraints(subject, model, in.References)
+	evaluation := Evaluation{Topic: topic, TopicVersion: pin.TopicVersion, PackDigest: topicVersion.Digest, RuleVersion: pin.Version, RuleDigest: published.Digest}
+	template, err := canonicalTemplate(evaluation, model, in.Template)
 	if err != nil {
 		return Evaluation{}, err
 	}
-	return Evaluation{Topic: topic, TopicVersion: pin.TopicVersion, PackDigest: topicVersion.Digest, RuleVersion: pin.Version, RuleDigest: published.Digest, Result: result, EvaluatedAt: time.Now().UTC()}, nil
+	templateID := ""
+	if template != nil {
+		templateID = template.ID
+	}
+	result, err := semantics.EvaluateSelectedConstraints(subject, model, semantics.RuleSelectionInput{References: in.References, Template: templateID})
+	if err != nil {
+		return Evaluation{}, err
+	}
+	evaluation.Result, evaluation.EvaluatedAt = result, time.Now().UTC()
+	return evaluation, nil
 }
 
 // readPinned performs the shared non-payload pin, exact topic read, and exact
@@ -262,7 +311,15 @@ func (s *Service) Replay(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	base.Result, err = semantics.EvaluateConstraints(subject, model, in.References)
+	template, err := canonicalTemplate(base, model, in.Template)
+	if err != nil {
+		return Comparison{}, err
+	}
+	templateID := ""
+	if template != nil {
+		templateID = template.ID
+	}
+	base.Result, err = semantics.EvaluateSelectedConstraints(subject, model, semantics.RuleSelectionInput{References: in.References, Template: templateID})
 	if err != nil {
 		return Comparison{}, err
 	}
@@ -275,7 +332,7 @@ func (s *Service) Replay(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	return s.recordComparison(ctx, e, Comparison{BaselineClarifications: clarificationCases, ID: id, Mode: comparisonReplay, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: base, Changed: false, CreatedAt: time.Now().UTC()})
+	return s.recordComparison(ctx, e, Comparison{BaselineClarifications: clarificationCases, ID: id, Mode: comparisonReplay, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Template: template, Baseline: base, Changed: false, CreatedAt: time.Now().UTC()})
 }
 
 // Shadow compares a retained baseline with either an exact retained candidate
@@ -292,7 +349,15 @@ func (s *Service) Shadow(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	baseline.Result, err = semantics.EvaluateConstraints(baselineSubject, baselineModel, in.References)
+	template, err := canonicalTemplate(baseline, baselineModel, in.Template)
+	if err != nil {
+		return Comparison{}, err
+	}
+	templateID := ""
+	if template != nil {
+		templateID = template.ID
+	}
+	baseline.Result, err = semantics.EvaluateSelectedConstraints(baselineSubject, baselineModel, semantics.RuleSelectionInput{References: in.References, Template: templateID})
 	if err != nil {
 		return Comparison{}, err
 	}
@@ -302,7 +367,11 @@ func (s *Service) Shadow(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	candidate.Result, err = semantics.EvaluateConstraints(candidateSubject, candidateModel, in.References)
+	matched, candidateHasTemplates := templateInModel(candidateModel, templateID)
+	if candidateHasTemplates && !matched {
+		return Comparison{}, store.ErrInvalid
+	}
+	candidate.Result, err = semantics.EvaluateSelectedConstraints(candidateSubject, candidateModel, semantics.RuleSelectionInput{References: in.References, Template: templateID})
 	if err != nil {
 		return Comparison{}, err
 	}
@@ -322,7 +391,7 @@ func (s *Service) Shadow(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	return s.recordComparison(ctx, e, Comparison{BaselineClarifications: baselineCases, CandidateClarifications: candidateCases, ID: id, Mode: comparisonShadow, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Baseline: baseline, Candidate: &candidate, Changed: !sameConstraintEvaluation(baseline.Result, candidate.Result) || !sameClarificationCases(baselineCases, candidateCases), CreatedAt: time.Now().UTC()})
+	return s.recordComparison(ctx, e, Comparison{BaselineClarifications: baselineCases, CandidateClarifications: candidateCases, ID: id, Mode: comparisonShadow, Topic: topic, References: append([]semantics.Reference(nil), in.References...), Template: template, Baseline: baseline, Candidate: &candidate, Changed: !sameConstraintEvaluation(baseline.Result, candidate.Result) || !sameClarificationCases(baselineCases, candidateCases), CreatedAt: time.Now().UTC()})
 }
 
 // Patterns returns detached clarification patterns from the exact or current

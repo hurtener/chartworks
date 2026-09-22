@@ -21,12 +21,28 @@ func CheckFrozenEligibility(e identity.Envelope, m RunManifest, snapshot Snapsho
 	if !now.Before(m.Expires) {
 		return ErrExpired
 	}
+	if err := frozenTemplateSelections(m.Revision.Definition, snapshot.Revision.Definition); err != nil {
+		return err
+	}
 	if snapshot.State.ID != m.Block || snapshot.Revision.Number != m.Revision.Number || snapshot.Revision.Digest != m.Revision.Digest ||
 		snapshot.Revision.ID != m.Revision.ID || snapshot.Validation == nil || snapshot.Validation.BindingDigest != exec.Hash(m.Binding) ||
-		DependencyDigest(snapshot.Validation.Dependencies, m.Revision.Definition.Topics) != DependencyDigest(m.Dependencies, m.Revision.Definition.Topics) {
+		DependencyDigest(snapshot.Validation.Dependencies, m.Revision.Definition.Topics, snapshot.Validation.Rules) != DependencyDigest(m.Dependencies, m.Revision.Definition.Topics, m.Rules) ||
+		digest(snapshot.Validation.Rules) != digest(m.Rules) || digest(m.Revision.Definition.Rules) != digest(m.Rules) {
 		return ErrStale
 	}
 	return runEligibility(e, snapshot, m.Policy, now)
+}
+
+func frozenTemplateSelections(manifest, snapshot Definition) error {
+	manifestTemplates, err := templateSelections(manifest)
+	if err != nil {
+		return err
+	}
+	snapshotTemplates, err := templateSelections(snapshot)
+	if err != nil || digest(manifestTemplates) != digest(snapshotTemplates) {
+		return ErrStale
+	}
+	return nil
 }
 
 // CheckFrozenResult validates actual ordered, typed values against the frozen

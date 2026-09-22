@@ -33,6 +33,10 @@ func (s *Runs) pinnedPlan(ctx context.Context, e identity.Envelope, m RunManifes
 	if err != nil {
 		return exec.Plan{}, err
 	}
+	rules, err := s.blocks.resolveRules(ctx, e, d, true)
+	if err != nil || digest(rules) != digest(m.Rules) {
+		return exec.Plan{}, ErrStale
+	}
 	binding, err := s.blocks.sources.ContextBinding(ctx, e, d.Source, d.Context)
 	if err != nil {
 		return exec.Plan{}, err
@@ -56,7 +60,7 @@ func (s *Runs) pinnedPlan(ctx context.Context, e identity.Envelope, m RunManifes
 	if err != nil {
 		return exec.Plan{}, err
 	}
-	if DependencyDigest(dependencies, d.Topics) != DependencyDigest(m.Dependencies, d.Topics) {
+	if DependencyDigest(dependencies, d.Topics, rules) != DependencyDigest(m.Dependencies, d.Topics, m.Rules) {
 		return exec.Plan{}, ErrStale
 	}
 	return plan, nil

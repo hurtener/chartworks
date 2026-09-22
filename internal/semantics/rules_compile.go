@@ -134,10 +134,14 @@ func validateRuleShape(p RuleSetDefinition) error {
 			return invalid(CodeInvalidValue, path+".category")
 		}
 		if rule.Scope.Kind == RuleScopeTopic {
-			if len(rule.Scope.Targets) != 0 {
+			if len(rule.Scope.Targets) != 0 || rule.Scope.Template != "" {
 				return invalid(CodeInvalidValue, path+".scope")
 			}
-		} else if rule.Scope.Kind != RuleScopeEntities || len(rule.Scope.Targets) < 1 || len(rule.Scope.Targets) > 32 {
+		} else if rule.Scope.Kind == RuleScopeTemplate {
+			if len(rule.Scope.Targets) != 0 || !identity.Identifier(rule.Scope.Template) {
+				return invalid(CodeInvalidValue, path+".scope")
+			}
+		} else if (rule.Scope.Kind != RuleScopeEntities && rule.Scope.Kind != RuleScopeCompound) || len(rule.Scope.Targets) < 1 || len(rule.Scope.Targets) > 32 || rule.Scope.Template != "" {
 			return invalid(CodeInvalidValue, path+".scope")
 		}
 		// These targets are sorted before reference lookup; bound their
@@ -249,7 +253,7 @@ func validateRuleReferences(subject RuleSubject, p RuleSetDefinition) error {
 			if err := checkTargets([]Reference{ref}, path+".constraint.target"); err != nil {
 				return err
 			}
-			if rule.Scope.Kind == RuleScopeEntities && !hasReference(rule.Scope.Targets, ref) {
+			if (rule.Scope.Kind == RuleScopeEntities || rule.Scope.Kind == RuleScopeCompound) && !hasReference(rule.Scope.Targets, ref) {
 				return invalid(CodeInvalidReference, path+".constraint.target")
 			}
 		}
@@ -326,21 +330,13 @@ func dependencyGraphPack(pack TopicPack) map[Reference][]Reference {
 }
 
 func ruleConflicts(subject RuleSubject, p RuleSetDefinition) error {
-	excluded := map[Reference]string{}
-	for _, rule := range p.Rules {
-		if rule.Constraint != nil && rule.Constraint.Kind == ConstraintExcludeReference {
-			if _, exists := excluded[rule.Constraint.Target]; !exists {
-				excluded[rule.Constraint.Target] = rule.ID
-			}
-		}
-	}
 	graph := subject.graph
-	for _, rule := range p.Rules {
-		if rule.Constraint == nil || rule.Constraint.Kind != ConstraintRequireReference {
+	for _, required := range p.Rules {
+		if required.Constraint == nil || required.Constraint.Kind != ConstraintRequireReference {
 			continue
 		}
 		seen := map[Reference]bool{}
-		pending := []Reference{rule.Constraint.Target}
+		pending := []Reference{required.Constraint.Target}
 		for len(pending) > 0 {
 			ref := pending[0]
 			pending = pending[1:]
@@ -348,13 +344,19 @@ func ruleConflicts(subject RuleSubject, p RuleSetDefinition) error {
 				continue
 			}
 			seen[ref] = true
-			if blockedBy, exists := excluded[ref]; exists {
-				return &RuleConflictError{RequiredBy: rule.ID, ExcludedBy: blockedBy, Target: ref}
+			for _, excluded := range p.Rules {
+				if excluded.Constraint != nil && excluded.Constraint.Kind == ConstraintExcludeReference && excluded.Constraint.Target == ref && scopesCanOverlap(required.Scope, excluded.Scope) {
+					return &RuleConflictError{RequiredBy: required.ID, ExcludedBy: excluded.ID, Target: ref}
+				}
 			}
 			pending = append(pending, graph[ref]...)
 		}
 	}
 	return nil
+}
+
+func scopesCanOverlap(a, b RuleScope) bool {
+	return a.Kind != RuleScopeTemplate || b.Kind != RuleScopeTemplate || a.Template == b.Template
 }
 
 func sortReferences(refs []Reference) {

@@ -68,7 +68,7 @@ func CompositionReferences(m CompositionManifest) []CompositionReference {
 // CheckCompositionBlock repeats the exact definition and current eligibility
 // check inside metadata admission. It neither validates nor executes new SQL.
 func CheckCompositionBlock(e identity.Envelope, g CompositionGroup, snapshot Snapshot) error {
-	if g.Kind != "block" || snapshot.State.ID != g.Block || snapshot.Revision.Number != g.Revision || snapshot.Revision.Digest != g.Definition || snapshot.Revision.ExecutionDigest != g.Execution || snapshot.Validation == nil || snapshot.Validation.BindingDigest != exec.Hash(g.Binding) {
+	if g.Kind != "block" || snapshot.State.ID != g.Block || snapshot.Revision.Number != g.Revision || snapshot.Revision.Digest != g.Definition || snapshot.Revision.ExecutionDigest != g.Execution || snapshot.Validation == nil || snapshot.Validation.BindingDigest != exec.Hash(g.Binding) || digest(snapshot.Validation.Rules) != digest(g.Rules) {
 		return ErrStale
 	}
 	if err := runEligibility(e, snapshot, g.Policy, time.Now()); err != nil {

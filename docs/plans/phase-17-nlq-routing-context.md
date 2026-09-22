@@ -92,7 +92,7 @@ context before validator-issued execution. See
 
 ## CW-07 governed routing and interpretation
 
-D-076 and the [routing/interpretation contract](../contracts/routing-interpretation-v1.md)
+D-077 and the [routing/interpretation contract](../contracts/routing-interpretation-v1.md)
 add authority-constrained server topic discovery, multi-facet evidence aggregation,
 optional authorized topic reranking and typed no-route/ambiguity decisions. The same
 route owns deterministic English/Spanish governed-value, explicitly designated geography and month-span

@@ -217,3 +217,48 @@ func TestEvidenceServiceBoundariesPreservePins(t *testing.T) {
 		t.Fatalf("same-pinned shadow changed evidence: %#v err=%v", shadow, err)
 	}
 }
+
+func TestReplayPersistsExactTemplateSelectionEvidence(t *testing.T) {
+	service, repo, evidence, e := evidenceBoundaryFixture(t)
+	target := semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}
+	repo.rules.Definition.Rules[0].Scope = semantics.RuleScope{Kind: semantics.RuleScopeTemplate, Template: "monthly_sales"}
+	repo.rules.Definition.Rules = append(repo.rules.Definition.Rules, semantics.RuleDefinition{ID: "quarterly-guidance", Version: "v1", Category: semantics.RuleSemantic, Class: semantics.RuleAdvisoryContext, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTemplate, Template: "quarterly_sales"}, Priority: 10, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "review-quarterly"}, Guidance: &semantics.AdvisoryGuidance{Text: "Use reviewed quarterly context.", Sensitivity: semantics.LiteralNonSensitive}})
+	subject, err := publishedSubject(service.topics.(*evidenceBoundaryTopics).published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := semantics.CompilePublishedRules(subject, repo.rules.Definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.rules.Digest = model.Digest()
+	pin := func(id string) *TemplateSelection {
+		return &TemplateSelection{ID: id, Topic: "commerce", TopicVersion: "topic-v1", PackDigest: repo.pin.PackDigest, RuleVersion: "rules-v1", RuleDigest: repo.rules.Digest}
+	}
+
+	match, err := service.Replay(context.Background(), e, "commerce", ReplayRequest{RuleVersion: "rules-v1", TopicVersion: "topic-v1", References: []semantics.Reference{target}, Template: pin("monthly_sales")})
+	if err != nil || len(match.Baseline.Result.Selection) != 2 || !match.Baseline.Result.Selection[1].Applied || match.Baseline.Result.Selection[1].Reason != "template_match" {
+		t.Fatalf("matching template evidence was not retained: %#v %v", match, err)
+	}
+	quarterly, err := service.Replay(context.Background(), e, "commerce", ReplayRequest{RuleVersion: "rules-v1", TopicVersion: "topic-v1", References: []semantics.Reference{target}, Template: pin("quarterly_sales")})
+	if err != nil || quarterly.Template == nil || quarterly.Template.ID != "quarterly_sales" || match.Template.ID == quarterly.Template.ID || len(evidence.comparisons) != 2 {
+		t.Fatalf("canonical template input was not distinguishable: %#v %v", quarterly, err)
+	}
+	if _, err := service.Replay(context.Background(), e, "commerce", ReplayRequest{RuleVersion: "rules-v1", TopicVersion: "topic-v1", References: []semantics.Reference{target}}); !errors.Is(err, store.ErrInvalid) {
+		t.Fatalf("template-scoped replay accepted omitted selection: %v", err)
+	}
+}
+
+func TestShadowEqualityIncludesAdvisorySelectionEvidence(t *testing.T) {
+	baseline := semantics.ConstraintEvaluation{Allowed: true, Selection: []semantics.RuleSelection{{Rule: "reviewed-advisory", Scope: "template", Applied: true, Reason: "template_match"}}}
+	candidate := baseline
+	candidate.Selection = []semantics.RuleSelection{{Rule: "reviewed-advisory", Scope: "template", Applied: false, Reason: "template_mismatch"}}
+	if sameConstraintEvaluation(baseline, candidate) {
+		t.Fatal("selection-only advisory change was reported as unchanged")
+	}
+	baseline.Required = []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}
+	candidate.Required = append([]semantics.Reference(nil), baseline.Required...)
+	if sameConstraintEvaluation(baseline, candidate) {
+		t.Fatal("equivalent hard constraints hid a scope-selection change")
+	}
+}

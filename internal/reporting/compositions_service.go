@@ -367,7 +367,7 @@ func groupIdentity(g CompositionGroup) string {
 	if g.Kind == "query" {
 		return digest([]any{g.Kind, g.Origin, g.Query, g.Binding, g.Locale, g.Private, g.Resolution})
 	}
-	return digest([]any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Resolution, g.QueryLimits})
+	return digest([]any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Rules, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Resolution, g.QueryLimits})
 }
 
 func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, d DocumentDefinition, w Widget, filters, overrides []Argument, resolution Resolution, memo map[string]compositionBlockSource) (CompositionGroup, CompositionWidget, error) {
@@ -382,6 +382,9 @@ func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m 
 		if entry.err == nil {
 			definition := entry.snapshot.Revision.Definition
 			_, entry.refs, entry.err = s.documents.blocks.resolveDefinitions(ctx, e, definition, true)
+			if entry.err == nil {
+				_, entry.err = s.documents.blocks.resolveRules(ctx, e, definition, true)
+			}
 			if entry.err == nil {
 				entry.binding, entry.err = s.documents.blocks.sources.ContextBinding(ctx, e, definition.Source, definition.Context)
 			}
@@ -441,7 +444,7 @@ func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m 
 	cw.Definition.Block.Revision, cw.Definition.Block.Outputs = entry.snapshot.Revision.Number, clone(outputs)
 	cw.Parameters = clone(resolved.Values)
 	trust := project(entry.snapshot, time.Now()).Trust
-	return CompositionGroup{QueryLimits: &caps, Kind: "block", Block: w.Block.Block, Revision: entry.snapshot.Revision.Number, Definition: entry.snapshot.Revision.Digest, Execution: entry.snapshot.Revision.ExecutionDigest,
+	return CompositionGroup{QueryLimits: &caps, Kind: "block", Block: w.Block.Block, Revision: entry.snapshot.Revision.Number, Definition: entry.snapshot.Revision.Digest, Execution: entry.snapshot.Revision.ExecutionDigest, Rules: clone(entry.snapshot.Validation.Rules),
 		Outputs: outputs, Arguments: arguments, Resolved: resolved, Resolution: resolution, Binding: entry.binding, Locale: d.Locale, Policy: policy, Private: m.Private, Narrative: w.Block.Narrative,
 		References: clone(entry.refs), Trust: &trust, ReservedCalls: calls, ReservedTokens: tokens}, cw, nil
 }

@@ -1,4 +1,4 @@
-### D-076 — Topic choice and semantic spans are versioned, replayable route evidence
+### D-077 — Topic choice and semantic spans are versioned, replayable route evidence
 
 Status: accepted for CW-07, 2026-09-22.
 

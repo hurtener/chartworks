@@ -27,6 +27,7 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/reportingapi"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/store"
 	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 	"github.com/hurtener/chartworks/test/support"
@@ -132,7 +133,11 @@ func phase27ValidatePublish(t *testing.T, service *reporting.Service, e identity
 func TestPhase27(t *testing.T) {
 	f := newReportingFixture(t)
 	queryService, topicService := newPhase18Service(t, f)
-	service, err := reporting.New(f.f.db, topicService, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(queryService), config.DefaultReporting())
+	rules, err := rulesets.New(f.f.db, f.f.db, f.f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := reporting.New(f.f.db, topicService, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(queryService, rules), config.DefaultReporting(), rules)
 	if err != nil {
 		t.Fatal(err)
 	}

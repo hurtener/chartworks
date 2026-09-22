@@ -8,6 +8,7 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 )
 
@@ -21,6 +22,8 @@ type CaptureEvidence struct {
 	Source       string
 	Context      string
 	Publications []topics.Published
+	RuleVersions []string
+	Templates    []rulesets.TemplateSelection
 	Question     string
 }
 
@@ -61,7 +64,7 @@ func (s *Service) CaptureDefinition(ctx context.Context, e identity.Envelope, id
 	if err := access.Require(e, "query.execute", admitted.resources...); err != nil {
 		return out, err
 	}
-	out = CaptureEvidence{SQL: q.SQL, Parameters: append([]exec.Parameter{}, q.Parameters...), Schema: append([]exec.Field{}, q.Result.Schema...), Source: admitted.source, Context: admitted.context, Question: q.Question, Publications: []topics.Published{}}
+	out = CaptureEvidence{SQL: q.SQL, Parameters: append([]exec.Parameter{}, q.Parameters...), Schema: append([]exec.Field{}, q.Result.Schema...), Source: admitted.source, Context: admitted.context, Question: q.Question, Publications: []topics.Published{}, RuleVersions: append([]string{}, q.RuleVersions...), Templates: append([]rulesets.TemplateSelection{}, q.Templates...)}
 	for i, topic := range q.Topics {
 		contract, err := s.topics.RetainedContract(ctx, e, topic, q.TopicVersions[i])
 		if err != nil {
