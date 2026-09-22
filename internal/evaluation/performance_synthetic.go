@@ -20,8 +20,8 @@ type syntheticPerformanceRunner struct {
 	authority func(context.Context, PerformanceAuthorityFixture) (identity.Envelope, error)
 }
 
-func newSyntheticPerformanceRunner() *syntheticPerformanceRunner {
-	return &syntheticPerformanceRunner{cache: map[string]string{}, authority: verifiedPerformanceFixture}
+func newSyntheticPerformanceRunner(authority func(context.Context, PerformanceAuthorityFixture) (identity.Envelope, error)) *syntheticPerformanceRunner {
+	return &syntheticPerformanceRunner{cache: map[string]string{}, authority: authority}
 }
 
 func (r *syntheticPerformanceRunner) Check(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
@@ -69,6 +69,9 @@ func (r *syntheticPerformanceRunner) authorize(ctx context.Context, step Perform
 	if step.AuthorityOverride == nil {
 		return PerformanceAdapterResult{}, ErrInvalid
 	}
+	if r.authority == nil {
+		return PerformanceAdapterResult{}, ErrMode
+	}
 	e, err := r.authority(ctx, *step.AuthorityOverride)
 	if err != nil {
 		return PerformanceAdapterResult{}, err
@@ -81,11 +84,6 @@ func (r *syntheticPerformanceRunner) authorize(ctx context.Context, step Perform
 	})
 	result.Denied = err != nil
 	return result, nil
-}
-
-func verifiedPerformanceFixture(_ context.Context, a PerformanceAuthorityFixture) (identity.Envelope, error) {
-	now := time.Now()
-	return identity.FromVerified(a.Tenant, a.User, a.Session, a.Scopes, now.Add(time.Hour), func() time.Time { return now })
 }
 
 func syntheticWorkloadDigest(workload string) string {

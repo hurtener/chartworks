@@ -77,8 +77,9 @@ binds cold/warm/repeat/concurrent and exact invalidation measurements to the
 accepted Phase 24 suite and report hashes. It separates synthetic,
 real-PostgreSQL/recorded-model and live evidence, preserves raw service/source/
 model values and refuses timing when correctness or authority negatives fail.
-The bounded synthetic smoke is available during development. Phase 25 still
-owns execution of the final stress profile after Phase 34 is selected.
+The bounded synthetic smoke is available through the test-only adapter during
+development; manifest fields cannot construct authority. Phase 25 still owns
+execution of the final stress profile after Phase 34 is selected.
 
 ## EXP-01 continuity cases
 

@@ -76,6 +76,16 @@ func performanceTestManifest() PerformanceManifest {
 	return m
 }
 
+// newTestSyntheticPerformanceRunner is deliberately test-only. Production
+// callers must supply authority that was produced by the configured verifier;
+// manifest fixture fields are never an identity source.
+func newTestSyntheticPerformanceRunner() *syntheticPerformanceRunner {
+	now := time.Unix(1_800_000_000, 0)
+	return newSyntheticPerformanceRunner(func(_ context.Context, fixture PerformanceAuthorityFixture) (identity.Envelope, error) {
+		return identity.FromVerified(fixture.Tenant, fixture.User, fixture.Session, fixture.Scopes, now.Add(time.Hour), func() time.Time { return now })
+	})
+}
+
 func TestPerformanceManifestPinsAuthorityAndInvalidation(t *testing.T) {
 	m := performanceTestManifest()
 	if err := m.Validate(); err != nil {
@@ -98,7 +108,7 @@ func TestPerformanceManifestPinsAuthorityAndInvalidation(t *testing.T) {
 func TestPerformanceSmokeMeasuresRawReuseAndNegatives(t *testing.T) {
 	m := performanceTestManifest()
 	now := time.Unix(1000, 0)
-	report, err := MeasurePerformance(context.Background(), m, newSyntheticPerformanceRunner(), func() time.Time {
+	report, err := MeasurePerformance(context.Background(), m, newTestSyntheticPerformanceRunner(), func() time.Time {
 		now = now.Add(time.Millisecond)
 		return now
 	})
@@ -190,7 +200,7 @@ func (r *receiptTamperRunner) Run(ctx context.Context, step PerformanceStep, ite
 func TestPerformanceDerivesOutcomeFromIndependentReceipts(t *testing.T) {
 	for _, mode := range []string{"noop", "reuse-with-work"} {
 		t.Run(mode, func(t *testing.T) {
-			runner := &receiptTamperRunner{inner: newSyntheticPerformanceRunner(), mode: mode}
+			runner := &receiptTamperRunner{inner: newTestSyntheticPerformanceRunner(), mode: mode}
 			report, err := MeasurePerformance(context.Background(), performanceTestManifest(), runner, nil)
 			if !errors.Is(err, ErrGate) || !report.CorrectnessPassed {
 				t.Fatal(report, err)
@@ -207,7 +217,7 @@ func TestPerformanceAuthorityExpectationCannotControlDenial(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	report, err := MeasurePerformance(context.Background(), m, newSyntheticPerformanceRunner(), nil)
+	report, err := MeasurePerformance(context.Background(), m, newTestSyntheticPerformanceRunner(), nil)
 	if !errors.Is(err, ErrGate) || report.CorrectnessPassed || len(report.Samples) != 0 {
 		t.Fatal(report, err)
 	}
@@ -237,8 +247,7 @@ func TestPerformanceAuthorityFixturesUseVerifiedBearerAndProtectedResources(t *t
 		t.Fatal(err)
 	}
 	t.Cleanup(verifier.Close)
-	runner := newSyntheticPerformanceRunner()
-	runner.authority = func(ctx context.Context, fixture PerformanceAuthorityFixture) (identity.Envelope, error) {
+	runner := newSyntheticPerformanceRunner(func(ctx context.Context, fixture PerformanceAuthorityFixture) (identity.Envelope, error) {
 		claims := jwt.MapClaims{"iss": cfg.Issuer, "aud": "chartworks:http", "sub": fixture.User, "tenant": fixture.Tenant, "user": fixture.User, "session": fixture.Session, "iat": now.Unix(), "nbf": now.Add(-time.Minute).Unix(), "exp": now.Add(5 * time.Minute).Unix(), "scopes": fixture.Scopes}
 		token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 		token.Header["kid"] = "performance-key"
@@ -247,7 +256,7 @@ func TestPerformanceAuthorityFixturesUseVerifiedBearerAndProtectedResources(t *t
 			return identity.Envelope{}, signErr
 		}
 		return verifier.Verify(ctx, signed, auth.HTTP)
-	}
+	})
 	report, err := MeasurePerformance(context.Background(), performanceTestManifest(), runner, nil)
 	if err != nil || !report.CorrectnessPassed {
 		t.Fatal(report, err)
@@ -288,13 +297,31 @@ func TestPerformanceWorkerPoolJoinsOnCancellation(t *testing.T) {
 	m := performanceTestManifest()
 	m.MaxDurationMS = 20
 	started := time.Now()
-	_, err := MeasurePerformance(context.Background(), m, &hangingPerformanceRunner{inner: newSyntheticPerformanceRunner()}, nil)
+	_, err := MeasurePerformance(context.Background(), m, &hangingPerformanceRunner{inner: newTestSyntheticPerformanceRunner()}, nil)
 	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > time.Second {
 		t.Fatal(err, time.Since(started))
 	}
 }
 
-func TestPerformanceCommandStoresBoundedReportAndRefusesFinal(t *testing.T) {
+func TestPerformanceManifestCannotMintAuthority(t *testing.T) {
+	m := performanceTestManifest()
+	step := m.Steps[0]
+	step.AuthorityOverride = &m.Authority
+	if _, err := newSyntheticPerformanceRunner(nil).authorize(context.Background(), step); !errors.Is(err, ErrMode) {
+		t.Fatal("raw manifest created or bypassed verified authority", err)
+	}
+	raw, _ := json.Marshal(m)
+	profilePath := filepath.Join(t.TempDir(), "profile.json")
+	if err := os.WriteFile(profilePath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, stderr bytes.Buffer
+	if code := Command(context.Background(), []string{"perf-smoke", "--profile", profilePath}, &out, &stderr); code != 2 || !strings.Contains(stderr.String(), "cannot create verified authority") || out.Len() != 0 {
+		t.Fatal(code, out.String(), stderr.String())
+	}
+}
+
+func TestPerformanceCommandInspectsAndStoresBoundedReport(t *testing.T) {
 	m := performanceTestManifest()
 	m.Environment.OS, m.Environment.Architecture, m.Environment.GoVersion, m.Environment.CPUs = "", "", "", 0
 	raw, _ := json.Marshal(m)
@@ -304,41 +331,28 @@ func TestPerformanceCommandStoresBoundedReportAndRefusesFinal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, stderr bytes.Buffer
-	if code := Command(context.Background(), []string{"perf-smoke", "--profile", profilePath, "--report", reportPath}, &out, &stderr); code != 0 {
+	if code := Command(context.Background(), []string{"perf-inspect", "--profile", profilePath}, &out, &stderr); code != 0 {
 		t.Fatal(code, stderr.String())
 	}
-	stored, err := os.ReadFile(reportPath)
-	if err != nil || !bytes.Contains(stored, []byte(`"correctness_passed": true`)) || !strings.Contains(out.String(), `"evidence_mode":"synthetic"`) {
-		t.Fatal(err, string(stored), out.String())
+	if !strings.Contains(out.String(), `"evidence_mode":"synthetic"`) {
+		t.Fatal(out.String())
 	}
-	m.Kind, m.EvidenceMode = PerformanceFinalStress, PerformanceIntegration
-	m.MaxDurationMS = int64(time.Hour / time.Millisecond)
-	m.Environment.SourceMode, m.Environment.ModelMode = "real_postgres", "recorded"
-	for i := range m.Steps {
-		switch m.Steps[i].Kind {
-		case "cold":
-			m.Steps[i].Iterations, m.Steps[i].Concurrency = 20, 1
-		case "warm":
-			m.Steps[i].Iterations, m.Steps[i].Concurrency = 1000, 16
-		case "repeat":
-			m.Steps[i].Iterations, m.Steps[i].Concurrency = 10000, 64
-		case "concurrent":
-			m.Steps[i].Iterations, m.Steps[i].Concurrency = 2000, 128
-		case "source_changed", "rule_changed", "context_changed", "topic_changed", "runtime_pack_changed":
-			m.Steps[i].Iterations, m.Steps[i].Concurrency = 500, 32
-			m.Steps[i].ExpectedExecutions = 1
-		default:
-			m.Steps[i].Iterations, m.Steps[i].Concurrency = 1000, 64
-			m.Steps[i].ExpectedBlocks = 1000
-		}
-	}
-	raw, _ = json.Marshal(m)
-	if err = os.WriteFile(profilePath, raw, 0600); err != nil {
+	runtimeEnvironment := RuntimePerformanceEnvironment(m.Environment.RunnerLabel)
+	m.Environment.OS = runtimeEnvironment.OS
+	m.Environment.Architecture = runtimeEnvironment.Architecture
+	m.Environment.CPUs = runtimeEnvironment.CPUs
+	m.Environment.GoVersion = runtimeEnvironment.GoVersion
+	report, err := MeasurePerformance(context.Background(), m, newTestSyntheticPerformanceRunner(), nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	out.Reset()
-	stderr.Reset()
-	if code := Command(context.Background(), []string{"perf-smoke", "--profile", profilePath}, &out, &stderr); code != 2 || !strings.Contains(stderr.String(), "release runtime") {
-		t.Fatal(code, stderr.String())
+	if err = writePerformanceReport(reportPath, report); err != nil {
+		t.Fatal(err)
+	}
+	// #nosec G304 -- reportPath is beneath this test's private temporary directory.
+	stored, err := os.ReadFile(reportPath)
+	info, statErr := os.Stat(reportPath)
+	if err != nil || statErr != nil || !bytes.Contains(stored, []byte(`"correctness_passed": true`)) || info.Mode().Perm() != 0600 {
+		t.Fatal(err, statErr, string(stored))
 	}
 }

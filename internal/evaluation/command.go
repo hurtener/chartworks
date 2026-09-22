@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 )
 
-const commandUsage = "usage: chartworks eval gate|inspect --suite PATH [--run-id ID] | perf-inspect|perf-smoke --profile PATH [--report PATH]\n"
+const commandUsage = "usage: chartworks eval gate|inspect --suite PATH [--run-id ID] | perf-inspect --profile PATH\n"
 
 // Command runs a reviewed fixture manifest. Live execution is available only
 // through Service with injected production dependencies and current authority.
@@ -21,7 +21,11 @@ func Command(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	verb := args[0]
-	if verb == "perf-inspect" || verb == "perf-smoke" {
+	if verb == "perf-smoke" {
+		_, _ = io.WriteString(stderr, "performance manifests cannot create verified authority; use the test-only smoke adapter or authority-bound release runtime\n")
+		return 2
+	}
+	if verb == "perf-inspect" {
 		return performanceCommand(ctx, verb, args[1:], stdout, stderr)
 	}
 	if verb != "gate" && verb != "inspect" {
@@ -90,7 +94,6 @@ func performanceCommand(ctx context.Context, verb string, args []string, stdout,
 	fs := flag.NewFlagSet("eval-performance", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	path := fs.String("profile", "", "performance profile")
-	reportPath := fs.String("report", "", "protected report output")
 	if fs.Parse(args) != nil || fs.NArg() != 0 || *path == "" {
 		_, _ = io.WriteString(stderr, commandUsage)
 		return 2
@@ -116,35 +119,14 @@ func performanceCommand(ctx context.Context, verb string, args []string, stdout,
 		_, _ = io.WriteString(stderr, "performance profile invalid\n")
 		return 2
 	}
-	if verb == "perf-inspect" {
-		summary := struct {
-			ID           string                  `json:"id"`
-			Kind         PerformanceProfileKind  `json:"kind"`
-			EvidenceMode PerformanceEvidenceMode `json:"evidence_mode"`
-			Environment  PerformanceEnvironment  `json:"environment"`
-			Steps        int                     `json:"steps"`
-		}{profile.ID, profile.Kind, profile.EvidenceMode, profile.Environment, len(profile.Steps)}
-		return encodeOutput(stdout, summary)
-	}
-	if profile.Kind != PerformanceSmoke || profile.EvidenceMode != PerformanceSynthetic {
-		_, _ = io.WriteString(stderr, "final, integration, and live performance profiles require the release runtime\n")
-		return 2
-	}
-	report, runErr := MeasurePerformance(ctx, profile, newSyntheticPerformanceRunner(), nil)
-	if *reportPath != "" {
-		if err = writePerformanceReport(*reportPath, report); err != nil {
-			_, _ = io.WriteString(stderr, "performance report unavailable\n")
-			return 1
-		}
-	}
-	if encodeOutput(stdout, report) != 0 {
-		return 1
-	}
-	if runErr != nil {
-		_, _ = io.WriteString(stderr, "performance correctness or reuse gate failed\n")
-		return 1
-	}
-	return 0
+	summary := struct {
+		ID           string                  `json:"id"`
+		Kind         PerformanceProfileKind  `json:"kind"`
+		EvidenceMode PerformanceEvidenceMode `json:"evidence_mode"`
+		Environment  PerformanceEnvironment  `json:"environment"`
+		Steps        int                     `json:"steps"`
+	}{profile.ID, profile.Kind, profile.EvidenceMode, profile.Environment, len(profile.Steps)}
+	return encodeOutput(stdout, summary)
 }
 
 func readBoundedJSON(path string) ([]byte, error) {

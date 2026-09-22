@@ -9,6 +9,9 @@ run before timing. Raw values distinguish service, source and model latency and
 retain calls, retries, tokens and known or unknown cost.
 
 Synthetic smoke, real-PostgreSQL plus recorded-model integration, and live
-provider evidence are different modes. Pull requests may run only the bounded
-synthetic smoke. Phase 25 runs the final stress profile after Phase 34 and all
-gap work merge. No historical timing or fixture value becomes a release claim.
+provider evidence are different modes. Pull requests may run only the bounded,
+test-only synthetic smoke. Manifest authority fields are expectations and never
+construct an envelope; production runners receive verifier-produced authority
+through an injected boundary. Phase 25 runs the final stress profile after
+Phase 34 and all gap work merge. No historical timing or fixture value becomes
+a release claim.

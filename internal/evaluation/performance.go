@@ -13,12 +13,13 @@ import (
 )
 
 // PerformanceProfileKind separates a bounded development measurement from the
-// final release stress profile. Final profiles are inspectable but the ordinary
-// smoke command will not execute them.
+// final release stress profile. Production commands only inspect these profiles.
 type PerformanceProfileKind string
 
 const (
-	PerformanceSmoke       PerformanceProfileKind = "smoke"
+	// PerformanceSmoke identifies the bounded development profile.
+	PerformanceSmoke PerformanceProfileKind = "smoke"
+	// PerformanceFinalStress identifies the Phase 25 release profile.
 	PerformanceFinalStress PerformanceProfileKind = "final_stress"
 )
 
@@ -27,9 +28,12 @@ const (
 type PerformanceEvidenceMode string
 
 const (
-	PerformanceSynthetic   PerformanceEvidenceMode = "synthetic"
+	// PerformanceSynthetic records harness-only evidence without source or model work.
+	PerformanceSynthetic PerformanceEvidenceMode = "synthetic"
+	// PerformanceIntegration records real-source and recorded-model evidence.
 	PerformanceIntegration PerformanceEvidenceMode = "integration"
-	PerformanceLive        PerformanceEvidenceMode = "live"
+	// PerformanceLive records real-source and live-model evidence.
+	PerformanceLive PerformanceEvidenceMode = "live"
 )
 
 // PerformanceBinding is the complete cache/reuse identity exercised by the
@@ -328,6 +332,7 @@ type PerformanceSample struct {
 	Usage          PerformanceUsage `json:"usage"`
 }
 
+// PerformanceSummary derives aggregates from retained raw samples for one step.
 type PerformanceSummary struct {
 	StepID       string `json:"step_id"`
 	Samples      int    `json:"samples"`

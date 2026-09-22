@@ -24,10 +24,13 @@ and altered signed-action cases must deny before source or model work. Concurren
 physical execution for one exact identity; broader or stale reuse is a failed
 gate, not a timing sample.
 
-`allowed` is only the reviewed expected outcome. The synthetic boundary creates
-a verified-envelope fixture and calls the same resolved-resource execution
-enforcer as the protected runtime; it never branches on `allowed`. Concrete
-adapters return independently collected source/model receipts. The harness
+`allowed` is only the reviewed expected outcome. Authority fields in a manifest
+are fixture expectations and can never construct an identity envelope. The
+test-only synthetic adapter receives authority from a `_test.go` resolver and
+calls the same resolved-resource execution enforcer as the protected runtime;
+it never branches on `allowed`. A separate test signs a bearer and obtains its
+envelope from the configured verifier before exercising that protected seam.
+Concrete adapters return independently collected source/model receipts. The harness
 derives execution when a receipt contains physical calls and derives reuse only
 when it does not. Every permitted measured request is exactly one of executed
 or reused. Reuse permits service overhead only and rejects source/model time,
@@ -41,12 +44,15 @@ architecture, CPU count, Go version, dataset digest and row count, source/model
 mode, and the exact Phase 24 suite/report hashes. Results from different modes
 are not interchangeable.
 
-`chartworks eval perf-smoke --profile PATH [--report PATH]` executes only a
-bounded synthetic `smoke` profile. The optional report path is written by
-atomic replacement with mode `0600`. `perf-inspect` validates and displays
-either profile without executing it. Integration/live adapters and a
-`final_stress` profile execute only from the Phase 25 release runtime after the
-Phase 34 migration head is selected; the local smoke command refuses them.
+`chartworks eval perf-inspect --profile PATH` validates and displays a profile
+without executing it. The production CLI rejects `perf-smoke`: an
+operator-controlled manifest cannot mint verified authority. The bounded smoke
+script invokes only the test adapter, where fixture envelope construction is
+confined to test code. An authority-bound release runtime must inject envelopes
+obtained from its configured verifier independently of the manifest. Report
+storage uses atomic replacement with mode `0600`. Integration/live adapters and
+a `final_stress` profile execute only from the Phase 25 release runtime after
+the Phase 34 migration head is selected.
 
 The checked-in smoke profile caps each step at 32 requests/concurrency and ten
 seconds overall. The final release profile uses these required scenarios:
