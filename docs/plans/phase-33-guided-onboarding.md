@@ -55,6 +55,30 @@ English/Spanish status, and HTTP/MCP/Go SDK consumers. The executable operation
 manifest is `docs/contracts/chartworks-onboarding-operations.json`; D-083 fixes the
 ownership and recovery contract.
 
+Every external stage is preceded by a durable lease/fence CAS. Topic publication
+also persists a non-refundable bounded gateway reservation and an uncertain receipt
+before inference. A retry with an outstanding publication lease performs immutable
+version reconciliation only; it never repeats embedding work blindly. Cancellation
+while a lease is live records intent and becomes final only after the same operation
+is reconciled. Answer and cancellation races are covered with real concurrent CAS
+tests.
+
+Question answers and cancellation reasons are closed semantic enums with optional
+identifier references; arbitrary prompt, SQL, credential or row-like strings are
+not accepted or returned by progress reads. Profiling is deterministic in this
+workflow, while topic publication receives the run's bounded gateway allowance.
+The applied-transformation branch verifies the proposal digest, original exact
+source/context/revision and published managed output, then profiles that output.
+An unrelated applied proposal cannot satisfy the gate.
+
+Drift input contains only run identity and CAS version. The server reads current
+source discovery, compares retained per-column schema digests, rejects unchanged or
+missing datasets, and returns only affected dependencies bound to the exact current
+source/context/revision. Query/block/report outputs are explicitly run-owned intent
+coordinates; callers must enter the ordinary authoring/review lifecycle to create
+definitions. They are not resolvable as block or report objects and confer no
+execution or certification authority.
+
 CW-10/D-082 is consumed at the reporting handoff: onboarding retains only a
 content-free private report proposal reference. Actual report authoring and viewer
 option reads use the existing exact block/revision/dimension-bound filter-option
@@ -64,6 +88,12 @@ service, so the coordinator cannot copy stale values or bypass sensitivity polic
 authority negatives, evidence, distinct review gates, transformation choice,
 drift immutability, budgets, locale and concurrent CAS. Shipped status remains
 pending independent review and the required real-boundary release evidence.
+`TestPhase33/AC01` composes `NewDomains` with the real PostgreSQL
+source, profile, draft, publication and recorded gateway boundaries through the
+public SDK and verifies the MCP binding set; the injected adapter remains
+only for deterministic stage failure and race injection.
+`TestPhase33/AC10` adds a real PostgreSQL pre-effect lease/cancellation race beyond
+the eight planned acceptance rows.
 
 ## Glossary, decisions and deviations
 

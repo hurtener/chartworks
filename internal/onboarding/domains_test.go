@@ -5,9 +5,11 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
@@ -21,10 +23,16 @@ type domainSources struct {
 	discovery sources.Discovery
 }
 
-func (f domainSources) Get(context.Context, identity.Envelope, string) (sources.Source, error) {
+func (f domainSources) Get(_ context.Context, _ identity.Envelope, id string) (sources.Source, error) {
+	if id == "pipeline.dataset" {
+		return sources.Source{ID: id, ContextID: "pipeline.dataset:v3", Revision: 3, Status: "registered"}, nil
+	}
 	return f.source, nil
 }
-func (f domainSources) Discover(context.Context, identity.Envelope, string) (sources.Discovery, error) {
+func (f domainSources) Discover(_ context.Context, _ identity.Envelope, id string) (sources.Discovery, error) {
+	if id == "pipeline.dataset" {
+		return sources.Discovery{SourceID: id, ContextID: "pipeline.dataset:v3", Revision: 3, Relations: f.discovery.Relations}, nil
+	}
 	return f.discovery, nil
 }
 
@@ -34,17 +42,24 @@ type domainProfiles struct {
 	found   bool
 }
 
-func (f domainProfiles) InspectUpload(context.Context, identity.Envelope, string) (engineering.UploadStatus, error) {
+func (f *domainProfiles) InspectUpload(context.Context, identity.Envelope, string) (engineering.UploadStatus, error) {
 	return f.upload, nil
 }
-func (f domainProfiles) InspectProfile(context.Context, identity.Envelope, string) (engineering.ProfileStatus, error) {
+func (f *domainProfiles) InspectProfile(context.Context, identity.Envelope, string) (engineering.ProfileStatus, error) {
 	if !f.found {
 		return engineering.ProfileStatus{}, store.ErrNotFound
 	}
 	return f.profile.Profile, nil
 }
-func (f domainProfiles) Build(context.Context, identity.Envelope, engineering.ProfileSpec, string, bool) (engineering.ProfileRun, error) {
-	return f.profile, nil
+func (f *domainProfiles) Build(_ context.Context, _ identity.Envelope, spec engineering.ProfileSpec, _ string, _ bool) (engineering.ProfileRun, error) {
+	out := f.profile
+	copy := *out.Profile.Profile
+	copy.Source, copy.Context, copy.Dataset = spec.Source, spec.Context, spec.Dataset
+	if spec.Source == "pipeline.dataset" {
+		copy.SourceRevision = 3
+	}
+	out.Profile.Profile = &copy
+	return out, nil
 }
 
 type domainDrafts struct{ version drafts.Version }
@@ -57,18 +72,31 @@ func (f domainDrafts) OnboardProfile(context.Context, identity.Envelope, drafts.
 }
 
 type domainTopics struct {
-	published topics.Published
-	failOnce  bool
+	published    topics.Published
+	active       topics.Published
+	failOnce     bool
+	exactMissing bool
+	publishes    int
+	expected     int64
 }
 
-func (f *domainTopics) Publish(context.Context, identity.Envelope, string, topics.PublishRequest) (topics.Published, error) {
+func (f *domainTopics) PublishBounded(_ context.Context, _ identity.Envelope, _ string, in topics.PublishRequest, _ gateway.Limits) (topics.Published, error) {
+	f.publishes++
+	f.expected = in.Expected
 	if f.failOnce {
 		f.failOnce = false
 		return topics.Published{}, store.ErrConflict
 	}
 	return f.published, nil
 }
-func (f *domainTopics) Read(context.Context, identity.Envelope, string, string) (topics.Published, error) {
+
+func (f *domainTopics) Read(_ context.Context, _ identity.Envelope, _ string, version string) (topics.Published, error) {
+	if version != "" && f.exactMissing {
+		return topics.Published{}, store.ErrNotFound
+	}
+	if version == "" && f.active.State.Revision > 0 {
+		return f.active, nil
+	}
 	return f.published, nil
 }
 
@@ -106,18 +134,24 @@ func domainFixture(t *testing.T, applied bool) (*Domains, Run, identity.Envelope
 		discovery: sources.Discovery{SourceID: "source", ContextID: "context", Revision: 2,
 			Relations: []readexec.Relation{{ID: "dataset", Columns: []readexec.Column{column}}}},
 	}
-	profileService := domainProfiles{
+	profileService := &domainProfiles{
 		upload:  engineering.UploadStatus{ID: "upload", State: "active", Source: &source},
 		profile: engineering.ProfileRun{Profile: engineering.ProfileStatus{Version: "profile", State: "complete", Profile: &profile}},
 	}
 	draftService := domainDrafts{version: drafts.Version{Metadata: drafts.Revision{Topic: "topic", Revision: 1, Version: "topic-v1", Digest: digest}, Pack: pack}}
-	autopilotService := domainAutopilot{proposal: engineering.AutopilotProposal{ID: "transform", Revision: 1, Digest: strings.Repeat("c", 64), State: state}}
+	material := engineering.ProposalMaterial{
+		Binding:  readexec.Binding{Source: "source", Context: "context", Revision: 2},
+		Request:  engineering.AutopilotGoal{Source: "source", Context: "context"},
+		Pipeline: engineering.PipelineDefinition{ID: "pipeline", Steps: []engineering.PipelineStep{{ID: "dataset"}}},
+	}
+	operation := "pipeline-operation"
+	autopilotService := domainAutopilot{proposal: engineering.AutopilotProposal{ID: "transform", Revision: 1, Digest: material.Digest(), State: state, Material: material, Operation: operation, Effects: []engineering.ProposalEffect{{Kind: "pipeline_run", Target: "pipeline", State: "published", Version: 1, Digest: readexec.Hash(material.Pipeline), Operation: operation}, {Kind: "managed_step", Target: "pipeline.dataset", State: "checked", Version: 3, Digest: "output-digest", Operation: operation}}}}
 	domains, err := NewDomains(sourceService, profileService, draftService, topicService, autopilotService)
 	if err != nil {
 		t.Fatal(err)
 	}
 	e := serviceEnvelope(t, "run")
-	run := Run{ID: "run", Locale: "en", Input: StartRequest{Mode: ModeConnect, Source: "source", Context: "context", Dataset: "dataset", Profile: "profile", Topic: "topic", TopicVersion: "topic-v1", Block: "block", Report: "report"}, Answers: []Answer{}}
+	run := Run{ID: "run", Locale: "en", Input: StartRequest{Mode: ModeConnect, Source: "source", Context: "context", Dataset: "dataset", Profile: "profile", Topic: "topic", TopicVersion: "topic-v1", Block: "block", Report: "report"}, Answers: []Answer{}, SourceRevision: 2, Deadline: time.Now().Add(time.Minute), Lease: &Lease{ReservedCalls: 1, ReservedTokens: 1000}}
 	return domains, run, e
 }
 
@@ -136,7 +170,7 @@ func TestDomainsComposeExistingServices(t *testing.T) {
 	if err != nil || len(profiled.Questions) != 1 || profiled.Questions[0].ID == "" {
 		t.Fatal(profiled, err)
 	}
-	run.Answers = []Answer{{ID: profiled.Questions[0].ID, Value: "missing"}}
+	run.Answers = []Answer{{ID: profiled.Questions[0].ID, Decision: "confirmed_external"}}
 	profiled, err = domains.Profile(ctx, envelope, run, "profile")
 	if err != nil || len(profiled.Questions) != 0 {
 		t.Fatal("profile answer did not resolve", profiled, err)
@@ -146,7 +180,7 @@ func TestDomainsComposeExistingServices(t *testing.T) {
 		t.Fatal(semantic, err)
 	}
 	for _, question := range semantic.Questions {
-		run.Answers = append(run.Answers, Answer{ID: question.ID, Value: "reviewed"})
+		run.Answers = append(run.Answers, Answer{ID: question.ID, Decision: "confirmed_external"})
 	}
 	semantic, err = domains.DraftSemantics(ctx, envelope, run, "semantic")
 	if err != nil || len(semantic.Questions) != 0 {
@@ -160,7 +194,16 @@ func TestDomainsComposeExistingServices(t *testing.T) {
 	if err != nil || len(proposals.References) != 3 || proposals.Evidence[0].Confidence != "unresolved" {
 		t.Fatal(proposals, err)
 	}
-	amendment, err := domains.ProposeDriftAmendment(ctx, envelope, Run{ID: "run", Input: run.Input, References: proposals.References}, DriftRequest{SourceRevision: 3, Observation: "catalog-v3"}, "drift")
+	oldEvidence := inspected.Evidence
+	if _, unchangedErr := domains.ProposeDriftAmendment(ctx, envelope, Run{ID: "run", Input: run.Input, References: append(proposals.References, Reference{Kind: "profile", ID: "profile"}), Evidence: oldEvidence, SourceRevision: 2}, DriftRequest{}, "drift"); !errors.Is(unchangedErr, store.ErrConflict) {
+		t.Fatal("unchanged source produced amendment", unchangedErr)
+	}
+	sourceAdapter := domains.sources.(domainSources)
+	sourceAdapter.source.Revision = 3
+	sourceAdapter.discovery.Revision = 3
+	sourceAdapter.discovery.Relations[0].Columns[0].Nullable = false
+	domains.sources = sourceAdapter
+	amendment, err := domains.ProposeDriftAmendment(ctx, envelope, Run{ID: "run", Input: run.Input, References: append(proposals.References, Reference{Kind: "profile", ID: "profile"}, Reference{Kind: "topic", ID: "topic"}), Evidence: oldEvidence, SourceRevision: 2}, DriftRequest{}, "drift")
 	if err != nil || !amendment.ExistingIntact || !amendment.Proposal.Private {
 		t.Fatal(amendment, err)
 	}
@@ -170,14 +213,21 @@ func TestDomainsTransformationAndNegativeBoundaries(t *testing.T) {
 	domains, run, envelope := domainFixture(t, false)
 	run.Input.Transformation, run.Input.TransformationProposal = true, "transform"
 	result, err := domains.Profile(t.Context(), envelope, run, "profile")
-	if err != nil || len(result.Questions) < 2 || result.Questions[len(result.Questions)-1].ID != "approve_transformation" {
+	if err != nil || len(result.Questions) != 1 || result.Questions[0].ID != "approve_transformation" {
 		t.Fatal(result, err)
 	}
 	domains, run, envelope = domainFixture(t, true)
 	run.Input.Transformation, run.Input.TransformationProposal = true, "transform"
 	result, err = domains.Profile(t.Context(), envelope, run, "profile")
-	if err != nil || len(result.References) != 2 || result.References[1].Kind != "engineering_proposal" {
+	if err != nil || len(result.References) != 2 || result.References[0].Revision != 3 || result.References[1].Kind != "engineering_proposal" || !strings.Contains(strings.Join(result.Evidence[len(result.Evidence)-1].Basis, " "), "output_source:pipeline.dataset") {
 		t.Fatal(result, err)
+	}
+	unrelated := domains.autopilot.(domainAutopilot)
+	unrelated.proposal.Material.Binding.Source = "other-source"
+	unrelated.proposal.Digest = unrelated.proposal.Material.Digest()
+	domains.autopilot = unrelated
+	if _, err = domains.Profile(t.Context(), envelope, run, "profile"); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("unrelated applied proposal satisfied transformation gate", err)
 	}
 	domains.sources = domainSources{source: sources.Source{ID: "source", ContextID: "other", Revision: 1, Status: "registered"}}
 	if _, err = domains.Connect(t.Context(), envelope, run.Input, "connect"); !errors.Is(err, store.ErrConflict) {
@@ -203,5 +253,24 @@ func TestDomainsTransformationAndNegativeBoundaries(t *testing.T) {
 	domains.topics.(*domainTopics).failOnce = false
 	if _, err = domains.PublishReviewed(t.Context(), envelope, run, ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}, "publish"); err != nil {
 		t.Fatal("direct reviewed publication", err)
+	}
+}
+
+func TestDomainsPublicationUsesCurrentHeadAndExactReplay(t *testing.T) {
+	domains, run, envelope := domainFixture(t, true)
+	service := domains.topics.(*domainTopics)
+	service.exactMissing = true
+	service.active = topics.Published{State: topics.State{Topic: "topic", Revision: 7, Version: "topic-v0", Active: true}, Digest: strings.Repeat("b", 64)}
+	service.published.State.Revision = 8
+	service.failOnce = false
+	step, err := domains.PublishReviewed(t.Context(), envelope, run, ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}, "publish")
+	if err != nil || service.expected != 7 || service.publishes != 1 || step.References[0].Revision != 8 {
+		t.Fatal("publication did not bind current head", service.expected, service.publishes, step, err)
+	}
+	service.exactMissing = false
+	service.publishes = 0
+	step, err = domains.PublishReviewed(t.Context(), envelope, run, ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}, "publish")
+	if err != nil || service.publishes != 0 || step.References[0].Digest != strings.Repeat("a", 64) {
+		t.Fatal("exact immutable replay repeated publication", service.publishes, step, err)
 	}
 }

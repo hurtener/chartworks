@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,16 +12,21 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/onboarding"
 	"github.com/hurtener/chartworks/internal/onboardingapi"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 	"github.com/hurtener/chartworks/test/support"
 )
 
 func TestPhase33(t *testing.T) {
-	t.Run("AC01", testPhase33APIJourney)
+	t.Run("AC01", testPhase33RealDomainBoundary)
 	t.Run("AC02", testPhase33RecoveryAndCancellation)
 	t.Run("AC03", testPhase33EvidenceAndUnresolved)
 	t.Run("AC04", testPhase33Authority)
@@ -28,19 +34,49 @@ func TestPhase33(t *testing.T) {
 	t.Run("AC06", testPhase33TransformationChoice)
 	t.Run("AC07", testPhase33DriftAmendment)
 	t.Run("AC08", testPhase33BudgetsLocaleAndConcurrency)
+	t.Run("AC10", testPhase33PostgresLeaseRace)
 }
 
-type phase33Adapter struct {
-	mu    sync.Mutex
-	calls map[onboarding.Stage]int
-	fail  map[onboarding.Stage]bool
-	usage onboarding.Usage
+type phase33NoAutopilot struct{}
+
+func (phase33NoAutopilot) Get(context.Context, identity.Envelope, string) (engineering.AutopilotProposal, error) {
+	return engineering.AutopilotProposal{}, store.ErrNotFound
 }
 
-func newPhase33Adapter() *phase33Adapter {
-	return &phase33Adapter{calls: map[onboarding.Stage]int{}, fail: map[onboarding.Stage]bool{}}
+type phase33RaceAdapter struct {
+	*phase33FailureAdapter
+	block   onboarding.Stage
+	entered chan string
+	release chan struct{}
 }
-func (a *phase33Adapter) step(stage onboarding.Stage, r onboarding.Run) (onboarding.StepResult, error) {
+
+func (a *phase33RaceAdapter) Connect(ctx context.Context, e identity.Envelope, in onboarding.StartRequest, key string) (onboarding.StepResult, error) {
+	if a.block == onboarding.StageConnect {
+		a.entered <- key
+		<-a.release
+	}
+	return a.phase33FailureAdapter.Connect(ctx, e, in, key)
+}
+
+func (a *phase33RaceAdapter) PublishReviewed(ctx context.Context, e identity.Envelope, r onboarding.Run, review onboarding.ReviewReference, key string) (onboarding.StepResult, error) {
+	if a.block == onboarding.StageReview {
+		a.entered <- key
+		<-a.release
+	}
+	return a.phase33FailureAdapter.PublishReviewed(ctx, e, r, review, key)
+}
+
+type phase33FailureAdapter struct {
+	mu     sync.Mutex
+	calls  map[onboarding.Stage]int
+	fail   map[onboarding.Stage]bool
+	tokens int
+}
+
+func newPhase33FailureAdapter() *phase33FailureAdapter {
+	return &phase33FailureAdapter{calls: map[onboarding.Stage]int{}, fail: map[onboarding.Stage]bool{}}
+}
+func (a *phase33FailureAdapter) step(stage onboarding.Stage, r onboarding.Run) (onboarding.StepResult, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.calls[stage]++
@@ -48,7 +84,11 @@ func (a *phase33Adapter) step(stage onboarding.Stage, r onboarding.Run) (onboard
 		a.fail[stage] = false
 		return onboarding.StepResult{}, store.ErrUnavailable
 	}
-	result := onboarding.StepResult{Usage: a.usage}
+	result := onboarding.StepResult{}
+	if a.tokens > 0 {
+		input, output := a.tokens/2, a.tokens-a.tokens/2
+		result.Receipt = gateway.Receipt{Calls: []gateway.Usage{{Attempts: 1, InputTokens: &input, OutputTokens: &output}}}
+	}
 	switch stage {
 	case onboarding.StageConnect:
 		result.References = []onboarding.Reference{{Kind: "source", ID: r.Input.Source, Revision: 1}}
@@ -68,38 +108,38 @@ func (a *phase33Adapter) step(stage onboarding.Stage, r onboarding.Run) (onboard
 			result.Questions = []onboarding.Question{{ID: "grain", Prompt: "Confirm grain", Evidence: []string{"profile:" + r.Input.Profile}, Required: true}, {ID: "kpis", Prompt: "Confirm units and KPIs", Evidence: []string{"profile:" + r.Input.Profile}, Required: true}}
 		}
 	case onboarding.StageProposals:
-		result.References = []onboarding.Reference{{Kind: "query_proposal", ID: r.ID + "-query", Private: true}, {Kind: "block_proposal", ID: r.Input.Block, Private: true}, {Kind: "report_proposal", ID: r.Input.Report, Private: true}}
+		result.References = []onboarding.Reference{{Kind: "onboarding_query_intent", ID: r.ID + "-query", Private: true}, {Kind: "onboarding_block_intent", ID: r.Input.Block, Private: true}, {Kind: "onboarding_report_intent", ID: r.Input.Report, Private: true}}
 	}
 	return result, nil
 }
-func (a *phase33Adapter) Connect(_ context.Context, _ identity.Envelope, in onboarding.StartRequest, _ string) (onboarding.StepResult, error) {
+func (a *phase33FailureAdapter) Connect(_ context.Context, _ identity.Envelope, in onboarding.StartRequest, _ string) (onboarding.StepResult, error) {
 	return a.step(onboarding.StageConnect, onboarding.Run{Input: in})
 }
-func (a *phase33Adapter) Inspect(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
+func (a *phase33FailureAdapter) Inspect(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
 	return a.step(onboarding.StageInspect, r)
 }
-func (a *phase33Adapter) Profile(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
+func (a *phase33FailureAdapter) Profile(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
 	return a.step(onboarding.StageProfile, r)
 }
-func (a *phase33Adapter) DraftSemantics(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
+func (a *phase33FailureAdapter) DraftSemantics(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
 	return a.step(onboarding.StageSemantic, r)
 }
-func (a *phase33Adapter) PublishReviewed(_ context.Context, _ identity.Envelope, r onboarding.Run, review onboarding.ReviewReference, _ string) (onboarding.StepResult, error) {
+func (a *phase33FailureAdapter) PublishReviewed(_ context.Context, _ identity.Envelope, r onboarding.Run, review onboarding.ReviewReference, _ string) (onboarding.StepResult, error) {
 	a.mu.Lock()
 	a.calls[onboarding.StageReview]++
 	a.mu.Unlock()
 	return onboarding.StepResult{References: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1, Digest: review.Digest}}, Evidence: []onboarding.Evidence{{Entity: r.Input.Topic, Kind: "publication", Basis: []string{"independent_review:" + review.ID}, Confidence: "observed"}}}, nil
 }
-func (a *phase33Adapter) ProposeQueriesBlocksReports(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
+func (a *phase33FailureAdapter) ProposeQueriesBlocksReports(_ context.Context, _ identity.Envelope, r onboarding.Run, _ string) (onboarding.StepResult, error) {
 	return a.step(onboarding.StageProposals, r)
 }
-func (a *phase33Adapter) ProposeDriftAmendment(_ context.Context, _ identity.Envelope, r onboarding.Run, in onboarding.DriftRequest, _ string) (onboarding.Amendment, error) {
-	return onboarding.Amendment{Run: r.ID, SourceRevision: in.SourceRevision, Affected: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1}}, Proposal: onboarding.Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+func (a *phase33FailureAdapter) ProposeDriftAmendment(_ context.Context, _ identity.Envelope, r onboarding.Run, in onboarding.DriftRequest, _ string) (onboarding.Amendment, error) {
+	return onboarding.Amendment{Run: r.ID, Observation: "schema_changed", Source: r.Input.Source, Context: r.Input.Context, SourceRevision: r.SourceRevision + 1, Changes: []string{"amount"}, Affected: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1}}, Proposal: onboarding.Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
 }
 
 type phase33Fixture struct {
 	service *onboarding.Service
-	adapter *phase33Adapter
+	adapter *phase33FailureAdapter
 	e       identity.Envelope
 	client  *sdk.Client
 	other   identity.Envelope
@@ -116,7 +156,7 @@ func newPhase33Fixture(t *testing.T, id, locale string) *phase33Fixture {
 	scopes := phase33Scopes(id)
 	e := tokens.envelope(t, "tenant-a", "author", scopes...)
 	other := tokens.envelope(t, "tenant-a", "other", scopes...)
-	adapter := newPhase33Adapter()
+	adapter := newPhase33FailureAdapter()
 	service, err := onboarding.New(db, adapter, onboarding.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +178,7 @@ func phase33Start(id, locale string) onboarding.StartRequest {
 func phase33AnswerValue(answers []onboarding.Answer, id string) string {
 	for _, answer := range answers {
 		if answer.ID == id {
-			return answer.Value
+			return answer.Decision
 		}
 	}
 	return ""
@@ -147,7 +187,7 @@ func phase33AnswerValue(answers []onboarding.Answer, id string) string {
 func phase33Answers(questions []onboarding.Question, value string) []onboarding.Answer {
 	answers := make([]onboarding.Answer, 0, len(questions))
 	for _, question := range questions {
-		answers = append(answers, onboarding.Answer{ID: question.ID, Value: value})
+		answers = append(answers, onboarding.Answer{ID: question.ID, Decision: value})
 	}
 	return answers
 }
@@ -158,7 +198,7 @@ func advancePhase33(t *testing.T, f *phase33Fixture, r onboarding.Run) onboardin
 	var err error
 	for r.Status != onboarding.StatusComplete {
 		if r.Status == onboarding.StatusAttention {
-			answers := phase33Answers(r.Questions, "reviewed explicit answer")
+			answers := phase33Answers(r.Questions, "confirmed_external")
 			if r.Stage == onboarding.StageReview {
 				r, err = f.service.Answer(ctx, f.e, r.ID, onboarding.AnswerRequest{ExpectedVersion: r.Version, Review: &onboarding.ReviewReference{ID: "review-a", Revision: 1, Digest: strings.Repeat("a", 64)}})
 			} else {
@@ -174,7 +214,7 @@ func advancePhase33(t *testing.T, f *phase33Fixture, r onboarding.Run) onboardin
 	return r
 }
 
-func testPhase33APIJourney(t *testing.T) {
+func testPhase33InjectedSurfaceParity(t *testing.T) {
 	f := newPhase33Fixture(t, "journey", "en")
 	r, err := f.client.StartOnboarding(context.Background(), phase33Start("journey", "en"))
 	if err != nil {
@@ -182,7 +222,7 @@ func testPhase33APIJourney(t *testing.T) {
 	}
 	for r.Status != onboarding.StatusComplete {
 		if r.Status == onboarding.StatusAttention {
-			answers := phase33Answers(r.Questions, "reviewed")
+			answers := phase33Answers(r.Questions, "confirmed_external")
 			request := onboarding.AnswerRequest{ExpectedVersion: r.Version, Answers: answers}
 			if r.Stage == onboarding.StageReview {
 				request.Review = &onboarding.ReviewReference{ID: "review-a", Revision: 1, Digest: strings.Repeat("a", 64)}
@@ -223,7 +263,7 @@ func testPhase33RecoveryAndCancellation(t *testing.T) {
 	if err != nil || resumed.Stage != onboarding.StageProfile {
 		t.Fatal("failed stage not resumable", resumed, err)
 	}
-	cancelled, err := f.service.Cancel(context.Background(), f.e, resumed.ID, onboarding.CancelRequest{ExpectedVersion: resumed.Version, Reason: "stop requested"})
+	cancelled, err := f.service.Cancel(context.Background(), f.e, resumed.ID, onboarding.CancelRequest{ExpectedVersion: resumed.Version, Reason: "user_requested"})
 	if err != nil || cancelled.Status != onboarding.StatusCancelled {
 		t.Fatal(cancelled, err)
 	}
@@ -270,7 +310,7 @@ func testPhase33HumanGates(t *testing.T) {
 	r, _ := f.service.Start(context.Background(), f.e, phase33Start("gates", "en"))
 	for r.Stage != onboarding.StageReview {
 		if r.Status == onboarding.StatusAttention {
-			answers := phase33Answers(r.Questions, "reviewed")
+			answers := phase33Answers(r.Questions, "confirmed_external")
 			r, _ = f.service.Answer(context.Background(), f.e, r.ID, onboarding.AnswerRequest{ExpectedVersion: r.Version, Answers: answers})
 		} else {
 			r, _ = f.service.Resume(context.Background(), f.e, r.ID, onboarding.ResumeRequest{ExpectedVersion: r.Version})
@@ -320,7 +360,7 @@ func testPhase33DriftAmendment(t *testing.T) {
 	f := newPhase33Fixture(t, "drift", "en")
 	r, _ := f.service.Start(context.Background(), f.e, phase33Start("drift", "en"))
 	r = advancePhase33(t, f, r)
-	a, err := f.service.Drift(context.Background(), f.e, r.ID, onboarding.DriftRequest{ExpectedVersion: r.Version, SourceRevision: 2, Observation: "schema-observation-2"})
+	a, err := f.service.Drift(context.Background(), f.e, r.ID, onboarding.DriftRequest{ExpectedVersion: r.Version})
 	if err != nil || !a.ExistingIntact || a.RequiredAction != "review_amendment" || !a.Proposal.Private || len(a.Affected) == 0 {
 		t.Fatal(a, err)
 	}
@@ -335,11 +375,12 @@ func testPhase33BudgetsLocaleAndConcurrency(t *testing.T) {
 	if !strings.Contains(r.Message, "fuente") {
 		t.Fatal("Spanish status missing", r.Message)
 	}
-	f.adapter.usage = onboarding.Usage{Tokens: 25000}
+	f.adapter.tokens = 25000
 	if _, err := f.service.Resume(context.Background(), f.e, r.ID, onboarding.ResumeRequest{ExpectedVersion: r.Version}); !errors.Is(err, onboarding.ErrBudget) {
 		t.Fatal("token budget bypass", err)
 	}
-	f.adapter.usage = onboarding.Usage{}
+	f.adapter.tokens = 0
+	r, _ = f.service.Get(context.Background(), f.e, r.ID)
 	var wg sync.WaitGroup
 	wg.Add(2)
 	errs := make(chan error, 2)
@@ -362,5 +403,182 @@ func testPhase33BudgetsLocaleAndConcurrency(t *testing.T) {
 	}
 	if success != 1 || conflict != 1 {
 		t.Fatal("concurrent CAS", success, conflict)
+	}
+}
+
+// AC01 exercises the production adapter over real PostgreSQL source discovery,
+// deterministic profiling, topic draft/review/publication and the public SDK.
+// Failure injection remains in the focused orchestration tests above; this test
+// prevents those doubles from being mistaken for domain integration evidence.
+func testPhase33RealDomainBoundary(t *testing.T) {
+	f, draftsService, topicService, model, pack := publicationFixture(t)
+	id := "real-domain"
+	scopes := []string{
+		"onboarding.read", "onboarding.write", "onboarding.cancel",
+		"sources.read", "sources.rotate", "engineering.profile", "engineering.read",
+		"topics.write", "topics.read", "topics.review", "topics.publish",
+		"cw.tenant.write:" + f.e.Tenant(),
+		"cw.onboarding.read:" + id, "cw.onboarding.write:" + id, "cw.onboarding.cancel:" + id,
+		"cw.onboarding.read:real-upload", "cw.onboarding.write:real-upload", "cw.onboarding.cancel:real-upload",
+		"cw.source.read:*", "cw.source.write:*", "cw.execution_context.use:*", "cw.dataset.query:*",
+		"cw.topic.write:*", "cw.topic.read:*", "cw.topic.publish:*",
+	}
+	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), scopes...)
+	domains, err := onboarding.NewDomains(f.s, f.service, draftsService, topicService, phase33NoAutopilot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := onboarding.New(f.db, domains, onboarding.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := onboardingapi.Handler(f.token.verifier, service, http.NotFoundHandler())
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	claims := f.token.claims(e.Tenant(), e.User(), scopes)
+	claims["session"] = e.Session()
+	bearer := f.token.sign(t, claims, nil)
+	client, err := sdk.New(server.URL, server.Client(), func(context.Context) (string, error) { return bearer, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploadRaw := []byte("id,amount\n1,10.5\n2,20.0\n")
+	upload := f.load(t, engineeringSpec("guided-upload", "csv", uploadRaw, []engineering.UploadColumn{{Name: "id", Type: "integer"}, {Name: "amount", Type: "number"}}), uploadRaw)
+	if upload.Upload.Source == nil {
+		t.Fatal("real upload omitted source")
+	}
+	uploadDiscovery, err := f.s.Discover(t.Context(), e, upload.Upload.Source.ID)
+	if err != nil || len(uploadDiscovery.Relations) != 1 {
+		t.Fatal("uploaded source discovery", uploadDiscovery, err)
+	}
+	uploadStart := onboarding.StartRequest{ID: "real-upload", Key: "real-upload-key", Mode: onboarding.ModeUpload, Locale: "en", Source: upload.Upload.Source.ID, Context: upload.Upload.Source.ContextID, Dataset: uploadDiscovery.Relations[0].ID, Profile: "guided-upload-profile", Topic: "guided-upload-topic", TopicVersion: "guided-upload-v1", Block: "guided-upload-block", Report: "guided-upload-report", Upload: upload.Upload.ID}
+	uploadRun, err := client.StartOnboarding(t.Context(), uploadStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploadRun, err = client.ResumeOnboarding(t.Context(), uploadRun.ID, uploadRun.Version)
+	if err != nil || uploadRun.Stage != onboarding.StageInspect || uploadRun.References[0].ID != upload.Upload.Source.ID {
+		t.Fatal("real upload onboarding handoff", uploadRun, err)
+	}
+	in := onboarding.StartRequest{ID: id, Key: id + "-key", Mode: onboarding.ModeConnect, Locale: "en", Source: pack.Datasets[0].Source.Source, Context: pack.Datasets[0].Source.Context, Dataset: pack.Datasets[0].ID, Profile: pack.Datasets[0].Source.ProfileVersion, Topic: "guided-commerce", TopicVersion: "guided-v1", Block: "guided-block", Report: "guided-report"}
+	run, err := client.StartOnboarding(t.Context(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run.Status != onboarding.StatusComplete {
+		switch {
+		case run.Stage == onboarding.StageReview:
+			draft, readErr := draftsService.Read(t.Context(), e, in.Topic, 0)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			review, reviewErr := topicService.Review(t.Context(), e, in.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Independent synthetic review"})
+			if reviewErr != nil {
+				t.Fatal(reviewErr)
+			}
+			run, err = client.AnswerOnboarding(t.Context(), id, onboarding.AnswerRequest{ExpectedVersion: run.Version, Review: &onboarding.ReviewReference{ID: review.ID, Revision: review.DraftRevision, Digest: review.Digest}})
+		case run.Status == onboarding.StatusAttention:
+			run, err = client.AnswerOnboarding(t.Context(), id, onboarding.AnswerRequest{ExpectedVersion: run.Version, Answers: phase33Answers(run.Questions, "confirmed_external")})
+		default:
+			run, err = client.ResumeOnboarding(t.Context(), id, run.Version)
+		}
+		if err != nil {
+			t.Fatal("real domain journey", run.Stage, err)
+		}
+	}
+	if model.requests.Load() == 0 || run.Usage.ModelCalls != 1 || run.Usage.Tokens != run.Limits.MaxTokens {
+		t.Fatal("gateway reservation or recorded model boundary missing", model.requests.Load(), run.Usage)
+	}
+	for _, kind := range []string{"topic", "onboarding_query_intent", "onboarding_block_intent", "onboarding_report_intent"} {
+		found := false
+		for _, ref := range run.References {
+			found = found || ref.Kind == kind
+		}
+		if !found {
+			t.Fatal("missing durable handoff", kind, run.References)
+		}
+	}
+	rotated, err := f.s.Rotate(t.Context(), e, in.Source, pack.Datasets[0].Source.SourceRevision)
+	if err != nil || rotated.Revision <= pack.Datasets[0].Source.SourceRevision || rotated.ContextID == in.Context {
+		t.Fatal("real source rotation", rotated, err)
+	}
+	amendment, err := service.Drift(t.Context(), e, id, onboarding.DriftRequest{ExpectedVersion: run.Version})
+	if err != nil || amendment.Observation != "binding_changed" || amendment.Source != in.Source || amendment.Context != rotated.ContextID || amendment.SourceRevision != rotated.Revision || len(amendment.Changes) != 1 || amendment.Changes[0] != "execution_context" {
+		t.Fatal("server-resolved drift amendment", amendment, err)
+	}
+	bindings, err := onboardingapi.MCPBindings(service)
+	if err != nil || len(bindings) != 6 {
+		t.Fatal("MCP consumer bindings", len(bindings), err)
+	}
+	mcpRegistry, err := mcpserver.NewRegistry(bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpService, err := mcpserver.New(f.token.verifier, mcpRegistry, config.Defaults().MCP, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpClaims := f.token.claims(e.Tenant(), e.User(), append(scopes, "mcp.use"))
+	mcpClaims["aud"] = f.token.cfg.MCPAudience()
+	mcpClaims["session"] = e.Session()
+	mcpBearer := f.token.sign(t, mcpClaims, nil)
+	mcpClient, err := mcpService.Client(func(context.Context) (string, error) { return mcpBearer, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpBody, _ := json.Marshal(onboardingapi.IDRequest{ID: id})
+	mcpResult, err := mcpClient.CallTool(t.Context(), "get_onboarding", mcpBody)
+	if err != nil || mcpResult == nil || mcpResult.IsError {
+		t.Fatal("real MCP progress read", mcpResult, err)
+	}
+}
+
+func testPhase33PostgresLeaseRace(t *testing.T) {
+	db := support.Open(t, support.Database(t))
+	tokens := newTokenFixture(t)
+	id := "postgres-race"
+	scopes := phase33Scopes(id)
+	e := tokens.envelope(t, "tenant-a", "author", scopes...)
+	adapter := &phase33RaceAdapter{phase33FailureAdapter: newPhase33FailureAdapter(), block: onboarding.StageConnect, entered: make(chan string, 2), release: make(chan struct{}, 2)}
+	service, err := onboarding.New(db, adapter, onboarding.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.Start(t.Context(), e, phase33Start(id, "en"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, resumeErr := service.Resume(t.Context(), e, id, onboarding.ResumeRequest{ExpectedVersion: run.Version})
+		done <- resumeErr
+	}()
+	firstKey := <-adapter.entered
+	leased, err := service.Get(t.Context(), e, id)
+	if err != nil || leased.Lease == nil {
+		t.Fatal("PostgreSQL did not retain pre-effect lease", leased, err)
+	}
+	cancelling, err := service.Cancel(t.Context(), e, id, onboarding.CancelRequest{ExpectedVersion: leased.Version, Reason: "user_requested"})
+	if err != nil || !cancelling.CancelRequested {
+		t.Fatal(cancelling, err)
+	}
+	adapter.release <- struct{}{}
+	if err = <-done; !errors.Is(err, store.ErrConflict) {
+		t.Fatal("PostgreSQL fence allowed stale effect commit", err)
+	}
+	go func() {
+		_, resumeErr := service.Resume(t.Context(), e, id, onboarding.ResumeRequest{ExpectedVersion: cancelling.Version})
+		done <- resumeErr
+	}()
+	if secondKey := <-adapter.entered; secondKey != firstKey {
+		t.Fatal("retry changed operation key", firstKey, secondKey)
+	}
+	adapter.release <- struct{}{}
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+	final, _ := service.Get(t.Context(), e, id)
+	if final.Status != onboarding.StatusCancelled || final.Lease != nil {
+		t.Fatal("PostgreSQL reconciliation did not finalize cancellation", final)
 	}
 }

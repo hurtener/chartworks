@@ -236,7 +236,7 @@ func TestHandlerDispatchesEveryOnboardingOperation(t *testing.T) {
 		{http.MethodPost, "/v1/onboarding/resume", onboarding.ResumeRequest{ID: "run", ExpectedVersion: 1}},
 		{http.MethodPost, "/v1/onboarding/answers", onboarding.AnswerRequest{ID: "run", ExpectedVersion: 1, Answers: []onboarding.Answer{}}},
 		{http.MethodPost, "/v1/onboarding/cancel", onboarding.CancelRequest{ID: "run", ExpectedVersion: 1, Reason: "stop"}},
-		{http.MethodPost, "/v1/onboarding/drift", onboarding.DriftRequest{ID: "run", ExpectedVersion: 1, SourceRevision: 2, Observation: "catalog-v2"}},
+		{http.MethodPost, "/v1/onboarding/drift", onboarding.DriftRequest{ID: "run", ExpectedVersion: 1}},
 	}
 	for _, test := range cases {
 		var reader io.Reader
@@ -289,7 +289,7 @@ func TestHandlerDispatchesEveryOnboardingOperation(t *testing.T) {
 		{"resume_onboarding", onboarding.ResumeRequest{ID: "run", ExpectedVersion: 1}},
 		{"answer_onboarding", onboarding.AnswerRequest{ID: "run", ExpectedVersion: 1}},
 		{"cancel_onboarding", onboarding.CancelRequest{ID: "run", ExpectedVersion: 1, Reason: "stop"}},
-		{"propose_onboarding_drift", onboarding.DriftRequest{ID: "run", ExpectedVersion: 1, SourceRevision: 2, Observation: "catalog-v2"}},
+		{"propose_onboarding_drift", onboarding.DriftRequest{ID: "run", ExpectedVersion: 1}},
 	} {
 		raw, _ := json.Marshal(call.body)
 		result, callErr := client.CallTool(t.Context(), call.name, raw)

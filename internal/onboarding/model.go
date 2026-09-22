@@ -5,6 +5,8 @@ package onboarding
 import (
 	"errors"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/gateway"
 )
 
 var (
@@ -89,8 +91,9 @@ type AnswerRequest struct {
 }
 
 type Answer struct {
-	ID    string `json:"id"`
-	Value string `json:"value"`
+	ID        string `json:"id"`
+	Decision  string `json:"decision" jsonschema:"enum=confirmed_external,enum=unresolved,enum=not_applicable"`
+	Reference string `json:"reference,omitempty"`
 }
 
 type ResumeRequest struct {
@@ -101,14 +104,12 @@ type ResumeRequest struct {
 type CancelRequest struct {
 	ID              string `json:"id"`
 	ExpectedVersion int64  `json:"expected_version"`
-	Reason          string `json:"reason"`
+	Reason          string `json:"reason" jsonschema:"enum=user_requested,enum=superseded,enum=incorrect_source,enum=budget"`
 }
 
 type DriftRequest struct {
 	ID              string `json:"id"`
 	ExpectedVersion int64  `json:"expected_version"`
-	SourceRevision  int64  `json:"source_revision"`
-	Observation     string `json:"observation"`
 }
 
 type ReviewReference struct {
@@ -153,6 +154,29 @@ type Usage struct {
 	Entities   int `json:"entities"`
 }
 
+// Lease is the durable pre-effect fence. A cancellation request cannot erase it;
+// the same operation must reconcile and attach its receipt before cancellation
+// becomes final.
+type Lease struct {
+	Stage          Stage  `json:"stage"`
+	Operation      string `json:"operation"`
+	Fence          string `json:"fence"`
+	InputDigest    string `json:"input_digest,omitempty"`
+	ReservedCalls  int    `json:"reserved_calls"`
+	ReservedTokens int    `json:"reserved_tokens"`
+	Charged        bool   `json:"charged"`
+}
+
+// DelegatedReceipt is a bounded content-free accounting projection. Provider
+// prompts, model names, SQL, rows and native errors are never retained here.
+type DelegatedReceipt struct {
+	Operation     string `json:"operation"`
+	Calls         int    `json:"calls"`
+	Tokens        int    `json:"tokens"`
+	UnknownTokens bool   `json:"unknown_tokens"`
+	Reconciled    bool   `json:"reconciled"`
+}
+
 type Progress struct {
 	Completed int `json:"completed"`
 	Total     int `json:"total"`
@@ -161,42 +185,48 @@ type Progress struct {
 
 // Run is actor/session private. It contains references and bounded evidence only.
 type Run struct {
-	ID                 string       `json:"id"`
-	Key                string       `json:"key"`
-	Version            int64        `json:"version"`
-	Stage              Stage        `json:"stage"`
-	Status             Status       `json:"status"`
-	Locale             string       `json:"locale"`
-	RequiredAction     string       `json:"required_action,omitempty"`
-	CancellationReason string       `json:"cancellation_reason,omitempty"`
-	Message            string       `json:"message"`
-	Input              StartRequest `json:"input"`
-	References         []Reference  `json:"references"`
-	Evidence           []Evidence   `json:"evidence"`
-	Questions          []Question   `json:"questions"`
-	Answers            []Answer     `json:"answers"`
-	Usage              Usage        `json:"usage"`
-	Limits             Limits       `json:"limits"`
-	Progress           Progress     `json:"progress"`
-	Amendments         []Amendment  `json:"amendments"`
-	SourceRevision     int64        `json:"source_revision"`
-	CreatedAt          time.Time    `json:"created_at"`
-	UpdatedAt          time.Time    `json:"updated_at"`
-	Deadline           time.Time    `json:"deadline"`
+	ID                 string             `json:"id"`
+	Key                string             `json:"key"`
+	Version            int64              `json:"version"`
+	Stage              Stage              `json:"stage"`
+	Status             Status             `json:"status"`
+	Locale             string             `json:"locale"`
+	RequiredAction     string             `json:"required_action,omitempty"`
+	CancellationReason string             `json:"cancellation_reason,omitempty"`
+	CancelRequested    bool               `json:"cancel_requested"`
+	Lease              *Lease             `json:"lease,omitempty"`
+	Message            string             `json:"message"`
+	Input              StartRequest       `json:"input"`
+	References         []Reference        `json:"references"`
+	Evidence           []Evidence         `json:"evidence"`
+	Questions          []Question         `json:"questions"`
+	Answers            []Answer           `json:"answers"`
+	Usage              Usage              `json:"usage"`
+	Receipts           []DelegatedReceipt `json:"receipts"`
+	Limits             Limits             `json:"limits"`
+	Progress           Progress           `json:"progress"`
+	Amendments         []Amendment        `json:"amendments"`
+	SourceRevision     int64              `json:"source_revision"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	Deadline           time.Time          `json:"deadline"`
 }
 
 type StepResult struct {
 	References []Reference
 	Evidence   []Evidence
 	Questions  []Question
-	Usage      Usage
+	Receipt    gateway.Receipt
 }
 
 type Amendment struct {
 	Run            string      `json:"run"`
 	RunVersion     int64       `json:"run_version"`
 	Observation    string      `json:"observation"`
+	Source         string      `json:"source"`
+	Context        string      `json:"context"`
 	SourceRevision int64       `json:"source_revision"`
+	Changes        []string    `json:"changes"`
 	Affected       []Reference `json:"affected"`
 	Proposal       Reference   `json:"proposal"`
 	RequiredAction string      `json:"required_action"`
