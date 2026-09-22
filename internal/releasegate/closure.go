@@ -191,7 +191,7 @@ func VerifySourceFiles(root string, declared []File) error {
 	return nil
 }
 
-func VerifyAPISchema(dir string, file File) error {
+func VerifyAPISchema(root, dir string, file File) error {
 	data, err := ReadFile(dir, file, 16<<20)
 	if err != nil {
 		return err
@@ -200,8 +200,39 @@ func VerifyAPISchema(dir string, file File) error {
 		OpenAPI string                     `json:"openapi"`
 		Paths   map[string]json.RawMessage `json:"paths"`
 	}
-	if json.Unmarshal(data, &schema) != nil || !strings.HasPrefix(schema.OpenAPI, "3.") || len(schema.Paths) == 0 {
+	if uniqueJSON(data) != nil || json.Unmarshal(data, &schema) != nil || !strings.HasPrefix(schema.OpenAPI, "3.") || len(schema.Paths) == 0 {
 		return fmt.Errorf("%w: binary API schema missing", ErrEvidence)
+	}
+	manifests, err := filepath.Glob(filepath.Join(root, "docs/contracts/chartworks-*-operations.json"))
+	if err != nil || len(manifests) == 0 {
+		return fmt.Errorf("%w: operation manifests missing", ErrEvidence)
+	}
+	manifests = append(manifests, filepath.Join(root, "docs/contracts/chartworks-operations.json"))
+	seen := map[string]bool{}
+	for _, path := range manifests {
+		b, err := os.ReadFile(path)
+		if err != nil || uniqueJSON(b) != nil {
+			return fmt.Errorf("%w: operation manifest invalid", ErrEvidence)
+		}
+		var operations []struct {
+			Method string `json:"method"`
+			Path   string `json:"path"`
+		}
+		if json.Unmarshal(b, &operations) != nil || len(operations) == 0 {
+			return fmt.Errorf("%w: operation manifest empty", ErrEvidence)
+		}
+		for _, op := range operations {
+			method := strings.ToLower(op.Method)
+			key := method + " " + op.Path
+			if seen[key] || !strings.HasPrefix(op.Path, "/") {
+				return fmt.Errorf("%w: duplicate or malformed operation declaration", ErrEvidence)
+			}
+			seen[key] = true
+			var methods map[string]json.RawMessage
+			if json.Unmarshal(schema.Paths[op.Path], &methods) != nil || len(methods[method]) == 0 {
+				return fmt.Errorf("%w: released API missing %s", ErrEvidence, key)
+			}
+		}
 	}
 	return nil
 }

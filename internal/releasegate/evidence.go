@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -158,7 +159,12 @@ func uniqueJSON(data []byte) error {
 
 func Load(dir string) (Bundle, error) {
 	var b Bundle
-	data, err := os.ReadFile(filepath.Join(dir, "release.json"))
+	file, err := os.Open(filepath.Join(dir, "release.json"))
+	if err != nil {
+		return b, fmt.Errorf("%w: release manifest missing", ErrEvidence)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
 		return b, fmt.Errorf("%w: release manifest missing or oversized", ErrEvidence)
 	}
@@ -171,23 +177,31 @@ func Load(dir string) (Bundle, error) {
 	return b, nil
 }
 
-// ReadFile rejects absolute paths, traversal, symlink escapes and a mismatched
-// content hash. Evidence files may live outside the source checkout.
-func ReadFile(dir string, f File, limit int64) ([]byte, error) {
+func artifactPath(dir string, f File) (string, error) {
 	if !filepath.IsLocal(f.Path) || !hex64.MatchString(f.SHA256) {
-		return nil, fmt.Errorf("%w: invalid artifact path or digest", ErrEvidence)
+		return "", fmt.Errorf("%w: invalid artifact path or digest", ErrEvidence)
 	}
 	base, err := filepath.EvalSymlinks(dir)
 	if err != nil {
-		return nil, fmt.Errorf("%w: artifact directory unavailable", ErrEvidence)
+		return "", fmt.Errorf("%w: artifact directory unavailable", ErrEvidence)
 	}
 	path, err := filepath.EvalSymlinks(filepath.Join(base, f.Path))
 	if err != nil {
-		return nil, fmt.Errorf("%w: artifact unavailable", ErrEvidence)
+		return "", fmt.Errorf("%w: artifact unavailable", ErrEvidence)
 	}
 	rel, err := filepath.Rel(base, path)
 	if err != nil || !filepath.IsLocal(rel) {
-		return nil, fmt.Errorf("%w: artifact escaped bundle", ErrEvidence)
+		return "", fmt.Errorf("%w: artifact escaped bundle", ErrEvidence)
+	}
+	return path, nil
+}
+
+// ReadFile rejects absolute paths, traversal, symlink escapes and a mismatched
+// content hash. Evidence files may live outside the source checkout.
+func ReadFile(dir string, f File, limit int64) ([]byte, error) {
+	path, err := artifactPath(dir, f)
+	if err != nil {
+		return nil, err
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -205,6 +219,25 @@ func ReadFile(dir string, f File, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// VerifyFile streams a large binary without holding it all in memory.
+func VerifyFile(dir string, f File, limit int64) (string, error) {
+	path, err := artifactPath(dir, f)
+	if err != nil {
+		return "", err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("%w: artifact unreadable", ErrEvidence)
+	}
+	defer file.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(file, limit+1))
+	if err != nil || n > limit || hex.EncodeToString(h.Sum(nil)) != f.SHA256 {
+		return "", fmt.Errorf("%w: artifact digest mismatch or oversized", ErrEvidence)
+	}
+	return path, nil
+}
+
 func VerifyInventory(dir, head string, f File) (Inventory, error) {
 	var inv Inventory
 	data, err := ReadFile(dir, f, 1<<20)
@@ -214,7 +247,7 @@ func VerifyInventory(dir, head string, f File) (Inventory, error) {
 	if err = decodeExact(data, &inv); err != nil {
 		return inv, err
 	}
-	if inv.Head != head || strings.TrimSpace(inv.Phase34RunRef) == "" || len(inv.Cohorts) == 0 {
+	if inv.Head != head || !reviewableRef(inv.Phase34RunRef) || len(inv.Cohorts) == 0 {
 		return inv, fmt.Errorf("%w: Phase 34 cohort inventory absent or stale", ErrEvidence)
 	}
 	if _, err := ReadFile(dir, inv.SourceManifest, 16<<20); err != nil {
@@ -264,7 +297,7 @@ func VerifyRecords(dir string, b Bundle, kind string, ids []string) error {
 		if r.Kind != kind {
 			continue
 		}
-		if !required[r.ID] || seen[r.ID] || r.Head != b.Head || r.ExitCode == nil || *r.ExitCode != 0 || strings.TrimSpace(r.RunRef) == "" {
+		if !required[r.ID] || seen[r.ID] || r.Head != b.Head || r.ExitCode == nil || *r.ExitCode != 0 || !reviewableRef(r.RunRef) {
 			return fmt.Errorf("%w: duplicate, stale or unreviewable %s evidence", ErrEvidence, kind)
 		}
 		if (kind == "engine" && (r.ID == "postgres" || r.ID == "mysql" || r.ID == "sqlserver") && r.Mode != "native" && r.Mode != "live") || ((kind != "engine" || r.ID == "bigquery" || r.ID == "snowflake" || r.ID == "databricks") && r.Mode != "live") {
@@ -355,7 +388,7 @@ func VerifyReview(dir string, b Bundle) error {
 	if err = decodeExact(data, &review); err != nil {
 		return err
 	}
-	if review.Head != b.Head || strings.TrimSpace(review.Reviewer) == "" || strings.TrimSpace(review.RunRef) == "" {
+	if review.Head != b.Head || strings.TrimSpace(review.Reviewer) == "" || !reviewableRef(review.RunRef) {
 		return fmt.Errorf("%w: cumulative review not pinned", ErrEvidence)
 	}
 	seen := map[string]bool{}
@@ -366,4 +399,9 @@ func VerifyReview(dir string, b Bundle) error {
 		seen[f.ID] = true
 	}
 	return nil
+}
+
+func reviewableRef(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && strings.TrimSpace(u.Path) != ""
 }

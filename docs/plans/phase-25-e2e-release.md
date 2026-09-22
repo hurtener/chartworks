@@ -62,8 +62,8 @@ local substantive checks and require the bundle in strict release mode. The
 runner passes validated earlier-phase Go results directly to AC06; coverage
 rows cannot be closed with a registry label alone.
 
-No release bundle exists at this head. Phase 34 is not shipped, AC03 awaits the
-selected final stress run, and five AC tests are not full Phase 25 acceptance.
-This branch remains unmerged until integration supplies all six criteria and
-the strict preflight passes. Live Pengui/engine/cohort and container qualification
+No release bundle exists for this implementation head. Phase 34 is not shipped,
+AC03 awaits the selected final stress run, and five AC tests are not full Phase
+25 acceptance. Phase 25 remains in progress until integration supplies all six
+criteria and the strict preflight passes. Live Pengui/engine/cohort and container qualification
 cannot be inferred from synthetic fixtures.

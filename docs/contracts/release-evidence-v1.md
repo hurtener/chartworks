@@ -29,9 +29,10 @@ sensitive underlying evidence in the owner-controlled system named by `run_ref`.
 A record has `kind`, `id`, `mode`, `head`, `run_ref`, `exit_code` and `events`
 (relative path plus SHA-256). The exit code must be explicitly present and zero.
 The log must contain one pass for the exact named Go test, a package pass, and
-no fail or skip events, including children. The record and its hash do not by
-themselves prove that a real account/source was used; the owner reviews the
-external run referenced by `run_ref` and its environment before accepting it.
+no fail or skip events, including children. `run_ref` is an HTTPS link with a
+path and no URL credentials, query or fragment. The record and its hash do not
+by themselves prove that a real account/source was used; the owner reviews the
+external run and its environment before accepting it.
 
 | Kind | Required IDs | Required Go test | Accepted mode |
 | --- | --- | --- | --- |
@@ -54,9 +55,11 @@ criterion results must also pass the strict runner before Phase 25 begins.
 hash), `migrations_sha256`, `api_schema` (hashed live `/openapi.json` response),
 and `files` (the exact SHA-256 of every active required source file). The
 verifier requires a clean checkout at `head`, compares the Docker image ID,
-executes the binary's `version` and `schema-manifest` commands, compares the
-embedded ordered-migration digest with this source build, and checks the
-specified docs, operation schemas, examples and migrations. `make build` now
+executes the standalone binary and networkless read-only image `version` and
+`schema-manifest` commands, compares both embedded ordered-migration digests
+with this source build, requires every declared HTTP operation in the captured
+OpenAPI document, and checks the specified docs, operation schemas, examples
+and migrations. `make build` now
 embeds the full commit, so an older short-commit binary cannot pass.
 
 `cumulative_review` is a hashed JSON object with `head`, nonempty `reviewer`

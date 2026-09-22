@@ -33,17 +33,24 @@ func testEvents(name string) []byte {
 func TestEvidenceRejectsFixtureSkipTamperAndMissing(t *testing.T) {
 	dir := t.TempDir()
 	good := writeEvidence(t, dir, "postgres.jsonl", testEvents("TestReleaseEngine/postgres"))
-	bundle := Bundle{SchemaVersion: 1, Head: testHead, Records: []Record{{Kind: "engine", ID: "postgres", Mode: "native", Head: testHead, RunRef: "synthetic-run", ExitCode: intPtr(0), Events: good}}}
+	if path, err := VerifyFile(dir, good, 1024); err != nil || filepath.Base(path) != good.Path {
+		t.Fatal("streamed artifact digest failed", err)
+	}
+	if _, err := VerifyFile(dir, good, 1); !errors.Is(err, ErrEvidence) {
+		t.Fatal("oversized artifact passed", err)
+	}
+	bundle := Bundle{SchemaVersion: 1, Head: testHead, Records: []Record{{Kind: "engine", ID: "postgres", Mode: "native", Head: testHead, RunRef: "https://evidence.example.test/runs/synthetic", ExitCode: intPtr(0), Events: good}}}
 	if err := VerifyRecords(dir, bundle, "engine", []string{"postgres"}); err != nil {
 		t.Fatal(err)
 	}
 	for name, mutate := range map[string]func(*Bundle){
-		"fixture": func(b *Bundle) { b.Records[0].Mode = "fixture" },
-		"unknown": func(b *Bundle) { b.Records[0].Mode = "unknown" },
-		"stale":   func(b *Bundle) { b.Records[0].Head = strings.Repeat("b", 40) },
-		"missing": func(b *Bundle) { b.Records = nil },
-		"hash":    func(b *Bundle) { b.Records[0].Events.SHA256 = strings.Repeat("0", 64) },
-		"no-exit": func(b *Bundle) { b.Records[0].ExitCode = nil },
+		"fixture":    func(b *Bundle) { b.Records[0].Mode = "fixture" },
+		"unknown":    func(b *Bundle) { b.Records[0].Mode = "unknown" },
+		"stale":      func(b *Bundle) { b.Records[0].Head = strings.Repeat("b", 40) },
+		"missing":    func(b *Bundle) { b.Records = nil },
+		"hash":       func(b *Bundle) { b.Records[0].Events.SHA256 = strings.Repeat("0", 64) },
+		"no-exit":    func(b *Bundle) { b.Records[0].ExitCode = nil },
+		"secret-ref": func(b *Bundle) { b.Records[0].RunRef = "https://evidence.example.test/runs/1?token=secret" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			copy := bundle
@@ -76,7 +83,7 @@ func TestEvidenceRejectsFixtureSkipTamperAndMissing(t *testing.T) {
 func TestCohortInventoryAndReviewFailClosed(t *testing.T) {
 	dir := t.TempDir()
 	manifest := writeEvidence(t, dir, "phase34-manifest.json", []byte(`{"synthetic":true}`))
-	inv := Inventory{Head: testHead, Phase34RunRef: "synthetic-phase34-run", SourceManifest: manifest, Cohorts: []Cohort{{ID: "alpha", Engines: []string{"postgres", "bigquery"}}}}
+	inv := Inventory{Head: testHead, Phase34RunRef: "https://evidence.example.test/runs/phase34", SourceManifest: manifest, Cohorts: []Cohort{{ID: "alpha", Engines: []string{"postgres", "bigquery"}}}}
 	data, _ := json.Marshal(inv)
 	file := writeEvidence(t, dir, "inventory.json", data)
 	if _, err := VerifyInventory(dir, testHead, file); err != nil {
@@ -89,7 +96,7 @@ func TestCohortInventoryAndReviewFailClosed(t *testing.T) {
 			t.Fatal("bad inventory passed", err)
 		}
 	}
-	review := Review{Head: testHead, Reviewer: "reviewer-1", RunRef: "synthetic-run", Findings: []Finding{{ID: "finding-1", Priority: "P1", State: "resolved"}}}
+	review := Review{Head: testHead, Reviewer: "reviewer-1", RunRef: "https://evidence.example.test/reviews/synthetic", Findings: []Finding{{ID: "finding-1", Priority: "P1", State: "resolved"}}}
 	data, _ = json.Marshal(review)
 	b := Bundle{Head: testHead, Review: writeEvidence(t, dir, "review.json", data)}
 	if err := VerifyReview(dir, b); err != nil {
@@ -133,5 +140,46 @@ func TestSourceAndCoverageInventory(t *testing.T) {
 	}
 	if err := VerifyClosure(root, nil, true); !errors.Is(err, ErrEvidence) {
 		t.Fatal("missing actual phase results accepted", err)
+	}
+}
+
+func TestOpenAPIMustContainEveryDeclaredOperation(t *testing.T) {
+	root := filepath.Join("..", "..")
+	manifests, err := filepath.Glob(filepath.Join(root, "docs/contracts/chartworks-*-operations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifests = append(manifests, filepath.Join(root, "docs/contracts/chartworks-operations.json"))
+	paths := map[string]map[string]any{}
+	for _, path := range manifests {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var operations []struct {
+			Method string `json:"method"`
+			Path   string `json:"path"`
+		}
+		if err := json.Unmarshal(data, &operations); err != nil {
+			t.Fatal(err)
+		}
+		for _, op := range operations {
+			if paths[op.Path] == nil {
+				paths[op.Path] = map[string]any{}
+			}
+			paths[op.Path][strings.ToLower(op.Method)] = map[string]any{"responses": map[string]any{}}
+		}
+	}
+	dir := t.TempDir()
+	data, _ := json.Marshal(map[string]any{"openapi": "3.0.3", "paths": paths})
+	file := writeEvidence(t, dir, "openapi.json", data)
+	if err := VerifyAPISchema(root, dir, file); err != nil {
+		t.Fatal(err)
+	}
+	delete(paths, "/v1/retention-policy")
+	data, _ = json.Marshal(map[string]any{"openapi": "3.0.3", "paths": paths})
+	file = writeEvidence(t, dir, "openapi-missing.json", data)
+	if err := VerifyAPISchema(root, dir, file); !errors.Is(err, ErrEvidence) {
+		t.Fatal("missing released route accepted", err)
 	}
 }
