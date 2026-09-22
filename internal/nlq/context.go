@@ -211,6 +211,17 @@ type ConstraintState struct {
 
 // PinnedMetric is a metric choice that must remain in the assembled context.
 type PinnedMetric struct {
+	ID           string             `json:"id"`
+	Text         string             `json:"text"`
+	Dependencies []MetricDependency `json:"dependencies,omitempty"`
+}
+
+// MetricDependency is one exact member of a pinned metric's transitive semantic
+// closure. The assembler treats the complete metric and closure as one mandatory
+// group, so budget pressure can never retain a label while dropping its formula,
+// input fields, joins, temporal policy, governed values, or required filters.
+type MetricDependency struct {
+	Kind string `json:"kind"`
 	ID   string `json:"id"`
 	Text string `json:"text"`
 }
@@ -602,6 +613,9 @@ func renderMetrics(items []PinnedMetric) string {
 	var b strings.Builder
 	for _, item := range items {
 		b.WriteString(renderItem(LaneMetrics, item.ID, item.Text))
+		for _, dependency := range item.Dependencies {
+			b.WriteString(fmt.Sprintf("metric_dependency[%s/%s/%s]:%s\n", item.ID, dependency.Kind, dependency.ID, dependency.Text))
+		}
 	}
 	return b.String()
 }
@@ -782,13 +796,28 @@ func cloneEvidenceChecked(items []Evidence, seen map[string]bool, path string) (
 func cloneMetricsChecked(items []PinnedMetric, seen map[string]bool) ([]PinnedMetric, error) {
 	out := cloneMetrics(items)
 	for i := range out {
-		if !validID(out[i].ID) || !validText(out[i].Text, 16<<10) {
+		if !validID(out[i].ID) || !validText(out[i].Text, 16<<10) || len(out[i].Dependencies) > 4096 {
 			return nil, &ValidationError{Code: CodeInvalidValue, Path: "metrics"}
 		}
 		if seen[out[i].ID] {
 			return nil, &ValidationError{Code: CodeDuplicateID, Path: "metrics"}
 		}
 		seen[out[i].ID] = true
+		dependencySeen := map[string]bool{}
+		for j := range out[i].Dependencies {
+			value := out[i].Dependencies[j]
+			key := value.Kind + "\x00" + value.ID
+			if !validID(value.Kind) || !validID(value.ID) || !validText(value.Text, 16<<10) || dependencySeen[key] {
+				return nil, &ValidationError{Code: CodeInvalidValue, Path: "metrics.dependencies"}
+			}
+			dependencySeen[key] = true
+		}
+		sort.Slice(out[i].Dependencies, func(a, b int) bool {
+			if out[i].Dependencies[a].Kind != out[i].Dependencies[b].Kind {
+				return out[i].Dependencies[a].Kind < out[i].Dependencies[b].Kind
+			}
+			return out[i].Dependencies[a].ID < out[i].Dependencies[b].ID
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
@@ -845,7 +874,13 @@ func cloneEvidence(items []Evidence) []Evidence {
 	}
 	return out
 }
-func cloneMetrics(items []PinnedMetric) []PinnedMetric { return append([]PinnedMetric(nil), items...) }
+func cloneMetrics(items []PinnedMetric) []PinnedMetric {
+	out := append([]PinnedMetric(nil), items...)
+	for i := range out {
+		out[i].Dependencies = append([]MetricDependency(nil), out[i].Dependencies...)
+	}
+	return out
+}
 
 func cloneTopicRevisions(items []TopicRevision) []TopicRevision {
 	return append([]TopicRevision(nil), items...)

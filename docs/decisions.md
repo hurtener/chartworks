@@ -768,4 +768,6 @@ Reporting contract continuation: [D-073 immutable output intent and bounded narr
 
 CI verification continuation: [D-074 fast pull-request checks and explicit final-gap qualification](decisions/2026-09-22-ci-verification.md).
 
-Rule/reporting dependency continuation: [D-075 closed compound/template scopes and immutable reporting rule snapshots](decisions/2026-09-22-rule-scopes-reporting-snapshots.md).
+Rich semantic continuation: [D-075 reviewed rich fields and atomic metric dependency closures](decisions/2026-09-22-rich-semantics.md).
+
+Rule/reporting dependency continuation: [D-076 closed compound/template scopes and immutable reporting rule snapshots](decisions/2026-09-22-rule-scopes-reporting-snapshots.md).

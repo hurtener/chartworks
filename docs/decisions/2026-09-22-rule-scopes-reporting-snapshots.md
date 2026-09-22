@@ -1,4 +1,4 @@
-### D-075 — Closed compound/template scopes and immutable reporting rule snapshots
+### D-076 — Closed compound/template scopes and immutable reporting rule snapshots
 
 Date: 2026-09-22. Status: accepted implementation disposition for RUL-01 and
 BLK-02.

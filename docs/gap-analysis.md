@@ -112,9 +112,9 @@ This update rechecked every original finding against the merged target code and 
 
 | Original IDs | Sept 15 recheck result | Current evidence and boundary |
 |---|---|---|
-| SEM-01, CTX-01 | **Still open; reference evidence unchanged.** | Phase 26 applies a profile-backed or already reviewed pack but does not add aliases, governed examples, temporal grains or dependency closure. The KPI helper still reduces the metric input to an aggregation/name and context evidence remains independently budgeted. [topic application](../internal/semantics/drafts/autopilot.go#L16), [metric resolution](../internal/nlqroute/service.go#L1014), [context assembly](../internal/nlq/context.go#L243) |
-| SEM-02, DATA-01, DATA-02 | **Still open; Phase 26 improves controlled application only.** | Profile planning copies safe physical columns into a draft scaffold and the reviewed proposal path applies an existing pack; rich role, relationship, value and temporal authoring remains planned. [profile scaffold](../internal/semantics/drafts/service.go#L473), [proposal topic validation](../internal/engineering/autopilot_topics.go#L55), [Phase 33 plan](../docs/plans/phase-33-guided-onboarding.md#L37) |
-| RTE-01, RTE-02, LRN-01, LRN-02, CLR-01, CLR-02 | **Still open or narrowed; core source evidence unchanged.** | Caller topic selection, hit-distance confidence, topic examples, fixed feedback increments and remaining interpretation gaps remain. CW-01 narrowed clarification; CW-06 closes RUL-01 with closed compound-AND and exact-template rule scopes plus deterministic selection evidence. [rule evaluator](../internal/semantics/rules_evaluate.go), [route boundary](../internal/nlqroute/service.go), [period resolution](../internal/reporting/periods.go) |
+| SEM-01, CTX-01 | **CW-04 implementation closes the authored-contract and sealed-context gaps; final manual integration evidence remains.** | Topic packs now retain aliases, governed non-sensitive value mappings, temporal calendars/grains, units and filters through lifecycle/portability. Selected measures/KPIs resolve a typed transitive closure admitted as one mandatory tokenizer group or fail before provider work. [rich semantic model](../internal/semantics/model.go), [metric closure](../internal/nlqroute/service.go), [context assembly](../internal/nlq/context.go), [contract](contracts/rich-semantics-v1.md) |
+| SEM-02, DATA-01, DATA-02 | **CW-04 implementation closes the model/generation boundary; phase 33 orchestration remains separately planned.** | Bounded enhancement now proposes descriptions, aliases, units, roles, temporal policy, KPIs and candidate/rejected relationship evidence. Explicit reviewed governed values replace raw profile samples; sensitive/unknown values are rejected. Draft/publication/import/export/SDK consumers share the same contract. [enhancement](../internal/semantics/drafts/service.go), [compiler](../internal/semantics/compile.go), [portability](../internal/semantics/portable.go), [contract](contracts/rich-semantics-v1.md) |
+| RTE-01, RTE-02, LRN-01, LRN-02, CLR-01, CLR-02 | **Still open or narrowed.** | Caller topic selection, hit-distance confidence, topic examples, fixed feedback increments and remaining interpretation gaps remain. CW-01 narrows clarification, CW-04 enriches reviewed semantic context, and CW-06 closes RUL-01 with compound-AND and canonical reviewed-template scopes. [rule evaluator](../internal/semantics/rules_evaluate.go), [route boundary](../internal/nlqroute/service.go), [rich contract](contracts/rich-semantics-v1.md) |
 | BLK-01, BLK-03, BLK-04, BLK-06 | **Still open or narrowed at the authored-contract boundary.** | CW-03 closes BLK-01 and CW-06 closes BLK-02. Phase 28 seals selected outputs, source/context/topic/rule dependencies and typed period resolution; certification language checks, semantic overlap and broader assistance remain. [rule snapshots](../internal/reporting/dependencies.go), [run manifest](../internal/reporting/runs_model.go), [question assessment](../internal/reporting/service.go) |
 | BLK-05, BLK-07 | **Runtime path inspected; inherited fields and policy mapping remain open.** | Bounded narratives use retained redacted evidence and receipts, and manifests seal deployment limits. Expected schema still lacks inherited sensitivity; authored maximum-claims and source-query policy mappings remain absent. No fresh runtime result is attributed here. [narrative evidence](../internal/reporting/runs_narrative.go#L82), [narrative definition](../internal/reporting/model.go#L137), [sealed limits](../internal/reporting/runs_model.go#L46) |
 | MIG-01, EVAL-01, PERF-01 | **Pending or unmeasured.** | The dated manifest is provenance only. Calibration, import/cutover, warm/cold authority-aware reuse and live latency/cost still require Phase 24/34/25 evidence. [evaluation plan](../docs/plans/phase-24-eval.md#L17), [cutover plan](../docs/plans/phase-34-migration-parity-cutover.md#L38), [routing cache boundary](../internal/nlqroute/service.go#L192) |
@@ -143,9 +143,9 @@ scope until exact expression lineage exists; unsupported mappings reject.
 
 | ID | Area | Finding | Status | Owner / phases |
 |---|---|---|---|---|
-| SEM-01 | Semantics | Rich semantic fields are not represented end to end | confirmed gap | 15/17 with 33 generation and 34 import |
-| CTX-01 | Context | Selected metrics do not retain their full dependency context | confirmed gap | 17/18 |
-| SEM-02 | Semantics | Enhancement is column classification rather than rich semantic authoring | confirmed gap | 15/33 |
+| SEM-01 | Semantics | Rich semantic fields are not represented end to end | implemented by CW-04; manual final-suite evidence pending | 15/17 with 33 generation and 34 import |
+| CTX-01 | Context | Selected metrics do not retain their full dependency context | implemented by CW-04; manual final-suite evidence pending | 17/18 |
+| SEM-02 | Semantics | Enhancement is column classification rather than rich semantic authoring | implemented by CW-04; full phase-33 workflow remains separate | 15/33 |
 | RTE-01 | Routing | Routing confidence and topic choice are reduced | confirmed gap | 17/24 |
 | LRN-01 | Learning | Stored examples are not equivalent to retrieval-selected templates | confirmed gap | 15/17/18; optimization remains 24 |
 | LRN-02 | Learning | Feedback weights are fixed increments | confirmed gap | 18; evaluation 24 |
@@ -166,8 +166,8 @@ scope until exact expression lineage exists; unsupported mappings reject.
 | VIS-04 | Selection diagnostics | Selection rationale carries less structured evidence | narrowed; equivalence decision needed | 20/24 |
 | EVAL-01 | Evaluation | Deterministic acceptance is not calibrated behavioral equivalence | explicitly pending | 24/34/25 |
 | CLR-02 | Clarification | Typed clarification answers can have no planning effect | typed binding and session replay implemented; bounded native SQL subset | 16/17/18 |
-| DATA-01 | Profiling to semantics | Safe profiles no longer supply governed example values to semantic authoring | intentional redesign; replacement needed | 12/15/33; consumer17 |
-| DATA-02 | Discovery and onboarding | Physical discovery is not equivalent to semantic role and relationship discovery | pending richer authoring | 15/33; coordinate26 |
+| DATA-01 | Profiling to semantics | Safe profiles no longer supply governed example values to semantic authoring | privacy-preserving reviewed-value replacement implemented by CW-04 | 12/15/33; consumer17 |
+| DATA-02 | Discovery and onboarding | Physical discovery is not equivalent to semantic role and relationship discovery | reviewed role/grain/candidate/rejected evidence implemented; phase-33 orchestration remains | 15/33; coordinate26 |
 | PERF-01 | Latency and reuse | Cache behavior must be compared under the new authority model | intentional redesign; performance unmeasured | 17/24; reuse28; qualification34/25 |
 | REP-01 | Reporting filters | Revision-bound selectable filter options are a newly observed reference capability | confirmed contract gap | 29/31; safe source 09/10/14; import34 |
 | REP-02 | Reporting lifecycle | Report/dashboard deletion has semantics beyond archive | disposition required; archive remains implemented | 29/30; retention28/32; import34 |
@@ -177,38 +177,38 @@ scope until exact expression lineage exists; unsupported mappings reject.
 
 ### SEM-01 — Rich semantic fields are not represented end to end
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-04; native/manual final-suite integration evidence pending.
 - **Owner / phases:** 15/17 with 33 generation and 34 import.
 - **Reference behavior (neutral):** Original metric and dimension definitions carry business/SQL meaning, aliases, samples, filters, and temporal metadata; the context packer consumes several of these fields.
-- **Current boundary:** The Go model retains basic measures/dimensions/KPIs and stable references, but has no typed dimension value aliases, sample values, supported temporal grains or equivalent complete richer definition.
+- **Current boundary:** The versioned model and all normal lifecycle projections now retain reviewed aliases, units, filters, non-sensitive governed values with provenance, semantic roles, temporal calendars/grains and relationship evidence. Governed spellings are globally unambiguous per dimension after Unicode/case normalization, and rebind retains their sensitivity proof only across the same source/context/physical identity. Legacy omissions remain explicit unknowns rather than inferred defaults.
 - **Consequence:** A value spelling, stored code or time grain can become an inference problem again after migration. KPIs do retain expressions and exact inputs in storage; the separate CTX-01 gap concerns carrying that calculation and its dependencies into generation.
 - **Contract, storage and import impact:** Extend the versioned semantic topic, facet, publication, portable-pack and generation-context contracts together. Persist the richer fields with explicit null/unsupported policy, update import/export and downstream serializers, and preserve source/context reach pins.
 - **Closure requirements:** Round-trip a synthetic calculated metric, alias, month-only temporal field, synonym and required filter; assert each fact appears in the generation context and changes the resulting plan or produces typed insufficiency.
 - **Source evidence IDs:** REF-SEM-01-A, REF-SEM-01-B.
-- **Current repository evidence:** [internal/semantics/model.go:165](../internal/semantics/model.go#L165).
+- **Current repository evidence:** [rich model](../internal/semantics/model.go), [compiler and privacy bounds](../internal/semantics/compile.go), [neutral portability](../internal/semantics/portable.go), [topic projection](../internal/semantics/topics/model.go), [contract](contracts/rich-semantics-v1.md).
 
 ### CTX-01 — Selected metrics do not retain their full dependency context
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-04; native/manual final-suite integration evidence pending.
 - **Owner / phases:** 17/18.
 - **Reference behavior (neutral):** The original packer enriches selected KPIs with constituent measures and constructs table, dimension and join payloads.
-- **Current boundary:** The Go packer independently drops retrieved evidence by budget. Its mandatory metric pin is a name plus aggregation, or just a KPI name; there is no structural dependency group on evidence.
+- **Current boundary:** Routing resolves the complete transitive KPI/measure graph, exact columns, related dimensions, rich values/time policy, filters and the unique confirmed connecting join subgraph from the authorized retained publication. Bridge datasets are included; disconnected, competing and cyclic required paths return a typed metric-context error. The assembler admits the complete typed closure as one mandatory metric group or returns typed insufficiency before model work.
 - **Consequence:** A pinned KPI label can survive while its formula or columns are absent from the model input. This is a prompt-completeness gap, not proof of an observed wrong answer.
 - **Contract, storage and import impact:** Add a dependency-closure representation to the sealed context and its budget/drop audit. The closure must survive persistence, refinement, portable capture and model-gateway serialization; incomplete closure must be an explicit typed outcome.
 - **Closure requirements:** Under budget pressure, a pinned derived metric must retain its formula, constituent measures and required columns/joins as one closure group, or fail explicitly before model work.
 - **Source evidence IDs:** REF-CTX-01-A, REF-CTX-01-B.
-- **Current repository evidence:** [internal/nlq/context.go:377](../internal/nlq/context.go#L377); [internal/nlqroute/service.go:1038](../internal/nlqroute/service.go#L1038); [internal/nlqexec/service.go:858](../internal/nlqexec/service.go#L858).
+- **Current repository evidence:** [closure resolution](../internal/nlqroute/service.go), [mandatory tokenizer admission](../internal/nlq/context.go), [generation consumer](../internal/nlqexec/service.go), [contract](contracts/rich-semantics-v1.md).
 
 ### SEM-02 — Enhancement is column classification rather than rich semantic authoring
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-04 at the semantic enhancement boundary; full phase-33 setup orchestration remains planned.
 - **Owner / phases:** 15/33.
 - **Reference behavior (neutral):** The original has dedicated semantic enhancement and rich business-context entities.
-- **Current boundary:** The current enhancement input is column name/category/nullability; its closed output produces a measure, dimension or unresolved item, without descriptions, KPI expressions, joins or value aliases.
+- **Current boundary:** The bounded gateway enhancement consumes exact safe columns and a sealed allowed-metric catalog, and can produce descriptions, aliases, units, reviewed roles, temporal policy, KPI formulas, and candidate/rejected relationship evidence in the same immutable draft checkpoint. Same-step KPI inputs must name an actually produced measure; relationship evidence is page-local; exact retries and cross-page KPI repeats are idempotent while conflicts and cross-page relationship evidence reject. Explicit governed-value authoring remains review-only because raw/sample values are never sent to the model.
 - **Consequence:** An imported rich topic and a freshly generated topic cannot have equivalent richness using this generator alone.
 - **Contract, storage and import impact:** Define the semantic proposal schema and migration for grain, units, formulas, relationships, aliases, filters and unresolved evidence. Ensure draft/edit/publication and SDK representations consume the same contract rather than creating a second model.
 - **Closure requirements:** Generate and store evidence-backed grain, joins, measures, dimensions, KPIs, units and time/null semantics; verify downstream context uses them and unresolved items remain reviewable.
-- **Current repository evidence:** [internal/semantics/drafts/service.go:511](../internal/semantics/drafts/service.go#L511); [internal/semantics/drafts/service.go:554](../internal/semantics/drafts/service.go#L554); [internal/semantics/enhance.go:20](../internal/semantics/enhance.go#L20); [docs/plans/phase-33-guided-onboarding.md:37](../docs/plans/phase-33-guided-onboarding.md#L37).
+- **Current repository evidence:** [gateway schema and consumer](../internal/semantics/drafts/service.go), [rich enhancement application](../internal/semantics/enhance.go), [phase-33 boundary](../docs/plans/phase-33-guided-onboarding.md), [contract](contracts/rich-semantics-v1.md).
 
 ### RTE-01 — Routing confidence and topic choice are reduced
 
@@ -455,27 +455,27 @@ scope until exact expression lineage exists; unsupported mappings reject.
 
 ### DATA-01 — Safe profiles no longer supply governed example values to semantic authoring
 
-- **Disposition:** intentional redesign; replacement needed.
+- **Disposition:** intentional privacy redesign retained; reviewed governed-value replacement implemented by CW-04.
 - **Owner / phases:** 12/15/33; consumer17.
 - **Reference behavior (neutral):** The original dataset topic builder carries sample values and value information into enhanced dimensions.
-- **Current boundary:** Go profiles deliberately avoid raw rows and top-value lists. They retain bounded aggregate/family evidence and selectively permitted numeric/temporal ranges. Current semantic enhancement cannot consume a reviewed value vocabulary.
+- **Current boundary:** Profiles still exclude raw rows and top-value lists. A bounded reviewed value vocabulary can now be authored only for explicitly non-sensitive fields, with evidence/policy provenance, and flows through facets and selected metric context. Sensitive or unknown-sensitivity mappings fail compilation.
 - **Consequence:** The privacy improvement is legitimate, but the original value-aware query behavior needs a bounded authorized replacement, such as explicitly reviewed semantic value mappings. Re-enabling unrestricted samples is not the recommendation.
 - **Contract, storage and import impact:** Define an authorized reviewed-value artifact derived from safe profile evidence. It must carry sensitivity/policy provenance into semantic drafts and context while excluding unrestricted raw samples and supporting erasure.
 - **Closure requirements:** Use a permitted synthetic low-cardinality column to produce reviewed value mappings; verify prompt/filter use and prove sensitive values stay excluded.
 - **Source evidence IDs:** REF-DATA-01-A.
-- **Current repository evidence:** [internal/engineering/profile_types.go:94](../internal/engineering/profile_types.go#L94); [internal/engineering/profile_stats.go:103](../internal/engineering/profile_stats.go#L103); [docs/plans/phase-12-engineering-profiling.md:35](../docs/plans/phase-12-engineering-profiling.md#L35); [internal/semantics/drafts/service.go:554](../internal/semantics/drafts/service.go#L554).
+- **Current repository evidence:** [profile privacy boundary](../internal/engineering/profile_types.go), [governed values](../internal/semantics/model.go), [privacy/compiler checks](../internal/semantics/compile.go), [contract](contracts/rich-semantics-v1.md).
 
 ### DATA-02 — Physical discovery is not equivalent to semantic role and relationship discovery
 
-- **Disposition:** pending richer authoring.
+- **Disposition:** reviewed semantic role/grain and candidate/rejected relationship evidence implemented by CW-04; complete phase-33 guided orchestration remains planned.
 - **Owner / phases:** 15/33; coordinate26.
 - **Reference behavior (neutral):** The original discovery model and workflow distinguish column roles, relationship evidence and rejected/reviewed joins before rich topic generation.
-- **Current boundary:** Go source discovery returns safe physical relation/type/context data; the existing enhancement is column classification. Richer joins/grain/evidence belong to the planned onboarding workflow.
+- **Current boundary:** Physical discovery remains deliberately non-semantic. The authoring model and enhancement checkpoint now preserve reviewed field roles, temporal grain, confirmed join evidence and candidate/rejected relationship decisions. Only confirmed `Join` entities are query consumers; candidates cannot silently become executable.
 - **Consequence:** A source being discoverable and a profile being complete must not be interpreted as a complete semantic environment. Preserve the extra inference/review steps with real consumers.
 - **Contract, storage and import impact:** Add reviewed semantic role, grain, relationship and rejected-join evidence to onboarding outputs. Persist it through draft/publication/import and require an explicit decision before query retrieval uses it.
 - **Closure requirements:** Inspect an ambiguous fact/dimension key; preserve role, grain, candidate/rejected join evidence and require review before publication.
 - **Source evidence IDs:** REF-DATA-02-A.
-- **Current repository evidence:** [internal/sources/sources.go:84](../internal/sources/sources.go#L84); [internal/semantics/enhance.go:20](../internal/semantics/enhance.go#L20); [docs/plans/phase-33-guided-onboarding.md:37](../docs/plans/phase-33-guided-onboarding.md#L37).
+- **Current repository evidence:** [source discovery boundary](../internal/sources/sources.go), [relationship evidence model](../internal/semantics/model.go), [enhancement](../internal/semantics/enhance.go), [phase-33 boundary](../docs/plans/phase-33-guided-onboarding.md), [contract](contracts/rich-semantics-v1.md).
 
 ### PERF-01 — Cache behavior must be compared under the new authority model
 

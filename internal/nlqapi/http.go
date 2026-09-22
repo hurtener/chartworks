@@ -194,7 +194,7 @@ func classify(err error) (int, string) {
 		status, code = http.StatusConflict, "context_changed"
 	case errors.Is(err, readexec.ErrLimit):
 		status, code = http.StatusRequestEntityTooLarge, "limit_exceeded"
-	case errors.Is(err, nlq.ErrInsufficient), errors.Is(err, nlqroute.ErrNoRoute), isClarification(err):
+	case errors.Is(err, nlq.ErrInsufficient), errors.Is(err, nlqroute.ErrNoRoute), errors.Is(err, nlqroute.ErrMetricContext), isClarification(err):
 		status, code = http.StatusUnprocessableEntity, "insufficient_context"
 	case errors.Is(err, readexec.ErrCancelled), errors.Is(err, readexec.ErrTimeout), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status, code = http.StatusGatewayTimeout, "cancelled_or_timed_out"

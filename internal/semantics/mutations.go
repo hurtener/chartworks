@@ -4,14 +4,15 @@ import "github.com/hurtener/chartworks/internal/identity"
 
 // EntityMutation is one closed put or delete in an atomic draft mutation batch.
 type EntityMutation struct {
-	Operation string           `json:"operation"`
-	Kind      Kind             `json:"kind"`
-	ID        string           `json:"id"`
-	Measure   *Measure         `json:"measure,omitempty"`
-	Dimension *Dimension       `json:"dimension,omitempty"`
-	KPI       *KPI             `json:"kpi,omitempty"`
-	Join      *Join            `json:"join,omitempty"`
-	Canonical *CanonicalEntity `json:"canonical,omitempty"`
+	Operation            string                `json:"operation"`
+	Kind                 Kind                  `json:"kind"`
+	ID                   string                `json:"id"`
+	Measure              *Measure              `json:"measure,omitempty"`
+	Dimension            *Dimension            `json:"dimension,omitempty"`
+	KPI                  *KPI                  `json:"kpi,omitempty"`
+	Join                 *Join                 `json:"join,omitempty"`
+	RelationshipDecision *RelationshipDecision `json:"relationship_decision,omitempty"`
+	Canonical            *CanonicalEntity      `json:"canonical,omitempty"`
 }
 
 // DatasetReplacement contains server-derived evidence for one logical dataset move.
@@ -37,7 +38,7 @@ func MutateEntities(model Model, version string, mutations []EntityMutation) (Mo
 			return Model{}, invalid(CodeDuplicateID, path)
 		}
 		seen[string(mutation.Kind)+"\x00"+mutation.ID] = true
-		payloads := boolInt(mutation.Measure != nil) + boolInt(mutation.Dimension != nil) + boolInt(mutation.KPI != nil) + boolInt(mutation.Join != nil) + boolInt(mutation.Canonical != nil)
+		payloads := boolInt(mutation.Measure != nil) + boolInt(mutation.Dimension != nil) + boolInt(mutation.KPI != nil) + boolInt(mutation.Join != nil) + boolInt(mutation.RelationshipDecision != nil) + boolInt(mutation.Canonical != nil)
 		switch mutation.Operation {
 		case "put":
 			if payloads != 1 {
@@ -67,6 +68,8 @@ func applyEntityMutation(pack *TopicPack, mutation EntityMutation, path string) 
 		return mutateByID(&pack.KPIs, mutation.ID, mutation.Operation, mutation.KPI, func(v KPI) string { return v.ID }, path)
 	case KindJoin:
 		return mutateByID(&pack.Joins, mutation.ID, mutation.Operation, mutation.Join, func(v Join) string { return v.ID }, path)
+	case KindRelationshipDecision:
+		return mutateByID(&pack.RelationshipDecisions, mutation.ID, mutation.Operation, mutation.RelationshipDecision, func(v RelationshipDecision) string { return v.ID }, path)
 	case KindCanonicalEntity:
 		return mutateByID(&pack.CanonicalEntities, mutation.ID, mutation.Operation, mutation.Canonical, func(v CanonicalEntity) string { return v.ID }, path)
 	default:
@@ -143,7 +146,20 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 	if len(want) != 0 {
 		return Model{}, invalid(CodeInvalidReference, "dataset_replacement.columns")
 	}
-	pack.Datasets[index] = Dataset{ID: replacement.Dataset, Name: old.Name, Source: replacement.Source, Columns: append([]Column(nil), replacement.Columns...)}
+	oldColumns := make(map[string]Column, len(old.Columns))
+	for _, column := range old.Columns {
+		oldColumns[column.ID] = column
+	}
+	columns := append([]Column(nil), replacement.Columns...)
+	for i := range columns {
+		// Physical evidence owns shape, type, nullability, and sensitivity. The
+		// reviewed semantic vocabulary and role remain attached to the stable
+		// column ID across a rebind.
+		previous := oldColumns[columns[i].ID]
+		columns[i].Aliases = append([]string(nil), previous.Aliases...)
+		columns[i].SemanticRole = previous.SemanticRole
+	}
+	pack.Datasets[index] = Dataset{ID: replacement.Dataset, Name: old.Name, Source: replacement.Source, Columns: columns}
 	rewrite := func(ref *Reference) {
 		if ref.Kind == KindColumn && ref.Dataset == oldDataset {
 			ref.Dataset = replacement.Dataset
@@ -154,18 +170,31 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 	}
 	for i := range pack.Measures {
 		rewrite(&pack.Measures[i].Field)
+		for j := range pack.Measures[i].Filters {
+			rewrite(&pack.Measures[i].Filters[j].Field)
+		}
 	}
 	for i := range pack.Dimensions {
 		rewrite(&pack.Dimensions[i].Field)
+		for j := range pack.Dimensions[i].Filters {
+			rewrite(&pack.Dimensions[i].Filters[j].Field)
+		}
 	}
 	for i := range pack.KPIs {
 		for j := range pack.KPIs[i].Inputs {
 			rewrite(&pack.KPIs[i].Inputs[j])
 		}
+		for j := range pack.KPIs[i].Filters {
+			rewrite(&pack.KPIs[i].Filters[j].Field)
+		}
 	}
 	for i := range pack.Joins {
 		rewrite(&pack.Joins[i].Left)
 		rewrite(&pack.Joins[i].Right)
+	}
+	for i := range pack.RelationshipDecisions {
+		rewrite(&pack.RelationshipDecisions[i].Left)
+		rewrite(&pack.RelationshipDecisions[i].Right)
 	}
 	for i := range pack.CanonicalEntities {
 		for j := range pack.CanonicalEntities[i].Keys {

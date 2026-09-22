@@ -81,6 +81,16 @@ func TestFacetPlanRejectsCrossContextAndBoundOverflow(t *testing.T) {
 	}
 
 	pack = topicTestPack()
+	pack.Measures[0].Filters = []semantics.SemanticFilter{{ID: "item_present", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "items", ID: "quantity"}, Operator: "not_null"}}
+	model, err = semantics.Compile(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = facetPlan(model, topicTestSpace()); !errors.Is(err, readexec.ErrUnsupported) {
+		t.Fatal("cross-context semantic filter escaped facet isolation", err)
+	}
+
+	pack = topicTestPack()
 	pack.CanonicalEntities = []semantics.CanonicalEntity{{ID: "entity", Revision: 1, Name: "Entity", Aliases: []string{"registry entity"}, Keys: []semantics.Reference{{Kind: semantics.KindColumn, Dataset: "orders", ID: "amount"}, {Kind: semantics.KindColumn, Dataset: "items", ID: "quantity"}}}}
 	model, err = semantics.Compile(pack)
 	if err != nil {
