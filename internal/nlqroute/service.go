@@ -45,6 +45,9 @@ var (
 	// ErrNoRoute identifies an authorized request for which no current facet
 	// route was found. The result uses StrategyNoRoute for this outcome.
 	ErrNoRoute = errors.New("nlqroute: no route")
+	// ErrMetricContext reports that confirmed joins do not yield one unique safe
+	// connecting subgraph for every dataset required by a selected metric.
+	ErrMetricContext = errors.New("nlqroute: ambiguous or disconnected metric context")
 )
 
 // TopicReader is the live topic contract seam. Contract performs current
@@ -994,7 +997,11 @@ func resolveMetrics(admitted []admittedTopic, ids []string) ([]nlq.PinnedMetric,
 	for _, id := range ids {
 		var matches []nlq.PinnedMetric
 		for _, item := range admitted {
-			if metric, ok := findMetric(item.publication.Definition, id); ok {
+			metric, ok, err := findMetric(item.publication.Definition, id)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
 				metric.ID = item.id + ":" + id
 				matches = append(matches, metric)
 			}
@@ -1010,27 +1017,29 @@ func resolveMetrics(admitted []admittedTopic, ids []string) ([]nlq.PinnedMetric,
 	return out, nil
 }
 
-func findMetric(def topics.Definition, id string) (nlq.PinnedMetric, bool) {
+func findMetric(def topics.Definition, id string) (nlq.PinnedMetric, bool, error) {
 	for _, measure := range def.Measures {
 		if measure.ID == id {
 			metric := nlq.PinnedMetric{Text: measure.Name + " (" + string(measure.Aggregation) + ")"}
-			metric.Dependencies = metricClosure(def, []semantics.Reference{{Kind: semantics.KindMeasure, ID: measure.ID}})
-			return metric, true
+			var err error
+			metric.Dependencies, err = metricClosure(def, []semantics.Reference{{Kind: semantics.KindMeasure, ID: measure.ID}})
+			return metric, true, err
 		}
 	}
 	for _, kpi := range def.KPIs {
 		if kpi.ID == id {
 			metric := nlq.PinnedMetric{Text: kpi.Name + " = " + kpi.Expression}
-			metric.Dependencies = metricClosure(def, []semantics.Reference{{Kind: semantics.KindKPI, ID: kpi.ID}})
-			return metric, true
+			var err error
+			metric.Dependencies, err = metricClosure(def, []semantics.Reference{{Kind: semantics.KindKPI, ID: kpi.ID}})
+			return metric, true, err
 		}
 	}
-	return nlq.PinnedMetric{}, false
+	return nlq.PinnedMetric{}, false, nil
 }
 
 // metricClosure resolves the complete transitive semantic graph in deterministic
 // order. It is derived only from the already-authorized retained publication.
-func metricClosure(def topics.Definition, roots []semantics.Reference) []nlq.MetricDependency {
+func metricClosure(def topics.Definition, roots []semantics.Reference) ([]nlq.MetricDependency, error) {
 	measures := map[string]semantics.Measure{}
 	kpis := map[string]semantics.KPI{}
 	columns := map[string]semantics.Column{}
@@ -1121,9 +1130,20 @@ func metricClosure(def topics.Definition, roots []semantics.Reference) []nlq.Met
 	for _, root := range roots {
 		visit(root)
 	}
-	for _, value := range def.Joins {
-		if datasets[value.Left.Dataset] && datasets[value.Right.Dataset] {
-			add("join", value.ID, value)
+	connecting, err := uniqueJoinSubgraph(def.Joins, datasets)
+	if err != nil {
+		return nil, err
+	}
+	for _, value := range connecting {
+		add("join", value.ID, value)
+		for _, ref := range []semantics.Reference{value.Left, value.Right} {
+			key := ref.Dataset + "\x00" + ref.ID
+			if column, ok := columns[key]; ok {
+				add("column", ref.Dataset+":"+ref.ID, struct {
+					Dataset string           `json:"dataset"`
+					Column  semantics.Column `json:"column"`
+				}{ref.Dataset, column})
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -1132,7 +1152,109 @@ func metricClosure(def topics.Definition, roots []semantics.Reference) []nlq.Met
 		}
 		return out[i].ID < out[j].ID
 	})
-	return out
+	return out, nil
+}
+
+type joinEdge struct {
+	to   string
+	join semantics.Join
+}
+
+// uniqueJoinSubgraph returns the union of the only confirmed path from the
+// first selected dataset to every other selected dataset. In an undirected
+// graph an edge participates in a unique path only when it is a bridge, so the
+// bounded bridge forest rejects competing paths without enumerating cycles.
+func uniqueJoinSubgraph(joins []semantics.Join, selected map[string]bool) ([]semantics.Join, error) {
+	terminals := make([]string, 0, len(selected))
+	for dataset := range selected {
+		terminals = append(terminals, dataset)
+	}
+	sort.Strings(terminals)
+	if len(terminals) < 2 {
+		return nil, nil
+	}
+	graph := map[string][]joinEdge{}
+	for _, join := range joins {
+		graph[join.Left.Dataset] = append(graph[join.Left.Dataset], joinEdge{to: join.Right.Dataset, join: join})
+		graph[join.Right.Dataset] = append(graph[join.Right.Dataset], joinEdge{to: join.Left.Dataset, join: join})
+	}
+	for dataset := range graph {
+		sort.Slice(graph[dataset], func(i, j int) bool {
+			if graph[dataset][i].to != graph[dataset][j].to {
+				return graph[dataset][i].to < graph[dataset][j].to
+			}
+			return graph[dataset][i].join.ID < graph[dataset][j].join.ID
+		})
+	}
+	discovered := map[string]int{}
+	low := map[string]int{}
+	bridges := map[string]bool{}
+	clock := 0
+	var findBridges func(string, string)
+	findBridges = func(at, parentEdge string) {
+		clock++
+		discovered[at], low[at] = clock, clock
+		for _, edge := range graph[at] {
+			if edge.join.ID == parentEdge {
+				continue
+			}
+			if discovered[edge.to] == 0 {
+				findBridges(edge.to, edge.join.ID)
+				low[at] = min(low[at], low[edge.to])
+				if low[edge.to] > discovered[at] {
+					bridges[edge.join.ID] = true
+				}
+			} else {
+				low[at] = min(low[at], discovered[edge.to])
+			}
+		}
+	}
+	nodes := make([]string, 0, len(graph))
+	for node := range graph {
+		nodes = append(nodes, node)
+	}
+	sort.Strings(nodes)
+	for _, node := range nodes {
+		if discovered[node] == 0 {
+			findBridges(node, "")
+		}
+	}
+	chosen := map[string]semantics.Join{}
+	root := terminals[0]
+	for _, target := range terminals[1:] {
+		visited := map[string]bool{root: true}
+		var unique []semantics.Join
+		var walk func(string, []semantics.Join) bool
+		walk = func(at string, path []semantics.Join) bool {
+			if at == target {
+				unique = append([]semantics.Join(nil), path...)
+				return true
+			}
+			for _, edge := range graph[at] {
+				if !bridges[edge.join.ID] || visited[edge.to] {
+					continue
+				}
+				visited[edge.to] = true
+				if walk(edge.to, append(path, edge.join)) {
+					return true
+				}
+				delete(visited, edge.to)
+			}
+			return false
+		}
+		if !walk(root, nil) {
+			return nil, ErrMetricContext
+		}
+		for _, join := range unique {
+			chosen[join.ID] = join
+		}
+	}
+	out := make([]semantics.Join, 0, len(chosen))
+	for _, join := range chosen {
+		out = append(out, join)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
 
 func stageFromReceipt(name string, started time.Time, receipt gateway.Receipt) Stage {

@@ -144,6 +144,9 @@ func validateEntities(p TopicPack) error {
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Role.valid() || !validAliases(v.Aliases) || !validGovernedValues(v.Values) || !validTemporal(v.Temporal, v.Role) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "dimensions["+itoa(i)+"]")
 		}
+		if !governedValuesUnambiguous(v.Values) {
+			return invalid(CodeAmbiguousTerm, "dimensions["+itoa(i)+"].values")
+		}
 	}
 	for i, v := range p.KPIs {
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !validLine(v.Expression, 4096) || len(v.Inputs) < 1 || len(v.Inputs) > 32 || !validAliases(v.Aliases) || !validOptionalLine(v.Unit, 64) || !validFilters(v.Filters) {
@@ -214,6 +217,20 @@ func validGovernedValues(values []GovernedValue) bool {
 			return false
 		}
 		seen[value.ID] = true
+	}
+	return true
+}
+
+func governedValuesUnambiguous(values []GovernedValue) bool {
+	seen := map[string]bool{}
+	for _, value := range values {
+		for _, spelling := range append([]string{value.Value}, value.Aliases...) {
+			term, ok := normalizeTerm(spelling)
+			if !ok || seen[term] {
+				return false
+			}
+			seen[term] = true
+		}
 	}
 	return true
 }

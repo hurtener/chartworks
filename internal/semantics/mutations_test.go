@@ -179,3 +179,51 @@ func TestDatasetReplacementRewritesEnhancedUnresolvedReference(t *testing.T) {
 		t.Fatal("resolved semantic missing executable measure", wantID, wantField)
 	}
 }
+
+func TestDatasetReplacementRichValuesRequireDestinationSensitivityEvidence(t *testing.T) {
+	pack := testPack()
+	var old Dataset
+	for i := range pack.Datasets {
+		if pack.Datasets[i].ID != "customers" {
+			continue
+		}
+		for j := range pack.Datasets[i].Columns {
+			if pack.Datasets[i].Columns[j].ID == "region" {
+				pack.Datasets[i].Columns[j].Sensitivity = LiteralNonSensitive
+			}
+		}
+		old = pack.Datasets[i]
+	}
+	pack.Dimensions[0].Values = []GovernedValue{{ID: "north", Value: "N", Aliases: []string{"North"}, Sensitivity: LiteralNonSensitive, Provenance: ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v2", Policy: "low_cardinality"}}}
+	pack.Dimensions[0].Filters = []SemanticFilter{{ID: "north_only", Field: Reference{Kind: KindColumn, Dataset: old.ID, ID: "region"}, Operator: "eq", Values: []string{"N"}}}
+	model, err := Compile(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	columns := append([]Column(nil), old.Columns...)
+	for i := range columns {
+		columns[i].Sensitivity = ""
+	}
+	source := old.Source
+	source.Dataset = "customers_v2"
+	source.ProfileVersion = "customers_profile_v3"
+	if _, err = ReplaceDataset(model, "v2", old.ID, DatasetReplacement{Dataset: source.Dataset, Source: source, Columns: columns}); validationCode(t, err) != CodeEvidenceMismatch {
+		t.Fatalf("rich values survived destination without sensitivity evidence: %v", err)
+	}
+	if model.Digest() == "" || model.Pack().Datasets[0].ID == source.Dataset {
+		t.Fatal("failed rebind mutated prior model")
+	}
+	for i := range columns {
+		if columns[i].ID == "region" {
+			columns[i].Sensitivity = LiteralNonSensitive
+		}
+	}
+	rebound, err := ReplaceDataset(model, "v2", old.ID, DatasetReplacement{Dataset: source.Dataset, Source: source, Columns: columns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rebound.Pack()
+	if got.Dimensions[0].Field.Dataset != source.Dataset || got.Dimensions[0].Values[0].ID != "north" || got.Dimensions[0].Filters[0].Field.Dataset != source.Dataset {
+		t.Fatalf("evidence-backed rebind lost stable rich meaning: %#v", got.Dimensions[0])
+	}
+}

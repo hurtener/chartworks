@@ -154,6 +154,39 @@ func TestCompileRejectsFilterLiteralsWithoutReviewedNonSensitiveField(t *testing
 	}
 }
 
+func TestCompileRejectsGloballyAmbiguousGovernedSpellings(t *testing.T) {
+	base := testPack()
+	for i := range base.Datasets {
+		for j := range base.Datasets[i].Columns {
+			if base.Datasets[i].ID == "customers" && base.Datasets[i].Columns[j].ID == "region" {
+				base.Datasets[i].Columns[j].Sensitivity = LiteralNonSensitive
+			}
+		}
+	}
+	value := func(id, primary string, aliases ...string) GovernedValue {
+		return GovernedValue{ID: id, Value: primary, Aliases: aliases, Sensitivity: LiteralNonSensitive, Provenance: ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v2", Policy: "low_cardinality"}}
+	}
+	for _, tc := range []struct {
+		name   string
+		values []GovernedValue
+	}{
+		{"primary_primary", []GovernedValue{value("north", "North"), value("north_2", "north")}},
+		{"alias_alias", []GovernedValue{value("north", "N", "North"), value("north_2", "N2", "NORTH")}},
+		{"primary_alias", []GovernedValue{value("north", "North"), value("north_2", "N2", "north")}},
+		{"unicode_equivalent", []GovernedValue{value("accent", "Re\u0301gion"), value("accent_2", "Région")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pack := base
+			pack.Dimensions = append([]Dimension(nil), base.Dimensions...)
+			pack.Dimensions[0].Values = tc.values
+			model, err := Compile(pack)
+			if validationCode(t, err) != CodeAmbiguousTerm || model.Digest() != "" {
+				t.Fatalf("ambiguous governed spelling accepted: %v", err)
+			}
+		})
+	}
+}
+
 func TestCompileRejectsNonExactAndUnsafeReferences(t *testing.T) {
 	tests := []struct {
 		name string

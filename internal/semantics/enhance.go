@@ -3,6 +3,7 @@ package semantics
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"reflect"
 	"sort"
 )
 
@@ -131,9 +132,36 @@ func ApplyRichEnhancements(model Model, version string, proposals []Enhancement,
 			p.Unresolved = append(p.Unresolved, UnresolvedSemantic{ID: id, Dataset: item.Dataset, Column: item.Column, Reason: item.Reason})
 		}
 	}
-	p.KPIs = append(p.KPIs, kpis...)
-	p.RelationshipDecisions = append(p.RelationshipDecisions, relationships...)
+	var err error
+	p.KPIs, err = mergeEnhancementEntities(p.KPIs, kpis, func(value KPI) string { return value.ID }, "enhancements.kpis")
+	if err != nil {
+		return Model{}, err
+	}
+	p.RelationshipDecisions, err = mergeEnhancementEntities(p.RelationshipDecisions, relationships, func(value RelationshipDecision) string { return value.ID }, "enhancements.relationships")
+	if err != nil {
+		return Model{}, err
+	}
 	return Compile(p)
+}
+
+func mergeEnhancementEntities[T any](existing, proposed []T, identify func(T) string, path string) ([]T, error) {
+	out := append([]T(nil), existing...)
+	index := map[string]int{}
+	for i, value := range out {
+		index[identify(value)] = i
+	}
+	for _, value := range proposed {
+		id := identify(value)
+		if prior, ok := index[id]; ok {
+			if reflect.DeepEqual(out[prior], value) {
+				continue
+			}
+			return nil, invalid(CodeDuplicateID, path)
+		}
+		index[id] = len(out)
+		out = append(out, value)
+	}
+	return out, nil
 }
 
 func removeProcessedMeasures(values []Measure, processed map[Reference]bool) []Measure {

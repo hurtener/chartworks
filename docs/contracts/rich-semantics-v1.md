@@ -18,7 +18,9 @@ Governed values are a privacy-preserving replacement for unrestricted sample row
 They are accepted only for a column explicitly reviewed as non-sensitive and carry
 bounded evidence and policy identifiers. Sensitive or unknown-sensitivity values
 cannot enter a compiled topic, facet generation or model context. The enclosing
-dataset keeps the exact source, execution context, source revision and private
+dimension rejects any normalized collision across primary values and aliases,
+including Unicode/case-equivalent spellings, before publication or context. The
+enclosing dataset keeps the exact source, execution context, source revision and private
 profile provenance; erased source/profile evidence makes private historical reads
 inaccessible through the existing lifecycle fence. Logical erasure does not claim
 physical backup or WAL deletion.
@@ -39,6 +41,11 @@ decision together with measures, dimensions, KPIs, joins and canonical keys.
 Published definitions remain immutable; legacy definitions with absent optional
 rich fields preserve their meaning and do not gain inferred defaults.
 
+Dataset rebind preserves reviewed sensitivity only when the destination profile
+addresses the same source, context and physical column identity. A changed identity
+clears that classification. If governed values or literal filters depend on it, the
+whole rebind fails before CAS save and requires explicit destination review.
+
 The bounded `enhance` gateway role can propose descriptions, aliases, units,
 semantic roles and temporal policy for the exact supplied stable columns. It cannot
 send or return sample rows, sensitive values, SQL, credentials, permissions,
@@ -46,6 +53,13 @@ canonical meaning or executable joins. It may propose bounded KPI formulas and
 candidate/rejected relationship evidence over exact supplied identifiers. Governed
 values remain explicit reviewed draft authoring data. Generated results remain
 private drafts until the existing human review/publication transition.
+The request includes one deterministic bounded catalog of existing metric IDs and
+potential measure IDs for the current page. KPI inputs outside that sealed catalog,
+current-page IDs not actually returned as measures, and relationship endpoints
+outside the supplied page are rejected. Exact proposal retries are idempotent;
+same-ID changes fail rather than overwriting earlier evidence. Exact KPI repeats
+remain idempotent across pages; relationship repeats outside their supplied page
+are rejected by the page-local evidence rule.
 
 ## Generation context
 
@@ -55,6 +69,10 @@ its formula, nested KPI inputs, measures, exact columns, related dimension metad
 (aliases, governed values and temporal policy), required filters, units, and
 confirmed joins needed by the selected datasets. The sealed route context stores
 that typed closure with the metric.
+Bridge datasets and joins are included when they form the unique confirmed path
+between selected datasets. Disconnected datasets, competing paths and cycles on the
+required route return typed `nlqroute.ErrMetricContext` instead of selecting a join
+path by order.
 
 The existing `cl100k_base` assembler treats each selected metric and its complete
 closure as mandatory input. It either retains the whole closure under the selected
@@ -66,7 +84,9 @@ still sends SQL through the existing validator and read executor.
 ## Evidence and remaining gates
 
 Focused pure tests cover rich-field canonicalization and caller-memory isolation,
-sensitive/unknown value rejection, neutral remapping, transitive KPI closure,
+sensitive/unknown value rejection, globally ambiguous spelling rejection,
+evidence-fenced rebind, sealed enhancement pagination/retry behavior, neutral
+remapping, transitive KPI closure with bridge/ambiguity cases,
 English/Spanish tokenizer behavior and typed budget insufficiency. Native-parser,
 real PostgreSQL publication/import, race, broad fuzz, coverage, all-phase and release
 validation belong to the manual final-gap workflow. Recorded model fixtures do not

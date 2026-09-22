@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -228,8 +229,8 @@ func TestPinnedKPIResolvesTransitiveRichDependencyClosure(t *testing.T) {
 		},
 		Joins: []semantics.Join{{ID: "orders_customers", Name: "Orders customers", Left: column("orders", "customer_id"), Right: column("customers", "id"), Type: semantics.JoinInner, Cardinality: semantics.CardinalityManyToOne}},
 	}
-	metric, ok := findMetric(def, "indexed_revenue")
-	if !ok || metric.Text != "Indexed revenue = net revenue divided by target" {
+	metric, ok, err := findMetric(def, "indexed_revenue")
+	if err != nil || !ok || metric.Text != "Indexed revenue = net revenue divided by target" {
 		t.Fatalf("metric not resolved: %#v", metric)
 	}
 	metric.ID = "topic:indexed_revenue"
@@ -254,6 +255,73 @@ func TestPinnedKPIResolvesTransitiveRichDependencyClosure(t *testing.T) {
 		if !strings.Contains(assembled.Prompt, want) {
 			t.Fatalf("rich dependency %q absent from generation prompt: %s", want, assembled.Prompt)
 		}
+	}
+}
+
+func TestMetricClosureRequiresUniqueConfirmedConnectingSubgraph(t *testing.T) {
+	column := func(dataset, id string) semantics.Reference {
+		return semantics.Reference{Kind: semantics.KindColumn, Dataset: dataset, ID: id}
+	}
+	join := func(id, left, right string) semantics.Join {
+		return semantics.Join{ID: id, Name: id, Left: column(left, "id"), Right: column(right, "id"), Type: semantics.JoinInner, Cardinality: semantics.CardinalityManyToOne}
+	}
+	base := topics.Definition{
+		Datasets: []topics.Dataset{{ID: "a", Columns: []semantics.Column{{ID: "id"}}}, {ID: "b", Columns: []semantics.Column{{ID: "id"}}}, {ID: "c", Columns: []semantics.Column{{ID: "id"}}}, {ID: "d", Columns: []semantics.Column{{ID: "id"}}}},
+		Measures: []semantics.Measure{{ID: "a_value", Name: "A", Field: column("a", "id"), Aggregation: semantics.AggregationSum, Filters: []semantics.SemanticFilter{{ID: "c_required", Field: column("c", "id"), Operator: "not_null"}}}},
+		Joins:    []semantics.Join{join("ab", "a", "b"), join("bc", "b", "c")},
+	}
+	metric, ok, err := findMetric(base, "a_value")
+	if err != nil || !ok {
+		t.Fatal("three-dataset bridge", err)
+	}
+	var joinIDs []string
+	for _, dependency := range metric.Dependencies {
+		if dependency.Kind == "join" {
+			joinIDs = append(joinIDs, dependency.ID)
+		}
+	}
+	if !slices.Equal(joinIDs, []string{"ab", "bc"}) {
+		t.Fatalf("bridge joins missing or unstable: %v", joinIDs)
+	}
+	foundBridgeColumn := false
+	for _, dependency := range metric.Dependencies {
+		foundBridgeColumn = foundBridgeColumn || dependency.Kind == "column" && dependency.ID == "b:id"
+	}
+	if !foundBridgeColumn {
+		t.Fatalf("bridge join key metadata missing: %#v", metric.Dependencies)
+	}
+	budgeted := metric
+	budgeted.ID = "topic:a_value"
+	budgeted.Dependencies = append([]nlq.MetricDependency(nil), metric.Dependencies...)
+	budgeted.Dependencies[0].Text = strings.Repeat("x", 10<<10)
+	assembler, err := nlq.NewDefaultContextAssembler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = assembler.Assemble(context.Background(), nlq.ContextInput{Locale: nlq.LanguageEnglish, Strategy: nlq.StrategySingleTopic, Topic: "topic", TopicVersion: "v1", Question: "A with C", Metrics: []nlq.PinnedMetric{budgeted}}, nlq.TierLow); !errors.Is(err, nlq.ErrInsufficient) {
+		t.Fatalf("oversized bridge closure was partially admitted: %v", err)
+	}
+	shuffled := base
+	shuffled.Joins = []semantics.Join{base.Joins[1], base.Joins[0]}
+	stable, _, err := findMetric(shuffled, "a_value")
+	if err != nil || !reflect.DeepEqual(metric.Dependencies, stable.Dependencies) {
+		t.Fatalf("join input order changed closure: %v %#v", err, stable.Dependencies)
+	}
+
+	disconnected := base
+	disconnected.Joins = disconnected.Joins[:1]
+	if _, _, err = findMetric(disconnected, "a_value"); !errors.Is(err, ErrMetricContext) {
+		t.Fatalf("disconnected closure accepted: %v", err)
+	}
+	competing := base
+	competing.Joins = append(append([]semantics.Join(nil), base.Joins...), join("ad", "a", "d"), join("dc", "d", "c"))
+	if _, _, err = findMetric(competing, "a_value"); !errors.Is(err, ErrMetricContext) {
+		t.Fatalf("competing paths accepted: %v", err)
+	}
+	cycle := base
+	cycle.Joins = append(append([]semantics.Join(nil), base.Joins...), join("ca", "c", "a"))
+	if _, _, err = findMetric(cycle, "a_value"); !errors.Is(err, ErrMetricContext) {
+		t.Fatalf("cycle selected arbitrarily: %v", err)
 	}
 }
 
