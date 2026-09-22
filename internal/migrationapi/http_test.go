@@ -80,7 +80,7 @@ func migrationHTTPManifest() migration.Manifest {
 	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
 		for i := 1; i <= group.count; i++ {
 			feature := fmt.Sprintf("%s%02d", group.prefix, i)
-			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "ref-" + feature, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash})
+			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: feature, Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "ref-" + feature, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash, ComparisonHash: hash, Engine: "postgres", Dialect: "postgres", SourceSnapshot: hash, SourceRevision: 1})
 		}
 	}
 	evidence = append(evidence, migration.Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discard", Source: "synthetic", SourceVersion: hash, EvidenceHash: hash})
@@ -98,7 +98,7 @@ func TestHTTPRoutesUseVerifiedAuthorityAndTypedService(t *testing.T) {
 	}
 	fallback := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(418) })
 	handler := Handler(f.verifier, service, fallback)
-	token := f.token(t, "migration.read", "migration.write", "migration.cutover", "migration.erase", "cw.tenant.read:tenant", "cw.tenant.write:tenant", "cw.tenant.erase:tenant")
+	token := f.token(t, "migration.read", "migration.write", "migration.cutover", "migration.erase", "ops.read", "cw.tenant.read:tenant", "cw.tenant.write:tenant", "cw.tenant.erase:tenant", "cw.tenant.export:tenant")
 	manifest := migrationHTTPManifest()
 	dry, _ := json.Marshal(migration.DryRunRequest{Manifest: manifest})
 	imp, _ := json.Marshal(migration.ImportRequest{Manifest: manifest})

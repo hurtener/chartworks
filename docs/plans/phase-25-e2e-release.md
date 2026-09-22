@@ -69,3 +69,31 @@ selected final stress run, and five AC tests are not full Phase 25 acceptance.
 Phase 25 remains in progress until integration supplies all six criteria and the
 strict preflight passes. Live Pengui/engine/cohort and container qualification
 cannot be inferred from synthetic fixtures.
+
+## Final-stress integration boundary
+
+The bounded release orchestration now verifies caller authority independently,
+loads the exact accepted Phase 24 suite/report/runtime pack, and requires current
+revision evidence before running `final_stress`. Its concrete governed adapter
+composes the existing query service's Plan→Run path and requires the PostgreSQL
+cross-process operation lock. The operation ledger does not exercise the
+frozen-run product reuse key, so the factory rejects the required invalidation
+steps; a fresh operation per changed binding cannot satisfy AC03. The read
+attempt exposes physical-call evidence but no source-only duration, and the
+timing gate also fails closed. The signed-action negative uses a separately
+verified bearer with one query action removed and sends it through Plan→Run;
+it cannot be satisfied by testing an unrelated action. Each invalidation step pins a consumer case and exact
+accepted report hash; the resolver must provide the matching current revision
+binding and report-selected runtime pack. Bifrost attests live mode; a recorded
+gateway engine must explicitly attest recorded mode for integration runs. Phase
+34 still has to supply selected source/rule/topic/context revisions from its
+current stores,
+and the composition root must provide the recorded engine for integration mode.
+An AC03 adapter must instead exercise distinct frozen run IDs over the same
+approved block via the real `ReuseFrozenRun` path, observe its reuse key and
+`ReusedFrom`, then assert physical source calls across one-field changes. It
+also needs a persisted native PostgreSQL read duration that excludes journal
+and finalization time. The runtime-pack dimension needs an actual reviewed
+pack pin in that frozen-run identity before it can be claimed.
+Phase 25 remains in progress until the real release profile executes and is reviewed;
+this change does not claim a final stress run or release acceptance.

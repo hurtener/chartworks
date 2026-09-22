@@ -9,11 +9,19 @@ bookkeeping, not evidence that every implementation has passed its release gates
 
 The [phase-23 review](../reviews/phase-23-adversarial.md),
 [phase-27 review](../reviews/phase-27-adversarial.md),
-[phase-26/28 ledger](../reviews/phase-26-28-runtime.md), and
-[phase-29 review](../reviews/phase-29-adversarial.md), and
-[phase-30/31 review](../reviews/phase-30-31-adversarial.md) record verification
+[phase-26/28 ledger](../reviews/phase-26-28-runtime.md),
+[phase-29 review](../reviews/phase-29-adversarial.md),
+[phase-30/31 review](../reviews/phase-30-31-adversarial.md),
+[phase-24 evaluation review](../reviews/phase-24-evaluation.md) and
+[phase-32 review](../reviews/phase-32-adversarial.md) record verification
 boundaries. Real named tests and exact-source CI establish acceptance. Historical
 superseded plans remain under `docs/archive/phase0-plans/`.
+
+Phase 34's [merged migration runtime](../contracts/migration-cutover-v1.md)
+adds a neutral manifest, private import/quarantine, evidence-bound readiness and
+fenced schedule cutover/rollback. Its registry status remains `in_progress`
+pending the owner comparison and operational evidence; Phase 25 remains the
+planned full-release gate.
 
 ## Fixed decisions
 

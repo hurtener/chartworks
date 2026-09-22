@@ -428,6 +428,16 @@ type RunResult struct {
 	ValidationFixes int                          `json:"validation_fixes"`
 	ExecutionFixes  int                          `json:"execution_fixes"`
 	SQL             string                       `json:"sql,omitempty"`
+	// Receipt is internal measurement evidence. Public RunResult JSON never
+	// contains gateway receipts; evaluation consumes it inside the service.
+	Receipt gateway.Receipt `json:"-"`
+}
+
+// PlanOperationLocker serializes a caller-defined operation callback for one
+// durable key. Plan uses it through plan persistence; PlanAndRun holds it
+// through the physical run so concurrent cold calls join one ledger entry.
+type PlanOperationLocker interface {
+	WithPlanOperationLock(context.Context, store.Scope, string, func() error) error
 }
 
 // Service composes only existing authority, routing, gateway and read seams.

@@ -37,9 +37,10 @@ func Defaults() Options {
 
 // DB owns its pool and exposes only scoped domain methods plus operator lifecycle methods.
 type DB struct {
-	pool    *pgxpool.Pool
-	timeout time.Duration
-	closed  atomic.Bool
+	pool               *pgxpool.Pool
+	timeout            time.Duration
+	planOperationSlots chan struct{}
+	closed             atomic.Bool
 }
 
 var _ store.Foundation = (*DB)(nil)
@@ -67,6 +68,11 @@ func Open(ctx context.Context, dsn string, opts Options) (*DB, error) {
 		return nil, safe(err)
 	}
 	db := &DB{pool: pool, timeout: opts.TransactionTimeout}
+	if opts.MaxConns >= 2 {
+		// Every advisory-lock callback uses the ordinary pool. Bound the
+		// holders so at least one connection remains available to it.
+		db.planOperationSlots = make(chan struct{}, opts.MaxConns-1)
+	}
 	connect, cancel := context.WithTimeout(ctx, opts.ConnectTimeout)
 	defer cancel()
 	if err = pool.Ping(connect); err != nil {

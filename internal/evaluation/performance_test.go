@@ -42,7 +42,7 @@ func performanceTestManifest() PerformanceManifest {
 	actionsNegative.ActionsDigest = strings.Repeat("3", 64)
 	authority := PerformanceAuthorityFixture{Tenant: "tenant-a", User: "user-a", Session: "session-a", Scopes: []string{"reporting.execute", "cw.report.execute:report-a", "cw.source.query:source-a", "cw.execution_context.use:context-a"}, TargetTenant: "tenant-a", ReportID: "report-a", SourceID: "source-a", ContextID: "context-a"}
 	tenantDenied := authority
-	tenantDenied.Tenant = "tenant-b"
+	tenantDenied.TargetTenant = "tenant-b"
 	contextDenied := authority
 	contextDenied.ContextID = "context-b"
 	actionsDenied := authority
@@ -52,7 +52,7 @@ func performanceTestManifest() PerformanceManifest {
 		ID:            "performance-test",
 		Kind:          PerformanceSmoke,
 		EvidenceMode:  PerformanceSynthetic,
-		Environment:   PerformanceEnvironment{RunnerLabel: "test", OS: "test-os", Architecture: "test-arch", CPUs: 2, GoVersion: "go-test", DatasetDigest: a, DatasetRows: 100, SourceMode: "synthetic", ModelMode: "none", EvaluationSuite: a, EvaluationReport: a},
+		Environment:   PerformanceEnvironment{RunnerLabel: "test", OS: "test-os", Architecture: "test-arch", CPUs: 2, GoVersion: "go-test", DatasetDigest: a, DatasetRows: 100, SourceMode: "synthetic", ModelMode: "none", EvaluationSuiteID: "suite-test", EvaluationSuiteRevision: 1, EvaluationSuite: a, EvaluationReportID: "report-test", EvaluationReport: a, WorkloadCaseID: "case-test"},
 		Authority:     authority,
 		MaxDurationMS: 5000,
 		Steps: []PerformanceStep{
@@ -70,6 +70,7 @@ func performanceTestManifest() PerformanceManifest {
 			step("actions-negative", "actions_negative", actionsNegative, false, false, 2, 2, 0, 2),
 		},
 	}
+	m.Steps[11].DeniedAction = "report.publish"
 	m.Steps[9].AuthorityOverride = &tenantDenied
 	m.Steps[10].AuthorityOverride = &contextDenied
 	m.Steps[11].AuthorityOverride = &actionsDenied
@@ -209,17 +210,13 @@ func TestPerformanceDerivesOutcomeFromIndependentReceipts(t *testing.T) {
 	}
 }
 
-func TestPerformanceAuthorityExpectationCannotControlDenial(t *testing.T) {
+func TestPerformanceProfileCannotRewriteNegativeTarget(t *testing.T) {
 	m := performanceTestManifest()
 	m.Steps = append([]PerformanceStep(nil), m.Steps...)
 	wrong := m.Authority
 	m.Steps[9].AuthorityOverride = &wrong
-	if err := m.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	report, err := MeasurePerformance(context.Background(), m, newTestSyntheticPerformanceRunner(), nil)
-	if !errors.Is(err, ErrGate) || report.CorrectnessPassed || len(report.Samples) != 0 {
-		t.Fatal(report, err)
+	if err := m.Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("a same-tenant fixture target replaced the required cross-tenant denial", err)
 	}
 }
 
@@ -346,7 +343,7 @@ func TestPerformanceCommandInspectsAndStoresBoundedReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = writePerformanceReport(reportPath, report); err != nil {
+	if err = PersistPerformanceReport(reportPath, m, report); err != nil {
 		t.Fatal(err)
 	}
 	// #nosec G304 -- reportPath is beneath this test's private temporary directory.

@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var _ nlqexec.Repository = (*DB)(nil)
@@ -91,6 +92,81 @@ func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 		}
 		return auditJob(ctx, tx, scope, "nlq.query_planned", q.ID)
 	})
+}
+
+// WithPlanOperationLock serializes one scoped operation callback. The session
+// lock is acquired on a reserved connection while the callback uses the
+// ordinary pool. A per-pool slot bounds simultaneous holders to MaxConns-1,
+// leaving at least one connection for callbacks even when keys differ.
+// Waiters release their connections while a key is held. The callback persists
+// the plan before returning, and no result or authority is cached here.
+func (d *DB) WithPlanOperationLock(ctx context.Context, scope store.Scope, operation string, callback func() error) (retErr error) {
+	if d == nil || ctx == nil || !scope.Valid() || !identity.Identifier(operation) || callback == nil || d.closed.Load() || d.planOperationSlots == nil {
+		return store.ErrUnavailable
+	}
+	select {
+	case d.planOperationSlots <- struct{}{}:
+		defer func() { <-d.planOperationSlots }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// PostgreSQL text parameters reject NUL bytes. JSON keeps the tuple
+	// unambiguous while producing a valid, printable advisory-lock key.
+	lockKeyBytes, err := json.Marshal([3]string{scope.Tenant(), scope.Actor(), operation})
+	if err != nil {
+		return store.ErrUnavailable
+	}
+	lockKey := string(lockKeyBytes)
+	var conn *pgxpool.Conn
+	for {
+		acquired, err := d.pool.Acquire(ctx)
+		if err != nil {
+			return safe(err)
+		}
+		var locked bool
+		err = acquired.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtextextended($1,7214061010))`, lockKey).Scan(&locked)
+		if err != nil {
+			acquired.Release()
+			return safe(err)
+		}
+		if locked {
+			conn = acquired
+			break
+		}
+		acquired.Release()
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		var unlocked bool
+		unlockErr := conn.QueryRow(unlockCtx, `SELECT pg_advisory_unlock(hashtextextended($1,7214061010))`, lockKey).Scan(&unlocked)
+		if unlockErr != nil || !unlocked {
+			// An advisory lock belongs to the PostgreSQL session. A healthy
+			// connection can survive a statement error with the lock still held;
+			// returning it to the pool would allow reentrant acquisitions while
+			// other sessions remain blocked. Closing the hijacked session is the
+			// only safe fallback when the unlock cannot be confirmed.
+			_ = conn.Hijack().Close(unlockCtx)
+			if retErr == nil {
+				retErr = store.ErrUnavailable
+			}
+			return
+		}
+		conn.Release()
+	}()
+	return callback()
 }
 
 func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec.QueryRecord) error {
