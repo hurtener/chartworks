@@ -573,6 +573,7 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 		References: append([]semantics.Reference(nil), request.References...), Choices: append([]nlqroute.ChoiceSelection(nil), request.Choices...),
 		Joins: append([]nlqroute.JoinChoice(nil), request.JoinChoices...), MetricIDs: append([]string(nil), request.MetricIDs...),
 		Examples: append([]nlq.OptionalItem(nil), request.Examples...), Rerank: request.Rerank,
+		InterpretationAnchor: request.InterpretationAnchor, InterpretationEdits: append([]nlqroute.InterpretationEdit(nil), request.InterpretationEdits...),
 	}
 	base.Topic = old.Topic
 	base.Topics = append([]string(nil), old.Topics...)
@@ -597,6 +598,10 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 	base.MetricIDs = mergeStrings(base.MetricIDs, delta.MetricIDs)
 	base.Examples = append(base.Examples, delta.Examples...)
 	base.Rerank = base.Rerank || delta.Rerank
+	if delta.InterpretationAnchor != "" {
+		base.InterpretationAnchor = delta.InterpretationAnchor
+	}
+	base.InterpretationEdits = mergeInterpretationEdits(base.InterpretationEdits, delta.InterpretationEdits)
 	base.EditBase = append(base.EditBase, delta.EditBase...)
 	base.Hints = append(base.Hints, delta.Hints...)
 	base.ExampleInput = append(base.ExampleInput, delta.ExampleInput...)
@@ -614,6 +619,23 @@ func mergeStrings(base, delta []string) []string {
 		if !seen[value] {
 			seen[value] = true
 			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func mergeInterpretationEdits(base, delta []nlqroute.InterpretationEdit) []nlqroute.InterpretationEdit {
+	out := append([]nlqroute.InterpretationEdit(nil), base...)
+	for _, edit := range delta {
+		replaced := false
+		for i := range out {
+			if out[i].Target == edit.Target {
+				out[i], replaced = edit, true
+				break
+			}
+		}
+		if !replaced {
+			out = append(out, edit)
 		}
 	}
 	return out
@@ -1023,7 +1045,7 @@ func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequ
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {
-	return nlqroute.RouteRequest{Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank}
+	return nlqroute.RouteRequest{Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank, InterpretationAnchor: r.InterpretationAnchor, InterpretationEdits: append([]nlqroute.InterpretationEdit(nil), r.InterpretationEdits...)}
 }
 
 func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
@@ -1057,7 +1079,7 @@ func requireQuestionAction(e identity.Envelope, action string, in QuestionReques
 		ids = append(ids, in.Topic)
 	}
 	if len(ids) == 0 {
-		return ErrInvalid
+		return nil
 	}
 	seen := map[string]bool{}
 	for _, id := range ids {

@@ -52,7 +52,7 @@ type clarificationReplayer interface {
 }
 
 func bindClarificationCandidate(ctx context.Context, a admission, candidate generatedCandidate) (generatedCandidate, error) {
-	if len(a.route.Resolutions) == 0 {
+	if len(a.route.Resolutions) == 0 && (a.route.Interpretation == nil || len(a.route.Interpretation.Values)+len(a.route.Interpretation.Temporal) == 0) {
 		return candidate, nil
 	}
 	constraints, err := a.route.ResolvedBusinessConstraints()
@@ -91,7 +91,7 @@ func sealClarificationCandidate(candidate *generatedCandidate, plan exec.Plan, p
 }
 
 func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Envelope, record QueryRecord) ([]exec.BusinessConstraint, error) {
-	if record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 {
+	if record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
 		return nil, nil
 	}
 	replayer, ok := s.router.(clarificationReplayer)

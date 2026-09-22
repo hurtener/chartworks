@@ -44,3 +44,11 @@ Implement `TestPhase24/AC01` through `TestPhase24/AC06`, including deliberately 
 ## Glossary, decisions and deviations
 
 Quality score, execution success and security correctness are separate outcomes. D-049 applies. No runtime completion is claimed.
+
+## CW-07 evaluation input
+
+Routes now retain `evidence-v1` topic scores, facet-kind coverage, optional rerank
+position, policy floor/margin and `semantic-interpretation-v1` digests. These are
+reproducible inputs for AC02 and later differential calibration. Focused fixtures
+prove policy behavior and fail-closed ambiguity; they do not establish live query
+correctness calibration, which remains an explicit phase-24/final-gap measurement.

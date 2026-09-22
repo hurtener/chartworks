@@ -89,3 +89,15 @@ insufficiency before gateway work; optional facet evidence cannot leave a label 
 missing dependencies. The phase-18 generator continues to accept only that sealed
 context before validator-issued execution. See
 [rich semantics v1](../contracts/rich-semantics-v1.md).
+
+## CW-07 governed routing and interpretation
+
+D-076 and the [routing/interpretation contract](../contracts/routing-interpretation-v1.md)
+add authority-constrained server topic discovery, multi-facet evidence aggregation,
+optional authorized topic reranking and typed no-route/ambiguity decisions. The same
+route owns deterministic English/Spanish governed-value, geography and month-span
+interpretation from exact current rich-semantic publications. Locale/parser/anchor,
+topic/source/context revisions, canonical values and corrections are sealed into the
+route and mandatory context. Two complementary facets from one topic no longer
+trigger cross-topic ambiguity. `TestCW07/AC01` through `AC08` are the focused
+acceptance; live population calibration remains phase-24/final-gap evidence.
