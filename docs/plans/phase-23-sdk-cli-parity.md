@@ -75,6 +75,13 @@ CW-10 extends the same actual-operation matrix with typed
 `ReportFilterOptions`; generic CLI invocation discovers the registered closed
 operation and cannot supply arbitrary SQL, source coordinates or authorization.
 
+EXP-03/EXP-11 extend the generated matrix with stable error inventories, closed
+query-interaction roles and explicit post-discovery MCP dispositions. The shared
+consumer ordering contract rejects stale generations/sequences, separates a
+disconnect from explicit cancellation and preserves empty/truncated/failed/
+uncertain terminal outcomes. The cumulative registry includes Phase 32 rendition
+and Phase 33 onboarding operations without adding a standalone authoring UI.
+
 The [adversarial record](../reviews/phase-23-adversarial.md) identifies corrections,
 verification commands and exact-source evidence boundaries. All six named tests
 must pass; the registry does not excuse missing runtime assertions.

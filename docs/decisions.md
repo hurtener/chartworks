@@ -786,3 +786,5 @@ Report filter continuation: [D-082 explicit revision-bound selectable values thr
 Static rendering continuation: [D-083 isolated durable retained-artifact renditions](decisions/2026-09-22-static-render-runtime.md).
 
 Guided onboarding continuation: [D-084 private durable composition with explicit human gates](decisions/2026-09-22-guided-onboarding.md).
+
+Consumer conformance continuation: [D-086 installed-operation interaction and surface parity](decisions/2026-09-22-consumer-conformance.md).

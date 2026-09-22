@@ -64,10 +64,19 @@ func (c *Client) OperationMatrix(ctx context.Context, mcpClient *Client) ([]Oper
 			return value
 		}
 		i, exists := byID[get("chartworks/operation")]
-		if !exists || rows[i].MCPTool != "" || rows[i].Action != get("chartworks/action") || rows[i].Effect != get("chartworks/effect") || rows[i].Audit != get("chartworks/audit") {
+		if !exists || rows[i].MCPTool != "" || rows[i].Action != get("chartworks/action") || rows[i].Effect != get("chartworks/effect") || rows[i].Audit != get("chartworks/audit") || rows[i].Interaction != get("chartworks/interaction") {
 			return nil, ErrInvalidCatalog
 		}
-		rows[i].MCPTool = tool.Name
+		rows[i].MCPTool, rows[i].MCPDisposition = tool.Name, "bound"
+	}
+	for i := range rows {
+		if rows[i].MCPDisposition == "not_queried" {
+			if rows[i].Public {
+				rows[i].MCPDisposition = "public_http"
+			} else {
+				rows[i].MCPDisposition = "http_only_no_registered_mcp_binding"
+			}
+		}
 	}
 	return rows, nil
 }

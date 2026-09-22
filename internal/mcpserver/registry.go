@@ -230,6 +230,9 @@ func (r *Registry) find(name string) (Binding, bool) {
 func (b Binding) tool() *mcp.Tool {
 	destructive, open := false, b.effects.openWorld
 	out := &mcp.Tool{Name: b.name, Description: b.description, InputSchema: b.input.Document(), OutputSchema: b.output.Document(), Annotations: &mcp.ToolAnnotations{ReadOnlyHint: b.effects.readOnly, IdempotentHint: b.effects.idempotent, DestructiveHint: &destructive, OpenWorldHint: &open}, Meta: mcp.Meta{"chartworks/operation": b.definition.ID, "chartworks/action": b.definition.Action, "chartworks/effect": b.definition.Effect, "chartworks/audit": b.definition.Audit, "chartworks/group": b.group, "chartworks/persists": b.effects.persists, "chartworks/maySpend": b.effects.paid}}
+	if b.definition.Interaction != "" {
+		out.Meta["chartworks/interaction"] = b.definition.Interaction
+	}
 	if b.app != nil {
 		out.Meta["ui"] = map[string]any{"resourceUri": b.app.uri, "visibility": []string{"model", "app"}}
 	}
