@@ -146,7 +146,17 @@ func verifyReference(ref string, registry phaseRegistry, receipts map[string][]s
 // SourceFileDigests is deterministic and includes each public contract schema,
 // migration, reference config and active release document, not archive history.
 func SourceFileDigests(root string) (map[string]string, error) {
-	paths := []string{"AGENTS.md", "CLAUDE.md", "Dockerfile", "go.mod", "go.sum", "README.md", "RFC-001-Chartworks.md", "RFC-002-Governed-Reporting.md", "docs/configuration.md", "docs/plans/README.md", "docs/plans/COMMON.md", "docs/plans/phase-25-e2e-release.md", "docs/plans/phase-34-migration-parity-cutover.md", "docs/plans/phase-registry.json", "docs/plans/coverage.json", "docs/contracts/pengui-authority.md", "docs/contracts/warehouse-drivers.md", "docs/contracts/performance-evidence-v1.md", "docs/contracts/release-evidence-v1.md"}
+	paths := []string{
+		"AGENTS.md", "CLAUDE.md", "Dockerfile", "go.mod", "go.sum", "README.md",
+		"RFC-001-Chartworks.md", "RFC-002-Governed-Reporting.md",
+		"docs/configuration.md", "docs/gap-analysis.md", "docs/glossary.md",
+		"docs/plans/README.md", "docs/plans/COMMON.md", "docs/plans/phase-25-e2e-release.md",
+		"docs/plans/phase-34-migration-parity-cutover.md", "docs/plans/phase-registry.json",
+		"docs/plans/coverage.json", "docs/contracts/pengui-authority.md",
+		"docs/contracts/pengui-provider-registration.md", "docs/contracts/warehouse-drivers.md",
+		"docs/contracts/migration-cutover-v1.md", "docs/runbooks/migration-cutover.md",
+		"docs/contracts/performance-evidence-v1.md", "docs/contracts/release-evidence-v1.md",
+	}
 	for _, pattern := range []string{"docs/contracts/chartworks-*-operations.json", "examples/chartworks.*.json", "internal/store/postgres/migrations/*.sql"} {
 		found, err := filepath.Glob(filepath.Join(root, pattern))
 		if err != nil || len(found) == 0 {

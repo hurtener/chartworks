@@ -71,6 +71,8 @@ PostgreSQL/MySQL/SQL Server checks from recorded cloud fixtures, and a cloud
 engine needs separate live evidence before cutover.
 
 AC03 remains separate under the performance evidence contract. Neither this
-bundle nor its release verifier can close that criterion. This contract is
-implemented before Phase 34 is shipped; absent Phase 34 evidence is a hard
-release failure, and the current Phase 25 branch is not a release candidate.
+bundle nor its release verifier can close that criterion. The Phase 34 cutover
+implementation has merged, but its phase status remains in progress and no
+accepted live cohort inventory exists for this head. Absent Phase 34 evidence
+is a hard release failure, and the current Phase 25 branch is not a release
+candidate.
