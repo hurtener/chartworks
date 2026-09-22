@@ -121,5 +121,6 @@ table styling, chart-binding or clarification implementation is included.
 The last repository-wide run did not finish green. The verified original logs,
 concrete final-review findings, forward-only locale migration and regression
 coverage are recorded in [the final adversarial follow-up](cw-03-final-adversarial.md).
-Its PR carries the final new-head CI receipt; earlier exact-SHA receipts above
-remain historical and are not rewritten as passing evidence for newer changes.
+Its PR records the final new-head fast and manually dispatched evidence actually
+obtained; earlier exact-SHA receipts above remain historical and are not rewritten
+as passing evidence for newer changes.

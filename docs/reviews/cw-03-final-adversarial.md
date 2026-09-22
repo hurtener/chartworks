@@ -1,9 +1,11 @@
 # CW-03 final adversarial follow-up
 
-Scope: BLK-01, BLK-05 and BLK-07, following PR #24. The owner merged PR #24
-before its last repository-wide CI finished. This follow-up starts from current
-main `2219fa29093253e0c51b94c4b9de3a4e52f19ee1`; it does not push fixes to the
-already-merged historical branch or undo the newer semantic work.
+Scope: BLK-01, BLK-05 and BLK-07, following PRs #24 and #26. The owner merged
+PR #24 before its last repository-wide CI finished; PR #26 subsequently delivered
+the retry-cap, output-locale and retained-catalog corrections. This follow-up is
+reconciled with main `7534f74732d2e39f5dcb73b416543a56579cf6b2`, including
+CW-01, CW-02, PR #26 and the fast/manual CI split. It does not rewrite those
+merged implementations or restore their former automatic heavy workflow triggers.
 
 ## Final historical CI disposition
 
@@ -32,10 +34,10 @@ uses the existing read-only workflows and committed source.
 
 | Finding | Correction and executable evidence |
 |---|---|
-| The API substituted the block's fallback locale before looking at output-level translations. An English-only block could suppress an authored Spanish output label. | Match each output against the actual requested locale, using the block locale only when none was requested. `TestCW03OutputLocaleAndEmptyDefaultDelivery` exercises exact/language/fallback matching through real publication and delivery, then checks an accepted Spanish-locale run and retained zero-work reads. |
-| Migration 035 limited locale tags to 35 characters although the existing domain accepts canonical tags up to 64 bytes. A valid legacy-to-v2 candidate could fail persistence. | Forward-only migration 036 aligns the storage byte ceiling without rewriting definitions or migration 035. `TestCW03OutputLocalePersistenceBounds` exercises native migration, publication/export and over-limit refusal. `TestCW03PopulatedV2LocaleUpgrade` installs real schema 35, populates an immutable v2 revision, proves the original constraint rejects the supported extended tag, runs the production upgrade, and verifies unchanged original JSON/digests and immutable-update rejection. The existing populated-v1 upgrade remains required. |
+| The API substituted the block's fallback locale before looking at output-level translations. An English-only block could suppress an authored Spanish output label. | PR #26 already corrected this on main and added `TestCW03OutputLocaleIndependentOfBlockLocale`. Reconciliation keeps that implementation and removes this branch's overlapping delivery change/test instead of creating a second locale rule. |
+| Migration 035 limited locale tags to 35 characters although the existing domain accepts canonical tags up to 64 bytes. A valid legacy-to-v2 candidate could fail persistence. | Forward-only migration 038 follows CW-01 migrations 036–037 and aligns the storage byte ceiling without rewriting definitions or migration 035. `TestCW03OutputLocalePersistenceBounds` exercises native migration, publication/export and over-limit refusal. `TestCW03PopulatedV2LocaleUpgrade` installs real schema 35, populates an immutable v2 revision, proves the original constraint rejects the supported extended tag, runs all intervening production upgrades, and verifies unchanged original JSON/digests and immutable-update rejection. The existing populated-v1 upgrade remains required. |
 | A report using a floating block with no remaining enabled defaults lost the authorized disabled/omitted choices, even though the direct block description preserved them. | Preserve the resolved metadata-only selection alongside `output_selection_empty`; never choose a replacement or execute it. The real publication-drift test checks report description, disabled choices and zero additional warehouse/model work. Explicit invalid selections still have no fabricated snapshot. |
-| Two security fuzz gates had a five-second wall-time campaign that could end while the race-instrumented worker was completing a case. | Use 256-iteration campaigns with a separate three-minute hang timeout and the same two workers. No verifier behavior, seed, assertion, race flag, linter, coverage threshold or failure handling is relaxed. The remaining native/parser/renderer fuzz gates keep their existing bounds. |
+| Two security fuzz gates had a five-second wall-time campaign that could end while the race-instrumented worker was completing a case. | The manually dispatched final-core workflow uses 256-iteration campaigns with a separate three-minute hang timeout and the same two workers. The fast PR workflow remains bounded and does not pretend to execute fuzzing. No verifier behavior, seed, assertion, race flag, linter, coverage threshold or failure handling is relaxed. The remaining native/parser/renderer fuzz gates keep their existing bounds. |
 
 ## Review of the complete reporting contract
 
@@ -60,11 +62,14 @@ client contract. No clarification or chart-binding internals are changed.
 
 The follow-up PR records the final exact head/test-merge tree, workflow URLs,
 actual results and reviewed fixes. A passing historical SHA is not attributed to
-new source. Required checks are the full repository CI, CW-03 and strict phase
-27–31 acceptance, actual browser/provider tests, applicable client/MCP/reporting
-workflows, migration regressions and the new delivery cases. Local formatting,
-JavaScript syntax, planning and mirror checks are distinct from hosted Go/race,
-PostgreSQL, native driver and browser execution.
+new source. The automatic fast lane covers planning/mirror, formatting, static
+analysis and focused deterministic compilation/tests. The manually dispatched
+final-gap/release lane owns CW-03 and strict phase 27–31 acceptance, real
+PostgreSQL, native driver, browser/provider fixtures, client/MCP/reporting suites,
+race/coverage/fuzz and the no-skip release gate. A fast green check is never
+reported as full qualification. Local native Go execution is blocked because the
+pinned Rust parser build requires unavailable `rustup`; planning/mirror and the
+fast deterministic commands remain separately reportable.
 
 No live commercial-provider quality/cost, cloud-warehouse, stress, foreign
 cutover or phase-25 release certificate is implied. Sensitivity remains
