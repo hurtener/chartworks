@@ -40,6 +40,7 @@ func (e InterpretationEdit) valid() bool {
 	}
 }
 
+// InterpretationPin binds one persisted interpretation to reviewed semantic coordinates.
 type InterpretationPin struct {
 	Topic          string `json:"topic"`
 	Version        string `json:"version"`
@@ -50,6 +51,7 @@ type InterpretationPin struct {
 	SourceRevision int64  `json:"source_revision"`
 }
 
+// ValueInterpretation records one deterministic governed-value resolution.
 type ValueInterpretation struct {
 	ID             string `json:"id"`
 	Topic          string `json:"topic"`
@@ -63,6 +65,7 @@ type ValueInterpretation struct {
 	Provenance     string `json:"provenance"`
 }
 
+// TemporalInterpretation records one deterministic reviewed-calendar resolution.
 type TemporalInterpretation struct {
 	ID           string `json:"id"`
 	Topic        string `json:"topic"`
