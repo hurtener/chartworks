@@ -107,6 +107,9 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	if old.Session != e.Session() {
 		return PlanResult{}, ErrForeignSession
 	}
+	if err := s.checkRefinementDepth(ctx, e, old); err != nil {
+		return PlanResult{}, err
+	}
 	if in.ClarificationQuery != "" && in.ClarificationQuery != in.QueryID {
 		return PlanResult{}, clarificationOriginError(in.Locale, "clarification_question_mismatch")
 	}
@@ -131,6 +134,12 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 		return PlanResult{}, ErrInvalid
 	}
 	question := refinementQuestion(old, in.QuestionRequest)
+	if err := applyReferenceEdits(&question, in.ReferenceEdits); err != nil {
+		return PlanResult{}, err
+	}
+	if err := applyMetricEdits(&question, in.MetricEdits); err != nil {
+		return PlanResult{}, err
+	}
 	if err := mergeRefinementClarifications(old, in.QuestionRequest, &question); err != nil {
 		return PlanResult{}, err
 	}
@@ -148,6 +157,25 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 		}
 	}
 	return s.plan(ctx, e, question, "", in.QueryID, "query.execute", old.Route.Resolutions...)
+}
+
+func (s *Service) checkRefinementDepth(ctx context.Context, e identity.Envelope, q QueryRecord) error {
+	seen := map[string]bool{}
+	for depth := 0; q.Parent != ""; depth++ {
+		if depth >= MaxRefinementDepth-1 || seen[q.ID] {
+			return ErrRefinementLimit
+		}
+		seen[q.ID] = true
+		parent, err := s.repo.ReadQuery(ctx, mustScope(e), q.Parent)
+		if err != nil {
+			return err
+		}
+		if parent.Session != e.Session() || parent.Context != q.Context {
+			return ErrForeignSession
+		}
+		q = parent
+	}
+	return nil
 }
 
 // Run revalidates and executes one previously planned query with idempotent operation handling.
@@ -774,6 +802,100 @@ func mergeStrings(base, delta []string) []string {
 		}
 	}
 	return out
+}
+
+func applyReferenceEdits(question *QuestionRequest, edits []ReferenceEdit) error {
+	if question == nil || len(edits) > 64 {
+		return ErrInvalid
+	}
+	values := append([]semantics.Reference(nil), question.References...)
+	seen := map[semantics.Reference]bool{}
+	for _, edit := range edits {
+		if !edit.Target.Valid() || seen[edit.Target] {
+			return ErrInvalid
+		}
+		seen[edit.Target] = true
+		index := -1
+		for i := range values {
+			if values[i] == edit.Target {
+				index = i
+				break
+			}
+		}
+		switch edit.Action {
+		case "add":
+			if edit.Replacement != nil || index >= 0 {
+				return ErrInvalid
+			}
+			values = append(values, edit.Target)
+		case "remove":
+			if edit.Replacement != nil || index < 0 {
+				return ErrInvalid
+			}
+			values = append(values[:index], values[index+1:]...)
+		case "replace":
+			if edit.Replacement == nil || !edit.Replacement.Valid() || index < 0 || *edit.Replacement == edit.Target {
+				return ErrInvalid
+			}
+			for i := range values {
+				if values[i] == *edit.Replacement {
+					return ErrInvalid
+				}
+			}
+			values[index] = *edit.Replacement
+		default:
+			return ErrInvalid
+		}
+	}
+	question.References = values
+	return nil
+}
+
+func applyMetricEdits(question *QuestionRequest, edits []MetricEdit) error {
+	if question == nil || len(edits) > 32 {
+		return ErrInvalid
+	}
+	values := append([]string(nil), question.MetricIDs...)
+	seen := map[string]bool{}
+	for _, edit := range edits {
+		if !identity.Identifier(edit.Target) || seen[edit.Target] {
+			return ErrInvalid
+		}
+		seen[edit.Target] = true
+		index := -1
+		for i := range values {
+			if values[i] == edit.Target {
+				index = i
+				break
+			}
+		}
+		switch edit.Action {
+		case "add":
+			if edit.Replacement != "" || index >= 0 {
+				return ErrInvalid
+			}
+			values = append(values, edit.Target)
+		case "remove":
+			if edit.Replacement != "" || index < 0 {
+				return ErrInvalid
+			}
+			values = append(values[:index], values[index+1:]...)
+		case "replace":
+			if !identity.Identifier(edit.Replacement) || edit.Replacement == edit.Target || index < 0 {
+				return ErrInvalid
+			}
+			for i := range values {
+				if values[i] == edit.Replacement {
+					return ErrInvalid
+				}
+			}
+			values[index] = edit.Replacement
+		default:
+			return ErrInvalid
+		}
+	}
+	question.MetricIDs = values
+	return nil
 }
 
 func mergeInterpretationEdits(base, delta []nlqroute.InterpretationEdit) []nlqroute.InterpretationEdit {

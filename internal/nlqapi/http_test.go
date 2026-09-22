@@ -20,6 +20,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
@@ -122,6 +123,7 @@ func TestFailureMapsPublicErrors(t *testing.T) {
 		{"invalid route", nlqroute.ErrInvalid, http.StatusBadRequest, "invalid_request"},
 		{"conflict", store.ErrConflict, http.StatusConflict, "conflict"},
 		{"binding", readexec.ErrBinding, http.StatusConflict, "context_changed"},
+		{"refinement limit", nlqexec.ErrRefinementLimit, http.StatusConflict, "new_question_required"},
 		{"limit", readexec.ErrLimit, http.StatusRequestEntityTooLarge, "limit_exceeded"},
 		{"insufficient", nlq.ErrInsufficient, http.StatusUnprocessableEntity, "insufficient_context"},
 		{"ambiguous metric context", nlqroute.ErrMetricContext, http.StatusUnprocessableEntity, "insufficient_context"},

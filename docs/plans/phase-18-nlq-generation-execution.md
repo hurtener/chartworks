@@ -114,3 +114,14 @@ Protected export and revalidated candidate-only import are registered through HT
 MCP, SDK and the generated CLI operation surface. Migration 042 preserves legacy
 rows as inapplicable candidates, and portable import replay cannot amplify evidence.
 See [learning lifecycle v1](../contracts/learning-lifecycle-v1.md).
+
+## EXP-01 bounded follow-up lineage
+
+Refinement ancestry is bounded to sixteen children and traversed through the
+protected repository under the current tenant, actor and session. Cross-session
+or cross-context ancestry fails closed; a cycle or exhausted bound returns the
+typed `new_question_required` outcome. A changed semantic publication returns
+`context_changed`, requiring a fresh routed question instead of carrying the old
+route into a new publication. Canonical child requests persist the resulting
+semantic selections while prior SQL remains protected edit context only. See
+[conversational continuity v1](../contracts/conversational-continuity-v1.md).
