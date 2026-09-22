@@ -15,6 +15,8 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | Managed object | An output whose ownership is verified in the managed registry and database privileges; a name prefix is not proof. |
 | Profile | Versioned sampled data/schema/quality/freshness evidence with its method and observation time. |
 | Topic / topic pack | Versioned business semantic contract containing tables, measures, dimensions, KPIs, joins, rules and routing context. |
+| Governed value | Explicitly reviewed, bounded non-sensitive stored value and user aliases with evidence/policy provenance; never an unrestricted profile sample. |
+| Relationship decision | Candidate or rejected same-source/context join evidence retained for review; it is not an executable confirmed join. |
 | Canonical entity | Tenant-wide stable business ID with immutable sequential meaning revisions. Names and aliases are global meaning; physical keys remain in each reviewed topic. |
 | Capability card | Compact published semantic projection used by routing/context, distinct from full authoring metadata. |
 | Facet | Typed semantic retrieval unit scoped to tenant/topic/version/embedding generation. |
@@ -24,6 +26,7 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | Deterministic local computation | Tokenization, rules, SQL parsing, pgvector search and rendering; not a local learned model. |
 | Rerank | Relevance ordering of an already authorized candidate set, with validated IDs/scores and no authority expansion. |
 | Context assembler | Sole owner of query-time token budgeting, pins, mandatory constraints, examples and provenance. |
+| Metric dependency closure | Complete transitive formula, measure, field, dimension/value/time, filter and join context for one selected metric; admitted as one mandatory tokenizer group. |
 | BYO context reference | Stored bounded context handle, reauthorized using Pengui JWTs; not a locally signed capability. |
 | Validated plan | Nonzero validator-issued source/dialect/context/semantic/parameter-bound executable plan. Parsing alone is not a safety proof. |
 | Block | Reusable analytical definition with typed parameters, exact dependencies and saved outputs. |

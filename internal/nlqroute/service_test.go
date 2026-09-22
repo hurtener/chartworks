@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,6 +208,52 @@ func TestRouteRejectsUnknownPinnedMetricBeforeGateway(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalid) || engine.embeds != 0 {
 		t.Fatalf("unknown metric was not rejected before gateway: err=%v embeds=%d", err, engine.embeds)
+	}
+}
+
+func TestPinnedKPIResolvesTransitiveRichDependencyClosure(t *testing.T) {
+	column := func(dataset, id string) semantics.Reference {
+		return semantics.Reference{Kind: semantics.KindColumn, Dataset: dataset, ID: id}
+	}
+	def := topics.Definition{
+		Datasets: []topics.Dataset{
+			{ID: "orders", Columns: []semantics.Column{{ID: "amount", Name: "Amount", Aliases: []string{"Importe"}}, {ID: "customer_id", Name: "Customer"}}},
+			{ID: "customers", Columns: []semantics.Column{{ID: "id", Name: "Customer"}}},
+		},
+		Measures:   []semantics.Measure{{ID: "revenue", Name: "Revenue", Field: column("orders", "amount"), Aggregation: semantics.AggregationSum, Unit: "currency", Filters: []semantics.SemanticFilter{{ID: "known_customer", Field: column("customers", "id"), Operator: "not_null"}}}},
+		Dimensions: []semantics.Dimension{{ID: "customer", Name: "Customer month", Field: column("customers", "id"), Role: semantics.DimensionTemporal, Aliases: []string{"Buyer month", "Mes del cliente"}, Values: []semantics.GovernedValue{{ID: "active", Value: "A", Aliases: []string{"Active", "Activo"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v1", Policy: "low_cardinality"}}}, Temporal: &semantics.TemporalPolicy{Grains: []semantics.TimeGrain{semantics.GrainMonth}, Calendar: "gregorian"}}},
+		KPIs: []semantics.KPI{
+			{ID: "net_revenue", Name: "Net revenue", Expression: "revenue", Inputs: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}},
+			{ID: "indexed_revenue", Name: "Indexed revenue", Expression: "net revenue divided by target", Inputs: []semantics.Reference{{Kind: semantics.KindKPI, ID: "net_revenue"}}},
+		},
+		Joins: []semantics.Join{{ID: "orders_customers", Name: "Orders customers", Left: column("orders", "customer_id"), Right: column("customers", "id"), Type: semantics.JoinInner, Cardinality: semantics.CardinalityManyToOne}},
+	}
+	metric, ok := findMetric(def, "indexed_revenue")
+	if !ok || metric.Text != "Indexed revenue = net revenue divided by target" {
+		t.Fatalf("metric not resolved: %#v", metric)
+	}
+	metric.ID = "topic:indexed_revenue"
+	kinds := map[string]bool{}
+	for _, dependency := range metric.Dependencies {
+		kinds[dependency.Kind+":"+dependency.ID] = true
+	}
+	for _, want := range []string{"kpi:indexed_revenue", "kpi:net_revenue", "measure:revenue", "column:orders:amount", "column:customers:id", "dimension:customer", "join:orders_customers"} {
+		if !kinds[want] {
+			t.Fatalf("missing transitive dependency %q: %#v", want, metric.Dependencies)
+		}
+	}
+	assembler, err := nlq.NewDefaultContextAssembler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assembled, err := assembler.Assemble(context.Background(), nlq.ContextInput{Locale: nlq.LanguageSpanish, Strategy: nlq.StrategySingleTopic, Topic: "topic", TopicVersion: "v1", Question: "Ingresos por mes para clientes activos", Metrics: []nlq.PinnedMetric{metric}}, nlq.TierHigh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"net revenue divided by target", "Mes del cliente", `"month"`, "Activo", "known_customer", "orders_customers"} {
+		if !strings.Contains(assembled.Prompt, want) {
+			t.Fatalf("rich dependency %q absent from generation prompt: %s", want, assembled.Prompt)
+		}
 	}
 }
 

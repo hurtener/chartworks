@@ -99,6 +99,61 @@ func TestCompileCanonicalizesWithoutSharingCallerState(t *testing.T) {
 	}
 }
 
+func TestCompileRichSemanticsRoundTripAndPrivacy(t *testing.T) {
+	pack := testPack()
+	month := TemporalPolicy{Grains: []TimeGrain{GrainMonth}, Calendar: "gregorian", Timezone: "UTC"}
+	pack.Datasets[0].Columns[1].Aliases = []string{"Order amount", "Importe"}
+	pack.Datasets[0].Columns[1].SemanticRole = SemanticRoleMeasureInput
+	pack.Measures[1].Aliases = []string{"Sales", "Ingresos"}
+	pack.Measures[1].Filters = []SemanticFilter{{ID: "positive_amount", Field: Reference{Kind: KindColumn, Dataset: "orders", ID: "amount"}, Operator: "not_null"}}
+	pack.Dimensions[0].Aliases = []string{"Territory", "Región"}
+	for i := range pack.Datasets {
+		for j := range pack.Datasets[i].Columns {
+			if pack.Datasets[i].ID == "customers" && pack.Datasets[i].Columns[j].ID == "region" {
+				pack.Datasets[i].Columns[j].Sensitivity = LiteralNonSensitive
+			}
+		}
+	}
+	pack.Dimensions[0].Values = []GovernedValue{{ID: "south", Value: "S", Aliases: []string{"South", "Sur"}, Sensitivity: LiteralNonSensitive, Provenance: ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v2", Policy: "low_cardinality"}}}
+	pack.Dimensions[0].Temporal = nil
+	pack.Dimensions = append(pack.Dimensions, Dimension{ID: "order_month", Name: "Order month", Field: Reference{Kind: KindColumn, Dataset: "orders", ID: "amount"}, Role: DimensionTemporal, Temporal: &month})
+	pack.Joins[0].Evidence = RelationshipEvidence{ID: "join_review", LeftGrain: "order", RightGrain: "customer", Provenance: "reviewed_profile"}
+	pack.RelationshipDecisions = []RelationshipDecision{{ID: "rejected_amount_region", Left: Reference{Kind: KindColumn, Dataset: "orders", ID: "amount"}, Right: Reference{Kind: KindColumn, Dataset: "customers", ID: "region"}, Cardinality: CardinalityManyToMany, State: "rejected", Evidence: RelationshipEvidence{ID: "join_rejection", LeftGrain: "order", RightGrain: "region", Provenance: "reviewed_profile"}, Reason: "Incompatible reviewed grains"}}
+
+	model, err := Compile(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := model.Pack()
+	if len(got.Measures[1].Aliases) != 2 || len(got.Dimensions[0].Values) != 1 || got.Dimensions[1].Temporal == nil || got.Dimensions[1].Temporal.Grains[0] != GrainMonth || len(got.RelationshipDecisions) != 1 {
+		t.Fatalf("rich semantics lost: %#v", got)
+	}
+	pack.Dimensions[0].Values[0].Value = "mutated"
+	pack.Dimensions[0].Values[0].Aliases[0] = "mutated"
+	if model.Pack().Dimensions[0].Values[0].Value == "mutated" || model.Pack().Dimensions[0].Values[0].Aliases[0] == "mutated" {
+		t.Fatal("rich value mapping aliases caller memory")
+	}
+
+	unsafe := testPack()
+	unsafe.Dimensions[0].Values = []GovernedValue{{ID: "secret", Value: "raw secret", Sensitivity: LiteralSensitive, Provenance: ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v2", Policy: "restricted"}}}
+	if _, err = Compile(unsafe); err == nil {
+		t.Fatal("sensitive governed value entered semantic publication")
+	}
+}
+
+func TestCompileRejectsFilterLiteralsWithoutReviewedNonSensitiveField(t *testing.T) {
+	pack := testPack()
+	pack.Measures[0].Filters = []SemanticFilter{{ID: "customer_scope", Field: Reference{Kind: KindColumn, Dataset: "orders", ID: "customer_key"}, Operator: "eq", Values: []string{"reviewed"}}}
+	if _, err := Compile(pack); validationCode(t, err) != CodeEvidenceMismatch {
+		t.Fatalf("filter literal over unknown-sensitivity field was accepted: %v", err)
+	}
+	pack.Measures[0].Filters[0].Operator = "not_null"
+	pack.Measures[0].Filters[0].Values = nil
+	if _, err := Compile(pack); err != nil {
+		t.Fatalf("structural filter over unknown-sensitivity field was rejected: %v", err)
+	}
+}
+
 func TestCompileRejectsNonExactAndUnsafeReferences(t *testing.T) {
 	tests := []struct {
 		name string

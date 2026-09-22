@@ -114,7 +114,7 @@ func validateShape(p TopicPack) error {
 	if p.SchemaVersion != SchemaVersion || !identity.Identifier(p.Topic) || !identity.Identifier(p.Version) || !validLine(p.Name, 256) || !validText(p.Description, 4096) {
 		return invalid(CodeInvalidValue, "pack")
 	}
-	if len(p.Datasets) < 1 || len(p.Datasets) > 32 || len(p.Measures) > 1024 || len(p.Dimensions) > 1024 || len(p.KPIs) > 512 || len(p.Joins) > 256 || len(p.CanonicalEntities) > 256 || len(p.Unresolved) > 4096 {
+	if len(p.Datasets) < 1 || len(p.Datasets) > 32 || len(p.Measures) > 1024 || len(p.Dimensions) > 1024 || len(p.KPIs) > 512 || len(p.Joins) > 256 || len(p.RelationshipDecisions) > 512 || len(p.CanonicalEntities) > 256 || len(p.Unresolved) > 4096 {
 		return invalid(CodeLimit, "pack")
 	}
 	for i, d := range p.Datasets {
@@ -126,7 +126,7 @@ func validateShape(p TopicPack) error {
 			return invalid(CodeEvidenceMismatch, path+".source.dataset")
 		}
 		for j, c := range d.Columns {
-			if c.Sensitivity != "" && !validSensitivity(c.Sensitivity) || !identity.Identifier(c.ID) || !validLine(c.SourceName, 256) || !validLine(c.Name, 256) || !validLine(c.NativeType, 128) || !validLine(c.Category, 64) {
+			if c.Sensitivity != "" && !validSensitivity(c.Sensitivity) || !identity.Identifier(c.ID) || !validLine(c.SourceName, 256) || !validLine(c.Name, 256) || !validLine(c.NativeType, 128) || !validLine(c.Category, 64) || !c.SemanticRole.valid() || !validAliases(c.Aliases) {
 				return invalid(CodeInvalidValue, path+".columns["+itoa(j)+"]")
 			}
 		}
@@ -136,17 +136,17 @@ func validateShape(p TopicPack) error {
 
 func validateEntities(p TopicPack) error {
 	for i, v := range p.Measures {
-		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Aggregation.valid() || !validOptionalLine(v.Unit, 64) {
+		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Aggregation.valid() || !validOptionalLine(v.Unit, 64) || !validAliases(v.Aliases) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "measures["+itoa(i)+"]")
 		}
 	}
 	for i, v := range p.Dimensions {
-		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Role.valid() {
+		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Role.valid() || !validAliases(v.Aliases) || !validGovernedValues(v.Values) || !validTemporal(v.Temporal, v.Role) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "dimensions["+itoa(i)+"]")
 		}
 	}
 	for i, v := range p.KPIs {
-		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !validLine(v.Expression, 4096) || len(v.Inputs) < 1 || len(v.Inputs) > 32 {
+		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !validLine(v.Expression, 4096) || len(v.Inputs) < 1 || len(v.Inputs) > 32 || !validAliases(v.Aliases) || !validOptionalLine(v.Unit, 64) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "kpis["+itoa(i)+"]")
 		}
 		// canonicalOrder builds sort keys from these coordinates. Reject
@@ -158,8 +158,13 @@ func validateEntities(p TopicPack) error {
 		}
 	}
 	for i, v := range p.Joins {
-		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !v.Type.valid() || !v.Cardinality.valid() {
+		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !v.Type.valid() || !v.Cardinality.valid() || !validRelationshipEvidence(v.Evidence, true) {
 			return invalid(CodeInvalidValue, "joins["+itoa(i)+"]")
+		}
+	}
+	for i, v := range p.RelationshipDecisions {
+		if !identity.Identifier(v.ID) || !v.Left.Valid() || !v.Right.Valid() || v.Left.Kind != KindColumn || v.Right.Kind != KindColumn || !v.Cardinality.valid() || v.State != "candidate" && v.State != "rejected" || !validRelationshipEvidence(v.Evidence, false) || !validText(v.Reason, 1024) {
+			return invalid(CodeInvalidValue, "relationship_decisions["+itoa(i)+"]")
 		}
 	}
 	for i, v := range p.CanonicalEntities {
@@ -178,6 +183,82 @@ func validateEntities(p TopicPack) error {
 		}
 	}
 	return nil
+}
+
+func validAliases(values []string) bool {
+	if len(values) > 32 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		term, ok := normalizeTerm(value)
+		if !ok || seen[term] {
+			return false
+		}
+		seen[term] = true
+	}
+	return true
+}
+
+func validGovernedValues(values []GovernedValue) bool {
+	if len(values) > 32 {
+		return false
+	}
+	raw, err := json.Marshal(values)
+	if err != nil || len(raw) > 2048 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		if !identity.Identifier(value.ID) || !validLine(value.Value, 512) || value.Sensitivity != LiteralNonSensitive || !validAliases(value.Aliases) || !identity.Identifier(value.Provenance.Kind) || !identity.Identifier(value.Provenance.Evidence) || !identity.Identifier(value.Provenance.Policy) || seen[value.ID] {
+			return false
+		}
+		seen[value.ID] = true
+	}
+	return true
+}
+
+func validTemporal(value *TemporalPolicy, role DimensionRole) bool {
+	if value == nil {
+		return true
+	}
+	if role != DimensionTemporal || len(value.Grains) < 1 || len(value.Grains) > 7 || !identity.Identifier(value.Calendar) || value.Timezone != "" && !validLine(value.Timezone, 128) {
+		return false
+	}
+	seen := map[TimeGrain]bool{}
+	for _, grain := range value.Grains {
+		if !grain.valid() || seen[grain] {
+			return false
+		}
+		seen[grain] = true
+	}
+	return true
+}
+
+func validFilters(values []SemanticFilter) bool {
+	if len(values) > 32 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		if !identity.Identifier(value.ID) || !value.Field.Valid() || value.Field.Kind != KindColumn || value.Operator != "eq" && value.Operator != "in" && value.Operator != "not_null" || len(value.Values) > 32 || value.Operator == "not_null" && len(value.Values) != 0 || value.Operator != "not_null" && len(value.Values) == 0 || seen[value.ID] {
+			return false
+		}
+		seen[value.ID] = true
+		for _, item := range value.Values {
+			if !validLine(item, 512) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validRelationshipEvidence(value RelationshipEvidence, legacyAllowed bool) bool {
+	if value.ID == "" && value.LeftGrain == "" && value.RightGrain == "" && value.Provenance == "" {
+		return legacyAllowed
+	}
+	return identity.Identifier(value.ID) && validLine(value.LeftGrain, 256) && validLine(value.RightGrain, 256) && identity.Identifier(value.Provenance)
 }
 
 func referenceIndex(p TopicPack) (map[string]struct{}, error) {
@@ -229,6 +310,11 @@ func referenceIndex(p TopicPack) (map[string]struct{}, error) {
 			return nil, err
 		}
 	}
+	for i, v := range p.RelationshipDecisions {
+		if err := add(Reference{Kind: KindRelationshipDecision, ID: v.ID}, "relationship_decisions["+itoa(i)+"].id"); err != nil {
+			return nil, err
+		}
+	}
 	canonicalIDs := map[string]bool{}
 	for i, v := range p.CanonicalEntities {
 		// A pack pins one registry revision per stable entity, not multiple
@@ -261,14 +347,29 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 		}
 		return nil
 	}
+	columns := map[string]Column{}
+	for _, dataset := range p.Datasets {
+		for _, column := range dataset.Columns {
+			columns[Reference{Kind: KindColumn, Dataset: dataset.ID, ID: column.ID}.key()] = column
+		}
+	}
 	for i, v := range p.Measures {
 		if err := require(v.Field, []Kind{KindColumn}, "measures["+itoa(i)+"].field"); err != nil {
+			return err
+		}
+		if err := requireFilters(v.Filters, require, columns, "measures["+itoa(i)+"].filters"); err != nil {
 			return err
 		}
 	}
 	for i, v := range p.Dimensions {
 		if err := require(v.Field, []Kind{KindColumn}, "dimensions["+itoa(i)+"].field"); err != nil {
 			return err
+		}
+		if err := requireFilters(v.Filters, require, columns, "dimensions["+itoa(i)+"].filters"); err != nil {
+			return err
+		}
+		if len(v.Values) != 0 && columns[v.Field.key()].Sensitivity != LiteralNonSensitive {
+			return invalid(CodeEvidenceMismatch, "dimensions["+itoa(i)+"].values")
 		}
 	}
 	for i, v := range p.KPIs {
@@ -282,6 +383,9 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 				return invalid(CodeInvalidReference, path)
 			}
 			seen[ref.key()] = true
+		}
+		if err := requireFilters(v.Filters, require, columns, "kpis["+itoa(i)+"].filters"); err != nil {
+			return err
 		}
 	}
 	sources := make(map[string]SourceReference, len(p.Datasets))
@@ -324,6 +428,28 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 			seen[ref.key()] = true
 		}
 	}
+	for i, v := range p.RelationshipDecisions {
+		path := "relationship_decisions[" + itoa(i) + "]"
+		if err := require(v.Left, []Kind{KindColumn}, path+".left"); err != nil {
+			return err
+		}
+		if err := require(v.Right, []Kind{KindColumn}, path+".right"); err != nil {
+			return err
+		}
+		if v.Left.Dataset == v.Right.Dataset || v.Left.key() == v.Right.key() {
+			return invalid(CodeInvalidReference, path)
+		}
+		left, right := sources[v.Left.Dataset], sources[v.Right.Dataset]
+		if left.Source != right.Source || left.Context != right.Context || left.SourceRevision != right.SourceRevision {
+			return invalid(CodeEvidenceMismatch, path)
+		}
+		pair := v.Left.key() + "\x01" + v.Right.key()
+		reverse := v.Right.key() + "\x01" + v.Left.key()
+		if joinPairs[pair] || joinPairs[reverse] {
+			return invalid(CodeInvalidReference, path)
+		}
+		joinPairs[pair] = true
+	}
 	seenUnresolved := map[string]bool{}
 	for i, v := range p.Unresolved {
 		path := "unresolved[" + itoa(i) + "]"
@@ -335,6 +461,21 @@ func validateReferences(p TopicPack, refs map[string]struct{}) error {
 			return invalid(CodeDuplicateID, path+".id")
 		}
 		seenUnresolved[v.ID] = true
+	}
+	return nil
+}
+
+func requireFilters(values []SemanticFilter, require func(Reference, []Kind, string) error, columns map[string]Column, path string) error {
+	for i, value := range values {
+		if err := require(value.Field, []Kind{KindColumn}, path+"["+itoa(i)+"].field"); err != nil {
+			return err
+		}
+		// Literal filter values enter generation context. They are permitted only
+		// for an explicitly reviewed non-sensitive column; unknown and sensitive
+		// fields may carry structural not-null policy without retaining literals.
+		if len(value.Values) != 0 && columns[value.Field.key()].Sensitivity != LiteralNonSensitive {
+			return invalid(CodeEvidenceMismatch, path+"["+itoa(i)+"].values")
+		}
 	}
 	return nil
 }
@@ -420,14 +561,35 @@ func canonicalOrder(p *TopicPack) {
 	sort.Slice(p.Datasets, func(i, j int) bool { return p.Datasets[i].ID < p.Datasets[j].ID })
 	for i := range p.Datasets {
 		sort.Slice(p.Datasets[i].Columns, func(a, b int) bool { return p.Datasets[i].Columns[a].ID < p.Datasets[i].Columns[b].ID })
+		for j := range p.Datasets[i].Columns {
+			sort.Strings(p.Datasets[i].Columns[j].Aliases)
+		}
 	}
 	sort.Slice(p.Measures, func(i, j int) bool { return p.Measures[i].ID < p.Measures[j].ID })
+	for i := range p.Measures {
+		sort.Strings(p.Measures[i].Aliases)
+		sortFilters(p.Measures[i].Filters)
+	}
 	sort.Slice(p.Dimensions, func(i, j int) bool { return p.Dimensions[i].ID < p.Dimensions[j].ID })
+	for i := range p.Dimensions {
+		sort.Strings(p.Dimensions[i].Aliases)
+		sortFilters(p.Dimensions[i].Filters)
+		sort.Slice(p.Dimensions[i].Values, func(a, b int) bool { return p.Dimensions[i].Values[a].ID < p.Dimensions[i].Values[b].ID })
+		for j := range p.Dimensions[i].Values {
+			sort.Strings(p.Dimensions[i].Values[j].Aliases)
+		}
+		if p.Dimensions[i].Temporal != nil {
+			sort.Slice(p.Dimensions[i].Temporal.Grains, func(a, b int) bool { return p.Dimensions[i].Temporal.Grains[a] < p.Dimensions[i].Temporal.Grains[b] })
+		}
+	}
 	sort.Slice(p.KPIs, func(i, j int) bool { return p.KPIs[i].ID < p.KPIs[j].ID })
 	for i := range p.KPIs {
 		sort.Slice(p.KPIs[i].Inputs, func(a, b int) bool { return p.KPIs[i].Inputs[a].key() < p.KPIs[i].Inputs[b].key() })
+		sort.Strings(p.KPIs[i].Aliases)
+		sortFilters(p.KPIs[i].Filters)
 	}
 	sort.Slice(p.Joins, func(i, j int) bool { return p.Joins[i].ID < p.Joins[j].ID })
+	sort.Slice(p.RelationshipDecisions, func(i, j int) bool { return p.RelationshipDecisions[i].ID < p.RelationshipDecisions[j].ID })
 	sort.Slice(p.CanonicalEntities, func(i, j int) bool { return p.CanonicalEntities[i].ID < p.CanonicalEntities[j].ID })
 	for i := range p.CanonicalEntities {
 		sort.Slice(p.CanonicalEntities[i].Aliases, func(a, b int) bool {
@@ -439,18 +601,48 @@ func canonicalOrder(p *TopicPack) {
 	sort.Slice(p.Unresolved, func(i, j int) bool { return p.Unresolved[i].ID < p.Unresolved[j].ID })
 }
 
+func sortFilters(values []SemanticFilter) {
+	for i := range values {
+		sort.Strings(values[i].Values)
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i].ID < values[j].ID })
+}
+
 func clonePack(p TopicPack) TopicPack {
 	p.Datasets = append([]Dataset(nil), p.Datasets...)
 	for i := range p.Datasets {
 		p.Datasets[i].Columns = append([]Column(nil), p.Datasets[i].Columns...)
+		for j := range p.Datasets[i].Columns {
+			p.Datasets[i].Columns[j].Aliases = append([]string(nil), p.Datasets[i].Columns[j].Aliases...)
+		}
 	}
 	p.Measures = append([]Measure(nil), p.Measures...)
+	for i := range p.Measures {
+		p.Measures[i].Aliases = append([]string(nil), p.Measures[i].Aliases...)
+		p.Measures[i].Filters = cloneFilters(p.Measures[i].Filters)
+	}
 	p.Dimensions = append([]Dimension(nil), p.Dimensions...)
+	for i := range p.Dimensions {
+		p.Dimensions[i].Aliases = append([]string(nil), p.Dimensions[i].Aliases...)
+		p.Dimensions[i].Values = append([]GovernedValue(nil), p.Dimensions[i].Values...)
+		for j := range p.Dimensions[i].Values {
+			p.Dimensions[i].Values[j].Aliases = append([]string(nil), p.Dimensions[i].Values[j].Aliases...)
+		}
+		if p.Dimensions[i].Temporal != nil {
+			v := *p.Dimensions[i].Temporal
+			v.Grains = append([]TimeGrain(nil), v.Grains...)
+			p.Dimensions[i].Temporal = &v
+		}
+		p.Dimensions[i].Filters = cloneFilters(p.Dimensions[i].Filters)
+	}
 	p.KPIs = append([]KPI(nil), p.KPIs...)
 	for i := range p.KPIs {
 		p.KPIs[i].Inputs = append([]Reference(nil), p.KPIs[i].Inputs...)
+		p.KPIs[i].Aliases = append([]string(nil), p.KPIs[i].Aliases...)
+		p.KPIs[i].Filters = cloneFilters(p.KPIs[i].Filters)
 	}
 	p.Joins = append([]Join(nil), p.Joins...)
+	p.RelationshipDecisions = append([]RelationshipDecision(nil), p.RelationshipDecisions...)
 	p.CanonicalEntities = append([]CanonicalEntity(nil), p.CanonicalEntities...)
 	p.Unresolved = append([]UnresolvedSemantic(nil), p.Unresolved...)
 	for i := range p.CanonicalEntities {
@@ -458,6 +650,14 @@ func clonePack(p TopicPack) TopicPack {
 		p.CanonicalEntities[i].Keys = append([]Reference(nil), p.CanonicalEntities[i].Keys...)
 	}
 	return p
+}
+
+func cloneFilters(values []SemanticFilter) []SemanticFilter {
+	out := append([]SemanticFilter(nil), values...)
+	for i := range out {
+		out[i].Values = append([]string(nil), out[i].Values...)
+	}
+	return out
 }
 
 func cloneCanonical(v CanonicalEntity) CanonicalEntity {

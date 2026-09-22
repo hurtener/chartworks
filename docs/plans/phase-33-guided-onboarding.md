@@ -48,3 +48,13 @@ Implement `TestPhase33/AC01` through `TestPhase33/AC08` with real source/workspa
 ## Glossary, decisions and deviations
 
 Setup progress and semantic confidence are evidence, not permission or certification. D-052 applies. No runtime completion is claimed.
+
+## CW-04 prerequisite delivered
+
+The semantic authoring substrate required by AC03 is now present: reviewed roles,
+grains, aliases, units, governed values, KPI formulas, confirmed join evidence and
+candidate/rejected relationship decisions persist through the normal draft,
+publication and portability lifecycle. The bounded enhancement role has a first real
+consumer for rich column/KPI/relationship proposals. This does not mark phase 33
+shipped: its resumable connect-to-publish composition, progress/answer operations,
+managed-transformation branch and full real-source acceptance remain outstanding.

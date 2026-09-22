@@ -523,17 +523,41 @@ type EnhanceResult struct {
 }
 
 type enhancementWire struct {
-	Results []semantics.Enhancement `json:"results"`
+	Results       []semantics.Enhancement          `json:"results"`
+	KPIs          []semantics.KPI                  `json:"kpis,omitempty"`
+	Relationships []semantics.RelationshipDecision `json:"relationships,omitempty"`
 }
 
-var enhancementSchema = []byte(`{"type":"object","additionalProperties":false,"required":["results"],"properties":{"results":{"type":"array","minItems":1,"maxItems":32,"items":{"oneOf":[{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","aggregation"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"measure"},"name":{"type":"string","minLength":1,"maxLength":256},"aggregation":{"enum":["sum","average","minimum","maximum","count","distinct_count"]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","role"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"dimension"},"name":{"type":"string","minLength":1,"maxLength":256},"role":{"enum":["categorical","temporal","numeric","boolean","identifier"]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","reason"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"unresolved"},"reason":{"type":"string","minLength":1,"maxLength":256}}}]}}}}`)
+var enhancementBaseSchema = []byte(`{"type":"object","additionalProperties":false,"required":["results"],"properties":{"results":{"type":"array","minItems":1,"maxItems":32,"items":{"oneOf":[{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","aggregation","description","aliases","unit","semantic_role"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"measure"},"name":{"type":"string","minLength":1,"maxLength":256},"aggregation":{"enum":["sum","average","minimum","maximum","count","distinct_count"]},"description":{"type":"string","maxLength":4096},"aliases":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":256}},"unit":{"type":"string","maxLength":64},"semantic_role":{"enum":["","measure_input"]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","role","description","aliases","semantic_role","temporal"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"dimension"},"name":{"type":"string","minLength":1,"maxLength":256},"role":{"enum":["categorical","temporal","numeric","boolean","identifier"]},"description":{"type":"string","maxLength":4096},"aliases":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":256}},"semantic_role":{"enum":["","fact_key","dimension_key","attribute","event_time"]},"temporal":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,"required":["grains","calendar"],"properties":{"grains":{"type":"array","minItems":1,"maxItems":7,"items":{"enum":["minute","hour","day","week","month","quarter","year"]}},"calendar":{"type":"string","minLength":1,"maxLength":128},"timezone":{"type":"string","maxLength":128}}}]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","reason"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"unresolved"},"reason":{"type":"string","minLength":1,"maxLength":256}}}]}}}}`)
+
+var enhancementSchema = func() []byte {
+	var document map[string]any
+	if json.Unmarshal(enhancementBaseSchema, &document) != nil {
+		panic("invalid enhancement schema")
+	}
+	properties := document["properties"].(map[string]any)
+	var extras map[string]any
+	const supplemental = `{"kpis":{"type":"array","maxItems":32,"items":{"type":"object","additionalProperties":false,"required":["id","name","description","expression","inputs"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":256},"description":{"type":"string","maxLength":4096},"expression":{"type":"string","minLength":1,"maxLength":4096},"inputs":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"required":["kind","id"],"properties":{"kind":{"enum":["measure","kpi"]},"id":{"type":"string","minLength":1,"maxLength":128}}}}}}},"relationships":{"type":"array","maxItems":64,"items":{"type":"object","additionalProperties":false,"required":["id","left","right","cardinality","state","evidence"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"left":{"type":"object","additionalProperties":false,"required":["kind","dataset","id"],"properties":{"kind":{"const":"column"},"dataset":{"type":"string","minLength":1,"maxLength":128},"id":{"type":"string","minLength":1,"maxLength":128}}},"right":{"type":"object","additionalProperties":false,"required":["kind","dataset","id"],"properties":{"kind":{"const":"column"},"dataset":{"type":"string","minLength":1,"maxLength":128},"id":{"type":"string","minLength":1,"maxLength":128}}},"cardinality":{"enum":["one_to_one","one_to_many","many_to_one","many_to_many"]},"state":{"enum":["candidate","rejected"]},"evidence":{"type":"object","additionalProperties":false,"required":["id","left_grain","right_grain","provenance"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"left_grain":{"type":"string","minLength":1,"maxLength":256},"right_grain":{"type":"string","minLength":1,"maxLength":256},"provenance":{"type":"string","minLength":1,"maxLength":128}}},"reason":{"type":"string","maxLength":1024}}}}}`
+	if json.Unmarshal([]byte(supplemental), &extras) != nil {
+		panic("invalid enhancement supplemental schema")
+	}
+	for key, value := range extras {
+		properties[key] = value
+	}
+	raw, err := json.Marshal(document)
+	if err != nil {
+		panic("invalid enhancement schema")
+	}
+	return raw
+}()
 
 type enhancementColumn struct {
-	Dataset  string `json:"dataset"`
-	Column   string `json:"column"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
-	Nullable bool   `json:"nullable"`
+	Dataset     string                       `json:"dataset"`
+	Column      string                       `json:"column"`
+	Name        string                       `json:"name"`
+	Category    string                       `json:"category"`
+	Nullable    bool                         `json:"nullable"`
+	Sensitivity semantics.LiteralSensitivity `json:"sensitivity,omitempty"`
 }
 
 // Enhance performs one resumable Bifrost step and persists the accepted result
@@ -580,7 +604,7 @@ func (s *Service) Enhance(ctx context.Context, e identity.Envelope, topic string
 			resources = append(resources, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: dataset.Source.Source}, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: dataset.ID}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: dataset.Source.Context})
 			for _, column := range dataset.Columns {
 				if column.ID == ref.ID {
-					input = append(input, enhancementColumn{Dataset: dataset.ID, Column: column.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable})
+					input = append(input, enhancementColumn{Dataset: dataset.ID, Column: column.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable, Sensitivity: column.Sensitivity})
 				}
 			}
 		}
@@ -608,7 +632,7 @@ func (s *Service) Enhance(ctx context.Context, e identity.Envelope, topic string
 	if err != nil {
 		return EnhanceResult{}, store.ErrInvalid
 	}
-	generated, err := s.engine.Generate(ctx, call, budget, "enhance", "Classify every supplied column exactly once as a measure, dimension, or unresolved. Preserve supplied dataset and column IDs. Never invent SQL, joins, KPIs, canonical meaning, source coordinates, or credentials.", string(prompt), schema)
+	generated, err := s.engine.Generate(ctx, call, budget, "enhance", "Author reviewed draft semantics for every supplied column exactly once as a rich measure, rich dimension, or unresolved. Preserve dataset and column IDs. Provide concise descriptions, bounded aliases, units for measures, reviewed roles, and calendar/grain metadata for temporal dimensions. You may propose bounded KPI formulas over exact generated/existing measure or KPI IDs and candidate/rejected relationship evidence over exact supplied columns; these remain non-published review material. Never include sample rows or sensitive values, invent SQL, canonical meaning, source coordinates, permissions, or credentials.", string(prompt), schema)
 	if err != nil {
 		return EnhanceResult{}, err
 	}
@@ -630,7 +654,7 @@ func (s *Service) Enhance(ctx context.Context, e identity.Envelope, topic string
 	if len(want) != 0 {
 		return EnhanceResult{}, gateway.ErrOutput
 	}
-	changed, err := semantics.ApplyEnhancements(model, in.Version, wire.Results)
+	changed, err := semantics.ApplyRichEnhancements(model, in.Version, wire.Results, wire.KPIs, wire.Relationships)
 	if err != nil {
 		return EnhanceResult{}, err
 	}

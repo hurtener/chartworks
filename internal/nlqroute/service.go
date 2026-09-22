@@ -995,7 +995,8 @@ func resolveMetrics(admitted []admittedTopic, ids []string) ([]nlq.PinnedMetric,
 		var matches []nlq.PinnedMetric
 		for _, item := range admitted {
 			if metric, ok := findMetric(item.publication.Definition, id); ok {
-				matches = append(matches, nlq.PinnedMetric{ID: item.id + ":" + id, Text: metric})
+				metric.ID = item.id + ":" + id
+				matches = append(matches, metric)
 			}
 		}
 		if len(matches) != 1 {
@@ -1009,18 +1010,129 @@ func resolveMetrics(admitted []admittedTopic, ids []string) ([]nlq.PinnedMetric,
 	return out, nil
 }
 
-func findMetric(def topics.Definition, id string) (string, bool) {
+func findMetric(def topics.Definition, id string) (nlq.PinnedMetric, bool) {
 	for _, measure := range def.Measures {
 		if measure.ID == id {
-			return measure.Name + " (" + string(measure.Aggregation) + ")", true
+			metric := nlq.PinnedMetric{Text: measure.Name + " (" + string(measure.Aggregation) + ")"}
+			metric.Dependencies = metricClosure(def, []semantics.Reference{{Kind: semantics.KindMeasure, ID: measure.ID}})
+			return metric, true
 		}
 	}
 	for _, kpi := range def.KPIs {
 		if kpi.ID == id {
-			return kpi.Name, true
+			metric := nlq.PinnedMetric{Text: kpi.Name + " = " + kpi.Expression}
+			metric.Dependencies = metricClosure(def, []semantics.Reference{{Kind: semantics.KindKPI, ID: kpi.ID}})
+			return metric, true
 		}
 	}
-	return "", false
+	return nlq.PinnedMetric{}, false
+}
+
+// metricClosure resolves the complete transitive semantic graph in deterministic
+// order. It is derived only from the already-authorized retained publication.
+func metricClosure(def topics.Definition, roots []semantics.Reference) []nlq.MetricDependency {
+	measures := map[string]semantics.Measure{}
+	kpis := map[string]semantics.KPI{}
+	columns := map[string]semantics.Column{}
+	datasetForColumn := map[string]string{}
+	dimensionsByColumn := map[string][]semantics.Dimension{}
+	for _, dataset := range def.Datasets {
+		for _, column := range dataset.Columns {
+			key := dataset.ID + "\x00" + column.ID
+			columns[key] = column
+			datasetForColumn[key] = dataset.ID
+		}
+	}
+	for _, value := range def.Measures {
+		measures[value.ID] = value
+	}
+	for _, value := range def.Dimensions {
+		key := value.Field.Dataset + "\x00" + value.Field.ID
+		dimensionsByColumn[key] = append(dimensionsByColumn[key], value)
+	}
+	for _, value := range def.KPIs {
+		kpis[value.ID] = value
+	}
+	seen := map[string]bool{}
+	traversed := map[string]bool{}
+	datasets := map[string]bool{}
+	out := []nlq.MetricDependency{}
+	add := func(kind, id string, value any) {
+		key := kind + "\x00" + id
+		if seen[key] {
+			return
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return
+		}
+		seen[key] = true
+		out = append(out, nlq.MetricDependency{Kind: kind, ID: id, Text: string(raw)})
+	}
+	var visit func(semantics.Reference)
+	visit = func(ref semantics.Reference) {
+		traversalKey := string(ref.Kind) + "\x00" + ref.Dataset + "\x00" + ref.ID
+		if traversed[traversalKey] {
+			return
+		}
+		traversed[traversalKey] = true
+		switch ref.Kind {
+		case semantics.KindKPI:
+			value, ok := kpis[ref.ID]
+			if !ok {
+				return
+			}
+			add("kpi", value.ID, value)
+			for _, input := range value.Inputs {
+				visit(input)
+			}
+			for _, filter := range value.Filters {
+				visit(filter.Field)
+			}
+		case semantics.KindMeasure:
+			value, ok := measures[ref.ID]
+			if !ok {
+				return
+			}
+			add("measure", value.ID, value)
+			visit(value.Field)
+			for _, filter := range value.Filters {
+				visit(filter.Field)
+			}
+		case semantics.KindColumn:
+			key := ref.Dataset + "\x00" + ref.ID
+			value, ok := columns[key]
+			if !ok {
+				return
+			}
+			datasets[datasetForColumn[key]] = true
+			add("column", ref.Dataset+":"+ref.ID, struct {
+				Dataset string           `json:"dataset"`
+				Column  semantics.Column `json:"column"`
+			}{ref.Dataset, value})
+			for _, dimension := range dimensionsByColumn[key] {
+				add("dimension", dimension.ID, dimension)
+				for _, filter := range dimension.Filters {
+					visit(filter.Field)
+				}
+			}
+		}
+	}
+	for _, root := range roots {
+		visit(root)
+	}
+	for _, value := range def.Joins {
+		if datasets[value.Left.Dataset] && datasets[value.Right.Dataset] {
+			add("join", value.ID, value)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
 }
 
 func stageFromReceipt(name string, started time.Time, receipt gateway.Receipt) Stage {
@@ -1040,6 +1152,9 @@ func contextView(input nlq.AssembledContext) *ContextView {
 		Question: input.Question, Prompt: input.Prompt, Evidence: append([]nlq.Evidence(nil), input.Evidence...),
 		Metrics: append([]nlq.PinnedMetric(nil), input.Metrics...), Advisory: append([]nlq.OptionalItem(nil), input.Advisory...),
 		Examples: append([]nlq.OptionalItem(nil), input.Examples...),
+	}
+	for i := range out.Metrics {
+		out.Metrics[i].Dependencies = append([]nlq.MetricDependency(nil), input.Metrics[i].Dependencies...)
 	}
 	if input.Constraints != nil {
 		constraints := &nlq.ConstraintState{Allowed: input.Constraints.Allowed}

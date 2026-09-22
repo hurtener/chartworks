@@ -71,6 +71,59 @@ func TestEntityMutationAndDatasetReplacementRewriteAllReferences(t *testing.T) {
 	}
 }
 
+func TestRelationshipDecisionMutationAndDatasetReplacementPreserveReviewedMeaning(t *testing.T) {
+	model, _ := testRules(t)
+	pack := model.Pack()
+	decision := RelationshipDecision{
+		ID:          "candidate_amount_customer",
+		Left:        Reference{Kind: KindColumn, Dataset: pack.Datasets[0].ID, ID: pack.Datasets[0].Columns[1].ID},
+		Right:       Reference{Kind: KindColumn, Dataset: pack.Datasets[1].ID, ID: pack.Datasets[1].Columns[0].ID},
+		Cardinality: CardinalityManyToOne,
+		State:       "candidate",
+		Evidence:    RelationshipEvidence{ID: "reviewed_grain", LeftGrain: "order", RightGrain: "customer", Provenance: "reviewed_profile"},
+	}
+	mutated, err := MutateEntities(model, "v2", []EntityMutation{{Operation: "put", Kind: KindRelationshipDecision, ID: decision.ID, RelationshipDecision: &decision}})
+	if err != nil || len(mutated.Pack().RelationshipDecisions) != 1 {
+		t.Fatal("relationship decision authoring", err)
+	}
+
+	old := mutated.Pack().Datasets[0]
+	columns := append([]Column(nil), old.Columns...)
+	columns[0].Aliases = nil
+	columns[0].SemanticRole = ""
+	oldAliases := []string{"Order key", "Pedido"}
+	base := mutated.Pack()
+	for i := range base.Datasets {
+		if base.Datasets[i].ID == old.ID {
+			base.Datasets[i].Columns[0].Aliases = oldAliases
+			base.Datasets[i].Columns[0].SemanticRole = SemanticRoleFactKey
+		}
+	}
+	mutated, err = Compile(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := old.Source
+	source.Dataset = "orders_reviewed"
+	source.ProfileVersion = "profile_reviewed"
+	rebound, err := ReplaceDataset(mutated, "v3", old.ID, DatasetReplacement{Dataset: source.Dataset, Source: source, Columns: columns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rebound.Pack()
+	var reboundColumn Column
+	for _, dataset := range got.Datasets {
+		if dataset.ID == source.Dataset {
+			reboundColumn = dataset.Columns[0]
+		}
+	}
+	left := got.RelationshipDecisions[0].Left
+	right := got.RelationshipDecisions[0].Right
+	if reboundColumn.SemanticRole != SemanticRoleFactKey || len(reboundColumn.Aliases) != 2 || (left.Dataset != source.Dataset && right.Dataset != source.Dataset) {
+		t.Fatalf("reviewed meaning was not preserved across rebind: %#v", got)
+	}
+}
+
 func TestDatasetReplacementRewritesEnhancedUnresolvedReference(t *testing.T) {
 	model, _ := testRules(t)
 	old := model.Pack().Datasets[0]
