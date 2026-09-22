@@ -790,3 +790,5 @@ Guided onboarding continuation: [D-084 private durable composition with explicit
 Consumer conformance continuation: [D-086 installed-operation interaction and surface parity](decisions/2026-09-22-consumer-conformance.md).
 
 Evaluation continuation: [D-087 immutable reviewed suites, durable terminal evidence and reviewed pack selection](decisions/2026-09-22-evaluation-calibration.md).
+
+Performance continuation: [D-088 authority-bound measurements and deferred final stress](decisions/2026-09-22-performance-evidence.md).
