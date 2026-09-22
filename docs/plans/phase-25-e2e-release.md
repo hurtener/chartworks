@@ -1,6 +1,6 @@
 # Phase 25 — e2e-release
 
-Status: planned. Owner: test/integration, cmd/chartworks. Hard dependencies: 24, 26, 34.
+Status: in_progress. Owner: test/integration, cmd/chartworks. Hard dependencies: 24, 26, 34.
 
 ## Authority and design
 
@@ -51,3 +51,19 @@ correctness-first gate and raw measurement schema. The release candidate must
 materialize the actual Phase 24 suite/report hashes and post-Phase-34 source,
 rule, topic, context and runtime-pack revisions. The checked-in synthetic smoke
 does not satisfy AC03.
+
+## Release evidence implementation boundary
+
+The [release evidence v1 contract](../contracts/release-evidence-v1.md) pins an
+external content-free bundle to the exact source head, binary, image, active
+documentation/schema files, named live test logs, Phase 34 cohort inventory and
+cumulative review. `TestPhase25/AC01`, `AC02`, `AC04`, `AC05` and `AC06` now run
+local substantive checks and require the bundle in strict release mode. The
+runner passes validated earlier-phase Go results directly to AC06; coverage
+rows cannot be closed with a registry label alone.
+
+No release bundle exists at this head. Phase 34 is not shipped, AC03 awaits the
+selected final stress run, and five AC tests are not full Phase 25 acceptance.
+This branch remains unmerged until integration supplies all six criteria and
+the strict preflight passes. Live Pengui/engine/cohort and container qualification
+cannot be inferred from synthetic fixtures.

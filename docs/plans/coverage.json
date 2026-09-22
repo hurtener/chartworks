@@ -712,6 +712,11 @@
     }
   },
   "implementation_evidence": {
+    "25": [
+      "docs/contracts/release-evidence-v1.md",
+      "internal/releasegate",
+      "test/acceptance/phase25_test.go"
+    ],
     "13": [
       "docs/contracts/managed-pipelines.md",
       "docs/reviews/phase-13-current-evidence.md",
