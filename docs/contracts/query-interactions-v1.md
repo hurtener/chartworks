@@ -24,8 +24,11 @@ output and result schemas, and sorted status/code/receipt error contract in
 addition to action, effect, audit and interaction metadata. Schema comparisons
 are canonical JSON comparisons, so formatting cannot hide drift. The SDK decodes
 only a bounded stable HTTP error code and validates a decoded code against that
-operation's registered status/code pair. The CLI may display that safe code but
-never the rejection body.
+operation's registered status/code pair. Typed helpers that do not carry a
+generated owner inventory suppress the code and expose only the HTTP status;
+they never retain an unvalidated wire string. The CLI may display a code only
+after the generic operation path validates it and never displays the rejection
+body.
 
 Late-domain conformance includes selectable report filters, static and durable
 renditions, and guided onboarding. Their schemas, authority, errors and generic

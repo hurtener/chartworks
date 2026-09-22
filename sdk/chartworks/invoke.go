@@ -88,7 +88,7 @@ func (c *Client) Invoke(ctx context.Context, operationID string, in CallOptions)
 			return CallResult{}, err
 		}
 		var output string
-		err = c.callReader(ctx, row.Method, path, in.IdempotencyKey, row.RequestContentType, bytes.NewReader(body), &output, 32<<20)
+		err = c.exchange(ctx, row.Method, path, in.IdempotencyKey, row.RequestContentType, bytes.NewReader(body), &output, 32<<20, wireOptions{errors: row.Errors})
 		if err == nil {
 			result := CallResult{ContentType: row.ResponseContentType, Body: []byte(output)}
 			if outputSchema != nil && outputSchema.ValidateResponse(result.Body, 32<<20) != nil {
@@ -97,9 +97,6 @@ func (c *Client) Invoke(ctx context.Context, operationID string, in CallOptions)
 			return result, nil
 		}
 		var status *StatusError
-		if errors.As(err, &status) && !registeredStatusError(row.Errors, status) {
-			return CallResult{}, ErrInvalidCatalog
-		}
 		if attempt+1 == attempts || !errors.As(err, &status) || !retryStatus(status.Status) {
 			return CallResult{}, err
 		}
@@ -114,21 +111,6 @@ func (c *Client) Invoke(ctx context.Context, operationID string, in CallOptions)
 		}
 	}
 	return CallResult{}, err
-}
-
-func registeredStatusError(inventory []OperationError, status *StatusError) bool {
-	if status == nil {
-		return false
-	}
-	if status.Code == "" {
-		return true
-	}
-	for _, item := range inventory {
-		if item.Status == status.Status && item.Code == status.Code {
-			return true
-		}
-	}
-	return false
 }
 
 func retryStatus(status int) bool {
