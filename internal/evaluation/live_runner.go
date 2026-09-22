@@ -119,7 +119,6 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	}
 	var result any
 	var receipt gateway.Receipt
-	var sourceMS *int64
 	blocked := false
 	var sourceCalls int
 	switch x.Case.Stage {
@@ -275,7 +274,6 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	if reserved.Calls > usage.Calls {
 		usage.Calls, usage.Retries, usage.Tokens = reserved.Calls, reserved.Retries, reserved.Tokens
 	}
-	usage.SourceMS = sourceMS
 	usage.SourceCalls = sourceCalls
 	usage.ServiceMS = clock().Sub(started).Milliseconds()
 	if !receiptMatchesPack(receipt, x.Pack) {
