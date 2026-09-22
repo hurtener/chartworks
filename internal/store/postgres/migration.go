@@ -2,6 +2,7 @@
 package postgres
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -362,11 +363,19 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 			return x
 		}
 		var batchState, batchDigest string
-		if x := tx.QueryRow(ctx, `SELECT state,manifest_digest FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2 FOR SHARE`, e.Tenant(), b.ID).Scan(&batchState, &batchDigest); x != nil {
+		var manifestRaw []byte
+		if x := tx.QueryRow(ctx, `SELECT state,manifest_digest,manifest FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2 FOR SHARE`, e.Tenant(), b.ID).Scan(&batchState, &batchDigest, &manifestRaw); x != nil {
 			return x
 		}
 		if batchState != "complete" || batchDigest != b.Digest {
 			return store.ErrConflict
+		}
+		var manifest migration.Manifest
+		if json.Unmarshal(manifestRaw, &manifest) != nil || manifest.Batch != b.ID || manifest.Cohort != b.Cohort {
+			return store.ErrConflict
+		}
+		if x := fenceCutoverSources(ctx, tx, e, manifest); x != nil {
+			return x
 		}
 		var old migration.Cutover
 		var boundaryRaw, effectsRaw []byte
@@ -465,6 +474,59 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 		return migration.Cutover{}, mapMigration(err)
 	}
 	return out, nil
+}
+
+// Hold the same source-row fence as WithSource through the route commit. A
+// rotation after the live adapter probe either completes before this read and
+// fails the exact pin, or waits until the cutover transaction has committed.
+func fenceCutoverSources(ctx context.Context, tx pgx.Tx, e identity.Envelope, manifest migration.Manifest) error {
+	type pin struct {
+		id, dialect, context string
+		revision             int64
+	}
+	mappings := make(map[string]migration.Mapping, len(manifest.Mappings))
+	for _, mapping := range manifest.Mappings {
+		mappings[mapping.ExternalRef] = mapping
+	}
+	pins := make([]pin, 0)
+	for _, object := range manifest.Objects {
+		if object.Kind != migration.KindSource {
+			continue
+		}
+		mapping := mappings[object.ExternalRef]
+		var expected struct {
+			Engine   string `json:"engine"`
+			Dialect  string `json:"dialect"`
+			Context  string `json:"context"`
+			Revision int64  `json:"revision"`
+		}
+		if json.Unmarshal([]byte(object.Payload), &expected) != nil || mapping.Kind != migration.KindSource || mapping.Destination == "" || mapping.Revision != expected.Revision || object.Revision != expected.Revision || expected.Engine != expected.Dialect || expected.Dialect != manifest.Dialect || expected.Context == "" {
+			return store.ErrConflict
+		}
+		pins = append(pins, pin{mapping.Destination, expected.Dialect, expected.Context, expected.Revision})
+	}
+	if len(pins) == 0 {
+		return store.ErrConflict
+	}
+	slices.SortFunc(pins, func(a, b pin) int { return cmp.Compare(a.id, b.id) })
+	for _, expected := range pins {
+		if err := access.Require(e, "sources.read", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: expected.id}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: expected.context}); err != nil {
+			return err
+		}
+		var revision int64
+		var dialect, contextID string
+		err := tx.QueryRow(ctx, `SELECT r.revision,r.context_id,r.binding->>'dialect' FROM chartworks.sources s JOIN chartworks.source_revisions r ON (r.tenant_id,r.source_id,r.revision)=(s.tenant_id,s.source_id,s.current_revision) WHERE s.tenant_id=$1 AND s.source_id=$2 AND NOT s.deleted FOR SHARE OF s`, e.Tenant(), expected.id).Scan(&revision, &contextID, &dialect)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return store.ErrConflict
+			}
+			return err
+		}
+		if revision != expected.revision || contextID != expected.context || dialect != expected.dialect {
+			return store.ErrConflict
+		}
+	}
+	return nil
 }
 
 func (d *DB) CurrentCutover(ctx context.Context, e identity.Envelope, cohort string) (out migration.Cutover, err error) {

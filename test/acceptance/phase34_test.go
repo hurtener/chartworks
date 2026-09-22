@@ -17,11 +17,13 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/evaluation"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/migration"
 	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/test/support"
@@ -1100,6 +1102,7 @@ func phase34CutoverRollback(t *testing.T) {
 		t.Fatal("stale target occurrence remained dispatchable after rollback", err, queued.ID)
 	}
 	phase34CurrentSourceCutover(t)
+	phase34SourceRotationCutover(t)
 }
 
 func phase34CurrentSourceCutover(t *testing.T) {
@@ -1190,6 +1193,104 @@ func phase34CurrentSourceCutover(t *testing.T) {
 	}
 }
 
+type phase34PausedCutover struct {
+	migration.Repository
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (p *phase34PausedCutover) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch, expected int64, route, previousRoute, operator string, boundary migration.OccurrenceBoundary) (migration.Cutover, error) {
+	close(p.entered)
+	select {
+	case <-p.release:
+	case <-ctx.Done():
+		return migration.Cutover{}, ctx.Err()
+	}
+	return p.Repository.Cutover(ctx, e, b, expected, route, previousRoute, operator, boundary)
+}
+
+func phase34SourceRotationCutover(t *testing.T) {
+	t.Helper()
+	dsn := support.Database(t)
+	db := support.Open(t, dsn)
+	tenant := "tenant-ac06-source-rotation"
+	manifest := phase34Manifest("ac06-source-rotation")
+	oldRoute, newRoute, accepted, queueDB, scope := phase34ScheduleRoutes(t, dsn, tenant)
+	manifest.Boundary.LastAccepted, manifest.Boundary.LastDue = accepted.ID, accepted.DueAt
+	manifest.Boundary.ResumeAfter = accepted.DueAt.Add(time.Minute)
+	manifest.Mappings = append(manifest.Mappings, migration.Mapping{Kind: migration.KindSchedule, ExternalRef: "schedule-ac06-source-rotation", Destination: newRoute, Revision: 1})
+	paused := &phase34PausedCutover{Repository: db, entered: make(chan struct{}), release: make(chan struct{})}
+	defer func() {
+		select {
+		case <-paused.release:
+		default:
+			close(paused.release)
+		}
+	}()
+	adapter := &phase34Adapter{}
+	adapters := map[migration.Kind]migration.Adapter{}
+	for _, kind := range []migration.Kind{migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration} {
+		adapters[kind] = adapter
+	}
+	adapters[migration.KindSource] = migration.AdapterFuncs{
+		ValidateFunc: func(ctx context.Context, _ identity.Envelope, object migration.Object, mapping migration.Mapping) error {
+			current, err := db.ReadSource(ctx, scope, mapping.Destination)
+			if err != nil {
+				return err
+			}
+			var expected struct {
+				Dialect  string `json:"dialect"`
+				Context  string `json:"context"`
+				Revision int64  `json:"revision"`
+			}
+			if json.Unmarshal([]byte(object.Payload), &expected) != nil || current.Source.Dialect != expected.Dialect || current.Source.ContextID != expected.Context || current.Source.Revision != expected.Revision {
+				return migration.ErrConflict
+			}
+			return nil
+		},
+		ApplyFunc: func(_ context.Context, _ identity.Envelope, _ migration.Object, mapping migration.Mapping, _ string) (string, error) {
+			return mapping.Destination, nil
+		},
+	}
+	service, err := migration.New(paused, adapters, nil, migration.EvidenceVerifierFunc(func(context.Context, identity.Envelope, migration.Evidence) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := phase34Actor(t, tenant, "migration.read", "migration.write", "migration.cutover", "scheduling.write", "cw.schedule.write:*", "sources.read", "cw.source.read:mapped-source", "cw.execution_context.use:mapped-source:v1")
+	if _, err = service.Import(t.Context(), actor, migration.ImportRequest{Manifest: manifest}); err != nil {
+		t.Fatal("import pinned source", err)
+	}
+	cutoverDone := make(chan error, 1)
+	go func() {
+		_, cutErr := service.Cutover(t.Context(), actor, migration.CutoverRequest{Batch: manifest.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "rotation-race"})
+		cutoverDone <- cutErr
+	}()
+	select {
+	case <-paused.entered: // The live source adapter validated revision one.
+	case <-time.After(10 * time.Second):
+		t.Fatal("cutover did not reach the post-validation barrier")
+	}
+	if err = db.PutSource(t.Context(), scope, 1, phase34SourceRecord(tenant, 2)); err != nil {
+		t.Fatal("rotate source between validation and route commit", err)
+	}
+	close(paused.release)
+	if err = <-cutoverDone; !errors.Is(err, migration.ErrConflict) {
+		t.Fatal("stale source revision cut over after rotation", err)
+	}
+	prior, err := queueDB.ReadSchedule(t.Context(), scope, oldRoute)
+	if err != nil || !prior.Enabled {
+		t.Fatal("source rotation disabled prior route", err, prior)
+	}
+	target, err := queueDB.ReadSchedule(t.Context(), scope, newRoute)
+	if err != nil || target.Enabled {
+		t.Fatal("source rotation enabled target route", err, target)
+	}
+	var cutovers int
+	if err = support.Raw(t, dsn).QueryRow(t.Context(), `SELECT count(*) FROM chartworks.migration_cutovers WHERE tenant_id=$1 AND cohort_id=$2`, tenant, manifest.Cohort).Scan(&cutovers); err != nil || cutovers != 0 {
+		t.Fatal("source rotation committed route generation", err, cutovers)
+	}
+}
+
 func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, jobs.Job, *postgres.DB, store.Scope) {
 	t.Helper()
 	db := support.Open(t, dsn)
@@ -1203,6 +1304,9 @@ func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, jo
 	}
 	if _, err = db.SetPolicy(t.Context(), scope, 0, store.Policy{AuditDays: 7, OperationHours: 24}); err != nil {
 		t.Fatal("configure migration route policy", err)
+	}
+	if err = db.PutSource(t.Context(), scope, 0, phase34SourceRecord(tenant, 1)); err != nil {
+		t.Fatal("register pinned migration source", err)
 	}
 	request := jobs.ScheduleRequest{Target: jobs.Submission{Kind: jobs.MaintenanceKind, BindingID: "maintenance"}, Spec: jobs.Spec{Type: "manual", Timezone: "UTC", Missed: "skip", Overlap: "queue"}}
 	oldSchedule, err := db.CreateSchedule(t.Context(), scope, "session", "old-route", request, limits)
@@ -1224,6 +1328,16 @@ func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, jo
 		t.Fatal("disabled imported schedule admitted an occurrence", err)
 	}
 	return oldSchedule.ID, newSchedule.ID, accepted, db, scope
+}
+
+func phase34SourceRecord(tenant string, revision int64) sources.Record {
+	const id = "mapped-source"
+	contextID := fmt.Sprintf("%s:v%d", id, revision)
+	return sources.Record{
+		Source:     sources.Source{ID: id, Name: "Synthetic source", Dialect: "postgres", Revision: revision, ContextID: contextID, Status: "registered"},
+		Connection: "warehouse",
+		Binding:    readexec.Binding{Tenant: tenant, Source: id, Context: contextID, Revision: revision, Dialect: "postgres", Contract: "synthetic-contract", Fingerprint: strings.Repeat("a", 64), Relations: []readexec.Relation{{ID: "sample", Schema: "analytics", Name: "sample", Columns: []readexec.Column{{Name: "id", NativeType: "integer", Category: "number", Safe: true}}}}},
+	}
 }
 
 func waitPhase34AdvisoryWaiters(t *testing.T, dsn string, want int) {
