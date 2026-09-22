@@ -37,8 +37,8 @@ const documentPageEligibility = `($9::boolean AND EXISTS(
  WHERE grant_ref->>'kind'='report' AND grant_ref->>'permission'='read'
  AND grant_ref->>'id' IN(page.report_id,'*'))
  AND EXISTS(SELECT 1 FROM chartworks.document_heads report_head
-  WHERE (report_head.tenant_id,report_head.kind,report_head.document_id)=(page.tenant_id,'report',page.report_id)
-  AND NOT report_head.archived)
+ WHERE (report_head.tenant_id,report_head.kind,report_head.document_id)=(page.tenant_id,'report',page.report_id)
+  AND NOT report_head.archived AND NOT report_head.deleted)
  AND NOT EXISTS(SELECT 1 FROM chartworks.document_references page_dep
   WHERE (page_dep.tenant_id,page_dep.kind,page_dep.document_id,page_dep.revision)=(page.tenant_id,'report',page.report_id,page.report_revision)
   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) grant_ref
@@ -77,7 +77,7 @@ func documentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, kind, id st
  JOIN chartworks.document_revisions r ON(r.tenant_id,r.kind,r.document_id)=(h.tenant_id,h.kind,h.document_id)
  AND r.revision=CASE WHEN $4::bigint>0 THEN $4 WHEN $5='draft' THEN h.draft_revision WHEN $5='review' THEN h.review_revision ELSE h.published_revision END
  LEFT JOIN chartworks.document_publications p ON(p.tenant_id,p.kind,p.document_id,p.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)
- WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id=$3
+ WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id=$3 AND NOT h.deleted
  AND (p.revision IS NOT NULL OR $7::boolean)
  AND `+documentReferenceEligibility+`
  AND ($8::boolean OR r.kind<>'dashboard' OR NOT EXISTS(
@@ -147,12 +147,27 @@ func (d *DB) ListDocuments(ctx context.Context, e identity.Envelope, kind, after
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT h.kind,h.document_id,h.version,r.revision,r.definition->'metadata'
+		rows, err := tx.Query(ctx, `SELECT h.kind,h.document_id,h.version,r.revision,r.definition->'metadata',
+ creator.actor_id,editor.actor_id,
+ COALESCE((SELECT array_agg(DISTINCT s.schedule_id ORDER BY s.schedule_id) FROM chartworks.job_schedules s
+  WHERE $8::boolean AND NOT s.retired AND r.kind='report' AND s.request->'target'->'reporting'->>'id'=h.document_id
+  AND s.request->'target'->'reporting'->>'type' IN('report','saved_question')
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'='schedule' AND g->>'permission'='read' AND g->>'id' IN(s.schedule_id,'*'))),'{}'),
+ COALESCE((SELECT array_agg(DISTINCT ref.resource_id ORDER BY ref.resource_id) FROM chartworks.document_references ref
+  WHERE (ref.tenant_id,ref.kind,ref.document_id,ref.revision)=(r.tenant_id,r.kind,r.document_id,r.revision) AND ref.resource_kind='topic'),'{}'),
+ COALESCE((SELECT array_agg(DISTINCT ref.block_id ORDER BY ref.block_id) FROM chartworks.document_block_refs ref
+  WHERE (ref.tenant_id,ref.kind,ref.document_id,ref.revision)=(r.tenant_id,r.kind,r.document_id,r.revision)),'{}')
  FROM chartworks.document_heads h JOIN chartworks.document_revisions r
  ON(r.tenant_id,r.kind,r.document_id,r.revision)=(h.tenant_id,h.kind,h.document_id,h.published_revision)
- WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id>$3 AND NOT h.archived
+ JOIN chartworks.document_revisions creator ON(creator.tenant_id,creator.kind,creator.document_id,creator.revision)=(h.tenant_id,h.kind,h.document_id,1)
+ JOIN chartworks.document_revisions editor ON(editor.tenant_id,editor.kind,editor.document_id)=(h.tenant_id,h.kind,h.document_id)
+ AND editor.revision=CASE WHEN
+  (($9::boolean AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'=h.kind AND g->>'permission'='preview' AND g->>'id' IN(h.document_id,'*')))
+   OR ($10::boolean AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'=h.kind AND g->>'permission'='write' AND g->>'id' IN(h.document_id,'*'))))
+  THEN h.latest_revision ELSE h.published_revision END
+ WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id>$3 AND NOT h.archived AND NOT h.deleted
  AND ($4::boolean OR h.document_id=ANY($5::text[])) AND `+documentReferenceEligibility+`
- ORDER BY h.document_id LIMIT $7`, e.Tenant(), kind, after, selection.All(), selection.IDs(), grants, limit+1)
+	 ORDER BY h.document_id LIMIT $7`, e.Tenant(), kind, after, selection.All(), selection.IDs(), grants, limit+1, e.Has("scheduling.read"), e.Has("reporting.preview"), e.Has("reporting.write"))
 		if err != nil {
 			return err
 		}
@@ -160,7 +175,7 @@ func (d *DB) ListDocuments(ctx context.Context, e identity.Envelope, kind, after
 		for rows.Next() {
 			var item reporting.DocumentSummary
 			var metadata []byte
-			if err := rows.Scan(&item.Kind, &item.ID, &item.Version, &item.Revision, &metadata); err != nil {
+			if err := rows.Scan(&item.Kind, &item.ID, &item.Version, &item.Revision, &metadata, &item.CreatorID, &item.EditorID, &item.Relationships.Schedules, &item.Relationships.Topics, &item.Relationships.Blocks); err != nil {
 				return err
 			}
 			if json.Unmarshal(metadata, &item.Metadata) != nil {

@@ -11,7 +11,7 @@ func TestDocumentAPIRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal("closed document schemas", err)
 	}
-	if len(registry.Definitions()) != 26 {
+	if len(registry.Definitions()) != 30 {
 		t.Fatal("document route inventory is incomplete", len(registry.Definitions()))
 	}
 	for _, route := range registry.Definitions() {

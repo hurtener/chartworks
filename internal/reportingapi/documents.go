@@ -74,6 +74,12 @@ func documentEntries(documents *reporting.Documents, runs *reporting.Composition
 			runtimeEntry("PUT", path+"/{id}", "reporting.write", "edit_"+kind, "Append an immutable "+kind+" amendment under CAS", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in DocumentEdit) (reporting.DocumentState, error) {
 				return documents.Edit(ctx, e, kind, id, in.ExpectedVersion, in.From, in.Definition)
 			}),
+			runtimeEntry("GET", path+"/{id}/delete-impact", "reporting.write", "preview_delete_"+kind, "Preview bounded dependencies and retained live data affected by deletion", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, _ struct{}) (reporting.DocumentDeleteImpact, error) {
+				return documents.PreviewDelete(ctx, e, kind, id)
+			}),
+			runtimeEntry("POST", path+"/{id}/delete", "reporting.write", "delete_"+kind, "Erase live payloads and retain a fenced auditable tombstone", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in reporting.DocumentDeleteRequest) (reporting.DocumentDeletion, error) {
+				return documents.Delete(ctx, e, kind, id, in)
+			}),
 			runtimeEntry("POST", path+"/{id}/runs", "reporting.execute", "admit_"+kind+"_run", "Reserve a key and seal exact "+kind+" composition inputs", func(ctx context.Context, e identity.Envelope, id string, _ url.Values, in reporting.CompositionRequest) (reporting.CompositionView, error) {
 				return runs.Admit(ctx, e, kind, id, in)
 			}))
@@ -119,6 +125,10 @@ func documentEntries(documents *reporting.Documents, runs *reporting.Composition
 			d.Query = []api.Parameter{{Name: "page", In: "query", Type: "string", Max: 128}, {Name: "widget", In: "query", Type: "string", Max: 128}}
 		case "admit_report_run", "admit_dashboard_run":
 			d.Effect = "immutable_composition_manifest_reservation"
+		case "preview_delete_report", "preview_delete_dashboard":
+			d.Effect = "authorized_dependency_metadata_read"
+		case "delete_report", "delete_dashboard":
+			d.Effect = "document_payload_erasure_and_matching_schedule_retirement"
 		case "execute_composition_run":
 			d.Effect = "bounded_source_read_optional_model_retained_composition"
 		case "cancel_composition_run":
