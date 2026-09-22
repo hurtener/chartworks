@@ -1,3 +1,4 @@
+//nolint:revive // Public registration names mirror stable HTTP operation identifiers.
 package migrationapi
 
 import (

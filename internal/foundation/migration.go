@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strconv"
+	"strings"
 
 	"github.com/hurtener/chartworks/internal/engineering"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -225,7 +227,12 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 }
 
 func decodeMigrationPayload(raw string, out any) error {
-	if len(raw) == 0 || json.Unmarshal([]byte(raw), out) != nil {
+	if len(raw) == 0 {
+		return migration.ErrInvalid
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(out) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return migration.ErrInvalid
 	}
 	return nil

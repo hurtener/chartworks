@@ -1,3 +1,4 @@
+//nolint:revive // MCPBindings is the public composition seam for the optional group.
 package migrationapi
 
 import (

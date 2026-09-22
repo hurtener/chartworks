@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -62,10 +63,7 @@ type calibrationPayload struct {
 }
 
 func twoDigits(i int) string {
-	if i < 10 {
-		return "0" + string(rune('0'+i))
-	}
-	return string([]byte{byte('0' + i/10), byte('0' + i%10)})
+	return fmt.Sprintf("%02d", i)
 }
 
 func validateManifest(m Manifest) (string, error) {

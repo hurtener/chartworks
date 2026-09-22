@@ -1,6 +1,7 @@
 package foundation
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/hurtener/chartworks/internal/api"
@@ -43,22 +44,26 @@ func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service,
 		return registry, next, nil
 	}
 	var bindings []mcpserver.Binding
-	for _, build := range []func() ([]mcpserver.Binding, error){
-		func() ([]mcpserver.Binding, error) { return sourceapi.MCPBindings(source) },
-		func() ([]mcpserver.Binding, error) { return topicapi.MCPBindings(published) },
-		func() ([]mcpserver.Binding, error) { return nlqapi.ExecutionMCPBindings(query) },
-		func() ([]mcpserver.Binding, error) { return nlqapi.BYOMCPBindings(byo) },
-		func() ([]mcpserver.Binding, error) { return chartapi.MCPBindings(charts) },
-		func() ([]mcpserver.Binding, error) {
+	builders := []struct {
+		name  string
+		build func() ([]mcpserver.Binding, error)
+	}{
+		{"source", func() ([]mcpserver.Binding, error) { return sourceapi.MCPBindings(source) }},
+		{"topic", func() ([]mcpserver.Binding, error) { return topicapi.MCPBindings(published) }},
+		{"query", func() ([]mcpserver.Binding, error) { return nlqapi.ExecutionMCPBindings(query) }},
+		{"byo", func() ([]mcpserver.Binding, error) { return nlqapi.BYOMCPBindings(byo) }},
+		{"chart", func() ([]mcpserver.Binding, error) { return chartapi.MCPBindings(charts) }},
+		{"onboarding", func() ([]mcpserver.Binding, error) {
 			if len(services) == 1 {
 				return onboardingapi.MCPBindings(services[0].onboarding)
 			}
 			return nil, nil
-		},
-	} {
-		group, err := build()
+		}},
+	}
+	for _, builder := range builders {
+		group, err := builder.build()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("mcp %s bindings: %w", builder.name, err)
 		}
 		bindings = append(bindings, group...)
 	}
@@ -79,28 +84,28 @@ func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service,
 	if migrations != nil {
 		group, err := migrationapi.MCPBindings(migrations)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("mcp migration bindings: %w", err)
 		}
 		bindings = append(bindings, group...)
 	}
 	if delivery != nil {
 		group, err := reportingapi.DeliveryMCPBindings(delivery, delivery.CanExecute(), renderer)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("mcp reporting bindings: %w", err)
 		}
 		bindings = append(bindings, group...)
 	}
 	selected, err := mcpserver.SelectGroups(bindings, v.MCP.Groups)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("mcp select groups: %w", err)
 	}
 	tools, err := mcpserver.NewRegistry(selected)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("mcp registry: %w", err)
 	}
 	server, err := mcpserver.New(verifier, tools, v.MCP, v.Server.CORSAllowlist)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("mcp server: %w", err)
 	}
 	transport, err := mcpserver.HTTPRegistry(v.MCP)
 	if err != nil {

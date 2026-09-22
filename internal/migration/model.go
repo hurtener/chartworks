@@ -1,5 +1,7 @@
 // Package migration coordinates neutral, resumable domain migration without
 // becoming an alternate owner for source, semantic, reporting, or identity data.
+//
+//nolint:revive // Public DTO names form the versioned migration wire contract.
 package migration
 
 import (
