@@ -22,6 +22,8 @@
    Confirm the prior route's actual last accepted operation, due time and revision
    equal the manifest boundary. Confirm the disabled target is the schedule
    checkpointed by this batch, and obtain signed `scheduling.write` reach to both.
+   The cutover actor also needs current `sources.read` with exact source-read and
+   execution-context-use reach; cutover probes the live source again.
    Call `migrationCutover` with generation 0, both the prior and target schedule IDs,
    and the external change/drill reference. Later exact replays use the current
    generation. The transaction activates only the target route.

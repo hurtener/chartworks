@@ -62,21 +62,51 @@ func (m *MemoryRepository) Batch(_ context.Context, e identity.Envelope, id stri
 func (m *MemoryRepository) Checkpoint(_ context.Context, e identity.Envelope, id string, expected int64, plan ObjectPlan, result string) (Batch, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.checkpointLocked(e, id, expected, plan, result)
+}
+
+func (m *MemoryRepository) ApplyCheckpoint(ctx context.Context, e identity.Envelope, id string, expected int64, plan ObjectPlan, apply func(context.Context) (string, error)) (Batch, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if apply == nil || plan.Action != "install_private" && plan.Action != "tombstone" {
+		return Batch{}, ErrInvalid
+	}
+	if _, err := m.checkpointPreconditionLocked(e, id, expected, plan); err != nil {
+		return Batch{}, err
+	}
+	result, err := apply(ctx)
+	if err != nil {
+		return Batch{}, err
+	}
+	return m.checkpointLocked(e, id, expected, plan, result)
+}
+
+func (m *MemoryRepository) checkpointPreconditionLocked(e identity.Envelope, id string, expected int64, plan ObjectPlan) (memoryEntry, error) {
 	key := tenantKey(e, id)
 	x, ok := m.batches[key]
 	if !ok {
-		return Batch{}, ErrNotFound
+		return memoryEntry{}, ErrNotFound
 	}
-	if x.batch.Revision != expected {
-		return Batch{}, ErrConflict
+	if x.batch.Revision != expected || x.batch.State != "importing" {
+		return memoryEntry{}, ErrConflict
 	}
 	index := x.batch.Applied + x.batch.Quarantined
 	if index >= len(x.plan.Objects) || x.plan.Objects[index].ExternalRef != plan.ExternalRef {
-		return Batch{}, ErrConflict
+		return memoryEntry{}, ErrConflict
 	}
 	if _, exists := x.results[plan.ExternalRef]; exists {
-		return Batch{}, ErrConflict
+		return memoryEntry{}, ErrConflict
 	}
+	return x, nil
+}
+
+func (m *MemoryRepository) checkpointLocked(e identity.Envelope, id string, expected int64, plan ObjectPlan, result string) (Batch, error) {
+	x, err := m.checkpointPreconditionLocked(e, id, expected, plan)
+	if err != nil {
+		return Batch{}, err
+	}
+	key := tenantKey(e, id)
+	index := x.batch.Applied + x.batch.Quarantined
 	x.results[plan.ExternalRef] = result
 	if plan.Action == "install_private" || plan.Action == "tombstone" {
 		x.batch.Applied++

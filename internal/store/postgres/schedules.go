@@ -62,7 +62,7 @@ func (d *DB) createSchedule(ctx context.Context, scope store.Scope, session, key
 		}
 		existing, e := scanSchedule(tx.QueryRow(ctx, `SELECT `+scheduleColumns+` FROM chartworks.job_schedules WHERE tenant_id=$1 AND creator_id=$2 AND client_key=$3`, scope.Tenant(), scope.Actor(), key))
 		if e == nil {
-			if digestValue(existing.Request) != hash || existing.Enabled != enabled || existing.Retired {
+			if digestValue(existing.Request) != hash || existing.Retired || !enabled && existing.Enabled {
 				return store.ErrConflict
 			}
 			out = existing

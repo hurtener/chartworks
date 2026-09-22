@@ -3,6 +3,7 @@ package migration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -17,6 +18,7 @@ type Repository interface {
 	Begin(context.Context, identity.Envelope, Manifest, string, Plan) (Batch, bool, error)
 	Batch(context.Context, identity.Envelope, string) (Batch, Manifest, Plan, error)
 	Checkpoint(context.Context, identity.Envelope, string, int64, ObjectPlan, string) (Batch, error)
+	ApplyCheckpoint(context.Context, identity.Envelope, string, int64, ObjectPlan, func(context.Context) (string, error)) (Batch, error)
 	Export(context.Context, identity.Envelope, string, string, int) (Export, error)
 	Cutover(context.Context, identity.Envelope, Batch, int64, string, string, string, OccurrenceBoundary) (Cutover, error)
 	CurrentCutover(context.Context, identity.Envelope, string) (Cutover, error)
@@ -240,7 +242,6 @@ func (s *Service) resume(ctx context.Context, e identity.Envelope, batch Batch, 
 			item.Action, item.Reason = "retention_quarantine", "source retention expired before apply"
 		}
 		destination := item.Destination
-		state := "quarantined"
 		if item.Action == "install_private" || item.Action == "tombstone" {
 			adapter := s.adapters[item.Kind]
 			if adapter == nil {
@@ -250,14 +251,20 @@ func (s *Service) resume(ctx context.Context, e identity.Envelope, batch Batch, 
 				return batch, err
 			}
 			var err error
-			destination, err = adapter.Apply(ctx, e, object, mappings[item.ExternalRef], plan.Digest)
+			batch, err = s.repo.ApplyCheckpoint(ctx, e, batch.ID, batch.Revision, item, func(ctx context.Context) (string, error) {
+				destination, applyErr := adapter.Apply(ctx, e, object, mappings[item.ExternalRef], plan.Digest)
+				if applyErr != nil {
+					return "", applyErr
+				}
+				return destination + ":applied", nil
+			})
 			if err != nil {
 				return batch, err
 			}
-			state = "applied"
+			continue
 		}
 		var err error
-		batch, err = s.repo.Checkpoint(ctx, e, batch.ID, batch.Revision, item, destination+":"+state)
+		batch, err = s.repo.Checkpoint(ctx, e, batch.ID, batch.Revision, item, destination+":quarantined")
 		if err != nil {
 			return batch, err
 		}
@@ -323,6 +330,33 @@ func (s *Service) Cutover(ctx context.Context, e identity.Envelope, in CutoverRe
 			if err := s.evidence.Verify(ctx, e, evidence); err != nil {
 				return Cutover{}, ErrNotReady
 			}
+		}
+	}
+	mappings := make(map[string]Mapping, len(manifest.Mappings))
+	for _, mapping := range manifest.Mappings {
+		mappings[mapping.ExternalRef] = mapping
+	}
+	for _, object := range manifest.Objects {
+		if object.Kind != KindSource {
+			continue
+		}
+		mapping := mappings[object.ExternalRef]
+		var binding sourceBindingPayload
+		if json.Unmarshal([]byte(object.Payload), &binding) != nil || mapping.Destination == "" {
+			return Cutover{}, ErrNotReady
+		}
+		if err := access.Require(e, "sources.read", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: mapping.Destination}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: binding.Context}); err != nil {
+			return Cutover{}, err
+		}
+		adapter := s.adapters[KindSource]
+		if adapter == nil {
+			return Cutover{}, ErrNotReady
+		}
+		if err := adapter.Validate(ctx, e, object, mapping); err != nil {
+			if errors.Is(err, access.ErrUnauthenticated) || errors.Is(err, access.ErrForbidden) || errors.Is(err, access.ErrNotFound) {
+				return Cutover{}, err
+			}
+			return Cutover{}, ErrNotReady
 		}
 	}
 	return s.repo.Cutover(ctx, e, batch, in.Expected, in.Route, in.PreviousRoute, in.OperatorRef, *manifest.Boundary)

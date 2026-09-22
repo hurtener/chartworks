@@ -31,8 +31,10 @@ func (d *DB) Begin(ctx context.Context, e identity.Envelope, manifest migration.
 			return x
 		}
 		keys, refs := make([]string, 0, len(plan.Objects)*2), make([]string, 0, len(plan.Objects)*2)
+		plannedRefs := make(map[string]migration.ObjectPlan, len(plan.Objects))
 		for _, item := range plan.Objects {
 			keys, refs = append(keys, string(item.Kind)), append(refs, item.ExternalRef)
+			plannedRefs[string(item.Kind)+"\x00"+item.ExternalRef] = item
 			if item.Deletes != nil {
 				keys, refs = append(keys, string(item.Deletes.Kind)), append(refs, item.Deletes.ExternalRef)
 			}
@@ -78,6 +80,12 @@ func (d *DB) Begin(ctx context.Context, e identity.Envelope, manifest migration.
 				return x
 			}
 			if item.Deletes != nil {
+				if target, ok := plannedRefs[string(item.Deletes.Kind)+"\x00"+item.Deletes.ExternalRef]; ok {
+					if target.Revision != item.Deletes.Revision {
+						return store.ErrConflict
+					}
+					continue
+				}
 				if x := reserveMigrationRef(ctx, tx, e.Tenant(), string(item.Deletes.Kind), item.Deletes.ExternalRef, digest, item.Deletes.Revision, item.Digest, "delete:"+item.ExternalRef, true); x != nil {
 					return x
 				}
@@ -153,64 +161,171 @@ func (d *DB) Batch(ctx context.Context, e identity.Envelope, id string) (out mig
 
 func (d *DB) Checkpoint(ctx context.Context, e identity.Envelope, id string, expected int64, item migration.ObjectPlan, result string) (out migration.Batch, err error) {
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT cohort_id,manifest_digest,state,revision,applied,quarantined,total,next_ref,created_at,updated_at FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2 FOR UPDATE`, e.Tenant(), id)
-		if x := scanBatch(row, id, &out); x != nil {
-			return x
-		}
-		if out.Revision != expected || out.State != "importing" || out.Next != item.ExternalRef {
-			return store.ErrConflict
-		}
-		seq := out.Applied + out.Quarantined
-		if _, x := tx.Exec(ctx, `INSERT INTO chartworks.migration_checkpoints(tenant_id,batch_id,sequence,external_ref,kind,action,destination_result) VALUES($1,$2,$3,$4,$5,$6,$7)`, e.Tenant(), id, seq, item.ExternalRef, string(item.Kind), item.Action, result); x != nil {
-			return x
-		}
-		tombstoned := item.Action == "tombstone"
-		command, x := tx.Exec(ctx, `INSERT INTO chartworks.migration_external_refs(tenant_id,kind,external_ref,manifest_digest,source_revision,object_digest,destination_result,tombstoned) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(tenant_id,kind,external_ref) DO UPDATE SET manifest_digest=excluded.manifest_digest,source_revision=excluded.source_revision,object_digest=excluded.object_digest,destination_result=excluded.destination_result,tombstoned=excluded.tombstoned,updated_at=clock_timestamp() WHERE NOT chartworks.migration_external_refs.tombstoned AND (excluded.source_revision>chartworks.migration_external_refs.source_revision OR excluded.source_revision=chartworks.migration_external_refs.source_revision AND excluded.object_digest=chartworks.migration_external_refs.object_digest AND excluded.manifest_digest=chartworks.migration_external_refs.manifest_digest AND excluded.destination_result=chartworks.migration_external_refs.destination_result)`, e.Tenant(), string(item.Kind), item.ExternalRef, out.Digest, item.Revision, item.Digest, result, tombstoned)
-		if x != nil {
-			return x
-		}
-		if command.RowsAffected() != 1 {
-			return store.ErrConflict
-		}
-		if item.Deletes != nil {
-			command, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_external_refs(tenant_id,kind,external_ref,manifest_digest,source_revision,object_digest,destination_result,tombstoned) VALUES($1,$2,$3,$4,$5,$6,$7,true) ON CONFLICT(tenant_id,kind,external_ref) DO UPDATE SET manifest_digest=excluded.manifest_digest,source_revision=excluded.source_revision,object_digest=excluded.object_digest,destination_result=excluded.destination_result,tombstoned=true,updated_at=clock_timestamp() WHERE (NOT chartworks.migration_external_refs.tombstoned AND excluded.source_revision>=chartworks.migration_external_refs.source_revision) OR (chartworks.migration_external_refs.tombstoned AND excluded.source_revision=chartworks.migration_external_refs.source_revision AND excluded.object_digest=chartworks.migration_external_refs.object_digest)`, e.Tenant(), string(item.Deletes.Kind), item.Deletes.ExternalRef, out.Digest, item.Deletes.Revision, item.Digest, result)
-			if x != nil {
-				return x
-			}
-			if command.RowsAffected() != 1 {
-				return store.ErrConflict
-			}
-		}
-		if item.Action == "install_private" || item.Action == "tombstone" {
-			out.Applied++
-		} else {
-			out.Quarantined++
-		}
-		out.Revision++
-		out.UpdatedAt = time.Now().UTC()
-		out.Next = ""
-		var praw []byte
-		if x := tx.QueryRow(ctx, `SELECT plan FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2`, e.Tenant(), id).Scan(&praw); x != nil {
-			return x
-		}
-		var plan migration.Plan
-		if json.Unmarshal(praw, &plan) != nil {
-			return store.ErrConflict
-		}
-		if seq+1 >= len(plan.Objects) {
-			out.State = "complete"
-		} else {
-			out.Next = plan.Objects[seq+1].ExternalRef
-		}
-		if _, x = tx.Exec(ctx, `UPDATE chartworks.migration_batches SET state=$3,revision=$4,applied=$5,quarantined=$6,next_ref=$7,updated_at=$8,actor_id=$9 WHERE tenant_id=$1 AND batch_id=$2`, e.Tenant(), id, out.State, out.Revision, out.Applied, out.Quarantined, out.Next, out.UpdatedAt, e.User()); x != nil {
-			return x
-		}
-		return migrationAudit(ctx, tx, e, "migration.checkpointed", item.ExternalRef)
+		var x error
+		out, x = checkpointMigrationTx(ctx, tx, e, id, expected, item, result)
+		return x
 	})
 	if err != nil {
 		return migration.Batch{}, mapMigration(err)
 	}
 	return out, nil
+}
+
+// ApplyCheckpoint keeps the exact source reservation locked until the owning
+// adapter effect and its checkpoint finish. A newer batch cannot replace the
+// reservation in the gap between the guard and the external side effect.
+func (d *DB) ApplyCheckpoint(ctx context.Context, e identity.Envelope, id string, expected int64, item migration.ObjectPlan, apply func(context.Context) (string, error)) (out migration.Batch, err error) {
+	if apply == nil || item.Action != "install_private" && item.Action != "tombstone" {
+		return migration.Batch{}, migration.ErrInvalid
+	}
+	var ownerErr error
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, x := migrationCheckpointBatch(ctx, tx, e, id, expected, item); x != nil {
+			return x
+		}
+		result, x := apply(ctx)
+		if x != nil {
+			ownerErr = x
+			return x
+		}
+		out, x = checkpointMigrationTx(ctx, tx, e, id, expected, item, result)
+		return x
+	})
+	if ownerErr != nil {
+		return migration.Batch{}, ownerErr
+	}
+	if err != nil {
+		return migration.Batch{}, mapMigration(err)
+	}
+	return out, nil
+}
+
+func migrationReservationRow(ctx context.Context, tx pgx.Tx, tenant, kind, ref, manifest string, revision int64, digest, destination string, tombstoned bool) error {
+	var gotManifest, gotDigest, gotDestination string
+	var gotRevision int64
+	var gotTombstoned bool
+	err := tx.QueryRow(ctx, `SELECT manifest_digest,source_revision,object_digest,destination_mapping,tombstoned FROM chartworks.migration_ref_reservations WHERE tenant_id=$1 AND kind=$2 AND external_ref=$3 FOR UPDATE`, tenant, kind, ref).Scan(&gotManifest, &gotRevision, &gotDigest, &gotDestination, &gotTombstoned)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if gotManifest != manifest || gotRevision != revision || gotDigest != digest || gotDestination != destination || gotTombstoned != tombstoned {
+		return store.ErrConflict
+	}
+	return nil
+}
+
+func migrationCheckpointBatch(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, expected int64, item migration.ObjectPlan) (out migration.Batch, err error) {
+	row := tx.QueryRow(ctx, `SELECT cohort_id,manifest_digest,state,revision,applied,quarantined,total,next_ref,created_at,updated_at FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2 FOR UPDATE`, e.Tenant(), id)
+	if x := scanBatch(row, id, &out); x != nil {
+		return migration.Batch{}, x
+	}
+	if out.Revision != expected || out.State != "importing" || out.Next != item.ExternalRef {
+		return migration.Batch{}, store.ErrConflict
+	}
+	if x := migrationReservationRow(ctx, tx, e.Tenant(), string(item.Kind), item.ExternalRef, out.Digest, item.Revision, item.Digest, item.Destination, false); x != nil {
+		return migration.Batch{}, x
+	}
+	if item.Deletes != nil {
+		var praw []byte
+		if x := tx.QueryRow(ctx, `SELECT plan FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2`, e.Tenant(), id).Scan(&praw); x != nil {
+			return migration.Batch{}, x
+		}
+		var plan migration.Plan
+		if json.Unmarshal(praw, &plan) != nil {
+			return migration.Batch{}, store.ErrConflict
+		}
+		revision, digest, destination, tombstoned := item.Deletes.Revision, item.Digest, "delete:"+item.ExternalRef, true
+		for _, target := range plan.Objects {
+			if target.Kind == item.Deletes.Kind && target.ExternalRef == item.Deletes.ExternalRef {
+				if target.Revision != revision {
+					return migration.Batch{}, store.ErrConflict
+				}
+				digest, destination, tombstoned = target.Digest, target.Destination, false
+				break
+			}
+		}
+		if x := migrationReservationRow(ctx, tx, e.Tenant(), string(item.Deletes.Kind), item.Deletes.ExternalRef, out.Digest, revision, digest, destination, tombstoned); x != nil {
+			return migration.Batch{}, x
+		}
+	}
+	// A batch may have read committed continuity before waiting on this row.
+	// Recheck it under the same fence before any owning adapter is called.
+	var committedRevision int64
+	var committedDigest, committedManifest string
+	var committedTombstoned bool
+	x := tx.QueryRow(ctx, `SELECT source_revision,object_digest,manifest_digest,tombstoned FROM chartworks.migration_external_refs WHERE tenant_id=$1 AND kind=$2 AND external_ref=$3 FOR UPDATE`, e.Tenant(), string(item.Kind), item.ExternalRef).Scan(&committedRevision, &committedDigest, &committedManifest, &committedTombstoned)
+	if x != nil && !errors.Is(x, pgx.ErrNoRows) {
+		return migration.Batch{}, x
+	}
+	if x == nil && (committedTombstoned || committedRevision > item.Revision || committedRevision == item.Revision && (committedDigest != item.Digest || committedManifest != out.Digest)) {
+		return migration.Batch{}, store.ErrConflict
+	}
+	if item.Deletes != nil {
+		x = tx.QueryRow(ctx, `SELECT source_revision,tombstoned FROM chartworks.migration_external_refs WHERE tenant_id=$1 AND kind=$2 AND external_ref=$3 FOR UPDATE`, e.Tenant(), string(item.Deletes.Kind), item.Deletes.ExternalRef).Scan(&committedRevision, &committedTombstoned)
+		if x != nil && !errors.Is(x, pgx.ErrNoRows) {
+			return migration.Batch{}, x
+		}
+		if x == nil && (committedTombstoned || committedRevision > item.Deletes.Revision) {
+			return migration.Batch{}, store.ErrConflict
+		}
+	}
+	return out, nil
+}
+
+func checkpointMigrationTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id string, expected int64, item migration.ObjectPlan, result string) (out migration.Batch, err error) {
+	out, err = migrationCheckpointBatch(ctx, tx, e, id, expected, item)
+	if err != nil {
+		return migration.Batch{}, err
+	}
+	seq := out.Applied + out.Quarantined
+	if _, x := tx.Exec(ctx, `INSERT INTO chartworks.migration_checkpoints(tenant_id,batch_id,sequence,external_ref,kind,action,destination_result) VALUES($1,$2,$3,$4,$5,$6,$7)`, e.Tenant(), id, seq, item.ExternalRef, string(item.Kind), item.Action, result); x != nil {
+		return migration.Batch{}, x
+	}
+	tombstoned := item.Action == "tombstone"
+	command, x := tx.Exec(ctx, `INSERT INTO chartworks.migration_external_refs(tenant_id,kind,external_ref,manifest_digest,source_revision,object_digest,destination_result,tombstoned) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(tenant_id,kind,external_ref) DO UPDATE SET manifest_digest=excluded.manifest_digest,source_revision=excluded.source_revision,object_digest=excluded.object_digest,destination_result=excluded.destination_result,tombstoned=excluded.tombstoned,updated_at=clock_timestamp() WHERE NOT chartworks.migration_external_refs.tombstoned AND (excluded.source_revision>chartworks.migration_external_refs.source_revision OR excluded.source_revision=chartworks.migration_external_refs.source_revision AND excluded.object_digest=chartworks.migration_external_refs.object_digest AND excluded.manifest_digest=chartworks.migration_external_refs.manifest_digest AND excluded.destination_result=chartworks.migration_external_refs.destination_result)`, e.Tenant(), string(item.Kind), item.ExternalRef, out.Digest, item.Revision, item.Digest, result, tombstoned)
+	if x != nil {
+		return migration.Batch{}, x
+	}
+	if command.RowsAffected() != 1 {
+		return migration.Batch{}, store.ErrConflict
+	}
+	if item.Deletes != nil {
+		command, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_external_refs(tenant_id,kind,external_ref,manifest_digest,source_revision,object_digest,destination_result,tombstoned) VALUES($1,$2,$3,$4,$5,$6,$7,true) ON CONFLICT(tenant_id,kind,external_ref) DO UPDATE SET manifest_digest=excluded.manifest_digest,source_revision=excluded.source_revision,object_digest=excluded.object_digest,destination_result=excluded.destination_result,tombstoned=true,updated_at=clock_timestamp() WHERE (NOT chartworks.migration_external_refs.tombstoned AND excluded.source_revision>=chartworks.migration_external_refs.source_revision) OR (chartworks.migration_external_refs.tombstoned AND excluded.source_revision=chartworks.migration_external_refs.source_revision AND excluded.object_digest=chartworks.migration_external_refs.object_digest)`, e.Tenant(), string(item.Deletes.Kind), item.Deletes.ExternalRef, out.Digest, item.Deletes.Revision, item.Digest, result)
+		if x != nil {
+			return migration.Batch{}, x
+		}
+		if command.RowsAffected() != 1 {
+			return migration.Batch{}, store.ErrConflict
+		}
+	}
+	if item.Action == "install_private" || item.Action == "tombstone" {
+		out.Applied++
+	} else {
+		out.Quarantined++
+	}
+	out.Revision++
+	out.UpdatedAt = time.Now().UTC()
+	out.Next = ""
+	var praw []byte
+	if x := tx.QueryRow(ctx, `SELECT plan FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2`, e.Tenant(), id).Scan(&praw); x != nil {
+		return migration.Batch{}, x
+	}
+	var plan migration.Plan
+	if json.Unmarshal(praw, &plan) != nil {
+		return migration.Batch{}, store.ErrConflict
+	}
+	if seq+1 >= len(plan.Objects) {
+		out.State = "complete"
+	} else {
+		out.Next = plan.Objects[seq+1].ExternalRef
+	}
+	if _, x = tx.Exec(ctx, `UPDATE chartworks.migration_batches SET state=$3,revision=$4,applied=$5,quarantined=$6,next_ref=$7,updated_at=$8,actor_id=$9 WHERE tenant_id=$1 AND batch_id=$2`, e.Tenant(), id, out.State, out.Revision, out.Applied, out.Quarantined, out.Next, out.UpdatedAt, e.User()); x != nil {
+		return migration.Batch{}, x
+	}
+	return out, migrationAudit(ctx, tx, e, "migration.checkpointed", item.ExternalRef)
 }
 
 func (d *DB) Export(ctx context.Context, e identity.Envelope, id, after string, limit int) (migration.Export, error) {

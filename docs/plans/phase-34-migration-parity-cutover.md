@@ -56,7 +56,8 @@ seven registered HTTP/CLI operations and seven optional MCP bindings. The
 loss ledger, quarantine, retention and schedule handoff behavior.
 
 `TestPhase34/AC01`–`AC08` exercise the immutable bundle, full dependent graph,
-per-apply current-authority/retention/owner revalidation, all 63 feature dispositions,
+per-apply current-authority/retention/owner revalidation, cross-revision reservation
+and checkpoint fencing, current source validation at cutover, all 63 feature dispositions,
 live owner evidence resolution, PostgreSQL replay/CAS, bounded erasure and the
 worker-consumed occurrence cutover/rollback fence. Phases 24 and 33 are integrated. Evaluation
 suites and server-owned runtime packs import through the Phase 24 public service as

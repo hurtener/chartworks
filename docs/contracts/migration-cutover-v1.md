@@ -80,8 +80,12 @@ and plan, then applies dependency-ordered checkpoints with exact revision CAS.
 Replaying the same batch and digest returns the existing result; changing the digest,
 external revision, destination or tombstone state fails closed before domain effects.
 The same external reference and source revision cannot be repointed by a new
-manifest. Domain adapters are
-required to reconcile their stable destination or use an owning idempotency seam
+manifest. Resume locks and rechecks the exact reservation immediately before an
+owning adapter effect, and holds it through the matching checkpoint. A later source
+revision may replace an idle reservation, but an already superseded batch cannot
+call its adapter. Once an owner effect begins, a later revision waits for that
+effect and checkpoint to finish. Domain adapters are required
+to reconcile their stable destination or use an owning idempotency seam
 before returning success; local checkpointing is not a claim of cross-system
 exactly-once execution.
 
@@ -117,7 +121,10 @@ A cutover requires a completed batch, all required evidence verified, one import
 and checkpointed disabled target schedule, a current enabled prior schedule, and
 signed `scheduling.write` reach to both. The prior route revision and actual last
 accepted operation/due time must equal the manifest boundary. Critical source or
-schedule quarantine, including expiry after import, blocks cutover. The boundary
+schedule quarantine, including expiry after import, blocks cutover. Immediately
+before route mutation, the source adapter rechecks observed health, exact
+engine/dialect/revision/snapshot and the cutover actor's signed source and execution
+context reach. The boundary
 contains one stream identifier, prior schedule version, last accepted
 occurrence/due time and resume-after time. The cohort generation CAS selects one active route. Replaying the identical route
 is idempotent; a stale or competing generation conflicts. The cutover transaction

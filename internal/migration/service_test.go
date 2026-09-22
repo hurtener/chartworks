@@ -82,7 +82,7 @@ func serviceTest(t *testing.T, a *adapterTest) (*Service, *MemoryRepository, ide
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s, repo, actorTest(t, "migration.read", "migration.write", "migration.cutover", "migration.erase")
+	return s, repo, actorTest(t, "migration.read", "migration.write", "migration.cutover", "migration.erase", "sources.read", "cw.source.read:source", "cw.execution_context.use:source:v1")
 }
 
 func TestLifecycle(t *testing.T) {

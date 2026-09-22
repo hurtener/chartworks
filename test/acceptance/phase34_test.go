@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/test/support"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestPhase34(t *testing.T) {
@@ -178,7 +180,7 @@ func phase34Service(t *testing.T, suffix string) (*migration.Service, *phase34Ad
 	if err != nil {
 		t.Fatal(err)
 	}
-	return service, adapter, phase34Actor(t, "tenant-"+suffix, "migration.read", "migration.write", "migration.cutover", "migration.erase", "scheduling.write", "cw.schedule.write:*"), dsn
+	return service, adapter, phase34Actor(t, "tenant-"+suffix, "migration.read", "migration.write", "migration.cutover", "migration.erase", "scheduling.write", "cw.schedule.write:*", "sources.read", "cw.source.read:mapped-source", "cw.execution_context.use:mapped-source:v1"), dsn
 }
 
 func phase34DryRunReplay(t *testing.T) {
@@ -495,7 +497,7 @@ func phase34LiveOwnerEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	tenant := "tenant-ac04-live"
-	author := phase34Actor(t, tenant, "ops.write", "migration.read", "migration.write", "migration.cutover", "scheduling.write", "cw.schedule.write:*")
+	author := phase34Actor(t, tenant, "ops.write", "migration.read", "migration.write", "migration.cutover", "scheduling.write", "cw.schedule.write:*", "sources.read", "cw.source.read:mapped-source", "cw.execution_context.use:mapped-source:v1")
 	reviewer, err := identity.FromVerified(tenant, "reviewer", "review-session", []string{"ops.audit", "cw.tenant.certify:" + tenant}, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
@@ -731,6 +733,185 @@ func phase34ExternalRefAndExpiredExport(t *testing.T) {
 	if _, err := expiredService.Export(t.Context(), expiredActor, migration.ExportRequest{Batch: expired.Batch, Limit: 1}); !errors.Is(err, migration.ErrNotReady) {
 		t.Fatal("expired private payload exported", err)
 	}
+	phase34CrossRevisionReservation(t)
+}
+
+func phase34CrossRevisionReservation(t *testing.T) {
+	t.Helper()
+	dsn := support.Database(t)
+	db := support.Open(t, dsn)
+	actor := phase34Actor(t, "tenant-ac05-revision", "migration.read", "migration.write")
+	paused := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	applied := make(chan int64, 2)
+	var rev1Validations atomic.Int32
+	adapter := migration.AdapterFuncs{
+		ValidateFunc: func(ctx context.Context, _ identity.Envelope, object migration.Object, _ migration.Mapping) error {
+			if object.Revision == 1 && rev1Validations.Add(1) == 2 {
+				close(paused)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+			return nil
+		},
+		ApplyFunc: func(_ context.Context, _ identity.Envelope, object migration.Object, mapping migration.Mapping, _ string) (string, error) {
+			applied <- object.Revision
+			return mapping.Destination, nil
+		},
+	}
+	service, err := migration.New(db, map[migration.Kind]migration.Adapter{migration.KindSource: adapter}, nil, migration.EvidenceVerifierFunc(func(context.Context, identity.Envelope, migration.Evidence) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev1 := phase34Manifest("ac05-revision")
+	rev1.Objects = slices.Clone(rev1.Objects[:1])
+	rev1.Fields = slices.DeleteFunc(rev1.Fields, func(field migration.FieldDisposition) bool {
+		return !strings.HasPrefix(field.Path, rev1.Objects[0].ExternalRef+".")
+	})
+	rev1.Boundary = nil
+	rev2 := rev1
+	rev2.Batch, rev2.Cohort = "batch-ac05-revision-2", "cohort-ac05-revision-2"
+	rev2.Objects = slices.Clone(rev1.Objects)
+	rev2.Objects[0].Revision = 2
+	rev2.Objects[0].Payload = strings.ReplaceAll(strings.ReplaceAll(rev2.Objects[0].Payload, `"revision":1`, `"revision":2`), `mapped-source:v1`, `mapped-source:v2`)
+	rev2.Mappings = slices.Clone(rev1.Mappings)
+	rev2.Mappings[0].Revision = 2
+	rev2.Evidence = slices.Clone(rev1.Evidence)
+	for i := range rev2.Evidence {
+		if rev2.Evidence[i].Disposition == "required" {
+			rev2.Evidence[i].SourceRevision = 2
+		}
+	}
+	firstResult := make(chan error, 1)
+	go func() {
+		_, importErr := service.Import(t.Context(), actor, migration.ImportRequest{Manifest: rev1})
+		firstResult <- importErr
+	}()
+	select {
+	case <-paused:
+	case <-t.Context().Done():
+		t.Fatal("rev1 did not pause before owner apply")
+	}
+	newer, err := service.Import(t.Context(), actor, migration.ImportRequest{Manifest: rev2})
+	if err != nil || newer.State != "complete" || newer.Applied != 1 {
+		t.Fatal("rev2 failed to replace the paused reservation", err, newer)
+	}
+	close(release)
+	if err = <-firstResult; !errors.Is(err, migration.ErrConflict) {
+		t.Fatal("superseded rev1 reached owner apply", err)
+	}
+	if len(applied) != 1 || <-applied != 2 {
+		t.Fatal("superseded revision produced an owner effect")
+	}
+	stale, _, stalePlan, err := db.Batch(t.Context(), actor, rev1.Batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Checkpoint(t.Context(), actor, rev1.Batch, stale.Revision, stalePlan.Objects[0], "stale:applied"); !errors.Is(err, migration.ErrConflict) {
+		t.Fatal("stale checkpoint overwrote the newer owner", err)
+	}
+	raw := support.Raw(t, dsn)
+	var oldCheckpoints, newCheckpoints int
+	if err = raw.QueryRow(t.Context(), `SELECT count(*) FILTER (WHERE batch_id=$2),count(*) FILTER (WHERE batch_id=$3) FROM chartworks.migration_checkpoints WHERE tenant_id=$1`, actor.Tenant(), rev1.Batch, rev2.Batch).Scan(&oldCheckpoints, &newCheckpoints); err != nil || oldCheckpoints != 0 || newCheckpoints != 1 {
+		t.Fatal("cross-revision checkpoint fence", err, oldCheckpoints, newCheckpoints)
+	}
+	phase34ReservationHeldDuringApply(t)
+}
+
+func phase34ReservationHeldDuringApply(t *testing.T) {
+	t.Helper()
+	dsn := support.Database(t)
+	db := support.Open(t, dsn)
+	actor := phase34Actor(t, "tenant-ac05-held", "migration.read", "migration.write")
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	applied := make(chan int64, 2)
+	adapter := migration.AdapterFuncs{
+		ValidateFunc: func(context.Context, identity.Envelope, migration.Object, migration.Mapping) error { return nil },
+		ApplyFunc: func(ctx context.Context, _ identity.Envelope, object migration.Object, mapping migration.Mapping, _ string) (string, error) {
+			if object.Revision == 1 {
+				close(entered)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return "", ctx.Err()
+				}
+			}
+			applied <- object.Revision
+			return mapping.Destination, nil
+		},
+	}
+	service, err := migration.New(db, map[migration.Kind]migration.Adapter{migration.KindSource: adapter}, nil, migration.EvidenceVerifierFunc(func(context.Context, identity.Envelope, migration.Evidence) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev1 := phase34Manifest("ac05-held")
+	rev1.Objects = slices.Clone(rev1.Objects[:1])
+	rev1.Fields = slices.DeleteFunc(rev1.Fields, func(field migration.FieldDisposition) bool {
+		return !strings.HasPrefix(field.Path, rev1.Objects[0].ExternalRef+".")
+	})
+	rev1.Boundary = nil
+	rev2 := rev1
+	rev2.Batch, rev2.Cohort = "batch-ac05-held-2", "cohort-ac05-held-2"
+	rev2.Objects = slices.Clone(rev1.Objects)
+	rev2.Objects[0].Revision = 2
+	rev2.Objects[0].Payload = strings.ReplaceAll(strings.ReplaceAll(rev2.Objects[0].Payload, `"revision":1`, `"revision":2`), `mapped-source:v1`, `mapped-source:v2`)
+	rev2.Mappings = slices.Clone(rev1.Mappings)
+	rev2.Mappings[0].Revision = 2
+	rev2.Evidence = slices.Clone(rev1.Evidence)
+	for i := range rev2.Evidence {
+		if rev2.Evidence[i].Disposition == "required" {
+			rev2.Evidence[i].SourceRevision = 2
+		}
+	}
+	firstResult := make(chan error, 1)
+	go func() {
+		_, importErr := service.Import(t.Context(), actor, migration.ImportRequest{Manifest: rev1})
+		firstResult <- importErr
+	}()
+	select {
+	case <-entered:
+	case <-t.Context().Done():
+		t.Fatal("rev1 owner effect did not start")
+	}
+	raw := support.Raw(t, dsn)
+	_, lockErr := raw.Exec(t.Context(), `SELECT external_ref FROM chartworks.migration_ref_reservations WHERE tenant_id=$1 AND kind='source' AND external_ref=$2 FOR UPDATE NOWAIT`, actor.Tenant(), rev1.Objects[0].ExternalRef)
+	var pgErr *pgconn.PgError
+	if !errors.As(lockErr, &pgErr) || pgErr.Code != "55P03" {
+		t.Fatal("owner effect did not hold its source reservation", lockErr)
+	}
+	secondResult := make(chan error, 1)
+	go func() {
+		_, importErr := service.Import(t.Context(), actor, migration.ImportRequest{Manifest: rev2})
+		secondResult <- importErr
+	}()
+	close(release)
+	if err = <-firstResult; err != nil {
+		t.Fatal("rev1 failed while holding its reservation", err)
+	}
+	if err = <-secondResult; err != nil {
+		t.Fatal("rev2 failed after rev1 checkpoint", err)
+	}
+	if len(applied) != 2 || <-applied != 1 || <-applied != 2 {
+		t.Fatal("revision effects escaped reservation order")
+	}
 }
 
 func phase34CutoverRollback(t *testing.T) {
@@ -744,7 +925,7 @@ func phase34CutoverRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "cutover-drill", Expected: 0}
-	narrow, err := identity.FromVerified(e.Tenant(), "narrow", "session", []string{"migration.cutover", "scheduling.write", "cw.tenant.write:" + e.Tenant(), "cw.schedule.write:" + newRoute}, time.Now().Add(time.Hour), time.Now)
+	narrow, err := identity.FromVerified(e.Tenant(), "narrow", "session", []string{"migration.cutover", "scheduling.write", "cw.tenant.write:" + e.Tenant(), "cw.schedule.write:" + newRoute, "sources.read", "cw.source.read:mapped-source", "cw.execution_context.use:mapped-source:v1"}, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -917,6 +1098,95 @@ func phase34CutoverRollback(t *testing.T) {
 	}
 	if _, err = queueDB.ClaimJob(t.Context(), "phase34-rollback-worker-2", jobs.Defaults()); !errors.Is(err, jobs.ErrEmpty) {
 		t.Fatal("stale target occurrence remained dispatchable after rollback", err, queued.ID)
+	}
+	phase34CurrentSourceCutover(t)
+}
+
+func phase34CurrentSourceCutover(t *testing.T) {
+	t.Helper()
+	dsn := support.Database(t)
+	db := support.Open(t, dsn)
+	tenant := "tenant-ac06-current-source"
+	manifest := phase34Manifest("ac06-current-source")
+	oldRoute, newRoute, accepted, queueDB, scope := phase34ScheduleRoutes(t, dsn, tenant)
+	manifest.Boundary.LastAccepted, manifest.Boundary.LastDue = accepted.ID, accepted.DueAt
+	manifest.Boundary.ResumeAfter = accepted.DueAt.Add(time.Minute)
+	manifest.Mappings = append(manifest.Mappings, migration.Mapping{Kind: migration.KindSchedule, ExternalRef: "schedule-ac06-current-source", Destination: newRoute, Revision: 1})
+	type sourceState struct {
+		Engine, Dialect, Snapshot, Context string
+		Revision                           int64
+		Available                          bool
+	}
+	current := sourceState{Engine: manifest.Engine, Dialect: manifest.Dialect, Snapshot: manifest.SourceSnapshot, Context: "mapped-source:v1", Revision: 1, Available: true}
+	baseline := current
+	sourceAdapter := migration.AdapterFuncs{
+		ValidateFunc: func(_ context.Context, e identity.Envelope, object migration.Object, mapping migration.Mapping) error {
+			if err := access.Require(e, "sources.read", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: mapping.Destination}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: current.Context}); err != nil {
+				return err
+			}
+			var expected struct {
+				Engine, Dialect, Snapshot, Context string
+				Revision                           int64
+			}
+			if json.Unmarshal([]byte(object.Payload), &expected) != nil || !current.Available || current.Engine != expected.Engine || current.Dialect != expected.Dialect || current.Snapshot != expected.Snapshot || current.Context != expected.Context || current.Revision != expected.Revision || mapping.Revision != current.Revision {
+				return migration.ErrConflict
+			}
+			return nil
+		},
+		ApplyFunc: func(_ context.Context, _ identity.Envelope, _ migration.Object, mapping migration.Mapping, _ string) (string, error) {
+			return mapping.Destination, nil
+		},
+	}
+	otherAdapter := &phase34Adapter{}
+	adapters := map[migration.Kind]migration.Adapter{migration.KindSource: sourceAdapter}
+	for _, kind := range []migration.Kind{migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration} {
+		adapters[kind] = otherAdapter
+	}
+	service, err := migration.New(db, adapters, nil, migration.EvidenceVerifierFunc(func(context.Context, identity.Envelope, migration.Evidence) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := phase34Actor(t, tenant, "migration.read", "migration.write", "migration.cutover", "scheduling.write", "cw.schedule.write:*", "sources.read", "cw.source.read:mapped-source", "cw.execution_context.use:mapped-source:v1")
+	if _, err = service.Import(t.Context(), actor, migration.ImportRequest{Manifest: manifest}); err != nil {
+		t.Fatal("import pinned source", err)
+	}
+	request := migration.CutoverRequest{Batch: manifest.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "source-freshness-drill"}
+	for _, reach := range []struct {
+		name   string
+		scopes []string
+	}{
+		{"source", []string{"cw.execution_context.use:mapped-source:v1"}},
+		{"context", []string{"cw.source.read:mapped-source"}},
+	} {
+		narrow := phase34Actor(t, tenant, append([]string{"migration.cutover", "scheduling.write", "cw.schedule.write:*", "sources.read"}, reach.scopes...)...)
+		if _, err = service.Cutover(t.Context(), narrow, request); !errors.Is(err, access.ErrNotFound) {
+			t.Fatal("cutover actor without exact source/context reach changed route", reach.name, err)
+		}
+	}
+	mutations := []struct {
+		name   string
+		mutate func(*sourceState)
+	}{
+		{"unavailable", func(s *sourceState) { s.Available = false }},
+		{"engine", func(s *sourceState) { s.Engine = "other" }},
+		{"dialect", func(s *sourceState) { s.Dialect = "other" }},
+		{"snapshot", func(s *sourceState) { s.Snapshot = strings.Repeat("f", 64) }},
+		{"revision", func(s *sourceState) { s.Revision = 2 }},
+	}
+	for _, test := range mutations {
+		current = baseline
+		test.mutate(&current)
+		if _, err = service.Cutover(t.Context(), actor, request); !errors.Is(err, migration.ErrNotReady) {
+			t.Fatal("source drift changed route", test.name, err)
+		}
+		prior, readErr := queueDB.ReadSchedule(t.Context(), scope, oldRoute)
+		if readErr != nil || !prior.Enabled {
+			t.Fatal("source drift disabled the prior schedule", test.name, readErr, prior)
+		}
+	}
+	current = baseline
+	if _, err = service.Cutover(t.Context(), actor, request); err != nil {
+		t.Fatal("healthy exact source blocked cutover", err)
 	}
 }
 
