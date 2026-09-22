@@ -26,6 +26,9 @@ func (s *Service) validateWork(ctx context.Context, e identity.Envelope, id stri
 		return record, result, resolved, nil, err
 	}
 	d := snapshot.Revision.Definition
+	if _, err := templateSelections(d); err != nil {
+		return record, result, resolved, nil, err
+	}
 	if err := access.Require(e, "sources.query", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: d.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: d.Context}); err != nil {
 		return record, result, resolved, nil, err
 	}

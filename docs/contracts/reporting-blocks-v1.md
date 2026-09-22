@@ -143,13 +143,16 @@ qualification boundaries. Phase 28 owns recurring reads and retained artifacts.
 
 ## Template-origin boundary
 
-A template pin is accepted only from a server-verified capture handoff. The
-query service retains the router's canonical reviewed template selection in the
-immutable completed-query record. Capture requires it to match an exact captured
-topic/rule pin and transfers its identifier, rule version and rule digest; it
-never infers template provenance from SQL or accepts a manual authoring
-assertion. Omitted, stale or substituted selections fail before generation or
-capture whenever the reviewed ruleset contains template scopes.
+A template selection is accepted only from a server-verified capture handoff.
+The query service retains the router's canonical reviewed selections in the
+immutable completed-query record. Capture transfers at most one selection per
+topic, ordered by topic, with its identifier and complete topic/ruleset version
+and digest coordinates. Each selection must exactly match the definition's rule
+pin; SQL and manual authoring cannot claim this provenance. Omitted, stale or
+substituted selections fail before generation or capture whenever reviewed
+template scopes apply. Retained singular pins remain readable only when their
+version and digest match the sole rule pin. Editing rules must clear provenance;
+reintroducing it requires another query capture.
 
 ## CW-06 immutable rule dependencies
 
@@ -170,7 +173,7 @@ historical certification remain immutable, while revalidation, certification
 reuse and execution refuse the stale dependency. Refresh performs no rule
 selection, NLQ or model work.
 
-Query capture also locks every current rule publication head in the same block
+Query capture and frozen sealing lock every current rule publication head in the same block
 commit transaction before writing its pin. Publication takes the conflicting
 head lock before advancing the pointer. A replacement or retirement that wins
 the race therefore yields a typed stale result and the transaction leaves no
@@ -184,4 +187,7 @@ definition projection and revalidates them through ordinary authoring. A foreign
 mapping that cannot prove exact topic and rule coordinates must be reported as
 unsupported instead of silently dropping or approximating the dependency.
 Migration 039 retains the canonical completed-query template selection used by
-that capture; older queries have an explicit empty selection.
+that capture; older queries have an explicit empty selection. Migration 040
+constrains reporting revisions to the retained singular representation or the
+bounded per-topic representation, never both. Domain gates verify exact rule-pin
+equality during authoring, validation, certification and frozen sealing.

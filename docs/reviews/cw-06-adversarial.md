@@ -66,6 +66,17 @@ from manual final-gap qualification.
 11. **Current main assigned D-075 while this branch was under review.** Main's rich
     semantic decision remains D-075; this workstream is now uniquely D-076 and
     the active plan/gap links point to the correct decision.
+12. **Frozen sealing omitted block coordinates from its rule-head fence.** The
+    seal now locks the exact manifest revision's rule heads in the shared
+    topic/rule/source order. A real PostgreSQL regression delays an ordinary
+    publisher after it owns the rule head and requires the waiting seal to fail
+    stale without a frozen manifest.
+13. **A block edit could retain template provenance while replacing rule pins.**
+    New captures persist a bounded topic-ordered selection set with complete
+    topic/ruleset coordinates. Authoring, validation, certification and frozen
+    gates require exact rule-pin matches; clearing provenance is allowed, while
+    restoring it requires recapture. Retained singular records require one
+    exactly matching rule pin, and migration 040 prevents mixed storage.
 
 ## Executed evidence
 

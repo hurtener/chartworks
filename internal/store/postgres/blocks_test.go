@@ -26,13 +26,27 @@ func TestBlockGuardsRejectIncompleteEvidenceBeforeSQL(t *testing.T) {
 	if err := insertBlockRevision(ctx, nil, identity.Envelope{}, reporting.Mutation{}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal(err)
 	}
-	for _, mutation := range []reporting.Mutation{{}, {Topics: []reporting.TopicPin{{Topic: "topic"}}}, {Watch: []reporting.Dependency{{Source: "source"}}}} {
+	for _, mutation := range []reporting.Mutation{{}, {Topics: []reporting.TopicPin{{Topic: "topic"}}}, {Watch: []reporting.Dependency{{Source: "source"}}}, {ID: "block", Topics: []reporting.TopicPin{{Topic: "topic"}}, Watch: []reporting.Dependency{{Source: "source"}}}, {TargetRevision: 1, Topics: []reporting.TopicPin{{Topic: "topic"}}, Watch: []reporting.Dependency{{Source: "source"}}}} {
 		if err := blockCurrentFence(ctx, nil, identity.Envelope{}, mutation); !errors.Is(err, store.ErrInvalid) {
 			t.Fatal(err)
 		}
 	}
 	if err := verifyBlockAttempt(ctx, nil, identity.Envelope{}, reporting.Mutation{}, reporting.Snapshot{}); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal(err)
+	}
+}
+
+func TestBlockFenceCoordinatesRequireExactRevisionPair(t *testing.T) {
+	if err := blockFenceCoordinates(reporting.Mutation{ID: "block", TargetRevision: 3}); err != nil {
+		t.Fatal("exact frozen block coordinates rejected", err)
+	}
+	if err := blockFenceCoordinates(reporting.Mutation{}); err != nil {
+		t.Fatal("aggregate composition fence rejected", err)
+	}
+	for _, mutation := range []reporting.Mutation{{ID: "block"}, {TargetRevision: 3}, {ID: "../block", TargetRevision: 3}} {
+		if err := blockFenceCoordinates(mutation); !errors.Is(err, store.ErrInvalid) {
+			t.Fatalf("incomplete rule fence coordinates admitted: %#v %v", mutation, err)
+		}
 	}
 }
 

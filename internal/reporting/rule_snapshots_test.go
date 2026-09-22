@@ -71,6 +71,66 @@ func TestRulePinsAreVersionedExecutionDependencies(t *testing.T) {
 	}
 }
 
+func TestTemplateSelectionsBindExactRulePinsAndPreserveLegacyDigests(t *testing.T) {
+	d := contractDefinition()
+	var err error
+	d, err = MigrateDefinition(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := testRulePin()
+	second := RulePin{Topic: "support", TopicVersion: "v2", PackDigest: strings.Repeat("c", 64), RuleVersion: "rules-v2", RuleDigest: strings.Repeat("d", 64)}
+	d.Topics = append(d.Topics, TopicPin{Topic: second.Topic, Version: second.TopicVersion, Digest: second.PackDigest})
+	d.Rules = []RulePin{first, second}
+	d.Templates = []TemplateSelection{
+		{ID: "monthly", Topic: first.Topic, TopicVersion: first.TopicVersion, PackDigest: first.PackDigest, RuleVersion: first.RuleVersion, RuleDigest: first.RuleDigest},
+		{ID: "weekly", Topic: second.Topic, TopicVersion: second.TopicVersion, PackDigest: second.PackDigest, RuleVersion: second.RuleVersion, RuleDigest: second.RuleDigest},
+	}
+	if got, err := templateSelections(d); err != nil || len(got) != 2 {
+		t.Fatalf("valid per-topic selections rejected: %#v %v", got, err)
+	}
+	baseDigest := ExecutionDigest(d)
+	bad := clone(d)
+	bad.Templates[0].RuleDigest = second.RuleDigest
+	if _, err := templateSelections(bad); err == nil || ExecutionDigest(bad) == baseDigest {
+		t.Fatal("orphaned selection admitted or omitted from execution digest")
+	}
+	bad = clone(d)
+	bad.Templates[0], bad.Templates[1] = bad.Templates[1], bad.Templates[0]
+	if _, err := templateSelections(bad); err == nil {
+		t.Fatal("non-canonical template ordering admitted")
+	}
+
+	legacy := contractDefinition()
+	legacy, _ = MigrateDefinition(legacy)
+	legacy.Rules = []RulePin{first}
+	legacy.Template = &TemplatePin{ID: "monthly", Version: first.RuleVersion, Digest: first.RuleDigest}
+	before := ExecutionDigest(legacy)
+	if got, err := templateSelections(legacy); err != nil || len(got) != 1 || got[0].Topic != first.Topic || ExecutionDigest(legacy) != before {
+		t.Fatalf("legacy template was not deterministically expanded: %#v %v", got, err)
+	}
+	legacy.Rules[0].RuleDigest = strings.Repeat("e", 64)
+	if _, err := templateSelections(legacy); err == nil {
+		t.Fatal("legacy orphaned template admitted")
+	}
+}
+
+func TestCaptureTemplateSelectionsSupportsOnePerTopic(t *testing.T) {
+	a, b := testRulePin(), RulePin{Topic: "support", TopicVersion: "v2", PackDigest: strings.Repeat("c", 64), RuleVersion: "rules-v2", RuleDigest: strings.Repeat("d", 64)}
+	selections := []rulesets.TemplateSelection{
+		{ID: "weekly", Topic: b.Topic, TopicVersion: b.TopicVersion, PackDigest: b.PackDigest, RuleVersion: b.RuleVersion, RuleDigest: b.RuleDigest},
+		{ID: "monthly", Topic: a.Topic, TopicVersion: a.TopicVersion, PackDigest: a.PackDigest, RuleVersion: a.RuleVersion, RuleDigest: a.RuleDigest},
+	}
+	got, err := captureTemplateSelections(selections, []RulePin{a, b})
+	if err != nil || len(got) != 2 || got[0].Topic != "sales" || got[1].Topic != "support" {
+		t.Fatalf("multi-topic selection capture was not canonical: %#v %v", got, err)
+	}
+	selections[0].RuleDigest = a.RuleDigest
+	if _, err := captureTemplateSelections(selections, []RulePin{a, b}); !errors.Is(err, ErrStale) {
+		t.Fatalf("selection substitution returned %v", err)
+	}
+}
+
 func TestResolveRulesRejectsStaleOrUnavailablePublications(t *testing.T) {
 	pin := testRulePin()
 	published := rulesets.Published{
@@ -123,5 +183,23 @@ func TestFrozenEligibilityRefusesRuleSnapshotDrift(t *testing.T) {
 	group := CompositionGroup{Kind: "block", Block: snapshot.State.ID, Revision: r.Number, Definition: r.Digest, Execution: r.ExecutionDigest, Rules: []RulePin{changed}}
 	if err := CheckCompositionBlock(identity.Envelope{}, group, snapshot); !errors.Is(err, ErrStale) {
 		t.Fatalf("composition admitted a different rule snapshot: %v", err)
+	}
+}
+
+func TestFrozenTemplateSelectionsRequireExactPins(t *testing.T) {
+	pin := testRulePin()
+	definition := Definition{Topics: []TopicPin{{Topic: pin.Topic, Version: pin.TopicVersion, Digest: pin.PackDigest}}, Rules: []RulePin{pin}, Templates: []TemplateSelection{{ID: "monthly", Topic: pin.Topic, TopicVersion: pin.TopicVersion, PackDigest: pin.PackDigest, RuleVersion: pin.RuleVersion, RuleDigest: pin.RuleDigest}}}
+	if err := frozenTemplateSelections(definition, clone(definition)); err != nil {
+		t.Fatal("exact frozen template pins rejected", err)
+	}
+	orphaned := clone(definition)
+	orphaned.Rules[0].RuleDigest = strings.Repeat("e", 64)
+	if err := frozenTemplateSelections(orphaned, definition); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("orphaned frozen template returned %v", err)
+	}
+	changed := clone(definition)
+	changed.Templates[0].ID = "quarterly"
+	if err := frozenTemplateSelections(changed, definition); !errors.Is(err, ErrStale) {
+		t.Fatalf("different frozen template selection returned %v", err)
 	}
 }

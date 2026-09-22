@@ -62,6 +62,19 @@ type TemplatePin struct {
 	Digest  string `json:"digest"`
 }
 
+// TemplateSelection binds a server-reviewed template to the complete immutable
+// topic and ruleset publication coordinates that selected it. New captures use
+// this per-topic representation; TemplatePin remains only for retained legacy
+// records whose sole rule pin can supply the missing topic coordinates.
+type TemplateSelection struct {
+	ID           string `json:"id"`
+	Topic        string `json:"topic"`
+	TopicVersion string `json:"topic_version"`
+	PackDigest   string `json:"pack_digest"`
+	RuleVersion  string `json:"rule_version"`
+	RuleDigest   string `json:"rule_digest"`
+}
+
 // DimensionReference pins the semantic dimension governing a parameter value.
 type DimensionReference struct {
 	Topic     string `json:"topic"`
@@ -186,6 +199,7 @@ type Definition struct {
 	Topics         []TopicPin          `json:"topics"`
 	Rules          []RulePin           `json:"rules,omitempty"`
 	Template       *TemplatePin        `json:"template,omitempty"`
+	Templates      []TemplateSelection `json:"templates,omitempty"`
 	SQL            string              `json:"sql"`
 	Parameters     []Parameter         `json:"parameters"`
 	ExpectedSchema []exec.Field        `json:"expected_schema"`
@@ -204,12 +218,13 @@ type RulePin struct {
 
 // Provenance records the server-derived origin of an authored revision.
 type Provenance struct {
-	Kind             string       `json:"kind"`
-	ParentRevision   int64        `json:"parent_revision,omitempty"`
-	Query            string       `json:"query,omitempty"`
-	Template         *TemplatePin `json:"template,omitempty"`
-	OriginalQuestion string       `json:"original_question,omitempty"`
-	ChangeDigest     string       `json:"change_digest,omitempty"`
+	Kind             string              `json:"kind"`
+	ParentRevision   int64               `json:"parent_revision,omitempty"`
+	Query            string              `json:"query,omitempty"`
+	Template         *TemplatePin        `json:"template,omitempty"`
+	Templates        []TemplateSelection `json:"templates,omitempty"`
+	OriginalQuestion string              `json:"original_question,omitempty"`
+	ChangeDigest     string              `json:"change_digest,omitempty"`
 }
 
 // Dependency is derived by the service from validator-issued relation IDs and
@@ -485,6 +500,7 @@ type Capture struct {
 	Topics     []TopicPin
 	Rules      []RulePin
 	Template   *TemplatePin
+	Templates  []TemplateSelection
 	Question   string
 }
 

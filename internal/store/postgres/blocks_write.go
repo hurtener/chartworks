@@ -112,10 +112,17 @@ func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 
 // Topic locks precede source locks, matching topic publication's lock order.
 // These shared locks last until the block pointer/evidence/audit transaction ends.
+func blockFenceCoordinates(m reporting.Mutation) error {
+	if m.ID == "" && m.TargetRevision == 0 || identity.Identifier(m.ID) && m.TargetRevision > 0 {
+		return nil
+	}
+	return store.ErrInvalid
+}
+
 func blockCurrentFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, m reporting.Mutation) error {
 	pins := append([]reporting.TopicPin(nil), m.Topics...)
 	sort.Slice(pins, func(i, j int) bool { return pins[i].Topic < pins[j].Topic })
-	if len(pins) == 0 || len(m.Watch) == 0 {
+	if len(pins) == 0 || len(m.Watch) == 0 || blockFenceCoordinates(m) != nil {
 		return store.ErrInvalid
 	}
 	for _, pin := range pins {
@@ -128,22 +135,24 @@ func blockCurrentFence(ctx context.Context, tx pgx.Tx, e identity.Envelope, m re
 			return reporting.ErrStale
 		}
 	}
-	rows, err := tx.Query(ctx, `SELECT p.topic_id,p.rule_version,COALESCE(h.active_version,'') FROM chartworks.block_rule_pins p JOIN chartworks.topic_rule_publication_heads h ON(h.tenant_id,h.topic_id)=(p.tenant_id,p.topic_id) WHERE (p.tenant_id,p.block_id,p.revision)=($1,$2,$3) ORDER BY p.topic_id FOR SHARE OF h`, e.Tenant(), m.ID, m.TargetRevision)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var topic, pinned, active string
-		if err := rows.Scan(&topic, &pinned, &active); err != nil {
+	if m.ID != "" {
+		rows, err := tx.Query(ctx, `SELECT p.topic_id,p.rule_version,COALESCE(h.active_version,'') FROM chartworks.block_rule_pins p JOIN chartworks.topic_rule_publication_heads h ON(h.tenant_id,h.topic_id)=(p.tenant_id,p.topic_id) WHERE (p.tenant_id,p.block_id,p.revision)=($1,$2,$3) ORDER BY p.topic_id FOR SHARE OF h`, e.Tenant(), m.ID, m.TargetRevision)
+		if err != nil {
 			return err
 		}
-		if active != pinned {
-			return reporting.ErrStale
+		defer rows.Close()
+		for rows.Next() {
+			var topic, pinned, active string
+			if err := rows.Scan(&topic, &pinned, &active); err != nil {
+				return err
+			}
+			if active != pinned {
+				return reporting.ErrStale
+			}
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
+		if err := rows.Err(); err != nil {
+			return err
+		}
 	}
 	watched := map[string]reporting.Dependency{}
 	for _, dep := range m.Watch {

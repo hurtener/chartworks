@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -186,8 +187,68 @@ func TestCW06RulesReporting(t *testing.T) {
 		t.Fatalf("capture template query: %#v %v", captured, err)
 	}
 	capturedSQL, err := blocks.SQL(ctx, e, captured.State.ID, reporting.Reference{Draft: true})
-	if err != nil || capturedSQL.Definition == nil || capturedSQL.Definition.Template == nil || capturedSQL.Definition.Template.ID != template.ID || capturedSQL.Definition.Template.Version != template.RuleVersion || capturedSQL.Definition.Template.Digest != template.RuleDigest {
+	if err != nil || capturedSQL.Definition == nil || capturedSQL.Definition.Template != nil || len(capturedSQL.Definition.Templates) != 1 || capturedSQL.Definition.Templates[0] != (reporting.TemplateSelection{ID: template.ID, Topic: template.Topic, TopicVersion: template.TopicVersion, PackDigest: template.PackDigest, RuleVersion: template.RuleVersion, RuleDigest: template.RuleDigest}) {
 		t.Fatalf("capture lost reviewed template provenance: %#v %v", capturedSQL.Definition, err)
+	}
+	orphaned := *capturedSQL.Definition
+	orphaned.Rules = append([]reporting.RulePin(nil), orphaned.Rules...)
+	orphaned.Rules[0].RuleDigest = publishedRules.Digest
+	if _, err = blocks.Edit(ctx, e, captured.State.ID, reporting.EditRequest{ExpectedVersion: captured.State.Version, Definition: orphaned}); !errors.Is(err, reporting.ErrInvalid) {
+		t.Fatalf("edit retained orphaned template provenance: %v", err)
+	}
+	capturedState, capturedEvidence := phase27ValidatePublish(t, blocks, e, captured)
+	if _, err = blocks.Certify(ctx, e, captured.State.ID, reporting.CertifyRequest{ExpectedVersion: capturedState.Version, Revision: capturedState.PublishedRevision, Evidence: capturedEvidence.ID, Note: "Reviewed recaptured template coordinates"}); err != nil {
+		t.Fatal("recaptured template could not validate and certify", err)
+	}
+
+	// Hold the publisher after it owns the rule-head row. Frozen admission must
+	// wait on the same head, observe the replacement after commit, and leave no
+	// frozen manifest behind.
+	third := next
+	third.Version = "rules-v3"
+	thirdDraft, err := rules.Save(ctx, e, rulesets.SaveRequest{Expected: candidate.Revision, Definition: third, Change: "CW06 seal-race replacement"})
+	if err != nil {
+		t.Fatal("save seal-race replacement", err)
+	}
+	thirdReview, err := rules.Review(ctx, e, f.pack.Topic, rulesets.ReviewRequest{DraftRevision: thirdDraft.Revision, Digest: thirdDraft.Digest, Decision: "approve", Note: "Review seal-race replacement"})
+	if err != nil {
+		t.Fatal("review seal-race replacement", err)
+	}
+	sql(t, raw, `CREATE FUNCTION chartworks.cw06_delay_rule_publish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(1); RETURN NEW; END $$`)
+	sql(t, raw, `CREATE TRIGGER cw06_delay_rule_publish BEFORE UPDATE ON chartworks.topic_rule_publication_heads FOR EACH ROW EXECUTE FUNCTION chartworks.cw06_delay_rule_publish()`)
+	defer func() {
+		_, _ = raw.Exec(ctx, `DROP TRIGGER IF EXISTS cw06_delay_rule_publish ON chartworks.topic_rule_publication_heads`)
+		_, _ = raw.Exec(ctx, `DROP FUNCTION IF EXISTS chartworks.cw06_delay_rule_publish()`)
+	}()
+	publishErr := make(chan error, 1)
+	go func() {
+		_, publishError := rules.Publish(ctx, e, f.pack.Topic, rulesets.PublishRequest{Review: thirdReview.ID, Expected: publishedReplacement.State.Revision})
+		publishErr <- publishError
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var active int
+		if scanErr := raw.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND state='active' AND query LIKE '%UPDATE chartworks.topic_rule_publication_heads SET revision%'`).Scan(&active); scanErr != nil {
+			t.Fatal("observe delayed publisher", scanErr)
+		}
+		if active > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("publisher never reached fenced rule head")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	executor := phase27Actor(t, f, f.f.e.User(), phase28Scopes(f.f.e.Tenant()))
+	runs := phase28RunService(t, f, blocks, f.f.db, nil, config.DefaultReportingExecution())
+	if _, err = runs.Admit(ctx, executor, captured.State.ID, reporting.RunRequest{Key: "cw06-publish-during-seal"}); !errors.Is(err, reporting.ErrStale) {
+		t.Fatalf("publish during frozen seal returned %v", err)
+	}
+	if err = <-publishErr; err != nil {
+		t.Fatal("publish seal-race replacement", err)
+	}
+	if got := count(t, raw, `SELECT count(*) FROM chartworks.frozen_runs WHERE tenant_id=$1 AND block_id=$2`, e.Tenant(), captured.State.ID); got != 0 {
+		t.Fatalf("stale frozen seal left %d manifests", got)
 	}
 	historical, err := rules.Read(ctx, e, f.pack.Topic, publishedRules.State.Version)
 	if err != nil || historical.Digest != publishedRules.Digest {

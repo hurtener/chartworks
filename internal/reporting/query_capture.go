@@ -2,9 +2,11 @@ package reporting
 
 import (
 	"context"
+	"sort"
 
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlqexec"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 )
 
 // CaptureFromQueries supplies the existing query service's private, source-backed
@@ -60,22 +62,29 @@ func (a queryBlockCapture) Capture(ctx context.Context, e identity.Envelope, id 
 		}
 		out.Rules = append(out.Rules, RulePin{Topic: publication.Definition.Topic, TopicVersion: publication.Definition.Version, PackDigest: publication.Digest, RuleVersion: version, RuleDigest: rules.Digest})
 	}
-	if len(captured.Templates) > 1 {
-		return Capture{}, ErrInvalid
+	templates, err := captureTemplateSelections(captured.Templates, out.Rules)
+	if err != nil {
+		return Capture{}, err
 	}
-	if len(captured.Templates) == 1 {
-		selection := captured.Templates[0]
+	out.Templates = templates
+	return out, nil
+}
+
+func captureTemplateSelections(selections []rulesets.TemplateSelection, pins []RulePin) ([]TemplateSelection, error) {
+	out := make([]TemplateSelection, 0, len(selections))
+	for _, selection := range selections {
 		matched := false
-		for _, pin := range out.Rules {
+		for _, pin := range pins {
 			if pin.Topic == selection.Topic && pin.TopicVersion == selection.TopicVersion && pin.PackDigest == selection.PackDigest && pin.RuleVersion == selection.RuleVersion && pin.RuleDigest == selection.RuleDigest {
 				matched = true
 				break
 			}
 		}
 		if !matched {
-			return Capture{}, ErrStale
+			return nil, ErrStale
 		}
-		out.Template = &TemplatePin{ID: selection.ID, Version: selection.RuleVersion, Digest: selection.RuleDigest}
+		out = append(out, TemplateSelection{ID: selection.ID, Topic: selection.Topic, TopicVersion: selection.TopicVersion, PackDigest: selection.PackDigest, RuleVersion: selection.RuleVersion, RuleDigest: selection.RuleDigest})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Topic < out[j].Topic })
 	return out, nil
 }

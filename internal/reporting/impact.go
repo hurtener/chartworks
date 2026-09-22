@@ -408,6 +408,7 @@ func (s *Service) ApplyImpact(ctx context.Context, e identity.Envelope, id strin
 			return View{}, err
 		}
 		d.Template = nil
+		d.Templates = nil
 	}
 	d.Context = work.binding.Context
 	d.Topics = clone(work.pins)
@@ -436,7 +437,7 @@ func (s *Service) ApplyImpact(ctx context.Context, e identity.Envelope, id strin
 			}
 		}
 	}
-	if err := validateDefinition(ctx, d, s.limits, d.Template != nil); err != nil {
+	if err := validateDefinition(ctx, d, s.limits, d.Template != nil || len(d.Templates) > 0); err != nil {
 		return View{}, err
 	}
 	_, refs, err := s.resolveDefinitions(ctx, e, d, true)

@@ -8,7 +8,7 @@ import (
 	"github.com/hurtener/chartworks/test/support"
 )
 
-// TestCW06PopulatedQueryUpgrade proves migration 039 preserves old immutable
+// TestCW06PopulatedQueryUpgrade proves migrations 039-040 preserve old immutable
 // query evidence with an explicit empty template selection. New writers must
 // supply the field after the compatibility backfill; the database does not keep
 // a default that could hide an incomplete consumer.
@@ -17,7 +17,7 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	dsn := support.Database(t)
 	raw := upgradeFixture(t, dsn)
 	manifest, err := postgres.Migrations()
-	if err != nil || len(manifest) != 39 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" {
+	if err != nil || len(manifest) != 40 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" {
 		t.Fatal("CW-06 migration was not appended to the shipped schema", err)
 	}
 	for _, migration := range manifest[1:38] {

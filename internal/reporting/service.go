@@ -254,7 +254,11 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	if base.State.Archived {
 		return View{}, store.ErrConflict
 	}
-	captured := in.Definition.Template != nil && base.Revision.Definition.Template != nil && digest(in.Definition.Template) == digest(base.Revision.Definition.Template) && in.Definition.SQL == base.Revision.Definition.SQL
+	captured := (in.Definition.Template != nil || len(in.Definition.Templates) > 0) &&
+		digest(in.Definition.Template) == digest(base.Revision.Definition.Template) &&
+		digest(in.Definition.Templates) == digest(base.Revision.Definition.Templates) &&
+		digest(in.Definition.Rules) == digest(base.Revision.Definition.Rules) &&
+		in.Definition.SQL == base.Revision.Definition.SQL
 	if err := validateDefinition(ctx, in.Definition, s.limits, captured); err != nil {
 		return View{}, err
 	}
@@ -270,6 +274,10 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	}
 	provenance := clone(base.Revision.Provenance)
 	provenance.Kind, provenance.ParentRevision = "amendment", base.Revision.Number
+	if !captured {
+		provenance.Template = nil
+		provenance.Templates = nil
+	}
 	r, err := s.newRevision(e, base.State.DraftRevision+1, in.Definition, provenance)
 	if err != nil {
 		return View{}, err
@@ -312,7 +320,7 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	if err != nil || parameterDigest(resolved.Parameters) != parameterDigest(captured.Parameters) {
 		return View{}, ErrInvalid
 	}
-	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(in.Metadata), Source: captured.Source, Context: captured.Context, Topics: clone(captured.Topics), Template: clone(captured.Template), SQL: captured.SQL, Parameters: parameters, ExpectedSchema: clone(captured.Schema), Outputs: clone(in.Outputs)}
+	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(in.Metadata), Source: captured.Source, Context: captured.Context, Topics: clone(captured.Topics), Template: clone(captured.Template), Templates: clone(captured.Templates), SQL: captured.SQL, Parameters: parameters, ExpectedSchema: clone(captured.Schema), Outputs: clone(in.Outputs)}
 	if len(captured.Rules) > 0 {
 		d, err = MigrateDefinition(d)
 		if err != nil {
@@ -333,7 +341,7 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	if _, err = s.resolveRules(ctx, e, d, false); err != nil {
 		return View{}, err
 	}
-	r, err := s.newRevision(e, 1, d, Provenance{Kind: "query_capture", Query: in.Query, OriginalQuestion: captured.Question, Template: clone(captured.Template)})
+	r, err := s.newRevision(e, 1, d, Provenance{Kind: "query_capture", Query: in.Query, OriginalQuestion: captured.Question, Template: clone(captured.Template), Templates: clone(captured.Templates)})
 	if err != nil {
 		return View{}, err
 	}
