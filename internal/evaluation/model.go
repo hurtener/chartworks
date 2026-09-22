@@ -66,7 +66,53 @@ type Limits struct {
 type Threshold struct {
 	QualityMin       *float64 `json:"quality_min,omitempty"`
 	SecurityFailures int      `json:"security_failures"`
-	Reviewed         bool     `json:"reviewed"`
+}
+
+// Lifecycle is durable state derived from an authenticated review receipt.
+type Lifecycle string
+
+const (
+	// Draft has no review receipt and cannot execute.
+	Draft Lifecycle = "draft"
+	// Accepted has an exact independent approval receipt.
+	Accepted Lifecycle = "accepted"
+	// Rejected has an exact independent rejection receipt.
+	Rejected Lifecycle = "rejected"
+)
+
+// SuiteReview binds a distinct signed actor's decision to one immutable revision.
+type SuiteReview struct {
+	SuiteID    string    `json:"suite_id"`
+	Revision   int64     `json:"revision"`
+	Digest     string    `json:"digest"`
+	Decision   Lifecycle `json:"decision"`
+	Reviewer   string    `json:"reviewer"`
+	ReviewedAt time.Time `json:"reviewed_at"`
+}
+
+// SuiteRecord is the stored lifecycle projection. Author and reviewer are never caller supplied.
+type SuiteRecord struct {
+	Suite     Suite        `json:"suite"`
+	Digest    string       `json:"digest"`
+	State     Lifecycle    `json:"state"`
+	Author    string       `json:"author"`
+	CreatedAt time.Time    `json:"created_at"`
+	Review    *SuiteReview `json:"review,omitempty"`
+}
+
+// SuiteReviewRequest pins review to exact immutable material.
+type SuiteReviewRequest struct {
+	Revision int64     `json:"revision"`
+	Digest   string    `json:"digest"`
+	Decision Lifecycle `json:"decision"`
+}
+
+// RunRequest selects only an accepted stored suite revision.
+type RunRequest struct {
+	RunID         string `json:"run_id"`
+	SuiteID       string `json:"suite_id"`
+	SuiteRevision int64  `json:"suite_revision"`
+	SuiteDigest   string `json:"suite_digest"`
 }
 
 // Provenance pins governed suite inputs and environment.
@@ -177,6 +223,8 @@ type Report struct {
 	Seed             int64        `json:"seed"`
 	SuiteDigest      string       `json:"suite_digest"`
 	EvidenceHash     string       `json:"evidence_hash"`
+	Status           string       `json:"status"`
+	FailureClass     string       `json:"failure_class,omitempty"`
 	StartedAt        time.Time    `json:"started_at"`
 	CompletedAt      time.Time    `json:"completed_at"`
 	Cases            []CaseResult `json:"cases"`
@@ -228,7 +276,7 @@ func (s Suite) Validate() error {
 	if s.Threshold.SecurityFailures != 0 {
 		return ErrInvalid
 	}
-	if s.Threshold.QualityMin != nil && (*s.Threshold.QualityMin <= 0 || *s.Threshold.QualityMin > 1 || !s.Threshold.Reviewed) {
+	if s.Threshold.QualityMin != nil && (*s.Threshold.QualityMin <= 0 || *s.Threshold.QualityMin > 1) {
 		return ErrInvalid
 	}
 	if s.Calibration == "unknown" && s.Threshold.QualityMin != nil {
@@ -257,11 +305,15 @@ func (s Suite) Validate() error {
 		frontiers[f] = true
 	}
 	seen := map[string]bool{}
+	quality := 0
 	for _, c := range s.Cases {
 		if !identifier(c.ID) || seen[c.ID] || !validStage(c.Stage) || (c.Category != "" && !identifier(c.Category)) || (c.Locale != "en" && c.Locale != "es") || !validDigest(c.Input.Digest) || !identifier(c.Input.Retention) || c.BindingDigest != "" && !validDigest(c.BindingDigest) || len(c.Expected) == 0 || len(c.Expected) > 16 {
 			return ErrInvalid
 		}
 		seen[c.ID] = true
+		if !c.Critical {
+			quality++
+		}
 		if c.Critical && !knownAdversarial(c.Category) {
 			return ErrInvalid
 		}
@@ -276,6 +328,9 @@ func (s Suite) Validate() error {
 		if c.Fixture != nil && validateObservation(*c.Fixture) != nil {
 			return ErrInvalid
 		}
+	}
+	if s.Threshold.QualityMin != nil && quality == 0 {
+		return ErrInvalid
 	}
 	return nil
 }
@@ -304,7 +359,7 @@ func (s Suite) Digest() (string, error) {
 
 // Validate checks a completed report and its reproducible evidence hash.
 func (r Report) Validate() error {
-	if r.SchemaVersion != SchemaVersion || !identifier(r.RunID) || !identifier(r.SuiteID) || r.SuiteRevision < 1 || (r.Mode != Fixture && r.Mode != Live) || r.Seed == 0 || !validDigest(r.SuiteDigest) || !validDigest(r.EvidenceHash) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) || len(r.Cases) == 0 {
+	if r.SchemaVersion != SchemaVersion || !identifier(r.RunID) || !identifier(r.SuiteID) || r.SuiteRevision < 1 || (r.Mode != Fixture && r.Mode != Live) || r.Seed == 0 || !validDigest(r.SuiteDigest) || !validDigest(r.EvidenceHash) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) || !validReportStatus(r.Status) {
 		return ErrInvalid
 	}
 	qualityPassed, qualityTotal, securityFailures := 0, 0, 0
@@ -341,16 +396,26 @@ func (r Report) Validate() error {
 		return ErrInvalid
 	}
 	evidence := struct {
-		Suite string
-		Seed  int64
-		Cases []CaseResult
-		Mode  Mode
-	}{r.SuiteDigest, r.Seed, r.Cases, r.Mode}
+		Suite   string
+		Seed    int64
+		Cases   []CaseResult
+		Mode    Mode
+		Status  string
+		Failure string
+	}{r.SuiteDigest, r.Seed, r.Cases, r.Mode, r.Status, r.FailureClass}
 	want, _ := digest(evidence)
 	if want != r.EvidenceHash {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func validReportStatus(s string) bool {
+	switch s {
+	case "passed", "failed", "cancelled", "timed_out", "budget_exhausted", "dependency_failed":
+		return true
+	}
+	return false
 }
 
 func knownFrontier(s string) bool {

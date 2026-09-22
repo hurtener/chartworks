@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -22,7 +23,7 @@ func testSuite() Suite {
 	q := 1.0
 	obs := Observation{Decision: "route", SemanticDigest: testDigest, Usage: Usage{SourceMS: ptr(int64(2)), ModelMS: ptr(int64(3)), Tokens: ptr(5), CostUSD: ptr(0.01), Calls: 1, ServiceMS: 6}}
 	critical := Observation{Decision: "blocked", SemanticDigest: testDigest, ErrorClass: "unsafe", Blocked: true, Usage: Usage{ServiceMS: 1, SourceMS: ptr(int64(0)), ModelMS: ptr(int64(0)), Tokens: ptr(0), CostUSD: ptr(0.0)}}
-	return Suite{SchemaVersion: 1, ID: "suite", Revision: 1, Mode: Fixture, Seed: 42, Calibration: "reviewed", Threshold: Threshold{QualityMin: &q, Reviewed: true}, Limits: Limits{Cases: 10, Calls: 10, Tokens: 100, Retries: 2, DurationMS: 10000}, Provenance: Provenance{Implementation: "sha", EnvironmentDigest: testDigest, ConfigurationDigest: testDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", SourceSnapshot: testDigest, DialectMatrix: []DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: Fixture, EvidenceDigest: testDigest, Status: "measured"}}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: []Case{{ID: "quality", Stage: StageRouting, Locale: "en", HeldOut: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"route", testDigest, ""}}, Fixture: &obs}, {ID: "security", Stage: StageAdversarial, Category: "injection", Locale: "es", Critical: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"blocked", testDigest, "unsafe"}}, Fixture: &critical}}}
+	return Suite{SchemaVersion: 1, ID: "suite", Revision: 1, Mode: Fixture, Seed: 42, Calibration: "reviewed", Threshold: Threshold{QualityMin: &q}, Limits: Limits{Cases: 10, Calls: 10, Tokens: 100, Retries: 2, DurationMS: 10000}, Provenance: Provenance{Implementation: "sha", EnvironmentDigest: testDigest, ConfigurationDigest: testDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", SourceSnapshot: testDigest, DialectMatrix: []DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: Fixture, EvidenceDigest: testDigest, Status: "measured"}}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: []Case{{ID: "quality", Stage: StageRouting, Locale: "en", HeldOut: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"route", testDigest, ""}}, Fixture: &obs}, {ID: "security", Stage: StageAdversarial, Category: "injection", Locale: "es", Critical: true, Input: ProtectedRef{testDigest, "protected"}, Expected: []Expected{{"blocked", testDigest, "unsafe"}}, Fixture: &critical}}}
 }
 
 func TestEvaluateGateAndReproducibility(t *testing.T) {
@@ -75,10 +76,6 @@ func TestValidationModesAndBudgets(t *testing.T) {
 	}
 	bad := s
 	bad.Threshold.QualityMin = ptr(0.8)
-	bad.Threshold.Reviewed = false
-	if !errors.Is(bad.Validate(), ErrInvalid) {
-		t.Fatal("unreviewed threshold")
-	}
 	bad = s
 	bad.Mode = Live
 	if !errors.Is(bad.Validate(), ErrInvalid) {
@@ -96,7 +93,7 @@ func TestValidationModesAndBudgets(t *testing.T) {
 	if _, err := Evaluate(context.Background(), "run", bad, nil, nil); !errors.Is(err, ErrMode) {
 		t.Fatal(err)
 	}
-	runner := RunnerFunc(func(context.Context, Suite, Case) (Observation, error) {
+	runner := RunnerFunc(func(context.Context, Execution) (Observation, error) {
 		return Observation{Decision: "route", SemanticDigest: testDigest, Usage: Usage{Calls: 11}}, nil
 	})
 	if _, err := Evaluate(context.Background(), "run", bad, runner, nil); !errors.Is(err, ErrBudget) {
@@ -106,20 +103,33 @@ func TestValidationModesAndBudgets(t *testing.T) {
 
 func TestOptimizationNeedsHeldOutImprovementAndReview(t *testing.T) {
 	s := testSuite()
-	base, _ := Evaluate(context.Background(), "base", s, nil, func() time.Time { return time.Unix(1, 0) })
-	cand := base
-	cand.Cases = append([]CaseResult(nil), base.Cases...)
-	base.Cases[0].Passed = false
-	base.QualityPassed = 0
-	base.EvidenceHash = strings.Repeat("b", 64)
-	p, err := ProposeOptimization(s, base, cand, testDigest, strings.Repeat("c", 64), time.Unix(2, 0))
+	s.Mode = Live
+	for i := range s.Cases {
+		s.Cases[i].Fixture = nil
+	}
+	s.Provenance.DialectMatrix[0].Mode = Live
+	run := func(bad bool) Runner {
+		return RunnerFunc(func(_ context.Context, x Execution) (Observation, error) {
+			if x.Case.Critical {
+				return Observation{Decision: "blocked", SemanticDigest: testDigest, ErrorClass: "unsafe", Blocked: true}, nil
+			}
+			d := testDigest
+			if bad {
+				d = strings.Repeat("b", 64)
+			}
+			return Observation{Decision: "route", SemanticDigest: d, Usage: Usage{Calls: 1}}, nil
+		})
+	}
+	cand, _ := Evaluate(context.Background(), "candidate", s, run(false), func() time.Time { return time.Unix(1, 0) })
+	base, _ := Evaluate(context.Background(), "baseline", s, run(true), func() time.Time { return time.Unix(1, 0) })
+	p, err := ProposeOptimization("proposal", s, base, cand, testDigest, strings.Repeat("c", 64), time.Unix(2, 0))
 	if err != nil || p.State != "candidate" {
 		t.Fatal(p, err)
 	}
-	if _, err = ReviewPromotion(p, "reviewer", "approve", time.Unix(3, 0)); err != nil {
+	if _, err = proposalReceipt(p, "reviewer", "approve", time.Unix(3, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = ReviewPromotion(p, "reviewer", "publish", time.Now()); !errors.Is(err, ErrReview) {
+	if _, err = proposalReceipt(p, "reviewer", "publish", time.Now()); !errors.Is(err, ErrReview) {
 		t.Fatal("automatic promotion possible")
 	}
 }
@@ -151,12 +161,62 @@ func TestCommandStrictFixtureOnly(t *testing.T) {
 	}
 }
 
-type testRepo struct{ reports map[string]Report }
+type testRepo struct {
+	reports   map[string]Report
+	suites    map[string]SuiteRecord
+	exports   map[string]CandidateExport
+	proposals map[string]OptimizationProposal
+}
 
-func (r *testRepo) SaveSuite(context.Context, store.Scope, Suite, string) error { return nil }
+func (r *testRepo) CreateSuite(_ context.Context, _ store.Scope, v SuiteRecord) error {
+	r.suites[v.Digest] = v
+	return nil
+}
+func (r *testRepo) ReviewSuite(_ context.Context, _ store.Scope, v SuiteReview) (SuiteRecord, error) {
+	x := r.suites[v.Digest]
+	if x.Author == v.Reviewer {
+		return x, store.ErrConflict
+	}
+	x.State = v.Decision
+	x.Review = &v
+	r.suites[v.Digest] = x
+	return x, nil
+}
+func (r *testRepo) AcceptedSuite(_ context.Context, _ store.Scope, _ string, _ int64, d string) (SuiteRecord, error) {
+	x, ok := r.suites[d]
+	if !ok || x.State != Accepted {
+		return x, store.ErrNotFound
+	}
+	return x, nil
+}
+func (r *testRepo) BeginRun(context.Context, store.Scope, RunRequest) error { return nil }
 func (r *testRepo) SaveReport(_ context.Context, _ store.Scope, v Report) error {
 	r.reports[v.RunID] = v
 	return nil
+}
+func (r *testRepo) RequestCancel(context.Context, store.Scope, string) error { return nil }
+func (r *testRepo) RecoverRun(context.Context, store.Scope, string, time.Time) (Report, error) {
+	return Report{}, store.ErrNotFound
+}
+func (r *testRepo) SaveFeedbackExport(_ context.Context, _ store.Scope, x CandidateExport) error {
+	r.exports[x.ID] = x
+	return nil
+}
+func (r *testRepo) SaveProposal(_ context.Context, _ store.Scope, p OptimizationProposal) error {
+	r.proposals[p.ID] = p
+	return nil
+}
+func (r *testRepo) ReadProposal(_ context.Context, _ store.Scope, id string) (OptimizationProposal, error) {
+	p, ok := r.proposals[id]
+	if !ok {
+		return p, store.ErrNotFound
+	}
+	return p, nil
+}
+func (r *testRepo) ReviewProposal(context.Context, store.Scope, ReviewReceipt) error { return nil }
+func (r *testRepo) SelectPack(_ context.Context, _ store.Scope, x PackSelection, expected int64) (PackSelection, error) {
+	x.Revision = expected + 1
+	return x, nil
 }
 func (r *testRepo) ReadReport(_ context.Context, _ store.Scope, id string) (Report, error) {
 	v, ok := r.reports[id]
@@ -168,17 +228,20 @@ func (r *testRepo) ReadReport(_ context.Context, _ store.Scope, id string) (Repo
 
 type testFeedback []FeedbackEvidence
 
-func (f testFeedback) ReviewedFeedback(context.Context, store.Scope, int) ([]FeedbackEvidence, error) {
+func (f testFeedback) ReviewedFeedback(context.Context, identity.Envelope, string, int) ([]FeedbackEvidence, error) {
 	return append([]FeedbackEvidence(nil), f...), nil
 }
 
-func testAuthority(t *testing.T, export bool) identity.Envelope {
+func testAuthority(t *testing.T, actor string, export bool) identity.Envelope {
 	t.Helper()
 	scopes := []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant"}
 	if export {
 		scopes = append(scopes, "cw.tenant.export:tenant")
 	}
-	e, err := identity.FromVerified("tenant", "actor", "session", scopes, time.Now().Add(time.Hour), time.Now)
+	if actor == "reviewer" {
+		scopes = append(scopes, "ops.audit", "cw.tenant.certify:tenant")
+	}
+	e, err := identity.FromVerified("tenant", actor, "session", scopes, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,27 +249,138 @@ func testAuthority(t *testing.T, export bool) identity.Envelope {
 }
 
 func TestServicePersistenceAndProtectedFeedback(t *testing.T) {
-	repo := &testRepo{reports: map[string]Report{}}
+	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
 	svc, err := New(repo, testFeedback{{ID: "feedback", Locale: "en", InputDigest: testDigest, ExpectedDigest: testDigest, Decision: "route", SourceBindingDigest: testDigest}}, func() time.Time { return time.Unix(5, 0) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := svc.Run(context.Background(), testAuthority(t, true), "run", testSuite(), nil)
+	draft, err := svc.Author(context.Background(), testAuthority(t, "actor", true), testSuite())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Review(context.Background(), testAuthority(t, "reviewer", true), draft.Suite.ID, SuiteReviewRequest{Revision: draft.Suite.Revision, Digest: draft.Digest, Decision: Accepted}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := svc.Run(context.Background(), testAuthority(t, "actor", true), RunRequest{RunID: "run", SuiteID: draft.Suite.ID, SuiteRevision: draft.Suite.Revision, SuiteDigest: draft.Digest}, nil)
 	if err != nil || repo.reports["run"].EvidenceHash != r.EvidenceHash {
 		t.Fatal(r, err)
 	}
-	if got, err := svc.Read(context.Background(), testAuthority(t, true), "run"); err != nil || got.RunID != "run" {
+	if got, err := svc.Read(context.Background(), testAuthority(t, "actor", true), "run"); err != nil || got.RunID != "run" {
 		t.Fatal(got, err)
 	}
-	out, err := svc.ExportFeedback(context.Background(), testAuthority(t, true), 10)
-	if err != nil || out.Status != "candidate" || len(out.Cases) != 1 || out.Cases[0].Fixture != nil {
+	out, err := svc.ExportFeedback(context.Background(), testAuthority(t, "actor", true), "export", "topic", 10)
+	if err != nil || out.Status != "candidate" || out.Split != "training" || len(out.Cases) != 1 || out.Cases[0].HeldOut {
 		t.Fatal(out, err)
 	}
-	if _, err = svc.ExportFeedback(context.Background(), testAuthority(t, false), 10); err == nil {
+	if _, err = svc.ExportFeedback(context.Background(), testAuthority(t, "actor", false), "export2", "topic", 10); err == nil {
 		t.Fatal("unscoped export")
 	}
 	if _, err = New(nil, nil, nil); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
+	}
+}
+
+func TestAcceptedLifecycleAndEarlyBudgetEvidence(t *testing.T) {
+	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
+	svc, _ := New(repo, nil, func() time.Time { return time.Unix(9, 0) })
+	suite := testSuite()
+	suite.Mode = Live
+	for i := range suite.Cases {
+		suite.Cases[i].Fixture = nil
+	}
+	suite.Provenance.DialectMatrix[0].Mode = Live
+	suite.Limits.Calls = 1
+	draft, err := svc.Author(context.Background(), testAuthority(t, "actor", false), suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Review(context.Background(), testAuthority(t, "actor", false), suite.ID, SuiteReviewRequest{Revision: 1, Digest: draft.Digest, Decision: Accepted}); err == nil {
+		t.Fatal("author self-review accepted")
+	}
+	if _, err = svc.Review(context.Background(), testAuthority(t, "reviewer", false), suite.ID, SuiteReviewRequest{Revision: 1, Digest: draft.Digest, Decision: Accepted}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := svc.Run(context.Background(), testAuthority(t, "actor", false), RunRequest{RunID: "bounded", SuiteID: suite.ID, SuiteRevision: 1, SuiteDigest: draft.Digest}, RunnerFunc(func(context.Context, Execution) (Observation, error) {
+		t.Fatal("delegated without reservation")
+		return Observation{}, nil
+	}))
+	if !errors.Is(err, ErrBudget) || r.Status != "budget_exhausted" || r.EvidenceHash == "" || repo.reports["bounded"].EvidenceHash != r.EvidenceHash {
+		t.Fatal(r, err)
+	}
+}
+
+func TestOptimizationServiceAndRecoverySurfaces(t *testing.T) {
+	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
+	svc, _ := New(repo, nil, func() time.Time { return time.Unix(11, 0) })
+	s := testSuite()
+	s.Mode = Live
+	for i := range s.Cases {
+		s.Cases[i].Fixture = nil
+	}
+	s.Provenance.DialectMatrix[0].Mode = Live
+	run := func(bad bool) Runner {
+		return RunnerFunc(func(_ context.Context, x Execution) (Observation, error) {
+			if x.Case.Critical {
+				return Observation{Decision: "blocked", SemanticDigest: testDigest, ErrorClass: "unsafe", Blocked: true}, nil
+			}
+			d := testDigest
+			if bad {
+				d = strings.Repeat("b", 64)
+			}
+			return Observation{Decision: "route", SemanticDigest: d, Usage: Usage{Calls: 1}}, nil
+		})
+	}
+	base, _ := Evaluate(context.Background(), "base", s, run(true), func() time.Time { return time.Unix(1, 0) })
+	candidate, _ := Evaluate(context.Background(), "candidate", s, run(false), func() time.Time { return time.Unix(1, 0) })
+	dig, _ := s.Digest()
+	review := SuiteReview{SuiteID: s.ID, Revision: s.Revision, Digest: dig, Decision: Accepted, Reviewer: "reviewer", ReviewedAt: time.Unix(2, 0)}
+	repo.suites[dig] = SuiteRecord{Suite: s, Digest: dig, State: Accepted, Author: "author", Review: &review}
+	repo.reports[base.RunID] = base
+	repo.reports[candidate.RunID] = candidate
+	p, err := svc.ProposeOptimization(context.Background(), testAuthority(t, "actor", false), ProposalRequest{ID: "proposal", SuiteID: s.ID, SuiteRevision: s.Revision, SuiteDigest: dig, BaselineRun: "base", CandidateRun: "candidate", BaselinePack: testDigest, CandidatePack: strings.Repeat("c", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pd, _ := digest(p)
+	if _, err = svc.ReviewOptimization(context.Background(), testAuthority(t, "reviewer", false), p.ID, ProposalReviewRequest{Digest: pd, Decision: "approve"}); err != nil {
+		t.Fatal(err)
+	}
+	if selected, err := svc.SelectPack(context.Background(), testAuthority(t, "actor", false), p.ID, 0); err != nil || selected.Revision != 1 {
+		t.Fatal(selected, err)
+	}
+	if err = svc.Cancel(context.Background(), testAuthority(t, "actor", false), "run"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Recover(context.Background(), testAuthority(t, "actor", false), "run"); err == nil {
+		t.Fatal("missing recovery accepted")
+	}
+}
+
+type emptyInputResolver struct{}
+
+func (emptyInputResolver) ResolveEvaluationInput(context.Context, identity.Envelope, ProtectedRef) (LiveInput, error) {
+	return LiveInput{}, nil
+}
+func TestFailureReportAndLiveRunnerBoundaries(t *testing.T) {
+	s := testSuite()
+	r, err := FailureReport("recovered", s, "dependency_failed", "crash_recovered", time.Unix(1, 0), time.Unix(2, 0))
+	if err != nil || r.Validate() != nil {
+		t.Fatal(r, err)
+	}
+	if _, err = FailureReport("", s, "passed", "", time.Time{}, time.Time{}); !errors.Is(err, ErrInvalid) {
+		t.Fatal(err)
+	}
+	if _, err = (*GovernedRunner)(nil).Observe(context.Background(), Execution{}); !errors.Is(err, ErrMode) {
+		t.Fatal(err)
+	}
+	g := &GovernedRunner{Inputs: emptyInputResolver{}}
+	_, err = g.Observe(context.Background(), Execution{Suite: s, Case: s.Cases[0], Envelope: testAuthority(t, "actor", false)})
+	if !errors.Is(err, ErrMode) {
+		t.Fatal(err)
+	}
+	u := gatewayUsage(gateway.Receipt{Calls: []gateway.Usage{{Attempts: 2, DurationMS: 3, InputTokens: ptr(2), OutputTokens: ptr(4), CostUSD: ptr(0.1)}}})
+	if u.Calls != 2 || u.Retries != 1 || u.Tokens == nil || *u.Tokens != 6 || u.ModelMS == nil || *u.ModelMS != 3 {
+		t.Fatal(u)
 	}
 }
 

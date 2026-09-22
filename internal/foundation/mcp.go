@@ -8,6 +8,8 @@ import (
 	"github.com/hurtener/chartworks/internal/chartapi"
 	"github.com/hurtener/chartworks/internal/chartservice"
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/evaluation"
+	"github.com/hurtener/chartworks/internal/evaluationapi"
 	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
@@ -24,8 +26,10 @@ import (
 // mountMCP composes real services before the common HTTP registry guard. It does
 // not create an additional server, issuer, query engine or analytical session.
 type deliveryServices struct {
-	delivery *reporting.Delivery
-	renderer *rendering.Service
+	delivery         *reporting.Delivery
+	renderer         *rendering.Service
+	evaluation       *evaluation.Service
+	evaluationRunner evaluation.Runner
 }
 
 func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service, published *topics.Service, query *nlqexec.Service, byo *nlqbyo.Service, charts *chartservice.Service, registry *api.Registry, next http.Handler, services ...deliveryServices) (*api.Registry, http.Handler, error) {
@@ -53,6 +57,11 @@ func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service,
 	}
 	if len(services) == 1 {
 		delivery, renderer = services[0].delivery, services[0].renderer
+		group, bindErr := evaluationapi.MCPBindings(services[0].evaluation, services[0].evaluationRunner)
+		if bindErr != nil {
+			return nil, nil, bindErr
+		}
+		bindings = append(bindings, group...)
 	}
 	if delivery != nil {
 		group, err := reportingapi.DeliveryMCPBindings(delivery, delivery.CanExecute(), renderer)

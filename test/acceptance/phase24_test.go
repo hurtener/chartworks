@@ -18,7 +18,7 @@ const evalDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 func evalPtr[T any](v T) *T { return &v }
 func evalSuite(mode evaluation.Mode, cases []evaluation.Case) evaluation.Suite {
 	q := 1.0
-	return evaluation.Suite{SchemaVersion: 1, ID: "phase24", Revision: 1, Mode: mode, Seed: 24001, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q, Reviewed: true}, Limits: evaluation.Limits{Cases: 100, Calls: 100, Tokens: 10000, Retries: 4, DurationMS: 60000}, Provenance: evaluation.Provenance{Implementation: "acceptance-head", EnvironmentDigest: evalDigest, ConfigurationDigest: evalDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", TemplateVersion: "template-v1", SourceSnapshot: evalDigest, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: mode, EvidenceDigest: evalDigest, Status: "measured"}, {Engine: "mysql", Dialect: "mysql", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "sqlserver", Dialect: "sqlserver", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "bigquery", Dialect: "bigquery", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "snowflake", Dialect: "snowflake", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "databricks", Dialect: "databricks", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: cases}
+	return evaluation.Suite{SchemaVersion: 1, ID: "phase24", Revision: 1, Mode: mode, Seed: 24001, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 100, Calls: 100, Tokens: 10000, Retries: 4, DurationMS: 60000}, Provenance: evaluation.Provenance{Implementation: "acceptance-head", EnvironmentDigest: evalDigest, ConfigurationDigest: evalDigest, SemanticVersion: "semantic-v1", RuleVersion: "rule-v1", TemplateVersion: "template-v1", SourceSnapshot: evalDigest, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: mode, EvidenceDigest: evalDigest, Status: "measured"}, {Engine: "mysql", Dialect: "mysql", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "sqlserver", Dialect: "sqlserver", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "bigquery", Dialect: "bigquery", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "snowflake", Dialect: "snowflake", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}, {Engine: "databricks", Dialect: "databricks", Mode: mode, EvidenceDigest: evalDigest, Status: "unknown"}}}, Frontiers: []string{"EVAL-01", "EXP-01", "EXP-03", "EXP-05", "EXP-09", "EXP-10", "EXP-11"}, Cases: cases}
 }
 func evalCase(id string, stage evaluation.Stage, locale string, critical bool, category string) evaluation.Case {
 	o := evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Blocked: critical, Usage: evaluation.Usage{ServiceMS: 1, SourceMS: evalPtr(int64(0)), ModelMS: evalPtr(int64(0)), Tokens: evalPtr(0), CostUSD: nil}}
@@ -42,7 +42,7 @@ func TestPhase24(t *testing.T) {
 		if !errors.Is(err, evaluation.ErrGate) || r.GatePassed {
 			t.Fatal("seeded regression did not fail", r, err)
 		}
-		s = evalSuite(evaluation.Fixture, []evaluation.Case{evalCase("critical", evaluation.StageAdversarial, "en", true, "injection")})
+		s = evalSuite(evaluation.Fixture, []evaluation.Case{evalCase("critical", evaluation.StageAdversarial, "en", true, "injection"), evalCase("quality-companion", evaluation.StageRouting, "es", false, "")})
 		s.Cases[0].Fixture.Blocked = false
 		r, err = evaluation.Evaluate(context.Background(), "critical", s, nil, evalClock)
 		if !errors.Is(err, evaluation.ErrGate) || r.SecurityFailures != 1 {
@@ -82,8 +82,9 @@ func TestPhase24(t *testing.T) {
 		for i, c := range categories {
 			cases = append(cases, evalCase("adversarial-"+c, evaluation.StageAdversarial, []string{"en", "es"}[i%2], true, c))
 		}
+		cases = append(cases, evalCase("quality-companion", evaluation.StageRouting, "en", false, ""))
 		r, err := evaluation.Evaluate(context.Background(), "adversarial", evalSuite(evaluation.Fixture, cases), nil, evalClock)
-		if err != nil || r.SecurityFailures != 0 || len(r.Cases) != 6 {
+		if err != nil || r.SecurityFailures != 0 || len(r.Cases) != 7 {
 			t.Fatal(r, err)
 		}
 		cases[4].Fixture.Blocked = false
@@ -96,21 +97,30 @@ func TestPhase24(t *testing.T) {
 	t.Run("AC04", func(t *testing.T) {
 		cases := []evaluation.Case{evalCase("replay", evaluation.StageReplay, "en", false, ""), evalCase("shadow", evaluation.StageShadow, "es", false, "")}
 		s := evalSuite(evaluation.Fixture, cases)
-		candidate, _ := evaluation.Evaluate(context.Background(), "candidate", s, nil, evalClock)
-		baseline := candidate
-		baseline.Cases = append([]evaluation.CaseResult(nil), candidate.Cases...)
-		baseline.Cases[0].Passed = false
-		baseline.QualityPassed--
-		baseline.EvidenceHash = strings.Repeat("b", 64)
-		p, err := evaluation.ProposeOptimization(s, baseline, candidate, evalDigest, strings.Repeat("c", 64), evalClock())
+		s.Mode = evaluation.Live
+		for i := range s.Cases {
+			s.Cases[i].Fixture = nil
+		}
+		for i := range s.Provenance.DialectMatrix {
+			s.Provenance.DialectMatrix[i].Mode = evaluation.Live
+		}
+		run := func(bad bool) evaluation.Runner {
+			return evaluation.RunnerFunc(func(_ context.Context, x evaluation.Execution) (evaluation.Observation, error) {
+				d := evalDigest
+				if bad && x.Case.ID == "replay" {
+					d = strings.Repeat("b", 64)
+				}
+				return evaluation.Observation{Decision: "expected", SemanticDigest: d, Usage: evaluation.Usage{Calls: 1}}, nil
+			})
+		}
+		candidate, _ := evaluation.Evaluate(context.Background(), "candidate", s, run(false), evalClock)
+		baseline, _ := evaluation.Evaluate(context.Background(), "baseline", s, run(true), evalClock)
+		p, err := evaluation.ProposeOptimization("proposal", s, baseline, candidate, evalDigest, strings.Repeat("c", 64), evalClock())
 		if err != nil || p.State != "candidate" {
 			t.Fatal(p, err)
 		}
-		if _, err = evaluation.ReviewPromotion(p, "reviewer", "approve", evalClock()); err != nil {
-			t.Fatal(err)
-		}
-		if _, err = evaluation.ReviewPromotion(p, "optimizer", "publish", evalClock()); !errors.Is(err, evaluation.ErrReview) {
-			t.Fatal("optimizer could publish")
+		if p.SuiteDigest == "" || p.Seed != s.Seed {
+			t.Fatal("proposal provenance missing")
 		}
 	})
 
@@ -121,7 +131,7 @@ func TestPhase24(t *testing.T) {
 		if _, err := evaluation.Evaluate(context.Background(), "live", s, nil, evalClock); !errors.Is(err, evaluation.ErrMode) {
 			t.Fatal("live mislabeled as fixture", err)
 		}
-		runner := evaluation.RunnerFunc(func(context.Context, evaluation.Suite, evaluation.Case) (evaluation.Observation, error) {
+		runner := evaluation.RunnerFunc(func(context.Context, evaluation.Execution) (evaluation.Observation, error) {
 			return evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Usage: evaluation.Usage{ServiceMS: 7, SourceMS: evalPtr(int64(2)), ModelMS: evalPtr(int64(4)), Calls: 1, Tokens: evalPtr(12)}}, nil
 		})
 		r, err := evaluation.Evaluate(context.Background(), "live", s, runner, evalClock)
@@ -131,7 +141,6 @@ func TestPhase24(t *testing.T) {
 		unknown := s
 		unknown.Calibration = "unknown"
 		unknown.Threshold.QualityMin = nil
-		unknown.Threshold.Reviewed = false
 		if unknown.Validate() != nil {
 			t.Fatal("explicit unknown calibration rejected")
 		}
@@ -149,7 +158,14 @@ func TestPhase24(t *testing.T) {
 		}
 		e := evalEnvelope(t, true)
 		c := evalCase("durable", evaluation.StageConsumer, "en", false, "")
-		r, err := svc.Run(context.Background(), e, "durable-run", evalSuite(evaluation.Fixture, []evaluation.Case{c}), nil)
+		draft, err := svc.Author(context.Background(), e, evalSuite(evaluation.Fixture, []evaluation.Case{c}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = svc.Review(context.Background(), evalReviewer(t), draft.Suite.ID, evaluation.SuiteReviewRequest{Revision: draft.Suite.Revision, Digest: draft.Digest, Decision: evaluation.Accepted}); err != nil {
+			t.Fatal(err)
+		}
+		r, err := svc.Run(context.Background(), e, evaluation.RunRequest{RunID: "durable-run", SuiteID: draft.Suite.ID, SuiteRevision: draft.Suite.Revision, SuiteDigest: draft.Digest}, nil)
 		if err != nil {
 			t.Fatal("run not durable", r, err)
 		}
@@ -157,22 +173,36 @@ func TestPhase24(t *testing.T) {
 		if err != nil || got.EvidenceHash != r.EvidenceHash {
 			t.Fatal(got, err)
 		}
-		export, err := svc.ExportFeedback(context.Background(), e, 10)
-		if err != nil || export.Status != "candidate" || len(export.Cases) != 1 || export.Cases[0].Fixture != nil || export.EvidenceHash == "" {
+		export, err := svc.ExportFeedback(context.Background(), e, "feedback-export", "topic", 10)
+		if err != nil || export.Status != "candidate" || export.Split != "training" || len(export.Cases) != 1 || export.Cases[0].HeldOut || export.EvidenceHash == "" {
 			t.Fatal(export, err)
 		}
-		if _, err = svc.ExportFeedback(context.Background(), evalEnvelope(t, false), 10); err == nil {
+		if _, err = svc.ExportFeedback(context.Background(), evalEnvelope(t, false), "feedback-export-2", "topic", 10); err == nil {
 			t.Fatal("feedback exported without signed reach")
 		}
-		if _, err = svc.Read(context.Background(), evalEnvelopeActor(t, "other", true), "durable-run"); !errors.Is(err, store.ErrNotFound) {
-			t.Fatal("actor boundary widened", err)
+		if _, err = svc.Read(context.Background(), evalOtherTenant(t), "durable-run"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatal("tenant boundary widened", err)
 		}
 	})
+}
+func evalReviewer(t *testing.T) identity.Envelope {
+	e, err := identity.FromVerified("tenant", "reviewer", "session-review", []string{"ops.audit", "cw.tenant.certify:tenant"}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+func evalOtherTenant(t *testing.T) identity.Envelope {
+	e, err := identity.FromVerified("other", "actor", "session", []string{"ops.read", "cw.tenant.read:other"}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
 }
 
 type evalFeedback []evaluation.FeedbackEvidence
 
-func (f evalFeedback) ReviewedFeedback(context.Context, store.Scope, int) ([]evaluation.FeedbackEvidence, error) {
+func (f evalFeedback) ReviewedFeedback(context.Context, identity.Envelope, string, int) ([]evaluation.FeedbackEvidence, error) {
 	return append([]evaluation.FeedbackEvidence(nil), f...), nil
 }
 func evalEnvelope(t *testing.T, allowed bool) identity.Envelope {
