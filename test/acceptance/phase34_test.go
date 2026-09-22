@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -163,7 +164,7 @@ func phase34GraphNormalization(t *testing.T) {
 		t.Fatal("dependency order changed", got)
 	}
 	exported, err := s.Export(t.Context(), e, migration.ExportRequest{Batch: m.Batch, Limit: 1000})
-	if err != nil || exported.Manifest.Boundary.ResumeAfter != m.Boundary.ResumeAfter || exported.Manifest.Calibration.State != "review_candidate" || exported.Manifest.Engine != "postgres" {
+	if err != nil || !reflect.DeepEqual(exported.Manifest, m) {
 		t.Fatal("normalization lost exact state", err, exported)
 	}
 }
@@ -261,7 +262,7 @@ func phase34RetentionErasure(t *testing.T) {
 }
 
 func phase34CutoverRollback(t *testing.T) {
-	s, _, e, _ := phase34Service(t, "ac06")
+	s, _, e, dsn := phase34Service(t, "ac06")
 	m := phase34Manifest("ac06")
 	if _, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m}); err != nil {
 		t.Fatal(err)
@@ -288,6 +289,10 @@ func phase34CutoverRollback(t *testing.T) {
 	replayedRollback, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
 	if err != nil || replayedRollback.Generation != rolled.Generation {
 		t.Fatal("exact rollback retry changed generation", err, replayedRollback)
+	}
+	var events int
+	if err = support.Raw(t, dsn).QueryRow(t.Context(), `SELECT count(*) FROM chartworks.migration_cutover_events WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort).Scan(&events); err != nil || events != 2 {
+		t.Fatal("retry duplicated cutover occurrence events", err, events)
 	}
 }
 
