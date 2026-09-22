@@ -127,6 +127,42 @@ func TestLineageDigestIncludesProtectedParentState(t *testing.T) {
 	}
 }
 
+func TestLegacyOrderedPendingClarificationOrigin(t *testing.T) {
+	e := unitEnvelope(t)
+	repo := newUnitRepository()
+	margin := semantics.Reference{Kind: semantics.KindMeasure, ID: "margin"}
+	volume := semantics.Reference{Kind: semantics.KindMeasure, ID: "volume"}
+	pending := unitQuery(e, "legacy-pending", "topic", "v1", "context", false)
+	pending.Status = "preflight"
+	pending.SQL = ""
+	pending.Route.AnswerContext = "answer-context"
+	pending.Route.Request = nlqroute.RouteRequest{
+		Question: "What changed?", Locale: nlq.LanguageEnglish, Context: "context", Topics: []string{"topic"},
+		References: []semantics.Reference{volume, margin}, MetricIDs: []string{"volume", "margin"},
+	}
+	wantReferences := append([]semantics.Reference(nil), pending.Route.Request.References...)
+	wantMetrics := append([]string(nil), pending.Route.Request.MetricIDs...)
+	repo.queries[pending.ID] = pending
+	service := &Service{repo: repo}
+	submission := QuestionRequest{
+		ClarificationQuery: pending.ID, AnswerContext: "answer-context", Answers: []semantics.ClarificationAnswer{{Topic: "topic"}},
+		Question: "What changed?", Locale: nlq.LanguageEnglish, Context: "context", Topics: []string{"topic"},
+		References: []semantics.Reference{margin, volume}, MetricIDs: []string{"margin", "volume"},
+	}
+	if err := service.validateClarificationOrigin(context.Background(), e, submission, "query.plan"); err != nil {
+		t.Fatalf("equivalent canonical clarification submission rejected: %v", err)
+	}
+	if !reflect.DeepEqual(wantReferences, repo.queries[pending.ID].Route.Request.References) || !reflect.DeepEqual(wantMetrics, repo.queries[pending.ID].Route.Request.MetricIDs) {
+		t.Fatal("legacy retained request was mutated during comparison")
+	}
+	submission.MetricIDs = []string{"margin", "profit"}
+	err := service.validateClarificationOrigin(context.Background(), e, submission, "query.plan")
+	clarification, ok := err.(*nlqroute.Clarification)
+	if !ok || clarification.Reason != "clarification_question_mismatch" {
+		t.Fatalf("mismatched clarification submission returned %v", err)
+	}
+}
+
 func TestRefinementInterpretationEditsReplacePriorFilterIntent(t *testing.T) {
 	base := []nlqroute.InterpretationEdit{{Target: "topic:region:north", Action: "replace", Value: "south"}, {Target: "topic:month:2026-03", Action: "remove"}}
 	delta := []nlqroute.InterpretationEdit{{Target: "topic:region:north", Action: "remove"}}
