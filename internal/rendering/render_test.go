@@ -32,7 +32,7 @@ func authority(t *testing.T, scopes ...string) identity.Envelope {
 }
 
 func tableView() reporting.DeliveryViewResult {
-	return reporting.DeliveryViewResult{Output: &reporting.ViewerOutput{
+	return reporting.DeliveryViewResult{Locale: "en-US", Timezone: "UTC", PageBounds: reporting.ViewerPage{Offset: 0, Limit: 2, Total: 2}, Output: &reporting.ViewerOutput{
 		ID: "table", Kind: "table", State: "succeeded", RetainedDigest: strings.Repeat("a", 64),
 		Table: &reporting.ViewerTable{
 			Columns: []charts.Column{{ID: "name", Name: "name", DisplayLabel: "Display <name>", Type: "text"}},
@@ -87,23 +87,33 @@ func TestExportRequiresBothCurrentReadAndExportAuthority(t *testing.T) {
 
 func TestClosedFormatterMatchesReviewedDisplayIntent(t *testing.T) {
 	decimal := charts.Column{Type: "decimal", Format: charts.Format{FractionDigits: 2, Locale: "es-AR", CurrencySymbol: "US$"}}
-	if got := formatCell(charts.Cell{Value: "1234.567"}, decimal); got != "1.234,57 US$" {
+	if got := formatCell(charts.Cell{Value: "1234.567"}, decimal, "UTC"); got != "1.234,57 US$" {
 		t.Fatal("decimal format", got)
 	}
 	date := charts.Column{Type: "temporal", Format: charts.Format{DatePattern: "date_short", Locale: "es-AR"}}
-	if got := formatCell(charts.Cell{Value: "2026-09-22"}, date); got != "22/09/2026" {
+	if got := formatCell(charts.Cell{Value: "2026-09-22"}, date, "UTC"); got != "22/09/2026" {
 		t.Fatal("date format", got)
 	}
 	date.Format.DatePattern = "year_month"
-	if got := formatCell(charts.Cell{Value: "2026-09"}, date); got != "09/2026" {
+	if got := formatCell(charts.Cell{Value: "2026-09"}, date, "UTC"); got != "09/2026" {
 		t.Fatal("year/month format", got)
 	}
 	date.Format.DatePattern, date.Format.Locale = "date_long", "en-US"
-	if got := formatCell(charts.Cell{Value: "2026-09-22"}, date); got != "September 22, 2026" {
+	if got := formatCell(charts.Cell{Value: "2026-09-22"}, date, "UTC"); got != "September 22, 2026" {
 		t.Fatal("long date format", got)
 	}
+	date.Format.DatePattern, date.Format.Locale = "date_short", "es-AR"
+	if got := formatCell(charts.Cell{Value: "2026-09-22T01:30:00Z"}, date, "America/Argentina/Buenos_Aires"); got != "21/09/2026" {
+		t.Fatal("report timezone boundary", got)
+	}
+	date.Format.DatePattern, date.Format.Locale = "datetime_short", "en-US"
+	for _, instant := range []string{"2026-11-01T05:30:00Z", "2026-11-01T06:30:00Z"} {
+		if got := formatCell(charts.Cell{Value: instant}, date, "America/New_York"); got != "Nov 01, 2026 01:30" {
+			t.Fatal("DST report timezone", instant, got)
+		}
+	}
 	percent := charts.Column{Type: "decimal", Format: charts.Format{Percent: "fraction"}}
-	if got := formatCell(charts.Cell{Value: "0.125"}, percent); got != "12.5%" {
+	if got := formatCell(charts.Cell{Value: "0.125"}, percent, "UTC"); got != "12.5%" {
 		t.Fatal("percent format", got)
 	}
 }
@@ -177,6 +187,7 @@ func TestRendererRejectsInvalidConstructionRequestAndArtifact(t *testing.T) {
 	f.value = tableView()
 	s, _ = New(f, 1024)
 	f.value.Output.Table.Rows = append(f.value.Output.Table.Rows, []charts.Cell{{Value: strings.Repeat("x", 2048)}})
+	f.value.PageBounds.Limit, f.value.PageBounds.Total = 3, 3
 	if _, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), valid); !errors.Is(err, reporting.ErrBudget) {
 		t.Fatal("output budget not enforced", err)
 	}

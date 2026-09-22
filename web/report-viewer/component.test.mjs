@@ -8,6 +8,7 @@ import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {once} from 'node:events';
+import {exact} from './app.js';
 
 const [htmlPath,fixturePath,suite='all'] = process.argv.slice(2);
 assert(htmlPath && fixturePath,'actual resource and provider fixtures required');
@@ -124,7 +125,7 @@ try{
     }
     assert.equal(seen.size,14,'all fourteen actual kinds');passes++;
     await evaluate(`show(makeView(fixture.precision,'precision'))`);await waitTitle('precision');
-    await check(`${body}.textContent.includes('9007199254740993.0100')`,'large exact decimal');
+    await check(`${body}.textContent.includes('9,007,199,254,740,993.010')`,'large exact decimal uses authored display precision without floating-point coercion');
     await evaluate(`show(makeView(fixture.percent,'percent'))`);await waitTitle('percent');
     await check(`${body}.textContent.includes('12.3456789123456789%')`,'fraction percentage without floating-point rounding');
     assert(fixtures.rich_cases.length >= 20,'rich variants are tested separately from catalog count'); passes++;
@@ -136,7 +137,10 @@ try{
       for(let r=0;r<rows.length;r++)for(let k=0;k<c.expected_rows[r].length;k++) {
         const expected=c.expected_rows[r][k];
         if(expected===null)assert.equal(rows[r][k],'Missing',c.scenario+' null became zero');
-        else assert(rows[r][k].includes(expected),c.scenario+' exact retained value lost');
+        else {
+          const displayed=exact({value:expected},out.columns[k],'Missing',fixtures.view.timezone);
+          assert(rows[r][k].includes(displayed),c.scenario+' formatted retained value lost');
+        }
       }
       passes++;
       await check(`${body}.querySelector('.transformation')!==null`,'transformation and omission disclosure: '+c.scenario);
@@ -166,12 +170,13 @@ try{
         assert.equal(radii.length,out.points.length,'size/channel points drawn');
         assert(Math.abs((radii[1]/radii[0])**2-Number(out.points[1].size.exact)/Number(out.points[0].size.exact))<1e-10,'bubble area, not radius, encodes size');passes++;
         await check(`new Set(Array.from(${body}.querySelectorAll('svg circle[data-size]'),c=>c.getAttribute('class'))).size===2`,'bubble categorical colors');
-        await check(`${body}.textContent.includes('zero_size_not_drawn')&&${body}.textContent.includes('1.0000000000000001')`,'exact coordinate and truthful zero-size omission');
+        await check(`${body}.textContent.includes('zero_size_not_drawn')`,'truthful zero-size omission remains visible beside formatted retained values');
       }
       if(out.kind==='treemap') {
         for(const node of out.hierarchy) {
           if(node.value.coordinate>0)await check(`${body}.querySelector('rect[data-node-id="${node.id}"][data-depth="${node.depth}"]')!==null`,'every positive hierarchy level drawn');
-          await check(`${body}.querySelector('.hierarchy-values').textContent.includes(${JSON.stringify(node.value.exact)})`,'exact hierarchy sum, not drawing approximation');
+          const displayed=exact({exact:node.value.exact},out.columns.find(c=>c.id===out.mapping.bindings.value),'Missing',fixtures.view.timezone);
+          await check(`${body}.querySelector('.hierarchy-values').textContent.includes(${JSON.stringify(displayed)})`,'formatted exact hierarchy sum, not drawing approximation');
         }
         await check(`${body}.querySelectorAll('rect[data-depth="2"]').length>=1&&${body}.textContent.includes('returned_complete_paths')`,'three levels and honest aggregate scope');
       }

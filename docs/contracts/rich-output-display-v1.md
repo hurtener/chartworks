@@ -31,7 +31,7 @@ existing definition, manifest, output and reuse digests. Frozen execution applie
 the saved mapping to the one normalized retained result; it does not interpret a
 question, choose a chart, query a source or call a model.
 
-Migration 042 validates version-3 KPI/table shape and bounded formatter fields on
+Migration 043 validates version-3 KPI/table shape and bounded formatter fields on
 new block revisions. It does not rewrite v1/v2 publications. Unknown mapping versions,
 missing visible table columns, unbound KPI comparison/target fields and executable or
 unbounded formatter values reject. Foreign mappings remain Phase 34 work.
@@ -46,8 +46,22 @@ unit and percent semantics. It treats all labels and cells as inert text.
 expose retained-only JSON, CSV, static HTML and static SVG. The service first requires
 both `reporting.read` and `reporting.export`, plus `cw.run.export:<run>`, then delegates
 the retained read to the normal artifact authority path. CSV neutralizes spreadsheet
-formula prefixes. HTML has a deny-all content security policy. HTML/SVG escape data,
-carry no client JavaScript and make no network, source or model call.
+formula prefixes in headers and cells, including when Unicode BOM, bidi marks or
+control characters precede the formula. HTML permits only its generated inline style
+under CSP; all other content and network sources are denied. HTML/SVG escape data,
+carry no client JavaScript and make no network, source or model call. Date/time fields
+interpret offset-bearing timestamps in the sealed report timezone; naive dates and
+date-times remain wall-clock values.
+
+Every rendition distinguishes the full retained-output digest from a projection
+digest over the exact output window, page bounds, locale and timezone. Table exports
+report offset, limit, total, continuation, truncation, completeness and warnings.
+Static HTML also prints returned-row totals with their declared scope and the visible
+page range. A missing continuation for an incomplete table is rejected rather than
+presented as a complete export. Static KPI HTML and SVG include the retained value,
+comparison, delta, percent delta, target, target difference, threshold and sparkline
+when present. Static chart values use the same closed display formatter as tables and
+KPIs. Theme and viewport dimensions affect the generated HTML/SVG bytes.
 
 The current static slice renders tables and KPI as HTML, chart/KPI as SVG, and tables
 as CSV. Full report/dashboard layout composition, durable rendition rows, PDF, worker

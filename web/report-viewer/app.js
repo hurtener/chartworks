@@ -78,12 +78,12 @@ function percentShift(s) {
   const number = dot <= 0 ? '0.' + '0'.repeat(-dot) + digits : dot >= digits.length ? digits + '0'.repeat(dot-digits.length) : digits.slice(0,dot) + '.' + digits.slice(dot);
   return m[1] + number.replace(/^0+(?=\d)/,'');
 }
-export function exact(cell, column, missing = 'Missing') {
+export function exact(cell, column, missing = 'Missing', timezone = 'UTC') {
   const raw = cellValue(cell, missing);
   if (cell?.null || !cell) return raw;
   const f = column?.format || {};
   let value = raw;
-	if (column?.type === 'temporal' && f.date_pattern) value = formatDate(raw,f.date_pattern,f.locale);
+	if (column?.type === 'temporal' && f.date_pattern) value = formatDate(raw,f.date_pattern,f.locale,column?.display_timezone || timezone);
   if (f.percent === 'fraction') { const shifted = percentShift(raw); value = shifted === null ? raw + ' (fraction)' : shifted + '%'; }
   if (f.percent === 'whole') value += '%';
 	if (!f.percent && ['integer','decimal','number'].includes(column?.type)) value = formatDecimal(value,f.fraction_digits,f.locale);
@@ -98,8 +98,15 @@ function formatDecimal(raw,digits,locale) {
   const spanish=text(locale).toLowerCase().startsWith('es'), group=spanish?'.':',', decimal=spanish?',':'.';
   whole=whole.replace(/\B(?=(\d{3})+(?!\d))/g,group); return sign+whole+(digits?decimal+fraction:'');
 }
-function formatDate(raw,pattern,locale) {
-  const m=/^(\d{4})-(\d{2})(?:-(\d{2})(?:[T ](\d{2}):(\d{2}))?)?/.exec(raw); if(!m||pattern!=='year_month'&&!m[3])return raw;
+function formatDate(raw,pattern,locale,timezone) {
+  let m=/^(\d{4})-(\d{2})(?:-(\d{2})(?:[T ](\d{2}):(\d{2}))?)?/.exec(raw); if(!m||pattern!=='year_month'&&!m[3])return raw;
+  if (/(?:Z|[+-]\d{2}:\d{2})$/.test(raw)) {
+    const instant=new Date(raw); if(!Number.isFinite(instant.valueOf()))return raw;
+    try {
+      const values=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(instant).map(p=>[p.type,p.value]));
+      m=['',values.year,values.month,values.day,values.hour,values.minute];
+    } catch { return raw; }
+  }
   const spanish=text(locale).toLowerCase().startsWith('es'), months=spanish?['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],longMonths=spanish?['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']:['January','February','March','April','May','June','July','August','September','October','November','December'];
   if(pattern==='year_month')return spanish?`${m[2]}/${m[1]}`:`${m[1]}-${m[2]}`;
   if(pattern==='date_short')return spanish?`${m[3]}/${m[2]}/${m[1]}`:`${m[2]}/${m[3]}/${m[1]}`;
@@ -124,7 +131,7 @@ function scale(values) {
 }
 function categoryKey(cell) { return JSON.stringify([cell?.null ?? true,text(cell?.value ?? cell?.exact)]); }
 
-function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices = []) {
+function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices = [], timezone = 'UTC') {
   if (columns.length > 256 || rows.length > 1000) throw fail('limit_exceeded');
   if (rows.length === 0) { const notice = element('p',w.empty,'notice'); notice.setAttribute('role','status'); parent.append(notice); }
   const scroll = element('div',undefined,'scroll');
@@ -140,13 +147,13 @@ function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices 
     if (!Array.isArray(row) || row.length !== columns.length) throw fail('invalid_request');
     const tr = element('tr');
     if (rowIndices.length) { const th = element('th',rowIndices[index]+1); th.scope = 'row'; tr.dataset.sourceRow = String(rowIndices[index]); tr.append(th); }
-    row.forEach((c,i) => tr.append(element('td',exact(c,columns[i],w.null))));
+    row.forEach((c,i) => tr.append(element('td',exact(c,columns[i],w.null,timezone))));
     body.append(tr);
   }
   table.append(body); scroll.append(table); parent.append(scroll);
   for (const total of totals) {
     const c = columns.find(c => c.id === total.column);
-    if (c) parent.append(element('p',`${columnLabel(c)}: ${exact(total.value,c,w.null)} — ${w.scope}: ${text(total.scope)}`,'metadata'));
+    if (c) parent.append(element('p',`${columnLabel(c)}: ${exact(total.value,c,w.null,timezone)} — ${w.scope}: ${text(total.scope)}`,'metadata'));
   }
 }
 
@@ -411,20 +418,21 @@ function renderHierarchy(parent,c,w) {
   draw('',{x:12,y:12,width:776,height:396},0,0);
 }
 
-export function renderChart(parent, chart, language='en') {
+export function renderChart(parent, chart, language='en', timezone='UTC') {
   boundedJSON(chart); const w=words[language==='es'?'es':'en'];
   if(!KINDS.includes(chart.kind)||array(chart.points).length>MAX_POINTS||array(chart.columns).length>256)throw fail('invalid_request');
   validateRetainedChart(chart);
+  chart={...chart,columns:array(chart.columns).map(column=>({...column,display_timezone:timezone}))};
   if(chart.mapping?.options?.title)parent.append(element('h2',chart.mapping.options.title));
   const ready = chart.state === 'ready';
   if(!ready)parent.append(element('p',`${w.empty} ${text(chart.state)}`,'notice'));
-  if(chart.kind==='table'){renderTable(parent,array(chart.columns),array(chart.rows),w,w.values,array(chart.totals));return;}
+  if(chart.kind==='table'){renderTable(parent,array(chart.columns),array(chart.rows),w,w.values,array(chart.totals),[],timezone);return;}
   if(ready && chart.kind==='kpi'){
     const valueColumn=columnFor(chart,'value'),targetColumn=columnFor(chart,'target'),percentColumn={type:'decimal',format:{percent:'whole'}},k=chart.kpi_result;
     parent.append(element('p',exact(k?.value||chart.points[0]?.value,valueColumn,w.null),'kpi'));
     for(const [label,v,column] of [['Comparison',k?.comparison,valueColumn],['Delta',k?.delta,valueColumn],['Percent delta',k?.percent_delta,percentColumn],['Target',k?.target,targetColumn],['Target difference',k?.target_difference,valueColumn]])if(v)parent.append(element('p',`${label}: ${exact(v,column,w.null)}`,'metadata'));
     if(k?.threshold_state)parent.append(element('p',`${text(k.threshold_label)||k.threshold_state} · ${k.threshold_state}`,'badge'));
-    if(array(k?.sparkline).length){const line=element('p',k.sparkline.map(v=>v.null?w.null:v.exact).join(' → '),'metadata');line.setAttribute('aria-label','Sparkline exact values');parent.append(line);}
+    if(array(k?.sparkline).length){const line=element('p',k.sparkline.map(v=>exact(v,valueColumn,w.null,timezone)).join(' → '),'metadata');line.setAttribute('aria-label','Sparkline exact values');parent.append(line);}
   }
   else if(ready && ['bar','column','grouped_bar','stacked_bar','stacked_column'].includes(chart.kind))renderScales(parent,chart,w,renderBars);
   else if(ready && ['line','area'].includes(chart.kind))renderScales(parent,chart,w,renderLines);
@@ -516,6 +524,7 @@ export class Viewer {
   accept(result){if(this.closed)return;try{const v=unwrap(result);if(v.selection&&v.summary)this.show(v);else if(id(v.run)&&['block','report','dashboard'].includes(v.kind))void this.read({kind:v.kind,run:v.run,page:'',widget:'',output:'',offset:0,limit:0});else throw fail('unavailable');}catch(e){this.error(e);}}
   show(v){
     boundedJSON(v);if(v.version!==VERSION||!id(v.summary?.run)||!['block','report','dashboard'].includes(v.summary.kind)||!v.selection||array(v.outputs).length>64||array(v.pages).length>100||array(v.filters).length>100)throw fail('invalid_request');
+    try{if(!text(v.timezone))throw fail('invalid_request');new Intl.DateTimeFormat('en-US',{timeZone:v.timezone}).format(0);}catch{throw fail('invalid_request');}
     if(v.selection.run!==v.summary.run||v.selection.kind!==v.summary.kind||v.summary.target?.kind!==v.summary.kind||!id(v.summary.target?.id)||!integer(v.summary.target?.revision,1,256))throw fail('invalid_request');
     if(!integer(v.page_bounds?.offset,0,100000)||!integer(v.page_bounds?.limit,1,1000)||!integer(v.page_bounds?.total,0,100000))throw fail('invalid_request');
     this.generation++;this.clear();this.value=v;
@@ -549,8 +558,8 @@ export class Viewer {
     try{
       if(v.text)content.append(element('p',text(v.text.content??v.text.text),'narrative'));
       else if(v.output?.state==='succeeded'){
-        if(v.output.table){const t=v.output.table;renderTable(content,array(t.columns),array(t.rows),w,w.table,array(t.totals));for(const warning of array(t.warnings))content.append(element('p',text(warning),'metadata'));const b=v.page_bounds;const pager=element('div',undefined,'pager');pager.append(element('span',`${b.offset+Math.min(1,array(t.rows).length)}–${b.offset+array(t.rows).length} / ${b.total}`));const prev=button(w.previous,()=>this.navigate({offset:Math.max(0,b.offset-b.limit)}));prev.disabled=b.offset===0;const next=button(w.next,()=>this.navigate({offset:b.next}));next.disabled=!integer(b.next,b.offset+1,b.total);pager.append(prev,next);content.append(pager);}
-        else if(v.output.chart)renderChart(content,v.output.chart,this.locale);
+        if(v.output.table){const t=v.output.table;renderTable(content,array(t.columns),array(t.rows),w,w.table,array(t.totals),[],v.timezone);for(const warning of array(t.warnings))content.append(element('p',text(warning),'metadata'));const b=v.page_bounds;const pager=element('div',undefined,'pager');pager.append(element('span',`${b.offset+Math.min(1,array(t.rows).length)}–${b.offset+array(t.rows).length} / ${b.total}`));const prev=button(w.previous,()=>this.navigate({offset:Math.max(0,b.offset-b.limit)}));prev.disabled=b.offset===0;const next=button(w.next,()=>this.navigate({offset:b.next}));next.disabled=!integer(b.next,b.offset+1,b.total);pager.append(prev,next);content.append(pager);}
+        else if(v.output.chart)renderChart(content,v.output.chart,this.locale,v.timezone);
         else if(v.output.narrative){content.append(element('p',text(v.output.narrative.text),'narrative'));for(const caveat of array(v.output.narrative.caveats))content.append(element('p',text(caveat),'notice'));content.append(element('p',`${text(v.output.narrative.model_version)} · ${text(v.output.narrative.prompt_version)} · ${text(v.output.narrative.locale)}`,'metadata'));}
       }else content.append(element('p',`${text(v.output?.state)||text(v.summary.state)} ${text(v.output?.code)}`,'notice'));
       if(!['succeeded','completed','partial','expired'].includes(v.summary.state))content.append(button(w.refresh,()=>this.navigate({})));

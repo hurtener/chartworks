@@ -10,7 +10,7 @@ import (
 
 // formatCell mirrors the read viewer's closed formatter vocabulary. It never
 // interprets a caller-supplied pattern, code fragment or locale implementation.
-func formatCell(value charts.Cell, column charts.Column) string {
+func formatCell(value charts.Cell, column charts.Column, timezone string) string {
 	if value.Null {
 		return ""
 	}
@@ -18,7 +18,7 @@ func formatCell(value charts.Cell, column charts.Column) string {
 	f := column.Format
 	formatted := raw
 	if column.Type == "temporal" && f.DatePattern != "" {
-		formatted = formatDate(raw, f.DatePattern, f.Locale)
+		formatted = formatDate(raw, f.DatePattern, f.Locale, timezone)
 	}
 	switch f.Percent {
 	case "fraction":
@@ -80,17 +80,29 @@ func formatDecimal(raw string, digits int, locale string) string {
 	return sign + whole
 }
 
-func formatDate(raw, pattern, locale string) string {
+func formatDate(raw, pattern, locale, timezone string) string {
 	var parsed time.Time
 	var ok bool
-	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04", "2006-01-02", "2006-01"} {
+	instant := false
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04", "2006-01-02", "2006-01"} {
 		if candidate, err := time.Parse(layout, raw); err == nil {
 			parsed, ok = candidate, true
+			instant = layout == time.RFC3339Nano
 			break
 		}
 	}
 	if !ok {
 		return raw
+	}
+	// Offset-bearing timestamps are instants. Apply the report's sealed timezone
+	// before extracting calendar fields. Date-only and naive date-times are wall
+	// clock values and must not move across a date boundary.
+	if instant {
+		location, err := time.LoadLocation(timezone)
+		if err != nil {
+			return raw
+		}
+		parsed = parsed.In(location)
 	}
 	spanish := strings.HasPrefix(strings.ToLower(locale), "es")
 	months := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}

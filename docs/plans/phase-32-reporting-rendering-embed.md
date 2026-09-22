@@ -53,7 +53,7 @@ Iframe is delivery; SSR is where content is rendered. Neither requires Chartwork
 
 D-079 implements a retained-only subset of AC01/AC03/AC04/AC06/AC08: registered
 JSON/CSV/static HTML/SVG export, exact run-export reach, escaped inert content,
-deny-all HTML CSP and no source/model/network seam. Tables/KPIs render as HTML and
+generated-inline-style-only HTML CSP and no source/model/network seam. Tables/KPIs render as HTML and
 charts/KPIs as SVG without client JavaScript. This does not change the phase status:
 renderer worker isolation/crash limits, durable rendition storage/deletion, complete
 catalog geometry, report/dashboard composition and BFF example remain planned, so
