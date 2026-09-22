@@ -52,13 +52,13 @@ func effectFor(effect string) (effects, bool) {
 		return effects{openWorld: true, paid: true}, true
 	case "migration_dry_run", "migration_export_read":
 		return effects{readOnly: true, idempotent: true}, true
-	case "migration_import_commit", "migration_cutover_commit", "migration_erase_commit", "nlq_example_state_commit", "nlq_example_import":
+	case "migration_import_commit", "migration_cutover_commit", "migration_erase_commit":
 		return effects{persists: true, idempotent: true}, true
-	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
+	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
 	case "evaluation_live_or_fixture_run":
 		return effects{openWorld: true, persists: true, paid: true}, true
-	case "evaluation_suite_draft_commit", "evaluation_runtime_pack_draft_commit", "evaluation_runtime_pack_review_commit", "evaluation_suite_review_commit", "evaluation_cancel_request", "evaluation_input_commit", "evaluation_recovery_commit", "evaluation_feedback_export", "evaluation_split_review_commit", "evaluation_proposal_commit", "evaluation_proposal_review_commit", "evaluation_pack_cas_commit":
+	case "nlq_example_state_commit", "evaluation_suite_draft_commit", "evaluation_runtime_pack_draft_commit", "evaluation_runtime_pack_review_commit", "evaluation_suite_review_commit", "evaluation_cancel_request", "evaluation_input_commit", "evaluation_recovery_commit", "evaluation_feedback_export", "evaluation_split_review_commit", "evaluation_proposal_commit", "evaluation_proposal_review_commit", "evaluation_pack_cas_commit":
 		return effects{persists: true}, true
 	case "retained_static_rendition":
 		return effects{openWorld: true}, true
