@@ -3,14 +3,19 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/phase-01-02-foundation, feat/phase-03-04-authority, feat/phase-05-06-gateway-jobs, feat/phase-07-08-vindex-sources, feat/phase-09-10-read-execution, feat/phase-20-21-chart-spec-http, feat/phase-23-sdk-cli-parity, feat/phase-29-reports-dashboards]
+    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: pr-fast-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   mirror:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,6 +24,7 @@ jobs:
 
   drift:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,49 +34,47 @@ jobs:
 
   build-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 12
     env:
-      CGO_ENABLED: 1
+      CGO_ENABLED: 0
       GOFLAGS: -p=2
-      CHARTWORKS_COVERAGE_OUTPUT: /tmp/chartworks-coverage.out
-      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
-      CHARTWORKS_TEST_BRUIN_PATH: /tmp/chartworks-bruin/bruin
-      CHARTWORKS_TEST_PIPELINE_TMPDIR: /mnt/chartworks-pipeline
-      CHARTWORKS_TEST_PIPELINE_TLS_ROOT: /tmp/chartworks-ci-tls/server.crt
-      # Synthetic disposable PostgreSQL fixture, never a production credential.
-      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
-      CHARTWORKS_TEST_MYSQL_DSN: root:chartworks-fixture-root@tcp(localhost:13306)/mysql
-      CHARTWORKS_TEST_SQLSERVER_DSN: sqlserver://sa:SYNTHETIC_fixture_Password9!@localhost:11433?database=master&encrypt=disable
-    services:
-      postgres:
-        image: pgvector/pgvector:0.8.2-pg17
-        ports: [5434:5432]
-        env:
-          POSTGRES_USER: chartworks
-          POSTGRES_PASSWORD: chartworks
-          POSTGRES_DB: chartworks
-        options: >-
-          --health-cmd "pg_isready -U chartworks -d chartworks"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-      mysql:
-        image: mysql:8.4
-        ports: [13306:3306]
-        env:
-          MYSQL_ROOT_PASSWORD: chartworks-fixture-root
-          MYSQL_ROOT_HOST: '%'
-        options: >-
-          --health-cmd "mysqladmin ping -h localhost -pchartworks-fixture-root"
-          --health-interval 5s --health-timeout 5s --health-retries 20
-      sqlserver:
-        image: mcr.microsoft.com/mssql/server:2022-CU23-ubuntu-22.04
-        ports: [11433:1433]
-        env:
-          ACCEPT_EULA: 'Y'
-          MSSQL_PID: Developer
-          MSSQL_SA_PASSWORD: SYNTHETIC_fixture_Password9!
-        options: >-
-          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SYNTHETIC_fixture_Password9!' -C -Q 'SELECT 1' -b"
-          --health-interval 10s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Record exact source and verify dependency lock
+        run: |
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)" | tee /tmp/pr-fast-source.txt
+          go mod verify
+      - name: Focused deterministic unit and compile gate
+        run: |
+          go test -count=1 -timeout=5m \
+            ./internal/config \
+            ./internal/identity \
+            ./internal/access \
+            ./internal/calendars \
+            ./internal/api \
+            ./internal/httpmount
+          # The foundation package has mandatory real-PostgreSQL tests. Compile
+          # it here; the manual final lane executes those tests with its fixture.
+          go test -run '^$' ./internal/foundation
+      - name: Retain exact-head fast-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-fast-source-${{ github.sha }}
+          path: /tmp/pr-fast-source.txt
+          retention-days: 7
+
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CGO_ENABLED: 0
+      GOFLAGS: -p=2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,202 +85,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
-      - name: Real reporting component test runtime
+      - name: Formatting and script syntax
         run: |
-          node --version
-          google-chrome --version
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
           node --check web/report-viewer/app.js
-      - name: Reserve disk for pinned native and race-instrumented builds
-        run: |
-          # Unused preinstalled SDKs, not project files, caches or test fixtures.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
-          df -h /
-      - name: Build pinned native parser and managed SQL runner
-        run: bash scripts/build-bruin.sh
-      - name: Recorded cloud SDK/HTTP and owned-session leaf lifecycle contracts
-        run: |
-          go -C "$CHARTWORKS_BRUIN_BUILD_DIR/source" test -race -count=1 ./pkg/bigquery ./pkg/snowflake ./pkg/databricks ./pkg/mysql ./pkg/mssql
-      - name: Prepare private executable pipeline scratch and verify-full PostgreSQL TLS
-        run: |
-          sudo install -d -m 0700 "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
-          sudo mount -t tmpfs -o size=2G,exec,nosuid,nodev tmpfs "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
-          sudo chown "$(id -u):$(id -g)" "$CHARTWORKS_TEST_PIPELINE_TMPDIR"
-          install -d -m 0700 /tmp/chartworks-ci-tls
-          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -keyout /tmp/chartworks-ci-tls/server.key -out "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
-          chmod 0600 /tmp/chartworks-ci-tls/server.key "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT"
-          pg_container="$(docker ps --filter ancestor=pgvector/pgvector:0.8.2-pg17 --format '{{.ID}}')"
-          test -n "$pg_container"
-          docker cp /tmp/chartworks-ci-tls/server.key "$pg_container":/tmp/chartworks-server.key
-          docker cp "$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" "$pg_container":/tmp/chartworks-server.crt
-          docker exec -u root "$pg_container" chown postgres:postgres /tmp/chartworks-server.key /tmp/chartworks-server.crt
-          docker exec -u root "$pg_container" chmod 0600 /tmp/chartworks-server.key /tmp/chartworks-server.crt
-          psql "$CHARTWORKS_TEST_STORE_URL" -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl='on'" -c "ALTER SYSTEM SET ssl_cert_file='/tmp/chartworks-server.crt'" -c "ALTER SYSTEM SET ssl_key_file='/tmp/chartworks-server.key'" -c 'SELECT pg_reload_conf()'
-          test "$(psql "postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=verify-full&sslrootcert=$CHARTWORKS_TEST_PIPELINE_TLS_ROOT" -v ON_ERROR_STOP=1 -tAc 'SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()')" = t
-      - name: PostgreSQL 17 client tools for actual recovery tests
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl --fail --silent --show-error -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client-17
-          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
-      - name: Verify exact source and dependency lock (no generated commits)
-        run: |
-          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
-          go mod verify
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-          test -z "$(find cmd internal sdk test web -name '*.go' -print0 | xargs -0 gofmt -l)"
-          test -z "$(find . -maxdepth 1 -name '.phase27*.py' -print)"
-          test -z "$(find scripts \( -name '_foundation_edits*.py' -o -name '_authority_*.py' -o -name '_gateway_jobs*.py' -o -name '_phase_07_08*' -o -name '_phase_09_10*' -o -name '_phase_11_12*' \) -print)"
-      - name: Cumulative schema, engineering and frozen-run runtime acceptance
-        run: |
-          python3 scripts/run_phase_acceptance.py --phase 02
-          python3 scripts/run_phase_acceptance.py --phase 26
-          python3 scripts/run_phase_acceptance.py --phase 28
-      - run: make build
-      - name: Build and execute the reference native container
-        run: |
-          docker build -t chartworks-reference:ci .
-          docker run --rm --network none --read-only chartworks-reference:ci version
-      - run: make vet
-      - name: Race-enabled unit, integration, compiled-authority and PostgreSQL recovery coverage
-        run: make coverage
-      - name: Per-function diagnostics from actual race instrumentation
-        if: always()
-        run: |
-          if test -s "$CHARTWORKS_COVERAGE_OUTPUT"; then
-            go tool cover -func="$CHARTWORKS_COVERAGE_OUTPUT" | grep -E 'internal/(engineering|reporting|reportingapi|nlqexec|nlqroute|foundation|store/postgres)/|total:'
-          fi
-      - name: Implemented phase criteria, no missing/skipped tests
-        run: |
-          python3 scripts/run_phase_acceptance.py --phase 01
-          python3 scripts/run_phase_acceptance.py --phase 02
-          python3 scripts/run_phase_acceptance.py --phase 03
-          python3 scripts/run_phase_acceptance.py --phase 04
-          python3 scripts/run_phase_acceptance.py --phase 05
-          python3 scripts/run_phase_acceptance.py --phase 06
-          python3 scripts/run_phase_acceptance.py --phase 07
-          python3 scripts/run_phase_acceptance.py --phase 09
-          python3 scripts/run_phase_acceptance.py --phase 08
-          python3 scripts/run_phase_acceptance.py --phase 10
-          python3 scripts/run_phase_acceptance.py --phase 11
-          python3 scripts/run_phase_acceptance.py --phase 12
-          python3 scripts/run_phase_acceptance.py --phase 13
-          python3 scripts/run_phase_acceptance.py --phase 14
-          python3 scripts/run_phase_acceptance.py --phase 21
-          python3 scripts/run_phase_acceptance.py --phase 15
-          python3 scripts/run_phase_acceptance.py --phase 16
-          python3 scripts/run_phase_acceptance.py --phase 17
-          python3 scripts/run_phase_acceptance.py --phase 18
-          python3 scripts/run_phase_acceptance.py --phase 19
-          python3 scripts/run_phase_acceptance.py --phase 20
-          python3 scripts/run_phase_acceptance.py --phase 22
-          python3 scripts/run_phase_acceptance.py --phase 23
-          python3 scripts/run_phase_acceptance.py --phase 27
-          python3 scripts/run_phase_acceptance.py --phase 29
-          python3 scripts/run_phase_acceptance.py --phase 30
-          python3 scripts/run_phase_acceptance.py --phase 31
-      - name: Compiled binary lifecycle and protected capability smoke
-        run: make foundation-smoke
-      - name: Bounded security mutation fuzz campaigns
-        run: |
-          # Finish fixed mutation budgets instead of racing a short coordinator
-          # deadline under race instrumentation. Crashes remain hard failures;
-          # the separate timeout is only a hard hang bound.
-          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzAuthorityJSON$' -fuzztime=256x -timeout=3m -parallel=2
-          go test -race ./test/acceptance -run '^$' -fuzz '^FuzzActualVerifier$' -fuzztime=256x -timeout=3m -parallel=2
-          names=$(go test ./internal/exec -list '^Fuzz' | grep '^Fuzz')
-          test -n "$names"
-          for name in $names; do
-            go test -race ./internal/exec -run '^$' -fuzz "^${name}$" -fuzztime=64x -timeout=3m -parallel=2
-          done
-          names=$(go test ./internal/engineering -list '^Fuzz' | grep '^Fuzz')
-          test -n "$names"
-          for name in $names; do
-            go test -race ./internal/engineering -run '^$' -fuzz "^${name}$" -fuzztime=64x -timeout=3m -parallel=2
-          done
-          go test -race ./internal/nlqbyo -run '^$' -fuzz '^FuzzReferenceAndReceipt$' -fuzztime=64x -timeout=3m -parallel=2
-          go test -race ./internal/charts -run '^$' -fuzz '^FuzzDataAndMappings$' -fuzztime=128x -timeout=3m -parallel=2
-          go test -race ./internal/reporting -run '^$' -fuzz '^FuzzParameterScalarDoesNotBecomeSQL$' -fuzztime=128x -timeout=3m -parallel=2
-          go test -race ./internal/reporting -run '^$' -fuzz '^FuzzSQLAssistSpanSafety$' -fuzztime=128x -timeout=3m -parallel=2
-      - name: Full cumulative development preflight
-        run: make preflight-full
-      - name: Microbenchmark baseline (not warehouse or end-user latency)
-        run: go test ./test/acceptance -run '^$' -bench 'Benchmark(ConfigurationStartup|IdleHealth)$' -benchmem -benchtime=100x
-      - name: Retain actual race coverage instrumentation
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: race-coverage
-          path: /tmp/chartworks-coverage.out
-          retention-days: 14
-      - name: Read-only workflow and source preparation hygiene
-        run: |
-          test ! -f .github/workflows/phase-09-10-development.yml
-          test ! -f .github/workflows/read-snapshot.yml
-          test ! -f .github/workflows/read-execution-workspace.yml
-          test ! -f .github/workflows/phase-11-12-edit.yml
-          test ! -f .github/workflows/phase-11-12-development.yml
-          test ! -f .github/workflows/phase-11-12-workspace.yml
-          test ! -f .github/workflows/verification-source.yml
-          test ! -f .github/workflows/phase-20-source-snapshot.yml
-          test ! -f .github/workflows/phase-20-apply.yml
-          test ! -f .github/workflows/phase-30-31-edit.yml
-          test ! -f .github/workflows/phase-30-31-workspace.yml
-          test ! -f .github/workflows/phase-30-31-module-transfer.yml
-          test ! -f .github/workflows/phase-30-31-local-runtime.yml
-          test ! -f .github/workflows/phase-30-31-diagnostics.yml
-          test ! -f scripts/dev/phase-30-31-edit.py
-      - name: Working tree must remain unchanged
+          node --check web/report-viewer/component.test.mjs
+          python3 -m compileall -q scripts
+      - name: Focused static analysis
+        run: >-
+          go vet
+          ./internal/config
+          ./internal/identity
+          ./internal/access
+          ./internal/calendars
+          ./internal/foundation
+          ./internal/api
+          ./internal/httpmount
+      - name: Source remains unchanged
         run: |
           git diff --exit-code
           test -z "$(git ls-files --others --exclude-standard)"
-
-  lint:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-      - name: Build native parser for typed lint analysis
-        env:
-          CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
-        run: bash scripts/build-bruin.sh
-      - uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.12.2
-
-  native-build:
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            platform: linux-amd64
-          - runner: macos-14
-            platform: darwin-arm64
-    runs-on: ${{ matrix.runner }}
-    env:
-      CGO_ENABLED: 1
-      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-bruin
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-      - name: Build pinned native dependency on the shipping platform
-        run: bash scripts/build-bruin.sh
-      - name: Compile and execute native shipping binary
-        run: |
-          make build
-          ./bin/chartworks version
-      - uses: actions/upload-artifact@v4
-        with:
-          name: chartworks-${{ matrix.platform }}
-          path: bin/chartworks
-          retention-days: 14

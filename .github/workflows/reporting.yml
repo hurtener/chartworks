@@ -1,37 +1,10 @@
 name: Reporting contracts
 on:
-  push:
-    branches: [main, feat/phase-30-31-reporting-delivery]
-    paths:
-      - .github/workflows/reporting.yml
-      - internal/reporting/**
-      - internal/reportingapi/**
-      - internal/jobs/**
-      - internal/store/postgres/**
-      - internal/mcpserver/**
-      - internal/config/**
-      - internal/gateway/**
-      - internal/exec/**
-      - internal/foundation/**
-      - sdk/**
-      - web/report-viewer/**
-      - test/acceptance/phase30*
-      - test/acceptance/phase31*
-      - test/viewerfixtures/**
-  pull_request:
-    paths:
-      - .github/workflows/reporting.yml
-      - internal/**
-      - sdk/**
-      - web/report-viewer/**
-      - test/**
-      - docs/plans/**
-      - go.mod
-      - go.sum
+  workflow_call:
 permissions:
   contents: read
 concurrency:
-  group: reporting-${{ github.ref }}
+  group: reporting-final-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   contracts:

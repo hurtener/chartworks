@@ -1,13 +1,6 @@
 name: Reporting adversarial review
 on:
-  push:
-    branches: [feat/phase-30-31-reporting-delivery]
-    paths:
-      - .github/workflows/reporting-adversarial-review.yml
-      - test/acceptance/phase30_adversarial*.go
-      - test/acceptance/phase30_fixture_test.go
-      - test/acceptance/phase30_queue_fixture_test.go
-      - internal/store/postgres/migrations/**
+  workflow_call:
 permissions:
   contents: read
 jobs:
