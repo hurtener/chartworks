@@ -13,6 +13,7 @@ import (
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -23,9 +24,10 @@ var ErrRegistration = errors.New("mcp: invalid service registration")
 // operation may have persisted or incurred cost; callers must inspect receipts
 // rather than retrying a mutation blindly. Receipt is supplied only by its owner.
 type Fault struct {
-	Code    string           `json:"code"`
-	Outcome string           `json:"outcome"`
-	Receipt *gateway.Receipt `json:"receipt,omitempty"`
+	Clarification *semantics.ClarificationProblem `json:"clarification,omitempty"`
+	Code          string                          `json:"code"`
+	Outcome       string                          `json:"outcome"`
+	Receipt       *gateway.Receipt                `json:"receipt,omitempty"`
 }
 
 // ErrorMapper must classify errors, never return native diagnostics. Registration

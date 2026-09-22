@@ -52,8 +52,9 @@ type GatewayReceipt = gateway.Receipt
 // StatusError exposes the HTTP status and optional bounded usage metadata, never
 // the raw rejection body or its message. Error() remains content-free.
 type StatusError struct {
-	Status  int
-	Receipt *GatewayReceipt
+	Clarification *ClarificationProblem
+	Status        int
+	Receipt       *GatewayReceipt
 }
 
 func (e *StatusError) Error() string { return "chartworks: request rejected" }
@@ -204,6 +205,8 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 		rejected := &StatusError{Status: resp.StatusCode}
 		if path == "/v1/charts/select" {
 			rejected.Receipt = readFailureReceipt(resp.Body)
+		} else if strings.HasPrefix(path, "/v1/nlq/") {
+			rejected.Clarification = readClarificationProblem(resp.Body)
 		}
 		return rejected
 	}

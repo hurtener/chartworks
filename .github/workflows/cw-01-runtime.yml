@@ -1,0 +1,108 @@
+name: CW-01 runtime acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'internal/semantics/**'
+      - 'internal/nlq*/**'
+      - 'internal/exec/**'
+      - 'internal/store/postgres/**'
+      - 'internal/mcpserver/**'
+      - 'internal/api/**'
+      - 'internal/topicapi/**'
+      - 'test/**'
+      - 'sdk/**'
+      - '.github/workflows/cw-01-runtime.yml'
+  push:
+    branches: [feat/cw-01-conditional-typed-clarification]
+    paths: ['.github/workflows/cw-01-runtime.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cw01-runtime-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -p=2
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-native
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Capture committed runtime source before validation
+        run: |
+          mkdir -p "$RUNNER_TEMP/cw01-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/cw01-source/commit.txt"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/cw01-source/tree.txt"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/cw01-source/source.tar.gz"
+          (cd "$RUNNER_TEMP/cw01-source" && sha256sum commit.txt tree.txt source.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cw01-runtime-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/cw01-source/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: |
+            /tmp/chartworks-native
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+      - name: Build the pinned native read-parser dependency
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            /tmp/chartworks-native
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+      - name: Record exact committed source
+        run: |
+          git log -1 --format='commit=%H%ntree=%T%nparents=%P'
+          git rev-parse HEAD:test/acceptance/phase05_test.go
+          sha256sum test/acceptance/phase05_test.go go.mod go.sum
+          git diff --exit-code HEAD --
+          go version
+          go mod verify
+      - name: Compile current runtime and consumers
+        run: go test -run '^$' ./internal/semantics/... ./internal/exec ./internal/nlq... ./internal/api ./internal/topicapi ./internal/mcpserver ./sdk/... ./test/acceptance
+      - name: Repeat Phase 05 gateway acceptance against committed source
+        if: success() || failure()
+        run: go test -race -count=3 -timeout=20m ./test/acceptance -run '^TestPhase05$' -v
+      - name: Execute owned phase and CW-01 acceptance
+        if: success() || failure()
+        run: go test -race -count=1 -timeout=20m ./test/acceptance -run '^(TestPhase(16|17|18)|TestCW01)$' -v
+      - name: Execute semantic, routing and read lifecycle regressions
+        if: success() || failure()
+        run: go test -race -count=1 -timeout=20m ./internal/semantics/... ./internal/exec ./internal/nlq... ./internal/api ./internal/topicapi ./internal/mcpserver ./internal/store/postgres ./sdk/...
+      - name: Source must remain unchanged by validation
+        if: always()
+        run: |
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"

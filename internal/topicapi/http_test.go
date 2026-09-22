@@ -25,7 +25,7 @@ func TestRegistryManifestAndConcreteSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Definitions()) != 32 {
+	if len(r.Definitions()) != 35 {
 		t.Fatal("operation inventory")
 	}
 	raw, err := os.ReadFile("../../docs/contracts/chartworks-topic-draft-operations.json")

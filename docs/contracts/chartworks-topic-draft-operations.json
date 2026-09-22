@@ -190,5 +190,23 @@
     "path": "/v1/topics/list",
     "action": "topics.read",
     "effect": "retained_metadata_read"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/clarifications/preview",
+    "action": "topics.write",
+    "effect": "deterministic_draft_preview"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/clarifications/export",
+    "action": "topics.export",
+    "effect": "retained_metadata_export"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/topics/{id}/clarifications/import-preview",
+    "action": "topics.write",
+    "effect": "deterministic_import_preview"
   }
 ]

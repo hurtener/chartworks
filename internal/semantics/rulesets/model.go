@@ -88,19 +88,21 @@ type EvaluateRequest struct {
 // version. The retained pins remain usable after a later publication or
 // retirement, subject to the caller's current signed read reach.
 type ReplayRequest struct {
-	RuleVersion  string                `json:"rule_version"`
-	TopicVersion string                `json:"topic_version,omitempty"`
-	References   []semantics.Reference `json:"references"`
+	ClarificationCases []semantics.ClarificationInput `json:"clarification_cases,omitempty"`
+	RuleVersion        string                         `json:"rule_version"`
+	TopicVersion       string                         `json:"topic_version,omitempty"`
+	References         []semantics.Reference          `json:"references"`
 }
 
 // ShadowRequest compares a retained baseline with a retained candidate. An
 // empty candidate version selects the current published rule pointer; an
 // explicit candidate remains an exact retained read.
 type ShadowRequest struct {
-	BaselineRuleVersion  string                `json:"baseline_rule_version"`
-	CandidateRuleVersion string                `json:"candidate_rule_version,omitempty"`
-	TopicVersion         string                `json:"topic_version,omitempty"`
-	References           []semantics.Reference `json:"references"`
+	ClarificationCases   []semantics.ClarificationInput `json:"clarification_cases,omitempty"`
+	BaselineRuleVersion  string                         `json:"baseline_rule_version"`
+	CandidateRuleVersion string                         `json:"candidate_rule_version,omitempty"`
+	TopicVersion         string                         `json:"topic_version,omitempty"`
+	References           []semantics.Reference          `json:"references"`
 }
 
 // Evaluation is deterministic hard-constraint evidence tied to exact versions.
@@ -118,14 +120,16 @@ type Evaluation struct {
 // shadow comparison has both sides; a replay has only Baseline and Changed is
 // false. It is not query execution evidence or a source-authority decision.
 type Comparison struct {
-	ID         string                `json:"id"`
-	Mode       string                `json:"mode"`
-	Topic      string                `json:"topic"`
-	References []semantics.Reference `json:"references"`
-	Baseline   Evaluation            `json:"baseline"`
-	Candidate  *Evaluation           `json:"candidate,omitempty"`
-	Changed    bool                  `json:"changed"`
-	CreatedAt  time.Time             `json:"created_at"`
+	BaselineClarifications  []semantics.ClarificationEvaluation `json:"baseline_clarifications,omitempty"`
+	CandidateClarifications []semantics.ClarificationEvaluation `json:"candidate_clarifications,omitempty"`
+	ID                      string                              `json:"id"`
+	Mode                    string                              `json:"mode"`
+	Topic                   string                              `json:"topic"`
+	References              []semantics.Reference               `json:"references"`
+	Baseline                Evaluation                          `json:"baseline"`
+	Candidate               *Evaluation                         `json:"candidate,omitempty"`
+	Changed                 bool                                `json:"changed"`
+	CreatedAt               time.Time                           `json:"created_at"`
 }
 
 // Invalidation is an immutable fence consumed by query/evidence stores. It

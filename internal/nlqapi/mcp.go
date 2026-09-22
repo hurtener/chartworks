@@ -19,7 +19,10 @@ func ExecutionMCPBindings(service *nlqexec.Service) ([]mcpserver.Binding, error)
 		return nil, err
 	}
 	var bindings []mcpserver.Binding
-	mapper := func(err error) mcpserver.Fault { _, code := classify(err); return mcpserver.Fault{Code: code} }
+	mapper := func(err error) mcpserver.Fault {
+		_, code := classify(err)
+		return mcpserver.Fault{Code: code, Clarification: clarificationProblem(err)}
+	}
 	b0, err := mcpserver.Bind(registry, "preflightNLQ", "preflight_question", "query", "Admit a question using authorized semantic routing and persist bounded session evidence. May incur remote model cost; preflight is not a pure read or an executable plan.", service.Preflight, mapper)
 	if err != nil {
 		return nil, err
@@ -61,7 +64,10 @@ func BYOMCPBindings(service *nlqbyo.Service) ([]mcpserver.Binding, error) {
 		return nil, err
 	}
 	var bindings []mcpserver.Binding
-	mapper := func(err error) mcpserver.Fault { _, code := classify(err); return mcpserver.Fault{Code: code} }
+	mapper := func(err error) mcpserver.Fault {
+		_, code := classify(err)
+		return mcpserver.Fault{Code: code, Clarification: clarificationProblem(err)}
+	}
 	b0, err := mcpserver.Bind(registry, "readQueryContext", "read_query_context", "byo", "Read a previously created opaque context reference with current authority and exact version checks. Returns content-free step receipts, not retained SQL result values; never re-executes a submitted step.", service.Lookup, mapper)
 	if err != nil {
 		return nil, err
