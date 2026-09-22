@@ -5,9 +5,10 @@ implemented for review, 2026-09-22. The query adapter composes Plan→Run under
 a PostgreSQL-scoped operation lock and can distinguish physical attempts from
 idempotent replay. It fails closed for final stress: this path does not exercise
 the product's frozen-run reuse identity, and the current read attempt has no
-source-only duration receipt. The Phase-34 current-revision resolver and
-production release composition also remain required. Phase 25 still owns the
-final stress execution and decision.
+source-only duration receipt. The selected Phase-34 current-revision resolver
+and recorded integration composition are present in the draft release branch;
+their bounded tests are prerequisites, not the final stress execution or
+decision owned by Phase 25.
 
 Performance evidence is valid only after every case passes a correctness probe.
 The harness then records every raw wall-time observation and separately retains
@@ -92,13 +93,19 @@ one current source, rule, context, topic or runtime-pack revision while keeping
 other inputs and signed reach fixed; require one physical call for each changed
 case and zero reuse from the stale baseline. A negative test must substitute a
 reuse key that omits the changed dimension and show that the correctness gate
-fails. The configured Bifrost engine attests `live`; `integration` requires a `gateway.Engine` backed
-by recorded model responses that explicitly attests `recorded`. No production
-recorded engine is included here, so integration mode remains unavailable until
-the composition root supplies that engine. Phase 34 must supply selected
-migration-head source/rule/topic/context evidence through the current-revision
-resolver. Missing resolvers or adapters fail closed. The release orchestration
-is not exposed as an operator CLI until that composition exists.
+fails. The configured Bifrost engine attests `live`. The integration-only
+`recorded.Engine` accepts exact authorized call and reviewed configuration
+digests, returns receipts labeled `recorded`, and has no provider fallback.
+`releaseprofile.NewIntegration` composes that engine with the actual routing,
+query, native read and PostgreSQL operation-lock services. Its resolver selects
+one reviewed Phase-34 cohort for each accepted Phase-24 consumer case, reloads
+the active cutover and its source adapter, checks current topic/rule/source and
+signed context reach, and hashes all rows of a bounded native PostgreSQL
+dataset's validator-safe column projection. Multi-dataset source snapshots fail
+closed until a shared native
+transaction exists. Missing or changed owner evidence fails closed. Neither
+this composition nor its recorded fixtures qualifies a live model, live cohort,
+or a release stress run. The release orchestration remains internal.
 
 Release reports are atomically created as private `0600` files and an existing
 path is never replaced. The one-hour profile bound includes correctness probes

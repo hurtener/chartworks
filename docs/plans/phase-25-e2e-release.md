@@ -85,15 +85,24 @@ verified bearer with one query action removed and sends it through Plan→Run;
 it cannot be satisfied by testing an unrelated action. Each invalidation step pins a consumer case and exact
 accepted report hash; the resolver must provide the matching current revision
 binding and report-selected runtime pack. Bifrost attests live mode; a recorded
-gateway engine must explicitly attest recorded mode for integration runs. Phase
-34 still has to supply selected source/rule/topic/context revisions from its
-current stores,
-and the composition root must provide the recorded engine for integration mode.
+gateway engine explicitly attests recorded mode for integration runs. The
+internal `releaseprofile` composition selects one operator-reviewed Phase 34
+cohort for each accepted Phase 24 consumer case. It reloads the active cutover
+and source adapter, current topic/rule/source/context evidence, and all rows of
+one bounded native PostgreSQL dataset's validator-safe projection under signed
+reach. It refuses
+multi-dataset snapshots that cannot be read in one transaction. The recorded
+engine matches exact authorized call and reviewed runtime configuration inputs
+and returns a recorded receipt with no provider fallback. These tests prove the
+integration seam, not a live model or final stress run.
 An AC03 adapter must instead exercise distinct frozen run IDs over the same
 approved block via the real `ReuseFrozenRun` path, observe its reuse key and
 `ReusedFrom`, then assert physical source calls across one-field changes. It
 also needs a persisted native PostgreSQL read duration that excludes journal
 and finalization time. The runtime-pack dimension needs an actual reviewed
 pack pin in that frozen-run identity before it can be claimed.
+No manifest-selected pack digest substitutes for a reviewed pack selected by
+the actual frozen narrative consumer. This dimension remains fail closed until
+that product seam exists and its invalidation is observed.
 Phase 25 remains in progress until the real release profile executes and is reviewed;
 this change does not claim a final stress run or release acceptance.
