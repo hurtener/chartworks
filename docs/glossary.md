@@ -56,6 +56,9 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | MCP App | Chartworks's read viewer/resources over the established Harbor/Pengui host bridge; no host qualification project. |
 | L2 proposal | Reviewed, evidenced managed-engineering changes with staged external effects and compensation. |
 | Planned / shipped | Work specification versus runtime acceptance plus reviewed evidence. A planning SKIP never means shipped. |
+| Evaluation suite | Versioned fixture or live manifest with protected inputs, semantic alternatives, explicit thresholds/budgets, deterministic seed and exact implementation/configuration/semantic/source/dialect provenance. |
+| Evaluation evidence | Content-free case outcomes and separate service/source/model measurements. Fixture evidence never claims live calibration. |
+| Optimization proposal | Held-out candidate comparison that requires an explicit human review receipt and cannot publish prompts, examples, rules or semantics. |
 
 Business data and diagnostic metadata may use ordinary technical names such as artifact, MIME and index where appropriate. Protocol-standard field names are not renamed to satisfy an overbroad lexical check. Hygiene checks are not authorization controls.
 

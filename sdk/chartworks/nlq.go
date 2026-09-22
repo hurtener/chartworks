@@ -69,8 +69,14 @@ type NLQExampleStateRequest = nlqexec.ExampleStateRequest
 
 // NLQExample is one detached, tenant-scoped learning example.
 type NLQExample = nlqexec.ExampleRecord
+
+// NLQExampleBundle is the versioned neutral learning interchange payload.
 type NLQExampleBundle = nlqexec.ExampleBundle
+
+// NLQExampleExportRequest selects a bounded protected learning export.
 type NLQExampleExportRequest = nlqexec.ExampleExportRequest
+
+// NLQExampleImportRequest validates one candidate against current governed context.
 type NLQExampleImportRequest = nlqexec.ExampleImportRequest
 
 // NLQExamplesRequest selects bounded examples for one topic.

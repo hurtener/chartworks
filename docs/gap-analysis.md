@@ -456,15 +456,15 @@ phase 24/34/25 manual-suite obligations.
 
 ### EVAL-01 — Deterministic acceptance is not calibrated behavioral equivalence
 
-- **Disposition:** explicitly pending.
+- **Disposition:** Phase 24 evaluation/calibration runtime implemented for review; owner-calibrated differential execution remains Phase 34/25.
 - **Owner / phases:** 24/34/25.
 - **Reference behavior (neutral):** Original code exposes prompt packs, templates, evaluation and optimization workflows; deployed calibrated state may live outside the code snapshot.
-- **Current boundary:** Phase24 evaluation and phase34 differential cutover remain planned. Existing recorded provider fixtures establish controlled behavior, not whether the same calibrated workload yields the same answer.
+- **Current boundary:** Phase 24 now supplies versioned fixture/live manifests, protected semantic comparisons, a seeded fail-gate, adversarial cases, replay/shadow, held-out optimization with human review, scoped feedback export, durable run evidence and separate source/model/service measurements. Fixture evidence still does not establish whether the same owner-calibrated workload yields the same answer; Phase 34/25 must run the live private comparison manifest.
 - **Consequence:** Actual calibrated prompt versions, published topic content, examples, rules, thresholds, models, source schemas and data snapshots must be included in the comparison boundary.
 - **Contract, storage and import impact:** Create a private comparison manifest for calibrated semantic content, rules, examples, model/configuration, source schema/data and budgets. Store normalized context/SQL/result/output comparisons without copying confidential material into the repository.
 - **Closure requirements:** Run both systems against the same pinned semantic/rule/template/model/source/data state; compare normalized context, SQL meaning, results and outputs, reporting latency/cost separately.
 - **Source evidence IDs:** REF-EVAL-01-A.
-- **Current repository evidence:** [docs/plans/phase-24-eval.md:17](../docs/plans/phase-24-eval.md#L17); [docs/plans/phase-34-migration-parity-cutover.md:38](../docs/plans/phase-34-migration-parity-cutover.md#L38); [docs/reviews/phase-15-18-current-evidence.md:68](../docs/reviews/phase-15-18-current-evidence.md#L68).
+- **Current repository evidence:** [evaluation contract](contracts/evaluation-v1.md); [Phase 24 acceptance](../test/acceptance/phase24_test.go); [docs/plans/phase-34-migration-parity-cutover.md:38](../docs/plans/phase-34-migration-parity-cutover.md#L38).
 
 ### CLR-02 — Typed clarification answers can have no planning effect
 
@@ -559,7 +559,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-01 — Conversational continuity; 17/18/24
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** Phase 24 comparison/evidence contract implemented; live continuity journey remains pending Phase 34/25.
 - **Boundary:** Reference keeps context cards, context merge reports, follow-up intent and clarification events. Current refinement retains request choices/references, injects protected prior SQL, and revalidates current authority (`internal/nlqexec/service.go:84`, `:523`). Richer history equivalence is not established.
 - **Contract, storage and import impact:** Session/context records, follow-up resolution, route seals and privacy-safe replay metadata must agree across request storage, generation, execution and reauthorization.
 - **Required comparison and closure evidence:** Ask, add dimension, replace filter, remove filter, change metric, correct a clarification, return after semantic publication. Inspect selected context and results, not SQL text alone. Explicit removal must not silently retain stale constraints. Define history limits and when to ask again. Cross-session/context reuse must fail. Preserve privacy rather than copying the reference cache key design.
@@ -577,7 +577,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-03 — Query interaction and diagnostics; 18/21/22/23/31
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** Phase 24 consumer/typed-failure evidence lane implemented; supported-surface journey evidence remains pending.
 - **Boundary:** Core cancellation/refinement exists; historical UI had SQL/table/chart, confidence/risk, feedback, progress and fallback interactions (research brief06). Ownership of a standalone authoring app has intentionally changed.
 - **Contract, storage and import impact:** Consumer event schemas, cancellation/error states and stale-response rules must be shared by every supported surface; no standalone authoring product is implied.
 - **Required comparison and closure evidence:** Contract journey: start, progress, clarify, cancel, inspect result, switch view, send feedback, refine. Verify stale responses cannot replace newer results; disconnect differs from explicit cancellation; truncated/empty/failed/uncertain are distinguishable. Plain-language actions must map to actual operations through each supported consumer. No requirement to recreate a standalone app or IAM.
@@ -595,7 +595,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-05 — Rule interaction and semantic edits; 15/16/17/24
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** Phase 24 replay/shadow and review-only optimization evidence implemented; live semantic-edit cohort comparison remains pending.
 - **Boundary:** Deterministic rule replay and topic lifecycle retained; rich scope/context gaps tracked SEM/CTX/RUL.
 - **Contract, storage and import impact:** Rule and semantic-edit revisions need conflict/selection evidence, immutable publication boundaries and rollback/replay records.
 - **Required comparison and closure evidence:** Multiple simultaneously matching rules, exclusions versus pinned metrics, changed entity identities, retired relationships, conflict explanation and rollback. Verify a choice cannot weaken authority and a semantic edit cannot mutate a previously published definition. Save attributable selection/conflict evidence without leaking hidden metadata.
@@ -631,7 +631,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-09 — Source and dialect semantic equivalence; 09/10/14/18/19/24/34
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** Phase 24 per-dialect measured/unsupported/unknown metadata and fixture/live separation implemented; six live calibrated workloads remain pending Phase 34/25.
 - **Boundary:** Six engine contracts are not six live calibrated workload proofs.
 - **Contract, storage and import impact:** Each dialect adapter needs a contract matrix and independent live/fixture evidence; no dialect fallback may silently change meaning.
 - **Required comparison and closure evidence:** Per engine: identifier case, quoting, dates/timezones, decimals/overflow, null ordering, aggregation, safe functions, parameters, limits, cancellation and schema drift. Compare execution meaning for NLQ, BYO and frozen blocks. Record live versus fixture evidence independently; unsupported engine/cohort cannot silently fall back to another dialect.
@@ -640,7 +640,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-10 — Budget/failure/recovery richness; 01/05/06/10/18/24/28/30
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** Phase 24 bounded call/token/retry/time gates, typed failures and separate source/model/service/cost observations implemented; final stress evidence remains pending.
 - **Boundary:** Current typed uncertainty and validation boundaries are improvements.
 - **Contract, storage and import impact:** Budgets, typed failures, uncertain physical attempts, retries and retained artifacts need one truthful receipt model and bounded recovery tests.
 - **Required comparison and closure evidence:** Separate route/generate/correct/rerank/narrative budgets and cost unknowns. Provider timeout, malformed output, warehouse cancellation, unavailable metadata, crash after physical acceptance, expired artifact replay. Assert bounded retries and truthful state; missing output must never count as an empty correct answer. Stress only after these scenarios have behavioral acceptance.
@@ -649,7 +649,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 
 ### EXP-11 — Consumer parity after later phases; 21/22/23 plus each domain
 
-- **Status:** unassessed/pending frontier; not a new confirmed gap.
+- **Status:** Phase 24 consumer-parity evidence lane implemented; each later operation still owes an actual end-user journey in Phase 34/25.
 - **Boundary:** Current phase29–31 registries, SDK/MCP bindings and viewer consumers are present; cross-surface behavior for the newly merged operations was not rerun in this audit.
 - **Contract, storage and import impact:** Every new operation needs registration, scope, schema/error, client exposure, idempotency and cancellation checks in one conformance matrix.
 - **Required comparison and closure evidence:** After every new domain operation, verify registration, scope loader, schema/error, SDK/CLI/MCP accessibility, idempotency and cancellation meaning. Complete end-user journeys, not endpoint-count equality. Data/SQL visibility and export scopes remain distinct.

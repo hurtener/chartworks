@@ -1,0 +1,5 @@
+### D-085 — Evaluation evidence is mode-separated, content-protected and review-promoted
+
+Phase 24 uses one versioned suite and report contract for routing, context, SQL semantics, validation, charts, reports, replay, shadow, adversarial behavior and consumer parity. Fixture and live evidence are distinct modes. Security failures have zero tolerance; quality thresholds must be reviewed, while unknown owner calibration remains explicitly unknown and cannot pass a gate. Inputs and outputs are retained by protected digest; ordinary evidence contains no prompt, SQL or row content.
+
+Held-out optimization can create only a candidate proposal. A human review receipt is required to approve or reject it, and no evaluator publishes prompts, examples, rules or semantics. Provider/source/service measurements and unknown costs remain separate. PostgreSQL stores suites and runs under registered operator actions plus signed tenant-and-actor scope; feedback export additionally requires tenant export reach and remains candidate-only.

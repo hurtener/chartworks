@@ -2,9 +2,9 @@
 
 The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
 
-Phases **01–22 are shipped**. Phases 23, 26, 27, 28, 29, 30 and 31 are in progress;
-the remaining five workstreams are planned, including the phase-25 final release
-gate. The registry maps 188 criteria to implemented or in-progress work. This is
+Phases **01–22 are shipped**. Phases 23, 24, 26, 27, 28, 29, 30 and 31 are in progress;
+the remaining four workstreams are planned, including the phase-25 final release
+gate. The registry maps 224 criteria to implemented or in-progress work. This is
 bookkeeping, not evidence that every implementation has passed its release gates.
 
 The [phase-23 review](../reviews/phase-23-adversarial.md),
