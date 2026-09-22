@@ -317,7 +317,15 @@ func (s *Service) observeImpact(ctx context.Context, e identity.Envelope, id str
 	if renames != nil {
 		out.impact.Renames = renames
 	}
-	out.impact.DependencyDigest = DependencyDigest(out.dependencies, out.pins)
+	if _, err = s.resolveRules(ctx, e, d, true); err != nil {
+		if impactAuthorization(err) {
+			return out, err
+		}
+		out.impact.Classification = "review_required"
+		out.impact.Reason = "rule_publication_changed"
+		return out, nil
+	}
+	out.impact.DependencyDigest = DependencyDigest(out.dependencies, out.pins, d.Rules)
 	if classification == "rename" || classification == "cosmetic" {
 		out.impact.ProposalDigest = digest(struct {
 			Version, Revision, Binding string
@@ -433,6 +441,9 @@ func (s *Service) ApplyImpact(ctx context.Context, e identity.Envelope, id strin
 	}
 	_, refs, err := s.resolveDefinitions(ctx, e, d, true)
 	if err != nil {
+		return View{}, err
+	}
+	if _, err = s.resolveRules(ctx, e, d, true); err != nil {
 		return View{}, err
 	}
 	provenance := clone(snapshot.Revision.Provenance)

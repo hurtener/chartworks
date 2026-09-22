@@ -11,6 +11,7 @@ import (
 	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/sources"
 )
@@ -183,11 +184,22 @@ type Definition struct {
 	Source         string              `json:"source"`
 	Context        string              `json:"context"`
 	Topics         []TopicPin          `json:"topics"`
+	Rules          []RulePin           `json:"rules,omitempty"`
 	Template       *TemplatePin        `json:"template,omitempty"`
 	SQL            string              `json:"sql"`
 	Parameters     []Parameter         `json:"parameters"`
 	ExpectedSchema []exec.Field        `json:"expected_schema"`
 	Outputs        []Output            `json:"outputs"`
+}
+
+// RulePin binds one immutable reviewed ruleset to the exact semantic topic
+// publication used by a block. It carries no rule text and grants no authority.
+type RulePin struct {
+	Topic        string `json:"topic"`
+	TopicVersion string `json:"topic_version"`
+	PackDigest   string `json:"pack_digest"`
+	RuleVersion  string `json:"rule_version"`
+	RuleDigest   string `json:"rule_digest"`
 }
 
 // Provenance records the server-derived origin of an authored revision.
@@ -279,6 +291,7 @@ type ValidationRecord struct {
 	Topics        []TopicPin              `json:"topics"`
 	Binding       exec.Binding            `json:"binding"`
 	Definitions   []topics.Definition     `json:"definitions"`
+	Rules         []RulePin               `json:"rules,omitempty"`
 }
 
 // Attestation records a separately authorized certification of exact revision evidence.
@@ -333,6 +346,7 @@ type View struct {
 	Source          string                 `json:"source"`
 	Context         string                 `json:"context"`
 	Topics          []TopicPin             `json:"topics"`
+	Rules           []RulePin              `json:"rules,omitempty"`
 	Parameters      []Parameter            `json:"parameters"`
 	ExpectedSchema  []exec.Field           `json:"expected_schema"`
 	Outputs         []Output               `json:"outputs"`
@@ -469,6 +483,7 @@ type Capture struct {
 	Source     string
 	Context    string
 	Topics     []TopicPin
+	Rules      []RulePin
 	Template   *TemplatePin
 	Question   string
 }
@@ -536,6 +551,12 @@ type History struct {
 // TopicReader and SourceReader expose the already-governed metadata services.
 type TopicReader interface {
 	Read(context.Context, identity.Envelope, string, string) (topics.Published, error)
+}
+
+// RuleReader resolves retained immutable rule publications. Exact reads still
+// require current signed rule/topic reach from the verified envelope.
+type RuleReader interface {
+	Read(context.Context, identity.Envelope, string, string) (rulesets.Published, error)
 }
 
 // SourceReader supplies current registered source bindings to the common reporting service.

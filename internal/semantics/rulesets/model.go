@@ -82,6 +82,7 @@ type RetireRequest struct {
 // EvaluateRequest supplies explicit semantic references for hard-constraint evaluation.
 type EvaluateRequest struct {
 	References []semantics.Reference `json:"references"`
+	Template   string                `json:"template,omitempty"`
 }
 
 // ReplayRequest evaluates one retained ruleset against one exact topic
@@ -92,6 +93,7 @@ type ReplayRequest struct {
 	RuleVersion        string                         `json:"rule_version"`
 	TopicVersion       string                         `json:"topic_version,omitempty"`
 	References         []semantics.Reference          `json:"references"`
+	Template           string                         `json:"template,omitempty"`
 }
 
 // ShadowRequest compares a retained baseline with a retained candidate. An
@@ -103,6 +105,7 @@ type ShadowRequest struct {
 	CandidateRuleVersion string                         `json:"candidate_rule_version,omitempty"`
 	TopicVersion         string                         `json:"topic_version,omitempty"`
 	References           []semantics.Reference          `json:"references"`
+	Template             string                         `json:"template,omitempty"`
 }
 
 // Evaluation is deterministic hard-constraint evidence tied to exact versions.

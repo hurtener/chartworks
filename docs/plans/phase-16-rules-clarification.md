@@ -82,3 +82,14 @@ unchanged and continue to run. [CW-01 delivery evidence](../reviews/cw-01-delive
 records exact executed checks and review corrections. No CLAR-AC11 comprehension
 study, live cloud/model quality measurement or general SQL-shape expansion is
 claimed by these software tests.
+
+## CW-06 rule-scope continuation
+
+RUL-01 is implemented by the closed compound-AND and exact-template scope
+contract in [rule lifecycle v1](../contracts/rule-lifecycle-v1.md). Selection is
+deterministic and replayable; distinct template scopes do not create false
+compile-time conflicts, while potentially overlapping hard constraints still
+fail closed. No executable SQL, regular-expression or authority mechanism was
+added. Focused truth-table and conflict coverage supplements AC02/AC05/AC06;
+full race, fuzz, PostgreSQL and release qualification remains in the manual final
+gap workflow described by D-074.

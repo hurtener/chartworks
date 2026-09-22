@@ -107,11 +107,12 @@ func ExecutionDigest(d Definition) string {
 		Source     string
 		Context    string
 		Topics     []TopicPin
+		Rules      []RulePin
 		Template   *TemplatePin
 		SQL        string
 		Parameters []Parameter
 		Schema     []exec.Field
-	}{CanonicalizationVersion, d.Source, d.Context, d.Topics, d.Template, d.SQL, d.Parameters, d.ExpectedSchema})
+	}{CanonicalizationVersion, d.Source, d.Context, d.Topics, d.Rules, d.Template, d.SQL, d.Parameters, d.ExpectedSchema})
 	if d.SchemaVersion == SchemaVersion {
 		return base
 	}
@@ -132,6 +133,25 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 			return ErrInvalid
 		}
 		seen[pin.Topic] = true
+	}
+	if len(d.Rules) > 0 {
+		if d.SchemaVersion == SchemaVersion || len(d.Rules) > len(d.Topics) {
+			return ErrInvalid
+		}
+		topicsByID := map[string]TopicPin{}
+		for _, pin := range d.Topics {
+			topicsByID[pin.Topic] = pin
+		}
+		ruleTopics := map[string]bool{}
+		previous := ""
+		for _, pin := range d.Rules {
+			topic, ok := topicsByID[pin.Topic]
+			if !ok || ruleTopics[pin.Topic] || previous != "" && pin.Topic <= previous || pin.TopicVersion != topic.Version || pin.PackDigest != topic.Digest || !identity.Identifier(pin.RuleVersion) || !hashValid(pin.RuleDigest) {
+				return ErrInvalid
+			}
+			ruleTopics[pin.Topic] = true
+			previous = pin.Topic
+		}
 	}
 	if d.Template != nil && (!captured || !identity.Identifier(d.Template.ID) || !identity.Identifier(d.Template.Version) || !hashValid(d.Template.Digest)) {
 		return ErrInvalid

@@ -59,3 +59,13 @@ Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
 source execution, provider-fixture and browser checks. Keep the existing named
 phase criteria and phase status; this assignment closes only its three owned gap
 entries, not the whole phase, other reporting work, or full migration/release.
+
+## CW-06 rule-snapshot continuation
+
+BLK-02 is implemented by exact immutable rule pins on definition v2. Validation,
+publication/certification health, source-impact rechecks and protected native
+definition transfer bind the same rule dependency digest. Replacement or
+retirement invalidates current health without rewriting the published revision
+or historical attestation. See [D-075](../decisions/2026-09-22-rule-scopes-reporting-snapshots.md),
+the [block contract](../contracts/reporting-blocks-v1.md), and the
+[CW-06 review](../reviews/cw-06-adversarial.md).

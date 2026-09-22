@@ -65,3 +65,12 @@ Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
 source execution, provider-fixture and browser checks. Keep the existing named
 phase criteria and phase status; this assignment closes only its three owned gap
 entries, not the whole phase, other reporting work, or full migration/release.
+
+## CW-06 frozen rule dependencies
+
+Frozen manifests, reuse identity, composition grouping and scheduled admission
+retain exact rule pins. Seal and execution re-read the active publication under
+current signed authority and refuse any rule-version/digest drift. The frozen
+lane performs no question interpretation, rule selection, SQL generation or
+model work. These additions extend AC01/AC05/AC06; broad race, full PostgreSQL
+matrix and release checks remain assigned to the D-074 manual final workflow.

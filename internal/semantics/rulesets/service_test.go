@@ -217,3 +217,27 @@ func TestEvidenceServiceBoundariesPreservePins(t *testing.T) {
 		t.Fatalf("same-pinned shadow changed evidence: %#v err=%v", shadow, err)
 	}
 }
+
+func TestReplayPersistsExactTemplateSelectionEvidence(t *testing.T) {
+	service, repo, evidence, e := evidenceBoundaryFixture(t)
+	target := semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}
+	repo.rules.Definition.Rules[0].Scope = semantics.RuleScope{Kind: semantics.RuleScopeTemplate, Template: "monthly_sales"}
+	subject, err := publishedSubject(service.topics.(*evidenceBoundaryTopics).published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := semantics.CompilePublishedRules(subject, repo.rules.Definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.rules.Digest = model.Digest()
+
+	match, err := service.Replay(context.Background(), e, "commerce", ReplayRequest{RuleVersion: "rules-v1", TopicVersion: "topic-v1", References: []semantics.Reference{target}, Template: "monthly_sales"})
+	if err != nil || len(match.Baseline.Result.Selection) != 1 || !match.Baseline.Result.Selection[0].Applied || match.Baseline.Result.Selection[0].Reason != "template_match" {
+		t.Fatalf("matching template evidence was not retained: %#v %v", match, err)
+	}
+	mismatch, err := service.Replay(context.Background(), e, "commerce", ReplayRequest{RuleVersion: "rules-v1", TopicVersion: "topic-v1", References: []semantics.Reference{target}, Template: "quarterly_sales"})
+	if err != nil || mismatch.Baseline.Result.Selection[0].Applied || mismatch.Baseline.Result.Selection[0].Reason != "template_mismatch" || len(evidence.comparisons) != 2 {
+		t.Fatalf("mismatching template evidence was not deterministic: %#v %v", mismatch, err)
+	}
+}

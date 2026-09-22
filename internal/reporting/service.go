@@ -19,6 +19,7 @@ import (
 type Service struct {
 	repo      Repository
 	topics    TopicReader
+	rules     RuleReader
 	sources   SourceReader
 	validator Validator
 	executor  Executor
@@ -33,7 +34,7 @@ func nilValue(v any) bool {
 
 // New keeps metadata authoring/viewing independent of source/model availability.
 // Missing execution dependencies disable only explicit validation and preview.
-func New(repo Repository, topics TopicReader, sources SourceReader, validator Validator, executor Executor, capture QueryCapture, limits config.Reporting) (*Service, error) {
+func New(repo Repository, topics TopicReader, sources SourceReader, validator Validator, executor Executor, capture QueryCapture, limits config.Reporting, ruleReaders ...RuleReader) (*Service, error) {
 	if nilValue(repo) || nilValue(topics) || limits.Validate() != nil {
 		return nil, ErrInvalid
 	}
@@ -49,7 +50,14 @@ func New(repo Repository, topics TopicReader, sources SourceReader, validator Va
 	if nilValue(capture) {
 		capture = nil
 	}
-	return &Service{repo: repo, topics: topics, sources: sources, validator: validator, executor: executor, capture: capture, limits: limits, slots: make(chan struct{}, limits.MaxConcurrent)}, nil
+	var rules RuleReader
+	if len(ruleReaders) > 1 || len(ruleReaders) == 1 && nilValue(ruleReaders[0]) {
+		return nil, ErrInvalid
+	}
+	if len(ruleReaders) == 1 {
+		rules = ruleReaders[0]
+	}
+	return &Service{repo: repo, topics: topics, rules: rules, sources: sources, validator: validator, executor: executor, capture: capture, limits: limits, slots: make(chan struct{}, limits.MaxConcurrent)}, nil
 }
 
 // CanValidate reports whether the existing validator and executor are installed.
@@ -139,7 +147,7 @@ func project(snapshot Snapshot, now time.Time) View {
 			trust.Certification = "stale"
 		}
 	}
-	out := View{State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
+	out := View{State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Rules: clone(d.Rules), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
 	out.SchemaVersion = d.SchemaVersion
 	out.QueryLimits = clone(d.QueryLimits)
 	out.ResultPolicy = ResolveResultPolicy(d, nil, nil)
@@ -214,6 +222,9 @@ func (s *Service) Create(ctx context.Context, e identity.Envelope, in CreateRequ
 	if err != nil {
 		return View{}, err
 	}
+	if _, err = s.resolveRules(ctx, e, in.Definition, false); err != nil {
+		return View{}, err
+	}
 	r, err := s.newRevision(e, 1, in.Definition, Provenance{Kind: "manual"})
 	if err != nil {
 		return View{}, err
@@ -252,6 +263,9 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	}
 	_, refs, err := s.resolveDefinitions(ctx, e, in.Definition, false)
 	if err != nil {
+		return View{}, err
+	}
+	if _, err = s.resolveRules(ctx, e, in.Definition, false); err != nil {
 		return View{}, err
 	}
 	provenance := clone(base.Revision.Provenance)
@@ -299,6 +313,13 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 		return View{}, ErrInvalid
 	}
 	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(in.Metadata), Source: captured.Source, Context: captured.Context, Topics: clone(captured.Topics), Template: clone(captured.Template), SQL: captured.SQL, Parameters: parameters, ExpectedSchema: clone(captured.Schema), Outputs: clone(in.Outputs)}
+	if len(captured.Rules) > 0 {
+		d, err = MigrateDefinition(d)
+		if err != nil {
+			return View{}, err
+		}
+		d.Rules = clone(captured.Rules)
+	}
 	if err := validateDefinition(ctx, d, s.limits, true); err != nil {
 		return View{}, err
 	}
@@ -307,6 +328,9 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	}
 	_, refs, err := s.resolveDefinitions(ctx, e, d, false)
 	if err != nil {
+		return View{}, err
+	}
+	if _, err = s.resolveRules(ctx, e, d, false); err != nil {
 		return View{}, err
 	}
 	r, err := s.newRevision(e, 1, d, Provenance{Kind: "query_capture", Query: in.Query, OriginalQuestion: captured.Question, Template: clone(captured.Template)})

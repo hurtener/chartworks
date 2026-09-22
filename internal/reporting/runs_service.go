@@ -245,6 +245,10 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	if err != nil {
 		return RunView{}, err
 	}
+	rules, err := s.blocks.resolveRules(ctx, e, d, true)
+	if err != nil || digest(rules) != digest(snapshot.Validation.Rules) {
+		return RunView{}, ErrStale
+	}
 	binding, err := s.blocks.sources.ContextBinding(ctx, e, d.Source, d.Context)
 	if err != nil {
 		return RunView{}, err
@@ -266,7 +270,7 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 		Resolved: resolved, Binding: binding.Clone(), Dependencies: clone(snapshot.Validation.Dependencies), References: refs,
 		Trust: project(snapshot, task.Created).Trust, Private: private, Policy: in.Policy, PartialPolicy: in.PartialPolicy,
 		Locale: language, Created: task.Created, Expires: task.Created.Add(time.Duration(retention)), Limits: limitsForQuery(s.limits, caps),
-		ReuseMaxAge: in.ReuseMaxAgeSeconds, Model: s.modelVersion, Definitions: []topics.Definition{}}
+		ReuseMaxAge: in.ReuseMaxAgeSeconds, Model: s.modelVersion, Definitions: []topics.Definition{}, Rules: clone(rules)}
 	for _, definition := range definitions {
 		m.Definitions = append(m.Definitions, clone(definition.Definition))
 	}
@@ -280,7 +284,7 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	}
 	m.Selection, m.QueryLimits = &selection, &caps
 	m.ResultPolicy = ResolveResultPolicy(d, m.Dependencies, m.Definitions)
-	m.ReuseKey = digest([]any{FrozenVersion, charts.BuildVersion, m.Tenant, m.Block, m.Revision.Digest,
+	m.ReuseKey = digest([]any{FrozenVersion, charts.BuildVersion, m.Tenant, m.Block, m.Revision.Digest, m.Rules,
 		m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, exec.Hash(binding), m.Private, privacyActor,
 		m.Policy, m.Trust, m.Model, "reporting-output-policy-v2", m.Selection, m.QueryLimits, m.ResultPolicy, m.Limits})
 	proof, err := prepareRun(e, m)

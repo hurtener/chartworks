@@ -71,3 +71,26 @@ replay/shadow and exact-topic import/export have API/SDK consumers. This extensi
 adds no issuer, grants, alternative validator or model gateway. Actual software
 acceptance and bounded review are in the [CW-01 evidence](../reviews/cw-01-delivery-review.md);
 representative-user comprehension remains a separate, unperformed study.
+
+## CW-06 compound and template scopes
+
+Rule publication now accepts two additional closed applicability scopes. A
+`compound` scope applies only when every exact semantic target is present; the
+existing `entities` scope keeps its any-target behavior. A `template` scope
+contains one validated identifier and applies only when the caller supplies that
+exact reviewed identifier. Topic scopes remain unconditional. Scope shapes are
+mutually exclusive: topic and template scopes cannot carry entity targets, while
+entity and compound scopes cannot carry a template identifier.
+
+Evaluation returns sorted per-rule selection evidence with an applied bit and a
+closed reason such as `compound_complete` or `template_mismatch`. Replay and
+shadow requests carry the same optional exact template identifier and persist the
+same deterministic comparison evidence. The routing consumer can supply that
+identifier, but the rule scope cannot discover templates, match text, execute a
+regular expression, contain SQL, or widen signed topic/source/context reach.
+Hard constraints remain the typed require/exclude-reference union.
+
+Existing published rule versions and digests are unchanged. Legacy topic/entity
+rules retain their original truth table. Importers may carry a valid native scope
+or produce an explicit reviewed transformation/rejection; they must not infer a
+compound or template scope from prose, SQL or a source-specific mapping.

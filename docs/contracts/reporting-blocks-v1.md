@@ -149,3 +149,30 @@ record, so that adapter leaves the optional template pin absent rather than
 inferring one from SQL or accepting a client assertion. Exact semantic topic and
 dependency pins are still captured and revalidated; manual authoring cannot
 claim template provenance.
+
+## CW-06 immutable rule dependencies
+
+Definition v2 can bind at most one immutable `RulePin` for each pinned topic
+that had an active reviewed ruleset. The pin
+contains the topic/version/pack digest and rule version/digest only; rule text
+remains in the protected rule store. Pins are sorted, unique, and must match the
+definition's exact topic publication. A definition with pins fails closed when
+the rules reader is unavailable or the exact retained publication cannot be read
+under current signed authority.
+
+Validation evidence, certification, current health, execution digests, frozen
+manifests, reuse identity, composition groups and scheduled admission retain the
+same rule pins. Validation and frozen execution require the pinned publication
+to remain active. Publishing a replacement or retiring the active ruleset marks
+dependent block health stale with `rule_publication_changed`; publication and
+historical certification remain immutable, while revalidation, certification
+reuse and execution refuse the stale dependency. Refresh performs no rule
+selection, NLQ or model work.
+
+Migration 038 stores the exact pins with tenant-composite foreign keys and
+immutable-row protection. Existing v1/v2 blocks without rule pins retain their
+published bytes and explicitly mean “no captured rule snapshot.” Migration never
+invents a pin. Native export/import carries the pins through the protected
+definition projection and revalidates them through ordinary authoring. A foreign
+mapping that cannot prove exact topic and rule coordinates must be reported as
+unsupported instead of silently dropping or approximating the dependency.

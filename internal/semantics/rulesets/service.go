@@ -196,7 +196,7 @@ func (s *Service) Evaluate(ctx context.Context, e identity.Envelope, topic strin
 	if err != nil {
 		return Evaluation{}, err
 	}
-	result, err := semantics.EvaluateConstraints(subject, model, in.References)
+	result, err := semantics.EvaluateSelectedConstraints(subject, model, semantics.RuleSelectionInput{References: in.References, Template: in.Template})
 	if err != nil {
 		return Evaluation{}, err
 	}
@@ -262,7 +262,7 @@ func (s *Service) Replay(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	base.Result, err = semantics.EvaluateConstraints(subject, model, in.References)
+	base.Result, err = semantics.EvaluateSelectedConstraints(subject, model, semantics.RuleSelectionInput{References: in.References, Template: in.Template})
 	if err != nil {
 		return Comparison{}, err
 	}
@@ -292,7 +292,7 @@ func (s *Service) Shadow(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	baseline.Result, err = semantics.EvaluateConstraints(baselineSubject, baselineModel, in.References)
+	baseline.Result, err = semantics.EvaluateSelectedConstraints(baselineSubject, baselineModel, semantics.RuleSelectionInput{References: in.References, Template: in.Template})
 	if err != nil {
 		return Comparison{}, err
 	}
@@ -302,7 +302,7 @@ func (s *Service) Shadow(ctx context.Context, e identity.Envelope, topic string,
 	if err != nil {
 		return Comparison{}, err
 	}
-	candidate.Result, err = semantics.EvaluateConstraints(candidateSubject, candidateModel, in.References)
+	candidate.Result, err = semantics.EvaluateSelectedConstraints(candidateSubject, candidateModel, semantics.RuleSelectionInput{References: in.References, Template: in.Template})
 	if err != nil {
 		return Comparison{}, err
 	}

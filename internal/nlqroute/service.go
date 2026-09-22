@@ -93,6 +93,7 @@ type RouteRequest struct {
 	Context       string                          `json:"context"`
 	Locale        nlq.Language                    `json:"locale"`
 	Question      string                          `json:"question"`
+	Template      string                          `json:"template,omitempty"`
 	Kinds         []string                        `json:"kinds,omitempty"`
 	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
 	References    []semantics.Reference           `json:"references,omitempty"`
@@ -496,7 +497,7 @@ func admissionVector(dimensions int) []float32 {
 }
 
 func normalizeRequest(in RouteRequest) ([]string, error) {
-	if (in.Locale != nlq.LanguageEnglish && in.Locale != nlq.LanguageSpanish) || !validQuestion(in.Question) || !identity.Identifier(in.Context) {
+	if (in.Locale != nlq.LanguageEnglish && in.Locale != nlq.LanguageSpanish) || !validQuestion(in.Question) || !identity.Identifier(in.Context) || in.Template != "" && !identity.Identifier(in.Template) {
 		return nil, ErrInvalid
 	}
 	topicsIDs := append([]string(nil), in.Topics...)
@@ -645,7 +646,7 @@ func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in Rout
 		sort.Strings(ids)
 		refs = append(refs, semantics.Reference{Kind: semantics.KindDataset, ID: ids[0]})
 	}
-	evaluation, err := s.rules.Evaluate(ctx, e, item.id, rulesets.EvaluateRequest{References: refs})
+	evaluation, err := s.rules.Evaluate(ctx, e, item.id, rulesets.EvaluateRequest{References: refs, Template: in.Template})
 	if err != nil {
 		return nil, nil, err
 	}

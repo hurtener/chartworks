@@ -15,6 +15,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+func invalidateReportingRulePins(ctx context.Context, tx pgx.Tx, tenant, topic, version string) error {
+	_, err := tx.Exec(ctx, `UPDATE chartworks.block_health h SET observation=jsonb_set(jsonb_set(jsonb_set(h.observation,'{status}','"stale"'::jsonb),'{reason}','"rule_publication_changed"'::jsonb),'{observed_at}',to_jsonb(clock_timestamp())) FROM chartworks.block_rule_pins p WHERE (p.tenant_id,p.block_id,p.revision)=(h.tenant_id,h.block_id,h.revision) AND p.tenant_id=$1 AND p.topic_id=$2 AND p.rule_version=$3`, tenant, topic, version)
+	return err
+}
+
 var _ rulesets.Repository = (*DB)(nil)
 var _ rulesets.EvidenceRepository = (*DB)(nil)
 
@@ -183,6 +188,11 @@ func (d *DB) PublishRules(ctx context.Context, e identity.Envelope, published to
 		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_evidence_invalidations(tenant_id,invalidation_id,topic_id,revision,kind,old_rule_version,new_rule_version,topic_version,pack_digest) VALUES($1,$2,$3,$4,'publish',$5,$6,$7,$8)`, e.Tenant(), invalidationID, published.State.Topic, expected+1, oldVersion, version, published.State.Version, published.Digest); err != nil {
 			return err
 		}
+		if oldVersion != nil {
+			if err = invalidateReportingRulePins(ctx, tx, e.Tenant(), published.State.Topic, *oldVersion); err != nil {
+				return err
+			}
+		}
 		scope, _ := store.NewScope(e.Tenant(), e.User())
 		if err = auditJob(ctx, tx, scope, "rules.published", published.State.Topic); err != nil {
 			return err
@@ -287,6 +297,9 @@ func (d *DB) RetireRules(ctx context.Context, e identity.Envelope, published top
 			return err
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_evidence_invalidations(tenant_id,invalidation_id,topic_id,revision,kind,old_rule_version,new_rule_version,topic_version,pack_digest) VALUES($1,$2,$3,$4,'retire',$5,NULL,$6,$7)`, e.Tenant(), invalidationID, published.State.Topic, expected+1, *active, published.State.Version, published.Digest); err != nil {
+			return err
+		}
+		if err = invalidateReportingRulePins(ctx, tx, e.Tenant(), published.State.Topic, *active); err != nil {
 			return err
 		}
 		scope, _ := store.NewScope(e.Tenant(), e.User())
