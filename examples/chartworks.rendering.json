@@ -1,0 +1,16 @@
+{
+  "features": { "renderer": true },
+  "rendering": {
+    "enabled": true,
+    "worker_path": "/opt/chartworks/bin/chartworks-renderer",
+    "worker_version": "chartworks-svg-worker-v1",
+    "theme_version": "chartworks-theme-v1",
+    "max_time": "10s",
+    "max_memory_bytes": 268435456,
+    "max_input_bytes": 16777216,
+    "max_output_bytes": 16777216,
+    "max_concurrent": 2,
+    "retention": "24h",
+    "frame_ancestors": ["https://pengui.example"]
+  }
+}

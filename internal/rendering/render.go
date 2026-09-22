@@ -36,6 +36,7 @@ type Viewer interface {
 // Request selects one retained output and one closed static representation.
 type Request struct {
 	View   reporting.DeliveryViewRequest `json:"view"`
+	Full   bool                          `json:"full,omitempty"`
 	Format string                        `json:"format" jsonschema:"enum=json,enum=csv,enum=html,enum=svg"`
 	Theme  string                        `json:"theme" jsonschema:"enum=light,enum=dark"`
 	Width  int                           `json:"width"`
@@ -44,17 +45,24 @@ type Request struct {
 
 // Rendition carries bounded static bytes and their retained-input provenance.
 type Rendition struct {
-	Version      string     `json:"version"`
-	Format       string     `json:"format"`
-	MediaType    string     `json:"media_type"`
-	Theme        string     `json:"theme"`
-	Width        int        `json:"width"`
-	Height       int        `json:"height"`
-	SourceDigest string     `json:"source_digest"`
-	Projection   Projection `json:"projection"`
-	Digest       string     `json:"digest"`
-	Bytes        int        `json:"bytes"`
-	Content      string     `json:"content"`
+	ID            string     `json:"id,omitempty"`
+	State         string     `json:"state,omitempty"`
+	Code          string     `json:"code,omitempty"`
+	Version       string     `json:"version"`
+	WorkerVersion string     `json:"worker_version,omitempty"`
+	ThemeVersion  string     `json:"theme_version,omitempty"`
+	Format        string     `json:"format"`
+	MediaType     string     `json:"media_type"`
+	Theme         string     `json:"theme"`
+	Width         int        `json:"width"`
+	Height        int        `json:"height"`
+	SourceDigest  string     `json:"source_digest"`
+	Projection    Projection `json:"projection"`
+	Digest        string     `json:"digest"`
+	Bytes         int        `json:"bytes"`
+	Content       string     `json:"content"`
+	CreatedAt     time.Time  `json:"created_at,omitempty"`
+	ExpiresAt     time.Time  `json:"expires_at,omitempty"`
 }
 
 // Projection identifies the exact retained window used for this rendition.
@@ -73,8 +81,11 @@ type Projection struct {
 
 // Service renders retained values and owns no source, model or network client.
 type Service struct {
-	viewer   Viewer
-	maxBytes int
+	viewer     Viewer
+	maxBytes   int
+	processor  Processor
+	repository Repository
+	options    Options
 }
 
 // New constructs a bounded retained-only renderer.
@@ -82,7 +93,7 @@ func New(viewer Viewer, maxBytes int) (*Service, error) {
 	if viewer == nil || maxBytes < 1024 || maxBytes > 64<<20 {
 		return nil, ErrInvalid
 	}
-	return &Service{viewer, maxBytes}, nil
+	return &Service{viewer: viewer, maxBytes: maxBytes}, nil
 }
 
 // Export rechecks exact run reach, reads the retained artifact and renders it.
@@ -103,9 +114,33 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 	if err != nil {
 		return Rendition{}, err
 	}
+	if in.Full {
+		if in.View.Kind == "block" || (in.Format != "html" && in.Format != "svg") {
+			return Rendition{}, ErrInvalid
+		}
+		return s.renderComposition(ctx, e, in, view)
+	}
 	if view.Output == nil || view.Output.State != "succeeded" || view.Output.RetainedDigest == "" {
 		return Rendition{}, reporting.ErrIncomplete
 	}
+	return s.render(ctx, in, view)
+}
+
+func (s *Service) render(ctx context.Context, in Request, view reporting.DeliveryViewResult) (Rendition, error) {
+	if s.processor != nil && (in.Format == "html" || in.Format == "svg") {
+		out, err := s.processor.Process(ctx, SealedWork{Version: WorkerProtocolVersion, Request: in, View: view})
+		if err != nil {
+			return Rendition{}, err
+		}
+		if len(out.Content) > s.maxBytes {
+			return Rendition{}, reporting.ErrBudget
+		}
+		return out, nil
+	}
+	return renderSealed(in, view, s.maxBytes)
+}
+
+func renderSealed(in Request, view reporting.DeliveryViewResult, maxBytes int) (Rendition, error) {
 	timezone := view.Timezone
 	if timezone == "" {
 		timezone = "UTC"
@@ -141,11 +176,11 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 	if err != nil {
 		return Rendition{}, err
 	}
-	if len(content) > s.maxBytes {
+	if len(content) > maxBytes {
 		return Rendition{}, reporting.ErrBudget
 	}
 	sum := sha256.Sum256(content)
-	return Rendition{Version: Version, Format: in.Format, MediaType: media, Theme: in.Theme, Width: in.Width, Height: in.Height, SourceDigest: view.Output.RetainedDigest, Projection: projection, Digest: hex.EncodeToString(sum[:]), Bytes: len(content), Content: string(content)}, ctx.Err()
+	return Rendition{State: "succeeded", Version: Version, Format: in.Format, MediaType: media, Theme: in.Theme, Width: in.Width, Height: in.Height, SourceDigest: view.Output.RetainedDigest, Projection: projection, Digest: hex.EncodeToString(sum[:]), Bytes: len(content), Content: string(content)}, nil
 }
 
 func projectionFor(view reporting.DeliveryViewResult, timezone string) (Projection, error) {

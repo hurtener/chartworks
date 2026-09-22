@@ -83,6 +83,11 @@ type ReportingExportRequest = rendering.Request
 
 // ReportingRendition contains bounded static bytes and immutable provenance.
 type ReportingRendition = rendering.Rendition
+type ReportingRenditionReadRequest = rendering.ReadRequest
+type ReportingRenditionListRequest = rendering.ListRequest
+type ReportingRenditionListResult = rendering.ListResult
+type ReportingRenditionExpireRequest = rendering.ExpireRequest
+type ReportingRenditionExpireResult = rendering.ExpireResult
 
 func validReportingKind(kind string) bool {
 	return kind == "block" || kind == "report" || kind == "dashboard"
@@ -164,6 +169,35 @@ func (c *Client) ExportReporting(ctx context.Context, in ReportingExportRequest)
 		return out, ErrReportingRequest
 	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting/export", "", in, &out, 20<<20)
+	return
+}
+
+func (c *Client) CreateReportingRendition(ctx context.Context, in ReportingExportRequest) (out ReportingRendition, err error) {
+	if !validReportingKind(in.View.Kind) || !identity.Identifier(in.View.Run) || !oneOfString(in.Format, "json", "csv", "html", "svg") {
+		return out, ErrReportingRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions", "", in, &out, 20<<20)
+	return
+}
+func (c *Client) ReadReportingRendition(ctx context.Context, id string) (out ReportingRendition, err error) {
+	if !identity.Identifier(id) {
+		return out, ErrReportingRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions/read", "", rendering.ReadRequest{ID: id}, &out, 20<<20)
+	return
+}
+func (c *Client) ListReportingRenditions(ctx context.Context, in ReportingRenditionListRequest) (out ReportingRenditionListResult, err error) {
+	if in.Limit < 0 || in.Limit > 100 {
+		return out, ErrReportingRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions/list", "", in, &out, 20<<20)
+	return
+}
+func (c *Client) ExpireReportingRenditions(ctx context.Context, limit int) (out ReportingRenditionExpireResult, err error) {
+	if limit < 1 || limit > 1000 {
+		return out, ErrReportingRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions/expire", "", rendering.ExpireRequest{Limit: limit}, &out, 1<<20)
 	return
 }
 

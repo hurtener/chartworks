@@ -1,6 +1,6 @@
 # Phase 32 — reporting-rendering-embed
 
-Status: planned. Owner: internal/rendering, web/report-viewer. Hard dependencies: 28, 29, 31.
+Status: shipped. Owner: internal/rendering, web/report-viewer. Hard dependencies: 28, 29, 31.
 
 ## Authority and design
 
@@ -49,12 +49,10 @@ Implement `TestPhase32/AC01` through `TestPhase32/AC08` using the real worker an
 
 Iframe is delivery; SSR is where content is rendered. Neither requires Chartworks to issue credentials. D-044/D-047 apply. No runtime completion is claimed.
 
-## CW-05 bounded static/export slice, 2026-09-22
+## Runtime evidence, 2026-09-22
 
-D-079 implements a retained-only subset of AC01/AC03/AC04/AC06/AC08: registered
-JSON/CSV/static HTML/SVG export, exact run-export reach, escaped inert content,
-generated-inline-style-only HTML CSP and no source/model/network seam. Tables/KPIs render as HTML and
-charts/KPIs as SVG without client JavaScript. This does not change the phase status:
-renderer worker isolation/crash limits, durable rendition storage/deletion, complete
-catalog geometry, report/dashboard composition and BFF example remain planned, so
-AC02/AC05/AC07 and full AC03/AC06 are not claimed.
+D-079 supplies the exact static projection. D-082 adds the isolated worker,
+PostgreSQL rendition lifecycle, report/dashboard geometry, current-authority reads,
+HTTP/MCP/SDK/CLI registration and concrete client-owned BFF example. TestPhase32
+owns AC01–AC08, including real process/crash/timeout boundaries and the explicit
+JSON/CSV/HTML/SVG-only matrix.
