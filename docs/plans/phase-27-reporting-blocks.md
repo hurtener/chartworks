@@ -72,3 +72,11 @@ and fences current rule heads in the block commit transaction, so a
 concurrent replacement fails stale without partial state. See [D-076](../decisions/2026-09-22-rule-scopes-reporting-snapshots.md),
 the [block contract](../contracts/reporting-blocks-v1.md), and the
 [CW-06 review](../reviews/cw-06-adversarial.md).
+
+## CW-05 rich output continuation
+
+AC01/AC02/AC06/AC08: immutable block revisions may store closed v3 KPI/table and
+column display intent. Existing JSON digests and drift checks include the complete
+mapping; migration 042 adds forward bounds without rewriting v1/v2 publications.
+Definition transfer remains native and exact. Foreign mapping belongs to Phase 34.
+See [D-078](../decisions/2026-09-22-rich-output-display.md).

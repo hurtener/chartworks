@@ -76,3 +76,12 @@ drift. The frozen
 lane performs no question interpretation, rule selection, SQL generation or
 model work. These additions extend AC01/AC05/AC06; broad race, full PostgreSQL
 matrix and release checks remain assigned to the D-074 manual final workflow.
+
+## CW-05 retained display continuation
+
+AC01/AC02/AC03/AC06/AC07: frozen fan-out builds v3 KPI/table output from the same
+normalized retained rows without selector, source or model work. Exact derived KPI
+values, table presentation policy and column display metadata survive output storage
+and reuse identity. Existing artifact authority/expiry remains authoritative.
+Static export reads that artifact through the delivery facade under fresh read and
+exact run-export reach; it does not re-execute expired/missing values.

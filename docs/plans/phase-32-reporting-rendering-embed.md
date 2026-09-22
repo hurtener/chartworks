@@ -48,3 +48,13 @@ Implement `TestPhase32/AC01` through `TestPhase32/AC08` using the real worker an
 ## Glossary, decisions and deviations
 
 Iframe is delivery; SSR is where content is rendered. Neither requires Chartworks to issue credentials. D-044/D-047 apply. No runtime completion is claimed.
+
+## CW-05 bounded static/export slice, 2026-09-22
+
+D-078 implements a retained-only subset of AC01/AC03/AC04/AC06/AC08: registered
+JSON/CSV/static HTML/SVG export, exact run-export reach, escaped inert content,
+deny-all HTML CSP and no source/model/network seam. Tables/KPIs render as HTML and
+charts/KPIs as SVG without client JavaScript. This does not change the phase status:
+renderer worker isolation/crash limits, durable rendition storage/deletion, complete
+catalog geometry, report/dashboard composition and BFF example remain planned, so
+AC02/AC05/AC07 and full AC03/AC06 are not claimed.

@@ -23,7 +23,7 @@ func TestCW03ReportingOperationCatalog(t *testing.T) {
 		func() (*api.Registry, error) { return reportingapi.Registry(true, true, true) },
 		func() (*api.Registry, error) { return reportingapi.RuntimeRegistry(true, true) },
 		reportingapi.DocumentsRegistry,
-		func() (*api.Registry, error) { return reportingapi.DeliveryRegistry(true) },
+		func() (*api.Registry, error) { return reportingapi.DeliveryRegistry(true, true) },
 	}
 	registries := make([]*api.Registry, 0, len(factories))
 	for _, factory := range factories {
@@ -67,6 +67,9 @@ func TestCW03ReportingOperationCatalog(t *testing.T) {
 				t.Fatal("schema projection changed declared output policy", definition.ID)
 			}
 		}
+	}
+	if row, ok := byID["reportingExport"]; !ok || row.Action != "reporting.export" {
+		t.Fatal("retained static export absent from SDK/CLI operation catalog")
 	}
 	// Exercise the real client HTTP parsing path without invoking a domain,
 	// accessing a warehouse or requiring a model to read registration metadata.

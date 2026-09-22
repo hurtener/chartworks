@@ -1,0 +1,41 @@
+# Rich KPI, table and display-intent decision
+
+### D-078 — Reviewed display intent is versioned data and static export consumes retained evidence
+
+Status: implemented for review, 2026-09-22. Owns the CW-05 continuation of
+phases 20, 27, 28 and 31 plus a bounded Phase 32 slice.
+
+## Decision
+
+Mapping version 3 is the closed authoring contract for rich KPI and table output.
+KPI policy names the selected ordered row, comparison mode, exact derived values,
+target, thresholds and sparkline. Table policy names ordered visibility, page size
+and whether eligible exact totals are shown. Columns carry a display label and a
+bounded formatter vocabulary: locale tag, closed date pattern, fraction digits and
+currency-symbol fallback. These fields are stored inside immutable definition and
+retained-output JSON and therefore participate in existing digests and drift checks.
+
+Rendering is a consumer of the retained artifact. `reporting_export` is registered
+across HTTP, MCP and the generated SDK/CLI registry. It requires current read and
+export actions and exact signed `cw.run.export` reach before reading storage. JSON,
+CSV, static HTML and static SVG are bounded deterministic outputs. No renderer input
+accepts an arbitrary URL, script, formatter, source/model client or credential.
+
+Version 1 and 2 mappings remain readable. Migration 042 adds forward shape/bounds
+checks for version 3 without rewriting an existing published revision. An explicit
+rebind remains review-required; a label/format or KPI/table policy change cannot
+silently mutate publication.
+
+## Deliberate boundary
+
+This decision does not mark Phase 32 shipped. Durable rendition records, isolated
+renderer workers, full report/dashboard layout composition, PDF and BFF/embed work
+remain in that phase. Phase 34 owns foreign import/export mappings and must reject
+unknown or lossy display-policy conversion. Final behavioral, migration, load and
+release qualification remains phases 24/34/25.
+
+## Evidence
+
+See the [display-intent contract](../contracts/rich-output-display-v1.md),
+[chart contract](../contracts/chart-specifications-v1.md),
+[gap map](../gap-analysis.md), and [CW-05 review](../reviews/cw-05-adversarial.md).

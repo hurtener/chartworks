@@ -83,10 +83,30 @@ export function exact(cell, column, missing = 'Missing') {
   if (cell?.null || !cell) return raw;
   const f = column?.format || {};
   let value = raw;
+	if (column?.type === 'temporal' && f.date_pattern) value = formatDate(raw,f.date_pattern,f.locale);
   if (f.percent === 'fraction') { const shifted = percentShift(raw); value = shifted === null ? raw + ' (fraction)' : shifted + '%'; }
   if (f.percent === 'whole') value += '%';
-  return [value,text(f.currency),text(f.unit)].filter(Boolean).join(' ');
+	if (!f.percent && ['integer','decimal','number'].includes(column?.type)) value = formatDecimal(value,f.fraction_digits,f.locale);
+	return [value,text(f.currency_symbol)||text(f.currency),text(f.unit)].filter(Boolean).join(' ');
 }
+function formatDecimal(raw,digits,locale) {
+  if (!integer(digits,0,20) || !/^[+-]?\d+(?:\.\d+)?$/.test(raw)) return raw;
+  const sign=raw.startsWith('-')?'-':raw.startsWith('+')?'+':'', unsigned=sign?raw.slice(1):raw, parts=unsigned.split('.');
+  let fraction=parts[1]||'', whole=parts[0];
+  if (fraction.length>digits) { const round=fraction[digits]>='5'; let scaled=BigInt(whole+(fraction.slice(0,digits)||'')); if(round)scaled+=1n; let s=scaled.toString().padStart(digits+1,'0'); whole=digits?s.slice(0,-digits):s; fraction=digits?s.slice(-digits):''; }
+  else fraction=fraction.padEnd(digits,'0');
+  const spanish=text(locale).toLowerCase().startsWith('es'), group=spanish?'.':',', decimal=spanish?',':'.';
+  whole=whole.replace(/\B(?=(\d{3})+(?!\d))/g,group); return sign+whole+(digits?decimal+fraction:'');
+}
+function formatDate(raw,pattern,locale) {
+  const m=/^(\d{4})-(\d{2})(?:-(\d{2})(?:[T ](\d{2}):(\d{2}))?)?/.exec(raw); if(!m||pattern!=='year_month'&&!m[3])return raw;
+  const spanish=text(locale).toLowerCase().startsWith('es'), months=spanish?['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],longMonths=spanish?['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']:['January','February','March','April','May','June','July','August','September','October','November','December'];
+  if(pattern==='year_month')return spanish?`${m[2]}/${m[1]}`:`${m[1]}-${m[2]}`;
+  if(pattern==='date_short')return spanish?`${m[3]}/${m[2]}/${m[1]}`:`${m[2]}/${m[3]}/${m[1]}`;
+  const names=pattern==='date_long'?longMonths:months,date=spanish?`${m[3]} ${names[Number(m[2])-1]} ${m[1]}`:`${names[Number(m[2])-1]} ${m[3]}, ${m[1]}`;
+  return pattern==='datetime_short'&&m[4]?`${date} ${m[4]}:${m[5]}`:date;
+}
+function columnLabel(column){return text(column?.display_label)||text(column?.name);}
 function columnFor(chart, slot) { return array(chart.columns).find(c => c.id === chart.mapping?.bindings?.[slot]); }
 function pointCell(chart, p, column) {
   const b = chart.mapping?.bindings || {};
@@ -113,7 +133,7 @@ function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices 
   table.append(element('caption',caption));
   const head = element('thead'), header = element('tr');
   if (rowIndices.length) { const th = element('th',w.row); th.scope = 'col'; header.append(th); }
-  for (const column of columns) { const th = element('th',text(column.name)); th.scope = 'col'; header.append(th); }
+  for (const column of columns) { const th = element('th',columnLabel(column)); th.scope = 'col'; header.append(th); }
   head.append(header); table.append(head);
   const body = element('tbody');
   for (const [index,row] of rows.entries()) {
@@ -126,7 +146,7 @@ function renderTable(parent, columns, rows, w, caption, totals = [], rowIndices 
   table.append(body); scroll.append(table); parent.append(scroll);
   for (const total of totals) {
     const c = columns.find(c => c.id === total.column);
-    if (c) parent.append(element('p',`${c.name}: ${exact(total.value,c,w.null)} — ${w.scope}: ${text(total.scope)}`,'metadata'));
+    if (c) parent.append(element('p',`${columnLabel(c)}: ${exact(total.value,c,w.null)} — ${w.scope}: ${text(total.scope)}`,'metadata'));
   }
 }
 
@@ -197,8 +217,9 @@ function renderScales(parent,c,w,draw) {
 // This is a bounded consumer check, not a second query/authority validator. An
 // unsupported or inconsistent retained version must never fall back to scalar.
 function validateRetainedChart(c) {
-  if (![1,2].includes(c.version) || c.mapping?.version !== c.version || c.mapping.kind !== c.kind) throw fail('invalid_request');
+  if (![1,2,3].includes(c.version) || c.mapping?.version !== c.version || c.mapping.kind !== c.kind) throw fail('invalid_request');
   if (c.version === 1) return;
+	if(c.version===3){if(!['kpi','table'].includes(c.kind))throw fail('invalid_request');if(c.kind==='kpi'&&!c.kpi_result||c.kind==='table'&&!integer(c.table_page_size,1,1000))throw fail('invalid_request');return;}
   const b = c.mapping.bindings, columns = array(c.columns), points = array(c.points), rows = array(c.rows), indices = array(c.row_indices);
   if (!b || c.transformation?.version !== 1 || !integer(c.input_rows,0,MAX_POINTS) || rows.length !== c.input_rows || indices.length !== rows.length || new Set(indices).size !== indices.length) throw fail('invalid_request');
   const ids = new Set(columns.map(col=>col.id)), defs = new Map();
@@ -398,7 +419,13 @@ export function renderChart(parent, chart, language='en') {
   const ready = chart.state === 'ready';
   if(!ready)parent.append(element('p',`${w.empty} ${text(chart.state)}`,'notice'));
   if(chart.kind==='table'){renderTable(parent,array(chart.columns),array(chart.rows),w,w.values,array(chart.totals));return;}
-  if(ready && chart.kind==='kpi')for(const p of chart.points)parent.append(element('p',exact(p.value,columnFor(chart,'value'),w.null),'kpi'));
+  if(ready && chart.kind==='kpi'){
+    const valueColumn=columnFor(chart,'value'),targetColumn=columnFor(chart,'target'),percentColumn={type:'decimal',format:{percent:'whole'}},k=chart.kpi_result;
+    parent.append(element('p',exact(k?.value||chart.points[0]?.value,valueColumn,w.null),'kpi'));
+    for(const [label,v,column] of [['Comparison',k?.comparison,valueColumn],['Delta',k?.delta,valueColumn],['Percent delta',k?.percent_delta,percentColumn],['Target',k?.target,targetColumn],['Target difference',k?.target_difference,valueColumn]])if(v)parent.append(element('p',`${label}: ${exact(v,column,w.null)}`,'metadata'));
+    if(k?.threshold_state)parent.append(element('p',`${text(k.threshold_label)||k.threshold_state} · ${k.threshold_state}`,'badge'));
+    if(array(k?.sparkline).length){const line=element('p',k.sparkline.map(v=>v.null?w.null:v.exact).join(' → '),'metadata');line.setAttribute('aria-label','Sparkline exact values');parent.append(line);}
+  }
   else if(ready && ['bar','column','grouped_bar','stacked_bar','stacked_column'].includes(chart.kind))renderScales(parent,chart,w,renderBars);
   else if(ready && ['line','area'].includes(chart.kind))renderScales(parent,chart,w,renderLines);
   else if(ready && ['pie','donut'].includes(chart.kind))renderPie(parent,chart,w);

@@ -9,6 +9,7 @@ import (
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/mcpserver"
+	"github.com/hurtener/chartworks/internal/rendering"
 	"github.com/hurtener/chartworks/internal/reporting"
 	reportviewer "github.com/hurtener/chartworks/web/report-viewer"
 )
@@ -22,12 +23,18 @@ func deliveryEntry[I, O any](path, id, summary string, call func(context.Context
 	return entry
 }
 
-func deliveryEntries(service *reporting.Delivery, execution bool) []runtimeEndpoint {
+func deliveryEntries(service *reporting.Delivery, execution bool, renderer ...*rendering.Service) []runtimeEndpoint {
 	entries := []runtimeEndpoint{
 		deliveryEntry("/v1/reporting/search", "reportingSearch", "Search authorized published reporting metadata without SQL or values", service.Search),
 		deliveryEntry("/v1/reporting/describe", "reportingDescribe", "Describe published outputs and typed business filters without execution", service.Describe),
 		deliveryEntry("/v1/reporting/runs", "reportingRuns", "List authorized retained reporting artifact metadata", service.Runs),
 		deliveryEntry("/v1/reporting/view", "reportingView", "Read one exact authorized retained output or table page without execution", service.View),
+	}
+	if len(renderer) == 1 && renderer[0] != nil {
+		entry := deliveryEntry("/v1/reporting/export", "reportingExport", "Render or export one exact authorized retained output without execution", renderer[0].Export)
+		entry.definition.Action = "reporting.export"
+		entry.definition.Effect = "retained_static_rendition"
+		entries = append(entries, entry)
 	}
 	if execution {
 		entry := deliveryEntry("/v1/reporting/run", "reportingRun", "Explicitly run a published reporting revision with fresh signed execution authority", service.Run)
@@ -41,26 +48,36 @@ func deliveryEntries(service *reporting.Delivery, execution bool) []runtimeEndpo
 
 // DeliveryRegistry is also the SDK source. It advertises no run implementation
 // when the configured source execution lane is unavailable.
-func DeliveryRegistry(execution bool) (*api.Registry, error) {
-	return registryForEntries(deliveryEntries(nil, execution))
+func DeliveryRegistry(execution bool, static ...bool) (*api.Registry, error) {
+	var renderer *rendering.Service
+	if len(static) == 1 && static[0] {
+		renderer, _ = rendering.New(registryViewer{}, 16<<20)
+	}
+	return registryForEntries(deliveryEntries(nil, execution, renderer))
+}
+
+type registryViewer struct{}
+
+func (registryViewer) View(context.Context, identity.Envelope, reporting.DeliveryViewRequest) (reporting.DeliveryViewResult, error) {
+	return reporting.DeliveryViewResult{}, reporting.ErrInvalid
 }
 
 // DeliveryHandler uses the existing strict HTTP decoder, Pengui verifier and
 // bounded admission wrapper rather than introducing a second API policy path.
-func DeliveryHandler(verifier *auth.Verifier, service *reporting.Delivery, execution bool, next http.Handler) http.Handler {
+func DeliveryHandler(verifier *auth.Verifier, service *reporting.Delivery, execution bool, next http.Handler, renderer ...*rendering.Service) http.Handler {
 	if service == nil {
 		return http.NotFoundHandler()
 	}
-	return serveRuntimeEntries(verifier, deliveryEntries(service, execution), next)
+	return serveRuntimeEntries(verifier, deliveryEntries(service, execution, renderer...), next)
 }
 
 // DeliveryMCPBindings binds the exact HTTP DTOs to the same domain methods.
 // Visibility hints never authorize a call; every call reaches signed checks.
-func DeliveryMCPBindings(service *reporting.Delivery, execution bool) ([]mcpserver.Binding, error) {
+func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer ...*rendering.Service) ([]mcpserver.Binding, error) {
 	if service == nil {
 		return nil, mcpserver.ErrRegistration
 	}
-	registry, err := DeliveryRegistry(execution)
+	registry, err := DeliveryRegistry(execution, len(renderer) == 1 && renderer[0] != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +114,13 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool) ([]mcpserv
 		return nil, err
 	}
 	out = append(out, view)
+	if len(renderer) == 1 && renderer[0] != nil {
+		export, err := mcpserver.Bind(registry, "reportingExport", "reporting_export", "reporting", "Export one retained output as bounded JSON, CSV, static HTML or static SVG. Performs no source or model work.", renderer[0].Export, mapper)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, export)
+	}
 	if execution {
 		run, err := mcpserver.Bind(registry, "reportingRun", "reporting_run", "reporting", "Explicitly execute a published reporting revision. May query data, spend model tokens and persist an artifact. New filters require a new key and current signed authority; do not retry unknown outcomes blindly.", service.Run, mapper)
 		if err != nil {

@@ -120,6 +120,22 @@ func bindingVariants(e CatalogEntry) []BindingVariant {
 
 func validateSlots(m Mapping, e CatalogEntry) error {
 	b := m.Bindings
+	if m.Version == DisplayVersion {
+		switch m.Kind {
+		case KPI:
+			if b.Value == "" || b.Series != "" || b.X != "" || b.Y != "" || b.Parent != "" || b.Size != "" || len(b.Columns) != 0 || len(b.Values) != 0 || len(b.Hierarchy) != 0 {
+				return ErrInvalid
+			}
+			return nil
+		case Table:
+			if len(b.Columns) == 0 || b.Category != "" || b.Value != "" || b.Series != "" || b.X != "" || b.Y != "" || b.Parent != "" || b.Size != "" || b.Comparison != "" || b.Target != "" || len(b.Values) != 0 || len(b.Hierarchy) != 0 {
+				return ErrInvalid
+			}
+			return nil
+		default:
+			return ErrInvalid
+		}
+	}
 	if !richBindings(m.Kind, b) {
 		if m.Version != Version {
 			return ErrInvalid

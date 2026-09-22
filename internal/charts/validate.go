@@ -8,6 +8,32 @@ import (
 	"unicode/utf8"
 )
 
+func localeTag(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) < 2 || len(s) > 35 {
+		return false
+	}
+	parts := strings.Split(s, "-")
+	if len(parts[0]) < 2 || len(parts[0]) > 3 {
+		return false
+	}
+	for i, part := range parts {
+		if part == "" || len(part) > 8 {
+			return false
+		}
+		for _, r := range part {
+			if r < 'A' || r > 'Z' && r < 'a' || r > 'z' {
+				if i == 0 || r < '0' || r > '9' {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 func identifier(s string) bool {
 	if len(s) < 1 || len(s) > 128 {
 		return false
@@ -43,12 +69,12 @@ func oneOf(s string, choices ...string) bool {
 }
 
 func validateColumn(c Column) error {
-	if !identifier(c.ID) || c.Name == "" || !text(c.Name, 1024) ||
+	if !identifier(c.ID) || c.Name == "" || !text(c.Name, 1024) || !text(c.DisplayLabel, 256) ||
 		!oneOf(c.Type, "integer", "decimal", "number", "text", "temporal", "boolean", "binary", "structured") ||
 		!oneOf(c.Role, "unknown", "identifier", "dimension", "time", "measure", "kpi") ||
 		!oneOf(c.Grain, "", "second", "minute", "hour", "day", "week", "month", "quarter", "year") ||
 		!oneOf(c.Aggregation, "", "sum", "count", "average", "minimum", "maximum", "distinct_count") ||
-		!text(c.Format.Unit, 64) || !oneOf(c.Format.Percent, "", "fraction", "whole") || c.Format.FractionDigits < 0 || c.Format.FractionDigits > 20 {
+		!text(c.Format.Unit, 64) || !text(c.Format.CurrencySymbol, 8) || !localeTag(c.Format.Locale) || !oneOf(c.Format.DatePattern, "", "date_short", "date_medium", "date_long", "datetime_short", "year_month") || !oneOf(c.Format.Percent, "", "fraction", "whole") || c.Format.FractionDigits < 0 || c.Format.FractionDigits > 20 {
 		return ErrInvalid
 	}
 	if c.Format.Currency != "" {
@@ -60,6 +86,12 @@ func validateColumn(c Column) error {
 				return ErrInvalid
 			}
 		}
+	}
+	if c.Format.CurrencySymbol != "" && c.Format.Currency == "" {
+		return ErrInvalid
+	}
+	if c.Format.DatePattern != "" && c.Type != "temporal" {
+		return ErrInvalid
 	}
 	if !numeric(c.Type) && (c.Role == "measure" || c.Role == "kpi" || c.Aggregation != "" || c.Format.Currency != "" || c.Format.Percent != "" || c.Format.FractionDigits != 0) ||
 		c.Role == "time" && c.Type != "temporal" || c.Grain != "" && c.Type != "temporal" {

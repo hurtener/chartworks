@@ -84,3 +84,12 @@ sealing; optional gateway ranking receives bounded metadata only.
 original scalar goldens remain unchanged. Rich reporting KPI/table definitions,
 narrative policies, broader locale/display formats and static export remain in
 their owning assignments; no whole-product parity or live-model claim is made.
+
+## CW-05 display-intent continuation, 2026-09-22
+
+Mapping version 3 now owns the previously deferred KPI/table and per-column display
+contract: exact comparison/delta/percent/target behavior, thresholds, sparkline,
+table visibility/page size/totals, display labels, locale/date/fraction/currency
+fallback. V1/v2 remain readable. See [D-078](../decisions/2026-09-22-rich-output-display.md)
+and the [display contract](../contracts/rich-output-display-v1.md). This continuation
+does not close the remaining Phase 32 renderer system or final qualification.

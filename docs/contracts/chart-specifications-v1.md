@@ -1,4 +1,4 @@
-# Output specifications v1 and v2
+# Output specifications v1, v2 and v3
 
 This is the current shared chart contract. Its filename remains stable for older
 links. `internal/charts` owns deterministic binding, suitability and retained
@@ -35,7 +35,8 @@ interpretation, chart selection or optional chart ranking.
 | Authoring rebind | `POST /v1/charts/rebind` | `RebindChart` | Detached `review_required` proposal, not approval or mutation. |
 
 Data, column provenance and old scalar mappings/outputs remain version 1. Rich
-bindings and their outputs use version 2. `mapping_versions` advertises `[1,2]`;
+bindings and their outputs use version 2. Reviewed KPI/table display intent uses
+version 3. `mapping_versions` advertises `[1,2,3]`;
 `BuildVersion` separately identifies the transformation engine in frozen-result
 reuse keys. A retained v1 artifact is still readable; a new engine does not
 rewrite it or reuse an incompatible older build as a new result.
@@ -47,7 +48,8 @@ numeric tokens without passing exact values through floating point. It does not
 infer units, additive semantics or authority.
 
 The binding object permits scalar column IDs `category`, `value`, `series`, `x`,
-`y`, `parent`, `size`, and ordered ID arrays `values`, `hierarchy`, `columns` only.
+`y`, `parent`, `size`, `comparison`, `target`, and ordered ID arrays `values`,
+`hierarchy`, `columns` only. Comparison/target are restricted to v3 KPI.
 Arrays contain column IDs, not arbitrary expressions, objects or rendering code.
 The applicable variant closes the allowed combination. `value` and `values` are
 exclusive; `hierarchy` replaces scalar `parent`/`category` for a rich treemap.
@@ -73,8 +75,8 @@ supported alternatives independently from legacy scalar `required_slots`.
 | Stacked bar / column | Category + series + one value | Existing exact tuple contract is preserved; no repeated-measure stacking extension. |
 | Heatmap | Categorical x/y + value | Existing unique-cell contract; not numeric scatter axes. |
 | Pie / donut | Category + value | Existing nonnegative composition contract. |
-| KPI | One scalar value, at most one row | Existing interface preserved; no new reporting KPI definition math. |
-| Table | Ordered columns | Existing exact rows/totals interface preserved; no new reporting table policy. |
+| KPI | One scalar value, at most one row | V3 selects first/last ordered value, comparison column or previous row, exact delta/percent delta, target difference, ordered thresholds and retained sparkline values. |
+| Table | Ordered columns | V3 retains visibility/order, labels, page size and explicit eligible totals policy. Hidden columns may remain in saved sort intent but are omitted from retained display rows. |
 
 All variants apply type, cardinality, null and numeric-range validation before
 building. Categorical/series tuples and heatmap cells must be unambiguous even if
@@ -144,9 +146,12 @@ values, membership and scope; zero or subpixel regions remain truthful omissions
 
 Integer/decimal labels remain exact strings. Only numeric geometry approximates
 to finite floating point; `approximate` and visible warnings disclose it. Currency,
-unit and percentage hints do not rewrite stored exact values. Fraction-percent
-versus whole-percent display remains explicit. Wider locale/display-format and
-reporting-output policy work is not introduced here.
+unit, percentage, fraction digits, locale, closed date pattern and currency-symbol
+fallback do not rewrite stored exact values. Display labels are separate from
+meaning/provenance pins. Version 3 carries these fields through immutable
+definitions and retained output. Interactive and retained-only static/export
+consumers apply the closed formatter vocabulary; arbitrary locale code, date
+patterns, scripts and URLs reject.
 
 Totals use exact arithmetic over the supplied result only for explicitly additive
 `sum`/`count` numeric columns without percentage formatting. Average/minimum/maximum,

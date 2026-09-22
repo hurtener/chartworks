@@ -1,5 +1,24 @@
 # Behavioral gap analysis and parity expansion
 
+## CW-05 implementation status — 2026-09-22
+
+CW-05 closes the authored and retained-runtime portions of VIS-01 and VIS-03.
+Closed chart mapping version 3 adds KPI comparison, exact delta/percent delta,
+target difference, ordered threshold state and sparkline intent, plus table column
+visibility, display labels, stable order, page size and explicit totals policy.
+Per-column locale, date pattern, fraction digits and currency-symbol fallback stay
+in immutable mappings and retained outputs. The Apps viewer and bounded retained-only
+CSV/static HTML/SVG exporter consume the same fields. Export requires current
+`reporting.read` and `reporting.export` actions plus exact signed run export reach.
+
+This disposition does not close all of Phase 32. Rendition persistence, renderer
+worker isolation, report/dashboard page composition and embed/BFF integration remain
+in that phase. Phase 34 still owns foreign import mapping, and final migration,
+stress and behavioral qualification remain phases 34/25. Evidence is in the
+[display-intent contract](contracts/rich-output-display-v1.md),
+[decision D-078](decisions/2026-09-22-rich-output-display.md) and
+[CW-05 review](reviews/cw-05-adversarial.md).
+
 ## CW-02 implementation status — 2026-09-16
 
 This section is the current, scoped disposition for VIS-02 (including a/b),
@@ -28,7 +47,7 @@ separate from the fourteen kind names; scalar inventory alone is not equivalence
 | Scatter / bubble | Numeric x/y, optional categorical series, explicit numeric non-percentage measure size for bubbles. Area, not radius, encodes positive size. Zero size has zero area; missing coordinates/size do not become zero. Exact values remain separate from geometry. |
 | Treemap | Scalar flat/parent-category mappings remain compatible. V2 declares 1–8 ordered levels with unique leaf paths, eligible additive measure, exact internal sums, stable path identities and contributing returned rows. Null path/value rows are retained but omitted from tree aggregation. Negative values reject. |
 | Heatmap | Existing two categorical axes and exact value; duplicate cell tuples reject instead of choosing a row implicitly. |
-| Pie / donut / KPI / table | Existing interfaces, exact scalar values, null handling and eligible totals remain. Positive composition rejects negatives. Rich reporting KPI math, table policies and wider locale/display-format work remain with their owners. |
+| Pie / donut / KPI / table | Positive composition rejects negatives. V3 KPI adds exact comparison/delta/percent/target/threshold/sparkline intent; v3 table adds visibility/page/totals policy. Both retain labels and closed locale/date/currency formatting. |
 
 ### Saved meaning, exactness and retained-consumer closure
 
@@ -119,7 +138,7 @@ This update rechecked every original finding against the merged target code and 
 | BLK-01, BLK-03, BLK-04, BLK-06 | **Still open or narrowed at the authored-contract boundary.** | CW-03 closes BLK-01 and CW-06 closes BLK-02. Phase 28 seals selected outputs, source/context/topic/rule dependencies and typed period resolution; certification language checks, semantic overlap and broader assistance remain. [rule snapshots](../internal/reporting/dependencies.go), [run manifest](../internal/reporting/runs_model.go), [question assessment](../internal/reporting/service.go) |
 | BLK-05, BLK-07 | **Runtime path inspected; inherited fields and policy mapping remain open.** | Bounded narratives use retained redacted evidence and receipts, and manifests seal deployment limits. Expected schema still lacks inherited sensitivity; authored maximum-claims and source-query policy mappings remain absent. No fresh runtime result is attributed here. [narrative evidence](../internal/reporting/runs_narrative.go#L82), [narrative definition](../internal/reporting/model.go#L137), [sealed limits](../internal/reporting/runs_model.go#L46) |
 | MIG-01, EVAL-01, PERF-01 | **Pending or unmeasured.** | The dated manifest is provenance only. Calibration, import/cutover, warm/cold authority-aware reuse and live latency/cost still require Phase 24/34/25 evidence. [evaluation plan](../docs/plans/phase-24-eval.md#L17), [cutover plan](../docs/plans/phase-34-migration-parity-cutover.md#L38), [routing cache boundary](../internal/nlqroute/service.go#L192) |
-| VIS-01, VIS-02, VIS-03, VIS-04 | **Definition/model gaps remain; Phase 31 viewer is a real current consumer.** | Current chart mappings remain scalar and format support is narrow; the viewer dispatches all fourteen kinds and draws one selected widget/output. Static rendering/export remain Phase 32 scope; whole-page grid equivalence requires an approved viewer/host expansion decision. [chart mapping](../internal/charts/model.go#L135), [viewer dispatch](../web/report-viewer/app.js#L259), [viewer exact formatting](../web/report-viewer/app.js#L79) |
+| VIS-01, VIS-02, VIS-03, VIS-04 | **VIS-01/03 are implemented by CW-05; VIS-02/04 are implemented by CW-02. Final qualification remains.** | Versioned mappings retain rich KPI/table and per-column display intent; retained viewer and static/export consumers apply it. Full Phase 32 composition/worker/rendition persistence and Phase 34 import remain open. [chart mapping](../internal/charts/model.go), [retained renderer](../internal/rendering/render.go), [viewer formatter](../web/report-viewer/app.js) |
 
 ### Current bounded validation record
 
@@ -174,9 +193,9 @@ phase 24/34/25 manual-suite obligations.
 | RUL-01 | Rules | Compound and template scopes have no equivalent current representation | implemented by CW-06; final manual qualification pending | 16/17/18 |
 | RTE-02 | Interpretation | Value, geography and temporal normalization is not an equivalent runtime stage | implemented by CW-07 over reviewed rich semantics; broader grammar/live evidence pending | 17/18; source metadata 15/33 |
 | MIG-01 | Portability | Topic-only portability does not carry the calibrated topic environment | narrowed; full migration pending | 15 subset; 34 full migration |
-| VIS-01 | Outputs | Rich KPI and table authoring options are absent | confirmed definition gap; consumers present | 20/27; consume 28/29/31; static32 |
+| VIS-01 | Outputs | Rich KPI and table authoring options are absent | implemented by CW-05; full Phase 32 remains | 20/27/28/31; static32 slice |
 | VIS-02 | Charts | Multi-measure chart slots are reduced to singular bindings | confirmed model gap; viewer present | 20/27/31; static32 |
-| VIS-03 | Formatting | Stored formatting and display labels lose authored intent | confirmed consumer gap | 20/27/31; static32/import34 |
+| VIS-03 | Formatting | Stored formatting and display labels lose authored intent | implemented by CW-05; foreign import remains phase34 | 20/27/28/31; static32 slice/import34 |
 | VIS-04 | Selection diagnostics | Selection rationale carries less structured evidence | narrowed; equivalence decision needed | 20/24 |
 | EVAL-01 | Evaluation | Deterministic acceptance is not calibrated behavioral equivalence | explicitly pending | 24/34/25 |
 | CLR-02 | Clarification | Typed clarification answers can have no planning effect | typed binding and session replay implemented; bounded native SQL subset | 16/17/18 |
@@ -392,13 +411,13 @@ phase 24/34/25 manual-suite obligations.
 
 ### VIS-01 — Rich KPI and table authoring options are absent
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-05; full Phase 32 remains separately open.
 - **Owner / phases:** 20/27 definitions; current consumers 28/29/31; static32.
 - **Reference behavior (neutral):** Original KPI output computes comparison/delta/percent delta, target difference, threshold state and sparkline; table definitions carry visibility, labels, sort, page size and show-totals intent.
-- **Current boundary:** Go saved KPI mapping exposes one value binding without comparison/trend/target/threshold slots. Generic tables support ordered selected columns, sorting and exact additive totals, but not all of the original saved display controls.
-- **Consequence:** Four output kind names do not prove parity within each kind. Totals are not wholly missing; the missing part includes saved display intent and rich KPI semantics.
-- **Contract, storage and import impact:** Extend output definitions and retained result manifests for KPI comparison/target/threshold/trend behavior and table display intent. Update import, chart mapping, viewer, static rendering and export contracts before consuming artifacts.
-- **Closure requirements:** Port KPI comparison/target/threshold/trend and table visibility/labels/page-size/totals intent; compare values and display policy separately from generic chart totals.
+- **Current behavior:** Version 3 saved mappings close KPI value/comparison/target slots, exact delta and percent-delta policy, ordered thresholds and retained sparkline values. Tables retain ordered visibility, display labels, page size and show-totals policy. Frozen builds consume retained rows only; no selection, query or model call is introduced.
+- **Consumer boundary:** Immutable definitions and retained JSON carry the reviewed policy. The Apps viewer applies it. Retained-only CSV/static HTML/SVG export is registered across HTTP/MCP/SDK/CLI. Broader Phase 32 worker/rendition/page composition remains pending.
+- **Storage/import impact:** Migration 042 adds a forward constraint for version 3 shapes without rewriting older publications. Foreign import mapping remains Phase 34 and must reject lossy downgrade.
+- **Closure evidence:** `internal/charts/display_test.go`, retained renderer tests, strict API schemas and viewer formatter tests separately assert exact values and display policy.
 - **Source evidence IDs:** REF-VIS-01-A, REF-VIS-01-B.
 - **Current repository evidence:** [internal/charts/model.go:135](../internal/charts/model.go#L135); [internal/charts/model.go:230](../internal/charts/model.go#L230); [internal/reporting/model.go:162](../internal/reporting/model.go#L162).
 
@@ -416,14 +435,13 @@ phase 24/34/25 manual-suite obligations.
 
 ### VIS-03 — Stored formatting and display labels lose authored intent
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-05 for native authoring/retention/view/static export; foreign import remains Phase 34.
 - **Owner / phases:** 20/27; viewer31; static32/import34.
 - **Reference behavior (neutral):** Original column format hints include locale, date format and currency-symbol fallback, and column metadata has a human-facing display label. Generators transmit formatting side-channel metadata.
-- **Current boundary:** Go retains unit/currency/percent/fraction digits and provenance, but lacks those per-column locale/date/display-label fields.
-- **Current consumer detail:** The Phase 31 viewer's `exact()` path applies percent, currency and unit hints but does not consume the persisted `fraction_digits` hint. That is a remaining consumer-specific formatting difference in addition to the missing per-column locale/date/display-label fields. [viewer exact formatter](../web/report-viewer/app.js#L79); [stored format](../internal/charts/model.go#L79)
-- **Consequence:** A later renderer can choose defaults, but cannot reconstruct the original author choice from the current persisted spec.
-- **Contract, storage and import impact:** Add per-column display label, locale, date pattern and currency fallback fields where authored intent must survive. Carry them through chart specs, report outputs, viewer, static renderer and exports.
-- **Closure requirements:** Round-trip a renamed result column with locale/date/currency formatting; verify interactive, static and export consumers agree.
+- **Current behavior:** Columns retain a human display label and closed locale/date-pattern/currency-symbol fields beside existing exact unit/currency/percent/fraction digits. Interactive and static consumers use the same closed rules, including fraction digits and Spanish/English separators/date ordering; raw exact values remain unchanged.
+- **Safety:** Locale is a bounded tag and date formats are a closed enum. No formatter code, URL, script or arbitrary pattern is accepted. HTML/SVG escape text and static export has no source/model/network seam.
+- **Storage/import impact:** Mapping/output JSON and immutable definition digests carry the fields. Migration 042 validates bounds for new version 3 records; no old revision is rewritten. Phase 34 still owns foreign mappings.
+- **Closure evidence:** Native mapping/build round trips and Go/JavaScript format fixtures cover renamed labels, `es-AR` dates/decimals, fraction digits and currency-symbol fallback.
 - **Source evidence IDs:** REF-VIS-03-A, REF-VIS-03-B, REF-VIS-03-C.
 - **Current repository evidence:** [internal/charts/model.go:79](../internal/charts/model.go#L79); [internal/charts/model.go:99](../internal/charts/model.go#L99).
 
@@ -924,7 +942,7 @@ These are stable subitems of VIS-02 and VIS-04, not additional finding IDs. The 
 - **Source and execution safety:** bounded uploads/profiles, exact typed result handling, source/context/revision fences, read-only validation, cancellation and uncertain-attempt reconciliation are real target boundaries. The expanded connector matrix is broader than the reference adapter baseline, but live per-engine qualification remains separate.
 - **Privacy and authority:** identity, issuer and durable authority are owned by the authority provider. The target service verifies and enforces signed action/resource reach, source/context partitions, retention and execution boundaries. Reproducing a predecessor cache hit must not weaken those controls.
 - **Profiles and onboarding:** the target deliberately avoids unrestricted raw samples and top-value lists. The replacement requirement is a reviewed, policy-bound value vocabulary, not a return to unrestricted sample exposure.
-- **Charts:** the target retains typed closed mappings, exact labels, explicit nulls, table projection/order/sort and eligible exact totals. The Phase 31 viewer is a real current consumer, while missing multi-value bindings, richer KPI/table settings, full formatting and deep hierarchy remain information-model decisions; whole-page layout requires an approved viewer/host expansion decision and static/export work remains Phase 32 scope.
+- **Charts:** the target retains typed closed mappings, exact labels, explicit nulls, multi-value series, deep bounded hierarchy, rich KPI/table policy and closed per-column formatting. The Phase 31 viewer and bounded retained static/export slice are real consumers. Whole-page layout, renderer worker and durable rendition work remain Phase 32 scope.
 - **Reporting:** output kinds, immutable definitions and selected mappings are present, but frozen-run consumers must resolve the output enablement, rule/sensitivity provenance, policy and limits before they claim parity.
 - **Explicit exclusion:** event/condition/custom-code scheduling stubs remain excluded by the active contract; their absence is not a gap to fix.
 
@@ -966,10 +984,10 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | B04 | Exact topic/template/dependency references and definition hashes | partial | CW-06 closes rule dependency continuity; LRN-01 still owns template lifecycle/provenance selection | 27.AC03, 27.AC07 |
 | B05 | Real validation evidence bound to content and observed schema | retained core with rule dependencies | Validation binds exact source/topic/rule pins and observed schema | 27.AC03 |
 | B06 | Read metadata without automatically exposing SQL | retained core inspected | Separate SQL-read projection and action | 27.AC06, 04.AC04 |
-| B07 | One saved query can feed chart, KPI, table and narrative outputs | Phase 28 frozen runtime is present; definition gap remains | VIS-01; saved output kinds exist, richer KPI behavior absent | 28.AC01, 28.AC02 |
+| B07 | One saved query can feed chart, KPI, table and narrative outputs | rich KPI/table intent implemented; final qualification pending | VIS-01 v3 mappings fan out from retained rows without new source/model work | 28.AC01, 28.AC02 |
 | B08 | Enabled/default output selection, output identifiers and mappings | native v2 implemented; v1 preserved | BLK-01; IDs, explicit order, enabled defaults and typed rejection persist through execution | 27.AC06, 28.AC02 |
 | B09 | Date/datetime/relative-period/dimension/number/integer/boolean/grain/top-N parameters | retained typed resolution; frozen runtime is present | Dates/periods/scalars/grain/top-N and explicit dimension refs | 27.AC05, 28.AC03 |
-| B10 | Locale, report timezone and explicit parameter provenance | partial | VIS-03; timezone resolution retained, formatting intent narrowed | 28.AC03 |
+| B10 | Locale, report timezone and explicit parameter provenance | native formatting intent implemented; final qualification pending | VIS-03 labels/locale/date/currency/fraction intent survives retained consumers | 28.AC03 |
 | B11 | Period authoring: explicit range, previous period, rolling periods, schedule window | retained resolution with authoring gap | BLK-03/06; period maths exists, wording checks/workflow narrowed | 27.AC05, 30.AC03 |
 | B12 | Assisted parameterization and question-duplicate assessment | gap | BLK-04/06; lexical duplicate assessment and narrow parameterization | 27.AC05, 27.AC01 |
 | B13 | Exact revision and latest-published/latest-certified selection | execution policies are implemented in the inspected frozen path; release evidence remains | Exact revision reads exist; compare all floating-policy variants at run admission | 29.AC03, 30.AC04 |
@@ -980,7 +998,7 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | B18 | Schema/semantic impact, exact rename detection and dependent health | retained core with CW-06 rule invalidation | Source/topic impact, safe rename and rule replacement/retirement staleness exist | 27.AC07 |
 | B19 | Revalidation / withdrawn approval / unavailable source | retained core with CW-06 rule pins | Current source/topic/rule health and withdrawal fail closed | 27.AC04, 27.AC07 |
 | B20 | Idempotency and expired retained block outputs | Phase 28 runtime inspected; fresh acceptance attribution pending | Expired-artifact idempotent replay must not re-execute | 28.AC05, 28.AC07 |
-| R01 | Reports compose multiple approved blocks and outputs | core retained; import/cutover/release evidence pending | Closed widgets/pages and composition manifests are present; output-field limits remain VIS-01 | 29.AC01, 29.AC03 |
+| R01 | Reports compose multiple approved blocks and outputs | core retained; import/cutover/release evidence pending | Closed widgets/pages and composition manifests carry v3 output intent; whole-page static composition remains Phase 32 | 29.AC01, 29.AC03 |
 | R02 | Draft, pending review, publication, rejection and amendment lifecycle | core retained; release evidence pending | Independent lifecycle pointers, immutable revisions and archive are present; destructive deletion remains REP-02 | 29.AC01, 29.AC02 |
 | R03 | Grid layouts and safe per-widget presentation overrides | core retained in definition; viewer consumer narrower | Twelve-column grid and safe presentation fields persist; Phase 31 selects one page/widget/output rather than rendering a whole grid | 29.AC06 |
 | R04 | Global/local filter definitions and parameter bindings | core retained; selectable options remain a gap | Typed declared filters and explicit reruns are present; REP-01 tracks warehouse-backed option retrieval | 29.AC06, 28.AC03 |
@@ -995,7 +1013,7 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | R13 | Versioned dashboards of exact report revision pages | core retained; viewer layout scope remains | Dashboard pages pin exact report revisions; Phase 31 viewer navigation is selector-based | 29.AC01, 29.AC08 |
 | R14 | Source-shaped external import, external identifiers and revision sequencing | partial; import mapping pending | External-reference coordinates and import seam exist; source-shaped placement/catalog/revision mapping remains to be decided (REF-RENDER-01, EXP-12) | 29.AC07, 34.AC01 |
 | R15 | Older section-based reports project to the canonical layout | core retained; importer evidence pending | Legacy sections have a bounded input and are projected without mutating stored revisions | 29.AC07 |
-| R16 | Localized names/descriptions, intended business audience label | core retained; nested output labels remain absent | Document metadata and audience labels persist; REP-03 tracks actor labels and output-specific labels remain VIS-01 | 29.AC01, 04.AC03 |
+| R16 | Localized names/descriptions, intended business audience label | core retained; final qualification pending | Document metadata/audience labels persist and v3 columns carry display labels; REP-03 still tracks actor/delivery labels | 29.AC01, 04.AC03 |
 | Q01 | Saved-question schedules and reviewed-SQL schedules are distinct | core retained at phase30 over shared06 foundation; live/release evidence pending | `ReportingTarget` admits the four implemented target families and maps them to their frozen/composition input kind; a saved question remains explicit dynamic replay, while reviewed SQL remains a reviewed block target. [reporting targets](../internal/jobs/reporting_target.go#L64) | 30.AC01 |
 | Q02 | Direct block schedules pin block revision and selected outputs | core retained at phase30 over shared06 foundation; live/release evidence pending | Block targets require selected output IDs and the accepted dispatch stores immutable revision/digest pins before queue execution. [target validation](../internal/jobs/reporting_target.go#L124); [dispatch pins](../internal/jobs/reporting_target.go#L171) | 30.AC01 |
 | Q03 | Report schedules pin by default; latest-published is explicit | core retained at phase30 over shared06 foundation; live/release evidence pending | The target shape separates an exact revision from `latest_published`; validation rejects contradictory combinations, so a floating policy is explicit. [target validation](../internal/jobs/reporting_target.go#L124) | 30.AC04 |
