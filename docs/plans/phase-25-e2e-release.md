@@ -51,3 +51,18 @@ correctness-first gate and raw measurement schema. The release candidate must
 materialize the actual Phase 24 suite/report hashes and post-Phase-34 source,
 rule, topic, context and runtime-pack revisions. The checked-in synthetic smoke
 does not satisfy AC03.
+
+The bounded release orchestration now verifies caller authority independently,
+loads the exact accepted Phase 24 suite/report/runtime pack, and requires current
+revision evidence before running `final_stress`. Its concrete governed adapter
+composes the existing query service's Plan→Run path, requires the PostgreSQL
+cross-process operation lock, and records model and physical-source receipts
+from the same operation. Each invalidation step pins a consumer case and exact
+accepted report hash; the resolver must provide the matching current revision
+binding and report-selected runtime pack. Bifrost attests live mode; a recorded
+gateway engine must explicitly attest recorded mode for integration runs. Phase
+34 still has to supply selected source/rule/topic/context revisions from its
+current stores,
+and the composition root must provide the recorded engine for integration mode.
+Phase 25 remains planned until the real release profile executes and is reviewed;
+this change does not claim a final stress run or release acceptance.

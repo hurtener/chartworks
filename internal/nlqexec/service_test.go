@@ -831,6 +831,19 @@ func TestServicePublicBoundaryValidation(t *testing.T) {
 	}
 }
 
+func TestPlanAndRunRequiresExecuteScopeBeforeComposition(t *testing.T) {
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"query.plan"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{}
+	question := QuestionRequest{Context: "context", Locale: nlq.LanguageEnglish, Question: "count records"}
+	_, _, err = service.PlanAndRun(context.Background(), e, PlanRequest{QuestionRequest: question, Operation: "planrun-operation"}, RunRequest{Operation: "planrun-operation"})
+	if !errors.Is(err, access.ErrForbidden) {
+		t.Fatalf("composite planning ran without the execute scope: %v", err)
+	}
+}
+
 func TestPreflightDetachesRouteExampleConfidence(t *testing.T) {
 	confidence := 0.73
 	routeConfidence := confidence

@@ -112,6 +112,101 @@ func (s *Service) Plan(ctx context.Context, e identity.Envelope, in PlanRequest)
 	return s.plan(ctx, e, in.QuestionRequest, in.Operation, in.ClarificationQuery, observedParent, "query.plan")
 }
 
+// PlanAndRun performs the smallest governed Plan→Run composition under one
+// durable operation lock. This keeps the model receipt and the matching
+// physical-source receipt in one request under concurrent cold access. The
+// operation ledger remains authoritative for replay; this method adds no
+// process-local result cache.
+func (s *Service) PlanAndRun(ctx context.Context, e identity.Envelope, plan PlanRequest, run RunRequest) (PlanResult, RunResult, error) {
+	canonicalizeQuestion(&plan.QuestionRequest)
+	if ctx == nil || !e.Valid() || !identity.Identifier(plan.Operation) || run.Operation != plan.Operation {
+		return PlanResult{}, RunResult{}, ErrInvalid
+	}
+	if err := requireQuestionAction(e, "query.plan", plan.QuestionRequest); err != nil {
+		return PlanResult{}, RunResult{}, err
+	}
+	if !e.Has("query.execute") {
+		return PlanResult{}, RunResult{}, access.ErrForbidden
+	}
+	if err := validateQuestion(plan.QuestionRequest); err != nil {
+		return PlanResult{}, RunResult{}, err
+	}
+	observedParent, err := s.observeParent(ctx, e, plan.ClarificationQuery, plan.Context)
+	if err != nil {
+		return PlanResult{}, RunResult{}, err
+	}
+	if err := s.validateClarificationOrigin(ctx, e, plan.QuestionRequest, "query.plan"); err != nil {
+		return PlanResult{}, RunResult{}, err
+	}
+	scopeValue, err := scope(e)
+	if err != nil {
+		return PlanResult{}, RunResult{}, err
+	}
+	var planned PlanResult
+	var result RunResult
+	compose := func() error {
+		record, readErr := s.repo.ReadOperation(ctx, scopeValue, plan.Operation)
+		if readErr == nil {
+			planned, readErr = reusablePlanResult(record, e, plan.QuestionRequest, plan.Operation, plan.ClarificationQuery)
+			if readErr != nil {
+				return readErr
+			}
+		} else if errors.Is(readErr, store.ErrNotFound) {
+			planned, readErr = s.planFreshWithActions(ctx, e, plan.QuestionRequest, plan.Operation, plan.ClarificationQuery, observedParent, "query.plan", nil, []string{"query.execute"})
+			if readErr != nil {
+				return readErr
+			}
+		} else {
+			return readErr
+		}
+		run.QueryID = planned.QueryID
+		result, readErr = s.Run(ctx, e, run)
+		return readErr
+	}
+	if locker, ok := s.repo.(PlanOperationLocker); ok {
+		err = locker.WithPlanOperationLock(ctx, scopeValue, plan.Operation, compose)
+	} else {
+		// Non-PostgreSQL repositories are useful for unit-level compositions;
+		// production release composition uses the scoped PostgreSQL lock.
+		err = compose()
+	}
+	if err != nil {
+		return PlanResult{}, result, err
+	}
+	return planned, result, nil
+}
+
+// PerformanceModelMode reports the evidence mode of the configured gateway.
+// The release adapter deliberately requires an engine that attests this
+// boundary; an arbitrary queryRuntime cannot label its measurements recorded
+// or live by assertion alone.
+func (s *Service) PerformanceModelMode() string {
+	if s == nil || s.engine == nil {
+		return ""
+	}
+	attestor, ok := s.engine.(interface{ PerformanceModelMode() string })
+	if !ok {
+		return ""
+	}
+	switch mode := attestor.PerformanceModelMode(); mode {
+	case "recorded", "live":
+		return mode
+	default:
+		return ""
+	}
+}
+
+// PerformancePlanRunIsolated reports whether the query repository provides the
+// cross-process operation lock required to keep concurrent cold Plan→Run
+// evidence attached to one durable operation.
+func (s *Service) PerformancePlanRunIsolated() bool {
+	if s == nil || s.repo == nil {
+		return false
+	}
+	_, ok := s.repo.(PlanOperationLocker)
+	return ok
+}
+
 // Refine creates a child plan anchored to the original query's signed session and topics.
 func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequest) (PlanResult, error) {
 	if ctx == nil || !e.Valid() || !identity.Identifier(in.QueryID) {
@@ -299,6 +394,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		return RunResult{}, err
 	}
 	report, runErr := s.executor.Execute(ctx, e, plan, exec.Options{Operation: in.Operation, Number: 1, Preview: in.Preview, Rows: in.Rows, Bytes: in.Bytes})
+	if errors.Is(runErr, exec.ErrReplay) {
+		return s.waitForRun(ctx, e, record.ID, in.Operation)
+	}
 	if runErr != nil || report.Result == nil || report.Attempt.Status == "failed" {
 		if !executionRepairable(report, runErr) {
 			return s.finishRun(ctx, e, record, report, 0, runErr)
@@ -331,6 +429,56 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		record.ExecutionFixes = 1
 	}
 	return s.finishRun(ctx, e, record, report, record.ExecutionFixes, runErr)
+}
+
+// waitForRun joins the winner of a concurrent first execution through the
+// durable query operation record. It never reads another attempt's rows until
+// the terminal result has been committed and reauthorized under current reach.
+func (s *Service) waitForRun(ctx context.Context, e identity.Envelope, queryID, operation string) (RunResult, error) {
+	delay := 5 * time.Millisecond
+	for {
+		if err := ctx.Err(); err != nil {
+			return RunResult{}, err
+		}
+		record, err := s.repo.ReadOperation(ctx, mustScope(e), operation)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if record.ID != queryID || record.Session != e.Session() || record.Operation != operation {
+			return RunResult{}, ErrForeignSession
+		}
+		if terminalQueryStatus(record.Status) {
+			admitted, admissionErr := s.retainedAdmission(ctx, e, record)
+			if admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if admissionErr = gatewayRequirement(e, "query.execute", admitted.resources); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return RunResult{}, ctx.Err()
+		case <-timer.C:
+		}
+		if delay < 50*time.Millisecond {
+			delay *= 2
+			if delay > 50*time.Millisecond {
+				delay = 50 * time.Millisecond
+			}
+		}
+	}
 }
 
 func terminalQueryStatus(status string) bool {
@@ -617,6 +765,57 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 }
 
 func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent string, observedParent *QueryRecord, action string, previous ...semantics.ClarificationResolution) (PlanResult, error) {
+	if operation == "" || action != "query.plan" || ctx == nil || !e.Valid() || !identity.Identifier(operation) {
+		return s.planFresh(ctx, e, question, operation, parent, observedParent, action, previous...)
+	}
+	var result PlanResult
+	compose := func() error {
+		record, err := s.repo.ReadOperation(ctx, mustScope(e), operation)
+		if err == nil {
+			result, err = reusablePlanResult(record, e, question, operation, parent)
+			return err
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		result, err = s.planFresh(ctx, e, question, operation, parent, observedParent, action, previous...)
+		return err
+	}
+	if locker, ok := s.repo.(PlanOperationLocker); ok {
+		scope, err := scope(e)
+		if err != nil {
+			return PlanResult{}, err
+		}
+		if err := locker.WithPlanOperationLock(ctx, scope, operation, compose); err != nil {
+			return PlanResult{}, err
+		}
+		return result, nil
+	}
+	if err := compose(); err != nil {
+		return PlanResult{}, err
+	}
+	return result, nil
+}
+
+func reusablePlanResult(record QueryRecord, e identity.Envelope, question QuestionRequest, operation, parent string) (PlanResult, error) {
+	if record.ID == "" || record.Operation != operation || record.Session != e.Session() || record.Parent != parent || record.Context != question.Context || record.Locale != question.Locale || record.Question != question.Question || len(question.EditBase)+len(question.Hints)+len(question.ExampleInput)+len(question.Default) != 0 {
+		return PlanResult{}, store.ErrConflict
+	}
+	want, wantErr := json.Marshal(question.routeRequest())
+	got, gotErr := json.Marshal(record.Route.Request)
+	if wantErr != nil || gotErr != nil || string(want) != string(got) {
+		return PlanResult{}, store.ErrConflict
+	}
+	// Idempotent lookup exposes only the opaque plan ID. Run performs the full
+	// current-reach/source fence before executing or returning retained output.
+	return PlanResult{QueryID: record.ID, SessionID: record.Session, Status: "planned"}, nil
+}
+
+func (s *Service) planFresh(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent string, observedParent *QueryRecord, action string, previous ...semantics.ClarificationResolution) (PlanResult, error) {
+	return s.planFreshWithActions(ctx, e, question, operation, parent, observedParent, action, previous, nil)
+}
+
+func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent string, observedParent *QueryRecord, action string, previous []semantics.ClarificationResolution, additionalActions []string) (PlanResult, error) {
 	if ctx == nil || !e.Valid() {
 		return PlanResult{}, access.ErrUnauthenticated
 	}
@@ -640,6 +839,11 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 	admitted, err := s.admit(ctx, e, question, true)
 	if err != nil {
 		return PlanResult{}, err
+	}
+	for _, required := range additionalActions {
+		if err := gatewayRequirement(e, required, admitted.resources); err != nil {
+			return PlanResult{}, err
+		}
 	}
 	question = redactClarificationInstructions(question, admitted.route)
 	if admitted.route.Context == nil {
@@ -698,6 +902,26 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 		out.SQL = candidate.SQL
 	}
 	return out, nil
+}
+
+// ResolveOperationQueryID reads only a session-bound query ID for a durable
+// plan operation. Run rechecks current signed reach and all source/topic pins
+// before exposing any retained result or executing the source.
+func (s *Service) ResolveOperationQueryID(ctx context.Context, e identity.Envelope, operation string) (string, error) {
+	if ctx == nil || !e.Valid() || !identity.Identifier(operation) {
+		return "", ErrInvalid
+	}
+	if err := e.Has("query.execute"); !err {
+		return "", access.ErrForbidden
+	}
+	record, err := s.repo.ReadOperation(ctx, mustScope(e), operation)
+	if err != nil {
+		return "", err
+	}
+	if record.ID == "" || record.Operation != operation || record.Session != e.Session() {
+		return "", ErrForeignSession
+	}
+	return record.ID, nil
 }
 
 func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionRequest, withBinding bool) (admission, error) {
@@ -1435,7 +1659,7 @@ func (s *Service) finishRun(ctx context.Context, e identity.Envelope, q QueryRec
 }
 
 func (s *Service) runResult(q QueryRecord, report exec.ExecutionReport, inspect bool) RunResult {
-	out := RunResult{Bindings: publicClarificationBinding(q.Clarification), AnswerChanges: publicClarificationChanges(q.Clarification), QueryID: q.ID, SessionID: q.Session, Status: q.Status, EvidenceStale: q.EvidenceStale, Route: q.Route, Confidence: q.Route.Confidence, Assumptions: append([]string(nil), q.Assumptions...), Ambiguities: append([]string(nil), q.Ambiguities...), ValidationFixes: q.ValidationFixes, ExecutionFixes: q.ExecutionFixes, Execution: report}
+	out := RunResult{Bindings: publicClarificationBinding(q.Clarification), AnswerChanges: publicClarificationChanges(q.Clarification), QueryID: q.ID, SessionID: q.Session, Status: q.Status, EvidenceStale: q.EvidenceStale, Route: q.Route, Confidence: q.Route.Confidence, Assumptions: append([]string(nil), q.Assumptions...), Ambiguities: append([]string(nil), q.Ambiguities...), ValidationFixes: q.ValidationFixes, ExecutionFixes: q.ExecutionFixes, Execution: report, Receipt: q.Receipt}
 	if q.Result != nil && out.Execution.Result == nil {
 		out.Execution.Result = q.Result
 	}

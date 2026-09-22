@@ -58,17 +58,21 @@ func (b PerformanceBinding) digest() string {
 // raw values. SourceMode is synthetic or real_postgres. ModelMode is none,
 // recorded, or live.
 type PerformanceEnvironment struct {
-	RunnerLabel      string `json:"runner_label"`
-	OS               string `json:"os"`
-	Architecture     string `json:"architecture"`
-	CPUs             int    `json:"cpus"`
-	GoVersion        string `json:"go_version"`
-	DatasetDigest    string `json:"dataset_digest"`
-	DatasetRows      int64  `json:"dataset_rows"`
-	SourceMode       string `json:"source_mode"`
-	ModelMode        string `json:"model_mode"`
-	EvaluationSuite  string `json:"evaluation_suite_digest"`
-	EvaluationReport string `json:"evaluation_report_hash"`
+	RunnerLabel             string `json:"runner_label"`
+	OS                      string `json:"os"`
+	Architecture            string `json:"architecture"`
+	CPUs                    int    `json:"cpus"`
+	GoVersion               string `json:"go_version"`
+	DatasetDigest           string `json:"dataset_digest"`
+	DatasetRows             int64  `json:"dataset_rows"`
+	SourceMode              string `json:"source_mode"`
+	ModelMode               string `json:"model_mode"`
+	EvaluationSuiteID       string `json:"evaluation_suite_id"`
+	EvaluationSuiteRevision int64  `json:"evaluation_suite_revision"`
+	EvaluationSuite         string `json:"evaluation_suite_digest"`
+	EvaluationReportID      string `json:"evaluation_report_id"`
+	EvaluationReport        string `json:"evaluation_report_hash"`
+	WorkloadCaseID          string `json:"workload_case_id"`
 }
 
 // PerformanceAuthorityFixture is a content-free fixture representing one
@@ -93,6 +97,9 @@ type PerformanceStep struct {
 	ID                 string                       `json:"id"`
 	Kind               string                       `json:"kind"`
 	Binding            PerformanceBinding           `json:"binding"`
+	EvidenceCaseID     string                       `json:"evidence_case_id,omitempty"`
+	EvidenceReportID   string                       `json:"evidence_report_id,omitempty"`
+	EvidenceReport     string                       `json:"evidence_report_hash,omitempty"`
 	Allowed            bool                         `json:"allowed"`
 	ResetBefore        bool                         `json:"reset_before"`
 	Iterations         int                          `json:"iterations"`
@@ -101,6 +108,7 @@ type PerformanceStep struct {
 	ExpectedDigest     string                       `json:"expected_digest"`
 	ExpectedExecutions int                          `json:"expected_executions"`
 	ExpectedBlocks     int                          `json:"expected_blocks"`
+	DeniedAction       string                       `json:"denied_action,omitempty"`
 	AuthorityOverride  *PerformanceAuthorityFixture `json:"authority_override,omitempty"`
 }
 
@@ -127,7 +135,7 @@ func (m PerformanceManifest) Validate() error {
 		return ErrInvalid
 	}
 	e := m.Environment
-	if !identifier(e.RunnerLabel) || e.OS == "" || e.Architecture == "" || e.CPUs < 1 || e.GoVersion == "" || !validDigest(e.DatasetDigest) || e.DatasetRows < 1 || !validDigest(e.EvaluationSuite) || !validDigest(e.EvaluationReport) {
+	if !identifier(e.RunnerLabel) || e.OS == "" || e.Architecture == "" || e.CPUs < 1 || e.GoVersion == "" || !validDigest(e.DatasetDigest) || e.DatasetRows < 1 || !identifier(e.EvaluationSuiteID) || e.EvaluationSuiteRevision < 1 || !validDigest(e.EvaluationSuite) || !identifier(e.EvaluationReportID) || !validDigest(e.EvaluationReport) || !identifier(e.WorkloadCaseID) {
 		return ErrInvalid
 	}
 	if e.SourceMode != "synthetic" && e.SourceMode != "real_postgres" || e.ModelMode != "none" && e.ModelMode != "recorded" && e.ModelMode != "live" {
@@ -158,6 +166,15 @@ func (m PerformanceManifest) Validate() error {
 	ids := map[string]bool{}
 	for _, s := range m.Steps {
 		if !identifier(s.ID) || ids[s.ID] || !validDigest(s.ExpectedDigest) || s.Workload == "" || len(s.Workload) > 4096 || s.Iterations < 1 || s.Iterations > limitIterations || s.Concurrency < 1 || s.Concurrency > limitConcurrency || s.Concurrency > s.Iterations || s.ExpectedExecutions < 0 || s.ExpectedExecutions > s.Iterations || s.ExpectedBlocks < 0 || s.ExpectedBlocks > s.Iterations {
+			return ErrInvalid
+		}
+		if s.EvidenceCaseID != "" && !identifier(s.EvidenceCaseID) || (s.EvidenceReportID == "") != (s.EvidenceReport == "") || s.EvidenceReportID != "" && (!identifier(s.EvidenceReportID) || !validDigest(s.EvidenceReport)) {
+			return ErrInvalid
+		}
+		if (s.EvidenceReportID != "" || s.EvidenceReport != "") && s.EvidenceCaseID == "" {
+			return ErrInvalid
+		}
+		if s.DeniedAction != "" && (s.Kind != "actions_negative" || !identifier(s.DeniedAction)) || s.Kind == "actions_negative" && !identifier(s.DeniedAction) {
 			return ErrInvalid
 		}
 		if !validPerformanceBinding(s.Binding) || s.Allowed && s.ExpectedBlocks != 0 || !s.Allowed && (s.ExpectedBlocks != s.Iterations || s.ExpectedExecutions != 0) {
@@ -198,12 +215,46 @@ func (m PerformanceManifest) Validate() error {
 		if !step.Allowed || step.ExpectedExecutions != wantExecutions || step.ExpectedBlocks != 0 || step.ResetBefore != (kind == "cold" || kind == "concurrent") {
 			return ErrInvalid
 		}
+		if m.Kind == PerformanceFinalStress {
+			if strings.HasSuffix(kind, "_changed") && step.EvidenceCaseID == "" {
+				return ErrInvalid
+			}
+			if strings.HasSuffix(kind, "_changed") && step.Workload != step.EvidenceCaseID {
+				return ErrInvalid
+			}
+			if strings.HasSuffix(kind, "_changed") && step.EvidenceReportID == "" {
+				return ErrInvalid
+			}
+			if (kind == "cold" || kind == "warm" || kind == "repeat" || kind == "concurrent") && (step.EvidenceCaseID != "" || step.EvidenceReportID != "") {
+				return ErrInvalid
+			}
+			if (kind == "cold" || kind == "warm" || kind == "repeat" || kind == "concurrent") && step.Workload != e.WorkloadCaseID {
+				return ErrInvalid
+			}
+		}
 	}
 	if kinds["concurrent"].Concurrency < 2 || kinds["tenant_negative"].Allowed || kinds["context_negative"].Allowed || kinds["actions_negative"].Allowed {
 		return ErrInvalid
 	}
 	for _, kind := range []string{"tenant_negative", "context_negative", "actions_negative"} {
 		if kinds[kind].AuthorityOverride == nil {
+			return ErrInvalid
+		}
+	}
+	tenantNegative := *kinds["tenant_negative"].AuthorityOverride
+	contextNegative := *kinds["context_negative"].AuthorityOverride
+	actionsNegative := *kinds["actions_negative"].AuthorityOverride
+	if tenantNegative.TargetTenant == m.Authority.TargetTenant || tenantNegative.ReportID != m.Authority.ReportID || tenantNegative.SourceID != m.Authority.SourceID || tenantNegative.ContextID != m.Authority.ContextID || tenantNegative.Tenant != m.Authority.Tenant || tenantNegative.User != m.Authority.User || tenantNegative.Session != m.Authority.Session || !sameStrings(tenantNegative.Scopes, m.Authority.Scopes) {
+		return ErrInvalid
+	}
+	if contextNegative.TargetTenant != m.Authority.TargetTenant || contextNegative.ReportID != m.Authority.ReportID || contextNegative.SourceID != m.Authority.SourceID || contextNegative.ContextID == m.Authority.ContextID || contextNegative.Tenant != m.Authority.Tenant || contextNegative.User != m.Authority.User || contextNegative.Session != m.Authority.Session || !sameStrings(contextNegative.Scopes, m.Authority.Scopes) {
+		return ErrInvalid
+	}
+	if actionsNegative.TargetTenant != m.Authority.TargetTenant || actionsNegative.ReportID != m.Authority.ReportID || actionsNegative.SourceID != m.Authority.SourceID || actionsNegative.ContextID != m.Authority.ContextID || actionsNegative.Tenant != m.Authority.Tenant || actionsNegative.User != m.Authority.User || actionsNegative.Session != m.Authority.Session || sameStrings(actionsNegative.Scopes, m.Authority.Scopes) {
+		return ErrInvalid
+	}
+	for _, scope := range m.Authority.Scopes {
+		if scope == kinds["actions_negative"].DeniedAction {
 			return ErrInvalid
 		}
 	}
@@ -349,6 +400,7 @@ type PerformanceReport struct {
 	SchemaVersion     int                     `json:"schema_version"`
 	ManifestID        string                  `json:"manifest_id"`
 	ManifestDigest    string                  `json:"manifest_digest"`
+	CurrentBinding    PerformanceBinding      `json:"current_binding"`
 	Kind              PerformanceProfileKind  `json:"kind"`
 	EvidenceMode      PerformanceEvidenceMode `json:"evidence_mode"`
 	Environment       PerformanceEnvironment  `json:"environment"`
@@ -363,7 +415,7 @@ type PerformanceReport struct {
 // Validate verifies a stored report against its immutable manifest, including
 // raw observations, derived summaries, authority bindings, and evidence hash.
 func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
-	if manifest.Validate() != nil || r.SchemaVersion != 1 || r.ManifestID != manifest.ID || r.Kind != manifest.Kind || r.EvidenceMode != manifest.EvidenceMode || r.Environment != manifest.Environment || !validDigest(r.ManifestDigest) || !validDigest(r.EvidenceHash) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) || !r.CorrectnessPassed {
+	if manifest.Validate() != nil || r.SchemaVersion != 1 || r.ManifestID != manifest.ID || r.CurrentBinding != coldPerformanceBinding(manifest) || r.Kind != manifest.Kind || r.EvidenceMode != manifest.EvidenceMode || r.Environment != manifest.Environment || !validDigest(r.ManifestDigest) || !validDigest(r.EvidenceHash) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) || !r.CorrectnessPassed {
 		return ErrInvalid
 	}
 	raw, _ := json.Marshal(manifest)
@@ -418,27 +470,31 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	}
 	raw, _ := json.Marshal(manifest)
 	sum := sha256.Sum256(raw)
-	report := PerformanceReport{SchemaVersion: 1, ManifestID: manifest.ID, ManifestDigest: hex.EncodeToString(sum[:]), Kind: manifest.Kind, EvidenceMode: manifest.EvidenceMode, Environment: manifest.Environment, StartedAt: clock().UTC()}
+	report := PerformanceReport{SchemaVersion: 1, ManifestID: manifest.ID, ManifestDigest: hex.EncodeToString(sum[:]), CurrentBinding: coldPerformanceBinding(manifest), Kind: manifest.Kind, EvidenceMode: manifest.EvidenceMode, Environment: manifest.Environment, StartedAt: clock().UTC()}
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(manifest.MaxDurationMS)*time.Millisecond)
+	defer cancel()
 	for _, step := range manifest.Steps {
 		step = manifest.effectiveStep(step)
-		result, err := runner.Check(ctx, step)
+		result, err := runner.Check(runCtx, step)
 		o, outcomeErr := derivePerformanceObservation(manifest.Environment, step, result, false)
 		if err != nil || outcomeErr != nil || validatePerformanceObservation(manifest.Environment, step, o, false) != nil {
 			report.CompletedAt = clock().UTC()
+			if runCtx.Err() != nil {
+				return sealPerformanceReport(report), runCtx.Err()
+			}
 			return sealPerformanceReport(report), ErrGate
 		}
 	}
 	report.CorrectnessPassed = true
-	deadlineCtx, cancel := context.WithTimeout(ctx, time.Duration(manifest.MaxDurationMS)*time.Millisecond)
-	defer cancel()
 	for _, step := range manifest.Steps {
 		step = manifest.effectiveStep(step)
 		if step.ResetBefore {
-			if err := runner.Reset(deadlineCtx); err != nil {
+			if err := runner.Reset(runCtx); err != nil {
+				report.CompletedAt = clock().UTC()
 				return sealPerformanceReport(report), err
 			}
 		}
-		samples, err := measurePerformanceStep(deadlineCtx, manifest.Environment, step, runner)
+		samples, err := measurePerformanceStep(runCtx, manifest.Environment, step, runner)
 		if err != nil {
 			report.CompletedAt = clock().UTC()
 			return sealPerformanceReport(report), err
@@ -454,6 +510,15 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	}
 	report.CompletedAt = clock().UTC()
 	return sealPerformanceReport(report), nil
+}
+
+func coldPerformanceBinding(manifest PerformanceManifest) PerformanceBinding {
+	for _, step := range manifest.Steps {
+		if step.Kind == "cold" {
+			return step.Binding
+		}
+	}
+	return PerformanceBinding{}
 }
 
 func measurePerformanceStep(ctx context.Context, environment PerformanceEnvironment, step PerformanceStep, runner PerformanceRunner) ([]PerformanceSample, error) {
@@ -546,10 +611,11 @@ func validatePerformanceObservation(environment PerformanceEnvironment, step Per
 	if o.Reused && (o.Usage.SourceCalls != 0 || o.Usage.ModelCalls != 0 || o.Usage.SourceNS != nil && *o.Usage.SourceNS != 0 || o.Usage.ModelNS != nil && *o.Usage.ModelNS != 0 || o.Usage.Retries != 0 || o.Usage.Tokens != nil && *o.Usage.Tokens != 0 || o.Usage.CostUSD != nil && *o.Usage.CostUSD != 0) {
 		return ErrInvalid
 	}
-	if !o.Blocked && o.Executed && environment.SourceMode == "real_postgres" && (o.Usage.SourceNS == nil || o.Usage.SourceCalls < 1) {
+	needsPhysicalReceipt := !measured || o.Executed
+	if !o.Blocked && needsPhysicalReceipt && environment.SourceMode == "real_postgres" && (o.Usage.SourceNS == nil || o.Usage.SourceCalls < 1) {
 		return ErrInvalid
 	}
-	if !o.Blocked && o.Executed && (environment.ModelMode == "recorded" || environment.ModelMode == "live") && (o.Usage.ModelNS == nil || o.Usage.ModelCalls < 1) {
+	if !o.Blocked && needsPhysicalReceipt && (environment.ModelMode == "recorded" || environment.ModelMode == "live") && (o.Usage.ModelNS == nil || o.Usage.ModelCalls < 1) {
 		return ErrInvalid
 	}
 	return nil

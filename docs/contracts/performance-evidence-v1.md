@@ -1,7 +1,11 @@
 # Performance evidence v1
 
-Status: bounded PERF-01 harness implemented for review, 2026-09-22. Phase 25
-still owns the final stress execution and release decision.
+Status: bounded PERF-01 harness and authority-bound Phase 25 release orchestration
+implemented for review, 2026-09-22. The governed adapter now composes Plan→Run
+under a PostgreSQL-scoped operation lock and records the matching model and
+source receipts. The Phase-34 current-revision resolver and production release
+composition remain required before a release run is executable. Phase 25 still
+owns the final stress execution and decision.
 
 Performance evidence is valid only after every case passes a correctness probe.
 The harness then records every raw wall-time observation and separately retains
@@ -20,9 +24,9 @@ signed actions, source revision, reviewed rule revision, topic publication and
 reviewed runtime pack. The required profile exercises cold, warm, repeated and
 concurrent access plus an exact one-field change for source, rule, context,
 topic and runtime pack. Cross-tenant and same-tenant/different-context cases
-and altered signed-action cases must deny before source or model work. Concurrent cold access must produce one
-physical execution for one exact identity; broader or stale reuse is a failed
-gate, not a timing sample.
+and altered signed-action cases must deny before source or model work.
+Concurrent cold access must produce one physical execution for one exact
+identity; broader or stale reuse is a failed gate, not a timing sample.
 
 `allowed` is only the reviewed expected outcome. Authority fields in a manifest
 are fixture expectations and can never construct an identity envelope. The
@@ -41,18 +45,49 @@ only the harness and identity-aware reuse implementation. `integration` uses a
 real PostgreSQL/source boundary with a recorded model adapter. `live` uses the
 real source and reviewed live runtime pack. A report records the OS,
 architecture, CPU count, Go version, dataset digest and row count, source/model
-mode, and the exact Phase 24 suite/report hashes. Results from different modes
-are not interchangeable.
+mode, and the Phase 24 suite ID/revision/digest, report ID/hash and workload
+case ID. Results from different modes are not interchangeable. The sealed
+report also retains the current cold binding itself (tenant, context reach and
+signed actions as hashes plus exact
+source, rule, topic and runtime-pack revisions); the samples retain each
+scenario binding digest.
 
 `chartworks eval perf-inspect --profile PATH` validates and displays a profile
 without executing it. The production CLI rejects `perf-smoke`: an
 operator-controlled manifest cannot mint verified authority. The bounded smoke
 script invokes only the test adapter, where fixture envelope construction is
-confined to test code. An authority-bound release runtime must inject envelopes
-obtained from its configured verifier independently of the manifest. Report
-storage uses atomic replacement with mode `0600`. Integration/live adapters and
-a `final_stress` profile execute only from the Phase 25 release runtime after
-the Phase 34 migration head is selected.
+confined to test code. An authority-bound release runtime verifies a supplied
+bearer through the configured HTTP verifier independently of the manifest. It
+loads the exact accepted Phase 24 suite, passing stored report, selected case
+and independently accepted runtime pack under that envelope, then checks
+profile expectations against those records.
+
+Every allowed invalidation scenario pins its own accepted consumer case and
+exact accepted report ID/hash. The current-revision resolver is called for each
+resolved scenario; its selected source, context, rule, topic and dataset
+evidence must produce the step's binding. The runtime-pack scenario resolves a
+separate report so its selected pack and protected input also change together.
+The harness rejects a changed binding when the resolver returns only the cold
+scenario's evidence.
+
+The runtime requires a current source/rule/topic/context revision resolver and
+an adapter whose declared evidence, source and model modes match `integration`
+or `live`. Every permitted correctness probe and physical execution must carry
+real source and selected model receipts. The concrete adapter factory binds the
+existing governed query service's Plan→Run operation to its durable query/read
+ledgers and requires the PostgreSQL cross-process operation lock. The configured
+Bifrost engine attests `live`; `integration` requires a `gateway.Engine` backed
+by recorded model responses that explicitly attests `recorded`. No production
+recorded engine is included here, so integration mode remains unavailable until
+the composition root supplies that engine. Phase 34 must supply selected
+migration-head source/rule/topic/context evidence through the current-revision
+resolver. Missing resolvers or adapters fail closed. The release orchestration
+is not exposed as an operator CLI until that composition exists.
+
+Release reports are atomically created as private `0600` files and an existing
+path is never replaced. The one-hour profile bound includes correctness probes
+as well as timed observations. A permitted integration/live correctness probe
+must carry physical source and model receipts before any timed sample starts.
 
 The checked-in smoke profile caps each step at 32 requests/concurrency and ten
 seconds overall. The final release profile uses these required scenarios:

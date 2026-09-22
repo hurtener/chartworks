@@ -299,13 +299,14 @@ type Suite struct {
 
 // Usage separates service, source, and model observations.
 type Usage struct {
-	ServiceMS int64    `json:"service_ms"`
-	SourceMS  *int64   `json:"source_ms,omitempty"`
-	ModelMS   *int64   `json:"model_ms,omitempty"`
-	Calls     int      `json:"calls"`
-	Tokens    *int     `json:"tokens,omitempty"`
-	CostUSD   *float64 `json:"cost_usd,omitempty"`
-	Retries   int      `json:"retries"`
+	ServiceMS   int64    `json:"service_ms"`
+	SourceMS    *int64   `json:"source_ms,omitempty"`
+	ModelMS     *int64   `json:"model_ms,omitempty"`
+	SourceCalls int      `json:"source_calls,omitempty"`
+	Calls       int      `json:"calls"`
+	Tokens      *int     `json:"tokens,omitempty"`
+	CostUSD     *float64 `json:"cost_usd,omitempty"`
+	Retries     int      `json:"retries"`
 }
 
 // Observation is a content-free runner result.
