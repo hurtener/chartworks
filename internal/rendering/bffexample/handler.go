@@ -16,7 +16,10 @@ import (
 	"github.com/hurtener/chartworks/internal/rendering"
 )
 
+// TokenProvider obtains one fresh scoped Pengui bearer on the server side.
 type TokenProvider func(context.Context) (string, error)
+
+// Handler forwards a sealed render request and returns only static content.
 type Handler struct {
 	upstream string
 	client   *http.Client
@@ -24,12 +27,13 @@ type Handler struct {
 	parents  string
 }
 
+// New constructs a strict client-owned iframe BFF example.
 func New(upstream string, client *http.Client, token TokenProvider, parents []string) (*Handler, error) {
 	u, err := url.Parse(upstream)
 	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Hostname() == "" || token == nil {
 		return nil, errors.New("bff: invalid configuration")
 	}
-	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost")) {
+	if u.Scheme != "https" && (u.Scheme != "http" || u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") {
 		return nil, errors.New("bff: HTTPS required")
 	}
 	for _, p := range parents {
@@ -68,29 +72,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := h.token(r.Context())
 	if err != nil || token == "" || strings.ContainsAny(token, " \r\n\t") {
-		http.Error(w, "upstream unavailable", 502)
+		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.upstream+"/v1/reporting/renditions", bytes.NewReader(raw))
 	if err != nil {
-		http.Error(w, "upstream unavailable", 502)
+		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	response, err := h.client.Do(req)
 	if err != nil {
-		http.Error(w, "upstream unavailable", 502)
+		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != 200 {
 		http.Error(w, "upstream rejected", response.StatusCode)
 		return
 	}
 	var out rendering.Rendition
 	if json.NewDecoder(io.LimitReader(response.Body, 20<<20)).Decode(&out) != nil || out.Content == "" {
-		http.Error(w, "invalid upstream response", 502)
+		http.Error(w, "invalid upstream response", http.StatusBadGateway)
 		return
 	}
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors "+h.parents)

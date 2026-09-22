@@ -83,10 +83,20 @@ type ReportingExportRequest = rendering.Request
 
 // ReportingRendition contains bounded static bytes and immutable provenance.
 type ReportingRendition = rendering.Rendition
+
+// ReportingRenditionReadRequest selects one durable rendition.
 type ReportingRenditionReadRequest = rendering.ReadRequest
+
+// ReportingRenditionListRequest selects one durable rendition page.
 type ReportingRenditionListRequest = rendering.ListRequest
+
+// ReportingRenditionListResult contains currently authorized renditions.
 type ReportingRenditionListResult = rendering.ListResult
+
+// ReportingRenditionExpireRequest bounds a rendition retention pass.
 type ReportingRenditionExpireRequest = rendering.ExpireRequest
+
+// ReportingRenditionExpireResult reports erased rendition bytes.
 type ReportingRenditionExpireResult = rendering.ExpireResult
 
 func validReportingKind(kind string) bool {
@@ -172,6 +182,7 @@ func (c *Client) ExportReporting(ctx context.Context, in ReportingExportRequest)
 	return
 }
 
+// CreateReportingRendition idempotently persists one static retained export.
 func (c *Client) CreateReportingRendition(ctx context.Context, in ReportingExportRequest) (out ReportingRendition, err error) {
 	if !validReportingKind(in.View.Kind) || !identity.Identifier(in.View.Run) || !oneOfString(in.Format, "json", "csv", "html", "svg") {
 		return out, ErrReportingRequest
@@ -179,6 +190,8 @@ func (c *Client) CreateReportingRendition(ctx context.Context, in ReportingExpor
 	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions", "", in, &out, 20<<20)
 	return
 }
+
+// ReadReportingRendition reads bytes after current artifact authority is checked.
 func (c *Client) ReadReportingRendition(ctx context.Context, id string) (out ReportingRendition, err error) {
 	if !identity.Identifier(id) {
 		return out, ErrReportingRequest
@@ -186,6 +199,8 @@ func (c *Client) ReadReportingRendition(ctx context.Context, id string) (out Rep
 	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions/read", "", rendering.ReadRequest{ID: id}, &out, 20<<20)
 	return
 }
+
+// ListReportingRenditions lists currently authorized durable renditions.
 func (c *Client) ListReportingRenditions(ctx context.Context, in ReportingRenditionListRequest) (out ReportingRenditionListResult, err error) {
 	if in.Limit < 0 || in.Limit > 100 {
 		return out, ErrReportingRequest
@@ -193,6 +208,8 @@ func (c *Client) ListReportingRenditions(ctx context.Context, in ReportingRendit
 	err = c.callLimit(ctx, "POST", "/v1/reporting/renditions/list", "", in, &out, 20<<20)
 	return
 }
+
+// ExpireReportingRenditions executes one bounded retention deletion pass.
 func (c *Client) ExpireReportingRenditions(ctx context.Context, limit int) (out ReportingRenditionExpireResult, err error) {
 	if limit < 1 || limit > 1000 {
 		return out, ErrReportingRequest

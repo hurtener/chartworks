@@ -22,6 +22,7 @@ type Process struct {
 	slots   chan struct{}
 }
 
+// NewProcess pins one trusted absolute worker executable and its resource bounds.
 func NewProcess(path string, options Options) (*Process, error) {
 	if path == "" || path[0] != '/' || !options.valid() {
 		return nil, ErrInvalid
@@ -47,6 +48,7 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 
+// Process executes one sealed render in a fresh supervised worker process.
 func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, error) {
 	if p == nil || ctx == nil || work.Version != WorkerProtocolVersion {
 		return Rendition{}, ErrInvalid
@@ -63,6 +65,7 @@ func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, erro
 	}
 	bounded, cancel := context.WithTimeout(ctx, p.options.MaxTime)
 	defer cancel()
+	// #nosec G204 -- path is trusted absolute operator configuration validated at construction; callers cannot select it.
 	cmd := exec.CommandContext(bounded, p.path, "--sealed-render-worker")
 	cmd.Env = []string{"GOMEMLIMIT=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10) + "B"}
 	cmd.Env = append(cmd.Env, "GOMEMLIMIT_BYTES="+strconv.FormatInt(p.options.MaxMemoryBytes, 10))
@@ -128,6 +131,7 @@ func WorkerMain(stdin io.Reader, stdout io.Writer, maxInput, maxOutput int, memo
 // useful only for deterministic unit tests; production construction uses Process.
 type LocalProcessor struct{ MaxBytes int }
 
+// Process applies the sealed contract in-process for deterministic tests only.
 func (l LocalProcessor) Process(_ context.Context, w SealedWork) (Rendition, error) {
 	return renderSealed(w.Request, w.View, l.MaxBytes)
 }

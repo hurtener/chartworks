@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// PutRendition idempotently inserts one immutable tenant rendition.
 func (d *DB) PutRendition(ctx context.Context, r rendering.Record) (out rendering.Record, err error) {
 	request, e := json.Marshal(r.Request)
 	if e != nil {
@@ -44,6 +45,7 @@ func (d *DB) PutRendition(ctx context.Context, r rendering.Record) (out renderin
 	return out, safe(err)
 }
 
+// ReadRendition reads one tenant-composite rendition coordinate.
 func (d *DB) ReadRendition(ctx context.Context, tenant, id string) (out rendering.Record, err error) {
 	var body, request []byte
 	err = d.pool.QueryRow(ctx, `SELECT rendition,request,actor_id,session_id,private FROM chartworks.render_renditions WHERE tenant_id=$1 AND rendition_id=$2`, tenant, id).Scan(&body, &request, &out.Actor, &out.Session, &out.Private)
@@ -60,6 +62,7 @@ func (d *DB) ReadRendition(ctx context.Context, tenant, id string) (out renderin
 	return out, nil
 }
 
+// ListRenditions returns one ordered tenant-composite rendition page.
 func (d *DB) ListRenditions(ctx context.Context, tenant, after string, limit int) ([]rendering.Record, error) {
 	rows, err := d.pool.Query(ctx, `SELECT rendition_id FROM chartworks.render_renditions WHERE tenant_id=$1 AND rendition_id>$2 ORDER BY rendition_id LIMIT $3`, tenant, after, limit)
 	if err != nil {
@@ -81,6 +84,7 @@ func (d *DB) ListRenditions(ctx context.Context, tenant, after string, limit int
 	return out, safe(rows.Err())
 }
 
+// ExpireRenditions deletes one locked bounded tenant expiry page.
 func (d *DB) ExpireRenditions(ctx context.Context, tenant string, as time.Time, limit int) (count int64, err error) {
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		tag, e := tx.Exec(ctx, `DELETE FROM chartworks.render_renditions WHERE (tenant_id,rendition_id) IN (SELECT tenant_id,rendition_id FROM chartworks.render_renditions WHERE tenant_id=$1 AND expires_at<=$2 ORDER BY expires_at,rendition_id LIMIT $3 FOR UPDATE SKIP LOCKED)`, tenant, as, limit)

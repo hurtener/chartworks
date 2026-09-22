@@ -21,10 +21,12 @@ type Rendering struct {
 	FrameAncestors []string `json:"frame_ancestors"`
 }
 
+// DefaultRendering returns bounded disabled-renderer defaults.
 func DefaultRendering() Rendering {
 	return Rendering{WorkerVersion: "chartworks-svg-worker-v1", ThemeVersion: "chartworks-theme-v1", MaxTime: Duration(10 * time.Second), MaxMemoryBytes: 1 << 30, MaxInputBytes: 16 << 20, MaxOutputBytes: 16 << 20, MaxConcurrent: 2, Retention: Duration(24 * time.Hour), FrameAncestors: []string{}}
 }
 
+// Validate rejects open process, origin, resource and retention configuration.
 func (c Rendering) Validate() error {
 	if c.Enabled && (c.WorkerPath == "" || c.WorkerPath[0] != '/' || len(c.WorkerPath) > 4096) ||
 		c.WorkerVersion == "" || len(c.WorkerVersion) > 128 || c.ThemeVersion == "" || len(c.ThemeVersion) > 128 ||

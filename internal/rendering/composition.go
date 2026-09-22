@@ -63,18 +63,19 @@ func (s *Service) renderComposition(ctx context.Context, e identity.Envelope, in
 				return Rendition{}, err
 			}
 			content := ""
-			if view.Text != nil {
+			switch {
+			case view.Text != nil:
 				content = html.EscapeString(view.Text.Text)
 				textSum := sha256.Sum256([]byte(view.Text.Format + "\x00" + view.Text.Text))
 				_, _ = provenance.Write(textSum[:])
-			} else if view.Output != nil {
+			case view.Output != nil:
 				rendered, renderErr := s.render(ctx, request, view)
 				if renderErr != nil {
 					return Rendition{}, renderErr
 				}
 				content = rendered.Content
 				_, _ = provenance.Write([]byte(rendered.SourceDigest))
-			} else {
+			default:
 				continue
 			}
 			if in.Format == "html" {
