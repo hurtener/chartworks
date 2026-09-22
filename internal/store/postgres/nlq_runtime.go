@@ -69,7 +69,7 @@ func (d *DB) ReadSession(ctx context.Context, scope store.Scope, id string) (out
 
 // CreateQuery persists protected generation evidence for one planned query.
 func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord) error {
-	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates) {
+	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -314,7 +314,7 @@ func normalizeTemplateSelectionEvidence(out *nlqexec.QueryRecord, columnJSON, ro
 		out.Route.Request.Templates = []rulesets.TemplateSelection{}
 		return true
 	}
-	return validTemplateSelectionEvidence(column, route, request)
+	return validTemplateSelectionEvidence(column, route, request, out.Topics, out.TopicVersions, out.RuleVersions)
 }
 
 func decodeTemplateSelectionEvidence(columnJSON, routeJSON []byte) (column, route, request []rulesets.TemplateSelection, emptyShape, ok bool) {
@@ -368,13 +368,23 @@ func decodeTemplateSelectionArray(raw []byte) ([]rulesets.TemplateSelection, boo
 	return selections, true
 }
 
-func validTemplateSelectionEvidence(column, route, request []rulesets.TemplateSelection) bool {
+func validTemplateSelectionEvidence(column, route, request []rulesets.TemplateSelection, queryTopics, topicVersions, ruleVersions []string) bool {
 	if !sameTemplateSelections(column, route) || !sameTemplateSelections(column, request) || len(column) > 4 {
 		return false
 	}
 	seenTopics := make(map[string]bool, len(column))
 	for _, selection := range column {
 		if !identity.Identifier(selection.ID) || !identity.Identifier(selection.Topic) || !identity.Identifier(selection.TopicVersion) || !identity.Identifier(selection.RuleVersion) || !topics.DigestValid(selection.PackDigest) || !topics.DigestValid(selection.RuleDigest) || seenTopics[selection.Topic] {
+			return false
+		}
+		aligned := false
+		for i, topic := range queryTopics {
+			if i < len(topicVersions) && i < len(ruleVersions) && selection.Topic == topic && selection.TopicVersion == topicVersions[i] && selection.RuleVersion == ruleVersions[i] {
+				aligned = true
+				break
+			}
+		}
+		if !aligned {
 			return false
 		}
 		seenTopics[selection.Topic] = true

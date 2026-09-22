@@ -94,7 +94,37 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	if err = database.CreateQuery(ctx, scope, mismatched); !errors.Is(err, store.ErrInvalid) {
 		t.Fatal("new writer accepted mismatched selection copies", err)
 	}
-	if count(t, raw, `SELECT count(*) FROM chartworks.nlq_queries WHERE tenant_id='cw06-upgrade' AND query_id IN (repeat('9',32),repeat('a',32))`) != 0 {
+	foreignTopic := base
+	foreignTopic.ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	foreignSelection := selection
+	foreignSelection.Topic = "foreign"
+	foreignTopic.Templates = []rulesets.TemplateSelection{foreignSelection}
+	foreignTopic.Route.Templates = []rulesets.TemplateSelection{foreignSelection}
+	foreignTopic.Route.Request.Templates = []rulesets.TemplateSelection{foreignSelection}
+	if err = database.CreateQuery(ctx, scope, foreignTopic); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("new writer accepted a selection for a foreign topic", err)
+	}
+	wrongTopicVersion := base
+	wrongTopicVersion.ID = "cccccccccccccccccccccccccccccccc"
+	wrongTopicVersionSelection := selection
+	wrongTopicVersionSelection.TopicVersion = "v2"
+	wrongTopicVersion.Templates = []rulesets.TemplateSelection{wrongTopicVersionSelection}
+	wrongTopicVersion.Route.Templates = []rulesets.TemplateSelection{wrongTopicVersionSelection}
+	wrongTopicVersion.Route.Request.Templates = []rulesets.TemplateSelection{wrongTopicVersionSelection}
+	if err = database.CreateQuery(ctx, scope, wrongTopicVersion); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("new writer accepted a mismatched template topic version", err)
+	}
+	wrongRuleVersion := base
+	wrongRuleVersion.ID = "dddddddddddddddddddddddddddddddd"
+	wrongRuleVersionSelection := selection
+	wrongRuleVersionSelection.RuleVersion = "rules-v2"
+	wrongRuleVersion.Templates = []rulesets.TemplateSelection{wrongRuleVersionSelection}
+	wrongRuleVersion.Route.Templates = []rulesets.TemplateSelection{wrongRuleVersionSelection}
+	wrongRuleVersion.Route.Request.Templates = []rulesets.TemplateSelection{wrongRuleVersionSelection}
+	if err = database.CreateQuery(ctx, scope, wrongRuleVersion); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("new writer accepted a mismatched template rule version", err)
+	}
+	if count(t, raw, `SELECT count(*) FROM chartworks.nlq_queries WHERE tenant_id='cw06-upgrade' AND query_id IN (repeat('9',32),repeat('a',32),repeat('b',32),repeat('c',32),repeat('d',32))`) != 0 {
 		t.Fatal("invalid new selection evidence reached storage")
 	}
 	if _, err = raw.Exec(ctx, `UPDATE chartworks.nlq_queries SET template_selections='[{"id":"invented"}]' WHERE tenant_id='cw06-upgrade'`); err == nil {
