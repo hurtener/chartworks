@@ -97,6 +97,20 @@ but cannot be used as cross-run reuse evidence under v2. Phase 28 AC06 and the
 real-PostgreSQL reuse identity regression cover distinct operation IDs,
 concurrent reuse, a substituted stale candidate key, signed
 tenant/context/action denials and source-revision drift.
-The runtime model string is configuration, not an accepted reviewed runtime-pack
-pin. Phase 25's reviewed-pack invalidation remains open until a real pack owner
-and narrative consumer bind that selection to frozen execution.
+The runtime model string remains the authored narrative-policy version. Production
+narrative admission now resolves the current tenant-selected, independently
+accepted Phase 24 runtime pack under signed block/source/context execution reach.
+The sealed manifest and v2 reuse identity pin its exact pack/runtime/configuration
+digests and narrative role model. Execution and PostgreSQL reuse re-read the
+current accepted selection; the Bifrost narrative call applies its reviewed
+configuration and its actual role/model/configuration receipt is checked before
+the narrative can be retained. Legacy unpinned manifests stay readable and
+their deterministic outputs can execute under the reviewed-pack policy, while
+their narrative is marked unavailable without a model call or cross-run reuse.
+The selected pack must also carry an exact approved proposal and reviewer
+receipt. Deterministic runs select no pack and
+make no model call. The real PostgreSQL and recorded-gateway regression covers
+two accepted packs, same-pack reuse, changed/rejected selections and signed
+context denial. With no selected pack, explicit partial mode retains deterministic
+outputs and a failed model-free narrative without cross-run reuse. Phase 25 still
+owns final measured stress and release evidence.
