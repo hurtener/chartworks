@@ -67,6 +67,8 @@ requires current `erase` reach, refuses an active cutover, removes online manife
 payload/checkpoints and retains only the non-secret external-reference/tombstone
 continuity needed to prevent replay resurrection. Backups, replicas and WAL expire
 under operator retention; the API states this boundary explicitly.
+A declared legal hold blocks online erasure; releasing a hold is an owner/operator
+retention action outside the immutable imported batch.
 
 ## Authority and lifecycle
 

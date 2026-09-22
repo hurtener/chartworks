@@ -118,7 +118,7 @@ func validateManifest(m Manifest) (string, error) {
 			}
 			consumedFields[path] = true
 		}
-		if o.Retention.ExpiresAt != nil && (o.Retention.ExpiresAt.IsZero() || o.Retention.ExpiresAt.Before(time.Unix(0, 0))) {
+		if o.Retention.EraseWith != "" && !identity.Identifier(o.Retention.EraseWith) || o.Retention.ExpiresAt != nil && (o.Retention.ExpiresAt.IsZero() || o.Retention.ExpiresAt.Before(time.Unix(0, 0))) {
 			return "", ErrInvalid
 		}
 		refs[o.ExternalRef] = o
@@ -176,8 +176,12 @@ func validateManifest(m Manifest) (string, error) {
 			return "", ErrInvalid
 		}
 	}
-	if m.Boundary != nil && (!identity.Identifier(m.Boundary.Stream) || m.Boundary.ScheduleVersion < 1 || m.Boundary.ResumeAfter.IsZero()) {
-		return "", ErrInvalid
+	if m.Boundary != nil {
+		b := m.Boundary
+		prior := b.LastAccepted != "" || !b.LastDue.IsZero()
+		if !identity.Identifier(b.Stream) || b.ScheduleVersion < 1 || b.ResumeAfter.IsZero() || prior && (b.LastAccepted == "" || !identity.Identifier(b.LastAccepted) || b.LastDue.IsZero() || b.LastDue.After(b.ResumeAfter)) {
+			return "", ErrInvalid
+		}
 	}
 	canonical := m
 	canonical.Objects = append([]Object(nil), m.Objects...)

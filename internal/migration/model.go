@@ -159,7 +159,7 @@ type EraseRequest struct {
 type ObjectPlan struct {
 	ExternalRef string           `json:"external_ref"`
 	Kind        Kind             `json:"kind"`
-	Action      string           `json:"action" jsonschema:"enum=install_private,enum=historical_quarantine,enum=tombstone,enum=unsupported_quarantine"`
+	Action      string           `json:"action" jsonschema:"enum=install_private,enum=historical_quarantine,enum=retention_quarantine,enum=tombstone,enum=unsupported_quarantine"`
 	DependsOn   []string         `json:"depends_on" wire:"optional"`
 	Destination string           `json:"destination,omitempty"`
 	Reason      string           `json:"reason,omitempty"`

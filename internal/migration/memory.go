@@ -193,6 +193,11 @@ func (m *MemoryRepository) Erase(_ context.Context, e identity.Envelope, id stri
 	if !ok {
 		return EraseResult{}, ErrNotFound
 	}
+	for _, object := range x.manifest.Objects {
+		if object.Retention.LegalHold {
+			return EraseResult{}, ErrConflict
+		}
+	}
 	erased := int64(0)
 	for ref := range x.results {
 		if erased == int64(limit) {

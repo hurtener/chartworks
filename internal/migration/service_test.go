@@ -172,11 +172,11 @@ func TestValidationAndAuthority(t *testing.T) {
 	}, func(x *Manifest) {
 		x.Objects[0].Payload = `{"connection":{"authorization":"x"}}`
 		x.Fields[0].Path = "src-bad.connection"
-	}, func(x *Manifest) { x.Objects[1].Parents = []string{"cert-bad"} }, func(x *Manifest) { x.Fields = x.Fields[:1] }, func(x *Manifest) {
+	}, func(x *Manifest) { x.Objects[0].Retention.EraseWith = "bad/value" }, func(x *Manifest) { x.Objects[1].Parents = []string{"cert-bad"} }, func(x *Manifest) { x.Fields = x.Fields[:1] }, func(x *Manifest) {
 		x.Fields = append(x.Fields, FieldDisposition{Path: "unknown.field", Status: "retained"})
 	}, func(x *Manifest) {
 		x.Mappings = append(x.Mappings, Mapping{Kind: KindProfile, ExternalRef: "unknown", Destination: "profile", Revision: 1})
-	}, func(x *Manifest) { x.Evidence = x.Evidence[:1] }, func(x *Manifest) { x.Calibration.State = "active" }, func(x *Manifest) { x.Calibration.Payload = `{"prompt_pack":"pack","unknown":true}` }, func(x *Manifest) { x.Boundary.ResumeAfter = time.Time{} }}
+	}, func(x *Manifest) { x.Evidence = x.Evidence[:1] }, func(x *Manifest) { x.Calibration.State = "active" }, func(x *Manifest) { x.Calibration.Payload = `{"prompt_pack":"pack","unknown":true}` }, func(x *Manifest) { x.Boundary.ResumeAfter = time.Time{} }, func(x *Manifest) { x.Boundary.LastAccepted = "occurrence" }}
 	for i, change := range cases {
 		x := m
 		x.Objects = append([]Object(nil), m.Objects...)
