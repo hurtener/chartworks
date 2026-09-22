@@ -68,8 +68,8 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	if _, err = database.ReadQuery(ctx, scope, "66666666666666666666666666666666"); !errors.Is(err, store.ErrMigration) {
 		t.Fatal("backfill accepted partially present empty selection evidence", err)
 	}
-	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,template_selections,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
- VALUES('cw06-upgrade','actor','session',repeat('7',32),'topic','["topic"]','["v1"]','["rules-v1"]','[null]','context','en','Malformed evidence','{"templates":[null],"request":{"templates":[null]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
+	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
+ VALUES('cw06-upgrade','actor','session',repeat('7',32),'topic','["topic"]','["v1"]','["rules-v1"]','[null]','{}','context','en','Malformed evidence','{"templates":[null],"request":{"templates":[null]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
 	if _, err = database.ReadQuery(ctx, scope, "77777777777777777777777777777777"); !errors.Is(err, store.ErrMigration) {
 		t.Fatal("new-schema decoder accepted a malformed selection element", err)
 	}
