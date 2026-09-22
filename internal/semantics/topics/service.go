@@ -98,6 +98,13 @@ func (s *Service) currentSourcesWith(ctx context.Context, e identity.Envelope, d
 
 // Publish stages facets and atomically activates one reviewed definition.
 func (s *Service) Publish(ctx context.Context, e identity.Envelope, topic string, in PublishRequest) (Published, error) {
+	return s.PublishBounded(ctx, e, topic, in, gateway.Limits{Calls: 64, Tokens: 1 << 20, Duration: 30 * time.Second})
+}
+
+// PublishBounded performs publication with a caller-owned pessimistic gateway
+// allowance. It is used by durable orchestrators that must reserve inference
+// before the external effect and later reconcile the retained receipt.
+func (s *Service) PublishBounded(ctx context.Context, e identity.Envelope, topic string, in PublishRequest, limits gateway.Limits) (Published, error) {
 	if ctx == nil || !identity.Identifier(in.Review) || in.Expected < 0 || in.Expected >= 1<<62 {
 		return Published{}, store.ErrInvalid
 	}
@@ -127,7 +134,10 @@ func (s *Service) Publish(ctx context.Context, e identity.Envelope, topic string
 			return Published{}, err
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	if limits.Calls < 1 || limits.Tokens < 1 || limits.Duration <= 0 || limits.Duration > 30*time.Second {
+		return Published{}, gateway.ErrBudget
+	}
+	ctx, cancel := context.WithTimeout(ctx, limits.Duration)
 	defer cancel()
 	if err = s.currentSources(ctx, e, Project(model.Pack())); err != nil {
 		return Published{}, err
@@ -149,7 +159,7 @@ func (s *Service) Publish(ctx context.Context, e identity.Envelope, topic string
 	if err != nil {
 		return Published{}, err
 	}
-	budget, err := gateway.NewBudget(call, gateway.Limits{Calls: 64, Tokens: 1 << 20, Duration: 30 * time.Second})
+	budget, err := gateway.NewBudget(call, limits)
 	if err != nil {
 		return Published{}, err
 	}
@@ -198,7 +208,11 @@ func (s *Service) Publish(ctx context.Context, e identity.Envelope, topic string
 	if e.Deadline().Before(deadline) {
 		deadline = e.Deadline()
 	}
-	return s.repo.PublishTopic(ctx, e, Prepared{model: model, review: review, tenant: e.Tenant(), actor: e.User(), session: e.Session(), deadline: deadline, descriptor: descriptor}, generations, embedded.Receipt, in.Expected)
+	out, err := s.repo.PublishTopic(ctx, e, Prepared{model: model, review: review, tenant: e.Tenant(), actor: e.User(), session: e.Session(), deadline: deadline, descriptor: descriptor}, generations, embedded.Receipt, in.Expected)
+	if err == nil {
+		out.Receipt = embedded.Receipt
+	}
+	return out, err
 }
 
 // Read returns the active or an exact retained published version.

@@ -39,7 +39,7 @@ and [Pengui registration guide](pengui-provider-registration.md).
 Only installed services in enabled groups are registered. `tools/list` filters
 this metadata by the caller's current domain actions. Resource restrictions are
 checked again at invocation, not inferred from tool visibility. A production
-composition with all implemented services has twenty-two bindings:
+composition with all implemented services has twenty-eight bindings:
 
 | Group | MCP tool | Existing HTTP operation ID | Signed domain action |
 |---|---|---|---|
@@ -65,11 +65,17 @@ composition with all implemented services has twenty-two bindings:
 | charts | `specify_chart` | `specifyChart` | `charts.bind` |
 | charts | `build_chart` | `buildChart` | `charts.bind` |
 | charts | `rebind_chart` | `rebindChart` | `charts.bind` |
+| onboarding | `start_onboarding` | `startOnboarding` | `onboarding.write` |
+| onboarding | `get_onboarding` | `getOnboarding` | `onboarding.read` |
+| onboarding | `resume_onboarding` | `resumeOnboarding` | `onboarding.write` |
+| onboarding | `answer_onboarding` | `answerOnboarding` | `onboarding.write` |
+| onboarding | `cancel_onboarding` | `cancelOnboarding` | `onboarding.cancel` |
+| onboarding | `propose_onboarding_drift` | `proposeOnboardingDrift` | `onboarding.write` |
 
 The fifteen established contracts are list/describe topics and datasets;
 preflight/plan/run/refine question; get context/submit SQL; and submit feedback.
 Reviewed example state, bounded listing and protected import/export complete the learning lifecycle.
-Source listing, retained context lookup and chart specification bindings are real
+Source listing, retained context lookup, chart specification and guided onboarding bindings are real
 additional consumers, not substitutes for those fifteen. Context creation is
 absent when its routing service is unavailable. No reporting, scheduling, admin,
 renderer, shell or unimplemented tool is advertised.

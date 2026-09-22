@@ -136,6 +136,9 @@ type Published struct {
 	Definition  Definition `json:"definition"`
 	Digest      string     `json:"digest"`
 	PublishedAt time.Time  `json:"published_at"`
+	// Receipt is retained for trusted server-side reconciliation and budget
+	// accounting. It is deliberately excluded from public topic responses.
+	Receipt gateway.Receipt `json:"-"`
 }
 
 // Contract is a current-source-confirmed published definition.

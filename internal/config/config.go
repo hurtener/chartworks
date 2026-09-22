@@ -136,6 +136,7 @@ type Gateway struct {
 
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
+	Onboarding   Onboarding     `json:"onboarding"`
 	Rendering    Rendering      `json:"rendering"`
 	Autopilot    Autopilot      `json:"autopilot"`
 	Reporting    Reporting      `json:"reporting"`
@@ -194,6 +195,7 @@ func (c Config) StoreDSN() string { return c.dsn }
 // Defaults is also the source for config-check --defaults and the reference document.
 func Defaults() Values {
 	v := Values{
+		Onboarding:   DefaultOnboarding(),
 		Rendering:    DefaultRendering(),
 		Autopilot:    DefaultAutopilot(),
 		MCP:          DefaultMCP(),
@@ -403,6 +405,9 @@ func validate(v Values) error {
 		return invalid("features", "requested capability is not implemented in phases 01-02")
 	}
 	if err := ValidateMCP(v.MCP); err != nil {
+		return err
+	}
+	if err := ValidateOnboarding(v.Onboarding); err != nil {
 		return err
 	}
 	if v.Features.MCP && v.MCP.Timeout >= v.Server.WriteTimeout {

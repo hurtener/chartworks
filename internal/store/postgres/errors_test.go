@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "46" || len(manifest) != 46 {
+	if err != nil || SchemaVersion() != "47" || len(manifest) != 47 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -55,6 +55,7 @@ func TestSafeErrors(t *testing.T) {
 		{43, "migrations/044_reporting_question_assessments.sql", "block_question_assessments"},
 		{44, "migrations/045_document_deletion_catalog.sql", "document_deletion_tombstones"},
 		{45, "migrations/046_render_renditions.sql", "render_renditions"},
+		{46, "migrations/047_guided_onboarding.sql", "onboarding_runs"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {
@@ -65,5 +66,8 @@ func TestSafeErrors(t *testing.T) {
 		if !strings.Contains(manifest[9].SQL, "'"+dialect+"'") {
 			t.Fatal("warehouse dialect migration missing closed variant", dialect)
 		}
+	}
+	if !strings.Contains(manifest[45].SQL, "pg_get_expr(conbin,conrelid)") || strings.Contains(manifest[45].SQL, "pg_get_constraintdef") {
+		t.Fatal("rendition migration must splice the prior audit predicate, not nest a CHECK definition")
 	}
 }
