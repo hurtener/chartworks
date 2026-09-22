@@ -20,10 +20,10 @@ const (
 
 var kindRank = map[Kind]int{
 	KindSource: 0, KindUpload: 1, KindProfile: 2, KindTopic: 3,
-	KindRule: 4, KindTemplate: 5, KindBlock: 6, KindReport: 7,
-	KindDashboard: 8, KindFilter: 9, KindSchedule: 10, KindRun: 11,
-	KindArtifact: 12, KindRendition: 13, KindCertificate: 14,
-	KindTombstone: 15, KindCalibration: 16,
+	KindRule: 4, KindTemplate: 5, KindRuntimePack: 6, KindEvalSuite: 7,
+	KindBlock: 8, KindReport: 9, KindDashboard: 10, KindFilter: 11,
+	KindSchedule: 12, KindRun: 13, KindArtifact: 14, KindRendition: 15,
+	KindCertificate: 16, KindTombstone: 17, KindCalibration: 18,
 }
 
 var forbiddenKeys = map[string]bool{
@@ -62,6 +62,10 @@ type calibrationPayload struct {
 	MaxOutputTokens       int                    `json:"max_output_tokens"`
 	ExamplePolicyRevision string                 `json:"example_policy_revision"`
 	TemplateThresholds    []calibrationThreshold `json:"template_thresholds"`
+	EvaluationSuiteDigest string                 `json:"evaluation_suite_digest"`
+	EvaluationRunDigest   string                 `json:"evaluation_run_digest"`
+	RuntimePackDigest     string                 `json:"runtime_pack_digest"`
+	HeldoutLineageDigest  string                 `json:"heldout_lineage_digest,omitempty"`
 }
 
 func twoDigits(i int) string {
@@ -104,11 +108,14 @@ func validateManifest(m Manifest) (string, error) {
 			return "", ErrInvalid
 		}
 		var payload any
-		if json.Unmarshal([]byte(o.Payload), &payload) != nil || containsForbidden(payload) {
+		if json.Unmarshal([]byte(o.Payload), &payload) != nil || containsForbiddenObject(o.Kind, payload) {
 			return "", ErrInvalid
 		}
 		object, ok := payload.(map[string]any)
 		if !ok || len(object) == 0 {
+			return "", ErrInvalid
+		}
+		if err := validateEvaluationObject(o); err != nil {
 			return "", ErrInvalid
 		}
 		for key := range object {
@@ -175,6 +182,14 @@ func validateManifest(m Manifest) (string, error) {
 		if json.Unmarshal([]byte(c.Payload), &payload) != nil || containsForbidden(payload) || !validCalibrationPayload(c.Payload) {
 			return "", ErrInvalid
 		}
+		var calibration calibrationPayload
+		if json.Unmarshal([]byte(c.Payload), &calibration) != nil {
+			return "", ErrInvalid
+		}
+		runtimePacks, suites, digestErr := evaluationObjectDigests(m.Objects)
+		if digestErr != nil || len(runtimePacks) > 0 && !runtimePacks[calibration.RuntimePackDigest] || len(suites) > 0 && !suites[calibration.EvaluationSuiteDigest] {
+			return "", ErrInvalid
+		}
 	}
 	if m.Boundary != nil {
 		b := m.Boundary
@@ -201,7 +216,7 @@ func validCalibrationPayload(raw string) bool {
 	var payload calibrationPayload
 	decoder := json.NewDecoder(bytes.NewBufferString(raw))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&payload) != nil || !identity.Identifier(payload.PromptPack) || payload.FallbackPromptPack != "" && !identity.Identifier(payload.FallbackPromptPack) || !identity.Identifier(payload.OptimizationRevision) || !identity.Identifier(payload.Locale) || !identity.Identifier(payload.ExamplePolicyRevision) || payload.Temperature < 0 || payload.Temperature > 2 || payload.MaxOutputTokens < 1 || payload.MaxOutputTokens > 1_000_000 || len(payload.TemplateThresholds) < 1 || len(payload.TemplateThresholds) > 256 {
+	if decoder.Decode(&payload) != nil || !identity.Identifier(payload.PromptPack) || payload.FallbackPromptPack != "" && !identity.Identifier(payload.FallbackPromptPack) || !identity.Identifier(payload.OptimizationRevision) || !identity.Identifier(payload.Locale) || !identity.Identifier(payload.ExamplePolicyRevision) || payload.Temperature < 0 || payload.Temperature > 2 || payload.MaxOutputTokens < 1 || payload.MaxOutputTokens > 1_000_000 || len(payload.TemplateThresholds) < 1 || len(payload.TemplateThresholds) > 256 || !validHash(payload.EvaluationSuiteDigest) || !validHash(payload.EvaluationRunDigest) || !validHash(payload.RuntimePackDigest) || payload.HeldoutLineageDigest != "" && !validHash(payload.HeldoutLineageDigest) {
 		return false
 	}
 	seen := map[string]bool{}
@@ -214,6 +229,14 @@ func validCalibrationPayload(raw string) bool {
 	return true
 }
 
+func validHash(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil && value == strings.ToLower(value)
+}
+
 func objectDigest(o Object) string {
 	raw, _ := json.Marshal(o)
 	sum := sha256.Sum256(raw)
@@ -221,22 +244,38 @@ func objectDigest(o Object) string {
 }
 
 func containsForbidden(v any) bool {
+	return containsForbiddenAt("", nil, v)
+}
+
+func containsForbiddenObject(kind Kind, v any) bool {
+	return containsForbiddenAt(kind, nil, v)
+}
+
+func containsForbiddenAt(kind Kind, path []string, v any) bool {
 	switch x := v.(type) {
 	case map[string]any:
 		for key, value := range x {
 			n := strings.ToLower(strings.TrimSpace(key))
-			if forbiddenKeys[n] || strings.Contains(n, "credential") || strings.Contains(n, "password") || strings.Contains(n, "secret") || strings.HasSuffix(n, "_token") || containsForbidden(value) {
+			modelRole := n == "role" && allowedModelRolePath(kind, path)
+			if !modelRole && (forbiddenKeys[n] || strings.Contains(n, "credential") || strings.Contains(n, "password") || strings.Contains(n, "secret") || strings.HasSuffix(n, "_token")) || containsForbiddenAt(kind, append(path, n), value) {
 				return true
 			}
 		}
 	case []any:
 		for _, value := range x {
-			if containsForbidden(value) {
+			if containsForbiddenAt(kind, path, value) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func allowedModelRolePath(kind Kind, path []string) bool {
+	if len(path) != 2 || path[1] != "models" {
+		return false
+	}
+	return kind == KindRuntimePack && (path[0] == "pack" || path[0] == "config") || kind == KindEvalSuite && path[0] == "packs"
 }
 
 func ordered(m Manifest) ([]Object, error) {

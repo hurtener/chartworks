@@ -14,9 +14,11 @@ import (
 // Repository persists immutable revisions, review receipts, and terminal run evidence.
 type Repository interface {
 	CreateRuntimePack(context.Context, store.Scope, RuntimePackRecord) error
+	DraftRuntimePack(context.Context, store.Scope, string) (RuntimePackRecord, error)
 	ReviewRuntimePack(context.Context, store.Scope, RuntimePackReview) (RuntimePackRecord, error)
 	AcceptedRuntimePack(context.Context, store.Scope, string, string) (RuntimePackRecord, error)
 	CreateSuite(context.Context, store.Scope, SuiteRecord) error
+	DraftSuite(context.Context, store.Scope, string, int64) (SuiteRecord, error)
 	SaveInput(context.Context, store.Scope, ProtectedRef, LiveInput) error
 	ReviewSuite(context.Context, store.Scope, SuiteReview) (SuiteRecord, error)
 	AcceptedSuite(context.Context, store.Scope, string, int64, string) (SuiteRecord, error)
@@ -35,6 +37,48 @@ type Repository interface {
 	ReviewProposal(context.Context, store.Scope, ReviewReceipt) error
 	SelectPack(context.Context, store.Scope, PackSelection, int64) (PackSelection, error)
 	SelectedPack(context.Context, store.Scope) (PackSelection, error)
+}
+
+// DraftRuntimePack resolves one exact unreviewed runtime pack for idempotent
+// migration reconciliation. It uses write authority because the material can
+// include protected instructions and is not a general read surface.
+func (s *Service) DraftRuntimePack(ctx context.Context, e identity.Envelope, packDigest string) (RuntimePackRecord, error) {
+	if ctx == nil || !validDigest(packDigest) {
+		return RuntimePackRecord{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return RuntimePackRecord{}, err
+	}
+	r, err := s.repo.DraftRuntimePack(ctx, scope, packDigest)
+	if err != nil {
+		return RuntimePackRecord{}, err
+	}
+	if r.State != Draft || r.Review != nil || r.Validate() != nil {
+		return RuntimePackRecord{}, store.ErrConflict
+	}
+	return r, nil
+}
+
+// DraftSuite resolves one exact unreviewed suite for idempotent migration
+// reconciliation. It cannot return accepted or rejected authority state.
+func (s *Service) DraftSuite(ctx context.Context, e identity.Envelope, id string, revision int64) (SuiteRecord, error) {
+	if ctx == nil || !identifier(id) || revision < 1 {
+		return SuiteRecord{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return SuiteRecord{}, err
+	}
+	r, err := s.repo.DraftSuite(ctx, scope, id, revision)
+	if err != nil {
+		return SuiteRecord{}, err
+	}
+	want, digestErr := r.Suite.Digest()
+	if digestErr != nil || r.State != Draft || r.Review != nil || r.Digest != want {
+		return SuiteRecord{}, store.ErrConflict
+	}
+	return r, nil
 }
 
 // AuthorRuntimePack stores an immutable server-owned runtime configuration draft.

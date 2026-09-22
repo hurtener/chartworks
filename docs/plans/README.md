@@ -3,7 +3,7 @@
 The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
 
 Phases **01–22 and 32 are shipped**. Phases 23, 24, 26, 27, 28, 29, 30, 31, 33 and 34 are in progress;
-the remaining workstream is the planned phase-25 final release gate. The registry maps 232 criteria to implemented or in-progress work. This is
+the remaining workstream is the planned phase-25 final release gate. The registry maps 224 criteria to implemented or in-progress work. This is
 bookkeeping, not evidence that every implementation has passed its release gates.
 
 The [phase-23 review](../reviews/phase-23-adversarial.md),
@@ -28,7 +28,7 @@ Keep functional cron/interval/manual scheduling and actual pipeline/saved-query/
 
 Read RFC-001, RFC-002, [COMMON.md](COMMON.md), then the owning phase. Each phase names packages, dependencies, concrete tasks, configuration/persistence, non-goals and individually testable criteria. `phase-registry.json` supplies the dependency/status/count ledger; `coverage.json` maps all source features and review gates to criteria. Neither file is runtime evidence.
 
-There are **34 workstreams and 232 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–22 and32 are shipped; phases23, 24, 26, 27, 28, 29, 30, 31, 33 and34 are in progress, leaving only phase25 planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented.
+There are **34 workstreams and 224 acceptance criteria**: phase 05 has ten, the other original phases have six each, and phases27–34 have eight each. Phases01–22 and32 are shipped; phases23, 24, 26, 27, 28, 29, 30, 31, 33 and34 are in progress, leaving only phase25 planned. Each implemented criterion requires its real `TestPhaseNN/ACxx` result. Missing/skipped/empty tests cannot count as success. The phase 25 full-release gate remains unimplemented.
 
 Numbers identify workstreams, not chronology. Phases21–23 extend the early transport/client registration seams; domain phases add concrete operations as they land. The six operational routes and matching SDK methods introduced in phases03/04 are real first consumers, not a claim that the later full HTTP/MCP/client phases are finished. Phase25 is the final release gate.
 

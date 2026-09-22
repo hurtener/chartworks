@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/hurtener/chartworks/internal/engineering"
+	"github.com/hurtener/chartworks/internal/evaluation"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/migration"
@@ -31,6 +32,7 @@ type migrationDomains struct {
 	documents   *reporting.Documents
 	queries     *nlqexec.Service
 	schedules   *jobs.Service
+	evaluation  *evaluation.Service
 }
 
 type scheduleImport struct {
@@ -55,6 +57,9 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 		migration.KindTombstone: migration.AdapterFuncs{ValidateFunc: func(context.Context, identity.Envelope, migration.Object, migration.Mapping) error { return nil }, ApplyFunc: func(_ context.Context, _ identity.Envelope, o migration.Object, _ migration.Mapping, _ string) (string, error) {
 			return "tombstone:" + o.ExternalRef, nil
 		}},
+	}
+	for kind, adapter := range migration.EvaluationAdapters(d.evaluation) {
+		adapters[kind] = adapter
 	}
 	if d.sources != nil {
 		adapters[migration.KindSource] = migration.AdapterFuncs{ValidateFunc: func(ctx context.Context, e identity.Envelope, _ migration.Object, m migration.Mapping) error {

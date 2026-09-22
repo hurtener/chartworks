@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/evaluation"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/migration"
 	"github.com/hurtener/chartworks/test/support"
@@ -57,11 +59,28 @@ func phase34Actor(t *testing.T, tenant string, scopes ...string) identity.Envelo
 	return e
 }
 
+func phase34EvaluationMaterial() (evaluation.RuntimePackAuthorRequest, evaluation.Suite) {
+	config := gateway.RuntimeConfig{Model: "model-v1", Models: []gateway.RuntimeModel{{Role: "routing", Model: "model-v1"}}, SystemInstruction: "synthetic reviewed instruction", AttemptCostUSD: 0.01}
+	config.Digest = gateway.ConfigurationDigest(config)
+	pack := evaluation.PackRevision{ID: "pack-v1", Revision: 1, Model: config.Model, Models: []evaluation.PackModel{{Role: "routing", Model: "model-v1"}}, ConfigurationDigest: config.Digest}
+	pack.Digest = pack.CanonicalDigest()
+	quality := 1.0
+	evidenceDigest := strings.Repeat("a", 64)
+	fixture := evaluation.Observation{Decision: "route", SemanticDigest: evidenceDigest, Usage: evaluation.Usage{ServiceMS: 1}}
+	suite := evaluation.Suite{SchemaVersion: evaluation.SchemaVersion, ID: "suite-v1", Revision: 1, Mode: evaluation.Fixture, Seed: 42, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &quality}, Limits: evaluation.Limits{Cases: 1, Calls: 1, Tokens: 1, DurationMS: 1000}, Provenance: evaluation.Provenance{Implementation: "synthetic-sha", EnvironmentDigest: evidenceDigest, ConfigurationDigest: config.Digest, SemanticVersion: "semantic-v1", RuleVersion: "rules-v1", SourceSnapshot: evidenceDigest, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: evaluation.Fixture, EvidenceDigest: evidenceDigest, Status: "measured"}}}, Packs: []evaluation.PackRevision{pack}, Frontiers: []string{"EVAL-01"}, Cases: []evaluation.Case{{ID: "quality", Stage: evaluation.StageRouting, Locale: "en", HeldOut: true, Input: evaluation.ProtectedRef{Digest: evidenceDigest, Retention: "protected"}, Expected: []evaluation.Expected{{Decision: "route", SemanticDigest: evidenceDigest}}, Fixture: &fixture}}}
+	return evaluation.RuntimePackAuthorRequest{Pack: pack, Config: config}, suite
+}
+
 func phase34Manifest(suffix string) migration.Manifest {
 	now := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC)
-	kinds := []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindRun, migration.KindArtifact, migration.KindRendition, migration.KindCertificate, migration.KindTombstone, migration.KindCalibration}
+	runtime, suite := phase34EvaluationMaterial()
+	runtimeRaw, _ := json.Marshal(runtime)
+	suiteRaw, _ := json.Marshal(suite)
+	runtimeDigest, _ := runtime.Digest()
+	suiteDigest, _ := suite.Digest()
+	kinds := []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindRun, migration.KindArtifact, migration.KindRendition, migration.KindCertificate, migration.KindTombstone, migration.KindCalibration}
 	objects := make([]migration.Object, 0, len(kinds))
-	fields := make([]migration.FieldDisposition, 0, len(kinds))
+	fields := []migration.FieldDisposition{}
 	for i, kind := range kinds {
 		ref := string(kind) + "-" + suffix
 		parents := []string{}
@@ -77,12 +96,23 @@ func phase34Manifest(suffix string) migration.Manifest {
 		if kind == migration.KindTombstone {
 			lifecycle = "deleted"
 		}
-		object := migration.Object{Kind: kind, ExternalRef: ref, Parents: parents, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"synthetic"}`, Lifecycle: lifecycle, Private: private, Origin: "neutral-source", Retention: migration.Retention{ExpiresAt: ptrTime(now.Add(30 * 24 * time.Hour)), EraseWith: "cohort-" + suffix}}
+		payload := `{"name":"synthetic"}`
+		if kind == migration.KindRuntimePack {
+			payload = string(runtimeRaw)
+		}
+		if kind == migration.KindEvalSuite {
+			payload = string(suiteRaw)
+		}
+		object := migration.Object{Kind: kind, ExternalRef: ref, Parents: parents, Revision: 1, PayloadVersion: "v1", Payload: payload, Lifecycle: lifecycle, Private: private, Origin: "neutral-source", Retention: migration.Retention{ExpiresAt: ptrTime(now.Add(30 * 24 * time.Hour)), EraseWith: "cohort-" + suffix}}
 		if kind == migration.KindTombstone {
 			object.Deletes = &migration.TombstoneTarget{Kind: migration.KindBlock, ExternalRef: "block-" + suffix, Revision: 1}
 		}
 		objects = append(objects, object)
-		fields = append(fields, migration.FieldDisposition{Path: ref + ".name", Status: "retained"})
+		var top map[string]any
+		_ = json.Unmarshal([]byte(payload), &top)
+		for key := range top {
+			fields = append(fields, migration.FieldDisposition{Path: ref + "." + key, Status: "retained"})
+		}
 	}
 	evidence := []migration.Evidence{}
 	for _, group := range []struct {
@@ -95,7 +125,8 @@ func phase34Manifest(suffix string) migration.Manifest {
 		}
 	}
 	evidence = append(evidence, migration.Evidence{Feature: "Q11", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discarded-stub", Source: "synthetic", SourceVersion: "v1"})
-	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-" + suffix, Cohort: "cohort-" + suffix, SourceSnapshot: "snapshot-" + suffix, Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source-" + suffix, Destination: "mapped-source", Revision: 1}}, Objects: objects, Fields: fields, Evidence: evidence, Calibration: &migration.Calibration{Revision: "cal-one", ModelVersion: "model-one", EmbeddingSpace: "space-one", BudgetVersion: "budget-one", Payload: `{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}]}`, State: "review_candidate"}, Boundary: &migration.OccurrenceBoundary{Stream: "stream-" + suffix, LastAccepted: "occurrence-prior", LastDue: now.Add(-time.Hour), ResumeAfter: now, ScheduleVersion: 1}}
+	calibration := fmt.Sprintf(`{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}],"evaluation_suite_digest":"%s","evaluation_run_digest":"%s","runtime_pack_digest":"%s"}`, suiteDigest, strings.Repeat("b", 64), runtimeDigest)
+	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-" + suffix, Cohort: "cohort-" + suffix, SourceSnapshot: "snapshot-" + suffix, Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source-" + suffix, Destination: "mapped-source", Revision: 1}}, Objects: objects, Fields: fields, Evidence: evidence, Calibration: &migration.Calibration{Revision: "cal-one", ModelVersion: "model-one", EmbeddingSpace: "space-one", BudgetVersion: "budget-one", Payload: calibration, State: "review_candidate"}, Boundary: &migration.OccurrenceBoundary{Stream: "stream-" + suffix, LastAccepted: "occurrence-prior", LastDue: now.Add(-time.Hour), ResumeAfter: now, ScheduleVersion: 1}}
 }
 func ptrTime(t time.Time) *time.Time { return &t }
 
@@ -105,7 +136,7 @@ func phase34Service(t *testing.T, suffix string) (*migration.Service, *phase34Ad
 	db := support.Open(t, dsn)
 	adapter := &phase34Adapter{}
 	adapters := map[migration.Kind]migration.Adapter{}
-	for _, kind := range []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration} {
+	for _, kind := range []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration} {
 		adapters[kind] = adapter
 	}
 	service, err := migration.New(db, adapters, nil)
@@ -119,7 +150,7 @@ func phase34DryRunReplay(t *testing.T) {
 	s, a, e, _ := phase34Service(t, "ac01")
 	m := phase34Manifest("ac01")
 	plan, err := s.DryRun(t.Context(), e, migration.DryRunRequest{Manifest: m})
-	if err != nil || !plan.Ready || len(plan.Fields) != len(m.Objects) {
+	if err != nil || !plan.Ready || len(plan.Fields) != len(m.Fields) {
 		t.Fatal("dry-run loss ledger", err, plan)
 	}
 	first, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m})
@@ -130,7 +161,7 @@ func phase34DryRunReplay(t *testing.T) {
 	if err != nil || again.ID != first.ID || again.Digest != first.Digest || again.Revision != first.Revision || again.State != first.State || again.Applied != first.Applied || again.Quarantined != first.Quarantined {
 		t.Fatal("idempotent import", err, again, first)
 	}
-	if len(a.applied) != 13 {
+	if len(a.applied) != 15 {
 		t.Fatal("historical rows crossed current adapters or active graph omitted", a.applied)
 	}
 	changed := m
@@ -153,19 +184,79 @@ func phase34GraphNormalization(t *testing.T) {
 	s, a, e, _ := phase34Service(t, "ac02")
 	m := phase34Manifest("ac02")
 	out, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m})
-	if err != nil || out.Total != 17 || out.Applied != 13 || out.Quarantined != 4 {
+	if err != nil || out.Total != 19 || out.Applied != 15 || out.Quarantined != 4 {
 		t.Fatal(err, out)
 	}
 	a.mu.Lock()
 	got := append([]migration.Kind(nil), a.applied...)
 	a.mu.Unlock()
-	want := []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration}
+	want := []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration}
 	if !slices.Equal(got, want) {
 		t.Fatal("dependency order changed", got)
 	}
 	exported, err := s.Export(t.Context(), e, migration.ExportRequest{Batch: m.Batch, Limit: 1000})
 	if err != nil || !reflect.DeepEqual(exported.Manifest, m) {
 		t.Fatal("normalization lost exact state", err, exported)
+	}
+	phase34EvaluationDrafts(t)
+}
+
+func phase34EvaluationDrafts(t *testing.T) {
+	t.Helper()
+	dsn := support.Database(t)
+	db := support.Open(t, dsn)
+	eval, err := evaluation.New(db, nil, func() time.Time { return time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := migration.New(db, migration.EvaluationAdapters(eval), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant := "tenant-ac02-evaluation"
+	actor := phase34Actor(t, tenant, "migration.read", "migration.write", "ops.write")
+	runtime, suite := phase34EvaluationMaterial()
+	pack, config := runtime.Pack, runtime.Config
+	runtimeRaw, _ := json.Marshal(runtime)
+	suiteRaw, _ := json.Marshal(suite)
+	now := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC)
+	objects := []migration.Object{
+		{Kind: migration.KindRuntimePack, ExternalRef: "runtime-pack-v1", Revision: 1, PayloadVersion: "v1", Payload: string(runtimeRaw), Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: migration.Retention{ExpiresAt: ptrTime(now.Add(24 * time.Hour))}},
+		{Kind: migration.KindEvalSuite, ExternalRef: "evaluation-suite-v1", Parents: []string{"runtime-pack-v1"}, Revision: 1, PayloadVersion: "v1", Payload: string(suiteRaw), Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: migration.Retention{ExpiresAt: ptrTime(now.Add(24 * time.Hour))}},
+	}
+	fields := []migration.FieldDisposition{}
+	for _, object := range objects {
+		var top map[string]any
+		if err := json.Unmarshal([]byte(object.Payload), &top); err != nil {
+			t.Fatal(err)
+		}
+		for key := range top {
+			fields = append(fields, migration.FieldDisposition{Path: object.ExternalRef + "." + key, Status: "retained"})
+		}
+	}
+	// Seed both drafts to prove migration reconciles the public owning service
+	// after a crash between domain commit and migration checkpoint.
+	if _, err = eval.AuthorRuntimePack(t.Context(), actor, pack, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = eval.Author(t.Context(), actor, suite); err != nil {
+		t.Fatal(err)
+	}
+	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-ac02-evaluation", Cohort: "cohort-ac02-evaluation", SourceSnapshot: "snapshot-ac02-evaluation", Engine: "postgres", Dialect: "postgres", Objects: objects, Fields: fields, Evidence: phase34Manifest("ac02-evidence").Evidence}
+	batch, err := service.Import(t.Context(), actor, migration.ImportRequest{Manifest: manifest})
+	if err != nil || batch.State != "complete" || batch.Applied != 2 || batch.Quarantined != 0 {
+		t.Fatal("evaluation drafts were not reconciled", err, batch)
+	}
+	var runtimeState, suiteState string
+	raw := support.Raw(t, dsn)
+	if err = raw.QueryRow(t.Context(), `SELECT state FROM chartworks.evaluation_runtime_packs WHERE tenant_id=$1 AND pack_digest=$2`, tenant, pack.Digest).Scan(&runtimeState); err != nil {
+		t.Fatal(err)
+	}
+	if err = raw.QueryRow(t.Context(), `SELECT state FROM chartworks.evaluation_suites WHERE tenant_id=$1 AND suite_id=$2 AND revision=1`, tenant, suite.ID).Scan(&suiteState); err != nil {
+		t.Fatal(err)
+	}
+	if runtimeState != "draft" || suiteState != "draft" {
+		t.Fatal("migration promoted review authority", runtimeState, suiteState)
 	}
 }
 
