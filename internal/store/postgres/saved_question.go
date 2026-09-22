@@ -29,7 +29,7 @@ func (d *DB) ReadSavedQuery(ctx context.Context, e identity.Envelope, id string,
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT tenant_id,actor_id,session_id,query_id,parent_id,operation,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,NULL::jsonb,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification
+		row := tx.QueryRow(ctx, `SELECT tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,NULL::jsonb,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification
  FROM chartworks.nlq_queries WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3
  AND (($4::boolean AND operation=$5) OR (NOT $4::boolean AND query_id=$5))
  AND ($6::boolean OR context_id=ANY($7::text[]))`, e.Tenant(), e.User(), e.Session(), operation, id, selection.All(), selection.IDs())

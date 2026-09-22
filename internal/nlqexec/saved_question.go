@@ -255,7 +255,9 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 		if err != nil {
 			return SavedPlan{}, err
 		}
+		parent := original
 		original.ID, original.Parent, original.Operation = id, in.Query, operation
+		bindParentLineage(&original, &parent)
 		original.Status, original.Result, original.Revision = "planned", nil, 1
 		original.Created, original.Updated, original.ExecutionFixes = time.Now().UTC(), time.Now().UTC(), 0
 		if err := s.repo.CreateQuery(ctx, sc, original); err != nil && !errors.Is(err, store.ErrConflict) {

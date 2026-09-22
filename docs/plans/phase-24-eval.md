@@ -69,3 +69,12 @@ Phase 24 still owns held-out and representative-user evaluation of conflict
 explanation comprehension and live-model behavior. Those measurements must pin
 the exact topic, ruleset, source/context and model revisions; synthetic contract
 fixtures alone cannot close that quality boundary.
+
+## EXP-01 continuity cases
+
+The deterministic evaluation corpus now names bilingual add-dimension,
+replace-filter, remove-filter, change-metric, clarification-correction and
+semantic-republication cases. The real PostgreSQL service journey inspects the
+persisted canonical route and fail-closed session/context/publication outcomes.
+This closes the fixture/runtime disposition; live calibrated comparison remains
+Phase 34/25 evidence.

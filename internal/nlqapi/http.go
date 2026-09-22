@@ -173,6 +173,8 @@ func classify(err error) (int, string) {
 		status, code = http.StatusConflict, "foreign_session"
 	case errors.Is(err, nlqexec.ErrNoPlan):
 		status, code = http.StatusConflict, "no_plan"
+	case errors.Is(err, nlqexec.ErrRefinementLimit):
+		status, code = http.StatusConflict, "new_question_required"
 	case errors.Is(err, nlqexec.ErrValidationBudget):
 		status, code = http.StatusUnprocessableEntity, "validation_budget_exhausted"
 	case errors.Is(err, nlqexec.ErrExecutionBudget):

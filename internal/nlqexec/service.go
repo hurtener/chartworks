@@ -57,10 +57,15 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	if ctx == nil || !e.Valid() {
 		return PreflightResult{}, access.ErrUnauthenticated
 	}
+	canonicalizeQuestion(&in.QuestionRequest)
 	if err := requireQuestionAction(e, "query.preflight", in.QuestionRequest); err != nil {
 		return PreflightResult{}, err
 	}
 	if err := validateQuestion(in.QuestionRequest); err != nil {
+		return PreflightResult{}, err
+	}
+	observedParent, err := s.observeParent(ctx, e, in.ClarificationQuery, in.Context)
+	if err != nil {
 		return PreflightResult{}, err
 	}
 	if err := s.validateClarificationOrigin(ctx, e, in.QuestionRequest, "query.preflight"); err != nil {
@@ -78,6 +83,7 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 		return PreflightResult{}, err
 	}
 	record := queryRecord(e, id, "preflight", in.ClarificationQuery, in.QuestionRequest, admitted)
+	bindParentLineage(&record, observedParent)
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PreflightResult{}, err
 	}
@@ -86,10 +92,24 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 
 // Plan generates one bounded candidate and validates it through the existing read core.
 func (s *Service) Plan(ctx context.Context, e identity.Envelope, in PlanRequest) (PlanResult, error) {
+	canonicalizeQuestion(&in.QuestionRequest)
+	if ctx == nil || !e.Valid() {
+		return PlanResult{}, access.ErrUnauthenticated
+	}
+	if err := requireQuestionAction(e, "query.plan", in.QuestionRequest); err != nil {
+		return PlanResult{}, err
+	}
+	if err := validateQuestion(in.QuestionRequest); err != nil {
+		return PlanResult{}, err
+	}
+	observedParent, err := s.observeParent(ctx, e, in.ClarificationQuery, in.Context)
+	if err != nil {
+		return PlanResult{}, err
+	}
 	if err := s.validateClarificationOrigin(ctx, e, in.QuestionRequest, "query.plan"); err != nil {
 		return PlanResult{}, err
 	}
-	return s.plan(ctx, e, in.QuestionRequest, in.Operation, in.ClarificationQuery, "query.plan")
+	return s.plan(ctx, e, in.QuestionRequest, in.Operation, in.ClarificationQuery, observedParent, "query.plan")
 }
 
 // Refine creates a child plan anchored to the original query's signed session and topics.
@@ -106,6 +126,9 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	}
 	if old.Session != e.Session() {
 		return PlanResult{}, ErrForeignSession
+	}
+	if err := s.checkRefinementDepth(ctx, e, old); err != nil {
+		return PlanResult{}, err
 	}
 	if in.ClarificationQuery != "" && in.ClarificationQuery != in.QueryID {
 		return PlanResult{}, clarificationOriginError(in.Locale, "clarification_question_mismatch")
@@ -131,6 +154,16 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 		return PlanResult{}, ErrInvalid
 	}
 	question := refinementQuestion(old, in.QuestionRequest)
+	if err := applyReferenceEdits(&question, in.ReferenceEdits); err != nil {
+		return PlanResult{}, err
+	}
+	if err := applyMetricEdits(&question, in.MetricEdits); err != nil {
+		return PlanResult{}, err
+	}
+	canonicalizeQuestion(&question)
+	if err := validateMetricReferenceCoherence(question, in.ReferenceEdits, in.MetricEdits); err != nil {
+		return PlanResult{}, err
+	}
 	if err := mergeRefinementClarifications(old, in.QuestionRequest, &question); err != nil {
 		return PlanResult{}, err
 	}
@@ -147,7 +180,26 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 			question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: base})
 		}
 	}
-	return s.plan(ctx, e, question, "", in.QueryID, "query.execute", old.Route.Resolutions...)
+	return s.plan(ctx, e, question, "", in.QueryID, &old, "query.execute", old.Route.Resolutions...)
+}
+
+func (s *Service) checkRefinementDepth(ctx context.Context, e identity.Envelope, q QueryRecord) error {
+	seen := map[string]bool{}
+	for depth := 0; q.Parent != ""; depth++ {
+		if depth >= MaxRefinementDepth-1 || seen[q.ID] {
+			return ErrRefinementLimit
+		}
+		seen[q.ID] = true
+		parent, err := s.repo.ReadQuery(ctx, mustScope(e), q.Parent)
+		if err != nil {
+			return err
+		}
+		if parent.Session != e.Session() || parent.Context != q.Context {
+			return ErrForeignSession
+		}
+		q = parent
+	}
+	return nil
 }
 
 // Run revalidates and executes one previously planned query with idempotent operation handling.
@@ -564,15 +616,26 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 	return redactExample(stored, true), nil
 }
 
-func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent, action string, previous ...semantics.ClarificationResolution) (PlanResult, error) {
+func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent string, observedParent *QueryRecord, action string, previous ...semantics.ClarificationResolution) (PlanResult, error) {
 	if ctx == nil || !e.Valid() {
 		return PlanResult{}, access.ErrUnauthenticated
 	}
+	canonicalizeQuestion(&question)
 	if err := requireQuestionAction(e, action, question); err != nil {
 		return PlanResult{}, err
 	}
 	if err := validateQuestion(question); err != nil {
 		return PlanResult{}, err
+	}
+	if parent != "" && observedParent == nil {
+		value, readErr := s.repo.ReadQuery(ctx, mustScope(e), parent)
+		if readErr != nil {
+			return PlanResult{}, readErr
+		}
+		observedParent = &value
+	}
+	if observedParent != nil && (observedParent.ID != parent || observedParent.Session != e.Session() || observedParent.Context != question.Context) {
+		return PlanResult{}, ErrForeignSession
 	}
 	admitted, err := s.admit(ctx, e, question, true)
 	if err != nil {
@@ -623,6 +686,7 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 		return PlanResult{}, err
 	}
 	record := queryRecord(e, id, "planned", parent, question, admitted)
+	bindParentLineage(&record, observedParent)
 	record.Clarification = candidate.clarification
 	receipt = appendReceipts(selectionReceipt, receipt)
 	record.Operation, record.SQL, record.Parameters, record.Generation, record.Receipt, record.ValidationFixes, record.ExampleSelection = operation, candidate.SQL, candidate.Parameters, generation, receipt, fixes, selection
@@ -774,6 +838,198 @@ func mergeStrings(base, delta []string) []string {
 		}
 	}
 	return out
+}
+
+func applyReferenceEdits(question *QuestionRequest, edits []ReferenceEdit) error {
+	if question == nil || len(edits) > 64 {
+		return ErrInvalid
+	}
+	values := append([]semantics.Reference(nil), question.References...)
+	seen := map[semantics.Reference]bool{}
+	for _, edit := range edits {
+		if !edit.Target.Valid() || seen[edit.Target] {
+			return ErrInvalid
+		}
+		seen[edit.Target] = true
+		index := -1
+		for i := range values {
+			if values[i] == edit.Target {
+				index = i
+				break
+			}
+		}
+		switch edit.Action {
+		case "add":
+			if edit.Replacement != nil || index >= 0 {
+				return ErrInvalid
+			}
+			values = append(values, edit.Target)
+		case "remove":
+			if edit.Replacement != nil || index < 0 {
+				return ErrInvalid
+			}
+			values = append(values[:index], values[index+1:]...)
+		case "replace":
+			if edit.Replacement == nil || !edit.Replacement.Valid() || index < 0 || *edit.Replacement == edit.Target {
+				return ErrInvalid
+			}
+			for i := range values {
+				if values[i] == *edit.Replacement {
+					return ErrInvalid
+				}
+			}
+			values[index] = *edit.Replacement
+		default:
+			return ErrInvalid
+		}
+	}
+	question.References = values
+	return nil
+}
+
+func applyMetricEdits(question *QuestionRequest, edits []MetricEdit) error {
+	if question == nil || len(edits) > 32 {
+		return ErrInvalid
+	}
+	values := append([]string(nil), question.MetricIDs...)
+	seen := map[string]bool{}
+	for _, edit := range edits {
+		if !identity.Identifier(edit.Target) || seen[edit.Target] {
+			return ErrInvalid
+		}
+		seen[edit.Target] = true
+		index := -1
+		for i := range values {
+			if values[i] == edit.Target {
+				index = i
+				break
+			}
+		}
+		switch edit.Action {
+		case "add":
+			if edit.Replacement != "" || index >= 0 {
+				return ErrInvalid
+			}
+			values = append(values, edit.Target)
+		case "remove":
+			if edit.Replacement != "" || index < 0 {
+				return ErrInvalid
+			}
+			values = append(values[:index], values[index+1:]...)
+		case "replace":
+			if !identity.Identifier(edit.Replacement) || edit.Replacement == edit.Target || index < 0 {
+				return ErrInvalid
+			}
+			for i := range values {
+				if values[i] == edit.Replacement {
+					return ErrInvalid
+				}
+			}
+			values[index] = edit.Replacement
+		default:
+			return ErrInvalid
+		}
+	}
+	question.MetricIDs = values
+	return nil
+}
+
+func canonicalizeQuestion(question *QuestionRequest) {
+	if question == nil {
+		return
+	}
+	sort.Slice(question.References, func(i, j int) bool {
+		a, b := question.References[i], question.References[j]
+		if a.Kind != b.Kind {
+			return a.Kind < b.Kind
+		}
+		if a.Dataset != b.Dataset {
+			return a.Dataset < b.Dataset
+		}
+		if a.ID != b.ID {
+			return a.ID < b.ID
+		}
+		return a.Revision < b.Revision
+	})
+	sort.Strings(question.MetricIDs)
+}
+
+func validateMetricReferenceCoherence(question QuestionRequest, referenceEdits []ReferenceEdit, metricEdits []MetricEdit) error {
+	touched := len(metricEdits) > 0
+	for _, edit := range referenceEdits {
+		if edit.Target.Kind == semantics.KindMeasure || edit.Target.Kind == semantics.KindKPI || (edit.Replacement != nil && (edit.Replacement.Kind == semantics.KindMeasure || edit.Replacement.Kind == semantics.KindKPI)) {
+			touched = true
+		}
+	}
+	if !touched {
+		return nil
+	}
+	refs := make([]string, 0, len(question.References))
+	seen := map[string]bool{}
+	for _, ref := range question.References {
+		if ref.Kind != semantics.KindMeasure && ref.Kind != semantics.KindKPI {
+			continue
+		}
+		if seen[ref.ID] {
+			return ErrInvalid
+		}
+		seen[ref.ID] = true
+		refs = append(refs, ref.ID)
+	}
+	sort.Strings(refs)
+	if len(refs) != len(question.MetricIDs) {
+		return ErrInvalid
+	}
+	for i := range refs {
+		if refs[i] != question.MetricIDs[i] {
+			return ErrInvalid
+		}
+	}
+	return nil
+}
+
+// QueryLineageDigest binds a child to the exact protected parent state observed
+// before any gateway work. Read-derived freshness markers are deliberately
+// excluded because they are not persisted query mutations.
+func QueryLineageDigest(q QueryRecord) string {
+	if q.EvidenceStale {
+		errors := make([]string, 0, len(q.Errors))
+		for _, code := range q.Errors {
+			if code != "rule_evidence_stale" {
+				errors = append(errors, code)
+			}
+		}
+		q.Errors = errors
+	}
+	q.EvidenceStale = false
+	return exec.Hash(struct {
+		Record        QueryRecord            `json:"record"`
+		Clarification *ClarificationEvidence `json:"clarification,omitempty"`
+		SQL           string                 `json:"sql"`
+		Parameters    []exec.Parameter       `json:"parameters"`
+	}{Record: q, Clarification: q.Clarification, SQL: q.SQL, Parameters: q.Parameters})
+}
+
+func bindParentLineage(child *QueryRecord, parent *QueryRecord) {
+	if child == nil || parent == nil {
+		return
+	}
+	child.ParentRevision = parent.Revision
+	child.ParentDigest = QueryLineageDigest(*parent)
+}
+
+func (s *Service) observeParent(ctx context.Context, e identity.Envelope, id, contextID string) (*QueryRecord, error) {
+	if id == "" {
+		return nil, nil
+	}
+	parent, err := s.repo.ReadQuery(ctx, mustScope(e), id)
+	if err != nil {
+		return nil, err
+	}
+	if parent.ID != id || parent.Session != e.Session() || parent.Context != contextID {
+		return nil, ErrForeignSession
+	}
+	return &parent, nil
 }
 
 func mergeInterpretationEdits(base, delta []nlqroute.InterpretationEdit) []nlqroute.InterpretationEdit {
