@@ -119,6 +119,79 @@ func TestPublishedRuleSubjectAndDeterministicConstraintEvaluation(t *testing.T) 
 	}
 }
 
+func TestCompoundAndTemplateScopesAreClosedAndDeterministic(t *testing.T) {
+	model, definition := testRules(t)
+	pack := model.Pack()
+	for i := range pack.Datasets {
+		pack.Datasets[i].Source = SourceReference{}
+	}
+	subject, err := NewRuleSubject(pack, model.Digest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	revenue := Reference{Kind: KindMeasure, ID: "revenue"}
+	region := Reference{Kind: KindDimension, ID: "customer_region"}
+	customers := Reference{Kind: KindDataset, ID: "customers"}
+	definition.Patterns = nil
+	definition.Rules = []RuleDefinition{
+		{ID: "compound", Version: "v1", Category: RuleStructural, Class: RuleExecutionConstraint, Scope: RuleScope{Kind: RuleScopeCompound, Targets: []Reference{revenue, region}}, Provenance: RuleProvenance{Kind: ProvenanceHuman, Evidence: "review:compound"}, Constraint: &Constraint{Kind: ConstraintRequireReference, Target: revenue}},
+		{ID: "template", Version: "v1", Category: RuleStructural, Class: RuleExecutionConstraint, Scope: RuleScope{Kind: RuleScopeTemplate, Template: "monthly_sales"}, Provenance: RuleProvenance{Kind: ProvenanceHuman, Evidence: "review:template"}, Constraint: &Constraint{Kind: ConstraintExcludeReference, Target: customers}},
+	}
+	compiled, err := CompilePublishedRules(subject, definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	partial, err := EvaluateSelectedConstraints(subject, compiled, RuleSelectionInput{References: []Reference{revenue}})
+	if err != nil || !partial.Allowed || partial.Selection[0].Applied || partial.Selection[0].Reason != "compound_incomplete" {
+		t.Fatalf("partial compound scope activated: %#v %v", partial, err)
+	}
+	selected, err := EvaluateSelectedConstraints(subject, compiled, RuleSelectionInput{References: []Reference{revenue, region, customers}, Template: "monthly_sales"})
+	if err != nil || selected.Allowed || len(selected.Violations) != 1 || selected.Violations[0].Rule != "template" {
+		t.Fatalf("exact selection did not apply deterministic exclusion: %#v %v", selected, err)
+	}
+	if selected.Selection[0].Rule != "compound" || !selected.Selection[0].Applied || selected.Selection[1].Rule != "template" || !selected.Selection[1].Applied {
+		t.Fatalf("selection evidence is incomplete or unordered: %#v", selected.Selection)
+	}
+	mismatch, err := EvaluateSelectedConstraints(subject, compiled, RuleSelectionInput{References: []Reference{revenue, region, customers}, Template: "quarterly_sales"})
+	if err != nil || !mismatch.Allowed || mismatch.Selection[1].Reason != "template_mismatch" {
+		t.Fatalf("template mismatch activated rule: %#v %v", mismatch, err)
+	}
+	if _, err := EvaluateSelectedConstraints(subject, compiled, RuleSelectionInput{References: []Reference{revenue}, Template: "../unreviewed"}); err == nil {
+		t.Fatal("malformed template selector was accepted")
+	}
+
+	bad := definition
+	bad.Rules = append([]RuleDefinition(nil), definition.Rules...)
+	bad.Rules[0].Scope.Template = "forbidden"
+	if _, err := CompilePublishedRules(subject, bad); validationCode(t, err) != CodeInvalidValue {
+		t.Fatalf("compound scope accepted template matching payload: %v", err)
+	}
+	bad = definition
+	bad.Rules = append([]RuleDefinition(nil), definition.Rules...)
+	bad.Rules[1].Scope.Template = ""
+	if _, err := CompilePublishedRules(subject, bad); validationCode(t, err) != CodeInvalidValue {
+		t.Fatalf("template scope accepted an empty exact identifier: %v", err)
+	}
+}
+
+func TestDisjointTemplateScopesDoNotCreateFalseConflicts(t *testing.T) {
+	model, definition := testRules(t)
+	target := Reference{Kind: KindMeasure, ID: "revenue"}
+	definition.Patterns = nil
+	definition.Rules = []RuleDefinition{
+		{ID: "required", Version: "v1", Category: RuleStructural, Class: RuleExecutionConstraint, Scope: RuleScope{Kind: RuleScopeTemplate, Template: "first_template"}, Provenance: RuleProvenance{Kind: ProvenanceHuman, Evidence: "review:first"}, Constraint: &Constraint{Kind: ConstraintRequireReference, Target: target}},
+		{ID: "excluded", Version: "v1", Category: RuleStructural, Class: RuleExecutionConstraint, Scope: RuleScope{Kind: RuleScopeTemplate, Template: "second_template"}, Provenance: RuleProvenance{Kind: ProvenanceHuman, Evidence: "review:second"}, Constraint: &Constraint{Kind: ConstraintExcludeReference, Target: target}},
+	}
+	if _, err := CompileRules(model, definition); err != nil {
+		t.Fatalf("mutually exclusive template scopes conflict: %v", err)
+	}
+	definition.Rules[1].Scope.Template = "first_template"
+	if _, err := CompileRules(model, definition); validationCode(t, err) != CodeRuleConflict {
+		t.Fatalf("overlapping template conflict was not rejected: %v", err)
+	}
+}
+
 func TestRuleCompilationRejectsStaleAndMalformedDefinitions(t *testing.T) {
 	tests := []struct {
 		name string

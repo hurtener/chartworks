@@ -7,19 +7,21 @@ import (
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 )
 
 // SavedSelections retains explicit business routing choices, not SQL, prompts,
 // source bindings or authority. The existing router resolves every choice
 // against the pinned/current reviewed semantic definitions before generation.
 type SavedSelections struct {
-	Kinds        []string                   `json:"kinds,omitempty"`
-	LimitPerKind int                        `json:"limit_per_kind,omitempty"`
-	References   []semantics.Reference      `json:"references,omitempty"`
-	Choices      []nlqroute.ChoiceSelection `json:"choices,omitempty"`
-	Joins        []nlqroute.JoinChoice      `json:"joins,omitempty"`
-	MetricIDs    []string                   `json:"metric_ids,omitempty"`
-	Rerank       bool                       `json:"rerank,omitempty"`
+	Templates    []rulesets.TemplateSelection `json:"templates,omitempty"`
+	Kinds        []string                     `json:"kinds,omitempty"`
+	LimitPerKind int                          `json:"limit_per_kind,omitempty"`
+	References   []semantics.Reference        `json:"references,omitempty"`
+	Choices      []nlqroute.ChoiceSelection   `json:"choices,omitempty"`
+	Joins        []nlqroute.JoinChoice        `json:"joins,omitempty"`
+	MetricIDs    []string                     `json:"metric_ids,omitempty"`
+	Rerank       bool                         `json:"rerank,omitempty"`
 }
 
 func savedRouting(in SavedQuestion, language nlq.Language) QuestionRequest {
@@ -29,6 +31,7 @@ func savedRouting(in SavedQuestion, language nlq.Language) QuestionRequest {
 	}
 	if in.Selections != nil {
 		s := in.Selections
+		q.Templates = slices.Clone(s.Templates)
 		q.Kinds, q.LimitPerKind = slices.Clone(s.Kinds), s.LimitPerKind
 		q.References, q.Choices = slices.Clone(s.References), slices.Clone(s.Choices)
 		q.Joins, q.MetricIDs, q.Rerank = slices.Clone(s.Joins), slices.Clone(s.MetricIDs), s.Rerank
@@ -50,7 +53,7 @@ func savedSelectionsMatch(q QueryRecord, in SavedQuestion) bool {
 		return true
 	}
 	r := q.Route.Request
-	actual := SavedSelections{Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, Choices: r.Choices,
+	actual := SavedSelections{Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, Choices: r.Choices,
 		Joins: r.JoinChoices, MetricIDs: r.MetricIDs, Rerank: r.Rerank}
 	var expected SavedSelections
 	if in.Selections != nil {

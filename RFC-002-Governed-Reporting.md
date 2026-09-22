@@ -14,6 +14,12 @@ All learned-model operations, including narrative, authoring assistance, embeddi
 
 Block identity carries localized metadata, canonical question/aliases, authorship provenance and draft/published pointers. Revisions contain exact topic/template references, approved SQL/execution definition, typed parameters, ordered expected schema, dependency manifest and stable saved output IDs. Validation evidence binds exact content/dependencies and observed schema to a real checked execution; certification is a separate attestation.
 
+When a block is governed by published business rules, its immutable definition
+pins the exact topic/rule versions and digests. The same pins participate in
+validation, certification health, frozen manifests, reuse, compositions and
+schedules. Rule replacement or retirement makes current approval stale without
+mutating published definitions or historical attestations.
+
 A report revision contains ordered/grid widgets, filters/bindings, safe presentation settings, locale/timezone and execution/partial policies. A dashboard revision orders exact report-revision pages; it adds no query engine.
 
 A run seals resolved definitions, parameters/window, selected outputs, actor/service attribution, actual source context/data partition, observation times, attempts/usage and output/model/renderer versions. The artifact retains values and evidence. Chartworks is authoritative; Pengui/Harbor keep references or rebuildable discovery, not divergent sole copies.

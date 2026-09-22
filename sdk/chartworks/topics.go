@@ -20,6 +20,24 @@ type TopicDataset = semantics.Dataset
 // TopicColumn is one stable semantic column.
 type TopicColumn = semantics.Column
 
+// TopicSemanticRole is a reviewed physical-column business role.
+type TopicSemanticRole = semantics.SemanticRole
+
+// TopicGovernedValue is a reviewed low-cardinality semantic value mapping.
+type TopicGovernedValue = semantics.GovernedValue
+
+// TopicValueProvenance binds a governed value to bounded evidence and policy.
+type TopicValueProvenance = semantics.ValueProvenance
+
+// TopicTemporalPolicy defines supported calendar grains for a time dimension.
+type TopicTemporalPolicy = semantics.TemporalPolicy
+
+// TopicTimeGrain is a supported temporal aggregation grain.
+type TopicTimeGrain = semantics.TimeGrain
+
+// TopicSemanticFilter is reviewed mandatory generation context.
+type TopicSemanticFilter = semantics.SemanticFilter
+
 // TopicSourceReference pins profile and source evidence.
 type TopicSourceReference = semantics.SourceReference
 
@@ -37,6 +55,12 @@ type TopicKPI = semantics.KPI
 
 // TopicJoin is an equality relationship between datasets.
 type TopicJoin = semantics.Join
+
+// TopicRelationshipEvidence records reviewed grain/cardinality provenance.
+type TopicRelationshipEvidence = semantics.RelationshipEvidence
+
+// TopicRelationshipDecision preserves candidate or rejected join evidence.
+type TopicRelationshipDecision = semantics.RelationshipDecision
 
 // TopicCanonicalEntity binds global meaning to topic-local keys.
 type TopicCanonicalEntity = semantics.CanonicalEntity
@@ -127,6 +151,9 @@ type RuleState = rulesets.State
 
 // RuleEvaluationRequest supplies references for deterministic evaluation.
 type RuleEvaluationRequest = rulesets.EvaluateRequest
+
+// RuleTemplateSelection pins one reviewed template to exact topic/ruleset evidence.
+type RuleTemplateSelection = rulesets.TemplateSelection
 
 // RuleEvaluation contains deterministic hard-constraint results.
 type RuleEvaluation = rulesets.Evaluation

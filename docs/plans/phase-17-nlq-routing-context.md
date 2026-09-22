@@ -77,3 +77,15 @@ unchanged and continue to run. [CW-01 delivery evidence](../reviews/cw-01-delive
 records exact executed checks and review corrections. No CLAR-AC11 comprehension
 study, live cloud/model quality measurement or general SQL-shape expansion is
 claimed by these software tests.
+
+## CW-04 metric dependency closure
+
+Pinned measures and KPIs now resolve from the exact authorized retained publication
+into a typed transitive closure: nested KPI formulas, measures, exact columns,
+related rich dimensions/value/temporal metadata, units, required filters and joins
+for the selected datasets. The `cl100k_base` assembler seals that closure with the
+metric as one mandatory group. If it cannot fit the chosen tier it returns typed
+insufficiency before gateway work; optional facet evidence cannot leave a label with
+missing dependencies. The phase-18 generator continues to accept only that sealed
+context before validator-issued execution. See
+[rich semantics v1](../contracts/rich-semantics-v1.md).

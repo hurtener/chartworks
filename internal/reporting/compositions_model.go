@@ -70,6 +70,7 @@ type CompositionGroup struct {
 	Revision       int64               `json:"revision,omitempty"`
 	Definition     string              `json:"definition_digest,omitempty"`
 	Execution      string              `json:"execution_digest,omitempty"`
+	Rules          []RulePin           `json:"rules,omitempty"`
 	Outputs        []string            `json:"outputs"`
 	Arguments      []Argument          `json:"arguments"`
 	Resolved       Resolved            `json:"resolved"`

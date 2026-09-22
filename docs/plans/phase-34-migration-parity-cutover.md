@@ -48,3 +48,12 @@ Implement `TestPhase34/AC01` through `TestPhase34/AC08`; test import replay/CAS,
 ## Glossary, decisions and deviations
 
 A cohort is migrated only when its required behavior and engine evidence are complete. D-050 applies. No migration, rollout or runtime completion is claimed by this plan.
+
+## CW-04 import substrate
+
+Neutral topic portability now includes rich aliases, semantic roles, units,
+governed values, temporal policy, filters and relationship decisions, and remaps
+every reference-bearing rich field to destination coordinates before compilation.
+This supplies the semantic field-level substrate for AC01/AC02. It does not implement
+phase 34's external manifest, cohort dry run, history/state normalization, schedule
+handoff, owner-run shadow comparison or rollback drill.

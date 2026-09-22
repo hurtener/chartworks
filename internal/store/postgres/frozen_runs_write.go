@@ -20,7 +20,7 @@ func frozenCurrentTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, m repo
 	if err := tx.QueryRow(ctx, `SELECT block_id FROM chartworks.block_heads WHERE tenant_id=$1 AND block_id=$2 FOR SHARE`, e.Tenant(), m.Block).Scan(&id); err != nil {
 		return err
 	}
-	if err := blockCurrentFence(ctx, tx, e, reporting.Mutation{Topics: m.Revision.Definition.Topics, Watch: m.Dependencies}); err != nil {
+	if err := blockCurrentFence(ctx, tx, e, reporting.Mutation{ID: m.Block, TargetRevision: m.Revision.Number, Topics: m.Revision.Definition.Topics, Watch: m.Dependencies}); err != nil {
 		return err
 	}
 	snapshot, err := blockTx(ctx, tx, e, m.Block, reporting.Reference{Revision: m.Revision.Number}, reporting.Execute)

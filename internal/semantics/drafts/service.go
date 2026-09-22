@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"sort"
 	"time"
 	"unicode/utf8"
 
@@ -441,6 +442,13 @@ func (s *Service) RebindDataset(ctx context.Context, e identity.Envelope, topic 
 	}
 	columns := make([]semantics.Column, 0, len(in.Columns))
 	seenPhysical := map[string]bool{}
+	target := semantics.SourceReference{Source: evidence.Profile.Source, Context: evidence.Profile.Context, Dataset: evidence.Profile.Dataset, ProfileVersion: evidence.Profile.Version, ProfileDigest: evidence.Profile.DeterministicHash(), SourceRevision: evidence.Profile.SourceRevision}
+	var prior semantics.SourceReference
+	for _, dataset := range current.Pack.Datasets {
+		if dataset.ID == in.Dataset {
+			prior = dataset.Source
+		}
+	}
 	for _, mapping := range in.Columns {
 		old, ok := oldColumns[mapping.Column]
 		discovered, found := actual[mapping.SourceName]
@@ -448,14 +456,25 @@ func (s *Service) RebindDataset(ctx context.Context, e identity.Envelope, topic 
 			return Version{}, readexec.ErrBinding
 		}
 		seenPhysical[mapping.SourceName] = true
-		columns = append(columns, semantics.Column{ID: old.ID, SourceName: discovered.Name, Name: old.Name, NativeType: discovered.NativeType, Category: discovered.Category, Nullable: discovered.Nullable})
+		columns = append(columns, rebindColumn(old, discovered, prior, target))
 	}
-	replacement := semantics.DatasetReplacement{Dataset: evidence.Profile.Dataset, Source: semantics.SourceReference{Source: evidence.Profile.Source, Context: evidence.Profile.Context, Dataset: evidence.Profile.Dataset, ProfileVersion: evidence.Profile.Version, ProfileDigest: evidence.Profile.DeterministicHash(), SourceRevision: evidence.Profile.SourceRevision}, Columns: columns}
+	replacement := semantics.DatasetReplacement{Dataset: evidence.Profile.Dataset, Source: target, Columns: columns}
 	changed, err := semantics.ReplaceDataset(model, in.Version, in.Dataset, replacement)
 	if err != nil {
 		return Version{}, err
 	}
 	return s.Save(ctx, e, SaveRequest{Expected: in.Expected, Pack: changed.Pack(), Change: in.Change})
+}
+
+func rebindColumn(old semantics.Column, discovered readexec.Column, prior, target semantics.SourceReference) semantics.Column {
+	column := semantics.Column{ID: old.ID, SourceName: discovered.Name, Name: old.Name, NativeType: discovered.NativeType, Category: discovered.Category, Nullable: discovered.Nullable}
+	// A reviewed sensitivity classification survives only a new profile over the
+	// same source/context and the same physical column identity. Safe discovery
+	// alone is validation permission, not proof that values are non-sensitive.
+	if prior.Source == target.Source && prior.Context == target.Context && old.SourceName == discovered.Name {
+		column.Sensitivity = old.Sensitivity
+	}
+	return column
 }
 
 // OnboardProfile creates a deterministic unresolved topic scaffold from one
@@ -523,17 +542,52 @@ type EnhanceResult struct {
 }
 
 type enhancementWire struct {
-	Results []semantics.Enhancement `json:"results"`
+	Results       []semantics.Enhancement          `json:"results"`
+	KPIs          []semantics.KPI                  `json:"kpis,omitempty"`
+	Relationships []semantics.RelationshipDecision `json:"relationships,omitempty"`
 }
 
-var enhancementSchema = []byte(`{"type":"object","additionalProperties":false,"required":["results"],"properties":{"results":{"type":"array","minItems":1,"maxItems":32,"items":{"oneOf":[{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","aggregation"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"measure"},"name":{"type":"string","minLength":1,"maxLength":256},"aggregation":{"enum":["sum","average","minimum","maximum","count","distinct_count"]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","role"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"dimension"},"name":{"type":"string","minLength":1,"maxLength":256},"role":{"enum":["categorical","temporal","numeric","boolean","identifier"]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","reason"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"unresolved"},"reason":{"type":"string","minLength":1,"maxLength":256}}}]}}}}`)
+type enhancementMetric struct {
+	Kind         semantics.Kind `json:"kind"`
+	ID           string         `json:"id"`
+	Availability string         `json:"availability"`
+}
+
+const (
+	maxEnhancementMetrics      = 1536
+	maxEnhancementCatalogBytes = 96 << 10
+)
+
+var enhancementBaseSchema = []byte(`{"type":"object","additionalProperties":false,"required":["results"],"properties":{"results":{"type":"array","minItems":1,"maxItems":32,"items":{"oneOf":[{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","aggregation","description","aliases","unit","semantic_role"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"measure"},"name":{"type":"string","minLength":1,"maxLength":256},"aggregation":{"enum":["sum","average","minimum","maximum","count","distinct_count"]},"description":{"type":"string","maxLength":4096},"aliases":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":256}},"unit":{"type":"string","maxLength":64},"semantic_role":{"enum":["","measure_input"]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","name","role","description","aliases","semantic_role","temporal"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"dimension"},"name":{"type":"string","minLength":1,"maxLength":256},"role":{"enum":["categorical","temporal","numeric","boolean","identifier"]},"description":{"type":"string","maxLength":4096},"aliases":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":256}},"semantic_role":{"enum":["","fact_key","dimension_key","attribute","event_time"]},"temporal":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,"required":["grains","calendar"],"properties":{"grains":{"type":"array","minItems":1,"maxItems":7,"items":{"enum":["minute","hour","day","week","month","quarter","year"]}},"calendar":{"type":"string","minLength":1,"maxLength":128},"timezone":{"type":"string","maxLength":128}}}]}}},{"type":"object","additionalProperties":false,"required":["dataset","column","kind","reason"],"properties":{"dataset":{"type":"string","minLength":1,"maxLength":128},"column":{"type":"string","minLength":1,"maxLength":128},"kind":{"const":"unresolved"},"reason":{"type":"string","minLength":1,"maxLength":256}}}]}}}}`)
+
+var enhancementSchema = func() []byte {
+	var document map[string]any
+	if json.Unmarshal(enhancementBaseSchema, &document) != nil {
+		panic("invalid enhancement schema")
+	}
+	properties := document["properties"].(map[string]any)
+	var extras map[string]any
+	const supplemental = `{"kpis":{"type":"array","maxItems":32,"items":{"type":"object","additionalProperties":false,"required":["id","name","description","expression","inputs"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":256},"description":{"type":"string","maxLength":4096},"expression":{"type":"string","minLength":1,"maxLength":4096},"inputs":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","additionalProperties":false,"required":["kind","id"],"properties":{"kind":{"enum":["measure","kpi"]},"id":{"type":"string","minLength":1,"maxLength":128}}}}}}},"relationships":{"type":"array","maxItems":64,"items":{"type":"object","additionalProperties":false,"required":["id","left","right","cardinality","state","evidence"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"left":{"type":"object","additionalProperties":false,"required":["kind","dataset","id"],"properties":{"kind":{"const":"column"},"dataset":{"type":"string","minLength":1,"maxLength":128},"id":{"type":"string","minLength":1,"maxLength":128}}},"right":{"type":"object","additionalProperties":false,"required":["kind","dataset","id"],"properties":{"kind":{"const":"column"},"dataset":{"type":"string","minLength":1,"maxLength":128},"id":{"type":"string","minLength":1,"maxLength":128}}},"cardinality":{"enum":["one_to_one","one_to_many","many_to_one","many_to_many"]},"state":{"enum":["candidate","rejected"]},"evidence":{"type":"object","additionalProperties":false,"required":["id","left_grain","right_grain","provenance"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"left_grain":{"type":"string","minLength":1,"maxLength":256},"right_grain":{"type":"string","minLength":1,"maxLength":256},"provenance":{"type":"string","minLength":1,"maxLength":128}}},"reason":{"type":"string","maxLength":1024}}}}}`
+	if json.Unmarshal([]byte(supplemental), &extras) != nil {
+		panic("invalid enhancement supplemental schema")
+	}
+	for key, value := range extras {
+		properties[key] = value
+	}
+	raw, err := json.Marshal(document)
+	if err != nil {
+		panic("invalid enhancement schema")
+	}
+	return raw
+}()
 
 type enhancementColumn struct {
-	Dataset  string `json:"dataset"`
-	Column   string `json:"column"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
-	Nullable bool   `json:"nullable"`
+	Dataset     string                       `json:"dataset"`
+	Column      string                       `json:"column"`
+	Name        string                       `json:"name"`
+	Category    string                       `json:"category"`
+	Nullable    bool                         `json:"nullable"`
+	Sensitivity semantics.LiteralSensitivity `json:"sensitivity,omitempty"`
 }
 
 // Enhance performs one resumable Bifrost step and persists the accepted result
@@ -570,6 +624,10 @@ func (s *Service) Enhance(ctx context.Context, e identity.Envelope, topic string
 	end := min(in.Cursor+in.Limit, len(columns))
 	selected := columns[in.Cursor:end]
 	pack := model.Pack()
+	metrics, err := enhancementMetricCatalog(model, selected)
+	if err != nil {
+		return EnhanceResult{}, err
+	}
 	input := make([]enhancementColumn, 0, len(selected))
 	resources := []access.Resource{{Tenant: e.Tenant(), Kind: "topic", Permission: "write", ID: topic}}
 	for _, ref := range selected {
@@ -580,7 +638,7 @@ func (s *Service) Enhance(ctx context.Context, e identity.Envelope, topic string
 			resources = append(resources, access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: dataset.Source.Source}, access.Resource{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: dataset.ID}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: dataset.Source.Context})
 			for _, column := range dataset.Columns {
 				if column.ID == ref.ID {
-					input = append(input, enhancementColumn{Dataset: dataset.ID, Column: column.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable})
+					input = append(input, enhancementColumn{Dataset: dataset.ID, Column: column.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable, Sensitivity: column.Sensitivity})
 				}
 			}
 		}
@@ -601,36 +659,23 @@ func (s *Service) Enhance(ctx context.Context, e identity.Envelope, topic string
 		return EnhanceResult{}, err
 	}
 	prompt, err := json.Marshal(struct {
-		Topic   string              `json:"topic"`
-		Version string              `json:"version"`
-		Columns []enhancementColumn `json:"columns"`
-	}{Topic: topic, Version: in.Version, Columns: input})
+		Topic          string              `json:"topic"`
+		Version        string              `json:"version"`
+		Columns        []enhancementColumn `json:"columns"`
+		AllowedMetrics []enhancementMetric `json:"allowed_metrics"`
+	}{Topic: topic, Version: in.Version, Columns: input, AllowedMetrics: metrics})
 	if err != nil {
 		return EnhanceResult{}, store.ErrInvalid
 	}
-	generated, err := s.engine.Generate(ctx, call, budget, "enhance", "Classify every supplied column exactly once as a measure, dimension, or unresolved. Preserve supplied dataset and column IDs. Never invent SQL, joins, KPIs, canonical meaning, source coordinates, or credentials.", string(prompt), schema)
+	generated, err := s.engine.Generate(ctx, call, budget, "enhance", "Author reviewed draft semantics for every supplied column exactly once as a rich measure, rich dimension, or unresolved. Preserve dataset and column IDs. Provide concise descriptions, bounded aliases, units for measures, reviewed roles, and calendar/grain metadata for temporal dimensions. KPI inputs must use only exact IDs from allowed_metrics; current_step IDs are allowed only when that column is returned as a measure in this response. Relationship endpoints must both be supplied columns. KPI and relationship retries must repeat the exact prior proposal. These remain non-published review material. Never include sample rows or sensitive values, invent SQL, canonical meaning, source coordinates, permissions, or credentials.", string(prompt), schema)
 	if err != nil {
 		return EnhanceResult{}, err
 	}
 	var wire enhancementWire
-	if json.Unmarshal(generated.JSON, &wire) != nil || len(wire.Results) != len(selected) {
+	if json.Unmarshal(generated.JSON, &wire) != nil || validateEnhancementOutput(selected, metrics, wire) != nil {
 		return EnhanceResult{}, gateway.ErrOutput
 	}
-	want := map[semantics.Reference]bool{}
-	for _, ref := range selected {
-		want[ref] = true
-	}
-	for _, item := range wire.Results {
-		ref := semantics.Reference{Kind: semantics.KindColumn, Dataset: item.Dataset, ID: item.Column}
-		if !want[ref] {
-			return EnhanceResult{}, gateway.ErrOutput
-		}
-		delete(want, ref)
-	}
-	if len(want) != 0 {
-		return EnhanceResult{}, gateway.ErrOutput
-	}
-	changed, err := semantics.ApplyEnhancements(model, in.Version, wire.Results)
+	changed, err := semantics.ApplyRichEnhancements(model, in.Version, wire.Results, wire.KPIs, wire.Relationships)
 	if err != nil {
 		return EnhanceResult{}, err
 	}
@@ -640,4 +685,115 @@ func (s *Service) Enhance(ctx context.Context, e identity.Envelope, topic string
 		return EnhanceResult{}, err
 	}
 	return EnhanceResult{Draft: draft, NextCursor: end, Complete: end == len(columns), Receipt: generated.Receipt}, nil
+}
+
+func enhancementMetricCatalog(model semantics.Model, selected []semantics.Reference) ([]enhancementMetric, error) {
+	pack := model.Pack()
+	seen := map[string]bool{}
+	selectedDatasets := map[string]bool{}
+	for _, ref := range selected {
+		selectedDatasets[ref.Dataset] = true
+	}
+	var out []enhancementMetric
+	add := func(kind semantics.Kind, id, availability string) {
+		key := string(kind) + "\x00" + id
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, enhancementMetric{Kind: kind, ID: id, Availability: availability})
+		}
+	}
+	for _, value := range pack.Measures {
+		if selectedDatasets[value.Field.Dataset] {
+			add(semantics.KindMeasure, value.ID, "existing")
+		}
+	}
+	// Admit an existing KPI only after every transitive input is already scoped
+	// to the selected datasets. The compiled graph is acyclic, so this bounded
+	// fixed point is deterministic and cannot expose metric IDs from an
+	// unauthorized page/source context.
+	for changed := true; changed; {
+		changed = false
+		for _, value := range pack.KPIs {
+			key := string(semantics.KindKPI) + "\x00" + value.ID
+			if seen[key] {
+				continue
+			}
+			allowed := true
+			for _, input := range value.Inputs {
+				if !seen[string(input.Kind)+"\x00"+input.ID] {
+					allowed = false
+					break
+				}
+			}
+			if allowed {
+				add(semantics.KindKPI, value.ID, "existing")
+				changed = true
+			}
+		}
+	}
+	for _, ref := range selected {
+		add(semantics.KindMeasure, semantics.GeneratedEntityID(semantics.EnhancementMeasure, ref.Dataset, ref.ID), "current_step")
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].ID < out[j].ID
+	})
+	raw, err := json.Marshal(out)
+	if err != nil || len(out) > maxEnhancementMetrics || len(raw) > maxEnhancementCatalogBytes {
+		return nil, gateway.ErrBudget
+	}
+	return out, nil
+}
+
+func validateEnhancementOutput(selected []semantics.Reference, catalog []enhancementMetric, wire enhancementWire) error {
+	if len(wire.Results) != len(selected) {
+		return gateway.ErrOutput
+	}
+	want := map[semantics.Reference]bool{}
+	for _, ref := range selected {
+		want[ref] = true
+	}
+	currentMeasures := map[string]bool{}
+	for _, item := range wire.Results {
+		ref := semantics.Reference{Kind: semantics.KindColumn, Dataset: item.Dataset, ID: item.Column}
+		if !want[ref] {
+			return gateway.ErrOutput
+		}
+		delete(want, ref)
+		if item.Kind == semantics.EnhancementMeasure {
+			currentMeasures[semantics.GeneratedEntityID(item.Kind, item.Dataset, item.Column)] = true
+		}
+	}
+	if len(want) != 0 {
+		return gateway.ErrOutput
+	}
+	allowed := map[string]enhancementMetric{}
+	for _, item := range catalog {
+		allowed[string(item.Kind)+"\x00"+item.ID] = item
+	}
+	for _, kpi := range wire.KPIs {
+		for _, input := range kpi.Inputs {
+			metric, ok := allowed[string(input.Kind)+"\x00"+input.ID]
+			if !ok || metric.Availability == "current_step" && !currentMeasures[input.ID] {
+				return gateway.ErrOutput
+			}
+		}
+	}
+	for _, relationship := range wire.Relationships {
+		if !wantReference(selected, relationship.Left) || !wantReference(selected, relationship.Right) {
+			return gateway.ErrOutput
+		}
+	}
+	return nil
+}
+
+func wantReference(selected []semantics.Reference, value semantics.Reference) bool {
+	for _, ref := range selected {
+		if ref == value {
+			return true
+		}
+	}
+	return false
 }

@@ -12,11 +12,13 @@ import (
 // PortableColumn has a logical slot and semantic expectations, but no physical
 // column name, native dialect type, source coordinate, or profile provenance.
 type PortableColumn struct {
-	Sensitivity LiteralSensitivity `json:"sensitivity,omitempty"`
-	Slot        string             `json:"slot"`
-	Name        string             `json:"name"`
-	Category    string             `json:"category"`
-	Nullable    bool               `json:"nullable"`
+	Sensitivity  LiteralSensitivity `json:"sensitivity,omitempty"`
+	Slot         string             `json:"slot"`
+	Name         string             `json:"name"`
+	Category     string             `json:"category"`
+	Nullable     bool               `json:"nullable"`
+	Aliases      []string           `json:"aliases,omitempty"`
+	SemanticRole SemanticRole       `json:"semantic_role,omitempty"`
 }
 
 // PortableDataset contains logical column slots without source coordinates.
@@ -32,16 +34,17 @@ type PortableDataset struct {
 // session, lifecycle state, or authority fields are representable here. Free text
 // remains authoring content; this projection is not a natural-language sanitizer.
 type PortablePack struct {
-	SchemaVersion     int                  `json:"schema_version"`
-	Name              string               `json:"name"`
-	Description       string               `json:"description"`
-	Datasets          []PortableDataset    `json:"datasets"`
-	Measures          []Measure            `json:"measures"`
-	Dimensions        []Dimension          `json:"dimensions"`
-	KPIs              []KPI                `json:"kpis"`
-	Joins             []Join               `json:"joins"`
-	CanonicalEntities []CanonicalEntity    `json:"canonical_entities"`
-	Unresolved        []UnresolvedSemantic `json:"unresolved,omitempty"`
+	SchemaVersion         int                    `json:"schema_version"`
+	Name                  string                 `json:"name"`
+	Description           string                 `json:"description"`
+	Datasets              []PortableDataset      `json:"datasets"`
+	Measures              []Measure              `json:"measures"`
+	Dimensions            []Dimension            `json:"dimensions"`
+	KPIs                  []KPI                  `json:"kpis"`
+	Joins                 []Join                 `json:"joins"`
+	RelationshipDecisions []RelationshipDecision `json:"relationship_decisions,omitempty"`
+	CanonicalEntities     []CanonicalEntity      `json:"canonical_entities"`
+	Unresolved            []UnresolvedSemantic   `json:"unresolved,omitempty"`
 }
 
 // ExportColumnSlot maps a stable column ID to a neutral logical slot.
@@ -101,7 +104,7 @@ func ExportPortable(model Model, mapping []ExportDatasetSlots) (PortablePack, er
 			if !exists {
 				return PortablePack{}, invalid(CodeMissingReference, "export.mapping.columns")
 			}
-			portable.Columns = append(portable.Columns, PortableColumn{Slot: ref.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable, Sensitivity: column.Sensitivity})
+			portable.Columns = append(portable.Columns, PortableColumn{Slot: ref.ID, Name: column.Name, Category: column.Category, Nullable: column.Nullable, Sensitivity: column.Sensitivity, Aliases: append([]string(nil), column.Aliases...), SemanticRole: column.SemanticRole})
 		}
 		sort.Slice(portable.Columns, func(i, j int) bool { return portable.Columns[i].Slot < portable.Columns[j].Slot })
 		out.Datasets = append(out.Datasets, portable)
@@ -109,7 +112,7 @@ func ExportPortable(model Model, mapping []ExportDatasetSlots) (PortablePack, er
 	if err := remapColumns(&p, refs); err != nil {
 		return PortablePack{}, err
 	}
-	out.Measures, out.Dimensions, out.KPIs, out.Joins, out.CanonicalEntities, out.Unresolved = p.Measures, p.Dimensions, p.KPIs, p.Joins, p.CanonicalEntities, p.Unresolved
+	out.Measures, out.Dimensions, out.KPIs, out.Joins, out.RelationshipDecisions, out.CanonicalEntities, out.Unresolved = p.Measures, p.Dimensions, p.KPIs, p.Joins, p.RelationshipDecisions, p.CanonicalEntities, p.Unresolved
 	sort.Slice(out.Datasets, func(i, j int) bool { return out.Datasets[i].Slot < out.Datasets[j].Slot })
 	if _, err := portableDigest(out); err != nil {
 		return PortablePack{}, err
@@ -214,19 +217,19 @@ func ImportDraftCandidate(input PortablePack, bindings DraftBindings) (DraftCand
 				return DraftCandidate{}, invalid(CodeEvidenceMismatch, "import.bindings.columns")
 			}
 			refs[from] = Reference{Kind: KindColumn, Dataset: bound.ID, ID: physical.ID}
-			bound.Columns = append(bound.Columns, Column{ID: physical.ID, SourceName: physical.SourceName, Name: column.Name, NativeType: physical.NativeType, Category: physical.Category, Nullable: physical.Nullable, Sensitivity: column.Sensitivity})
+			bound.Columns = append(bound.Columns, Column{ID: physical.ID, SourceName: physical.SourceName, Name: column.Name, NativeType: physical.NativeType, Category: physical.Category, Nullable: physical.Nullable, Sensitivity: column.Sensitivity, Aliases: append([]string(nil), column.Aliases...), SemanticRole: column.SemanticRole})
 		}
 		p.Datasets = append(p.Datasets, bound)
 	}
 	// Clone the semantic collections before rewriting any supplied reference.
-	semantic := clonePack(TopicPack{Measures: input.Measures, Dimensions: input.Dimensions, KPIs: input.KPIs, Joins: input.Joins, CanonicalEntities: input.CanonicalEntities, Unresolved: input.Unresolved})
+	semantic := clonePack(TopicPack{Measures: input.Measures, Dimensions: input.Dimensions, KPIs: input.KPIs, Joins: input.Joins, RelationshipDecisions: input.RelationshipDecisions, CanonicalEntities: input.CanonicalEntities, Unresolved: input.Unresolved})
 	if err := remapColumns(&semantic, refs); err != nil {
 		return DraftCandidate{}, err
 	}
 	if _, err := portableDigest(input); err != nil {
 		return DraftCandidate{}, err
 	}
-	p.Measures, p.Dimensions, p.KPIs, p.Joins, p.CanonicalEntities, p.Unresolved = semantic.Measures, semantic.Dimensions, semantic.KPIs, semantic.Joins, semantic.CanonicalEntities, semantic.Unresolved
+	p.Measures, p.Dimensions, p.KPIs, p.Joins, p.RelationshipDecisions, p.CanonicalEntities, p.Unresolved = semantic.Measures, semantic.Dimensions, semantic.KPIs, semantic.Joins, semantic.RelationshipDecisions, semantic.CanonicalEntities, semantic.Unresolved
 	model, err := Compile(p)
 	if err != nil {
 		return DraftCandidate{}, err
@@ -238,7 +241,7 @@ func portableBounds(p PortablePack) error {
 	if p.SchemaVersion != SchemaVersion || !validLine(p.Name, 256) || !validText(p.Description, 4096) {
 		return invalid(CodeInvalidValue, "portable")
 	}
-	if len(p.Datasets) < 1 || len(p.Datasets) > 32 || len(p.Measures) > 1024 || len(p.Dimensions) > 1024 || len(p.KPIs) > 512 || len(p.Joins) > 256 || len(p.CanonicalEntities) > 256 || len(p.Unresolved) > 4096 {
+	if len(p.Datasets) < 1 || len(p.Datasets) > 32 || len(p.Measures) > 1024 || len(p.Dimensions) > 1024 || len(p.KPIs) > 512 || len(p.Joins) > 256 || len(p.RelationshipDecisions) > 512 || len(p.CanonicalEntities) > 256 || len(p.Unresolved) > 4096 {
 		return invalid(CodeLimit, "portable")
 	}
 	for _, dataset := range p.Datasets {
@@ -249,7 +252,7 @@ func portableBounds(p PortablePack) error {
 			return invalid(CodeInvalidValue, "portable.datasets")
 		}
 		for _, column := range dataset.Columns {
-			if !identity.Identifier(column.Slot) || !validLine(column.Name, 256) || !validLine(column.Category, 64) {
+			if !identity.Identifier(column.Slot) || !validLine(column.Name, 256) || !validLine(column.Category, 64) || !validAliases(column.Aliases) || !column.SemanticRole.valid() {
 				return invalid(CodeInvalidValue, "portable.columns")
 			}
 		}
@@ -264,7 +267,7 @@ func portableBounds(p PortablePack) error {
 			return invalid(CodeLimit, "portable.canonical_entities")
 		}
 	}
-	return validateEntities(TopicPack{Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved})
+	return validateEntities(TopicPack{Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, RelationshipDecisions: p.RelationshipDecisions, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved})
 }
 
 func portableDigest(p PortablePack) (string, error) {
@@ -298,15 +301,30 @@ func remapColumns(p *TopicPack, refs map[Reference]Reference) error {
 		if err := remap(&p.Measures[i].Field); err != nil {
 			return err
 		}
+		for j := range p.Measures[i].Filters {
+			if err := remap(&p.Measures[i].Filters[j].Field); err != nil {
+				return err
+			}
+		}
 	}
 	for i := range p.Dimensions {
 		if err := remap(&p.Dimensions[i].Field); err != nil {
 			return err
 		}
+		for j := range p.Dimensions[i].Filters {
+			if err := remap(&p.Dimensions[i].Filters[j].Field); err != nil {
+				return err
+			}
+		}
 	}
 	for i := range p.KPIs {
 		for j := range p.KPIs[i].Inputs {
 			if err := remap(&p.KPIs[i].Inputs[j]); err != nil {
+				return err
+			}
+		}
+		for j := range p.KPIs[i].Filters {
+			if err := remap(&p.KPIs[i].Filters[j].Field); err != nil {
 				return err
 			}
 		}
@@ -324,6 +342,14 @@ func remapColumns(p *TopicPack, refs map[Reference]Reference) error {
 			if err := remap(&p.CanonicalEntities[i].Keys[j]); err != nil {
 				return err
 			}
+		}
+	}
+	for i := range p.RelationshipDecisions {
+		if err := remap(&p.RelationshipDecisions[i].Left); err != nil {
+			return err
+		}
+		if err := remap(&p.RelationshipDecisions[i].Right); err != nil {
+			return err
 		}
 	}
 	for i := range p.Unresolved {

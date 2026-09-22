@@ -45,6 +45,9 @@ var (
 	// ErrNoRoute identifies an authorized request for which no current facet
 	// route was found. The result uses StrategyNoRoute for this outcome.
 	ErrNoRoute = errors.New("nlqroute: no route")
+	// ErrMetricContext reports that confirmed joins do not yield one unique safe
+	// connecting subgraph for every dataset required by a selected metric.
+	ErrMetricContext = errors.New("nlqroute: ambiguous or disconnected metric context")
 )
 
 // TopicReader is the live topic contract seam. Contract performs current
@@ -93,6 +96,7 @@ type RouteRequest struct {
 	Context       string                          `json:"context"`
 	Locale        nlq.Language                    `json:"locale"`
 	Question      string                          `json:"question"`
+	Templates     []rulesets.TemplateSelection    `json:"templates,omitempty"`
 	Kinds         []string                        `json:"kinds,omitempty"`
 	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
 	References    []semantics.Reference           `json:"references,omitempty"`
@@ -170,20 +174,21 @@ type RouteResult struct {
 	// Request is the bounded, caller-selected routing input that was admitted
 	// for this result. Persisted refinements use it as their semantic base; it
 	// contains no SQL or authority material.
-	Request       RouteRequest      `json:"request,omitempty"`
-	Topic         string            `json:"topic"`
-	Topics        []string          `json:"topics"`
-	TopicVersions []string          `json:"topic_versions"`
-	RuleVersions  []string          `json:"rule_versions,omitempty"`
-	Confidence    float64           `json:"confidence"`
-	Tier          nlq.Tier          `json:"tier,omitempty"`
-	Context       *ContextView      `json:"context,omitempty"`
-	Audit         nlq.AssemblyAudit `json:"audit,omitempty"`
-	Evidence      []vindex.Hit      `json:"evidence,omitempty"`
-	Warnings      []string          `json:"warnings,omitempty"`
-	RemoteCalls   []gateway.Usage   `json:"remote_calls,omitempty"`
-	Stages        []Stage           `json:"stages"`
-	Clarification *Clarification    `json:"clarification,omitempty"`
+	Request       RouteRequest                 `json:"request,omitempty"`
+	Topic         string                       `json:"topic"`
+	Topics        []string                     `json:"topics"`
+	TopicVersions []string                     `json:"topic_versions"`
+	RuleVersions  []string                     `json:"rule_versions,omitempty"`
+	Templates     []rulesets.TemplateSelection `json:"templates,omitempty"`
+	Confidence    float64                      `json:"confidence"`
+	Tier          nlq.Tier                     `json:"tier,omitempty"`
+	Context       *ContextView                 `json:"context,omitempty"`
+	Audit         nlq.AssemblyAudit            `json:"audit,omitempty"`
+	Evidence      []vindex.Hit                 `json:"evidence,omitempty"`
+	Warnings      []string                     `json:"warnings,omitempty"`
+	RemoteCalls   []gateway.Usage              `json:"remote_calls,omitempty"`
+	Stages        []Stage                      `json:"stages"`
+	Clarification *Clarification               `json:"clarification,omitempty"`
 	// assembled is an in-process sealed context. It deliberately has no JSON
 	// representation: generation must consume the context produced by this
 	// route, never a caller-provided ContextView.
@@ -231,6 +236,7 @@ type admittedTopic struct {
 	hasRules       bool
 	constraints    *nlq.ConstraintState
 	advisory       []nlq.OptionalItem
+	template       *rulesets.TemplateSelection
 }
 
 // Route performs the bounded first routing consumer. Current source and topic
@@ -282,6 +288,17 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 			result.RuleVersions[i] = admitted[i].rules.State.Version
 		}
 	}
+	templates, missing, err := canonicalTemplates(in.Templates, admitted)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if missing != "" {
+		result.Outcome = nlq.StrategyClarify
+		result.Clarification = &Clarification{Reason: "reviewed_template_required", Outcome: semantics.ClarificationMissing, Prompt: "Choose a reviewed query template before generation."}
+		return result, nil
+	}
+	result.Templates = templates
+	result.Request.Templates = append([]rulesets.TemplateSelection(nil), templates...)
 	if len(admitted) > 1 {
 		if incompatible := confirmJoins(admitted, in.JoinChoices); incompatible != nil && incompatible.Reason == "unconfirmed_source" {
 			result.Outcome, result.Clarification = nlq.StrategyClarify, incompatible
@@ -520,7 +537,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		}
 		seen[topic] = true
 	}
-	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
+	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
 		return nil, ErrInvalid
 	}
 	if len(in.JoinChoices) > 0 {
@@ -553,6 +570,13 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 		seenRefs[ref] = true
+	}
+	seenTemplates := map[string]bool{}
+	for _, selection := range in.Templates {
+		if !identity.Identifier(selection.ID) || !identity.Identifier(selection.Topic) || !identity.Identifier(selection.TopicVersion) || !identity.Identifier(selection.RuleVersion) || !topics.DigestValid(selection.PackDigest) || !topics.DigestValid(selection.RuleDigest) || seenTemplates[selection.Topic] {
+			return nil, ErrInvalid
+		}
+		seenTemplates[selection.Topic] = true
 	}
 	seenChoices := map[string]bool{}
 	for _, choice := range in.Choices {
@@ -589,6 +613,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out := in
 	out.Topics = append([]string(nil), in.Topics...)
+	out.Templates = append([]rulesets.TemplateSelection(nil), in.Templates...)
 	out.Kinds = append([]string(nil), in.Kinds...)
 	out.References = append([]semantics.Reference(nil), in.References...)
 	out.Choices = append([]ChoiceSelection(nil), in.Choices...)
@@ -623,6 +648,49 @@ func (s *Service) readRules(ctx context.Context, e identity.Envelope, topic, ver
 	return published, true, nil
 }
 
+func canonicalTemplates(input []rulesets.TemplateSelection, admitted []admittedTopic) ([]rulesets.TemplateSelection, string, error) {
+	byTopic := make(map[string]rulesets.TemplateSelection, len(input))
+	for _, selection := range input {
+		if _, exists := byTopic[selection.Topic]; exists {
+			return nil, "", ErrInvalid
+		}
+		byTopic[selection.Topic] = selection
+	}
+	out := make([]rulesets.TemplateSelection, 0, len(input))
+	for i := range admitted {
+		item := &admitted[i]
+		templates := map[string]bool{}
+		if item.hasRules {
+			for _, rule := range item.rules.Definition.Rules {
+				if rule.Scope.Kind == semantics.RuleScopeTemplate {
+					templates[rule.Scope.Template] = true
+				}
+			}
+		}
+		selection, supplied := byTopic[item.id]
+		if len(templates) == 0 {
+			if supplied {
+				return nil, "", ErrInvalid
+			}
+			continue
+		}
+		if !supplied {
+			return nil, item.id, nil
+		}
+		if !templates[selection.ID] || selection.TopicVersion != item.publication.State.Version || selection.PackDigest != item.publication.Digest || selection.RuleVersion != item.rules.State.Version || selection.RuleDigest != item.rules.Digest {
+			return nil, "", store.ErrConflict
+		}
+		canonical := rulesets.TemplateSelection{ID: selection.ID, Topic: item.id, TopicVersion: item.publication.State.Version, PackDigest: item.publication.Digest, RuleVersion: item.rules.State.Version, RuleDigest: item.rules.Digest}
+		item.template = &canonical
+		out = append(out, canonical)
+		delete(byTopic, item.id)
+	}
+	if len(byTopic) != 0 {
+		return nil, "", ErrInvalid
+	}
+	return out, "", nil
+}
+
 func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in RouteRequest, _ map[string]string, item admittedTopic) (*nlq.ConstraintState, []nlq.OptionalItem, error) {
 	if !item.hasRules {
 		if len(in.References) > 0 {
@@ -645,7 +713,7 @@ func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in Rout
 		sort.Strings(ids)
 		refs = append(refs, semantics.Reference{Kind: semantics.KindDataset, ID: ids[0]})
 	}
-	evaluation, err := s.rules.Evaluate(ctx, e, item.id, rulesets.EvaluateRequest{References: refs})
+	evaluation, err := s.rules.Evaluate(ctx, e, item.id, rulesets.EvaluateRequest{References: refs, Template: item.template})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -669,8 +737,12 @@ func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in Rout
 		}
 	}
 	var advisory []nlq.OptionalItem
+	applied := map[string]bool{}
+	for _, selection := range evaluation.Result.Selection {
+		applied[selection.Rule] = selection.Applied
+	}
 	for _, rule := range item.rules.Definition.Rules {
-		if rule.Class != semantics.RuleAdvisoryContext || rule.Guidance == nil || rule.Guidance.Sensitivity != semantics.LiteralNonSensitive {
+		if rule.Class != semantics.RuleAdvisoryContext || rule.Guidance == nil || rule.Guidance.Sensitivity != semantics.LiteralNonSensitive || !applied[rule.ID] {
 			continue
 		}
 		advisory = append(advisory, nlq.OptionalItem{ID: rule.ID, Text: rule.Guidance.Text, Priority: rule.Priority, Source: "rules"})
@@ -994,8 +1066,13 @@ func resolveMetrics(admitted []admittedTopic, ids []string) ([]nlq.PinnedMetric,
 	for _, id := range ids {
 		var matches []nlq.PinnedMetric
 		for _, item := range admitted {
-			if metric, ok := findMetric(item.publication.Definition, id); ok {
-				matches = append(matches, nlq.PinnedMetric{ID: item.id + ":" + id, Text: metric})
+			metric, ok, err := findMetric(item.publication.Definition, id)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				metric.ID = item.id + ":" + id
+				matches = append(matches, metric)
 			}
 		}
 		if len(matches) != 1 {
@@ -1009,18 +1086,244 @@ func resolveMetrics(admitted []admittedTopic, ids []string) ([]nlq.PinnedMetric,
 	return out, nil
 }
 
-func findMetric(def topics.Definition, id string) (string, bool) {
+func findMetric(def topics.Definition, id string) (nlq.PinnedMetric, bool, error) {
 	for _, measure := range def.Measures {
 		if measure.ID == id {
-			return measure.Name + " (" + string(measure.Aggregation) + ")", true
+			metric := nlq.PinnedMetric{Text: measure.Name + " (" + string(measure.Aggregation) + ")"}
+			var err error
+			metric.Dependencies, err = metricClosure(def, []semantics.Reference{{Kind: semantics.KindMeasure, ID: measure.ID}})
+			return metric, true, err
 		}
 	}
 	for _, kpi := range def.KPIs {
 		if kpi.ID == id {
-			return kpi.Name, true
+			metric := nlq.PinnedMetric{Text: kpi.Name + " = " + kpi.Expression}
+			var err error
+			metric.Dependencies, err = metricClosure(def, []semantics.Reference{{Kind: semantics.KindKPI, ID: kpi.ID}})
+			return metric, true, err
 		}
 	}
-	return "", false
+	return nlq.PinnedMetric{}, false, nil
+}
+
+// metricClosure resolves the complete transitive semantic graph in deterministic
+// order. It is derived only from the already-authorized retained publication.
+func metricClosure(def topics.Definition, roots []semantics.Reference) ([]nlq.MetricDependency, error) {
+	measures := map[string]semantics.Measure{}
+	kpis := map[string]semantics.KPI{}
+	columns := map[string]semantics.Column{}
+	datasetForColumn := map[string]string{}
+	dimensionsByColumn := map[string][]semantics.Dimension{}
+	for _, dataset := range def.Datasets {
+		for _, column := range dataset.Columns {
+			key := dataset.ID + "\x00" + column.ID
+			columns[key] = column
+			datasetForColumn[key] = dataset.ID
+		}
+	}
+	for _, value := range def.Measures {
+		measures[value.ID] = value
+	}
+	for _, value := range def.Dimensions {
+		key := value.Field.Dataset + "\x00" + value.Field.ID
+		dimensionsByColumn[key] = append(dimensionsByColumn[key], value)
+	}
+	for _, value := range def.KPIs {
+		kpis[value.ID] = value
+	}
+	seen := map[string]bool{}
+	traversed := map[string]bool{}
+	datasets := map[string]bool{}
+	out := []nlq.MetricDependency{}
+	add := func(kind, id string, value any) {
+		key := kind + "\x00" + id
+		if seen[key] {
+			return
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return
+		}
+		seen[key] = true
+		out = append(out, nlq.MetricDependency{Kind: kind, ID: id, Text: string(raw)})
+	}
+	var visit func(semantics.Reference)
+	visit = func(ref semantics.Reference) {
+		traversalKey := string(ref.Kind) + "\x00" + ref.Dataset + "\x00" + ref.ID
+		if traversed[traversalKey] {
+			return
+		}
+		traversed[traversalKey] = true
+		switch ref.Kind {
+		case semantics.KindKPI:
+			value, ok := kpis[ref.ID]
+			if !ok {
+				return
+			}
+			add("kpi", value.ID, value)
+			for _, input := range value.Inputs {
+				visit(input)
+			}
+			for _, filter := range value.Filters {
+				visit(filter.Field)
+			}
+		case semantics.KindMeasure:
+			value, ok := measures[ref.ID]
+			if !ok {
+				return
+			}
+			add("measure", value.ID, value)
+			visit(value.Field)
+			for _, filter := range value.Filters {
+				visit(filter.Field)
+			}
+		case semantics.KindColumn:
+			key := ref.Dataset + "\x00" + ref.ID
+			value, ok := columns[key]
+			if !ok {
+				return
+			}
+			datasets[datasetForColumn[key]] = true
+			add("column", ref.Dataset+":"+ref.ID, struct {
+				Dataset string           `json:"dataset"`
+				Column  semantics.Column `json:"column"`
+			}{ref.Dataset, value})
+			for _, dimension := range dimensionsByColumn[key] {
+				add("dimension", dimension.ID, dimension)
+				for _, filter := range dimension.Filters {
+					visit(filter.Field)
+				}
+			}
+		}
+	}
+	for _, root := range roots {
+		visit(root)
+	}
+	connecting, err := uniqueJoinSubgraph(def.Joins, datasets)
+	if err != nil {
+		return nil, err
+	}
+	for _, value := range connecting {
+		add("join", value.ID, value)
+		for _, ref := range []semantics.Reference{value.Left, value.Right} {
+			key := ref.Dataset + "\x00" + ref.ID
+			if column, ok := columns[key]; ok {
+				add("column", ref.Dataset+":"+ref.ID, struct {
+					Dataset string           `json:"dataset"`
+					Column  semantics.Column `json:"column"`
+				}{ref.Dataset, column})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
+type joinEdge struct {
+	to   string
+	join semantics.Join
+}
+
+// uniqueJoinSubgraph returns the union of the only confirmed path from the
+// first selected dataset to every other selected dataset. In an undirected
+// graph an edge participates in a unique path only when it is a bridge, so the
+// bounded bridge forest rejects competing paths without enumerating cycles.
+func uniqueJoinSubgraph(joins []semantics.Join, selected map[string]bool) ([]semantics.Join, error) {
+	terminals := make([]string, 0, len(selected))
+	for dataset := range selected {
+		terminals = append(terminals, dataset)
+	}
+	sort.Strings(terminals)
+	if len(terminals) < 2 {
+		return nil, nil
+	}
+	graph := map[string][]joinEdge{}
+	for _, join := range joins {
+		graph[join.Left.Dataset] = append(graph[join.Left.Dataset], joinEdge{to: join.Right.Dataset, join: join})
+		graph[join.Right.Dataset] = append(graph[join.Right.Dataset], joinEdge{to: join.Left.Dataset, join: join})
+	}
+	for dataset := range graph {
+		sort.Slice(graph[dataset], func(i, j int) bool {
+			if graph[dataset][i].to != graph[dataset][j].to {
+				return graph[dataset][i].to < graph[dataset][j].to
+			}
+			return graph[dataset][i].join.ID < graph[dataset][j].join.ID
+		})
+	}
+	discovered := map[string]int{}
+	low := map[string]int{}
+	bridges := map[string]bool{}
+	clock := 0
+	var findBridges func(string, string)
+	findBridges = func(at, parentEdge string) {
+		clock++
+		discovered[at], low[at] = clock, clock
+		for _, edge := range graph[at] {
+			if edge.join.ID == parentEdge {
+				continue
+			}
+			if discovered[edge.to] == 0 {
+				findBridges(edge.to, edge.join.ID)
+				low[at] = min(low[at], low[edge.to])
+				if low[edge.to] > discovered[at] {
+					bridges[edge.join.ID] = true
+				}
+			} else {
+				low[at] = min(low[at], discovered[edge.to])
+			}
+		}
+	}
+	nodes := make([]string, 0, len(graph))
+	for node := range graph {
+		nodes = append(nodes, node)
+	}
+	sort.Strings(nodes)
+	for _, node := range nodes {
+		if discovered[node] == 0 {
+			findBridges(node, "")
+		}
+	}
+	chosen := map[string]semantics.Join{}
+	root := terminals[0]
+	for _, target := range terminals[1:] {
+		visited := map[string]bool{root: true}
+		var unique []semantics.Join
+		var walk func(string, []semantics.Join) bool
+		walk = func(at string, path []semantics.Join) bool {
+			if at == target {
+				unique = append([]semantics.Join(nil), path...)
+				return true
+			}
+			for _, edge := range graph[at] {
+				if !bridges[edge.join.ID] || visited[edge.to] {
+					continue
+				}
+				visited[edge.to] = true
+				if walk(edge.to, append(path, edge.join)) {
+					return true
+				}
+				delete(visited, edge.to)
+			}
+			return false
+		}
+		if !walk(root, nil) {
+			return nil, ErrMetricContext
+		}
+		for _, join := range unique {
+			chosen[join.ID] = join
+		}
+	}
+	out := make([]semantics.Join, 0, len(chosen))
+	for _, join := range chosen {
+		out = append(out, join)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
 
 func stageFromReceipt(name string, started time.Time, receipt gateway.Receipt) Stage {
@@ -1040,6 +1343,9 @@ func contextView(input nlq.AssembledContext) *ContextView {
 		Question: input.Question, Prompt: input.Prompt, Evidence: append([]nlq.Evidence(nil), input.Evidence...),
 		Metrics: append([]nlq.PinnedMetric(nil), input.Metrics...), Advisory: append([]nlq.OptionalItem(nil), input.Advisory...),
 		Examples: append([]nlq.OptionalItem(nil), input.Examples...),
+	}
+	for i := range out.Metrics {
+		out.Metrics[i].Dependencies = append([]nlq.MetricDependency(nil), input.Metrics[i].Dependencies...)
 	}
 	if input.Constraints != nil {
 		constraints := &nlq.ConstraintState{Allowed: input.Constraints.Allowed}

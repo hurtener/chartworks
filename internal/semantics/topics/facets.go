@@ -36,13 +36,13 @@ func facetPlan(model semantics.Model, space gateway.EmbeddingSpace) ([]facetGrou
 	datasets := map[string]semantics.Dataset{}
 	refs := map[string][]semantics.Reference{}
 	for _, m := range p.Measures {
-		refs["measure:"+m.ID] = []semantics.Reference{m.Field}
+		refs["measure:"+m.ID] = appendFilterReferences([]semantics.Reference{m.Field}, m.Filters)
 	}
 	for _, d := range p.Dimensions {
-		refs["dimension:"+d.ID] = []semantics.Reference{d.Field}
+		refs["dimension:"+d.ID] = appendFilterReferences([]semantics.Reference{d.Field}, d.Filters)
 	}
 	for _, k := range p.KPIs {
-		refs["kpi:"+k.ID] = k.Inputs
+		refs["kpi:"+k.ID] = appendFilterReferences(append([]semantics.Reference(nil), k.Inputs...), k.Filters)
 	}
 	total, bytes := 0, 0
 	add := func(context, source, kind, id string, value any) error {
@@ -179,17 +179,17 @@ func facetPlan(model semantics.Model, space gateway.EmbeddingSpace) ([]facetGrou
 		return nil
 	}
 	for _, m := range p.Measures {
-		if err := addEntity("measure", m.ID, m, []semantics.Reference{m.Field}); err != nil {
+		if err := addEntity("measure", m.ID, m, refs["measure:"+m.ID]); err != nil {
 			return nil, err
 		}
 	}
 	for _, d := range p.Dimensions {
-		if err := addEntity("dimension", d.ID, d, []semantics.Reference{d.Field}); err != nil {
+		if err := addEntity("dimension", d.ID, d, refs["dimension:"+d.ID]); err != nil {
 			return nil, err
 		}
 	}
 	for _, k := range p.KPIs {
-		if err := addEntity("kpi", k.ID, k, k.Inputs); err != nil {
+		if err := addEntity("kpi", k.ID, k, refs["kpi:"+k.ID]); err != nil {
 			return nil, err
 		}
 	}
@@ -209,4 +209,11 @@ func facetPlan(model semantics.Model, space gateway.EmbeddingSpace) ([]facetGrou
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].generation.Context < out[j].generation.Context })
 	return out, nil
+}
+
+func appendFilterReferences(base []semantics.Reference, filters []semantics.SemanticFilter) []semantics.Reference {
+	for _, filter := range filters {
+		base = append(base, filter.Field)
+	}
+	return base
 }

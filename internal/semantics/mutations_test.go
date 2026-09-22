@@ -71,6 +71,59 @@ func TestEntityMutationAndDatasetReplacementRewriteAllReferences(t *testing.T) {
 	}
 }
 
+func TestRelationshipDecisionMutationAndDatasetReplacementPreserveReviewedMeaning(t *testing.T) {
+	model, _ := testRules(t)
+	pack := model.Pack()
+	decision := RelationshipDecision{
+		ID:          "candidate_amount_customer",
+		Left:        Reference{Kind: KindColumn, Dataset: pack.Datasets[0].ID, ID: pack.Datasets[0].Columns[1].ID},
+		Right:       Reference{Kind: KindColumn, Dataset: pack.Datasets[1].ID, ID: pack.Datasets[1].Columns[0].ID},
+		Cardinality: CardinalityManyToOne,
+		State:       "candidate",
+		Evidence:    RelationshipEvidence{ID: "reviewed_grain", LeftGrain: "order", RightGrain: "customer", Provenance: "reviewed_profile"},
+	}
+	mutated, err := MutateEntities(model, "v2", []EntityMutation{{Operation: "put", Kind: KindRelationshipDecision, ID: decision.ID, RelationshipDecision: &decision}})
+	if err != nil || len(mutated.Pack().RelationshipDecisions) != 1 {
+		t.Fatal("relationship decision authoring", err)
+	}
+
+	old := mutated.Pack().Datasets[0]
+	columns := append([]Column(nil), old.Columns...)
+	columns[0].Aliases = nil
+	columns[0].SemanticRole = ""
+	oldAliases := []string{"Order key", "Pedido"}
+	base := mutated.Pack()
+	for i := range base.Datasets {
+		if base.Datasets[i].ID == old.ID {
+			base.Datasets[i].Columns[0].Aliases = oldAliases
+			base.Datasets[i].Columns[0].SemanticRole = SemanticRoleFactKey
+		}
+	}
+	mutated, err = Compile(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := old.Source
+	source.Dataset = "orders_reviewed"
+	source.ProfileVersion = "profile_reviewed"
+	rebound, err := ReplaceDataset(mutated, "v3", old.ID, DatasetReplacement{Dataset: source.Dataset, Source: source, Columns: columns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rebound.Pack()
+	var reboundColumn Column
+	for _, dataset := range got.Datasets {
+		if dataset.ID == source.Dataset {
+			reboundColumn = dataset.Columns[0]
+		}
+	}
+	left := got.RelationshipDecisions[0].Left
+	right := got.RelationshipDecisions[0].Right
+	if reboundColumn.SemanticRole != SemanticRoleFactKey || len(reboundColumn.Aliases) != 2 || (left.Dataset != source.Dataset && right.Dataset != source.Dataset) {
+		t.Fatalf("reviewed meaning was not preserved across rebind: %#v", got)
+	}
+}
+
 func TestDatasetReplacementRewritesEnhancedUnresolvedReference(t *testing.T) {
 	model, _ := testRules(t)
 	old := model.Pack().Datasets[0]
@@ -124,5 +177,53 @@ func TestDatasetReplacementRewritesEnhancedUnresolvedReference(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("resolved semantic missing executable measure", wantID, wantField)
+	}
+}
+
+func TestDatasetReplacementRichValuesRequireDestinationSensitivityEvidence(t *testing.T) {
+	pack := testPack()
+	var old Dataset
+	for i := range pack.Datasets {
+		if pack.Datasets[i].ID != "customers" {
+			continue
+		}
+		for j := range pack.Datasets[i].Columns {
+			if pack.Datasets[i].Columns[j].ID == "region" {
+				pack.Datasets[i].Columns[j].Sensitivity = LiteralNonSensitive
+			}
+		}
+		old = pack.Datasets[i]
+	}
+	pack.Dimensions[0].Values = []GovernedValue{{ID: "north", Value: "N", Aliases: []string{"North"}, Sensitivity: LiteralNonSensitive, Provenance: ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v2", Policy: "low_cardinality"}}}
+	pack.Dimensions[0].Filters = []SemanticFilter{{ID: "north_only", Field: Reference{Kind: KindColumn, Dataset: old.ID, ID: "region"}, Operator: "eq", Values: []string{"N"}}}
+	model, err := Compile(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	columns := append([]Column(nil), old.Columns...)
+	for i := range columns {
+		columns[i].Sensitivity = ""
+	}
+	source := old.Source
+	source.Dataset = "customers_v2"
+	source.ProfileVersion = "customers_profile_v3"
+	if _, err = ReplaceDataset(model, "v2", old.ID, DatasetReplacement{Dataset: source.Dataset, Source: source, Columns: columns}); validationCode(t, err) != CodeEvidenceMismatch {
+		t.Fatalf("rich values survived destination without sensitivity evidence: %v", err)
+	}
+	if model.Digest() == "" || model.Pack().Datasets[0].ID == source.Dataset {
+		t.Fatal("failed rebind mutated prior model")
+	}
+	for i := range columns {
+		if columns[i].ID == "region" {
+			columns[i].Sensitivity = LiteralNonSensitive
+		}
+	}
+	rebound, err := ReplaceDataset(model, "v2", old.ID, DatasetReplacement{Dataset: source.Dataset, Source: source, Columns: columns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rebound.Pack()
+	if got.Dimensions[0].Field.Dataset != source.Dataset || got.Dimensions[0].Values[0].ID != "north" || got.Dimensions[0].Filters[0].Field.Dataset != source.Dataset {
+		t.Fatalf("evidence-backed rebind lost stable rich meaning: %#v", got.Dimensions[0])
 	}
 }

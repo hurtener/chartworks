@@ -767,3 +767,7 @@ Client parity continuation: [D-070 canonical mounts, registered SDK/CLI consumer
 Reporting contract continuation: [D-073 immutable output intent and bounded narrative evidence policies](decisions/2026-09-16-reporting-output-policies.md).
 
 CI verification continuation: [D-074 fast pull-request checks and explicit final-gap qualification](decisions/2026-09-22-ci-verification.md).
+
+Rich semantic continuation: [D-075 reviewed rich fields and atomic metric dependency closures](decisions/2026-09-22-rich-semantics.md).
+
+Rule/reporting dependency continuation: [D-076 closed compound/template scopes and immutable reporting rule snapshots](decisions/2026-09-22-rule-scopes-reporting-snapshots.md).

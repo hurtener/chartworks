@@ -96,6 +96,12 @@ ID so retained and portable exact revisions cannot later acquire a different mea
 
 Topic generation uses remote Bifrost structured calls in bounded batches with stable IDs. Rich authoring packs project to compact published capability cards. One ContextAssembler owns runtime pruning, uses one tokenizer-backed budget, per-request copies and explicit provenance, preserves pinned metrics/hard constraints and reports insufficiency rather than silently dropping mandatory rules. Rules/examples have separate declared budgets and confidence/prior meaning.
 
+Rule applicability is a closed typed union: topic, any-entity, all-entity
+compound and exact reviewed-template scopes. Scope evaluation emits deterministic
+selection evidence and can only activate typed require/exclude constraints or
+advisory context. It cannot contain executable SQL/regular expressions or widen
+the verified source, topic or execution-context envelope.
+
 ## 9. NLQ, BYO and read safety
 
 Preserve deterministic span hints, remote query embeddings, typed/batched authorized retrieval, published/healthy eligibility, optional Bifrost reranking, calibrated confidence and explicit no-route/clarify outcomes. Reranking sees only already authorized candidates. Retain English/Spanish fixtures, prior context/SQL and session-scoped follow-up deltas. Confirmed same-source multi-topic joins/cardinality and all-resource restrictions are migration scope; arbitrary federation is not implied.

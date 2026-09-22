@@ -219,9 +219,9 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 	w.handler = chartapi.Handler(verifier, chartService, w.handler)
 	var capture reporting.QueryCapture
 	if w.nlq != nil {
-		capture = reporting.CaptureFromQueries(w.nlq)
+		capture = reporting.CaptureFromQueries(w.nlq, rules)
 	}
-	blockService, err := reporting.New(db, published, w.sourceService, validator, executor, capture, v.Reporting)
+	blockService, err := reporting.New(db, published, w.sourceService, validator, executor, capture, v.Reporting, rules)
 	if err != nil {
 		w.close()
 		return nil, err
