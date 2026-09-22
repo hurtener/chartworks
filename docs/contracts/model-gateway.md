@@ -26,7 +26,7 @@ Use the sibling Go gateways as reviewed references, not imported `internal/` pac
 
 The reference configuration is in `examples/chartworks.gateway.json` (a JSON configuration excerpt, also valid YAML syntax). Reuse non-secret model/provider settings; never copy `.env`, keys, access tokens, customer endpoints, authentication modes, local stores or sibling-only role names. The reference files were inspected through the connected repositories; no access to an unmounted local checkout is asserted. Their presence is not a new live quality/cost benchmark.
 
-Do not port a historical custom rerank workaround unless the selected SDK/provider actually needs it. Prefer the native provider path shown by the Soundings reference. Where a supported custom endpoint is necessary, configure it within Bifrost and prove path/auth/response mapping with a recorded-wire test. Stowage's alternate direct-compatible driver is not part of Chartworks' production design.
+Where a supported custom endpoint is necessary, configure it within Bifrost and prove path/auth/response mapping with a recorded-wire test. The OpenRouter rerank route uses this SDK facility under D-090. Stowage's alternate direct-compatible driver is not part of Chartworks' production design.
 
 ## Role configuration and lifecycle
 
@@ -68,10 +68,12 @@ Official SDK documentation checked for implementation syntax: https://docs.getbi
 
 ## Pinned SDK findings adopted in implementation (D-062)
 
-Bifrost core **v1.6.2** has a native OpenRouter rerank method that returns unsupported. The historical sibling configuration row above is an inspected reference, not evidence that its route is callable in this pin. Chartworks therefore routes reranking through **native Cohere**, model `rerank-4-fast`, with an independent environment-indirected key. OpenAI/OpenRouter serve completion and embeddings; unsupported provider-role combinations fail configuration. No custom HTTP workaround is installed.
+Bifrost core **v1.6.2** has a native OpenRouter rerank method that returns unsupported. D-062 therefore initially used native Cohere `rerank-4-fast`. D-090 adds a Bifrost custom provider whose base is the pinned SDK's Cohere rerank codec, whose only allowed operation is rerank, and whose fixed path override is OpenRouter `/api/v1/rerank`. Its configured model must be `cohere/rerank-4-fast`; the OpenRouter key remains environment-indirected. Recorded SDK-wire tests assert the exact path, Bearer header, model, query, documents, `top_n`, response indices and scores. Native Cohere remains a separate supported route. No second model client is installed.
 
 Successful SDK responses are validated using its internal raw-response observation before accepting typed defaults: a missing/null index or relevance score must not become a fabricated zero. This observation is discarded inside the adapter, never returned, logged or cached. Returned usage counts/costs distinguish absent fields from explicit zero; total cost is never added to its components. Reservations remain charged for unknown failures, and observed overages block further attempts.
 
 The authority/cache key includes tenant, user, session, action, sorted signed scopes, resolved resources, caller context and the full embedding space. Changing model revision, provider/model/endpoint, dimensions or preprocessing changes that space; later published-index consumers must perform fenced reindexing (phase07), not silently replace a same-dimensional model.
 
 SDK retries are disabled; the adapter owns the only 1–4 attempt ceiling. The fixed-input `/v1/gateway/probes` operator endpoint remains the gateway diagnostic consumer, while the phase-17 NLQ route is the first domain consumer of embedding and optional reranking. Each later semantic or artifact consumer still uses its owning phase contract.
+
+OpenRouter rerank's endpoint origin defaults to `https://openrouter.ai`; an operator-supplied override must be an HTTPS origin without a path. The SDK supplies cancellation, timeout, bounded concurrency and Bearer transport. Chartworks validates the complete raw response before exposing any ranking, preserves sealed IDs and tie order, and records one usage receipt per attempt. The request preserves `cohere/rerank-4-fast`; a live response reported the provider's canonical `rerank-v4.0-fast`, so the receipt keeps requested and reported model fields distinct. Unknown cost remains absent. Run the opt-in `scripts/smoke/openrouter-rerank-live.py` with a private `.env` for paid provider-route evidence; ordinary CI uses recorded SDK responses.

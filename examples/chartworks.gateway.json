@@ -8,8 +8,9 @@
           "api_key": "env:CHARTWORKS_OPENROUTER_API_KEY"
         },
         {
-          "name": "cohere",
-          "api_key": "env:CHARTWORKS_COHERE_API_KEY"
+          "name": "openrouter-rerank",
+          "type": "openrouter_rerank",
+          "api_key": "env:CHARTWORKS_OPENROUTER_API_KEY"
         }
       ]
     },
@@ -61,8 +62,8 @@
       },
       "rerank": {
         "enabled": true,
-        "provider": "cohere",
-        "model": "rerank-4-fast",
+        "provider": "openrouter-rerank",
+        "model": "cohere/rerank-4-fast",
         "timeout": "10s",
         "max_candidates": 64,
         "on_failure": "preserve_candidates"
