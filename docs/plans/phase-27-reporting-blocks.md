@@ -66,6 +66,8 @@ BLK-02 is implemented by exact immutable rule pins on definition v2. Validation,
 publication/certification health, source-impact rechecks and protected native
 definition transfer bind the same rule dependency digest. Replacement or
 retirement invalidates current health without rewriting the published revision
-or historical attestation. See [D-075](../decisions/2026-09-22-rule-scopes-reporting-snapshots.md),
+or historical attestation. Query capture transfers the sealed reviewed template
+selection and fences current rule heads in the block commit transaction, so a
+concurrent replacement fails stale without partial state. See [D-075](../decisions/2026-09-22-rule-scopes-reporting-snapshots.md),
 the [block contract](../contracts/reporting-blocks-v1.md), and the
 [CW-06 review](../reviews/cw-06-adversarial.md).

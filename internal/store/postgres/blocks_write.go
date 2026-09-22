@@ -73,6 +73,13 @@ func insertBlockRevision(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 		}
 	}
 	for _, pin := range r.Definition.Rules {
+		var active string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(active_version,'') FROM chartworks.topic_rule_publication_heads WHERE tenant_id=$1 AND topic_id=$2 FOR SHARE`, e.Tenant(), pin.Topic).Scan(&active); err != nil {
+			return err
+		}
+		if active != pin.RuleVersion {
+			return reporting.ErrStale
+		}
 		var topicVersion, packDigest, ruleDigest string
 		if err := tx.QueryRow(ctx, `SELECT topic_version,pack_digest,digest FROM chartworks.topic_rule_published_versions WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3`, e.Tenant(), pin.Topic, pin.RuleVersion).Scan(&topicVersion, &packDigest, &ruleDigest); err != nil {
 			return err

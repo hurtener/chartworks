@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "38" || len(manifest) != 38 {
+	if err != nil || SchemaVersion() != "39" || len(manifest) != 39 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -47,6 +47,7 @@ func TestSafeErrors(t *testing.T) {
 		{35, "migrations/036_nlq_clarification.sql", "nlq_clarification_immutable"},
 		{36, "migrations/037_clarification_comparison.sql", "baseline_clarification_bounded"},
 		{37, "migrations/038_reporting_rule_snapshots.sql", "block_rule_pins"},
+		{38, "migrations/039_template_selection_evidence.sql", "template_selections"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

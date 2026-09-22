@@ -77,20 +77,30 @@ representative-user comprehension remains a separate, unperformed study.
 Rule publication now accepts two additional closed applicability scopes. A
 `compound` scope applies only when every exact semantic target is present; the
 existing `entities` scope keeps its any-target behavior. A `template` scope
-contains one validated identifier and applies only when the caller supplies that
-exact reviewed identifier. Topic scopes remain unconditional. Scope shapes are
+contains one validated identifier and applies only through a canonical reviewed
+selection pinned to the current topic version, topic digest, rule version and
+rule digest. Topic scopes remain unconditional. Scope shapes are
 mutually exclusive: topic and template scopes cannot carry entity targets, while
 entity and compound scopes cannot carry a template identifier.
 
 Evaluation returns sorted per-rule selection evidence with an applied bit and a
 closed reason such as `compound_complete` or `template_mismatch`. Replay and
-shadow requests carry the same optional exact template identifier and persist the
-same deterministic comparison evidence. The routing consumer can supply that
-identifier, but the rule scope cannot discover templates, match text, execute a
-regular expression, contain SQL, or widen signed topic/source/context reach.
+shadow requests carry the same exact structured selection and persist that input
+beside the deterministic output evidence. Two comparisons with identical
+semantic references but different reviewed templates therefore remain distinct.
+The router validates a requested selection against the current reviewed
+publication and rebuilds its canonical coordinates before any model call. If a
+topic has template-scoped rules, omission returns a typed clarification and a
+substituted identifier or stale coordinate fails closed. The sealed selection is
+then retained by preflight, planning, refinement, saved-question replay, query
+evidence and reporting capture. The rule scope cannot discover templates, match
+text, execute a regular expression, contain SQL, or widen signed
+topic/source/context reach.
 Hard constraints remain the typed require/exclude-reference union.
 
 Existing published rule versions and digests are unchanged. Legacy topic/entity
 rules retain their original truth table. Importers may carry a valid native scope
 or produce an explicit reviewed transformation/rejection; they must not infer a
 compound or template scope from prose, SQL or a source-specific mapping.
+Migration 039 adds immutable bounded query and comparison selection evidence;
+existing rows retain an empty selection and are not reinterpreted.

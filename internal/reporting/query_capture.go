@@ -60,5 +60,22 @@ func (a queryBlockCapture) Capture(ctx context.Context, e identity.Envelope, id 
 		}
 		out.Rules = append(out.Rules, RulePin{Topic: publication.Definition.Topic, TopicVersion: publication.Definition.Version, PackDigest: publication.Digest, RuleVersion: version, RuleDigest: rules.Digest})
 	}
+	if len(captured.Templates) > 1 {
+		return Capture{}, ErrInvalid
+	}
+	if len(captured.Templates) == 1 {
+		selection := captured.Templates[0]
+		matched := false
+		for _, pin := range out.Rules {
+			if pin.Topic == selection.Topic && pin.TopicVersion == selection.TopicVersion && pin.PackDigest == selection.PackDigest && pin.RuleVersion == selection.RuleVersion && pin.RuleDigest == selection.RuleDigest {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return Capture{}, ErrStale
+		}
+		out.Template = &TemplatePin{ID: selection.ID, Version: selection.RuleVersion, Digest: selection.RuleDigest}
+	}
 	return out, nil
 }

@@ -331,6 +331,16 @@ func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparis
 	if err != nil {
 		return rulesets.Comparison{}, store.ErrInvalid
 	}
+	var template any
+	if comparison.Template != nil {
+		if comparison.Template.Topic != comparison.Topic || comparison.Template.TopicVersion != comparison.Baseline.TopicVersion || comparison.Template.PackDigest != comparison.Baseline.PackDigest || comparison.Template.RuleVersion != comparison.Baseline.RuleVersion || comparison.Template.RuleDigest != comparison.Baseline.RuleDigest {
+			return rulesets.Comparison{}, store.ErrInvalid
+		}
+		template, err = json.Marshal(comparison.Template)
+		if err != nil {
+			return rulesets.Comparison{}, store.ErrInvalid
+		}
+	}
 	var candidateVersion, candidateResult any
 	if comparison.Candidate != nil {
 		candidateVersion = comparison.Candidate.RuleVersion
@@ -362,7 +372,7 @@ func (d *DB) RecordComparison(ctx context.Context, e identity.Envelope, comparis
 		created = time.Now().UTC()
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_comparison_evidence(tenant_id,comparison_id,actor_id,session_id,topic_id,mode,topic_version,pack_digest,references_json,baseline_rule_version,baseline_result,candidate_rule_version,candidate_result,changed,created_at,baseline_clarification_result,candidate_clarification_result) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb,$14,$15,$16::jsonb,$17::jsonb)`, e.Tenant(), comparison.ID, e.User(), e.Session(), comparison.Topic, comparison.Mode, comparison.Baseline.TopicVersion, comparison.Baseline.PackDigest, references, comparison.Baseline.RuleVersion, baseline, candidateVersion, candidateResult, comparison.Changed, created, baselineClarifications, candidateClarifications)
+		_, err := tx.Exec(ctx, `INSERT INTO chartworks.topic_rule_comparison_evidence(tenant_id,comparison_id,actor_id,session_id,topic_id,mode,topic_version,pack_digest,references_json,baseline_rule_version,baseline_result,candidate_rule_version,candidate_result,changed,created_at,baseline_clarification_result,candidate_clarification_result,template_selection) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13::jsonb,$14,$15,$16::jsonb,$17::jsonb,$18::jsonb)`, e.Tenant(), comparison.ID, e.User(), e.Session(), comparison.Topic, comparison.Mode, comparison.Baseline.TopicVersion, comparison.Baseline.PackDigest, references, comparison.Baseline.RuleVersion, baseline, candidateVersion, candidateResult, comparison.Changed, created, baselineClarifications, candidateClarifications, template)
 		return err
 	})
 	if err != nil {

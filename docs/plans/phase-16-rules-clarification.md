@@ -86,8 +86,10 @@ claimed by these software tests.
 ## CW-06 rule-scope continuation
 
 RUL-01 is implemented by the closed compound-AND and exact-template scope
-contract in [rule lifecycle v1](../contracts/rule-lifecycle-v1.md). Selection is
-deterministic and replayable; distinct template scopes do not create false
+contract in [rule lifecycle v1](../contracts/rule-lifecycle-v1.md). Template
+selection is a server-verified publication pin propagated through the real NLQ
+and saved/replay paths; omission or substitution fails before generation.
+Selection is deterministic and replayable; distinct template scopes do not create false
 compile-time conflicts, while potentially overlapping hard constraints still
 fail closed. No executable SQL, regular-expression or authority mechanism was
 added. Focused truth-table and conflict coverage supplements AC02/AC05/AC06;

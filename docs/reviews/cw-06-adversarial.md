@@ -7,7 +7,7 @@ from manual final-gap qualification.
 ## Reviewed behavior
 
 - Compound scopes require every exact target; legacy entity scopes remain
-  any-target; template scopes use validated exact identifiers.
+  any-target; template scopes use canonical reviewed topic/ruleset pins.
 - Compilation rejects mixed scope shapes and overlapping contradictory hard
   constraints while allowing contradictory rules in distinct exact templates.
 - Evaluation/replay/shadow retain deterministic selection reasons and never
@@ -43,8 +43,26 @@ from manual final-gap qualification.
    to the current block validation record.** The shared admission/execution guard
    now rejects manifest pin tampering before authority or payload work.
 6. **Query capture could read a formerly exact rule version across a concurrent
-   replacement window.** Capture now additionally requires that exact publication
-   to remain active, so replacement/retirement racing the handoff fails stale.
+   replacement window.** Capture now locks each current rule publication head in
+   the block commit transaction. The publisher takes the conflicting head lock
+   before pointer advancement; a replacement that wins the race returns typed
+   stale and rolls back every block/revision/pin write.
+7. **A raw optional template string let callers omit or substitute applicability.**
+   Routing now accepts only a structured reviewed selection pinned to the current
+   topic/ruleset publication, rebuilds canonical coordinates server-side and
+   returns `reviewed_template_required` before any model call when a selection is
+   required. Stale coordinates or an unreviewed identifier fail closed.
+8. **The first rule-scope implementation stopped at routing.** Preflight, planning,
+   persisted query evidence, refinement/reconstruction, saved selections,
+   completed-query capture and reporting provenance now retain the same sealed
+   selection. Refinement cannot substitute another otherwise-valid template.
+9. **Replay/shadow retained only output selection reasons.** Comparison evidence
+   now also stores and projects the canonical input selection. Migration 039 adds
+   bounded immutable query/comparison fields; two comparisons with identical
+   semantic references but different reviewed templates remain distinguishable.
+10. **Shadow equality ignored selection-only changes.** The comparator now includes
+    sorted rule-selection evidence, so changed advisory applicability or an
+    equivalent hard-constraint outcome cannot be reported unchanged.
 
 ## Executed evidence
 
@@ -55,21 +73,20 @@ from manual final-gap qualification.
 - `git diff --check`, AGENTS/CLAUDE mirror check and confidential-name scan
 - `make planning-check` with a canonical macOS private temporary path
 
-The focused domain tests and all-package compilation passed. The first
-`make planning-check` invocation exposed a pre-existing macOS
-`/var` versus `/private/var` temporary-path assertion in the coverage-gate
-unit; rerunning with the canonical private temporary path lets that test exercise
-its intended behavior.
+The fix round reran the focused ruleset/router/NLQ/reporting/store/API/SDK tests
+and acceptance-package compilation successfully. Formatting and broader checks
+listed below are rerun on the final fix head before publication.
 
 ## Remaining qualification
 
 The real PostgreSQL acceptance case
 `TestCW06RulesReporting` creates, validates, publishes and certifies a
-rule-governed block, then replaces only the ruleset and checks stale health,
-refused revalidation and immutable historical publication. It is registered and
-compile-checked, but was not executed locally because the available Docker
-PostgreSQL fixture was unhealthy and Docker Desktop returned storage I/O errors
-when starting a replacement. No destructive Docker repair was attempted.
+rule-governed block; proves canonical template propagation through preflight,
+plan, refinement, saved preparation, execution and reporting capture; and pauses
+a real completed-query capture while the ordinary publisher replaces its rules.
+It requires stale failure with zero block/revision/pin side effects. The case is
+registered and compile-checked, but local execution reported
+`CHARTWORKS_TEST_STORE_URL required`; no database result is claimed.
 
 Run the D-074 manual final-gap workflow on the exact candidate head for the real
 PostgreSQL case, publication/CAS races, race detector, full coverage/fuzz suites,
