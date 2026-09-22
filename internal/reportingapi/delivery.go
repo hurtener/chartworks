@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/api"
 	"github.com/hurtener/chartworks/internal/auth"
@@ -35,6 +36,19 @@ func deliveryEntries(service *reporting.Delivery, execution bool, renderer ...*r
 		entry.definition.Action = "reporting.export"
 		entry.definition.Effect = "retained_static_rendition"
 		entries = append(entries, entry)
+		if renderer[0].Durable() {
+			generate := deliveryEntry("/v1/reporting/renditions", "reportingRenditionCreate", "Create or idempotently reuse one durable isolated static rendition", renderer[0].Generate)
+			generate.definition.Action = "reporting.export"
+			generate.definition.Effect = "durable_isolated_static_rendition"
+			generate.definition.Audit = "immutable rendition creation event; no retained values, SQL or credentials"
+			read := deliveryEntry("/v1/reporting/renditions/read", "reportingRenditionRead", "Read one current-authorized retained rendition without execution", renderer[0].Read)
+			list := deliveryEntry("/v1/reporting/renditions/list", "reportingRenditionList", "List current-authorized retained renditions without execution", renderer[0].List)
+			expire := deliveryEntry("/v1/reporting/renditions/expire", "reportingRenditionExpire", "Delete expired rendition bytes in a bounded tenant pass", renderer[0].Expire)
+			expire.definition.Action = "reporting.retention"
+			expire.definition.Effect = "bounded_rendition_deletion"
+			expire.definition.Audit = "one rendition expiry event per deleted record; no retained values"
+			entries = append(entries, generate, read, list, expire)
+		}
 	}
 	if execution {
 		options := deliveryEntry("/v1/reporting/filter-options", "reportingFilterOptions", "Read bounded revision-bound selectable filter values", service.FilterOptions)
@@ -55,8 +69,11 @@ func deliveryEntries(service *reporting.Delivery, execution bool, renderer ...*r
 // when the configured source execution lane is unavailable.
 func DeliveryRegistry(execution bool, static ...bool) (*api.Registry, error) {
 	var renderer *rendering.Service
-	if len(static) == 1 && static[0] {
+	if len(static) >= 1 && static[0] {
 		renderer, _ = rendering.New(registryViewer{}, 16<<20)
+	}
+	if len(static) >= 2 && static[1] {
+		renderer, _ = rendering.NewManaged(registryViewer{}, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 16 << 20}, 16<<20, rendering.Options{WorkerVersion: "registry-v1", ThemeVersion: "theme-v1", MaxTime: time.Second, MaxMemoryBytes: 64 << 20, MaxInputBytes: 16 << 20, MaxOutputBytes: 16 << 20, MaxConcurrent: 1, MaxWidgets: 100, Retention: time.Hour, Isolation: "development"})
 	}
 	return registryForEntries(deliveryEntries(nil, execution, renderer))
 }
@@ -82,7 +99,9 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer .
 	if service == nil {
 		return nil, mcpserver.ErrRegistration
 	}
-	registry, err := DeliveryRegistry(execution, len(renderer) == 1 && renderer[0] != nil)
+	hasRenderer := len(renderer) == 1 && renderer[0] != nil
+	hasDurableRenderer := hasRenderer && renderer[0].Durable()
+	registry, err := DeliveryRegistry(execution, hasRenderer, hasDurableRenderer)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +144,25 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer .
 			return nil, err
 		}
 		out = append(out, export)
+		if renderer[0].Durable() {
+			generate, bindErr := mcpserver.Bind(registry, "reportingRenditionCreate", "reporting_rendition_create", "reporting", "Create or idempotently reuse a durable isolated static rendition.", renderer[0].Generate, mapper)
+			if bindErr != nil {
+				return nil, bindErr
+			}
+			read, bindErr := mcpserver.Bind(registry, "reportingRenditionRead", "reporting_rendition_read", "reporting", "Read a retained rendition after current artifact authority is rechecked.", renderer[0].Read, mapper)
+			if bindErr != nil {
+				return nil, bindErr
+			}
+			list, bindErr := mcpserver.Bind(registry, "reportingRenditionList", "reporting_rendition_list", "reporting", "List currently authorized retained renditions.", renderer[0].List, mapper)
+			if bindErr != nil {
+				return nil, bindErr
+			}
+			expire, bindErr := mcpserver.Bind(registry, "reportingRenditionExpire", "reporting_rendition_expire", "reporting", "Delete expired rendition bytes in a bounded pass.", renderer[0].Expire, mapper)
+			if bindErr != nil {
+				return nil, bindErr
+			}
+			out = append(out, generate, read, list, expire)
+		}
 	}
 	if execution {
 		options, err := mcpserver.Bind(registry, "reportingFilterOptions", "reporting_filter_options", "reporting", "Read searchable typed choices for one exact published report revision and filter. This performs a bounded governed source read and never invokes a model.", service.FilterOptions, mapper)

@@ -61,6 +61,33 @@ func NewDomains(s sourceDomains, p profileDomains, d draftDomains, t topicDomain
 	return &Domains{sources: s, profiles: p, drafts: d, topics: t, autopilot: a}, nil
 }
 
+func (d *Domains) ResolveRunAuthority(ctx context.Context, e identity.Envelope, r Run) ([]RunAuthority, error) {
+	source, err := d.sources.Get(ctx, e, r.Input.Source)
+	if err != nil {
+		return nil, err
+	}
+	if source.ID != r.Input.Source || !identity.Identifier(source.ContextID) || source.Status != "registered" {
+		return nil, store.ErrConflict
+	}
+	out := []RunAuthority{{Source: source.ID, Context: source.ContextID}}
+	seen := map[string]bool{source.ID: true}
+	for _, ref := range r.References {
+		if ref.Source == "" || ref.Source == source.ID || seen[ref.Source] {
+			continue
+		}
+		current, readErr := d.sources.Get(ctx, e, ref.Source)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if current.ID != ref.Source || current.Status != "registered" || !identity.Identifier(current.ContextID) {
+			return nil, store.ErrConflict
+		}
+		out = append(out, RunAuthority{Source: current.ID, Context: current.ContextID})
+		seen[current.ID] = true
+	}
+	return out, nil
+}
+
 func (d *Domains) Connect(ctx context.Context, e identity.Envelope, in StartRequest, _ string) (StepResult, error) {
 	if in.Mode == ModeUpload {
 		u, err := d.profiles.InspectUpload(ctx, e, in.Upload)
@@ -78,7 +105,7 @@ func (d *Domains) Connect(ctx context.Context, e identity.Envelope, in StartRequ
 	if s.ContextID != in.Context || s.Status != "registered" {
 		return StepResult{}, store.ErrConflict
 	}
-	return StepResult{References: []Reference{{Kind: "source", ID: s.ID, Revision: s.Revision}}, Evidence: []Evidence{{Entity: s.ID, Kind: "connectivity", Basis: []string{"registered_source", "exact_execution_context"}, Confidence: "observed"}}}, nil
+	return StepResult{References: []Reference{{Kind: "source", ID: s.ID, Revision: s.Revision, Source: s.ID, Context: s.ContextID}}, Evidence: []Evidence{{Entity: s.ID, Kind: "connectivity", Basis: []string{"registered_source", "exact_execution_context"}, Confidence: "observed"}}}, nil
 }
 
 func (d *Domains) Inspect(ctx context.Context, e identity.Envelope, r Run, _ string) (StepResult, error) {
@@ -90,12 +117,14 @@ func (d *Domains) Inspect(ctx context.Context, e identity.Envelope, r Run, _ str
 		return StepResult{}, store.ErrConflict
 	}
 	found := false
+	columns := []string{}
 	entities := 0
 	var evidence []Evidence
 	for _, rel := range o.Relations {
 		if rel.ID == r.Input.Dataset {
 			found = true
 			for _, col := range rel.Columns {
+				columns = append(columns, col.Name)
 				confidence := "observed"
 				uncertainty := ""
 				if !col.Safe {
@@ -111,7 +140,8 @@ func (d *Domains) Inspect(ctx context.Context, e identity.Envelope, r Run, _ str
 		return StepResult{}, store.ErrNotFound
 	}
 	_ = entities
-	return StepResult{References: []Reference{{Kind: "dataset", ID: r.Input.Dataset, Revision: o.Revision}}, Evidence: evidence}, nil
+	sort.Strings(columns)
+	return StepResult{References: []Reference{{Kind: "dataset", ID: r.Input.Dataset, Revision: o.Revision, Source: r.Input.Source, Context: o.ContextID, Dataset: r.Input.Dataset, Columns: columns}}, Evidence: evidence}, nil
 }
 
 func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key string) (StepResult, error) {
@@ -151,16 +181,30 @@ func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key s
 		if err != nil {
 			return StepResult{}, err
 		}
-		found := false
-		for _, relation := range discovery.Relations {
-			if relation.ID == last.ID {
-				found = true
+		if len(discovery.Relations) != 1 {
+			return StepResult{}, store.ErrConflict
+		}
+		outputRelation := discovery.Relations[0]
+		expectedColumns := make([]string, 0, len(last.Columns))
+		for _, column := range last.Columns {
+			expectedColumns = append(expectedColumns, column.Name)
+		}
+		actualColumns := make([]string, 0, len(outputRelation.Columns))
+		for _, column := range outputRelation.Columns {
+			actualColumns = append(actualColumns, column.Name)
+		}
+		sort.Strings(expectedColumns)
+		sort.Strings(actualColumns)
+		found := len(expectedColumns) == len(actualColumns)
+		if found {
+			for i := range expectedColumns {
+				found = found && expectedColumns[i] == actualColumns[i]
 			}
 		}
 		if !found || output.ID != effect.Target || output.ContextID != discovery.ContextID || output.Revision != effect.Version || output.Revision != discovery.Revision {
 			return StepResult{}, store.ErrConflict
 		}
-		source, contextID, dataset = output.ID, output.ContextID, last.ID
+		source, contextID, dataset = output.ID, output.ContextID, outputRelation.ID
 		transformation = &proposal
 	}
 	status, inspectErr := d.profiles.InspectProfile(ctx, e, r.Input.Profile)
@@ -190,8 +234,10 @@ func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key s
 		return StepResult{}, store.ErrConflict
 	}
 	evidence := make([]Evidence, 0, len(p.Columns))
+	profileColumns := make([]string, 0, len(p.Columns))
 	questions := []Question{}
 	for _, col := range p.Columns {
+		profileColumns = append(profileColumns, col.Name)
 		basis := []string{"bounded_profile", "sample_rows:" + fmt.Sprint(p.Sampling.Rows)}
 		confidence := "observed"
 		uncertainty := ""
@@ -204,10 +250,12 @@ func (d *Domains) Profile(ctx context.Context, e identity.Envelope, r Run, key s
 			questions = append(questions, Question{ID: qid, Prompt: localized(r.Locale, "How should null values be interpreted for "+col.Name+"?", "¿Cómo deben interpretarse los valores nulos de "+col.Name+"?"), Evidence: basis, Required: true})
 		}
 	}
+	sort.Strings(profileColumns)
 	if transformation != nil {
-		return StepResult{References: []Reference{{Kind: "profile", ID: p.Version, Revision: p.SourceRevision, Private: true}, {Kind: "engineering_proposal", ID: transformation.ID, Revision: transformation.Revision, Digest: transformation.Digest, Private: true}}, Evidence: append(evidence, Evidence{Entity: transformation.ID, Kind: "managed_transformation", Basis: []string{"reviewed_engineering_applied", "output_source:" + source, "output_dataset:" + dataset}, Confidence: "observed"}), Questions: questions}, nil
+		proposalKey := "engineering_proposal:" + transformation.ID
+		return StepResult{References: []Reference{{Kind: "engineering_proposal", ID: transformation.ID, Revision: transformation.Revision, Digest: transformation.Digest, Private: true, Source: source, Context: contextID, Dataset: dataset, DependsOn: []string{"dataset:" + r.Input.Dataset}}, {Kind: "profile", ID: p.Version, Revision: p.SourceRevision, Private: true, Source: source, Context: contextID, Dataset: dataset, Columns: profileColumns, DependsOn: []string{proposalKey}}}, Evidence: append(evidence, Evidence{Entity: transformation.ID, Kind: "managed_transformation", Basis: []string{"reviewed_engineering_applied", "output_source:" + source, "output_dataset:" + dataset}, Confidence: "observed"}), Questions: questions}, nil
 	}
-	return StepResult{References: []Reference{{Kind: "profile", ID: p.Version, Revision: p.SourceRevision, Private: true}}, Evidence: evidence, Questions: questions}, nil
+	return StepResult{References: []Reference{{Kind: "profile", ID: p.Version, Revision: p.SourceRevision, Private: true, Source: source, Context: contextID, Dataset: dataset, Columns: profileColumns, DependsOn: []string{"dataset:" + dataset}}}, Evidence: evidence, Questions: questions}, nil
 }
 
 func (d *Domains) DraftSemantics(ctx context.Context, e identity.Envelope, r Run, _ string) (StepResult, error) {
@@ -245,7 +293,25 @@ func (d *Domains) DraftSemantics(ctx context.Context, e identity.Envelope, r Run
 	if answerValue(r.Answers, "kpis") == "" {
 		questions = append(questions, Question{ID: "kpis", Prompt: localized(r.Locale, "Define reviewed measures and KPIs, including units or currency, or leave them unresolved.", "Defina medidas y KPI revisados, incluidas unidades o moneda, o déjelos sin resolver."), Evidence: []string{"topic_draft:" + v.Metadata.Digest}, Required: true})
 	}
-	return StepResult{References: []Reference{{Kind: "topic_draft", ID: v.Metadata.Topic, Revision: v.Metadata.Revision, Digest: v.Metadata.Digest, Private: true}}, Evidence: evidence, Questions: questions}, nil
+	semanticColumns := []string{}
+	semanticSource, semanticContext, semanticDataset := "", "", ""
+	for _, ds := range v.Pack.Datasets {
+		if ds.Source.ProfileVersion == r.Input.Profile {
+			semanticSource, semanticContext, semanticDataset = ds.Source.Source, ds.Source.Context, ds.ID
+			for _, col := range ds.Columns {
+				name := col.SourceName
+				if name == "" {
+					name = col.ID
+				}
+				semanticColumns = append(semanticColumns, name)
+			}
+		}
+	}
+	if semanticSource == "" || semanticContext == "" || semanticDataset == "" {
+		return StepResult{}, store.ErrConflict
+	}
+	sort.Strings(semanticColumns)
+	return StepResult{References: []Reference{{Kind: "topic_draft", ID: v.Metadata.Topic, Revision: v.Metadata.Revision, Digest: v.Metadata.Digest, Private: true, Source: semanticSource, Context: semanticContext, Dataset: semanticDataset, Columns: semanticColumns, DependsOn: []string{"profile:" + r.Input.Profile}}}, Evidence: evidence, Questions: questions}, nil
 }
 
 func (d *Domains) PublishReviewed(ctx context.Context, e identity.Envelope, r Run, review ReviewReference, _ string) (StepResult, error) {
@@ -263,7 +329,7 @@ func (d *Domains) PublishReviewed(ctx context.Context, e identity.Envelope, r Ru
 	// the onboarding ledger CAS. Otherwise bind publication to the current head.
 	p, err := d.topics.Read(ctx, e, r.Input.Topic, r.Input.TopicVersion)
 	if err == nil && p.Digest == review.Digest {
-		return publicationStep(p, review), nil
+		return publicationStep(p, review, r)
 	}
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return StepResult{}, err
@@ -295,16 +361,39 @@ func (d *Domains) PublishReviewed(ctx context.Context, e identity.Envelope, r Ru
 	if p.Digest != review.Digest || p.State.Version != r.Input.TopicVersion {
 		return StepResult{}, store.ErrConflict
 	}
-	return publicationStep(p, review), nil
+	return publicationStep(p, review, r)
 }
 
-func publicationStep(p topics.Published, review ReviewReference) StepResult {
-	return StepResult{References: []Reference{{Kind: "topic", ID: p.State.Topic, Revision: p.State.Revision, Digest: p.Digest}}, Evidence: []Evidence{{Entity: p.State.Topic, Kind: "publication", Basis: []string{"independent_review:" + review.ID}, Confidence: "observed"}}, Receipt: p.Receipt}
+func publicationStep(p topics.Published, review ReviewReference, r Run) (StepResult, error) {
+	coordinate := Reference{}
+	for _, ref := range r.References {
+		if ref.Kind == "topic_draft" && ref.ID == p.State.Topic {
+			coordinate = ref
+		}
+	}
+	if coordinate.Source == "" || coordinate.Context == "" || coordinate.Dataset == "" || len(coordinate.Columns) == 0 {
+		return StepResult{}, store.ErrConflict
+	}
+	return StepResult{References: []Reference{{Kind: "topic", ID: p.State.Topic, Revision: p.State.Revision, Digest: p.Digest, Source: coordinate.Source, Context: coordinate.Context, Dataset: coordinate.Dataset, Columns: append([]string(nil), coordinate.Columns...), DependsOn: []string{"topic_draft:" + p.State.Topic}}}, Evidence: []Evidence{{Entity: p.State.Topic, Kind: "publication", Basis: []string{"independent_review:" + review.ID}, Confidence: "observed"}}, Receipt: p.Receipt}, nil
 }
 
 func (d *Domains) ProposeQueriesBlocksReports(_ context.Context, _ identity.Envelope, r Run, _ string) (StepResult, error) {
 	basis := []string{"published_topic:" + r.Input.Topic, "human_review_required"}
-	return StepResult{References: []Reference{{Kind: "onboarding_query_intent", ID: r.ID + "-query", Private: true}, {Kind: "onboarding_block_intent", ID: r.Input.Block, Private: true}, {Kind: "onboarding_report_intent", ID: r.Input.Report, Private: true}}, Evidence: []Evidence{{Entity: r.Input.Block, Kind: "proposal", Basis: basis, Confidence: "unresolved", Uncertainty: "run-owned intent only; ordinary authoring, SQL, output selection, publication and certification remain separate reviewed operations"}}}, nil
+	dependency := []string{"topic:" + r.Input.Topic}
+	topic := Reference{}
+	for _, ref := range r.References {
+		if ref.Kind == "topic" && ref.ID == r.Input.Topic {
+			topic = ref
+		}
+	}
+	if topic.Source == "" || topic.Context == "" || topic.Dataset == "" {
+		return StepResult{}, store.ErrConflict
+	}
+	digest := readexec.Hash([]any{topic.Source, topic.Context, topic.Dataset, r.Input.Topic})
+	coordinate := func(kind, id string) Reference {
+		return Reference{Kind: kind, ID: id, Digest: digest, Private: true, Source: topic.Source, Context: topic.Context, Dataset: topic.Dataset, DependsOn: dependency}
+	}
+	return StepResult{References: []Reference{coordinate("onboarding_query_intent", r.ID+"-query"), coordinate("onboarding_block_intent", r.Input.Block), coordinate("onboarding_report_intent", r.Input.Report)}, Evidence: []Evidence{{Entity: r.Input.Block, Kind: "proposal", Basis: basis, Confidence: "unresolved", Uncertainty: "run-owned intent only; ordinary authoring, SQL, output selection, publication and certification remain separate reviewed operations"}}}, nil
 }
 
 func (d *Domains) ProposeDriftAmendment(ctx context.Context, e identity.Envelope, r Run, _ DriftRequest, _ string) (Amendment, error) {
@@ -365,17 +454,67 @@ func (d *Domains) ProposeDriftAmendment(ctx context.Context, e identity.Envelope
 		return Amendment{}, store.ErrConflict
 	}
 	sort.Strings(changes)
+	changed := map[string]bool{}
+	for _, name := range changes {
+		changed[name] = true
+	}
+	refKey := func(ref Reference) string { return ref.Kind + ":" + ref.ID }
+	affectedKeys := map[string]bool{}
+	impact := []ImpactEvidence{}
 	affected := []Reference{}
+	add := func(ref Reference, basis []string, conservative bool) {
+		key := refKey(ref)
+		if affectedKeys[key] {
+			return
+		}
+		affectedKeys[key] = true
+		affected = append(affected, ref)
+		impact = append(impact, ImpactEvidence{Kind: ref.Kind, ID: ref.ID, Basis: basis, Conservative: conservative})
+	}
 	for _, ref := range r.References {
-		if ref.Kind == "profile" || ref.Kind == "topic" || ref.Kind == "onboarding_block_intent" || ref.Kind == "onboarding_report_intent" {
-			affected = append(affected, ref)
+		if ref.Source != source.ID || ref.Dataset != r.Input.Dataset {
+			continue
+		}
+		if observation == "binding_changed" {
+			add(ref, []string{"exact_source:" + source.ID, "execution_context_changed"}, false)
+			continue
+		}
+		matched := []string{}
+		for _, column := range ref.Columns {
+			if changed[column] {
+				matched = append(matched, "column:"+column)
+			}
+		}
+		if len(matched) > 0 {
+			sort.Strings(matched)
+			add(ref, matched, false)
+		}
+	}
+	// Close over stable run-owned dependency coordinates. Query/block/report
+	// intents are conservative because they do not yet contain executable
+	// definitions; that uncertainty is retained explicitly instead of calling
+	// them directly column-affected.
+	for changedClosure := true; changedClosure; {
+		changedClosure = false
+		for _, ref := range r.References {
+			if affectedKeys[refKey(ref)] {
+				continue
+			}
+			for _, dependency := range ref.DependsOn {
+				if affectedKeys[dependency] {
+					conservative := strings.HasPrefix(ref.Kind, "onboarding_")
+					add(ref, []string{"depends_on:" + dependency}, conservative)
+					changedClosure = true
+					break
+				}
+			}
 		}
 	}
 	if len(affected) == 0 {
 		return Amendment{}, store.ErrConflict
 	}
 	digest := shortID(source.ID + "\x00" + source.ContextID + "\x00" + fmt.Sprint(source.Revision) + "\x00" + strings.Join(changes, "\x00"))
-	return Amendment{Run: r.ID, Observation: observation, Source: source.ID, Context: source.ContextID, SourceRevision: source.Revision, Changes: changes, Affected: affected, Proposal: Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend-" + digest, Digest: readexec.Hash(changes), Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+	return Amendment{Run: r.ID, Observation: observation, Source: source.ID, Context: source.ContextID, SourceRevision: source.Revision, Changes: changes, Affected: affected, ImpactEvidence: impact, Proposal: Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend-" + digest, Digest: readexec.Hash(changes), Private: true, Source: source.ID, Context: source.ContextID, Dataset: r.Input.Dataset}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
 }
 
 func shortID(v string) string { s := sha256.Sum256([]byte(v)); return hex.EncodeToString(s[:6]) }

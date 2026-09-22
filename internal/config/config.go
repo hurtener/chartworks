@@ -137,6 +137,7 @@ type Gateway struct {
 // Values is a detached serializable configuration, containing secret references only.
 type Values struct {
 	Onboarding   Onboarding     `json:"onboarding"`
+	Rendering    Rendering      `json:"rendering"`
 	Autopilot    Autopilot      `json:"autopilot"`
 	Reporting    Reporting      `json:"reporting"`
 	MCP          MCP            `json:"mcp"`
@@ -195,6 +196,7 @@ func (c Config) StoreDSN() string { return c.dsn }
 func Defaults() Values {
 	v := Values{
 		Onboarding:   DefaultOnboarding(),
+		Rendering:    DefaultRendering(),
 		Autopilot:    DefaultAutopilot(),
 		MCP:          DefaultMCP(),
 		Charts:       DefaultCharts(),
@@ -399,7 +401,7 @@ func validate(v Values) error {
 	if v.Telemetry.OTel {
 		return invalid("telemetry.otel", "export not implemented; disable explicitly")
 	}
-	if v.Features.Reporting || v.Features.Renderer {
+	if v.Features.Reporting {
 		return invalid("features", "requested capability is not implemented in phases 01-02")
 	}
 	if err := ValidateMCP(v.MCP); err != nil {
@@ -422,6 +424,12 @@ func validate(v Values) error {
 	}
 	if err := v.Reporting.validate(); err != nil {
 		return err
+	}
+	if err := v.Rendering.validate(); err != nil {
+		return err
+	}
+	if v.Features.Renderer != v.Rendering.Enabled {
+		return invalid("features.renderer", "must match rendering.enabled")
 	}
 	if err := ValidateQueryBundles(v.QueryBundles); err != nil {
 		return err

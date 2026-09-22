@@ -1,4 +1,4 @@
-### D-083 — guided onboarding composes domain services behind a private durable ledger
+### D-084 — guided onboarding composes domain services behind a private durable ledger
 
 Status: accepted, 2026-09-22. Owners: phases 33, 11, 12, 15, 19, 27 and 28.
 
@@ -23,7 +23,13 @@ Source drift creates a new private, affected-only amendment reference and append
 it to the run. Active topic versions and approved analytical definitions remain
 immutable. The caller must retain current signed reach to the run, source and
 execution context; run IDs, creator identity and stored evidence grant no access.
+Run reads and cancellation resolve the source's current context server-side before
+returning any persisted progress. Drift closes over stable source, dataset, column
+and semantic/proposal dependency coordinates; conservative private-intent impacts
+are marked as such.
 
 English and Spanish status/question text is bounded. Budgets cover stages, model
 calls, tokens, entities and wall time. Cancellation stops future stages and retains
 the progress receipt; it does not claim rollback of already committed effects.
+Publication reserves the complete remaining call/token allowance before dispatch,
+including multi-batch embeddings and uncertain crash receipts.

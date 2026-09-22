@@ -78,16 +78,34 @@ type domainTopics struct {
 	exactMissing bool
 	publishes    int
 	expected     int64
+	limits       gateway.Limits
 }
 
-func (f *domainTopics) PublishBounded(_ context.Context, _ identity.Envelope, _ string, in topics.PublishRequest, _ gateway.Limits) (topics.Published, error) {
+func (f *domainTopics) PublishBounded(_ context.Context, _ identity.Envelope, _ string, in topics.PublishRequest, limits gateway.Limits) (topics.Published, error) {
 	f.publishes++
 	f.expected = in.Expected
+	f.limits = limits
 	if f.failOnce {
 		f.failOnce = false
 		return topics.Published{}, store.ErrConflict
 	}
 	return f.published, nil
+}
+
+func TestDomainsPublicationReceivesCompleteReservedAllowance(t *testing.T) {
+	domains, run, envelope := domainFixture(t, true)
+	topic := domains.topics.(*domainTopics)
+	topic.exactMissing = true
+	topic.failOnce = false
+	topic.active = topics.Published{State: topics.State{Topic: "topic", Revision: 7, Version: "prior-v1", Active: true}, Digest: strings.Repeat("b", 64)}
+	run.Lease = &Lease{Stage: StageReview, ReservedCalls: 3, ReservedTokens: 2300}
+	run.References = []Reference{{Kind: "topic_draft", ID: "topic", Source: "source", Context: "context", Dataset: "dataset", Columns: []string{"amount"}}}
+	if _, err := domains.PublishReviewed(t.Context(), envelope, run, ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}, "publish"); err != nil {
+		t.Fatal(err)
+	}
+	if topic.publishes != 1 || topic.expected != 7 || topic.limits.Calls != 3 || topic.limits.Tokens != 2300 {
+		t.Fatal("publication lost multi-call reservation", topic.publishes, topic.expected, topic.limits)
+	}
 }
 
 func (f *domainTopics) Read(_ context.Context, _ identity.Envelope, _ string, version string) (topics.Published, error) {
@@ -142,7 +160,7 @@ func domainFixture(t *testing.T, applied bool) (*Domains, Run, identity.Envelope
 	material := engineering.ProposalMaterial{
 		Binding:  readexec.Binding{Source: "source", Context: "context", Revision: 2},
 		Request:  engineering.AutopilotGoal{Source: "source", Context: "context"},
-		Pipeline: engineering.PipelineDefinition{ID: "pipeline", Steps: []engineering.PipelineStep{{ID: "dataset"}}},
+		Pipeline: engineering.PipelineDefinition{ID: "pipeline", Steps: []engineering.PipelineStep{{ID: "dataset", Columns: []engineering.PipelineColumn{{Name: "amount", Type: "numeric"}}}}},
 	}
 	operation := "pipeline-operation"
 	autopilotService := domainAutopilot{proposal: engineering.AutopilotProposal{ID: "transform", Revision: 1, Digest: material.Digest(), State: state, Material: material, Operation: operation, Effects: []engineering.ProposalEffect{{Kind: "pipeline_run", Target: "pipeline", State: "published", Version: 1, Digest: readexec.Hash(material.Pipeline), Operation: operation}, {Kind: "managed_step", Target: "pipeline.dataset", State: "checked", Version: 3, Digest: "output-digest", Operation: operation}}}}
@@ -161,6 +179,9 @@ func TestDomainsComposeExistingServices(t *testing.T) {
 	connected, err := domains.Connect(ctx, envelope, run.Input, "connect")
 	if err != nil || connected.References[0].Revision != 2 {
 		t.Fatal(connected, err)
+	}
+	if authority, authorityErr := domains.ResolveRunAuthority(ctx, envelope, run); authorityErr != nil || len(authority) != 1 || authority[0].Context != run.Input.Context {
+		t.Fatal("root run authority resolution", authority, authorityErr)
 	}
 	inspected, err := domains.Inspect(ctx, envelope, run, "inspect")
 	if err != nil || len(inspected.Evidence) != 1 || inspected.Evidence[0].Sensitive {
@@ -186,16 +207,22 @@ func TestDomainsComposeExistingServices(t *testing.T) {
 	if err != nil || len(semantic.Questions) != 0 {
 		t.Fatal("semantic answers did not resolve", semantic, err)
 	}
+	run.References = append(run.References, inspected.References...)
+	run.References = append(run.References, profiled.References...)
+	run.References = append(run.References, semantic.References...)
 	published, err := domains.PublishReviewed(ctx, envelope, run, ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}, "publish")
 	if err != nil || published.References[0].Kind != "topic" {
 		t.Fatal("publish reconciliation", published, err)
 	}
+	run.References = append(run.References, published.References...)
 	proposals, err := domains.ProposeQueriesBlocksReports(ctx, envelope, run, "proposals")
 	if err != nil || len(proposals.References) != 3 || proposals.Evidence[0].Confidence != "unresolved" {
 		t.Fatal(proposals, err)
 	}
 	oldEvidence := inspected.Evidence
-	if _, unchangedErr := domains.ProposeDriftAmendment(ctx, envelope, Run{ID: "run", Input: run.Input, References: append(proposals.References, Reference{Kind: "profile", ID: "profile"}), Evidence: oldEvidence, SourceRevision: 2}, DriftRequest{}, "drift"); !errors.Is(unchangedErr, store.ErrConflict) {
+	references := append([]Reference{}, run.References...)
+	references = append(references, proposals.References...)
+	if _, unchangedErr := domains.ProposeDriftAmendment(ctx, envelope, Run{ID: "run", Input: run.Input, References: references, Evidence: oldEvidence, SourceRevision: 2}, DriftRequest{}, "drift"); !errors.Is(unchangedErr, store.ErrConflict) {
 		t.Fatal("unchanged source produced amendment", unchangedErr)
 	}
 	sourceAdapter := domains.sources.(domainSources)
@@ -203,8 +230,15 @@ func TestDomainsComposeExistingServices(t *testing.T) {
 	sourceAdapter.discovery.Revision = 3
 	sourceAdapter.discovery.Relations[0].Columns[0].Nullable = false
 	domains.sources = sourceAdapter
-	amendment, err := domains.ProposeDriftAmendment(ctx, envelope, Run{ID: "run", Input: run.Input, References: append(proposals.References, Reference{Kind: "profile", ID: "profile"}, Reference{Kind: "topic", ID: "topic"}), Evidence: oldEvidence, SourceRevision: 2}, DriftRequest{}, "drift")
-	if err != nil || !amendment.ExistingIntact || !amendment.Proposal.Private {
+	amendment, err := domains.ProposeDriftAmendment(ctx, envelope, Run{ID: "run", Input: run.Input, References: references, Evidence: oldEvidence, SourceRevision: 2}, DriftRequest{}, "drift")
+	queryAffected, conservative := false, false
+	for i, ref := range amendment.Affected {
+		if ref.Kind == "onboarding_query_intent" {
+			queryAffected = true
+			conservative = amendment.ImpactEvidence[i].Conservative
+		}
+	}
+	if err != nil || !amendment.ExistingIntact || !amendment.Proposal.Private || !queryAffected || !conservative || len(amendment.ImpactEvidence) != len(amendment.Affected) {
 		t.Fatal(amendment, err)
 	}
 }
@@ -219,8 +253,12 @@ func TestDomainsTransformationAndNegativeBoundaries(t *testing.T) {
 	domains, run, envelope = domainFixture(t, true)
 	run.Input.Transformation, run.Input.TransformationProposal = true, "transform"
 	result, err = domains.Profile(t.Context(), envelope, run, "profile")
-	if err != nil || len(result.References) != 2 || result.References[0].Revision != 3 || result.References[1].Kind != "engineering_proposal" || !strings.Contains(strings.Join(result.Evidence[len(result.Evidence)-1].Basis, " "), "output_source:pipeline.dataset") {
+	if err != nil || len(result.References) != 2 || result.References[0].Kind != "engineering_proposal" || result.References[1].Revision != 3 || result.References[1].Kind != "profile" || !strings.Contains(strings.Join(result.Evidence[len(result.Evidence)-1].Basis, " "), "output_source:pipeline.dataset") {
 		t.Fatal(result, err)
+	}
+	run.References = result.References
+	if authority, authorityErr := domains.ResolveRunAuthority(t.Context(), envelope, run); authorityErr != nil || len(authority) != 2 || authority[1].Source != "pipeline.dataset" || authority[1].Context != "pipeline.dataset:v3" {
+		t.Fatal("managed output authority resolution", authority, authorityErr)
 	}
 	unrelated := domains.autopilot.(domainAutopilot)
 	unrelated.proposal.Material.Binding.Source = "other-source"
@@ -251,6 +289,7 @@ func TestDomainsTransformationAndNegativeBoundaries(t *testing.T) {
 		t.Fatal("Spanish question missing", profiled, err)
 	}
 	domains.topics.(*domainTopics).failOnce = false
+	run.References = []Reference{{Kind: "topic_draft", ID: "topic", Source: "source", Context: "context", Dataset: "dataset", Columns: []string{"amount"}}}
 	if _, err = domains.PublishReviewed(t.Context(), envelope, run, ReviewReference{ID: "review", Revision: 1, Digest: strings.Repeat("a", 64)}, "publish"); err != nil {
 		t.Fatal("direct reviewed publication", err)
 	}
@@ -258,6 +297,7 @@ func TestDomainsTransformationAndNegativeBoundaries(t *testing.T) {
 
 func TestDomainsPublicationUsesCurrentHeadAndExactReplay(t *testing.T) {
 	domains, run, envelope := domainFixture(t, true)
+	run.References = []Reference{{Kind: "topic_draft", ID: "topic", Source: "source", Context: "context", Dataset: "dataset", Columns: []string{"amount"}}}
 	service := domains.topics.(*domainTopics)
 	service.exactMissing = true
 	service.active = topics.Published{State: topics.State{Topic: "topic", Revision: 7, Version: "topic-v0", Active: true}, Digest: strings.Repeat("b", 64)}

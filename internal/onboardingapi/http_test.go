@@ -78,6 +78,10 @@ func (apiRepository) SaveOnboarding(context.Context, identity.Envelope, onboardi
 
 type apiAdapter struct{}
 
+func (apiAdapter) ResolveRunAuthority(_ context.Context, _ identity.Envelope, r onboarding.Run) ([]onboarding.RunAuthority, error) {
+	return []onboarding.RunAuthority{{Source: r.Input.Source, Context: r.Input.Context}}, nil
+}
+
 func (apiAdapter) Connect(context.Context, identity.Envelope, onboarding.StartRequest, string) (onboarding.StepResult, error) {
 	return onboarding.StepResult{}, nil
 }

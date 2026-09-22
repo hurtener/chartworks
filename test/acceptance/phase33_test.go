@@ -19,8 +19,10 @@ import (
 	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/onboarding"
 	"github.com/hurtener/chartworks/internal/onboardingapi"
+	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
+	"github.com/hurtener/chartworks/internal/vindex"
 	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 	"github.com/hurtener/chartworks/test/support"
 )
@@ -71,6 +73,10 @@ type phase33FailureAdapter struct {
 	calls  map[onboarding.Stage]int
 	fail   map[onboarding.Stage]bool
 	tokens int
+}
+
+func (a *phase33FailureAdapter) ResolveRunAuthority(_ context.Context, _ identity.Envelope, r onboarding.Run) ([]onboarding.RunAuthority, error) {
+	return []onboarding.RunAuthority{{Source: r.Input.Source, Context: r.Input.Context}}, nil
 }
 
 func newPhase33FailureAdapter() *phase33FailureAdapter {
@@ -134,7 +140,7 @@ func (a *phase33FailureAdapter) ProposeQueriesBlocksReports(_ context.Context, _
 	return a.step(onboarding.StageProposals, r)
 }
 func (a *phase33FailureAdapter) ProposeDriftAmendment(_ context.Context, _ identity.Envelope, r onboarding.Run, in onboarding.DriftRequest, _ string) (onboarding.Amendment, error) {
-	return onboarding.Amendment{Run: r.ID, Observation: "schema_changed", Source: r.Input.Source, Context: r.Input.Context, SourceRevision: r.SourceRevision + 1, Changes: []string{"amount"}, Affected: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1}}, Proposal: onboarding.Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+	return onboarding.Amendment{Run: r.ID, Observation: "schema_changed", Source: r.Input.Source, Context: r.Input.Context, SourceRevision: r.SourceRevision + 1, Changes: []string{"amount"}, Affected: []onboarding.Reference{{Kind: "topic", ID: r.Input.Topic, Revision: 1}}, ImpactEvidence: []onboarding.ImpactEvidence{{Kind: "topic", ID: r.Input.Topic, Basis: []string{"column:amount"}}}, Proposal: onboarding.Reference{Kind: "topic_amendment", ID: r.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
 }
 
 type phase33Fixture struct {
@@ -304,6 +310,15 @@ func testPhase33Authority(t *testing.T) {
 	if _, err = f.service.Resume(context.Background(), narrow, r.ID, onboarding.ResumeRequest{ExpectedVersion: r.Version}); !errors.Is(err, access.ErrNotFound) {
 		t.Fatal("continued run after source reach was removed", err)
 	}
+	revoked := f.e
+	revokedScopes := []string{"onboarding.read", "onboarding.cancel", "cw.onboarding.read:authority", "cw.onboarding.cancel:authority", "cw.source.read:other-source", "cw.execution_context.use:other-context"}
+	revoked, _ = identity.FromVerified(revoked.Tenant(), revoked.User(), revoked.Session(), revokedScopes, time.Now().Add(time.Minute), nil)
+	if _, err = f.service.Get(context.Background(), revoked, r.ID); !errors.Is(err, access.ErrNotFound) {
+		t.Fatal("GET exposed persisted evidence after source/context reach revocation", err)
+	}
+	if _, err = f.service.Cancel(context.Background(), revoked, r.ID, onboarding.CancelRequest{ExpectedVersion: r.Version, Reason: "user_requested"}); !errors.Is(err, access.ErrNotFound) {
+		t.Fatal("cancel exposed persisted evidence after source/context reach revocation", err)
+	}
 }
 func testPhase33HumanGates(t *testing.T) {
 	f := newPhase33Fixture(t, "gates", "en")
@@ -332,28 +347,96 @@ func testPhase33HumanGates(t *testing.T) {
 	}
 }
 func testPhase33TransformationChoice(t *testing.T) {
-	f := newPhase33Fixture(t, "transform", "en")
-	in := phase33Start("transform", "en")
-	in.Transformation = true
-	in.TransformationProposal = "managed-transform"
-	r, _ := f.service.Start(context.Background(), f.e, in)
-	for r.Stage != onboarding.StageProfile || r.Status != onboarding.StatusAttention {
-		var err error
-		r, err = f.service.Resume(context.Background(), f.e, r.ID, onboarding.ResumeRequest{ExpectedVersion: r.Version})
+	f := newPhase26Fixture(t)
+	applied := f.apply(t, f.approve(t, f.propose(t)))
+	draftService, err := drafts.New(f.db, f.s, f.service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := vindex.New(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topicService, err := topics.New(f.db, f.s, index, f.model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	domains, err := onboarding.NewDomains(f.s, f.service, draftService, topicService, f.auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := onboarding.DefaultLimits()
+	service, err := onboarding.New(f.db, domains, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "transform-real"
+	scopes := append(phase26Scopes(), "onboarding.read", "onboarding.write", "onboarding.cancel", "cw.onboarding.read:"+id, "cw.onboarding.write:"+id, "cw.onboarding.cancel:"+id)
+	e := f.token.envelope(t, f.author.Tenant(), f.author.User(), scopes...)
+	if e.Session() != f.author.Session() {
+		t.Fatal("transformation fixture lost exact apply session")
+	}
+	dataset := ""
+	for _, relation := range applied.Material.Binding.Relations {
+		if relation.Schema == "analytics" && relation.Name == "sales" {
+			dataset = relation.ID
+		}
+	}
+	if dataset == "" {
+		t.Fatal("reviewed proposal lacks exact source dataset")
+	}
+	in := onboarding.StartRequest{ID: id, Key: id + "-key", Mode: onboarding.ModeConnect, Locale: "en", Source: applied.Material.Binding.Source, Context: applied.Material.Binding.Context, Dataset: dataset, Profile: "transform-output-profile", Topic: "transform-topic", TopicVersion: "transform-v1", Block: "transform-block", Report: "transform-report", Transformation: true, TransformationProposal: applied.ID}
+	run, err := service.Start(t.Context(), e, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run.Stage != onboarding.StageSemantic {
+		run, err = service.Resume(t.Context(), e, run.ID, onboarding.ResumeRequest{ExpectedVersion: run.Version})
+		if err != nil {
+			t.Fatal("real reviewed transformation onboarding", run.Stage, err)
+		}
+	}
+	var outputProfile onboarding.Reference
+	for _, ref := range run.References {
+		if ref.Kind == "profile" {
+			outputProfile = ref
+		}
+	}
+	last := applied.Material.Pipeline.Steps[len(applied.Material.Pipeline.Steps)-1]
+	outputDiscovery, discoveryErr := f.s.Discover(t.Context(), e, outputProfile.Source)
+	if outputProfile.ID == "" || outputProfile.Source != applied.Material.Pipeline.ID+"."+last.ID || discoveryErr != nil || len(outputDiscovery.Relations) != 1 || outputProfile.Dataset != outputDiscovery.Relations[0].ID || outputProfile.Source == in.Source || len(outputProfile.Columns) == 0 {
+		t.Fatal("onboarding did not profile the exact approved managed output", outputProfile, applied.Effects)
+	}
+	profile, err := f.service.InspectProfile(t.Context(), e, in.Profile)
+	if err != nil || profile.Profile == nil || profile.Profile.Source != outputProfile.Source || profile.Profile.Context != outputProfile.Context || profile.Profile.Dataset != outputProfile.Dataset {
+		t.Fatal("managed output profile is not durable/exact", profile, err)
+	}
+
+	// The same genuinely applied proposal cannot satisfy a run bound to another
+	// real source, context and dataset.
+	unrelatedSource := f.create(t, "phase33-unrelated-source")
+	unrelatedDiscovery, err := f.s.Discover(t.Context(), e, unrelatedSource.ID)
+	if err != nil || len(unrelatedDiscovery.Relations) == 0 {
+		t.Fatal(unrelatedDiscovery, err)
+	}
+	unrelatedID := "transform-unrelated"
+	unrelatedScopes := append(scopes, "cw.onboarding.read:"+unrelatedID, "cw.onboarding.write:"+unrelatedID, "cw.onboarding.cancel:"+unrelatedID)
+	unrelatedEnvelope := f.token.envelope(t, e.Tenant(), e.User(), unrelatedScopes...)
+	unrelated := in
+	unrelated.ID, unrelated.Key, unrelated.Profile = unrelatedID, unrelatedID+"-key", "unrelated-output-profile"
+	unrelated.Source, unrelated.Context, unrelated.Dataset = unrelatedSource.ID, unrelatedSource.ContextID, unrelatedDiscovery.Relations[0].ID
+	unrelatedRun, err := service.Start(t.Context(), unrelatedEnvelope, unrelated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for unrelatedRun.Stage != onboarding.StageProfile {
+		unrelatedRun, err = service.Resume(t.Context(), unrelatedEnvelope, unrelatedRun.ID, onboarding.ResumeRequest{ExpectedVersion: unrelatedRun.Version})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if r.RequiredAction != "review_transformation" || len(r.Questions) == 0 {
-		t.Fatal("managed write was not reviewed", r)
-	}
-	direct := newPhase33Fixture(t, "direct", "en")
-	d, _ := direct.service.Start(context.Background(), direct.e, phase33Start("direct", "en"))
-	for d.Stage != onboarding.StageSemantic {
-		d, _ = direct.service.Resume(context.Background(), direct.e, d.ID, onboarding.ResumeRequest{ExpectedVersion: d.Version})
-	}
-	if d.RequiredAction == "review_transformation" {
-		t.Fatal("usable source forced materialization")
+	if _, err = service.Resume(t.Context(), unrelatedEnvelope, unrelatedRun.ID, onboarding.ResumeRequest{ExpectedVersion: unrelatedRun.Version}); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("unrelated applied proposal satisfied the transformation gate", err)
 	}
 }
 func testPhase33DriftAmendment(t *testing.T) {
@@ -411,7 +494,20 @@ func testPhase33BudgetsLocaleAndConcurrency(t *testing.T) {
 // Failure injection remains in the focused orchestration tests above; this test
 // prevents those doubles from being mistaken for domain integration evidence.
 func testPhase33RealDomainBoundary(t *testing.T) {
-	f, draftsService, topicService, model, pack := publicationFixture(t)
+	f, draftsService, _, _, pack := publicationFixture(t)
+	model := newGatewayFixture(t, func(cfg *config.Gateway) {
+		embedding := cfg.Roles["embedding"]
+		embedding.MaxBatchItems = 4
+		cfg.Roles["embedding"] = embedding
+	})
+	index, err := vindex.New(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topicService, err := topics.New(f.db, f.s, index, model.engine)
+	if err != nil {
+		t.Fatal(err)
+	}
 	id := "real-domain"
 	scopes := []string{
 		"onboarding.read", "onboarding.write", "onboarding.cancel",
@@ -486,7 +582,7 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 			t.Fatal("real domain journey", run.Stage, err)
 		}
 	}
-	if model.requests.Load() == 0 || run.Usage.ModelCalls != 1 || run.Usage.Tokens != run.Limits.MaxTokens {
+	if model.requests.Load() < 2 || run.Usage.ModelCalls != run.Limits.MaxModelCalls || run.Usage.Tokens != run.Limits.MaxTokens {
 		t.Fatal("gateway reservation or recorded model boundary missing", model.requests.Load(), run.Usage)
 	}
 	for _, kind := range []string{"topic", "onboarding_query_intent", "onboarding_block_intent", "onboarding_report_intent"} {

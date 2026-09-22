@@ -122,11 +122,16 @@ type ReviewReference struct {
 // private proposal coordinate retained by this onboarding run. Proposal
 // coordinates grant no block/report authority and contain no authored content.
 type Reference struct {
-	Kind     string `json:"kind"`
-	ID       string `json:"id"`
-	Revision int64  `json:"revision,omitempty"`
-	Digest   string `json:"digest,omitempty"`
-	Private  bool   `json:"private"`
+	Kind      string   `json:"kind"`
+	ID        string   `json:"id"`
+	Revision  int64    `json:"revision,omitempty"`
+	Digest    string   `json:"digest,omitempty"`
+	Private   bool     `json:"private"`
+	Source    string   `json:"source,omitempty"`
+	Context   string   `json:"context,omitempty"`
+	Dataset   string   `json:"dataset,omitempty"`
+	Columns   []string `json:"columns,omitempty"`
+	DependsOn []string `json:"depends_on,omitempty"`
 }
 
 // Evidence records why a proposed semantic entity exists without retaining rows,
@@ -183,6 +188,13 @@ type Progress struct {
 	Percent   int `json:"percent"`
 }
 
+// RunAuthority is a server-resolved current source binding needed before any
+// persisted run projection can be returned.
+type RunAuthority struct {
+	Source  string
+	Context string
+}
+
 // Run is actor/session private. It contains references and bounded evidence only.
 type Run struct {
 	ID                 string             `json:"id"`
@@ -220,16 +232,27 @@ type StepResult struct {
 }
 
 type Amendment struct {
-	Run            string      `json:"run"`
-	RunVersion     int64       `json:"run_version"`
-	Observation    string      `json:"observation"`
-	Source         string      `json:"source"`
-	Context        string      `json:"context"`
-	SourceRevision int64       `json:"source_revision"`
-	Changes        []string    `json:"changes"`
-	Affected       []Reference `json:"affected"`
-	Proposal       Reference   `json:"proposal"`
-	RequiredAction string      `json:"required_action"`
-	ExistingIntact bool        `json:"existing_intact"`
-	CreatedAt      time.Time   `json:"created_at"`
+	Run            string           `json:"run"`
+	RunVersion     int64            `json:"run_version"`
+	Observation    string           `json:"observation"`
+	Source         string           `json:"source"`
+	Context        string           `json:"context"`
+	SourceRevision int64            `json:"source_revision"`
+	Changes        []string         `json:"changes"`
+	Affected       []Reference      `json:"affected"`
+	ImpactEvidence []ImpactEvidence `json:"impact_evidence"`
+	Proposal       Reference        `json:"proposal"`
+	RequiredAction string           `json:"required_action"`
+	ExistingIntact bool             `json:"existing_intact"`
+	CreatedAt      time.Time        `json:"created_at"`
+}
+
+// ImpactEvidence explains the stable dependency edge that caused one private
+// coordinate to enter a drift amendment. Conservative closure is explicit for
+// proposal intents that have no executable definition yet.
+type ImpactEvidence struct {
+	Kind         string   `json:"kind"`
+	ID           string   `json:"id"`
+	Basis        []string `json:"basis"`
+	Conservative bool     `json:"conservative"`
 }

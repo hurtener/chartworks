@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/rendering"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
@@ -70,7 +72,8 @@ func TestReportingCompositionRetention(t *testing.T) {
 	raw := support.Raw(t, f.f.f.dsn)
 	tenant := f.execute.Tenant()
 	before := make(map[string]phase29RetentionSnapshot)
-	for _, v := range append(expiring, live) {
+	renditionIDs := map[string]string{}
+	for index, v := range append(expiring, live) {
 		snapshot := phase29RetainedSnapshot(t, raw, tenant, v.ID)
 		if snapshot.payloads == 0 || snapshot.groups == 0 || snapshot.retained == 0 ||
 			(snapshot.complete && snapshot.widgets == 0) ||
@@ -78,6 +81,13 @@ func TestReportingCompositionRetention(t *testing.T) {
 			t.Fatal("expiry fixture must contain real owned values and reservations", snapshot)
 		}
 		before[v.ID] = snapshot
+		rid := "rnd-" + strings.Repeat("0", 31) + string("12345"[index])
+		now := time.Now().UTC()
+		_, err := f.f.f.db.PutRendition(ctx, rendering.Record{Tenant: tenant, Actor: f.execute.User(), Session: f.execute.Session(), Private: v.Private, Request: rendering.Request{View: reporting.DeliveryViewRequest{Kind: "report", Run: v.ID, Output: "table"}, Format: "html", Theme: "light", Width: 800, Height: 400}, Rendition: rendering.Rendition{ID: rid, State: "succeeded", Version: rendering.Version, WorkerVersion: "retention-test", ThemeVersion: "retention-test", Format: "html", MediaType: "text/html; charset=utf-8", Theme: "light", Width: 800, Height: 400, SourceDigest: strings.Repeat("a", 64), Digest: strings.Repeat("b", 64), Bytes: 1, Content: "x", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}})
+		if err != nil {
+			t.Fatal("seed owned rendition", err)
+		}
+		renditionIDs[v.ID] = rid
 	}
 	for _, query := range []string{
 		`DELETE FROM chartworks.composition_run_widgets WHERE tenant_id=$1 AND operation_id=$2`,
@@ -166,6 +176,12 @@ func TestReportingCompositionRetention(t *testing.T) {
 		if err := raw.QueryRow(ctx, `SELECT count(*) FROM chartworks.audit_events WHERE tenant_id=$1 AND action='composition.expired' AND resource_id=$2`, tenant, v.ID).Scan(&audits); err != nil || audits != 1 {
 			t.Fatal("expiry audit missing or duplicated", audits, err)
 		}
+		if _, err := f.f.f.db.ReadRendition(ctx, tenant, renditionIDs[v.ID]); !errors.Is(err, access.ErrNotFound) {
+			t.Fatal("ordinary composition expiry retained owned rendition", v.ID, err)
+		}
+	}
+	if _, err := f.f.f.db.ReadRendition(ctx, tenant, renditionIDs[live.ID]); err != nil {
+		t.Fatal("ordinary composition expiry removed live rendition", err)
 	}
 	if got := phase29RetainedSnapshot(t, raw, tenant, live.ID); !reflect.DeepEqual(got, before[live.ID]) {
 		t.Fatal("expiry modified a live artifact", got, before[live.ID])

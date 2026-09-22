@@ -148,6 +148,11 @@ func eraseDocumentOwnedRunMaterial(ctx context.Context, tx pgx.Tx, tenant string
 	if len(roots) == 0 {
 		return 0, 0, nil
 	}
+	// Static renditions are derivatives of the exact composition run. Erase them
+	// in the same fenced transaction before the owned retained inputs disappear.
+	if _, err = tx.Exec(ctx, `DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=ANY($2::text[])`, tenant, roots); err != nil {
+		return 0, 0, err
+	}
 	rows, err := tx.Query(ctx, `SELECT operation_id FROM chartworks.operations
  WHERE tenant_id=$1 AND (operation_id=ANY($2::text[]) OR nested_parent=ANY($2::text[]))
  ORDER BY operation_id FOR UPDATE`, tenant, roots)

@@ -167,6 +167,9 @@ func expireFrozenRows(ctx context.Context, tx pgx.Tx, scope store.Scope, asOf ti
 		return 0, err
 	}
 	for _, id := range ids {
+		if _, err = tx.Exec(ctx, `DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2`, scope.Tenant(), id); err != nil {
+			return 0, err
+		}
 		if _, err = tx.Exec(ctx, `UPDATE chartworks.read_attempts SET cancel_requested=true WHERE tenant_id=$1 AND operation_id=$2 AND finished_at IS NULL`, scope.Tenant(), id); err != nil {
 			return 0, err
 		}

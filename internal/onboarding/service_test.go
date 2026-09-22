@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
@@ -58,6 +59,10 @@ func (m *memoryRepository) SaveOnboarding(_ context.Context, _ identity.Envelope
 type serviceAdapter struct {
 	fail   bool
 	tokens int
+}
+
+func (a *serviceAdapter) ResolveRunAuthority(_ context.Context, _ identity.Envelope, r Run) ([]RunAuthority, error) {
+	return []RunAuthority{{Source: r.Input.Source, Context: r.Input.Context}}, nil
 }
 
 type blockingAdapter struct {
@@ -154,12 +159,21 @@ func (a *serviceAdapter) ProposeQueriesBlocksReports(_ context.Context, _ identi
 	return a.result(StageProposals, run)
 }
 func (a *serviceAdapter) ProposeDriftAmendment(_ context.Context, _ identity.Envelope, run Run, in DriftRequest, _ string) (Amendment, error) {
-	return Amendment{Run: run.ID, Observation: "schema_changed", Source: run.Input.Source, Context: run.Input.Context, SourceRevision: run.SourceRevision + 1, Changes: []string{"amount"}, Affected: []Reference{{Kind: "topic", ID: run.Input.Topic}}, Proposal: Reference{Kind: "topic_amendment", ID: run.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
+	return Amendment{Run: run.ID, Observation: "schema_changed", Source: run.Input.Source, Context: run.Input.Context, SourceRevision: run.SourceRevision + 1, Changes: []string{"amount"}, Affected: []Reference{{Kind: "topic", ID: run.Input.Topic}}, ImpactEvidence: []ImpactEvidence{{Kind: "topic", ID: run.Input.Topic, Basis: []string{"column:amount"}}}, Proposal: Reference{Kind: "topic_amendment", ID: run.Input.Topic + "-amend", Private: true}, RequiredAction: "review_amendment", ExistingIntact: true, CreatedAt: time.Now().UTC()}, nil
 }
 
 func serviceEnvelope(t *testing.T, id string) identity.Envelope {
 	t.Helper()
 	e, err := identity.FromVerified("tenant", "actor", "session", []string{"onboarding.read", "onboarding.write", "onboarding.cancel", "cw.tenant.write:*", "cw.onboarding.read:" + id, "cw.onboarding.write:" + id, "cw.onboarding.cancel:" + id, "cw.source.read:source", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func serviceRevokedEnvelope(t *testing.T, id string) identity.Envelope {
+	t.Helper()
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"onboarding.read", "onboarding.cancel", "cw.onboarding.read:" + id, "cw.onboarding.cancel:" + id, "cw.source.read:other-source", "cw.execution_context.use:other-context"}, time.Now().Add(time.Hour), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,6 +305,13 @@ func TestServiceValidationAndReads(t *testing.T) {
 	if got, getErr := service.Get(t.Context(), e, run.ID); getErr != nil || got.ID != run.ID {
 		t.Fatal(got, getErr)
 	}
+	revoked := serviceRevokedEnvelope(t, run.ID)
+	if _, getErr := service.Get(t.Context(), revoked, run.ID); !errors.Is(getErr, access.ErrNotFound) {
+		t.Fatal("run evidence survived source/context reach revocation", getErr)
+	}
+	if _, cancelErr := service.Cancel(t.Context(), revoked, run.ID, CancelRequest{ExpectedVersion: run.Version, Reason: "user_requested"}); !errors.Is(cancelErr, access.ErrNotFound) {
+		t.Fatal("cancellation replay exposed run after reach revocation", cancelErr)
+	}
 	changed := in
 	changed.Report = "different"
 	if _, err = service.Start(t.Context(), e, changed); !errors.Is(err, store.ErrConflict) {
@@ -396,7 +417,7 @@ func TestServiceReviewLeaseCoordinatesAnswerAndCancel(t *testing.T) {
 		t.Fatal(err)
 	}
 	final, _ := service.Get(t.Context(), e, run.ID)
-	if final.Status != StatusCancelled || len(final.Receipts) != 1 || final.Usage.ModelCalls != 1 || final.Usage.Tokens != final.Limits.MaxTokens {
+	if final.Status != StatusCancelled || len(final.Receipts) != 1 || final.Usage.ModelCalls != final.Limits.MaxModelCalls || final.Usage.Tokens != final.Limits.MaxTokens {
 		t.Fatal("publication receipt not attached before final cancellation", final)
 	}
 }
@@ -414,6 +435,10 @@ func TestAccountingValidationAndLocalizedStatuses(t *testing.T) {
 		t.Fatal(usage, receipt, err)
 	}
 	limits := DefaultLimits()
+	run := Run{Limits: limits, Usage: Usage{ModelCalls: 1, Tokens: 100}, Stage: StageReview}
+	if calls, tokens, err := leaseReservation(run, StageReview); err != nil || calls != limits.MaxModelCalls-1 || tokens != limits.MaxTokens-100 {
+		t.Fatal("review lease did not reserve the actual remaining gateway allowance", calls, tokens, err)
+	}
 	for _, step := range []StepResult{
 		{References: []Reference{{Kind: "source", ID: "bad/id"}}},
 		{Evidence: []Evidence{{Entity: "entity", Kind: "column", Basis: []string{"catalog"}, Confidence: "certain"}}},

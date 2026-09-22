@@ -24,6 +24,7 @@ type Repository interface {
 // Adapter delegates each effect to its existing domain owner. Every operation key
 // is stable across retries and must reconcile an already committed effect.
 type Adapter interface {
+	ResolveRunAuthority(context.Context, identity.Envelope, Run) ([]RunAuthority, error)
 	Connect(context.Context, identity.Envelope, StartRequest, string) (StepResult, error)
 	Inspect(context.Context, identity.Envelope, Run, string) (StepResult, error)
 	Profile(context.Context, identity.Envelope, Run, string) (StepResult, error)
@@ -62,6 +63,32 @@ func requireDependencies(e identity.Envelope, action string, r Run) error {
 		access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: r.Input.Source},
 		access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: r.Input.Context},
 	)
+}
+
+func (s *Service) authorizeRun(ctx context.Context, e identity.Envelope, action string, r Run) error {
+	coordinates, err := s.adapter.ResolveRunAuthority(ctx, e, r)
+	if err != nil {
+		return err
+	}
+	if len(coordinates) == 0 || coordinates[0].Source != r.Input.Source {
+		return store.ErrConflict
+	}
+	resources := []access.Resource{}
+	seen := map[string]bool{}
+	for _, coordinate := range coordinates {
+		if !identity.Identifier(coordinate.Source) || !identity.Identifier(coordinate.Context) {
+			return store.ErrInvalid
+		}
+		key := coordinate.Source + "\x00" + coordinate.Context
+		if !seen[key] {
+			resources = append(resources,
+				access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: coordinate.Source},
+				access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: coordinate.Context},
+			)
+			seen[key] = true
+		}
+	}
+	return access.Require(e, action, resources...)
 }
 
 func validText(v string, max int) bool {
@@ -122,10 +149,12 @@ func leaseReservation(r Run, stage Stage) (int, int, error) {
 	if calls < 1 || tokens < 1 {
 		return 0, 0, ErrBudget
 	}
-	// Reserve the remaining token ceiling for the one publication embedding
-	// attempt. A crash retains this non-refundable charge and permits
-	// reconciliation only, so the same allowance can never fund a blind replay.
-	return 1, tokens, nil
+	// Publication may require several provider calls when the gateway splits a
+	// large facet set into bounded batches. Reserve the complete remaining call
+	// and token allowance before dispatch. A crash retains this non-refundable
+	// charge and permits reconciliation only, so the allowance cannot fund a
+	// blind replay.
+	return calls, tokens, nil
 }
 
 func newLease(r Run, inputDigest string) (*Lease, error) {
@@ -236,7 +265,14 @@ func (s *Service) Get(ctx context.Context, e identity.Envelope, id string) (Run,
 	if err := require(e, "onboarding.read", id, "read"); err != nil {
 		return Run{}, err
 	}
-	return s.repo.ReadOnboarding(ctx, e, id)
+	r, err := s.repo.ReadOnboarding(ctx, e, id)
+	if err != nil {
+		return Run{}, err
+	}
+	if err = s.authorizeRun(ctx, e, "onboarding.read", r); err != nil {
+		return Run{}, err
+	}
+	return r, nil
 }
 
 func (s *Service) Resume(ctx context.Context, e identity.Envelope, id string, in ResumeRequest) (Run, error) {
@@ -499,6 +535,9 @@ func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string, in
 	if err != nil {
 		return Run{}, err
 	}
+	if err = s.authorizeRun(ctx, e, "onboarding.cancel", r); err != nil {
+		return Run{}, err
+	}
 	if r.Version != in.ExpectedVersion {
 		return Run{}, store.ErrConflict
 	}
@@ -563,8 +602,18 @@ func (s *Service) Drift(ctx context.Context, e identity.Envelope, id string, in 
 	if err != nil {
 		return Amendment{}, err
 	}
-	if out.Run != r.ID || out.Source != r.Input.Source || !identity.Identifier(out.Context) || out.SourceRevision <= r.SourceRevision || (out.Observation != "schema_changed" && out.Observation != "binding_changed") || !out.ExistingIntact || out.RequiredAction != "review_amendment" || !identity.Identifier(out.Proposal.ID) || len(out.Changes) == 0 || len(out.Changes) > r.Limits.MaxEntities || len(out.Affected) == 0 || len(out.Affected) > r.Limits.MaxEntities {
+	if out.Run != r.ID || out.Source != r.Input.Source || !identity.Identifier(out.Context) || out.SourceRevision <= r.SourceRevision || (out.Observation != "schema_changed" && out.Observation != "binding_changed") || !out.ExistingIntact || out.RequiredAction != "review_amendment" || !identity.Identifier(out.Proposal.ID) || len(out.Changes) == 0 || len(out.Changes) > r.Limits.MaxEntities || len(out.Affected) == 0 || len(out.Affected) > r.Limits.MaxEntities || len(out.ImpactEvidence) != len(out.Affected) {
 		return Amendment{}, ErrInvalid
+	}
+	for i, impact := range out.ImpactEvidence {
+		if impact.Kind == "" || !identity.Identifier(impact.ID) || len(impact.Basis) == 0 || len(impact.Basis) > 16 || impact.Kind != out.Affected[i].Kind || impact.ID != out.Affected[i].ID {
+			return Amendment{}, ErrInvalid
+		}
+		for _, basis := range impact.Basis {
+			if !validText(basis, 256) {
+				return Amendment{}, ErrInvalid
+			}
+		}
 	}
 	if err = access.Require(e, "onboarding.write", access.Resource{Tenant: e.Tenant(), Kind: "source", Permission: "read", ID: out.Source}, access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: out.Context}); err != nil {
 		return Amendment{}, err
@@ -589,8 +638,13 @@ func validateStep(v StepResult, l Limits, used, delta Usage) error {
 		return ErrBudget
 	}
 	for _, r := range v.References {
-		if !identity.Identifier(r.ID) || r.Kind == "" || len(r.Digest) > 64 {
+		if !identity.Identifier(r.ID) || r.Kind == "" || len(r.Digest) > 64 || len(r.Columns) > l.MaxEntities || len(r.DependsOn) > 16 || (r.Source != "" && !identity.Identifier(r.Source)) || (r.Context != "" && !identity.Identifier(r.Context)) || (r.Dataset != "" && !identity.Identifier(r.Dataset)) {
 			return ErrInvalid
+		}
+		for _, value := range append(append([]string{}, r.Columns...), r.DependsOn...) {
+			if !validText(value, 256) {
+				return ErrInvalid
+			}
 		}
 	}
 	for _, e := range v.Evidence {
