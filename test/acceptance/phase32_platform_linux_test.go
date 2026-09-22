@@ -45,22 +45,27 @@ func phase32Probe(t *testing.T, kind, _ string) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(sourceDir) })
-	source := `package main
-import("os";"time";"github.com/hurtener/chartworks/internal/rendering")
-func main(){`
+	var source string
 	switch kind {
 	case "crash":
-		source += `os.Exit(9)`
+		source = `package main
+import "os"
+func main(){os.Exit(9)}`
 	case "sleep":
-		source += `time.Sleep(2*time.Second)`
+		source = `package main
+import "time"
+func main(){time.Sleep(2*time.Second)}`
 	case "large":
-		source += `_,_=os.Stdout.Write(make([]byte,4096))`
+		source = `package main
+import "os"
+func main(){_,_=os.Stdout.Write(make([]byte,4096))}`
 	case "clean":
-		source += `if os.Getenv("SECRET_CANARY")!=""{os.Exit(7)};if rendering.WorkerMain(os.Stdin,os.Stdout,4<<20,4<<20,1<<30)!=nil{os.Exit(1)}`
+		source = `package main
+import("os";"github.com/hurtener/chartworks/internal/rendering")
+func main(){if os.Getenv("SECRET_CANARY")!=""{os.Exit(7)};if rendering.WorkerMain(os.Stdin,os.Stdout,4<<20,4<<20,1<<30)!=nil{os.Exit(1)}}`
 	default:
 		t.Fatal("unknown probe")
 	}
-	source += `}`
 	file := filepath.Join(sourceDir, "main.go")
 	if err := os.WriteFile(file, []byte(source), 0600); err != nil {
 		t.Fatal(err)

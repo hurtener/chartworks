@@ -3,10 +3,13 @@ package rendering
 import (
 	"encoding/xml"
 	"io"
+	"regexp"
 	"strings"
 
 	nethtml "golang.org/x/net/html"
 )
+
+var literalSVGColor = regexp.MustCompile(`^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$`)
 
 var safeElements = map[string]bool{
 	"html": true, "head": true, "meta": true, "style": true, "body": true, "main": true,
@@ -35,13 +38,26 @@ func safeStatic(format, content string) bool {
 
 func safeCSS(value string) bool {
 	v := strings.ToLower(value)
-	for _, bad := range []string{"url", "@import", "expression", "behavior", "javascript", "\\", "/*", "*/"} {
-		if strings.Contains(v, bad) {
+	compact := strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\t', '\n', '\r', '\f':
+			return -1
+		default:
+			return r
+		}
+	}, v)
+	for _, bad := range []string{"url", "image-set", "imageset", "image(", "cross-fade", "element(", "paint(", "src(", "@import", "expression", "behavior", "javascript", "\\", "/*", "*/", "http:", "https:", "data:", "file:", "ftp:", "blob:", "//"} {
+		if strings.Contains(compact, bad) {
 			return false
 		}
 	}
 	return true
 }
+
+func safeSVGPaint(value string) bool {
+	return value == "none" || value == "currentColor" || literalSVGColor.MatchString(value)
+}
+
 func safeAttribute(element, name, value string) bool {
 	name = strings.ToLower(name)
 	if strings.HasPrefix(name, "data-") || strings.HasPrefix(name, "aria-") {
@@ -51,6 +67,9 @@ func safeAttribute(element, name, value string) bool {
 		return false
 	}
 	if name == "style" && !safeCSS(value) {
+		return false
+	}
+	if (name == "fill" || name == "stroke") && !safeSVGPaint(value) {
 		return false
 	}
 	if name == "xmlns" && value != "http://www.w3.org/2000/svg" {

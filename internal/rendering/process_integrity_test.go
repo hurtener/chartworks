@@ -87,7 +87,17 @@ func TestStaticParserRejectsObfuscatedExecutableMarkup(t *testing.T) {
 			t.Fatalf("hostile HTML %d accepted", i)
 		}
 	}
-	for i, content := range []string{`<svg xmlns="http://www.w3.org/2000/svg" onload = "go()"></svg>`, `<SVG xmlns="http://www.w3.org/2000/svg"><script>go()</script></SVG>`, `<svg xmlns="http://www.w3.org/2000/svg"><text style="fill:url(&#x68;ttps://evil.invalid)">x</text></svg>`, `<svg xmlns="http://www.w3.org/2000/svg"><text href="&#x68;ttps://evil.invalid">x</text></svg>`} {
+	for i, content := range []string{
+		`<svg xmlns="http://www.w3.org/2000/svg" onload = "go()"></svg>`,
+		`<SVG xmlns="http://www.w3.org/2000/svg"><script>go()</script></SVG>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><text style="fill:u r l(&#x68;ttps://evil.invalid)">x</text></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><text style="background:ImAgE-Set(&#x75;rl(https://evil.invalid) 1x)">x</text></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><text style="background:https &#x3a; //evil.invalid/x">x</text></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><text href="&#x68;ttps://evil.invalid">x</text></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><text fill="uRl(https://evil.invalid/x)">x</text></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><text stroke="data &#x3a; image/svg+xml,x">x</text></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg"><text fill="red">x</text></svg>`,
+	} {
 		if safeStatic("svg", content) {
 			t.Fatalf("hostile SVG %d accepted", i)
 		}

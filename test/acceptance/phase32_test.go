@@ -228,10 +228,13 @@ func phase32Injection(t *testing.T) {
 
 func phase32ProcessLimits(t *testing.T) {
 	worker := mustExecutable32(t)
-	crash := phase32Probe(t, "crash", worker)
-	sleep := phase32Probe(t, "sleep", worker)
-	large := phase32Probe(t, "large", worker)
-	clean := phase32Probe(t, "clean", worker)
+	// Compile every platform probe before making any sandbox assertion so a
+	// broken probe cannot masquerade as the process failure under test.
+	probes := make(map[string]string, 4)
+	for _, kind := range []string{"crash", "sleep", "large", "clean"} {
+		probes[kind] = phase32Probe(t, kind, worker)
+	}
+	crash, sleep, large, clean := probes["crash"], probes["sleep"], probes["large"], probes["clean"]
 	work := rendering.SealedWork{Version: rendering.WorkerProtocolVersion, Request: phase32Request("html"), View: phase32View()}
 	t.Setenv("SECRET_CANARY", "must-not-cross")
 	cleanProcess, err := rendering.NewProcess(clean, phase32Options())
