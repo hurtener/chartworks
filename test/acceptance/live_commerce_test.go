@@ -119,6 +119,18 @@ func TestLiveCommerceGatewayConfig(t *testing.T) {
 	}
 }
 
+func TestLiveCommerceArtifactDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CHARTWORKS_LIVE_ARTIFACT_DIR", dir)
+	want, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := liveArtifactDir(t); got != want {
+		t.Fatalf("live artifact directory = %q, want %q", got, want)
+	}
+}
+
 // This gate is deliberately absent from TestPhase25. It spends provider credits
 // only when the operator opts in, and its receipt never claims release acceptance.
 func TestLiveCommerceGatewayE2E(t *testing.T) {
@@ -210,7 +222,8 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 			receipts[index] = liveReceipt{Case: tc.id, Status: run.Status, QueryID: planned.QueryID, RowCount: len(run.Execution.Result.Rows), ModelCalls: len(planned.Receipt.Calls), ModelUsage: planned.Receipt.Calls, RouteOutcome: string(planned.Route.Outcome), SourceStatus: run.Execution.Attempt.Status}
 		})
 	}
-	// Denials must happen before the gateway or the warehouse can return values.
+	// These requests must be denied; an error alone does not measure whether
+	// an upstream model or source call was attempted.
 	for _, negative := range []struct {
 		name    string
 		actor   identity.Envelope
@@ -324,6 +337,9 @@ func liveRerankProbe(t *testing.T, engine *bifrost.Engine, e identity.Envelope, 
 	if !seen[main.Topic] || !seen[distractor.Topic] {
 		t.Fatal("rerank lost an authorized candidate")
 	}
+	if ranked.Items[0].ID != main.Topic {
+		t.Fatal("revenue question did not rank the commerce topic ahead of the retention distractor")
+	}
 	return map[string]any{"usage": ranked.Receipt.Calls, "ranked": ranked.Items}
 }
 
@@ -347,7 +363,11 @@ func liveArtifactDir(t *testing.T) string {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	root, err := filepath.EvalSymlinks("../..")
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
 		t.Fatal(err)
 	}
