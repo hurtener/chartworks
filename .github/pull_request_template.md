@@ -27,3 +27,6 @@
 ## Test plan
 
 <!-- How was this verified? Commands run, smoke output, screenshots if relevant. -->
+
+<!-- The automatic PR lane is intentionally bounded. Link any manually dispatched
+Final gap and release verification run separately; do not infer it from fast CI. -->

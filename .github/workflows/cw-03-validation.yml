@@ -1,30 +1,10 @@
 name: CW-03 reporting policies
 on:
-  push:
-    branches: [feat/cw-03-reporting-output-policies]
-    paths:
-      - .github/workflows/cw-03-validation.yml
-      - internal/**
-      - sdk/**
-      - test/**
-      - web/report-viewer/**
-      - docs/**
-      - examples/**
-  pull_request:
-    paths:
-      - .github/workflows/cw-03-validation.yml
-      - internal/reporting/**
-      - internal/reportingapi/**
-      - internal/semantics/**
-      - internal/api/**
-      - internal/store/postgres/**
-      - test/acceptance/cw03*
-      - sdk/**
-      - web/report-viewer/**
+  workflow_call:
 permissions:
   contents: read
 concurrency:
-  group: cw-03-${{ github.ref }}
+  group: cw-03-final-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   contracts:

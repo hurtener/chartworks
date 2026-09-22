@@ -1,9 +1,7 @@
 name: MCP
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
