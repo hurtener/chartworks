@@ -1,0 +1,8 @@
+[
+  {"method":"POST","path":"/v1/onboarding","action":"onboarding.write","effect":"durable_bounded_orchestration"},
+  {"method":"GET","path":"/v1/onboarding/{id}","action":"onboarding.read","effect":"private_progress_read"},
+  {"method":"POST","path":"/v1/onboarding/resume","action":"onboarding.write","effect":"durable_bounded_orchestration"},
+  {"method":"POST","path":"/v1/onboarding/answers","action":"onboarding.write","effect":"durable_bounded_orchestration"},
+  {"method":"POST","path":"/v1/onboarding/cancel","action":"onboarding.cancel","effect":"durable_bounded_orchestration"},
+  {"method":"POST","path":"/v1/onboarding/drift","action":"onboarding.write","effect":"durable_bounded_orchestration"}
+]

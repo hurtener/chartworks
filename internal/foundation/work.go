@@ -25,6 +25,8 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/onboarding"
+	"github.com/hurtener/chartworks/internal/onboardingapi"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/reportingapi"
 	"github.com/hurtener/chartworks/internal/securityapi"
@@ -46,6 +48,7 @@ type work struct {
 	engineering   *engineering.Service
 	pipelines     *engineering.PipelineService
 	autopilot     *engineering.Autopilot
+	onboarding    *onboarding.Service
 	handler       http.Handler
 	engine        gateway.Engine
 	nlq           *nlqexec.Service
@@ -273,6 +276,19 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+	if v.Onboarding.Enabled {
+		domains, domainErr := onboarding.NewDomains(w.sourceService, w.engineering, topics, published, w.autopilot)
+		if domainErr != nil {
+			w.close()
+			return nil, domainErr
+		}
+		w.onboarding, domainErr = onboarding.New(db, domains, onboarding.Limits{MaxStages: v.Onboarding.MaxStages, MaxModelCalls: v.Onboarding.MaxModelCalls, MaxTokens: v.Onboarding.MaxTokens, MaxEntities: v.Onboarding.MaxEntities, MaxDuration: time.Duration(v.Onboarding.MaxDuration)})
+		if domainErr != nil {
+			w.close()
+			return nil, domainErr
+		}
+		w.handler = onboardingapi.Handler(verifier, w.onboarding, w.handler)
+	}
 	runtimeRegistry, err := reportingapi.RuntimeRegistry(blockService.CanValidate(), v.Autopilot.Enabled)
 	if err != nil {
 		w.close()
@@ -324,12 +340,20 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry, documentRegistry)
+	var onboardingRegistry *api.Registry
+	if w.onboarding != nil {
+		onboardingRegistry, err = onboardingapi.Registry()
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+	}
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry, documentRegistry, onboardingRegistry)
 	if err != nil {
 		w.close()
 		return nil, err
 	}
-	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{delivery: delivery, renderer: renderer})
+	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{delivery: delivery, renderer: renderer, onboarding: w.onboarding})
 	if err != nil {
 		w.close()
 		return nil, err

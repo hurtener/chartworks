@@ -1,6 +1,6 @@
 # Phase 33 — guided-onboarding
 
-Status: planned. Owner: internal/engineering, internal/semantics, internal/reporting. Hard dependencies: 11, 12, 13, 15, 27.
+Status: in_progress. Owner: internal/onboarding, internal/engineering, internal/semantics, internal/reporting. Hard dependencies: 11, 12, 13, 15, 27.
 
 ## Authority and design
 
@@ -45,9 +45,29 @@ Onboarding stage/call/token/time/entity ceilings, supported locales and optional
 
 Implement `TestPhase33/AC01` through `TestPhase33/AC08` with real source/workspace/semantic/block services, bounded model fixtures and failure injection at every stage. Include a directly queryable source and one requiring managed transformation; prove no duplicate objects on resume. COMMON.md sets coverage; `scripts/smoke/phase-33.sh` requires all eight results.
 
+## Implementation submission
+
+The submitted runtime adds a tenant/actor/session-private PostgreSQL run ledger,
+one-stage resume and CAS recovery, deterministic domain operation keys, bounded
+evidence and unresolved questions, independent semantic review/publication,
+private proposal references, durable affected-only drift amendments, cancellation,
+English/Spanish status, and HTTP/MCP/Go SDK consumers. The executable operation
+manifest is `docs/contracts/chartworks-onboarding-operations.json`; D-083 fixes the
+ownership and recovery contract.
+
+CW-10/D-082 is consumed at the reporting handoff: onboarding retains only a
+content-free private report proposal reference. Actual report authoring and viewer
+option reads use the existing exact block/revision/dimension-bound filter-option
+service, so the coordinator cannot copy stale values or bypass sensitivity policy.
+
+`TestPhase33/AC01` through `AC08` cover the public journey, failure recovery,
+authority negatives, evidence, distinct review gates, transformation choice,
+drift immutability, budgets, locale and concurrent CAS. Shipped status remains
+pending independent review and the required real-boundary release evidence.
+
 ## Glossary, decisions and deviations
 
-Setup progress and semantic confidence are evidence, not permission or certification. D-052 applies. No runtime completion is claimed.
+Setup progress and semantic confidence are evidence, not permission or certification. D-052, D-082 and D-083 apply. Runtime submission is not a shipped-status claim.
 
 ## CW-04 prerequisite delivered
 

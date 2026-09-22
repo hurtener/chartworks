@@ -398,7 +398,7 @@ func TestRegistrationAndResourceAmbiguity(t *testing.T) {
 	if !json.Valid(reg.Manifest()[0].InputSchema.(json.RawMessage)) {
 		t.Fatal("mutable schema")
 	}
-	for _, effect := range []string{"metadata_read", "retained_metadata_read", "byo_context_read", "caller_data_transform_no_persistence", "caller_data_selection_optional_gateway_rank", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt"} {
+	for _, effect := range []string{"metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "caller_data_transform_no_persistence", "caller_data_selection_optional_gateway_rank", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration"} {
 		ef, ok := effectFor(effect)
 		if !ok || ef.readOnly && (ef.paid || ef.persists) {
 			t.Fatal("unsafe annotation", effect)

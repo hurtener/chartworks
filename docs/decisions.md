@@ -782,3 +782,5 @@ Governed block depth continuation: [D-080 certification wording, reviewed overla
 Reporting lifecycle continuation: [D-081 fenced document erasure and descriptive catalog identity](decisions/2026-09-22-reporting-deletion-catalog.md).
 
 Report filter continuation: [D-082 explicit revision-bound selectable values through validated reads](decisions/2026-09-22-report-filter-options.md).
+
+Guided onboarding continuation: [D-083 private durable composition with explicit human gates](decisions/2026-09-22-guided-onboarding.md).

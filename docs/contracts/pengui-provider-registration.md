@@ -19,7 +19,7 @@ A signed MCP registration envelope with `tenant_id`, `user_id`, `session_id` and
 1. Register the Chartworks issuer/JWKS and intended HTTP/MCP audience from trusted deployment configuration. Chartworks never reads private issuer keys.
 2. Derive the tenant/user/session principal through Pengui's normal verified session path. Choose destination and provider scopes from operator-approved capability policy, not user or model arguments.
 3. Pass the approved scope strings through `MintCapabilityUserToken` (or the corresponding already-approved platform delivery path). Send the resulting bearer only in `Authorization` to Chartworks.
-4. Use the executable manifests for [operations](chartworks-operations.json), [sources](chartworks-source-operations.json), [validated reads](chartworks-read-operations.json), [durable work](chartworks-work-operations.json), [uploads/profiling](chartworks-engineering-operations.json), [managed pipelines](chartworks-pipeline-operations.json), [NLQ routing](chartworks-nlq-operations.json), and [output specifications](chartworks-chart-operations.json) to select the minimum action and addressed reach needed by the consumer. The [read-only example](../../examples/pengui-chartworks-scopes.json) is illustrative, not an API request that authenticates a tenant.
+4. Use the executable manifests for [operations](chartworks-operations.json), [sources](chartworks-source-operations.json), [validated reads](chartworks-read-operations.json), [durable work](chartworks-work-operations.json), [uploads/profiling](chartworks-engineering-operations.json), [managed pipelines](chartworks-pipeline-operations.json), [NLQ routing](chartworks-nlq-operations.json), [output specifications](chartworks-chart-operations.json), and [guided onboarding](chartworks-onboarding-operations.json) to select the minimum action and addressed reach needed by the consumer. The [read-only example](../../examples/pengui-chartworks-scopes.json) is illustrative, not an API request that authenticates a tenant.
 5. Consume the real operation through `sdk/chartworks` or HTTP. The SDK's token provider supplies a current Pengui bearer for each request. It never mints, stores for unattended replay, or upgrades credentials.
 
 There are no default operator-wide scopes. In particular, `ops.metrics` is deployment-level aggregate observability permission and `ops.inspect` exposes enforcement diagnostics. Pengui should authorize those for intended operators separately from normal tenant analytical access. Neither is inferred from a user's name, service prefix, creator status, or tenant read scope alone.
@@ -44,6 +44,17 @@ Diagnostics are computed from the actual route registry and current envelope onl
 The engineering manifest records action/effect classification. Resource checks remain server-side and depend on the addressed object and accepted operation manifest: upload reserve/stage/load use `sources.upload` with source `write` and tenant `write`; erase and expiry sweep use `sources.erase` with source or tenant `erase` as applicable. Profile construction and dependency registration use `engineering.profile` plus the exact source, dataset and execution-context reach recorded by the profile. Retained upload inspection uses `sources.read`; retained profile/evidence/history/health uses `engineering.read`. Engineering operation inspection/cancellation additionally uses `jobs.read`/`jobs.cancel` and revalidates the original domain reach.
 
 `uploads.enabled=false` removes the five upload mutations, and `profiling.enabled=false` removes the two profile mutations. The seven retained read/control operations stay registered. A task ID, profile ID or creator identity never substitutes for current signed resource/context reach. The SDK methods in `sdk/chartworks/engineering.go` call these same routes and obtain a current bearer from the caller's token provider.
+
+### Guided onboarding operations
+
+The onboarding manifest registers `onboarding.write`, `onboarding.read` and
+`onboarding.cancel`. Starting a run additionally requires tenant write, exact
+source read and execution-context use. Every resumed domain stage repeats the
+ordinary source/profile/topic/reporting service checks; a stored run or object
+reference never grants reach. Run reads and mutations require exact
+`cw.onboarding.<permission>:<id>` reach and remain private to the originating
+actor/session. Drift proposals append private evidence and never rewrite an active
+topic, approved block or report.
 
 ### Managed pipeline operations
 
