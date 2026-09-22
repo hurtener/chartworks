@@ -83,6 +83,26 @@ type RunManifest struct {
 // Digest binds the admitted execution separately from revision/rendition hashes.
 func (m RunManifest) Digest() string { return digest(m) }
 
+// ReuseIdentity binds the complete resolved inputs of a frozen run, excluding
+// only per-operation identity, timestamps and retention. Resolved values carry
+// any time window that can affect the query; the operation's creation time does
+// not prevent reuse when the bound values are otherwise identical. It is recomputed at
+// the persistence boundary; a stored reuse_key is never itself proof that two
+// manifests describe the same result or the same required resource reach.
+func ReuseIdentity(m RunManifest) string {
+	privacyActor := ""
+	if m.Private {
+		privacyActor = m.Actor
+	}
+	return digest([]any{"frozen-result-reuse-v2", FrozenVersion, charts.BuildVersion,
+		m.Tenant, m.Block, m.Revision.Digest, m.Definitions, m.Rules,
+		m.Dependencies, m.References, m.Outputs, m.Resolved.Values, m.Resolved.Parameters,
+		m.Resolved.Timezone, m.Locale, exec.Hash(m.Binding), m.Private,
+		privacyActor, m.Policy, m.PartialPolicy, m.Trust, m.Model,
+		"reporting-output-policy-v2", m.Selection, m.QueryLimits,
+		m.ResultPolicy, m.Limits})
+}
+
 // Reach contains only the authority projection needed by a retained-value read.
 func (m RunManifest) Reach() access.Artifact {
 	return access.Artifact{Tenant: m.Tenant, RunID: m.ID, ParentKind: "block", ParentID: m.Block,
