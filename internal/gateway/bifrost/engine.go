@@ -24,9 +24,10 @@ type TransportOptions struct {
 	CACertPEM           string
 }
 type route struct {
-	client   *core.Bifrost
-	provider schemas.ModelProvider
-	name     string
+	client           *core.Bifrost
+	provider         schemas.ModelProvider
+	name             string
+	openRouterRerank bool
 }
 
 // Engine reuses only exact immutable route configurations and never shares request contexts.
@@ -80,7 +81,18 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 			e.Close()
 			return nil, gateway.ErrInput
 		}
-		native := schemas.ModelProvider(config.NativeProvider(p))
+		providerType := config.NativeProvider(p)
+		native := schemas.ModelProvider(providerType)
+		endpoint := p.BaseURL
+		openRouterRerank := providerType == "openrouter_rerank"
+		if openRouterRerank {
+			// Custom provider keys are private to this Bifrost client. Keep the
+			// real route name in receipts while Bifrost uses its Cohere codec.
+			native = schemas.ModelProvider("chartworks-openrouter-rerank-" + p.Name)
+			if endpoint == "" {
+				endpoint = "https://openrouter.ai"
+			}
+		}
 		seconds := 1
 		for name, r := range cfg.Roles {
 			if r.Provider == p.Name && (!config.OptionalRole(name) || r.Enabled) {
@@ -90,12 +102,12 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 				}
 			}
 		}
-		fingerprint, _ := json.Marshal([]any{native, p.BaseURL, secret, transport.CACertPEM, transport.AllowPrivateNetwork, seconds, cfg.Limits.Concurrency})
+		fingerprint, _ := json.Marshal([]any{native, endpoint, secret, transport.CACertPEM, transport.AllowPrivateNetwork, seconds, cfg.Limits.Concurrency})
 		hash := sha256.Sum256(fingerprint)
 		key := hex.EncodeToString(hash[:])
 		client := shared[key]
 		if client == nil {
-			a := &account{provider: native, key: secret, endpoint: p.BaseURL, ca: transport.CACertPEM, private: transport.AllowPrivateNetwork, concurrency: cfg.Limits.Concurrency, timeout: seconds}
+			a := &account{provider: native, key: secret, endpoint: endpoint, ca: transport.CACertPEM, private: transport.AllowPrivateNetwork, concurrency: cfg.Limits.Concurrency, timeout: seconds, openRouterRerank: openRouterRerank}
 			var err error
 			client, err = core.Init(lifetime, schemas.BifrostConfig{Account: a, Logger: quietLogger{}, InitialPoolSize: cfg.Limits.Concurrency, DropExcessRequests: true})
 			if err != nil {
@@ -105,7 +117,7 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 			shared[key] = client
 			e.clients = append(e.clients, client)
 		}
-		e.routes[p.Name] = route{client: client, provider: native, name: p.Name}
+		e.routes[p.Name] = route{client: client, provider: native, name: p.Name, openRouterRerank: openRouterRerank}
 	}
 	r := cfg.Roles["embedding"]
 	p := config.Provider{}
@@ -457,6 +469,9 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 		return out, err
 	}
 	model, _, configurationDigest := gateway.ApplyRuntimeConfig(ctx, "rerank", r.Model, "")
+	if p.openRouterRerank && model != "cohere/rerank-4-fast" {
+		return out, gateway.ErrInput
+	}
 	items := candidates.Items()
 	if query == "" || len(items) > r.MaxCandidates {
 		return out, gateway.ErrInput
@@ -499,8 +514,14 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 		actual := ""
 		var raw any
 		if response != nil {
-			actual = observedModel(response.Model)
 			raw = response.ExtraFields.RawResponse
+			// The Cohere SDK codec populates response.Model from our request.
+			// Only an independently observed wire field can identify the actual model.
+			if object, wireErr := wire(raw, e.cfg.Limits.MaxOutputBytes); wireErr == nil {
+				if observed, ok := object["model"].(string); ok {
+					actual = observedModel(observed)
+				}
+			}
 		}
 		out.Receipt.Calls = append(out.Receipt.Calls, configuredUsage("rerank", p, model, actual, configurationDigest, start, raw))
 		if ctx.Err() != nil {
