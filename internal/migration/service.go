@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -264,7 +266,7 @@ func (s *Service) Rollback(ctx context.Context, e identity.Envelope, in Rollback
 		return Cutover{}, ErrInvalid
 	}
 	for _, effect := range in.Effects {
-		if len(effect) < 3 || len(effect) > 256 {
+		if len(effect) < 3 || len(effect) > 256 || !utf8.ValidString(effect) || strings.TrimSpace(effect) != effect || strings.ContainsAny(effect, "\x00\r\n") {
 			return Cutover{}, ErrInvalid
 		}
 	}

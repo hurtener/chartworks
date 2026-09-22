@@ -250,6 +250,14 @@ func phase34RetentionErasure(t *testing.T) {
 	if _, err = s.Export(t.Context(), e, migration.ExportRequest{Batch: m.Batch, Limit: 10}); !errors.Is(err, migration.ErrNotFound) {
 		t.Fatal("erased payload readable", err)
 	}
+	hold := phase34Manifest("ac05hold")
+	hold.Objects[0].Retention.LegalHold = true
+	if _, err = s.Import(t.Context(), e, migration.ImportRequest{Manifest: hold}); err != nil {
+		t.Fatal("legal-hold batch import", err)
+	}
+	if _, err = s.Erase(t.Context(), e, migration.EraseRequest{Batch: hold.Batch, Limit: 100}); !errors.Is(err, migration.ErrConflict) {
+		t.Fatal("legal hold erased", err)
+	}
 }
 
 func phase34CutoverRollback(t *testing.T) {

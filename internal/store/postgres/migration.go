@@ -314,6 +314,19 @@ func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, e
 func (d *DB) Erase(ctx context.Context, e identity.Envelope, id string, limit int) (out migration.EraseResult, err error) {
 	out = migration.EraseResult{Batch: id, BackupScope: "online records only; immutable backups expire by operator retention"}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var manifestRaw []byte
+		if x := tx.QueryRow(ctx, `SELECT manifest FROM chartworks.migration_batches WHERE tenant_id=$1 AND batch_id=$2 FOR UPDATE`, e.Tenant(), id).Scan(&manifestRaw); x != nil {
+			return x
+		}
+		var manifest migration.Manifest
+		if json.Unmarshal(manifestRaw, &manifest) != nil {
+			return store.ErrConflict
+		}
+		for _, object := range manifest.Objects {
+			if object.Retention.LegalHold {
+				return store.ErrConflict
+			}
+		}
 		var active int
 		if x := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.migration_cutovers WHERE tenant_id=$1 AND batch_id=$2 AND state='active'`, e.Tenant(), id).Scan(&active); x != nil {
 			return x
