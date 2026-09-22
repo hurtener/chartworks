@@ -77,8 +77,21 @@ attempts, without asserting that native database execution has already stopped.
 expired composition-owned manifests, group results and static widget payloads,
 releases retention bytes, and appends audit. It preserves content-free tombstone
 identity/page/reach metadata. A failed audit rolls back erasure. Child frozen runs
-have their own retention ownership; parent expiry is not a cross-owner purge.
+ordinarily have their own retention ownership; parent expiry is not a cross-owner purge.
 Expired reads never silently regenerate values.
+
+Irreversible document deletion is the narrower ownership exception. A composition
+root directly targeting the deleted document, or a dashboard root whose sealed page
+targets a deleted report, owns its `operations.nested_parent` children and dynamic
+query rows whose operation is exactly `composition:<root>:<group>`. The delete
+transaction locks and fences the root and children, cancels active attempts, erases
+their retained values and expires bounded receipts before tombstoning the document.
+Active nested and dynamic read-attempt journals are retained with
+`cancel_requested=true` so the physical cancellation/reconciliation path remains
+observable; a late success resolves to cancelled with no row/byte result counts.
+Workers holding an earlier fence cannot publish after commit. Independently admitted
+block runs, authoring queries, shared blocks/topics and dashboard definitions are not
+transitive children and keep their independent lifecycle.
 
 ## Operational limits
 

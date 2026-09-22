@@ -297,7 +297,58 @@ func (s *Documents) List(ctx context.Context, e identity.Envelope, kind, after s
 	if s == nil || ctx == nil || !documentKind(kind) || limit < 1 || limit > 100 || after != "" && !identity.Identifier(after) {
 		return DocumentList{}, ErrInvalid
 	}
-	return s.repo.ListDocuments(ctx, e, kind, after, limit)
+	out, err := s.repo.ListDocuments(ctx, e, kind, after, limit)
+	if err != nil {
+		return DocumentList{}, err
+	}
+	for i := range out.Items {
+		out.Items[i].Creator = actorPresentation(e, out.Items[i].CreatorID)
+		out.Items[i].LastEditor = actorPresentation(e, out.Items[i].EditorID)
+		out.Items[i].CreatorID, out.Items[i].EditorID = "", ""
+	}
+	return out, nil
+}
+
+func actorPresentation(e identity.Envelope, id string) ActorPresentation {
+	if id == e.User() {
+		return ActorPresentation{Label: "Current actor", Kind: "person", Known: true}
+	}
+	if len(id) >= 4 && id[:4] == "svc:" {
+		return ActorPresentation{Label: "Service actor", Kind: "service", Known: false}
+	}
+	return ActorPresentation{Label: "Unknown actor", Kind: "unknown", Known: false}
+}
+
+// PreviewDelete returns a bounded dependency impact under current target reach.
+func (s *Documents) PreviewDelete(ctx context.Context, e identity.Envelope, kind, id string) (DocumentDeleteImpact, error) {
+	ctx, cancel, err := s.begin(ctx, e, kind, id, Write)
+	if err != nil {
+		return DocumentDeleteImpact{}, err
+	}
+	defer cancel()
+	repo, ok := s.repo.(DocumentDeletionRepository)
+	if !ok {
+		return DocumentDeleteImpact{}, ErrUnavailable
+	}
+	return repo.PreviewDocumentDelete(ctx, e, kind, id)
+}
+
+// Delete irreversibly erases live document payloads while preserving a bounded
+// tombstone, audit, schedule history, and non-secret dependency evidence.
+func (s *Documents) Delete(ctx context.Context, e identity.Envelope, kind, id string, in DocumentDeleteRequest) (DocumentDeletion, error) {
+	ctx, cancel, err := s.begin(ctx, e, kind, id, Write)
+	if err != nil {
+		return DocumentDeletion{}, err
+	}
+	defer cancel()
+	if in.ExpectedVersion < 1 || !identity.Identifier(in.Key) || in.Reason == "" || !text(in.Reason, 2048) {
+		return DocumentDeletion{}, ErrInvalid
+	}
+	repo, ok := s.repo.(DocumentDeletionRepository)
+	if !ok {
+		return DocumentDeletion{}, ErrUnavailable
+	}
+	return repo.DeleteDocument(ctx, e, kind, id, in)
 }
 
 // DocumentImportResult distinguishes accepted drafts from private quarantine.

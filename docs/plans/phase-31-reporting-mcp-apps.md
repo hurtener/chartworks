@@ -71,7 +71,7 @@ introduced, and the broader phase status/acceptance ownership is unchanged.
 
 The viewer/provider exposes `reporting_filter_options` only when validated source
 execution is mounted. Its closed request contains report/revision/filter/search/
-cursor/limit/locale, never SQL or a physical relation. D-081 binds each page to
+cursor/limit/locale, never SQL or a physical relation. D-082 binds each page to
 current signed reach and source revision; retained view/redraw remains source-free.
 
 ## CW-03 output-intent and evidence-policy continuation

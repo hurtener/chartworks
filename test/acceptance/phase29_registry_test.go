@@ -17,7 +17,7 @@ func TestDocumentCombinedRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	combined, err := api.Compose(base, documents)
-	if err != nil || len(combined.Definitions()) != len(base.Definitions())+27 {
+	if err != nil || len(combined.Definitions()) != len(base.Definitions())+31 {
 		t.Fatal("document endpoints do not compose with the full phase 21 inventory", err)
 	}
 	body, err := combined.OpenAPI("Chartworks", "phase29")

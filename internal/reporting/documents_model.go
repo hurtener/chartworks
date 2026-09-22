@@ -241,11 +241,73 @@ type DocumentView struct {
 
 // DocumentSummary never contains widget payloads, page names or raw results.
 type DocumentSummary struct {
-	Kind     string             `json:"kind"`
-	ID       string             `json:"id"`
-	Version  int64              `json:"version"`
-	Revision int64              `json:"revision"`
-	Metadata []DocumentMetadata `json:"metadata"`
+	Kind          string                `json:"kind"`
+	ID            string                `json:"id"`
+	Version       int64                 `json:"version"`
+	Revision      int64                 `json:"revision"`
+	Metadata      []DocumentMetadata    `json:"metadata"`
+	Creator       ActorPresentation     `json:"creator"`
+	LastEditor    ActorPresentation     `json:"last_editor"`
+	Relationships DocumentRelationships `json:"relationships"`
+	CreatorID     string                `json:"-"`
+	EditorID      string                `json:"-"`
+}
+
+// ActorPresentation is descriptive catalog metadata. It is never consulted by
+// RequireDocument, the repository, or any resource loader.
+type ActorPresentation struct {
+	Label string `json:"label"`
+	Kind  string `json:"kind" jsonschema:"enum=person,enum=service,enum=unknown"`
+	Known bool   `json:"known"`
+}
+
+// DocumentRelationships contains only currently authorized, bounded catalog
+// coordinates. It is presentation context, not evidence of authority.
+type DocumentRelationships struct {
+	Schedules []string `json:"schedules"`
+	Topics    []string `json:"topics"`
+	Blocks    []string `json:"blocks"`
+}
+
+// DocumentDeleteRequest binds destructive intent to the current head and a
+// caller key. Replays return the original tombstone; changed intent conflicts.
+type DocumentDeleteRequest struct {
+	ExpectedVersion int64  `json:"expected_version"`
+	Key             string `json:"key"`
+	Reason          string `json:"reason"`
+}
+
+// DocumentDeleteImpact is metadata-only and contains no hidden page names,
+// query text, result values, actor IDs, or recipient labels.
+type DocumentDeleteImpact struct {
+	Kind              string   `json:"kind"`
+	ID                string   `json:"id"`
+	Version           int64    `json:"version"`
+	RevisionCount     int      `json:"revision_count"`
+	RetainedRuns      int      `json:"retained_runs"`
+	MatchingSchedules []string `json:"matching_schedules"`
+	DashboardLinks    int      `json:"dashboard_links"`
+}
+
+// DocumentDeletion is the retained bounded tombstone. Backup/WAL erasure is
+// intentionally outside this live-data result.
+type DocumentDeletion struct {
+	Kind             string    `json:"kind"`
+	ID               string    `json:"id"`
+	DeletedVersion   int64     `json:"deleted_version"`
+	ErasedRevisions  int       `json:"erased_revisions"`
+	ErasedRuns       int       `json:"erased_runs"`
+	ErasedChildRuns  int       `json:"erased_child_runs"`
+	ErasedQueries    int       `json:"erased_queries"`
+	RetiredSchedules []string  `json:"retired_schedules"`
+	DeletedAt        time.Time `json:"deleted_at"`
+}
+
+// DocumentDeletionRepository owns the destructive transaction and its exact
+// dependency recheck. Keeping this separate preserves small test repositories.
+type DocumentDeletionRepository interface {
+	PreviewDocumentDelete(context.Context, identity.Envelope, string, string) (DocumentDeleteImpact, error)
+	DeleteDocument(context.Context, identity.Envelope, string, string, DocumentDeleteRequest) (DocumentDeletion, error)
 }
 
 // DocumentList is a bounded, permission-filtered metadata page.

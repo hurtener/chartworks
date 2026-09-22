@@ -179,6 +179,39 @@ stages, and actual publication time. Bindings, actors, recipients, tokens and
 hidden report-page derived status are omitted. Same-tenant missing-context and
 cross-tenant readers do not acquire artifact data through this metadata.
 
+## Document deletion and catalog presentation
+
+Archive and deletion are distinct. `GET /v1/reports/{id}/delete-impact` and the
+dashboard equivalent return bounded counts and currently readable matching
+schedule identifiers without loading definitions or values. `POST
+/v1/reports/{id}/delete` and its dashboard equivalent require exact current
+version, replay key, nonempty reason, `reporting.write`, and target-write reach.
+Every matching schedule additionally requires current `scheduling.write` and
+schedule-write reach before the transaction changes anything.
+
+Deletion scrubs live definition payloads and external import mappings, erases retained composition payloads,
+fences root and `nested_parent` operations, erases their nested frozen values and
+exact root-owned dynamic query rows, expires their bounded receipts, retires matching report/saved-question schedules,
+and retains schedule history plus a deletion tombstone. Stale execution cannot
+complete after the tombstone. Active owned read-attempt control journals remain
+with durable cancellation intent for physical cancellation and reconciliation;
+they retain no result values and late success is recorded as cancelled. Shared blocks/topics are preserved. Dashboard
+deletion does not infer ownership or cascade to reports; report deletion preserves
+dashboard history while current page projection omits the deleted report. Identical
+replay returns the tombstone and changed intent conflicts. Backups, replicas and
+WAL are outside the live-data erasure result.
+
+Document catalog summaries carry bounded block/topic/schedule relationships and
+descriptive creator/last-editor presentations. Actor IDs remain protected audit
+coordinates and are not serialized in the summary. Current/unknown/service actors
+receive safe non-identifying fallbacks. Readable external names remain open until
+the platform publishes a real descriptive-label adapter contract. Presentations,
+recipients and relationship membership never grant access. A reader without exact
+preview/write reach derives the last editor from the published revision rather than
+from a private draft.
+Schedule relations require current schedule-read action and resource reach before
+their identifiers enter the SQL result.
+
 ## Deployment and examples
 
 Merge the [configuration excerpt](../../examples/chartworks.reporting-delivery.json)

@@ -34,7 +34,7 @@ func TestDocumentHTTPContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry, err := reportingapi.DocumentsRegistry()
-	if err != nil || len(registry.Definitions()) != 27 {
+	if err != nil || len(registry.Definitions()) != 31 {
 		t.Fatal("closed report/dashboard transport inventory", err)
 	}
 	handler := reportingapi.DocumentsHandler(f.f.token.verifier, documents, runs, http.NotFoundHandler())

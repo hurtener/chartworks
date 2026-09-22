@@ -1,4 +1,4 @@
-### D-081 — Selectable report filter options are explicit revision-bound source reads
+### D-082 — Selectable report filter options are explicit revision-bound source reads
 
 Accepted for REP-01. A selectable filter source is a versioned immutable report
 definition field that pins an exact governed block/topic/dataset/column chain.
