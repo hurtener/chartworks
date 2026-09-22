@@ -23,6 +23,8 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/internal/migration"
+	"github.com/hurtener/chartworks/internal/migrationapi"
 	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
@@ -54,7 +56,9 @@ type work struct {
 	handler       http.Handler
 	engine        gateway.Engine
 	nlq           *nlqexec.Service
+	documents     *reporting.Documents
 	queue         *jobs.Service
+	migrations    *migration.Service
 	broker        *broker.Provider
 	registry      *api.Registry
 	cancel        context.CancelFunc
@@ -264,11 +268,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 
-	documentRegistry, delivery, renderer, handler, err := mountDocuments(v.Reporting, v.Rendering, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
+	documentRegistry, documents, delivery, renderer, handler, err := mountDocuments(v.Reporting, v.Rendering, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
 	if err != nil {
 		w.close()
 		return nil, err
 	}
+	w.documents = documents
 	w.handler = handler
 	if v.Jobs.Enabled {
 		scheduled, makeErr := reporting.NewScheduled(delivery, db)
@@ -289,6 +294,18 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			return nil, err
 		}
 	}
+	migrations, err := newMigrationService(db, migrationDomains{sources: w.sourceService, engineering: w.engineering, topics: topics, rules: rules, blocks: blockService, documents: documents, queries: w.nlq, schedules: w.queue, evaluation: evaluationService})
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.migrations = migrations
+	migrationRegistry, err := migrationapi.Registry()
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = migrationapi.Handler(verifier, migrations, w.handler)
 	w.autopilot, err = engineering.NewAutopilotWithSchedules(db, w.pipelines, v.Autopilot, w.queue, topics)
 	if err != nil {
 		w.close()
@@ -366,12 +383,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			return nil, err
 		}
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry, documentRegistry, evaluationRegistry, onboardingRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry, documentRegistry, evaluationRegistry, onboardingRegistry, migrationRegistry)
 	if err != nil {
 		w.close()
 		return nil, err
 	}
-	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{delivery: delivery, renderer: renderer, evaluation: evaluationService, evaluationRunner: evaluationRunner, onboarding: w.onboarding})
+	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{delivery: delivery, renderer: renderer, evaluation: evaluationService, evaluationRunner: evaluationRunner, onboarding: w.onboarding, migrations: migrations})
 	if err != nil {
 		w.close()
 		return nil, err

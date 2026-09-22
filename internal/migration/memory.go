@@ -1,0 +1,250 @@
+//nolint:revive // The in-memory repository mirrors the public persistence seam for deterministic tests.
+package migration
+
+import (
+	"context"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/hurtener/chartworks/internal/identity"
+)
+
+type memoryEntry struct {
+	manifest Manifest
+	plan     Plan
+	batch    Batch
+	results  map[string]string
+}
+
+type MemoryRepository struct {
+	mu       sync.Mutex
+	batches  map[string]memoryEntry
+	cutovers map[string]Cutover
+	now      func() time.Time
+}
+
+func NewMemoryRepository(now func() time.Time) *MemoryRepository {
+	if now == nil {
+		now = time.Now
+	}
+	return &MemoryRepository{batches: map[string]memoryEntry{}, cutovers: map[string]Cutover{}, now: now}
+}
+
+func tenantKey(e identity.Envelope, id string) string { return e.Tenant() + "\x00" + id }
+
+func (m *MemoryRepository) Begin(_ context.Context, e identity.Envelope, manifest Manifest, digest string, plan Plan) (Batch, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := tenantKey(e, manifest.Batch)
+	if old, ok := m.batches[key]; ok {
+		return old.batch, true, nil
+	}
+	now := m.now().UTC()
+	b := Batch{ID: manifest.Batch, Cohort: manifest.Cohort, Digest: digest, State: "importing", Revision: 1, Total: len(plan.Objects), CreatedAt: now, UpdatedAt: now}
+	if len(plan.Objects) > 0 {
+		b.Next = plan.Objects[0].ExternalRef
+	}
+	m.batches[key] = memoryEntry{manifest: manifest, plan: plan, batch: b, results: map[string]string{}}
+	return b, false, nil
+}
+
+func (m *MemoryRepository) Batch(_ context.Context, e identity.Envelope, id string) (Batch, Manifest, Plan, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	x, ok := m.batches[tenantKey(e, id)]
+	if !ok {
+		return Batch{}, Manifest{}, Plan{}, ErrNotFound
+	}
+	return x.batch, x.manifest, x.plan, nil
+}
+
+func (m *MemoryRepository) Checkpoint(_ context.Context, e identity.Envelope, id string, expected int64, plan ObjectPlan, result string) (Batch, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.checkpointLocked(e, id, expected, plan, result)
+}
+
+func (m *MemoryRepository) ApplyCheckpoint(ctx context.Context, e identity.Envelope, id string, expected int64, plan ObjectPlan, apply func(context.Context) (string, error)) (Batch, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if apply == nil || plan.Action != "install_private" && plan.Action != "tombstone" {
+		return Batch{}, ErrInvalid
+	}
+	if _, err := m.checkpointPreconditionLocked(e, id, expected, plan); err != nil {
+		return Batch{}, err
+	}
+	result, err := apply(ctx)
+	if err != nil {
+		return Batch{}, err
+	}
+	return m.checkpointLocked(e, id, expected, plan, result)
+}
+
+func (m *MemoryRepository) checkpointPreconditionLocked(e identity.Envelope, id string, expected int64, plan ObjectPlan) (memoryEntry, error) {
+	key := tenantKey(e, id)
+	x, ok := m.batches[key]
+	if !ok {
+		return memoryEntry{}, ErrNotFound
+	}
+	if x.batch.Revision != expected || x.batch.State != "importing" {
+		return memoryEntry{}, ErrConflict
+	}
+	index := x.batch.Applied + x.batch.Quarantined
+	if index >= len(x.plan.Objects) || x.plan.Objects[index].ExternalRef != plan.ExternalRef {
+		return memoryEntry{}, ErrConflict
+	}
+	if _, exists := x.results[plan.ExternalRef]; exists {
+		return memoryEntry{}, ErrConflict
+	}
+	return x, nil
+}
+
+func (m *MemoryRepository) checkpointLocked(e identity.Envelope, id string, expected int64, plan ObjectPlan, result string) (Batch, error) {
+	x, err := m.checkpointPreconditionLocked(e, id, expected, plan)
+	if err != nil {
+		return Batch{}, err
+	}
+	key := tenantKey(e, id)
+	index := x.batch.Applied + x.batch.Quarantined
+	x.results[plan.ExternalRef] = result
+	if plan.Action == "install_private" || plan.Action == "tombstone" {
+		x.batch.Applied++
+	} else {
+		x.batch.Quarantined++
+	}
+	x.batch.Revision++
+	x.batch.UpdatedAt = m.now().UTC()
+	if index+1 == len(x.plan.Objects) {
+		x.batch.State, x.batch.Next = "complete", ""
+	} else {
+		x.batch.Next = x.plan.Objects[index+1].ExternalRef
+	}
+	m.batches[key] = x
+	return x.batch, nil
+}
+
+func (m *MemoryRepository) Export(_ context.Context, e identity.Envelope, id, after string, limit int) (Export, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	x, ok := m.batches[tenantKey(e, id)]
+	if !ok {
+		return Export{}, ErrNotFound
+	}
+	start := 0
+	if after != "" {
+		found := false
+		for i, o := range x.manifest.Objects {
+			if o.ExternalRef == after {
+				start = i + 1
+				found = true
+				break
+			}
+		}
+		if !found {
+			return Export{}, ErrInvalid
+		}
+	}
+	out := x.manifest
+	if start > len(out.Objects) {
+		start = len(out.Objects)
+	}
+	end := start + limit
+	if end > len(out.Objects) {
+		end = len(out.Objects)
+	}
+	out.Objects = append([]Object(nil), out.Objects[start:end]...)
+	return Export{Manifest: out, Batch: x.batch}, nil
+}
+
+func (m *MemoryRepository) Cutover(_ context.Context, e identity.Envelope, b Batch, expected int64, route, previousRoute, operator string, boundary OccurrenceBoundary) (Cutover, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := tenantKey(e, b.Cohort)
+	old := m.cutovers[key]
+	if old.Batch == b.ID && old.Route == route && old.State == "active" {
+		if (old.Generation != expected && old.Generation != expected+1) || old.OperatorReference != operator || old.Boundary != boundary {
+			return Cutover{}, ErrConflict
+		}
+		return old, nil
+	}
+	if old.Generation != expected {
+		return Cutover{}, ErrConflict
+	}
+	previous := old.Route
+	if expected == 0 {
+		previous = previousRoute
+	}
+	next := Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: previous, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: m.now().UTC()}
+	m.cutovers[key] = next
+	return next, nil
+}
+
+func (m *MemoryRepository) CurrentCutover(_ context.Context, e identity.Envelope, cohort string) (Cutover, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	x, ok := m.cutovers[tenantKey(e, cohort)]
+	if !ok {
+		return Cutover{}, ErrNotFound
+	}
+	return x, nil
+}
+
+func (m *MemoryRepository) Rollback(_ context.Context, e identity.Envelope, cohort string, expected int64, operator string, effects []string) (Cutover, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := tenantKey(e, cohort)
+	old, ok := m.cutovers[key]
+	if !ok {
+		return Cutover{}, ErrNotFound
+	}
+	if old.State == "rolled_back" {
+		if (old.Generation == expected || old.Generation == expected+1) && old.OperatorReference == operator && slices.Equal(old.IrreversibleEffects, effects) {
+			return old, nil
+		}
+		return Cutover{}, ErrConflict
+	}
+	if old.Generation != expected || old.State != "active" {
+		return Cutover{}, ErrConflict
+	}
+	next := old
+	next.Route = old.PreviousRoute
+	next.PreviousRoute = old.Route
+	next.State = "rolled_back"
+	next.Generation++
+	next.OperatorReference = operator
+	next.IrreversibleEffects = append([]string(nil), effects...)
+	next.UpdatedAt = m.now().UTC()
+	m.cutovers[key] = next
+	return next, nil
+}
+
+func (m *MemoryRepository) Erase(_ context.Context, e identity.Envelope, id string, limit int) (EraseResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := tenantKey(e, id)
+	x, ok := m.batches[key]
+	if !ok {
+		return EraseResult{}, ErrNotFound
+	}
+	for _, object := range x.manifest.Objects {
+		if object.Retention.LegalHold {
+			return EraseResult{}, ErrConflict
+		}
+	}
+	erased := int64(0)
+	for ref := range x.results {
+		if erased == int64(limit) {
+			break
+		}
+		delete(x.results, ref)
+		erased++
+	}
+	remaining := int64(len(x.results))
+	if remaining == 0 {
+		delete(m.batches, key)
+	} else {
+		m.batches[key] = x
+	}
+	return EraseResult{Batch: id, Erased: erased, Remaining: remaining, BackupScope: "online records only; immutable backups expire by operator retention"}, nil
+}

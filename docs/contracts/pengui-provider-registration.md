@@ -154,3 +154,22 @@ in the same change.
 This is a verified consumer integration, not evidence that a production Pengui
 policy has been provisioned. No Pengui issuer change or separate Chartworks
 credential channel is required for these opaque action strings.
+
+## Migration and cutover operations (phase 34)
+
+The [migration operation manifest](chartworks-migration-operations.json) registers
+four explicit opaque actions. `migration.read` requires
+`cw.tenant.read:<signed-tenant>`; `migration.write` and `migration.cutover` require
+tenant write; `migration.erase` requires tenant erase. They are separate so an
+export-only operator cannot import, cut over or erase a cohort. Operators must add
+these action strings deliberately to the relevant Pengui capability policy.
+Private manifest export additionally requires the existing `ops.read` action and
+signed `cw.tenant.export:<signed-tenant>` reach. Cutover and rollback additionally
+require `scheduling.write` and signed `cw.schedule.write` reach to both affected
+schedule IDs, resolved from the current route and imported checkpoint.
+
+The coordinator then invokes each owning public service, which still requires its
+normal source/topic/reporting/job actions and exact resource/context reaches. A
+migration action is never a wildcard domain grant. The bearer supplied for each
+request must be current; historical bearers, users, roles, certificates and
+calibration metadata in a bundle cannot authorize the request or future reads.
