@@ -10,7 +10,9 @@ They choose the first or last ordered row, no comparison, the previous row, or t
 comparison column. Delta, percent delta, target difference, sparkline and threshold
 states are explicit independent choices. Derived values use exact decimal arithmetic;
 division by zero yields no percent delta rather than infinity or a fabricated zero.
-Thresholds are evaluated in reviewed order against exact value text.
+Thresholds are evaluated in reviewed order against exact value text. Plain and
+scientific decimal notation share the bounded Go grammar: at most 4,096 bytes and
+an optional exponent with at most five characters and magnitude at most 4,096.
 
 Table definitions bind ordered columns. Every bound column has one visibility entry,
 at least one is visible, page size is 1–1000, and totals are explicit. Only visible,

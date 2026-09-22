@@ -49,6 +49,11 @@ upgrade inventories to 43 without changing migration 042, made an unlabeled KPI
 threshold state visible in both static formats, and treated every Unicode Cc/Cf
 prefix as ignorable when detecting CSV formulas.
 
+The final narrow re-pin makes migration 043 accept the same bounded scientific
+threshold notation as the authoritative Go decimal parser while rejecting malformed,
+overlong and out-of-range exponents. PostgreSQL cases cover `1e3`, `-2.5E-4`, signed
+and zero-padded boundary exponents, malformed exponent text and the 4,096-byte cap.
+
 ## Verification
 
 - Focused Go packages and `TestCW05RichDisplay` pass with `CGO_ENABLED=0`.

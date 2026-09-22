@@ -12,6 +12,7 @@ DECLARE
  column_value jsonb;
  format_value jsonb;
  threshold_value jsonb;
+ threshold_exponent text;
  actual_ids jsonb;
  expected_ids jsonb;
  ordinal bigint;
@@ -100,14 +101,17 @@ BEGIN
    IF bindings ? 'target' THEN expected_ids := expected_ids || jsonb_build_array(bindings->'target'); END IF;
    IF actual_ids <> expected_ids THEN RETURN false; END IF;
    FOR threshold_value IN SELECT value FROM jsonb_array_elements(display_options->'thresholds') LOOP
-    IF jsonb_typeof(threshold_value) IS DISTINCT FROM 'object'
+   IF jsonb_typeof(threshold_value) IS DISTINCT FROM 'object'
        OR jsonb_typeof(threshold_value->'operator') IS DISTINCT FROM 'string'
        OR threshold_value->>'operator' NOT IN ('lt','lte','gt','gte')
        OR jsonb_typeof(threshold_value->'value') IS DISTINCT FROM 'string'
-       OR threshold_value->>'value' !~ '^[+-]?[0-9]+([.][0-9]+)?$'
+       OR octet_length(threshold_value->>'value') NOT BETWEEN 1 AND 4096
+       OR threshold_value->>'value' !~ '^[+-]?[0-9]+([.][0-9]+)?([eE]([0-9]{1,5}|[+-][0-9]{1,4}))?$'
        OR jsonb_typeof(threshold_value->'state') IS DISTINCT FROM 'string'
        OR threshold_value->>'state' !~ '^[A-Za-z0-9_.:-]{1,128}$'
        OR (threshold_value ? 'label' AND (jsonb_typeof(threshold_value->'label') IS DISTINCT FROM 'string' OR octet_length(threshold_value->>'label')>512)) THEN RETURN false; END IF;
+    threshold_exponent := substring(threshold_value->>'value' from '[eE]([+-]?[0-9]{1,5})$');
+    IF threshold_exponent IS NOT NULL AND threshold_exponent::integer NOT BETWEEN -4096 AND 4096 THEN RETURN false; END IF;
    END LOOP;
   ELSE
    display_options := mapping->'table';
