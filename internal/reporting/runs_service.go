@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
-	"github.com/hurtener/chartworks/internal/charts"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
@@ -274,19 +273,13 @@ func (s *Runs) seal(ctx context.Context, e identity.Envelope, id string, in RunR
 	for _, definition := range definitions {
 		m.Definitions = append(m.Definitions, clone(definition.Definition))
 	}
-	privacyActor := ""
-	if private {
-		privacyActor = e.User()
-	}
 	_, selection, selectionErr := ResolveOutputSelection(d, in.Outputs)
 	if selectionErr != nil {
 		return RunView{}, selectionErr
 	}
 	m.Selection, m.QueryLimits = &selection, &caps
 	m.ResultPolicy = ResolveResultPolicy(d, m.Dependencies, m.Definitions)
-	m.ReuseKey = digest([]any{FrozenVersion, charts.BuildVersion, m.Tenant, m.Block, m.Revision.Digest, m.Rules,
-		m.Outputs, m.Resolved.Parameters, m.Resolved.Timezone, m.Locale, exec.Hash(binding), m.Private, privacyActor,
-		m.Policy, m.Trust, m.Model, "reporting-output-policy-v2", m.Selection, m.QueryLimits, m.ResultPolicy, m.Limits})
+	m.ReuseKey = ReuseIdentity(m)
 	proof, err := prepareRun(e, m)
 	if err != nil {
 		return RunView{}, err

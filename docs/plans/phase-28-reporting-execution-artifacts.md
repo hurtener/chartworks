@@ -85,3 +85,18 @@ values, table presentation policy and column display metadata survive output sto
 and reuse identity. Existing artifact authority/expiry remains authoritative.
 Static export reads that artifact through the delivery facade under fresh read and
 exact run-export reach; it does not re-execute expired/missing values.
+
+## Frozen reuse identity hardening
+
+New frozen runs seal a v2 reuse key over resolved semantic definitions, rule and
+source dependencies, required resource reach, output policy, parameters, source
+binding, locale, privacy and runtime model selection. Seal and PostgreSQL reuse
+recompute the identity instead of trusting a stored key; both the target and
+candidate must match. Existing v1 manifests remain readable and executable,
+but cannot be used as cross-run reuse evidence under v2. Phase 28 AC06 and the
+real-PostgreSQL reuse identity regression cover distinct operation IDs,
+concurrent reuse, a substituted stale candidate key, signed
+tenant/context/action denials and source-revision drift.
+The runtime model string is configuration, not an accepted reviewed runtime-pack
+pin. Phase 25's reviewed-pack invalidation remains open until a real pack owner
+and narrative consumer bind that selection to frozen execution.
