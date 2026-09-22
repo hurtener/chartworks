@@ -7,7 +7,31 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/identity"
 )
+
+func TestActorPresentationIsDescriptiveOnly(t *testing.T) {
+	now := time.Now()
+	e, err := identity.FromVerified("tenant", "analyst", "session", []string{"reporting.read", "cw.report.read:*"}, now.Add(time.Hour), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]ActorPresentation{"known": {Label: "Analista", Kind: "person", Known: true}}
+	for _, tc := range []struct {
+		id, label, kind string
+		known           bool
+	}{
+		{"known", "Analista", "person", true},
+		{"analyst", "Current actor", "person", true},
+		{"svc:scheduled", "Service actor", "service", false},
+		{"removed", "Unknown actor", "unknown", false},
+	} {
+		got := actorPresentation(e, tc.id, labels)
+		if got.Label != tc.label || got.Kind != tc.kind || got.Known != tc.known {
+			t.Fatalf("presentation %s: %#v", tc.id, got)
+		}
+	}
+}
 
 func documentFixture() DocumentDefinition {
 	return DocumentDefinition{SchemaVersion: DocumentVersion, Locale: "en-US", Timezone: "UTC",

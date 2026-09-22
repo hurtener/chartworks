@@ -779,3 +779,4 @@ Learning continuation: [D-078 version-pinned reviewed examples and evidence-base
 Rich output continuation: [D-079 reviewed KPI/table display intent and retained-only static export](decisions/2026-09-22-rich-output-display.md).
 
 Governed block depth continuation: [D-080 certification wording, reviewed overlap and dialect-bound assistance](decisions/2026-09-22-governed-block-depth.md).
+Reporting lifecycle continuation: [D-081 fenced document erasure and descriptive catalog identity](decisions/2026-09-22-reporting-deletion-catalog.md).

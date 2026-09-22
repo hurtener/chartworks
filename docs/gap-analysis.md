@@ -16,7 +16,7 @@ worker isolation, report/dashboard page composition and embed/BFF integration re
 in that phase. Phase 34 still owns foreign import mapping, and final migration,
 stress and behavioral qualification remain phases 34/25. Evidence is in the
 [display-intent contract](contracts/rich-output-display-v1.md),
-[decision D-079](decisions/2026-09-22-rich-output-display.md) and
+[decision D-080](decisions/2026-09-22-rich-output-display.md) and
 [CW-05 review](reviews/cw-05-adversarial.md).
 
 ## CW-02 implementation status — 2026-09-16
@@ -203,8 +203,8 @@ phase 24/34/25 manual-suite obligations.
 | DATA-02 | Discovery and onboarding | Physical discovery is not equivalent to semantic role and relationship discovery | reviewed role/grain/candidate/rejected evidence implemented; phase-33 orchestration remains | 15/33; coordinate26 |
 | PERF-01 | Latency and reuse | Cache behavior must be compared under the new authority model | intentional redesign; performance unmeasured | 17/24; reuse28; qualification34/25 |
 | REP-01 | Reporting filters | Revision-bound selectable filter options are a newly observed reference capability | confirmed contract gap | 29/31; safe source 09/10/14; import34 |
-| REP-02 | Reporting lifecycle | Report/dashboard deletion has semantics beyond archive | disposition required; archive remains implemented | 29/30; retention28/32; import34 |
-| REP-03 | Reporting catalog | Readable actor labels and delivery relationships are richer in the reference catalog | current projection narrower; ownership-aware equivalent needed | 23/29/31 |
+| REP-02 | Reporting lifecycle | Report/dashboard deletion has semantics beyond archive | implemented by CW-11; final migration/cutover evidence pending | 29/30; retention28/32; import34 |
+| REP-03 | Reporting catalog | Readable actor labels and delivery relationships are richer in the reference catalog | implemented by CW-11; host label integration evidence pending | 23/29/31 |
 
 ## Detailed findings
 
@@ -531,25 +531,25 @@ phase 24/34/25 manual-suite obligations.
 
 ### REP-02 — Report/dashboard deletion beyond archive
 
-- **Disposition:** newly observed reference lifecycle operation; target deletion disposition required. This is not a defect in the implemented archive path.
+- **Disposition:** implemented by CW-11; final migration/cutover evidence pending.
 - **Owner / phases:** 29/30 with retention 28/32 and import 34; related EXP-08, R02 and Q10.
 - **Reference behavior (neutral):** The reference deletes reports and owned revisions/run artifacts, retires matching report schedules, retains shared blocks and schedule history, and prevents stale completion from recreating deleted results. Dashboard deletion examines reports across historical dashboard revisions and rejects a shared-report conflict; separate report deletion preserves dashboards while omitting dead references from their projection.
-- **Current boundary:** The target exposes review/publish/reject/archive transitions and an `Archived` state. Retention cleanup and source erasure exist separately, but archive is not evidence of payload erasure or retirement of every related schedule.
-- **Consequence:** Source deletion semantics cannot be assumed from archive or retention alone; a migration needs an explicit ownership and erasure policy.
-- **Contract, storage and import impact:** Define archive versus irreversible delete/erasure, resource-scoped signed reach, dependency impact preview, shared-report protection, accepted-run fences, schedule disposition, audit/tombstone retention and import replay. Destructive authority must remain server-derived; do not adopt dashboard cascade without approved ownership rules.
-- **Closure requirements:** Test cross-tenant/context denial, intended retained-value erasure, stale-worker invalidation, matching-schedule retirement without unrelated changes, shared-report conflict atomically, historical revision non-resurrection and idempotency. Exclude backup/WAL deletion from live-data erasure claims.
+- **Current boundary:** Archive remains a reversible discovery state. The separate exact-CAS delete operation previews impact, uses a caller replay key and reason, retains a bounded tombstone/audit, scrubs live definition and composition payloads, expires accepted runs, retires only matching report/saved-question schedules, and preserves schedule history/shared blocks/topics. Dashboard deletion deliberately does not cascade because page composition is not ownership; deleting a report preserves dashboard history and current projection omits its dead pages. Backup/replica/WAL erasure is not claimed.
+- **Consequence:** The live target now has explicit deletion semantics; phase 34 must preserve tombstones and must not replay deleted imported revisions as active content.
+- **Contract, storage and import impact:** D-080 fixes archive versus irreversible live-data deletion, resource-scoped reach, dependency preview, non-cascading dashboard ownership, accepted-run fences, matching-schedule retirement and bounded audit/tombstone retention. Phase 34 still owns imported tombstone replay and cutover proof.
+- **Closure requirements:** The CW-11 regression covers intended retained-value erasure, stale-worker invalidation, matching-schedule retirement without unrelated changes, historical non-resurrection and idempotent replay. Final phase 34/25 evidence must add cross-cohort import/cutover and backup/WAL claim review.
 - **Source evidence IDs:** REF-REP-02-A, REF-REP-02-B.
 - **Current repository evidence:** [internal/reportingapi/documents.go:80](../internal/reportingapi/documents.go#L80); [internal/reporting/documents_model.go:152](../internal/reporting/documents_model.go#L152); [internal/reporting/runs_execution.go:318](../internal/reporting/runs_execution.go#L318).
 
 ### REP-03 — Readable catalog actor labels and delivery relationships
 
-- **Disposition:** newly observed reference presentation richness; target catalog projection is narrower and needs an ownership-aware equivalent.
+- **Disposition:** implemented by CW-11; live Pengui label integration evidence pending.
 - **Owner / phases:** 23/29/31 with authority-provider identity integration; related EXP-03/11 and R10/R16.
 - **Reference behavior (neutral):** The reference catalog projects owner/editor display labels with a safe fallback rather than opaque identifiers and exposes associated schedule/topic/block identifiers under authorized report listing. This is presentation data; it does not create local identity or permission records.
-- **Current boundary:** The target summary contains kind, ID, version, revision and localized metadata; private revisions retain actor evidence, but the public summary has no owner/editor projection or delivery relationship fields. Bounded permission-filtered cursor paging remains a retained safety boundary.
-- **Consequence:** A client receives less readable ownership and delivery context even though authorized catalog listing exists.
-- **Contract, storage and import impact:** Resolve descriptive labels through an existing public identity seam or host-supplied projection, keep stable actor IDs in protected audit, specify localization/fallback and bounded relationship composition, and ensure labels never expand authority or disclose hidden resources.
-- **Closure requirements:** Cover known and missing/deleted actors, service actors, same identifiers across tenants, hidden reports/schedules, localized fallback and stable paging. Define whether delivery status is joined or composed through separate bounded operations.
+- **Current boundary:** Authorized document summaries now include descriptive creator/last-editor presentations plus bounded schedule/topic/block relations. An optional Pengui-owned resolver supplies known labels; safe current/unknown/service fallbacks omit stable actor IDs from JSON. Schedule identifiers enter the SQL result only with current scheduling-read action and resource reach. Labels and relations are never consulted by authority checks.
+- **Consequence:** Clients receive readable ownership and authorized relationship context; deployments without the optional label seam receive safe current/unknown/service fallbacks.
+- **Contract, storage and import impact:** Stable actor IDs stay in protected audit/storage while the public DTO carries bounded descriptive labels. Delivery relations are composed in the permission-filtered list query and do not create identity or permission records.
+- **Closure requirements:** Focused tests cover known resolver labels, safe fallback and schedule relationship filtering. Final integration must exercise deleted actors, service actors, tenant-colliding identifiers, localization and stable paging against the real Pengui label seam.
 - **Source evidence IDs:** REF-REP-03-A.
 - **Current repository evidence:** [internal/reporting/documents_model.go:157](../internal/reporting/documents_model.go#L157); [internal/reporting/documents_model.go:199](../internal/reporting/documents_model.go#L199); [internal/reportingapi/documents.go:49](../internal/reportingapi/documents.go#L49).
 

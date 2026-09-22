@@ -88,6 +88,15 @@ type DocumentImportRequest = reportingapi.DocumentImport
 // DocumentImportResult distinguishes accepted drafts from private quarantine.
 type DocumentImportResult = reporting.DocumentImportResult
 
+// DocumentDeleteRequest binds an exact head version and replay key to destructive intent.
+type DocumentDeleteRequest = reporting.DocumentDeleteRequest
+
+// DocumentDeleteImpact is the bounded authorized dependency preview.
+type DocumentDeleteImpact = reporting.DocumentDeleteImpact
+
+// DocumentDeletion is the retained non-payload deletion receipt.
+type DocumentDeletion = reporting.DocumentDeletion
+
 // DocumentExternalReference is a versioned external coordinate, never an access grant.
 type DocumentExternalReference = reporting.ExternalReference
 
@@ -192,6 +201,26 @@ func (c *Client) ImportDocument(ctx context.Context, kind DocumentKind, in Docum
 		return out, ErrDocumentRequest
 	}
 	err = c.callLimit(ctx, "POST", path+"/import", "", in, &out, 4<<20)
+	return
+}
+
+// PreviewDocumentDelete returns dependency impact without changing state.
+func (c *Client) PreviewDocumentDelete(ctx context.Context, kind DocumentKind, id string) (out DocumentDeleteImpact, err error) {
+	path, err := documentPath(kind, id)
+	if err != nil || id == "" {
+		return out, ErrDocumentRequest
+	}
+	err = c.callLimit(ctx, "GET", path+"/delete-impact", "", nil, &out, 4<<20)
+	return
+}
+
+// DeleteDocument erases live payloads under exact CAS and replay-key fencing.
+func (c *Client) DeleteDocument(ctx context.Context, kind DocumentKind, id string, in DocumentDeleteRequest) (out DocumentDeletion, err error) {
+	path, err := documentPath(kind, id)
+	if err != nil || id == "" || in.ExpectedVersion < 1 || !identity.Identifier(in.Key) || in.Reason == "" {
+		return out, ErrDocumentRequest
+	}
+	err = c.callLimit(ctx, "POST", path+"/delete", "", in, &out, 4<<20)
 	return
 }
 

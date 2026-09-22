@@ -179,6 +179,33 @@ stages, and actual publication time. Bindings, actors, recipients, tokens and
 hidden report-page derived status are omitted. Same-tenant missing-context and
 cross-tenant readers do not acquire artifact data through this metadata.
 
+## Document deletion and catalog presentation
+
+Archive and deletion are distinct. `GET /v1/reports/{id}/delete-impact` and the
+dashboard equivalent return bounded counts and currently readable matching
+schedule identifiers without loading definitions or values. `POST
+/v1/reports/{id}/delete` and its dashboard equivalent require exact current
+version, replay key, nonempty reason, `reporting.write`, and target-write reach.
+Every matching schedule additionally requires current `scheduling.write` and
+schedule-write reach before the transaction changes anything.
+
+Deletion scrubs live definition payloads and external import mappings, erases retained composition payloads,
+expires their bounded receipts, retires matching report/saved-question schedules,
+and retains schedule history plus a deletion tombstone. Stale execution cannot
+complete after the tombstone. Shared blocks/topics are preserved. Dashboard
+deletion does not infer ownership or cascade to reports; report deletion preserves
+dashboard history while current page projection omits the deleted report. Identical
+replay returns the tombstone and changed intent conflicts. Backups, replicas and
+WAL are outside the live-data erasure result.
+
+Document catalog summaries carry bounded block/topic/schedule relationships and
+descriptive creator/last-editor presentations. Actor IDs remain protected audit
+coordinates and are not serialized in the summary. An optional Pengui-owned label
+resolver supplies known labels; missing/deleted and service actors receive safe
+fallbacks. Labels, recipients and relationship membership never grant access.
+Schedule relations require current schedule-read action and resource reach before
+their identifiers enter the SQL result.
+
 ## Deployment and examples
 
 Merge the [configuration excerpt](../../examples/chartworks.reporting-delivery.json)

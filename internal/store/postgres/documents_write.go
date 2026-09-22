@@ -187,7 +187,7 @@ func existingDocumentImport(ctx context.Context, tx pgx.Tx, e identity.Envelope,
 	if digest != m.Revision.Digest {
 		return reporting.DocumentState{}, false, store.ErrConflict
 	}
-	state, err := scanDocumentState(tx.QueryRow(ctx, `SELECT `+documentHeadColumns+` FROM chartworks.document_heads h WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id=$3`, e.Tenant(), m.Kind, m.ID))
+	state, err := scanDocumentState(tx.QueryRow(ctx, `SELECT `+documentHeadColumns+` FROM chartworks.document_heads h WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id=$3 AND NOT h.deleted`, e.Tenant(), m.Kind, m.ID))
 	return state, true, err
 }
 
@@ -285,7 +285,7 @@ func (d *DB) CommitDocument(ctx context.Context, e identity.Envelope, proof repo
 				return err
 			}
 			var count int
-			if err := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.document_heads WHERE tenant_id=$1 AND kind=$2`, e.Tenant(), m.Kind).Scan(&count); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.document_heads WHERE tenant_id=$1 AND kind=$2 AND NOT deleted`, e.Tenant(), m.Kind).Scan(&count); err != nil {
 				return err
 			}
 			if count >= m.MaxDocuments {
@@ -299,7 +299,7 @@ func (d *DB) CommitDocument(ctx context.Context, e identity.Envelope, proof repo
 				return err
 			}
 		} else {
-			head, err := scanDocumentState(tx.QueryRow(ctx, `SELECT `+documentHeadColumns+` FROM chartworks.document_heads h WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id=$3 FOR UPDATE`, e.Tenant(), m.Kind, m.ID))
+			head, err := scanDocumentState(tx.QueryRow(ctx, `SELECT `+documentHeadColumns+` FROM chartworks.document_heads h WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id=$3 AND NOT h.deleted FOR UPDATE`, e.Tenant(), m.Kind, m.ID))
 			if err != nil {
 				return err
 			}
