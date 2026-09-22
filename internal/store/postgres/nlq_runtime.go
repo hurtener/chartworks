@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
+	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -67,7 +69,7 @@ func (d *DB) ReadSession(ctx context.Context, scope store.Scope, id string) (out
 
 // CreateQuery persists protected generation evidence for one planned query.
 func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord) error {
-	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" {
+	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -278,7 +280,11 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 			return store.ErrMigration
 		}
 	}
-	if exec.Hash(out.Templates) != exec.Hash(out.Route.Templates) || exec.Hash(out.Templates) != exec.Hash(out.Route.Request.Templates) {
+	// Migration 039 backfilled the new column with an explicit empty array, but
+	// pre-migration route JSON omitted empty template fields and decodes them as
+	// nil. Canonicalize only that legacy no-selection state. Any actual governed
+	// selection must still match all three immutable evidence projections.
+	if !normalizeTemplateSelectionEvidence(out, templates, route) {
 		return store.ErrMigration
 	}
 	if len(clarification) > 0 && string(clarification) != "null" {
@@ -297,6 +303,111 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 	}
 	return nil
 }
+
+func normalizeTemplateSelectionEvidence(out *nlqexec.QueryRecord, columnJSON, routeJSON []byte) bool {
+	column, route, request, emptyShape, ok := decodeTemplateSelectionEvidence(columnJSON, routeJSON)
+	if !ok || !sameTemplateSelections(column, out.Templates) || !sameTemplateSelections(route, out.Route.Templates) || !sameTemplateSelections(request, out.Route.Request.Templates) {
+		return false
+	}
+	if len(column) == 0 {
+		if !emptyShape {
+			return false
+		}
+		out.Templates = []rulesets.TemplateSelection{}
+		out.Route.Templates = []rulesets.TemplateSelection{}
+		out.Route.Request.Templates = []rulesets.TemplateSelection{}
+		return true
+	}
+	return validTemplateSelectionEvidence(column, route, request, out.Topics, out.TopicVersions, out.RuleVersions)
+}
+
+func decodeTemplateSelectionEvidence(columnJSON, routeJSON []byte) (column, route, request []rulesets.TemplateSelection, emptyShape, ok bool) {
+	if column, ok = decodeTemplateSelectionArray(columnJSON); !ok {
+		return nil, nil, nil, false, false
+	}
+	var routeObject map[string]json.RawMessage
+	if json.Unmarshal(routeJSON, &routeObject) != nil || routeObject == nil {
+		return nil, nil, nil, false, false
+	}
+	routeRaw, routePresent := routeObject["templates"]
+	if routePresent {
+		if route, ok = decodeTemplateSelectionArray(routeRaw); !ok {
+			return nil, nil, nil, false, false
+		}
+	}
+	requestRaw, requestPresent := routeObject["request"]
+	requestTemplatesPresent := false
+	if requestPresent {
+		var requestObject map[string]json.RawMessage
+		if json.Unmarshal(requestRaw, &requestObject) != nil || requestObject == nil {
+			return nil, nil, nil, false, false
+		}
+		requestTemplatesRaw, present := requestObject["templates"]
+		requestTemplatesPresent = present
+		if present {
+			if request, ok = decodeTemplateSelectionArray(requestTemplatesRaw); !ok {
+				return nil, nil, nil, false, false
+			}
+		}
+	}
+	if len(column) == 0 {
+		legacyOmission := !routePresent && !requestTemplatesPresent
+		explicitEmpty := routePresent && requestTemplatesPresent && len(route) == 0 && len(request) == 0
+		return column, route, request, legacyOmission || explicitEmpty, true
+	}
+	if !routePresent || !requestTemplatesPresent {
+		return nil, nil, nil, false, false
+	}
+	return column, route, request, false, true
+}
+
+func decodeTemplateSelectionArray(raw []byte) ([]rulesets.TemplateSelection, bool) {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, false
+	}
+	var selections []rulesets.TemplateSelection
+	if json.Unmarshal(raw, &selections) != nil || selections == nil {
+		return nil, false
+	}
+	return selections, true
+}
+
+func validTemplateSelectionEvidence(column, route, request []rulesets.TemplateSelection, queryTopics, topicVersions, ruleVersions []string) bool {
+	if !sameTemplateSelections(column, route) || !sameTemplateSelections(column, request) || len(column) > 4 {
+		return false
+	}
+	seenTopics := make(map[string]bool, len(column))
+	for _, selection := range column {
+		if !identity.Identifier(selection.ID) || !identity.Identifier(selection.Topic) || !identity.Identifier(selection.TopicVersion) || !identity.Identifier(selection.RuleVersion) || !topics.DigestValid(selection.PackDigest) || !topics.DigestValid(selection.RuleDigest) || seenTopics[selection.Topic] {
+			return false
+		}
+		aligned := false
+		for i, topic := range queryTopics {
+			if i < len(topicVersions) && i < len(ruleVersions) && selection.Topic == topic && selection.TopicVersion == topicVersions[i] && selection.RuleVersion == ruleVersions[i] {
+				aligned = true
+				break
+			}
+		}
+		if !aligned {
+			return false
+		}
+		seenTopics[selection.Topic] = true
+	}
+	return true
+}
+
+func sameTemplateSelections(left, right []rulesets.TemplateSelection) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func stringValue(value *string) string {
 	if value == nil {
 		return ""

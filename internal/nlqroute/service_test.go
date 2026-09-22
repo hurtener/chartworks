@@ -315,6 +315,7 @@ func TestPinnedKPIResolvesTransitiveRichDependencyClosure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	//nolint:misspell // clientes is correct Spanish fixture text.
 	assembled, err := assembler.Assemble(context.Background(), nlq.ContextInput{Locale: nlq.LanguageSpanish, Strategy: nlq.StrategySingleTopic, Topic: "topic", TopicVersion: "v1", Question: "Ingresos por mes para clientes activos", Metrics: []nlq.PinnedMetric{metric}}, nlq.TierHigh)
 	if err != nil {
 		t.Fatal(err)

@@ -133,15 +133,20 @@ func validateRuleShape(p RuleSetDefinition) error {
 		default:
 			return invalid(CodeInvalidValue, path+".category")
 		}
-		if rule.Scope.Kind == RuleScopeTopic {
+		switch rule.Scope.Kind {
+		case RuleScopeTopic:
 			if len(rule.Scope.Targets) != 0 || rule.Scope.Template != "" {
 				return invalid(CodeInvalidValue, path+".scope")
 			}
-		} else if rule.Scope.Kind == RuleScopeTemplate {
+		case RuleScopeTemplate:
 			if len(rule.Scope.Targets) != 0 || !identity.Identifier(rule.Scope.Template) {
 				return invalid(CodeInvalidValue, path+".scope")
 			}
-		} else if (rule.Scope.Kind != RuleScopeEntities && rule.Scope.Kind != RuleScopeCompound) || len(rule.Scope.Targets) < 1 || len(rule.Scope.Targets) > 32 || rule.Scope.Template != "" {
+		case RuleScopeEntities, RuleScopeCompound:
+			if len(rule.Scope.Targets) < 1 || len(rule.Scope.Targets) > 32 || rule.Scope.Template != "" {
+				return invalid(CodeInvalidValue, path+".scope")
+			}
+		default:
 			return invalid(CodeInvalidValue, path+".scope")
 		}
 		// These targets are sorted before reference lookup; bound their
