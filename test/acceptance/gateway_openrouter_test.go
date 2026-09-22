@@ -95,6 +95,7 @@ func TestGatewayOpenRouterRerankConfiguration(t *testing.T) {
 			c.Roles["sqlgen"] = r
 		},
 		func(c *config.Gateway) { c.Bifrost.Providers[len(c.Bifrost.Providers)-1].BaseURL += "/api/v1" },
+		func(c *config.Gateway) { c.Bifrost.Providers[len(c.Bifrost.Providers)-1].BaseURL += "/" },
 	} {
 		copy := good
 		copy.Bifrost.Providers = append([]config.Provider(nil), good.Bifrost.Providers...)

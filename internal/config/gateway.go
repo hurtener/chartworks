@@ -70,7 +70,7 @@ func ValidateGateway(g Gateway, enabled bool) error {
 		}
 		if NativeProvider(p) == "openrouter_rerank" && p.BaseURL != "" {
 			u, _ := url.Parse(p.BaseURL)
-			if u.Path != "" && u.Path != "/" {
+			if u.Path != "" {
 				return invalid("gateway.bifrost.providers.base_url", "OpenRouter rerank endpoint must be an origin")
 			}
 		}
