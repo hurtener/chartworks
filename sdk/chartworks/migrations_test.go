@@ -23,7 +23,7 @@ func TestMigrationMethodsUseTypedRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := MigrationManifest{Batch: "batch"}
+	manifest := MigrationManifest{Batch: "batch", Calibration: &MigrationCalibration{}, Objects: []MigrationObject{{Retention: MigrationRetention{}}}}
 	if _, err = client.DryRunMigration(t.Context(), MigrationDryRunRequest{Manifest: manifest}); err != nil {
 		t.Fatal(err)
 	}
