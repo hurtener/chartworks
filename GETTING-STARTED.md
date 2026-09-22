@@ -87,7 +87,7 @@ The production `serve` command now protects retention policy, audit, synchronous
 
 ## Enable remote models
 
-Keep the existing foundation JSON and merge its top-level `gateway` member with `examples/chartworks.gateway.json`; set `features.gateway` to `true`. Get the OpenRouter and Cohere keys from your approved provider accounts and set the environment variables named in the excerpt. The **Cohere key is separate**: the pinned SDK does not support reranking through OpenRouter. Never paste keys into the JSON or commit them.
+Keep the existing foundation JSON and merge its top-level `gateway` member with `examples/chartworks.gateway.json`; set `features.gateway` to `true`. Set `CHARTWORKS_OPENROUTER_API_KEY` from the approved provider account. The OpenRouter rerank route uses the pinned Bifrost SDK's rerank-only custom provider with its Cohere wire codec and fixed `/api/v1/rerank` path. Native Cohere reranking is still available with its own key and `rerank-4-fast` model. Never paste keys into the JSON or commit them. For a single paid provider-route smoke using a private root `.env`, run `python3 scripts/smoke/openrouter-rerank-live.py --env-file /absolute/private/path/.env`; it reads `OPENROUTER_API_KEY` and `RERANK_MODEL` as data and runs Chartworks' gateway test.
 
 Review every role's model, timeout and output limits. Choose an operator-owned `embedding.model_revision` and change it whenever the remote embedding generation changes. Dimension equality does not make two spaces interchangeable. Rerank, narrative and visual ranking run only when explicitly enabled. `config-check` validates the choices without spending money.
 

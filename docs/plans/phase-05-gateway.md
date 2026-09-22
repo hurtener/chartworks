@@ -29,7 +29,7 @@ No local learned models/weight downloads/ONNX/Ollama/transformer services, alter
 
 ## Config and persistence
 
-Production `gateway.driver=bifrost`; `gateway.bifrost.providers` resolves remote credentials/endpoints; `gateway.roles.<role>` holds provider/model/timeout/output limits and role-specific embedding/rerank settings. The initial excerpt is [chartworks.gateway.json](../../examples/chartworks.gateway.json). Embeddings use `perplexity/pplx-embed-v1-0.6b`, 1024 dimensions in that reference; rerank uses `cohere/rerank-4-fast`. These are replaceable remote settings, not hard-coded semantics or live benchmark claims.
+Production `gateway.driver=bifrost`; `gateway.bifrost.providers` resolves remote credentials/endpoints; `gateway.roles.<role>` holds provider/model/timeout/output limits and role-specific embedding/rerank settings. The initial excerpt is [chartworks.gateway.json](../../examples/chartworks.gateway.json). Embeddings use `perplexity/pplx-embed-v1-0.6b`, 1024 dimensions in that reference; rerank uses the OpenRouter `cohere/rerank-4-fast` route via Bifrost's rerank-only custom provider. Native Cohere `rerank-4-fast` remains supported as an independent route. The OpenRouter custom route accepts only the tested model slug; new models require a separately verified configuration change.
 
 Reference bounds: embedding batch 64 items/256 KiB, rerank 64 candidates/10s, `max_attempts_per_call=2`. Further input token limits follow actual model capability. Narrative and visual ranking are disabled until explicitly enabled. Rerank failure is `fail` or visible `preserve_candidates`. Usage/prompt/model/version records are data, never authority. Credentials use the existing secret seam; no key values enter configuration inspection.
 
