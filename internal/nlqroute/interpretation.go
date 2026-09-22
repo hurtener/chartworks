@@ -64,17 +64,20 @@ type ValueInterpretation struct {
 }
 
 type TemporalInterpretation struct {
-	ID         string `json:"id"`
-	Topic      string `json:"topic"`
-	Dimension  string `json:"dimension"`
-	Dataset    string `json:"dataset"`
-	Column     string `json:"column"`
-	Grain      string `json:"grain"`
-	Calendar   string `json:"calendar"`
-	TimeZone   string `json:"time_zone"`
-	Start      string `json:"start"`
-	End        string `json:"end"`
-	Provenance string `json:"provenance"`
+	ID           string `json:"id"`
+	Topic        string `json:"topic"`
+	Dimension    string `json:"dimension"`
+	Dataset      string `json:"dataset"`
+	Column       string `json:"column"`
+	Grain        string `json:"grain"`
+	Calendar     string `json:"calendar"`
+	TimeZone     string `json:"time_zone"`
+	TemporalType string `json:"temporal_type"`
+	LocalStart   string `json:"local_start"`
+	LocalEnd     string `json:"local_end"`
+	Start        string `json:"start"`
+	End          string `json:"end"`
+	Provenance   string `json:"provenance"`
 }
 
 // Interpretation is a detached view of a sealed deterministic interpretation.
@@ -222,7 +225,7 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 			continue
 		}
 		emittedTargets[target] = op
-		geography := geographyDimension(candidate.dim, candidate.column)
+		geography := candidate.dim.Geography
 		id := readexec.Hash([]any{interpretationVersion, target, candidate.value.ID, op, out.Pins})
 		out.Values = append(out.Values, ValueInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, GovernedValue: candidate.value.ID, CanonicalValue: candidate.value.Value, Operator: op, Geography: geography, Provenance: "reviewed_governed_value"})
 	}
@@ -276,8 +279,13 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 			if calendar != "gregorian" {
 				return nil, nil, &Clarification{Reason: "unsupported_calendar", Outcome: semantics.ClarificationInvalid, Prompt: "This temporal calendar is not supported by deterministic interpretation."}
 			}
-			id := readexec.Hash([]any{interpretationVersion, target, span.start, span.end, span.grain, tz, out.Pins})
-			out.Temporal = append(out.Temporal, TemporalInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, Grain: span.grain, Calendar: calendar, TimeZone: tz, Start: span.start, End: span.end, Provenance: span.provenance})
+			temporalType := temporalColumnType(candidate.column)
+			start, end, boundaryErr := temporalBoundaryValues(span.start, span.end, tz, temporalType)
+			if boundaryErr != nil {
+				return nil, nil, boundaryErr
+			}
+			id := readexec.Hash([]any{interpretationVersion, target, start, end, span.grain, tz, temporalType, out.Pins})
+			out.Temporal = append(out.Temporal, TemporalInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, Grain: span.grain, Calendar: calendar, TimeZone: tz, TemporalType: temporalType, LocalStart: span.start, LocalEnd: span.end, Start: start, End: end, Provenance: span.provenance})
 		}
 	}
 	sort.Slice(out.Values, func(i, j int) bool { return out.Values[i].ID < out.Values[j].ID })
@@ -321,7 +329,7 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		constraints = append(constraints, readexec.BusinessConstraint{Resolution: value.ID, Dataset: value.Dataset, Column: value.Column, SourceRevision: binding.Revision, Kind: "text", Operator: value.Operator, Nulls: "exclude", Value: value.CanonicalValue})
 	}
 	for _, temporal := range out.Temporal {
-		constraints = append(constraints, readexec.BusinessConstraint{Resolution: temporal.ID, Dataset: temporal.Dataset, Column: temporal.Column, SourceRevision: binding.Revision, Kind: "time_window", Operator: "range", Nulls: "exclude", Bounds: "[)", TemporalType: temporalType(admitted, temporal.Topic, temporal.Dataset, temporal.Dimension), Calendar: temporal.Calendar, TimeZone: temporal.TimeZone, Grain: temporal.Grain, Value: temporal.Start, Upper: temporal.End})
+		constraints = append(constraints, readexec.BusinessConstraint{Resolution: temporal.ID, Dataset: temporal.Dataset, Column: temporal.Column, SourceRevision: binding.Revision, Kind: "time_window", Operator: "range", Nulls: "exclude", Bounds: "[)", TemporalType: temporal.TemporalType, Calendar: temporal.Calendar, TimeZone: temporal.TimeZone, Grain: temporal.Grain, Value: temporal.Start, Upper: temporal.End})
 	}
 	if binding != nil && len(constraints) > 0 {
 		if err := readexec.ValidateBusinessConstraints(*binding, constraints); err != nil {
@@ -427,20 +435,17 @@ func negatedPhrase(question, phrase string, locale nlq.Language) bool {
 	}
 	return false
 }
-func geographyDimension(d semantics.Dimension, c semantics.Column) bool {
-	hay := normalizedPhrase(strings.Join(append([]string{d.ID, d.Name, c.ID, c.Name}, d.Aliases...), " "))
-	for _, word := range []string{"country", "city", "region", "state", "province", "geography", "pais", "ciudad", "region", "provincia"} {
-		if containsPhrase(hay, word) {
-			return true
-		}
-	}
-	return false
-}
 
 type parsedSpan struct{ start, end, grain, provenance string }
 
-func temporalSpan(question string, _ nlq.Language, anchor time.Time) (parsedSpan, bool, error) {
+func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parsedSpan, bool, error) {
 	words := strings.Fields(question)
+	yearTokens := 0
+	for _, word := range words {
+		if numericYear(word) {
+			yearTokens++
+		}
+	}
 	months := map[string]time.Month{"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12, "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
 	lastMonth := containsPhrase(question, "last month") || containsPhrase(question, "mes pasado") || containsPhrase(question, "ultimo mes") || containsPhrase(question, "último mes")
 	thisMonth := containsPhrase(question, "this month") || containsPhrase(question, "este mes")
@@ -453,9 +458,24 @@ func temporalSpan(question string, _ nlq.Language, anchor time.Time) (parsedSpan
 		}
 		year := anchor.Year()
 		provenance := "month_anchor_year"
-		if i+1 < len(words) {
-			if candidate, err := strconv.Atoi(words[i+1]); err == nil && candidate >= 1 && candidate <= 9999 {
+		next := i + 1
+		if next < len(words) {
+			if namedMonthConnector(words[next]) {
+				if !connectorForLocale(words[next], locale) {
+					return parsedSpan{}, false, &Clarification{Reason: "invalid_temporal_span", Outcome: semantics.ClarificationInvalid, Prompt: "Use a supported month connector for the request locale."}
+				}
+				next++
+				if next >= len(words) {
+					return parsedSpan{}, false, &Clarification{Reason: "invalid_temporal_span", Outcome: semantics.ClarificationInvalid, Prompt: "Provide one four-digit year after the month connector."}
+				}
+			}
+			if candidate, parseErr := strconv.Atoi(words[next]); parseErr == nil {
+				if !numericYear(words[next]) || candidate < 1 || candidate > 9998 || yearTokens != 1 {
+					return parsedSpan{}, false, &Clarification{Reason: "invalid_temporal_span", Outcome: semantics.ClarificationInvalid, Prompt: "Provide one supported month and four-digit year."}
+				}
 				year, provenance = candidate, "explicit_month_year"
+			} else if next != i+1 {
+				return parsedSpan{}, false, &Clarification{Reason: "invalid_temporal_span", Outcome: semantics.ClarificationInvalid, Prompt: "Provide one four-digit year after the month connector."}
 			}
 		}
 		start := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
@@ -488,31 +508,78 @@ func temporalSpan(question string, _ nlq.Language, anchor time.Time) (parsedSpan
 	}
 	return parsedSpan{}, false, nil
 }
-func temporalType(admitted []admittedTopic, topic, dataset, dimension string) string {
-	for _, item := range admitted {
-		if item.id != topic {
-			continue
-		}
-		for _, d := range item.publication.Definition.Dimensions {
-			if d.ID != dimension || d.Field.Dataset != dataset {
-				continue
-			}
-			for _, ds := range item.publication.Definition.Datasets {
-				if ds.ID != dataset {
-					continue
-				}
-				for _, c := range ds.Columns {
-					if c.ID != d.Field.ID {
-						continue
-					}
-					return temporalColumnType(c)
-				}
-			}
-		}
-	}
-	return "timestamp"
+
+func connectorForLocale(word string, locale nlq.Language) bool {
+	return locale == nlq.LanguageSpanish && (word == "de" || word == "del") || locale == nlq.LanguageEnglish && word == "of"
 }
 
+func namedMonthConnector(word string) bool {
+	return word == "de" || word == "del" || word == "of"
+}
+
+func numericYear(word string) bool {
+	if len(word) != 4 {
+		return false
+	}
+	_, err := strconv.Atoi(word)
+	return err == nil
+}
+
+func temporalBoundaryValues(start, end, zoneName, temporalType string) (string, string, error) {
+	if temporalType != "timestamptz" {
+		return start, end, nil
+	}
+	zone, err := time.LoadLocation(zoneName)
+	if err != nil {
+		return "", "", &Clarification{Reason: "unsupported_temporal_timezone", Outcome: semantics.ClarificationInvalid, Prompt: "This temporal dimension needs a supported reviewed timezone."}
+	}
+	lower, lowerErr := time.ParseInLocation("2006-01-02", start, zone)
+	upper, upperErr := time.ParseInLocation("2006-01-02", end, zone)
+	if lowerErr != nil || upperErr != nil || lower.Format("2006-01-02") != start || upper.Format("2006-01-02") != end || !uniqueLocalMidnight(lower) || !uniqueLocalMidnight(upper) {
+		return "", "", &Clarification{Reason: "ambiguous_temporal_boundary", Outcome: semantics.ClarificationInvalid, Prompt: "This reviewed timezone has a missing or ambiguous calendar boundary."}
+	}
+	return lower.UTC().Format(time.RFC3339), upper.UTC().Format(time.RFC3339), nil
+}
+
+func uniqueLocalMidnight(candidate time.Time) bool {
+	if candidate.Hour() != 0 || candidate.Minute() != 0 || candidate.Second() != 0 || candidate.Nanosecond() != 0 {
+		return false
+	}
+	zone := candidate.Location()
+	year, month, day := candidate.Date()
+	wall := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	cursor, limit := candidate.Add(-48*time.Hour), candidate.Add(48*time.Hour)
+	offsets := map[int]bool{}
+	complete := false
+	for transitions := 0; transitions < 16; transitions++ {
+		_, offset := cursor.In(zone).Zone()
+		if offset < -24*60*60 || offset > 24*60*60 {
+			return false
+		}
+		offsets[offset] = true
+		_, periodEnd := cursor.In(zone).ZoneBounds()
+		if periodEnd.IsZero() || periodEnd.After(limit) {
+			complete = true
+			break
+		}
+		if !periodEnd.After(cursor) {
+			return false
+		}
+		cursor = periodEnd
+	}
+	if !complete {
+		return false
+	}
+	matches := 0
+	for offset := range offsets {
+		actual := wall.Add(-time.Duration(offset) * time.Second).In(zone)
+		y, m, d := actual.Date()
+		if y == year && m == month && d == day && actual.Hour() == 0 && actual.Minute() == 0 && actual.Second() == 0 && actual.Nanosecond() == 0 {
+			matches++
+		}
+	}
+	return matches == 1
+}
 func mergeInterpretationConstraints(state *nlq.ConstraintState, interpretation *Interpretation) *nlq.ConstraintState {
 	if interpretation == nil || len(interpretation.Values)+len(interpretation.Temporal) == 0 {
 		return state

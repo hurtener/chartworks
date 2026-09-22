@@ -52,7 +52,7 @@ A cohort is migrated only when its required behavior and engine evidence are com
 ## CW-04 import substrate
 
 Neutral topic portability now includes rich aliases, semantic roles, units,
-governed values, temporal policy, filters and relationship decisions, and remaps
+governed values, explicit geography designation, temporal policy, filters and relationship decisions, and remaps
 every reference-bearing rich field to destination coordinates before compilation.
 This supplies the semantic field-level substrate for AC01/AC02. It does not implement
 phase 34's external manifest, cohort dry run, history/state normalization, schedule

@@ -41,8 +41,9 @@ evidence only and never executable joins.
 question embedding for a resolved route. It scans only reviewed non-sensitive
 governed values and aliases, reviewed dimension/column aliases, and reviewed
 Gregorian temporal dimensions. English and Spanish negation produce `ne` rather
-than silently losing exclusion. Geographic classification comes from reviewed
-dimension vocabulary. Named months and supported relative-month phrases become
+than silently losing exclusion. Geographic classification comes only from the
+reviewed categorical-dimension designation; labels and aliases never infer it.
+Named months, the supported English/Spanish year connectors and supported relative-month phrases become
 half-open month windows against an explicit `YYYY-MM-DD` anchor. The server supplies
 and retains the anchor when a caller omits it, so replay never depends on a later
 wall clock.
@@ -53,7 +54,10 @@ returns a typed clarification/conflict before model work. Sensitive or
 unknown-sensitivity values are never scanned, retained or sent. The result records
 locale, parser/version, anchor, exact topic/source/context/revision pins, canonical
 governed-value IDs, physical constraint coordinates, operators, time bounds,
-provenance and one digest. No raw profile sample enters the result.
+provenance and one digest. Date and wall-clock timestamp constraints retain local
+calendar dates. Instant timestamps convert unique reviewed-zone midnights to
+RFC3339 UTC; missing or folded civil boundaries clarify before provider work. No
+raw profile sample enters the result.
 
 Callers may remove an inferred target or replace it with another reviewed governed
 value ID. Arbitrary replacement literals are rejected. Edits are retained in the
@@ -72,16 +76,21 @@ first, source binding is rechecked, business constraints cannot construct a plan
 and SQL still passes whole-statement validation and read-only execution.
 
 The in-process route seal binds the interpretation, source binding digest and typed
-constraints. A JSON reconstruction cannot manufacture executable filters. Retained
-replay reconstructs them only through current authorized topic/source services.
+constraints. A JSON reconstruction cannot manufacture executable filters. Any
+active clarification or interpretation constraint stores the protected unbound SQL,
+parameters and exact binding receipt. Planning, execution, terminal replay and
+refinement reconstruct and compare that receipt through current authorized
+topic/source services; publication, parser, vocabulary or binding drift fails.
 
 ## Evidence and limits
 
-`TestCW07/AC01` through `AC08` cover server selection and reranking, competing-topic
+`TestCW07/AC01` through `AC09` cover server selection and reranking, competing-topic
 ambiguity, Spanish governed geography and month interpretation, correction/removal,
 stale source denial, ambiguous values, pre-provider candidate authority, tenant and
 context isolation, deterministic replay and interpretation budget rejection before
-provider work. Existing phase-17 tests retain confirmed multi-topic joins,
+provider work, plus connector parsing, DST boundary behavior and RFC3339 instant
+binding. `TestCW07InterpretationBusinessEvidencePlanRunAndDrift` covers ordinary and
+terminal plan/run replay, exact receipts, corrections/removal and drift. Existing phase-17 tests retain confirmed multi-topic joins,
 context isolation, tokenizer budgets and bilingual routing; CW-04 tests retain
 metric-closure budget overflow.
 

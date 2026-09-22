@@ -61,7 +61,8 @@ managed-transformation branch and full real-source acceptance remain outstanding
 
 ## CW-07 downstream consumer
 
-Published reviewed governed values, aliases, temporal policies and relationship
+Published reviewed governed values, aliases, explicit categorical geography
+designations, temporal policies and relationship
 evidence now have a first query-time consumer. Routing never promotes onboarding
 proposals or unresolved fields: only the exact active publication participates, and
 candidate/rejected relationships remain non-executable. The broader resumable phase

@@ -26,7 +26,7 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | Deterministic local computation | Tokenization, rules, SQL parsing, pgvector search and rendering; not a local learned model. |
 | Rerank | Relevance ordering of an already authorized candidate set, with validated IDs/scores and no authority expansion. |
 | Routing decision | Versioned evidence, policy floor/margin and explicit selected/no-route/clarify outcome over signed-reachable current topics; it is not authority or a live-quality claim. |
-| Semantic interpretation | Sealed deterministic mapping from reviewed non-sensitive value/geography/time vocabulary to typed generation and execution constraints, pinned for replay. |
+| Semantic interpretation | Sealed deterministic mapping from reviewed non-sensitive values, explicit geography designations and temporal policy to typed generation and execution constraints, pinned for replay. |
 | Context assembler | Sole owner of query-time token budgeting, pins, mandatory constraints, examples and provenance. |
 | Metric dependency closure | Complete transitive formula, measure, field, dimension/value/time, filter and join context for one selected metric; admitted as one mandatory tokenizer group. |
 | BYO context reference | Stored bounded context handle, reauthorized using Pengui JWTs; not a locally signed capability. |

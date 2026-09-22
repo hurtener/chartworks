@@ -29,18 +29,43 @@ The implementation review found and fixed ten reachable failures before delivery
     Discovery now requires exactly one result envelope per admitted topic and rejects
     missing, unknown or duplicate result IDs.
 
-`TestCW07/AC01` through `AC08` exercise current authorized server selection,
+`TestCW07/AC01` through `AC09` exercise current authorized server selection,
 confidence floors and ambiguity, bilingual reviewed values and months, geography,
 correction/removal, source-revision fencing, unsupported and ambiguous spans,
 cross-tenant and same-tenant/different-context denial, deterministic replay, and
 the interpretation budget. Existing phase-17 acceptance retains confirmed
 same-source multi-topic relationship coverage.
 
+## Consolidated dual-review fix round
+
+The single post-PR fix round closed all four findings without widening the workflow:
+
+1. Interpretation-only plans now enter the same protected business-evidence gate as
+   clarification filters. Active evidence requires base SQL/parameters, a complete
+   binding and validator receipt, current replay/rebinding, and exact reconstructed
+   SQL, parameters and receipt equality. Ordinary execution, terminal replay and
+   saved session-bound clones reject source, publication, vocabulary, parser or
+   interpretation drift. Reviewed replacement rebinds; complete removal leaves no
+   active predicate.
+2. `timestamptz` periods now build local month boundaries in the reviewed IANA zone,
+   reject missing or ambiguous midnight boundaries, and bind their UTC RFC3339
+   instants. Date and wall-clock timestamp contracts keep calendar-date bounds.
+3. Spanish `de`/`del` and English `of` named-month years parse deterministically.
+   Missing, malformed, out-of-range or adjacent competing years clarify before any
+   provider call instead of silently falling back to the server anchor year.
+4. Geography is an explicit reviewed categorical-dimension field carried by compile,
+   digest, enhancement, rebind and neutral import/export. Label keywords no longer
+   infer geography; absent metadata omits the flag.
+
+Focused regression evidence includes `TestCW07/AC09`,
+`TestCW07InterpretationBusinessEvidencePlanRunAndDrift`, rich semantic compile,
+portable round-trip, enhancement and rebind suites.
+
 Focused verification at the reviewed worktree head:
 
 ```text
-CGO_ENABLED=0 go test ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./sdk/chartworks
-CGO_ENABLED=0 go vet ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./sdk/chartworks
+CGO_ENABLED=0 go test ./internal/semantics ./internal/semantics/drafts ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./sdk/chartworks
+CGO_ENABLED=0 go vet ./internal/semantics ./internal/semantics/drafts ./internal/nlqroute ./internal/nlqexec ./internal/nlqapi ./sdk/chartworks
 TMPDIR=/private/tmp make planning-check check-mirror
 git diff --check
 ```

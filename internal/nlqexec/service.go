@@ -188,6 +188,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			if admissionErr = gatewayRequirement(e, "query.execute", admitted.resources); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
+			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
 			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
 		}
 	} else if !errors.Is(replayErr, store.ErrNotFound) {

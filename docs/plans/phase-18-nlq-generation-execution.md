@@ -94,6 +94,8 @@ Governed values and temporal spans now reach generation as mandatory typed conte
 and reach execution only as sealed `BusinessConstraint` values over exact reviewed
 dataset/column/source revisions. Immediate planning binds the in-process seal;
 retained run/refinement reconstructs it through current authorized publications and
-source bindings and fails on drift. Refinement inherits the anchor and replaces
+source bindings, requires the protected base candidate and exact binding receipt,
+and fails on publication/parser/vocabulary/source drift before ordinary or terminal
+execution. Refinement inherits the anchor and replaces
 same-target correction/removal edits. Interpretation still cannot issue a plan or
 bypass the existing validator, native source planning or read-only execution.

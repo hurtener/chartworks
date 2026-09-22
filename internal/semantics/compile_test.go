@@ -107,6 +107,7 @@ func TestCompileRichSemanticsRoundTripAndPrivacy(t *testing.T) {
 	pack.Measures[1].Aliases = []string{"Sales", "Ingresos"}
 	pack.Measures[1].Filters = []SemanticFilter{{ID: "positive_amount", Field: Reference{Kind: KindColumn, Dataset: "orders", ID: "amount"}, Operator: "not_null"}}
 	pack.Dimensions[0].Aliases = []string{"Territory", "Región"}
+	pack.Dimensions[0].Geography = true
 	for i := range pack.Datasets {
 		for j := range pack.Datasets[i].Columns {
 			if pack.Datasets[i].ID == "customers" && pack.Datasets[i].Columns[j].ID == "region" {
@@ -125,7 +126,7 @@ func TestCompileRichSemanticsRoundTripAndPrivacy(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := model.Pack()
-	if len(got.Measures[1].Aliases) != 2 || len(got.Dimensions[0].Values) != 1 || got.Dimensions[1].Temporal == nil || got.Dimensions[1].Temporal.Grains[0] != GrainMonth || len(got.RelationshipDecisions) != 1 {
+	if len(got.Measures[1].Aliases) != 2 || len(got.Dimensions[0].Values) != 1 || !got.Dimensions[0].Geography || got.Dimensions[1].Temporal == nil || got.Dimensions[1].Temporal.Grains[0] != GrainMonth || len(got.RelationshipDecisions) != 1 {
 		t.Fatalf("rich semantics lost: %#v", got)
 	}
 	pack.Dimensions[0].Values[0].Value = "mutated"
@@ -139,6 +140,27 @@ func TestCompileRichSemanticsRoundTripAndPrivacy(t *testing.T) {
 	if _, err = Compile(unsafe); err == nil {
 		t.Fatal("sensitive governed value entered semantic publication")
 	}
+	invalidGeography := testPack()
+	invalidGeography.Dimensions[0].Role = DimensionNumeric
+	invalidGeography.Dimensions[0].Geography = true
+	if _, err = Compile(invalidGeography); err == nil {
+		t.Fatal("non-categorical geography designation compiled")
+	}
+	designated := testPack()
+	designated.Dimensions[0].Geography = true
+	designatedModel, err := Compile(designated)
+	if err != nil || designatedModel.Digest() == compileMustDigest(t, testPack()) {
+		t.Fatal("geography designation was absent from semantic digest", err)
+	}
+}
+
+func compileMustDigest(t *testing.T, pack TopicPack) string {
+	t.Helper()
+	model, err := Compile(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model.Digest()
 }
 
 func TestCompileRejectsFilterLiteralsWithoutReviewedNonSensitiveField(t *testing.T) {

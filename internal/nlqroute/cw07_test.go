@@ -29,7 +29,7 @@ func cw07Publication(topic string) topics.Published {
 	if topic != "topic" {
 		digest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	}
-	return topics.Published{State: topics.State{Topic: topic, Version: "v1", Revision: 1, Active: true}, Digest: digest, Definition: topics.Definition{SchemaVersion: 1, Topic: topic, Version: "v1", Datasets: []topics.Dataset{{ID: "dataset", Source: topics.Binding{Source: "source", Context: "ctx", Dataset: "dataset", SourceRevision: 1}, Columns: []semantics.Column{{ID: "region", SourceName: "region_code", Name: "Region", NativeType: "text", Category: "text", Sensitivity: semantics.LiteralNonSensitive}, {ID: "occurred", SourceName: "occurred_on", Name: "Occurred", NativeType: "date", Category: "date", Sensitivity: semantics.LiteralNonSensitive, SemanticRole: semantics.SemanticRoleEventTime}}}}, Dimensions: []semantics.Dimension{{ID: "sales_region", Name: "Sales region", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "dataset", ID: "region"}, Role: semantics.DimensionCategorical, Aliases: []string{"geography", "región"}, Values: []semantics.GovernedValue{{ID: "north", Value: "NORTH", Aliases: []string{"north", "norte"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "ev1", Policy: "p1"}}, {ID: "south", Value: "SOUTH", Aliases: []string{"south", "sur"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "ev2", Policy: "p1"}}}}, {ID: "event_date", Name: "Event date", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "dataset", ID: "occurred"}, Role: semantics.DimensionTemporal, Aliases: []string{"date", "fecha"}, Temporal: &semantics.TemporalPolicy{Grains: []semantics.TimeGrain{semantics.GrainMonth}, Calendar: "gregorian", Timezone: "UTC"}}}}}
+	return topics.Published{State: topics.State{Topic: topic, Version: "v1", Revision: 1, Active: true}, Digest: digest, Definition: topics.Definition{SchemaVersion: 1, Topic: topic, Version: "v1", Datasets: []topics.Dataset{{ID: "dataset", Source: topics.Binding{Source: "source", Context: "ctx", Dataset: "dataset", SourceRevision: 1}, Columns: []semantics.Column{{ID: "region", SourceName: "region_code", Name: "Region", NativeType: "text", Category: "text", Sensitivity: semantics.LiteralNonSensitive}, {ID: "occurred", SourceName: "occurred_on", Name: "Occurred", NativeType: "date", Category: "date", Sensitivity: semantics.LiteralNonSensitive, SemanticRole: semantics.SemanticRoleEventTime}}}}, Dimensions: []semantics.Dimension{{ID: "sales_region", Name: "Sales region", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "dataset", ID: "region"}, Role: semantics.DimensionCategorical, Geography: true, Aliases: []string{"geography", "región"}, Values: []semantics.GovernedValue{{ID: "north", Value: "NORTH", Aliases: []string{"north", "norte"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "ev1", Policy: "p1"}}, {ID: "south", Value: "SOUTH", Aliases: []string{"south", "sur"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "ev2", Policy: "p1"}}}}, {ID: "event_date", Name: "Event date", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "dataset", ID: "occurred"}, Role: semantics.DimensionTemporal, Aliases: []string{"date", "fecha"}, Temporal: &semantics.TemporalPolicy{Grains: []semantics.TimeGrain{semantics.GrainMonth}, Calendar: "gregorian", Timezone: "UTC"}}}}}
 }
 
 func cw07Service(t *testing.T, publication topics.Published, binding readexec.Binding) (*Service, *testEngine) {
@@ -48,7 +48,7 @@ func cw07Service(t *testing.T, publication topics.Published, binding readexec.Bi
 
 func testCW07InterpretsGovernedGeographyAndSpanishMonthBeforeProvider(t *testing.T) {
 	service, engine := cw07Service(t, cw07Publication("topic"), cw07Binding(1))
-	out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageSpanish, Question: "Ingresos sin norte en marzo 2025", InterpretationAnchor: "2026-09-22"})
+	out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageSpanish, Question: "Ingresos sin norte en marzo de 2025", InterpretationAnchor: "2026-09-22"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +67,13 @@ func testCW07InterpretsGovernedGeographyAndSpanishMonthBeforeProvider(t *testing
 	}
 	if constraints[0].Value != "NORTH" || constraints[1].Value != "2025-03-01" {
 		t.Fatalf("typed constraints changed: %#v", constraints)
+	}
+	publication := cw07Publication("topic")
+	publication.Definition.Dimensions[0].Geography = false
+	service, _ = cw07Service(t, publication, cw07Binding(1))
+	neutral, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue in north", InterpretationAnchor: "2026-09-22"})
+	if err != nil || neutral.Interpretation == nil || neutral.Interpretation.Values[0].Geography {
+		t.Fatalf("label inferred geography without reviewed designation: err=%v out=%#v", err, neutral.Interpretation)
 	}
 }
 
@@ -281,6 +288,122 @@ func testCW07InterpretationReplayIsDeterministic(t *testing.T) {
 	if err != nil || readexec.Hash(want) != readexec.Hash(got) || binding != out.SourceBindingDigest {
 		t.Fatalf("interpretation replay drifted: %v %#v %#v", err, want, got)
 	}
+	parserDrift := out
+	parserCopy := *out.Interpretation
+	parserCopy.Parser = "retired-parser"
+	parserDrift.Interpretation = &parserCopy
+	if _, _, err := service.ReplayClarifications(context.Background(), testEnvelope(t, true), parserDrift); err == nil {
+		t.Fatal("parser drift replayed")
+	}
+	vocabulary := cw07Publication("topic")
+	vocabulary.Definition.Dimensions[0].Values[0].Value = "NORTH_REVIEWED"
+	vocabularyService, _ := cw07Service(t, vocabulary, cw07Binding(1))
+	if _, _, err := vocabularyService.ReplayClarifications(context.Background(), testEnvelope(t, true), out); err == nil {
+		t.Fatal("governed vocabulary drift replayed")
+	}
+	publication := cw07Publication("topic")
+	publication.State.Version, publication.Definition.Version = "v2", "v2"
+	publication.Digest = strings.Repeat("c", 64)
+	publicationService, _ := cw07Service(t, publication, cw07Binding(1))
+	if _, _, err := publicationService.ReplayClarifications(context.Background(), testEnvelope(t, true), out); err == nil {
+		t.Fatal("publication drift replayed")
+	}
+}
+
+func testCW07TemporalConnectorsAndInstantBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		locale   nlq.Language
+		question string
+		start    string
+		end      string
+	}{
+		{"spanish-de", nlq.LanguageSpanish, "Ingresos en marzo de 2025", "2025-03-01", "2025-04-01"},
+		{"spanish-del", nlq.LanguageSpanish, "Ingresos en marzo del 2025", "2025-03-01", "2025-04-01"},
+		{"english-of", nlq.LanguageEnglish, "Revenue in March of 2025", "2025-03-01", "2025-04-01"},
+		{"leap-month", nlq.LanguageEnglish, "Revenue in February of 2024", "2024-02-01", "2024-03-01"},
+		{"year-end", nlq.LanguageEnglish, "Revenue in December of 2025", "2025-12-01", "2026-01-01"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, _ := cw07Service(t, cw07Publication("topic"), cw07Binding(1))
+			out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, InterpretationAnchor: "2026-09-22"})
+			if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 || out.Interpretation.Temporal[0].Start != tc.start || out.Interpretation.Temporal[0].End != tc.end {
+				t.Fatalf("connector span changed: err=%v out=%#v", err, out.Interpretation)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		locale   nlq.Language
+		question string
+	}{
+		{nlq.LanguageEnglish, "Revenue in March of revenue"},
+		{nlq.LanguageSpanish, "Ingresos en marzo del veinte"},
+		{nlq.LanguageEnglish, "Revenue in March 20"},
+		{nlq.LanguageEnglish, "Revenue in March de 2025"},
+		{nlq.LanguageEnglish, "Revenue in March of 2025 or 2026"},
+	} {
+		service, engine := cw07Service(t, cw07Publication("topic"), cw07Binding(1))
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, InterpretationAnchor: "2026-09-22"})
+		if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "invalid_temporal_span" || engine.embeds != 0 {
+			t.Fatalf("malformed connector reached provider: err=%v out=%#v embeds=%d", err, out, engine.embeds)
+		}
+	}
+
+	publication := cw07Publication("topic")
+	publication.Definition.Datasets[0].Columns[1].NativeType = "timestamptz"
+	publication.Definition.Datasets[0].Columns[1].Category = "timestamp"
+	publication.Definition.Dimensions[1].Temporal.Timezone = "America/New_York"
+	binding := cw07Binding(1)
+	binding.Relations[0].Columns[1].NativeType = "timestamptz"
+	binding.Relations[0].Columns[1].Category = "timestamp"
+	service, _ := cw07Service(t, publication, binding)
+	out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue in March of 2025", InterpretationAnchor: "2026-09-22"})
+	if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 {
+		t.Fatal("instant span unavailable", err)
+	}
+	span := out.Interpretation.Temporal[0]
+	if span.TemporalType != "timestamptz" || span.LocalStart != "2025-03-01" || span.LocalEnd != "2025-04-01" || span.Start != "2025-03-01T05:00:00Z" || span.End != "2025-04-01T04:00:00Z" {
+		t.Fatalf("DST month did not preserve reviewed wall boundaries: %#v", span)
+	}
+	want, err := out.ResolvedBusinessConstraints()
+	if err != nil || want[0].Value != span.Start || want[0].Upper != span.End {
+		t.Fatalf("instant constraint mismatch: err=%v constraints=%#v", err, want)
+	}
+	got, _, err := service.ReplayClarifications(context.Background(), testEnvelope(t, true), out)
+	if err != nil || readexec.Hash(got) != readexec.Hash(want) {
+		t.Fatalf("instant replay changed: err=%v got=%#v", err, got)
+	}
+	relative, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue last month", InterpretationAnchor: "2025-04-15"})
+	if err != nil || relative.Interpretation == nil || len(relative.Interpretation.Temporal) != 1 || relative.Interpretation.Temporal[0].Start != span.Start || relative.Interpretation.Temporal[0].End != span.End {
+		t.Fatalf("relative instant span changed: err=%v out=%#v", err, relative.Interpretation)
+	}
+
+	wallPublication := cw07Publication("topic")
+	wallPublication.Definition.Datasets[0].Columns[1].NativeType = "timestamp"
+	wallPublication.Definition.Datasets[0].Columns[1].Category = "timestamp"
+	wallPublication.Definition.Dimensions[1].Temporal.Timezone = "America/New_York"
+	wallBinding := cw07Binding(1)
+	wallBinding.Relations[0].Columns[1].NativeType = "timestamp"
+	wallBinding.Relations[0].Columns[1].Category = "timestamp"
+	wallService, _ := cw07Service(t, wallPublication, wallBinding)
+	wall, err := wallService.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue in March of 2025", InterpretationAnchor: "2026-09-22"})
+	if err != nil || wall.Interpretation == nil || len(wall.Interpretation.Temporal) != 1 || wall.Interpretation.Temporal[0].TemporalType != "timestamp" || wall.Interpretation.Temporal[0].Start != "2025-03-01" || wall.Interpretation.Temporal[0].End != "2025-04-01" {
+		t.Fatalf("wall-clock encoding changed: err=%v out=%#v", err, wall.Interpretation)
+	}
+
+	for _, tc := range []struct {
+		zone, question string
+	}{
+		{"America/Havana", "Revenue in April of 2001"},
+		{"America/Havana", "Revenue in November of 2020"},
+	} {
+		publication.Definition.Dimensions[1].Temporal.Timezone = tc.zone
+		service, engine := cw07Service(t, publication, binding)
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: tc.question, InterpretationAnchor: "2026-09-22"})
+		if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "ambiguous_temporal_boundary" || engine.embeds != 0 {
+			t.Fatalf("gap/fold boundary reached provider: zone=%s err=%v out=%#v embeds=%d", tc.zone, err, out, engine.embeds)
+		}
+	}
 }
 
 func testCW07InterpretationBudgetFailsBeforeProvider(t *testing.T) {
@@ -318,4 +441,5 @@ func TestCW07(t *testing.T) {
 	t.Run("AC06_candidate_authority_before_provider", testCW07CandidateReachDeniedBeforeProvider)
 	t.Run("AC07_deterministic_replay", testCW07InterpretationReplayIsDeterministic)
 	t.Run("AC08_interpretation_budget_before_provider", testCW07InterpretationBudgetFailsBeforeProvider)
+	t.Run("AC09_temporal_connectors_and_instant_boundaries", testCW07TemporalConnectorsAndInstantBoundaries)
 }

@@ -51,23 +51,24 @@ type clarificationReplayer interface {
 	ReplayClarifications(context.Context, identity.Envelope, nlqroute.RouteResult) ([]exec.BusinessConstraint, string, error)
 }
 
+func hasActiveBusinessEvidence(route nlqroute.RouteResult) bool {
+	return len(route.Resolutions) != 0 || route.Interpretation != nil && len(route.Interpretation.Values)+len(route.Interpretation.Temporal) != 0
+}
+
 func bindClarificationCandidate(ctx context.Context, a admission, candidate generatedCandidate) (generatedCandidate, error) {
-	if len(a.route.Resolutions) == 0 && (a.route.Interpretation == nil || len(a.route.Interpretation.Values)+len(a.route.Interpretation.Temporal) == 0) {
+	if !hasActiveBusinessEvidence(a.route) {
 		return candidate, nil
 	}
 	constraints, err := a.route.ResolvedBusinessConstraints()
 	if err != nil {
 		return generatedCandidate{}, err
 	}
-	if len(constraints) != 0 && exec.Hash(a.binding) != a.route.SourceBindingDigest {
+	if len(constraints) == 0 || exec.Hash(a.binding) != a.route.SourceBindingDigest {
 		return generatedCandidate{}, exec.ErrBinding
 	}
 	bound, err := exec.BindBusinessConstraints(ctx, a.binding, candidate.SQL, candidate.Parameters, constraints)
 	if err != nil {
 		return generatedCandidate{}, err
-	}
-	if len(constraints) == 0 {
-		bound.Receipt = exec.BusinessBindingReceipt{SchemaVersion: 1, SourceBinding: exec.Hash(a.binding), Constraints: exec.Hash(constraints), Statement: exec.Hash([]any{bound.SQL, bound.Parameters}), Bindings: []exec.BusinessParameterBinding{}}
 	}
 	candidate.clarification = &ClarificationEvidence{SchemaVersion: 1, BaseSQL: candidate.SQL, BaseParameters: append([]exec.Parameter(nil), candidate.Parameters...), Binding: bound.Receipt}
 	candidate.SQL, candidate.Parameters = bound.SQL, bound.Parameters
@@ -112,7 +113,7 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 // before a new execution. It does not trust stored SQL, a digest, or a previous
 // answer as validator-issued proof; Run still performs normal fresh validation.
 func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identity.Envelope, record QueryRecord, a admission) error {
-	if len(record.Route.Resolutions) == 0 {
+	if !hasActiveBusinessEvidence(record.Route) {
 		if record.Clarification != nil {
 			evidence := record.Clarification
 			if evidence.SchemaVersion != 1 || evidence.BaseSQL != "" || len(evidence.BaseParameters) != 0 || evidence.Binding.SchemaVersion != 0 {
@@ -130,16 +131,16 @@ func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identit
 	if err != nil {
 		return err
 	}
+	if len(constraints) == 0 {
+		return exec.ErrBinding
+	}
 	evidence := record.Clarification
-	if evidence == nil || evidence.SchemaVersion != 1 || evidence.Binding.SchemaVersion != 1 || evidence.Binding.Validation == nil || !evidence.Binding.Validation.Validated || evidence.Binding.SourceBinding != exec.Hash(a.binding) {
+	if evidence == nil || evidence.SchemaVersion != 1 || evidence.BaseSQL == "" || evidence.Binding.SchemaVersion != 1 || evidence.Binding.Validation == nil || !evidence.Binding.Validation.Validated || evidence.Binding.Validation.Source != a.binding.Source || evidence.Binding.Validation.Context != a.binding.Context || evidence.Binding.Validation.Dialect != a.binding.Dialect || evidence.Binding.Validation.Contract != a.binding.Contract || evidence.Binding.SourceBinding != exec.Hash(a.binding) {
 		return exec.ErrBinding
 	}
 	bound, err := exec.BindBusinessConstraints(ctx, a.binding, evidence.BaseSQL, evidence.BaseParameters, constraints)
 	if err != nil {
 		return err
-	}
-	if len(constraints) == 0 {
-		bound.Receipt = exec.BusinessBindingReceipt{SchemaVersion: 1, SourceBinding: exec.Hash(a.binding), Constraints: exec.Hash(constraints), Statement: exec.Hash([]any{bound.SQL, bound.Parameters}), Bindings: []exec.BusinessParameterBinding{}}
 	}
 	expected := evidence.Binding
 	expected.Validation = nil

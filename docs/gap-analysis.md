@@ -148,7 +148,7 @@ versioned multi-facet evidence and optional authorized reranking, with explicit
 floor/margin outcomes. Reviewed non-sensitive value/geography aliases and supported
 English/Spanish month spans become sealed, replayable generation and execution
 constraints with source/topic/context pins and correction/removal semantics. See
-the [contract](contracts/routing-interpretation-v1.md) and `TestCW07/AC01`–`AC08`.
+the [contract](contracts/routing-interpretation-v1.md) and `TestCW07/AC01`–`AC09`.
 This does not claim live confidence calibration, arbitrary date/place extraction,
 cloud-source qualification or final stress/performance evidence; those remain
 phase 24/34/25 manual-suite obligations.
@@ -373,9 +373,9 @@ phase 24/34/25 manual-suite obligations.
 - **Disposition:** implemented by CW-07 over reviewed non-sensitive rich semantics; broader date grammar/live-source evidence remains final-suite work.
 - **Owner / phases:** 17/18; source metadata 15/33.
 - **Reference behavior (neutral):** Original context packing infers governed value filters, normalizes geography aliases and injects temporal dimensions based on extracted spans.
-- **Current behavior:** The resolved route deterministically matches reviewed English/Spanish governed aliases, negation and geography vocabulary, plus named/relative month spans against one pinned anchor. It persists canonical values, locale/parser/anchor, exact topic/source/context revisions, provenance and a digest. Ambiguous values/temporal dimensions and unsupported calendars clarify before provider work.
-- **Generation/execution:** Interpretations are mandatory sealed context constraints and closed business constraints over exact physical columns. They do not grant authority or issue plans; current source binding, SQL validation and read-only execution remain required. Refinement supports stable removal/replacement with reviewed value IDs and retained replay fails on drift.
-- **Closure evidence:** `TestCW07/AC03` through `AC05` and `AC07` cover bilingual negated geography, explicit/month-anchor periods, correction/removal, source drift, ambiguity and deterministic replay.
+- **Current behavior:** The resolved route deterministically matches reviewed English/Spanish governed aliases and negation, plus named/relative month spans and supported `of`/`de`/`del` year connectors against one pinned anchor. Geography is emitted only from an explicit reviewed categorical-dimension designation. Date/wall-clock bounds retain calendar dates; instant bounds use reviewed-zone RFC3339 UTC and reject missing/folded midnights. It persists canonical values, locale/parser/anchor, exact topic/source/context revisions, provenance and a digest. Ambiguous values/temporal dimensions and unsupported calendars clarify before provider work.
+- **Generation/execution:** Interpretations are mandatory sealed context constraints and closed business constraints over exact physical columns. Active clarification or interpretation evidence requires protected base SQL/parameters and an exact binding receipt, replays under current authority/semantic/source state before ordinary and terminal execution, and then passes fresh SQL validation. Refinement supports stable removal/replacement with reviewed value IDs.
+- **Closure evidence:** `TestCW07/AC03` through `AC05`, `AC07` and `AC09`, plus `TestCW07InterpretationBusinessEvidencePlanRunAndDrift`, cover bilingual negated reviewed geography, neutral label non-inference, connector/month-anchor periods, date/instant encoding, DST gaps/folds, correction/removal, ordinary and saved-clone execution, source/publication/vocabulary/parser drift, exact receipts, ambiguity and deterministic replay.
 - **Source evidence IDs:** REF-RTE-02-A, REF-RTE-02-B, REF-RTE-02-C.
 - **Current repository evidence:** [interpretation](../internal/nlqroute/interpretation.go), [execution binding](../internal/nlqexec/clarification.go), [contract](contracts/routing-interpretation-v1.md), [focused acceptance](../internal/nlqroute/cw07_test.go).
 

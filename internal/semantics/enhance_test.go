@@ -100,9 +100,13 @@ func TestApplyRichEnhancementsIsIdempotentButRejectsConflictingReplay(t *testing
 	if err != nil || len(replayed.Pack().KPIs) != len(first.Pack().KPIs) || len(replayed.Pack().RelationshipDecisions) != 1 {
 		t.Fatalf("exact retry was not idempotent: %v %#v", err, replayed.Pack())
 	}
-	nextPage := []Enhancement{{Dataset: "customers", Column: "region", Kind: EnhancementDimension, Name: "Region", Role: DimensionCategorical}}
+	nextPage := []Enhancement{{Dataset: "customers", Column: "region", Kind: EnhancementDimension, Name: "Area", Role: DimensionCategorical, Geography: true}}
 	paged, err := ApplyRichEnhancements(first, "v3", nextPage, kpis, nil)
-	if err != nil || len(paged.Pack().KPIs) != len(first.Pack().KPIs) || len(paged.Pack().RelationshipDecisions) != 1 {
+	foundGeography := false
+	for _, dimension := range paged.Pack().Dimensions {
+		foundGeography = foundGeography || dimension.ID == GeneratedEntityID(EnhancementDimension, "customers", "region") && dimension.Geography
+	}
+	if err != nil || len(paged.Pack().KPIs) != len(first.Pack().KPIs) || len(paged.Pack().RelationshipDecisions) != 1 || !foundGeography {
 		t.Fatalf("exact cross-page proposal was not idempotent: %v %#v", err, paged.Pack())
 	}
 	kpis[0].Expression = "changed expression"

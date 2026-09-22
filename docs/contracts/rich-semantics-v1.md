@@ -9,10 +9,13 @@ validator-issued read plan.
 
 One topic pack now carries reviewed business aliases on columns, measures,
 dimensions and KPIs; reviewed physical-column roles; measure/KPI units; typed
-temporal calendars and supported grains; bounded governed value mappings; reviewed
+temporal calendars and supported grains; an explicit reviewed geography designation
+on categorical dimensions; bounded governed value mappings; reviewed
 mandatory filter concepts; confirmed join evidence; and candidate/rejected
 relationship decisions. All references remain stable typed IDs. Display names,
 aliases and stored values never become reference coordinates.
+Names such as `region` or `state` never imply geography. An absent designation is
+unknown and consumers omit the geography flag.
 
 Governed values are a privacy-preserving replacement for unrestricted sample rows.
 They are accepted only for a column explicitly reviewed as non-sensitive and carry
@@ -36,7 +39,8 @@ non-confirmed evidence are same-source, same-context and same-revision only.
 The compiler bounds, canonicalizes, hashes and deep-clones all rich fields.
 Draft save, entity mutation, dataset rebind, reviewed publication, exact reads,
 facets, SDK aliases and MCP topic description use the same definition. Rebind and
-neutral import/export rewrite every reference-bearing filter and relationship
+neutral import/export preserve the geography designation and rewrite every
+reference-bearing filter and relationship
 decision together with measures, dimensions, KPIs, joins and canonical keys.
 Published definitions remain immutable; legacy definitions with absent optional
 rich fields preserve their meaning and do not gain inferred defaults.
