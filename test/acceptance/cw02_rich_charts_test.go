@@ -34,7 +34,7 @@ func TestCW02RichCharts(t *testing.T) {
 func testCW02ChartHTTP(t *testing.T) {
 	f := newChartHTTP(t, nil, nil)
 	catalog, err := f.client.ChartCatalog(t.Context())
-	if err != nil || !reflect.DeepEqual(catalog.MappingVersions, []int{1, 2}) || len(catalog.Kinds) != 14 {
+	if err != nil || !reflect.DeepEqual(catalog.MappingVersions, []int{1, 2, 3}) || len(catalog.Kinds) != 14 {
 		t.Fatal("versioned catalog", catalog, err)
 	}
 	for _, fixture := range chartfixtures.RichCases() {

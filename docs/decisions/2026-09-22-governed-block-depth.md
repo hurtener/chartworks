@@ -1,6 +1,6 @@
 # Governed block depth continuation
 
-### D-079 — Certification wording, reviewed overlap and dialect-bound assistance · accepted
+### D-080 — Certification wording, reviewed overlap and dialect-bound assistance · accepted
 
 Reporting certification retains deterministic localized period discrepancies and
 requires exact reviewer acknowledgement before attestation. Reviewed question

@@ -70,7 +70,7 @@ reviewed structured question-intent assessment, fixed-slot list binds and a
 dialect-bound assistance proposal. Findings, reviews, candidate scope and authoring
 dispositions are digest-bound and durable. They never grant source reach, rewrite a
 published revision, execute during refresh, or turn question metadata into SQL.
-Use [D-079](../decisions/2026-09-22-governed-block-depth.md) and the
+Use [D-080](../decisions/2026-09-22-governed-block-depth.md) and the
 [block contract](../contracts/reporting-blocks-v1.md).
 
 ## CW-06 rule-snapshot continuation
@@ -85,3 +85,11 @@ and fences current rule heads in the block commit transaction, so a
 concurrent replacement fails stale without partial state. See [D-076](../decisions/2026-09-22-rule-scopes-reporting-snapshots.md),
 the [block contract](../contracts/reporting-blocks-v1.md), and the
 [CW-06 review](../reviews/cw-06-adversarial.md).
+
+## CW-05 rich output continuation
+
+AC01/AC02/AC06/AC08: immutable block revisions may store closed v3 KPI/table and
+column display intent. Existing JSON digests and drift checks include the complete
+mapping; migration 043 adds forward bounds without rewriting v1/v2 publications.
+Definition transfer remains native and exact. Foreign mapping belongs to Phase 34.
+See [D-079](../decisions/2026-09-22-rich-output-display.md).

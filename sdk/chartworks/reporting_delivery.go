@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/rendering"
 	"github.com/hurtener/chartworks/internal/reporting"
 )
 
@@ -71,6 +72,12 @@ type ReportingViewerTable = reporting.ViewerTable
 // ReportingViewerPage describes an exact row continuation, not a new query.
 type ReportingViewerPage = reporting.ViewerPage
 
+// ReportingExportRequest selects a sealed retained output and static format.
+type ReportingExportRequest = rendering.Request
+
+// ReportingRendition contains bounded static bytes and immutable provenance.
+type ReportingRendition = rendering.Rendition
+
 func validReportingKind(kind string) bool {
 	return kind == "block" || kind == "report" || kind == "dashboard"
 }
@@ -132,4 +139,23 @@ func (c *Client) ViewReporting(ctx context.Context, in ReportingViewRequest) (ou
 	}
 	err = c.callLimit(ctx, "POST", "/v1/reporting/view", "", in, &out, 4<<20)
 	return
+}
+
+// ExportReporting produces JSON, CSV, static HTML or static SVG from retained
+// values only. It never runs a query or model and requires explicit export reach.
+func (c *Client) ExportReporting(ctx context.Context, in ReportingExportRequest) (out ReportingRendition, err error) {
+	if !validReportingKind(in.View.Kind) || !identity.Identifier(in.View.Run) || in.View.Page != "" && !identity.Identifier(in.View.Page) || in.View.Widget != "" && !identity.Identifier(in.View.Widget) || in.View.Output != "" && !identity.Identifier(in.View.Output) || in.View.Offset < 0 || in.View.Offset > 100000 || in.View.Limit < 0 || in.View.Limit > 1000 || !oneOfString(in.Format, "json", "csv", "html", "svg") || !oneOfString(in.Theme, "light", "dark") || in.Width < 320 || in.Width > 4096 || in.Height < 200 || in.Height > 4096 {
+		return out, ErrReportingRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/reporting/export", "", in, &out, 20<<20)
+	return
+}
+
+func oneOfString(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }

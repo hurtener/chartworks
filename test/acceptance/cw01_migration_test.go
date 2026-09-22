@@ -19,7 +19,7 @@ func cw01MigrationAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest) != 42 || manifest[34].Name != "migrations/035_reporting_output_intent.sql" || manifest[35].Name != "migrations/036_nlq_clarification.sql" || manifest[36].Name != "migrations/037_clarification_comparison.sql" || manifest[37].Name != "migrations/038_reporting_rule_snapshots.sql" || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" {
+	if len(manifest) != 44 || manifest[34].Name != "migrations/035_reporting_output_intent.sql" || manifest[35].Name != "migrations/036_nlq_clarification.sql" || manifest[36].Name != "migrations/037_clarification_comparison.sql" || manifest[37].Name != "migrations/038_reporting_rule_snapshots.sql" || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" || manifest[42].Name != "migrations/043_reporting_display_intent.sql" || manifest[43].Name != "migrations/044_reporting_question_assessments.sql" {
 		t.Fatal("CW-01 did not append to the shipped schema")
 	}
 	for _, migration := range manifest[1:35] {
@@ -31,8 +31,8 @@ func cw01MigrationAcceptance(t *testing.T) {
 	if err := database.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if count(t, connection, `SELECT count(*) FROM chartworks.schema_migrations`) != 42 {
-		t.Fatal("upgrade did not apply exactly seven new migrations")
+	if count(t, connection, `SELECT count(*) FROM chartworks.schema_migrations`) != 44 {
+		t.Fatal("upgrade did not apply the complete forward migration suffix")
 	}
 	for _, migration := range manifest[:35] {
 		var name, checksum string

@@ -77,3 +77,11 @@ Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
 source execution, provider-fixture and browser checks. Keep the existing named
 phase criteria and phase status; this assignment closes only its three owned gap
 entries, not the whole phase, other reporting work, or full migration/release.
+
+## CW-05 display consumer continuation
+
+AC04/AC06/AC08: the Apps viewer consumes v3 KPI/table output and applies retained
+display labels, fraction digits, locale/date and currency fallback as inert text.
+KPI comparison, target, threshold and sparkline evidence is shown without source or
+model work. The closed formatter and actual retained shapes are shared with the
+bounded static/export slice described by [D-079](../decisions/2026-09-22-rich-output-display.md).

@@ -161,7 +161,7 @@ question-match threshold. These limits grant no access. Reviewed question intent
 can carry bounded metric, grain, population, filter and period components.
 Discovery classifies authorized candidates as duplicate, overlap or unique from
 exact reviewed components and labels lexical comparison as fallback when either
-side lacks intent. Migration 043 stores request, authorized candidate-scope and
+side lacks intent. Migration 044 stores request, authorized candidate-scope and
 decision digests with protected bounded evidence. Assessment identity and evidence
 also bind the exact signed scope/resource reach and configured question threshold;
 narrowed and wildcard authority cannot share a durable assessment identity.

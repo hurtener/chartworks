@@ -152,6 +152,27 @@ func TestNarrativeDefinitionIsBoundedEvidenceOnly(t *testing.T) {
 	}
 }
 
+func TestRichDisplayIntentSurvivesDefinitionValidation(t *testing.T) {
+	d := contractDefinition()
+	m := d.Outputs[0].Mapping
+	m.Version = charts.DisplayVersion
+	m.Columns[0].DisplayLabel = "Total"
+	m.Columns[0].Format = charts.Format{FractionDigits: 2, Locale: "es-AR", Currency: "USD", CurrencySymbol: "US$"}
+	m.Table = &charts.TableOptions{Columns: []charts.TableColumnIntent{{Column: "c0", Visible: true}}, PageSize: 25, ShowTotals: true}
+	if err := validateDefinition(context.Background(), d, config.DefaultReporting(), false); err != nil {
+		t.Fatal("valid v3 display intent rejected", err)
+	}
+	want := DefinitionDigest(d)
+	roundTrip := clone(d)
+	if DefinitionDigest(roundTrip) != want || roundTrip.Outputs[0].Mapping.Columns[0].DisplayLabel != "Total" || roundTrip.Outputs[0].Mapping.Table.PageSize != 25 {
+		t.Fatal("display intent lost from immutable definition")
+	}
+	roundTrip.Outputs[0].Mapping.Table.Columns[0].Visible = false
+	if validateDefinition(context.Background(), roundTrip, config.DefaultReporting(), false) == nil {
+		t.Fatal("table with no visible column accepted")
+	}
+}
+
 func TestResultShapeAndPureContractFailures(t *testing.T) {
 	ctx := context.Background()
 	d := contractDefinition()
