@@ -161,3 +161,32 @@ func TestFilterOptionSemanticPhysicalEqualityFence(t *testing.T) {
 		}
 	}
 }
+
+func TestFilterOptionDimensionChainPublicationAndRuntimeFence(t *testing.T) {
+	parameter := Parameter{Name: "category", Type: "dimension_value", Dimension: &DimensionReference{Topic: "topic", Version: "v1", Dimension: "category"}}
+	source := FilterOptionSource{Version: 1, Block: "block", BlockRevision: 1, Topic: "topic", TopicVersion: "v1", Dataset: "sales", Column: "name"}
+	definition := topics.Definition{Topic: "topic", Version: "v1", Dimensions: []semantics.Dimension{
+		{ID: "category", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "sales", ID: "name"}},
+		{ID: "unrelated", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "sales", ID: "description"}},
+	}}
+	if !filterOptionDimensionMatches(parameter, source, definition) {
+		t.Fatal("exact reviewed dimension chain rejected")
+	}
+	for _, mutate := range []func(*Parameter, *FilterOptionSource, *topics.Definition){
+		func(p *Parameter, _ *FilterOptionSource, _ *topics.Definition) { p.Dimension.Topic = "other-topic" },
+		func(p *Parameter, _ *FilterOptionSource, _ *topics.Definition) { p.Dimension.Version = "v2" },
+		func(p *Parameter, _ *FilterOptionSource, _ *topics.Definition) { p.Dimension.Dimension = "missing" },
+		func(_ *Parameter, s *FilterOptionSource, _ *topics.Definition) { s.Column = "description" },
+		func(_ *Parameter, _ *FilterOptionSource, d *topics.Definition) {
+			d.Dimensions[0].Field.ID = "description"
+		},
+	} {
+		candidateParameter := clone(parameter)
+		candidateSource := source
+		candidateDefinition := clone(definition)
+		mutate(&candidateParameter, &candidateSource, &candidateDefinition)
+		if filterOptionDimensionMatches(candidateParameter, candidateSource, candidateDefinition) {
+			t.Fatal("unrelated dimension chain accepted", candidateParameter.Dimension, candidateSource, candidateDefinition.Dimensions[0].Field)
+		}
+	}
+}

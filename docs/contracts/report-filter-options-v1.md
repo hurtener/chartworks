@@ -3,7 +3,9 @@
 REP-01 is implemented as an explicit governed source read. A report filter may
 carry a version-one option source that pins an exact block revision, topic
 publication, dataset and reviewed semantic column. The source must belong to an
-exact block revision used by the same immutable report revision. Display labels,
+exact block revision used by the same immutable report revision. Dimension
+parameters additionally require an exact topic/version/dimension reference whose
+reviewed field is that same dataset and column. Display labels,
 parameter names and physical names supplied by clients never select relations or
 columns.
 

@@ -225,8 +225,17 @@ func TestCW10FilterOptionSearchAndOversize(t *testing.T) {
 	widget.Block.Revision = 1
 	widget.Bindings = []reporting.FilterBinding{{Filter: "category", Parameter: "category"}}
 	d.Widgets = append(d.Widgets, widget)
-	for _, invalid := range []struct{ id, column string }{{"cw10-missing-option", "missing"}, {"cw10-wrong-option-type", amountColumn}} {
+	for _, invalid := range []struct {
+		id, topic, version, column string
+	}{
+		{"cw10-missing-option", f.pack.Topic, f.pack.Version, "missing"},
+		{"cw10-wrong-option-type", f.pack.Topic, f.pack.Version, amountColumn},
+		{"cw10-wrong-option-topic", "other-topic", f.pack.Version, column},
+		{"cw10-wrong-option-version", f.pack.Topic, "v2", column},
+	} {
 		bad := phase27Copy(t, d)
+		bad.Filters[0].Options.Topic = invalid.topic
+		bad.Filters[0].Options.TopicVersion = invalid.version
 		bad.Filters[0].Options.Column = invalid.column
 		if _, err := documents.Create(ctx, author, "report", invalid.id, bad); !errors.Is(err, reporting.ErrStale) {
 			t.Fatal("publication accepted an invalid semantic option chain", invalid.id, err)

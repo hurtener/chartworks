@@ -15,6 +15,7 @@ and source-free; only the explicit filter-options operation performs this read.
 Publication and every request intersect the selected option field with the exact
 active semantic publication and current physical binding, including source,
 context, dataset, revision, native type, category, nullability and safety. Closed
-dialect builders cover every supported read connector. Truncated results and
-scalars beyond the cursor-safe bound fail explicitly rather than presenting an
-incomplete set as complete.
+dimension parameters must resolve their exact pinned topic/version/dimension to
+that same dataset and column. Closed dialect builders cover every supported read
+connector. Truncated results and scalars beyond the cursor-safe bound fail
+explicitly rather than presenting an incomplete set as complete.

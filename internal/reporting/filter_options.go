@@ -300,6 +300,26 @@ func filterOptionType(parameter Parameter, column semantics.Column) bool {
 	}
 }
 
+func filterOptionDimensionMatches(parameter Parameter, source FilterOptionSource, definition topics.Definition) bool {
+	kind := parameter.Type
+	if scalar := listScalarType(kind); scalar != "" {
+		kind = scalar
+	}
+	if kind != "dimension_value" {
+		return true
+	}
+	ref := parameter.Dimension
+	if ref == nil || ref.Topic != source.Topic || ref.Version != source.TopicVersion || definition.Topic != ref.Topic || definition.Version != ref.Version {
+		return false
+	}
+	for _, dimension := range definition.Dimensions {
+		if dimension.ID == ref.Dimension {
+			return dimension.Field.Kind == semantics.KindColumn && dimension.Field.Dataset == source.Dataset && dimension.Field.ID == source.Column
+		}
+	}
+	return false
+}
+
 func (s *Documents) resolveFilterOption(ctx context.Context, e identity.Envelope, definition Definition, source FilterOptionSource, parameter Parameter) (filterOptionResolution, error) {
 	publications, _, err := s.blocks.resolveDefinitions(ctx, e, definition, true)
 	if err != nil {
@@ -321,6 +341,9 @@ func (s *Documents) resolveFilterOption(ctx context.Context, e identity.Envelope
 	for _, publication := range publications {
 		if publication.Definition.Topic != source.Topic || publication.Definition.Version != source.TopicVersion {
 			continue
+		}
+		if !filterOptionDimensionMatches(parameter, source, publication.Definition) {
+			return filterOptionResolution{}, ErrStale
 		}
 		for _, dataset := range publication.Definition.Datasets {
 			if dataset.ID != source.Dataset || dataset.Source.Source != definition.Source || dataset.Source.Context != definition.Context || dataset.Source.SourceRevision != binding.Revision {
