@@ -147,3 +147,18 @@ gates; PR #11 records this phase as shipped only conditionally, becoming effecti
 after every required hosted check passes and the PR merges. The approved 84.5%
 coverage exception
 applies only to `internal/store/postgres`; no other phase 15 package inherits it.
+
+## CW-04 rich semantic extension
+
+The one topic-pack model now carries aliases, semantic column roles, units,
+non-sensitive governed values with evidence/policy provenance, temporal
+calendar/grain policy, mandatory filter concepts, confirmed join evidence and
+candidate/rejected relationship decisions. Compiler bounds, canonical hashing,
+draft persistence, rebind, publication projection, facets, neutral import/export and
+SDK aliases share this definition. Optional absence preserves legacy meaning.
+
+The bounded enhancement checkpoint now produces descriptions, aliases, units,
+roles, temporal policy, KPI formulas and candidate/rejected relationship evidence.
+The latter remain non-executable until explicit entity authoring and the existing
+human review/publication lifecycle. The gateway never receives sample rows or
+sensitive values. See [rich semantics v1](../contracts/rich-semantics-v1.md).

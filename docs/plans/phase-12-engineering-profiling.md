@@ -53,6 +53,16 @@ The shipped implementation contains named acceptance tests plus source-backed ch
 
 Permanent read-only CI requires all 76 implemented criteria, the full race-enabled coverage suite and bounded engineering/parser fuzz checks without reducing earlier gates. AC06 still requires actual measured source/service/model attribution as applicable; an inspection seam does not finish the later semantic-generation or publishing phases.
 
+## CW-04 governed-value handoff
+
+The profile privacy boundary remains unchanged: deterministic profiles do not expose
+raw rows or unrestricted top-value lists. The semantic contract can now accept a
+separately reviewed, bounded low-cardinality vocabulary for a field explicitly
+classified non-sensitive. Each mapping carries evidence and policy identifiers and
+the enclosing dataset retains the exact profile/source/context revision. Sensitive
+or unknown-sensitivity values fail semantic compilation. Full phase-33 orchestration
+of profile review into these authoring artifacts remains separate work.
+
 ## Glossary, decisions and deviations
 
 Observation time, freshness and sampling provenance are distinct. D-049/D-052 apply. Later semantic generation/publication and live provider quality remain obligations of their owning phases.

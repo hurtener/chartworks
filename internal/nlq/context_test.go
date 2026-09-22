@@ -164,6 +164,40 @@ func TestAssemblerReturnsTypedInsufficiencyForMandatoryContext(t *testing.T) {
 	}
 }
 
+func TestAssemblerKeepsMetricDependencyClosureAtomic(t *testing.T) {
+	assembler, err := NewDefaultContextAssembler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := minimalInput()
+	input.Metrics = []PinnedMetric{{ID: "margin", Text: "Margin = revenue minus cost", Dependencies: []MetricDependency{
+		{Kind: "kpi", ID: "margin", Text: `{"expression":"revenue minus cost"}`},
+		{Kind: "measure", ID: "revenue", Text: `{"aggregation":"sum","field":"orders.amount"}`},
+		{Kind: "measure", ID: "cost", Text: `{"aggregation":"sum","field":"orders.cost"}`},
+		{Kind: "join", ID: "orders_products", Text: `{"cardinality":"many_to_one"}`},
+	}}}
+	assembled, err := assembler.Assemble(context.Background(), input, TierLow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"revenue minus cost", "orders.amount", "orders.cost", "orders_products"} {
+		if !strings.Contains(assembled.Prompt, required) {
+			t.Fatalf("dependency %q absent from sealed prompt: %s", required, assembled.Prompt)
+		}
+	}
+	input.Metrics[0].Dependencies[0].Text = "mutated"
+	if assembled.Metrics[0].Dependencies[0].Text == "mutated" {
+		t.Fatal("assembled closure aliases caller memory")
+	}
+
+	input = minimalInput()
+	input.Metrics = []PinnedMetric{{ID: "oversized_metric", Text: "Must remain complete", Dependencies: []MetricDependency{{Kind: "formula", ID: "formula", Text: strings.Repeat("x ", 7000)}}}}
+	_, err = assembler.Assemble(context.Background(), input, TierLow)
+	if !errors.Is(err, ErrInsufficient) {
+		t.Fatalf("incomplete mandatory closure was not rejected before model work: %v", err)
+	}
+}
+
 func TestAssemblerCapsOmissionDetailsAndExamples(t *testing.T) {
 	assembler, err := NewDefaultContextAssembler()
 	if err != nil {

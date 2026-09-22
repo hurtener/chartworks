@@ -72,13 +72,15 @@ const (
 	KindKPI Kind = "kpi"
 	// KindJoin identifies a relationship namespace.
 	KindJoin Kind = "join"
+	// KindRelationshipDecision identifies non-executable candidate/rejected evidence.
+	KindRelationshipDecision Kind = "relationship_decision"
 	// KindCanonicalEntity identifies tenant-wide business meaning.
 	KindCanonicalEntity Kind = "canonical_entity"
 )
 
 func (k Kind) valid() bool {
 	switch k {
-	case KindDataset, KindColumn, KindMeasure, KindDimension, KindKPI, KindJoin, KindCanonicalEntity:
+	case KindDataset, KindColumn, KindMeasure, KindDimension, KindKPI, KindJoin, KindRelationshipDecision, KindCanonicalEntity:
 		return true
 	}
 	return false
@@ -134,6 +136,86 @@ type Column struct {
 	NativeType  string             `json:"native_type"`
 	Category    string             `json:"category"`
 	Nullable    bool               `json:"nullable"`
+	// Aliases are reviewed business-language synonyms. They never replace the
+	// stable ID or physical source name when resolving a reference.
+	Aliases []string `json:"aliases,omitempty"`
+	// SemanticRole records the reviewed role of the physical field. Empty is
+	// retained for legacy definitions and means unknown, never inferred.
+	SemanticRole SemanticRole `json:"semantic_role,omitempty"`
+}
+
+// SemanticRole is the closed reviewed role vocabulary used during onboarding.
+type SemanticRole string
+
+const (
+	SemanticRoleFactKey      SemanticRole = "fact_key"
+	SemanticRoleDimensionKey SemanticRole = "dimension_key"
+	SemanticRoleMeasureInput SemanticRole = "measure_input"
+	SemanticRoleAttribute    SemanticRole = "attribute"
+	SemanticRoleEventTime    SemanticRole = "event_time"
+)
+
+func (r SemanticRole) valid() bool {
+	switch r {
+	case "", SemanticRoleFactKey, SemanticRoleDimensionKey, SemanticRoleMeasureInput, SemanticRoleAttribute, SemanticRoleEventTime:
+		return true
+	}
+	return false
+}
+
+// ValueProvenance binds a reviewed vocabulary to bounded evidence without
+// retaining raw profile rows. Evidence and policy are opaque identifiers.
+type ValueProvenance struct {
+	Kind     string `json:"kind"`
+	Evidence string `json:"evidence"`
+	Policy   string `json:"policy"`
+}
+
+// GovernedValue maps reviewed user spellings to one stored semantic value.
+// Sensitive values are rejected from generation facets and context.
+type GovernedValue struct {
+	ID          string             `json:"id"`
+	Value       string             `json:"value"`
+	Aliases     []string           `json:"aliases,omitempty"`
+	Sensitivity LiteralSensitivity `json:"sensitivity"`
+	Provenance  ValueProvenance    `json:"provenance"`
+}
+
+// TimeGrain is a closed calendar aggregation vocabulary.
+type TimeGrain string
+
+const (
+	GrainMinute  TimeGrain = "minute"
+	GrainHour    TimeGrain = "hour"
+	GrainDay     TimeGrain = "day"
+	GrainWeek    TimeGrain = "week"
+	GrainMonth   TimeGrain = "month"
+	GrainQuarter TimeGrain = "quarter"
+	GrainYear    TimeGrain = "year"
+)
+
+func (g TimeGrain) valid() bool {
+	switch g {
+	case GrainMinute, GrainHour, GrainDay, GrainWeek, GrainMonth, GrainQuarter, GrainYear:
+		return true
+	}
+	return false
+}
+
+// TemporalPolicy carries reviewed calendar behavior for one time dimension.
+type TemporalPolicy struct {
+	Grains   []TimeGrain `json:"grains"`
+	Calendar string      `json:"calendar"`
+	Timezone string      `json:"timezone,omitempty"`
+}
+
+// SemanticFilter is a reviewed mandatory filter concept. It is generation
+// evidence only; execution still requires validator-owned predicates.
+type SemanticFilter struct {
+	ID       string    `json:"id"`
+	Field    Reference `json:"field"`
+	Operator string    `json:"operator"`
+	Values   []string  `json:"values,omitempty"`
 }
 
 // Dataset binds stable semantic columns to exact source evidence.
@@ -172,12 +254,14 @@ func (a Aggregation) valid() bool {
 
 // Measure defines one aggregate over an exact column.
 type Measure struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Field       Reference   `json:"field"`
-	Aggregation Aggregation `json:"aggregation"`
-	Unit        string      `json:"unit"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Field       Reference        `json:"field"`
+	Aggregation Aggregation      `json:"aggregation"`
+	Unit        string           `json:"unit"`
+	Aliases     []string         `json:"aliases,omitempty"`
+	Filters     []SemanticFilter `json:"filters,omitempty"`
 }
 
 // DimensionRole classifies a grouping field.
@@ -206,21 +290,28 @@ func (r DimensionRole) valid() bool {
 
 // Dimension defines one reviewed grouping field.
 type Dimension struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Field       Reference     `json:"field"`
-	Role        DimensionRole `json:"role"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Field       Reference        `json:"field"`
+	Role        DimensionRole    `json:"role"`
+	Aliases     []string         `json:"aliases,omitempty"`
+	Values      []GovernedValue  `json:"values,omitempty"`
+	Temporal    *TemporalPolicy  `json:"temporal,omitempty"`
+	Filters     []SemanticFilter `json:"filters,omitempty"`
 }
 
 // KPI carries a business expression and an exact dependency list. Expression is
 // not SQL and never becomes executable without a later validated query consumer.
 type KPI struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Expression  string      `json:"expression"`
-	Inputs      []Reference `json:"inputs"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Expression  string           `json:"expression"`
+	Inputs      []Reference      `json:"inputs"`
+	Aliases     []string         `json:"aliases,omitempty"`
+	Unit        string           `json:"unit,omitempty"`
+	Filters     []SemanticFilter `json:"filters,omitempty"`
 }
 
 // JoinType is the closed supported join vocabulary.
@@ -260,12 +351,34 @@ func (c Cardinality) valid() bool {
 // Join is equality-only by construction: it binds two exact column references
 // and has no caller-supplied condition text.
 type Join struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Left        Reference   `json:"left"`
-	Right       Reference   `json:"right"`
-	Type        JoinType    `json:"type"`
-	Cardinality Cardinality `json:"cardinality"`
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Left        Reference            `json:"left"`
+	Right       Reference            `json:"right"`
+	Type        JoinType             `json:"type"`
+	Cardinality Cardinality          `json:"cardinality"`
+	Evidence    RelationshipEvidence `json:"evidence,omitempty"`
+}
+
+// RelationshipEvidence records the reviewed grain/cardinality evidence used
+// to accept a join. Empty evidence is retained for legacy definitions.
+type RelationshipEvidence struct {
+	ID         string `json:"id,omitempty"`
+	LeftGrain  string `json:"left_grain,omitempty"`
+	RightGrain string `json:"right_grain,omitempty"`
+	Provenance string `json:"provenance,omitempty"`
+}
+
+// RelationshipDecision preserves candidate and rejected join evidence without
+// making it executable. Confirmed relationships live in Joins.
+type RelationshipDecision struct {
+	ID          string               `json:"id"`
+	Left        Reference            `json:"left"`
+	Right       Reference            `json:"right"`
+	Cardinality Cardinality          `json:"cardinality"`
+	State       string               `json:"state"`
+	Evidence    RelationshipEvidence `json:"evidence"`
+	Reason      string               `json:"reason,omitempty"`
 }
 
 // CanonicalEntity binds business terms to one stable identity and exact key
@@ -295,18 +408,19 @@ func (e CanonicalEntity) Reference() Reference {
 // TopicPack is an authoring definition only. Lifecycle stage, active pointers, ready
 // facets, authority, and current source health are separate state owned by later work.
 type TopicPack struct {
-	SchemaVersion     int                  `json:"schema_version"`
-	Topic             string               `json:"topic"`
-	Version           string               `json:"version"`
-	Name              string               `json:"name"`
-	Description       string               `json:"description"`
-	Datasets          []Dataset            `json:"datasets"`
-	Measures          []Measure            `json:"measures"`
-	Dimensions        []Dimension          `json:"dimensions"`
-	KPIs              []KPI                `json:"kpis"`
-	Joins             []Join               `json:"joins"`
-	CanonicalEntities []CanonicalEntity    `json:"canonical_entities"`
-	Unresolved        []UnresolvedSemantic `json:"unresolved,omitempty"`
+	SchemaVersion         int                    `json:"schema_version"`
+	Topic                 string                 `json:"topic"`
+	Version               string                 `json:"version"`
+	Name                  string                 `json:"name"`
+	Description           string                 `json:"description"`
+	Datasets              []Dataset              `json:"datasets"`
+	Measures              []Measure              `json:"measures"`
+	Dimensions            []Dimension            `json:"dimensions"`
+	KPIs                  []KPI                  `json:"kpis"`
+	Joins                 []Join                 `json:"joins"`
+	RelationshipDecisions []RelationshipDecision `json:"relationship_decisions,omitempty"`
+	CanonicalEntities     []CanonicalEntity      `json:"canonical_entities"`
+	Unresolved            []UnresolvedSemantic   `json:"unresolved,omitempty"`
 }
 
 func validLine(s string, maximum int) bool {

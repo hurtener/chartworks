@@ -131,6 +131,9 @@ func entityDigests(model Model) map[Reference]string {
 	for _, join := range model.pack.Joins {
 		add(Reference{Kind: KindJoin, ID: join.ID}, join)
 	}
+	for _, decision := range model.pack.RelationshipDecisions {
+		add(Reference{Kind: KindRelationshipDecision, ID: decision.ID}, decision)
+	}
 	for _, entity := range model.pack.CanonicalEntities {
 		add(Reference{Kind: KindCanonicalEntity, ID: entity.ID}, entity)
 	}

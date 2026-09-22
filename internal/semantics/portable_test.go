@@ -104,6 +104,42 @@ func TestPortableDraftRoundTripRemapsEveryColumnReference(t *testing.T) {
 	}
 }
 
+func TestPortableRoundTripPreservesRichFieldsAndRemapsTheirReferences(t *testing.T) {
+	pack := testPack()
+	for i := range pack.Datasets {
+		for j := range pack.Datasets[i].Columns {
+			if pack.Datasets[i].ID == "customers" && pack.Datasets[i].Columns[j].ID == "region" {
+				pack.Datasets[i].Columns[j].Sensitivity = LiteralNonSensitive
+				pack.Datasets[i].Columns[j].Aliases = []string{"Territory"}
+				pack.Datasets[i].Columns[j].SemanticRole = SemanticRoleEventTime
+			}
+		}
+	}
+	pack.Dimensions[0].Role = DimensionTemporal
+	pack.Dimensions[0].Aliases = []string{"Region month", "Mes regional"}
+	pack.Dimensions[0].Temporal = &TemporalPolicy{Grains: []TimeGrain{GrainMonth}, Calendar: "gregorian"}
+	pack.Dimensions[0].Values = []GovernedValue{{ID: "south", Value: "S", Aliases: []string{"South", "Sur"}, Sensitivity: LiteralNonSensitive, Provenance: ValueProvenance{Kind: "reviewed_profile", Evidence: "profile_v1", Policy: "low_cardinality"}}}
+	pack.KPIs[0].Filters = []SemanticFilter{{ID: "known_region", Field: Reference{Kind: KindColumn, Dataset: "customers", ID: "region"}, Operator: "not_null"}}
+	pack.RelationshipDecisions = []RelationshipDecision{{ID: "amount_region_rejected", Left: Reference{Kind: KindColumn, Dataset: "orders", ID: "amount"}, Right: Reference{Kind: KindColumn, Dataset: "customers", ID: "region"}, Cardinality: CardinalityManyToMany, State: "rejected", Evidence: RelationshipEvidence{ID: "grain_review", LeftGrain: "order", RightGrain: "region", Provenance: "reviewed_profile"}, Reason: "Incompatible grain"}}
+	model, err := Compile(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, mapping, _, bindings := portableFixture(t)
+	portable, err := ExportPortable(model, mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := ImportDraftCandidate(portable, bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := candidate.Pack()
+	if got.Dimensions[0].Temporal == nil || got.Dimensions[0].Temporal.Grains[0] != GrainMonth || got.Dimensions[0].Values[0].Aliases[1] != "Sur" || got.KPIs[0].Filters[0].Field != (Reference{Kind: KindColumn, Dataset: "buyers_data", ID: "area_name"}) || got.RelationshipDecisions[0].Right != (Reference{Kind: KindColumn, Dataset: "buyers_data", ID: "area_name"}) {
+		t.Fatalf("rich portable meaning or references changed: %#v", got)
+	}
+}
+
 func TestPortableRoundTripRetainsUnresolvedWithoutPhysicalCoordinates(t *testing.T) {
 	pack := testPack()
 	pack.Unresolved = []UnresolvedSemantic{{ID: GeneratedEntityID(EnhancementUnresolved, "orders", "amount"), Dataset: "orders", Column: "amount", Reason: "Aggregation needs review"}}
