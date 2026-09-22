@@ -39,12 +39,13 @@ func Registry(validation, capture, observe bool) (*api.Registry, error) {
 		feature      string
 	}{
 		{"POST", "/v1/blocks/{id}/parameters/assist", reporting.Write, "parameterizeBlock", "Append an AST-verified typed period amendment without publication", reflect.TypeFor[reporting.ParameterizeRequest](), reflect.TypeFor[reporting.View](), "observe"},
+		{"POST", "/v1/blocks/{id}/parameters/propose", reporting.Read, "proposeBlockParameterization", "Verify a dialect-aware period amendment or return an explicit unsupported disposition without mutation", reflect.TypeFor[reporting.ParameterizationProposalRequest](), reflect.TypeFor[reporting.ParameterizationProposal](), "observe"},
 		{"POST", "/v1/blocks/{id}/impact", reporting.Read, "recheckBlockImpact", "Explicitly observe dependency impact without altering definitions", reflect.TypeFor[reporting.ImpactRequest](), reflect.TypeFor[reporting.Impact](), "observe"},
 		{"POST", "/v1/blocks/{id}/impact/apply", reporting.Write, "applyBlockImpact", "Create a private draft for an exact current dependency proposal", reflect.TypeFor[reporting.ApplyImpactRequest](), reflect.TypeFor[reporting.View](), "observe"},
 		{"POST", "/v1/blocks", reporting.Write, "createBlock", "Create an unvalidated private block draft", reflect.TypeFor[reporting.CreateRequest](), reflect.TypeFor[reporting.View](), ""},
 		{"GET", "/v1/blocks", reporting.Read, "listBlocks", "List only currently authorized block definitions", nil, reflect.TypeFor[reporting.Page](), ""},
 		{"POST", "/v1/blocks/capture", reporting.Write, "captureBlock", "Capture a completed authorized query as an unvalidated draft", reflect.TypeFor[reporting.CaptureRequest](), reflect.TypeFor[reporting.View](), "capture"},
-		{"POST", "/v1/blocks/questions/assess", reporting.Read, "assessBlockQuestions", "Assess authorized localized questions with bounded lexical matching", reflect.TypeFor[reporting.QuestionRequest](), reflect.TypeFor[reporting.Assessment](), ""},
+		{"POST", "/v1/blocks/questions/assess", reporting.Read, "assessBlockQuestions", "Assess authorized localized questions with reviewed semantic intent and explicit lexical fallback", reflect.TypeFor[reporting.QuestionRequest](), reflect.TypeFor[reporting.Assessment](), ""},
 		{"GET", "/v1/blocks/{id}", reporting.Read, "readBlock", "Read a SQL-private published or authorized exact revision", nil, reflect.TypeFor[reporting.View](), ""},
 		{"GET", "/v1/blocks/{id}/sql", reporting.SQLRead, "readBlockSQL", "Read SQL and a versioned native definition through separately scoped inspection authority", nil, reflect.TypeFor[reporting.SQLView](), ""},
 		{"GET", "/v1/blocks/{id}/history", reporting.Read, "blockHistory", "Read permission-filtered immutable lifecycle history", nil, reflect.TypeFor[reporting.History](), ""},
@@ -53,6 +54,7 @@ func Registry(validation, capture, observe bool) (*api.Registry, error) {
 		{"POST", "/v1/blocks/{id}/preview", reporting.Preview, "previewBlock", "Preview exact outputs privately without retaining artifacts", reflect.TypeFor[reporting.PreviewRequest](), reflect.TypeFor[reporting.PreviewResult](), "validate"},
 		{"POST", "/v1/blocks/{id}/publish", reporting.Publish, "publishBlock", "Publish one exact revision against fresh validation evidence", reflect.TypeFor[reporting.PublishRequest](), reflect.TypeFor[reporting.State](), ""},
 		{"POST", "/v1/blocks/{id}/certify", reporting.Certify, "certifyBlock", "Attest to one exact published revision and evidence receipt", reflect.TypeFor[reporting.CertifyRequest](), reflect.TypeFor[reporting.Attestation](), ""},
+		{"POST", "/v1/blocks/{id}/certification/period-review", reporting.Certify, "reviewBlockPeriodLanguage", "Inspect deterministic localized period discrepancies for one published revision before certification", reflect.TypeFor[reporting.PeriodReviewRequest](), reflect.TypeFor[reporting.PeriodReviewResult](), ""},
 		{"POST", "/v1/blocks/{id}/withdraw", reporting.Certify, "withdrawBlockCertification", "Withdraw an attestation while preserving its history", reflect.TypeFor[reporting.WithdrawRequest](), reflect.TypeFor[reporting.Withdrawal](), ""},
 		{"POST", "/v1/blocks/{id}/reject", reporting.Write, "rejectBlock", "Reject the current private draft without removing history", reflect.TypeFor[reporting.TransitionRequest](), reflect.TypeFor[reporting.State](), ""},
 		{"POST", "/v1/blocks/{id}/restore", reporting.Write, "restoreBlock", "Copy an authorized revision into a new unvalidated draft", reflect.TypeFor[reporting.RestoreRequest](), reflect.TypeFor[reporting.View](), ""},
@@ -91,9 +93,13 @@ func Registry(validation, capture, observe bool) (*api.Registry, error) {
 		if entry.id == "previewBlock" || entry.id == "validateBlock" {
 			d.Effect = "explicit_bounded_source_read_private_evidence"
 		}
-		if entry.id == "resolveBlockParameters" || entry.id == "assessBlockQuestions" {
+		if entry.id == "resolveBlockParameters" {
 			d.Effect = "authorized_metadata_read"
 			d.Audit = "read_only_no_domain_audit"
+		}
+		if entry.id == "assessBlockQuestions" {
+			d.Effect = "protected_bounded_assessment_evidence"
+			d.Audit = "immutable request scope and decision digests; no SQL or result values"
 		}
 		definitions = append(definitions, d)
 	}
@@ -167,6 +173,12 @@ func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Hand
 			err = decode(w, r, selected, &in)
 			if err == nil {
 				out, err = service.Parameterize(r.Context(), e, id, in)
+			}
+		case "proposeBlockParameterization":
+			var in reporting.ParameterizationProposalRequest
+			err = decode(w, r, selected, &in)
+			if err == nil {
+				out, err = service.ProposeParameterization(r.Context(), e, id, in)
 			}
 		case "recheckBlockImpact":
 			var in reporting.ImpactRequest
@@ -247,6 +259,12 @@ func Handler(verifier *auth.Verifier, service *reporting.Service, next http.Hand
 			err = decode(w, r, selected, &in)
 			if err == nil {
 				out, err = service.Certify(r.Context(), e, id, in)
+			}
+		case "reviewBlockPeriodLanguage":
+			var in reporting.PeriodReviewRequest
+			err = decode(w, r, selected, &in)
+			if err == nil {
+				out, err = service.ReviewPeriodLanguage(r.Context(), e, id, in)
 			}
 		case "withdrawBlockCertification":
 			var in reporting.WithdrawRequest

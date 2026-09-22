@@ -392,20 +392,29 @@ func (s *Service) History(ctx context.Context, e identity.Envelope, id string) (
 // AssessQuestions is bounded, permission-filtered and advisory. Complete=false
 // explicitly prevents a bounded candidate scan from claiming global uniqueness.
 func (s *Service) AssessQuestions(ctx context.Context, e identity.Envelope, in QuestionRequest) (Assessment, error) {
-	if !locale(in.Locale) || strings.TrimSpace(in.Question) == "" || !text(in.Question, 2048) || normalizeQuestion(in.Question) == "" {
+	if !locale(in.Locale) || strings.TrimSpace(in.Question) == "" || !text(in.Question, 2048) || normalizeQuestion(in.Question) == "" || !validQuestionIntent(in.Intent) {
 		return Assessment{}, ErrInvalid
 	}
 	page, err := s.List(ctx, e, ListRequest{Limit: 100, IncludeDrafts: in.IncludeDrafts})
 	if err != nil {
 		return Assessment{}, err
 	}
-	out := Assessment{Matches: []QuestionMatch{}, Complete: page.Next == "", Threshold: s.limits.QuestionThreshold}
+	out := Assessment{Matches: []QuestionMatch{}, Complete: page.Next == "", Threshold: s.limits.QuestionThreshold, Method: "lexical_fallback"}
+	scope := []any{}
+	semantic, fallback := false, false
 	for _, item := range page.Items {
 		for _, localized := range item.Metadata {
 			if localized.Locale != in.Locale {
 				continue
 			}
+			scope = append(scope, []any{item.State.ID, item.Revision, localized.Locale, digest(localized)})
 			for _, question := range append([]string{localized.Question}, localized.Aliases...) {
+				if in.Intent != nil && localized.Intent != nil {
+					kind, score, evidence := semanticQuestionMatch(*in.Intent, *localized.Intent)
+					out.Matches = append(out.Matches, QuestionMatch{ID: item.State.ID, Revision: item.Revision, Question: question, Kind: kind, Score: score, Method: "reviewed_intent", Evidence: evidence})
+					semantic = true
+					continue
+				}
 				score := questionScore(in.Question, question)
 				if score < s.limits.QuestionThreshold {
 					continue
@@ -414,13 +423,47 @@ func (s *Service) AssessQuestions(ctx context.Context, e identity.Envelope, in Q
 				if score == 1 && normalizeQuestion(question) == normalizeQuestion(in.Question) {
 					kind = "exact"
 				}
-				out.Matches = append(out.Matches, QuestionMatch{ID: item.State.ID, Revision: item.Revision, Question: question, Kind: kind, Score: score})
+				evidence := digest(struct {
+					Version, Left, Right, Kind string
+					Score                      float64
+				}{"question-lexical-fallback-v1", normalizeQuestion(in.Question), normalizeQuestion(question), kind, score})
+				out.Matches = append(out.Matches, QuestionMatch{ID: item.State.ID, Revision: item.Revision, Question: question, Kind: kind, Score: score, Method: "lexical_fallback", Evidence: evidence})
+				fallback = true
 			}
 		}
 	}
-	sort.SliceStable(out.Matches, func(i, j int) bool { return out.Matches[i].Score > out.Matches[j].Score })
+	if semantic && fallback {
+		out.Method = "reviewed_intent_with_fallback"
+	} else if semantic {
+		out.Method = "reviewed_intent"
+	}
+	out.CandidateScopeDigest = digest(struct {
+		Version    string
+		Candidates []any
+	}{"question-candidate-scope-v1", scope})
+	sort.SliceStable(out.Matches, func(i, j int) bool {
+		if out.Matches[i].Score != out.Matches[j].Score {
+			return out.Matches[i].Score > out.Matches[j].Score
+		}
+		if out.Matches[i].ID != out.Matches[j].ID {
+			return out.Matches[i].ID < out.Matches[j].ID
+		}
+		return out.Matches[i].Question < out.Matches[j].Question
+	})
 	if len(out.Matches) > 100 {
 		out.Matches, out.Complete = out.Matches[:100], false
+	}
+	out.EvidenceDigest = digest(struct {
+		Version, Request, Scope, Method string
+		Complete                        bool
+		Matches                         []QuestionMatch
+	}{"question-assessment-v1", digest(in), out.CandidateScopeDigest, out.Method, out.Complete, out.Matches})
+	out.ID = digest(struct{ Version, Tenant, Actor, Session, Evidence string }{"question-assessment-id-v1", e.Tenant(), e.User(), e.Session(), out.EvidenceDigest})[:32]
+	if recorder, ok := s.repo.(QuestionAssessmentRepository); ok {
+		record := QuestionAssessmentRecord{ID: out.ID, RequestDigest: digest(in), CandidateScopeDigest: out.CandidateScopeDigest, EvidenceDigest: out.EvidenceDigest, Method: out.Method, Matches: clone(out.Matches), Complete: out.Complete, CreatedAt: time.Now().UTC()}
+		if err := recorder.RecordQuestionAssessment(ctx, e, record); err != nil {
+			return Assessment{}, err
+		}
 	}
 	return out, nil
 }

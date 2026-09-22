@@ -50,12 +50,14 @@ SDK/CLI operation matrix. Under the configured mount, the concrete routes are:
 | POST `/v1/blocks/{id}/preview` | `PreviewBlock` | `reporting.preview` |
 | POST `/v1/blocks/{id}/publish` | `PublishBlock` | `reporting.publish` |
 | POST `/v1/blocks/{id}/certify` | `CertifyBlock` | `reporting.certify` |
+| POST `/v1/blocks/{id}/certification/period-review` | `ReviewBlockPeriodLanguage` | `reporting.certify` |
 | POST `/v1/blocks/{id}/withdraw` | `WithdrawBlockCertification` | `reporting.certify` |
 | POST `/v1/blocks/{id}/reject` | `RejectBlock` | `reporting.write` |
 | POST `/v1/blocks/{id}/restore` | `RestoreBlock` | `reporting.write` |
 | POST `/v1/blocks/{id}/archive` | `ArchiveBlock` | `reporting.write` |
 | POST `/v1/blocks/{id}/parameters/resolve` | `ResolveBlockParameters` | `reporting.read` |
 | POST `/v1/blocks/{id}/parameters/assist` | `ParameterizeBlock` | `reporting.write` |
+| POST `/v1/blocks/{id}/parameters/propose` | `ProposeBlockParameterization` | `reporting.read` |
 | POST `/v1/blocks/{id}/impact` | `RecheckBlockImpact` | `reporting.read` |
 | POST `/v1/blocks/{id}/impact/apply` | `ApplyBlockImpact` | `reporting.write` |
 
@@ -86,20 +88,36 @@ query 422, bounded admission busy 429, unavailable 503 and deadline/cancelled 50
 ## Parameters, output definitions and proposals
 
 The closed parameter types are `date`, `datetime`, `relative_period`,
-`dimension_value`, `number`, `integer`, `boolean`, `grain` and `top_n`. Defaults,
+`dimension_value`, `number`, `integer`, `boolean`, `grain`, `top_n` and fixed-slot
+`dimension_list`, `number_list` and `integer_list`. Defaults,
 required flags, bounds/enums and exact dimension references are validated before
 source work. Values remain typed bind arguments, never SQL interpolation. Numbers
 preserve exact scalar text. Each relative period consumes two physical scalar
-slots; the execution contract allows at most 64 slots, independently of the
-logical parameter limit.
+slots; a list consumes its reviewed `list_length` scalar slots. Optional lists
+resolve every slot to null. Element type, enum and range checks run before source
+work; invocation cannot change list shape. The execution contract allows at most
+64 slots, independently of the logical parameter limit.
 
 The pure resolver takes an explicit logical time and IANA timezone. Periods use
 half-open windows, explicit DST-fold and month-end policies, and declared first
 schedule-window behavior. Calendar/DST/leap-year fixtures are not a running
-scheduler. Parameter assistance accepts only exact, native-parsed PostgreSQL date
-predicates with an expected definition digest/version. It replaces the selected
-literals, retains unrelated SQL/comments/filters and creates an unvalidated draft.
-Ambiguous predicates, unsupported dialects and stale proposals fail closed.
+scheduler. Parameter assistance first returns a definition- and dialect-bound
+proposal. PostgreSQL can return `supported`; every other configured dialect
+returns an explicit non-mutating `unsupported` disposition. Applying a supported
+proposal accepts only exact, native-parsed PostgreSQL date predicates with an
+expected definition digest/version. It replaces the selected literals, retains
+unrelated SQL/comments/filters and creates an unvalidated draft whose provenance
+retains the original question and closed question/template/paraphrase
+dispositions. Ambiguous predicates and stale or cross-dialect proposals fail
+closed. Approved-block refresh never invokes assistance, NLQ, repair or chart
+selection.
+
+Certification exposes deterministic period-language findings for one exact
+published revision before attestation. A closed bilingual vocabulary compares
+localized canonical questions with authored relative-period defaults.
+Contradictory or ambiguous wording yields digest-bound findings; certification
+requires one `accepted_exception` disposition per finding and stores both in the
+immutable attestation. The check does not infer SQL or alter period resolution.
 
 Stable output IDs address saved chart, KPI, table or narrative definitions. V1
 empty selection preserves legacy all-output behavior; explicit selections retain
@@ -132,9 +150,13 @@ source/model nor confers block validation/certification.
 512 KiB definition, 128 columns, 32 outputs, 32 logical parameters, 16 locales,
 32 aliases, 128 revisions, 10,000 blocks, four concurrent reads, 1,000 preview rows,
 1 MiB preview data, 30-second read timeout, 24-hour evidence TTL and 0.8 lexical
-question-match threshold. These limits grant no access. Question discovery is
-bounded lexical assessment over authorized definitions, not learned semantic
-similarity or a guarantee of global uniqueness.
+question-match threshold. These limits grant no access. Reviewed question intent
+can carry bounded metric, grain, population, filter and period components.
+Discovery classifies authorized candidates as duplicate, overlap or unique from
+exact reviewed components and labels lexical comparison as fallback when either
+side lacks intent. Migration 043 stores request, authorized candidate-scope and
+decision digests with protected bounded evidence. Incomplete scans remain explicit
+and never claim global uniqueness.
 
 `TestPhase27/AC01`–`AC08`, `TestPhase21CumulativeRegistryGuard`, the unit regression
 and fuzz suites and `scripts/smoke/phase-27.sh` are the executable contract. See

@@ -18,7 +18,8 @@ Do not flatten trust into one boolean, treat successful NLQ as certified, expose
 
 1. Add block identities/revisions, localized questions/aliases, exact semantic/template/dependency references and an authoring API/SDK.
 2. Implement CAS drafts, capture-from-query/manual authoring, duplicate-question assessment, validation/preview/publication/rejection/restore/archive and separate attestations.
-3. Implement typed parameter declarations and assisted period parameterization, selected output definitions, dependency-impact classification and SQL-read protection.
+3. Implement typed parameter declarations, fixed-slot lists and dialect-dispositioned assisted period parameterization with preserved authoring intent, selected output definitions, dependency-impact classification and SQL-read protection.
+4. Bind certification to visible localized period-language findings and persist bounded reviewed-intent duplicate/overlap/unique evidence after authorization filtering.
 
 The service constructs dependency manifests during validation. Content supplied by a client cannot omit a dependency and thereby authorize it. Validation evidence includes canonicalization/validator version, exact execution/revision/dependency hashes, observed result schema, actor/time and query attempt. Publication checks the same draft version in its transaction. Certification references a published immutable revision and a real evidence record.
 
@@ -36,10 +37,12 @@ Reporting authoring SQL/schema/options/alias bounds, validation timeout and ques
 2. **AC02** — CAS edits/publication have one winner; published content is immutable and rejection/restore/amendment preserves history.
 3. **AC03** — Validation executes the exact draft under current reach and binds content/dependency/result-schema evidence; material edits invalidate it.
 4. **AC04** — Publication and certification are distinct scoped actions; stale/withdrawn approval and current health remain separate from historical attestation.
-5. **AC05** — All parameter types, defaults/ranges/dimension references and period proposals validate; assisted changes cannot alter unrelated SQL/filters.
+5. **AC05** — All parameter types, defaults/ranges/fixed lists/dimension references and dialect-bound period proposals validate; assisted changes cannot alter unrelated SQL/filters and unsupported dialects return a non-mutating disposition.
 6. **AC06** — Chart/KPI/table/narrative output definitions, output-subset selection and separate SQL-read projection are exposed without leaking SQL by default.
 7. **AC07** — Cosmetic/rename/review-required/unavailable impacts are computed from exact dependencies; rename creates a new draft and never rewrites publication.
 8. **AC08** — Authoring/preview/archive/reference errors enforce parent/resource reach and private scope; API and SDK provide the complete lifecycle.
+9. **CW09-AC01** — English and Spanish contradictory/ambiguous period wording is visible before certification and requires exact immutable reviewer acknowledgement.
+10. **CW09-AC02** — Reviewed intent distinguishes paraphrase duplicates, semantic overlap and unique questions over authorized bounded candidates; lexical fallback and incomplete scans are explicit and evidence is durable.
 
 ## Tests, coverage and smoke
 
@@ -59,6 +62,16 @@ Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
 source execution, provider-fixture and browser checks. Keep the existing named
 phase criteria and phase status; this assignment closes only its three owned gap
 entries, not the whole phase, other reporting work, or full migration/release.
+
+## CW-09 governed authoring depth continuation
+
+BLK-03/04/06 are implemented by certification-time localized period evidence,
+reviewed structured question-intent assessment, fixed-slot list binds and a
+dialect-bound assistance proposal. Findings, reviews, candidate scope and authoring
+dispositions are digest-bound and durable. They never grant source reach, rewrite a
+published revision, execute during refresh, or turn question metadata into SQL.
+Use [D-079](../decisions/2026-09-22-governed-block-depth.md) and the
+[block contract](../contracts/reporting-blocks-v1.md).
 
 ## CW-06 rule-snapshot continuation
 

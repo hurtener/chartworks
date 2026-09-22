@@ -17,24 +17,31 @@ func validateDeclarations(parameters []Parameter, max int) error {
 	}
 	seen := map[string]bool{}
 	for _, p := range parameters {
-		if !identity.Identifier(p.Name) || seen[p.Name] || !slices.Contains([]string{"date", "datetime", "relative_period", "dimension_value", "number", "integer", "boolean", "grain", "top_n"}, p.Type) || len(p.Enum) > 256 {
+		if !identity.Identifier(p.Name) || seen[p.Name] || !slices.Contains([]string{"date", "datetime", "relative_period", "dimension_value", "number", "integer", "boolean", "grain", "top_n", "dimension_list", "number_list", "integer_list"}, p.Type) || len(p.Enum) > 256 {
 			return ErrInvalid
 		}
 		seen[p.Name] = true
-		if p.Type == "dimension_value" {
+		list := listScalarType(p.Type)
+		if list != "" && (p.ListLength < 1 || p.ListLength > 32) || list == "" && p.ListLength != 0 {
+			return ErrInvalid
+		}
+		if p.Type == "dimension_value" || p.Type == "dimension_list" {
 			if p.Dimension == nil || !identity.Identifier(p.Dimension.Topic) || !identity.Identifier(p.Dimension.Version) || !identity.Identifier(p.Dimension.Dimension) {
 				return ErrInvalid
 			}
 		} else if p.Dimension != nil {
 			return ErrInvalid
 		}
-		if slices.Contains([]string{"relative_period", "dimension_value", "boolean", "grain"}, p.Type) && (p.Min != "" || p.Max != "") {
+		if slices.Contains([]string{"relative_period", "dimension_value", "dimension_list", "boolean", "grain"}, p.Type) && (p.Min != "" || p.Max != "") {
 			return ErrInvalid
 		}
 		if p.Type == "relative_period" && len(p.Enum) != 0 {
 			return ErrInvalid
 		}
 		base := p
+		if list != "" {
+			base.Type, base.ListLength = list, 0
+		}
 		base.Min, base.Max, base.Enum = "", "", nil
 		for _, bound := range []string{p.Min, p.Max} {
 			if bound != "" {
@@ -44,7 +51,7 @@ func validateDeclarations(parameters []Parameter, max int) error {
 			}
 		}
 		if p.Min != "" && p.Max != "" {
-			comparison, err := compareScalar(p.Type, p.Min, p.Max)
+			comparison, err := compareScalar(base.Type, p.Min, p.Max)
 			if err != nil || comparison > 0 {
 				return ErrInvalid
 			}
@@ -56,6 +63,9 @@ func validateDeclarations(parameters []Parameter, max int) error {
 			}
 			values[value] = true
 			withoutEnum := p
+			if list != "" {
+				withoutEnum.Type, withoutEnum.ListLength = list, 0
+			}
 			withoutEnum.Enum = nil
 			if _, err := scalar(withoutEnum, value); err != nil {
 				return err
@@ -63,14 +73,47 @@ func validateDeclarations(parameters []Parameter, max int) error {
 		}
 		if p.Default != nil {
 			if p.Type == "relative_period" {
-				if p.Default.Period == nil || p.Default.Literal != "" || validatePeriod(*p.Default.Period) != nil {
+				if p.Default.Period == nil || p.Default.Literal != "" || len(p.Default.Items) != 0 || validatePeriod(*p.Default.Period) != nil {
+					return ErrInvalid
+				}
+			} else if list != "" {
+				if p.Default.Period != nil || p.Default.Literal != "" || len(p.Default.Items) != p.ListLength || validateList(p, p.Default.Items) != nil {
 					return ErrInvalid
 				}
 			} else if p.Default.Period != nil {
 				return ErrInvalid
+			} else if len(p.Default.Items) != 0 {
+				return ErrInvalid
 			} else if _, err := scalar(p, p.Default.Literal); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func listScalarType(kind string) string {
+	switch kind {
+	case "dimension_list":
+		return "dimension_value"
+	case "number_list":
+		return "number"
+	case "integer_list":
+		return "integer"
+	default:
+		return ""
+	}
+}
+
+func validateList(p Parameter, items []string) error {
+	base := p
+	base.Type, base.ListLength = listScalarType(p.Type), 0
+	if base.Type == "" || len(items) != p.ListLength {
+		return ErrInvalid
+	}
+	for _, item := range items {
+		if _, err := scalar(base, item); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -209,6 +252,11 @@ func ResolveParameters(parameters []Parameter, arguments []Argument, resolution 
 				nulls := []exec.Parameter{{Kind: "null"}}
 				if p.Type == "relative_period" {
 					nulls = append(nulls, exec.Parameter{Kind: "null"})
+				} else if listScalarType(p.Type) != "" {
+					nulls = make([]exec.Parameter, p.ListLength)
+					for i := range nulls {
+						nulls[i].Kind = "null"
+					}
 				}
 				out.Parameters = append(out.Parameters, nulls...)
 				out.Values = append(out.Values, BoundValue{Name: p.Name, Type: p.Type, Provenance: "omitted", Digest: digest(nulls)})
@@ -216,7 +264,8 @@ func ResolveParameters(parameters []Parameter, arguments []Argument, resolution 
 			}
 		}
 		value := BoundValue{Name: p.Name, Type: p.Type, Provenance: provenance}
-		if p.Type == "relative_period" {
+		switch {
+		case p.Type == "relative_period":
 			if v.Period == nil || v.Literal != "" {
 				return out, ErrInvalid
 			}
@@ -228,8 +277,24 @@ func ResolveParameters(parameters []Parameter, arguments []Argument, resolution 
 			bound := []exec.Parameter{{Kind: "text", Value: w.Start.UTC().Format(time.RFC3339Nano)}, {Kind: "text", Value: w.End.UTC().Format(time.RFC3339Nano)}}
 			value.Digest = digest(bound)
 			out.Parameters = append(out.Parameters, bound...)
-		} else {
-			if v.Period != nil {
+		case listScalarType(p.Type) != "":
+			if v.Period != nil || v.Literal != "" || validateList(p, v.Items) != nil {
+				return out, ErrInvalid
+			}
+			base := p
+			base.Type, base.ListLength = listScalarType(p.Type), 0
+			bound := make([]exec.Parameter, 0, len(v.Items))
+			for _, item := range v.Items {
+				parameter, err := scalar(base, item)
+				if err != nil {
+					return out, err
+				}
+				bound = append(bound, parameter)
+			}
+			value.Digest = digest(bound)
+			out.Parameters = append(out.Parameters, bound...)
+		default:
+			if v.Period != nil || len(v.Items) != 0 {
 				return out, ErrInvalid
 			}
 			bound, err := scalar(p, v.Literal)
@@ -250,8 +315,12 @@ func ResolveParameters(parameters []Parameter, arguments []Argument, resolution 
 func scalarSlots(parameters []Parameter) int {
 	n := 0
 	for _, p := range parameters {
-		n++
-		if p.Type == "relative_period" {
+		switch {
+		case p.Type == "relative_period":
+			n += 2
+		case listScalarType(p.Type) != "":
+			n += p.ListLength
+		default:
 			n++
 		}
 	}

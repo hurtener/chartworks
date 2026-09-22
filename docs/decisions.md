@@ -775,3 +775,5 @@ Rule/reporting dependency continuation: [D-076 closed compound/template scopes a
 Routing and interpretation continuation: [D-077 versioned topic choice and sealed semantic spans](decisions/2026-09-22-routing-interpretation.md).
 
 Learning continuation: [D-078 version-pinned reviewed examples and evidence-based feedback](decisions/2026-09-22-reviewed-learning.md).
+
+Governed block depth continuation: [D-079 certification wording, reviewed overlap and dialect-bound assistance](decisions/2026-09-22-governed-block-depth.md).
