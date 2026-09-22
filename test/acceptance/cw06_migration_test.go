@@ -3,8 +3,13 @@ package acceptance
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/hurtener/chartworks/internal/nlqexec"
+	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/test/support"
@@ -31,6 +36,12 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
  VALUES('cw06-upgrade','actor','session',repeat('1',32),'topic','["topic"]','["v1"]','["rules-v1"]','context','en','What is revenue?','{}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
 	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
  VALUES('cw06-upgrade','actor','session',repeat('3',32),'topic','["topic"]','["v1"]','["rules-v1"]','context','en','What is margin?','{"templates":[{"id":"invented"}],"request":{"templates":[{"id":"invented"}]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
+	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
+ VALUES('cw06-upgrade','actor','session',repeat('4',32),'topic','["topic"]','["v1"]','["rules-v1"]','context','en','Null evidence','{"templates":null,"request":{"templates":null}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
+	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
+ VALUES('cw06-upgrade','actor','session',repeat('5',32),'topic','["topic"]','["v1"]','["rules-v1"]','context','en','Explicit empty evidence','{"templates":[],"request":{"templates":[]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
+	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
+ VALUES('cw06-upgrade','actor','session',repeat('6',32),'topic','["topic"]','["v1"]','["rules-v1"]','context','en','Partial evidence','{"templates":[],"request":{}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
 	database := support.Open(t, dsn)
 	if err = database.Check(ctx); err != nil {
 		t.Fatal(err)
@@ -46,6 +57,45 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	}
 	if _, err = database.ReadQuery(ctx, scope, "33333333333333333333333333333333"); !errors.Is(err, store.ErrMigration) {
 		t.Fatal("backfill accepted conflicting retained selection evidence", err)
+	}
+	if _, err = database.ReadQuery(ctx, scope, "44444444444444444444444444444444"); !errors.Is(err, store.ErrMigration) {
+		t.Fatal("backfill treated explicit null selection evidence as omission", err)
+	}
+	explicitEmpty, err := database.ReadQuery(ctx, scope, "55555555555555555555555555555555")
+	if err != nil || explicitEmpty.Templates == nil || explicitEmpty.Route.Templates == nil || explicitEmpty.Route.Request.Templates == nil {
+		t.Fatal("explicit empty selection evidence was not canonicalized", explicitEmpty, err)
+	}
+	if _, err = database.ReadQuery(ctx, scope, "66666666666666666666666666666666"); !errors.Is(err, store.ErrMigration) {
+		t.Fatal("backfill accepted partially present empty selection evidence", err)
+	}
+	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,template_selections,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
+ VALUES('cw06-upgrade','actor','session',repeat('7',32),'topic','["topic"]','["v1"]','["rules-v1"]','[null]','context','en','Malformed evidence','{"templates":[null],"request":{"templates":[null]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
+	if _, err = database.ReadQuery(ctx, scope, "77777777777777777777777777777777"); !errors.Is(err, store.ErrMigration) {
+		t.Fatal("new-schema decoder accepted a malformed selection element", err)
+	}
+	digestA, digestB := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	selection := rulesets.TemplateSelection{ID: "reviewed", Topic: "topic", TopicVersion: "v1", PackDigest: digestA, RuleVersion: "rules-v1", RuleDigest: digestB}
+	now := time.Now().UTC()
+	base := nlqexec.QueryRecord{ID: "88888888888888888888888888888888", Session: "session", Topic: "topic", Topics: []string{"topic"}, TopicVersions: []string{"v1"}, RuleVersions: []string{"rules-v1"}, Templates: []rulesets.TemplateSelection{selection}, Context: "context", Locale: "en", Question: "Valid selection", Route: nlqroute.RouteResult{Templates: []rulesets.TemplateSelection{selection}, Request: nlqroute.RouteRequest{Templates: []rulesets.TemplateSelection{selection}}}, Status: "planned", Revision: 1, Created: now, Updated: now}
+	if err = database.CreateQuery(ctx, scope, base); err != nil {
+		t.Fatal("valid exact new selection was rejected", err)
+	}
+	malformed := base
+	malformed.ID = "99999999999999999999999999999999"
+	malformed.Templates = []rulesets.TemplateSelection{{}}
+	malformed.Route.Templates = []rulesets.TemplateSelection{{}}
+	malformed.Route.Request.Templates = []rulesets.TemplateSelection{{}}
+	if err = database.CreateQuery(ctx, scope, malformed); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("new writer accepted an empty selection object", err)
+	}
+	mismatched := base
+	mismatched.ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	mismatched.Route.Request.Templates = []rulesets.TemplateSelection{{ID: "other", Topic: "topic", TopicVersion: "v1", PackDigest: digestA, RuleVersion: "rules-v1", RuleDigest: digestB}}
+	if err = database.CreateQuery(ctx, scope, mismatched); !errors.Is(err, store.ErrInvalid) {
+		t.Fatal("new writer accepted mismatched selection copies", err)
+	}
+	if count(t, raw, `SELECT count(*) FROM chartworks.nlq_queries WHERE tenant_id='cw06-upgrade' AND query_id IN (repeat('9',32),repeat('a',32))`) != 0 {
+		t.Fatal("invalid new selection evidence reached storage")
 	}
 	if _, err = raw.Exec(ctx, `UPDATE chartworks.nlq_queries SET template_selections='[{"id":"invented"}]' WHERE tenant_id='cw06-upgrade'`); err == nil {
 		t.Fatal("migration made retained query evidence mutable")
