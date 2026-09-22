@@ -129,6 +129,20 @@ func TestLiveCommerceArtifactDir(t *testing.T) {
 	if got := liveArtifactDir(t); got != want {
 		t.Fatalf("live artifact directory = %q, want %q", got, want)
 	}
+	checkout, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := filepath.Join(checkout, ".live-commerce-artifacts-forbidden")
+	if _, err := os.Stat(forbidden); !os.IsNotExist(err) {
+		t.Fatal("forbidden artifact regression path already exists")
+	}
+	if _, err := checkedLiveArtifactDir(forbidden); err == nil {
+		t.Fatal("checkout artifact path was accepted")
+	}
+	if _, err := os.Stat(forbidden); !os.IsNotExist(err) {
+		t.Fatal("rejected checkout artifact path was created")
+	}
 }
 
 // This gate is deliberately absent from TestPhase25. It spends provider credits
@@ -156,6 +170,8 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 	author := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
 	mainPublication := phase17PublishTopic(t, draftService, topicService, author, main)
 	distractorPublication := phase17PublishTopic(t, draftService, topicService, author, distractor)
+	requireLiveModelCall(t, mainPublication.Receipt.Calls, "embedding", "openrouter", "perplexity/pplx-embed-v1-0.6b", "pplx-embed-v1-0.6b", "perplexity/pplx-embed-v1-0.6b")
+	requireLiveModelCall(t, distractorPublication.Receipt.Calls, "embedding", "openrouter", "perplexity/pplx-embed-v1-0.6b", "pplx-embed-v1-0.6b", "perplexity/pplx-embed-v1-0.6b")
 	writeLiveJSON(t, artifactDir, "embedding-receipt.json", map[string]any{"main": mainPublication.Receipt.Calls, "distractor": distractorPublication.Receipt.Calls, "space": engine.EmbeddingSpace()})
 	writeLiveJSON(t, artifactDir, "rerank-receipt.json", liveRerankProbe(t, engine, author, main, distractor))
 	rules, err := rulesets.New(f.db, f.db)
@@ -206,6 +222,7 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 			if planned.Status != "planned" || planned.QueryID == "" || len(planned.Receipt.Calls) == 0 {
 				t.Fatalf("missing validated live plan receipt: %s", tc.id)
 			}
+			requireLiveModelCall(t, planned.Receipt.Calls, "sqlgen", "openrouter", "openai/gpt-6-luna", "openai/gpt-6-luna", "gpt-6-luna")
 			if tc.id == "underspecified" && len(planned.Assumptions) == 0 && len(planned.Ambiguities) == 0 {
 				t.Fatal("underspecified question planned without visible assumptions or ambiguities")
 			}
@@ -319,7 +336,8 @@ func liveRerankProbe(t *testing.T, engine *bifrost.Engine, e identity.Envelope, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidates, err := gateway.AdmitCandidates(call, "topics.read", []gateway.Candidate{{ID: main.Topic, Text: main.Name + " " + main.Description, Resource: resources[0]}, {ID: distractor.Topic, Text: distractor.Name + " " + distractor.Description, Resource: resources[1]}})
+	// Put the distractor first so input-order preservation cannot pass the gate.
+	candidates, err := gateway.AdmitCandidates(call, "topics.read", []gateway.Candidate{{ID: distractor.Topic, Text: distractor.Name + " " + distractor.Description, Resource: resources[1]}, {ID: main.Topic, Text: main.Name + " " + main.Description, Resource: resources[0]}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +358,31 @@ func liveRerankProbe(t *testing.T, engine *bifrost.Engine, e identity.Envelope, 
 	if ranked.Items[0].ID != main.Topic {
 		t.Fatal("revenue question did not rank the commerce topic ahead of the retention distractor")
 	}
+	// A 0.01 relevance gap excludes ties and near-ties on the provider's 0..1 scale.
+	if *ranked.Items[0].Score-*ranked.Items[1].Score < 0.01 {
+		t.Fatal("commerce rerank margin below 0.01")
+	}
+	requireLiveModelCall(t, ranked.Receipt.Calls, "rerank", "openrouter-rerank", "cohere/rerank-4-fast", "rerank-v4.0-fast", "cohere/rerank-4-fast")
 	return map[string]any{"usage": ranked.Receipt.Calls, "ranked": ranked.Items}
+}
+
+func requireLiveModelCall(t *testing.T, calls []gateway.Usage, role, provider, requested string, actual ...string) {
+	t.Helper()
+	observed := false
+	for _, call := range calls {
+		if call.Role != role {
+			continue
+		}
+		if call.Provider != provider || call.RequestedModel != requested {
+			t.Fatalf("%s receipt route/model drifted: provider=%q requested=%q", role, call.Provider, call.RequestedModel)
+		}
+		if !call.Cached && slices.Contains(actual, call.ActualModel) {
+			observed = true
+		}
+	}
+	if !observed {
+		t.Fatalf("missing observed live %s provider/model receipt", role)
+	}
 }
 
 type liveReceipt struct {
@@ -357,36 +399,64 @@ type liveReceipt struct {
 func liveArtifactDir(t *testing.T) string {
 	t.Helper()
 	dir := os.Getenv("CHARTWORKS_LIVE_ARTIFACT_DIR")
-	if !filepath.IsAbs(dir) || dir == "" {
-		t.Fatal("CHARTWORKS_LIVE_ARTIFACT_DIR must be an absolute external directory")
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	realDir, err := checkedLiveArtifactDir(dir)
+	if err != nil {
 		t.Fatal(err)
+	}
+	return realDir
+}
+
+func checkedLiveArtifactDir(dir string) (string, error) {
+	if !filepath.IsAbs(dir) || dir == "" {
+		return "", errors.New("CHARTWORKS_LIVE_ARTIFACT_DIR must be an absolute external directory")
 	}
 	root, err := filepath.Abs("../..")
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
-		t.Fatal(err)
+		return "", err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(dir))
+	if err != nil {
+		return "", errors.New("live artifact parent directory must exist")
+	}
+	candidate := filepath.Join(parent, filepath.Base(dir))
+	if _, err := os.Lstat(dir); err == nil {
+		candidate, err = filepath.EvalSymlinks(dir)
+		if err != nil {
+			return "", err
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	if !outsideCheckout(root, candidate) {
+		return "", errors.New("live artifacts must be outside the Git checkout")
+	}
+	if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
+		return "", err
 	}
 	realDir, err := filepath.EvalSymlinks(dir)
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	rel, err := filepath.Rel(root, realDir)
-	if err != nil || rel == "." || !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		t.Fatal("live artifacts must be outside the Git checkout")
+	if !outsideCheckout(root, realDir) {
+		return "", errors.New("live artifacts must be outside the Git checkout")
 	}
 	entries, err := os.ReadDir(realDir)
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	if len(entries) != 0 {
-		t.Fatal("live artifact directory must be empty to prevent stale evidence")
+		return "", errors.New("live artifact directory must be empty to prevent stale evidence")
 	}
-	return realDir
+	return realDir, nil
+}
+
+func outsideCheckout(root, dir string) bool {
+	rel, err := filepath.Rel(root, dir)
+	return err == nil && rel != "." && (rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 func writeLiveJSON(t *testing.T, dir, name string, value any) {
@@ -664,6 +734,7 @@ func liveCommerceReporting(t *testing.T, ctx context.Context, artifactDir string
 	if err != nil || barView.Output == nil || barView.Output.Chart == nil || len(barView.Output.Chart.Points) == 0 {
 		t.Fatalf("retained report chart view: %v", err)
 	}
+	requireCommerceRetainedValues(t, tableView, barView)
 	writeLiveJSON(t, artifactDir, "viewer-table.json", tableView)
 	writeLiveJSON(t, artifactDir, "viewer-chart.json", barView)
 	renderer, err := rendering.NewManaged(delivery, f.db, processor, 4<<20, phase32Options())
@@ -682,6 +753,7 @@ func liveCommerceReporting(t *testing.T, ctx context.Context, artifactDir string
 		if strings.Contains(output.Content, "<script") {
 			t.Fatal("static rendition contains script")
 		}
+		requireCommerceStaticValues(t, item.format, output.Content)
 		if err := os.WriteFile(filepath.Join(artifactDir, item.filename), []byte(output.Content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -690,4 +762,69 @@ func liveCommerceReporting(t *testing.T, ctx context.Context, artifactDir string
 		t.Fatal("retained viewer or renderer reopened the warehouse credential")
 	}
 	writeLiveJSON(t, artifactDir, "report-receipt.json", map[string]any{"block_run": blockRun.Run, "report_run": reportRun.Run, "block_state": blockRun.State, "report_state": reportRun.State, "table_rows": len(tableView.Output.Table.Rows), "chart_points": len(barView.Output.Chart.Points)})
+}
+
+func requireCommerceRetainedValues(t *testing.T, table, chart reporting.DeliveryViewResult) {
+	t.Helper()
+	if table.Output == nil || table.Output.Table == nil || chart.Output == nil || chart.Output.Chart == nil {
+		t.Fatal("retained commerce outputs are missing")
+	}
+	view := table.Output.Table
+	if len(view.Columns) != 2 || view.Columns[0].Name != "status" || view.Columns[1].Name != "amount_usd" || len(view.Rows) != 2 {
+		t.Fatal("retained commerce table has the wrong schema or row count")
+	}
+	want := map[string]string{"paid": "640", "cancelled": "60"}
+	for _, row := range view.Rows {
+		if len(row) != 2 || row[0].Null || row[1].Null || !liveNumberEquals(row[1].Value, want[row[0].Value]) {
+			t.Fatal("retained commerce table has an unexpected status or amount")
+		}
+		delete(want, row[0].Value)
+	}
+	if len(want) != 0 || len(chart.Output.Chart.Points) != 2 {
+		t.Fatal("retained commerce table or chart omitted a status")
+	}
+	want = map[string]string{"paid": "640", "cancelled": "60"}
+	for _, point := range chart.Output.Chart.Points {
+		if point.Category.Null || point.Value.Null || !liveNumberEquals(point.Value.Exact, want[point.Category.Value]) {
+			t.Fatal("retained commerce chart has an unexpected category or value")
+		}
+		delete(want, point.Category.Value)
+	}
+	if len(want) != 0 {
+		t.Fatal("retained commerce chart omitted a category")
+	}
+}
+
+func liveNumberEquals(value, want string) bool {
+	if want == "" {
+		return false
+	}
+	a, ok := new(big.Rat).SetString(value)
+	if !ok {
+		return false
+	}
+	b, ok := new(big.Rat).SetString(want)
+	return ok && a.Cmp(b) == 0
+}
+
+func requireCommerceStaticValues(t *testing.T, format, content string) {
+	t.Helper()
+	trimmed := strings.TrimSpace(content)
+	switch format {
+	case "html":
+		if !strings.HasPrefix(strings.ToLower(trimmed), "<!doctype html>") || !strings.Contains(trimmed, "<table>") {
+			t.Fatal("retained HTML is not a populated static table")
+		}
+	case "svg":
+		if !strings.HasPrefix(trimmed, "<svg ") || !strings.HasSuffix(trimmed, "</svg>") || !strings.Contains(trimmed, "data-kind=\"bar\"") {
+			t.Fatal("retained SVG is not a populated static bar chart")
+		}
+	default:
+		t.Fatal("unexpected static format")
+	}
+	for _, value := range []string{"paid", "cancelled", "640", "60"} {
+		if !strings.Contains(trimmed, value) {
+			t.Fatalf("static %s omitted synthetic commerce label or value %q", format, value)
+		}
+	}
 }

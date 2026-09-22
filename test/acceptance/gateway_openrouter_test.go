@@ -58,6 +58,28 @@ func TestGatewayOpenRouterRerankSDKWire(t *testing.T) {
 	}
 }
 
+func TestGatewayOpenRouterPerplexityEmbeddingAlias(t *testing.T) {
+	f := newGatewayFixture(t, func(c *config.Gateway) {
+		r := c.Roles["embedding"]
+		r.Model = "perplexity/pplx-embed-v1-0.6b"
+		c.Roles["embedding"] = r
+	})
+	f.embeddingMode.Store("openrouter-pplx-alias")
+	out, err := f.engine.Embed(context.Background(), f.call, gatewayBudget(t, f.call, 2), f.engine.Space(), []string{"alias-positive"})
+	if err != nil || len(out.Vectors) != 1 || len(out.Vectors[0]) != 2 || len(out.Receipt.Calls) != 1 {
+		t.Fatalf("recorded OpenRouter alias response rejected: %v", err)
+	}
+	u := out.Receipt.Calls[0]
+	if u.Role != "embedding" || u.Provider != "primary" || u.RequestedModel != "perplexity/pplx-embed-v1-0.6b" || u.ActualModel != "pplx-embed-v1-0.6b" || f.engine.EmbeddingSpace().Model != u.RequestedModel {
+		t.Fatalf("embedding request, wire model, or pinned space drifted: %#v", u)
+	}
+	f.embeddingMode.Store("model")
+	bad, err := f.engine.Embed(context.Background(), f.call, gatewayBudget(t, f.call, 2), f.engine.Space(), []string{"alias-negative"})
+	if !errors.Is(err, gateway.ErrSpace) || len(bad.Vectors) != 0 || len(bad.Receipt.Calls) != 1 || bad.Receipt.Calls[0].ActualModel != "different-embedding-space" {
+		t.Fatalf("unexpected observed model accepted: %#v, %v", bad.Receipt, err)
+	}
+}
+
 func TestGatewayOpenRouterRerankRejectsMalformedWire(t *testing.T) {
 	f := openRouterRerankFixture(t)
 	for _, mode := range []string{"missing", "duplicate", "index", "nonfinite"} {
