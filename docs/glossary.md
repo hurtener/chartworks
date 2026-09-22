@@ -14,6 +14,7 @@ Current implementation vocabulary, 2026-09-04. RFCs and active plans govern; his
 | Dataset | Registered source table/view or managed materialization with schema, lineage and health. |
 | Managed object | An output whose ownership is verified in the managed registry and database privileges; a name prefix is not proof. |
 | Profile | Versioned sampled data/schema/quality/freshness evidence with its method and observation time. |
+| Onboarding run | Actor/session-private resumable progress over existing source, profile, semantic and reporting services. Its evidence and object references grant no authority or approval. |
 | Topic / topic pack | Versioned business semantic contract containing tables, measures, dimensions, KPIs, joins, rules and routing context. |
 | Governed value | Explicitly reviewed, bounded non-sensitive stored value and user aliases with evidence/policy provenance; never an unrestricted profile sample. |
 | Relationship decision | Candidate or rejected same-source/context join evidence retained for review; it is not an executable confirmed join. |

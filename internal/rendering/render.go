@@ -36,6 +36,7 @@ type Viewer interface {
 // Request selects one retained output and one closed static representation.
 type Request struct {
 	View   reporting.DeliveryViewRequest `json:"view"`
+	Full   bool                          `json:"full,omitempty"`
 	Format string                        `json:"format" jsonschema:"enum=json,enum=csv,enum=html,enum=svg"`
 	Theme  string                        `json:"theme" jsonschema:"enum=light,enum=dark"`
 	Width  int                           `json:"width"`
@@ -44,17 +45,24 @@ type Request struct {
 
 // Rendition carries bounded static bytes and their retained-input provenance.
 type Rendition struct {
-	Version      string     `json:"version"`
-	Format       string     `json:"format"`
-	MediaType    string     `json:"media_type"`
-	Theme        string     `json:"theme"`
-	Width        int        `json:"width"`
-	Height       int        `json:"height"`
-	SourceDigest string     `json:"source_digest"`
-	Projection   Projection `json:"projection"`
-	Digest       string     `json:"digest"`
-	Bytes        int        `json:"bytes"`
-	Content      string     `json:"content"`
+	ID            string     `json:"id,omitempty"`
+	State         string     `json:"state,omitempty"`
+	Code          string     `json:"code,omitempty"`
+	Version       string     `json:"version"`
+	WorkerVersion string     `json:"worker_version,omitempty"`
+	ThemeVersion  string     `json:"theme_version,omitempty"`
+	Format        string     `json:"format"`
+	MediaType     string     `json:"media_type"`
+	Theme         string     `json:"theme"`
+	Width         int        `json:"width"`
+	Height        int        `json:"height"`
+	SourceDigest  string     `json:"source_digest"`
+	Projection    Projection `json:"projection"`
+	Digest        string     `json:"digest"`
+	Bytes         int        `json:"bytes"`
+	Content       string     `json:"content"`
+	CreatedAt     time.Time  `json:"created_at,omitempty"`
+	ExpiresAt     time.Time  `json:"expires_at,omitempty"`
 }
 
 // Projection identifies the exact retained window used for this rendition.
@@ -73,8 +81,11 @@ type Projection struct {
 
 // Service renders retained values and owns no source, model or network client.
 type Service struct {
-	viewer   Viewer
-	maxBytes int
+	viewer     Viewer
+	maxBytes   int
+	processor  Processor
+	repository Repository
+	options    Options
 }
 
 // New constructs a bounded retained-only renderer.
@@ -82,7 +93,7 @@ func New(viewer Viewer, maxBytes int) (*Service, error) {
 	if viewer == nil || maxBytes < 1024 || maxBytes > 64<<20 {
 		return nil, ErrInvalid
 	}
-	return &Service{viewer, maxBytes}, nil
+	return &Service{viewer: viewer, maxBytes: maxBytes}, nil
 }
 
 // Export rechecks exact run reach, reads the retained artifact and renders it.
@@ -96,6 +107,14 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 	if !oneOf(in.Format, "json", "csv", "html", "svg") || !oneOf(in.Theme, "light", "dark") || in.Width < 320 || in.Width > 4096 || in.Height < 200 || in.Height > 4096 || in.View.Limit < 0 || in.View.Limit > 1000 {
 		return Rendition{}, ErrInvalid
 	}
+	if (in.Format == "html" || in.Format == "svg") && s.processor == nil {
+		return Rendition{}, ErrInvalid
+	}
+	if s.processor != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.options.MaxTime)
+		defer cancel()
+	}
 	if err := access.Require(e, "reporting.export", access.Resource{Tenant: e.Tenant(), Kind: "run", Permission: "export", ID: in.View.Run}); err != nil {
 		return Rendition{}, err
 	}
@@ -103,9 +122,35 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 	if err != nil {
 		return Rendition{}, err
 	}
+	if in.Full {
+		if in.View.Kind == "block" || (in.Format != "html" && in.Format != "svg") {
+			return Rendition{}, ErrInvalid
+		}
+		return s.renderComposition(ctx, e, in, view)
+	}
 	if view.Output == nil || view.Output.State != "succeeded" || view.Output.RetainedDigest == "" {
 		return Rendition{}, reporting.ErrIncomplete
 	}
+	return s.render(ctx, in, view)
+}
+
+func (s *Service) render(ctx context.Context, in Request, view reporting.DeliveryViewResult) (Rendition, error) {
+	if s.processor != nil && (in.Format == "html" || in.Format == "svg") {
+		work := SealedWork{Version: WorkerProtocolVersion, Request: in, View: view}
+		work.Digest = sealedDigest(work)
+		out, err := s.processor.Process(ctx, work)
+		if err != nil {
+			return Rendition{}, err
+		}
+		if len(out.Content) > s.maxBytes {
+			return Rendition{}, reporting.ErrBudget
+		}
+		return out, nil
+	}
+	return renderSealed(in, view, s.maxBytes)
+}
+
+func renderSealed(in Request, view reporting.DeliveryViewResult, maxBytes int) (Rendition, error) {
 	timezone := view.Timezone
 	if timezone == "" {
 		timezone = "UTC"
@@ -141,11 +186,11 @@ func (s *Service) Export(ctx context.Context, e identity.Envelope, in Request) (
 	if err != nil {
 		return Rendition{}, err
 	}
-	if len(content) > s.maxBytes {
+	if len(content) > maxBytes {
 		return Rendition{}, reporting.ErrBudget
 	}
 	sum := sha256.Sum256(content)
-	return Rendition{Version: Version, Format: in.Format, MediaType: media, Theme: in.Theme, Width: in.Width, Height: in.Height, SourceDigest: view.Output.RetainedDigest, Projection: projection, Digest: hex.EncodeToString(sum[:]), Bytes: len(content), Content: string(content)}, ctx.Err()
+	return Rendition{State: "succeeded", Version: Version, Format: in.Format, MediaType: media, Theme: in.Theme, Width: in.Width, Height: in.Height, SourceDigest: view.Output.RetainedDigest, Projection: projection, Digest: hex.EncodeToString(sum[:]), Bytes: len(content), Content: string(content)}, nil
 }
 
 func projectionFor(view reporting.DeliveryViewResult, timezone string) (Projection, error) {
@@ -349,6 +394,9 @@ func formatValue(value charts.Value, column charts.Column, timezone string) stri
 }
 
 func renderSVG(out *reporting.ViewerOutput, theme string, width, height int, timezone string) ([]byte, error) {
+	if out.Table != nil {
+		return []byte(renderTableSVG(out, theme, width, height, timezone)), nil
+	}
 	if out.Chart == nil {
 		return nil, ErrInvalid
 	}
@@ -357,6 +405,32 @@ func renderSVG(out *reporting.ViewerOutput, theme string, width, height int, tim
 		return nil, err
 	}
 	return []byte(body), nil
+}
+func renderTableSVG(out *reporting.ViewerOutput, theme string, width, height int, timezone string) string {
+	background, foreground := "#ffffff", "#17211f"
+	if theme == "dark" {
+		background, foreground = "#17211f", "#f6f1e7"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"table\" data-kind=\"table\" data-theme=\"%s\" viewBox=\"0 0 %d %d\"><rect width=\"%d\" height=\"%d\" fill=\"%s\"/><g fill=\"%s\">", theme, width, height, width, height, background, foreground)
+	cols := max(1, len(out.Table.Columns))
+	cellWidth := max(48, width/cols)
+	for i, column := range out.Table.Columns {
+		fmt.Fprintf(&b, "<text x=\"%d\" y=\"22\" font-weight=\"bold\">%s</text>", 8+i*cellWidth, html.EscapeString(label(column)))
+	}
+	for rowIndex, row := range out.Table.Rows {
+		if rowIndex >= max(1, (height-30)/22) {
+			break
+		}
+		for i, cell := range row {
+			if i >= len(out.Table.Columns) {
+				break
+			}
+			fmt.Fprintf(&b, "<text x=\"%d\" y=\"%d\">%s</text>", 8+i*cellWidth, 46+rowIndex*22, html.EscapeString(formatCell(cell, out.Table.Columns[i], timezone)))
+		}
+	}
+	b.WriteString("</g></svg>")
+	return b.String()
 }
 func renderChartSVG(c *charts.Output, theme string, width, height int, timezone string) (string, error) {
 	if c == nil || c.Mapping.Kind != c.Kind || c.Version != c.Mapping.Version {
@@ -367,9 +441,10 @@ func renderChartSVG(c *charts.Output, theme string, width, height int, timezone 
 	if theme == "dark" {
 		background, foreground = "#17211f", "#f6f1e7"
 	}
-	fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" data-theme=\"%s\" viewBox=\"0 0 %d %d\"><title>%s</title><rect width=\"%d\" height=\"%d\" fill=\"%s\"/><g fill=\"%s\">", theme, width, height, html.EscapeString(c.Mapping.Options.Title), width, height, background, foreground)
-	y := 28
+	fmt.Fprintf(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" data-kind=\"%s\" data-theme=\"%s\" viewBox=\"0 0 %d %d\"><title>%s</title><rect width=\"%d\" height=\"%d\" fill=\"%s\"/>", c.Kind, theme, width, height, html.EscapeString(c.Mapping.Options.Title), width, height, background)
 	if c.Kind == charts.KPI && c.KPIResult != nil {
+		b.WriteString("<g fill=\"" + foreground + "\">")
+		y := 28
 		for _, line := range kpiLines(c, timezone) {
 			if y > height-8 {
 				break
@@ -377,33 +452,14 @@ func renderChartSVG(c *charts.Output, theme string, width, height int, timezone 
 			fmt.Fprintf(&b, "<text x=\"16\" y=\"%d\" data-kind=\"%s\">%s</text>", y, html.EscapeString(line.kind), html.EscapeString(line.text))
 			y += 18
 		}
+		b.WriteString("</g>")
+		drawSparkline(&b, c.KPIResult.Sparkline, width, height)
 	} else {
-		for _, p := range c.Points {
-			if y > height-8 {
-				break
-			}
-			parts := []string{}
-			if !p.Category.Null {
-				parts = append(parts, formatCell(p.Category, chartColumn(c, c.Mapping.Bindings.Category), timezone))
-			}
-			for _, item := range []struct {
-				value   charts.Value
-				id      string
-				measure bool
-			}{{p.X, c.Mapping.Bindings.X, false}, {p.Y, c.Mapping.Bindings.Y, false}, {p.Value, c.Mapping.Bindings.Value, true}} {
-				if !item.value.Null && item.value.Exact != "" {
-					column := chartColumn(c, item.id)
-					if p.Measure != "" && item.measure {
-						column = chartColumn(c, p.Measure)
-					}
-					parts = append(parts, formatValue(item.value, column, timezone))
-				}
-			}
-			fmt.Fprintf(&b, "<text x=\"16\" y=\"%d\">%s</text>", y, html.EscapeString(strings.Join(parts, " · ")))
-			y += 18
+		if err := drawChartGeometry(&b, c, width, height, foreground, background, timezone); err != nil {
+			return "", err
 		}
 	}
-	b.WriteString("</g></svg>")
+	b.WriteString("</svg>")
 	return b.String(), nil
 }
 

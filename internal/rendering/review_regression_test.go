@@ -26,7 +26,7 @@ func TestPagedExportIdentifiesExactProjection(t *testing.T) {
 	view.Output.Table.Warnings = []string{"retained result is bounded"}
 	view.PageBounds = reporting.ViewerPage{Limit: 1000, Total: 1500, Next: &next}
 	f := &fixtureViewer{value: view}
-	s, _ := New(f, 8<<20)
+	s, _ := newTestService(f, 8<<20)
 	r, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), exportRequest("json"))
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestCSVNeutralizesHostileHeadersAndCells(t *testing.T) {
 	}
 	view.PageBounds = reporting.ViewerPage{Limit: 1, Total: 1}
 	f := &fixtureViewer{value: view}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	r, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), exportRequest("csv"))
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestStaticKPIHTMLAndSVGCarryAllRetainedFields(t *testing.T) {
 		Value: charts.Value{Exact: "10"}, Comparison: value("8"), Delta: value("2"), PercentDelta: value("25"), Target: value("12"), TargetDifference: value("-2"), ThresholdState: "warning", ThresholdLabel: "Below target", Sparkline: []charts.Value{{Exact: "7"}, {Exact: "10"}},
 	}}
 	f := &fixtureViewer{value: reporting.DeliveryViewResult{Timezone: "UTC", Output: &reporting.ViewerOutput{State: "succeeded", RetainedDigest: strings.Repeat("b", 64), Chart: chart}}}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	for _, format := range []string{"html", "svg"} {
 		in := exportRequest(format)
 		r, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), in)
@@ -117,7 +117,7 @@ func TestStaticKPIThresholdStateIsVisibleWithoutLabel(t *testing.T) {
 	column := charts.Column{ID: "actual", Name: "actual", Type: "decimal"}
 	chart := &charts.Output{Version: charts.DisplayVersion, Kind: charts.KPI, State: "ready", Columns: []charts.Column{column}, Mapping: charts.Mapping{Version: charts.DisplayVersion, Kind: charts.KPI, Columns: []charts.Column{column}, Bindings: charts.Bindings{Value: "actual"}}, KPIResult: &charts.KPIResult{Value: charts.Value{Exact: "10"}, ThresholdState: "critical"}}
 	f := &fixtureViewer{value: reporting.DeliveryViewResult{Timezone: "UTC", Output: &reporting.ViewerOutput{State: "succeeded", RetainedDigest: strings.Repeat("d", 64), Chart: chart}}}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	for _, format := range []string{"html", "svg"} {
 		r, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), exportRequest(format))
 		if err != nil || !strings.Contains(r.Content, ">critical<") {
@@ -131,7 +131,7 @@ func TestStaticChartFormattingTimezoneThemeAndViewport(t *testing.T) {
 	money := charts.Column{ID: "money", Name: "money", Type: "decimal", Format: charts.Format{FractionDigits: 2, Locale: "es-AR", CurrencySymbol: "US$"}}
 	chart := &charts.Output{Version: charts.Version, Kind: charts.Bar, State: "ready", Columns: []charts.Column{date, money}, Mapping: charts.Mapping{Version: charts.Version, Kind: charts.Bar, Columns: []charts.Column{date, money}, Bindings: charts.Bindings{Category: "date", Value: "money"}}, Points: []charts.Point{{Category: charts.Cell{Value: "2026-09-22T01:30:00Z"}, Value: charts.Value{Exact: "1234.5"}}}}
 	f := &fixtureViewer{value: reporting.DeliveryViewResult{Timezone: "America/Argentina/Buenos_Aires", Output: &reporting.ViewerOutput{State: "succeeded", RetainedDigest: strings.Repeat("c", 64), Chart: chart}}}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	in := exportRequest("svg")
 	light, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), in)
 	if err != nil || !strings.Contains(light.Content, "21/09/2026") || !strings.Contains(light.Content, "1.234,50 US$") || !strings.Contains(light.Content, `viewBox="0 0 800 420"`) {
@@ -154,7 +154,7 @@ func TestStaticTableHTMLCarriesTotalsScopeAndCompleteness(t *testing.T) {
 	next := 1
 	view.PageBounds = reporting.ViewerPage{Limit: 1, Total: 4, Next: &next}
 	f := &fixtureViewer{value: view}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	r, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), exportRequest("html"))
 	if err != nil {
 		t.Fatal(err)

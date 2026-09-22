@@ -14,6 +14,8 @@ import (
 	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
+	"github.com/hurtener/chartworks/internal/onboarding"
+	"github.com/hurtener/chartworks/internal/onboardingapi"
 	"github.com/hurtener/chartworks/internal/rendering"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/reportingapi"
@@ -30,6 +32,7 @@ type deliveryServices struct {
 	renderer         *rendering.Service
 	evaluation       *evaluation.Service
 	evaluationRunner evaluation.Runner
+	onboarding       *onboarding.Service
 }
 
 func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service, published *topics.Service, query *nlqexec.Service, byo *nlqbyo.Service, charts *chartservice.Service, registry *api.Registry, next http.Handler, services ...deliveryServices) (*api.Registry, http.Handler, error) {
@@ -43,6 +46,12 @@ func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service,
 		func() ([]mcpserver.Binding, error) { return nlqapi.ExecutionMCPBindings(query) },
 		func() ([]mcpserver.Binding, error) { return nlqapi.BYOMCPBindings(byo) },
 		func() ([]mcpserver.Binding, error) { return chartapi.MCPBindings(charts) },
+		func() ([]mcpserver.Binding, error) {
+			if len(services) == 1 {
+				return onboardingapi.MCPBindings(services[0].onboarding)
+			}
+			return nil, nil
+		},
 	} {
 		group, err := build()
 		if err != nil {

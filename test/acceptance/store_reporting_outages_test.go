@@ -3,11 +3,15 @@ package acceptance
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/rendering"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -112,12 +116,20 @@ func TestStoreFrozenExpiryWinsOverCheckpoint(t *testing.T) {
 		if w.Kind != "result" {
 			return db.CheckpointFrozenRun(ctx, inv, proof)
 		}
+		now := time.Now().UTC()
+		renditionID := "rnd-" + strings.Repeat("c", 32)
+		if _, putErr := db.PutRendition(ctx, rendering.Record{Tenant: f.execute.Tenant(), Actor: f.execute.User(), Session: f.execute.Session(), Request: rendering.Request{View: reporting.DeliveryViewRequest{Kind: "block", Run: w.Manifest.ID}, Format: "html", Theme: "light", Width: 800, Height: 400}, Rendition: rendering.Rendition{ID: renditionID, State: "succeeded", Version: rendering.Version, WorkerVersion: "retention-test", ThemeVersion: "retention-test", Format: "html", MediaType: "text/html; charset=utf-8", Theme: "light", Width: 800, Height: 400, SourceDigest: strings.Repeat("a", 64), Digest: strings.Repeat("b", 64), Bytes: 1, Content: "x", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}}); putErr != nil {
+			t.Fatal("seed frozen rendition", putErr)
+		}
 		if _, err = f.raw.Exec(ctx, `UPDATE chartworks.frozen_runs SET payload_expires_at=clock_timestamp() WHERE tenant_id=$1 AND operation_id=$2`, f.execute.Tenant(), w.Manifest.ID); err != nil {
 			t.Fatal(err)
 		}
 		n, err := db.ExpireFrozenArtifacts(ctx, f.execute, 10)
 		if err != nil || n != 1 {
 			t.Fatal("expire actual payload", n, err)
+		}
+		if _, readErr := db.ReadRendition(ctx, f.execute.Tenant(), renditionID); !errors.Is(readErr, access.ErrNotFound) {
+			t.Fatal("ordinary frozen expiry retained owned rendition", readErr)
 		}
 		expired = true
 		before := f.frozenSnapshot(t)

@@ -33,6 +33,12 @@ if err != nil { return err }
 _ = topics
 ```
 
+Guided onboarding has typed `StartOnboarding`, `GetOnboarding`,
+`ResumeOnboarding`, `AnswerOnboarding`, `CancelOnboarding` and
+`ProposeOnboardingDrift` methods. They call the installed onboarding registry and
+preserve its expected-version fences. The generic `client call` command reaches
+the same operations for coding agents without introducing a separate authoring UI.
+
 `NewInProcess` and `NewInProcessWithOptions` run those same client methods through
 an application's **production authenticated HTTP handler**, synchronously and
 without a listener. `InProcessOptions.BasePath` must match the server; the empty

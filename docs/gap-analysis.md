@@ -178,7 +178,7 @@ phase 24/34/25 manual-suite obligations.
 |---|---|---|---|---|
 | SEM-01 | Semantics | Rich semantic fields are not represented end to end | implemented by CW-04; manual final-suite evidence pending | 15/17 with 33 generation and 34 import |
 | CTX-01 | Context | Selected metrics do not retain their full dependency context | implemented by CW-04; manual final-suite evidence pending | 17/18 |
-| SEM-02 | Semantics | Enhancement is column classification rather than rich semantic authoring | implemented by CW-04; full phase-33 workflow remains separate | 15/33 |
+| SEM-02 | Semantics | Enhancement is column classification rather than rich semantic authoring | rich enhancement implemented by CW-04; Phase-33 orchestration submitted with explicit unresolved review | 15/33 |
 | RTE-01 | Routing | Routing confidence and topic choice are reduced | implemented by CW-07; live calibration pending phase 24/final suite | 17/24 |
 | LRN-01 | Learning | Stored examples are not equivalent to retrieval-selected templates | implemented by CW-08; live quality remains phase 24 | 15/17/18; optimization remains 24 |
 | LRN-02 | Learning | Feedback weights are fixed increments | implemented by CW-08; decay/calibration remains phase 24 | 18; evaluation 24 |
@@ -200,7 +200,7 @@ phase 24/34/25 manual-suite obligations.
 | EVAL-01 | Evaluation | Deterministic acceptance is not calibrated behavioral equivalence | explicitly pending | 24/34/25 |
 | CLR-02 | Clarification | Typed clarification answers can have no planning effect | typed binding and session replay implemented; bounded native SQL subset | 16/17/18 |
 | DATA-01 | Profiling to semantics | Safe profiles no longer supply governed example values to semantic authoring | privacy-preserving reviewed-value replacement implemented by CW-04 | 12/15/33; consumer17 |
-| DATA-02 | Discovery and onboarding | Physical discovery is not equivalent to semantic role and relationship discovery | reviewed role/grain/candidate/rejected evidence implemented; phase-33 orchestration remains | 15/33; coordinate26 |
+| DATA-02 | Discovery and onboarding | Physical discovery is not equivalent to semantic role and relationship discovery | reviewed role/grain/candidate/rejected evidence implemented; Phase-33 resumable orchestration submitted for review | 15/33; coordinate26 |
 | PERF-01 | Latency and reuse | Cache behavior must be compared under the new authority model | intentional redesign; performance unmeasured | 17/24; reuse28; qualification34/25 |
 | REP-01 | Reporting filters | Revision-bound selectable filter options are a newly observed reference capability | implemented in CW-10; final release evidence pending | 29/31; safe source 09/10/14; import34 |
 | REP-02 | Reporting lifecycle | Report/dashboard deletion has semantics beyond archive | implemented by CW-11; final migration/cutover evidence pending | 29/30; retention28/32; import34 |
@@ -234,14 +234,14 @@ phase 24/34/25 manual-suite obligations.
 
 ### SEM-02 — Enhancement is column classification rather than rich semantic authoring
 
-- **Disposition:** implemented by CW-04 at the semantic enhancement boundary; full phase-33 setup orchestration remains planned.
+- **Disposition:** implemented by CW-04 at the semantic enhancement boundary; Phase-33 setup orchestration is submitted for independent review and real-boundary qualification.
 - **Owner / phases:** 15/33.
 - **Reference behavior (neutral):** The original has dedicated semantic enhancement and rich business-context entities.
 - **Current boundary:** The bounded gateway enhancement consumes exact safe columns and a sealed allowed-metric catalog, and can produce descriptions, aliases, units, reviewed roles, temporal policy, KPI formulas, and candidate/rejected relationship evidence in the same immutable draft checkpoint. Same-step KPI inputs must name an actually produced measure; relationship evidence is page-local; exact retries and cross-page KPI repeats are idempotent while conflicts and cross-page relationship evidence reject. Explicit governed-value authoring remains review-only because raw/sample values are never sent to the model.
 - **Consequence:** An imported rich topic and a freshly generated topic cannot have equivalent richness using this generator alone.
 - **Contract, storage and import impact:** Define the semantic proposal schema and migration for grain, units, formulas, relationships, aliases, filters and unresolved evidence. Ensure draft/edit/publication and SDK representations consume the same contract rather than creating a second model.
 - **Closure requirements:** Generate and store evidence-backed grain, joins, measures, dimensions, KPIs, units and time/null semantics; verify downstream context uses them and unresolved items remain reviewable.
-- **Current repository evidence:** [gateway schema and consumer](../internal/semantics/drafts/service.go), [rich enhancement application](../internal/semantics/enhance.go), [phase-33 boundary](../docs/plans/phase-33-guided-onboarding.md), [contract](contracts/rich-semantics-v1.md).
+- **Current repository evidence:** [gateway schema and consumer](../internal/semantics/drafts/service.go), [rich enhancement application](../internal/semantics/enhance.go), [guided coordinator](../internal/onboarding/service.go), [phase-33 boundary](../docs/plans/phase-33-guided-onboarding.md), [contract](contracts/rich-semantics-v1.md).
 
 ### RTE-01 — Routing confidence and topic choice are reduced
 
@@ -495,15 +495,15 @@ phase 24/34/25 manual-suite obligations.
 
 ### DATA-02 — Physical discovery is not equivalent to semantic role and relationship discovery
 
-- **Disposition:** reviewed semantic role/grain and candidate/rejected relationship evidence implemented by CW-04; complete phase-33 guided orchestration remains planned.
+- **Disposition:** reviewed semantic role/grain and candidate/rejected relationship evidence implemented by CW-04; Phase-33 guided orchestration is submitted for independent review and real-boundary qualification.
 - **Owner / phases:** 15/33; coordinate26.
 - **Reference behavior (neutral):** The original discovery model and workflow distinguish column roles, relationship evidence and rejected/reviewed joins before rich topic generation.
-- **Current boundary:** Physical discovery remains deliberately non-semantic. The authoring model and enhancement checkpoint now preserve reviewed field roles, temporal grain, confirmed join evidence and candidate/rejected relationship decisions. Only confirmed `Join` entities are query consumers; candidates cannot silently become executable.
+- **Current boundary:** Physical discovery remains deliberately non-semantic. The authoring model and enhancement checkpoint preserve reviewed field roles, temporal grain, confirmed join evidence and candidate/rejected relationship decisions. The submitted coordinator carries bounded discovery/profile evidence into a private semantic draft, stops on explicit grain/join/KPI/unit/null/sensitivity choices, and requires an exact independent review before publication. Only confirmed `Join` entities are query consumers; candidates cannot silently become executable.
 - **Consequence:** A source being discoverable and a profile being complete must not be interpreted as a complete semantic environment. Preserve the extra inference/review steps with real consumers.
 - **Contract, storage and import impact:** Add reviewed semantic role, grain, relationship and rejected-join evidence to onboarding outputs. Persist it through draft/publication/import and require an explicit decision before query retrieval uses it.
 - **Closure requirements:** Inspect an ambiguous fact/dimension key; preserve role, grain, candidate/rejected join evidence and require review before publication.
 - **Source evidence IDs:** REF-DATA-02-A.
-- **Current repository evidence:** [source discovery boundary](../internal/sources/sources.go), [relationship evidence model](../internal/semantics/model.go), [enhancement](../internal/semantics/enhance.go), [phase-33 boundary](../docs/plans/phase-33-guided-onboarding.md), [contract](contracts/rich-semantics-v1.md).
+- **Current repository evidence:** [source discovery boundary](../internal/sources/sources.go), [relationship evidence model](../internal/semantics/model.go), [enhancement](../internal/semantics/enhance.go), [guided domain composition](../internal/onboarding/domains.go), [phase-33 boundary](../docs/plans/phase-33-guided-onboarding.md), [contract](contracts/rich-semantics-v1.md).
 
 ### PERF-01 — Cache behavior must be compared under the new authority model
 
@@ -1037,7 +1037,7 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | N13 | Upload/dataset mode, SQL workspaces and preprocessing | retained foundation; richer semantic handoff gap | Bounded uploads/ordinary governed sources; DATA-01/02 semantic environment is narrower | 11.AC01, 11.AC05 |
 | N14 | Stage timing, cache attribution, cost and cancellation | partial / unmeasured | Cancellation and stage receipts retained; PERF-01 warm/cold cost/latency needs comparison | 01.AC03, 17.AC06, 05.AC03 |
 | N15 | Source adapters and dialect coverage | per-engine qualification incomplete | Six target engine contracts; recorded cloud evidence is not live workload equivalence | 14.AC01, 14.AC05 |
-| N16 | Operational setup and generated semantic environment | Phase 26 reviewed application; richer generation pending33 | Evidence-backed richer setup and generation; DATA-01/02, SEM-02 | 33.AC01, 33.AC03 |
+| N16 | Operational setup and generated semantic environment | Phase 26 reviewed application plus Phase-33 runtime submitted; independent/real-boundary evidence pending | Resumable source/profile/draft/review composition preserves explicit DATA-01/02 and SEM-02 uncertainty | 33.AC01, 33.AC03 |
 
 ## Review disposition
 

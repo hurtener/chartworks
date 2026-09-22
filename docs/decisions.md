@@ -783,4 +783,8 @@ Reporting lifecycle continuation: [D-081 fenced document erasure and descriptive
 
 Report filter continuation: [D-082 explicit revision-bound selectable values through validated reads](decisions/2026-09-22-report-filter-options.md).
 
+Static rendering continuation: [D-083 isolated durable retained-artifact renditions](decisions/2026-09-22-static-render-runtime.md).
+
+Guided onboarding continuation: [D-084 private durable composition with explicit human gates](decisions/2026-09-22-guided-onboarding.md).
+
 Evaluation continuation: [D-085 immutable reviewed suites, durable terminal evidence and reviewed pack selection](decisions/2026-09-22-evaluation-calibration.md).

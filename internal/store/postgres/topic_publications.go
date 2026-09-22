@@ -196,13 +196,16 @@ func readPublishedTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, id, ve
 		return out, err
 	}
 	args = append(args, version)
-	var raw []byte
+	var raw, receipt []byte
 	var active string
-	err = tx.QueryRow(ctx, `SELECT h.revision,h.active_version,h.archived,v.version_id,v.definition,v.digest,v.created_at FROM chartworks.topic_publication_heads h JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id)=(h.tenant_id,h.topic_id) WHERE `+publishedEligibility+` AND v.version_id=CASE WHEN $9::text='' THEN h.active_version ELSE $9 END`, args...).Scan(&out.State.Revision, &active, &out.State.Archived, &out.State.Version, &raw, &out.Digest, &out.PublishedAt)
+	err = tx.QueryRow(ctx, `SELECT h.revision,h.active_version,h.archived,v.version_id,v.definition,v.digest,v.created_at,v.receipt FROM chartworks.topic_publication_heads h JOIN chartworks.topic_published_versions v ON(v.tenant_id,v.topic_id)=(h.tenant_id,h.topic_id) WHERE `+publishedEligibility+` AND v.version_id=CASE WHEN $9::text='' THEN h.active_version ELSE $9 END`, args...).Scan(&out.State.Revision, &active, &out.State.Archived, &out.State.Version, &raw, &out.Digest, &out.PublishedAt, &receipt)
 	if err != nil {
 		return out, err
 	}
 	if json.Unmarshal(raw, &out.Definition) != nil || out.Definition.Topic != id || out.Definition.Version != out.State.Version {
+		return topics.Published{}, store.ErrInvalid
+	}
+	if len(receipt) > 0 && json.Unmarshal(receipt, &out.Receipt) != nil {
 		return topics.Published{}, store.ErrInvalid
 	}
 	if err = publishedCanonicalFence(ctx, tx, e.Tenant(), id, out.State.Version, out.Definition.CanonicalEntities); err != nil {

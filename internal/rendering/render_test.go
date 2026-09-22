@@ -12,6 +12,10 @@ import (
 	"github.com/hurtener/chartworks/internal/reporting"
 )
 
+func newTestService(v Viewer, maxBytes int) (*Service, error) {
+	return NewManaged(v, NewMemoryRepository(), LocalProcessor{MaxBytes: maxBytes}, maxBytes, Options{WorkerVersion: "test", ThemeVersion: "test", MaxTime: time.Second, MaxMemoryBytes: 64 << 20, MaxInputBytes: maxBytes, MaxOutputBytes: maxBytes, MaxConcurrent: 1, MaxWidgets: 100, Retention: time.Hour, Isolation: "development"})
+}
+
 type fixtureViewer struct {
 	value reporting.DeliveryViewResult
 	calls int
@@ -43,7 +47,7 @@ func tableView() reporting.DeliveryViewResult {
 
 func TestStaticExportsUseRetainedValuesAndEscapeContent(t *testing.T) {
 	f := &fixtureViewer{value: tableView()}
-	s, err := New(f, 1<<20)
+	s, err := newTestService(f, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +70,7 @@ func TestStaticExportsUseRetainedValuesAndEscapeContent(t *testing.T) {
 
 func TestExportRequiresBothCurrentReadAndExportAuthority(t *testing.T) {
 	f := &fixtureViewer{value: tableView()}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	in := Request{View: reporting.DeliveryViewRequest{Kind: "block", Run: "run", Output: "table", Limit: 10}, Format: "json", Theme: "dark", Width: 640, Height: 320}
 	for _, scopes := range [][]string{{"reporting.read"}, {"reporting.export"}} {
 		if _, err := s.Export(context.Background(), authority(t, scopes...), in); err == nil {
@@ -122,7 +126,7 @@ func TestStaticKPIContainsActualFormattedContentWithoutScript(t *testing.T) {
 	column := charts.Column{ID: "actual", Name: "actual", DisplayLabel: "Ingresos", Type: "decimal", Format: charts.Format{Currency: "USD", CurrencySymbol: "US$", Locale: "es-AR", FractionDigits: 2}}
 	chart := &charts.Output{Version: charts.DisplayVersion, Kind: charts.KPI, State: "ready", Columns: []charts.Column{column}, Mapping: charts.Mapping{Version: charts.DisplayVersion, Kind: charts.KPI, Columns: []charts.Column{column}, Bindings: charts.Bindings{Value: "actual"}, Options: charts.Options{Title: "Ingresos"}}, KPIResult: &charts.KPIResult{Value: charts.Value{Exact: "1234.567"}, PercentDelta: &charts.Value{Exact: "18.18"}}}
 	f := &fixtureViewer{value: reporting.DeliveryViewResult{Output: &reporting.ViewerOutput{ID: "kpi", Kind: "kpi", State: "succeeded", RetainedDigest: strings.Repeat("b", 64), Chart: chart}}}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	in := Request{View: reporting.DeliveryViewRequest{Kind: "block", Run: "run", Output: "kpi"}, Format: "html", Theme: "light", Width: 800, Height: 420}
 	page, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), in)
 	if err != nil || !strings.Contains(page.Content, "1.234,57 US$") || !strings.Contains(page.Content, "18.18%") || strings.Contains(page.Content, "<script") {
@@ -139,7 +143,7 @@ func TestStaticExportClosedFormatsAndBounds(t *testing.T) {
 	column := charts.Column{ID: "value", Name: "value", Type: "decimal"}
 	chart := &charts.Output{Version: charts.Version, Kind: charts.Bar, State: "ready", Columns: []charts.Column{column}, Mapping: charts.Mapping{Version: charts.Version, Kind: charts.Bar, Columns: []charts.Column{column}, Options: charts.Options{Title: "A < B"}}, Points: []charts.Point{{Value: charts.Value{Exact: "42"}}}}
 	f := &fixtureViewer{value: reporting.DeliveryViewResult{Output: &reporting.ViewerOutput{ID: "chart", Kind: "chart", State: "succeeded", RetainedDigest: strings.Repeat("c", 64), Chart: chart}}}
-	s, _ := New(f, 1<<20)
+	s, _ := newTestService(f, 1<<20)
 	base := Request{View: reporting.DeliveryViewRequest{Kind: "block", Run: "run", Output: "chart"}, Theme: "dark", Width: 640, Height: 320}
 	for _, format := range []string{"json", "html", "svg"} {
 		base.Format = format
@@ -171,7 +175,7 @@ func TestRendererRejectsInvalidConstructionRequestAndArtifact(t *testing.T) {
 	if _, err := New(f, 100); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
-	s, _ := New(f, 1024)
+	s, _ := newTestService(f, 1024)
 	valid := Request{View: reporting.DeliveryViewRequest{Kind: "block", Run: "run", Output: "table"}, Format: "html", Theme: "light", Width: 640, Height: 320}
 	for _, change := range []func(*Request){func(r *Request) { r.Format = "pdf" }, func(r *Request) { r.Theme = "remote" }, func(r *Request) { r.Width = 100 }, func(r *Request) { r.Height = 5000 }, func(r *Request) { r.View.Limit = 1001 }} {
 		request := valid
@@ -185,7 +189,7 @@ func TestRendererRejectsInvalidConstructionRequestAndArtifact(t *testing.T) {
 		t.Fatal("incomplete artifact rendered", err)
 	}
 	f.value = tableView()
-	s, _ = New(f, 1024)
+	s, _ = newTestService(f, 1024)
 	f.value.Output.Table.Rows = append(f.value.Output.Table.Rows, []charts.Cell{{Value: strings.Repeat("x", 2048)}})
 	f.value.PageBounds.Limit, f.value.PageBounds.Total = 3, 3
 	if _, err := s.Export(context.Background(), authority(t, "reporting.read", "reporting.export"), valid); !errors.Is(err, reporting.ErrBudget) {

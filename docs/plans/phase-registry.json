@@ -311,7 +311,7 @@
         "29",
         "31"
       ],
-      "status": "planned",
+      "status": "shipped",
       "acceptance_count": 8
     },
     "33": {
@@ -323,7 +323,7 @@
         "15",
         "27"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "acceptance_count": 8
     },
     "34": {
