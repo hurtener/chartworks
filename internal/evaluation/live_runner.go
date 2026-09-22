@@ -24,6 +24,7 @@ import (
 // LiveInput is protected execution material. It is never retained in reports or logs.
 type LiveInput struct {
 	Pack      PackRevision                `json:"pack"`
+	Frozen    *FrozenRunInput             `json:"frozen,omitempty"`
 	Route     *nlqroute.RouteRequest      `json:"route,omitempty"`
 	Question  *nlqexec.QuestionRequest    `json:"question,omitempty"`
 	Run       *nlqexec.RunRequest         `json:"run,omitempty"`
@@ -70,20 +71,29 @@ type chartRuntime interface {
 type reportRuntime interface {
 	Read(context.Context, identity.Envelope, string, reporting.Reference) (reporting.View, error)
 }
+type frozenRunRuntime interface {
+	Admit(context.Context, identity.Envelope, string, reporting.RunRequest) (reporting.RunView, error)
+	Run(context.Context, identity.Envelope, string, bool) (reporting.RunView, error)
+}
+type frozenRunReader interface {
+	ReadFrozenRun(context.Context, identity.Envelope, string, bool) (reporting.RunRecord, error)
+}
 type byoRuntime interface {
 	Submit(context.Context, identity.Envelope, nlqbyo.SubmitRequest) (nlqbyo.SubmitResult, error)
 }
 
 // GovernedRunner invokes the existing governed services; it does not introduce a second gateway, validator, or executor.
 type GovernedRunner struct {
-	Inputs  LiveInputResolver
-	Routing routingRuntime
-	Query   queryRuntime
-	Saved   SavedInspector
-	Charts  chartRuntime
-	Reports reportRuntime
-	BYO     byoRuntime
-	Clock   Clock
+	Inputs      LiveInputResolver
+	Routing     routingRuntime
+	Query       queryRuntime
+	Saved       SavedInspector
+	Charts      chartRuntime
+	Reports     reportRuntime
+	Frozen      frozenRunRuntime
+	FrozenStore frozenRunReader
+	BYO         byoRuntime
+	Clock       Clock
 }
 
 // Observe resolves protected input and calls the owning governed service.
@@ -121,6 +131,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	var receipt gateway.Receipt
 	blocked := false
 	var sourceCalls int
+	var usageSourceMS *int64
 	switch x.Case.Stage {
 	case StageRouting:
 		if g.Routing == nil || in.Route == nil {
@@ -209,6 +220,25 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 		result, err = r, e
 		receipt = r.Provenance.Receipt
 	case StageConsumer:
+		if in.Frozen != nil {
+			if in.Run != nil || g.Frozen == nil || g.FrozenStore == nil {
+				return Observation{}, ErrMode
+			}
+			record, runErr := runFrozenInput(ctx, x.Envelope, g.Frozen, g.FrozenStore, *in.Frozen)
+			if runErr != nil {
+				return Observation{}, runErr
+			}
+			semantic, calls, sourceNS, modelReceipt, evidenceErr := frozenEvidence(record)
+			if evidenceErr != nil {
+				return Observation{}, evidenceErr
+			}
+			result, receipt, sourceCalls = semantic, modelReceipt, calls
+			if sourceNS != nil {
+				value := *sourceNS / int64(time.Millisecond)
+				usageSourceMS = &value
+			}
+			break
+		}
 		if g.Query == nil || in.Run == nil {
 			return Observation{}, ErrMode
 		}
@@ -275,6 +305,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 		usage.Calls, usage.Retries, usage.Tokens = reserved.Calls, reserved.Retries, reserved.Tokens
 	}
 	usage.SourceCalls = sourceCalls
+	usage.SourceMS = usageSourceMS
 	usage.ServiceMS = clock().Sub(started).Milliseconds()
 	if !receiptMatchesPack(receipt, x.Pack) {
 		return Observation{Usage: usage}, ErrReview

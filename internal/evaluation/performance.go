@@ -256,7 +256,7 @@ func (m PerformanceManifest) Validate() error {
 	}
 	deniedAction := kinds["actions_negative"].DeniedAction
 	if m.Kind == PerformanceFinalStress {
-		if deniedAction != "query.plan" && deniedAction != "query.execute" {
+		if deniedAction != "query.plan" && deniedAction != "query.execute" && deniedAction != "reporting.execute" {
 			return ErrInvalid
 		}
 		if !onlyScopeRemoved(m.Authority.Scopes, actionsNegative.Scopes, deniedAction) {

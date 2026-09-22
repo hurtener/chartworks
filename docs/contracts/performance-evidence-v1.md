@@ -1,14 +1,14 @@
 # Performance evidence v1
 
 Status: bounded PERF-01 harness and authority-bound Phase 25 prerequisite
-implemented for review, 2026-09-22. The query adapter composes Plan→Run under
-a PostgreSQL-scoped operation lock and can distinguish physical attempts from
-idempotent replay. It fails closed for final stress: this path does not exercise
-the product's frozen-run reuse identity, and the production performance adapter
-does not yet consume the PostgreSQL read attempt's source-only duration receipt.
-The selected Phase-34 current-revision resolver and recorded integration
-composition are present in the draft release branch; their bounded tests are
-prerequisites, not the final stress execution or decision owned by Phase 25.
+implemented for review, 2026-09-22. The original Plan→Run adapter remains a
+query-ledger prerequisite and fails closed for result reuse. The draft frozen
+adapter now admits distinct reporting run IDs and reads the product's canonical
+reuse identity, reuse origin, persisted native source-only duration and
+uncopied narrative receipts. A bounded real-PG17 recorded-model test exercises
+cold, warm, repeat and concurrent reuse. The selected Phase-34 current-revision
+resolver also reads the protected case's published block pins. These are
+prerequisites, not the final stress execution or Phase 25 release decision.
 
 Performance evidence is valid only after every case passes a correctness probe.
 The harness then records every raw wall-time observation and separately retains
@@ -79,33 +79,29 @@ invalidation.
 The runtime requires a current source/rule/topic/context revision resolver and
 an adapter whose declared evidence, source and model modes match `integration`
 or `live`. Every permitted correctness probe and physical execution must carry
-real source and selected model receipts. The query adapter binds the existing
-governed Plan→Run operation to durable query/read ledgers and requires the
-PostgreSQL cross-process operation lock. Plan→Run has an idempotency ledger, not
-a product result cache: a new operation on each changed binding trivially forces
-work and cannot prove invalidation. The concrete factory rejects all required
-changed-binding steps with `ErrPerformanceReuseUnproven`. Final AC03 requires an
-adapter over reporting's frozen-run path: seal distinct run IDs for the same
-approved block and inputs, exercise `Runs.continueFrozen` and PostgreSQL
-`ReuseFrozenRun`, and observe the actual `RunManifest.ReuseKey`, `ReusedFrom`,
-and physical source attempts. Preload a reusable baseline, then vary exactly
-one current source, rule, context, topic or runtime-pack revision while keeping
-other inputs and signed reach fixed; require one physical call for each changed
-case and zero reuse from the stale baseline. A negative test must substitute a
-reuse key that omits the changed dimension and show that the correctness gate
-fails. The configured Bifrost engine attests `live`. The integration-only
-`recorded.Engine` accepts exact authorized call and reviewed configuration
-digests, returns receipts labeled `recorded`, and has no provider fallback.
-`releaseprofile.NewIntegration` composes that engine with the actual routing,
-query, native read and PostgreSQL operation-lock services. Its resolver selects
+real source and selected model receipts. The original Plan→Run adapter binds
+durable query/read ledgers but cannot prove product result reuse. The new
+frozen adapter uses `reporting.Runs.Admit` and `Run` with fresh operation keys,
+reads the protected `RunRecord`, validates `RunManifest.ReuseKey` against
+`ReuseIdentity`, and checks `ReusedFrom` and physical source/model receipts.
+The protected Phase 24 consumer uses the same frozen result digest. A reused
+output's copied narrative receipt is not counted as another model call.
+`releaseprofile.NewIntegration` composes a recorded gateway, published block,
+request runner and PostgreSQL frozen-run repository. Its resolver selects
 one reviewed Phase-34 cohort for each accepted Phase-24 consumer case, reloads
 the active cutover and its source adapter, checks current topic/rule/source and
 signed context reach, and hashes all rows of a bounded native PostgreSQL
 dataset's validator-safe column projection. Multi-dataset source snapshots fail
 closed until a shared native
-transaction exists. Missing or changed owner evidence fails closed. Neither
-this composition nor its recorded fixtures qualifies a live model, live cohort,
-or a release stress run. The release orchestration remains internal.
+transaction exists. Missing or changed owner evidence fails closed. The
+required `runtime_pack_changed` branch still returns
+`ErrPerformanceReuseUnproven`: the frozen narrative does not select its model
+from an accepted pack in the product path. Final AC03 still needs a real
+accepted Phase 24 case/report for each selected revision, one-field current
+invalidation and stale-key substitution through the final correctness gate,
+the exact final profile, and live owner evidence. Neither this composition nor
+its recorded fixtures qualifies a live model or release stress run. The release
+orchestration remains internal.
 
 Release reports are atomically created as private `0600` files and an existing
 path is never replaced. The one-hour profile bound includes correctness probes
@@ -117,14 +113,13 @@ on a PostgreSQL physical read attempt measures the native source work after
 connection acquisition through transaction cleanup and subtracts synchronous
 read journal calls. It survives the durable execution receipt. Legacy,
 unissued and uncertain
-attempts remain unknown. The current query adapter does not consume this receipt,
-so its physical-source timing gate still fails closed until the production
-composition wires the exact attempt duration into performance usage.
-The signed-action negative needs a second short-lived Pengui bearer for the
-same subject/reach with exactly `query.plan` or `query.execute` removed. Both
-bearers are verified; the altered envelope is passed through governed
-Plan→Run, and denial with zero source/model work is required. Fixture scopes do
-not construct the envelope.
+attempts remain unknown. The frozen adapter consumes that exact nullable
+receipt; missing duration fails the integration timing gate. The signed-action
+negative needs a second short-lived Pengui bearer for the same subject/reach
+with exactly the active consumer action removed (`reporting.execute` for a
+frozen run, or a query action for Plan→Run). Both bearers are verified; the
+altered envelope is passed through that consumer, and denial with zero
+source/model work is required. Fixture scopes do not construct the envelope.
 
 The checked-in smoke profile caps each step at 32 requests/concurrency and ten
 seconds overall. The final release profile uses these required scenarios:

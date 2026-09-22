@@ -11,6 +11,7 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/reporting"
 )
 
 var (
@@ -51,6 +52,14 @@ type PerformanceRevisionEvidence struct {
 	TopicRevision  string
 	DatasetDigest  string
 	DatasetRows    int64
+	// The following raw pins are protected current-store evidence for the
+	// frozen-run adapter. Profile bindings retain only their digests.
+	BlockID       string
+	BlockRevision int64
+	BlockDigest   string
+	SourceHead    int64
+	TopicPins     []reporting.TopicPin
+	RulePins      []reporting.RulePin
 }
 
 // PerformanceRevisionResolver reads current source and semantic revisions

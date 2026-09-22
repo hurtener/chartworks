@@ -33,6 +33,19 @@ func TestExactRecordedGatewayUsesReviewedCallAndBudget(t *testing.T) {
 	space := gateway.EmbeddingSpace{Provider: "recorded", Route: "integration", Endpoint: "local", Model: "model-embed", Revision: "fixture-v1", Dimensions: 2, Preprocessing: "utf8-exact;float32-finite", InputType: "text", Normalization: "no-normalization"}
 	_, system, digest := gateway.ApplyRuntimeConfig(ctx, "sql_generation", "model-sql", "base")
 	generatedKey := InputDigest(call, "sql_generation", "model-sql", digest, "sql_generation", system, "synthetic question", schema.Name(), schema.Document())
+	otherPartition, err := gateway.Authorize(envelope, "ops.read", "another-run-id", access.Resource{Tenant: "t", Kind: "tenant", Permission: "read", ID: "t"})
+	if err != nil || otherPartition.Key() == call.Key() || InputDigest(otherPartition, "sql_generation", "model-sql", digest, "sql_generation", system, "synthetic question", schema.Name(), schema.Document()) != generatedKey {
+		t.Fatal("equivalent authorized inputs across distinct run IDs need one exact cassette key", err)
+	}
+	if InputDigest(otherPartition, "sql_generation", "model-sql", digest, "sql_generation", system, "changed question", schema.Name(), schema.Document()) == generatedKey {
+		t.Fatal("changed model input selected a stale cassette")
+	}
+	differentReach, err := gateway.Authorize(envelope, "ops.read", "another-run-id",
+		access.Resource{Tenant: "t", Kind: "tenant", Permission: "read", ID: "t"},
+		access.Resource{Tenant: "t", Kind: "tenant", Permission: "read", ID: "t"})
+	if err != nil || InputDigest(differentReach, "sql_generation", "model-sql", digest, "sql_generation", system, "synthetic question", schema.Name(), schema.Document()) == generatedKey {
+		t.Fatal("changed resolved resource reach selected the same cassette", err)
+	}
 	embeddedKey := InputDigest(call, "embedding", "model-embed", digest, space.Key(), []string{"synthetic question"})
 	engine, err := New(space, map[string]string{"sql_generation": "model-sql", "embedding": "model-embed"}, []Recording{
 		{Role: "sql_generation", InputDigest: generatedKey, JSON: []byte(`{"sql":"SELECT 1"}`)},

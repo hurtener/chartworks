@@ -15,8 +15,8 @@ import (
 )
 
 // Recording is operator-supplied, synthetic fixture material. InputDigest is
-// computed from the exact authorized call, reviewed model configuration, and
-// request body; unrecorded or changed inputs have no fallback.
+// computed from the verified actor and signed reach, reviewed model
+// configuration, and exact request body; changed inputs have no fallback.
 type Recording struct {
 	Role        string
 	InputDigest string
@@ -108,13 +108,14 @@ func (e *Engine) Space() string                          { return e.space.Key() 
 func (e *Engine) EmbeddingSpace() gateway.EmbeddingSpace { return e.space }
 func (e *Engine) Close()                                 { e.mu.Lock(); e.closed = true; e.mu.Unlock() }
 
-// InputDigest is the fixture key for one exact call. The caller must supply
-// the resolved model and reviewed configuration digest, not a profile label.
+// InputDigest is the fixture key for one exact reviewed model input. It keeps
+// signed authority but excludes the ephemeral frozen-run ID from the call's
+// data partition, allowing independent runs to use the same recorded input.
 func InputDigest(call gateway.Call, role, model, configDigest string, parts ...any) string {
 	if !call.Valid() || role == "" || model == "" {
 		return ""
 	}
-	raw, err := json.Marshal([]any{call.Key(), role, model, configDigest, parts})
+	raw, err := json.Marshal([]any{call.AuthorityKey(), role, model, configDigest, parts})
 	if err != nil {
 		return ""
 	}

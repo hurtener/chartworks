@@ -74,16 +74,16 @@ cannot be inferred from synthetic fixtures.
 
 The bounded release orchestration now verifies caller authority independently,
 loads the exact accepted Phase 24 suite/report/runtime pack, and requires current
-revision evidence before running `final_stress`. Its concrete governed adapter
-composes the existing query service's Plan→Run path and requires the PostgreSQL
-cross-process operation lock. The operation ledger does not exercise the
-frozen-run product reuse key, so the factory rejects the required invalidation
-steps; a fresh operation per changed binding cannot satisfy AC03. The read
-attempt exposes physical-call evidence and a nullable source-only duration;
-the performance adapter still needs to consume that exact attempt receipt, so
-the timing gate remains closed. The signed-action negative uses a separately
-verified bearer with one query action removed and sends it through Plan→Run;
-it cannot be satisfied by testing an unrelated action. Each invalidation step pins a consumer case and exact
+revision evidence before running `final_stress`. The original Plan→Run query
+adapter remains a ledger-only prerequisite. A protected Phase 24 frozen
+consumer and bounded performance adapter now enter `reporting.Runs` with
+distinct IDs, read canonical `RunManifest.ReuseKey` and `ReusedFrom`, and
+consume nullable persisted source-only duration plus physical narrative
+receipts. A real-PG17 recorded-model prerequisite test covers cold, warm,
+repeat and concurrent reuse and rejects incomplete evidence. The
+signed-action negative can remove `reporting.execute` for the frozen consumer;
+it sends the altered verified bearer through that same service. Each
+invalidation step pins a consumer case and exact
 accepted report hash; the resolver must provide the matching current revision
 binding and report-selected runtime pack. Bifrost attests live mode; a recorded
 gateway engine explicitly attests recorded mode for integration runs. The
@@ -96,12 +96,11 @@ multi-dataset snapshots that cannot be read in one transaction. The recorded
 engine matches exact authorized call and reviewed runtime configuration inputs
 and returns a recorded receipt with no provider fallback. These tests prove the
 integration seam, not a live model or final stress run.
-An AC03 adapter must instead exercise distinct frozen run IDs over the same
-approved block via the real `ReuseFrozenRun` path, observe its reuse key and
-`ReusedFrom`, then assert physical source calls across one-field changes. It
-must consume the persisted native PostgreSQL read duration, which excludes journal
-and finalization time. The runtime-pack dimension needs an actual reviewed
-pack pin in that frozen-run identity before it can be claimed.
+Final AC03 must still run the exact stress profile against accepted Phase 24
+case/report evidence for every changed source/rule/context/topic cohort, then
+prove one-field current invalidation and a stale-key negative before timing.
+The runtime-pack dimension needs an actual reviewed accepted-pack pin in the
+frozen narrative consumer and its reuse identity before it can be claimed.
 No manifest-selected pack digest substitutes for a reviewed pack selected by
 the actual frozen narrative consumer. This dimension remains fail closed until
 that product seam exists and its invalidation is observed.

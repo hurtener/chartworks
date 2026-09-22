@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/migration"
 	"github.com/hurtener/chartworks/internal/nlqexec"
+	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/sources"
@@ -42,6 +43,9 @@ type topicReader interface {
 
 type ruleReader interface {
 	Read(context.Context, identity.Envelope, string, string) (rulesets.Published, error)
+}
+type blockReader interface {
+	Read(context.Context, identity.Envelope, string, reporting.Reference) (reporting.View, error)
 }
 
 // DatasetEvidence comes from an actual governed source read. Its digest covers
@@ -75,6 +79,18 @@ type RevisionResolver struct {
 	rules    ruleReader
 	dataset  datasetProbe
 	cohorts  map[string]string
+	blocks   blockReader
+}
+
+// WithFrozenBlocks enables resolution from an actual selected published block.
+// The accepted case still supplies only its protected block selector.
+func (r *RevisionResolver) WithFrozenBlocks(blocks blockReader) (*RevisionResolver, error) {
+	if r == nil || blocks == nil {
+		return nil, evaluation.ErrPerformanceEvidence
+	}
+	copy := *r
+	copy.blocks = blocks
+	return &copy, nil
 }
 
 func NewRevisionResolver(inputs evaluation.LiveInputResolver, migrated releaseSourceReader, source sourceReader, topic topicReader, rule ruleReader, dataset datasetProbe, selections []CaseCohort) (*RevisionResolver, error) {
@@ -102,12 +118,31 @@ func (r *RevisionResolver) ResolvePerformanceRevisions(ctx context.Context, e id
 		return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
 	}
 	input, err := r.inputs.ResolveEvaluationInput(ctx, e, proof.Case.Input)
-	if err != nil || input.Question == nil || input.Run == nil || !identity.Identifier(input.ReportID) || input.Pack.Digest != proof.RuntimePack.Pack.Digest || input.Pack.CanonicalDigest() != proof.RuntimePack.Pack.CanonicalDigest() || input.Pack.ConfigurationDigest != proof.RuntimePack.Config.Digest {
+	if err != nil || !identity.Identifier(input.ReportID) || input.Pack.Digest != proof.RuntimePack.Pack.Digest || input.Pack.CanonicalDigest() != proof.RuntimePack.Pack.CanonicalDigest() || input.Pack.ConfigurationDigest != proof.RuntimePack.Config.Digest {
 		return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
 	}
-	topicIDs, err := selectedTopics(*input.Question)
-	if err != nil {
-		return evaluation.PerformanceRevisionEvidence{}, err
+	var topicIDs []string
+	var selectedBlock reporting.View
+	if input.Frozen != nil {
+		if r.blocks == nil || input.Run != nil || input.Question != nil || !identity.Identifier(input.Frozen.BlockID) {
+			return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
+		}
+		selectedBlock, err = r.blocks.Read(ctx, e, input.Frozen.BlockID, input.Frozen.Request.Reference)
+		if err != nil || selectedBlock.State.ID != input.Frozen.BlockID || selectedBlock.Private || selectedBlock.Revision != selectedBlock.State.PublishedRevision || selectedBlock.Source == "" || selectedBlock.Context == "" || !digestValid(selectedBlock.Digest) || len(selectedBlock.Topics) == 0 {
+			return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
+		}
+		for _, pin := range selectedBlock.Topics {
+			topicIDs = append(topicIDs, pin.Topic)
+		}
+		topicIDs = sortedIDs(topicIDs)
+	} else {
+		if input.Question == nil || input.Run == nil {
+			return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
+		}
+		topicIDs, err = selectedTopics(*input.Question)
+		if err != nil {
+			return evaluation.PerformanceRevisionEvidence{}, err
+		}
 	}
 	var sourceID, contextID string
 	datasets := map[string]bool{}
@@ -122,6 +157,22 @@ func (r *RevisionResolver) ResolvePerformanceRevisions(ctx context.Context, e id
 		currentRules, readErr := r.rules.Read(ctx, e, topicID, "")
 		if readErr != nil || !currentRules.State.Active || currentRules.State.Retired || currentRules.State.Topic != topicID || currentRules.State.Version == "" || currentRules.State.Revision < 1 || !digestValid(currentRules.Digest) || currentRules.Definition.TopicVersion != published.State.Version || currentRules.Definition.PackDigest != published.Digest {
 			return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
+		}
+		if input.Frozen != nil {
+			foundTopic, foundRule := false, false
+			for _, pin := range selectedBlock.Topics {
+				if pin.Topic == topicID && pin.Version == published.State.Version && pin.Digest == published.Digest {
+					foundTopic = true
+				}
+			}
+			for _, pin := range selectedBlock.Rules {
+				if pin.Topic == topicID && pin.TopicVersion == published.State.Version && pin.PackDigest == published.Digest && pin.RuleVersion == currentRules.State.Version && pin.RuleDigest == currentRules.Digest {
+					foundRule = true
+				}
+			}
+			if !foundTopic || len(selectedBlock.Rules) != len(topicIDs) || !foundRule {
+				return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
+			}
 		}
 		for _, dataset := range published.Definition.Datasets {
 			binding := dataset.Source
@@ -140,7 +191,7 @@ func (r *RevisionResolver) ResolvePerformanceRevisions(ctx context.Context, e id
 		topicRevisions = append(topicRevisions, revisionLine{topicID, published.State.Version, published.State.Revision, published.Digest})
 		ruleRevisions = append(ruleRevisions, revisionLine{topicID, currentRules.State.Version, currentRules.State.Revision, currentRules.Digest})
 	}
-	if sourceID == "" || contextID != input.Question.Context || len(datasets) == 0 {
+	if sourceID == "" || len(datasets) == 0 || input.Frozen != nil && (sourceID != selectedBlock.Source || contextID != selectedBlock.Context) || input.Frozen == nil && contextID != input.Question.Context {
 		return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
 	}
 	if err := access.RequireExecution(e, access.Execution{
@@ -201,7 +252,19 @@ func (r *RevisionResolver) ResolvePerformanceRevisions(ctx context.Context, e id
 		TopicRevision: hash(topicRevisions),
 		DatasetDigest: observed.Digest,
 		DatasetRows:   observed.Rows,
+		BlockID:       selectedBlock.State.ID,
+		BlockRevision: selectedBlock.Revision,
+		BlockDigest:   selectedBlock.Digest,
+		SourceHead:    currentSource.Revision,
+		TopicPins:     append([]reporting.TopicPin(nil), selectedBlock.Topics...),
+		RulePins:      append([]reporting.RulePin(nil), selectedBlock.Rules...),
 	}, nil
+}
+
+func sortedIDs(in []string) []string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return out
 }
 
 func selectedTopics(question nlqexec.QuestionRequest) ([]string, error) {
