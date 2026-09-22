@@ -151,6 +151,31 @@ func (s *Service) resolveDefinitions(ctx context.Context, e identity.Envelope, d
 	return out, definitionReferences(d, out), nil
 }
 
+// resolveRules verifies exact immutable rule snapshots independently from topic
+// metadata. A block with rule pins fails closed if rule support is unavailable,
+// a pin is stale, or the current publication moved after review.
+func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, d Definition, current bool) ([]RulePin, error) {
+	if len(d.Rules) == 0 {
+		return nil, nil
+	}
+	if s.rules == nil || len(d.Rules) > len(d.Topics) {
+		return nil, ErrUnavailable
+	}
+	out := make([]RulePin, 0, len(d.Rules))
+	for _, pin := range d.Rules {
+		published, err := s.rules.Read(ctx, e, pin.Topic, pin.RuleVersion)
+		if err != nil {
+			return nil, err
+		}
+		if published.Definition.Topic != pin.Topic || published.Definition.TopicVersion != pin.TopicVersion || published.Definition.PackDigest != pin.PackDigest || published.State.Version != pin.RuleVersion || published.Digest != pin.RuleDigest || current && !published.State.Active {
+			return nil, ErrStale
+		}
+		out = append(out, pin)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Topic < out[j].Topic })
+	return out, nil
+}
+
 // validationScope is a positive intersection: only reviewed, currently safe
 // columns from the actual source revision can reach the common validator.
 func validationScope(binding exec.Binding, definitions []topics.Published) ([]exec.RelationScope, error) {
@@ -251,12 +276,19 @@ func deriveDependencies(binding exec.Binding, scope []exec.RelationScope, ids []
 
 // DependencyDigest commits both semantic publications and source-derived
 // columns. It does not treat a display label or caller manifest as authority.
-func DependencyDigest(dependencies []Dependency, pins []TopicPin) string {
+func DependencyDigest(dependencies []Dependency, pins []TopicPin, ruleSets ...[]RulePin) string {
+	var rules []RulePin
+	if len(ruleSets) == 1 {
+		rules = ruleSets[0]
+	} else if len(ruleSets) > 1 {
+		return ""
+	}
 	return digest(struct {
 		Version      string
 		Dependencies []Dependency
 		Topics       []TopicPin
-	}{CanonicalizationVersion, dependencies, pins})
+		Rules        []RulePin
+	}{CanonicalizationVersion, dependencies, pins, rules})
 }
 
 func snapshotsReferences(snapshot Snapshot) []ResourceReference {

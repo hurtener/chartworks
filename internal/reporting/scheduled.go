@@ -193,6 +193,9 @@ func (s *Scheduled) inspectBlock(ctx context.Context, e identity.Envelope, runs 
 	if err != nil {
 		return err
 	}
+	if _, err = runs.blocks.resolveRules(ctx, e, snapshot.Revision.Definition, true); err != nil {
+		return err
+	}
 	binding, err := runs.blocks.sources.ContextBinding(ctx, e, snapshot.Revision.Definition.Source, snapshot.Revision.Definition.Context)
 	if err != nil {
 		return err

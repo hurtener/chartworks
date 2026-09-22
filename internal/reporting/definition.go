@@ -107,15 +107,56 @@ func ExecutionDigest(d Definition) string {
 		Source     string
 		Context    string
 		Topics     []TopicPin
+		Rules      []RulePin
 		Template   *TemplatePin
 		SQL        string
 		Parameters []Parameter
 		Schema     []exec.Field
-	}{CanonicalizationVersion, d.Source, d.Context, d.Topics, d.Template, d.SQL, d.Parameters, d.ExpectedSchema})
+	}{CanonicalizationVersion, d.Source, d.Context, d.Topics, d.Rules, d.Template, d.SQL, d.Parameters, d.ExpectedSchema})
+	if len(d.Templates) > 0 {
+		base = digest([]any{"block-execution-template-selections-v1", base, d.Templates})
+	}
 	if d.SchemaVersion == SchemaVersion {
 		return base
 	}
 	return digest([]any{"block-execution-policy-v2", base, d.QueryLimits, d.ResultPolicy})
+}
+
+// templateSelections validates and canonicalizes template provenance against
+// the complete immutable rule pins. It deliberately does not consult current
+// publication heads, so retained legacy revisions remain replayable.
+func templateSelections(d Definition) ([]TemplateSelection, error) {
+	if d.Template != nil && len(d.Templates) > 0 {
+		return nil, ErrInvalid
+	}
+	rules := make(map[string]RulePin, len(d.Rules))
+	for _, pin := range d.Rules {
+		rules[pin.Topic] = pin
+	}
+	if d.Template != nil {
+		if len(d.Rules) != 1 || !identity.Identifier(d.Template.ID) || !identity.Identifier(d.Template.Version) || !hashValid(d.Template.Digest) {
+			return nil, ErrInvalid
+		}
+		pin := d.Rules[0]
+		if d.Template.Version != pin.RuleVersion || d.Template.Digest != pin.RuleDigest {
+			return nil, ErrInvalid
+		}
+		return []TemplateSelection{{ID: d.Template.ID, Topic: pin.Topic, TopicVersion: pin.TopicVersion, PackDigest: pin.PackDigest, RuleVersion: pin.RuleVersion, RuleDigest: pin.RuleDigest}}, nil
+	}
+	if len(d.Templates) > len(d.Topics) || len(d.Templates) > 8 {
+		return nil, ErrInvalid
+	}
+	previous := ""
+	for _, selection := range d.Templates {
+		pin, ok := rules[selection.Topic]
+		if !ok || previous != "" && selection.Topic <= previous || !identity.Identifier(selection.ID) ||
+			selection.TopicVersion != pin.TopicVersion || selection.PackDigest != pin.PackDigest ||
+			selection.RuleVersion != pin.RuleVersion || selection.RuleDigest != pin.RuleDigest {
+			return nil, ErrInvalid
+		}
+		previous = selection.Topic
+	}
+	return clone(d.Templates), nil
 }
 
 func validateDefinition(ctx context.Context, d Definition, limits config.Reporting, captured bool) error {
@@ -133,7 +174,27 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 		}
 		seen[pin.Topic] = true
 	}
-	if d.Template != nil && (!captured || !identity.Identifier(d.Template.ID) || !identity.Identifier(d.Template.Version) || !hashValid(d.Template.Digest)) {
+	if len(d.Rules) > 0 {
+		if d.SchemaVersion == SchemaVersion || len(d.Rules) > len(d.Topics) {
+			return ErrInvalid
+		}
+		topicsByID := map[string]TopicPin{}
+		for _, pin := range d.Topics {
+			topicsByID[pin.Topic] = pin
+		}
+		ruleTopics := map[string]bool{}
+		previous := ""
+		for _, pin := range d.Rules {
+			topic, ok := topicsByID[pin.Topic]
+			if !ok || ruleTopics[pin.Topic] || previous != "" && pin.Topic <= previous || pin.TopicVersion != topic.Version || pin.PackDigest != topic.Digest || !identity.Identifier(pin.RuleVersion) || !hashValid(pin.RuleDigest) {
+				return ErrInvalid
+			}
+			ruleTopics[pin.Topic] = true
+			previous = pin.Topic
+		}
+	}
+	selections, selectionErr := templateSelections(d)
+	if selectionErr != nil || len(selections) > 0 && !captured {
 		return ErrInvalid
 	}
 	if err := validateDeclarations(d.Parameters, limits.MaxParameters); err != nil {

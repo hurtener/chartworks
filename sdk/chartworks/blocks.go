@@ -68,6 +68,9 @@ type BlockTopicPin = reporting.TopicPin
 // BlockTemplatePin mirrors the common governed block wire contract.
 type BlockTemplatePin = reporting.TemplatePin
 
+// BlockTemplateSelection carries the complete reviewed per-topic template coordinates.
+type BlockTemplateSelection = reporting.TemplateSelection
+
 // BlockDimensionReference mirrors the common governed block wire contract.
 type BlockDimensionReference = reporting.DimensionReference
 

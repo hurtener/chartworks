@@ -82,6 +82,18 @@ type RetireRequest struct {
 // EvaluateRequest supplies explicit semantic references for hard-constraint evaluation.
 type EvaluateRequest struct {
 	References []semantics.Reference `json:"references"`
+	Template   *TemplateSelection    `json:"template,omitempty"`
+}
+
+// TemplateSelection is a reviewed template coordinate rebound by the server to
+// an exact topic/ruleset publication under current signed authority.
+type TemplateSelection struct {
+	ID           string `json:"id"`
+	Topic        string `json:"topic"`
+	TopicVersion string `json:"topic_version"`
+	PackDigest   string `json:"pack_digest"`
+	RuleVersion  string `json:"rule_version"`
+	RuleDigest   string `json:"rule_digest"`
 }
 
 // ReplayRequest evaluates one retained ruleset against one exact topic
@@ -92,6 +104,7 @@ type ReplayRequest struct {
 	RuleVersion        string                         `json:"rule_version"`
 	TopicVersion       string                         `json:"topic_version,omitempty"`
 	References         []semantics.Reference          `json:"references"`
+	Template           *TemplateSelection             `json:"template,omitempty"`
 }
 
 // ShadowRequest compares a retained baseline with a retained candidate. An
@@ -103,6 +116,7 @@ type ShadowRequest struct {
 	CandidateRuleVersion string                         `json:"candidate_rule_version,omitempty"`
 	TopicVersion         string                         `json:"topic_version,omitempty"`
 	References           []semantics.Reference          `json:"references"`
+	Template             *TemplateSelection             `json:"template,omitempty"`
 }
 
 // Evaluation is deterministic hard-constraint evidence tied to exact versions.
@@ -126,6 +140,7 @@ type Comparison struct {
 	Mode                    string                              `json:"mode"`
 	Topic                   string                              `json:"topic"`
 	References              []semantics.Reference               `json:"references"`
+	Template                *TemplateSelection                  `json:"template,omitempty"`
 	Baseline                Evaluation                          `json:"baseline"`
 	Candidate               *Evaluation                         `json:"candidate,omitempty"`
 	Changed                 bool                                `json:"changed"`

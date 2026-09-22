@@ -96,6 +96,7 @@ type RouteRequest struct {
 	Context       string                          `json:"context"`
 	Locale        nlq.Language                    `json:"locale"`
 	Question      string                          `json:"question"`
+	Templates     []rulesets.TemplateSelection    `json:"templates,omitempty"`
 	Kinds         []string                        `json:"kinds,omitempty"`
 	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
 	References    []semantics.Reference           `json:"references,omitempty"`
@@ -173,20 +174,21 @@ type RouteResult struct {
 	// Request is the bounded, caller-selected routing input that was admitted
 	// for this result. Persisted refinements use it as their semantic base; it
 	// contains no SQL or authority material.
-	Request       RouteRequest      `json:"request,omitempty"`
-	Topic         string            `json:"topic"`
-	Topics        []string          `json:"topics"`
-	TopicVersions []string          `json:"topic_versions"`
-	RuleVersions  []string          `json:"rule_versions,omitempty"`
-	Confidence    float64           `json:"confidence"`
-	Tier          nlq.Tier          `json:"tier,omitempty"`
-	Context       *ContextView      `json:"context,omitempty"`
-	Audit         nlq.AssemblyAudit `json:"audit,omitempty"`
-	Evidence      []vindex.Hit      `json:"evidence,omitempty"`
-	Warnings      []string          `json:"warnings,omitempty"`
-	RemoteCalls   []gateway.Usage   `json:"remote_calls,omitempty"`
-	Stages        []Stage           `json:"stages"`
-	Clarification *Clarification    `json:"clarification,omitempty"`
+	Request       RouteRequest                 `json:"request,omitempty"`
+	Topic         string                       `json:"topic"`
+	Topics        []string                     `json:"topics"`
+	TopicVersions []string                     `json:"topic_versions"`
+	RuleVersions  []string                     `json:"rule_versions,omitempty"`
+	Templates     []rulesets.TemplateSelection `json:"templates,omitempty"`
+	Confidence    float64                      `json:"confidence"`
+	Tier          nlq.Tier                     `json:"tier,omitempty"`
+	Context       *ContextView                 `json:"context,omitempty"`
+	Audit         nlq.AssemblyAudit            `json:"audit,omitempty"`
+	Evidence      []vindex.Hit                 `json:"evidence,omitempty"`
+	Warnings      []string                     `json:"warnings,omitempty"`
+	RemoteCalls   []gateway.Usage              `json:"remote_calls,omitempty"`
+	Stages        []Stage                      `json:"stages"`
+	Clarification *Clarification               `json:"clarification,omitempty"`
 	// assembled is an in-process sealed context. It deliberately has no JSON
 	// representation: generation must consume the context produced by this
 	// route, never a caller-provided ContextView.
@@ -234,6 +236,7 @@ type admittedTopic struct {
 	hasRules       bool
 	constraints    *nlq.ConstraintState
 	advisory       []nlq.OptionalItem
+	template       *rulesets.TemplateSelection
 }
 
 // Route performs the bounded first routing consumer. Current source and topic
@@ -285,6 +288,17 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 			result.RuleVersions[i] = admitted[i].rules.State.Version
 		}
 	}
+	templates, missing, err := canonicalTemplates(in.Templates, admitted)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if missing != "" {
+		result.Outcome = nlq.StrategyClarify
+		result.Clarification = &Clarification{Reason: "reviewed_template_required", Outcome: semantics.ClarificationMissing, Prompt: "Choose a reviewed query template before generation."}
+		return result, nil
+	}
+	result.Templates = templates
+	result.Request.Templates = append([]rulesets.TemplateSelection(nil), templates...)
 	if len(admitted) > 1 {
 		if incompatible := confirmJoins(admitted, in.JoinChoices); incompatible != nil && incompatible.Reason == "unconfirmed_source" {
 			result.Outcome, result.Clarification = nlq.StrategyClarify, incompatible
@@ -523,7 +537,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		}
 		seen[topic] = true
 	}
-	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
+	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
 		return nil, ErrInvalid
 	}
 	if len(in.JoinChoices) > 0 {
@@ -556,6 +570,13 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 		seenRefs[ref] = true
+	}
+	seenTemplates := map[string]bool{}
+	for _, selection := range in.Templates {
+		if !identity.Identifier(selection.ID) || !identity.Identifier(selection.Topic) || !identity.Identifier(selection.TopicVersion) || !identity.Identifier(selection.RuleVersion) || !topics.DigestValid(selection.PackDigest) || !topics.DigestValid(selection.RuleDigest) || seenTemplates[selection.Topic] {
+			return nil, ErrInvalid
+		}
+		seenTemplates[selection.Topic] = true
 	}
 	seenChoices := map[string]bool{}
 	for _, choice := range in.Choices {
@@ -592,6 +613,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out := in
 	out.Topics = append([]string(nil), in.Topics...)
+	out.Templates = append([]rulesets.TemplateSelection(nil), in.Templates...)
 	out.Kinds = append([]string(nil), in.Kinds...)
 	out.References = append([]semantics.Reference(nil), in.References...)
 	out.Choices = append([]ChoiceSelection(nil), in.Choices...)
@@ -626,6 +648,49 @@ func (s *Service) readRules(ctx context.Context, e identity.Envelope, topic, ver
 	return published, true, nil
 }
 
+func canonicalTemplates(input []rulesets.TemplateSelection, admitted []admittedTopic) ([]rulesets.TemplateSelection, string, error) {
+	byTopic := make(map[string]rulesets.TemplateSelection, len(input))
+	for _, selection := range input {
+		if _, exists := byTopic[selection.Topic]; exists {
+			return nil, "", ErrInvalid
+		}
+		byTopic[selection.Topic] = selection
+	}
+	out := make([]rulesets.TemplateSelection, 0, len(input))
+	for i := range admitted {
+		item := &admitted[i]
+		templates := map[string]bool{}
+		if item.hasRules {
+			for _, rule := range item.rules.Definition.Rules {
+				if rule.Scope.Kind == semantics.RuleScopeTemplate {
+					templates[rule.Scope.Template] = true
+				}
+			}
+		}
+		selection, supplied := byTopic[item.id]
+		if len(templates) == 0 {
+			if supplied {
+				return nil, "", ErrInvalid
+			}
+			continue
+		}
+		if !supplied {
+			return nil, item.id, nil
+		}
+		if !templates[selection.ID] || selection.TopicVersion != item.publication.State.Version || selection.PackDigest != item.publication.Digest || selection.RuleVersion != item.rules.State.Version || selection.RuleDigest != item.rules.Digest {
+			return nil, "", store.ErrConflict
+		}
+		canonical := rulesets.TemplateSelection{ID: selection.ID, Topic: item.id, TopicVersion: item.publication.State.Version, PackDigest: item.publication.Digest, RuleVersion: item.rules.State.Version, RuleDigest: item.rules.Digest}
+		item.template = &canonical
+		out = append(out, canonical)
+		delete(byTopic, item.id)
+	}
+	if len(byTopic) != 0 {
+		return nil, "", ErrInvalid
+	}
+	return out, "", nil
+}
+
 func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in RouteRequest, _ map[string]string, item admittedTopic) (*nlq.ConstraintState, []nlq.OptionalItem, error) {
 	if !item.hasRules {
 		if len(in.References) > 0 {
@@ -648,7 +713,7 @@ func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in Rout
 		sort.Strings(ids)
 		refs = append(refs, semantics.Reference{Kind: semantics.KindDataset, ID: ids[0]})
 	}
-	evaluation, err := s.rules.Evaluate(ctx, e, item.id, rulesets.EvaluateRequest{References: refs})
+	evaluation, err := s.rules.Evaluate(ctx, e, item.id, rulesets.EvaluateRequest{References: refs, Template: item.template})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -672,8 +737,12 @@ func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in Rout
 		}
 	}
 	var advisory []nlq.OptionalItem
+	applied := map[string]bool{}
+	for _, selection := range evaluation.Result.Selection {
+		applied[selection.Rule] = selection.Applied
+	}
 	for _, rule := range item.rules.Definition.Rules {
-		if rule.Class != semantics.RuleAdvisoryContext || rule.Guidance == nil || rule.Guidance.Sensitivity != semantics.LiteralNonSensitive {
+		if rule.Class != semantics.RuleAdvisoryContext || rule.Guidance == nil || rule.Guidance.Sensitivity != semantics.LiteralNonSensitive || !applied[rule.ID] {
 			continue
 		}
 		advisory = append(advisory, nlq.OptionalItem{ID: rule.ID, Text: rule.Guidance.Text, Priority: rule.Priority, Source: "rules"})

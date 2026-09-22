@@ -8,6 +8,7 @@ import (
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 )
 
 func savedSelectionFixture() SavedQuestion {
@@ -71,9 +72,10 @@ func TestSavedQuestionSelections(t *testing.T) {
 
 func TestSavedQuestionSelectionReplay(t *testing.T) {
 	in := savedSelectionFixture()
-	in.Selections = &SavedSelections{Kinds: []string{"measure"}, LimitPerKind: 1}
+	template := rulesets.TemplateSelection{ID: "monthly-sales", Topic: "sales", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "rules-v1", RuleDigest: strings.Repeat("b", 64)}
+	in.Selections = &SavedSelections{Templates: []rulesets.TemplateSelection{template}, Kinds: []string{"measure"}, LimitPerKind: 1}
 	routing := savedRouting(in, nlq.LanguageEnglish)
-	q := QueryRecord{SQL: "SELECT revenue FROM sales", Context: in.Context, Topics: []string{"sales"}, TopicVersions: []string{"v1"}}
+	q := QueryRecord{SQL: "SELECT revenue FROM sales", Context: in.Context, Topics: []string{"sales"}, TopicVersions: []string{"v1"}, Templates: []rulesets.TemplateSelection{template}}
 	q.Route.Request = routing.routeRequest()
 	if !savedRecordMatches(q, in) {
 		t.Fatal("exact saved routing identity rejected")
@@ -82,6 +84,13 @@ func TestSavedQuestionSelectionReplay(t *testing.T) {
 	changed.Selections = &SavedSelections{Kinds: []string{"measure"}, LimitPerKind: 2}
 	if savedRecordMatches(q, changed) {
 		t.Fatal("replayed operation adopted different retrieval semantics")
+	}
+	changed = savedSelectionFixture()
+	changedTemplate := template
+	changedTemplate.ID = "quarterly-sales"
+	changed.Selections = &SavedSelections{Templates: []rulesets.TemplateSelection{changedTemplate}, Kinds: []string{"measure"}, LimitPerKind: 1}
+	if savedRecordMatches(q, changed) {
+		t.Fatal("replayed operation adopted a different reviewed template")
 	}
 	in.Selections.Kinds[0] = "dimension"
 	if routing.Kinds[0] != "measure" {

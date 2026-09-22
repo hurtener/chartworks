@@ -64,6 +64,7 @@ type RunManifest struct {
 	Resolved      Resolved                  `json:"resolved"`
 	Binding       exec.Binding              `json:"binding"`
 	Definitions   []topics.Definition       `json:"definitions"`
+	Rules         []RulePin                 `json:"rules,omitempty"`
 	Dependencies  []Dependency              `json:"dependencies"`
 	References    []ResourceReference       `json:"references"`
 	Trust         Trust                     `json:"trust"`

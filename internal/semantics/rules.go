@@ -24,17 +24,22 @@ const (
 // RuleScopeKind identifies whether a rule applies to a topic or selected entities.
 type RuleScopeKind string
 
-// RuleScopeTopic and RuleScopeEntities identify the supported rule scopes.
+// RuleScopeTopic and RuleScopeEntities preserve the original topic/any-entity
+// scopes. Compound scopes require every target to be present. Template scopes
+// bind to one reviewed template identifier supplied by the query route.
 const (
 	RuleScopeTopic    RuleScopeKind = "topic"
 	RuleScopeEntities RuleScopeKind = "entities"
+	RuleScopeCompound RuleScopeKind = "compound"
+	RuleScopeTemplate RuleScopeKind = "template"
 )
 
 // RuleScope identifies the objects governed by the rule. Targets are not
 // activation predicates, and a scope never grants permission to read its objects.
 type RuleScope struct {
-	Kind    RuleScopeKind `json:"kind"`
-	Targets []Reference   `json:"targets"`
+	Kind     RuleScopeKind `json:"kind"`
+	Targets  []Reference   `json:"targets"`
+	Template string        `json:"template,omitempty"`
 }
 
 // ProvenanceKind identifies the source of authoring evidence for a rule.

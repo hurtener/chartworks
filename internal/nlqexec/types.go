@@ -18,6 +18,7 @@ import (
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -118,34 +119,35 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
-	Clarification   *ClarificationEvidence `json:"-"`
-	ID              string                 `json:"id"`
-	Session         string                 `json:"session"`
-	Parent          string                 `json:"parent,omitempty"`
-	Operation       string                 `json:"operation,omitempty"`
-	Topic           string                 `json:"topic"`
-	Topics          []string               `json:"topics"`
-	TopicVersions   []string               `json:"topic_versions"`
-	RuleVersions    []string               `json:"rule_versions,omitempty"`
-	Context         string                 `json:"context"`
-	Locale          nlq.Language           `json:"locale"`
-	Question        string                 `json:"question"`
-	Route           nlqroute.RouteResult   `json:"route"`
-	Generation      nlq.GenerationContext  `json:"generation"`
-	SQL             string                 `json:"-"`
-	Parameters      []exec.Parameter       `json:"-"`
-	Receipt         gateway.Receipt        `json:"receipt"`
-	Status          string                 `json:"status"`
-	EvidenceStale   bool                   `json:"evidence_stale,omitempty"`
-	Result          *exec.Result           `json:"result,omitempty"`
-	Assumptions     []string               `json:"assumptions,omitempty"`
-	Ambiguities     []string               `json:"ambiguities,omitempty"`
-	Errors          []string               `json:"errors,omitempty"`
-	ValidationFixes int                    `json:"validation_fixes"`
-	ExecutionFixes  int                    `json:"execution_fixes"`
-	Revision        int64                  `json:"revision"`
-	Created         time.Time              `json:"created_at"`
-	Updated         time.Time              `json:"updated_at"`
+	Clarification   *ClarificationEvidence       `json:"-"`
+	ID              string                       `json:"id"`
+	Session         string                       `json:"session"`
+	Parent          string                       `json:"parent,omitempty"`
+	Operation       string                       `json:"operation,omitempty"`
+	Topic           string                       `json:"topic"`
+	Topics          []string                     `json:"topics"`
+	TopicVersions   []string                     `json:"topic_versions"`
+	RuleVersions    []string                     `json:"rule_versions,omitempty"`
+	Templates       []rulesets.TemplateSelection `json:"templates,omitempty"`
+	Context         string                       `json:"context"`
+	Locale          nlq.Language                 `json:"locale"`
+	Question        string                       `json:"question"`
+	Route           nlqroute.RouteResult         `json:"route"`
+	Generation      nlq.GenerationContext        `json:"generation"`
+	SQL             string                       `json:"-"`
+	Parameters      []exec.Parameter             `json:"-"`
+	Receipt         gateway.Receipt              `json:"receipt"`
+	Status          string                       `json:"status"`
+	EvidenceStale   bool                         `json:"evidence_stale,omitempty"`
+	Result          *exec.Result                 `json:"result,omitempty"`
+	Assumptions     []string                     `json:"assumptions,omitempty"`
+	Ambiguities     []string                     `json:"ambiguities,omitempty"`
+	Errors          []string                     `json:"errors,omitempty"`
+	ValidationFixes int                          `json:"validation_fixes"`
+	ExecutionFixes  int                          `json:"execution_fixes"`
+	Revision        int64                        `json:"revision"`
+	Created         time.Time                    `json:"created_at"`
+	Updated         time.Time                    `json:"updated_at"`
 }
 
 // FeedbackRecord is a reviewable correction. Recording it never publishes a
@@ -190,6 +192,7 @@ type QuestionRequest struct {
 	Context            string                          `json:"context"`
 	Locale             nlq.Language                    `json:"locale"`
 	Question           string                          `json:"question"`
+	Templates          []rulesets.TemplateSelection    `json:"templates,omitempty"`
 	Kinds              []string                        `json:"kinds,omitempty"`
 	LimitPerKind       int                             `json:"limit_per_kind,omitempty"`
 	References         []semantics.Reference           `json:"references,omitempty"`

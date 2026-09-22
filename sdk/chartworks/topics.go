@@ -152,6 +152,9 @@ type RuleState = rulesets.State
 // RuleEvaluationRequest supplies references for deterministic evaluation.
 type RuleEvaluationRequest = rulesets.EvaluateRequest
 
+// RuleTemplateSelection pins one reviewed template to exact topic/ruleset evidence.
+type RuleTemplateSelection = rulesets.TemplateSelection
+
 // RuleEvaluation contains deterministic hard-constraint results.
 type RuleEvaluation = rulesets.Evaluation
 

@@ -143,9 +143,51 @@ qualification boundaries. Phase 28 owns recurring reads and retained artifacts.
 
 ## Template-origin boundary
 
-A template pin is accepted only from a server-verified capture handoff. The
-current query service does not retain a template identity in its completed-query
-record, so that adapter leaves the optional template pin absent rather than
-inferring one from SQL or accepting a client assertion. Exact semantic topic and
-dependency pins are still captured and revalidated; manual authoring cannot
-claim template provenance.
+A template selection is accepted only from a server-verified capture handoff.
+The query service retains the router's canonical reviewed selections in the
+immutable completed-query record. Capture transfers at most one selection per
+topic, ordered by topic, with its identifier and complete topic/ruleset version
+and digest coordinates. Each selection must exactly match the definition's rule
+pin; SQL and manual authoring cannot claim this provenance. Omitted, stale or
+substituted selections fail before generation or capture whenever reviewed
+template scopes apply. Retained singular pins remain readable only when their
+version and digest match the sole rule pin. Editing rules must clear provenance;
+reintroducing it requires another query capture.
+
+## CW-06 immutable rule dependencies
+
+Definition v2 can bind at most one immutable `RulePin` for each pinned topic
+that had an active reviewed ruleset. The pin
+contains the topic/version/pack digest and rule version/digest only; rule text
+remains in the protected rule store. Pins are sorted, unique, and must match the
+definition's exact topic publication. A definition with pins fails closed when
+the rules reader is unavailable or the exact retained publication cannot be read
+under current signed authority.
+
+Validation evidence, certification, current health, execution digests, frozen
+manifests, reuse identity, composition groups and scheduled admission retain the
+same rule pins. Validation and frozen execution require the pinned publication
+to remain active. Publishing a replacement or retiring the active ruleset marks
+dependent block health stale with `rule_publication_changed`; publication and
+historical certification remain immutable, while revalidation, certification
+reuse and execution refuse the stale dependency. Refresh performs no rule
+selection, NLQ or model work.
+
+Query capture and frozen sealing lock every current rule publication head in the same block
+commit transaction before writing its pin. Publication takes the conflicting
+head lock before advancing the pointer. A replacement or retirement that wins
+the race therefore yields a typed stale result and the transaction leaves no
+block, revision or pin side effects.
+
+Migration 038 stores the exact pins with tenant-composite foreign keys and
+immutable-row protection. Existing v1/v2 blocks without rule pins retain their
+published bytes and explicitly mean “no captured rule snapshot.” Migration never
+invents a pin. Native export/import carries the pins through the protected
+definition projection and revalidates them through ordinary authoring. A foreign
+mapping that cannot prove exact topic and rule coordinates must be reported as
+unsupported instead of silently dropping or approximating the dependency.
+Migration 039 retains the canonical completed-query template selection used by
+that capture; older queries have an explicit empty selection. Migration 040
+constrains reporting revisions to the retained singular representation or the
+bounded per-topic representation, never both. Domain gates verify exact rule-pin
+equality during authoring, validation, certification and frozen sealing.

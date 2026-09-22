@@ -89,7 +89,9 @@ func TestDefinitionClosedBoundsAndDetachedOutputs(t *testing.T) {
 		t.Fatal("invalid limits accepted")
 	}
 	captured := clone(base)
-	captured.Template = &TemplatePin{ID: "template", Version: "v1", Digest: strings.Repeat("a", 64)}
+	captured, _ = MigrateDefinition(captured)
+	captured.Rules = []RulePin{testRulePin()}
+	captured.Template = &TemplatePin{ID: "template", Version: captured.Rules[0].RuleVersion, Digest: captured.Rules[0].RuleDigest}
 	if err := validateDefinition(ctx, captured, limits, true); err != nil {
 		t.Fatal("verified capture template", err)
 	}

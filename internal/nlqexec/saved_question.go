@@ -13,6 +13,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -94,7 +95,7 @@ func savedQuestionValid(q SavedQuestion) bool {
 }
 
 func savedQueryDigest(q QueryRecord) string {
-	return exec.Hash([]any{"saved-query-definition-v1", q.SQL, q.Parameters, q.Context, q.Topics, q.TopicVersions})
+	return exec.Hash([]any{"saved-query-definition-v2", q.SQL, q.Parameters, q.Context, q.Topics, q.TopicVersions, q.Templates})
 }
 
 func savedRecordMatches(q QueryRecord, in SavedQuestion) bool {
@@ -128,7 +129,12 @@ func (s *Service) InspectSaved(ctx context.Context, e identity.Envelope, in Save
 	}
 	ctx, cancel := context.WithDeadline(ctx, e.Deadline())
 	defer cancel()
-	out := SavedEvidence{Context: in.Context, Topics: append([]SavedTopic(nil), in.Topics...), Datasets: []string{}, SemanticDigest: exec.Hash(in.Topics), QueryDigest: exec.Hash(in)}
+	out := SavedEvidence{Context: in.Context, Topics: append([]SavedTopic(nil), in.Topics...), Datasets: []string{}, SemanticDigest: exec.Hash([]any{in.Topics, func() []rulesets.TemplateSelection {
+		if in.Selections == nil {
+			return nil
+		}
+		return in.Selections.Templates
+	}()}), QueryDigest: exec.Hash(in)}
 	seen := map[string]bool{}
 	for _, pin := range in.Topics {
 		if err := access.Require(e, "query.execute", access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: pin.Topic}); err != nil {

@@ -19,6 +19,7 @@ import (
 type Service struct {
 	repo      Repository
 	topics    TopicReader
+	rules     RuleReader
 	sources   SourceReader
 	validator Validator
 	executor  Executor
@@ -33,7 +34,7 @@ func nilValue(v any) bool {
 
 // New keeps metadata authoring/viewing independent of source/model availability.
 // Missing execution dependencies disable only explicit validation and preview.
-func New(repo Repository, topics TopicReader, sources SourceReader, validator Validator, executor Executor, capture QueryCapture, limits config.Reporting) (*Service, error) {
+func New(repo Repository, topics TopicReader, sources SourceReader, validator Validator, executor Executor, capture QueryCapture, limits config.Reporting, ruleReaders ...RuleReader) (*Service, error) {
 	if nilValue(repo) || nilValue(topics) || limits.Validate() != nil {
 		return nil, ErrInvalid
 	}
@@ -49,7 +50,14 @@ func New(repo Repository, topics TopicReader, sources SourceReader, validator Va
 	if nilValue(capture) {
 		capture = nil
 	}
-	return &Service{repo: repo, topics: topics, sources: sources, validator: validator, executor: executor, capture: capture, limits: limits, slots: make(chan struct{}, limits.MaxConcurrent)}, nil
+	var rules RuleReader
+	if len(ruleReaders) > 1 || len(ruleReaders) == 1 && nilValue(ruleReaders[0]) {
+		return nil, ErrInvalid
+	}
+	if len(ruleReaders) == 1 {
+		rules = ruleReaders[0]
+	}
+	return &Service{repo: repo, topics: topics, rules: rules, sources: sources, validator: validator, executor: executor, capture: capture, limits: limits, slots: make(chan struct{}, limits.MaxConcurrent)}, nil
 }
 
 // CanValidate reports whether the existing validator and executor are installed.
@@ -139,7 +147,7 @@ func project(snapshot Snapshot, now time.Time) View {
 			trust.Certification = "stale"
 		}
 	}
-	out := View{State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
+	out := View{State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Rules: clone(d.Rules), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
 	out.SchemaVersion = d.SchemaVersion
 	out.QueryLimits = clone(d.QueryLimits)
 	out.ResultPolicy = ResolveResultPolicy(d, nil, nil)
@@ -214,6 +222,9 @@ func (s *Service) Create(ctx context.Context, e identity.Envelope, in CreateRequ
 	if err != nil {
 		return View{}, err
 	}
+	if _, err = s.resolveRules(ctx, e, in.Definition, false); err != nil {
+		return View{}, err
+	}
 	r, err := s.newRevision(e, 1, in.Definition, Provenance{Kind: "manual"})
 	if err != nil {
 		return View{}, err
@@ -243,7 +254,11 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	if base.State.Archived {
 		return View{}, store.ErrConflict
 	}
-	captured := in.Definition.Template != nil && base.Revision.Definition.Template != nil && digest(in.Definition.Template) == digest(base.Revision.Definition.Template) && in.Definition.SQL == base.Revision.Definition.SQL
+	captured := (in.Definition.Template != nil || len(in.Definition.Templates) > 0) &&
+		digest(in.Definition.Template) == digest(base.Revision.Definition.Template) &&
+		digest(in.Definition.Templates) == digest(base.Revision.Definition.Templates) &&
+		digest(in.Definition.Rules) == digest(base.Revision.Definition.Rules) &&
+		in.Definition.SQL == base.Revision.Definition.SQL
 	if err := validateDefinition(ctx, in.Definition, s.limits, captured); err != nil {
 		return View{}, err
 	}
@@ -254,8 +269,15 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	if err != nil {
 		return View{}, err
 	}
+	if _, err = s.resolveRules(ctx, e, in.Definition, false); err != nil {
+		return View{}, err
+	}
 	provenance := clone(base.Revision.Provenance)
 	provenance.Kind, provenance.ParentRevision = "amendment", base.Revision.Number
+	if !captured {
+		provenance.Template = nil
+		provenance.Templates = nil
+	}
 	r, err := s.newRevision(e, base.State.DraftRevision+1, in.Definition, provenance)
 	if err != nil {
 		return View{}, err
@@ -298,7 +320,14 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	if err != nil || parameterDigest(resolved.Parameters) != parameterDigest(captured.Parameters) {
 		return View{}, ErrInvalid
 	}
-	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(in.Metadata), Source: captured.Source, Context: captured.Context, Topics: clone(captured.Topics), Template: clone(captured.Template), SQL: captured.SQL, Parameters: parameters, ExpectedSchema: clone(captured.Schema), Outputs: clone(in.Outputs)}
+	d := Definition{SchemaVersion: SchemaVersion, Metadata: clone(in.Metadata), Source: captured.Source, Context: captured.Context, Topics: clone(captured.Topics), Template: clone(captured.Template), Templates: clone(captured.Templates), SQL: captured.SQL, Parameters: parameters, ExpectedSchema: clone(captured.Schema), Outputs: clone(in.Outputs)}
+	if len(captured.Rules) > 0 {
+		d, err = MigrateDefinition(d)
+		if err != nil {
+			return View{}, err
+		}
+		d.Rules = clone(captured.Rules)
+	}
 	if err := validateDefinition(ctx, d, s.limits, true); err != nil {
 		return View{}, err
 	}
@@ -309,7 +338,10 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	if err != nil {
 		return View{}, err
 	}
-	r, err := s.newRevision(e, 1, d, Provenance{Kind: "query_capture", Query: in.Query, OriginalQuestion: captured.Question, Template: clone(captured.Template)})
+	if _, err = s.resolveRules(ctx, e, d, false); err != nil {
+		return View{}, err
+	}
+	r, err := s.newRevision(e, 1, d, Provenance{Kind: "query_capture", Query: in.Query, OriginalQuestion: captured.Question, Template: clone(captured.Template), Templates: clone(captured.Templates)})
 	if err != nil {
 		return View{}, err
 	}
