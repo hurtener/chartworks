@@ -152,10 +152,19 @@ func (d *DB) WithPlanOperationLock(ctx context.Context, scope store.Scope, opera
 		defer cancel()
 		var unlocked bool
 		unlockErr := conn.QueryRow(unlockCtx, `SELECT pg_advisory_unlock(hashtextextended($1,7214061010))`, lockKey).Scan(&unlocked)
-		conn.Release()
-		if (unlockErr != nil || !unlocked) && retErr == nil {
-			retErr = store.ErrUnavailable
+		if unlockErr != nil || !unlocked {
+			// An advisory lock belongs to the PostgreSQL session. A healthy
+			// connection can survive a statement error with the lock still held;
+			// returning it to the pool would allow reentrant acquisitions while
+			// other sessions remain blocked. Closing the hijacked session is the
+			// only safe fallback when the unlock cannot be confirmed.
+			_ = conn.Hijack().Close(unlockCtx)
+			if retErr == nil {
+				retErr = store.ErrUnavailable
+			}
+			return
 		}
+		conn.Release()
 	}()
 	return callback()
 }

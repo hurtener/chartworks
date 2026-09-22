@@ -13,9 +13,10 @@ import (
 
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func planLockTestDB(t *testing.T) *DB {
+func planLockTestDatabaseURL(t *testing.T) string {
 	t.Helper()
 	base := os.Getenv("CHARTWORKS_TEST_STORE_URL")
 	u, err := url.Parse(base)
@@ -45,9 +46,16 @@ func planLockTestDB(t *testing.T) *DB {
 		_ = admin.Close(cleanup)
 	})
 	u.Path = "/" + name
+	return u.String()
+}
+
+func planLockTestDB(t *testing.T) *DB {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 	opts := Defaults()
 	opts.MaxConns = 2
-	db, err := Open(ctx, u.String(), opts)
+	db, err := Open(ctx, planLockTestDatabaseURL(t), opts)
 	if err != nil {
 		t.Fatal("cannot open two-connection store", err)
 	}
@@ -188,5 +196,69 @@ func TestPlanOperationLockCancellationReleasesWaiterAndSession(t *testing.T) {
 	}
 	if db.pool.Stat().AcquiredConns() != 0 {
 		t.Fatal("canceled lock path leaked a pool connection")
+	}
+}
+
+func TestPlanOperationUnlockErrorClosesLockedSession(t *testing.T) {
+	testURL := planLockTestDatabaseURL(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	admin, err := pgx.Connect(ctx, testURL)
+	if err != nil {
+		t.Fatal("cannot connect to lock test database", err)
+	}
+	// The shadow function fails only the unlock statement. PostgreSQL keeps
+	// this session healthy after the server error and leaves its advisory lock
+	// held; a pool Release would therefore strand the lock on an idle session.
+	_, err = admin.Exec(ctx, `CREATE FUNCTION public.pg_advisory_unlock(bigint) RETURNS boolean LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected unlock failure'; END $$`)
+	_ = admin.Close(ctx)
+	if err != nil {
+		t.Fatal("cannot install test-only unlock failure", err)
+	}
+	cfg, err := pgxpool.ParseConfig(testURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = 2
+	if cfg.ConnConfig.RuntimeParams == nil {
+		cfg.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = "public,pg_catalog"
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := &DB{pool: pool, timeout: 5 * time.Second, planOperationSlots: make(chan struct{}, 1)}
+	t.Cleanup(db.Close)
+	scope, err := store.NewScope("tenant", "actor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	err = db.WithPlanOperationLock(ctx, scope, "unlock-failure", func() error {
+		called = true
+		return nil
+	})
+	if !called || !errors.Is(err, store.ErrUnavailable) {
+		t.Fatalf("unlock server error did not fail closed after callback: called=%t err=%v", called, err)
+	}
+	if db.pool.Stat().AcquiredConns() != 0 {
+		t.Fatal("failed unlock left an acquired pool connection")
+	}
+	// Use an independent session: the same pooled PostgreSQL session could
+	// reenter its own leaked advisory lock and conceal the failure.
+	probe, err := pgx.Connect(ctx, testURL)
+	if err != nil {
+		t.Fatal("cannot connect cross-session lock probe", err)
+	}
+	defer func() { _ = probe.Close(context.Background()) }()
+	const lockKey = `["tenant","actor","unlock-failure"]`
+	var locked bool
+	if err := probe.QueryRow(ctx, `SELECT pg_catalog.pg_try_advisory_lock(pg_catalog.hashtextextended($1,7214061010))`, lockKey).Scan(&locked); err != nil || !locked {
+		t.Fatalf("failed unlock stranded the advisory lock for another session: locked=%t err=%v", locked, err)
+	}
+	var unlocked bool
+	if err := probe.QueryRow(ctx, `SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,7214061010))`, lockKey).Scan(&unlocked); err != nil || !unlocked {
+		t.Fatalf("cross-session probe could not release its lock: unlocked=%t err=%v", unlocked, err)
 	}
 }
