@@ -65,7 +65,8 @@ func phase34Manifest(suffix string) migration.Manifest {
 		ref := string(kind) + "-" + suffix
 		parents := []string{}
 		if i > 0 {
-			parents = []string{string(kinds[i-1]) + "-" + suffix}
+			previous := kinds[i-1] // #nosec G602 -- i is explicitly greater than zero.
+			parents = []string{string(previous) + "-" + suffix}
 		}
 		lifecycle := "private_draft"
 		private := true
@@ -265,12 +266,20 @@ func phase34CutoverRollback(t *testing.T) {
 	if err != nil || replay.Generation != 1 {
 		t.Fatal("cutover replay duplicated stream", err, replay)
 	}
+	replay, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-new", OperatorRef: "cutover-drill", Expected: 0})
+	if err != nil || replay.Generation != 1 {
+		t.Fatal("exact cutover retry duplicated stream", err, replay)
+	}
 	if _, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-other", OperatorRef: "racer", Expected: 0}); !errors.Is(err, migration.ErrConflict) {
 		t.Fatal("stale concurrent cutover", err)
 	}
 	rolled, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
 	if err != nil || rolled.State != "rolled_back" || len(rolled.IrreversibleEffects) != 1 {
 		t.Fatal(err, rolled)
+	}
+	replayedRollback, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
+	if err != nil || replayedRollback.Generation != rolled.Generation {
+		t.Fatal("exact rollback retry changed generation", err, replayedRollback)
 	}
 }
 

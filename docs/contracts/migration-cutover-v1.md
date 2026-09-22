@@ -39,6 +39,10 @@ revisions, locale, temperature, maximum output tokens and unique per-template
 thresholds. Unknown keys, out-of-range values and duplicate template thresholds
 are rejected.
 
+Installed typed payloads also pass the owning closed decoder, so a ledger row
+cannot make an unknown nested domain field silently disappear. An object whose
+declared retention already expired is quarantined before any owner adapter runs.
+
 ## Feature evidence and readiness
 
 The bundle contains exactly the required B01-B20, R01-R16, Q01-Q10 and N01-N16

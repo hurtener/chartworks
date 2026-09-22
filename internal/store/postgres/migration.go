@@ -1,9 +1,11 @@
+//nolint:revive // Exported DB methods implement the migration.Repository contract.
 package postgres
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/identity"
@@ -217,15 +219,22 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 		if x != nil && !errors.Is(x, pgx.ErrNoRows) {
 			return x
 		}
-		if old.Generation != expected {
-			return store.ErrConflict
-		}
 		if old.Batch == b.ID && old.Route == route && old.State == "active" {
+			if (old.Generation != expected && old.Generation != expected+1) || old.OperatorReference != operator {
+				return store.ErrConflict
+			}
 			out = old
-			json.Unmarshal(boundaryRaw, &out.Boundary)
-			json.Unmarshal(effectsRaw, &out.IrreversibleEffects)
+			if json.Unmarshal(boundaryRaw, &out.Boundary) != nil || json.Unmarshal(effectsRaw, &out.IrreversibleEffects) != nil {
+				return store.ErrConflict
+			}
+			if out.Boundary != boundary {
+				return store.ErrConflict
+			}
 			out.Cohort = b.Cohort
 			return nil
+		}
+		if old.Generation != expected {
+			return store.ErrConflict
 		}
 		out = migration.Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: old.Route, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: time.Now().UTC()}
 		br, _ := json.Marshal(boundary)
@@ -268,10 +277,18 @@ func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, e
 		if x := tx.QueryRow(ctx, `SELECT batch_id,route,previous_route,state,generation,boundary,irreversible_effects,operator_reference,updated_at FROM chartworks.migration_cutovers WHERE tenant_id=$1 AND cohort_id=$2 FOR UPDATE`, e.Tenant(), cohort).Scan(&out.Batch, &out.Route, &out.PreviousRoute, &out.State, &out.Generation, &braw, &oldEffects, &out.OperatorReference, &out.UpdatedAt); x != nil {
 			return x
 		}
-		if out.Generation != expected {
+		if json.Unmarshal(braw, &out.Boundary) != nil || json.Unmarshal(oldEffects, &out.IrreversibleEffects) != nil {
 			return store.ErrConflict
 		}
-		json.Unmarshal(braw, &out.Boundary)
+		if out.State == "rolled_back" {
+			if (out.Generation != expected && out.Generation != expected+1) || out.OperatorReference != operator || !slices.Equal(out.IrreversibleEffects, effects) {
+				return store.ErrConflict
+			}
+			return nil
+		}
+		if out.Generation != expected || out.State != "active" {
+			return store.ErrConflict
+		}
 		out.Route, out.PreviousRoute = out.PreviousRoute, out.Route
 		out.State = "rolled_back"
 		out.Generation++

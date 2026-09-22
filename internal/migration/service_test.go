@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func evidenceTest() []Evidence {
 	return append(out, Evidence{Feature: "Q11", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discard", Source: "synthetic", SourceVersion: "v1"})
 }
 func manifestTest(id string) Manifest {
-	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	return Manifest{Version: ManifestVersion, Batch: "batch-" + id, Cohort: "cohort-" + id, SourceSnapshot: "snapshot-" + id, Engine: "postgres", Dialect: "postgres", Mappings: []Mapping{{Kind: KindSource, ExternalRef: "src-" + id, Destination: "source", Revision: 1}}, Objects: []Object{{Kind: KindSource, ExternalRef: "src-" + id, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"source"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindTopic, ExternalRef: "topic-" + id, Parents: []string{"src-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"topic"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindCertificate, ExternalRef: "cert-" + id, Parents: []string{"topic-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"certificate"}`, Lifecycle: "historical", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}}, Fields: []FieldDisposition{{Path: "src-" + id + ".name", Status: "retained"}, {Path: "topic-" + id + ".name", Status: "transformed", Reason: "coordinate remap"}, {Path: "cert-" + id + ".name", Status: "retained"}}, Evidence: evidenceTest(), Calibration: &Calibration{Revision: "c1", ModelVersion: "m1", EmbeddingSpace: "e1", BudgetVersion: "b1", Payload: `{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}]}`, State: "review_candidate"}, Boundary: &OccurrenceBoundary{Stream: "stream-" + id, ResumeAfter: at, ScheduleVersion: 1}}
 }
 
@@ -106,9 +107,20 @@ func TestLifecycle(t *testing.T) {
 	if err != nil || cut.Generation != 1 {
 		t.Fatal(err, cut)
 	}
+	replayedCutover, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "new", Expected: 0, OperatorRef: "runbook"})
+	if err != nil || !reflect.DeepEqual(replayedCutover, cut) {
+		t.Fatal("cutover replay", err, replayedCutover)
+	}
 	cut, err = s.Rollback(t.Context(), e, RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback", Effects: []string{"sent"}})
 	if err != nil || cut.State != "rolled_back" {
 		t.Fatal(err, cut)
+	}
+	replayedRollback, err := s.Rollback(t.Context(), e, RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback", Effects: []string{"sent"}})
+	if err != nil || !reflect.DeepEqual(replayedRollback, cut) {
+		t.Fatal("rollback replay", err, replayedRollback)
+	}
+	if _, err := s.Rollback(t.Context(), e, RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "other", Effects: []string{"sent"}}); !errors.Is(err, ErrConflict) {
+		t.Fatal("changed rollback replay", err)
 	}
 	erased, err := s.Erase(t.Context(), e, EraseRequest{Batch: b.ID, Limit: 10})
 	if err != nil || erased.Remaining != 0 {
@@ -180,6 +192,13 @@ func TestValidationAndAuthority(t *testing.T) {
 	if _, err := s.Import(t.Context(), read, ImportRequest{Manifest: m}); !errors.Is(err, access.ErrForbidden) {
 		t.Fatal(err)
 	}
+	expired := manifestTest("expired")
+	past := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
+	expired.Objects[0].Retention.ExpiresAt = &past
+	plan, err := s.DryRun(t.Context(), e, DryRunRequest{Manifest: expired})
+	if err != nil || plan.Objects[0].Action != "retention_quarantine" || len(plan.Limitations) == 0 {
+		t.Fatal("expired source reached owner adapter", err, plan)
+	}
 }
 
 func TestUnsupportedAndResume(t *testing.T) {
@@ -231,7 +250,10 @@ func TestConcurrentCAS(t *testing.T) {
 			conflict++
 		}
 	}
-	if success != 1 || conflict != 1 {
+	if success != 2 || conflict != 0 {
 		t.Fatal(success, conflict)
+	}
+	if _, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "different", Expected: 0, OperatorRef: "op"}); !errors.Is(err, ErrConflict) {
+		t.Fatal("divergent stale cutover", err)
 	}
 }

@@ -1,3 +1,4 @@
+//nolint:revive // Aliases and methods intentionally expose the versioned migration SDK contract.
 package chartworks
 
 import (

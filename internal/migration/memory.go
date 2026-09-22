@@ -1,7 +1,9 @@
+//nolint:revive // The in-memory repository mirrors the public persistence seam for deterministic tests.
 package migration
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -101,11 +103,16 @@ func (m *MemoryRepository) Export(_ context.Context, e identity.Envelope, id, af
 	}
 	start := 0
 	if after != "" {
+		found := false
 		for i, o := range x.manifest.Objects {
 			if o.ExternalRef == after {
 				start = i + 1
+				found = true
 				break
 			}
+		}
+		if !found {
+			return Export{}, ErrInvalid
 		}
 	}
 	out := x.manifest
@@ -125,11 +132,14 @@ func (m *MemoryRepository) Cutover(_ context.Context, e identity.Envelope, b Bat
 	defer m.mu.Unlock()
 	key := tenantKey(e, b.Cohort)
 	old := m.cutovers[key]
+	if old.Batch == b.ID && old.Route == route && old.State == "active" {
+		if (old.Generation != expected && old.Generation != expected+1) || old.OperatorReference != operator || old.Boundary != boundary {
+			return Cutover{}, ErrConflict
+		}
+		return old, nil
+	}
 	if old.Generation != expected {
 		return Cutover{}, ErrConflict
-	}
-	if old.Batch == b.ID && old.Route == route && old.State == "active" {
-		return old, nil
 	}
 	next := Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: old.Route, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: m.now().UTC()}
 	m.cutovers[key] = next
@@ -154,7 +164,13 @@ func (m *MemoryRepository) Rollback(_ context.Context, e identity.Envelope, coho
 	if !ok {
 		return Cutover{}, ErrNotFound
 	}
-	if old.Generation != expected {
+	if old.State == "rolled_back" {
+		if (old.Generation == expected || old.Generation == expected+1) && old.OperatorReference == operator && slices.Equal(old.IrreversibleEffects, effects) {
+			return old, nil
+		}
+		return Cutover{}, ErrConflict
+	}
+	if old.Generation != expected || old.State != "active" {
 		return Cutover{}, ErrConflict
 	}
 	next := old

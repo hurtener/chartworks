@@ -1,3 +1,4 @@
+//nolint:revive // Public service and adapter names are the migration integration seam.
 package migration
 
 import (
@@ -109,6 +110,9 @@ func (s *Service) dryRun(ctx context.Context, e identity.Envelope, manifest Mani
 		mapped := mapping[o.ExternalRef]
 		p.Destination = mapped.Destination
 		switch {
+		case o.Retention.ExpiresAt != nil && !s.now().UTC().Before(o.Retention.ExpiresAt.UTC()):
+			p.Action, p.Reason = "retention_quarantine", "source retention expired before import"
+			plan.Limitations = append(plan.Limitations, "expired object quarantined: "+o.ExternalRef)
 		case o.Kind == KindCertificate || o.Kind == KindRun || o.Kind == KindArtifact || o.Kind == KindRendition:
 			p.Action, p.Reason = "historical_quarantine", "historical evidence requires current authority and fresh attestation"
 		case o.Kind == KindTombstone || o.Lifecycle == "deleted":
