@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,6 +49,7 @@ func actorTest(t *testing.T, scopes ...string) identity.Envelope {
 	return e
 }
 func evidenceTest() []Evidence {
+	hash := strings.Repeat("a", 64)
 	out := []Evidence{}
 	for _, p := range []struct {
 		s string
@@ -55,21 +57,28 @@ func evidenceTest() []Evidence {
 	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
 		for i := 1; i <= p.n; i++ {
 			f := fmt.Sprintf("%s%02d", p.s, i)
-			out = append(out, Evidence{Feature: f, Disposition: "required", Outcome: "passed", EvidenceType: "runtime", Reference: "ref-" + f, Source: "synthetic", SourceVersion: "v1"})
+			out = append(out, Evidence{Feature: f, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "ref-" + f, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash})
 		}
 	}
-	return append(out, Evidence{Feature: "Q11", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discard", Source: "synthetic", SourceVersion: "v1"})
+	return append(out, Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discard", Source: "synthetic", SourceVersion: hash, EvidenceHash: hash})
 }
 func manifestTest(id string) Manifest {
 	at := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
-	return Manifest{Version: ManifestVersion, Batch: "batch-" + id, Cohort: "cohort-" + id, SourceSnapshot: "snapshot-" + id, Engine: "postgres", Dialect: "postgres", Mappings: []Mapping{{Kind: KindSource, ExternalRef: "src-" + id, Destination: "source", Revision: 1}}, Objects: []Object{{Kind: KindSource, ExternalRef: "src-" + id, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"source"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindTopic, ExternalRef: "topic-" + id, Parents: []string{"src-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"topic"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindCertificate, ExternalRef: "cert-" + id, Parents: []string{"topic-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"certificate"}`, Lifecycle: "historical", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}}, Fields: []FieldDisposition{{Path: "src-" + id + ".name", Status: "retained"}, {Path: "topic-" + id + ".name", Status: "transformed", Reason: "coordinate remap"}, {Path: "cert-" + id + ".name", Status: "retained"}}, Evidence: evidenceTest(), Calibration: &Calibration{Revision: "c1", ModelVersion: "m1", EmbeddingSpace: "e1", BudgetVersion: "b1", Payload: `{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}],"evaluation_suite_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","evaluation_run_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","runtime_pack_digest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}`, State: "review_candidate"}, Boundary: &OccurrenceBoundary{Stream: "stream-" + id, ResumeAfter: at, ScheduleVersion: 1}}
+	hash := strings.Repeat("a", 64)
+	sourcePayload := fmt.Sprintf(`{"engine":"postgres","dialect":"postgres","snapshot":"%s","context":"source:v1","revision":1}`, hash)
+	return Manifest{Version: ManifestVersion, Batch: "batch-" + id, Cohort: "cohort-" + id, SourceSnapshot: hash, Engine: "postgres", Dialect: "postgres", Mappings: []Mapping{{Kind: KindSource, ExternalRef: "src-" + id, Destination: "source", Revision: 1}}, Objects: []Object{{Kind: KindSource, ExternalRef: "src-" + id, Revision: 1, PayloadVersion: "v1", Payload: sourcePayload, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindTopic, ExternalRef: "topic-" + id, Parents: []string{"src-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"topic"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}, {Kind: KindCertificate, ExternalRef: "cert-" + id, Parents: []string{"topic-" + id}, Revision: 1, PayloadVersion: "v1", Payload: `{"name":"certificate"}`, Lifecycle: "historical", Private: true, Origin: "synthetic", Retention: Retention{ExpiresAt: &at}}}, Fields: []FieldDisposition{{Path: "src-" + id + ".engine", Status: "retained"}, {Path: "src-" + id + ".dialect", Status: "retained"}, {Path: "src-" + id + ".snapshot", Status: "retained"}, {Path: "src-" + id + ".context", Status: "retained"}, {Path: "src-" + id + ".revision", Status: "retained"}, {Path: "topic-" + id + ".name", Status: "transformed", Reason: "coordinate remap"}, {Path: "cert-" + id + ".name", Status: "retained"}}, Evidence: evidenceTest(), Calibration: &Calibration{Revision: "c1", ModelVersion: "m1", EmbeddingSpace: "e1", BudgetVersion: "b1", Payload: `{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}],"evaluation_suite_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","evaluation_run_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","runtime_pack_digest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}`, State: "review_candidate"}, Boundary: &OccurrenceBoundary{Stream: "stream-" + id, ResumeAfter: at, ScheduleVersion: 1}}
 }
 
 func serviceTest(t *testing.T, a *adapterTest) (*Service, *MemoryRepository, identity.Envelope) {
 	t.Helper()
 	now := time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)
 	repo := NewMemoryRepository(func() time.Time { return now })
-	s, err := New(repo, map[Kind]Adapter{KindSource: a, KindTopic: a}, func() time.Time { return now })
+	s, err := New(repo, map[Kind]Adapter{KindSource: a, KindTopic: a}, func() time.Time { return now }, EvidenceVerifierFunc(func(_ context.Context, _ identity.Envelope, evidence Evidence) error {
+		if evidence.Outcome != "passed" {
+			return ErrNotReady
+		}
+		return nil
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,11 +112,11 @@ func TestLifecycle(t *testing.T) {
 	if err != nil || len(x.Manifest.Objects) != 1 {
 		t.Fatal(err, x)
 	}
-	cut, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "new", Expected: 0, OperatorRef: "runbook"})
+	cut, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "new", PreviousRoute: "old", Expected: 0, OperatorRef: "runbook"})
 	if err != nil || cut.Generation != 1 {
 		t.Fatal(err, cut)
 	}
-	replayedCutover, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "new", Expected: 0, OperatorRef: "runbook"})
+	replayedCutover, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "new", PreviousRoute: "old", Expected: 0, OperatorRef: "runbook"})
 	if err != nil || !reflect.DeepEqual(replayedCutover, cut) {
 		t.Fatal("cutover replay", err, replayedCutover)
 	}
@@ -153,7 +162,7 @@ func TestAdapterFunctionsAndCurrentCutover(t *testing.T) {
 	if _, err := s.Import(t.Context(), e, ImportRequest{Manifest: m}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: m.Batch, Route: "route", OperatorRef: "drill"}); err != nil {
+	if _, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: m.Batch, Route: "route", PreviousRoute: "old", OperatorRef: "drill"}); err != nil {
 		t.Fatal(err)
 	}
 	current, err := repo.CurrentCutover(t.Context(), e, m.Cohort)
@@ -208,6 +217,68 @@ func TestValidationAndAuthority(t *testing.T) {
 	}
 }
 
+func TestResumeRevalidatesRetentionAuthorityAndOwnerState(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	manifest := manifestTest("resume-current")
+	manifest.Objects = manifest.Objects[:2]
+	manifest.Fields = manifest.Fields[:6]
+	expires := now.Add(time.Minute)
+	for i := range manifest.Objects {
+		manifest.Objects[i].Retention.ExpiresAt = &expires
+	}
+	validations := 0
+	adapter := AdapterFuncs{ValidateFunc: func(context.Context, identity.Envelope, Object, Mapping) error { validations++; return nil }, ApplyFunc: func(_ context.Context, _ identity.Envelope, o Object, m Mapping, _ string) (string, error) {
+		if o.Kind == KindSource {
+			now = now.Add(2 * time.Minute)
+		}
+		return m.Destination, nil
+	}}
+	repo := NewMemoryRepository(func() time.Time { return now })
+	service, err := New(repo, map[Kind]Adapter{KindSource: adapter, KindTopic: adapter}, func() time.Time { return now }, EvidenceVerifierFunc(func(context.Context, identity.Envelope, Evidence) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := service.Import(t.Context(), actorTest(t, "migration.read", "migration.write"), ImportRequest{Manifest: manifest})
+	if err != nil || out.Applied != 1 || out.Quarantined != 1 || validations != 3 {
+		t.Fatal("resume did not re-evaluate current state", err, out, validations)
+	}
+
+	drift := manifestTest("resume-drift")
+	drift.Objects = drift.Objects[:1]
+	drift.Fields = drift.Fields[:5]
+	calls := 0
+	drifting := AdapterFuncs{ValidateFunc: func(context.Context, identity.Envelope, Object, Mapping) error {
+		calls++
+		if calls > 1 {
+			return ErrConflict
+		}
+		return nil
+	}, ApplyFunc: func(context.Context, identity.Envelope, Object, Mapping, string) (string, error) {
+		return "unexpected", nil
+	}}
+	driftService, _ := New(NewMemoryRepository(nil), map[Kind]Adapter{KindSource: drifting}, nil, EvidenceVerifierFunc(func(context.Context, identity.Envelope, Evidence) error { return nil }))
+	if _, err = driftService.Import(t.Context(), actorTest(t, "migration.read", "migration.write"), ImportRequest{Manifest: drift}); !errors.Is(err, ErrConflict) {
+		t.Fatal("owner drift crossed apply", err)
+	}
+}
+
+func TestManifestRejectsNormalizedSecretsAndPublicImports(t *testing.T) {
+	s, _, e := serviceTest(t, &adapterTest{})
+	for i, key := range []string{"apiKey", "access-token", "refresh.token", "private_key", "Connection String"} {
+		m := manifestTest(fmt.Sprintf("secret-%d", i))
+		m.Objects[1].Payload = fmt.Sprintf(`{"name":"topic","nested":{"%s":"x"}}`, key)
+		m.Fields = append(m.Fields, FieldDisposition{Path: m.Objects[1].ExternalRef + ".nested", Status: "dropped", Reason: "secret"})
+		if _, err := s.DryRun(t.Context(), e, DryRunRequest{Manifest: m}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("normalized secret accepted %q: %v", key, err)
+		}
+	}
+	m := manifestTest("public")
+	m.Objects[0].Private = false
+	if _, err := s.DryRun(t.Context(), e, DryRunRequest{Manifest: m}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("public import accepted", err)
+	}
+}
+
 func TestUnsupportedAndResume(t *testing.T) {
 	a := &adapterTest{fail: "topic-u"}
 	s, repo, e := serviceTest(t, a)
@@ -243,7 +314,7 @@ func TestConcurrentCAS(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, x := s.Cutover(context.Background(), e, CutoverRequest{Batch: b.ID, Route: "r", Expected: 0, OperatorRef: "op"})
+			_, x := s.Cutover(context.Background(), e, CutoverRequest{Batch: b.ID, Route: "r", PreviousRoute: "old", Expected: 0, OperatorRef: "op"})
 			errs <- x
 		}()
 	}
@@ -260,7 +331,7 @@ func TestConcurrentCAS(t *testing.T) {
 	if success != 2 || conflict != 0 {
 		t.Fatal(success, conflict)
 	}
-	if _, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "different", Expected: 0, OperatorRef: "op"}); !errors.Is(err, ErrConflict) {
+	if _, err := s.Cutover(t.Context(), e, CutoverRequest{Batch: b.ID, Route: "different", PreviousRoute: "old", Expected: 0, OperatorRef: "op"}); !errors.Is(err, ErrConflict) {
 		t.Fatal("divergent stale cutover", err)
 	}
 }

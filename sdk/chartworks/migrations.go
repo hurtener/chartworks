@@ -63,7 +63,7 @@ func (c *Client) ExportMigration(ctx context.Context, in MigrationExportRequest)
 	return
 }
 func (c *Client) CutoverMigration(ctx context.Context, in MigrationCutoverRequest) (out MigrationCutover, err error) {
-	if !identity.Identifier(in.Batch) || !identity.Identifier(in.Route) || !identity.Identifier(in.OperatorRef) || in.Expected < 0 {
+	if !identity.Identifier(in.Batch) || !identity.Identifier(in.Route) || in.Expected == 0 && !identity.Identifier(in.PreviousRoute) || !identity.Identifier(in.OperatorRef) || in.Expected < 0 {
 		return out, ErrMigrationRequest
 	}
 	err = c.callLimit(ctx, "POST", "/v1/migrations/cutovers", "", in, &out, 4<<20)

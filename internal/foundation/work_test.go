@@ -4,14 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
+	"github.com/hurtener/chartworks/internal/migration"
 	"github.com/hurtener/chartworks/internal/telemetry"
 	"github.com/hurtener/chartworks/test/support"
 )
@@ -109,6 +114,33 @@ func TestWorkAssemblyLifecycle(t *testing.T) {
 	}
 	if operation := document.Paths["/v1/nlq/plans"]["post"]; operation == nil || operation["operationId"] != "planNLQ" {
 		t.Fatalf("runtime OpenAPI omitted executable NLQ plan: %#v", document.Paths["/v1/nlq/plans"])
+	}
+	// The migration service must capture the dispatch-capable queue, not the
+	// metadata-only placeholder installed at the start of composition.
+	actor, err := identity.FromVerified("tenant", "operator", "session", []string{"migration.read", "migration.write", "scheduling.write", "cw.tenant.read:tenant", "cw.tenant.write:tenant", "cw.execution_binding.use:maintenance", "cw.schedule.write:*"}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduleRaw, _ := json.Marshal(scheduleImport{Key: "migration-work-schedule", Request: jobs.ScheduleRequest{Target: jobs.Submission{Kind: jobs.MaintenanceKind, BindingID: "maintenance"}, Spec: jobs.Spec{Type: "manual", Timezone: "UTC", Missed: "skip", Overlap: "queue"}}})
+	hash := strings.Repeat("a", 64)
+	evidence := []migration.Evidence{}
+	for _, group := range []struct {
+		prefix string
+		count  int
+	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
+		for i := 1; i <= group.count; i++ {
+			feature := fmt.Sprintf("%s%02d", group.prefix, i)
+			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "evidence-" + feature, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash})
+		}
+	}
+	evidence = append(evidence, migration.Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "excluded", Source: "synthetic", SourceVersion: hash, EvidenceHash: hash})
+	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "work-schedule", Cohort: "work-schedule", SourceSnapshot: hash, Engine: "postgres", Dialect: "postgres", Objects: []migration.Object{{Kind: migration.KindSchedule, ExternalRef: "schedule", Revision: 1, PayloadVersion: "v1", Payload: string(scheduleRaw), Lifecycle: "private_draft", Private: true, Origin: "synthetic"}}, Fields: []migration.FieldDisposition{{Path: "schedule.key", Status: "retained"}, {Path: "schedule.request", Status: "retained"}}, Evidence: evidence}
+	if batch, importErr := w.migrations.Import(t.Context(), actor, migration.ImportRequest{Manifest: manifest}); importErr != nil || batch.Applied != 1 {
+		t.Fatal("migration did not use dispatch queue", importErr, batch)
+	}
+	var imported int
+	if err = support.Raw(t, support.Database(t)).QueryRow(t.Context(), `SELECT count(*) FROM chartworks.job_schedules WHERE tenant_id='tenant' AND client_key='migration-work-schedule' AND NOT enabled`).Scan(&imported); err != nil || imported != 1 {
+		t.Fatal("migration schedule missing", err, imported)
 	}
 	// SDK construction makes no model request; an empty durable queue makes no broker pull.
 	w.run(ctx)

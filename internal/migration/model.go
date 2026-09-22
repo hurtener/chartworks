@@ -94,12 +94,14 @@ type Calibration struct {
 
 type Evidence struct {
 	Feature       string `json:"feature"`
+	OwnerFeature  string `json:"owner_feature"`
 	Disposition   string `json:"disposition" jsonschema:"enum=required,enum=excluded"`
 	Outcome       string `json:"outcome" jsonschema:"enum=passed,enum=failed,enum=unsupported"`
 	EvidenceType  string `json:"evidence_type" jsonschema:"enum=runtime,enum=live,enum=recorded_fixture,enum=operator"`
 	Reference     string `json:"reference"`
 	Source        string `json:"source"`
 	SourceVersion string `json:"source_version"`
+	EvidenceHash  string `json:"evidence_hash"`
 }
 
 type OccurrenceBoundary struct {
@@ -142,10 +144,11 @@ type ExportRequest struct {
 	Limit int    `json:"limit"`
 }
 type CutoverRequest struct {
-	Batch       string `json:"batch"`
-	Expected    int64  `json:"expected_generation"`
-	Route       string `json:"route"`
-	OperatorRef string `json:"operator_reference"`
+	Batch         string `json:"batch"`
+	Expected      int64  `json:"expected_generation"`
+	Route         string `json:"route"`
+	PreviousRoute string `json:"previous_route,omitempty"`
+	OperatorRef   string `json:"operator_reference"`
 }
 type RollbackRequest struct {
 	Cohort      string   `json:"cohort"`

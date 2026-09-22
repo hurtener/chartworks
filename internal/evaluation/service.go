@@ -353,6 +353,55 @@ func (s *Service) Read(ctx context.Context, e identity.Envelope, id string) (Rep
 	return s.repo.ReadReport(ctx, scope, id)
 }
 
+// VerifyMigrationEvidence resolves one exact live owner report and its accepted
+// suite frontier. Caller supplied status text is deliberately ignored.
+func (s *Service) VerifyMigrationEvidence(ctx context.Context, e identity.Envelope, feature, runID, suiteDigest, evidenceHash string) error {
+	if ctx == nil || !identifier(feature) || !identifier(runID) || !validDigest(suiteDigest) || !validDigest(evidenceHash) {
+		return ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.read", "read")
+	if err != nil {
+		return err
+	}
+	report, err := s.repo.ReadReport(ctx, scope, runID)
+	if err != nil {
+		return err
+	}
+	if report.Validate() != nil || report.Mode != Live || report.Status != "passed" || !report.GatePassed || report.SecurityFailures != 0 || report.SuiteDigest != suiteDigest || report.EvidenceHash != evidenceHash {
+		return ErrGate
+	}
+	record, err := s.repo.AcceptedSuite(ctx, scope, report.SuiteID, report.SuiteRevision, suiteDigest)
+	if err != nil {
+		return err
+	}
+	for _, frontier := range record.Suite.Frontiers {
+		if frontier == feature {
+			return nil
+		}
+	}
+	return ErrGate
+}
+
+// DraftOptimization resolves only an unreviewed durable candidate. Migration
+// reconciliation cannot import a review or active pack selection.
+func (s *Service) DraftOptimization(ctx context.Context, e identity.Envelope, id string) (OptimizationProposal, error) {
+	if ctx == nil || !identifier(id) {
+		return OptimizationProposal{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return OptimizationProposal{}, err
+	}
+	p, err := s.repo.ReadProposal(ctx, scope, id)
+	if err != nil {
+		return OptimizationProposal{}, err
+	}
+	if p.Validate() != nil || p.State != "candidate" {
+		return OptimizationProposal{}, store.ErrConflict
+	}
+	return p, nil
+}
+
 // Cancel persists intent before signalling a locally owned run.
 func (s *Service) Cancel(ctx context.Context, e identity.Envelope, id string) error {
 	if !identifier(id) {
@@ -476,31 +525,45 @@ func (s *Service) ReviewFeedbackSplit(ctx context.Context, e identity.Envelope, 
 	return out, nil
 }
 
-// ProposeOptimization loads all evidence from protected storage and persists the proposal.
-func (s *Service) ProposeOptimization(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, error) {
+func (s *Service) optimizationCandidate(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, store.Scope, error) {
 	if !identifier(in.ID) || !identifier(in.BaselineRun) || !identifier(in.CandidateRun) {
-		return OptimizationProposal{}, ErrInvalid
+		return OptimizationProposal{}, store.Scope{}, ErrInvalid
 	}
 	scope, err := access.StoreScope(e, "ops.write", "write")
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	suite, err := s.repo.AcceptedSuite(ctx, scope, in.SuiteID, in.SuiteRevision, in.SuiteDigest)
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	base, err := s.repo.ReadReport(ctx, scope, in.BaselineRun)
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	candidate, err := s.repo.ReadReport(ctx, scope, in.CandidateRun)
 	if err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	if err = s.repo.ValidateOptimizationHeldout(ctx, scope, suite.Suite); err != nil {
-		return OptimizationProposal{}, err
+		return OptimizationProposal{}, store.Scope{}, err
 	}
 	p, err := ProposeOptimization(in.ID, suite.Suite, base, candidate, s.clock())
+	if err != nil {
+		return OptimizationProposal{}, store.Scope{}, err
+	}
+	return p, scope, nil
+}
+
+// PreviewOptimization resolves all live evidence without persisting authority.
+func (s *Service) PreviewOptimization(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, error) {
+	p, _, err := s.optimizationCandidate(ctx, e, in)
+	return p, err
+}
+
+// ProposeOptimization loads all evidence from protected storage and persists the proposal.
+func (s *Service) ProposeOptimization(ctx context.Context, e identity.Envelope, in ProposalRequest) (OptimizationProposal, error) {
+	p, scope, err := s.optimizationCandidate(ctx, e, in)
 	if err != nil {
 		return OptimizationProposal{}, err
 	}

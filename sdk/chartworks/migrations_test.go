@@ -36,7 +36,7 @@ func TestMigrationMethodsUseTypedRoutes(t *testing.T) {
 	if _, err = client.ExportMigration(t.Context(), MigrationExportRequest{Batch: "batch", Limit: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = client.CutoverMigration(t.Context(), MigrationCutoverRequest{Batch: "batch", Route: "route", OperatorRef: "drill"}); err != nil {
+	if _, err = client.CutoverMigration(t.Context(), MigrationCutoverRequest{Batch: "batch", Route: "route", PreviousRoute: "old", OperatorRef: "drill"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = client.RollbackMigration(t.Context(), MigrationRollbackRequest{Cohort: "cohort", Expected: 1, OperatorRef: "drill"}); err != nil {

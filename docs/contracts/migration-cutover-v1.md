@@ -19,8 +19,11 @@ Parents must exist earlier in that order and the graph must be acyclic. A tombst
 also identifies the exact target kind, external reference and source revision; its
 durable target fence prevents that revision or any later bundle from resurrecting
 the deleted object. Source,
-dialect and engine identifiers are explicit. A source object requires an exact
-destination mapping. Upload and profile objects map to current governed objects;
+dialect and engine identifiers are explicit. A source object carries the exact
+engine, dialect, source revision, context and canonical source-binding snapshot and
+requires an exact destination mapping. Dry run and every apply re-resolve that
+destination, repeat its bounded health probe and reject any mismatch. Upload and
+profile objects map to current healthy governed objects at the exact revision;
 the manifest does not carry uploaded bytes, connection strings or warehouse
 credentials. Topics, rules, reviewed examples, blocks, documents and schedules
 use their owning public services. Filters remain part of immutable document JSON
@@ -38,8 +41,11 @@ remain ordinary quarantined `run` evidence.
 Each top-level payload field has exactly one `retained`, `transformed`, `dropped`
 or `unsupported` disposition. Non-retained fields require a reason. Unknown fields
 are rejected because they have no loss-ledger row. Token, password, secret, API-key,
-credential, user, role and grant shaped keys are recursively rejected. Calibration
-is versioned, credential-free and imported only as a `review_candidate`; it never
+credential, user, role and grant shaped keys are recursively rejected after case
+and punctuation normalization, including camel-case and separator variants. Every
+object is private; public import is rejected before persistence. Calibration is
+versioned, credential-free and imported through the evaluation service as a durable
+optimization candidate; it never
 activates a prompt, model, threshold or learned example. Its closed schema contains
 only prompt-pack and optional fallback references, optimization/example-policy
 revisions, locale, temperature, maximum output tokens, unique per-template
@@ -50,13 +56,19 @@ out-of-range values and duplicate template thresholds are rejected.
 Installed typed payloads also pass the owning closed decoder, so a ledger row
 cannot make an unknown nested domain field silently disappear. An object whose
 declared retention already expired is quarantined before any owner adapter runs.
+Resume repeats current bearer, retention, owner state, destination
+health/revision/context and adapter validation immediately before each apply. A
+stored dry-run plan is never treated as current authority.
 
 ## Feature evidence and readiness
 
 The bundle contains exactly the required B01-B20, R01-R16, Q01-Q10 and N01-N16
 feature rows plus Q11. Required rows must be marked `required`; a cohort is ready
-only when each outcome is `passed`. Q11 is always `excluded` and `unsupported`.
-Evidence records identify their source, source version, reference and evidence type.
+only when each row resolves to a current owner-produced live evaluation report with
+an accepted suite frontier, exact suite digest, exact evidence hash, passed gate and
+zero security failures. Caller-provided outcome text cannot unlock readiness. Q11
+is always `excluded` and `unsupported`. Evidence records identify their migration
+feature, owner frontier, source, exact source version, reference and evidence hash.
 A file name or inventory does not count as a passing comparison. Private owner-run
 comparisons can supply references without placing private fixtures in this repository.
 
@@ -95,14 +107,17 @@ privacy and current signed reach.
 
 ## Schedule handoff, cutover and rollback
 
-A cutover requires a completed batch, all required evidence passed, an exact route
-and an occurrence boundary containing one stream identifier, schedule version,
-last accepted occurrence/due time and resume-after time. The cohort generation CAS
-selects one active route. Replaying the identical route is idempotent; a stale or
-competing generation conflicts. The scheduler remains the occurrence owner. The
-cutover record prevents two logical streams but does not itself dispatch a schedule.
+A cutover requires a completed batch, all required evidence verified, exact target
+and prior schedule routes and an occurrence boundary containing one stream identifier, schedule version,
+last accepted occurrence/due time and resume-after time. The cohort generation CAS selects one active route. Replaying the identical route
+is idempotent; a stale or competing generation conflicts. The cutover transaction
+disables the prior schedule and enables the target. Occurrence admission locks the
+current generation, rejects the inactive route and due times at or before the resume
+boundary, and deduplicates both schedules by logical stream and exact due time.
+Queue claim repeats the route/revision fence. Imported schedules are created paused.
 
-Rollback swaps to the retained prior route under a new generation and records every
+Rollback atomically disables the target, enables the retained prior route under a
+new generation and records every
 known irreversible effect. Delivered notifications, committed external writes and
 expired remote side effects are not described as undone. Cutover and rollback
 events are append-only and attributed to the current actor plus an operator drill

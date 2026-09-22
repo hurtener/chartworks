@@ -56,13 +56,17 @@ seven registered HTTP/CLI operations and seven optional MCP bindings. The
 loss ledger, quarantine, retention and schedule handoff behavior.
 
 `TestPhase34/AC01`–`AC08` exercise the immutable bundle, full dependent graph,
-current-authority quarantine, all 63 feature dispositions, PostgreSQL replay/CAS,
-bounded erasure and cutover/rollback. Phases 24 and 33 are integrated. Evaluation
+per-apply current-authority/retention/owner revalidation, all 63 feature dispositions,
+live owner evidence resolution, PostgreSQL replay/CAS, bounded erasure and the
+worker-consumed occurrence cutover/rollback fence. Phases 24 and 33 are integrated. Evaluation
 suites and server-owned runtime packs import through the Phase 24 public service as
 drafts and reconcile exact retry conflicts without importing acceptance or selection.
-The runtime cannot supply the still-required owner comparison results. Until those
-private evidence references pass, Phase 34 remains `in_progress` and no cohort or
-final release is declared ready.
+Runtime packs and suites remain drafts; calibration material becomes a durable
+private optimization candidate and cannot transfer review or selection. Imported
+schedules remain paused until an exact two-route cutover. Owner comparison results
+are resolved from accepted live Phase 24 reports rather than manifest status text.
+Phase 34 remains `in_progress` until the complete private evidence set and Phase 25
+release gates pass.
 
 ## Glossary, decisions and deviations
 

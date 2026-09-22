@@ -72,6 +72,29 @@ CREATE TABLE chartworks.migration_cutover_events (
  PRIMARY KEY(tenant_id,cohort_id,generation)
 );
 
+CREATE TABLE chartworks.migration_schedule_routes (
+ tenant_id text NOT NULL,
+ cohort_id text NOT NULL,
+ stream_id text NOT NULL,
+ route text NOT NULL,
+ schedule_id text NOT NULL,
+ schedule_revision bigint NOT NULL CHECK(schedule_revision>0),
+ PRIMARY KEY(tenant_id,cohort_id,route),
+ UNIQUE(tenant_id,schedule_id),
+ FOREIGN KEY(tenant_id,cohort_id) REFERENCES chartworks.migration_cutovers(tenant_id,cohort_id) ON DELETE CASCADE,
+ FOREIGN KEY(tenant_id,schedule_id) REFERENCES chartworks.job_schedules(tenant_id,schedule_id)
+);
+
+CREATE TABLE chartworks.migration_occurrence_admissions (
+ tenant_id text NOT NULL,
+ stream_id text NOT NULL,
+ due_at timestamptz NOT NULL,
+ cohort_id text NOT NULL,
+ generation bigint NOT NULL CHECK(generation>0),
+ schedule_id text NOT NULL,
+ PRIMARY KEY(tenant_id,stream_id,due_at)
+);
+
 CREATE FUNCTION chartworks.immutable_migration_manifest() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog AS $$
 BEGIN
@@ -91,4 +114,4 @@ DO $$ DECLARE previous text; BEGIN
  EXECUTE format('ALTER TABLE chartworks.audit_events ADD CONSTRAINT audit_events_action_check CHECK ((%s) OR action IN (''migration.started'',''migration.checkpointed'',''migration.cutover'',''migration.rolled_back'',''migration.erased''))',previous);
 END $$;
 
-REVOKE ALL ON chartworks.migration_batches,chartworks.migration_checkpoints,chartworks.migration_external_refs,chartworks.migration_cutovers,chartworks.migration_cutover_events FROM PUBLIC;
+REVOKE ALL ON chartworks.migration_batches,chartworks.migration_checkpoints,chartworks.migration_external_refs,chartworks.migration_cutovers,chartworks.migration_cutover_events,chartworks.migration_schedule_routes,chartworks.migration_occurrence_admissions FROM PUBLIC;

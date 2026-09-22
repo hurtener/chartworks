@@ -23,6 +23,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway/bifrost"
 	"github.com/hurtener/chartworks/internal/jobs"
 	broker "github.com/hurtener/chartworks/internal/jobs/pengui"
+	"github.com/hurtener/chartworks/internal/migration"
 	"github.com/hurtener/chartworks/internal/migrationapi"
 	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
@@ -56,6 +57,7 @@ type work struct {
 	engine        gateway.Engine
 	nlq           *nlqexec.Service
 	queue         *jobs.Service
+	migrations    *migration.Service
 	broker        *broker.Provider
 	registry      *api.Registry
 	cancel        context.CancelFunc
@@ -271,17 +273,6 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	w.handler = handler
-	migrations, err := newMigrationService(db, migrationDomains{sources: w.sourceService, engineering: w.engineering, topics: topics, rules: rules, blocks: blockService, documents: documents, queries: w.nlq, schedules: w.queue, evaluation: evaluationService})
-	if err != nil {
-		w.close()
-		return nil, err
-	}
-	migrationRegistry, err := migrationapi.Registry()
-	if err != nil {
-		w.close()
-		return nil, err
-	}
-	w.handler = migrationapi.Handler(verifier, migrations, w.handler)
 	if v.Jobs.Enabled {
 		scheduled, makeErr := reporting.NewScheduled(delivery, db)
 		if makeErr != nil {
@@ -301,6 +292,18 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			return nil, err
 		}
 	}
+	migrations, err := newMigrationService(db, migrationDomains{sources: w.sourceService, engineering: w.engineering, topics: topics, rules: rules, blocks: blockService, documents: documents, queries: w.nlq, schedules: w.queue, evaluation: evaluationService})
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.migrations = migrations
+	migrationRegistry, err := migrationapi.Registry()
+	if err != nil {
+		w.close()
+		return nil, err
+	}
+	w.handler = migrationapi.Handler(verifier, migrations, w.handler)
 	w.autopilot, err = engineering.NewAutopilotWithSchedules(db, w.pipelines, v.Autopilot, w.queue, topics)
 	if err != nil {
 		w.close()

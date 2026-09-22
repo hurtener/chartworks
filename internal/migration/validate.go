@@ -27,12 +27,12 @@ var kindRank = map[Kind]int{
 }
 
 var forbiddenKeys = map[string]bool{
-	"token": true, "access_token": true, "refresh_token": true, "bearer": true,
-	"password": true, "secret": true, "client_secret": true, "api_key": true,
-	"private_key": true, "credential": true, "credentials": true, "grant": true,
+	"token": true, "accesstoken": true, "refreshtoken": true, "bearer": true,
+	"password": true, "secret": true, "clientsecret": true, "apikey": true,
+	"privatekey": true, "credential": true, "credentials": true, "grant": true,
 	"role": true, "roles": true, "user": true, "users": true,
-	"authorization": true, "proxy_authorization": true, "cookie": true, "set_cookie": true,
-	"dsn": true, "connection_string": true,
+	"authorization": true, "proxyauthorization": true, "cookie": true, "setcookie": true,
+	"dsn": true, "connectionstring": true,
 }
 
 var requiredFeatures = func() map[string]bool {
@@ -68,6 +68,14 @@ type calibrationPayload struct {
 	HeldoutLineageDigest  string                 `json:"heldout_lineage_digest,omitempty"`
 }
 
+type sourceBindingPayload struct {
+	Engine   string `json:"engine"`
+	Dialect  string `json:"dialect"`
+	Snapshot string `json:"snapshot"`
+	Context  string `json:"context"`
+	Revision int64  `json:"revision"`
+}
+
 func twoDigits(i int) string {
 	return fmt.Sprintf("%02d", i)
 }
@@ -97,7 +105,7 @@ func validateManifest(m Manifest) (string, error) {
 		fieldPaths[f.Path] = true
 	}
 	for _, o := range m.Objects {
-		if _, ok := kindRank[o.Kind]; !ok || !identity.Identifier(o.ExternalRef) || refs[o.ExternalRef].ExternalRef != "" || o.Revision < 1 || o.PayloadVersion != "v1" || len(o.Payload) < 2 || len(o.Payload) > 1<<20 || !json.Valid([]byte(o.Payload)) || !identity.Identifier(o.Origin) || (o.Lifecycle != "private_draft" && o.Lifecycle != "historical" && o.Lifecycle != "deleted") {
+		if _, ok := kindRank[o.Kind]; !ok || !identity.Identifier(o.ExternalRef) || refs[o.ExternalRef].ExternalRef != "" || o.Revision < 1 || o.PayloadVersion != "v1" || len(o.Payload) < 2 || len(o.Payload) > 1<<20 || !json.Valid([]byte(o.Payload)) || !identity.Identifier(o.Origin) || !o.Private || (o.Lifecycle != "private_draft" && o.Lifecycle != "historical" && o.Lifecycle != "deleted") {
 			return "", ErrInvalid
 		}
 		if o.Kind == KindTombstone {
@@ -117,6 +125,17 @@ func validateManifest(m Manifest) (string, error) {
 		}
 		if err := validateEvaluationObject(o); err != nil {
 			return "", ErrInvalid
+		}
+		if o.Kind == KindSource {
+			var binding sourceBindingPayload
+			decoder := json.NewDecoder(strings.NewReader(o.Payload))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(&binding) != nil {
+				return "", ErrInvalid
+			}
+			if binding.Engine != m.Engine || binding.Dialect != m.Dialect || binding.Snapshot != m.SourceSnapshot || !identity.Identifier(binding.Context) || binding.Revision != o.Revision || !validHash(binding.Snapshot) {
+				return "", ErrInvalid
+			}
 		}
 		for key := range object {
 			path := o.ExternalRef + "." + key
@@ -157,7 +176,7 @@ func validateManifest(m Manifest) (string, error) {
 	features := map[string]bool{}
 	for _, e := range m.Evidence {
 		known := requiredFeatures[e.Feature] || e.Feature == "Q11"
-		if !known || features[e.Feature] || (e.Disposition != "required" && e.Disposition != "excluded") || (e.Outcome != "passed" && e.Outcome != "failed" && e.Outcome != "unsupported") || !identity.Identifier(e.Reference) || !identity.Identifier(e.Source) || !identity.Identifier(e.SourceVersion) {
+		if !known || features[e.Feature] || !identity.Identifier(e.OwnerFeature) || (e.Disposition != "required" && e.Disposition != "excluded") || (e.Outcome != "passed" && e.Outcome != "failed" && e.Outcome != "unsupported") || !identity.Identifier(e.Reference) || !identity.Identifier(e.Source) || !validHash(e.SourceVersion) || !validHash(e.EvidenceHash) {
 			return "", ErrInvalid
 		}
 		if e.Feature == "Q11" && (e.Disposition != "excluded" || e.Outcome != "unsupported") || e.Feature != "Q11" && e.Disposition != "required" {
@@ -255,9 +274,9 @@ func containsForbiddenAt(kind Kind, path []string, v any) bool {
 	switch x := v.(type) {
 	case map[string]any:
 		for key, value := range x {
-			n := strings.ToLower(strings.TrimSpace(key))
+			n := normalizedKey(key)
 			modelRole := n == "role" && allowedModelRolePath(kind, path)
-			if !modelRole && (forbiddenKeys[n] || strings.Contains(n, "credential") || strings.Contains(n, "password") || strings.Contains(n, "secret") || strings.HasSuffix(n, "_token")) || containsForbiddenAt(kind, append(path, n), value) {
+			if !modelRole && (forbiddenKeys[n] || strings.Contains(n, "credential") || strings.Contains(n, "password") || strings.Contains(n, "secret") || strings.HasSuffix(n, "token")) || containsForbiddenAt(kind, append(path, n), value) {
 				return true
 			}
 		}
@@ -269,6 +288,16 @@ func containsForbiddenAt(kind Kind, path []string, v any) bool {
 		}
 	}
 	return false
+}
+
+func normalizedKey(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func allowedModelRolePath(kind Kind, path []string) bool {

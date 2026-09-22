@@ -2,6 +2,8 @@ package foundation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -40,20 +42,31 @@ type scheduleImport struct {
 	Request jobs.ScheduleRequest `json:"request"`
 }
 
+type sourceImport struct {
+	Engine   string `json:"engine"`
+	Dialect  string `json:"dialect"`
+	Snapshot string `json:"snapshot"`
+	Context  string `json:"context"`
+	Revision int64  `json:"revision"`
+}
+
+func sourceSnapshot(source sources.Source) string {
+	raw, _ := json.Marshal([]any{source.ID, source.Dialect, source.Revision, source.ContextID, source.Status})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
 func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Service, error) {
-	refs := migration.AdapterFuncs{ValidateFunc: func(_ context.Context, _ identity.Envelope, o migration.Object, m migration.Mapping) error {
-		if m.Destination == "" && o.Kind != migration.KindCalibration {
+	refs := migration.AdapterFuncs{ValidateFunc: func(_ context.Context, _ identity.Envelope, _ migration.Object, m migration.Mapping) error {
+		if m.Destination == "" {
 			return migration.ErrUnsupported
 		}
 		return nil
 	}, ApplyFunc: func(_ context.Context, _ identity.Envelope, o migration.Object, m migration.Mapping, _ string) (string, error) {
-		if o.Kind == migration.KindCalibration {
-			return "review-candidate:" + o.ExternalRef, nil
-		}
 		return m.Destination, nil
 	}}
 	adapters := map[migration.Kind]migration.Adapter{
-		migration.KindUpload: refs, migration.KindProfile: refs, migration.KindFilter: refs, migration.KindCalibration: refs,
+		migration.KindUpload: refs, migration.KindProfile: refs, migration.KindFilter: refs,
 		migration.KindTombstone: migration.AdapterFuncs{ValidateFunc: func(context.Context, identity.Envelope, migration.Object, migration.Mapping) error { return nil }, ApplyFunc: func(_ context.Context, _ identity.Envelope, o migration.Object, _ migration.Mapping, _ string) (string, error) {
 			return "tombstone:" + o.ExternalRef, nil
 		}},
@@ -62,32 +75,61 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 		adapters[kind] = adapter
 	}
 	if d.sources != nil {
-		adapters[migration.KindSource] = migration.AdapterFuncs{ValidateFunc: func(ctx context.Context, e identity.Envelope, _ migration.Object, m migration.Mapping) error {
+		adapters[migration.KindSource] = migration.AdapterFuncs{ValidateFunc: func(ctx context.Context, e identity.Envelope, o migration.Object, m migration.Mapping) error {
 			if m.Destination == "" {
 				return migration.ErrUnsupported
 			}
-			_, err := d.sources.Get(ctx, e, m.Destination)
-			return err
+			var expected sourceImport
+			if err := decodeMigrationPayload(o.Payload, &expected); err != nil {
+				return err
+			}
+			actual, err := d.sources.Get(ctx, e, m.Destination)
+			if err != nil {
+				return err
+			}
+			if expected.Engine != actual.Dialect || expected.Dialect != actual.Dialect || expected.Revision != actual.Revision || expected.Context != actual.ContextID || expected.Snapshot != sourceSnapshot(actual) {
+				return migration.ErrConflict
+			}
+			health, err := d.sources.Test(ctx, e, m.Destination)
+			if err != nil {
+				return err
+			}
+			if !health.Available || health.Revision != actual.Revision || health.ContextID != actual.ContextID {
+				return migration.ErrConflict
+			}
+			return nil
 		}, ApplyFunc: func(_ context.Context, _ identity.Envelope, _ migration.Object, m migration.Mapping, _ string) (string, error) {
 			return m.Destination, nil
 		}}
 	}
 	if d.engineering != nil {
-		adapters[migration.KindUpload] = migration.AdapterFuncs{ValidateFunc: func(ctx context.Context, e identity.Envelope, _ migration.Object, m migration.Mapping) error {
+		adapters[migration.KindUpload] = migration.AdapterFuncs{ValidateFunc: func(ctx context.Context, e identity.Envelope, o migration.Object, m migration.Mapping) error {
 			if m.Destination == "" {
 				return migration.ErrUnsupported
 			}
-			_, err := d.engineering.InspectUpload(ctx, e, m.Destination)
-			return err
+			status, err := d.engineering.InspectUpload(ctx, e, m.Destination)
+			if err != nil {
+				return err
+			}
+			if status.State != "active" || status.Source == nil || status.Source.Revision != o.Revision || m.Revision != o.Revision {
+				return migration.ErrConflict
+			}
+			return nil
 		}, ApplyFunc: func(_ context.Context, _ identity.Envelope, _ migration.Object, m migration.Mapping, _ string) (string, error) {
 			return m.Destination, nil
 		}}
-		adapters[migration.KindProfile] = migration.AdapterFuncs{ValidateFunc: func(ctx context.Context, e identity.Envelope, _ migration.Object, m migration.Mapping) error {
+		adapters[migration.KindProfile] = migration.AdapterFuncs{ValidateFunc: func(ctx context.Context, e identity.Envelope, o migration.Object, m migration.Mapping) error {
 			if m.Destination == "" {
 				return migration.ErrUnsupported
 			}
-			_, err := d.engineering.InspectProfile(ctx, e, m.Destination)
-			return err
+			status, err := d.engineering.InspectProfile(ctx, e, m.Destination)
+			if err != nil {
+				return err
+			}
+			if status.State != "complete" || status.Profile == nil || status.Profile.SourceRevision != o.Revision || m.Revision != o.Revision {
+				return migration.ErrConflict
+			}
+			return nil
 		}, ApplyFunc: func(_ context.Context, _ identity.Envelope, _ migration.Object, m migration.Mapping, _ string) (string, error) {
 			return m.Destination, nil
 		}}
@@ -183,8 +225,11 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 				if err != nil {
 					return "", err
 				}
-				if out.State != nil {
+				if out.State != nil && out.State.DraftRevision > 0 && out.State.PublishedRevision == 0 && out.State.ReviewRevision == 0 {
 					return id + ":draft:" + strconv.FormatInt(out.State.LatestRevision, 10), nil
+				}
+				if out.State != nil {
+					return "", migration.ErrConflict
 				}
 				return "quarantine:" + out.Quarantine, nil
 			}}
@@ -225,10 +270,25 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 			if err != nil {
 				return "", err
 			}
+			if v.Enabled {
+				v, err = d.schedules.SetSchedule(ctx, e, v.ID, v.Revision, false)
+				if err != nil {
+					return "", err
+				}
+			}
+			if v.Enabled {
+				return "", migration.ErrConflict
+			}
 			return v.ID + ":v" + strconv.FormatInt(v.Revision, 10), nil
 		}}
 	}
-	return migration.New(db, adapters, nil)
+	verifier := migration.EvidenceVerifierFunc(func(ctx context.Context, e identity.Envelope, evidence migration.Evidence) error {
+		if d.evaluation == nil || evidence.EvidenceType != "live" || evidence.Source != "evaluation" || evidence.Outcome != "passed" {
+			return migration.ErrNotReady
+		}
+		return d.evaluation.VerifyMigrationEvidence(ctx, e, evidence.OwnerFeature, evidence.Reference, evidence.SourceVersion, evidence.EvidenceHash)
+	})
+	return migration.New(db, adapters, nil, verifier)
 }
 
 func decodeMigrationPayload(raw string, out any) error {

@@ -127,7 +127,7 @@ func (m *MemoryRepository) Export(_ context.Context, e identity.Envelope, id, af
 	return Export{Manifest: out, Batch: x.batch}, nil
 }
 
-func (m *MemoryRepository) Cutover(_ context.Context, e identity.Envelope, b Batch, expected int64, route, operator string, boundary OccurrenceBoundary) (Cutover, error) {
+func (m *MemoryRepository) Cutover(_ context.Context, e identity.Envelope, b Batch, expected int64, route, previousRoute, operator string, boundary OccurrenceBoundary) (Cutover, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := tenantKey(e, b.Cohort)
@@ -141,7 +141,11 @@ func (m *MemoryRepository) Cutover(_ context.Context, e identity.Envelope, b Bat
 	if old.Generation != expected {
 		return Cutover{}, ErrConflict
 	}
-	next := Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: old.Route, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: m.now().UTC()}
+	previous := old.Route
+	if expected == 0 {
+		previous = previousRoute
+	}
+	next := Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: previous, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: m.now().UTC()}
 	m.cutovers[key] = next
 	return next, nil
 }

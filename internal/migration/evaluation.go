@@ -22,6 +22,33 @@ func EvaluationAdapters(service *evaluation.Service) map[Kind]Adapter {
 		return nil
 	}
 	return map[Kind]Adapter{
+		KindCalibration: AdapterFuncs{
+			ValidateFunc: func(ctx context.Context, envelope identity.Envelope, object Object, _ Mapping) error {
+				var in evaluation.ProposalRequest
+				if err := decodeEvaluationPayload(object.Payload, &in); err != nil {
+					return err
+				}
+				_, err := service.PreviewOptimization(ctx, envelope, in)
+				return err
+			},
+			ApplyFunc: func(ctx context.Context, envelope identity.Envelope, object Object, _ Mapping, _ string) (string, error) {
+				var in evaluation.ProposalRequest
+				if err := decodeEvaluationPayload(object.Payload, &in); err != nil {
+					return "", err
+				}
+				proposal, err := service.ProposeOptimization(ctx, envelope, in)
+				if errors.Is(err, store.ErrConflict) {
+					proposal, err = service.DraftOptimization(ctx, envelope, in.ID)
+					if err == nil && (proposal.SuiteID != in.SuiteID || proposal.SuiteRevision != in.SuiteRevision || proposal.SuiteDigest != in.SuiteDigest || proposal.Baseline.ID != in.BaselineRun || proposal.Candidate.ID != in.CandidateRun) {
+						err = store.ErrConflict
+					}
+				}
+				if err != nil {
+					return "", err
+				}
+				return "optimization:" + proposal.ID + ":candidate", nil
+			},
+		},
 		KindRuntimePack: AdapterFuncs{
 			ValidateFunc: func(_ context.Context, _ identity.Envelope, object Object, _ Mapping) error {
 				var in evaluation.RuntimePackAuthorRequest
@@ -101,6 +128,15 @@ func validateEvaluationObject(object Object) error {
 			return err
 		}
 		return suite.Validate()
+	case KindCalibration:
+		var in evaluation.ProposalRequest
+		if err := decodeEvaluationPayload(object.Payload, &in); err != nil {
+			return err
+		}
+		if !identity.Identifier(in.ID) || !identity.Identifier(in.SuiteID) || in.SuiteRevision < 1 || !validHash(in.SuiteDigest) || !identity.Identifier(in.BaselineRun) || !identity.Identifier(in.CandidateRun) || in.BaselineRun == in.CandidateRun {
+			return ErrInvalid
+		}
+		return nil
 	default:
 		return nil
 	}

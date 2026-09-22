@@ -5,7 +5,9 @@
    feature evidence rows, exact destination mappings, retention and one schedule
    occurrence boundary.
 2. Call `migrationDryRun`. Resolve every rejected mapping and every failed or
-   unsupported required row. Save the returned digest and loss ledger with the
+   unsupported required row. Each required row must resolve to an accepted live
+   owner evaluation report, exact suite digest and evidence hash; typed `passed`
+   text alone is insufficient. Save the returned digest and loss ledger with the
    operator change record. Dry run performs no import.
 3. Call `migrationImport` with `expected_revision: 0`. If the call ends without a
    result, read the operator record and call `migrationResume` with the last returned
@@ -15,13 +17,15 @@
    domain reads with current scoped bearers; migration authority is insufficient.
 5. Stop the old cohort dispatcher after its recorded `last_accepted` occurrence.
    Confirm the target scheduler will resume strictly after the manifest boundary.
-   Call `migrationCutover` with generation 0 (or the current exact generation), the
-   target route and the external change/drill reference.
+   Call `migrationCutover` with generation 0, both the prior and target schedule IDs,
+   and the external change/drill reference. Later exact replays use the current
+   generation. The transaction activates only the target route.
 6. Observe one complete target occurrence and verify no duplicate logical occurrence
    was admitted. Keep Phase 25 release status unchanged until its full gates pass.
 7. For rollback, stop the target dispatcher, enumerate already delivered or committed
    effects, then call `migrationRollback` with the current exact generation and that
-   effect list. Verify the prior route resumes after the retained boundary. Never
+   effect list. The transaction reactivates the prior route; verify only future due
+   times resume and that no logical stream/due pair is admitted twice. Never
    report listed effects as undone.
 8. After retention and when no active cutover references the batch, call
    `migrationErase` in bounded pages until `remaining` is zero. Record that online

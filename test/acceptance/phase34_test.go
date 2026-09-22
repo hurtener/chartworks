@@ -16,7 +16,10 @@ import (
 	"github.com/hurtener/chartworks/internal/evaluation"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/migration"
+	"github.com/hurtener/chartworks/internal/store"
+	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/test/support"
 )
 
@@ -78,6 +81,7 @@ func phase34Manifest(suffix string) migration.Manifest {
 	suiteRaw, _ := json.Marshal(suite)
 	runtimeDigest, _ := runtime.Digest()
 	suiteDigest, _ := suite.Digest()
+	snapshot := strings.Repeat("c", 64)
 	kinds := []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindRun, migration.KindArtifact, migration.KindRendition, migration.KindCertificate, migration.KindTombstone, migration.KindCalibration}
 	objects := make([]migration.Object, 0, len(kinds))
 	fields := []migration.FieldDisposition{}
@@ -97,11 +101,17 @@ func phase34Manifest(suffix string) migration.Manifest {
 			lifecycle = "deleted"
 		}
 		payload := `{"name":"synthetic"}`
+		if kind == migration.KindSource {
+			payload = fmt.Sprintf(`{"engine":"postgres","dialect":"postgres","snapshot":"%s","context":"mapped-source:v1","revision":1}`, snapshot)
+		}
 		if kind == migration.KindRuntimePack {
 			payload = string(runtimeRaw)
 		}
 		if kind == migration.KindEvalSuite {
 			payload = string(suiteRaw)
+		}
+		if kind == migration.KindCalibration {
+			payload = fmt.Sprintf(`{"id":"proposal-%s","suite_id":"%s","suite_revision":%d,"suite_digest":"%s","baseline_run":"baseline-%s","candidate_run":"candidate-%s"}`, suffix, suite.ID, suite.Revision, suiteDigest, suffix, suffix)
 		}
 		object := migration.Object{Kind: kind, ExternalRef: ref, Parents: parents, Revision: 1, PayloadVersion: "v1", Payload: payload, Lifecycle: lifecycle, Private: private, Origin: "neutral-source", Retention: migration.Retention{ExpiresAt: ptrTime(now.Add(30 * 24 * time.Hour)), EraseWith: "cohort-" + suffix}}
 		if kind == migration.KindTombstone {
@@ -121,12 +131,12 @@ func phase34Manifest(suffix string) migration.Manifest {
 	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
 		for i := 1; i <= group.count; i++ {
 			feature := group.prefix + fmt.Sprintf("%02d", i)
-			evidence = append(evidence, migration.Evidence{Feature: feature, Disposition: "required", Outcome: "passed", EvidenceType: "runtime", Reference: "evidence-" + strings.ToLower(feature), Source: "synthetic", SourceVersion: "v1"})
+			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "evidence-" + strings.ToLower(feature), Source: "evaluation", SourceVersion: suiteDigest, EvidenceHash: strings.Repeat("b", 64)})
 		}
 	}
-	evidence = append(evidence, migration.Evidence{Feature: "Q11", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discarded-stub", Source: "synthetic", SourceVersion: "v1"})
+	evidence = append(evidence, migration.Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discarded-stub", Source: "synthetic", SourceVersion: suiteDigest, EvidenceHash: strings.Repeat("b", 64)})
 	calibration := fmt.Sprintf(`{"prompt_pack":"pack-one","optimization_revision":"opt-one","locale":"en-US","temperature":0.2,"max_output_tokens":2048,"example_policy_revision":"examples-one","template_thresholds":[{"template":"sales","threshold":0.72}],"evaluation_suite_digest":"%s","evaluation_run_digest":"%s","runtime_pack_digest":"%s"}`, suiteDigest, strings.Repeat("b", 64), runtimeDigest)
-	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-" + suffix, Cohort: "cohort-" + suffix, SourceSnapshot: "snapshot-" + suffix, Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source-" + suffix, Destination: "mapped-source", Revision: 1}}, Objects: objects, Fields: fields, Evidence: evidence, Calibration: &migration.Calibration{Revision: "cal-one", ModelVersion: "model-one", EmbeddingSpace: "space-one", BudgetVersion: "budget-one", Payload: calibration, State: "review_candidate"}, Boundary: &migration.OccurrenceBoundary{Stream: "stream-" + suffix, LastAccepted: "occurrence-prior", LastDue: now.Add(-time.Hour), ResumeAfter: now, ScheduleVersion: 1}}
+	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-" + suffix, Cohort: "cohort-" + suffix, SourceSnapshot: snapshot, Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source-" + suffix, Destination: "mapped-source", Revision: 1}}, Objects: objects, Fields: fields, Evidence: evidence, Calibration: &migration.Calibration{Revision: "cal-one", ModelVersion: "model-one", EmbeddingSpace: "space-one", BudgetVersion: "budget-one", Payload: calibration, State: "review_candidate"}, Boundary: &migration.OccurrenceBoundary{Stream: "stream-" + suffix, LastAccepted: "occurrence-prior", LastDue: now.Add(-time.Hour), ResumeAfter: now, ScheduleVersion: 1}}
 }
 func ptrTime(t time.Time) *time.Time { return &t }
 
@@ -139,7 +149,12 @@ func phase34Service(t *testing.T, suffix string) (*migration.Service, *phase34Ad
 	for _, kind := range []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration} {
 		adapters[kind] = adapter
 	}
-	service, err := migration.New(db, adapters, nil)
+	service, err := migration.New(db, adapters, nil, migration.EvidenceVerifierFunc(func(_ context.Context, _ identity.Envelope, evidence migration.Evidence) error {
+		if evidence.Outcome != "passed" {
+			return migration.ErrNotReady
+		}
+		return nil
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,6 +303,7 @@ func phase34HistoricalAuthority(t *testing.T) {
 }
 
 func phase34EvidenceLedger(t *testing.T) {
+	phase34LiveOwnerEvidence(t)
 	s, _, e, _ := phase34Service(t, "ac04")
 	m := phase34Manifest("ac04")
 	for i := range m.Evidence {
@@ -306,6 +322,52 @@ func phase34EvidenceLedger(t *testing.T) {
 	}
 	if _, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "new-route", OperatorRef: "drill", Expected: 0}); !errors.Is(err, migration.ErrNotReady) {
 		t.Fatal("incomplete shadow evidence cut over", err)
+	}
+}
+
+func phase34LiveOwnerEvidence(t *testing.T) {
+	t.Helper()
+	dsn := support.Database(t)
+	db := support.Open(t, dsn)
+	eval, err := evaluation.New(db, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant := "tenant-ac04-live"
+	author := phase34Actor(t, tenant, "ops.write", "ops.read", "migration.read", "migration.write")
+	reviewer, err := identity.FromVerified(tenant, "reviewer", "review-session", []string{"ops.audit", "cw.tenant.certify:" + tenant}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack, _ := evalRuntimePack(t, eval, author, reviewer, "phase34-pack", true)
+	record := evalAcceptedLiveSuite(t, eval, author, reviewer, "phase34-suite", pack, 1)
+	report, err := eval.Run(t.Context(), author, evaluation.RunRequest{RunID: "phase34-evidence", SuiteID: record.Suite.ID, SuiteRevision: record.Suite.Revision, SuiteDigest: record.Digest, PackDigest: pack.Digest}, evaluation.RunnerFunc(func(context.Context, evaluation.Execution) (evaluation.Observation, error) {
+		return evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Usage: evaluation.Usage{ServiceMS: 1, Calls: 1}}, nil
+	}))
+	if err != nil || !report.GatePassed {
+		t.Fatal("live owner evidence", err, report)
+	}
+	adapter := &phase34Adapter{}
+	adapters := map[migration.Kind]migration.Adapter{}
+	for _, kind := range []migration.Kind{migration.KindSource, migration.KindUpload, migration.KindProfile, migration.KindTopic, migration.KindRule, migration.KindTemplate, migration.KindRuntimePack, migration.KindEvalSuite, migration.KindBlock, migration.KindReport, migration.KindDashboard, migration.KindFilter, migration.KindSchedule, migration.KindTombstone, migration.KindCalibration} {
+		adapters[kind] = adapter
+	}
+	verifier := migration.EvidenceVerifierFunc(func(ctx context.Context, e identity.Envelope, x migration.Evidence) error {
+		return eval.VerifyMigrationEvidence(ctx, e, x.OwnerFeature, x.Reference, x.SourceVersion, x.EvidenceHash)
+	})
+	service, err := migration.New(db, adapters, nil, verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := phase34Manifest("ac04-live")
+	for i := range manifest.Evidence {
+		manifest.Evidence[i].Reference = report.RunID
+		manifest.Evidence[i].SourceVersion = report.SuiteDigest
+		manifest.Evidence[i].EvidenceHash = report.EvidenceHash
+	}
+	plan, err := service.DryRun(t.Context(), author, migration.DryRunRequest{Manifest: manifest})
+	if err != nil || !plan.Ready {
+		t.Fatal("verified live evidence did not unlock readiness", err, plan.Limitations)
 	}
 }
 
@@ -355,27 +417,42 @@ func phase34RetentionErasure(t *testing.T) {
 func phase34CutoverRollback(t *testing.T) {
 	s, _, e, dsn := phase34Service(t, "ac06")
 	m := phase34Manifest("ac06")
+	oldRoute, newRoute, queueDB, scope := phase34ScheduleRoutes(t, dsn, e.Tenant())
+	m.Boundary.ResumeAfter = time.Now().UTC().Add(-time.Minute)
+	m.Boundary.LastDue = m.Boundary.ResumeAfter.Add(-time.Minute)
 	if _, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m}); err != nil {
 		t.Fatal(err)
 	}
-	cut, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-new", OperatorRef: "cutover-drill", Expected: 0})
+	cut, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "cutover-drill", Expected: 0})
 	if err != nil || cut.Generation != 1 || cut.Boundary.Stream != m.Boundary.Stream {
 		t.Fatal(err, cut)
 	}
-	replay, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-new", OperatorRef: "cutover-drill", Expected: 1})
+	replay, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, OperatorRef: "cutover-drill", Expected: 1})
 	if err != nil || replay.Generation != 1 {
 		t.Fatal("cutover replay duplicated stream", err, replay)
 	}
-	replay, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-new", OperatorRef: "cutover-drill", Expected: 0})
+	replay, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "cutover-drill", Expected: 0})
 	if err != nil || replay.Generation != 1 {
 		t.Fatal("exact cutover retry duplicated stream", err, replay)
 	}
 	if _, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-other", OperatorRef: "racer", Expected: 0}); !errors.Is(err, migration.ErrConflict) {
 		t.Fatal("stale concurrent cutover", err)
 	}
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", oldRoute, "old-fenced", 1, jobs.Defaults()); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("old stream admitted after cutover", err)
+	}
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", newRoute, "target-live", 1, jobs.Defaults()); err != nil {
+		t.Fatal("target stream blocked after cutover", err)
+	}
 	rolled, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
 	if err != nil || rolled.State != "rolled_back" || len(rolled.IrreversibleEffects) != 1 {
 		t.Fatal(err, rolled)
+	}
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", newRoute, "target-fenced", 1, jobs.Defaults()); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("target stream admitted after rollback", err)
+	}
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", oldRoute, "old-live", 1, jobs.Defaults()); err != nil {
+		t.Fatal("old stream blocked after rollback", err)
 	}
 	replayedRollback, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
 	if err != nil || replayedRollback.Generation != rolled.Generation {
@@ -385,6 +462,29 @@ func phase34CutoverRollback(t *testing.T) {
 	if err = support.Raw(t, dsn).QueryRow(t.Context(), `SELECT count(*) FROM chartworks.migration_cutover_events WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort).Scan(&events); err != nil || events != 2 {
 		t.Fatal("retry duplicated cutover occurrence events", err, events)
 	}
+}
+
+func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, *postgres.DB, store.Scope) {
+	t.Helper()
+	db := support.Open(t, dsn)
+	limits := jobs.Defaults()
+	if err := db.ConfigureQueue(t.Context(), limits); err != nil {
+		t.Fatal(err)
+	}
+	scope, err := store.NewScope(tenant, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := jobs.ScheduleRequest{Target: jobs.Submission{Kind: jobs.MaintenanceKind, BindingID: "maintenance"}, Spec: jobs.Spec{Type: "manual", Timezone: "UTC", Missed: "skip", Overlap: "queue"}}
+	oldSchedule, err := db.CreateSchedule(t.Context(), scope, "session", "old-route", request, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSchedule, err := db.CreateSchedule(t.Context(), scope, "session", "new-route", request, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return oldSchedule.ID, newSchedule.ID, db, scope
 }
 
 func phase34FeatureClosure(t *testing.T) {
@@ -407,10 +507,11 @@ func phase34FeatureClosure(t *testing.T) {
 func phase34OperationalBoundaries(t *testing.T) {
 	s, _, e, dsn := phase34Service(t, "ac08")
 	m := phase34Manifest("ac08")
+	oldRoute, newRoute, _, _ := phase34ScheduleRoutes(t, dsn, e.Tenant())
 	if _, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-runbook", OperatorRef: "observed-drill", Expected: 0}); err != nil {
+	if _, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "observed-drill", Expected: 0}); err != nil {
 		t.Fatal(err)
 	}
 	raw := support.Raw(t, dsn)

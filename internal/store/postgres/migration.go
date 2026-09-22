@@ -211,7 +211,7 @@ func (d *DB) Export(ctx context.Context, e identity.Envelope, id, after string, 
 	return migration.Export{Manifest: m, Batch: b}, nil
 }
 
-func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch, expected int64, route, operator string, boundary migration.OccurrenceBoundary) (out migration.Cutover, err error) {
+func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch, expected int64, route, previousRoute, operator string, boundary migration.OccurrenceBoundary) (out migration.Cutover, err error) {
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var old migration.Cutover
 		var boundaryRaw, effectsRaw []byte
@@ -236,12 +236,34 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 		if old.Generation != expected {
 			return store.ErrConflict
 		}
-		out = migration.Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: old.Route, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: time.Now().UTC()}
+		previous := old.Route
+		if expected == 0 {
+			previous = previousRoute
+		}
+		var targetRevision, previousRevision int64
+		if x = tx.QueryRow(ctx, `SELECT revision FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2 FOR SHARE`, e.Tenant(), route).Scan(&targetRevision); x != nil {
+			return store.ErrConflict
+		}
+		if x = tx.QueryRow(ctx, `SELECT revision FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2 FOR SHARE`, e.Tenant(), previous).Scan(&previousRevision); x != nil {
+			return store.ErrConflict
+		}
+		out = migration.Cutover{Cohort: b.Cohort, Batch: b.ID, Route: route, PreviousRoute: previous, State: "active", Generation: expected + 1, Boundary: boundary, OperatorReference: operator, UpdatedAt: time.Now().UTC()}
 		br, _ := json.Marshal(boundary)
 		er := []byte(`[]`)
 		record, _ := json.Marshal(out)
-		_, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_cutovers(tenant_id,cohort_id,batch_id,route,previous_route,state,generation,boundary,irreversible_effects,operator_reference,actor_id,updated_at) VALUES($1,$2,$3,$4,$5,'active',$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,cohort_id) DO UPDATE SET batch_id=excluded.batch_id,route=excluded.route,previous_route=excluded.previous_route,state=excluded.state,generation=excluded.generation,boundary=excluded.boundary,irreversible_effects=excluded.irreversible_effects,operator_reference=excluded.operator_reference,actor_id=excluded.actor_id,updated_at=excluded.updated_at`, e.Tenant(), b.Cohort, b.ID, route, old.Route, out.Generation, br, er, operator, e.User(), out.UpdatedAt)
+		_, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_cutovers(tenant_id,cohort_id,batch_id,route,previous_route,state,generation,boundary,irreversible_effects,operator_reference,actor_id,updated_at) VALUES($1,$2,$3,$4,$5,'active',$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,cohort_id) DO UPDATE SET batch_id=excluded.batch_id,route=excluded.route,previous_route=excluded.previous_route,state=excluded.state,generation=excluded.generation,boundary=excluded.boundary,irreversible_effects=excluded.irreversible_effects,operator_reference=excluded.operator_reference,actor_id=excluded.actor_id,updated_at=excluded.updated_at`, e.Tenant(), b.Cohort, b.ID, route, previous, out.Generation, br, er, operator, e.User(), out.UpdatedAt)
 		if x != nil {
+			return x
+		}
+		for _, binding := range []struct {
+			route    string
+			revision int64
+		}{{route, targetRevision}, {previous, previousRevision}} {
+			if _, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_schedule_routes(tenant_id,cohort_id,stream_id,route,schedule_id,schedule_revision) VALUES($1,$2,$3,$4,$4,$5) ON CONFLICT(tenant_id,cohort_id,route) DO UPDATE SET stream_id=excluded.stream_id,schedule_id=excluded.schedule_id,schedule_revision=excluded.schedule_revision`, e.Tenant(), b.Cohort, boundary.Stream, binding.route, binding.revision); x != nil {
+				return x
+			}
+		}
+		if _, x = tx.Exec(ctx, `UPDATE chartworks.job_schedules SET enabled=(schedule_id=$3) WHERE tenant_id=$1 AND schedule_id=ANY($2::text[])`, e.Tenant(), []string{route, previous}, route); x != nil {
 			return x
 		}
 		if _, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_cutover_events(tenant_id,cohort_id,generation,event,record) VALUES($1,$2,$3,'cutover',$4)`, e.Tenant(), b.Cohort, out.Generation, record); x != nil {
@@ -295,6 +317,9 @@ func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, e
 		out.OperatorReference = operator
 		out.IrreversibleEffects = append([]string(nil), effects...)
 		out.UpdatedAt = time.Now().UTC()
+		if _, x := tx.Exec(ctx, `UPDATE chartworks.job_schedules SET enabled=(schedule_id=$3) WHERE tenant_id=$1 AND schedule_id=ANY($2::text[])`, e.Tenant(), []string{out.Route, out.PreviousRoute}, out.Route); x != nil {
+			return x
+		}
 		eraw, _ := json.Marshal(effects)
 		record, _ := json.Marshal(out)
 		if _, x := tx.Exec(ctx, `UPDATE chartworks.migration_cutovers SET route=$3,previous_route=$4,state='rolled_back',generation=$5,irreversible_effects=$6,operator_reference=$7,actor_id=$8,updated_at=$9 WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), cohort, out.Route, out.PreviousRoute, out.Generation, eraw, operator, e.User(), out.UpdatedAt); x != nil {

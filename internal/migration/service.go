@@ -18,7 +18,7 @@ type Repository interface {
 	Batch(context.Context, identity.Envelope, string) (Batch, Manifest, Plan, error)
 	Checkpoint(context.Context, identity.Envelope, string, int64, ObjectPlan, string) (Batch, error)
 	Export(context.Context, identity.Envelope, string, string, int) (Export, error)
-	Cutover(context.Context, identity.Envelope, Batch, int64, string, string, OccurrenceBoundary) (Cutover, error)
+	Cutover(context.Context, identity.Envelope, Batch, int64, string, string, string, OccurrenceBoundary) (Cutover, error)
 	CurrentCutover(context.Context, identity.Envelope, string) (Cutover, error)
 	Rollback(context.Context, identity.Envelope, string, int64, string, []string) (Cutover, error)
 	Erase(context.Context, identity.Envelope, string, int) (EraseResult, error)
@@ -29,6 +29,16 @@ type Repository interface {
 type Adapter interface {
 	Validate(context.Context, identity.Envelope, Object, Mapping) error
 	Apply(context.Context, identity.Envelope, Object, Mapping, string) (destination string, err error)
+}
+
+type EvidenceVerifier interface {
+	Verify(context.Context, identity.Envelope, Evidence) error
+}
+
+type EvidenceVerifierFunc func(context.Context, identity.Envelope, Evidence) error
+
+func (f EvidenceVerifierFunc) Verify(ctx context.Context, e identity.Envelope, evidence Evidence) error {
+	return f(ctx, e, evidence)
 }
 
 type AdapterFuncs struct {
@@ -54,10 +64,11 @@ type Service struct {
 	repo     Repository
 	adapters map[Kind]Adapter
 	now      func() time.Time
+	evidence EvidenceVerifier
 }
 
-func New(repo Repository, adapters map[Kind]Adapter, now func() time.Time) (*Service, error) {
-	if repo == nil || len(adapters) == 0 {
+func New(repo Repository, adapters map[Kind]Adapter, now func() time.Time, verifiers ...EvidenceVerifier) (*Service, error) {
+	if repo == nil || len(adapters) == 0 || len(verifiers) > 1 {
 		return nil, ErrInvalid
 	}
 	copy := make(map[Kind]Adapter, len(adapters))
@@ -70,7 +81,11 @@ func New(repo Repository, adapters map[Kind]Adapter, now func() time.Time) (*Ser
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{repo: repo, adapters: copy, now: now}, nil
+	var evidence EvidenceVerifier
+	if len(verifiers) == 1 {
+		evidence = verifiers[0]
+	}
+	return &Service{repo: repo, adapters: copy, now: now, evidence: evidence}, nil
 }
 
 func require(e identity.Envelope, action, permission string) error {
@@ -102,9 +117,9 @@ func (s *Service) dryRun(ctx context.Context, e identity.Envelope, manifest Mani
 	}
 	plan := Plan{Batch: manifest.Batch, Cohort: manifest.Cohort, Digest: digest, Ready: true, Objects: make([]ObjectPlan, 0, len(objects)), Fields: append([]FieldDisposition(nil), manifest.Fields...), Evidence: append([]Evidence(nil), manifest.Evidence...)}
 	for _, evidence := range manifest.Evidence {
-		if evidence.Disposition == "required" && evidence.Outcome != "passed" {
+		if evidence.Disposition == "required" && (s.evidence == nil || s.evidence.Verify(ctx, e, evidence) != nil) {
 			plan.Ready = false
-			plan.Limitations = append(plan.Limitations, "required evidence incomplete: "+evidence.Feature)
+			plan.Limitations = append(plan.Limitations, "required owner evidence unverified: "+evidence.Feature)
 		}
 	}
 	for _, o := range objects {
@@ -211,6 +226,13 @@ func (s *Service) resume(ctx context.Context, e identity.Envelope, batch Batch, 
 			return batch, ctx.Err()
 		}
 		item := plan.Objects[i]
+		object := objects[item.ExternalRef]
+		if err := require(e, "migration.write", "write"); err != nil {
+			return batch, err
+		}
+		if object.Retention.ExpiresAt != nil && !s.now().UTC().Before(object.Retention.ExpiresAt.UTC()) {
+			item.Action, item.Reason = "retention_quarantine", "source retention expired before apply"
+		}
 		destination := item.Destination
 		state := "quarantined"
 		if item.Action == "install_private" || item.Action == "tombstone" {
@@ -218,8 +240,11 @@ func (s *Service) resume(ctx context.Context, e identity.Envelope, batch Batch, 
 			if adapter == nil {
 				return batch, ErrUnsupported
 			}
+			if err := adapter.Validate(ctx, e, object, mappings[item.ExternalRef]); err != nil {
+				return batch, err
+			}
 			var err error
-			destination, err = adapter.Apply(ctx, e, objects[item.ExternalRef], mappings[item.ExternalRef], plan.Digest)
+			destination, err = adapter.Apply(ctx, e, object, mappings[item.ExternalRef], plan.Digest)
 			if err != nil {
 				return batch, err
 			}
@@ -252,10 +277,20 @@ func (s *Service) Cutover(ctx context.Context, e identity.Envelope, in CutoverRe
 	if err != nil {
 		return Cutover{}, err
 	}
-	if !plan.Ready || batch.State != "complete" || manifest.Boundary == nil || !identity.Identifier(in.Route) || !identity.Identifier(in.OperatorRef) {
+	if !plan.Ready || batch.State != "complete" || manifest.Boundary == nil || !identity.Identifier(in.Route) || in.Expected == 0 && !identity.Identifier(in.PreviousRoute) || !identity.Identifier(in.OperatorRef) {
 		return Cutover{}, ErrNotReady
 	}
-	return s.repo.Cutover(ctx, e, batch, in.Expected, in.Route, in.OperatorRef, *manifest.Boundary)
+	if s.evidence == nil {
+		return Cutover{}, ErrNotReady
+	}
+	for _, evidence := range manifest.Evidence {
+		if evidence.Disposition == "required" {
+			if err := s.evidence.Verify(ctx, e, evidence); err != nil {
+				return Cutover{}, ErrNotReady
+			}
+		}
+	}
+	return s.repo.Cutover(ctx, e, batch, in.Expected, in.Route, in.PreviousRoute, in.OperatorRef, *manifest.Boundary)
 }
 
 func (s *Service) Rollback(ctx context.Context, e identity.Envelope, in RollbackRequest) (Cutover, error) {

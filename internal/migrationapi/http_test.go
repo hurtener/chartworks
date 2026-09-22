@@ -72,6 +72,7 @@ func (f *migrationHTTPFixture) token(t *testing.T, scopes ...string) string {
 }
 
 func migrationHTTPManifest() migration.Manifest {
+	hash := strings.Repeat("a", 64)
 	evidence := make([]migration.Evidence, 0, 63)
 	for _, group := range []struct {
 		prefix string
@@ -79,11 +80,11 @@ func migrationHTTPManifest() migration.Manifest {
 	}{{"B", 20}, {"R", 16}, {"Q", 10}, {"N", 16}} {
 		for i := 1; i <= group.count; i++ {
 			feature := fmt.Sprintf("%s%02d", group.prefix, i)
-			evidence = append(evidence, migration.Evidence{Feature: feature, Disposition: "required", Outcome: "passed", EvidenceType: "runtime", Reference: "ref-" + feature, Source: "synthetic", SourceVersion: "v1"})
+			evidence = append(evidence, migration.Evidence{Feature: feature, OwnerFeature: "EVAL-01", Disposition: "required", Outcome: "passed", EvidenceType: "live", Reference: "ref-" + feature, Source: "evaluation", SourceVersion: hash, EvidenceHash: hash})
 		}
 	}
-	evidence = append(evidence, migration.Evidence{Feature: "Q11", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discard", Source: "synthetic", SourceVersion: "v1"})
-	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch", Cohort: "cohort", SourceSnapshot: "snapshot", Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source", Destination: "target", Revision: 1}}, Objects: []migration.Object{{Kind: migration.KindSource, ExternalRef: "source", Revision: 1, PayloadVersion: "v1", Payload: `{"name":"synthetic"}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic"}}, Fields: []migration.FieldDisposition{{Path: "source.name", Status: "retained"}}, Evidence: evidence}
+	evidence = append(evidence, migration.Evidence{Feature: "Q11", OwnerFeature: "EVAL-01", Disposition: "excluded", Outcome: "unsupported", EvidenceType: "operator", Reference: "discard", Source: "synthetic", SourceVersion: hash, EvidenceHash: hash})
+	return migration.Manifest{Version: migration.ManifestVersion, Batch: "batch", Cohort: "cohort", SourceSnapshot: hash, Engine: "postgres", Dialect: "postgres", Mappings: []migration.Mapping{{Kind: migration.KindSource, ExternalRef: "source", Destination: "target", Revision: 1}}, Objects: []migration.Object{{Kind: migration.KindSource, ExternalRef: "source", Revision: 1, PayloadVersion: "v1", Payload: `{"engine":"postgres","dialect":"postgres","snapshot":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","context":"target:v1","revision":1}`, Lifecycle: "private_draft", Private: true, Origin: "synthetic"}}, Fields: []migration.FieldDisposition{{Path: "source.engine", Status: "retained"}, {Path: "source.dialect", Status: "retained"}, {Path: "source.snapshot", Status: "retained"}, {Path: "source.context", Status: "retained"}, {Path: "source.revision", Status: "retained"}}, Evidence: evidence}
 }
 
 func TestHTTPRoutesUseVerifiedAuthorityAndTypedService(t *testing.T) {
@@ -91,7 +92,7 @@ func TestHTTPRoutesUseVerifiedAuthorityAndTypedService(t *testing.T) {
 	adapter := migration.AdapterFuncs{ValidateFunc: func(context.Context, identity.Envelope, migration.Object, migration.Mapping) error { return nil }, ApplyFunc: func(context.Context, identity.Envelope, migration.Object, migration.Mapping, string) (string, error) {
 		return "target", nil
 	}}
-	service, err := migration.New(migration.NewMemoryRepository(nil), map[migration.Kind]migration.Adapter{migration.KindSource: adapter}, nil)
+	service, err := migration.New(migration.NewMemoryRepository(nil), map[migration.Kind]migration.Adapter{migration.KindSource: adapter}, nil, migration.EvidenceVerifierFunc(func(context.Context, identity.Envelope, migration.Evidence) error { return nil }))
 	if err != nil {
 		t.Fatal(err)
 	}
