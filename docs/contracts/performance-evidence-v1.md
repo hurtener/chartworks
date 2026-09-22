@@ -4,8 +4,9 @@ Status: bounded PERF-01 harness and authority-bound Phase 25 prerequisite
 implemented for review, 2026-09-22. The query adapter composes Plan→Run under
 a PostgreSQL-scoped operation lock and can distinguish physical attempts from
 idempotent replay. It fails closed for final stress: this path does not exercise
-the product's frozen-run reuse identity, and the current read attempt has no
-source-only duration receipt. The Phase-34 current-revision resolver and
+the product's frozen-run reuse identity, and the production performance adapter
+does not yet consume the PostgreSQL read attempt's source-only duration receipt.
+The Phase-34 current-revision resolver and
 production release composition also remain required. Phase 25 still owns the
 final stress execution and decision.
 
