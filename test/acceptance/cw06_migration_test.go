@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,12 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	legacyBlock.Topics = []reporting.TopicPin{{Topic: "topic", Version: "v1", Digest: strings.Repeat("a", 64)}}
 	legacyBlock.Rules = []reporting.RulePin{{Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "rules-v1", RuleDigest: strings.Repeat("b", 64)}}
 	legacyBlock.Template = &reporting.TemplatePin{ID: "reviewed", Version: "rules-v1", Digest: strings.Repeat("b", 64)}
+	legacyReferences := []reporting.ResourceReference{
+		{Kind: "dataset", Permission: "query", ID: fixture.f.pack.Datasets[0].ID},
+		{Kind: "execution_context", Permission: "use", ID: legacyBlock.Context},
+		{Kind: "source", Permission: "read", ID: legacyBlock.Source},
+		{Kind: "topic", Permission: "read", ID: "topic"},
+	}
 	dsn := support.Database(t)
 	raw := upgradeFixture(t, dsn)
 	manifest, err := postgres.Migrations()
@@ -55,7 +62,11 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
  INSERT INTO chartworks.block_revisions(tenant_id,block_id,revision,revision_id,definition,digest,execution_digest,actor_id,session_id,provenance,created_at)
  VALUES('cw06-upgrade','legacy-template',1,repeat('e',32),$1,$2,$3,'actor','session','{}',clock_timestamp());
  INSERT INTO chartworks.block_revision_references(tenant_id,block_id,revision,kind,permission,resource_id)
- VALUES('cw06-upgrade','legacy-template',1,'topic','read','topic')`, encodedBlock, reporting.DefinitionDigest(legacyBlock), reporting.ExecutionDigest(legacyBlock)); err != nil {
+	VALUES
+	 ('cw06-upgrade','legacy-template',1,'dataset','query',$4),
+	 ('cw06-upgrade','legacy-template',1,'execution_context','use',$5),
+	 ('cw06-upgrade','legacy-template',1,'source','read',$6),
+	 ('cw06-upgrade','legacy-template',1,'topic','read','topic')`, encodedBlock, reporting.DefinitionDigest(legacyBlock), reporting.ExecutionDigest(legacyBlock), legacyReferences[0].ID, legacyReferences[1].ID, legacyReferences[2].ID); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal("populate pre-040 reporting revision", err)
 	}
@@ -87,7 +98,7 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	}
 	reader := fixture.f.f.token.envelope(t, "cw06-upgrade", "actor", phase27Scopes("cw06-upgrade")...)
 	retainedBlock, err := database.ReadBlock(ctx, reader, "legacy-template", reporting.Reference{Draft: true}, reporting.SQLRead)
-	if err != nil || retainedBlock.Revision.Definition.Template == nil || *retainedBlock.Revision.Definition.Template != *legacyBlock.Template || len(retainedBlock.Revision.Definition.Templates) != 0 || retainedBlock.Revision.Digest != beforeDefinitionDigest || retainedBlock.Revision.ExecutionDigest != beforeExecutionDigest || retainedBlock.Revision.Digest != reporting.DefinitionDigest(retainedBlock.Revision.Definition) || retainedBlock.Revision.ExecutionDigest != reporting.ExecutionDigest(retainedBlock.Revision.Definition) {
+	if err != nil || retainedBlock.Revision.Definition.Template == nil || *retainedBlock.Revision.Definition.Template != *legacyBlock.Template || len(retainedBlock.Revision.Definition.Templates) != 0 || !reflect.DeepEqual(retainedBlock.References, legacyReferences) || retainedBlock.Revision.Digest != beforeDefinitionDigest || retainedBlock.Revision.ExecutionDigest != beforeExecutionDigest || retainedBlock.Revision.Digest != reporting.DefinitionDigest(retainedBlock.Revision.Definition) || retainedBlock.Revision.ExecutionDigest != reporting.ExecutionDigest(retainedBlock.Revision.Definition) {
 		t.Fatalf("production PostgreSQL reader lost legacy template or digest consistency: %#v %v", retainedBlock.Revision, err)
 	}
 	mixedBlock := phase27Copy(t, legacyBlock)
