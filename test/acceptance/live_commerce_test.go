@@ -109,6 +109,16 @@ func TestCommerceReportingRecorded(t *testing.T) {
 	liveCommerceReporting(t, t.Context(), t.TempDir(), f, query, topicService, main, rendering.LocalProcessor{MaxBytes: 4 << 20})
 }
 
+func TestLiveCommerceGatewayConfig(t *testing.T) {
+	g := liveGatewayConfig(t)
+	if err := config.ValidateGateway(g, true); err != nil {
+		t.Fatalf("live gateway role configuration: %v", err)
+	}
+	if g.Roles["embedding"].Model != "perplexity/pplx-embed-v1-0.6b" || g.Roles["embedding"].Dimensions != 1024 || g.Roles["sqlgen"].Model != "openai/gpt-6-luna" || g.Roles["rerank"].Provider != "openrouter-rerank" || g.Roles["rerank"].Model != "cohere/rerank-4-fast" || g.Roles["rerank"].OnFailure != "fail" {
+		t.Fatal("live gateway roles drifted from the required paid gate")
+	}
+}
+
 // This gate is deliberately absent from TestPhase25. It spends provider credits
 // only when the operator opts in, and its receipt never claims release acceptance.
 func TestLiveCommerceGatewayE2E(t *testing.T) {
@@ -372,6 +382,17 @@ func writeLiveJSON(t *testing.T, dir, name string, value any) {
 
 func liveGateway(t *testing.T) *bifrost.Engine {
 	t.Helper()
+	g := liveGatewayConfig(t)
+	engine, err := bifrost.New(t.Context(), g, os.LookupEnv, bifrost.TransportOptions{})
+	if err != nil {
+		t.Fatalf("live gateway construction: %v", err)
+	}
+	t.Cleanup(engine.Close)
+	return engine
+}
+
+func liveGatewayConfig(t *testing.T) config.Gateway {
+	t.Helper()
 	raw, err := os.ReadFile("../../examples/chartworks.gateway.json")
 	if err != nil {
 		t.Fatal(err)
@@ -385,8 +406,6 @@ func liveGateway(t *testing.T) *bifrost.Engine {
 	g := excerpt.Gateway
 	g.Limits = config.DefaultGatewayLimits()
 	g.Limits.Concurrency, g.Limits.TenantConcurrency = 2, 2
-	// PR #54 supplies this Bifrost custom provider. Keeping it here makes a
-	// pre-merge paid run fail closed during configuration validation.
 	g.Bifrost.Providers = []config.Provider{
 		{Name: "openrouter", APIKey: "env:CHARTWORKS_OPENROUTER_API_KEY"},
 		{Name: "openrouter-rerank", Type: "openrouter_rerank", APIKey: "env:CHARTWORKS_OPENROUTER_API_KEY"},
@@ -401,12 +420,7 @@ func liveGateway(t *testing.T) *bifrost.Engine {
 	r.Model = "cohere/rerank-4-fast"
 	r.OnFailure = "fail"
 	g.Roles["rerank"] = r
-	engine, err := bifrost.New(t.Context(), g, os.LookupEnv, bifrost.TransportOptions{})
-	if err != nil {
-		t.Fatalf("live gateway construction: %v", err)
-	}
-	t.Cleanup(engine.Close)
-	return engine
+	return g
 }
 
 func liveCommerceSource(t *testing.T) *engineeringFixture {
