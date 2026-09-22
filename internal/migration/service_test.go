@@ -256,17 +256,53 @@ func TestResumeRevalidatesRetentionAuthorityAndOwnerState(t *testing.T) {
 	}, ApplyFunc: func(context.Context, identity.Envelope, Object, Mapping, string) (string, error) {
 		return "unexpected", nil
 	}}
-	driftService, _ := New(NewMemoryRepository(nil), map[Kind]Adapter{KindSource: drifting}, nil, EvidenceVerifierFunc(func(context.Context, identity.Envelope, Evidence) error { return nil }))
+	driftNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	driftService, _ := New(NewMemoryRepository(func() time.Time { return driftNow }), map[Kind]Adapter{KindSource: drifting}, func() time.Time { return driftNow }, EvidenceVerifierFunc(func(context.Context, identity.Envelope, Evidence) error { return nil }))
 	if _, err = driftService.Import(t.Context(), actorTest(t, "migration.read", "migration.write"), ImportRequest{Manifest: drift}); !errors.Is(err, ErrConflict) {
 		t.Fatal("owner drift crossed apply", err)
+	}
+
+	authorityNow := now
+	until := now.Add(time.Minute)
+	currentAuthority, err := identity.FromVerified("t", "a", "s", []string{"cw.tenant.read:t", "cw.tenant.write:t", "migration.read", "migration.write"}, until, func() time.Time { return authorityNow })
+	if err != nil {
+		t.Fatal("create short-lived verified authority", err)
+	}
+	currentManifest := manifestTest("resume-expiring-authority")
+	currentManifest.Objects = currentManifest.Objects[:2]
+	currentManifest.Fields = currentManifest.Fields[:6]
+	expiresLater := now.Add(time.Hour)
+	for i := range currentManifest.Objects {
+		currentManifest.Objects[i].Retention.ExpiresAt = &expiresLater
+	}
+	applied := 0
+	currentAdapter := AdapterFuncs{
+		ValidateFunc: func(_ context.Context, e identity.Envelope, _ Object, _ Mapping) error {
+			if !e.Valid() {
+				return access.ErrUnauthenticated
+			}
+			return nil
+		},
+		ApplyFunc: func(context.Context, identity.Envelope, Object, Mapping, string) (string, error) {
+			applied++
+			authorityNow = until.Add(time.Second)
+			return "private-destination", nil
+		},
+	}
+	currentService, err := New(NewMemoryRepository(func() time.Time { return now }), map[Kind]Adapter{KindSource: currentAdapter, KindTopic: currentAdapter}, func() time.Time { return now }, EvidenceVerifierFunc(func(context.Context, identity.Envelope, Evidence) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = currentService.Import(t.Context(), currentAuthority, ImportRequest{Manifest: currentManifest}); !errors.Is(err, access.ErrUnauthenticated) || applied != 1 {
+		t.Fatal("resume applied another object after signed authority expired", err, applied)
 	}
 }
 
 func TestManifestRejectsNormalizedSecretsAndPublicImports(t *testing.T) {
 	s, _, e := serviceTest(t, &adapterTest{})
-	for i, key := range []string{"apiKey", "access-token", "refresh.token", "private_key", "Connection String"} {
+	for i, key := range []string{"apiKey", "accessToken", "refreshToken", "x-api-key", "private.key.pem", "ConnectionString", "WarehouseDSN", "AuthorizationHeader", "bearerToken", "cookieValue", "userId", "roleName", "grantId", "client.secret", "access-token-value"} {
 		m := manifestTest(fmt.Sprintf("secret-%d", i))
-		m.Objects[1].Payload = fmt.Sprintf(`{"name":"topic","nested":{"%s":"x"}}`, key)
+		m.Objects[1].Payload = fmt.Sprintf(`{"name":"topic","nested":[{"%s":"x"}]}`, key)
 		m.Fields = append(m.Fields, FieldDisposition{Path: m.Objects[1].ExternalRef + ".nested", Status: "dropped", Reason: "secret"})
 		if _, err := s.DryRun(t.Context(), e, DryRunRequest{Manifest: m}); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("normalized secret accepted %q: %v", key, err)
@@ -276,6 +312,12 @@ func TestManifestRejectsNormalizedSecretsAndPublicImports(t *testing.T) {
 	m.Objects[0].Private = false
 	if _, err := s.DryRun(t.Context(), e, DryRunRequest{Manifest: m}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("public import accepted", err)
+	}
+	m = manifestTest("caller-evidence")
+	m.Evidence[0].EvidenceType = "operator"
+	m.Evidence[0].Source = "synthetic"
+	if _, err := s.DryRun(t.Context(), e, DryRunRequest{Manifest: m}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("caller-authored evidence was accepted for a required owner row", err)
 	}
 }
 

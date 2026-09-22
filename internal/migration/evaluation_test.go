@@ -61,7 +61,7 @@ func TestEvaluationAdaptersDraftAndExactRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	adapters := EvaluationAdapters(service)
-	if len(adapters) != 2 || EvaluationAdapters(nil) != nil {
+	if len(adapters) != 3 || EvaluationAdapters(nil) != nil {
 		t.Fatal("evaluation adapter set")
 	}
 	envelope, err := identity.FromVerified("tenant", "actor", "session", []string{"ops.write", "cw.tenant.write:tenant"}, time.Now().Add(time.Hour), time.Now)

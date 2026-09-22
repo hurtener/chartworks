@@ -48,7 +48,7 @@ Implement `TestPhase34/AC01` through `TestPhase34/AC08`; test import replay/CAS,
 ## Current implementation boundary
 
 The in-progress runtime is owned by `internal/migration`, `internal/migrationapi`,
-`internal/store/postgres/migration.go`, migration 049 and the typed SDK. It exposes
+`internal/store/postgres/migration.go`, migration 050 and the typed SDK. It exposes
 seven registered HTTP/CLI operations and seven optional MCP bindings. The
 [v1 contract](../contracts/migration-cutover-v1.md),
 [operation manifest](../contracts/chartworks-migration-operations.json) and

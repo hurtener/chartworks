@@ -18,6 +18,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/migration"
+	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/test/support"
@@ -37,6 +38,14 @@ func TestPhase34(t *testing.T) {
 type phase34Adapter struct {
 	mu      sync.Mutex
 	applied []migration.Kind
+}
+
+type phase34FeedbackFixture struct {
+	rows []evaluation.FeedbackEvidence
+}
+
+func (f *phase34FeedbackFixture) ReviewedFeedback(_ context.Context, _ identity.Envelope, _ string, _ int) ([]evaluation.FeedbackEvidence, error) {
+	return append([]evaluation.FeedbackEvidence(nil), f.rows...), nil
 }
 
 func (a *phase34Adapter) Validate(_ context.Context, _ identity.Envelope, _ migration.Object, _ migration.Mapping) error {
@@ -181,7 +190,7 @@ func phase34DryRunReplay(t *testing.T) {
 	}
 	changed := m
 	changed.Objects = slices.Clone(m.Objects)
-	changed.Objects[0].Payload = `{"name":"changed"}`
+	changed.Objects[0].Payload = strings.Replace(changed.Objects[0].Payload, `"context":"mapped-source:v1"`, `"context":"mapped-source:v2"`, 1)
 	if _, err = s.Import(t.Context(), e, migration.ImportRequest{Manifest: changed, Expected: first.Revision}); !errors.Is(err, migration.ErrConflict) {
 		t.Fatal("changed replay accepted", err)
 	}
@@ -273,6 +282,142 @@ func phase34EvaluationDrafts(t *testing.T) {
 	if runtimeState != "draft" || suiteState != "draft" {
 		t.Fatal("migration promoted review authority", runtimeState, suiteState)
 	}
+	phase34CalibrationImport(t)
+}
+
+func phase34CalibrationImport(t *testing.T) {
+	t.Helper()
+	dsn := support.Database(t)
+	db := support.Open(t, dsn)
+	feedback := &phase34FeedbackFixture{}
+	eval, err := evaluation.New(db, feedback, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant := "tenant-ac02-calibration"
+	author := phase34Actor(t, tenant, "migration.read", "migration.write", "ops.read", "ops.write", "cw.tenant.export:"+tenant)
+	reviewer, err := identity.FromVerified(tenant, "reviewer", "calibration-review", []string{"ops.audit", "cw.tenant.certify:" + tenant}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, _ := evalRuntimePack(t, eval, author, reviewer, "calibration-baseline", true)
+	candidate, _ := evalRuntimePack(t, eval, author, reviewer, "calibration-candidate", true)
+	makeInput := func(pack evaluation.PackRevision, question string) evaluation.ProtectedRef {
+		ref, inputErr := eval.RegisterInput(t.Context(), author, "protected", evaluation.LiveInput{Pack: pack, Route: &nlqroute.RouteRequest{Context: "synthetic-context", Locale: "en", Question: question}})
+		if inputErr != nil {
+			t.Fatal("register protected optimization input", inputErr)
+		}
+		return ref
+	}
+	heldoutOne := makeInput(baseline, "synthetic heldout one")
+	heldoutTwo := makeInput(baseline, "synthetic heldout two")
+	trainingInput := makeInput(baseline, "synthetic training input")
+	feedback.rows = []evaluation.FeedbackEvidence{
+		{ID: "calibration-case-one", Locale: "en", InputDigest: heldoutOne.Digest, ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: strings.Repeat("e", 64), CreatedAt: time.Now().UTC()},
+		{ID: "calibration-case-two", Locale: "en", InputDigest: heldoutTwo.Digest, ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: strings.Repeat("e", 64), CreatedAt: time.Now().UTC()},
+		{ID: "calibration-training-case", Locale: "en", InputDigest: trainingInput.Digest, ExpectedDigest: evalDigest, Decision: "expected", SourceBindingDigest: strings.Repeat("e", 64), CreatedAt: time.Now().UTC()},
+	}
+	candidateExport, err := eval.ExportFeedback(t.Context(), author, "calibration-feedback", "sales", 10)
+	if err != nil {
+		t.Fatal("export reviewed feedback for split review", err)
+	}
+	split, err := eval.ReviewFeedbackSplit(t.Context(), reviewer, candidateExport.ID, candidateExport.EvidenceHash, "calibration-training", "calibration-heldout", []string{"calibration-case-one", "calibration-case-two"})
+	if err != nil {
+		t.Fatal("independently review heldout calibration evidence", err)
+	}
+	cases := []evaluation.Case{
+		{ID: "heldout-one", Stage: evaluation.StageRouting, Locale: "en", HeldOut: true, Input: heldoutOne, Expected: []evaluation.Expected{{Decision: "expected", SemanticDigest: evalDigest}}},
+		{ID: "heldout-two", Stage: evaluation.StageRouting, Locale: "en", HeldOut: true, Input: heldoutTwo, Expected: []evaluation.Expected{{Decision: "expected", SemanticDigest: evalDigest}}},
+	}
+	suite := evalSuite(evaluation.Live, cases)
+	suite.ID = "calibration-suite"
+	suite.Seed = 24002
+	suite.Packs = []evaluation.PackRevision{baseline, candidate}
+	suite.HeldoutLineageDigest = split.Heldout.EvidenceHash
+	minimum := 0.5
+	suite.Threshold.QualityMin = &minimum
+	suite.Limits.Cases, suite.Limits.Calls, suite.Limits.Tokens = 2, 2, 16
+	costCap := 1.0
+	suite.Limits.CostUSD = &costCap
+	draft, err := eval.Author(t.Context(), author, suite)
+	if err != nil {
+		t.Fatal("author private comparison suite", err)
+	}
+	accepted, err := eval.Review(t.Context(), reviewer, suite.ID, evaluation.SuiteReviewRequest{Revision: suite.Revision, Digest: draft.Digest, Decision: evaluation.Accepted})
+	if err != nil {
+		t.Fatal("review comparison suite", err)
+	}
+	observe := func(_ context.Context, execution evaluation.Execution) (evaluation.Observation, error) {
+		semantic := evalDigest
+		decision := "expected"
+		if execution.Pack.Digest == baseline.Digest && execution.Case.ID == "heldout-two" {
+			semantic = strings.Repeat("b", 64)
+			decision = "drift"
+		}
+		return evaluation.Observation{Decision: decision, SemanticDigest: semantic, Usage: evaluation.Usage{ServiceMS: 1, Calls: 1, Tokens: evalPtr(1), CostUSD: evalPtr(0.02)}}, nil
+	}
+	baselineReport, err := eval.Run(t.Context(), author, evaluation.RunRequest{RunID: "calibration-baseline-run", SuiteID: suite.ID, SuiteRevision: suite.Revision, SuiteDigest: accepted.Digest, PackDigest: baseline.Digest}, evaluation.RunnerFunc(observe))
+	if err != nil || !baselineReport.GatePassed || baselineReport.Status != "passed" || baselineReport.QualityPassed != 1 {
+		t.Fatal("baseline comparison did not produce owner evidence", err, baselineReport)
+	}
+	candidateReport, err := eval.Run(t.Context(), author, evaluation.RunRequest{RunID: "calibration-candidate-run", SuiteID: suite.ID, SuiteRevision: suite.Revision, SuiteDigest: accepted.Digest, PackDigest: candidate.Digest}, evaluation.RunnerFunc(observe))
+	if err != nil || !candidateReport.GatePassed || candidateReport.Status != "passed" || candidateReport.QualityPassed != 2 {
+		t.Fatal("candidate comparison did not produce owner evidence", err, candidateReport)
+	}
+	storedBaseline, err := eval.Read(t.Context(), author, baselineReport.RunID)
+	if err != nil || storedBaseline.EvidenceHash != baselineReport.EvidenceHash || storedBaseline.Status != "passed" {
+		t.Fatal("baseline owner evidence was not durably readable", err, storedBaseline)
+	}
+	storedCandidate, err := eval.Read(t.Context(), author, candidateReport.RunID)
+	if err != nil || storedCandidate.EvidenceHash != candidateReport.EvidenceHash || storedCandidate.Status != "passed" {
+		t.Fatal("candidate owner evidence was not durably readable", err, storedCandidate)
+	}
+	request := evaluation.ProposalRequest{ID: "imported-calibration", SuiteID: suite.ID, SuiteRevision: suite.Revision, SuiteDigest: accepted.Digest, BaselineRun: baselineReport.RunID, CandidateRun: candidateReport.RunID}
+	if _, err := eval.PreviewOptimization(t.Context(), author, request); err != nil {
+		t.Fatal("owner evaluation service could not resolve durable calibration evidence", err)
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var top map[string]json.RawMessage
+	if err = json.Unmarshal(payload, &top); err != nil {
+		t.Fatal(err)
+	}
+	ref := "calibration-review"
+	fields := make([]migration.FieldDisposition, 0, len(top))
+	for key := range top {
+		fields = append(fields, migration.FieldDisposition{Path: ref + "." + key, Status: "retained"})
+	}
+	manifest := migration.Manifest{Version: migration.ManifestVersion, Batch: "batch-ac02-calibration", Cohort: "cohort-ac02-calibration", SourceSnapshot: "calibration-snapshot", Engine: "postgres", Dialect: "postgres", Objects: []migration.Object{{Kind: migration.KindCalibration, ExternalRef: ref, Revision: 1, PayloadVersion: "v1", Payload: string(payload), Lifecycle: "private_draft", Private: true, Origin: "synthetic", Retention: migration.Retention{ExpiresAt: ptrTime(time.Now().Add(time.Hour))}}}, Fields: fields, Evidence: phase34Manifest("ac02-calibration-evidence").Evidence}
+	service, err := migration.New(db, migration.EvaluationAdapters(eval), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := service.Import(t.Context(), author, migration.ImportRequest{Manifest: manifest})
+	if err != nil || batch.State != "complete" || batch.Applied != 1 {
+		t.Fatal("calibration did not import through evaluation service", err, batch)
+	}
+	raw := support.Raw(t, dsn)
+	var state, authorID string
+	var reviewIsNull bool
+	if err = raw.QueryRow(t.Context(), `SELECT state,author_id,review IS NULL FROM chartworks.evaluation_proposals WHERE tenant_id=$1 AND proposal_id=$2`, tenant, request.ID).Scan(&state, &authorID, &reviewIsNull); err != nil || state != "candidate" || authorID != author.User() || !reviewIsNull {
+		t.Fatal("import did not persist a private unreviewed evaluation candidate", err, state, authorID, reviewIsNull)
+	}
+	var selected int
+	if err = raw.QueryRow(t.Context(), `SELECT count(*) FROM chartworks.evaluation_pack_selection WHERE tenant_id=$1`, tenant).Scan(&selected); err != nil || selected != 0 {
+		t.Fatal("calibration import changed active pack selection", err, selected)
+	}
+	if replay, replayErr := service.Import(t.Context(), author, migration.ImportRequest{Manifest: manifest, Expected: batch.Revision}); replayErr != nil || replay.ID != batch.ID || replay.Revision != batch.Revision {
+		t.Fatal("calibration import replay changed the candidate", replayErr, replay)
+	}
+	public := manifest
+	public.Batch, public.Cohort = "batch-ac02-calibration-public", "cohort-ac02-calibration-public"
+	public.Objects = append([]migration.Object(nil), manifest.Objects...)
+	public.Objects[0].Private = false
+	if _, err = service.Import(t.Context(), author, migration.ImportRequest{Manifest: public}); !errors.Is(err, migration.ErrInvalid) {
+		t.Fatal("public calibration import was persisted", err)
+	}
 }
 
 func phase34HistoricalAuthority(t *testing.T) {
@@ -334,15 +479,17 @@ func phase34LiveOwnerEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	tenant := "tenant-ac04-live"
-	author := phase34Actor(t, tenant, "ops.write", "ops.read", "migration.read", "migration.write")
+	author := phase34Actor(t, tenant, "ops.write", "ops.read", "migration.read", "migration.write", "migration.cutover")
 	reviewer, err := identity.FromVerified(tenant, "reviewer", "review-session", []string{"ops.audit", "cw.tenant.certify:" + tenant}, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pack, _ := evalRuntimePack(t, eval, author, reviewer, "phase34-pack", true)
 	record := evalAcceptedLiveSuite(t, eval, author, reviewer, "phase34-suite", pack, 1)
+	cost := 0.02
+	tokens := 1
 	report, err := eval.Run(t.Context(), author, evaluation.RunRequest{RunID: "phase34-evidence", SuiteID: record.Suite.ID, SuiteRevision: record.Suite.Revision, SuiteDigest: record.Digest, PackDigest: pack.Digest}, evaluation.RunnerFunc(func(context.Context, evaluation.Execution) (evaluation.Observation, error) {
-		return evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Usage: evaluation.Usage{ServiceMS: 1, Calls: 1}}, nil
+		return evaluation.Observation{Decision: "expected", SemanticDigest: evalDigest, Usage: evaluation.Usage{ServiceMS: 1, Calls: 1, Tokens: &tokens, CostUSD: &cost}}, nil
 	}))
 	if err != nil || !report.GatePassed {
 		t.Fatal("live owner evidence", err, report)
@@ -368,6 +515,33 @@ func phase34LiveOwnerEvidence(t *testing.T) {
 	plan, err := service.DryRun(t.Context(), author, migration.DryRunRequest{Manifest: manifest})
 	if err != nil || !plan.Ready {
 		t.Fatal("verified live evidence did not unlock readiness", err, plan.Limitations)
+	}
+	oldRoute, newRoute, _, _ := phase34ScheduleRoutes(t, dsn, tenant)
+	batch, err := service.Import(t.Context(), author, migration.ImportRequest{Manifest: manifest})
+	if err != nil || batch.State != "complete" {
+		t.Fatal("owner-evidenced import did not complete", err, batch)
+	}
+	if _, err = service.Cutover(t.Context(), author, migration.CutoverRequest{Batch: batch.ID, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "owner-evidence-drill"}); err != nil {
+		t.Fatal("current owner report did not authorize evidence-complete cutover", err)
+	}
+	callerText := phase34Manifest("ac04-caller-text")
+	for i := range callerText.Evidence {
+		if callerText.Evidence[i].Disposition == "required" {
+			callerText.Evidence[i].Reference = "invented-owner-comparison"
+			callerText.Evidence[i].SourceVersion = report.SuiteDigest
+			callerText.Evidence[i].EvidenceHash = report.EvidenceHash
+		}
+	}
+	callerPlan, err := service.DryRun(t.Context(), author, migration.DryRunRequest{Manifest: callerText})
+	if err != nil || callerPlan.Ready {
+		t.Fatal("caller-authored comparison reference unlocked readiness", err, callerPlan)
+	}
+	callerBatch, err := service.Import(t.Context(), author, migration.ImportRequest{Manifest: callerText})
+	if err != nil || callerBatch.State != "complete" {
+		t.Fatal("failed evidence bundle did not remain inspectable", err, callerBatch)
+	}
+	if _, err = service.Cutover(t.Context(), author, migration.CutoverRequest{Batch: callerBatch.ID, Route: "unreachable-route", PreviousRoute: "unreachable-prior", OperatorRef: "caller-evidence-drill"}); !errors.Is(err, migration.ErrNotReady) {
+		t.Fatal("caller-authored comparison text unlocked cutover", err)
 	}
 }
 
@@ -418,40 +592,123 @@ func phase34CutoverRollback(t *testing.T) {
 	s, _, e, dsn := phase34Service(t, "ac06")
 	m := phase34Manifest("ac06")
 	oldRoute, newRoute, queueDB, scope := phase34ScheduleRoutes(t, dsn, e.Tenant())
-	m.Boundary.ResumeAfter = time.Now().UTC().Add(-time.Minute)
+	m.Boundary.ResumeAfter = time.Now().UTC().Add(time.Hour)
 	m.Boundary.LastDue = m.Boundary.ResumeAfter.Add(-time.Minute)
 	if _, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: m}); err != nil {
 		t.Fatal(err)
 	}
-	cut, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "cutover-drill", Expected: 0})
-	if err != nil || cut.Generation != 1 || cut.Boundary.Stream != m.Boundary.Stream {
-		t.Fatal(err, cut)
+	request := migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "cutover-drill", Expected: 0}
+	competingSchedule, err := queueDB.CreateSchedule(t.Context(), scope, "session", "competing-route", jobs.ScheduleRequest{Target: jobs.Submission{Kind: jobs.MaintenanceKind, BindingID: "maintenance"}, Spec: jobs.Spec{Type: "manual", Timezone: "UTC", Missed: "skip", Overlap: "queue"}}, jobs.Defaults())
+	if err != nil {
+		t.Fatal("create competing migration route", err)
 	}
-	replay, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, OperatorRef: "cutover-drill", Expected: 1})
+	competing := request
+	competing.Route, competing.OperatorRef = competingSchedule.ID, "competing-cutover-drill"
+	type cutoverResult struct {
+		cut migration.Cutover
+		err error
+	}
+	results := make(chan cutoverResult, 2)
+	for _, contender := range []migration.CutoverRequest{request, competing} {
+		go func(contender migration.CutoverRequest) {
+			cut, err := s.Cutover(t.Context(), e, contender)
+			results <- cutoverResult{cut: cut, err: err}
+		}(contender)
+	}
+	successes, conflicts := 0, 0
+	winningRoute := ""
+	for range 2 {
+		result := <-results
+		switch {
+		case result.err == nil && result.cut.Generation == 1 && result.cut.Boundary.Stream == m.Boundary.Stream && (result.cut.Route == request.Route || result.cut.Route == competing.Route):
+			successes++
+			winningRoute = result.cut.Route
+		case errors.Is(result.err, migration.ErrConflict):
+			conflicts++
+		default:
+			t.Fatal("concurrent cutover escaped CAS", result.err, result.cut)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatal("concurrent cutover did not choose one writer", successes, conflicts)
+	}
+	winningRequest := request
+	if winningRoute == competing.Route {
+		winningRequest = competing
+	}
+	losingRoute := request.Route
+	if winningRoute == request.Route {
+		losingRoute = competing.Route
+	}
+	newRoute = winningRoute
+	if converged, err := s.Cutover(t.Context(), e, winningRequest); err != nil || converged.Generation != 1 {
+		t.Fatal("exact winning cutover did not converge on retry", err, converged)
+	}
+	replay, err := s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: winningRequest.OperatorRef, Expected: 1})
 	if err != nil || replay.Generation != 1 {
 		t.Fatal("cutover replay duplicated stream", err, replay)
 	}
-	replay, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: newRoute, PreviousRoute: oldRoute, OperatorRef: "cutover-drill", Expected: 0})
+	replay, err = s.Cutover(t.Context(), e, winningRequest)
 	if err != nil || replay.Generation != 1 {
 		t.Fatal("exact cutover retry duplicated stream", err, replay)
 	}
-	if _, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: "route-other", OperatorRef: "racer", Expected: 0}); !errors.Is(err, migration.ErrConflict) {
+	if _, err = s.Cutover(t.Context(), e, migration.CutoverRequest{Batch: m.Batch, Route: losingRoute, PreviousRoute: oldRoute, OperatorRef: "stale-racer", Expected: 0}); !errors.Is(err, migration.ErrConflict) {
 		t.Fatal("stale concurrent cutover", err)
 	}
-	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", oldRoute, "old-fenced", 1, jobs.Defaults()); !errors.Is(err, store.ErrConflict) {
+	oldSchedule, err := queueDB.ReadSchedule(t.Context(), scope, oldRoute)
+	if err != nil {
+		t.Fatal("read fenced previous route", err)
+	}
+	newSchedule, err := queueDB.ReadSchedule(t.Context(), scope, newRoute)
+	if err != nil {
+		t.Fatal("read active target route", err)
+	}
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", oldRoute, "old-fenced", oldSchedule.Revision, jobs.Defaults()); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("old stream admitted after cutover", err)
 	}
-	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", newRoute, "target-live", 1, jobs.Defaults()); err != nil {
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", newRoute, "before-boundary", newSchedule.Revision, jobs.Defaults()); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("target occurrence at or before resume boundary was admitted", err)
+	}
+	raw := support.Raw(t, dsn)
+	boundary := time.Now().UTC().Add(-time.Minute)
+	if _, err = raw.Exec(t.Context(), `UPDATE chartworks.migration_cutovers SET boundary=jsonb_set(boundary,'{resume_after}',to_jsonb($3::timestamptz)) WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort, boundary); err != nil {
+		t.Fatal("prepare post-boundary occurrence fixture", err)
+	}
+	queued, err := queueDB.FireSchedule(t.Context(), scope, "session", newRoute, "target-live", newSchedule.Revision, jobs.Defaults())
+	if err != nil {
 		t.Fatal("target stream blocked after cutover", err)
+	}
+	var admittedStream, admittedSchedule string
+	var admittedGeneration int64
+	var admittedDue time.Time
+	if err = raw.QueryRow(t.Context(), `SELECT stream_id,generation,schedule_id,due_at FROM chartworks.migration_occurrence_admissions WHERE tenant_id=$1 AND stream_id=$2 ORDER BY due_at DESC LIMIT 1`, e.Tenant(), m.Boundary.Stream).Scan(&admittedStream, &admittedGeneration, &admittedSchedule, &admittedDue); err != nil || admittedStream != m.Boundary.Stream || admittedGeneration != 1 || admittedSchedule != newRoute || !admittedDue.After(boundary) {
+		t.Fatal("accepted occurrence did not persist its exact cutover generation and boundary", err, admittedStream, admittedGeneration, admittedSchedule, admittedDue)
+	}
+	if _, err = raw.Exec(t.Context(), `UPDATE chartworks.migration_cutovers SET boundary=jsonb_set(boundary,'{resume_after}',to_jsonb($3::timestamptz)) WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort, time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatal("advance dispatch boundary fixture", err)
+	}
+	if _, err = queueDB.ClaimJob(t.Context(), "phase34-boundary-worker", jobs.Defaults()); !errors.Is(err, jobs.ErrEmpty) {
+		t.Fatal("dispatch claimed an occurrence at or before the live resume boundary", err)
+	}
+	if _, err = raw.Exec(t.Context(), `UPDATE chartworks.migration_cutovers SET boundary=jsonb_set(boundary,'{resume_after}',to_jsonb($3::timestamptz)) WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort, boundary); err != nil {
+		t.Fatal("restore cutover boundary", err)
 	}
 	rolled, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
 	if err != nil || rolled.State != "rolled_back" || len(rolled.IrreversibleEffects) != 1 {
 		t.Fatal(err, rolled)
 	}
-	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", newRoute, "target-fenced", 1, jobs.Defaults()); !errors.Is(err, store.ErrConflict) {
+	oldSchedule, err = queueDB.ReadSchedule(t.Context(), scope, oldRoute)
+	if err != nil {
+		t.Fatal("read restored previous route", err)
+	}
+	newSchedule, err = queueDB.ReadSchedule(t.Context(), scope, newRoute)
+	if err != nil {
+		t.Fatal("read rolled back target route", err)
+	}
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", newRoute, "target-fenced", newSchedule.Revision, jobs.Defaults()); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("target stream admitted after rollback", err)
 	}
-	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", oldRoute, "old-live", 1, jobs.Defaults()); err != nil {
+	if _, err = queueDB.FireSchedule(t.Context(), scope, "session", oldRoute, "old-live", oldSchedule.Revision, jobs.Defaults()); err != nil {
 		t.Fatal("old stream blocked after rollback", err)
 	}
 	replayedRollback, err := s.Rollback(t.Context(), e, migration.RollbackRequest{Cohort: m.Cohort, Expected: 1, OperatorRef: "rollback-drill", Effects: []string{"notification_already_delivered"}})
@@ -459,8 +716,15 @@ func phase34CutoverRollback(t *testing.T) {
 		t.Fatal("exact rollback retry changed generation", err, replayedRollback)
 	}
 	var events int
-	if err = support.Raw(t, dsn).QueryRow(t.Context(), `SELECT count(*) FROM chartworks.migration_cutover_events WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort).Scan(&events); err != nil || events != 2 {
+	if err = raw.QueryRow(t.Context(), `SELECT count(*) FROM chartworks.migration_cutover_events WHERE tenant_id=$1 AND cohort_id=$2`, e.Tenant(), m.Cohort).Scan(&events); err != nil || events != 2 {
 		t.Fatal("retry duplicated cutover occurrence events", err, events)
+	}
+	lease, err := queueDB.ClaimJob(t.Context(), "phase34-rollback-worker", jobs.Defaults())
+	if err != nil || lease.Job.ScheduleID != oldRoute || lease.Job.DueAt.Before(rolled.Boundary.ResumeAfter) {
+		t.Fatal("dispatch crossed the rollback generation fence", err, lease.Job.ScheduleID, lease.Job.DueAt)
+	}
+	if _, err = queueDB.ClaimJob(t.Context(), "phase34-rollback-worker-2", jobs.Defaults()); !errors.Is(err, jobs.ErrEmpty) {
+		t.Fatal("stale target occurrence remained dispatchable after rollback", err, queued.ID)
 	}
 }
 
@@ -469,20 +733,23 @@ func phase34ScheduleRoutes(t *testing.T, dsn, tenant string) (string, string, *p
 	db := support.Open(t, dsn)
 	limits := jobs.Defaults()
 	if err := db.ConfigureQueue(t.Context(), limits); err != nil {
-		t.Fatal(err)
+		t.Fatal("configure migration route queue", err)
 	}
 	scope, err := store.NewScope(tenant, "operator")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("migration route scope", err)
+	}
+	if _, err = db.SetPolicy(t.Context(), scope, 0, store.Policy{AuditDays: 7, OperationHours: 24}); err != nil {
+		t.Fatal("configure migration route policy", err)
 	}
 	request := jobs.ScheduleRequest{Target: jobs.Submission{Kind: jobs.MaintenanceKind, BindingID: "maintenance"}, Spec: jobs.Spec{Type: "manual", Timezone: "UTC", Missed: "skip", Overlap: "queue"}}
 	oldSchedule, err := db.CreateSchedule(t.Context(), scope, "session", "old-route", request, limits)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("create previous migration route", err)
 	}
 	newSchedule, err := db.CreateSchedule(t.Context(), scope, "session", "new-route", request, limits)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("create target migration route", err)
 	}
 	return oldSchedule.ID, newSchedule.ID, db, scope
 }

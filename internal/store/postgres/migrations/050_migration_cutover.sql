@@ -115,3 +115,15 @@ DO $$ DECLARE previous text; BEGIN
 END $$;
 
 REVOKE ALL ON chartworks.migration_batches,chartworks.migration_checkpoints,chartworks.migration_external_refs,chartworks.migration_cutovers,chartworks.migration_cutover_events,chartworks.migration_schedule_routes,chartworks.migration_occurrence_admissions FROM PUBLIC;
+
+-- The reporting target guard applies only to reporting schedules. SQL NULL from
+-- maintenance/pipeline payloads must take the non-reporting branch explicitly.
+CREATE OR REPLACE FUNCTION chartworks.protect_reporting_schedule_target() RETURNS trigger LANGUAGE plpgsql AS $$ DECLARE target_id text; target_type text; BEGIN
+ target_type := NEW.request->'target'->'reporting'->>'type';
+ IF target_type IS NULL OR target_type NOT IN('report','saved_question') THEN RETURN NEW; END IF;
+ target_id := NEW.request->'target'->'reporting'->>'id';
+ IF NOT EXISTS(SELECT 1 FROM chartworks.document_heads h WHERE h.tenant_id=NEW.tenant_id
+  AND h.kind='report' AND h.document_id=target_id AND NOT h.archived AND NOT h.deleted FOR KEY SHARE OF h)
+ THEN RAISE EXCEPTION 'reporting schedule target unavailable' USING ERRCODE='23503'; END IF;
+ RETURN NEW;
+END $$;

@@ -183,17 +183,17 @@ func skippedOccurrence(ctx context.Context, tx pgx.Tx, s jobs.Schedule, due, sta
 }
 
 func admitCutoverOccurrence(ctx context.Context, tx pgx.Tx, s jobs.Schedule, due time.Time) (bool, error) {
-	var stream, cohort, active string
+	var stream, cohort, active, boundaryStream string
 	var generation, revision int64
 	var resumeAfter time.Time
-	err := tx.QueryRow(ctx, `SELECT r.stream_id,r.cohort_id,r.schedule_revision,c.route,c.generation,(c.boundary->>'resume_after')::timestamptz FROM chartworks.migration_schedule_routes r JOIN chartworks.migration_cutovers c USING(tenant_id,cohort_id) WHERE r.tenant_id=$1 AND r.schedule_id=$2 FOR SHARE OF c`, s.Tenant, s.ID).Scan(&stream, &cohort, &revision, &active, &generation, &resumeAfter)
+	err := tx.QueryRow(ctx, `SELECT r.stream_id,r.cohort_id,r.schedule_revision,c.route,c.generation,c.boundary->>'stream',(c.boundary->>'resume_after')::timestamptz FROM chartworks.migration_schedule_routes r JOIN chartworks.migration_cutovers c USING(tenant_id,cohort_id) WHERE r.tenant_id=$1 AND r.schedule_id=$2 FOR SHARE OF c`, s.Tenant, s.ID).Scan(&stream, &cohort, &revision, &active, &generation, &boundaryStream, &resumeAfter)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return true, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if active != s.ID || revision != s.Revision || !due.After(resumeAfter) {
+	if active != s.ID || revision != s.Revision || boundaryStream != stream || !due.After(resumeAfter) {
 		return false, nil
 	}
 	tag, err := tx.Exec(ctx, `INSERT INTO chartworks.migration_occurrence_admissions(tenant_id,stream_id,due_at,cohort_id,generation,schedule_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, s.Tenant, stream, due.UTC(), cohort, generation, s.ID)

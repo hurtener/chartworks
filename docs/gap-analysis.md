@@ -628,7 +628,7 @@ These 12 items are explicit rebaseline work packages, not newly proven defects. 
 - **Contract, storage and import impact:** Portability manifests must include provenance, retention and erasure dispositions at every dependent layer, with idempotent import.
 - **Required comparison and closure evidence:** Inventory fields at every layer: topic, rule, clarification, templates/examples, chart bindings/formats, block, report, schedule and historical certificate. Dry run must report every dropped/transformed/unsupported field, not merely valid JSON. Replay import idempotently. Erase source-derived retained payloads/renditions without claiming backup overwrite or deleting unrelated objects. Imported certificates remain historical, not current approval.
 - **Source evidence:** Unassigned; this is an unassessed frontier and requires current owner evidence.
-- **Current repository evidence:** The immutable manifest carries full dependency/provenance/retention state, dry run enumerates loss, replay is digest/CAS fenced, certificates remain historical and bounded erase reports the backup/WAL boundary. [migration schema](../internal/store/postgres/migrations/049_migration_cutover.sql); [Phase34 acceptance](../test/acceptance/phase34_test.go).
+- **Current repository evidence:** The immutable manifest carries full dependency/provenance/retention state, dry run enumerates loss, replay is digest/CAS fenced, certificates remain historical and bounded erase reports the backup/WAL boundary. [migration schema](../internal/store/postgres/migrations/050_migration_cutover.sql); [Phase34 acceptance](../test/acceptance/phase34_test.go).
 
 ### EXP-09 — Source and dialect semantic equivalence; 09/10/14/18/19/24/34
 

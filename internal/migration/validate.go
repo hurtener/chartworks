@@ -182,6 +182,9 @@ func validateManifest(m Manifest) (string, error) {
 		if e.Feature == "Q11" && (e.Disposition != "excluded" || e.Outcome != "unsupported") || e.Feature != "Q11" && e.Disposition != "required" {
 			return "", ErrInvalid
 		}
+		if e.Disposition == "required" && (e.EvidenceType != "live" || e.Source != "evaluation") {
+			return "", ErrInvalid
+		}
 		features[e.Feature] = true
 	}
 	for feature := range requiredFeatures {
@@ -276,7 +279,7 @@ func containsForbiddenAt(kind Kind, path []string, v any) bool {
 		for key, value := range x {
 			n := normalizedKey(key)
 			modelRole := n == "role" && allowedModelRolePath(kind, path)
-			if !modelRole && (forbiddenKeys[n] || strings.Contains(n, "credential") || strings.Contains(n, "password") || strings.Contains(n, "secret") || strings.HasSuffix(n, "token")) || containsForbiddenAt(kind, append(path, n), value) {
+			if !modelRole && forbiddenKey(n) || containsForbiddenAt(kind, append(path, n), value) {
 				return true
 			}
 		}
@@ -288,6 +291,22 @@ func containsForbiddenAt(kind Kind, path []string, v any) bool {
 		}
 	}
 	return false
+}
+
+func forbiddenKey(key string) bool {
+	if forbiddenKeys[key] {
+		return true
+	}
+	switch key {
+	case "maxoutputtokens", "maxtokens", "modeltokens", "tokens", "tokencount", "tokenbudget", "tokenizer", "tokenizerversion":
+		return false
+	}
+	for _, marker := range []string{"credential", "password", "secret", "token", "apikey", "privatekey", "authorization", "bearer", "cookie", "connectionstring", "grant", "role", "user"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return strings.HasSuffix(key, "dsn")
 }
 
 func normalizedKey(value string) string {

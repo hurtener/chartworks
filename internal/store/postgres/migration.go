@@ -255,6 +255,15 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 		if x != nil {
 			return x
 		}
+		if _, x = tx.Exec(ctx, `UPDATE chartworks.job_schedules SET revision=revision+1,enabled=(schedule_id=$3) WHERE tenant_id=$1 AND schedule_id=ANY($2::text[]) AND enabled IS DISTINCT FROM (schedule_id=$3)`, e.Tenant(), []string{route, previous}, route); x != nil {
+			return x
+		}
+		if x = tx.QueryRow(ctx, `SELECT revision FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2`, e.Tenant(), route).Scan(&targetRevision); x != nil {
+			return x
+		}
+		if x = tx.QueryRow(ctx, `SELECT revision FROM chartworks.job_schedules WHERE tenant_id=$1 AND schedule_id=$2`, e.Tenant(), previous).Scan(&previousRevision); x != nil {
+			return x
+		}
 		for _, binding := range []struct {
 			route    string
 			revision int64
@@ -262,9 +271,6 @@ func (d *DB) Cutover(ctx context.Context, e identity.Envelope, b migration.Batch
 			if _, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_schedule_routes(tenant_id,cohort_id,stream_id,route,schedule_id,schedule_revision) VALUES($1,$2,$3,$4,$4,$5) ON CONFLICT(tenant_id,cohort_id,route) DO UPDATE SET stream_id=excluded.stream_id,schedule_id=excluded.schedule_id,schedule_revision=excluded.schedule_revision`, e.Tenant(), b.Cohort, boundary.Stream, binding.route, binding.revision); x != nil {
 				return x
 			}
-		}
-		if _, x = tx.Exec(ctx, `UPDATE chartworks.job_schedules SET enabled=(schedule_id=$3) WHERE tenant_id=$1 AND schedule_id=ANY($2::text[])`, e.Tenant(), []string{route, previous}, route); x != nil {
-			return x
 		}
 		if _, x = tx.Exec(ctx, `INSERT INTO chartworks.migration_cutover_events(tenant_id,cohort_id,generation,event,record) VALUES($1,$2,$3,'cutover',$4)`, e.Tenant(), b.Cohort, out.Generation, record); x != nil {
 			return x
@@ -317,7 +323,10 @@ func (d *DB) Rollback(ctx context.Context, e identity.Envelope, cohort string, e
 		out.OperatorReference = operator
 		out.IrreversibleEffects = append([]string(nil), effects...)
 		out.UpdatedAt = time.Now().UTC()
-		if _, x := tx.Exec(ctx, `UPDATE chartworks.job_schedules SET enabled=(schedule_id=$3) WHERE tenant_id=$1 AND schedule_id=ANY($2::text[])`, e.Tenant(), []string{out.Route, out.PreviousRoute}, out.Route); x != nil {
+		if _, x := tx.Exec(ctx, `UPDATE chartworks.job_schedules SET revision=revision+1,enabled=(schedule_id=$3) WHERE tenant_id=$1 AND schedule_id=ANY($2::text[]) AND enabled IS DISTINCT FROM (schedule_id=$3)`, e.Tenant(), []string{out.Route, out.PreviousRoute}, out.Route); x != nil {
+			return x
+		}
+		if _, x := tx.Exec(ctx, `UPDATE chartworks.migration_schedule_routes r SET schedule_revision=s.revision FROM chartworks.job_schedules s WHERE r.tenant_id=$1 AND r.cohort_id=$2 AND s.tenant_id=r.tenant_id AND s.schedule_id=r.schedule_id`, e.Tenant(), cohort); x != nil {
 			return x
 		}
 		eraw, _ := json.Marshal(effects)

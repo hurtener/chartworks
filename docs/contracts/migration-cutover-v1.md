@@ -114,7 +114,10 @@ is idempotent; a stale or competing generation conflicts. The cutover transactio
 disables the prior schedule and enables the target. Occurrence admission locks the
 current generation, rejects the inactive route and due times at or before the resume
 boundary, and deduplicates both schedules by logical stream and exact due time.
-Queue claim repeats the route/revision fence. Imported schedules are created paused.
+Queue claim repeats the stream, generation, route, schedule revision and resume
+boundary checks against the durable occurrence admission. Rollback advances the
+generation and route revisions, so queued work from the prior route cannot be
+claimed afterward. Imported schedules are created paused.
 
 Rollback atomically disables the target, enables the retained prior route under a
 new generation and records every

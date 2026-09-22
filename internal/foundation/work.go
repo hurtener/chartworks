@@ -56,6 +56,7 @@ type work struct {
 	handler       http.Handler
 	engine        gateway.Engine
 	nlq           *nlqexec.Service
+	documents     *reporting.Documents
 	queue         *jobs.Service
 	migrations    *migration.Service
 	broker        *broker.Provider
@@ -272,6 +273,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		w.close()
 		return nil, err
 	}
+	w.documents = documents
 	w.handler = handler
 	if v.Jobs.Enabled {
 		scheduled, makeErr := reporting.NewScheduled(delivery, db)

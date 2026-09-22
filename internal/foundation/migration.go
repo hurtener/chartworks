@@ -87,7 +87,7 @@ func newMigrationService(db *postgres.DB, d migrationDomains) (*migration.Servic
 			if err != nil {
 				return err
 			}
-			if expected.Engine != actual.Dialect || expected.Dialect != actual.Dialect || expected.Revision != actual.Revision || expected.Context != actual.ContextID || expected.Snapshot != sourceSnapshot(actual) {
+			if actual.ID != m.Destination || expected.Engine != actual.Dialect || expected.Dialect != actual.Dialect || expected.Revision != actual.Revision || m.Revision != actual.Revision || expected.Context != actual.ContextID || expected.Snapshot != sourceSnapshot(actual) {
 				return migration.ErrConflict
 			}
 			health, err := d.sources.Test(ctx, e, m.Destination)
