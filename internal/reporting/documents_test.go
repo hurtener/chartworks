@@ -16,17 +16,16 @@ func TestActorPresentationIsDescriptiveOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	labels := map[string]ActorPresentation{"known": {Label: "Analista", Kind: "person", Known: true}}
 	for _, tc := range []struct {
 		id, label, kind string
 		known           bool
 	}{
-		{"known", "Analista", "person", true},
+		{"known", "Unknown actor", "unknown", false},
 		{"analyst", "Current actor", "person", true},
 		{"svc:scheduled", "Service actor", "service", false},
 		{"removed", "Unknown actor", "unknown", false},
 	} {
-		got := actorPresentation(e, tc.id, labels)
+		got := actorPresentation(e, tc.id)
 		if got.Label != tc.label || got.Kind != tc.kind || got.Known != tc.known {
 			t.Fatalf("presentation %s: %#v", tc.id, got)
 		}

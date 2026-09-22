@@ -25,7 +25,6 @@ type Documents struct {
 	repo    DocumentRepository
 	blocks  *Service
 	queries DocumentQueryCatalog
-	actors  ActorLabelResolver
 	limits  config.Reporting
 }
 
@@ -39,17 +38,6 @@ func NewDocuments(repo DocumentRepository, blocks *Service, queries DocumentQuer
 		queries = nil
 	}
 	return &Documents{repo: repo, blocks: blocks, queries: queries, limits: limits}, nil
-}
-
-// WithActorLabels installs the existing platform's descriptive identity seam.
-// The resolver is not an authority source and failures use a safe fallback.
-func (s *Documents) WithActorLabels(resolver ActorLabelResolver) *Documents {
-	if s == nil || nilValue(resolver) {
-		return s
-	}
-	out := *s
-	out.actors = resolver
-	return &out
 }
 
 // ProjectStoredDocument applies hard format bounds, not mutable operator limits.
@@ -277,35 +265,15 @@ func (s *Documents) List(ctx context.Context, e identity.Envelope, kind, after s
 	if err != nil {
 		return DocumentList{}, err
 	}
-	ids := []string{}
-	for _, item := range out.Items {
-		ids = append(ids, item.CreatorID, item.EditorID)
-	}
-	labels := map[string]ActorPresentation{}
-	if s.actors != nil && len(ids) != 0 {
-		labels, _ = s.actors.ResolveActorLabels(ctx, e, ids, catalogLocale(out.Items))
-	}
 	for i := range out.Items {
-		out.Items[i].Creator = actorPresentation(e, out.Items[i].CreatorID, labels)
-		out.Items[i].LastEditor = actorPresentation(e, out.Items[i].EditorID, labels)
+		out.Items[i].Creator = actorPresentation(e, out.Items[i].CreatorID)
+		out.Items[i].LastEditor = actorPresentation(e, out.Items[i].EditorID)
 		out.Items[i].CreatorID, out.Items[i].EditorID = "", ""
 	}
 	return out, nil
 }
 
-func catalogLocale(items []DocumentSummary) string {
-	for _, item := range items {
-		if len(item.Metadata) != 0 && item.Metadata[0].Locale != "" {
-			return item.Metadata[0].Locale
-		}
-	}
-	return "en"
-}
-
-func actorPresentation(e identity.Envelope, id string, labels map[string]ActorPresentation) ActorPresentation {
-	if label, ok := labels[id]; ok && text(label.Label, 256) && slices.Contains([]string{"person", "service", "unknown"}, label.Kind) {
-		return label
-	}
+func actorPresentation(e identity.Envelope, id string) ActorPresentation {
 	if id == e.User() {
 		return ActorPresentation{Label: "Current actor", Kind: "person", Known: true}
 	}

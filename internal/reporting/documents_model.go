@@ -227,12 +227,6 @@ type DocumentRelationships struct {
 	Blocks    []string `json:"blocks"`
 }
 
-// ActorLabelResolver is an optional Pengui-owned descriptive projection seam.
-// Implementations return labels only; they cannot add scopes or resource reach.
-type ActorLabelResolver interface {
-	ResolveActorLabels(context.Context, identity.Envelope, []string, string) (map[string]ActorPresentation, error)
-}
-
 // DocumentDeleteRequest binds destructive intent to the current head and a
 // caller key. Replays return the original tombstone; changed intent conflicts.
 type DocumentDeleteRequest struct {
@@ -261,6 +255,8 @@ type DocumentDeletion struct {
 	DeletedVersion   int64     `json:"deleted_version"`
 	ErasedRevisions  int       `json:"erased_revisions"`
 	ErasedRuns       int       `json:"erased_runs"`
+	ErasedChildRuns  int       `json:"erased_child_runs"`
+	ErasedQueries    int       `json:"erased_queries"`
 	RetiredSchedules []string  `json:"retired_schedules"`
 	DeletedAt        time.Time `json:"deleted_at"`
 }

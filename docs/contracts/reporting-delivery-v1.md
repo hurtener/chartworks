@@ -190,7 +190,8 @@ Every matching schedule additionally requires current `scheduling.write` and
 schedule-write reach before the transaction changes anything.
 
 Deletion scrubs live definition payloads and external import mappings, erases retained composition payloads,
-expires their bounded receipts, retires matching report/saved-question schedules,
+fences root and `nested_parent` operations, erases their nested frozen values and
+exact root-owned dynamic query rows, expires their bounded receipts, retires matching report/saved-question schedules,
 and retains schedule history plus a deletion tombstone. Stale execution cannot
 complete after the tombstone. Shared blocks/topics are preserved. Dashboard
 deletion does not infer ownership or cascade to reports; report deletion preserves
@@ -200,9 +201,12 @@ WAL are outside the live-data erasure result.
 
 Document catalog summaries carry bounded block/topic/schedule relationships and
 descriptive creator/last-editor presentations. Actor IDs remain protected audit
-coordinates and are not serialized in the summary. An optional Pengui-owned label
-resolver supplies known labels; missing/deleted and service actors receive safe
-fallbacks. Labels, recipients and relationship membership never grant access.
+coordinates and are not serialized in the summary. Current/unknown/service actors
+receive safe non-identifying fallbacks. Readable external names remain open until
+the platform publishes a real descriptive-label adapter contract. Presentations,
+recipients and relationship membership never grant access. A reader without exact
+preview/write reach derives the last editor from the published revision rather than
+from a private draft.
 Schedule relations require current schedule-read action and resource reach before
 their identifiers enter the SQL result.
 

@@ -125,9 +125,9 @@ func replayDocumentDeletion(ctx context.Context, tx pgx.Tx, e identity.Envelope,
 	var out reporting.DocumentDeletion
 	var key, actor, reason string
 	var schedules []byte
-	err := tx.QueryRow(ctx, `SELECT deleted_version,erased_revisions,erased_runs,retired_schedules,deleted_at,deletion_key,actor_id,reason
+	err := tx.QueryRow(ctx, `SELECT deleted_version,erased_revisions,erased_runs,erased_child_runs,erased_queries,retired_schedules,deleted_at,deletion_key,actor_id,reason
  FROM chartworks.document_deletion_tombstones WHERE tenant_id=$1 AND kind=$2 AND document_id=$3`, e.Tenant(), kind, id).Scan(
-		&out.DeletedVersion, &out.ErasedRevisions, &out.ErasedRuns, &schedules, &out.DeletedAt, &key, &actor, &reason)
+		&out.DeletedVersion, &out.ErasedRevisions, &out.ErasedRuns, &out.ErasedChildRuns, &out.ErasedQueries, &schedules, &out.DeletedAt, &key, &actor, &reason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return reporting.DocumentDeletion{}, false, nil
 	}
@@ -139,6 +139,75 @@ func replayDocumentDeletion(ctx context.Context, tx pgx.Tx, e identity.Envelope,
 	}
 	out.Kind, out.ID = kind, id
 	return out, true, nil
+}
+
+// eraseDocumentOwnedRunMaterial fences every root and nested request before
+// removing values. Only children linked by operations.nested_parent and dynamic
+// queries carrying the exact composition root prefix are owned transitively.
+func eraseDocumentOwnedRunMaterial(ctx context.Context, tx pgx.Tx, tenant string, roots []string) (childRuns, queries int, err error) {
+	if len(roots) == 0 {
+		return 0, 0, nil
+	}
+	rows, err := tx.Query(ctx, `SELECT operation_id FROM chartworks.operations
+ WHERE tenant_id=$1 AND (operation_id=ANY($2::text[]) OR nested_parent=ANY($2::text[]))
+ ORDER BY operation_id FOR UPDATE`, tenant, roots)
+	if err != nil {
+		return 0, 0, err
+	}
+	locked := []string{}
+	for rows.Next() {
+		var operation string
+		if err := rows.Scan(&operation); err != nil {
+			rows.Close()
+			return 0, 0, err
+		}
+		locked = append(locked, operation)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, 0, err
+	}
+	var children []string
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(array_agg(operation_id ORDER BY operation_id),'{}')
+ FROM chartworks.operations WHERE tenant_id=$1 AND nested_parent=ANY($2::text[])`, tenant, roots).Scan(&children); err != nil {
+		return 0, 0, err
+	}
+	if len(locked) != 0 {
+		if _, err = tx.Exec(ctx, `UPDATE chartworks.operation_attempts SET state='cancelled',error_code='cancelled',finished_at=clock_timestamp()
+ WHERE tenant_id=$1 AND operation_id=ANY($2::text[]) AND state='acquiring'`, tenant, locked); err != nil {
+			return 0, 0, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE chartworks.operations SET status='cancelled',fence=fence+1,lease_owner=NULL,lease_until=NULL,
+ finished_at=clock_timestamp(),error_code='cancelled' WHERE tenant_id=$1 AND operation_id=ANY($2::text[]) AND status IN('pending','running','retry')`, tenant, locked); err != nil {
+			return 0, 0, err
+		}
+	}
+	if len(children) != 0 {
+		for _, statement := range []string{
+			`DELETE FROM chartworks.read_attempts WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
+			`DELETE FROM chartworks.frozen_run_outputs WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
+			`DELETE FROM chartworks.frozen_run_attempts WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
+			`DELETE FROM chartworks.frozen_run_payloads WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
+			`UPDATE chartworks.frozen_runs SET state='expired',code='retention_expired',retained_bytes=0,reserved_bytes=0,
+ finished_at=COALESCE(finished_at,clock_timestamp()) WHERE tenant_id=$1 AND operation_id=ANY($2::text[])`,
+		} {
+			if _, err = tx.Exec(ctx, statement, tenant, children); err != nil {
+				return 0, 0, err
+			}
+		}
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM chartworks.nlq_feedback f USING chartworks.nlq_queries q
+ WHERE (q.tenant_id,q.actor_id,q.session_id,q.query_id)=(f.tenant_id,f.actor_id,f.session_id,f.query_id)
+ AND q.tenant_id=$1 AND EXISTS(SELECT 1 FROM unnest($2::text[]) root WHERE q.operation LIKE 'composition:'||root||':%')`, tenant, roots); err != nil {
+		return 0, 0, err
+	}
+	result, err := tx.Exec(ctx, `DELETE FROM chartworks.nlq_queries q WHERE q.tenant_id=$1
+ AND EXISTS(SELECT 1 FROM unnest($2::text[]) root WHERE q.operation LIKE 'composition:'||root||':%')`, tenant, roots)
+	if err != nil {
+		return 0, 0, err
+	}
+	return len(children), int(result.RowsAffected()), nil
 }
 
 // DeleteDocument serializes with lifecycle edits, schedule changes, admissions,
@@ -195,8 +264,16 @@ func (d *DB) DeleteDocument(ctx context.Context, e identity.Envelope, kind, id s
 		now := time.Now().UTC()
 		schedulesJSON, _ := json.Marshal(impact.MatchingSchedules)
 		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.document_deletion_tombstones
- (tenant_id,kind,document_id,deletion_key,expected_version,deleted_version,actor_id,reason,erased_revisions,erased_runs,retired_schedules,deleted_at)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, e.Tenant(), kind, id, in.Key, in.ExpectedVersion, in.ExpectedVersion+1, e.User(), in.Reason, impact.RevisionCount, len(runs), schedulesJSON, now); err != nil {
+ (tenant_id,kind,document_id,deletion_key,expected_version,deleted_version,actor_id,reason,erased_revisions,erased_runs,erased_child_runs,erased_queries,retired_schedules,deleted_at)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,0,$11,$12)`, e.Tenant(), kind, id, in.Key, in.ExpectedVersion, in.ExpectedVersion+1, e.User(), in.Reason, impact.RevisionCount, len(runs), schedulesJSON, now); err != nil {
+			return err
+		}
+		childRuns, erasedQueries, err := eraseDocumentOwnedRunMaterial(ctx, tx, e.Tenant(), runs)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE chartworks.document_deletion_tombstones SET erased_child_runs=$4,erased_queries=$5
+ WHERE tenant_id=$1 AND kind=$2 AND document_id=$3`, e.Tenant(), kind, id, childRuns, erasedQueries); err != nil {
 			return err
 		}
 		for _, run := range runs {
@@ -234,7 +311,7 @@ func (d *DB) DeleteDocument(ctx context.Context, e identity.Envelope, kind, id s
 		if err := auditJob(ctx, tx, scope, "document.deleted", id); err != nil {
 			return err
 		}
-		out = reporting.DocumentDeletion{Kind: kind, ID: id, DeletedVersion: in.ExpectedVersion + 1, ErasedRevisions: impact.RevisionCount, ErasedRuns: len(runs), RetiredSchedules: append([]string(nil), impact.MatchingSchedules...), DeletedAt: now}
+		out = reporting.DocumentDeletion{Kind: kind, ID: id, DeletedVersion: in.ExpectedVersion + 1, ErasedRevisions: impact.RevisionCount, ErasedRuns: len(runs), ErasedChildRuns: childRuns, ErasedQueries: erasedQueries, RetiredSchedules: append([]string(nil), impact.MatchingSchedules...), DeletedAt: now}
 		sort.Strings(out.RetiredSchedules)
 		if !e.Valid() {
 			return access.ErrUnauthenticated

@@ -16,6 +16,8 @@ CREATE TABLE chartworks.document_deletion_tombstones (
  reason text NOT NULL CHECK(octet_length(reason) BETWEEN 1 AND 2048),
  erased_revisions integer NOT NULL CHECK(erased_revisions BETWEEN 1 AND 256),
  erased_runs integer NOT NULL CHECK(erased_runs BETWEEN 0 AND 100000),
+ erased_child_runs integer NOT NULL CHECK(erased_child_runs BETWEEN 0 AND 100000),
+ erased_queries integer NOT NULL CHECK(erased_queries BETWEEN 0 AND 100000),
  retired_schedules jsonb NOT NULL CHECK(jsonb_typeof(retired_schedules)='array' AND jsonb_array_length(retired_schedules)<=1000),
  deleted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(tenant_id,kind,document_id),
@@ -108,6 +110,43 @@ CREATE OR REPLACE FUNCTION chartworks.protect_composition_group() RETURNS trigge
  OR (OLD.result IS NOT NULL AND ROW(NEW.result,NEW.result_digest) IS DISTINCT FROM ROW(OLD.result,OLD.result_digest))
  THEN RAISE EXCEPTION 'immutable composition checkpoint' USING ERRCODE='55000'; END IF;
  RETURN NEW;
+END $$;
+
+-- A nested frozen run or dynamic query is document-owned only when its exact
+-- composition root is owned by the deleted document (including a dashboard
+-- root containing a deleted report page). Independently admitted runs and
+-- authoring queries never match this predicate and retain their own lifecycle.
+CREATE FUNCTION chartworks.deleted_composition_operation(p_tenant text, p_operation text) RETURNS boolean
+LANGUAGE sql STABLE AS $$
+ SELECT EXISTS(
+  SELECT 1 FROM chartworks.composition_runs c
+  WHERE c.tenant_id=p_tenant AND p_operation LIKE 'composition:'||c.operation_id||':%'
+  AND (EXISTS(SELECT 1 FROM chartworks.document_deletion_tombstones t
+       WHERE (t.tenant_id,t.kind,t.document_id)=(c.tenant_id,c.kind,c.document_id))
+   OR EXISTS(SELECT 1 FROM chartworks.composition_run_pages p JOIN chartworks.document_deletion_tombstones t
+       ON(t.tenant_id,t.kind,t.document_id)=(p.tenant_id,'report',p.report_id)
+       WHERE (p.tenant_id,p.operation_id)=(c.tenant_id,c.operation_id)))
+ )
+$$;
+
+CREATE OR REPLACE FUNCTION chartworks.protect_nlq_query() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF TG_OP='DELETE' AND chartworks.deleted_composition_operation(OLD.tenant_id,OLD.operation) THEN RETURN OLD; END IF;
+ IF TG_OP='DELETE' OR NEW.tenant_id<>OLD.tenant_id OR NEW.actor_id<>OLD.actor_id OR NEW.session_id<>OLD.session_id OR NEW.query_id<>OLD.query_id OR
+    NEW.parent_id IS DISTINCT FROM OLD.parent_id OR NEW.topic_id<>OLD.topic_id OR NEW.topics IS DISTINCT FROM OLD.topics OR
+    NEW.topic_versions IS DISTINCT FROM OLD.topic_versions OR NEW.rule_versions IS DISTINCT FROM OLD.rule_versions OR
+    NEW.template_selections IS DISTINCT FROM OLD.template_selections OR NEW.example_selection IS DISTINCT FROM OLD.example_selection OR
+    NEW.context_id<>OLD.context_id OR NEW.locale<>OLD.locale OR NEW.question<>OLD.question OR NEW.route IS DISTINCT FROM OLD.route OR
+    NEW.created_at<>OLD.created_at OR NEW.revision<>OLD.revision+1 THEN
+  RAISE EXCEPTION 'nlq query immutable fields changed' USING ERRCODE='55000';
+ END IF;
+ RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION chartworks.protect_nlq_feedback() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF TG_OP='DELETE' AND EXISTS(SELECT 1 FROM chartworks.nlq_queries q
+  WHERE (q.tenant_id,q.actor_id,q.session_id,q.query_id)=(OLD.tenant_id,OLD.actor_id,OLD.session_id,OLD.query_id)
+  AND chartworks.deleted_composition_operation(q.tenant_id,q.operation)) THEN RETURN OLD; END IF;
+ RAISE EXCEPTION 'nlq feedback is immutable' USING ERRCODE='55000';
 END $$;
 
 DO $$ DECLARE previous text; BEGIN

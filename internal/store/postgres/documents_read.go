@@ -160,10 +160,14 @@ func (d *DB) ListDocuments(ctx context.Context, e identity.Envelope, kind, after
  FROM chartworks.document_heads h JOIN chartworks.document_revisions r
  ON(r.tenant_id,r.kind,r.document_id,r.revision)=(h.tenant_id,h.kind,h.document_id,h.published_revision)
  JOIN chartworks.document_revisions creator ON(creator.tenant_id,creator.kind,creator.document_id,creator.revision)=(h.tenant_id,h.kind,h.document_id,1)
- JOIN chartworks.document_revisions editor ON(editor.tenant_id,editor.kind,editor.document_id,editor.revision)=(h.tenant_id,h.kind,h.document_id,h.latest_revision)
+ JOIN chartworks.document_revisions editor ON(editor.tenant_id,editor.kind,editor.document_id)=(h.tenant_id,h.kind,h.document_id)
+ AND editor.revision=CASE WHEN
+  (($9::boolean AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'=h.kind AND g->>'permission'='preview' AND g->>'id' IN(h.document_id,'*')))
+   OR ($10::boolean AND EXISTS(SELECT 1 FROM jsonb_array_elements($6::jsonb) g WHERE g->>'kind'=h.kind AND g->>'permission'='write' AND g->>'id' IN(h.document_id,'*'))))
+  THEN h.latest_revision ELSE h.published_revision END
  WHERE h.tenant_id=$1 AND h.kind=$2 AND h.document_id>$3 AND NOT h.archived AND NOT h.deleted
  AND ($4::boolean OR h.document_id=ANY($5::text[])) AND `+documentReferenceEligibility+`
-	 ORDER BY h.document_id LIMIT $7`, e.Tenant(), kind, after, selection.All(), selection.IDs(), grants, limit+1, e.Has("scheduling.read"))
+	 ORDER BY h.document_id LIMIT $7`, e.Tenant(), kind, after, selection.All(), selection.IDs(), grants, limit+1, e.Has("scheduling.read"), e.Has("reporting.preview"), e.Has("reporting.write"))
 		if err != nil {
 			return err
 		}

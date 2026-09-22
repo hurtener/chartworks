@@ -1,6 +1,6 @@
 ### D-081 — Fenced document erasure and descriptive catalog identity
 
-Status: implemented for review, 2026-09-22. Owns REP-02 and REP-03 across
+Status: REP-02 implemented for review and REP-03 relationships/fallbacks implemented with readable platform labels still open, 2026-09-22. Owns REP-02 and part of REP-03 across
 phases 23, 29, 30 and 31; phase 34 still owns imported deletion replay and final
 cutover evidence.
 
@@ -8,7 +8,8 @@ Report and dashboard archive remains a reversible discovery lifecycle state.
 Deletion is a separate irreversible live-data operation with an exact head CAS,
 caller replay key, reason, bounded impact preview, retained tombstone and audit.
 The transaction scrubs authored definition payloads and external import mappings,
-erases document-owned composition payloads, expires their receipts, and retires only schedules whose
+erases document-owned composition payloads plus exact nested frozen/query values,
+fences root and `nested_parent` operations, expires their receipts, and retires only schedules whose
 closed reporting target addresses the deleted report. Accepted work is fenced by
 the tombstone and expired run state. Schedule history, non-secret dependency
 evidence and the deletion tombstone remain. This makes no claim about erasing
@@ -20,8 +21,8 @@ ordinary dashboard projections omit the now-deleted report under the existing
 page eligibility filter. Shared blocks, topics and their retained artifacts are
 not document-owned and are preserved.
 
-Catalog creator/editor labels are resolved through an optional Pengui-owned
-descriptive projection seam. Stable actor identifiers remain protected storage
+Catalog creator/editor fields use a non-identifying presentation fallback. The
+repository has no real public descriptive-label adapter, so stable actor identifiers remain protected storage
 and audit coordinates and are omitted from public summaries. Missing/deleted
 people and service actors receive bounded non-identifying fallbacks. Labels and
 relationship rows are never read by an authority check. Schedule identifiers are
