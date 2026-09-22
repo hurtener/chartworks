@@ -1,0 +1,9 @@
+[
+  {"method":"POST","path":"/v1/migrations/dry-runs","action":"migration.read","effect":"migration_dry_run"},
+  {"method":"POST","path":"/v1/migrations/imports","action":"migration.write","effect":"migration_import_commit"},
+  {"method":"POST","path":"/v1/migrations/resume","action":"migration.write","effect":"migration_import_commit"},
+  {"method":"POST","path":"/v1/migrations/exports","action":"migration.read","effect":"migration_export_read"},
+  {"method":"POST","path":"/v1/migrations/cutovers","action":"migration.cutover","effect":"migration_cutover_commit"},
+  {"method":"POST","path":"/v1/migrations/rollbacks","action":"migration.cutover","effect":"migration_cutover_commit"},
+  {"method":"POST","path":"/v1/migrations/erasures","action":"migration.erase","effect":"migration_erase_commit"}
+]

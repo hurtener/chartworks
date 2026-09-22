@@ -154,6 +154,39 @@ func (s *Service) Save(ctx context.Context, e identity.Envelope, in SaveRequest)
 	return s.repo.SaveRuleDraft(ctx, e, published, model, in.Expected, in.Change)
 }
 
+// ReconcileDraft verifies that the exact revision produced by a prior Save
+// attempt has the same canonical definition and change note. It exists for
+// durable coordinators that can lose their checkpoint after the domain
+// transaction commits; it never advances a draft or broadens draft reach.
+func (s *Service) ReconcileDraft(ctx context.Context, e identity.Envelope, in SaveRequest) (Draft, error) {
+	if ctx == nil || in.Expected < 0 || in.Expected >= 1<<62 || !textValid(in.Change) {
+		return Draft{}, store.ErrInvalid
+	}
+	published, err := s.topics.ReadPublishedTopic(ctx, e, in.Definition.Topic, in.Definition.TopicVersion, drafts.Write)
+	if err != nil {
+		return Draft{}, err
+	}
+	if !published.State.Active {
+		return Draft{}, store.ErrConflict
+	}
+	subject, err := publishedSubject(published)
+	if err != nil {
+		return Draft{}, err
+	}
+	model, err := semantics.CompilePublishedRules(subject, in.Definition)
+	if err != nil {
+		return Draft{}, err
+	}
+	existing, err := s.repo.ReadRuleDraft(ctx, e, in.Definition.Topic, in.Expected+1, drafts.Write)
+	if err != nil {
+		return Draft{}, err
+	}
+	if existing.Digest != model.Digest() || existing.Change != in.Change {
+		return Draft{}, store.ErrConflict
+	}
+	return existing, nil
+}
+
 // Review validates and records a decision for a rule draft.
 func (s *Service) Review(ctx context.Context, e identity.Envelope, topic string, in ReviewRequest) (Review, error) {
 	if ctx == nil || !identity.Identifier(topic) || in.DraftRevision < 1 || in.DraftRevision >= 1<<62 || !digestValid(in.Digest) || (in.Decision != "approve" && in.Decision != "reject") || !textValid(in.Note) {

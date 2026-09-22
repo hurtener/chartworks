@@ -11,6 +11,8 @@ import (
 	"github.com/hurtener/chartworks/internal/evaluation"
 	"github.com/hurtener/chartworks/internal/evaluationapi"
 	"github.com/hurtener/chartworks/internal/mcpserver"
+	"github.com/hurtener/chartworks/internal/migration"
+	"github.com/hurtener/chartworks/internal/migrationapi"
 	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
@@ -33,6 +35,7 @@ type deliveryServices struct {
 	evaluation       *evaluation.Service
 	evaluationRunner evaluation.Runner
 	onboarding       *onboarding.Service
+	migrations       *migration.Service
 }
 
 func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service, published *topics.Service, query *nlqexec.Service, byo *nlqbyo.Service, charts *chartservice.Service, registry *api.Registry, next http.Handler, services ...deliveryServices) (*api.Registry, http.Handler, error) {
@@ -61,14 +64,22 @@ func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service,
 	}
 	var delivery *reporting.Delivery
 	var renderer *rendering.Service
+	var migrations *migration.Service
 	if len(services) > 1 {
 		return nil, nil, mcpserver.ErrRegistration
 	}
 	if len(services) == 1 {
-		delivery, renderer = services[0].delivery, services[0].renderer
+		delivery, renderer, migrations = services[0].delivery, services[0].renderer, services[0].migrations
 		group, bindErr := evaluationapi.MCPBindings(services[0].evaluation, services[0].evaluationRunner)
 		if bindErr != nil {
 			return nil, nil, bindErr
+		}
+		bindings = append(bindings, group...)
+	}
+	if migrations != nil {
+		group, err := migrationapi.MCPBindings(migrations)
+		if err != nil {
+			return nil, nil, err
 		}
 		bindings = append(bindings, group...)
 	}

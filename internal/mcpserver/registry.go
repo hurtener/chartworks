@@ -50,6 +50,10 @@ func effectFor(effect string) (effects, bool) {
 		return effects{readOnly: true, idempotent: true}, true
 	case "caller_data_selection_optional_gateway_rank":
 		return effects{openWorld: true, paid: true}, true
+	case "migration_dry_run", "migration_export_read":
+		return effects{readOnly: true, idempotent: true}, true
+	case "migration_import_commit", "migration_cutover_commit", "migration_erase_commit":
+		return effects{persists: true, idempotent: true}, true
 	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
 	case "evaluation_live_or_fixture_run":
@@ -171,7 +175,7 @@ func toolName(s string) bool {
 	return true
 }
 func groupName(s string) bool {
-	return s == "discovery" || s == "query" || s == "byo" || s == "charts" || s == "reporting" || s == "onboarding" || s == "evaluation"
+	return s == "discovery" || s == "query" || s == "byo" || s == "charts" || s == "reporting" || s == "onboarding" || s == "evaluation" || s == "migration"
 }
 
 // WithResource exposes the same pure read through an exact canonical URI or
