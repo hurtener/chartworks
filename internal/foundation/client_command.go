@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/hurtener/chartworks/internal/clientcli"
+	"github.com/hurtener/chartworks/internal/evaluation"
 )
 
 // CommandWithInput extends the existing server/configuration command without
@@ -15,6 +16,9 @@ import (
 func CommandWithInput(ctx context.Context, args []string, lookup func(string) (string, bool), stdin io.Reader, stdout, stderr io.Writer, build Build, start Starter) int {
 	if len(args) > 0 && args[0] == "client" {
 		return clientcli.Command(ctx, args[1:], clientcli.IO{Stdin: stdin, Stdout: stdout, Stderr: stderr, Lookup: lookup, OpenDescriptor: openClientDescriptor})
+	}
+	if len(args) > 0 && args[0] == "eval" {
+		return evaluation.Command(ctx, args[1:], stdout, stderr)
 	}
 	return Command(ctx, args, lookup, stdout, stderr, build, start)
 }

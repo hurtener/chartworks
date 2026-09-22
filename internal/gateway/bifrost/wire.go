@@ -139,6 +139,12 @@ func usage(role string, p route, model, actual string, start time.Time, raw any)
 	}
 	return out
 }
+
+func configuredUsage(role string, p route, model, actual, configurationDigest string, start time.Time, raw any) gateway.Usage {
+	out := usage(role, p, model, actual, start, raw)
+	out.ConfigurationDigest = configurationDigest
+	return out
+}
 func observe(b *gateway.Budget, call gateway.Call, reserved int, receipt gateway.Receipt) error {
 	u := receipt.Calls[len(receipt.Calls)-1]
 	reported := 0

@@ -241,6 +241,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 	if name == "embedding" || name == "rerank" || schema == nil || schema.Name() == "" || prompt == "" || len(prompt)+len(system)+len(schema.Document()) > e.cfg.Limits.MaxInputBytes {
 		return out, gateway.ErrInput
 	}
+	model, system, configurationDigest := gateway.ApplyRuntimeConfig(ctx, name, r.Model, system)
 	release, err := e.enter(call, b)
 	if err != nil {
 		return out, err
@@ -262,7 +263,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 		}
 		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
 		start := time.Now()
-		response, be := p.client.ChatCompletionRequest(bc, &schemas.BifrostChatRequest{Provider: p.provider, Model: r.Model, Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: &prompt}}}, Params: &schemas.ChatParameters{ResponseFormat: &format, MaxCompletionTokens: &r.MaxTokens, Store: core.Ptr(false)}})
+		response, be := p.client.ChatCompletionRequest(bc, &schemas.BifrostChatRequest{Provider: p.provider, Model: model, Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: &prompt}}}, Params: &schemas.ChatParameters{ResponseFormat: &format, MaxCompletionTokens: &r.MaxTokens, Store: core.Ptr(false)}})
 		bcCancel()
 		actual := ""
 		var raw any
@@ -270,7 +271,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 			actual = observedModel(response.Model)
 			raw = response.ExtraFields.RawResponse
 		}
-		out.Receipt.Calls = append(out.Receipt.Calls, usage(name, p, r.Model, actual, start, raw))
+		out.Receipt.Calls = append(out.Receipt.Calls, configuredUsage(name, p, model, actual, configurationDigest, start, raw))
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
@@ -314,6 +315,10 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 	if err != nil {
 		return out, err
 	}
+	model, _, configurationDigest := gateway.ApplyRuntimeConfig(ctx, "embedding", r.Model, "")
+	if model != r.Model {
+		return out, gateway.ErrSpace
+	}
 	if expectedSpace != e.space {
 		return out, gateway.ErrSpace
 	}
@@ -345,7 +350,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			return out, ctx.Err()
 		}
 		out.Vectors = vectors
-		out.Receipt.Calls = []gateway.Usage{{Role: "embedding", Provider: p.name, RequestedModel: r.Model, Cached: true}}
+		out.Receipt.Calls = []gateway.Usage{{Role: "embedding", Provider: p.name, RequestedModel: model, ConfigurationDigest: configurationDigest, Cached: true}}
 		return out, nil
 	}
 	all := make([][]float32, 0, len(texts))
@@ -368,7 +373,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			}
 			bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
 			began := time.Now()
-			response, be := p.client.EmbeddingRequest(bc, &schemas.BifrostEmbeddingRequest{Provider: p.provider, Model: r.Model, Input: &schemas.EmbeddingInput{Texts: append([]string(nil), texts[start:end]...)}, Params: &schemas.EmbeddingParameters{Dimensions: &r.Dimensions}})
+			response, be := p.client.EmbeddingRequest(bc, &schemas.BifrostEmbeddingRequest{Provider: p.provider, Model: model, Input: &schemas.EmbeddingInput{Texts: append([]string(nil), texts[start:end]...)}, Params: &schemas.EmbeddingParameters{Dimensions: &r.Dimensions}})
 			bcCancel()
 			actual := ""
 			var raw any
@@ -376,7 +381,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 				actual = observedModel(response.Model)
 				raw = response.ExtraFields.RawResponse
 			}
-			out.Receipt.Calls = append(out.Receipt.Calls, usage("embedding", p, r.Model, actual, began, raw))
+			out.Receipt.Calls = append(out.Receipt.Calls, configuredUsage("embedding", p, model, actual, configurationDigest, began, raw))
 			if ctx.Err() != nil {
 				return out, ctx.Err()
 			}
@@ -398,7 +403,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			if response == nil || len(response.Data) != end-start {
 				return out, gateway.ErrOutput
 			}
-			if actual != "" && actual != r.Model {
+			if actual != "" && actual != model {
 				return out, gateway.ErrSpace
 			}
 			vectors = make([][]float32, end-start)
@@ -446,6 +451,7 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 	if err != nil {
 		return out, err
 	}
+	model, _, configurationDigest := gateway.ApplyRuntimeConfig(ctx, "rerank", r.Model, "")
 	items := candidates.Items()
 	if query == "" || len(items) > r.MaxCandidates {
 		return out, gateway.ErrInput
@@ -483,7 +489,7 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 		}
 		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
 		start := time.Now()
-		response, be := p.client.RerankRequest(bc, &schemas.BifrostRerankRequest{Provider: p.provider, Model: r.Model, Query: query, Documents: documents, Params: &schemas.RerankParameters{TopN: core.Ptr(len(items)), ReturnDocuments: core.Ptr(false)}})
+		response, be := p.client.RerankRequest(bc, &schemas.BifrostRerankRequest{Provider: p.provider, Model: model, Query: query, Documents: documents, Params: &schemas.RerankParameters{TopN: core.Ptr(len(items)), ReturnDocuments: core.Ptr(false)}})
 		bcCancel()
 		actual := ""
 		var raw any
@@ -491,7 +497,7 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 			actual = observedModel(response.Model)
 			raw = response.ExtraFields.RawResponse
 		}
-		out.Receipt.Calls = append(out.Receipt.Calls, usage("rerank", p, r.Model, actual, start, raw))
+		out.Receipt.Calls = append(out.Receipt.Calls, configuredUsage("rerank", p, model, actual, configurationDigest, start, raw))
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}

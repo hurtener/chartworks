@@ -1344,7 +1344,7 @@ func lexicalSimilarity(left, right string) float64 {
 func tokenSet(value string) map[string]bool {
 	result := map[string]bool{}
 	for _, token := range strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
-		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r < 0x80
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r < 0x80
 	}) {
 		if token != "" {
 			result[token] = true

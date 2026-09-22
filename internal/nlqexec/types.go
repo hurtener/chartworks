@@ -331,11 +331,13 @@ type PortableExample struct {
 	NegativeEvidence int           `json:"negative_evidence"`
 }
 
+// ExampleExportRequest selects a bounded protected learning export.
 type ExampleExportRequest struct {
 	Topic string `json:"topic"`
 	Limit int    `json:"limit"`
 }
 
+// ExampleBundle is a versioned neutral learning interchange payload.
 type ExampleBundle struct {
 	SchemaVersion int               `json:"schema_version"`
 	Topic         string            `json:"topic"`

@@ -652,7 +652,9 @@ func TestEvidenceScoreRespondsToPositiveNegativeAndDuplicateSignals(t *testing.T
 	e := unitEnvelope(t)
 	q := unitQuery(e, "query", "topic", "v1", "context", false)
 	in := FeedbackRequest{QueryID: q.ID, Verdict: "positive", Note: "reviewed"}
-	if deterministicFeedbackID(e, q, in) != deterministicFeedbackID(e, q, in) || deterministicFeedbackID(e, q, in) == deterministicFeedbackID(e, q, FeedbackRequest{QueryID: q.ID, Verdict: "negative", Note: "reviewed"}) {
+	first, repeated := deterministicFeedbackID(e, q, in), deterministicFeedbackID(e, q, in)
+	different := deterministicFeedbackID(e, q, FeedbackRequest{QueryID: q.ID, Verdict: "negative", Note: "reviewed"})
+	if first != repeated || first == different {
 		t.Fatal("feedback idempotency identity was unstable or outcome-blind")
 	}
 }

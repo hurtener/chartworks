@@ -733,6 +733,12 @@
       "docs/contracts/vector-sources-validation.md",
       "docs/reviews/phase-07-08-adversarial.md",
       "test/acceptance/phase09_test.go"
+    ],
+    "24": [
+      "docs/contracts/evaluation-v1.md",
+      "docs/reviews/phase-24-evaluation.md",
+      "test/acceptance/phase24_test.go",
+      "internal/evaluation"
     ]
   }
 }
