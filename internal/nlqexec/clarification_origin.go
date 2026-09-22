@@ -54,7 +54,14 @@ func (s *Service) validateClarificationOrigin(ctx context.Context, e identity.En
 		topics = []string{question.Topic}
 	}
 	request := old.Route.Request
-	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(question.References, request.References) || !slices.Equal(question.MetricIDs, request.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
+	// Pending rows created before canonical selection ordering retain their
+	// original byte history. Compare detached canonical projections so an
+	// equivalent submission survives an upgrade without rewriting evidence.
+	incomingSelections := QuestionRequest{References: append([]semantics.Reference(nil), question.References...), MetricIDs: append([]string(nil), question.MetricIDs...)}
+	retainedSelections := QuestionRequest{References: append([]semantics.Reference(nil), request.References...), MetricIDs: append([]string(nil), request.MetricIDs...)}
+	canonicalizeQuestion(&incomingSelections)
+	canonicalizeQuestion(&retainedSelections)
+	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(incomingSelections.References, retainedSelections.References) || !slices.Equal(incomingSelections.MetricIDs, retainedSelections.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
 		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
 	}
 	return nil

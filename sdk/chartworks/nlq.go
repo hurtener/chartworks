@@ -61,6 +61,12 @@ type NLQRunResult = nlqexec.RunResult
 // NLQRefineRequest creates a child plan within the signed session.
 type NLQRefineRequest = nlqexec.RefineRequest
 
+// NLQReferenceEdit adds, replaces, or removes one exact retained semantic reference.
+type NLQReferenceEdit = nlqexec.ReferenceEdit
+
+// NLQMetricEdit adds, replaces, or removes one exact retained metric pin.
+type NLQMetricEdit = nlqexec.MetricEdit
+
 // NLQFeedbackRequest records a bounded review of one planned query.
 type NLQFeedbackRequest = nlqexec.FeedbackRequest
 

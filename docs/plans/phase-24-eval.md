@@ -79,3 +79,12 @@ real-PostgreSQL/recorded-model and live evidence, preserves raw service/source/
 model values and refuses timing when correctness or authority negatives fail.
 The bounded synthetic smoke is available during development. Phase 25 still
 owns execution of the final stress profile after Phase 34 is selected.
+
+## EXP-01 continuity cases
+
+The deterministic evaluation corpus now names bilingual add-dimension,
+replace-filter, remove-filter, change-metric, clarification-correction and
+semantic-republication cases. The real PostgreSQL service journey inspects the
+persisted canonical route and fail-closed session/context/publication outcomes.
+This closes the fixture/runtime disposition; live calibrated comparison remains
+Phase 34/25 evidence.

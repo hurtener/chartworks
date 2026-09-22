@@ -54,7 +54,15 @@ var (
 	ErrUnsafeCorrection = errors.New("nlqexec: correction cannot change governed semantics")
 	// ErrInspectionRequired identifies SQL hidden by the inspection boundary.
 	ErrInspectionRequired = errors.New("nlqexec: SQL inspection is not authorized")
+	// ErrRefinementLimit asks the caller to start a fresh question after the
+	// bounded conversational ancestry has been exhausted.
+	ErrRefinementLimit = errors.New("nlqexec: refinement history limit reached")
 )
+
+// MaxRefinementDepth bounds retained parent traversal and the amount of prior
+// conversational intent that may influence a new plan. The next question must
+// start a fresh lineage and be routed against current semantics.
+const MaxRefinementDepth = 16
 
 // Router is the existing routed-context consumer. Its result carries a sealed
 // in-process context that cannot be reconstructed from the public response.
@@ -138,6 +146,8 @@ type QueryRecord struct {
 	ID               string                       `json:"id"`
 	Session          string                       `json:"session"`
 	Parent           string                       `json:"parent,omitempty"`
+	ParentRevision   int64                        `json:"parent_revision,omitempty"`
+	ParentDigest     string                       `json:"parent_digest,omitempty"`
 	Operation        string                       `json:"operation,omitempty"`
 	Topic            string                       `json:"topic"`
 	Topics           []string                     `json:"topics"`
@@ -300,6 +310,26 @@ type RunRequest struct {
 type RefineRequest struct {
 	QueryID string `json:"query_id"`
 	QuestionRequest
+	ReferenceEdits []ReferenceEdit `json:"reference_edits,omitempty"`
+	MetricEdits    []MetricEdit    `json:"metric_edits,omitempty"`
+}
+
+// ReferenceEdit applies an explicit semantic-selection delta. Target identifies
+// an already retained selection for remove/replace. Replacement is required for
+// replace and forbidden otherwise. Add uses Target as the new selection.
+type ReferenceEdit struct {
+	Action      string               `json:"action"`
+	Target      semantics.Reference  `json:"target"`
+	Replacement *semantics.Reference `json:"replacement,omitempty"`
+}
+
+// MetricEdit applies the same explicit delta contract to pinned metric IDs.
+// It prevents a metric-change follow-up from accidentally retaining both the
+// old and new metrics through additive slice merging.
+type MetricEdit struct {
+	Action      string `json:"action"`
+	Target      string `json:"target"`
+	Replacement string `json:"replacement,omitempty"`
 }
 
 // FeedbackRequest records a governed review and optional corrected SQL.
