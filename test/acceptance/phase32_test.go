@@ -304,6 +304,11 @@ func phase32Lifecycle(t *testing.T) {
 	if _, err = s.Read(t.Context(), actor, rendering.ReadRequest{ID: a.ID}); err == nil {
 		t.Fatal("deleted rendition remained readable")
 	}
+	fixture := newPhase31Fixture(t, false)
+	bindings, err := reportingapi.DeliveryMCPBindings(fixture.service, true, s)
+	if err != nil || len(bindings) != 10 {
+		t.Fatal("durable rendition MCP consumers", len(bindings), err)
+	}
 }
 
 func phase32ExportMatrix(t *testing.T) {
