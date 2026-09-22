@@ -26,7 +26,7 @@ No broad research benchmark competition, autonomous prompt/semantic release, unr
 
 ## Config and persistence
 
-Eval per-suite thresholds, case/call/token/time ceilings and explicit fixture/live mode; optimizer off unless authorized/configured. Store exact input/version/result/evaluation provenance with protected content retention. Thresholds and accepted equivalence rules belong in versioned suite definitions, not unreviewed magic numbers.
+Eval per-suite thresholds, case/call/token/time ceilings and explicit fixture/live mode; optimizer off unless authorized/configured. Store exact input/version/result/evaluation provenance with protected content retention. Thresholds and accepted equivalence rules belong in versioned suite definitions, not unreviewed magic numbers. Live gateway configuration and pessimistic maximum-attempt cost are stored in an immutable runtime-pack record and require an explicit, distinct authenticated review over visible model, role, digest and cost values before any provider attempt.
 
 ## Acceptance criteria
 

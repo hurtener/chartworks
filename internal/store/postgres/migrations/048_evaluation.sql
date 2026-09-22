@@ -13,6 +13,16 @@ CREATE TABLE chartworks.evaluation_inputs (
     PRIMARY KEY(tenant_id,actor_id,input_digest)
 );
 
+CREATE TABLE chartworks.evaluation_runtime_packs (
+    tenant_id text NOT NULL, pack_digest text NOT NULL CHECK(length(pack_digest)=64),
+    configuration_digest text NOT NULL CHECK(length(configuration_digest)=64),
+    runtime_digest text NOT NULL CHECK(length(runtime_digest)=64),
+    material jsonb NOT NULL, state text NOT NULL CHECK(state IN ('draft','accepted','rejected')),
+    author_id text NOT NULL, review jsonb, created_at timestamptz NOT NULL,
+    PRIMARY KEY(tenant_id,pack_digest), UNIQUE(tenant_id,runtime_digest),
+    CHECK((state='draft' AND review IS NULL) OR (state<>'draft' AND review IS NOT NULL))
+);
+
 CREATE TABLE chartworks.evaluation_runs (
     tenant_id text NOT NULL, actor_id text NOT NULL, run_id text NOT NULL,
     suite_id text NOT NULL, suite_revision bigint NOT NULL CHECK (suite_revision > 0),

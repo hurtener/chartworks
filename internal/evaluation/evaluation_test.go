@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
+	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -205,12 +206,148 @@ func TestCommandStrictFixtureOnly(t *testing.T) {
 }
 
 type testRepo struct {
-	reports   map[string]Report
-	suites    map[string]SuiteRecord
-	exports   map[string]CandidateExport
-	proposals map[string]OptimizationProposal
-	selection int64
-	selected  PackSelection
+	reports      map[string]Report
+	suites       map[string]SuiteRecord
+	exports      map[string]CandidateExport
+	proposals    map[string]OptimizationProposal
+	selection    int64
+	selected     PackSelection
+	runtimePacks map[string]RuntimePackRecord
+}
+
+func (r *testRepo) CreateRuntimePack(_ context.Context, _ store.Scope, x RuntimePackRecord) error {
+	if r.runtimePacks == nil {
+		r.runtimePacks = map[string]RuntimePackRecord{}
+	}
+	r.runtimePacks[x.Pack.Digest] = x
+	return nil
+}
+func (r *testRepo) ReviewRuntimePack(_ context.Context, _ store.Scope, v RuntimePackReview) (RuntimePackRecord, error) {
+	x, ok := r.runtimePacks[v.PackDigest]
+	if !ok || x.State != Draft || x.Author == v.Reviewer || x.Pack.ID != v.PackID || x.Pack.Revision != v.PackRevision || x.Digest != v.RuntimeDigest || x.Config.Digest != v.ConfigurationDigest || x.Config.Model != v.Model || x.Config.SystemInstruction != v.SystemInstruction || x.Config.AttemptCostUSD != v.MaxAttemptCostUSD || len(x.Config.Models) != len(v.Models) {
+		return x, store.ErrConflict
+	}
+	for i := range x.Config.Models {
+		if x.Config.Models[i] != v.Models[i] {
+			return x, store.ErrConflict
+		}
+	}
+	x.State, x.Review = v.Decision, &v
+	r.runtimePacks[v.PackDigest] = x
+	return x, nil
+}
+
+func TestRuntimePackIndependentReviewRejectsTamperAndUnderstatement(t *testing.T) {
+	s := testSuite()
+	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
+	svc, _ := New(repo, nil, func() time.Time { return time.Unix(12, 0) })
+	cfg := testRuntimeConfig(s.Packs[0].Model)
+	draft, err := svc.AuthorRuntimePack(context.Background(), testAuthority(t, "actor", false), s.Packs[0], cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact := RuntimePackReviewRequest{PackID: s.Packs[0].ID, PackRevision: s.Packs[0].Revision, RuntimeDigest: draft.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, Models: cfg.Models, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: Accepted}
+	selfReviewer, selfErr := identity.FromVerified("tenant", "actor", "session", []string{"ops.audit", "cw.tenant.certify:tenant"}, time.Now().Add(time.Hour), time.Now)
+	if selfErr != nil {
+		t.Fatal(selfErr)
+	}
+	if _, err = svc.ReviewRuntimePack(context.Background(), selfReviewer, s.Packs[0].Digest, exact); err == nil {
+		t.Fatal("same actor accepted its runtime pack")
+	}
+	understated := exact
+	understated.MaxAttemptCostUSD = 0.001
+	if _, err = svc.ReviewRuntimePack(context.Background(), testAuthority(t, "reviewer", false), s.Packs[0].Digest, understated); err == nil {
+		t.Fatal("understated cost accepted")
+	}
+	tampered := exact
+	tampered.ConfigurationDigest = strings.Repeat("b", 64)
+	if _, err = svc.ReviewRuntimePack(context.Background(), testAuthority(t, "reviewer", false), s.Packs[0].Digest, tampered); err == nil {
+		t.Fatal("tampered configuration accepted")
+	}
+	tampered = exact
+	tampered.SystemInstruction = "different instruction"
+	if _, err = svc.ReviewRuntimePack(context.Background(), testAuthority(t, "reviewer", false), s.Packs[0].Digest, tampered); err == nil {
+		t.Fatal("tampered instruction accepted")
+	}
+	wrongModel := exact
+	wrongModel.Model = "other-model"
+	if _, err = svc.ReviewRuntimePack(context.Background(), testAuthority(t, "reviewer", false), s.Packs[0].Digest, wrongModel); err == nil {
+		t.Fatal("model mismatch accepted")
+	}
+	if _, err = svc.ReviewRuntimePack(context.Background(), testAuthority(t, "reviewer", false), strings.Repeat("c", 64), exact); err == nil {
+		t.Fatal("stale pack revision accepted")
+	}
+	accepted, err := svc.ReviewRuntimePack(context.Background(), testAuthority(t, "reviewer", false), s.Packs[0].Digest, exact)
+	if err != nil || accepted.State != Accepted || accepted.Review == nil || accepted.Review.MaxAttemptCostUSD != cfg.AttemptCostUSD {
+		t.Fatal(accepted, err)
+	}
+	if _, err = svc.AuthorRuntimePack(context.Background(), testAuthority(t, "actor", false), s.Packs[0], gateway.RuntimeConfig{Model: cfg.Model}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("unknown cost accepted", err)
+	}
+	if raw, _ := json.Marshal(LiveInput{Pack: s.Packs[0]}); bytes.Contains(raw, []byte("attempt_cost_usd")) || bytes.Contains(raw, []byte("runtime_config")) {
+		t.Fatal("live input can carry runtime cost", string(raw))
+	}
+}
+
+type reservingRoute struct{ calls int }
+
+func (r *reservingRoute) Route(ctx context.Context, e identity.Envelope, _ nlqroute.RouteRequest) (nlqroute.RouteResult, error) {
+	call, err := gateway.Authorize(e, "ops.write", "evaluation", access.Tenant(e, "write"))
+	if err != nil {
+		return nlqroute.RouteResult{}, err
+	}
+	budget, err := gateway.NewBudget(call, gateway.Limits{Calls: 1, Tokens: 10, Duration: time.Minute})
+	if err != nil {
+		return nlqroute.RouteResult{}, err
+	}
+	if err = gateway.ReserveAttempt(ctx, budget, call, 1); err != nil {
+		return nlqroute.RouteResult{}, err
+	}
+	r.calls++
+	return nlqroute.RouteResult{}, nil
+}
+
+func TestAcceptedServerCostStopsProviderBeforeOverCap(t *testing.T) {
+	s := testSuite()
+	s.Mode = Live
+	s.Cases = []Case{s.Cases[0]}
+	s.Cases[0].Fixture = nil
+	s.Limits.Cases, s.Limits.Calls, s.Limits.Tokens, s.Limits.Retries = 1, 1, 10, 0
+	cap := 0.005
+	s.Limits.CostUSD = &cap
+	s.Provenance.DialectMatrix[0].Mode = Live
+	repo := &testRepo{reports: map[string]Report{}, suites: map[string]SuiteRecord{}, exports: map[string]CandidateExport{}, proposals: map[string]OptimizationProposal{}}
+	svc, _ := New(repo, nil, time.Now)
+	author, reviewer := testAuthority(t, "actor", false), testAuthority(t, "reviewer", false)
+	cfg := testRuntimeConfig(s.Packs[0].Model)
+	runtime, err := svc.AuthorRuntimePack(context.Background(), author, s.Packs[0], cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.ReviewRuntimePack(context.Background(), reviewer, s.Packs[0].Digest, RuntimePackReviewRequest{PackID: s.Packs[0].ID, PackRevision: s.Packs[0].Revision, RuntimeDigest: runtime.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: Accepted}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := svc.Author(context.Background(), author, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Review(context.Background(), reviewer, s.ID, SuiteReviewRequest{Revision: s.Revision, Digest: draft.Digest, Decision: Accepted}); err != nil {
+		t.Fatal(err)
+	}
+	input := LiveInput{Pack: s.Packs[0], Route: &nlqroute.RouteRequest{}}
+	provider := &reservingRoute{}
+	runner := &GovernedRunner{Inputs: staticInputResolver{input}, Routing: provider}
+	report, err := svc.Run(context.Background(), author, RunRequest{RunID: "cost-cap", SuiteID: s.ID, SuiteRevision: s.Revision, SuiteDigest: draft.Digest, PackDigest: s.Packs[0].Digest}, runner)
+	if !errors.Is(err, ErrBudget) || report.Status != "budget_exhausted" || provider.calls != 0 {
+		t.Fatal(report, provider.calls, err)
+	}
+}
+func (r *testRepo) AcceptedRuntimePack(_ context.Context, _ store.Scope, pack, config string) (RuntimePackRecord, error) {
+	x, ok := r.runtimePacks[pack]
+	if !ok || x.State != Accepted || x.Config.Digest != config {
+		return x, store.ErrNotFound
+	}
+	return x, nil
 }
 
 func (r *testRepo) CreateSuite(_ context.Context, _ store.Scope, v SuiteRecord) error {
@@ -368,6 +505,14 @@ func TestAcceptedLifecycleAndEarlyBudgetEvidence(t *testing.T) {
 	}
 	suite.Provenance.DialectMatrix[0].Mode = Live
 	suite.Limits.Calls = 1
+	cfg := testRuntimeConfig(suite.Packs[0].Model)
+	runtime, err := svc.AuthorRuntimePack(context.Background(), testAuthority(t, "actor", false), suite.Packs[0], cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.ReviewRuntimePack(context.Background(), testAuthority(t, "reviewer", false), suite.Packs[0].Digest, RuntimePackReviewRequest{PackID: suite.Packs[0].ID, PackRevision: suite.Packs[0].Revision, RuntimeDigest: runtime.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, Models: cfg.Models, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: Accepted}); err != nil {
+		t.Fatal(err)
+	}
 	draft, err := svc.Author(context.Background(), testAuthority(t, "actor", false), suite)
 	if err != nil {
 		t.Fatal(err)
@@ -585,9 +730,9 @@ func TestGovernedRunnerExercisesSixAdversarialBoundaries(t *testing.T) {
 	s := testSuite()
 	q, reports, byo := &adversarialQuery{}, &adversarialReports{}, &adversarialBYO{}
 	question, submit := &nlqexec.QuestionRequest{}, &nlqbyo.SubmitRequest{}
-	in := LiveInput{Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Question: question, BYO: submit, ReportID: "denied"}
+	in := LiveInput{Pack: s.Packs[0], Question: question, BYO: submit, ReportID: "denied"}
 	runner := &GovernedRunner{Inputs: staticInputResolver{in: in}, Query: q, Reports: reports, BYO: byo}
-	x := Execution{Suite: s, Pack: s.Packs[0], Reservation: Reservation{Calls: 4, Tokens: 100, Retries: 2, Deadline: time.Now().Add(time.Minute)}, Envelope: testAuthority(t, "actor", false)}
+	x := Execution{Suite: s, Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Reservation: Reservation{Calls: 4, Tokens: 100, Retries: 2, Deadline: time.Now().Add(time.Minute)}, Envelope: testAuthority(t, "actor", false)}
 	for _, category := range []string{"identity_scope", "injection", "dialect_escape", "resource_exhaustion", "byo"} {
 		x.Case = Case{Stage: StageAdversarial, Category: category, Input: ProtectedRef{Digest: testDigest, Retention: "protected"}}
 		o, err := runner.Observe(context.Background(), x)
@@ -617,8 +762,8 @@ func TestFailureReportAndLiveRunnerBoundaries(t *testing.T) {
 	if _, err = (*GovernedRunner)(nil).Observe(context.Background(), Execution{}); !errors.Is(err, ErrMode) {
 		t.Fatal(err)
 	}
-	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model)}}}
-	_, err = g.Observe(context.Background(), Execution{Suite: s, Pack: s.Packs[0], Case: s.Cases[0], Envelope: testAuthority(t, "actor", false)})
+	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0]}}}
+	_, err = g.Observe(context.Background(), Execution{Suite: s, Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Case: s.Cases[0], Envelope: testAuthority(t, "actor", false)})
 	if !errors.Is(err, ErrMode) {
 		t.Fatal(err)
 	}
@@ -648,8 +793,8 @@ func TestGovernedRunnerUsesRetainedReplayAndShadow(t *testing.T) {
 	s := testSuite()
 	inspector := &savedInspector{}
 	q := nlqexec.SavedQuestion{Durability: "session_bound", Context: "context", Query: "query"}
-	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Replay: &q, Shadow: &ShadowInput{Baseline: q, Candidate: q}}}, Saved: inspector}
-	x := Execution{Suite: s, Pack: s.Packs[0], Reservation: Reservation{Calls: 1, Tokens: 1, Deadline: time.Now().Add(time.Minute)}, Envelope: testAuthority(t, "actor", false)}
+	g := &GovernedRunner{Inputs: staticInputResolver{LiveInput{Pack: s.Packs[0], Replay: &q, Shadow: &ShadowInput{Baseline: q, Candidate: q}}}, Saved: inspector}
+	x := Execution{Suite: s, Pack: s.Packs[0], RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Reservation: Reservation{Calls: 1, Tokens: 1, Deadline: time.Now().Add(time.Minute)}, Envelope: testAuthority(t, "actor", false)}
 	x.Case = Case{Stage: StageReplay, Input: ProtectedRef{Digest: testDigest, Retention: "protected"}}
 	if o, err := g.Observe(context.Background(), x); err != nil || !validDigest(o.SemanticDigest) || inspector.calls != 1 {
 		t.Fatal(o, inspector.calls, err)
@@ -689,7 +834,7 @@ func TestPackExportAndAdversarialBoundaryHelpers(t *testing.T) {
 		t.Fatal("provider receipt was not bound to requested pack model")
 	}
 	called := false
-	a := authorityRunner{Envelope: testAuthority(t, "actor", false), Next: RunnerFunc(func(_ context.Context, x Execution) (Observation, error) {
+	a := authorityRunner{Envelope: testAuthority(t, "actor", false), RuntimeConfig: testRuntimeConfig(s.Packs[0].Model), Next: RunnerFunc(func(_ context.Context, x Execution) (Observation, error) {
 		called = x.Envelope.Valid()
 		return Observation{Decision: "ok", SemanticDigest: testDigest}, nil
 	})}

@@ -17,6 +17,83 @@ import (
 var _ evaluation.Repository = (*DB)(nil)
 var _ evaluation.LiveInputResolver = (*DB)(nil)
 
+// CreateRuntimePack persists one immutable server-owned runtime configuration draft.
+func (d *DB) CreateRuntimePack(ctx context.Context, scope store.Scope, r evaluation.RuntimePackRecord) error {
+	if checkScope(scope) != nil || r.Validate() != nil || r.State != evaluation.Draft || r.Author != scope.Actor() || r.Review != nil {
+		return store.ErrInvalid
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return store.ErrInvalid
+	}
+	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `INSERT INTO chartworks.evaluation_runtime_packs(tenant_id,pack_digest,configuration_digest,runtime_digest,material,state,author_id,created_at) VALUES($1,$2,$3,$4,$5::jsonb,'draft',$6,$7) ON CONFLICT DO NOTHING`, scope.Tenant(), r.Pack.Digest, r.Pack.ConfigurationDigest, r.Digest, raw, r.Author, r.CreatedAt)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return store.ErrConflict
+		}
+		return nil
+	})
+}
+
+// ReviewRuntimePack atomically verifies the reviewer-visible effective routing and cost.
+func (d *DB) ReviewRuntimePack(ctx context.Context, scope store.Scope, review evaluation.RuntimePackReview) (out evaluation.RuntimePackRecord, err error) {
+	if checkScope(scope) != nil || review.Reviewer != scope.Actor() {
+		return out, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var raw []byte
+		var author, state, runtimeDigest, configDigest string
+		if err := tx.QueryRow(ctx, `SELECT material,author_id,state,runtime_digest,configuration_digest FROM chartworks.evaluation_runtime_packs WHERE tenant_id=$1 AND pack_digest=$2 FOR UPDATE`, scope.Tenant(), review.PackDigest).Scan(&raw, &author, &state, &runtimeDigest, &configDigest); err != nil {
+			return err
+		}
+		if state != "draft" || author == review.Reviewer || runtimeDigest != review.RuntimeDigest || configDigest != review.ConfigurationDigest || json.Unmarshal(raw, &out) != nil {
+			return store.ErrConflict
+		}
+		if out.Pack.ID != review.PackID || out.Pack.Revision != review.PackRevision || out.Pack.Digest != review.PackDigest || out.Pack.ConfigurationDigest != review.ConfigurationDigest || out.Pack.Model != review.Model || out.Config.Model != review.Model || out.Config.SystemInstruction != review.SystemInstruction || out.Config.AttemptCostUSD != review.MaxAttemptCostUSD || len(out.Config.Models) != len(review.Models) {
+			return store.ErrConflict
+		}
+		for i := range out.Config.Models {
+			if out.Config.Models[i] != review.Models[i] {
+				return store.ErrConflict
+			}
+		}
+		reviewRaw, _ := json.Marshal(review)
+		tag, err := tx.Exec(ctx, `UPDATE chartworks.evaluation_runtime_packs SET state=$4,review=$5::jsonb WHERE tenant_id=$1 AND pack_digest=$2 AND runtime_digest=$3 AND state='draft'`, scope.Tenant(), review.PackDigest, review.RuntimeDigest, review.Decision, reviewRaw)
+		if err != nil || tag.RowsAffected() != 1 {
+			return store.ErrConflict
+		}
+		out.State, out.Review = review.Decision, &review
+		return nil
+	})
+	return out, err
+}
+
+// AcceptedRuntimePack resolves only an accepted exact pack/configuration binding.
+func (d *DB) AcceptedRuntimePack(ctx context.Context, scope store.Scope, packDigest, configDigest string) (out evaluation.RuntimePackRecord, err error) {
+	if checkScope(scope) != nil {
+		return out, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var raw, reviewRaw []byte
+		var state string
+		if err := tx.QueryRow(ctx, `SELECT material,state,review FROM chartworks.evaluation_runtime_packs WHERE tenant_id=$1 AND pack_digest=$2 AND configuration_digest=$3 AND state='accepted'`, scope.Tenant(), packDigest, configDigest).Scan(&raw, &state, &reviewRaw); err != nil {
+			return err
+		}
+		if json.Unmarshal(raw, &out) != nil || json.Unmarshal(reviewRaw, &out.Review) != nil {
+			return store.ErrMigration
+		}
+		out.State = evaluation.Lifecycle(state)
+		if out.Validate() != nil {
+			return store.ErrMigration
+		}
+		return nil
+	})
+	return out, err
+}
+
 // SaveInput stores protected live material under its canonical digest.
 func (d *DB) SaveInput(ctx context.Context, scope store.Scope, ref evaluation.ProtectedRef, in evaluation.LiveInput) error {
 	if checkScope(scope) != nil {

@@ -9,6 +9,8 @@ import (
 	"errors"
 	"sort"
 	"time"
+
+	"github.com/hurtener/chartworks/internal/gateway"
 )
 
 var (
@@ -131,6 +133,89 @@ type PackRevision struct {
 type PackModel struct {
 	Role  string `json:"role"`
 	Model string `json:"model"`
+}
+
+// RuntimePackRecord is the server-owned reviewed gateway configuration for one
+// exact pack revision. Evaluation inputs never carry this material.
+type RuntimePackRecord struct {
+	Pack      PackRevision          `json:"pack"`
+	Config    gateway.RuntimeConfig `json:"config"`
+	Digest    string                `json:"digest"`
+	State     Lifecycle             `json:"state"`
+	Author    string                `json:"author"`
+	CreatedAt time.Time             `json:"created_at"`
+	Review    *RuntimePackReview    `json:"review,omitempty"`
+}
+
+// RuntimePackAuthorRequest proposes exact runtime material for independent review.
+type RuntimePackAuthorRequest struct {
+	Pack   PackRevision          `json:"pack"`
+	Config gateway.RuntimeConfig `json:"config"`
+}
+
+// RuntimePackReview binds a distinct reviewer to the exact effective model,
+// role bindings, instruction configuration, and pessimistic per-attempt cost.
+type RuntimePackReview struct {
+	PackID              string                 `json:"pack_id"`
+	PackRevision        int64                  `json:"pack_revision"`
+	PackDigest          string                 `json:"pack_digest"`
+	RuntimeDigest       string                 `json:"runtime_digest"`
+	ConfigurationDigest string                 `json:"configuration_digest"`
+	Model               string                 `json:"model"`
+	Models              []gateway.RuntimeModel `json:"models,omitempty"`
+	SystemInstruction   string                 `json:"system_instruction"`
+	MaxAttemptCostUSD   float64                `json:"max_attempt_cost_usd"`
+	Decision            Lifecycle              `json:"decision"`
+	Reviewer            string                 `json:"reviewer"`
+	ReviewedAt          time.Time              `json:"reviewed_at"`
+}
+
+// RuntimePackReviewRequest makes cost and routing material explicit at review;
+// accepting a digest alone is insufficient.
+type RuntimePackReviewRequest struct {
+	PackID              string                 `json:"pack_id"`
+	PackRevision        int64                  `json:"pack_revision"`
+	RuntimeDigest       string                 `json:"runtime_digest"`
+	ConfigurationDigest string                 `json:"configuration_digest"`
+	Model               string                 `json:"model"`
+	Models              []gateway.RuntimeModel `json:"models,omitempty"`
+	SystemInstruction   string                 `json:"system_instruction"`
+	MaxAttemptCostUSD   float64                `json:"max_attempt_cost_usd"`
+	Decision            Lifecycle              `json:"decision"`
+}
+
+func runtimePackDigest(pack PackRevision, cfg gateway.RuntimeConfig) string {
+	d, _ := digest(struct {
+		Pack   PackRevision          `json:"pack"`
+		Config gateway.RuntimeConfig `json:"config"`
+	}{pack, cfg})
+	return d
+}
+
+func validRuntimePack(r RuntimePackRecord) bool {
+	if !validPack(r.Pack) || gateway.ConfigurationDigest(r.Config) != r.Config.Digest || r.Config.Digest != r.Pack.ConfigurationDigest || !packModelsMatchConfig(r.Pack, r.Config) || r.Config.AttemptCostUSD <= 0 || r.Config.AttemptCostUSD > 1000000 || r.Digest != runtimePackDigest(r.Pack, r.Config) || !identifier(r.Author) || r.CreatedAt.IsZero() {
+		return false
+	}
+	if r.State == Draft {
+		return r.Review == nil
+	}
+	if (r.State != Accepted && r.State != Rejected) || r.Review == nil || r.Review.PackID != r.Pack.ID || r.Review.PackRevision != r.Pack.Revision || r.Review.PackDigest != r.Pack.Digest || r.Review.RuntimeDigest != r.Digest || r.Review.ConfigurationDigest != r.Config.Digest || r.Review.Model != r.Config.Model || r.Review.SystemInstruction != r.Config.SystemInstruction || r.Review.MaxAttemptCostUSD != r.Config.AttemptCostUSD || r.Review.Decision != r.State || !identifier(r.Review.Reviewer) || r.Review.ReviewedAt.IsZero() || len(r.Review.Models) != len(r.Config.Models) {
+		return false
+	}
+	for i := range r.Config.Models {
+		if r.Config.Models[i] != r.Review.Models[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Validate checks the immutable runtime pack and its lifecycle binding.
+func (r RuntimePackRecord) Validate() error {
+	if !validRuntimePack(r) {
+		return ErrInvalid
+	}
+	return nil
 }
 
 // CanonicalDigest binds a pack identity to its exact prompt/model/configuration revision.

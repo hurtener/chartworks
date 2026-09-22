@@ -23,9 +23,23 @@ type EvaluationSuiteRecord = evaluation.SuiteRecord
 // EvaluationSuiteReviewRequest pins a decision to exact suite material.
 type EvaluationSuiteReviewRequest = evaluation.SuiteReviewRequest
 
+// EvaluationRuntimePackAuthorRequest proposes server-owned runtime material.
+type EvaluationRuntimePackAuthorRequest = evaluation.RuntimePackAuthorRequest
+
+// EvaluationRuntimePackRecord includes its independent review lifecycle.
+type EvaluationRuntimePackRecord = evaluation.RuntimePackRecord
+
+// EvaluationRuntimePackReviewRequest makes reviewed routing and cost explicit.
+type EvaluationRuntimePackReviewRequest = evaluation.RuntimePackReviewRequest
+
 type evaluationSuiteReviewInput struct {
 	SuiteID string                       `json:"suite_id"`
 	Request EvaluationSuiteReviewRequest `json:"request"`
+}
+
+type evaluationRuntimePackReviewInput struct {
+	PackDigest string                             `json:"pack_digest"`
+	Request    EvaluationRuntimePackReviewRequest `json:"request"`
 }
 
 // EvaluationReadRequest selects one retained run.
@@ -86,6 +100,28 @@ func (c *Client) AuthorEvaluationSuite(ctx context.Context, in EvaluationSuite) 
 		return out, err
 	}
 	err = c.exchange(ctx, "POST", "/v1/evaluations/suites", "", "application/json", bytes.NewReader(raw), &out, 1<<20, wireOptions{})
+	return out, err
+}
+
+// AuthorEvaluationRuntimePack stores one immutable runtime configuration draft.
+func (c *Client) AuthorEvaluationRuntimePack(ctx context.Context, in EvaluationRuntimePackAuthorRequest) (EvaluationRuntimePackRecord, error) {
+	var out EvaluationRuntimePackRecord
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return out, err
+	}
+	err = c.exchange(ctx, "POST", "/v1/evaluations/runtime-packs", "", "application/json", bytes.NewReader(raw), &out, 1<<20, wireOptions{})
+	return out, err
+}
+
+// ReviewEvaluationRuntimePack accepts exact visible routing/configuration/cost material.
+func (c *Client) ReviewEvaluationRuntimePack(ctx context.Context, packDigest string, in EvaluationRuntimePackReviewRequest) (EvaluationRuntimePackRecord, error) {
+	var out EvaluationRuntimePackRecord
+	raw, err := json.Marshal(evaluationRuntimePackReviewInput{PackDigest: packDigest, Request: in})
+	if err != nil {
+		return out, err
+	}
+	err = c.exchange(ctx, "POST", "/v1/evaluations/runtime-packs/review", "", "application/json", bytes.NewReader(raw), &out, 1<<20, wireOptions{})
 	return out, err
 }
 

@@ -22,17 +22,16 @@ import (
 
 // LiveInput is protected execution material. It is never retained in reports or logs.
 type LiveInput struct {
-	Pack          PackRevision                `json:"pack"`
-	RuntimeConfig gateway.RuntimeConfig       `json:"runtime_config"`
-	Route         *nlqroute.RouteRequest      `json:"route,omitempty"`
-	Question      *nlqexec.QuestionRequest    `json:"question,omitempty"`
-	Run           *nlqexec.RunRequest         `json:"run,omitempty"`
-	Replay        *nlqexec.SavedQuestion      `json:"replay,omitempty"`
-	Shadow        *ShadowInput                `json:"shadow,omitempty"`
-	BYO           *nlqbyo.SubmitRequest       `json:"byo,omitempty"`
-	Chart         *chartservice.SelectRequest `json:"chart,omitempty"`
-	ReportID      string                      `json:"report_id,omitempty"`
-	ReportRef     reporting.Reference         `json:"report_ref,omitempty"`
+	Pack      PackRevision                `json:"pack"`
+	Route     *nlqroute.RouteRequest      `json:"route,omitempty"`
+	Question  *nlqexec.QuestionRequest    `json:"question,omitempty"`
+	Run       *nlqexec.RunRequest         `json:"run,omitempty"`
+	Replay    *nlqexec.SavedQuestion      `json:"replay,omitempty"`
+	Shadow    *ShadowInput                `json:"shadow,omitempty"`
+	BYO       *nlqbyo.SubmitRequest       `json:"byo,omitempty"`
+	Chart     *chartservice.SelectRequest `json:"chart,omitempty"`
+	ReportID  string                      `json:"report_id,omitempty"`
+	ReportRef reporting.Reference         `json:"report_ref,omitempty"`
 }
 
 // ShadowInput compares two retained definitions without fresh planning or provider work.
@@ -106,10 +105,10 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	if !validPack(in.Pack) || wantPack != gotPack {
 		return Observation{Usage: reservation.usage()}, ErrReview
 	}
-	if in.RuntimeConfig.Digest != x.Pack.ConfigurationDigest || !packModelsMatchConfig(x.Pack, in.RuntimeConfig) {
+	if x.RuntimeConfig.Digest != x.Pack.ConfigurationDigest || !packModelsMatchConfig(x.Pack, x.RuntimeConfig) {
 		return Observation{Usage: reservation.usage()}, ErrReview
 	}
-	ctx, err = gateway.WithRuntimeConfig(ctx, in.RuntimeConfig)
+	ctx, err = gateway.WithRuntimeConfig(ctx, x.RuntimeConfig)
 	if err != nil {
 		return Observation{Usage: reservation.usage()}, ErrReview
 	}

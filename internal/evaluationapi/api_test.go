@@ -18,6 +18,7 @@ import (
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/evaluation"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -27,6 +28,23 @@ type apiRepo struct {
 	s     evaluation.SuiteRecord
 	r     map[string]evaluation.Report
 	input bool
+	pack  evaluation.RuntimePackRecord
+}
+
+func (x *apiRepo) CreateRuntimePack(_ context.Context, _ store.Scope, v evaluation.RuntimePackRecord) error {
+	x.pack = v
+	return nil
+}
+func (x *apiRepo) ReviewRuntimePack(_ context.Context, _ store.Scope, v evaluation.RuntimePackReview) (evaluation.RuntimePackRecord, error) {
+	x.pack.State = v.Decision
+	x.pack.Review = &v
+	return x.pack, nil
+}
+func (x *apiRepo) AcceptedRuntimePack(context.Context, store.Scope, string, string) (evaluation.RuntimePackRecord, error) {
+	if x.pack.State != evaluation.Accepted {
+		return x.pack, store.ErrNotFound
+	}
+	return x.pack, nil
 }
 
 func (x *apiRepo) CreateSuite(_ context.Context, _ store.Scope, v evaluation.SuiteRecord) error {
@@ -101,7 +119,7 @@ func TestRegistryIncludesReviewedLifecycleAndRunConsumers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"registerEvaluationInput": false, "authorEvaluationSuite": false, "reviewEvaluationSuite": false, "runEvaluation": false, "readEvaluation": false, "cancelEvaluation": false, "recoverEvaluation": false, "exportEvaluationFeedback": false, "reviewEvaluationSplit": false, "proposeEvaluationOptimization": false, "reviewEvaluationOptimization": false, "selectEvaluationPack": false}
+	want := map[string]bool{"registerEvaluationInput": false, "authorEvaluationRuntimePack": false, "reviewEvaluationRuntimePack": false, "authorEvaluationSuite": false, "reviewEvaluationSuite": false, "runEvaluation": false, "readEvaluation": false, "cancelEvaluation": false, "recoverEvaluation": false, "exportEvaluationFeedback": false, "reviewEvaluationSplit": false, "proposeEvaluationOptimization": false, "reviewEvaluationOptimization": false, "selectEvaluationPack": false}
 	for _, v := range r.Definitions() {
 		if _, ok := want[v.ID]; ok {
 			want[v.ID] = true
@@ -121,7 +139,9 @@ func TestHTTPReviewedSuiteRunAndRead(t *testing.T) {
 	defer server.Close()
 	q := 1.0
 	obs := evaluation.Observation{Decision: "ok", SemanticDigest: d}
-	pack := evaluation.PackRevision{ID: "default", Revision: 1, Model: "model-v1", ConfigurationDigest: d}
+	cfg := gateway.RuntimeConfig{Model: "model-v1", SystemInstruction: "reviewed", AttemptCostUSD: 0.01}
+	cfg.Digest = gateway.ConfigurationDigest(cfg)
+	pack := evaluation.PackRevision{ID: "default", Revision: 1, Model: "model-v1", ConfigurationDigest: cfg.Digest}
 	pack.Digest = pack.CanonicalDigest()
 	suite := evaluation.Suite{SchemaVersion: 1, ID: "suite", Revision: 1, Mode: evaluation.Fixture, Seed: 1, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 1, Calls: 1, Tokens: 1, DurationMS: 1000}, Provenance: evaluation.Provenance{Implementation: "head", EnvironmentDigest: d, ConfigurationDigest: d, SemanticVersion: "v1", RuleVersion: "v1", SourceSnapshot: d, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: evaluation.Fixture, EvidenceDigest: d, Status: "measured"}}}, Packs: []evaluation.PackRevision{pack}, Frontiers: []string{"EVAL-01"}, Cases: []evaluation.Case{{ID: "case", Stage: evaluation.StageRouting, Locale: "en", HeldOut: true, Input: evaluation.ProtectedRef{Digest: d, Retention: "protected"}, Expected: []evaluation.Expected{{Decision: "ok", SemanticDigest: d}}, Fixture: &obs}}}
 	author := apiToken(t, key, issuer, now, "author", []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant"})
@@ -134,9 +154,25 @@ func TestHTTPReviewedSuiteRunAndRead(t *testing.T) {
 	if !repo.input || inputRef.Digest == "" {
 		t.Fatal("protected input consumer not wired", inputRef)
 	}
+	legacyMaterial, _ := json.Marshal(map[string]any{"pack": pack, "runtime_config": cfg})
+	legacyRequest, _ := json.Marshal(ProtectedInputRequest{Retention: "protected", Material: string(legacyMaterial)})
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/v1/evaluations/inputs", bytes.NewReader(legacyRequest))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+author)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatal("caller-supplied runtime cost accepted", resp.StatusCode)
+	}
 	var draft evaluation.SuiteRecord
 	apiPost(t, server.URL+"/v1/evaluations/suites", author, suite, &draft)
 	reviewer := apiToken(t, key, issuer, now, "reviewer", []string{"ops.audit", "cw.tenant.certify:tenant"})
+	var runtimeDraft evaluation.RuntimePackRecord
+	apiPost(t, server.URL+"/v1/evaluations/runtime-packs", author, evaluation.RuntimePackAuthorRequest{Pack: pack, Config: cfg}, &runtimeDraft)
+	apiPost(t, server.URL+"/v1/evaluations/runtime-packs/review", reviewer, RuntimePackReviewInput{PackDigest: pack.Digest, Request: evaluation.RuntimePackReviewRequest{PackID: pack.ID, PackRevision: pack.Revision, RuntimeDigest: runtimeDraft.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: evaluation.Accepted}}, &evaluation.RuntimePackRecord{})
 	var accepted evaluation.SuiteRecord
 	apiPost(t, server.URL+"/v1/evaluations/suites/review", reviewer, SuiteReviewInput{SuiteID: "suite", Request: evaluation.SuiteReviewRequest{Revision: 1, Digest: draft.Digest, Decision: evaluation.Accepted}}, &accepted)
 	var report evaluation.Report
@@ -171,11 +207,16 @@ func TestHTTPLiveAdversarialReplayShadowRetainsTerminalReport(t *testing.T) {
 	for _, stage := range []evaluation.Stage{evaluation.StageReplay, evaluation.StageShadow} {
 		cases = append(cases, evaluation.Case{ID: "case-" + string(stage), Stage: stage, Locale: "es", HeldOut: true, Input: evaluation.ProtectedRef{Digest: d, Retention: "protected"}, Expected: []evaluation.Expected{{Decision: "retained", SemanticDigest: d}}})
 	}
-	pack := evaluation.PackRevision{ID: "default", Revision: 1, Model: "model-v1", ConfigurationDigest: d}
+	cfg := gateway.RuntimeConfig{Model: "model-v1", SystemInstruction: "reviewed", AttemptCostUSD: 0.01}
+	cfg.Digest = gateway.ConfigurationDigest(cfg)
+	pack := evaluation.PackRevision{ID: "default", Revision: 1, Model: "model-v1", ConfigurationDigest: cfg.Digest}
 	pack.Digest = pack.CanonicalDigest()
 	suite := evaluation.Suite{SchemaVersion: 1, ID: "live-suite", Revision: 1, Mode: evaluation.Live, Seed: 2, Calibration: "reviewed", Threshold: evaluation.Threshold{QualityMin: &q}, Limits: evaluation.Limits{Cases: 8, Calls: 8, Tokens: 8, Retries: 1, DurationMS: 1000}, Provenance: evaluation.Provenance{Implementation: "head", EnvironmentDigest: d, ConfigurationDigest: d, SemanticVersion: "v1", RuleVersion: "v1", SourceSnapshot: d, DialectMatrix: []evaluation.DialectEvidence{{Engine: "postgres", Dialect: "postgres", Mode: evaluation.Live, EvidenceDigest: d, Status: "measured"}}}, Packs: []evaluation.PackRevision{pack}, Frontiers: []string{"EVAL-01"}, Cases: cases}
 	author := apiToken(t, key, issuer, now, "author", []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant"})
 	reviewer := apiToken(t, key, issuer, now, "reviewer", []string{"ops.audit", "cw.tenant.certify:tenant"})
+	var runtimeDraft evaluation.RuntimePackRecord
+	apiPost(t, server.URL+"/v1/evaluations/runtime-packs", author, evaluation.RuntimePackAuthorRequest{Pack: pack, Config: cfg}, &runtimeDraft)
+	apiPost(t, server.URL+"/v1/evaluations/runtime-packs/review", reviewer, RuntimePackReviewInput{PackDigest: pack.Digest, Request: evaluation.RuntimePackReviewRequest{PackID: pack.ID, PackRevision: pack.Revision, RuntimeDigest: runtimeDraft.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: cfg.AttemptCostUSD, Decision: evaluation.Accepted}}, &evaluation.RuntimePackRecord{})
 	var draft evaluation.SuiteRecord
 	apiPost(t, server.URL+"/v1/evaluations/suites", author, suite, &draft)
 	apiPost(t, server.URL+"/v1/evaluations/suites/review", reviewer, SuiteReviewInput{SuiteID: suite.ID, Request: evaluation.SuiteReviewRequest{Revision: 1, Digest: draft.Digest, Decision: evaluation.Accepted}}, &evaluation.SuiteRecord{})

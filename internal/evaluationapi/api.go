@@ -2,6 +2,7 @@
 package evaluationapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,6 +31,12 @@ type ReadRequest struct {
 type SuiteReviewInput struct {
 	SuiteID string                        `json:"suite_id"`
 	Request evaluation.SuiteReviewRequest `json:"request"`
+}
+
+// RuntimePackReviewInput binds a review to one exact pack revision.
+type RuntimePackReviewInput struct {
+	PackDigest string                              `json:"pack_digest"`
+	Request    evaluation.RuntimePackReviewRequest `json:"request"`
 }
 
 // CancelResult confirms durable cancellation intent.
@@ -82,6 +89,8 @@ func Registry() (*api.Registry, error) {
 		req, resp                                 reflect.Type
 	}{
 		{"authorEvaluationSuite", "/v1/evaluations/suites", "ops.write", "evaluation_suite_draft_commit", "Store one immutable evaluation suite draft", "evaluation.Service.Author", reflect.TypeFor[evaluation.Suite](), reflect.TypeFor[evaluation.SuiteRecord]()},
+		{"authorEvaluationRuntimePack", "/v1/evaluations/runtime-packs", "ops.write", "evaluation_runtime_pack_draft_commit", "Store one immutable evaluation runtime pack draft", "evaluation.Service.AuthorRuntimePack", reflect.TypeFor[evaluation.RuntimePackAuthorRequest](), reflect.TypeFor[evaluation.RuntimePackRecord]()},
+		{"reviewEvaluationRuntimePack", "/v1/evaluations/runtime-packs/review", "ops.audit", "evaluation_runtime_pack_review_commit", "Review exact model routing, configuration and pessimistic cost", "evaluation.Service.ReviewRuntimePack", reflect.TypeFor[RuntimePackReviewInput](), reflect.TypeFor[evaluation.RuntimePackRecord]()},
 		{"reviewEvaluationSuite", "/v1/evaluations/suites/review", "ops.audit", "evaluation_suite_review_commit", "Review one exact evaluation suite revision", "evaluation.Service.Review", reflect.TypeFor[SuiteReviewInput](), reflect.TypeFor[evaluation.SuiteRecord]()},
 		{"runEvaluation", "/v1/evaluations/runs", "ops.write", "evaluation_live_or_fixture_run", "Run one exact accepted evaluation suite revision", "evaluation.Service.Run", reflect.TypeFor[evaluation.RunRequest](), reflect.TypeFor[evaluation.Report]()},
 		{"readEvaluation", "/v1/evaluations/runs/read", "ops.read", "evaluation_evidence_read", "Read one retained evaluation report", "evaluation.Service.Read", reflect.TypeFor[ReadRequest](), reflect.TypeFor[evaluation.Report]()},
@@ -172,6 +181,18 @@ func Handler(verifier *auth.Verifier, svc *evaluation.Service, runner evaluation
 		}
 		var out any
 		switch d.ID {
+		case "authorEvaluationRuntimePack":
+			var in evaluation.RuntimePackAuthorRequest
+			err = decode(w, r, d.Request, &in)
+			if err == nil {
+				out, err = svc.AuthorRuntimePack(r.Context(), e, in.Pack, in.Config)
+			}
+		case "reviewEvaluationRuntimePack":
+			var in RuntimePackReviewInput
+			err = decode(w, r, d.Request, &in)
+			if err == nil {
+				out, err = svc.ReviewRuntimePack(r.Context(), e, in.PackDigest, in.Request)
+			}
 		case "authorEvaluationSuite":
 			var in evaluation.Suite
 			err = decode(w, r, d.Request, &in)
@@ -208,7 +229,9 @@ func Handler(verifier *auth.Verifier, svc *evaluation.Service, runner evaluation
 			err = decode(w, r, d.Request, &in)
 			if err == nil {
 				var material evaluation.LiveInput
-				if json.Unmarshal([]byte(in.Material), &material) != nil {
+				dec := json.NewDecoder(bytes.NewReader([]byte(in.Material)))
+				dec.DisallowUnknownFields()
+				if dec.Decode(&material) != nil || dec.Decode(&struct{}{}) != io.EOF {
 					err = evaluation.ErrInvalid
 				} else {
 					out, err = svc.RegisterInput(r.Context(), e, in.Retention, material)

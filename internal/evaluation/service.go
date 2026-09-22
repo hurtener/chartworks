@@ -6,12 +6,16 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
 // Repository persists immutable revisions, review receipts, and terminal run evidence.
 type Repository interface {
+	CreateRuntimePack(context.Context, store.Scope, RuntimePackRecord) error
+	ReviewRuntimePack(context.Context, store.Scope, RuntimePackReview) (RuntimePackRecord, error)
+	AcceptedRuntimePack(context.Context, store.Scope, string, string) (RuntimePackRecord, error)
 	CreateSuite(context.Context, store.Scope, SuiteRecord) error
 	SaveInput(context.Context, store.Scope, ProtectedRef, LiveInput) error
 	ReviewSuite(context.Context, store.Scope, SuiteReview) (SuiteRecord, error)
@@ -31,6 +35,40 @@ type Repository interface {
 	ReviewProposal(context.Context, store.Scope, ReviewReceipt) error
 	SelectPack(context.Context, store.Scope, PackSelection, int64) (PackSelection, error)
 	SelectedPack(context.Context, store.Scope) (PackSelection, error)
+}
+
+// AuthorRuntimePack stores an immutable server-owned runtime configuration draft.
+func (s *Service) AuthorRuntimePack(ctx context.Context, e identity.Envelope, pack PackRevision, cfg gateway.RuntimeConfig) (RuntimePackRecord, error) {
+	if ctx == nil {
+		return RuntimePackRecord{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return RuntimePackRecord{}, err
+	}
+	pack.Models = append([]PackModel(nil), pack.Models...)
+	cfg.Models = append([]gateway.RuntimeModel(nil), cfg.Models...)
+	r := RuntimePackRecord{Pack: pack, Config: cfg, Digest: runtimePackDigest(pack, cfg), State: Draft, Author: e.User(), CreatedAt: s.clock().UTC()}
+	if !validRuntimePack(r) {
+		return RuntimePackRecord{}, ErrInvalid
+	}
+	if err = s.repo.CreateRuntimePack(ctx, scope, r); err != nil {
+		return RuntimePackRecord{}, err
+	}
+	return r, nil
+}
+
+// ReviewRuntimePack accepts exact visible routing/configuration/cost material.
+func (s *Service) ReviewRuntimePack(ctx context.Context, e identity.Envelope, packDigest string, in RuntimePackReviewRequest) (RuntimePackRecord, error) {
+	if ctx == nil || !validDigest(packDigest) || !identifier(in.PackID) || in.PackRevision < 1 || !validDigest(in.RuntimeDigest) || !validDigest(in.ConfigurationDigest) || !identifier(in.Model) || in.MaxAttemptCostUSD <= 0 || in.MaxAttemptCostUSD > 1000000 || (in.Decision != Accepted && in.Decision != Rejected) {
+		return RuntimePackRecord{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.audit", "certify")
+	if err != nil {
+		return RuntimePackRecord{}, err
+	}
+	review := RuntimePackReview{PackID: in.PackID, PackRevision: in.PackRevision, PackDigest: packDigest, RuntimeDigest: in.RuntimeDigest, ConfigurationDigest: in.ConfigurationDigest, Model: in.Model, Models: append([]gateway.RuntimeModel(nil), in.Models...), SystemInstruction: in.SystemInstruction, MaxAttemptCostUSD: in.MaxAttemptCostUSD, Decision: in.Decision, Reviewer: e.User(), ReviewedAt: s.clock().UTC()}
+	return s.repo.ReviewRuntimePack(ctx, scope, review)
 }
 
 // RegisterInput stores protected live material and returns its canonical reference.
@@ -216,6 +254,17 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 	if !ok {
 		return Report{}, ErrReview
 	}
+	var runtimeConfig gateway.RuntimeConfig
+	if record.Suite.Mode == Live {
+		runtime, runtimeErr := s.repo.AcceptedRuntimePack(ctx, scope, pack.Digest, pack.ConfigurationDigest)
+		if runtimeErr != nil {
+			return Report{}, runtimeErr
+		}
+		if !validRuntimePack(runtime) || runtime.State != Accepted || runtime.Review == nil || runtime.Review.Reviewer == runtime.Author || runtime.Review.PackID != pack.ID || runtime.Review.PackRevision != pack.Revision || runtime.Review.PackDigest != pack.Digest || runtime.Review.RuntimeDigest != runtime.Digest || runtime.Review.ConfigurationDigest != pack.ConfigurationDigest || runtime.Review.Model != pack.Model || runtime.Review.MaxAttemptCostUSD != runtime.Config.AttemptCostUSD {
+			return Report{}, ErrReview
+		}
+		runtimeConfig = runtime.Config
+	}
 	if err = s.repo.BeginRun(ctx, scope, in); err != nil {
 		return Report{}, err
 	}
@@ -230,7 +279,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 	s.mu.Unlock()
 	defer func() { cancel(); s.mu.Lock(); delete(s.running, in.RunID); s.mu.Unlock() }()
 	if runner != nil {
-		runner = authorityRunner{Envelope: e, Next: runner}
+		runner = authorityRunner{Envelope: e, RuntimeConfig: runtimeConfig, Next: runner}
 	}
 	r, evalErr := EvaluateWithPack(runCtx, in.RunID, record.Suite, pack, runner, s.clock)
 	if r.EvidenceHash != "" {
@@ -242,12 +291,14 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 }
 
 type authorityRunner struct {
-	Envelope identity.Envelope
-	Next     Runner
+	Envelope      identity.Envelope
+	RuntimeConfig gateway.RuntimeConfig
+	Next          Runner
 }
 
 func (a authorityRunner) Observe(ctx context.Context, x Execution) (Observation, error) {
 	x.Envelope = a.Envelope
+	x.RuntimeConfig = a.RuntimeConfig
 	return a.Next.Observe(ctx, x)
 }
 func (s *Service) Read(ctx context.Context, e identity.Envelope, id string) (Report, error) {

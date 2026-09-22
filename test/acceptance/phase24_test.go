@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/evaluation"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/test/support"
@@ -164,6 +165,24 @@ func TestPhase24(t *testing.T) {
 			t.Fatal(err)
 		}
 		e := evalEnvelope(t, true)
+		cfg := gateway.RuntimeConfig{Model: "model-v1", Models: []gateway.RuntimeModel{{Role: "sql_generation", Model: "model-v1"}}, SystemInstruction: "reviewed acceptance instruction", AttemptCostUSD: 0.02}
+		cfg.Digest = gateway.ConfigurationDigest(cfg)
+		pack := evaluation.PackRevision{ID: "accepted-runtime", Revision: 1, Model: cfg.Model, Models: []evaluation.PackModel{{Role: "sql_generation", Model: "model-v1"}}, ConfigurationDigest: cfg.Digest}
+		pack.Digest = pack.CanonicalDigest()
+		runtimeDraft, err := svc.AuthorRuntimePack(context.Background(), e, pack, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		understated := evaluation.RuntimePackReviewRequest{PackID: pack.ID, PackRevision: pack.Revision, RuntimeDigest: runtimeDraft.Digest, ConfigurationDigest: cfg.Digest, Model: cfg.Model, Models: cfg.Models, SystemInstruction: cfg.SystemInstruction, MaxAttemptCostUSD: 0.001, Decision: evaluation.Accepted}
+		if _, err = svc.ReviewRuntimePack(context.Background(), evalReviewer(t), pack.Digest, understated); err == nil {
+			t.Fatal("real store accepted understated rate")
+		}
+		exact := understated
+		exact.MaxAttemptCostUSD = cfg.AttemptCostUSD
+		acceptedRuntime, err := svc.ReviewRuntimePack(context.Background(), evalReviewer(t), pack.Digest, exact)
+		if err != nil || acceptedRuntime.State != evaluation.Accepted || acceptedRuntime.Review == nil || acceptedRuntime.Review.Reviewer == acceptedRuntime.Author {
+			t.Fatal(acceptedRuntime, err)
+		}
 		c := evalCase("durable", evaluation.StageConsumer, "en", false, "")
 		suite := evalSuite(evaluation.Fixture, []evaluation.Case{c})
 		inputRef, err := svc.RegisterInput(context.Background(), e, "protected", evaluation.LiveInput{Pack: suite.Packs[0]})

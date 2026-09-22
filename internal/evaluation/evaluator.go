@@ -21,11 +21,12 @@ type Reservation struct {
 
 // Execution is sealed case material plus its pre-admitted budget.
 type Execution struct {
-	Suite       Suite
-	Case        Case
-	Pack        PackRevision
-	Reservation Reservation
-	Envelope    identity.Envelope
+	Suite         Suite
+	Case          Case
+	Pack          PackRevision
+	Reservation   Reservation
+	Envelope      identity.Envelope
+	RuntimeConfig gateway.RuntimeConfig `json:"-"`
 }
 
 // Runner observes a pre-admitted live case.
