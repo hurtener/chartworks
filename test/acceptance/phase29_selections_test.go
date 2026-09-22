@@ -15,13 +15,23 @@ func TestSavedQuestionClarificationAndSelectionIdentity(t *testing.T) {
 	ctx := context.Background()
 	queries := reporting.DocumentsFromQueries(f.query)
 	widget := f.queryWidget()
-	ambiguous := phase27Copy(t, *widget.Query)
-	ambiguous.Selections = nil
+	_, topicReader := newPhase18Service(t, f.f)
+	related, err := topicReader.Read(ctx, f.execute, f.f.related.Topic, "")
+	if err != nil {
+		t.Fatal("read independently published related topic", err)
+	}
+	ambiguousWidget := phase27Copy(t, widget)
+	ambiguousWidget.Query.Topics = append(ambiguousWidget.Query.Topics, reporting.TopicPin{Topic: related.Definition.Topic, Version: related.Definition.Version, Digest: related.Digest})
+	ambiguousWidget.Query.Selections = &reporting.QuerySelections{Joins: []nlqroute.JoinChoice{
+		{Topic: f.f.pack.Topic, JoinID: f.f.pack.Joins[0].ID},
+		{Topic: f.f.related.Topic, JoinID: f.f.related.Joins[0].ID},
+	}}
+	ambiguous := phase27Copy(t, *ambiguousWidget.Query)
 	origin, err := queries.InspectDocumentQuery(ctx, f.execute, ambiguous)
 	if err != nil {
 		t.Fatal(err)
 	}
-	origin.Widget = widget.ID
+	origin.Widget = ambiguousWidget.ID
 	beforeQueries := f.attemptCount(t)
 	_, err = queries.PrepareDocumentQuery(ctx, f.execute, ambiguous, origin, "saved-ambiguous", "en")
 	var clarification *nlqroute.Clarification
