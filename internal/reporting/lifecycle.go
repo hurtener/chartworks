@@ -8,6 +8,27 @@ import (
 	"github.com/hurtener/chartworks/internal/store"
 )
 
+// ReviewPeriodLanguage exposes deterministic certification discrepancies before
+// attestation. It reads one authorized published revision without source or model I/O.
+func (s *Service) ReviewPeriodLanguage(ctx context.Context, e identity.Envelope, id string, in PeriodReviewRequest) (PeriodReviewResult, error) {
+	ctx, cancel, err := s.begin(ctx, e, id, Certify)
+	if err != nil {
+		return PeriodReviewResult{}, err
+	}
+	defer cancel()
+	if in.Revision < 1 {
+		return PeriodReviewResult{}, ErrInvalid
+	}
+	snapshot, err := s.repo.ReadBlock(ctx, e, id, Reference{Revision: in.Revision}, Certify)
+	if err != nil {
+		return PeriodReviewResult{}, err
+	}
+	if snapshot.PublishedAt == nil || snapshot.State.Archived {
+		return PeriodReviewResult{}, store.ErrConflict
+	}
+	return PeriodReviewResult{Revision: in.Revision, DefinitionDigest: snapshot.Revision.Digest, Findings: periodFindings(snapshot.Revision.Definition)}, nil
+}
+
 // Publish changes only the active publication pointer. It does not certify,
 // rewrite SQL, refresh validation, run a warehouse query or create an artifact.
 func (s *Service) Publish(ctx context.Context, e identity.Envelope, id string, in PublishRequest) (State, error) {
@@ -63,12 +84,16 @@ func (s *Service) Certify(ctx context.Context, e identity.Envelope, id string, i
 	if err := freshValidation(snapshot, in.Evidence, time.Now()); err != nil {
 		return Attestation{}, err
 	}
+	findings := periodFindings(snapshot.Revision.Definition)
+	if err := validatePeriodReviews(findings, in.PeriodReviews); err != nil {
+		return Attestation{}, err
+	}
 	attestationID, err := newID()
 	if err != nil {
 		return Attestation{}, err
 	}
 	v := snapshot.Validation
-	attestation := Attestation{ID: attestationID, Revision: in.Revision, Evidence: in.Evidence, Actor: e.User(), Note: in.Note, CreatedAt: time.Now().UTC(), EvidenceExpiresAt: v.Evidence.ExpiresAt, DependencyDigest: v.Evidence.DependencyDigest}
+	attestation := Attestation{ID: attestationID, Revision: in.Revision, Evidence: in.Evidence, Actor: e.User(), Note: in.Note, CreatedAt: time.Now().UTC(), EvidenceExpiresAt: v.Evidence.ExpiresAt, DependencyDigest: v.Evidence.DependencyDigest, PeriodFindings: clone(findings), PeriodReviews: clone(in.PeriodReviews)}
 	_, err = s.commit(ctx, e, Mutation{ID: id, Topic: snapshot.State.Topic, Kind: "certify", ExpectedVersion: in.ExpectedVersion, TargetRevision: in.Revision, TargetDigest: snapshot.Revision.Digest, Note: in.Note, References: snapshotsReferences(snapshot), Evidence: in.Evidence, Attestation: &attestation, Watch: v.Dependencies, Topics: v.Topics, CheckCurrent: true})
 	if err != nil {
 		return Attestation{}, err

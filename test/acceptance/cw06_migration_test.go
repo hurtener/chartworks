@@ -24,7 +24,7 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	dsn := support.Database(t)
 	raw := upgradeFixture(t, dsn)
 	manifest, err := postgres.Migrations()
-	if err != nil || len(manifest) != 43 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" || manifest[42].Name != "migrations/043_reporting_display_intent.sql" {
+	if err != nil || len(manifest) != 44 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" || manifest[42].Name != "migrations/043_reporting_display_intent.sql" || manifest[43].Name != "migrations/044_reporting_question_assessments.sql" {
 		t.Fatal("CW-06 migration was not appended to the shipped schema", err)
 	}
 	for _, migration := range manifest[1:38] {

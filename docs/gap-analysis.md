@@ -135,7 +135,7 @@ This update rechecked every original finding against the merged target code and 
 | SEM-02, DATA-01, DATA-02 | **CW-04 implementation closes the model/generation boundary; phase 33 orchestration remains separately planned.** | Bounded enhancement now proposes descriptions, aliases, units, roles, temporal policy, KPIs and candidate/rejected relationship evidence. Explicit reviewed governed values replace raw profile samples; sensitive/unknown values are rejected. Draft/publication/import/export/SDK consumers share the same contract. [enhancement](../internal/semantics/drafts/service.go), [compiler](../internal/semantics/compile.go), [portability](../internal/semantics/portable.go), [contract](contracts/rich-semantics-v1.md) |
 | RTE-01, RTE-02 | **CW-07 implements the native routing and interpretation contracts; live calibration remains phase 24/final-gap evidence.** | Authority-constrained current-topic discovery, multi-facet evidence, bounded reranking, typed ambiguity and sealed governed-value/geography/month constraints now feed generation and validator-bound execution. [topic decision](../internal/nlqroute/discovery.go), [interpretation](../internal/nlqroute/interpretation.go), [contract](contracts/routing-interpretation-v1.md) |
 | LRN-01, LRN-02, CLR-01, CLR-02, RUL-01 | **Learning, clarification and rule-scope runtime gaps are implemented; final human/live evidence remains.** | CW-08 adds reviewed exact-origin retrieval, deterministic precedence, immutable selection/shadow provenance and bounded positive/negative evidence. Phase 24 still owns live calibration and decay evaluation. CW-01/CW-06 retain conditional clarification and closed rule scopes. [learning contract](contracts/learning-lifecycle-v1.md), [clarification contract](contracts/conditional-clarification-v1.md), [rule evaluator](../internal/semantics/rules_evaluate.go) |
-| BLK-01, BLK-03, BLK-04, BLK-06 | **Still open or narrowed at the authored-contract boundary.** | CW-03 closes BLK-01 and CW-06 closes BLK-02. Phase 28 seals selected outputs, source/context/topic/rule dependencies and typed period resolution; certification language checks, semantic overlap and broader assistance remain. [rule snapshots](../internal/reporting/dependencies.go), [run manifest](../internal/reporting/runs_model.go), [question assessment](../internal/reporting/service.go) |
+| BLK-01, BLK-03, BLK-04, BLK-06 | **Implemented; final manual integration evidence remains.** | CW-03 closes BLK-01. CW-09 adds bilingual period certification findings, reviewed intent overlap evidence, fixed-slot list binds and dialect-bound assistance dispositions with immutable provenance. [period review](../internal/reporting/period_language.go), [question intent](../internal/reporting/question_intent.go), [assistance](../internal/reporting/assistance.go) |
 | BLK-05, BLK-07 | **Runtime path inspected; inherited fields and policy mapping remain open.** | Bounded narratives use retained redacted evidence and receipts, and manifests seal deployment limits. Expected schema still lacks inherited sensitivity; authored maximum-claims and source-query policy mappings remain absent. No fresh runtime result is attributed here. [narrative evidence](../internal/reporting/runs_narrative.go#L82), [narrative definition](../internal/reporting/model.go#L137), [sealed limits](../internal/reporting/runs_model.go#L46) |
 | MIG-01, EVAL-01, PERF-01 | **Pending or unmeasured.** | The dated manifest is provenance only. Calibration, import/cutover, warm/cold authority-aware reuse and live latency/cost still require Phase 24/34/25 evidence. [evaluation plan](../docs/plans/phase-24-eval.md#L17), [cutover plan](../docs/plans/phase-34-migration-parity-cutover.md#L38), [routing cache boundary](../internal/nlqroute/service.go#L192) |
 | VIS-01, VIS-02, VIS-03, VIS-04 | **VIS-01/03 are implemented by CW-05; VIS-02/04 are implemented by CW-02. Final qualification remains.** | Versioned mappings retain rich KPI/table and per-column display intent; retained viewer and static/export consumers apply it. Full Phase 32 composition/worker/rendition persistence and Phase 34 import remain open. [chart mapping](../internal/charts/model.go), [retained renderer](../internal/rendering/render.go), [viewer formatter](../web/report-viewer/app.js) |
@@ -184,10 +184,10 @@ phase 24/34/25 manual-suite obligations.
 | LRN-02 | Learning | Feedback weights are fixed increments | implemented by CW-08; decay/calibration remains phase 24 | 18; evaluation 24 |
 | BLK-01 | Reporting | Output enablement and localized output metadata are missing from definitions | native v2 contract implemented; immutable v1 compatibility | 27 with 28/29/31 consumers |
 | BLK-02 | Reporting | Business-rule snapshots are absent from block dependencies | implemented by CW-06; final manual qualification pending | 16/27/28/30 |
-| BLK-03 | Reporting | Period wording no longer participates in certification | confirmed gap; typed execution present | 27/28 |
-| BLK-04 | Reporting | Question overlap assessment is lexical only | confirmed gap; current assessment retained | 27/29 |
+| BLK-03 | Reporting | Period wording no longer participates in certification | implemented by CW-09; final manual qualification pending | 27/28 |
+| BLK-04 | Reporting | Question overlap assessment is lexical only | implemented by CW-09 with explicit lexical fallback | 27/29 |
 | BLK-05 | Reporting | Sensitive-column metadata is missing at the narrative handoff | inherited sensitivity enforced; conservative query-dependency mapping | 27/28/33/34 |
-| BLK-06 | Reporting | Parameterization assistance supports a narrower workflow | narrowed; equivalent mapping needed | 27/28/34 |
+| BLK-06 | Reporting | Parameterization assistance supports a narrower workflow | implemented by CW-09; foreign import mappings remain phase 34 | 27/28/34 |
 | BLK-07 | Reporting | Per-block limits and richer narrative policies need explicit mappings | native caps and bounded narrative mappings implemented; unsupported mappings reject | 27/28/34 |
 | CLR-01 | Clarification | Required clarification slots lack question-specific activation | conditional reviewed policy/runtime implemented; explicit legacy migration | 16/17 |
 | RUL-01 | Rules | Compound and template scopes have no equivalent current representation | implemented by CW-06; final manual qualification pending | 16/17/18 |
@@ -304,27 +304,25 @@ phase 24/34/25 manual-suite obligations.
 
 ### BLK-03 — Period wording no longer participates in certification
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-09; final manual qualification pending.
 - **Owner / phases:** 27/28.
 - **Reference behavior (neutral):** The original compares each localized canonical question against period policy and requires acknowledgement of contradictory wording during certification.
-- **Current boundary:** Go resolves calendar periods carefully, but certification does not check or acknowledge question-period inconsistency.
-- **Consequence:** A block labelled as one period can be certified while its defaults resolve another period, losing a useful business review safeguard.
-- **Contract, storage and import impact:** Add a certification-time period-language check and reviewed disposition to the block revision. Preserve locale, canonical period and default-resolution provenance in storage and import.
+- **Current behavior:** An exact published revision exposes deterministic English/Spanish period findings before certification. Contradictory or ambiguous wording must be acknowledged by digest; findings and dispositions remain immutable in the attestation with locale, canonical default and observed wording.
+- **Boundary:** The checker uses a closed vocabulary and never interprets SQL. Wording without a recognized period cue is neutral rather than guessed.
 - **Closure requirements:** Attempt certification with conflicting period wording/defaults in English and Spanish; require visible discrepancy and reviewed resolution.
 - **Source evidence IDs:** REF-BLK-03-A, REF-BLK-03-B, REF-BLK-03-C.
-- **Current repository evidence:** [internal/reporting/lifecycle.go:39](../internal/reporting/lifecycle.go#L39).
+- **Current repository evidence:** [period review](../internal/reporting/period_language.go); [certification](../internal/reporting/lifecycle.go).
 
 ### BLK-04 — Question overlap assessment is lexical only
 
-- **Disposition:** confirmed gap.
+- **Disposition:** implemented by CW-09; final manual qualification pending.
 - **Owner / phases:** 27/29 with the current question-assessment consumer.
 - **Reference behavior (neutral):** The original shortlists questions and performs bounded semantic assessment of metric, grain, population, filters and period, with an explicit deterministic fallback.
-- **Current boundary:** Go compares normalized word sets above a threshold, within one bounded list page and matching locale. It correctly reports incompleteness but does not supply semantic intent assessment.
-- **Consequence:** Paraphrases may be missed and similarly worded questions with materially different periods may be conflated.
-- **Contract, storage and import impact:** Define bounded overlap analysis inputs/results and deterministic fallback. Persist candidate scope and decision evidence; keep lexical comparison as a safe fallback rather than silently presenting it as semantic equivalence.
+- **Current behavior:** Optional reviewed intent compares metric, grain, population, filters and period after authorized candidate filtering, classifying duplicate, overlap and unique. Missing intent uses a labeled lexical fallback. Migration 044 persists request, candidate-scope and decision digests with bounded protected evidence.
+- **Boundary:** A bounded page still reports incompleteness and never claims global uniqueness. Intent is authoring metadata, not SQL/routing/authority.
 - **Closure requirements:** Compare paraphrases, populations and periods; distinguish duplicate, overlap and unique using bounded authorized candidates and deterministic fallback.
 - **Source evidence IDs:** REF-BLK-04-A, REF-BLK-04-B.
-- **Current repository evidence:** [internal/reporting/questions.go:30](../internal/reporting/questions.go#L30); [internal/reporting/service.go:358](../internal/reporting/service.go#L358).
+- **Current repository evidence:** [intent comparison](../internal/reporting/question_intent.go); [authorized assessment](../internal/reporting/service.go); [durable evidence](../internal/store/postgres/block_questions.go).
 
 ### BLK-05 — Sensitive-column metadata is missing at the narrative handoff
 
@@ -339,15 +337,14 @@ phase 24/34/25 manual-suite obligations.
 
 ### BLK-06 — Parameterization assistance supports a narrower workflow
 
-- **Disposition:** narrowed; equivalent mapping needed.
+- **Disposition:** implemented by CW-09 for native authoring; foreign import mapping remains phase 34.
 - **Owner / phases:** 27/28/34.
 - **Reference behavior (neutral):** Original assistance proposes dialect-aware period edits and carries question/template/paraphrase dispositions with protected original authoring provenance.
-- **Current boundary:** Go safely replaces an explicitly selected PostgreSQL half-open predicate and creates a new draft. It has no equivalent question/template disposition workflow.
-- **Consequence:** The AST-constrained edit is valuable, but calling it full assisted-parameterization parity omits authoring intent preservation and non-PostgreSQL variants.
-- **Contract, storage and import impact:** Define a dialect-aware parameterization result with original-question/template provenance, transformed predicate and unsupported disposition. Preserve all unrelated predicates and create a new immutable draft revision.
+- **Current behavior:** A read-only proposal binds the exact definition, source dialect, selected column and period declaration. PostgreSQL performs the existing AST-equivalent edit; every other configured dialect returns an explicit non-mutating unsupported disposition. The created draft retains original question and closed question/template/paraphrase dispositions. Fixed-slot list declarations broaden safe reusable binds without dynamic SQL.
+- **Boundary:** No unsupported dialect is rewritten heuristically. Refresh never invokes assistance, question interpretation or chart selection. Phase 34 still owns foreign mapping policy.
 - **Closure requirements:** Run the reviewed period edit across supported dialects; preserve unrelated predicates, intent and provenance or emit an explicit unsupported result.
 - **Source evidence IDs:** REF-BLK-06-A, REF-BLK-06-B.
-- **Current repository evidence:** [internal/reporting/assistance.go:23](../internal/reporting/assistance.go#L23).
+- **Current repository evidence:** [proposal and provenance](../internal/reporting/assistance.go); [fixed-slot binds](../internal/reporting/parameters.go); [AST proof](../internal/reporting/sql_assist.go).
 
 ### BLK-07 — Per-block limits and richer narrative policies need explicit mappings
 
@@ -988,8 +985,8 @@ The repository coverage map is linked here for traceability only. No mapping alo
 | B08 | Enabled/default output selection, output identifiers and mappings | native v2 implemented; v1 preserved | BLK-01; IDs, explicit order, enabled defaults and typed rejection persist through execution | 27.AC06, 28.AC02 |
 | B09 | Date/datetime/relative-period/dimension/number/integer/boolean/grain/top-N parameters | retained typed resolution; frozen runtime is present | Dates/periods/scalars/grain/top-N and explicit dimension refs | 27.AC05, 28.AC03 |
 | B10 | Locale, report timezone and explicit parameter provenance | native formatting intent implemented; final qualification pending | VIS-03 labels/locale/date/currency/fraction intent survives retained consumers | 28.AC03 |
-| B11 | Period authoring: explicit range, previous period, rolling periods, schedule window | retained resolution with authoring gap | BLK-03/06; period maths exists, wording checks/workflow narrowed | 27.AC05, 30.AC03 |
-| B12 | Assisted parameterization and question-duplicate assessment | gap | BLK-04/06; lexical duplicate assessment and narrow parameterization | 27.AC05, 27.AC01 |
+| B11 | Period authoring: explicit range, previous period, rolling periods, schedule window | implemented; manual final evidence pending | BLK-03/06; exact resolution plus bilingual certification findings and dialect-bound authoring proposal | 27.AC05, 27.CW09-AC01, 30.AC03 |
+| B12 | Assisted parameterization and question-duplicate assessment | implemented; manual final evidence pending | BLK-04/06; reviewed intent overlap, explicit lexical fallback and immutable authoring provenance | 27.AC05, 27.CW09-AC02, 27.AC01 |
 | B13 | Exact revision and latest-published/latest-certified selection | execution policies are implemented in the inspected frozen path; release evidence remains | Exact revision reads exist; compare all floating-policy variants at run admission | 29.AC03, 30.AC04 |
 | B14 | Published/certified-only/explicit-stale/private-preview trust policies | execution policies are implemented in the inspected frozen path; equivalence/release evidence remains | The frozen path validates and enforces all four trust policies; compare legacy policy outcomes and complete release evidence | 27.AC04, 29.AC02 |
 | B15 | Expected ordered columns, types, nullability and sensitive-field metadata | native inherited policy; conservative mapping | BLK-05; shared ordered schema plus restrictive query-dependency sensitivity; no expression-lineage parity | 28.AC03, 10.AC03 |

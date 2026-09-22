@@ -40,11 +40,38 @@ var (
 // Localized contains plain text, never frontend HTML. Locale is a canonical BCP47
 // language tag. Alias order and all stable output IDs survive every projection.
 type Localized struct {
-	Locale      string   `json:"locale"`
-	Title       string   `json:"title"`
-	Question    string   `json:"question"`
-	Aliases     []string `json:"aliases"`
-	Description string   `json:"description"`
+	Locale      string          `json:"locale"`
+	Title       string          `json:"title"`
+	Question    string          `json:"question"`
+	Aliases     []string        `json:"aliases"`
+	Description string          `json:"description"`
+	Intent      *QuestionIntent `json:"intent,omitempty"`
+}
+
+// QuestionIntent is reviewed authoring metadata used only for bounded duplicate
+// assessment. It is never interpreted as SQL, routing evidence or authority.
+type QuestionIntent struct {
+	Metrics    []string       `json:"metrics"`
+	Grain      string         `json:"grain,omitempty"`
+	Population string         `json:"population,omitempty"`
+	Filters    []IntentFilter `json:"filters,omitempty"`
+	Period     *IntentPeriod  `json:"period,omitempty"`
+}
+
+// IntentFilter is a closed, inert question-intent component.
+type IntentFilter struct {
+	Dimension string `json:"dimension"`
+	Operator  string `json:"operator"`
+	Value     string `json:"value"`
+}
+
+// IntentPeriod describes reviewed question meaning, not executable resolution.
+type IntentPeriod struct {
+	Mode  string `json:"mode"`
+	Unit  string `json:"unit,omitempty"`
+	Count int    `json:"count,omitempty"`
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
 }
 
 // TopicPin binds a reviewed semantic topic version to its exact content digest.
@@ -85,20 +112,22 @@ type DimensionReference struct {
 // Parameter uses exact text for scalar values. Only the domain binder converts
 // them to the common reader's typed bind parameters; SQL fragments are absent.
 type Parameter struct {
-	Name      string              `json:"name"`
-	Type      string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n"`
-	Required  bool                `json:"required"`
-	Default   *Value              `json:"default,omitempty"`
-	Min       string              `json:"min,omitempty"`
-	Max       string              `json:"max,omitempty"`
-	Enum      []string            `json:"enum,omitempty"`
-	Dimension *DimensionReference `json:"dimension,omitempty"`
+	Name       string              `json:"name"`
+	Type       string              `json:"type" jsonschema:"enum=date,enum=datetime,enum=relative_period,enum=dimension_value,enum=number,enum=integer,enum=boolean,enum=grain,enum=top_n,enum=dimension_list,enum=number_list,enum=integer_list"`
+	Required   bool                `json:"required"`
+	Default    *Value              `json:"default,omitempty"`
+	Min        string              `json:"min,omitempty"`
+	Max        string              `json:"max,omitempty"`
+	Enum       []string            `json:"enum,omitempty"`
+	Dimension  *DimensionReference `json:"dimension,omitempty"`
+	ListLength int                 `json:"list_length,omitempty" jsonschema:"minimum=0,maximum=32"`
 }
 
 // Value carries exactly one scalar literal or a structured period.
 type Value struct {
-	Literal string  `json:"literal,omitempty"`
-	Period  *Period `json:"period,omitempty"`
+	Literal string   `json:"literal,omitempty"`
+	Period  *Period  `json:"period,omitempty"`
+	Items   []string `json:"items,omitempty"`
 }
 
 // Argument assigns a typed value to a declared parameter by name.
@@ -218,13 +247,30 @@ type RulePin struct {
 
 // Provenance records the server-derived origin of an authored revision.
 type Provenance struct {
-	Kind             string              `json:"kind"`
-	ParentRevision   int64               `json:"parent_revision,omitempty"`
-	Query            string              `json:"query,omitempty"`
-	Template         *TemplatePin        `json:"template,omitempty"`
-	Templates        []TemplateSelection `json:"templates,omitempty"`
-	OriginalQuestion string              `json:"original_question,omitempty"`
-	ChangeDigest     string              `json:"change_digest,omitempty"`
+	Kind             string                    `json:"kind"`
+	ParentRevision   int64                     `json:"parent_revision,omitempty"`
+	Query            string                    `json:"query,omitempty"`
+	Template         *TemplatePin              `json:"template,omitempty"`
+	Templates        []TemplateSelection       `json:"templates,omitempty"`
+	OriginalQuestion string                    `json:"original_question,omitempty"`
+	ChangeDigest     string                    `json:"change_digest,omitempty"`
+	Parameterization *ParameterizationEvidence `json:"parameterization,omitempty"`
+}
+
+// ParameterizationEvidence retains reviewed authoring intent without making it
+// execution authority. The transformed SQL remains the immutable definition.
+type ParameterizationEvidence struct {
+	ProposalDigest        string `json:"proposal_digest"`
+	Dialect               string `json:"dialect"`
+	Source                string `json:"source"`
+	Context               string `json:"context"`
+	SourceRevision        int64  `json:"source_revision"`
+	BindingDigest         string `json:"binding_digest"`
+	TopicsDigest          string `json:"topics_digest"`
+	OriginalQuestion      string `json:"original_question,omitempty"`
+	QuestionDisposition   string `json:"question_disposition"`
+	TemplateDisposition   string `json:"template_disposition"`
+	ParaphraseDisposition string `json:"paraphrase_disposition"`
 }
 
 // Dependency is derived by the service from validator-issued relation IDs and
@@ -311,14 +357,16 @@ type ValidationRecord struct {
 
 // Attestation records a separately authorized certification of exact revision evidence.
 type Attestation struct {
-	ID                string    `json:"id"`
-	Revision          int64     `json:"revision"`
-	Evidence          string    `json:"evidence"`
-	Actor             string    `json:"actor"`
-	Note              string    `json:"note"`
-	CreatedAt         time.Time `json:"created_at"`
-	EvidenceExpiresAt time.Time `json:"evidence_expires_at"`
-	DependencyDigest  string    `json:"dependency_digest"`
+	ID                string          `json:"id"`
+	Revision          int64           `json:"revision"`
+	Evidence          string          `json:"evidence"`
+	Actor             string          `json:"actor"`
+	Note              string          `json:"note"`
+	CreatedAt         time.Time       `json:"created_at"`
+	EvidenceExpiresAt time.Time       `json:"evidence_expires_at"`
+	DependencyDigest  string          `json:"dependency_digest"`
+	PeriodFindings    []PeriodFinding `json:"period_findings,omitempty"`
+	PeriodReviews     []PeriodReview  `json:"period_reviews,omitempty"`
 }
 
 // Withdrawal records the explicit withdrawal of an existing certification.
@@ -431,10 +479,23 @@ type PublishRequest struct {
 
 // CertifyRequest identifies the exact revision and evidence to certify under separate authority.
 type CertifyRequest struct {
-	ExpectedVersion int64  `json:"expected_version"`
-	Revision        int64  `json:"revision"`
-	Evidence        string `json:"evidence"`
-	Note            string `json:"note"`
+	ExpectedVersion int64          `json:"expected_version"`
+	Revision        int64          `json:"revision"`
+	Evidence        string         `json:"evidence"`
+	Note            string         `json:"note"`
+	PeriodReviews   []PeriodReview `json:"period_reviews,omitempty"`
+}
+
+// PeriodReviewRequest selects one immutable published revision.
+type PeriodReviewRequest struct {
+	Revision int64 `json:"revision"`
+}
+
+// PeriodReviewResult exposes exact certification findings before attestation.
+type PeriodReviewResult struct {
+	Revision         int64           `json:"revision"`
+	DefinitionDigest string          `json:"definition_digest"`
+	Findings         []PeriodFinding `json:"findings"`
 }
 
 // WithdrawRequest identifies the attestation to withdraw under an expected state version.
@@ -527,9 +588,10 @@ type Page struct {
 
 // QuestionRequest supplies localized text for advisory, permission-filtered question assessment.
 type QuestionRequest struct {
-	Locale        string `json:"locale"`
-	Question      string `json:"question"`
-	IncludeDrafts bool   `json:"include_drafts"`
+	Locale        string          `json:"locale"`
+	Question      string          `json:"question"`
+	IncludeDrafts bool            `json:"include_drafts"`
+	Intent        *QuestionIntent `json:"intent,omitempty"`
 }
 
 // QuestionMatch identifies an eligible localized question or alias match.
@@ -539,13 +601,35 @@ type QuestionMatch struct {
 	Question string  `json:"question"`
 	Kind     string  `json:"kind"`
 	Score    float64 `json:"score"`
+	Method   string  `json:"method"`
+	Evidence string  `json:"evidence"`
 }
 
 // Assessment reports bounded advisory matches without claiming global uniqueness.
 type Assessment struct {
-	Matches   []QuestionMatch `json:"matches"`
-	Complete  bool            `json:"complete"`
-	Threshold float64         `json:"threshold"`
+	ID                   string          `json:"id"`
+	Matches              []QuestionMatch `json:"matches"`
+	Complete             bool            `json:"complete"`
+	Threshold            float64         `json:"threshold"`
+	AuthorityDigest      string          `json:"authority_digest"`
+	Method               string          `json:"method"`
+	CandidateScopeDigest string          `json:"candidate_scope_digest"`
+	EvidenceDigest       string          `json:"evidence_digest"`
+}
+
+// QuestionAssessmentRecord is protected observation evidence. It contains no
+// SQL, result values, token, prompt or hidden candidate name.
+type QuestionAssessmentRecord struct {
+	ID                   string          `json:"id"`
+	RequestDigest        string          `json:"request_digest"`
+	CandidateScopeDigest string          `json:"candidate_scope_digest"`
+	EvidenceDigest       string          `json:"evidence_digest"`
+	AuthorityDigest      string          `json:"authority_digest"`
+	Threshold            float64         `json:"threshold"`
+	Method               string          `json:"method"`
+	Matches              []QuestionMatch `json:"matches"`
+	Complete             bool            `json:"complete"`
+	CreatedAt            time.Time       `json:"created_at"`
 }
 
 // Event records an immutable lifecycle event and its actor coordinates.
@@ -602,4 +686,10 @@ type Repository interface {
 	CommitBlock(context.Context, identity.Envelope, Prepared) (State, error)
 	ListBlocks(context.Context, identity.Envelope, ListRequest) (Page, error)
 	BlockHistory(context.Context, identity.Envelope, string) (History, error)
+}
+
+// QuestionAssessmentRepository is an optional persistence capability used by
+// the production store. Lightweight test repositories retain read-only behavior.
+type QuestionAssessmentRepository interface {
+	RecordQuestionAssessment(context.Context, identity.Envelope, QuestionAssessmentRecord) error
 }

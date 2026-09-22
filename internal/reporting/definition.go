@@ -75,7 +75,7 @@ func metadataValid(ms []Localized, limits config.Reporting) bool {
 	}
 	seen := map[string]bool{}
 	for _, m := range ms {
-		if !locale(m.Locale) || seen[m.Locale] || strings.TrimSpace(m.Title) == "" || !text(m.Title, 256) || strings.TrimSpace(m.Question) == "" || !text(m.Question, 2048) || !text(m.Description, 4096) || len(m.Aliases) > limits.MaxAliases {
+		if !locale(m.Locale) || seen[m.Locale] || strings.TrimSpace(m.Title) == "" || !text(m.Title, 256) || strings.TrimSpace(m.Question) == "" || !text(m.Question, 2048) || !text(m.Description, 4096) || len(m.Aliases) > limits.MaxAliases || !validQuestionIntent(m.Intent) {
 			return false
 		}
 		seen[m.Locale] = true
@@ -209,6 +209,18 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 	}
 	if d.SchemaVersion == SchemaVersion && (d.QueryLimits != nil || len(d.ResultPolicy) != 0) {
 		return ErrInvalid
+	}
+	if d.SchemaVersion == SchemaVersion {
+		for _, metadata := range d.Metadata {
+			if metadata.Intent != nil {
+				return ErrInvalid
+			}
+		}
+		for _, parameter := range d.Parameters {
+			if listScalarType(parameter.Type) != "" {
+				return ErrInvalid
+			}
+		}
 	}
 	if d.QueryLimits != nil && !d.QueryLimits.valid() {
 		return ErrInvalid

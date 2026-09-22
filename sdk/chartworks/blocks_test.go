@@ -15,6 +15,10 @@ func TestBlockSDKRejectsCoordinatesBeforeCredentials(t *testing.T) {
 		call func(string) error
 	}{
 		{"ParameterizeBlock", func(id string) error { _, err := c.ParameterizeBlock(ctx, id, BlockParameterizeRequest{}); return err }},
+		{"ProposeBlockParameterization", func(id string) error {
+			_, err := c.ProposeBlockParameterization(ctx, id, BlockParameterizationProposalRequest{})
+			return err
+		}},
 		{"RecheckBlockImpact", func(id string) error { _, err := c.RecheckBlockImpact(ctx, id, BlockImpactRequest{}); return err }},
 		{"ApplyBlockImpact", func(id string) error { _, err := c.ApplyBlockImpact(ctx, id, BlockApplyImpactRequest{}); return err }},
 		{"ReadBlock", func(id string) error { _, err := c.ReadBlock(ctx, id, BlockReference{}); return err }},
@@ -25,6 +29,10 @@ func TestBlockSDKRejectsCoordinatesBeforeCredentials(t *testing.T) {
 		{"PreviewBlock", func(id string) error { _, err := c.PreviewBlock(ctx, id, BlockPreviewRequest{}); return err }},
 		{"PublishBlock", func(id string) error { _, err := c.PublishBlock(ctx, id, BlockPublishRequest{}); return err }},
 		{"CertifyBlock", func(id string) error { _, err := c.CertifyBlock(ctx, id, BlockCertifyRequest{}); return err }},
+		{"ReviewBlockPeriodLanguage", func(id string) error {
+			_, err := c.ReviewBlockPeriodLanguage(ctx, id, BlockPeriodReviewRequest{})
+			return err
+		}},
 		{"WithdrawBlockCertification", func(id string) error {
 			_, err := c.WithdrawBlockCertification(ctx, id, BlockWithdrawRequest{})
 			return err

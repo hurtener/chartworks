@@ -47,6 +47,12 @@ func MigrateBlockDefinition(d BlockDefinition) (BlockDefinition, error) {
 // BlockParameterizeRequest mirrors the common governed block wire contract.
 type BlockParameterizeRequest = reporting.ParameterizeRequest
 
+// BlockParameterizationProposalRequest mirrors the governed block wire contract.
+type BlockParameterizationProposalRequest = reporting.ParameterizationProposalRequest
+
+// BlockParameterizationProposal mirrors the governed block wire contract.
+type BlockParameterizationProposal = reporting.ParameterizationProposal
+
 // BlockRename mirrors the common governed block wire contract.
 type BlockRename = reporting.Rename
 
@@ -152,6 +158,12 @@ type BlockPublishRequest = reporting.PublishRequest
 // BlockCertifyRequest mirrors the common governed block wire contract.
 type BlockCertifyRequest = reporting.CertifyRequest
 
+// BlockPeriodReviewRequest mirrors the governed block wire contract.
+type BlockPeriodReviewRequest = reporting.PeriodReviewRequest
+
+// BlockPeriodReviewResult mirrors the governed block wire contract.
+type BlockPeriodReviewResult = reporting.PeriodReviewResult
+
 // BlockWithdrawRequest mirrors the common governed block wire contract.
 type BlockWithdrawRequest = reporting.WithdrawRequest
 
@@ -213,6 +225,16 @@ func (c *Client) ParameterizeBlock(ctx context.Context, id string, in BlockParam
 	return
 }
 
+// ProposeBlockParameterization verifies the exact draft and source dialect without mutation.
+func (c *Client) ProposeBlockParameterization(ctx context.Context, id string, in BlockParameterizationProposalRequest) (out BlockParameterizationProposal, err error) {
+	if !identity.Identifier(id) {
+		return out, ErrBlockRequest
+	}
+	path := "/v1/blocks/" + id + "/parameters/propose"
+	err = c.callLimit(ctx, "POST", path, "", in, &out, 16<<20)
+	return
+}
+
 // RecheckBlockImpact explicitly observe dependency impact without altering definitions. Mutations are never automatically replayed.
 func (c *Client) RecheckBlockImpact(ctx context.Context, id string, in BlockImpactRequest) (out BlockImpact, err error) {
 	if !identity.Identifier(id) {
@@ -268,7 +290,7 @@ func (c *Client) CaptureBlock(ctx context.Context, in BlockCaptureRequest) (out 
 	return
 }
 
-// AssessBlockQuestions assess authorized localized questions with bounded lexical matching. Mutations are never automatically replayed.
+// AssessBlockQuestions assesses authorized localized questions with reviewed intent and explicit lexical fallback.
 func (c *Client) AssessBlockQuestions(ctx context.Context, in BlockQuestionRequest) (out BlockAssessment, err error) {
 	path := "/v1/blocks/questions/assess"
 	err = c.callLimit(ctx, "POST", path, "", in, &out, 16<<20)
@@ -379,6 +401,16 @@ func (c *Client) CertifyBlock(ctx context.Context, id string, in BlockCertifyReq
 		return out, ErrBlockRequest
 	}
 	path := "/v1/blocks/" + id + "/certify"
+	err = c.callLimit(ctx, "POST", path, "", in, &out, 16<<20)
+	return
+}
+
+// ReviewBlockPeriodLanguage returns exact certification findings before attestation.
+func (c *Client) ReviewBlockPeriodLanguage(ctx context.Context, id string, in BlockPeriodReviewRequest) (out BlockPeriodReviewResult, err error) {
+	if !identity.Identifier(id) {
+		return out, ErrBlockRequest
+	}
+	path := "/v1/blocks/" + id + "/certification/period-review"
 	err = c.callLimit(ctx, "POST", path, "", in, &out, 16<<20)
 	return
 }

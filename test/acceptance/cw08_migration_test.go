@@ -19,7 +19,7 @@ func TestCW08PopulatedExampleUpgrade(t *testing.T) {
 	dsn := support.Database(t)
 	raw := upgradeFixture(t, dsn)
 	manifest, err := postgres.Migrations()
-	if err != nil || len(manifest) != 43 || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" || manifest[42].Name != "migrations/043_reporting_display_intent.sql" {
+	if err != nil || len(manifest) != 44 || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" || manifest[42].Name != "migrations/043_reporting_display_intent.sql" || manifest[43].Name != "migrations/044_reporting_question_assessments.sql" {
 		t.Fatal("CW-08 migration inventory", err)
 	}
 	for _, migration := range manifest[1:41] {
@@ -33,7 +33,7 @@ func TestCW08PopulatedExampleUpgrade(t *testing.T) {
 	if err = db.Check(ctx); err != nil {
 		t.Fatal("apply migration 042", err)
 	}
-	if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=41 AND name='migrations/041_reporting_output_locale_bounds.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=42 AND name='migrations/042_learning_templates.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=43 AND name='migrations/043_reporting_display_intent.sql'`) != 1 {
+	if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=41 AND name='migrations/041_reporting_output_locale_bounds.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=42 AND name='migrations/042_learning_templates.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=43 AND name='migrations/043_reporting_display_intent.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=44 AND name='migrations/044_reporting_question_assessments.sql'`) != 1 {
 		t.Fatal("migration identities changed")
 	}
 	if count(t, raw, `SELECT count(*) FROM chartworks.nlq_examples WHERE tenant_id='cw08-upgrade' AND state='candidate' AND positive_evidence=evidence_count AND negative_evidence=0 AND origin->>'topic_version'='legacy'`) != 2 {

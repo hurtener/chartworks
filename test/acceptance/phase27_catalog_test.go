@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
@@ -189,7 +190,23 @@ func testPhase27Parameters(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, _ := phase27ValidatePublish(t, f.blocks, e, authored)
-	request := reporting.ParameterizeRequest{ExpectedVersion: state.Version, DefinitionDigest: authored.Digest, Column: []string{"created_at"}, Parameter: reporting.Parameter{Name: "period", Type: "relative_period", Required: true, Default: phase27Period("2026-01-01", "2026-02-01")}, Note: "Explicitly approve selected period proposal"}
+	parameter := reporting.Parameter{Name: "period", Type: "relative_period", Required: true, Default: phase27Period("2026-01-01", "2026-02-01")}
+	proposalRequest := reporting.ParameterizationProposalRequest{DefinitionDigest: authored.Digest, Column: []string{"created_at"}, Parameter: parameter}
+	readOnlyScopes := slices.DeleteFunc(phase27Scopes(f.e.Tenant()), func(scope string) bool { return scope == "reporting.write" })
+	readOnly := phase27Actor(t, f.phase17Fixture, e.User(), readOnlyScopes)
+	if _, err := f.blocks.ProposeParameterization(ctx, readOnly, authored.State.ID, proposalRequest); !errors.Is(err, access.ErrForbidden) {
+		t.Fatal("parameterization proposal exposed draft SQL without write authority", err)
+	}
+	proposal, err := phase27Client(t, f).ProposeBlockParameterization(ctx, authored.State.ID, proposalRequest)
+	if err != nil || proposal.Disposition != "supported" || proposal.Source != original.Source || proposal.Context != original.Context || proposal.SourceRevision < 1 || !hash64(proposal.BindingDigest) || !hash64(proposal.TopicsDigest) {
+		t.Fatal("full-definition parameterization proposal", proposal, err)
+	}
+	request := reporting.ParameterizeRequest{ExpectedVersion: state.Version, DefinitionDigest: authored.Digest, Column: []string{"created_at"}, Parameter: parameter, Note: "Explicitly approve selected period proposal", ProposalDigest: proposal.ProposalDigest, OriginalQuestion: original.Metadata[0].Question, QuestionDisposition: "preserved", TemplateDisposition: "not_applicable", ParaphraseDisposition: "preserved"}
+	missingProvenance := request
+	missingProvenance.ProposalDigest = ""
+	if _, err := f.blocks.Parameterize(ctx, e, authored.State.ID, missingProvenance); !errors.Is(err, reporting.ErrInvalid) {
+		t.Fatal("legacy v1 parameterization accepted blank proposal provenance", err)
+	}
 	changed, err := phase27Client(t, f).ParameterizeBlock(ctx, authored.State.ID, request)
 	if err != nil {
 		t.Fatal("period proposal", err)

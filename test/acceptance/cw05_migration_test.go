@@ -19,8 +19,8 @@ func TestCW05DisplayIntentConstraint(t *testing.T) {
 	if err := db.Check(ctx); err != nil {
 		t.Fatal("apply migration 043", err)
 	}
-	if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=42 AND name='migrations/042_learning_templates.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=43 AND name='migrations/043_reporting_display_intent.sql'`) != 1 {
-		t.Fatal("migration 043 did not preserve the populated upgrade sequence")
+	if count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=42 AND name='migrations/042_learning_templates.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=43 AND name='migrations/043_reporting_display_intent.sql'`) != 1 || count(t, raw, `SELECT count(*) FROM chartworks.schema_migrations WHERE version=44 AND name='migrations/044_reporting_question_assessments.sql'`) != 1 {
+		t.Fatal("migrations 043-044 did not preserve the populated upgrade sequence")
 	}
 	sql(t, raw, `CREATE TEMP TABLE cw05_display_constraint(definition jsonb CHECK(chartworks.reporting_display_intent_valid(definition)))`)
 

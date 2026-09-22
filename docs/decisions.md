@@ -777,3 +777,5 @@ Routing and interpretation continuation: [D-077 versioned topic choice and seale
 Learning continuation: [D-078 version-pinned reviewed examples and evidence-based feedback](decisions/2026-09-22-reviewed-learning.md).
 
 Rich output continuation: [D-079 reviewed KPI/table display intent and retained-only static export](decisions/2026-09-22-rich-output-display.md).
+
+Governed block depth continuation: [D-080 certification wording, reviewed overlap and dialect-bound assistance](decisions/2026-09-22-governed-block-depth.md).

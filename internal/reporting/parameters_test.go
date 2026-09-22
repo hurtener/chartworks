@@ -59,6 +59,35 @@ func TestTypedParameterResolution(t *testing.T) {
 	}
 }
 
+func TestFixedListParametersRemainBoundAndBounded(t *testing.T) {
+	dimension := &DimensionReference{Topic: "sales", Version: "v1", Dimension: "region"}
+	parameters := []Parameter{
+		{Name: "regions", Type: "dimension_list", Required: true, ListLength: 2, Enum: []string{"north", "south", "x' OR true --"}, Dimension: dimension},
+		{Name: "amounts", Type: "number_list", Required: true, ListLength: 2, Min: "0", Max: "10"},
+		{Name: "optional_ids", Type: "integer_list", ListLength: 2},
+	}
+	out, err := ResolveParameters(parameters, []Argument{
+		{Name: "regions", Value: Value{Items: []string{"north", "x' OR true --"}}},
+		{Name: "amounts", Value: Value{Items: []string{"1.25", "10"}}},
+	}, testResolution())
+	if err != nil || len(out.Parameters) != 6 || out.Parameters[1].Kind != "text" || out.Parameters[1].Value != "x' OR true --" || out.Parameters[4].Kind != "null" || out.Parameters[5].Kind != "null" {
+		t.Fatalf("fixed list binding widened or rewrote values: %#v %v", out, err)
+	}
+	for _, bad := range []Value{{Literal: "north,south"}, {Items: []string{"north"}}, {Items: []string{"north", "east"}}, {Items: []string{"north", "south", "north"}}} {
+		if _, err := ResolveParameters(parameters[:1], []Argument{{Name: "regions", Value: bad}}, testResolution()); err == nil {
+			t.Fatal("invalid list admitted", bad)
+		}
+	}
+	badRange := parameters[1]
+	if _, err := ResolveParameters([]Parameter{badRange}, []Argument{{Name: "amounts", Value: Value{Items: []string{"1", "11"}}}}, testResolution()); err == nil {
+		t.Fatal("list member escaped scalar range")
+	}
+	tooWide := Parameter{Name: "ids", Type: "integer_list", ListLength: 32}
+	if validateDeclarations([]Parameter{tooWide, tooWide}, 64) == nil {
+		t.Fatal("duplicate or oversized physical list slots admitted")
+	}
+}
+
 func TestParameterRejection(t *testing.T) {
 	bad := []Parameter{
 		{Name: "x", Type: "free_sql"}, {Name: "x", Type: "top_n", Default: literalDefault("10001")},
@@ -73,6 +102,9 @@ func TestParameterRejection(t *testing.T) {
 		{Name: "x", Type: "boolean", Min: "false"}, {Name: "x", Type: "relative_period", Enum: []string{"previous"}},
 		{Name: "x", Type: "relative_period", Default: literalDefault("last month")},
 		{Name: "x", Type: "date", Min: "2025-01-01", Max: "2024-01-01"},
+		{Name: "x", Type: "integer_list"}, {Name: "x", Type: "integer_list", ListLength: 33},
+		{Name: "x", Type: "number_list", ListLength: 2, Default: &Value{Items: []string{"1"}}},
+		{Name: "x", Type: "dimension_list", ListLength: 2},
 	}
 	for i, p := range bad {
 		if validateDeclarations([]Parameter{p}, 64) == nil {
