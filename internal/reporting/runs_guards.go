@@ -146,6 +146,9 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 		return ErrInvalid
 	}
 	n, spec := o.Narrative, saved.Narrative
+	if m.NarrativePack != nil && !narrativeReceiptMatchesPack(n.Receipt, *m.NarrativePack) {
+		return ErrInvalid
+	}
 	if n.PolicyVersion != spec.PolicyVersion || n.PromptVersion != spec.PromptVersion || n.ModelVersion != spec.ModelVersion || n.SchemaVersion != spec.SchemaVersion || n.Locale != spec.Locale || n.Tone != spec.Tone ||
 		n.EvidenceHash != digest(n.Evidence) || n.OutputHash != digest([]any{n.Text, n.Claims}) {
 		return ErrInvalid
@@ -178,6 +181,12 @@ func FrozenCompletion(m RunManifest, outputs []RetainedOutput) (string, string, 
 // CheckFrozenPolicies binds versioned output intent and effective evidence policy
 // at acceptance and every persistence checkpoint. It never mutates legacy bytes.
 func CheckFrozenPolicies(m RunManifest) error {
+	if m.NarrativePack != nil && (!m.NarrativePack.Valid() || !hasNarrativeOutput(m.Outputs)) {
+		return ErrInvalid
+	}
+	if m.NarrativePackUnavailable && (m.NarrativePack != nil || m.PartialPolicy != "allow_partial" || !hasNarrativeOutput(m.Outputs)) {
+		return ErrInvalid
+	}
 	if m.Selection == nil {
 		if m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || m.QueryLimits != nil || len(m.ResultPolicy) != 0 {
 			return ErrInvalid
@@ -207,6 +216,15 @@ func CheckFrozenPolicies(m RunManifest) error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func hasNarrativeOutput(outputs []Output) bool {
+	for _, output := range outputs {
+		if output.Kind == "narrative" {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckFrozenNarrativeEvidence seals the exact reduced evidence, not merely a

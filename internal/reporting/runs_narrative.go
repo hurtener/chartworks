@@ -294,6 +294,22 @@ func prepareNarrative(m RunManifest, result exec.Result, n Narrative) (preparedN
 
 func (s *Runs) generatePreparedNarrative(ctx context.Context, e identity.Envelope, m RunManifest, output string, n Narrative, prepared preparedNarrative) (NarrativeResult, error) {
 	evidence, caveats := prepared.evidence, prepared.caveats
+	if s.packSelector != nil && m.NarrativePack == nil {
+		return NarrativeResult{}, ErrUnavailable
+	}
+	if m.NarrativePack != nil {
+		if s.packSelector == nil {
+			return NarrativeResult{}, ErrUnavailable
+		}
+		selected, selectErr := s.packSelector.SelectedNarrativePack(ctx, e, m)
+		if selectErr != nil || !selected.Valid() || selected.Pin != *m.NarrativePack {
+			return NarrativeResult{}, ErrStale
+		}
+		ctx, selectErr = gateway.WithRuntimeConfig(ctx, selected.Config)
+		if selectErr != nil {
+			return NarrativeResult{}, ErrStale
+		}
+	}
 	call, err := gateway.Authorize(e, "reporting.execute", digest([]any{m.Digest(), output}),
 		access.Resource{Tenant: e.Tenant(), Kind: "block", Permission: "execute", ID: m.Block},
 		access.Resource{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: m.Binding.Context})
@@ -320,6 +336,9 @@ func (s *Runs) generatePreparedNarrative(ctx context.Context, e identity.Envelop
 	if err != nil {
 		return NarrativeResult{Receipt: generated.Receipt}, err
 	}
+	if m.NarrativePack != nil && !narrativeReceiptMatchesPack(generated.Receipt, *m.NarrativePack) {
+		return NarrativeResult{Receipt: generated.Receipt}, gateway.ErrOutput
+	}
 	if err = schema.Validate(generated.JSON, 16384); err != nil {
 		return NarrativeResult{Receipt: generated.Receipt}, gateway.ErrOutput
 	}
@@ -337,4 +356,18 @@ func (s *Runs) generatePreparedNarrative(ctx context.Context, e identity.Envelop
 	return NarrativeResult{PolicyVersion: n.PolicyVersion, Text: text, Claims: answer.Claims, Evidence: evidence, Caveats: caveats,
 		EvidenceHash: digest(evidence), OutputHash: digest([]any{text, answer.Claims}), PromptVersion: n.PromptVersion,
 		ModelVersion: n.ModelVersion, SchemaVersion: n.SchemaVersion, Locale: n.Locale, Tone: n.Tone, Receipt: generated.Receipt}, nil
+}
+
+func narrativeReceiptMatchesPack(receipt gateway.Receipt, pin NarrativePackPin) bool {
+	if !pin.Valid() || len(receipt.Calls) == 0 {
+		return false
+	}
+	for _, call := range receipt.Calls {
+		if call.Role != "narrative" || call.RequestedModel != pin.Model ||
+			call.ConfigurationDigest != pin.ConfigurationDigest ||
+			(call.ActualModel != "" && call.ActualModel != pin.Model) {
+			return false
+		}
+	}
+	return true
 }
