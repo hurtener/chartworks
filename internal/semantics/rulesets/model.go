@@ -181,6 +181,7 @@ func textValid(value string) bool {
 // Repository persists rule lifecycle revisions and reads version-pinned state.
 type Repository interface {
 	SaveRuleDraft(context.Context, identity.Envelope, topics.Published, semantics.RuleModel, int64, string) (Draft, error)
+	ReadRuleDraft(context.Context, identity.Envelope, string, int64, drafts.Access) (Draft, error)
 	ReviewRuleDraft(context.Context, identity.Envelope, topics.Published, string, ReviewRequest) (Review, error)
 	PublishRules(context.Context, identity.Envelope, topics.Published, string, int64) (Published, error)
 	RuleVersionPin(context.Context, identity.Envelope, string, string, drafts.Access) (Pin, error)

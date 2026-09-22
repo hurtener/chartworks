@@ -37,6 +37,12 @@ func (x *apiRepo) CreateRuntimePack(_ context.Context, _ store.Scope, v evaluati
 	x.pack = v
 	return nil
 }
+func (x *apiRepo) DraftRuntimePack(context.Context, store.Scope, string) (evaluation.RuntimePackRecord, error) {
+	if x.pack.State != evaluation.Draft || x.pack.Review != nil {
+		return x.pack, store.ErrNotFound
+	}
+	return x.pack, nil
+}
 func (x *apiRepo) ReviewRuntimePack(_ context.Context, _ store.Scope, v evaluation.RuntimePackReview) (evaluation.RuntimePackRecord, error) {
 	if x.pack.State != evaluation.Draft || x.pack.Author == v.Reviewer || x.pack.Pack.Digest != v.PackDigest || x.pack.Digest != v.RuntimeDigest || x.pack.Config.Digest != v.ConfigurationDigest || x.pack.Config.AttemptCostUSD != v.MaxAttemptCostUSD {
 		return evaluation.RuntimePackRecord{}, store.ErrConflict
@@ -55,6 +61,12 @@ func (x *apiRepo) AcceptedRuntimePack(context.Context, store.Scope, string, stri
 func (x *apiRepo) CreateSuite(_ context.Context, _ store.Scope, v evaluation.SuiteRecord) error {
 	x.s = v
 	return nil
+}
+func (x *apiRepo) DraftSuite(context.Context, store.Scope, string, int64) (evaluation.SuiteRecord, error) {
+	if x.s.State != evaluation.Draft || x.s.Review != nil {
+		return x.s, store.ErrNotFound
+	}
+	return x.s, nil
 }
 
 func (x *apiRepo) SaveInput(context.Context, store.Scope, evaluation.ProtectedRef, evaluation.LiveInput) error {

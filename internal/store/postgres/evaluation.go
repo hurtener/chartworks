@@ -38,6 +38,24 @@ func (d *DB) CreateRuntimePack(ctx context.Context, scope store.Scope, r evaluat
 	})
 }
 
+// DraftRuntimePack reads only an unreviewed exact pack for retry reconciliation.
+func (d *DB) DraftRuntimePack(ctx context.Context, scope store.Scope, packDigest string) (out evaluation.RuntimePackRecord, err error) {
+	if checkScope(scope) != nil {
+		return out, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var raw []byte
+		if err := tx.QueryRow(ctx, `SELECT material FROM chartworks.evaluation_runtime_packs WHERE tenant_id=$1 AND pack_digest=$2 AND state='draft' AND review IS NULL`, scope.Tenant(), packDigest).Scan(&raw); err != nil {
+			return err
+		}
+		if json.Unmarshal(raw, &out) != nil || out.Validate() != nil || out.State != evaluation.Draft || out.Review != nil {
+			return store.ErrMigration
+		}
+		return nil
+	})
+	return out, err
+}
+
 // ReviewRuntimePack atomically verifies the reviewer-visible effective routing and cost.
 func (d *DB) ReviewRuntimePack(ctx context.Context, scope store.Scope, review evaluation.RuntimePackReview) (out evaluation.RuntimePackRecord, err error) {
 	if checkScope(scope) != nil || review.Reviewer != scope.Actor() {
@@ -160,6 +178,29 @@ func (d *DB) CreateSuite(ctx context.Context, scope store.Scope, r evaluation.Su
 		}
 		return nil
 	})
+}
+
+// DraftSuite reads only an unreviewed exact suite revision for retry reconciliation.
+func (d *DB) DraftSuite(ctx context.Context, scope store.Scope, id string, revision int64) (out evaluation.SuiteRecord, err error) {
+	if checkScope(scope) != nil {
+		return out, store.ErrInvalid
+	}
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var raw []byte
+		if err := tx.QueryRow(ctx, `SELECT manifest,manifest_digest,author_id,created_at FROM chartworks.evaluation_suites WHERE tenant_id=$1 AND suite_id=$2 AND revision=$3 AND state='draft' AND review IS NULL`, scope.Tenant(), id, revision).Scan(&raw, &out.Digest, &out.Author, &out.CreatedAt); err != nil {
+			return err
+		}
+		if json.Unmarshal(raw, &out.Suite) != nil {
+			return store.ErrMigration
+		}
+		out.State = evaluation.Draft
+		want, digestErr := out.Suite.Digest()
+		if digestErr != nil || want != out.Digest {
+			return store.ErrMigration
+		}
+		return nil
+	})
+	return out, err
 }
 
 // ReviewSuite atomically records one distinct exact-revision decision.

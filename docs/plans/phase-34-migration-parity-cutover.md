@@ -1,6 +1,6 @@
 # Phase 34 — migration-parity-cutover
 
-Status: planned. Owner: internal/reporting, test/integration, scripts/migration. Hard dependencies: 14, 16, 18, 19, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33.
+Status: in_progress. Owner: internal/migration, internal/migrationapi, test/acceptance. Hard dependencies: 14, 16, 18, 19, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33.
 
 ## Authority and design
 
@@ -44,6 +44,32 @@ Migration batch limits, dry_run=true default, cohort/source mappings, explicit l
 ## Tests, coverage and smoke
 
 Implement `TestPhase34/AC01` through `TestPhase34/AC08`; test import replay/CAS, malformed/unknown records, exact values/windows/layout, certificate privacy and cohort schedule handoff on real services. Owner-run source comparisons are explicit evidence artifacts, never invented from test-file presence. COMMON.md sets coverage; `scripts/smoke/phase-34.sh` requires all eight results.
+
+## Current implementation boundary
+
+The in-progress runtime is owned by `internal/migration`, `internal/migrationapi`,
+`internal/store/postgres/migration.go`, migration 050 and the typed SDK. It exposes
+seven registered HTTP/CLI operations and seven optional MCP bindings. The
+[v1 contract](../contracts/migration-cutover-v1.md),
+[operation manifest](../contracts/chartworks-migration-operations.json) and
+[operator runbook](../runbooks/migration-cutover.md) define the manifest, authority,
+loss ledger, quarantine, retention and schedule handoff behavior.
+
+`TestPhase34/AC01`–`AC08` exercise the immutable bundle, full dependent graph,
+per-apply current-authority/retention/owner revalidation, cross-revision reservation
+and checkpoint fencing, current source validation at cutover, all 63 feature dispositions,
+live owner evidence resolution, PostgreSQL replay/CAS, bounded erasure and the
+worker-consumed occurrence cutover/rollback fence. Phases 24 and 33 are integrated. Evaluation
+suites and server-owned runtime packs import through the Phase 24 public service as
+drafts and reconcile exact retry conflicts without importing acceptance or selection.
+Runtime packs and suites remain drafts; calibration objects become durable private
+optimization candidates and cannot transfer review or selection. A top-level
+calibration member is rejected as non-operative. Imported schedules are disabled in
+their creation transaction until an exact two-route cutover. Owner comparison
+results are resolved from distinct held-out feature cases in accepted live Phase 24
+reports, with source revision and engine binding, rather than manifest status text.
+Phase 34 remains `in_progress` until the complete private evidence set and Phase 25
+release gates pass.
 
 ## Glossary, decisions and deviations
 

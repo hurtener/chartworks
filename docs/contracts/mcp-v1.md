@@ -39,7 +39,7 @@ and [Pengui registration guide](pengui-provider-registration.md).
 Only installed services in enabled groups are registered. `tools/list` filters
 this metadata by the caller's current domain actions. Resource restrictions are
 checked again at invocation, not inferred from tool visibility. A production
-composition with all implemented services has twenty-eight bindings:
+composition with all optional services available has sixty bindings:
 
 | Group | MCP tool | Existing HTTP operation ID | Signed domain action |
 |---|---|---|---|
@@ -77,8 +77,27 @@ preflight/plan/run/refine question; get context/submit SQL; and submit feedback.
 Reviewed example state, bounded listing and protected import/export complete the learning lifecycle.
 Source listing, retained context lookup, chart specification and guided onboarding bindings are real
 additional consumers, not substitutes for those fifteen. Context creation is
-absent when its routing service is unavailable. No reporting, scheduling, admin,
-renderer, shell or unimplemented tool is advertised.
+absent when its routing service is unavailable. The `evaluation` group adds fourteen
+Phase 24 suite/runtime-pack author/review, input, run/read/cancel/recover, feedback
+split, optimization and pack-selection bindings. A fully installed reporting group
+adds eleven delivery/filter/run/static-rendition bindings, and migration adds the
+seven bindings below. Disabled or unavailable services never advertise bindings.
+
+Phase34 adds the optional `migration` group:
+
+| Group | MCP tool | Existing HTTP operation ID | Signed domain action |
+|---|---|---|---|
+| migration | `migration_dry_run` | `migrationDryRun` | `migration.read` |
+| migration | `migration_import` | `migrationImport` | `migration.write` |
+| migration | `migration_resume` | `migrationResume` | `migration.write` |
+| migration | `migration_export` | `migrationExport` | `migration.read` |
+| migration | `migration_cutover` | `migrationCutover` | `migration.cutover` |
+| migration | `migration_rollback` | `migrationRollback` | `migration.cutover` |
+| migration | `migration_erase` | `migrationErase` | `migration.erase` |
+
+These bindings use the same typed service and
+[neutral migration contract](migration-cutover-v1.md) as HTTP/SDK/CLI. Tool
+visibility grants no source, topic, report, schedule or result reach.
 
 `Bind` requires an existing HTTP registration with a closed request schema,
 matching typed response, action, known effect, error inventory and audit semantics.

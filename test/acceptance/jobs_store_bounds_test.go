@@ -79,6 +79,24 @@ func TestJobStoreRejectsInvalidWork(t *testing.T) {
 	if err != nil || first.ID != replay.ID {
 		t.Fatal("schedule replay")
 	}
+	paused, err := q.db.SetSchedule(ctx, scope, first.ID, first.Revision, false)
+	if err != nil || paused.Enabled {
+		t.Fatal("pause ordinary schedule", err, paused)
+	}
+	replay, err = q.service.CreateSchedule(ctx, q.actor, "same", scheduleRequest)
+	if err != nil || replay.ID != first.ID || replay.Revision != paused.Revision || replay.Enabled {
+		t.Fatal("ordinary create replay lost identity after pause", err, replay)
+	}
+	imported, err := q.db.CreateImportedSchedule(ctx, scope, "session", "imported", scheduleRequest, q.limits)
+	if err != nil || imported.Enabled {
+		t.Fatal("imported schedule was not disabled atomically", err, imported)
+	}
+	if _, err = q.db.SetSchedule(ctx, scope, imported.ID, imported.Revision, true); err != nil {
+		t.Fatal("enable imported schedule fixture", err)
+	}
+	if _, err = q.db.CreateImportedSchedule(ctx, scope, "session", "imported", scheduleRequest, q.limits); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("enabled imported schedule reconciled as disabled", err)
+	}
 	j := q.submit(t, "lease-check")
 	lease, err := q.db.ClaimJob(ctx, "owner", q.limits)
 	if err != nil {
