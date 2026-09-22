@@ -56,6 +56,10 @@ type TopicReader interface {
 	Contract(context.Context, identity.Envelope, string) (topics.Contract, error)
 }
 
+type reviewTopicReader interface {
+	ReviewContract(context.Context, identity.Envelope, string) (topics.Contract, error)
+}
+
 // TopicCatalog is the authority-constrained current-publication catalog used
 // when a caller does not pin a topic. The production topic service applies
 // signed topic/source/dataset/context reach before returning any candidate.
@@ -68,6 +72,10 @@ type TopicCatalog interface {
 type RuleReader interface {
 	Read(context.Context, identity.Envelope, string, string) (rulesets.Published, error)
 	Evaluate(context.Context, identity.Envelope, string, rulesets.EvaluateRequest) (rulesets.Evaluation, error)
+}
+
+type reviewRuleReader interface {
+	ReviewRead(context.Context, identity.Envelope, string) (rulesets.Published, error)
 }
 
 // IndexReader is the existing authorized pgvector service.
@@ -285,6 +293,83 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 		return result, nil
 	}
 	return s.routeResolved(ctx, e, in, nil)
+}
+
+// VerifyOrigin resolves the current publication, rule and template identity
+// for learned-example review. It performs no embedding, retrieval, reranking or
+// model call and is authorized by feedback.write plus exact dependency reach.
+func (s *Service) VerifyOrigin(ctx context.Context, e identity.Envelope, in RouteRequest) (RouteResult, error) {
+	if ctx == nil || s == nil || s.topics == nil || s.rules == nil {
+		return RouteResult{}, ErrInvalid
+	}
+	if !e.Valid() {
+		return RouteResult{}, access.ErrUnauthenticated
+	}
+	if !e.Has("feedback.write") {
+		return RouteResult{}, access.ErrForbidden
+	}
+	topicReader, ok := s.topics.(reviewTopicReader)
+	if !ok {
+		return RouteResult{}, store.ErrInvalid
+	}
+	ruleReader, ok := s.rules.(reviewRuleReader)
+	if !ok {
+		return RouteResult{}, store.ErrInvalid
+	}
+	topicIDs, err := normalizeRequest(in)
+	if err != nil || len(topicIDs) == 0 {
+		return RouteResult{}, ErrInvalid
+	}
+	result := RouteResult{Outcome: nlq.StrategySingleTopic, Request: cloneRouteRequest(in), Topic: topicIDs[0], Topics: append([]string(nil), topicIDs...), Context: &ContextView{Locale: in.Locale}}
+	if len(topicIDs) > 1 {
+		result.Outcome = nlq.StrategyMultiTopic
+	}
+	admitted := make([]admittedTopic, 0, len(topicIDs))
+	for _, topic := range topicIDs {
+		contract, readErr := topicReader.ReviewContract(ctx, e, topic)
+		if readErr != nil {
+			return RouteResult{}, readErr
+		}
+		publication := contract.Publication
+		if publication.State.Topic != topic || publication.Definition.Topic != topic || publication.Definition.Version != publication.State.Version || publication.State.Archived || !publication.State.Active || publication.State.Version == "" || !topics.DigestValid(publication.Digest) {
+			return RouteResult{}, store.ErrConflict
+		}
+		item := admittedTopic{id: topic, publication: publication}
+		item.rules, readErr = ruleReader.ReviewRead(ctx, e, topic)
+		if errors.Is(readErr, store.ErrNotFound) {
+			readErr = nil
+		} else if readErr == nil {
+			item.hasRules = true
+		}
+		if readErr != nil {
+			return RouteResult{}, readErr
+		}
+		if item.hasRules && (!item.rules.State.Active || item.rules.State.Topic != topic || item.rules.State.Version == "" || item.rules.Definition.Topic != topic || item.rules.Definition.Version != item.rules.State.Version || item.rules.Definition.TopicVersion != publication.State.Version || item.rules.Definition.PackDigest != publication.Digest || !topics.DigestValid(item.rules.Digest)) {
+			return RouteResult{}, store.ErrConflict
+		}
+		admitted = append(admitted, item)
+	}
+	if !contextMatches(admitted, in.Context) {
+		return RouteResult{}, readexec.ErrBinding
+	}
+	result.TopicVersions = make([]string, len(admitted))
+	result.RuleVersions = make([]string, len(admitted))
+	for i := range admitted {
+		result.TopicVersions[i] = admitted[i].publication.State.Version
+		if admitted[i].hasRules {
+			result.RuleVersions[i] = admitted[i].rules.State.Version
+		}
+	}
+	templates, missing, err := canonicalTemplates(in.Templates, admitted)
+	if err != nil {
+		return RouteResult{}, err
+	}
+	if missing != "" {
+		return RouteResult{}, store.ErrConflict
+	}
+	result.Templates = templates
+	result.Request.Templates = append([]rulesets.TemplateSelection(nil), templates...)
+	return result, nil
 }
 
 func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in RouteRequest, confidenceOverride *float64) (RouteResult, error) {

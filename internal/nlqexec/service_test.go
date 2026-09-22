@@ -54,6 +54,11 @@ func (r *preflightRouter) Route(_ context.Context, _ identity.Envelope, request 
 	return r.result, nil
 }
 
+func (r *preflightRouter) VerifyOrigin(_ context.Context, _ identity.Envelope, request nlqroute.RouteRequest) (nlqroute.RouteResult, error) {
+	r.request = request
+	return r.result, nil
+}
+
 func (g *sequenceGateway) Generate(context.Context, gateway.Call, *gateway.Budget, string, string, string, *gateway.Schema) (gateway.Generated, error) {
 	g.calls++
 	if len(g.responses) == 0 {
@@ -191,6 +196,10 @@ func (r *retainedTopicReader) Contract(context.Context, identity.Envelope, strin
 	return topics.Contract{}, store.ErrNotFound
 }
 
+func (r *retainedTopicReader) ReviewContract(context.Context, identity.Envelope, string) (topics.Contract, error) {
+	return topics.Contract{}, store.ErrNotFound
+}
+
 func (r *retainedTopicReader) RetainedContract(_ context.Context, _ identity.Envelope, topic, version string) (topics.Contract, error) {
 	r.versions = append(r.versions, topic+"/"+version)
 	publication, ok := r.publications[topic+"/"+version]
@@ -206,10 +215,18 @@ func (retainedSourceReader) Binding(context.Context, identity.Envelope, string, 
 	return exec.Binding{Tenant: "tenant", Source: "source", Context: "context", Revision: 1, Dialect: "postgres", Contract: "contract", Fingerprint: strings.Repeat("a", 64), Relations: []exec.Relation{{ID: "dataset", Schema: "analytics", Name: "sales", Columns: []exec.Column{{Name: "id", NativeType: "integer"}}}}}, nil
 }
 
+func (r retainedSourceReader) ReviewBinding(ctx context.Context, e identity.Envelope, source, contextID string) (exec.Binding, error) {
+	return r.Binding(ctx, e, source, contextID)
+}
+
 type fixedSourceReader struct{ binding exec.Binding }
 
 func (r fixedSourceReader) Binding(context.Context, identity.Envelope, string, string) (exec.Binding, error) {
 	return r.binding, nil
+}
+
+func (r fixedSourceReader) ReviewBinding(ctx context.Context, e identity.Envelope, source, contextID string) (exec.Binding, error) {
+	return r.Binding(ctx, e, source, contextID)
 }
 
 func learningRoute(origin ExampleOrigin, binding exec.Binding) nlqroute.RouteResult {
@@ -467,6 +484,10 @@ func (r *unitTopicReader) Contract(_ context.Context, _ identity.Envelope, topic
 		return topics.Contract{}, store.ErrNotFound
 	}
 	return value, nil
+}
+
+func (r *unitTopicReader) ReviewContract(ctx context.Context, e identity.Envelope, topic string) (topics.Contract, error) {
+	return r.Contract(ctx, e, topic)
 }
 
 func (r *unitTopicReader) RetainedContract(_ context.Context, _ identity.Envelope, topic, version string) (topics.Contract, error) {

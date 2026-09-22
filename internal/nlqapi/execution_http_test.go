@@ -93,10 +93,16 @@ type executionRouteReader struct{}
 func (executionRouteReader) Route(context.Context, identity.Envelope, nlqroute.RouteRequest) (nlqroute.RouteResult, error) {
 	return nlqroute.RouteResult{}, store.ErrNotFound
 }
+func (executionRouteReader) VerifyOrigin(context.Context, identity.Envelope, nlqroute.RouteRequest) (nlqroute.RouteResult, error) {
+	return nlqroute.RouteResult{}, store.ErrNotFound
+}
 
 type executionTopicReader struct{}
 
 func (executionTopicReader) Contract(context.Context, identity.Envelope, string) (topics.Contract, error) {
+	return topics.Contract{}, store.ErrNotFound
+}
+func (executionTopicReader) ReviewContract(context.Context, identity.Envelope, string) (topics.Contract, error) {
 	return topics.Contract{}, store.ErrNotFound
 }
 func (executionTopicReader) RetainedContract(context.Context, identity.Envelope, string, string) (topics.Contract, error) {
@@ -106,6 +112,9 @@ func (executionTopicReader) RetainedContract(context.Context, identity.Envelope,
 type executionSourceReader struct{}
 
 func (executionSourceReader) Binding(context.Context, identity.Envelope, string, string) (readexec.Binding, error) {
+	return readexec.Binding{}, store.ErrNotFound
+}
+func (executionSourceReader) ReviewBinding(context.Context, identity.Envelope, string, string) (readexec.Binding, error) {
 	return readexec.Binding{}, store.ErrNotFound
 }
 

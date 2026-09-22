@@ -399,10 +399,11 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	}
 	var q QueryRecord
 	if in.State == "active" {
-		if s.router == nil {
+		verifier, ok := s.router.(originVerifier)
+		if !ok {
 			return ExampleRecord{}, store.ErrInvalid
 		}
-		route, routeErr := s.router.Route(ctx, e, nlqroute.RouteRequest{Topic: example.Topic, Context: example.Origin.Context, Locale: example.Origin.Locale, Question: example.Question, Templates: append([]rulesets.TemplateSelection(nil), example.Origin.Templates...)})
+		route, routeErr := verifier.VerifyOrigin(ctx, e, nlqroute.RouteRequest{Topic: example.Topic, Context: example.Origin.Context, Locale: example.Origin.Locale, Question: example.Question, Templates: append([]rulesets.TemplateSelection(nil), example.Origin.Templates...)})
 		if routeErr != nil {
 			return ExampleRecord{}, routeErr
 		}
@@ -416,7 +417,12 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 			return ExampleRecord{}, err
 		}
 	}
-	admitted, err := s.currentAdmission(ctx, e, q)
+	var admitted admission
+	if in.State == "active" {
+		admitted, err = s.reviewAdmission(ctx, e, q)
+	} else {
+		admitted, err = s.currentAdmission(ctx, e, q)
+	}
 	if err != nil {
 		return ExampleRecord{}, err
 	}
@@ -936,13 +942,29 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord) (nlq.As
 }
 
 func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	return s.admissionWith(ctx, e, q, s.topics.Contract, s.sources.Binding)
+}
+
+func (s *Service) reviewAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	topicsReader, ok := s.topics.(reviewTopicReader)
+	if !ok {
+		return admission{}, store.ErrInvalid
+	}
+	sourcesReader, ok := s.sources.(reviewSourceReader)
+	if !ok {
+		return admission{}, store.ErrInvalid
+	}
+	return s.admissionWith(ctx, e, q, topicsReader.ReviewContract, sourcesReader.ReviewBinding)
+}
+
+func (s *Service) admissionWith(ctx context.Context, e identity.Envelope, q QueryRecord, contract func(context.Context, identity.Envelope, string) (topics.Contract, error), binding func(context.Context, identity.Envelope, string, string) (exec.Binding, error)) (admission, error) {
 	result := admission{route: q.Route}
 	for i, topicID := range q.Topics {
-		contract, err := s.topics.Contract(ctx, e, topicID)
+		contractValue, err := contract(ctx, e, topicID)
 		if err != nil {
 			return admission{}, err
 		}
-		publication := contract.Publication
+		publication := contractValue.Publication
 		if publication.State.Topic != topicID || publication.State.Archived || !publication.State.Active || i >= len(q.TopicVersions) || publication.State.Version != q.TopicVersions[i] {
 			return admission{}, exec.ErrBinding
 		}
@@ -965,7 +987,7 @@ func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q Q
 		return admission{}, store.ErrInvalid
 	}
 	var err error
-	result.binding, err = s.sources.Binding(ctx, e, result.source, result.context)
+	result.binding, err = binding(ctx, e, result.source, result.context)
 	if err != nil {
 		return admission{}, err
 	}

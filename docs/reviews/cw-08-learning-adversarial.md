@@ -43,6 +43,11 @@ phase-34 cohort migration.
 10. **Malformed rerank output could omit or repeat candidates.** Selection now
     requires a complete duplicate-free permutation of known IDs and rejects any
     observed non-finite score.
+11. **Activation reused the generation router's `topics.read` gateway action.**
+    Review now uses a metadata-only current-origin path authorized by the registered
+    `feedback.write` action and exact dependency reach. Production topic, rule and
+    source readers expose bounded review reads; the path makes no model or vector
+    call and never derives an unsigned action.
 
 No P0/P1 finding remained after these corrections. Learned state never supplies
 authority, changes a publication, bypasses the native validator, or modifies a
@@ -64,6 +69,11 @@ requires the native CGO parser build; its CGO-free invocation stops at the exist
 `exec: capability unsupported` boundary rather than supplying real-store evidence.
 The existing Docker engine remains unusable because its image/content storage
 returns I/O errors; no existing container was restarted or modified.
+`TestVerifyOriginUsesFeedbackAuthorityWithoutGateway` exercises the real router
+method with a reviewer that has no `topics.read` action, proves zero engine calls,
+and rejects missing review authority and wrong-context reach. The production-wiring
+PostgreSQL acceptance `TestCW08FeedbackOnlyReviewAuthority` is included for the
+native-parser-capable acceptance environment.
 
 `make planning-check` reaches the planning checks but its pre-existing Python
 coverage-gate unit tests fail on macOS temporary-path aliasing (`/private/var` versus

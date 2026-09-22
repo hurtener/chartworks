@@ -20,9 +20,13 @@ note, optional version CAS, at least one positive observation, posterior score
 of at least 0.60, and strictly more positive than negative evidence. Retirement
 removes the example from new selection. Retained query evidence is immutable,
 so activation, retirement, or later feedback cannot change a frozen plan.
-Activation reroutes the example against current topic/source/context/locale/rule
+Activation re-resolves the example against current topic/source/context/locale/rule
 and template evidence, then forces the observed row version and evidence threshold
 into one store update so concurrent negative feedback cannot satisfy a stale review.
+The activation check uses a metadata-only origin verifier authorized by
+`feedback.write` plus exact topic-read, source-query, dataset-query and context-use
+reach. It makes no embedding, retrieval, rerank or other model call and does not
+require or synthesize the separate `topics.read` action.
 
 ## Evidence aggregation and anti-gaming
 

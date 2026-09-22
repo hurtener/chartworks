@@ -34,6 +34,21 @@ func (t *testTopics) Contract(context.Context, identity.Envelope, string) (topic
 	return t.contract, nil
 }
 
+func (t *testTopics) ReviewContract(_ context.Context, e identity.Envelope, topic string) (topics.Contract, error) {
+	for _, resource := range []access.Resource{
+		{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: topic},
+		{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: "source"},
+		{Tenant: e.Tenant(), Kind: "dataset", Permission: "query", ID: "dataset"},
+		{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: "ctx"},
+	} {
+		if err := access.Require(e, "feedback.write", resource); err != nil {
+			return topics.Contract{}, err
+		}
+	}
+	*t.events = append(*t.events, "review_contract")
+	return t.contract, nil
+}
+
 func (t *testTopics) List(context.Context, identity.Envelope, topics.ListRequest) ([]topics.Summary, error) {
 	return append([]topics.Summary(nil), t.summaries...), nil
 }
@@ -51,6 +66,15 @@ type testRules struct {
 }
 
 func (r testRules) Read(context.Context, identity.Envelope, string, string) (rulesets.Published, error) {
+	if r.err != nil {
+		return rulesets.Published{}, r.err
+	}
+	return r.published, nil
+}
+func (r testRules) ReviewRead(_ context.Context, e identity.Envelope, topic string) (rulesets.Published, error) {
+	if err := access.Require(e, "feedback.write", access.Resource{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: topic}); err != nil {
+		return rulesets.Published{}, err
+	}
 	if r.err != nil {
 		return rulesets.Published{}, r.err
 	}
@@ -162,6 +186,36 @@ func TestRouteAdmitsCurrentTopicBeforeEmbeddingAndAssemblesContext(t *testing.T)
 	}
 	if !reflect.DeepEqual(*events, []string{"contract", "explain", "embed", "search"}) {
 		t.Fatalf("work did not preserve admission order: %#v", *events)
+	}
+}
+
+func TestVerifyOriginUsesFeedbackAuthorityWithoutGateway(t *testing.T) {
+	service, engine, events := newTestService(t, testRules{err: store.ErrNotFound})
+	request := RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "What is revenue?"}
+	authorized, err := identity.FromVerified("tenant", "reviewer", "session", []string{"feedback.write", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:ctx"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := service.VerifyOrigin(context.Background(), authorized, request)
+	if err != nil || out.Topic != "topic" || !reflect.DeepEqual(out.TopicVersions, []string{"v1"}) || out.Context == nil || out.Context.Locale != nlq.LanguageEnglish {
+		t.Fatalf("feedback-authorized origin verification failed: %#v %v", out, err)
+	}
+	if engine.embeds != 0 || engine.reranks != 0 || !reflect.DeepEqual(*events, []string{"review_contract"}) {
+		t.Fatalf("origin verification used model/retrieval work: embeds=%d reranks=%d events=%v", engine.embeds, engine.reranks, *events)
+	}
+	withoutFeedback, err := identity.FromVerified("tenant", "reviewer", "session", []string{"cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:ctx"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.VerifyOrigin(context.Background(), withoutFeedback, request); !errors.Is(err, access.ErrForbidden) {
+		t.Fatalf("origin verification accepted missing feedback authority: %v", err)
+	}
+	crossContext, err := identity.FromVerified("tenant", "reviewer", "session", []string{"feedback.write", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:other"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.VerifyOrigin(context.Background(), crossContext, request); !errors.Is(err, access.ErrNotFound) {
+		t.Fatalf("origin verification crossed context reach: %v", err)
 	}
 }
 

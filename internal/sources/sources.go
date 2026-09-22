@@ -316,13 +316,17 @@ func (s *Service) Rotate(ctx context.Context, e identity.Envelope, id string, ex
 }
 
 func (s *Service) observed(ctx context.Context, e identity.Envelope, id string, fn func(Record, readexec.Binding) error) error {
-	scope, err := sourceScope(e, "sources.read", "read", id)
+	return s.observedFor(ctx, e, id, "sources.read", "read", fn)
+}
+
+func (s *Service) observedFor(ctx context.Context, e identity.Envelope, id, action, permission string, fn func(Record, readexec.Binding) error) error {
+	scope, err := sourceScope(e, action, permission, id)
 	if err != nil {
 		return err
 	}
 	return s.call(ctx, e, true, func(ctx context.Context) error {
 		return s.repo.WithSource(ctx, scope, id, func(ctx context.Context, record Record) error {
-			if err := actualContext(e, "sources.read", record); err != nil {
+			if err := actualContext(e, action, record); err != nil {
 				return err
 			}
 			connection, err := s.recordConnection(record)
@@ -369,10 +373,27 @@ func (s *Service) Discover(ctx context.Context, e identity.Envelope, id string) 
 	return out, err
 }
 
+// ReviewDiscover verifies live source continuity using the feedback review
+// action and exact query/context reach. It exposes the same non-secret catalog
+// shape as Discover and grants no source mutation or query execution.
+func (s *Service) ReviewDiscover(ctx context.Context, e identity.Envelope, id string) (out Discovery, err error) {
+	err = s.observedFor(ctx, e, id, "feedback.write", "query", func(record Record, b readexec.Binding) error {
+		out = Discovery{SourceID: id, ContextID: record.Source.ContextID, Revision: record.Source.Revision, Relations: b.Clone().Relations}
+		return nil
+	})
+	return out, err
+}
+
 // Binding is the pre-parse metadata seam. Missing source/context reach fails before
 // any warehouse connection or dependency discovery occurs.
 func (s *Service) Binding(ctx context.Context, e identity.Envelope, id, partition string) (readexec.Binding, error) {
 	return s.metadataBinding(ctx, e, id, partition, "sources.query", "query")
+}
+
+// ReviewBinding resolves the same secret-free metadata under the explicit
+// feedback review authority used by example activation.
+func (s *Service) ReviewBinding(ctx context.Context, e identity.Envelope, id, partition string) (readexec.Binding, error) {
+	return s.metadataBinding(ctx, e, id, partition, "feedback.write", "query")
 }
 
 // ContextBinding supplies the immutable source metadata needed to construct and

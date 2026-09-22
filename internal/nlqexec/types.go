@@ -62,6 +62,10 @@ type Router interface {
 	Route(context.Context, identity.Envelope, nlqroute.RouteRequest) (nlqroute.RouteResult, error)
 }
 
+type originVerifier interface {
+	VerifyOrigin(context.Context, identity.Envelope, nlqroute.RouteRequest) (nlqroute.RouteResult, error)
+}
+
 // TopicReader is deliberately narrower than the topic service. The phase-18
 // service reads current publications again before generation and execution.
 type TopicReader interface {
@@ -69,10 +73,18 @@ type TopicReader interface {
 	RetainedContract(context.Context, identity.Envelope, string, string) (topics.Contract, error)
 }
 
+type reviewTopicReader interface {
+	ReviewContract(context.Context, identity.Envelope, string) (topics.Contract, error)
+}
+
 // SourceReader resolves the actual connector binding used by the validator.
 // It is not a raw query or credential seam.
 type SourceReader interface {
 	Binding(context.Context, identity.Envelope, string, string) (exec.Binding, error)
+}
+
+type reviewSourceReader interface {
+	ReviewBinding(context.Context, identity.Envelope, string, string) (exec.Binding, error)
 }
 
 // PlanValidator and PlanExecutor keep the orchestration logic on the existing

@@ -252,9 +252,35 @@ func TestPhase18(t *testing.T) {
 		if err != nil || len(examples) != 1 || examples[0].EvidenceCount != 2 {
 			t.Fatalf("feedback learning was not DB-first/deduplicated: examples=%#v err=%v", examples, err)
 		}
-		active, err := query.ExampleState(ctx, e, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active"})
+		reviewScopes := []string{
+			"feedback.write",
+			"cw.topic.read:" + fixture.pack.Topic,
+			"cw.source.query:" + fixture.pack.Datasets[0].Source.Source,
+			"cw.dataset.query:" + fixture.pack.Datasets[0].ID,
+			"cw.execution_context.use:" + fixture.context,
+		}
+		reviewClaims := fixture.model.token.claims(e.Tenant(), e.User(), reviewScopes)
+		reviewClaims["session"] = "phase18-reviewer"
+		reviewToken := fixture.model.token.sign(t, reviewClaims, nil)
+		reviewer, verifyErr := fixture.model.token.verifier.Verify(ctx, reviewToken, auth.HTTP)
+		if verifyErr != nil {
+			t.Fatal("review authority", verifyErr)
+		}
+		crossContextScopes := append([]string(nil), reviewScopes[:len(reviewScopes)-1]...)
+		crossContextScopes = append(crossContextScopes, "cw.execution_context.use:other-context")
+		crossClaims := fixture.model.token.claims(e.Tenant(), e.User(), crossContextScopes)
+		crossClaims["session"] = "phase18-reviewer"
+		crossToken := fixture.model.token.sign(t, crossClaims, nil)
+		crossContext, verifyErr := fixture.model.token.verifier.Verify(ctx, crossToken, auth.HTTP)
+		if verifyErr != nil {
+			t.Fatal("cross-context review authority", verifyErr)
+		}
+		if _, err = query.ExampleState(ctx, crossContext, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) {
+			t.Fatalf("review crossed signed context reach: %v", err)
+		}
+		active, err := query.ExampleState(ctx, reviewer, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"})
 		if err != nil || active.State != "active" {
-			t.Fatalf("candidate activation failed: %#v err=%v", active, err)
+			t.Fatalf("feedback-only reviewer activation failed: %#v err=%v", active, err)
 		}
 		restarted, _ := newPhase18Service(t, fixture)
 		afterRestart, err := restarted.Examples(ctx, e, fixture.pack.Topic, 8)
