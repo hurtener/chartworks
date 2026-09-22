@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/store/postgres"
@@ -21,15 +23,46 @@ import (
 // a default that could hide an incomplete consumer.
 func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	ctx := context.Background()
+	fixture := newPhase29Execution(t, false)
+	legacyBlock := phase27Copy(t, fixture.base)
+	legacyBlock.Topics = []reporting.TopicPin{{Topic: "topic", Version: "v1", Digest: strings.Repeat("a", 64)}}
+	legacyBlock.Rules = []reporting.RulePin{{Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "rules-v1", RuleDigest: strings.Repeat("b", 64)}}
+	legacyBlock.Template = &reporting.TemplatePin{ID: "reviewed", Version: "rules-v1", Digest: strings.Repeat("b", 64)}
 	dsn := support.Database(t)
 	raw := upgradeFixture(t, dsn)
 	manifest, err := postgres.Migrations()
-	if err != nil || len(manifest) != 44 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" || manifest[42].Name != "migrations/043_reporting_display_intent.sql" || manifest[43].Name != "migrations/044_reporting_question_assessments.sql" {
+	if err != nil || len(manifest) < 44 || manifest[38].Name != "migrations/039_template_selection_evidence.sql" || manifest[39].Name != "migrations/040_reporting_template_selections.sql" || manifest[40].Name != "migrations/041_reporting_output_locale_bounds.sql" || manifest[41].Name != "migrations/042_learning_templates.sql" || manifest[42].Name != "migrations/043_reporting_display_intent.sql" || manifest[43].Name != "migrations/044_reporting_question_assessments.sql" {
 		t.Fatal("CW-06 migration was not appended to the shipped schema", err)
 	}
 	for _, migration := range manifest[1:38] {
 		sql(t, raw, migration.SQL)
 		sql(t, raw, `INSERT INTO chartworks.schema_migrations(version,name,checksum) VALUES($1,$2,$3)`, migration.Version, migration.Name, migration.Checksum)
+	}
+	encodedBlock, err := json.Marshal(legacyBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := raw.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO chartworks.policy_revisions(tenant_id,revision,audit_days,operation_hours,created_by) VALUES('cw06-upgrade',1,12,48,'actor');
+ INSERT INTO chartworks.policies VALUES('cw06-upgrade',1);
+ INSERT INTO chartworks.topic_draft_heads(tenant_id,topic_id,actor_id,session_id,current_revision) VALUES('cw06-upgrade','topic','actor','session',1);
+ INSERT INTO chartworks.topic_draft_versions(tenant_id,topic_id,revision,version_id,manifest,digest,change_note) VALUES('cw06-upgrade','topic',1,'v1','{}',repeat('a',64),'Synthetic prior metadata');
+ INSERT INTO chartworks.topic_publication_heads(tenant_id,topic_id) VALUES('cw06-upgrade','topic');
+ INSERT INTO chartworks.block_heads(tenant_id,block_id,topic_id,version,draft_revision,draft_state) VALUES('cw06-upgrade','legacy-template','topic',1,1,'draft');
+ INSERT INTO chartworks.block_revisions(tenant_id,block_id,revision,revision_id,definition,digest,execution_digest,actor_id,session_id,provenance,created_at)
+ VALUES('cw06-upgrade','legacy-template',1,repeat('e',32),$1,$2,$3,'actor','session','{}',clock_timestamp())`, encodedBlock, reporting.DefinitionDigest(legacyBlock), reporting.ExecutionDigest(legacyBlock)); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal("populate pre-040 reporting revision", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var beforeBlock string
+	if err = raw.QueryRow(ctx, `SELECT definition::text FROM chartworks.block_revisions WHERE tenant_id='cw06-upgrade' AND block_id='legacy-template'`).Scan(&beforeBlock); err != nil {
+		t.Fatal(err)
 	}
 	sql(t, raw, `INSERT INTO chartworks.nlq_sessions(tenant_id,actor_id,session_id,context_id,topics,locale) VALUES('cw06-upgrade','actor','session','context','["topic"]','en')`)
 	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
@@ -45,6 +78,20 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	database := support.Open(t, dsn)
 	if err = database.Check(ctx); err != nil {
 		t.Fatal(err)
+	}
+	var afterBlock string
+	if err = raw.QueryRow(ctx, `SELECT definition::text FROM chartworks.block_revisions WHERE tenant_id='cw06-upgrade' AND block_id='legacy-template'`).Scan(&afterBlock); err != nil || beforeBlock != afterBlock {
+		t.Fatal("migration 040 rewrote a populated immutable legacy template revision", err)
+	}
+	mixedBlock := phase27Copy(t, legacyBlock)
+	mixedBlock.Templates = []reporting.TemplateSelection{{ID: "reviewed", Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "rules-v1", RuleDigest: strings.Repeat("b", 64)}}
+	mixedJSON, err := json.Marshal(mixedBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = raw.Exec(ctx, `INSERT INTO chartworks.block_revisions(tenant_id,block_id,revision,revision_id,definition,digest,execution_digest,actor_id,session_id,provenance,created_at)
+ VALUES('cw06-upgrade','legacy-template',2,repeat('f',32),$1,$2,$3,'actor','session','{}',clock_timestamp())`, mixedJSON, reporting.DefinitionDigest(mixedBlock), reporting.ExecutionDigest(mixedBlock)); err == nil {
+		t.Fatal("migration 040 accepted mixed legacy and current template representations")
 	}
 	var templates string
 	if err = raw.QueryRow(ctx, `SELECT template_selections::text FROM chartworks.nlq_queries WHERE tenant_id='cw06-upgrade' AND query_id=repeat('1',32)`).Scan(&templates); err != nil || templates != "[]" {

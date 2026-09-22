@@ -289,6 +289,52 @@ func TestRuleConflictsFollowRequiredSemanticDependencies(t *testing.T) {
 	}
 }
 
+func TestRulePublicationPinsRelationshipIdentityAcrossSemanticEdits(t *testing.T) {
+	model, definition := testRules(t)
+	relationship := Reference{Kind: KindJoin, ID: "orders_customers"}
+	definition.Patterns = nil
+	definition.Rules = []RuleDefinition{{
+		ID: "require_reviewed_relationship", Version: "v1", Category: RuleStructural, Class: RuleExecutionConstraint,
+		Scope: RuleScope{Kind: RuleScopeTopic}, Provenance: RuleProvenance{Kind: ProvenanceHuman, Evidence: "review:relationship"},
+		Constraint: &Constraint{Kind: ConstraintRequireReference, Target: relationship},
+	}}
+	if _, err := CompileRules(model, definition); err != nil {
+		t.Fatal("compile relationship-bound publication", err)
+	}
+
+	removedPack := model.Pack()
+	removedPack.Version = "commerce:v2"
+	removedPack.Joins = nil
+	removed, err := Compile(removedPack)
+	if err != nil {
+		t.Fatal("compile semantic edit without relationship", err)
+	}
+	removedDefinition := definition
+	removedDefinition.TopicVersion = removedPack.Version
+	removedDefinition.PackDigest = removed.Digest()
+	if _, err = CompileRules(removed, removedDefinition); validationCode(t, err) != CodeMissingReference {
+		t.Fatalf("retired relationship remained usable after reviewed semantic edit: %v", err)
+	}
+
+	reboundPack := model.Pack()
+	reboundPack.Version = "commerce:v3"
+	reboundPack.Joins = append([]Join(nil), reboundPack.Joins...)
+	reboundPack.Joins[0].Type = JoinLeft
+	rebound, err := Compile(reboundPack)
+	if err != nil {
+		t.Fatal("compile rebound semantic relationship", err)
+	}
+	if _, err = CompileRules(rebound, definition); validationCode(t, err) != CodeEvidenceMismatch {
+		t.Fatalf("old rule publication silently rebound to changed relationship meaning: %v", err)
+	}
+	reviewedRebind := definition
+	reviewedRebind.TopicVersion = reboundPack.Version
+	reviewedRebind.PackDigest = rebound.Digest()
+	if _, err = CompileRules(rebound, reviewedRebind); err != nil {
+		t.Fatalf("explicitly repinned relationship could not be reviewed: %v", err)
+	}
+}
+
 func TestRuleCompilerKeepsUnrelatedConstraintsAndSensitiveDeclarations(t *testing.T) {
 	model, p := testRules(t)
 	p.Rules = append(p.Rules, RuleDefinition{ID: "exclude_region", Version: "v1", Category: RuleStructural, Class: RuleExecutionConstraint, Scope: RuleScope{Kind: RuleScopeTopic}, Provenance: RuleProvenance{Kind: ProvenanceImport, Evidence: "e1"}, Constraint: &Constraint{Kind: ConstraintExcludeReference, Target: Reference{Kind: KindDimension, ID: "customer_region"}}})

@@ -163,6 +163,9 @@ func TestPhase16(t *testing.T) {
 		if !errors.As(err, &conflict) {
 			t.Fatalf("contradictory mandatory rules were accepted: %v", err)
 		}
+		if _, err = fixture.rules.Save(ctx, fixture.e, rulesets.SaveRequest{Expected: 2, Definition: definition, Change: "Reject pinned metric exclusion"}); !errors.As(err, &conflict) {
+			t.Fatalf("public rule authoring did not return the deterministic dependency conflict: %v", err)
+		}
 		evaluation, err := fixture.client.EvaluateRules(ctx, fixture.pack.Topic, sdk.RuleEvaluationRequest{References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}})
 		if err != nil || !evaluation.Result.Allowed || len(evaluation.Result.Required) != 1 {
 			t.Fatalf("active mandatory constraint was not evaluated: %#v %v", evaluation, err)
@@ -259,9 +262,21 @@ func TestPhase16(t *testing.T) {
 		if err != nil || comparison.Candidate == nil || !comparison.Changed || !comparison.Baseline.Result.Allowed || comparison.Candidate.Result.Allowed {
 			t.Fatalf("retained shadow did not preserve exact changed results: %#v %v", comparison, err)
 		}
+		if len(comparison.Candidate.Result.Selection) != 3 || len(comparison.Candidate.Result.Required) != 1 || len(comparison.Candidate.Result.Excluded) != 1 || len(comparison.Candidate.Result.Violations) != 1 || comparison.Candidate.Result.Violations[0].Rule != "exclude-row-id" {
+			t.Fatalf("simultaneously matching rules lost deterministic selection or conflict explanation: %#v", comparison.Candidate.Result)
+		}
+		for _, selected := range comparison.Candidate.Result.Selection {
+			if !selected.Applied || selected.Reason != "topic" {
+				t.Fatalf("matching rule was not attributable in selection evidence: %#v", comparison.Candidate.Result.Selection)
+			}
+		}
 		replay, err := fixture.client.ReplayRules(ctx, fixture.pack.Topic, sdk.RuleReplayRequest{RuleVersion: "rules-v1", TopicVersion: fixture.pack.Version, References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}})
 		if err != nil || replay.Baseline.RuleVersion != "rules-v1" || !replay.Baseline.Result.Allowed || replay.Baseline.PackDigest != fixture.published.Digest {
 			t.Fatalf("historical replay lost its retained pin: %#v %v", replay, err)
+		}
+		wrongContext := fixture.f.token.envelope(t, fixture.e.Tenant(), fixture.e.User(), "topics.read", "cw.topic.read:"+fixture.pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:wrong-context")
+		if _, err = fixture.rules.Replay(ctx, wrongContext, fixture.pack.Topic, rulesets.ReplayRequest{RuleVersion: "rules-v1", TopicVersion: fixture.pack.Version, References: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}}); err == nil {
+			t.Fatal("historical replay ignored current signed execution-context reach")
 		}
 		current, err := fixture.client.PublishedRules(ctx, fixture.pack.Topic)
 		if err != nil || current.State.Version != "rules-v2" {

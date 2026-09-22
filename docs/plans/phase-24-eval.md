@@ -60,3 +60,12 @@ uncertainty and immutable selection provenance, and exports a protected neutral
 case bundle without promoting it. Phase 24 still owns held-out calibration,
 time-decay policy, live quality measurement and optimizer decisions; none may
 auto-publish an example or alter a frozen query.
+
+## EXP-05 calibration boundary
+
+Deterministic rule selection, conflict, semantic-edit, replay and authority
+regressions are owned by phases 15/16/17 and are executable without a model.
+Phase 24 still owns held-out and representative-user evaluation of conflict
+explanation comprehension and live-model behavior. Those measurements must pin
+the exact topic, ruleset, source/context and model revisions; synthetic contract
+fixtures alone cannot close that quality boundary.
