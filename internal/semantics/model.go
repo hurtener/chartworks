@@ -148,11 +148,16 @@ type Column struct {
 type SemanticRole string
 
 const (
-	SemanticRoleFactKey      SemanticRole = "fact_key"
+	// SemanticRoleFactKey marks a reviewed key on a fact-like relation.
+	SemanticRoleFactKey SemanticRole = "fact_key"
+	// SemanticRoleDimensionKey marks a reviewed key on a dimension-like relation.
 	SemanticRoleDimensionKey SemanticRole = "dimension_key"
+	// SemanticRoleMeasureInput marks a reviewed numeric measure input.
 	SemanticRoleMeasureInput SemanticRole = "measure_input"
-	SemanticRoleAttribute    SemanticRole = "attribute"
-	SemanticRoleEventTime    SemanticRole = "event_time"
+	// SemanticRoleAttribute marks a reviewed descriptive attribute.
+	SemanticRoleAttribute SemanticRole = "attribute"
+	// SemanticRoleEventTime marks a reviewed event timestamp.
+	SemanticRoleEventTime SemanticRole = "event_time"
 )
 
 func (r SemanticRole) valid() bool {
@@ -185,13 +190,20 @@ type GovernedValue struct {
 type TimeGrain string
 
 const (
-	GrainMinute  TimeGrain = "minute"
-	GrainHour    TimeGrain = "hour"
-	GrainDay     TimeGrain = "day"
-	GrainWeek    TimeGrain = "week"
-	GrainMonth   TimeGrain = "month"
+	// GrainMinute is a calendar minute grain.
+	GrainMinute TimeGrain = "minute"
+	// GrainHour is a calendar hour grain.
+	GrainHour TimeGrain = "hour"
+	// GrainDay is a calendar day grain.
+	GrainDay TimeGrain = "day"
+	// GrainWeek is a calendar week grain.
+	GrainWeek TimeGrain = "week"
+	// GrainMonth is a calendar month grain.
+	GrainMonth TimeGrain = "month"
+	// GrainQuarter is a calendar quarter grain.
 	GrainQuarter TimeGrain = "quarter"
-	GrainYear    TimeGrain = "year"
+	// GrainYear is a calendar year grain.
+	GrainYear TimeGrain = "year"
 )
 
 func (g TimeGrain) valid() bool {

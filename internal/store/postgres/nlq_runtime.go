@@ -274,7 +274,11 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 			return store.ErrMigration
 		}
 	}
-	if exec.Hash(out.Templates) != exec.Hash(out.Route.Templates) || exec.Hash(out.Templates) != exec.Hash(out.Route.Request.Templates) {
+	// Migration 039 backfilled the new column with an explicit empty array, but
+	// pre-migration route JSON omitted empty template fields and decodes them as
+	// nil. Canonicalize only that legacy no-selection state. Any actual governed
+	// selection must still match all three immutable evidence projections.
+	if !normalizeTemplateSelectionEvidence(out) {
 		return store.ErrMigration
 	}
 	if len(clarification) > 0 && string(clarification) != "null" {
@@ -293,6 +297,17 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 	}
 	return nil
 }
+
+func normalizeTemplateSelectionEvidence(out *nlqexec.QueryRecord) bool {
+	if len(out.Templates) == 0 && len(out.Route.Templates) == 0 && len(out.Route.Request.Templates) == 0 {
+		out.Templates = []rulesets.TemplateSelection{}
+		out.Route.Templates = []rulesets.TemplateSelection{}
+		out.Route.Request.Templates = []rulesets.TemplateSelection{}
+		return true
+	}
+	return exec.Hash(out.Templates) == exec.Hash(out.Route.Templates) && exec.Hash(out.Templates) == exec.Hash(out.Route.Request.Templates)
+}
+
 func stringValue(value *string) string {
 	if value == nil {
 		return ""

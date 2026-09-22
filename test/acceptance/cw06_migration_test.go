@@ -2,8 +2,10 @@ package acceptance
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/test/support"
 )
@@ -27,13 +29,23 @@ func TestCW06PopulatedQueryUpgrade(t *testing.T) {
 	sql(t, raw, `INSERT INTO chartworks.nlq_sessions(tenant_id,actor_id,session_id,context_id,topics,locale) VALUES('cw06-upgrade','actor','session','context','["topic"]','en')`)
 	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
  VALUES('cw06-upgrade','actor','session',repeat('1',32),'topic','["topic"]','["v1"]','["rules-v1"]','context','en','What is revenue?','{}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
+	sql(t, raw, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,topic_id,topics,topic_versions,rule_versions,context_id,locale,question,route,generation,parameters,receipt,status,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision)
+ VALUES('cw06-upgrade','actor','session',repeat('3',32),'topic','["topic"]','["v1"]','["rules-v1"]','context','en','What is margin?','{"templates":[{"id":"invented"}],"request":{"templates":[{"id":"invented"}]}}','{}','[]','{}','planned','[]','[]','[]',0,0,1)`)
 	database := support.Open(t, dsn)
 	if err = database.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var templates string
-	if err = raw.QueryRow(ctx, `SELECT template_selections::text FROM chartworks.nlq_queries WHERE tenant_id='cw06-upgrade'`).Scan(&templates); err != nil || templates != "[]" {
+	if err = raw.QueryRow(ctx, `SELECT template_selections::text FROM chartworks.nlq_queries WHERE tenant_id='cw06-upgrade' AND query_id=repeat('1',32)`).Scan(&templates); err != nil || templates != "[]" {
 		t.Fatal("old query did not receive explicit empty selection evidence", templates, err)
+	}
+	scope := support.Scope(t, "cw06-upgrade", "actor")
+	retained, err := database.ReadQuery(ctx, scope, "11111111111111111111111111111111")
+	if err != nil || len(retained.Templates) != 0 || len(retained.Route.Templates) != 0 || len(retained.Route.Request.Templates) != 0 {
+		t.Fatal("old query with no selection did not remain readable", retained, err)
+	}
+	if _, err = database.ReadQuery(ctx, scope, "33333333333333333333333333333333"); !errors.Is(err, store.ErrMigration) {
+		t.Fatal("backfill accepted conflicting retained selection evidence", err)
 	}
 	if _, err = raw.Exec(ctx, `UPDATE chartworks.nlq_queries SET template_selections='[{"id":"invented"}]' WHERE tenant_id='cw06-upgrade'`); err == nil {
 		t.Fatal("migration made retained query evidence mutable")

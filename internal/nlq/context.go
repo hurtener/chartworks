@@ -614,7 +614,7 @@ func renderMetrics(items []PinnedMetric) string {
 	for _, item := range items {
 		b.WriteString(renderItem(LaneMetrics, item.ID, item.Text))
 		for _, dependency := range item.Dependencies {
-			b.WriteString(fmt.Sprintf("metric_dependency[%s/%s/%s]:%s\n", item.ID, dependency.Kind, dependency.ID, dependency.Text))
+			fmt.Fprintf(&b, "metric_dependency[%s/%s/%s]:%s\n", item.ID, dependency.Kind, dependency.ID, dependency.Text)
 		}
 	}
 	return b.String()
