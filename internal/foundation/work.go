@@ -243,7 +243,7 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 
-	documentRegistry, delivery, renderer, handler, err := mountDocuments(v.Reporting, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
+	documentRegistry, delivery, renderer, handler, err := mountDocuments(v.Reporting, v.Rendering, db, verifier, blockService, runs, w.nlq, requestRunner, w.handler)
 	if err != nil {
 		w.close()
 		return nil, err

@@ -140,6 +140,7 @@ func (d *DB) ExpireCompositions(ctx context.Context, e identity.Envelope, limit 
 		}
 		for _, id := range ids {
 			for _, query := range []string{
+				`DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2`,
 				`DELETE FROM chartworks.composition_run_widgets WHERE tenant_id=$1 AND operation_id=$2`,
 				`DELETE FROM chartworks.composition_run_groups WHERE tenant_id=$1 AND operation_id=$2`,
 				`DELETE FROM chartworks.composition_run_payloads WHERE tenant_id=$1 AND operation_id=$2`,

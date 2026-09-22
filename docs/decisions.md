@@ -781,4 +781,5 @@ Rich output continuation: [D-079 reviewed KPI/table display intent and retained-
 Governed block depth continuation: [D-080 certification wording, reviewed overlap and dialect-bound assistance](decisions/2026-09-22-governed-block-depth.md).
 Reporting lifecycle continuation: [D-081 fenced document erasure and descriptive catalog identity](decisions/2026-09-22-reporting-deletion-catalog.md).
 
-Report filter continuation: [D-082 explicit revision-bound selectable values through validated reads](decisions/2026-09-22-report-filter-options.md).
+
+Static rendering continuation: [D-083 isolated durable retained-artifact renditions](decisions/2026-09-22-static-render-runtime.md).

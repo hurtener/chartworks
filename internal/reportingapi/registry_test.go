@@ -55,13 +55,39 @@ func TestFilterOptionsAdvertisedOnlyWithValidatedExecution(t *testing.T) {
 		}
 		found := false
 		for _, definition := range registry.Definitions() {
-			if definition.ID != "reportingFilterOptions" {
-				continue
+			if definition.ID == "reportingFilterOptions" {
+				found = definition.Action == "reporting.execute" && definition.Effect == "bounded_validated_distinct_source_read" && definition.Request != nil && definition.Response != nil
 			}
-			found = definition.Action == "reporting.execute" && definition.Effect == "bounded_validated_distinct_source_read" && definition.Request != nil && definition.Response != nil
 		}
 		if found != enabled {
 			t.Fatal("filter option capability registration mismatch", enabled, found)
+		}
+	}
+}
+
+func TestDeliveryRegistryAdvertisesDurableRenditionsOnlyWhenMounted(t *testing.T) {
+	static, err := DeliveryRegistry(false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, definition := range static.Definitions() {
+		if strings.HasPrefix(definition.ID, "reportingRendition") {
+			t.Fatal("durable operation advertised by ephemeral renderer", definition.ID)
+		}
+	}
+	durable, err := DeliveryRegistry(false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, definition := range durable.Definitions() {
+		if strings.HasPrefix(definition.ID, "reportingRendition") {
+			found[definition.ID] = true
+		}
+	}
+	for _, id := range []string{"reportingRenditionCreate", "reportingRenditionRead", "reportingRenditionList", "reportingRenditionExpire"} {
+		if !found[id] {
+			t.Fatal("durable rendition operation missing", id)
 		}
 	}
 }
