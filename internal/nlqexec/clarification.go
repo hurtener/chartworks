@@ -63,6 +63,9 @@ func bindClarificationCandidate(ctx context.Context, a admission, candidate gene
 	if err != nil {
 		return generatedCandidate{}, err
 	}
+	if len(constraints) == 0 && referenceOnlyBindingMatches(a.route, a.binding) {
+		return candidate, nil
+	}
 	if len(constraints) == 0 || exec.Hash(a.binding) != a.route.SourceBindingDigest {
 		return generatedCandidate{}, exec.ErrBinding
 	}
@@ -132,7 +135,7 @@ func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identit
 		return err
 	}
 	if len(constraints) == 0 {
-		return exec.ErrBinding
+		return validateReferenceOnlyEvidence(record, a.binding)
 	}
 	evidence := record.Clarification
 	if evidence == nil || evidence.SchemaVersion != 1 || evidence.BaseSQL == "" || evidence.Binding.SchemaVersion != 1 || evidence.Binding.Validation == nil || !evidence.Binding.Validation.Validated || evidence.Binding.Validation.Source != a.binding.Source || evidence.Binding.Validation.Context != a.binding.Context || evidence.Binding.Validation.Dialect != a.binding.Dialect || evidence.Binding.Validation.Contract != a.binding.Contract || evidence.Binding.SourceBinding != exec.Hash(a.binding) {

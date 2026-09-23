@@ -16,6 +16,7 @@ func cw01BindingAcceptance(t *testing.T, f *cw01Fixture) {
 		{"disjunction", "SELECT id,amount FROM analytics.sales WHERE id=1 OR id=2 ORDER BY id"},
 		{"reviewed-alias", "SELECT s.id,s.amount FROM analytics.sales AS s ORDER BY s.id"},
 		{"existing-filter", "SELECT id,amount FROM analytics.sales WHERE amount>=0 ORDER BY id"},
+		{"flat-cte", "WITH values AS (SELECT id,amount FROM analytics.sales) SELECT id,amount FROM values ORDER BY id"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f.model.mode.Store(phase18RawResponse(t, tc.sql))
@@ -24,7 +25,7 @@ func cw01BindingAcceptance(t *testing.T, f *cw01Fixture) {
 		})
 	}
 	t.Run("unsupported-shape-no-read", func(t *testing.T) {
-		f.model.mode.Store(phase18RawResponse(t, "WITH values AS (SELECT id,amount FROM analytics.sales) SELECT id,amount FROM values"))
+		f.model.mode.Store(phase18RawResponse(t, "WITH RECURSIVE values AS (SELECT id,amount FROM analytics.sales) SELECT id,amount FROM values"))
 		q := f.question("Show large sales", nlq.LanguageEnglish)
 		pending := f.preflight(t, q)
 		q.AnswerContext = pending.Route.AnswerContext
