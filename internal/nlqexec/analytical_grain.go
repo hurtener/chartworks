@@ -12,10 +12,11 @@ import (
 )
 
 type grainDimension struct {
-	id      string
-	field   semantics.Reference
-	role    semantics.DimensionRole
-	filters []semantics.SemanticFilter
+	id       string
+	field    semantics.Reference
+	role     semantics.DimensionRole
+	filters  []semantics.SemanticFilter
+	temporal *semantics.TemporalPolicy
 }
 
 // compileAnalyticalGrain recognizes only a complete terminal by/por/per clause
@@ -23,6 +24,9 @@ type grainDimension struct {
 // filter, KPI ingredient or rule-required dimension is NOT a grouping by default.
 // This is a bounded, versioned grammar, not a general natural-language parser.
 func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.AnalyticalContract) (*exec.AnalyticalGrain, error) {
+	return compileAnalyticalGrainPolicy(ctx, a, contract, false)
+}
+func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exec.AnalyticalContract, calendar bool) (*exec.AnalyticalGrain, error) {
 	question := semantics.RedactClarificationText(a.route.Request.Question, a.route.Request.Answers, a.route.Resolutions)
 	if len(question) > 16<<10 {
 		return nil, exec.ErrLimit
@@ -111,7 +115,7 @@ func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.Anal
 			if d.ID != root.Reference.ID {
 				continue
 			}
-			value := grainDimension{id: def.Topic + ":dimension:" + d.ID, field: d.Field, role: d.Role, filters: d.Filters}
+			value := grainDimension{id: def.Topic + ":dimension:" + d.ID, field: d.Field, role: d.Role, filters: d.Filters, temporal: d.Temporal}
 			for _, label := range append([]string{d.Name}, d.Aliases...) {
 				tokens := grainWords(label)
 				if len(tokens) == 0 || strings.Contains(strings.Join(tokens, " "), "\x00") {
@@ -139,6 +143,10 @@ func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.Anal
 		}
 	}
 	result := &exec.AnalyticalGrain{Policy: exec.AnalyticalGrainPolicy}
+	if calendar {
+		result.Policy = exec.AnalyticalCalendarPolicy
+	}
+	buckets := map[string]exec.AnalyticalBucket{}
 	columns, dimensions := map[string]bool{}, map[string]bool{}
 	compiler := analyticalCompiler{ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
 	for start < len(words) {
@@ -153,6 +161,23 @@ func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.Anal
 				break
 			}
 		}
+		grain := ""
+		if calendar && len(choices) == 0 && start+1 < len(words) && (words[start+1] == "of" || words[start+1] == "de") {
+			grain = calendarGrainWord(words[start])
+			if grain != "" {
+				start += 2
+				width = min(maxWords, len(words)-start)
+				for ; width > 0; width-- {
+					if values := terms[strings.Join(words[start:start+width], " ")]; len(values) > 0 {
+						choices = values
+						break
+					}
+				}
+				if len(choices) == 0 {
+					return nil, analyticalUnsupported("analytical_grain_unsupported")
+				}
+			}
+		}
 		if len(choices) == 0 && len(dimensions) == 0 {
 			return nil, nil
 		} // No recognized grain: retain the explicitly limited metric-only scope.
@@ -162,14 +187,26 @@ func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.Anal
 		chosen := choices[0]
 		// Temporal buckets and dimension-specific populations need their own
 		// expression/predicate proof; a direct field cannot stand in for those.
-		if chosen.role == semantics.DimensionTemporal || len(chosen.filters) > 0 {
+		if chosen.role == semantics.DimensionTemporal && grain == "" || grain != "" && chosen.role != semantics.DimensionTemporal || len(chosen.filters) > 0 {
 			return nil, analyticalUnsupported("analytical_grain_unsupported")
 		}
 		col, err := compiler.column(chosen.field)
 		if err != nil {
 			return nil, err
 		}
-		columns[col.SourceName], dimensions[chosen.id] = true, true
+		dimensions[chosen.id] = true
+		if grain == "" {
+			columns[col.SourceName] = true
+		} else {
+			bucket, err := compileCalendarBucket(chosen, col, grain)
+			if err != nil {
+				return nil, err
+			}
+			buckets[exec.Hash(bucket)] = bucket
+		}
+		if len(columns)+len(buckets) > 16 {
+			return nil, exec.ErrLimit
+		}
 		if len(dimensions) > 16 {
 			return nil, exec.ErrLimit
 		}
@@ -203,6 +240,10 @@ func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.Anal
 	for id := range dimensions {
 		result.Dimensions = append(result.Dimensions, id)
 	}
+	for _, bucket := range buckets {
+		result.Buckets = append(result.Buckets, bucket)
+	}
+	sort.Slice(result.Buckets, func(i, j int) bool { return exec.Hash(result.Buckets[i]) < exec.Hash(result.Buckets[j]) })
 	sort.Strings(result.Columns)
 	sort.Strings(result.Dimensions)
 	return result, nil
@@ -290,6 +331,9 @@ func analyticalGrainGuidance(contract *exec.AnalyticalContract) string {
 	raw, err := json.Marshal(contract.Grain)
 	if err != nil {
 		return ""
+	}
+	if len(contract.Grain.Buckets) > 0 {
+		return " The exact selected grouping is enforced. Project and GROUP BY every direct column and calendar bucket; preserve year and NULL groups. Use date_trunc with the exact literal unit. For date inputs explicitly cast the field to timestamp without time zone first; civil timestamps stay unzoned. For timestamptz inputs use the exact reviewed timezone as date_trunc's third argument; never rely on session timezone or cast its result to date. Do not replace buckets with EXTRACT(month), formatted strings or scalar totals. Grouping contract: " + string(raw)
 	}
 	return " The exact selected grouping is enforced: project and GROUP BY every listed physical column; do not add invisible grouping keys or replace the grouping with a scalar total. Grouping contract: " + string(raw)
 }

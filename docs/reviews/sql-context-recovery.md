@@ -297,3 +297,14 @@ Selected time buckets, query-wide predicates and general role inference are pend
 This slice is not the full AP-03B join/population program. Synthetic regressions and
 real PostgreSQL/recorded-wire tests run in the existing read-only recovery workflow.
 Actual current-head results and patch identities belong in the PR completion ledger.
+
+
+## AP-03B2 reviewed calendar partitions
+
+The [calendar grain contract](../contracts/analytical-calendar-v3.md) extends
+new authoring with explicit reviewed Gregorian day/month/quarter/year buckets
+while retaining original v1/v2 replay. Exact native temporal typing and explicit
+instant timezone are required; the complete grouping/output partition set is
+checked after native validation. This is not query-wide population, join or
+ordering conformance. Final runtime qualification is recorded in PR #62; code
+presence alone is not a passing acceptance result.

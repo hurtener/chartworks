@@ -79,7 +79,7 @@ func TestSQLRecoveryAnalyticalGrainAcceptance(t *testing.T) {
 		}
 		sc, _ := store.NewScope(pf.e.Tenant(), pf.e.User())
 		saved, err := f.db.ReadQuery(ctx, sc, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 2 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
+		if err != nil || saved.AnalyticalVersion != 3 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
 			t.Fatal("grain receipt lost", err)
 		}
 		projected, err := f.db.ReadSavedQuery(ctx, pf.e, p.QueryID, false)
@@ -106,7 +106,7 @@ func TestSQLRecoveryAnalyticalGrainAcceptance(t *testing.T) {
 		model.mu.Lock()
 		wire := strings.Join(model.requestBodies[start:], "\n")
 		model.mu.Unlock()
-		if !strings.Contains(wire, "analytical_grain_mismatch") || !strings.Contains(wire, "rejected_sql") || !strings.Contains(wire, "reviewed-dimension-suffix-v1") {
+		if !strings.Contains(wire, "analytical_grain_mismatch") || !strings.Contains(wire, "rejected_sql") || !strings.Contains(wire, "reviewed-calendar-suffix-v1") {
 			t.Fatal("grain correction missing failed SQL or exact intent")
 		}
 	})

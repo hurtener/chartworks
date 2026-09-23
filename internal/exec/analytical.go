@@ -107,7 +107,7 @@ type AnalyticalReceipt struct {
 // issues plans nor widens the admitted binding, and does no source/model work.
 // Unsupported syntax is not labeled a passed analytical result.
 func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*AnalyticalReceipt, error) {
-	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
+	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
 		return nil, ErrBinding
 	}
 	if err := ctx.Err(); err != nil {
@@ -182,6 +182,9 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	receipt := &AnalyticalReceipt{Version: c.Version, Scope: AnalyticalMetricScope, Contract: Hash(c), Query: AnalyticalQueryDigest(sql, p.candidate.parameters), Metrics: ids}
 	if c.Grain != nil {
 		receipt.Scope = AnalyticalGrainScope
+		if len(c.Grain.Buckets) > 0 {
+			receipt.Scope = AnalyticalCalendarScope
+		}
 		receipt.Grouping = append([]string(nil), c.Grain.Dimensions...)
 	}
 	return receipt, nil

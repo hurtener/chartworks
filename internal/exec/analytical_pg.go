@@ -11,6 +11,8 @@ type analyticalTerm struct {
 	column                             string
 	aggregate, numeric, guarded, exact bool
 	constant                           string
+	bucket                             string
+	zoned                              bool
 }
 
 func (a *analyticalChecker) query(q map[string]any, expected map[string]int) error {
@@ -99,7 +101,7 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 				return analyticalFailure("analytical_metric_mismatch", false)
 			}
 			matched[term.key] = true
-		} else if term.column == "" {
+		} else if term.groupKey() == "" {
 			return analyticalFailure("analytical_shape_unsupported", true)
 		}
 	}
@@ -126,13 +128,13 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 				term = aliases[parts[0]]
 			}
 		}
-		if term.column == "" || term.aggregate || term.guarded {
+		if term.groupKey() == "" || term.aggregate || term.guarded {
 			return analyticalFailure("analytical_shape_unsupported", true)
 		}
-		groups[term.column] = true
+		groups[term.groupKey()] = true
 	}
 	for _, term := range terms {
-		if term.column != "" && !groups[term.column] {
+		if term.groupKey() != "" && !groups[term.groupKey()] {
 			return analyticalFailure("analytical_metric_mismatch", false)
 		}
 	}
@@ -335,6 +337,11 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 	if c, ok := a.field(node); ok {
 		kind := analyticalNumericKind(c)
 		return analyticalTerm{column: c.Name, numeric: kind == "decimal", exact: kind != ""}, nil
+	}
+	if a.grain != nil && a.grain.Policy == AnalyticalCalendarPolicy {
+		if term, handled, err := a.calendarTerm(node, depth); handled {
+			return term, err
+		}
 	}
 	if cast := object(root["TypeCast"]); cast != nil {
 		t := fieldObject(cast["typeName"], "TypeName")

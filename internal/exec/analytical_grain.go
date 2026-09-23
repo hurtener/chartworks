@@ -5,9 +5,10 @@ package exec
 // supplies sorted unique physical columns and reviewed dimension identities.
 // Values, SQL, user prose and generated aliases do not belong in this structure.
 type AnalyticalGrain struct {
-	Policy     string   `json:"policy"`
-	Columns    []string `json:"columns"`
-	Dimensions []string `json:"dimensions"`
+	Policy     string             `json:"policy"`
+	Columns    []string           `json:"columns"`
+	Dimensions []string           `json:"dimensions"`
+	Buckets    []AnalyticalBucket `json:"buckets,omitempty"`
 }
 
 // AnalyticalGrainPolicy identifies the exact reviewed-dimension suffix grammar.
@@ -19,7 +20,8 @@ func validateAnalyticalGrain(c AnalyticalContract, relation Relation) error {
 		return nil
 	}
 	g := c.Grain
-	if c.Version != AnalyticalGrainVersion || g.Policy != AnalyticalGrainPolicy || len(g.Columns) < 1 || len(g.Columns) > 16 || len(g.Dimensions) < 1 || len(g.Dimensions) > 16 {
+	validPolicy := c.Version == AnalyticalGrainVersion && g.Policy == AnalyticalGrainPolicy && len(g.Buckets) == 0 || c.Version == AnalyticalCalendarVersion && g.Policy == AnalyticalCalendarPolicy
+	if !validPolicy || len(g.Columns)+len(g.Buckets) < 1 || len(g.Columns)+len(g.Buckets) > 16 || len(g.Dimensions) < 1 || len(g.Dimensions) > 16 {
 		return ErrBinding
 	}
 	for i, name := range g.Columns {
@@ -29,6 +31,20 @@ func validateAnalyticalGrain(c AnalyticalContract, relation Relation) error {
 		matches := 0
 		for _, col := range relation.Columns {
 			if col.Name == name && col.Safe {
+				matches++
+			}
+		}
+		if matches != 1 {
+			return ErrBinding
+		}
+	}
+	for i, bucket := range g.Buckets {
+		if i > 0 && analyticalBucketKey(g.Buckets[i-1]) >= analyticalBucketKey(bucket) {
+			return ErrBinding
+		}
+		matches := 0
+		for _, col := range relation.Columns {
+			if validAnalyticalBucket(bucket, col) {
 				matches++
 			}
 		}
@@ -47,24 +63,29 @@ func validateAnalyticalGrain(c AnalyticalContract, relation Relation) error {
 func (a *analyticalChecker) checkGrain(groups map[string]bool, terms []analyticalTerm) error {
 	if a.grain == nil {
 		return nil
-	} // Retained/unspecified grain remains unmeasured.
+	}
+	expected := map[string]bool{}
+	for _, column := range a.grain.Columns {
+		expected["column:"+column] = true
+	}
+	for _, bucket := range a.grain.Buckets {
+		expected[analyticalBucketKey(bucket)] = true
+	}
 	mismatch := func() error { return analyticalFailure("analytical_grain_mismatch", false) }
-	if len(groups) != len(a.grain.Columns) {
+	if len(groups) != len(expected) {
 		return mismatch()
 	}
 	projected := map[string]bool{}
 	for _, term := range terms {
-		if term.column != "" {
-			projected[term.column] = true
+		if key := term.groupKey(); key != "" {
+			projected[key] = true
 		}
 	}
-	if len(projected) != len(a.grain.Columns) {
+	if len(projected) != len(expected) {
 		return mismatch()
 	}
-	for _, column := range a.grain.Columns {
-		// Missing projected keys make distinct groups indistinguishable even when
-		// SQL's grouping set itself is correct. Extra invisible keys change grain.
-		if !groups[column] || !projected[column] {
+	for key := range expected {
+		if !groups[key] || !projected[key] {
 			return mismatch()
 		}
 	}

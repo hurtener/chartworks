@@ -178,3 +178,14 @@ state whether grain is measured. Native/metric checks, private owned predicates,
 one-correction budgets and frozen-refresh behavior are unchanged. Broader natural
 language, temporal grain, query-wide population and physical join proof remain open.
 Exact runtime evidence is recorded in PR #62, not inferred from this task inventory.
+
+
+## AP-03B2 reviewed calendar partitions
+
+The [calendar grain contract](../contracts/analytical-calendar-v3.md) extends
+new authoring with explicit reviewed Gregorian day/month/quarter/year buckets
+while retaining original v1/v2 replay. Exact native temporal typing and explicit
+instant timezone are required; the complete grouping/output partition set is
+checked after native validation. This is not query-wide population, join or
+ordering conformance. Final runtime qualification is recorded in PR #62; code
+presence alone is not a passing acceptance result.
