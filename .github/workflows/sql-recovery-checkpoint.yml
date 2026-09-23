@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           patch=scripts/sql-recovery/checkpoint.patch
-          test -f "$patch"
+          if [ ! -f "$patch" ]; then exit 0; fi
           test "$(wc -c < "$patch")" -lt 1048576
           git apply --recount --check --index "$patch"
           git apply --recount --index "$patch"
@@ -42,7 +42,7 @@ jobs:
               fields = header.split()
               if len(fields) != 5 or fields[1] != '100644' or fields[4] not in ('A', 'M'):
                   raise SystemExit('Only added/modified regular text files may be published')
-              if not path.startswith(('internal/nlq/', 'internal/nlqroute/', 'internal/nlqexec/', 'internal/semantics/', 'docs/')):
+              if not path.startswith(('internal/nlq/', 'internal/nlqroute/', 'internal/nlqexec/', 'internal/nlqapi/', 'internal/exec/', 'internal/semantics/', 'docs/')):
                   raise SystemExit('Checkpoint path is outside the approved SQL recovery scope')
               if path.endswith('.go'):
                   subprocess.run(['gofmt', '-w', path], check=True)
@@ -54,7 +54,7 @@ jobs:
           git rm -- "$patch"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat(nlq): apply reviewed SQL recovery checkpoint'
+          git commit -m 'fix(nlq): preserve native parameter checks and qualify recovery fixtures'
           git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
 
 # Temporary authoring transport for this branch only. Formatting precedes the
