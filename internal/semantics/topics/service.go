@@ -55,7 +55,13 @@ func (s *Service) currentSources(ctx context.Context, e identity.Envelope, d Def
 }
 
 func (s *Service) currentSourcesWith(ctx context.Context, e identity.Envelope, d Definition, discover func(context.Context, identity.Envelope, string) (sources.Discovery, error)) error {
+	_, err := currentRelations(ctx, e, d, discover)
+	return err
+}
+
+func currentRelations(ctx context.Context, e identity.Envelope, d Definition, discover func(context.Context, identity.Envelope, string) (sources.Discovery, error)) ([]readexec.Relation, error) {
 	catalogs := map[string]sources.Discovery{}
+	relations := make([]readexec.Relation, 0, len(d.Datasets))
 	for _, dataset := range d.Datasets {
 		binding := dataset.Source
 		catalog, ok := catalogs[binding.Source]
@@ -63,37 +69,40 @@ func (s *Service) currentSourcesWith(ctx context.Context, e identity.Envelope, d
 			var err error
 			catalog, err = discover(ctx, e, binding.Source)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			catalogs[binding.Source] = catalog
 		}
 		if catalog.ContextID != binding.Context || catalog.Revision != binding.SourceRevision {
-			return readexec.ErrBinding
+			return nil, readexec.ErrBinding
 		}
-		var columns []readexec.Column
-		for _, relation := range catalog.Relations {
-			if relation.ID == dataset.ID {
-				columns = relation.Columns
+		var relation readexec.Relation
+		for _, candidate := range catalog.Relations {
+			if candidate.ID == dataset.ID {
+				relation = candidate
 				break
 			}
 		}
-		if len(columns) == 0 {
-			return readexec.ErrBinding
+		if len(relation.Columns) == 0 {
+			return nil, readexec.ErrBinding
 		}
+		reviewed := readexec.Relation{ID: relation.ID, Schema: relation.Schema, Name: relation.Name}
 		for _, column := range dataset.Columns {
 			found := false
-			for _, actual := range columns {
+			for _, actual := range relation.Columns {
 				if actual.Name == column.SourceName && actual.NativeType == column.NativeType && actual.Category == column.Category && actual.Nullable == column.Nullable && actual.Safe {
 					found = true
+					reviewed.Columns = append(reviewed.Columns, actual)
 					break
 				}
 			}
 			if !found {
-				return readexec.ErrBinding
+				return nil, readexec.ErrBinding
 			}
 		}
+		relations = append(relations, reviewed)
 	}
-	return nil
+	return relations, nil
 }
 
 // Publish stages facets and atomically activates one reviewed definition.
@@ -234,14 +243,15 @@ func (s *Service) Contract(ctx context.Context, e identity.Envelope, topic strin
 	if current.State.Archived {
 		return Contract{}, store.ErrNotFound
 	}
-	if err = s.currentSources(ctx, e, current.Definition); err != nil {
+	relations, err := currentRelations(ctx, e, current.Definition, s.source.Discover)
+	if err != nil {
 		return Contract{}, err
 	}
 	after, err := s.repo.ConfirmTopicContract(ctx, e, topic, current.State.Revision)
 	if err != nil {
 		return Contract{}, err
 	}
-	return Contract{after, time.Now().UTC()}, nil
+	return Contract{Publication: after, ObservedAt: time.Now().UTC(), Relations: relations}, nil
 }
 
 // ReviewContract verifies the same current publication and live source
@@ -271,7 +281,7 @@ func (s *Service) ReviewContract(ctx context.Context, e identity.Envelope, topic
 	if err != nil {
 		return Contract{}, err
 	}
-	return Contract{after, time.Now().UTC()}, nil
+	return Contract{Publication: after, ObservedAt: time.Now().UTC()}, nil
 }
 
 // RetainedContract returns one exact immutable publication without consulting
