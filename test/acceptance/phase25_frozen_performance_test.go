@@ -174,13 +174,9 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.Key = "p25-protected-template"
-	ref, err := evaluationService.RegisterInput(ctx, operator, "protected", evaluation.LiveInput{Pack: pack, Frozen: &evaluation.FrozenRunInput{BlockID: block, Request: request}})
+	ref, err := evaluationService.RegisterInput(ctx, operator, "protected", evaluation.LiveInput{Frozen: &evaluation.FrozenRunInput{BlockID: block, Request: request}})
 	if err != nil {
 		t.Fatal("register protected frozen consumer", err)
-	}
-	refB, err := evaluationService.RegisterInput(ctx, operator, "protected", evaluation.LiveInput{Pack: packB, Frozen: &evaluation.FrozenRunInput{BlockID: block, Request: request}})
-	if err != nil {
-		t.Fatal("register changed reviewed-pack consumer", err)
 	}
 	adapter, err := evaluation.NewFrozenPerformanceReleaseAdapterFactory(f.f.f.db, runs, f.f.f.db, "recorded", time.Now)
 	if err != nil {
@@ -249,7 +245,7 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	caseProof.Fixture, caseProof.Input = nil, ref
 	caseProof.Expected = []evaluation.Expected{{Decision: "completed", SemanticDigest: cold.SemanticDigest}}
 	suite := evalSuite(evaluation.Live, []evaluation.Case{caseProof})
-	suite.ID, suite.Packs = "p25-frozen-suite", []evaluation.PackRevision{pack}
+	suite.ID, suite.Packs = "p25-frozen-suite", []evaluation.PackRevision{pack, packB}
 	suite.Limits.Calls, suite.Limits.Tokens, suite.Limits.Retries = 1, 8192, 0
 	draft, err := evaluationService.Author(ctx, operator, suite)
 	if err != nil {
@@ -292,7 +288,26 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	if _, err := adapter.ObserveBounded(ctx, operator, ref, wrong, "p25-frozen-wrong-pack", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) {
 		t.Fatal("unreviewed pack substituted", err)
 	}
-	selectNarrativePack(t, f.f, f.raw, acceptedPackB, 4)
+	withoutSelection := slices.DeleteFunc(append([]string(nil), scopes...), func(s string) bool { return s == "ops.write" })
+	selectionDenied := phase27Actor(t, f.f, operator.User(), withoutSelection)
+	proposed, err := evaluationService.ProposedPackDigest(ctx, operator, "reviewed-narrative-"+packB.ID)
+	if err != nil || proposed != packB.Digest {
+		t.Fatal("reviewed proposal did not bind the expected changed pack", err, proposed)
+	}
+	if _, err := evaluationService.ProposedPackDigest(ctx, selectionDenied, "reviewed-narrative-"+packB.ID); err == nil {
+		t.Fatal("proposal digest read bypassed signed selection authority")
+	}
+	if _, err := evaluationService.SelectPack(ctx, selectionDenied, "reviewed-narrative-"+packB.ID, 3); err == nil {
+		t.Fatal("missing signed ops.write changed the selected pack")
+	}
+	selected, err := evaluationService.SelectedPack(ctx, operator)
+	if err != nil || selected.Revision != 3 || selected.PackDigest != pack.Digest {
+		t.Fatal("unauthorized transition changed the production selection", err, selected)
+	}
+	selected, err = evaluationService.SelectPack(ctx, operator, "reviewed-narrative-"+packB.ID, selected.Revision)
+	if err != nil || selected.Revision != 4 || selected.PackDigest != packB.Digest || selected.Actor != operator.User() {
+		t.Fatal("authorized changed-pack transition did not advance the reviewed CAS pointer", err, selected)
+	}
 	beforeChanged := f.f.f.lookups.Load()
 	if _, err := adapter.ObserveBounded(ctx, operator, ref, acceptedPack, "p25-frozen-stale-key", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) || f.f.f.lookups.Load() != beforeChanged {
 		t.Fatal("stale reviewed-pack input reached source before correctness gate", err)
@@ -301,7 +316,7 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := staleAdapter.ObserveBounded(ctx, operator, refB, acceptedPackB, "p25-frozen-stale-substitution", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) || f.f.f.lookups.Load() != beforeChanged {
+	if _, err := staleAdapter.ObserveBounded(ctx, operator, ref, acceptedPackB, "p25-frozen-stale-substitution", 60); !errors.Is(err, evaluation.ErrPerformanceEvidence) || f.f.f.lookups.Load() != beforeChanged {
 		t.Fatal("stale repository reuse key reached source before correctness gate", err)
 	}
 	staleRequest := request
@@ -317,15 +332,27 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	if !errors.Is(err, evaluation.ErrReview) || f.f.f.lookups.Load() != beforeChanged {
 		t.Fatal("Phase 24 frozen report could claim a different selected pack", err)
 	}
-	changed, err := adapter.ObserveBounded(ctx, operator, refB, acceptedPackB, "p25-frozen-changed-pack", 0)
+	changedReport, err := evaluationService.Run(ctx, operator, evaluation.RunRequest{RunID: "p25-frozen-changed-report", SuiteID: suite.ID, SuiteRevision: suite.Revision, SuiteDigest: draft.Digest, PackDigest: packB.Digest}, phase24)
+	if err != nil || !changedReport.GatePassed || changedReport.Status != "passed" || changedReport.Pack.Digest != packB.Digest || changedReport.EvidenceHash == report.EvidenceHash || changedReport.Cases[0].Observation.SemanticDigest != cold.SemanticDigest || changedReport.Cases[0].Observation.Usage.SourceCalls != 1 || changedReport.Cases[0].Observation.Usage.Calls != 1 || changedReport.Cases[0].Observation.Usage.SourceMS == nil {
+		t.Fatal("changed reviewed pack did not produce a distinct physical Phase 24 report", err, changedReport)
+	}
+	changedProof, err := evaluationService.ResolvePerformanceEvidence(ctx, operator, evaluation.PerformanceEnvironment{EvaluationSuiteID: suite.ID, EvaluationSuiteRevision: suite.Revision, EvaluationSuite: draft.Digest, EvaluationReportID: changedReport.RunID, EvaluationReport: changedReport.EvidenceHash, WorkloadCaseID: caseProof.ID})
+	if err != nil || changedProof.RuntimePack.Digest != acceptedPackB.Digest || changedProof.Report.EvidenceHash != changedReport.EvidenceHash {
+		t.Fatal("changed-pack release evidence did not bind exact accepted Phase 24 report", err)
+	}
+	changed, err := adapter.ObserveBounded(ctx, operator, ref, acceptedPackB, "p25-frozen-changed-pack", 0)
 	if err != nil || changed.ReuseKey == cold.ReuseKey || changed.ReusedFrom != "" || changed.Usage.SourceCalls != 1 || changed.Usage.SourceNS == nil || changed.Usage.ModelCalls != 1 || changed.SemanticDigest != cold.SemanticDigest {
 		t.Fatal("selected reviewed-pack change did not invalidate product reuse", err, changed)
 	}
 	deniedScopes := slices.DeleteFunc(append([]string(nil), scopes...), func(s string) bool { return s == "reporting.execute" })
 	denied := phase27Actor(t, f.f, operator.User(), deniedScopes)
 	before := f.f.f.lookups.Load()
-	_, err = adapter.ObserveBounded(ctx, denied, refB, acceptedPackB, "p25-frozen-denied", 60)
+	_, err = adapter.ObserveBounded(ctx, denied, ref, acceptedPackB, "p25-frozen-denied", 60)
 	if err == nil || f.f.f.lookups.Load() != before {
 		t.Fatal("missing signed action reached source", err)
+	}
+	selected, err = evaluationService.SelectPack(ctx, operator, "reviewed-narrative-"+pack.ID, selected.Revision)
+	if err != nil || selected.Revision != 5 || selected.PackDigest != pack.Digest || selected.Actor != operator.User() {
+		t.Fatal("authorized release rollback did not restore the reviewed base pack", err, selected)
 	}
 }

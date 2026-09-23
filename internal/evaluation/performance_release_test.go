@@ -215,7 +215,7 @@ func (r releaseTestRevisionResolver) ResolvePerformanceRevisions(_ context.Conte
 }
 
 type releaseTestAdapterFactory struct {
-	adapter *releaseTestAdapter
+	adapter PerformanceReleaseAdapter
 	calls   int
 }
 

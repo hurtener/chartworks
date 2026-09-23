@@ -22,6 +22,9 @@ import (
 )
 
 // LiveInput is protected execution material. It is never retained in reports or logs.
+// A narrative frozen case may omit Pack so one reviewed suite can evaluate the
+// same consumer under distinct accepted runtime packs. Its product-sealed pin
+// must then match the selected runtime before source or model execution.
 type LiveInput struct {
 	Pack      PackRevision                `json:"pack"`
 	Frozen    *FrozenRunInput             `json:"frozen,omitempty"`
@@ -34,6 +37,18 @@ type LiveInput struct {
 	Chart     *chartservice.SelectRequest `json:"chart,omitempty"`
 	ReportID  string                      `json:"report_id,omitempty"`
 	ReportRef reporting.Reference         `json:"report_ref,omitempty"`
+}
+
+func protectedPackMatches(in LiveInput, selected PackRevision) bool {
+	if validPack(in.Pack) {
+		want, wantErr := digest(selected)
+		got, gotErr := digest(in.Pack)
+		return wantErr == nil && gotErr == nil && want == got
+	}
+	return in.Pack.ID == "" && in.Pack.Revision == 0 && in.Pack.Digest == "" && in.Pack.Model == "" &&
+		len(in.Pack.Models) == 0 && in.Pack.ConfigurationDigest == "" && in.Frozen != nil && in.Frozen.Request.Narrative &&
+		in.Question == nil && in.Run == nil && in.Route == nil && in.Replay == nil && in.Shadow == nil && in.BYO == nil &&
+		in.Chart == nil && in.ReportID == "" && in.ReportRef == (reporting.Reference{})
 }
 
 // ShadowInput compares two retained definitions without fresh planning or provider work.
@@ -115,9 +130,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	if err != nil {
 		return Observation{Usage: reservation.usage()}, err
 	}
-	wantPack, _ := digest(x.Pack)
-	gotPack, _ := digest(in.Pack)
-	if !validPack(in.Pack) || wantPack != gotPack {
+	if !protectedPackMatches(in, x.Pack) {
 		return Observation{Usage: reservation.usage()}, ErrReview
 	}
 	if x.RuntimeConfig.Digest != x.Pack.ConfigurationDigest || !packModelsMatchConfig(x.Pack, x.RuntimeConfig) {
@@ -224,7 +237,15 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 			if in.Run != nil || g.Frozen == nil || g.FrozenStore == nil {
 				return Observation{}, ErrMode
 			}
-			record, runErr := runFrozenInputChecked(ctx, x.Envelope, g.Frozen, g.FrozenStore, *in.Frozen, func(m reporting.RunManifest) error {
+			frozen := *in.Frozen
+			if x.ReportRunID != "" {
+				if !identifier(x.ReportRunID) {
+					return Observation{}, ErrMode
+				}
+				key := sha256.Sum256([]byte(x.ReportRunID + ":" + x.Case.ID + ":" + x.Pack.Digest + ":" + frozen.Request.Key))
+				frozen.Request.Key = "eval:" + hex.EncodeToString(key[:])
+			}
+			record, runErr := runFrozenInputChecked(ctx, x.Envelope, g.Frozen, g.FrozenStore, frozen, func(m reporting.RunManifest) error {
 				if !in.Frozen.Request.Narrative {
 					return nil
 				}

@@ -80,12 +80,12 @@ consumer and bounded performance adapter now enter `reporting.Runs` with
 distinct IDs, read canonical `RunManifest.ReuseKey` and `ReusedFrom`, and
 consume nullable persisted source-only duration plus physical narrative
 receipts. A real-PG17 recorded-model prerequisite test covers cold, warm,
-repeat and concurrent reuse, two selected accepted runtime packs, and rejects
-incomplete evidence. The product-sealed reviewed-pack pin is checked against
-the accepted Phase 24 runtime record before source or model execution; a stale
-pin fails before timing. The
-signed-action negative can remove `reporting.execute` for the frozen consumer;
-it sends the altered verified bearer through that same service. Each
+repeat and concurrent reuse, two distinct passing accepted Phase 24 reports
+for selected reviewed runtime packs, and rejects incomplete evidence. The
+product-sealed reviewed-pack pin is checked against the accepted Phase 24
+runtime record before source or model execution; a stale pin fails before
+timing. The signed-action negative can remove `reporting.execute` for the
+frozen consumer; it sends the altered verified bearer through that same service. Each
 invalidation step pins a consumer case and exact
 accepted report hash; the resolver must provide the matching current revision
 binding and report-selected runtime pack. Bifrost attests live mode; a recorded
@@ -104,9 +104,18 @@ case/report evidence for every changed source/rule/context/topic cohort, then
 prove one-field current invalidation and a stale-key negative before timing.
 The runtime-pack dimension has a product-selected accepted-pack pin in the
 frozen narrative consumer and reuse identity, with bounded recorded invalidation
-evidence. The final profile remains fail closed because its changed-pack case
-still needs its own accepted Phase 24 report and a controlled, authorized
-selection transition from baseline to changed pack across correctness probes
-and measured steps. A manifest-selected digest cannot make that transition.
+evidence. The strict adapter now requires the changed pack's own accepted
+Phase 24 report and an operator-configured approved proposal whose stored pack
+digest matches that report before any selection mutation. It selects the
+report-bound pack with verified Pengui authority and a CAS pointer before each
+correctness probe and measured step, then restores the baseline selection on
+success or failure. A foreign pointer revision blocks rollback rather than
+overwriting another operator's choice. The sealed raw samples retain product
+run IDs, reuse keys and origins alongside source-only timing and physical
+gateway usage; unknown provider costs remain unknown. The bounded PG17
+test and transition tests are prerequisites, not a completed `final_stress`.
+The required full profile still needs accepted current reports for each
+source/rule/context/topic cohort, provisioned concurrency, raw recorded and
+live measurements, owner cohort evidence, and the final release bundle.
 Phase 25 remains in progress until the real release profile executes and is reviewed;
 this change does not claim a final stress run or release acceptance.

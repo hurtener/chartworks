@@ -117,7 +117,7 @@ func (s *Service) ReviewRuntimePack(ctx context.Context, e identity.Envelope, pa
 
 // RegisterInput stores protected live material and returns its canonical reference.
 func (s *Service) RegisterInput(ctx context.Context, e identity.Envelope, retention string, in LiveInput) (ProtectedRef, error) {
-	if ctx == nil || !identifier(retention) || !validPack(in.Pack) {
+	if ctx == nil || !identifier(retention) || !protectedPackMatches(in, in.Pack) {
 		return ProtectedRef{}, ErrInvalid
 	}
 	d, err := digest(in)
@@ -647,6 +647,36 @@ func (s *Service) ReviewOptimization(ctx context.Context, e identity.Envelope, i
 		return ReviewReceipt{}, err
 	}
 	return receipt, nil
+}
+
+// SelectedPack reads the current approved pointer under the same signed scope
+// required to change it during a release profile.
+func (s *Service) SelectedPack(ctx context.Context, e identity.Envelope) (PackSelection, error) {
+	if s == nil || ctx == nil {
+		return PackSelection{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return PackSelection{}, err
+	}
+	return s.repo.SelectedPack(ctx, scope)
+}
+
+// ProposedPackDigest reads the immutable proposed pack before a release
+// transition. SelectPack separately requires the persisted approval and CAS.
+func (s *Service) ProposedPackDigest(ctx context.Context, e identity.Envelope, proposalID string) (string, error) {
+	if s == nil || ctx == nil || !identifier(proposalID) {
+		return "", ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return "", err
+	}
+	p, err := s.repo.ReadProposal(ctx, scope, proposalID)
+	if err != nil || p.Validate() != nil || !validDigest(p.Candidate.PackDigest) {
+		return "", ErrReview
+	}
+	return p.Candidate.PackDigest, nil
 }
 
 // SelectPack advances a CAS pointer only for a persisted approved proposal. Passing an older approved proposal performs an auditable rollback.

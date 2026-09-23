@@ -28,6 +28,7 @@ type Execution struct {
 	Envelope      identity.Envelope
 	RuntimeConfig gateway.RuntimeConfig `json:"-"`
 	RuntimeDigest string                `json:"-"`
+	ReportRunID   string                `json:"-"`
 }
 
 // Runner observes a pre-admitted live case.
@@ -146,7 +147,7 @@ func EvaluateWithPack(ctx context.Context, runID string, suite Suite, pack PackR
 			o = *c.Fixture
 		} else {
 			caseCtx, cancel := context.WithDeadline(ctx, reserve.Deadline)
-			o, err = runner.Observe(caseCtx, Execution{Suite: suite, Case: c, Pack: pack, Reservation: reserve})
+			o, err = runner.Observe(caseCtx, Execution{Suite: suite, Case: c, Pack: pack, Reservation: reserve, ReportRunID: runID})
 			cancel()
 		}
 		if err != nil {

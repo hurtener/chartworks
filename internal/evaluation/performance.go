@@ -368,7 +368,10 @@ type PerformanceUsage struct {
 // its source and gateway seams. The harness derives executed versus reused from
 // this receipt; an adapter cannot declare its own outcome.
 type PerformanceReceipt struct {
-	Usage PerformanceUsage `json:"usage"`
+	Usage      PerformanceUsage `json:"usage"`
+	RunID      string           `json:"run_id,omitempty"`
+	ReuseKey   string           `json:"reuse_key,omitempty"`
+	ReusedFrom string           `json:"reused_from,omitempty"`
 }
 
 // PerformanceAdapterResult is returned by a concrete synthetic/real adapter.
@@ -397,6 +400,13 @@ type PerformanceRunner interface {
 	Run(context.Context, PerformanceStep, int) (PerformanceAdapterResult, error)
 }
 
+// A concrete adapter may need to make an ordered, authorized revision
+// selection before each correctness probe and measured step. The harness calls
+// this serially, outside the timed worker pool.
+type performanceStepPreparer interface {
+	PreparePerformanceStep(context.Context, PerformanceStep) error
+}
+
 // PerformanceSample is one raw measured request.
 type PerformanceSample struct {
 	StepID         string           `json:"step_id"`
@@ -408,6 +418,9 @@ type PerformanceSample struct {
 	Executed       bool             `json:"executed"`
 	Reused         bool             `json:"reused"`
 	Usage          PerformanceUsage `json:"usage"`
+	RunID          string           `json:"run_id,omitempty"`
+	ReuseKey       string           `json:"reuse_key,omitempty"`
+	ReusedFrom     string           `json:"reused_from,omitempty"`
 }
 
 // PerformanceSummary derives aggregates from retained raw samples for one step.
@@ -458,7 +471,7 @@ func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
 	for _, sample := range r.Samples {
 		step, ok := steps[sample.StepID]
 		o := PerformanceObservation{SemanticDigest: sample.SemanticDigest, BindingDigest: sample.BindingDigest, Blocked: sample.Blocked, Executed: sample.Executed, Reused: sample.Reused, Usage: sample.Usage}
-		if !ok || sample.Iteration < 0 || sample.WallNS < 0 || validatePerformanceObservation(manifest.Environment, manifest.effectiveStep(step), o, true) != nil {
+		if !ok || sample.Iteration < 0 || sample.WallNS < 0 || validatePerformanceObservation(manifest.Environment, manifest.effectiveStep(step), o, true) != nil || validatePerformanceLineage(manifest.Environment, o, sample.RunID, sample.ReuseKey, sample.ReusedFrom) != nil {
 			return ErrInvalid
 		}
 		byStep[sample.StepID] = append(byStep[sample.StepID], sample)
@@ -502,6 +515,12 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	defer cancel()
 	for _, step := range manifest.Steps {
 		step = manifest.effectiveStep(step)
+		if preparer, ok := runner.(performanceStepPreparer); ok {
+			if err := preparer.PreparePerformanceStep(runCtx, step); err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+		}
 		result, err := runner.Check(runCtx, step)
 		o, outcomeErr := derivePerformanceObservation(manifest.Environment, step, result, false)
 		if err != nil || outcomeErr != nil || validatePerformanceObservation(manifest.Environment, step, o, false) != nil {
@@ -515,6 +534,12 @@ func MeasurePerformance(ctx context.Context, manifest PerformanceManifest, runne
 	report.CorrectnessPassed = true
 	for _, step := range manifest.Steps {
 		step = manifest.effectiveStep(step)
+		if preparer, ok := runner.(performanceStepPreparer); ok {
+			if err := preparer.PreparePerformanceStep(runCtx, step); err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+		}
 		if step.ResetBefore {
 			if err := runner.Reset(runCtx); err != nil {
 				report.CompletedAt = clock().UTC()
@@ -581,7 +606,7 @@ func measurePerformanceStep(ctx context.Context, environment PerformanceEnvironm
 						errs <- ErrInvalid
 						return
 					}
-					results <- PerformanceSample{StepID: step.ID, Iteration: iteration, WallNS: wall, SemanticDigest: o.SemanticDigest, BindingDigest: o.BindingDigest, Blocked: o.Blocked, Executed: o.Executed, Reused: o.Reused, Usage: o.Usage}
+					results <- PerformanceSample{StepID: step.ID, Iteration: iteration, WallNS: wall, SemanticDigest: o.SemanticDigest, BindingDigest: o.BindingDigest, Blocked: o.Blocked, Executed: o.Executed, Reused: o.Reused, Usage: o.Usage, RunID: result.Receipt.RunID, ReuseKey: result.Receipt.ReuseKey, ReusedFrom: result.Receipt.ReusedFrom}
 				}
 			}
 		}()
@@ -622,7 +647,23 @@ func derivePerformanceObservation(environment PerformanceEnvironment, step Perfo
 	if environment.ModelMode == "none" && (u.ModelCalls != 0 || u.ModelNS != nil || u.Tokens != nil || u.CostUSD != nil) {
 		return PerformanceObservation{}, ErrInvalid
 	}
+	if err := validatePerformanceLineage(environment, o, result.Receipt.RunID, result.Receipt.ReuseKey, result.Receipt.ReusedFrom); err != nil {
+		return PerformanceObservation{}, err
+	}
 	return o, nil
+}
+
+func validatePerformanceLineage(environment PerformanceEnvironment, o PerformanceObservation, runID, reuseKey, reusedFrom string) error {
+	if runID == "" && reuseKey == "" && reusedFrom == "" {
+		return nil // synthetic and ledger-only adapters have no product frozen-run lineage.
+	}
+	if !identifier(runID) || !validDigest(reuseKey) || reusedFrom != "" && (!identifier(reusedFrom) || reusedFrom == runID) || o.Blocked || o.Executed && reusedFrom != "" || o.Reused && reusedFrom == "" {
+		return ErrInvalid
+	}
+	if environment.SourceMode != "real_postgres" || environment.ModelMode != "recorded" && environment.ModelMode != "live" {
+		return ErrInvalid
+	}
+	return nil
 }
 
 func validatePerformanceObservation(environment PerformanceEnvironment, step PerformanceStep, o PerformanceObservation, measured bool) error {

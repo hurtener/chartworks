@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -38,11 +39,22 @@ type FrozenRunMeasurement struct {
 // FrozenPerformanceReleaseAdapterFactory enters the product's frozen-run reuse
 // path. Inputs and the selected runtime pack remain protected store material.
 type FrozenPerformanceReleaseAdapterFactory struct {
-	Inputs    LiveInputResolver
-	Runs      frozenRunRuntime
-	Store     frozenRunReader
-	Clock     Clock
-	ModelMode string
+	Inputs              LiveInputResolver
+	Runs                frozenRunRuntime
+	Store               frozenRunReader
+	Clock               Clock
+	ModelMode           string
+	Selection           PerformancePackSelection
+	ChangedPackProposal string
+}
+
+// PerformancePackSelection is the existing reviewed-proposal CAS service,
+// called only with the freshly verified release envelope. Proposal identifiers
+// are operator composition, never profile-selected authority.
+type PerformancePackSelection interface {
+	SelectedPack(context.Context, identity.Envelope) (PackSelection, error)
+	ProposedPackDigest(context.Context, identity.Envelope, string) (string, error)
+	SelectPack(context.Context, identity.Envelope, string, int64) (PackSelection, error)
 }
 
 func NewFrozenPerformanceReleaseAdapterFactory(inputs LiveInputResolver, runs frozenRunRuntime, repo frozenRunReader, modelMode string, clock Clock) (*FrozenPerformanceReleaseAdapterFactory, error) {
@@ -50,6 +62,16 @@ func NewFrozenPerformanceReleaseAdapterFactory(inputs LiveInputResolver, runs fr
 		return nil, ErrMode
 	}
 	return &FrozenPerformanceReleaseAdapterFactory{Inputs: inputs, Runs: runs, Store: repo, ModelMode: modelMode, Clock: clock}, nil
+}
+
+func (f *FrozenPerformanceReleaseAdapterFactory) WithPackTransition(selection PerformancePackSelection, changedProposal string) (*FrozenPerformanceReleaseAdapterFactory, error) {
+	if f == nil || selection == nil || !identity.Identifier(changedProposal) {
+		return nil, ErrMode
+	}
+	configured := *f
+	configured.Selection = selection
+	configured.ChangedPackProposal = changedProposal
+	return &configured, nil
 }
 
 // ObserveBounded exercises a protected frozen consumer with a caller-selected
@@ -65,13 +87,8 @@ func (f *FrozenPerformanceReleaseAdapterFactory) observe(ctx context.Context, e 
 	}
 	pack, cfg := runtime.Pack, runtime.Config
 	input, err := f.Inputs.ResolveEvaluationInput(ctx, e, ref)
-	if err != nil || input.Frozen == nil || input.Question != nil || input.Run != nil || !validPack(input.Pack) {
+	if err != nil || input.Frozen == nil || input.Question != nil || input.Run != nil || !protectedPackMatches(input, pack) {
 		return FrozenRunMeasurement{}, fmt.Errorf("%w: protected frozen input", ErrPerformanceEvidence)
-	}
-	want, wantErr := digest(pack)
-	got, gotErr := digest(input.Pack)
-	if wantErr != nil || gotErr != nil || want != got {
-		return FrozenRunMeasurement{}, fmt.Errorf("%w: protected pack mismatch", ErrPerformanceEvidence)
 	}
 	runInput := *input.Frozen
 	runInput.Request.Key = operationKey
@@ -159,17 +176,28 @@ func (f *FrozenPerformanceReleaseAdapterFactory) NewPerformanceReleaseAdapter(ct
 		}
 		prepared[step.ID] = scenario
 	}
-	// The current reviewed-pack seam cannot yet prove that a changed accepted
-	// pack is actually selected by a frozen narrative consumer. No final
-	// profile may enter timing until that product binding lands.
-	if _, ok := performanceStep(manifest.Steps, "runtime_pack_changed"); ok {
+	baseStep, baseOK := performanceStep(manifest.Steps, "cold")
+	changedStep, changedOK := performanceStep(manifest.Steps, "runtime_pack_changed")
+	if !baseOK || !changedOK || f.Selection == nil || !identity.Identifier(f.ChangedPackProposal) {
+		return nil, ErrPerformanceReuseUnproven
+	}
+	base, changed := prepared[baseStep.ID], prepared[changedStep.ID]
+	if base.Evidence.RuntimePack.Pack.Digest == changed.Evidence.RuntimePack.Pack.Digest || base.Evidence.RuntimePack.Digest == changed.Evidence.RuntimePack.Digest {
+		return nil, ErrPerformanceReuseUnproven
+	}
+	selected, err := f.Selection.SelectedPack(ctx, e)
+	if err != nil || selected.Revision < 1 || !identity.Identifier(selected.ProposalID) || selected.PackDigest != base.Evidence.RuntimePack.Pack.Digest {
+		return nil, ErrPerformanceReuseUnproven
+	}
+	proposed, err := f.Selection.ProposedPackDigest(ctx, e, f.ChangedPackProposal)
+	if err != nil || proposed != changed.Evidence.RuntimePack.Pack.Digest {
 		return nil, ErrPerformanceReuseUnproven
 	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, ErrPerformanceEvidence
 	}
-	return &frozenReleaseAdapter{factory: f, envelope: e, scenarios: prepared, nonce: hex.EncodeToString(nonce[:])}, nil
+	return &frozenReleaseAdapter{factory: f, envelope: e, scenarios: prepared, nonce: hex.EncodeToString(nonce[:]), baseSelection: selected, changedPack: changed.Evidence.RuntimePack.Pack.Digest, selectionRevision: selected.Revision}, nil
 }
 
 func frozenRevisionsComplete(r PerformanceRevisionEvidence) bool {
@@ -177,11 +205,15 @@ func frozenRevisionsComplete(r PerformanceRevisionEvidence) bool {
 }
 
 type frozenReleaseAdapter struct {
-	factory   *FrozenPerformanceReleaseAdapterFactory
-	envelope  identity.Envelope
-	scenarios map[string]PerformanceScenarioEvidence
-	nonce     string
-	epoch     atomic.Uint64
+	factory           *FrozenPerformanceReleaseAdapterFactory
+	envelope          identity.Envelope
+	scenarios         map[string]PerformanceScenarioEvidence
+	nonce             string
+	baseSelection     PackSelection
+	changedPack       string
+	selectionMu       sync.Mutex
+	selectionRevision int64
+	epoch             atomic.Uint64
 }
 
 func (a *frozenReleaseAdapter) EvidenceMode() PerformanceEvidenceMode {
@@ -192,6 +224,50 @@ func (a *frozenReleaseAdapter) EvidenceMode() PerformanceEvidenceMode {
 }
 func (a *frozenReleaseAdapter) SourceMode() string { return "real_postgres" }
 func (a *frozenReleaseAdapter) ModelMode() string  { return a.factory.ModelMode }
+
+// Selection is changed serially outside the measured worker pool. A foreign
+// pointer is never overwritten, and the database validates the approved
+// proposal and CAS revision under the verified Pengui envelope.
+func (a *frozenReleaseAdapter) PreparePerformanceStep(ctx context.Context, step PerformanceStep) error {
+	if a == nil || ctx == nil || !a.envelope.Valid() || a.factory.Selection == nil || !step.Allowed {
+		return ErrPerformanceAuthority
+	}
+	if step.Kind == "runtime_pack_changed" {
+		return a.selectPack(ctx, a.changedPack, a.factory.ChangedPackProposal)
+	}
+	return a.selectPack(ctx, a.baseSelection.PackDigest, a.baseSelection.ProposalID)
+}
+
+func (a *frozenReleaseAdapter) RestorePerformanceSelection(ctx context.Context) error {
+	if a == nil || ctx == nil || !a.envelope.Valid() || a.factory.Selection == nil {
+		return ErrPerformanceAuthority
+	}
+	return a.selectPack(ctx, a.baseSelection.PackDigest, a.baseSelection.ProposalID)
+}
+
+func (a *frozenReleaseAdapter) selectPack(ctx context.Context, digest, proposal string) error {
+	a.selectionMu.Lock()
+	defer a.selectionMu.Unlock()
+	selected, err := a.factory.Selection.SelectedPack(ctx, a.envelope)
+	if err != nil || selected.Revision != a.selectionRevision || selected.PackDigest != a.baseSelection.PackDigest && selected.PackDigest != a.changedPack ||
+		selected.PackDigest == a.baseSelection.PackDigest && selected.ProposalID != a.baseSelection.ProposalID ||
+		selected.PackDigest == a.changedPack && selected.ProposalID != a.factory.ChangedPackProposal {
+		return ErrPerformanceReuseUnproven
+	}
+	if selected.PackDigest == digest {
+		return nil
+	}
+	advanced, err := a.factory.Selection.SelectPack(ctx, a.envelope, proposal, selected.Revision)
+	if err != nil || advanced.Revision != selected.Revision+1 || advanced.PackDigest != digest || advanced.ProposalID != proposal || advanced.Actor != a.envelope.User() {
+		return ErrPerformanceReuseUnproven
+	}
+	a.selectionRevision = advanced.Revision
+	current, err := a.factory.Selection.SelectedPack(ctx, a.envelope)
+	if err != nil || current.Revision != advanced.Revision || current.PackDigest != digest || current.ProposalID != proposal {
+		return ErrPerformanceReuseUnproven
+	}
+	return nil
+}
 
 func (a *frozenReleaseAdapter) Check(ctx context.Context, step PerformanceStep) (PerformanceAdapterResult, error) {
 	return a.run(ctx, step, "probe", 0, 0)
@@ -214,8 +290,8 @@ func (a *frozenReleaseAdapter) Run(ctx context.Context, step PerformanceStep, it
 	return a.run(ctx, step, "measure", iteration, age)
 }
 func (a *frozenReleaseAdapter) run(ctx context.Context, step PerformanceStep, stage string, iteration, age int) (PerformanceAdapterResult, error) {
-	if a == nil || ctx == nil || !step.Allowed || strings.HasSuffix(step.Kind, "_changed") && step.Kind == "runtime_pack_changed" {
-		return PerformanceAdapterResult{}, ErrPerformanceReuseUnproven
+	if a == nil || ctx == nil || !step.Allowed {
+		return PerformanceAdapterResult{}, ErrPerformanceAuthority
 	}
 	scenario, ok := a.scenarios[step.ID]
 	if !ok {
@@ -232,7 +308,9 @@ func (a *frozenReleaseAdapter) run(ctx context.Context, step PerformanceStep, st
 	if stage == "probe" && (result.ReusedFrom != "" || result.Usage.SourceNS == nil || result.Usage.ModelNS == nil) {
 		return PerformanceAdapterResult{}, ErrGate
 	}
-	return PerformanceAdapterResult{SemanticDigest: result.SemanticDigest, BindingDigest: step.Binding.digest(), Receipt: PerformanceReceipt{Usage: result.Usage}}, nil
+	return PerformanceAdapterResult{SemanticDigest: result.SemanticDigest, BindingDigest: step.Binding.digest(), Receipt: PerformanceReceipt{
+		Usage: result.Usage, RunID: result.RunID, ReuseKey: result.ReuseKey, ReusedFrom: result.ReusedFrom,
+	}}, nil
 }
 
 func (a *frozenReleaseAdapter) ProbeDeniedAction(ctx context.Context, step PerformanceStep, denied identity.Envelope) (PerformanceAdapterResult, error) {

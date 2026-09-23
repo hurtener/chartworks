@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/auth"
@@ -160,6 +161,14 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	}
 	bound := &authorityBoundPerformanceRunner{envelope: envelope, actionEnvelope: actionEnvelope, manifest: manifest, next: adapter}
 	report, err := MeasurePerformance(ctx, manifest, bound, r.Clock)
+	if restore, ok := adapter.(interface{ RestorePerformanceSelection(context.Context) error }); ok {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		restoreErr := restore.RestorePerformanceSelection(cleanup)
+		cancel()
+		if restoreErr != nil {
+			return report, errors.Join(err, restoreErr)
+		}
+	}
 	if err != nil {
 		return report, err
 	}
@@ -401,6 +410,23 @@ func (r *authorityBoundPerformanceRunner) Reset(ctx context.Context) error {
 		return ErrPerformanceAuthority
 	}
 	return r.next.Reset(ctx)
+}
+
+func (r *authorityBoundPerformanceRunner) PreparePerformanceStep(ctx context.Context, step PerformanceStep) error {
+	if r == nil || ctx == nil || !r.envelope.Valid() || r.next == nil {
+		return ErrPerformanceAuthority
+	}
+	if !step.Allowed {
+		return nil
+	}
+	denied, err := r.authorize(step)
+	if err != nil || denied {
+		return ErrPerformanceAuthority
+	}
+	if preparer, ok := r.next.(performanceStepPreparer); ok {
+		return preparer.PreparePerformanceStep(ctx, step)
+	}
+	return nil
 }
 
 func (r *authorityBoundPerformanceRunner) Run(ctx context.Context, step PerformanceStep, iteration int) (PerformanceAdapterResult, error) {

@@ -26,26 +26,27 @@ type bearerVerifier interface {
 // The accepted Phase 24 report and reviewed pack are still loaded by Service
 // under freshly verified Pengui authority at measurement time.
 type Integration struct {
-	Verifier        bearerVerifier
-	Evaluation      *evaluation.Service
-	Inputs          evaluation.LiveInputResolver
-	Migration       *migration.Service
-	Sources         *sources.Service
-	Topics          *topics.Service
-	Rules           *rulesets.Service
-	Validator       *readexec.Validator
-	Engine          *recorded.Engine
-	Blocks          *reporting.Service
-	FrozenStore     reporting.RunRepository
-	Requests        *jobs.RequestRunner
-	ReportingLimits config.ReportingExecution
-	Cohorts         []CaseCohort
-	Clock           evaluation.Clock
+	Verifier            bearerVerifier
+	Evaluation          *evaluation.Service
+	Inputs              evaluation.LiveInputResolver
+	Migration           *migration.Service
+	Sources             *sources.Service
+	Topics              *topics.Service
+	Rules               *rulesets.Service
+	Validator           *readexec.Validator
+	Engine              *recorded.Engine
+	Blocks              *reporting.Service
+	FrozenStore         reporting.RunRepository
+	Requests            *jobs.RequestRunner
+	ReportingLimits     config.ReportingExecution
+	ChangedPackProposal string
+	Cohorts             []CaseCohort
+	Clock               evaluation.Clock
 }
 
 // NewIntegration composes the real published-block and frozen-run path with
-// one recorded gateway.Engine. The Phase 25 runtime remains fail-closed until
-// the changed reviewed-pack consumer and final_stress evidence are integrated.
+// one recorded gateway.Engine. The Phase 25 release remains fail-closed until
+// accepted current cohort reports and the measured final_stress evidence exist.
 func NewIntegration(c Integration) (*evaluation.PerformanceReleaseRuntime, error) {
 	if c.Verifier == nil || c.Evaluation == nil || c.Inputs == nil || c.Migration == nil || c.Sources == nil || c.Topics == nil || c.Rules == nil || c.Validator == nil || c.Blocks == nil || c.FrozenStore == nil || c.Requests == nil || c.Engine == nil || c.Engine.PerformanceModelMode() != "recorded" || c.ReportingLimits.Validate() != nil || c.ReportingLimits.ModelVersion == "" {
 		return nil, evaluation.ErrMode
@@ -77,6 +78,12 @@ func NewIntegration(c Integration) (*evaluation.PerformanceReleaseRuntime, error
 	factory, err := evaluation.NewFrozenPerformanceReleaseAdapterFactory(c.Inputs, runs, c.FrozenStore, "recorded", c.Clock)
 	if err != nil {
 		return nil, err
+	}
+	if c.ChangedPackProposal != "" {
+		factory, err = factory.WithPackTransition(c.Evaluation, c.ChangedPackProposal)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &evaluation.PerformanceReleaseRuntime{Verifier: c.Verifier, Service: c.Evaluation, Revisions: revisions, Adapters: factory, Clock: c.Clock}, nil
 }

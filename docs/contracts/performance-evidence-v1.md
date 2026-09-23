@@ -5,9 +5,11 @@ implemented for review, 2026-09-22. The original Plan→Run adapter remains a
 query-ledger prerequisite and fails closed for result reuse. The draft frozen
 adapter now admits distinct reporting run IDs and reads the product's canonical
 reuse identity, reuse origin, persisted native source-only duration and
-uncopied narrative receipts. A bounded real-PG17 recorded-model test exercises
-cold, warm, repeat and concurrent reuse. The selected Phase-34 current-revision
-resolver also reads the protected case's published block pins. These are
+uncopied narrative receipts. Sealed raw samples retain product run IDs, reuse
+keys and origins beside wall, source, model, call and cost observations. A
+missing provider cost remains unknown. A bounded real-PG17 recorded-model test
+exercises cold, warm, repeat and concurrent reuse. The selected Phase-34
+current-revision resolver also reads the protected case's published block pins. These are
 prerequisites, not the final stress execution or Phase 25 release decision.
 
 Performance evidence is valid only after every case passes a correctness probe.
@@ -96,21 +98,23 @@ one reviewed Phase-34 cohort for each accepted Phase-24 consumer case, reloads
 the active cutover and its source adapter, checks current topic/rule/source and
 signed context reach, and hashes all rows of a bounded native PostgreSQL
 dataset's validator-safe column projection. Multi-dataset source snapshots fail
-closed until a shared native
-transaction exists. Missing or changed owner evidence fails closed. The
-required `runtime_pack_changed` final-profile branch still returns
-`ErrPerformanceReuseUnproven`. A bounded real-PostgreSQL recorded test now
-selects two independently reviewed packs through the product selector and
-observes a changed reuse identity with fresh source/model receipts. Final
-stress still needs accepted Phase 24 case/report evidence for the changed pack
-and an authorized, ordered selection transition during the profile; one
-tenant-wide current selection cannot prove both baseline and changed pack
-steps simultaneously. Final AC03 also needs a real
-accepted Phase 24 case/report for each selected revision, one-field current
-invalidation and stale-key substitution through the final correctness gate,
-the exact final profile, and live owner evidence. Neither this composition nor
-its recorded fixtures qualifies a live model or release stress run. The release
-orchestration remains internal.
+closed until a shared native transaction exists. Missing or changed owner
+evidence fails closed. A bounded real-PostgreSQL recorded test now runs the
+same protected frozen consumer under two independently reviewed packs, records
+distinct passing Phase 24 reports, and observes a changed reuse identity with
+fresh source/model receipts. The strict adapter requires both exact accepted
+reports and an operator-configured approved changed-pack proposal whose stored
+candidate digest matches the report before any selection mutation. Before each
+correctness probe and timed step, it uses the verified Pengui envelope to
+select the report-bound pack through the product's CAS pointer; it restores the
+original accepted selection after success or failure and refuses a foreign
+revision. An absent report, proposal or authority fails before timing. Final
+AC03 still needs accepted Phase 24 cases/reports for every selected current
+source/rule/context/topic revision, one-field current invalidation and
+stale-key substitution through the final correctness gate, the exact final
+stress profile with provisioned concurrency and raw receipts, and live owner
+evidence. Neither this composition nor its recorded fixtures qualifies a live
+model or release stress run. The release orchestration remains internal.
 
 Release reports are atomically created as private `0600` files and an existing
 path is never replaced. The one-hour profile bound includes correctness probes
