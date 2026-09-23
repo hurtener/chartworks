@@ -49,7 +49,7 @@ Implement `TestPhase34/AC01` through `TestPhase34/AC08`; test import replay/CAS,
 
 The in-progress runtime is owned by `internal/migration`, `internal/migrationapi`,
 `internal/store/postgres/migration.go`, migration 050 and the typed SDK. It exposes
-seven registered HTTP/CLI operations and seven optional MCP bindings. The
+eight registered HTTP/CLI operations and eight optional MCP bindings. The
 [v1 contract](../contracts/migration-cutover-v1.md),
 [operation manifest](../contracts/chartworks-migration-operations.json) and
 [operator runbook](../runbooks/migration-cutover.md) define the manifest, authority,
@@ -59,7 +59,7 @@ loss ledger, quarantine, retention and schedule handoff behavior.
 per-apply current-authority/retention/owner revalidation, cross-revision reservation
 and checkpoint fencing, current source validation at cutover, all 63 feature dispositions,
 live owner evidence resolution, PostgreSQL replay/CAS, bounded migration-record
-erasure and the
+erasure, exact-origin preview/apply of due retained outputs and renditions, and the
 worker-consumed occurrence cutover/rollback fence. Phases 24 and 33 are integrated. Evaluation
 suites and server-owned runtime packs import through the Phase 24 public service as
 drafts and reconcile exact retry conflicts without importing acceptance or selection.
@@ -70,7 +70,7 @@ their creation transaction until an exact two-route cutover. Owner comparison
 results are resolved from distinct held-out feature cases in accepted live Phase 24
 reports, with source revision and engine binding, rather than manifest status text.
 Phase 34 remains `in_progress` until its complete private owner comparison,
-dependent-object retention/erasure and operational cutover/rollback evidence
+private owner inventory/comparison, backup/WAL retention and operational cutover/rollback evidence
 passes. Its closure supplies a prerequisite to Phase 25; Phase 25 alone owns
 the final release gates.
 

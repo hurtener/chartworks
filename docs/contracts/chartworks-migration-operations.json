@@ -5,5 +5,6 @@
   {"method":"POST","path":"/v1/migrations/exports","action":"migration.read","effect":"migration_export_read"},
   {"method":"POST","path":"/v1/migrations/cutovers","action":"migration.cutover","effect":"migration_cutover_commit"},
   {"method":"POST","path":"/v1/migrations/rollbacks","action":"migration.cutover","effect":"migration_cutover_commit"},
-  {"method":"POST","path":"/v1/migrations/erasures","action":"migration.erase","effect":"migration_erase_commit"}
+  {"method":"POST","path":"/v1/migrations/erasures","action":"migration.erase","effect":"migration_erase_commit"},
+  {"method":"POST","path":"/v1/migrations/retention-drills","action":"migration.erase","effect":"migration_erase_commit"}
 ]

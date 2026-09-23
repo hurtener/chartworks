@@ -41,6 +41,9 @@ func MCPBindings(service *migration.Service) ([]mcpserver.Binding, error) {
 		{id: "migrationErase", name: "migration_erase", description: "Erase bounded online migration journal records under current signed retention authority.", build: func() (mcpserver.Binding, error) {
 			return mcpserver.Bind(registry, "migrationErase", "migration_erase", "migration", "Erase bounded online migration journal records under current signed retention authority.", service.Erase, mapper)
 		}},
+		{id: "migrationRetentionDrill", name: "migration_retention_drill", description: "Preview or apply bounded erasure of expired retained descendants and renditions from exact imported revisions.", build: func() (mcpserver.Binding, error) {
+			return mcpserver.Bind(registry, "migrationRetentionDrill", "migration_retention_drill", "migration", "Preview or apply bounded erasure of expired retained descendants and renditions from exact imported revisions.", service.RetentionDrill, mapper)
+		}},
 	}
 	out := make([]mcpserver.Binding, 0, len(specs))
 	for _, s := range specs {

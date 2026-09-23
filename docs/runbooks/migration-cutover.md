@@ -34,9 +34,21 @@
    effect list. The transaction reactivates the prior route; verify only future due
    times resume and that no logical stream/due pair is admitted twice. Never
    report listed effects as undone.
-8. After retention and when no active cutover references the batch, call
-   `migrationErase` in bounded pages until `remaining` is zero. Record that online
-   payload was removed and apply the operator backup/replica/WAL retention policy.
+8. After the retained output's own expiry, call `migrationRetentionDrill` with
+   `apply:false`, the exact batch revision and a bounded limit. Review the
+   metadata-only run/parent/rendition inventory against the approved owner record.
+   The caller needs current `migration.erase`, `reporting.retention`, tenant erase,
+   target read, actual context use and private preview reach. An active cutover,
+   legal hold, changed batch revision or missing reach stops the drill. Call the
+   same operation with `apply:true` and the returned `preview_digest`; repeat
+   preview/apply until `remaining` is
+   zero. Verify affected reads fail, rendition rows are gone and unrelated
+   same-tenant roots remain. Expired values outside the exact imported revisions
+   retain their own owner lifecycle.
+9. With no live imported-revision descendants or active cutover, call
+   `migrationErase` in bounded pages until `remaining` is zero. Record only
+   online payload removal. Obtain the separate operator inventory and expiry
+   evidence for backups, replicas and WAL before making any physical erasure claim.
 
 Abort cutover when the plan is not ready, a destination mapping changes, current
 authority is missing, a source/profile revision moved, an unsupported engine is
