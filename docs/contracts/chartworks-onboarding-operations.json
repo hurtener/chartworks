@@ -1,4 +1,6 @@
 [
+  {"method":"POST","path":"/v1/onboarding/goal-search","action":"onboarding.read","effect":"bounded_authorized_catalog_read"},
+  {"method":"POST","path":"/v1/onboarding/goal-choice","action":"onboarding.write","effect":"current_topic_reuse_or_private_draft_write"},
   {"method":"POST","path":"/v1/onboarding","action":"onboarding.write","effect":"durable_bounded_orchestration"},
   {"method":"GET","path":"/v1/onboarding/{id}","action":"onboarding.read","effect":"private_progress_read"},
   {"method":"POST","path":"/v1/onboarding/resume","action":"onboarding.write","effect":"durable_bounded_orchestration"},

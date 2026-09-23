@@ -34,6 +34,14 @@ func MCPBindings(service *onboarding.Service) ([]mcpserver.Binding, error) {
 		out = append(out, b)
 		return nil
 	}
+	current = "searchBusinessGoal"
+	if err = add(mcpserver.Bind(registry, "searchBusinessGoal", "search_business_goal", "onboarding", "Search authorized current topics and private source/profile evidence for a business goal; results require explicit choice.", service.SearchGoal, mapper)); err != nil {
+		return nil, err
+	}
+	current = "chooseBusinessGoal"
+	if err = add(mcpserver.Bind(registry, "chooseBusinessGoal", "choose_business_goal", "onboarding", "Recheck exact current reuse evidence or create an unresolved private topic draft for independent review.", service.ChooseGoal, mapper)); err != nil {
+		return nil, err
+	}
 	current = "startOnboarding"
 	if err = add(mcpserver.Bind(registry, "startOnboarding", "start_onboarding", "onboarding", "Start a bounded private setup journey over registered sources and existing domain services. This does not create credentials or approve semantic meaning.", service.Start, mapper)); err != nil {
 		return nil, err
@@ -78,7 +86,7 @@ func onboardingFault(err error) mcpserver.Fault {
 		code = "unauthenticated"
 	case errors.Is(err, access.ErrForbidden):
 		code = "forbidden"
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, access.ErrNotFound):
 		code = "not_found"
 	case errors.Is(err, store.ErrConflict):
 		code = "conflict"

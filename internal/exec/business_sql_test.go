@@ -134,7 +134,7 @@ func TestBusinessBindingRejectsAmbiguityAndForeignInputs(t *testing.T) {
 	c := businessFixtureConstraint()
 	ctx := context.Background()
 	for _, sql := range []string{
-		"WITH q AS (SELECT * FROM analytics.sales) SELECT * FROM q",
+		"WITH q AS (SELECT * FROM analytics.sales) SELECT 1",
 		"SELECT * FROM (SELECT * FROM analytics.sales) s",
 		"SELECT id FROM analytics.sales UNION ALL SELECT id FROM analytics.sales",
 		"SELECT a.id FROM analytics.sales a JOIN analytics.sales b ON a.id=b.id",

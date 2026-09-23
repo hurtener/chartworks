@@ -56,7 +56,7 @@ func TestRegistryMatchesOnboardingManifest(t *testing.T) {
 	if json.Unmarshal(raw, &manifest) != nil || !reflect.DeepEqual(manifest, registry.Operations()) {
 		t.Fatal("onboarding operation manifest drift")
 	}
-	if len(registry.Definitions()) != 6 {
+	if len(registry.Definitions()) != 8 {
 		t.Fatal("onboarding operation count", len(registry.Definitions()))
 	}
 	if _, err = registry.OpenAPI("Chartworks onboarding", "1"); err != nil {
@@ -110,7 +110,13 @@ func TestMCPBindingsAndHTTPBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry, _ := Registry()
-	definition := registry.Definitions()[0]
+	var definition api.Definition
+	for _, item := range registry.Definitions() {
+		if item.ID == "startOnboarding" {
+			definition = item
+			break
+		}
+	}
 	requestShape, requestErr := api.SchemaFor("probe", reflect.TypeFor[onboarding.StartRequest](), false, api.OptionalJSONFields)
 	responseShape, responseErr := api.SchemaFor("probe", reflect.TypeFor[onboarding.Run](), true)
 	if requestErr != nil || responseErr != nil {
@@ -120,7 +126,7 @@ func TestMCPBindingsAndHTTPBoundaries(t *testing.T) {
 		t.Fatal("MCP and HTTP start schemas diverged")
 	}
 	bindings, err := MCPBindings(service)
-	if err != nil || len(bindings) != 6 {
+	if err != nil || len(bindings) != 8 {
 		t.Fatal(bindings, err)
 	}
 	if bindings, err = MCPBindings(nil); err != nil || bindings != nil {
@@ -160,7 +166,7 @@ func TestFailureProjection(t *testing.T) {
 		code   string
 	}{
 		{access.ErrUnauthenticated, 401, "unauthenticated"}, {access.ErrForbidden, 403, "forbidden"},
-		{store.ErrNotFound, 404, "not_found"}, {onboarding.ErrAttention, 409, "attention_required"},
+		{store.ErrNotFound, 404, "not_found"}, {access.ErrNotFound, 404, "not_found"}, {onboarding.ErrAttention, 409, "attention_required"},
 		{onboarding.ErrCancelled, 409, "cancelled"}, {store.ErrConflict, 409, "conflict"},
 		{onboarding.ErrBudget, 429, "budget_exhausted"}, {onboarding.ErrInvalid, 400, "invalid_request"},
 		{errBodyLimit, 413, "limit_exceeded"}, {store.ErrUnavailable, 503, "unavailable"},
@@ -180,7 +186,7 @@ func TestMCPFailureProjection(t *testing.T) {
 		code string
 	}{
 		{access.ErrUnauthenticated, "unauthenticated"}, {access.ErrForbidden, "forbidden"},
-		{store.ErrNotFound, "not_found"}, {store.ErrConflict, "conflict"},
+		{store.ErrNotFound, "not_found"}, {access.ErrNotFound, "not_found"}, {store.ErrConflict, "conflict"},
 		{onboarding.ErrAttention, "attention_required"}, {onboarding.ErrCancelled, "cancelled"},
 		{onboarding.ErrBudget, "budget_exhausted"}, {store.ErrInvalid, "invalid_request"},
 		{context.DeadlineExceeded, "cancelled_or_timed_out"}, {errors.New("private detail"), "unavailable"},
@@ -235,6 +241,8 @@ func TestHandlerDispatchesEveryOnboardingOperation(t *testing.T) {
 		path   string
 		body   any
 	}{
+		{http.MethodPost, "/v1/onboarding/goal-search", onboarding.GoalSearchRequest{Goal: "Review sales", Locale: "en"}},
+		{http.MethodPost, "/v1/onboarding/goal-choice", onboarding.GoalChoiceRequest{Kind: "reuse", Topic: "topic", Version: "v1", Revision: 1, Digest: strings.Repeat("a", 64), Context: "context"}},
 		{http.MethodPost, "/v1/onboarding", start},
 		{http.MethodGet, "/v1/onboarding/run", nil},
 		{http.MethodPost, "/v1/onboarding/resume", onboarding.ResumeRequest{ID: "run", ExpectedVersion: 1}},
@@ -288,6 +296,8 @@ func TestHandlerDispatchesEveryOnboardingOperation(t *testing.T) {
 		name string
 		body any
 	}{
+		{"search_business_goal", onboarding.GoalSearchRequest{Goal: "Review sales", Locale: "en"}},
+		{"choose_business_goal", onboarding.GoalChoiceRequest{Kind: "reuse", Topic: "topic", Version: "v1", Revision: 1, Digest: strings.Repeat("a", 64), Context: "context"}},
 		{"start_onboarding", start},
 		{"get_onboarding", IDRequest{ID: "run"}},
 		{"resume_onboarding", onboarding.ResumeRequest{ID: "run", ExpectedVersion: 1}},

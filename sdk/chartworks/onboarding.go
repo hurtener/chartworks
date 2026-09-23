@@ -11,6 +11,20 @@ type OnboardingStart = onboarding.StartRequest
 type OnboardingRun = onboarding.Run
 type OnboardingAnswer = onboarding.AnswerRequest
 type OnboardingAmendment = onboarding.Amendment
+type GoalSearch = onboarding.GoalSearchRequest
+type GoalSearchResult = onboarding.GoalSearchResult
+type GoalChoice = onboarding.GoalChoiceRequest
+type GoalChoiceResult = onboarding.GoalChoiceResult
+
+func (c *Client) SearchBusinessGoal(ctx context.Context, in GoalSearch) (out GoalSearchResult, err error) {
+	err = c.call(ctx, "POST", "/v1/onboarding/goal-search", "", in, &out)
+	return
+}
+
+func (c *Client) ChooseBusinessGoal(ctx context.Context, in GoalChoice) (out GoalChoiceResult, err error) {
+	err = c.call(ctx, "POST", "/v1/onboarding/goal-choice", "", in, &out)
+	return
+}
 
 func (c *Client) StartOnboarding(ctx context.Context, in OnboardingStart) (out OnboardingRun, err error) {
 	err = c.call(ctx, "POST", "/v1/onboarding", "", in, &out)
