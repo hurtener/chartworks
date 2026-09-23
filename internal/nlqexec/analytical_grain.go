@@ -219,7 +219,7 @@ func unmeasuredGrainMarker(words []string, i int) bool {
 		"filter", "filtered", "filtering", "filtrar", "filtrado", "filtrada", "filtrados", "filtradas",
 		"not", "without", "no", "sin":
 		return true
-	case "group", "grouped", "grouping", "agrupar", "agrupado":
+	case "group", "grouped", "grouping", "agrupar", "agrupado", "agrupada", "agrupados", "agrupadas", "agrupando", "agrupes", "agrupe":
 		if i > 1 {
 			switch words[i-2] {
 			case "not", "without", "no", "sin":
@@ -242,8 +242,17 @@ func grainWords(s string) []string {
 			}
 			continue
 		}
-		if r == '\'' || r == '"' || r == '`' {
+		switch r {
+		case '\'', '"', '`':
 			quote = r
+		case '“':
+			quote = '”'
+		case '‘':
+			quote = '’'
+		case '«':
+			quote = '»'
+		}
+		if quote != 0 {
 			b.WriteString(" \x00 ")
 			continue
 		}
