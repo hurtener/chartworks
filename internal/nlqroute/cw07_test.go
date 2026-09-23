@@ -410,6 +410,124 @@ func testCW07TemporalConnectorsAndInstantBoundaries(t *testing.T) {
 	}
 }
 
+func testCW07CalendarYearAndMonthRange(t *testing.T) {
+	for _, tc := range []struct {
+		name, question, start, end, grain, provenance string
+		locale                                        nlq.Language
+	}{
+		{"english-year", "What was gross revenue from paid orders by month in 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageEnglish},
+		{"modal-may-year", "May I see revenue in 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageEnglish},
+		{"spanish-year", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageSpanish},
+		{"english-range", "What is total net revenue in USD for all paid orders from January through March 2026, after subtracting every refund on those paid orders? Return one number.", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageEnglish},
+		{"aligned-quarter-grouping", "Revenue by quarter from January through March 2026", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageEnglish},
+		{"spanish-range", "Ingresos de enero a marzo de 2026", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageSpanish},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			publication := cw07Publication("topic")
+			publication.Definition.Dimensions[1].Temporal.Grains = []semantics.TimeGrain{semantics.GrainMonth, semantics.GrainQuarter}
+			service, engine := cw07Service(t, publication, cw07Binding(1))
+			out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, InterpretationAnchor: "2026-09-22"})
+			if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 || engine.embeds != 1 {
+				t.Fatalf("temporal interpretation unavailable: err=%v out=%#v embeds=%d", err, out, engine.embeds)
+			}
+			span := out.Interpretation.Temporal[0]
+			if span.Start != tc.start || span.End != tc.end || span.Grain != tc.grain || span.Provenance != tc.provenance || span.Calendar != "gregorian" || span.TimeZone != "UTC" {
+				t.Fatalf("calendar span changed: %#v", span)
+			}
+			constraints, err := out.ResolvedBusinessConstraints()
+			if err != nil || len(constraints) != 1 || constraints[0].Bounds != "[)" || constraints[0].Value != tc.start || constraints[0].Upper != tc.end {
+				t.Fatalf("sealed half-open window changed: err=%v constraints=%#v", err, constraints)
+			}
+			got, _, err := service.ReplayClarifications(context.Background(), testEnvelope(t, true), out)
+			if err != nil || readexec.Hash(got) != readexec.Hash(constraints) {
+				t.Fatalf("calendar replay changed: err=%v got=%#v", err, got)
+			}
+		})
+	}
+
+	publication := cw07Publication("topic")
+	publication.Definition.Dimensions[1].Temporal.Grains = []semantics.TimeGrain{semantics.GrainMonth, semantics.GrainQuarter}
+	publication.Definition.Dimensions[1].Temporal.Timezone = "America/New_York"
+	publication.Definition.Datasets[0].Columns[1].NativeType = "timestamptz"
+	publication.Definition.Datasets[0].Columns[1].Category = "timestamp"
+	binding := cw07Binding(1)
+	binding.Relations[0].Columns[1].NativeType = "timestamptz"
+	binding.Relations[0].Columns[1].Category = "timestamp"
+	service, _ := cw07Service(t, publication, binding)
+	for _, tc := range []struct{ question, start, end string }{
+		{"Revenue in 2026", "2026-01-01T05:00:00Z", "2027-01-01T05:00:00Z"},
+		{"Revenue from January through March 2026", "2026-01-01T05:00:00Z", "2026-04-01T04:00:00Z"},
+	} {
+		out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: tc.question, InterpretationAnchor: "2026-09-22"})
+		if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 || out.Interpretation.Temporal[0].Start != tc.start || out.Interpretation.Temporal[0].End != tc.end {
+			t.Fatalf("reviewed instant calendar boundary changed: err=%v out=%#v", err, out.Interpretation)
+		}
+	}
+}
+
+func testCW07CalendarSpanRejectsUnreviewedOrAmbiguousRequests(t *testing.T) {
+	for _, tc := range []struct {
+		question, reason string
+		locale           nlq.Language
+	}{
+		{"Revenue in 2026 or 2027", "invalid_temporal_span", nlq.LanguageEnglish},
+		{"Revenue in 2026 and last month", "ambiguous_temporal_span", nlq.LanguageEnglish},
+		{"Revenue by month and by year in 2026", "ambiguous_temporal_grain", nlq.LanguageEnglish},
+		{"Revenue by quarter from February through April 2026", "unsupported_temporal_grain", nlq.LanguageEnglish},
+		{"Revenue by quarter from April through January 2026", "ambiguous_temporal_span", nlq.LanguageEnglish},
+		{"Revenue by year from February through April 2026", "unsupported_temporal_grain", nlq.LanguageEnglish},
+		{"Revenue not in 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Revenue not from January through March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Revenue excluding the period from January through March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Ingresos excluyendo el período de enero a marzo de 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
+		{"Revenue not in March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Revenue not last month", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Ingresos no en 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
+		{"Ingresos no de enero a marzo de 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
+		{"Ingresos sin marzo de 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
+		{"Revenue from January through March 2026 and this month", "ambiguous_temporal_span", nlq.LanguageEnglish},
+		{"Revenue from March through January 2026", "ambiguous_temporal_span", nlq.LanguageEnglish},
+		{"Revenue in March and April 2026", "ambiguous_temporal_span", nlq.LanguageEnglish},
+		{"Ingresos en 2026", "invalid_temporal_span", nlq.LanguageEnglish},
+		{"Revenue in 2026", "invalid_temporal_span", nlq.LanguageSpanish},
+	} {
+		t.Run(tc.question, func(t *testing.T) {
+			publication := cw07Publication("topic")
+			publication.Definition.Dimensions[1].Temporal.Grains = []semantics.TimeGrain{semantics.GrainMonth, semantics.GrainYear}
+			service, engine := cw07Service(t, publication, cw07Binding(1))
+			out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, InterpretationAnchor: "2026-09-22"})
+			if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != tc.reason || engine.embeds != 0 {
+				t.Fatalf("unsafe calendar request reached provider: err=%v out=%#v embeds=%d", err, out, engine.embeds)
+			}
+		})
+	}
+	service, engine := cw07Service(t, cw07Publication("topic"), cw07Binding(1))
+	out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue by year in 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "unsupported_temporal_grain" || engine.embeds != 0 {
+		t.Fatalf("unreviewed year grouping reached provider: err=%v out=%#v embeds=%d", err, out, engine.embeds)
+	}
+	quarterOnly := cw07Publication("topic")
+	quarterOnly.Definition.Dimensions[1].Temporal.Grains = []semantics.TimeGrain{semantics.GrainQuarter}
+	service, engine = cw07Service(t, quarterOnly, cw07Binding(1))
+	out, err = service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue by quarter from February through April 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "unsupported_temporal_grain" || engine.embeds != 0 {
+		t.Fatalf("quarter-only policy admitted month interval: err=%v out=%#v embeds=%d", err, out, engine.embeds)
+	}
+	out, err = service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue by quarter in 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 || out.Interpretation.Temporal[0].Grain != "year" {
+		t.Fatalf("calendar-year filter lost quarter-only reviewed grouping: err=%v out=%#v", err, out.Interpretation)
+	}
+	service, _ = cw07Service(t, cw07Publication("topic"), cw07Binding(1))
+	positive, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue excluding refunds in March 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || positive.Interpretation == nil || len(positive.Interpretation.Temporal) != 1 {
+		t.Fatalf("non-temporal exclusion blocked period: err=%v out=%#v", err, positive.Interpretation)
+	}
+	positive, err = service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue excluding refunds from January through March 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || positive.Interpretation == nil || len(positive.Interpretation.Temporal) != 1 || positive.Interpretation.Temporal[0].End != "2026-04-01" {
+		t.Fatalf("non-temporal range exclusion blocked period: err=%v out=%#v", err, positive.Interpretation)
+	}
+}
+
 func testCW07InterpretationBudgetFailsBeforeProvider(t *testing.T) {
 	publication := cw07Publication("topic")
 	publication.Definition.Dimensions = nil
@@ -446,4 +564,6 @@ func TestCW07(t *testing.T) {
 	t.Run("AC07_deterministic_replay", testCW07InterpretationReplayIsDeterministic)
 	t.Run("AC08_interpretation_budget_before_provider", testCW07InterpretationBudgetFailsBeforeProvider)
 	t.Run("AC09_temporal_connectors_and_instant_boundaries", testCW07TemporalConnectorsAndInstantBoundaries)
+	t.Run("AC10_calendar_year_and_month_range", testCW07CalendarYearAndMonthRange)
+	t.Run("AC11_calendar_span_fail_closed", testCW07CalendarSpanRejectsUnreviewedOrAmbiguousRequests)
 }
