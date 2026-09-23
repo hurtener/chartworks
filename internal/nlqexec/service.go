@@ -1726,6 +1726,10 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
 	}
+	// Keep the model-authored statement separate from service-owned predicates.
+	// Bound SQL and scalar answers must never become validation-repair input.
+	unbound := candidate
+	unbound.Parameters = append([]exec.Parameter(nil), candidate.Parameters...)
 	candidate, err = bindClarificationCandidate(ctx, a, candidate)
 	if err != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
@@ -1734,13 +1738,21 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if validateErr == nil {
 		return candidate, 0, receipt, plan, nil
 	}
-	if errors.Is(validateErr, access.ErrNotFound) || errors.Is(validateErr, access.ErrForbidden) || errors.Is(validateErr, access.ErrUnauthenticated) || errors.Is(validateErr, exec.ErrBinding) {
+	if !validationRepairable(validateErr) {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, validateErr
 	}
-	fixed, fixedReceipt, fixErr := s.generate(ctx, e, a, generation, call, budget, "sqlfix", validationCode(validateErr, candidate.SQL))
+	repairContext, repairErr := validationRepairContext(ctx, generation, unbound, validationCode(validateErr, unbound.SQL))
+	if repairErr != nil {
+		return generatedCandidate{}, 0, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, repairErr)
+	}
+	fixed, fixedReceipt, fixErr := s.generate(ctx, e, a, repairContext, call, budget, "sqlfix", "")
 	receipt = appendReceipts(receipt, fixedReceipt)
 	if fixErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, fixErr)
+	}
+	fixed, fixErr = restoreValidationRepairParameters(fixed, unbound.Parameters)
+	if fixErr != nil {
+		return generatedCandidate{}, 1, receipt, exec.Plan{}, fixErr
 	}
 	fixed, fixErr = bindClarificationCandidate(ctx, a, fixed)
 	if fixErr != nil {
@@ -1759,7 +1771,7 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	}
 	dialect := a.binding.Dialect
 	system := "Return one safe, read-only SQL statement for the native " + dialect + " dialect. Never change the topic, source, execution context, required filters, pinned metrics, or permissions. Return only the requested JSON object."
-	if len(a.route.Resolutions) != 0 {
+	if hasActiveBusinessEvidence(a.route) {
 		system += " Reviewed clarification constraints are bound by the service after generation. Select their exact governed base relations; do not invent, repeat, or infer their scalar values or add predicates for those owned targets."
 	}
 	prompt := generation.Prompt + "\ndialect:" + dialect + "\nsource_context:" + a.context

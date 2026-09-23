@@ -94,3 +94,70 @@ func TestSQLRecoveryTerminalValidationFailuresDoNotCallRepair(t *testing.T) {
 		})
 	}
 }
+
+func TestSQLRecoveryRepairPacketIsUnboundAndValueFree(t *testing.T) {
+	e := testEnvelope(t)
+	_, generation, _, _ := testGeneration(t, e)
+	before := generation.Prompt
+	private := "protected-scalar-735194"
+	candidate := generatedCandidate{
+		SQL:         "SELECT id FROM analytics.sales WHERE id = $1",
+		Parameters:  []exec.Parameter{{Kind: "text", Value: private}},
+		Assumptions: []string{private}, Ambiguities: []string{private},
+		clarification: &ClarificationEvidence{BaseSQL: private},
+	}
+	repair, err := validationRepairContext(context.Background(), generation, candidate,
+		validationCode(errors.Join(exec.ErrUnsafe, errors.New(private)), candidate.SQL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(repair.Prompt, private) || !strings.Contains(repair.Prompt, candidate.SQL) ||
+		!strings.Contains(repair.Prompt, `"parameter_slots":[{"position":1,"kind":"text"}]`) {
+		t.Fatal("repair packet lost its unbound SQL/slot contract or exposed private values")
+	}
+	if generation.Prompt != before || repair.Tokens > repair.Budget || !strings.Contains(repair.Prompt, "tenant_id is the signed tenant") {
+		t.Fatal("repair mutated or bypassed the sealed mandatory context")
+	}
+}
+
+func TestSQLRecoveryRejectsChangedRepairSlots(t *testing.T) {
+	original := []exec.Parameter{{Kind: "integer", Value: "42"}}
+	for _, parameters := range [][]exec.Parameter{nil, {{Kind: "text", Value: "42"}}, {{Kind: "integer", Value: "0"}, {Kind: "integer", Value: "0"}}} {
+		if _, err := restoreValidationRepairParameters(generatedCandidate{SQL: "SELECT id FROM analytics.sales", Parameters: parameters}, original); !errors.Is(err, ErrUnsafeCorrection) {
+			t.Fatal("repair changed parameter slot count or kinds")
+		}
+	}
+	fixed, err := restoreValidationRepairParameters(generatedCandidate{SQL: "SELECT id FROM analytics.sales", Parameters: []exec.Parameter{{Kind: "integer", Value: "0"}}}, original)
+	if err != nil || !sameParameters(fixed.Parameters, original) {
+		t.Fatal("repair did not restore the original bindings")
+	}
+	fixed.Parameters[0].Value = "99"
+	if original[0].Value != "42" {
+		t.Fatal("restored parameter slice aliases the original")
+	}
+}
+
+func TestSQLRecoveryOversizedRepairStopsBeforeSecondCall(t *testing.T) {
+	e := testEnvelope(t)
+	a, generation, call, budget := testGeneration(t, e)
+	bad := "SELECT " + strings.Repeat("missing_name,", 1600) + "id FROM analytics.sales"
+	model := &recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{recoveryCandidate(bad, nil, "sqlgen")}}}
+	service := &Service{engine: model, validator: &sequenceValidator{errors: []error{exec.ErrUnsafe}}}
+	_, fixes, receipt, _, err := service.generateAndValidate(context.Background(), e, a, generation, call, budget, "")
+	if !errors.Is(err, ErrValidationBudget) || fixes != 0 || len(model.requests) != 1 || len(receipt.Calls) != 1 {
+		t.Fatal("oversized repair bypassed fitting or fabricated a second model attempt")
+	}
+}
+
+func TestSQLRecoveryRepeatedInvalidCandidateStopsAfterOneRepair(t *testing.T) {
+	e := testEnvelope(t)
+	a, generation, call, budget := testGeneration(t, e)
+	bad := recoveryCandidate("SELECT missing_id FROM analytics.sales", nil, "sqlgen")
+	model := &recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{bad, bad, bad}}}
+	validator := &sequenceValidator{errors: []error{exec.ErrUnsafe, exec.ErrUnsafe}}
+	service := &Service{engine: model, validator: validator}
+	_, fixes, receipt, _, err := service.generateAndValidate(context.Background(), e, a, generation, call, budget, "")
+	if !errors.Is(err, ErrValidationBudget) || fixes != 1 || len(model.requests) != 2 || validator.calls != 2 || len(receipt.Calls) != 2 {
+		t.Fatal("invalid SQL was accepted or correction exceeded one bounded attempt")
+	}
+}
