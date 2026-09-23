@@ -77,3 +77,14 @@ The authority/cache key includes tenant, user, session, action, sorted signed sc
 SDK retries are disabled; the adapter owns the only 1–4 attempt ceiling. The fixed-input `/v1/gateway/probes` operator endpoint remains the gateway diagnostic consumer, while the phase-17 NLQ route is the first domain consumer of embedding and optional reranking. Each later semantic or artifact consumer still uses its owning phase contract.
 
 OpenRouter rerank's endpoint origin defaults to `https://openrouter.ai`; an operator-supplied override must be an HTTPS origin without a path. The SDK supplies cancellation, timeout, bounded concurrency and Bearer transport. Chartworks validates the complete raw response before exposing any ranking, preserves sealed IDs and tie order, and records one usage receipt per attempt. The request preserves `cohere/rerank-4-fast`; a live response reported the provider's canonical `rerank-v4.0-fast`, so the receipt keeps requested and reported model fields distinct. Unknown cost remains absent. Run the opt-in `scripts/smoke/openrouter-rerank-live.py` with a private `.env` for paid provider-route evidence; ordinary CI uses recorded SDK responses.
+
+## Complete effective generation admission
+
+The [generation packet contract](generation-packet-v2.md) defines local adapter
+preparation, conservative normalized UTF-8 JSON/protocol/output reservation and
+optional exact `gateway.model_windows` entries. Preparation makes no inference call
+or reservation. The real adapter rechecks at dispatch, retains redacted estimated
+envelope receipts separately from reported usage, and rejects unregistered runtime
+model overrides when window enforcement is enabled. No provider capacity is guessed.
+This extends the existing byte-bound operation reservation; it does not replace
+semantic-tier tokenization or introduce a second inference transport.

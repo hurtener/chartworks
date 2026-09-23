@@ -119,10 +119,11 @@ func reviewedProjection(datasets []reviewedDataset, binding exec.Binding) ([]exe
 
 type generatedCandidate struct {
 	clarification *ClarificationEvidence
-	SQL           string           `json:"sql"`
-	Parameters    []exec.Parameter `json:"parameters"`
-	Assumptions   []string         `json:"assumptions"`
-	Ambiguities   []string         `json:"ambiguities"`
+	generation    *nlq.GenerationContext // Exact fitted initial packet; not model JSON.
+	SQL           string                 `json:"sql"`
+	Parameters    []exec.Parameter       `json:"parameters"`
+	Assumptions   []string               `json:"assumptions"`
+	Ambiguities   []string               `json:"ambiguities"`
 }
 
 var generationSchema, generationSchemaErr = gateway.NewSchema("nlq_sql_candidate", []byte(`{
@@ -975,11 +976,14 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err != nil {
 		return PlanResult{}, err
 	}
-	selection.Usage = actualExampleUsage(selection, generation)
 	candidate, fixes, receipt, validated, err := s.generateAndValidate(ctx, e, admitted, generation, call, budget, "")
 	if err != nil {
 		return PlanResult{}, err
 	}
+	if candidate.generation != nil {
+		generation = *candidate.generation
+	}
+	selection.Usage = actualExampleUsage(selection, generation)
 	id, err := newID()
 	if err != nil {
 		return PlanResult{}, err
@@ -1736,6 +1740,9 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
 	}
+	if candidate.generation != nil {
+		generation = *candidate.generation
+	}
 	// Keep the model-authored statement separate from service-owned predicates.
 	// Bound SQL and scalar answers must never become validation-repair input.
 	unbound := candidate
@@ -1772,6 +1779,9 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if validateErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, validateErr)
 	}
+	// Learning usage describes the initial sqlgen packet. Each sqlfix attempt
+	// has its own envelope digest in the gateway receipt.
+	fixed.generation = unbound.generation
 	return fixed, 1, receipt, plan, nil
 }
 
@@ -1784,10 +1794,30 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	if hasActiveBusinessEvidence(a.route) {
 		system += " Reviewed clarification constraints are bound by the service after generation. Select their exact governed base relations; do not invent, repeat, or infer their scalar values or add predicates for those owned targets."
 	}
-	prompt := generation.Prompt + "\ndialect:" + dialect + "\nsource_context:" + a.context
+	suffix := "\ndialect:" + dialect + "\nsource_context:" + a.context
 	if correction != "" {
-		prompt += "\ncorrection_reason:" + correction
+		suffix += "\ncorrection_reason:" + correction
 	}
+	// Production Bifrost provides its effective server-owned request bounds.
+	// Recorded engines without provider configuration retain the sealed tier.
+	if provider, ok := s.engine.(gateway.GenerationEnvelopeProvider); ok {
+		envelope, err := provider.GenerationEnvelope(ctx, role, system, generationSchema)
+		if err != nil {
+			return generatedCandidate{}, gateway.Receipt{}, err
+		}
+		assembler, err := nlq.NewDefaultContextAssembler()
+		if err != nil {
+			return generatedCandidate{}, gateway.Receipt{}, err
+		}
+		generation, err = assembler.RefitGeneration(ctx, generation, func(prompt string) (bool, error) {
+			_, fits, err := envelope.Measure(prompt + suffix)
+			return fits, err
+		})
+		if err != nil {
+			return generatedCandidate{}, gateway.Receipt{}, err
+		}
+	}
+	prompt := generation.Prompt + suffix
 	generated, err := s.engine.Generate(ctx, call, budget, role, system, prompt, generationSchema)
 	if err != nil {
 		return generatedCandidate{}, generated.Receipt, err
@@ -1796,6 +1826,7 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	if json.Unmarshal(generated.JSON, &candidate) != nil || !validCandidate(candidate) {
 		return generatedCandidate{}, generated.Receipt, ErrGeneration
 	}
+	candidate.generation = &generation
 	return candidate, generated.Receipt, nil
 }
 
@@ -1811,6 +1842,9 @@ func (s *Service) fixCandidate(ctx context.Context, e identity.Envelope, a admis
 	candidate, receipt, err := s.generate(ctx, e, a, generation, call, budget, "sqlfix", reason)
 	if err != nil {
 		return generatedCandidate{}, generation, receipt, err
+	}
+	if candidate.generation != nil {
+		generation = *candidate.generation
 	}
 	return candidate, generation, receipt, nil
 }

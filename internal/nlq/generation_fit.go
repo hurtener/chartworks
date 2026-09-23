@@ -26,7 +26,8 @@ func (a *ContextAssembler) fitGeneration(ctx context.Context, assembled Assemble
 	result := GenerationContext{
 		MandatoryConstraints: cloneConstraintState(assembled.Constraints),
 		PinnedMetrics:        cloneMetrics(assembled.Metrics), Budget: assembled.Budget,
-		Fit: &GenerationFit{Version: "generation-fit-v2"},
+		Fit:      &GenerationFit{Version: "generation-fit-v2"},
+		fallback: append([]Instruction(nil), defaults...),
 	}
 	// Context examples have already been validated and ranked by the context
 	// owner. Merge them after explicitly ranked instruction examples. IDs are

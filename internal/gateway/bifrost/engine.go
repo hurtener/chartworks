@@ -258,12 +258,22 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 	if name == "embedding" || name == "rerank" || schema == nil || schema.Name() == "" || prompt == "" || len(prompt)+len(system)+len(schema.Document()) > e.cfg.Limits.MaxInputBytes {
 		return out, gateway.ErrInput
 	}
-	model, system, configurationDigest := gateway.ApplyRuntimeConfig(ctx, name, r.Model, system)
-	// The effective reviewed system instruction is part of the actual input.
-	// Check again after applying it, before admission or provider reservation.
-	if len(prompt)+len(system)+len(schema.Document()) > e.cfg.Limits.MaxInputBytes {
-		return out, gateway.ErrInput
+	envelope, err := e.GenerationEnvelope(ctx, name, system, schema)
+	if err != nil {
+		return out, err
 	}
+	measurement, fits, err := envelope.Measure(prompt)
+	if err != nil {
+		return out, err
+	}
+	if !fits {
+		if measurement.RequestBytes > measurement.MaxRequestBytes {
+			return out, gateway.ErrInput
+		}
+		return out, gateway.ErrBudget
+	}
+	model, system, configurationDigest := gateway.ApplyRuntimeConfig(ctx, name, r.Model, system)
+	reservation := measurement.InputUpperBound + measurement.OutputReserve
 	release, err := e.enter(call, b)
 	if err != nil {
 		return out, err
@@ -280,7 +290,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		if err = gateway.ReserveAttempt(ctx, b, call, len(prompt)+len(system)+len(schema.Document())+1024+r.MaxTokens); err != nil {
+		if err = gateway.ReserveAttempt(ctx, b, call, reservation); err != nil {
 			return out, err
 		}
 		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
@@ -293,11 +303,14 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 			actual = observedModel(response.Model)
 			raw = response.ExtraFields.RawResponse
 		}
-		out.Receipt.Calls = append(out.Receipt.Calls, configuredUsage(name, p, model, actual, configurationDigest, start, raw))
+		usage := configuredUsage(name, p, model, actual, configurationDigest, start, raw)
+		attemptEnvelope := measurement
+		usage.Envelope = &attemptEnvelope
+		out.Receipt.Calls = append(out.Receipt.Calls, usage)
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		if err := observe(b, call, len(prompt)+len(system)+len(schema.Document())+1024+r.MaxTokens, out.Receipt); err != nil {
+		if err := observe(b, call, reservation, out.Receipt); err != nil {
 			return out, err
 		}
 		if be != nil {

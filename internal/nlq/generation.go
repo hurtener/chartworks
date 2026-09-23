@@ -55,6 +55,7 @@ type GenerationContext struct {
 	Budget               int                `json:"budget"`
 	Context              AssembledContext   `json:"context"`
 	Fit                  *GenerationFit     `json:"fit,omitempty"`
+	fallback             []Instruction      // In-process default source; never reinterprets retained packets.
 	seal                 [32]byte
 }
 

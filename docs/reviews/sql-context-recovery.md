@@ -214,3 +214,21 @@ The added `fit`/`usage` evidence is optional on retained legacy JSON: absence is
 unknown, not zero. Final provider-window allocation, broader root coverage and
 live owner-cohort comparison are not completed by this slice. No frozen query,
 report refresh, semantic publication or signed authority policy changes.
+
+## AP-02B checkpoint: effective-envelope admission
+
+Implements local preparation and refitting of generation/repair packets against the
+actual runtime role/model/system, normalized JSON/schema framing, conservative input
+bound and full output reserve. Required context never yields. Optional examples and
+evidence carry bounded `provider_budget` omissions and persisted initial-use evidence.
+An exact operator model-window registry rejects uncovered runtime overrides; absent
+registry leaves context capacity unknown, not guessed. Actual attempt envelopes are
+content-free digests/counts distinct from provider-reported usage. Runtime model slices
+are detached to prevent fit/dispatch drift. No authority, native validation, owned
+predicate, replay or frozen execution boundaries are changed.
+
+Tests added for total-envelope boundaries/escaping, exact models/configuration,
+immutability/redaction, no-dispatch failure, mandatory preservation, ranked omissions,
+default fallback, unsealed/retained rejection and repair-specific fitting. Runtime
+results are maintained in PR #62 after the exact committed-source workflow completes;
+this checkpoint is not by itself a passing gate or live-model qualification.

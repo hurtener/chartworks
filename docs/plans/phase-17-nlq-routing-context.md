@@ -144,3 +144,14 @@ evidence. Optional context yields before required instructions. Runtime system
 additions are byte-checked again before dispatch. Full model-specific provider
 window fitting and live quality qualification remain pending; frozen refresh
 and native authority/SQL validation are unchanged.
+
+## SQL recovery: effective-envelope refitting
+
+AP-02B extends [generation packet v2](../contracts/generation-packet-v2.md).
+The context owner prunes optional groups against the adapter's effective model,
+system/schema/JSON framing and output reserve. Exact operator model-window entries
+are enforced for runtime overrides; no configured window means explicitly unknown
+capacity with byte and operation bounds still enforced. Required semantics and
+full reviewed relation scope remain unchanged, and repair resolves its own role.
+Actual packet-use and estimated per-attempt envelope evidence are distinct from
+reported tokens and live qualification. Retained objects are not reinterpreted.

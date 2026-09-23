@@ -130,6 +130,7 @@ type Gateway struct {
 	Bifrost struct {
 		Providers []Provider `json:"providers"`
 	} `json:"bifrost"`
+	ModelWindows       []ModelWindow   `json:"model_windows,omitempty"`
 	Roles              map[string]Role `json:"roles"`
 	MaxAttemptsPerCall int             `json:"max_attempts_per_call"`
 }
