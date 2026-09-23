@@ -128,7 +128,7 @@ func TestSQLRecoveryAnalyticalPrivateDefinitionsAndCancellation(t *testing.T) {
 }
 func TestSQLRecoveryAnalyticalReplayEvidenceIntegrity(t *testing.T) {
 	a := analyticalAdmission()
-	c, err := compileAnalytical(context.Background(), a)
+	c, err := compileAnalyticalVersion(context.Background(), a, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

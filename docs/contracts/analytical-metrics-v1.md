@@ -1,6 +1,8 @@
 # Analytical metrics v1
 
-Status: AP-03A implementation under review in the SQL recovery PR. This is scoped
+Status: AP-03A retained metric policy in the SQL recovery PR. New authoring uses
+[analytical grouping v2](analytical-grain-v2.md), while this policy remains pinned
+for version-one replay. This is scoped
 analytical evidence, **not** business approval, an execution credential or complete
 natural-language/result-correctness certification.
 
@@ -80,7 +82,8 @@ functions/columns inside NULLIF remain unsafe.
 
 Migration 053 adds an immutable analytical-version marker and nullable bounded
 receipt to the existing query row. Version zero means legacy/unmeasured and has no
-receipt. It is not retroactively certified. Newly generated plans use version one;
+receipt. It is not retroactively certified. This policy originally generated record version one; new authoring now uses
+version two as defined by the linked grouping contract. Under version one,
 selected user metric roots require a receipt, while plans without selected metric
 outputs explicitly have none. Scope-aware query and saved-query projections retain
 these fields; saved reads continue to exclude result rows.

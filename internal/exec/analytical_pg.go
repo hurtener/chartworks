@@ -89,6 +89,9 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 		}
 		terms[i] = term
 		if name := text(t["name"]); name != "" {
+			if _, exists := aliases[name]; exists && a.grain != nil {
+				return analyticalFailure("analytical_output_ambiguous", true)
+			}
 			aliases[name] = term
 		}
 		if term.aggregate {
@@ -132,6 +135,9 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 		if term.column != "" && !groups[term.column] {
 			return analyticalFailure("analytical_metric_mismatch", false)
 		}
+	}
+	if err := a.checkGrain(groups, terms); err != nil {
+		return err
 	}
 	return a.ctx.Err()
 }

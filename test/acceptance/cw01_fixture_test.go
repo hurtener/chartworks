@@ -24,6 +24,10 @@ type cw01Fixture struct {
 }
 
 func newCW01Fixture(t *testing.T) *cw01Fixture {
+	return newCW01FixtureWithPack(t, nil)
+}
+
+func newCW01FixtureWithPack(t *testing.T, prepare func(*semantics.TopicPack)) *cw01Fixture {
 	t.Helper()
 	f, draftsService, topicService, model, pack := publicationFixture(t)
 	ctx := context.Background()
@@ -44,6 +48,9 @@ func newCW01Fixture(t *testing.T) *cw01Fixture {
 		dataset.Columns = append(dataset.Columns, semantics.Column{ID: column.Name, SourceName: column.Name, Name: column.Name, NativeType: column.NativeType, Category: column.Category, Nullable: column.Nullable})
 	}
 	pack.Datasets[0] = dataset
+	if prepare != nil {
+		prepare(&pack)
+	}
 	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
 	published := phase17PublishTopic(t, draftsService, topicService, e, pack)
 	ruleService, err := rulesets.New(f.db, f.db, f.db)

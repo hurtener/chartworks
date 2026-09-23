@@ -16,6 +16,17 @@ import (
 // AnalyticalVersion identifies the closed, scoped metric proof and its policy.
 const AnalyticalVersion = "analytical-metrics-v1"
 
+// AnalyticalGrainVersion adds an optional exact, server-selected grouping proof.
+// v1 remains a distinct retained policy and must never be upgraded on replay.
+const AnalyticalGrainVersion = "analytical-metrics-v2"
+
+const (
+	// AnalyticalMetricScope does not certify the query-wide population or grain.
+	AnalyticalMetricScope = "selected_metric_expression_and_population;single_base_relation"
+	// AnalyticalGrainScope additionally proves the exact selected grouping columns.
+	AnalyticalGrainScope = "selected_metric_expression_population_and_grouping;single_base_relation"
+)
+
 var (
 	// ErrAnalyticalMismatch means a selected metric's checked definition differs.
 	ErrAnalyticalMismatch = errors.New("exec: analytical metric mismatch")
@@ -66,13 +77,15 @@ type AnalyticalMetric struct {
 
 // AnalyticalContract is server-derived from exact admitted semantic revisions.
 // v1 proves selected metric expressions/populations over one base relation. It
-// does NOT certify question interpretation, grouping intent or query-wide filters.
+// does NOT certify question interpretation or query-wide filters. v2 can also
+// prove an explicitly compiled direct-column grain; nil grain remains unmeasured.
 type AnalyticalContract struct {
 	Version   string             `json:"version"`
 	Binding   string             `json:"binding"`
 	Semantics string             `json:"semantics"`
 	Dataset   string             `json:"dataset"`
 	Metrics   []AnalyticalMetric `json:"metrics"`
+	Grain     *AnalyticalGrain   `json:"grain,omitempty"`
 }
 
 func (AnalyticalContract) String() string         { return "analytical-contract(redacted)" }
@@ -87,13 +100,14 @@ type AnalyticalReceipt struct {
 	Contract string   `json:"contract"`
 	Query    string   `json:"query"`
 	Metrics  []string `json:"metrics"`
+	Grouping []string `json:"grouping,omitempty"`
 }
 
 // CheckAnalyticalPlan checks an already native-validated opaque plan. It neither
 // issues plans nor widens the admitted binding, and does no source/model work.
 // Unsupported syntax is not labeled a passed analytical result.
 func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*AnalyticalReceipt, error) {
-	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || c.Version != AnalyticalVersion || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
+	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
 		return nil, ErrBinding
 	}
 	if err := ctx.Err(); err != nil {
@@ -113,7 +127,10 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if matches != 1 {
 		return nil, ErrBinding
 	}
-	checker := analyticalChecker{ctx: ctx, relation: relation, parameters: p.candidate.parameters}
+	if err := validateAnalyticalGrain(c, relation); err != nil {
+		return nil, err
+	}
+	checker := analyticalChecker{ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain}
 	expected := map[string]int{}
 	ids := make([]string, 0, len(c.Metrics))
 	seen := map[string]bool{}
@@ -162,7 +179,12 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 		return nil, err
 	}
 	sort.Strings(ids)
-	return &AnalyticalReceipt{Version: AnalyticalVersion, Scope: "selected_metric_expression_and_population;single_base_relation", Contract: Hash(c), Query: AnalyticalQueryDigest(sql, p.candidate.parameters), Metrics: ids}, nil
+	receipt := &AnalyticalReceipt{Version: c.Version, Scope: AnalyticalMetricScope, Contract: Hash(c), Query: AnalyticalQueryDigest(sql, p.candidate.parameters), Metrics: ids}
+	if c.Grain != nil {
+		receipt.Scope = AnalyticalGrainScope
+		receipt.Grouping = append([]string(nil), c.Grain.Dimensions...)
+	}
+	return receipt, nil
 }
 
 type analyticalChecker struct {
@@ -172,6 +194,7 @@ type analyticalChecker struct {
 	parameters []Parameter
 	nodes      int
 	leaves     []AnalyticalExpression
+	grain      *AnalyticalGrain
 	common     map[string]bool
 	global     map[string]bool
 }

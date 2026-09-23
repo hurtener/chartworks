@@ -17,7 +17,7 @@ import (
 
 // The persisted revision is independent of selection and native validation.
 // Zero means retained legacy evidence, not a claim of analytical correctness.
-const analyticalRecordVersion = 1
+const analyticalRecordVersion = 2
 
 func analyticalUnsupported(code string) error {
 	return &exec.AnalyticalError{Code: code, Unsupported: true}
@@ -27,6 +27,17 @@ func analyticalUnsupported(code string) error {
 // retrieved prose or serialized prompt fragments. Required-rule dependencies are
 // still authoritative context but cannot masquerade as a user-selected output.
 func compileAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContract, error) {
+	return compileAnalyticalVersion(ctx, a, analyticalRecordVersion)
+}
+
+func compileAnalyticalVersion(ctx context.Context, a admission, version int) (*exec.AnalyticalContract, error) {
+	if version != 1 && version != analyticalRecordVersion {
+		return nil, exec.ErrBinding
+	}
+	proofVersion := exec.AnalyticalVersion
+	if version == analyticalRecordVersion {
+		proofVersion = exec.AnalyticalGrainVersion
+	}
 	if ctx == nil {
 		return nil, exec.ErrBinding
 	}
@@ -61,7 +72,7 @@ func compileAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContra
 				if a.binding.Dialect != "postgres" {
 					return nil, analyticalUnsupported("analytical_dialect_unsupported")
 				}
-				out = &exec.AnalyticalContract{Version: exec.AnalyticalVersion, Binding: exec.Hash(a.binding), Semantics: selected.Digest}
+				out = &exec.AnalyticalContract{Version: proofVersion, Binding: exec.Hash(a.binding), Semantics: selected.Digest}
 			}
 			expression, err := compiler.metric(root.Reference, nil, 0)
 			if err != nil {
@@ -80,6 +91,13 @@ func compileAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContra
 	}
 	if out != nil {
 		sort.Slice(out.Metrics, func(i, j int) bool { return out.Metrics[i].ID < out.Metrics[j].ID })
+		if version == analyticalRecordVersion {
+			var err error
+			out.Grain, err = compileAnalyticalGrain(ctx, a, *out)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return out, nil
 }
@@ -283,6 +301,7 @@ func cloneAnalyticalReceipt(r *exec.AnalyticalReceipt) *exec.AnalyticalReceipt {
 	}
 	out := *r
 	out.Metrics = append([]string(nil), r.Metrics...)
+	out.Grouping = append([]string(nil), r.Grouping...)
 	return &out
 }
 
@@ -296,10 +315,10 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission) (*exec.
 		}
 		return nil, nil
 	}
-	if q.AnalyticalVersion != analyticalRecordVersion {
+	if q.AnalyticalVersion != 1 && q.AnalyticalVersion != analyticalRecordVersion {
 		return nil, exec.ErrBinding
 	}
-	contract, err := compileAnalytical(ctx, a)
+	contract, err := compileAnalyticalVersion(ctx, a, q.AnalyticalVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -309,11 +328,15 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission) (*exec.
 		}
 		return nil, nil
 	}
-	want := &exec.AnalyticalReceipt{Version: exec.AnalyticalVersion, Scope: "selected_metric_expression_and_population;single_base_relation", Contract: exec.Hash(*contract), Query: exec.AnalyticalQueryDigest(q.SQL, q.Parameters)}
+	want := &exec.AnalyticalReceipt{Version: contract.Version, Scope: exec.AnalyticalMetricScope, Contract: exec.Hash(*contract), Query: exec.AnalyticalQueryDigest(q.SQL, q.Parameters)}
 	for _, m := range contract.Metrics {
 		want.Metrics = append(want.Metrics, m.ID)
 	}
 	sort.Strings(want.Metrics)
+	if contract.Grain != nil {
+		want.Scope = exec.AnalyticalGrainScope
+		want.Grouping = append([]string(nil), contract.Grain.Dimensions...)
+	}
 	if q.Analytical == nil || exec.Hash(want) != exec.Hash(q.Analytical) {
 		return nil, exec.ErrBinding
 	}
@@ -343,7 +366,7 @@ func analyticalDiagnostic(err error) string {
 		return ""
 	}
 	switch e.Code {
-	case "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
+	case "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
 		return e.Code
 	default:
 		return "analytical_shape_unsupported"
@@ -356,7 +379,7 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == 0 {
 		return q.Analytical == nil
 	}
-	if q.AnalyticalVersion != analyticalRecordVersion {
+	if q.AnalyticalVersion != 1 && q.AnalyticalVersion != analyticalRecordVersion {
 		return false
 	}
 	selected := false
@@ -379,11 +402,30 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 		return q.Analytical == nil
 	}
 	r := q.Analytical
-	if r == nil || q.SQL == "" || r.Version != exec.AnalyticalVersion || r.Scope != "selected_metric_expression_and_population;single_base_relation" || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
+	version := exec.AnalyticalVersion
+	if q.AnalyticalVersion == analyticalRecordVersion {
+		version = exec.AnalyticalGrainVersion
+	}
+	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
 	for i, id := range r.Metrics {
 		if len(id) == 0 || len(id) > 256 || i > 0 && r.Metrics[i-1] >= id {
+			return false
+		}
+	}
+	return true
+}
+
+func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
+	if r.Scope == exec.AnalyticalMetricScope {
+		return len(r.Grouping) == 0
+	}
+	if r.Scope != exec.AnalyticalGrainScope || r.Version != exec.AnalyticalGrainVersion || len(r.Grouping) < 1 || len(r.Grouping) > 16 {
+		return false
+	}
+	for i, id := range r.Grouping {
+		if len(id) == 0 || len(id) > 256 || i > 0 && r.Grouping[i-1] >= id {
 			return false
 		}
 	}

@@ -274,3 +274,26 @@ so a failed subtest cannot change later scalar-filter results. None of these fix
 relaxes native validation, changes signed permissions or skips failing tests. Exact
 final run evidence belongs in the PR; inventory and intermediate green units are
 not a claim that the full integration passed.
+
+
+## AP-03B1 — direct grouping and versioned proof
+
+Continuation baseline: `dba8a7fc16ccd8fc48e49d6d4ce1a436bf4eecee`. Its final
+expanded logs contain 1,219 passing unit/subtest events, one pre-existing opt-in live
+provider skip, and 113 passing acceptance events without failures or skips. That
+qualifies the scoped AP-03A software slice, not live model quality or broad parity.
+
+[Grouping v2](../contracts/analytical-grain-v2.md) introduces a narrow, complete
+reviewed-dimension suffix recognizer and exact SQL grouping/projection conformance.
+Unknown grain remains explicitly unmeasured. No ordinary dimension mention, metric
+label, quoted value or required-only reference becomes a grouping by itself. The
+existing correction includes a closed grain diagnostic; scalar ownership stays
+server-side. Old metric receipts are reconstructed with their original v1 policy.
+
+Migration 054 retains the immutable version/contract/scope fence and adds bounded
+grouping identities to v2 proof evidence. The native checker still refuses joins;
+cardinality metadata alone does not demonstrate that physical rows cannot multiply.
+Selected time buckets, query-wide predicates and general role inference are pending.
+This slice is not the full AP-03B join/population program. Synthetic regressions and
+real PostgreSQL/recorded-wire tests run in the existing read-only recovery workflow.
+Actual current-head results and patch identities belong in the PR completion ledger.

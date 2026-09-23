@@ -1832,7 +1832,8 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	dialect := a.binding.Dialect
 	system := "Return one safe, read-only SQL statement for the native " + dialect + " dialect. Never change the topic, source, execution context, required filters, pinned metrics, or permissions. Return only the requested JSON object."
 	if a.analytical != nil {
-		system += " Analytical metrics v1 is enforced for selected user metric roots: use one qualified base table and preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Joins, CTEs, nested SELECTs and windows are not analytically supported by this contract."
+		system += " Analytical metric conformance is enforced for selected user metric roots: use one qualified base table and preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Joins, CTEs, nested SELECTs and windows are not analytically supported by this contract."
+		system += analyticalGrainGuidance(a.analytical)
 	}
 	if hasActiveBusinessEvidence(a.route) {
 		system += " Reviewed clarification constraints are bound by the service after generation. Select their exact governed base relations; do not invent, repeat, or infer their scalar values or add predicates for those owned targets."

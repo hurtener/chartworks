@@ -165,3 +165,16 @@ shapes fail explicitly; join/grain/full-question conformance and wider native
 qualification remain open in the SQL recovery program. Real PostgreSQL acceptance
 is `TestSQLRecoveryAnalyticalAcceptance` and
 `TestSQLRecoveryAnalyticalOwnedScalarRepair`; the PR records actually executed results.
+
+
+## AP-03B1 direct grouping conformance
+
+[Analytical grouping v2](../contracts/analytical-grain-v2.md) compiles a complete
+reviewed-dimension suffix into a source-bound grouping contract. The existing
+validator-first checker rejects missing, substituted and invisible extra grouping
+keys without promoting filter mentions or required dependencies into user choices.
+Migration 054 preserves the distinct v1 policy for retained replay, while v2 receipts
+state whether grain is measured. Native/metric checks, private owned predicates,
+one-correction budgets and frozen-refresh behavior are unchanged. Broader natural
+language, temporal grain, query-wide population and physical join proof remain open.
+Exact runtime evidence is recorded in PR #62, not inferred from this task inventory.
