@@ -40,13 +40,26 @@ evidence only and never executable joins.
 `semantic-interpretation-v1` runs after exact publication admission and before any
 question embedding for a resolved route. It scans only reviewed non-sensitive
 governed values and aliases, reviewed dimension/column aliases, and reviewed
-Gregorian temporal dimensions. English and Spanish negation produce `ne` rather
-than silently losing exclusion. Geographic classification comes only from the
+Gregorian temporal dimensions. English and Spanish governed-value negation
+produce `ne` rather than silently losing exclusion. Geographic classification comes only from the
 reviewed categorical-dimension designation; labels and aliases never infer it.
 Named months, the supported English/Spanish year connectors and supported relative-month phrases become
-half-open month windows against an explicit `YYYY-MM-DD` anchor. The server supplies
+half-open month windows against an explicit `YYYY-MM-DD` anchor. The parser also
+recognizes `in 2026` / `en 2026` as the Gregorian calendar year
+`[2026-01-01, 2027-01-01)`, and bounded `from January through March 2026` /
+`de enero a marzo de 2026` as `[2026-01-01, 2026-04-01)`. The server supplies
 and retains the anchor when a caller omits it, so replay never depends on a later
-wall clock.
+wall clock. A year window is a filter interval, not a request to aggregate by year.
+Explicit month, quarter or year grouping must be supported by the reviewed
+temporal policy in addition to the interval grain; month intervals require
+reviewed month support. Calendar-year filters may use any reviewed grouping
+grain, including month or quarter without reviewed year aggregation. A quarter
+or year grouping over a month interval also requires aligned window boundaries.
+Negated temporal requests such as `not in 2026`, `no en 2026`, or
+`excluding the period from January through March 2026` clarify before model
+work rather than becoming inclusive windows. The parser distinguishes a
+sentence-initial modal `May I` from the named month `May`; exclusions of other
+objects, such as refunds, do not negate a nearby positive date range.
 
 One spelling matching multiple reviewed dimensions, one period with multiple
 unnamed temporal dimensions, an unsupported calendar, or a changed source binding
@@ -84,12 +97,16 @@ topic/source services; publication, parser, vocabulary or binding drift fails.
 
 ## Evidence and limits
 
-`TestCW07/AC01` through `AC09` cover server selection and reranking, competing-topic
+`TestCW07/AC01` through `AC11` cover server selection and reranking, competing-topic
 ambiguity, Spanish governed geography and month interpretation, correction/removal,
 stale source denial, ambiguous values, pre-provider candidate authority, tenant and
 context isolation, deterministic replay and interpretation budget rejection before
 provider work, plus connector parsing, DST boundary behavior and RFC3339 instant
-binding. `TestCW07InterpretationBusinessEvidencePlanRunAndDrift` covers ordinary and
+binding. AC10 covers bilingual year and explicit month-range bounds, reviewed
+timezone conversion, sealed constraints and replay. AC11 covers unsupported
+grouping/interval grains, unaligned quarter windows, temporal negation,
+conflicting periods and locale negatives before provider work.
+`TestCW07InterpretationBusinessEvidencePlanRunAndDrift` covers ordinary and
 terminal plan/run replay, exact receipts, corrections/removal and drift. Existing phase-17 tests retain confirmed multi-topic joins,
 context isolation, tokenizer budgets and bilingual routing; CW-04 tests retain
 metric-closure budget overflow.

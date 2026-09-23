@@ -32,7 +32,7 @@ func TestCW08FeedbackOnlyReviewAuthority(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	example := nlqexec.ExampleRecord{
-		ID: "cw08-review-authority", Topic: fixture.pack.Topic,
+		ID: strings.Repeat("8", 32), Topic: fixture.pack.Topic,
 		Question: "What is revenue?", SQL: "SELECT id, amount FROM analytics.sales ORDER BY id",
 		Digest: strings.Repeat("8", 64), State: "candidate", Weight: 2.0 / 3.0,
 		Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, EvidenceOutcome: "positive",
@@ -45,15 +45,18 @@ func TestCW08FeedbackOnlyReviewAuthority(t *testing.T) {
 
 	reviewScopes := []string{
 		"feedback.write",
+		"sources.query",
 		"cw.topic.read:" + fixture.pack.Topic,
 		"cw.source.query:" + fixture.pack.Datasets[0].Source.Source,
-		"cw.dataset.query:" + fixture.pack.Datasets[0].ID,
-		"cw.execution_context.use:" + fixture.context,
 	}
+	for _, dataset := range fixture.pack.Datasets {
+		reviewScopes = append(reviewScopes, "cw.dataset.query:"+dataset.ID)
+	}
+	reviewScopes = append(reviewScopes, "cw.execution_context.use:"+fixture.context)
 	reviewer := cw08ReviewEnvelope(t, fixture, reviewScopes)
 	crossScopes := append([]string(nil), reviewScopes[:len(reviewScopes)-1]...)
 	crossScopes = append(crossScopes, "cw.execution_context.use:other-context")
-	if _, err = service.ExampleState(ctx, cw08ReviewEnvelope(t, fixture, crossScopes), nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) {
+	if _, err = service.ExampleState(ctx, cw08ReviewEnvelope(t, fixture, crossScopes), nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) && !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("review crossed signed context reach: %v", err)
 	}
 	if _, err = service.ExampleState(ctx, cw08ReviewEnvelope(t, fixture, reviewScopes[1:]), nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrForbidden) {

@@ -673,6 +673,12 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	if !e.Has("feedback.write") {
 		return ExampleRecord{}, access.ErrForbidden
 	}
+	// Require every action used by the selected review path before looking up an
+	// example ID. Otherwise a caller lacking a later action could distinguish
+	// existing IDs (forbidden) from missing IDs (not found).
+	if !e.Has("sources.query") || in.State != "active" && (!e.Has("topics.read") || !e.Has("sources.read")) {
+		return ExampleRecord{}, access.ErrForbidden
+	}
 	sc, err := scope(e)
 	if err != nil {
 		return ExampleRecord{}, err
@@ -1967,7 +1973,9 @@ func exampleApplicabilityReason(example ExampleRecord, admitted admission, bindi
 	if exec.Hash(example.Origin.RuleVersions) != exec.Hash(admitted.route.RuleVersions) {
 		return "rules_changed"
 	}
-	if exec.Hash(example.Origin.Templates) != exec.Hash(admitted.route.Templates) {
+	// An absent selection has the same meaning whether JSON decoded it as nil
+	// or the router returned an allocated empty slice.
+	if len(example.Origin.Templates)+len(admitted.route.Templates) > 0 && exec.Hash(example.Origin.Templates) != exec.Hash(admitted.route.Templates) {
 		return "templates_changed"
 	}
 	if example.PositiveEvidence < 1 || example.Weight < 0.60 || example.NegativeEvidence >= example.PositiveEvidence {
