@@ -13,7 +13,12 @@ current-revision resolver also reads the protected case's published block pins. 
 prerequisites, not the final stress execution or Phase 25 release decision.
 
 Performance evidence is valid only after every case passes a correctness probe.
-The harness then records every raw wall-time observation and separately retains
+The immutable-fixture harness probes all cases before timing. The ordered
+current-owner release path probes each case immediately after its authorized
+transition, measures while that revision is current, and re-resolves the owner
+head afterward. A later probe or post-step owner check failure leaves the
+entire report unaccepted, including any earlier samples. The harness records
+every raw wall-time observation and separately retains
 service, source and model time, source/model calls, retries, tokens and cost.
 Unknown model time, token usage or cost remains absent. Summary percentiles are
 derived from the retained raw observations and never replace them.
@@ -128,21 +133,48 @@ model or release stress run. The release orchestration remains internal.
 
 `final_stress` names one primary invalidation axis. Its current-owner
 dependency closure is exact: `rule_changed` changes rule alone;
-`topic_changed` changes topic and its pinning rule; `source_changed` changes
-source, topic and rule; `context_changed` changes context, source, topic and
-rule. Tenant, actions and selected runtime pack stay fixed for those four.
+`topic_changed` changes topic and its pinning rule; `source_changed` selects a
+different current source ID and therefore changes context, source, topic and
+rule; `context_changed` rotates the same source ID to a new revision and
+therefore changes context, source, topic and rule. The raw source ID distinguishes
+the latter two. A claimed source-head change with an unchanged context cannot
+pass: production source contexts are derived from source ID and revision.
+Tenant, actions and selected runtime pack stay fixed for those four.
 The resolver reads the current Phase 34 source head, source context, active
 topic and reviewed rule, and checks the selected published block's pins.
-The release gate compares the raw block/source/topic/rule pins for the declared
-axis and recomputes every binding hash from those owners. A cohort-only hash,
+The release gate keeps the same published block and topic IDs and compares
+their raw revisions plus source/topic/rule pins for the declared axis. A
+different block or topic ID is not evidence of invalidating one frozen
+consumer's reuse identity. It
+recomputes every binding hash from those owners. A cohort-only hash,
 missing collateral pin or unrelated change fails before measurement; a real
 changed scenario must also change the product's `ReuseKey`. The exact full
 profile and owner evidence have not yet been measured.
 
+The production recorded composition now requires an operator-supplied
+`PerformanceRevisionTransition`. It is not sourced from profile JSON: the
+transition must actually activate the accepted consumer's product owner pins
+under the verified Pengui envelope. The ordered profile sequence is cold,
+warm, repeat, concurrent, the three denial probes, changed reviewed runtime
+pack, rule, topic, source ID, and same-source context rotation. Before each
+allowed step the current resolver checks the exact accepted Phase 24 case and
+report against the active Phase 34 source, topic, rule and block. The sealed
+report records the source ID/head, context and block coordinates and hashes of
+the exact current topic/rule pins for each allowed step. A post-step resolver
+read rejects a concurrently changed owner head. No operator transition or
+accepted current cohort has been supplied to this repository, so this path
+still fails closed and AC03 is open.
+
+The runtime restores only the reviewed runtime-pack selection through its
+guarded CAS pointer. Source, topic, rule and block transitions remain owner
+operations; their caller must arrange authorized publication and recovery.
+The harness never claims to roll back a source rotation or Phase 34 cutover.
+
 Release reports are atomically created as private `0600` files and an existing
-path is never replaced. The one-hour profile bound includes correctness probes
-as well as timed observations. A permitted integration/live correctness probe
-must carry physical source and model receipts before any timed sample starts.
+path is never replaced. The one-hour profile bound includes correctness probes,
+owner transitions and timed observations. A permitted integration/live
+correctness probe must carry physical source and model receipts before timing
+for that same step starts.
 Read-attempt `created_at` to `finished_at` spans journaling, source work and
 finalization; it is never labeled `source_ns`. A nullable `source_duration_ns`
 on a PostgreSQL physical read attempt measures the native source work after

@@ -197,7 +197,69 @@ func (f *FrozenPerformanceReleaseAdapterFactory) NewPerformanceReleaseAdapter(ct
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, ErrPerformanceEvidence
 	}
-	return &frozenReleaseAdapter{factory: f, envelope: e, scenarios: prepared, nonce: hex.EncodeToString(nonce[:]), baseSelection: selected, changedPack: changed.Evidence.RuntimePack.Pack.Digest, selectionRevision: selected.Revision}, nil
+	return &frozenReleaseAdapter{factory: f, envelope: e, scenarios: prepared, baseStepID: baseStep.ID, nonce: hex.EncodeToString(nonce[:]), baseSelection: selected, changedPack: changed.Evidence.RuntimePack.Pack.Digest, selectionRevision: selected.Revision}, nil
+}
+
+// NewOrderedPerformanceReleaseAdapter checks the immutable accepted reports
+// and reviewed pack transition before any owner mutation. Current revisions
+// are bound one step at a time after the operator's product transition.
+func (f *FrozenPerformanceReleaseAdapterFactory) NewOrderedPerformanceReleaseAdapter(ctx context.Context, e identity.Envelope, manifest PerformanceManifest, evidence map[string]PerformanceReleaseEvidence) (PerformanceReleaseAdapter, error) {
+	if f == nil || ctx == nil || !e.Valid() || manifest.Validate() != nil || manifest.Kind != PerformanceFinalStress || manifest.Environment.SourceMode != "real_postgres" || manifest.Environment.ModelMode != f.ModelMode || f.Inputs == nil || f.Runs == nil || f.Store == nil || f.Selection == nil || !identity.Identifier(f.ChangedPackProposal) {
+		return nil, ErrMode
+	}
+	prepared := make(map[string]PerformanceScenarioEvidence, len(evidence))
+	for _, step := range manifest.Steps {
+		if !step.Allowed {
+			continue
+		}
+		ev, ok := evidence[step.ID]
+		if !ok || ev.Case.ID != step.Workload || ev.Case.Stage != StageConsumer || ev.Case.Critical || !ev.CaseResult.Passed || ev.CaseResult.Observation.SemanticDigest != step.ExpectedDigest || ev.RuntimePack.State != Accepted || ev.Report.Pack.Digest != ev.RuntimePack.Pack.Digest {
+			return nil, ErrPerformanceEvidence
+		}
+		input, err := f.Inputs.ResolveEvaluationInput(ctx, e, ev.Case.Input)
+		if err != nil || input.Frozen == nil || input.Question != nil || input.Run != nil || !identity.Identifier(input.Frozen.BlockID) {
+			return nil, ErrPerformanceEvidence
+		}
+		prepared[step.ID] = PerformanceScenarioEvidence{Evidence: ev}
+	}
+	baseStep, baseOK := performanceStep(manifest.Steps, "cold")
+	changedStep, changedOK := performanceStep(manifest.Steps, "runtime_pack_changed")
+	if !baseOK || !changedOK {
+		return nil, ErrPerformanceReuseUnproven
+	}
+	base, changed := prepared[baseStep.ID], prepared[changedStep.ID]
+	if base.Evidence.RuntimePack.Pack.Digest == changed.Evidence.RuntimePack.Pack.Digest || base.Evidence.RuntimePack.Digest == changed.Evidence.RuntimePack.Digest {
+		return nil, ErrPerformanceReuseUnproven
+	}
+	selected, err := f.Selection.SelectedPack(ctx, e)
+	if err != nil || selected.Revision < 1 || !identity.Identifier(selected.ProposalID) || selected.PackDigest != base.Evidence.RuntimePack.Pack.Digest {
+		return nil, ErrPerformanceReuseUnproven
+	}
+	proposed, err := f.Selection.ProposedPackDigest(ctx, e, f.ChangedPackProposal)
+	if err != nil || proposed != changed.Evidence.RuntimePack.Pack.Digest {
+		return nil, ErrPerformanceReuseUnproven
+	}
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return nil, ErrPerformanceEvidence
+	}
+	return &frozenReleaseAdapter{factory: f, envelope: e, scenarios: prepared, baseStepID: baseStep.ID, nonce: hex.EncodeToString(nonce[:]), baseSelection: selected, changedPack: changed.Evidence.RuntimePack.Pack.Digest, selectionRevision: selected.Revision}, nil
+}
+
+func (a *frozenReleaseAdapter) BindPerformanceScenario(ctx context.Context, step PerformanceStep, scenario PerformanceScenarioEvidence) error {
+	if a == nil || ctx == nil || !a.envelope.Valid() || !step.Allowed || !frozenRevisionsComplete(scenario.Revisions) || performanceCurrentBinding(a.envelope, scenario.Revisions.ContextID, scenario.Evidence, scenario.Revisions) != step.Binding {
+		return ErrPerformanceEvidence
+	}
+	original, ok := a.scenarios[step.ID]
+	if !ok || original.Evidence.Report.EvidenceHash != scenario.Evidence.Report.EvidenceHash || original.Evidence.Case.ID != scenario.Evidence.Case.ID || original.Evidence.RuntimePack.Digest != scenario.Evidence.RuntimePack.Digest {
+		return ErrPerformanceEvidence
+	}
+	input, err := a.factory.Inputs.ResolveEvaluationInput(ctx, a.envelope, scenario.Evidence.Case.Input)
+	if err != nil || input.Frozen == nil || input.Question != nil || input.Run != nil || input.Frozen.BlockID != scenario.Revisions.BlockID {
+		return ErrPerformanceEvidence
+	}
+	a.scenarios[step.ID] = scenario
+	return nil
 }
 
 func frozenRevisionsComplete(r PerformanceRevisionEvidence) bool {
@@ -208,6 +270,7 @@ type frozenReleaseAdapter struct {
 	factory           *FrozenPerformanceReleaseAdapterFactory
 	envelope          identity.Envelope
 	scenarios         map[string]PerformanceScenarioEvidence
+	baseStepID        string
 	nonce             string
 	baseSelection     PackSelection
 	changedPack       string
@@ -352,20 +415,19 @@ func (a *frozenReleaseAdapter) ProbeDeniedAction(ctx context.Context, step Perfo
 	if a == nil || ctx == nil || !denied.Valid() || step.DeniedAction != "reporting.execute" || denied.Has(step.DeniedAction) {
 		return PerformanceAdapterResult{}, ErrPerformanceAuthority
 	}
-	for _, scenario := range a.scenarios {
-		if scenario.Evidence.Case.ID == step.Workload {
-			input, err := a.factory.Inputs.ResolveEvaluationInput(ctx, a.envelope, scenario.Evidence.Case.Input)
-			if err != nil || input.Frozen == nil {
-				return PerformanceAdapterResult{}, ErrPerformanceEvidence
-			}
-			request := input.Frozen.Request
-			request.Key = "p25:" + digestBytes([]byte(a.nonce + ":denied"))[:56]
-			view, runErr := a.factory.Runs.Admit(ctx, denied, input.Frozen.BlockID, request)
-			if !errors.Is(runErr, access.ErrForbidden) || view.ID != "" {
-				return PerformanceAdapterResult{}, ErrGate
-			}
-			return blockedPerformanceResult(step), nil
-		}
+	scenario, ok := a.scenarios[a.baseStepID]
+	if !ok || scenario.Evidence.Case.ID != step.Workload || !frozenRevisionsComplete(scenario.Revisions) {
+		return PerformanceAdapterResult{}, ErrPerformanceEvidence
 	}
-	return PerformanceAdapterResult{}, ErrPerformanceEvidence
+	input, err := a.factory.Inputs.ResolveEvaluationInput(ctx, a.envelope, scenario.Evidence.Case.Input)
+	if err != nil || input.Frozen == nil || input.Frozen.BlockID != scenario.Revisions.BlockID {
+		return PerformanceAdapterResult{}, ErrPerformanceEvidence
+	}
+	request := input.Frozen.Request
+	request.Key = "p25:" + digestBytes([]byte(a.nonce + ":denied"))[:56]
+	view, runErr := a.factory.Runs.Admit(ctx, denied, input.Frozen.BlockID, request)
+	if !errors.Is(runErr, access.ErrForbidden) || view.ID != "" {
+		return PerformanceAdapterResult{}, ErrGate
+	}
+	return blockedPerformanceResult(step), nil
 }

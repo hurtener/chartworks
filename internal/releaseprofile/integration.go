@@ -40,6 +40,7 @@ type Integration struct {
 	Requests            *jobs.RequestRunner
 	ReportingLimits     config.ReportingExecution
 	ChangedPackProposal string
+	Transitions         evaluation.PerformanceRevisionTransition
 	Cohorts             []CaseCohort
 	Clock               evaluation.Clock
 }
@@ -49,7 +50,7 @@ type Integration struct {
 // accepted current cohort reports and the measured final_stress evidence exist.
 func NewIntegration(c Integration) (*evaluation.PerformanceReleaseRuntime, error) {
 	const concurrentFinalProfile = 128
-	if c.Verifier == nil || c.Evaluation == nil || c.Inputs == nil || c.Migration == nil || c.Sources == nil || c.Topics == nil || c.Rules == nil || c.Validator == nil || c.Blocks == nil || c.FrozenStore == nil || c.Requests == nil || !c.Requests.SupportsTenantConcurrency(concurrentFinalProfile) || c.Engine == nil || c.Engine.PerformanceModelMode() != "recorded" || c.ReportingLimits.Validate() != nil || c.ReportingLimits.ModelVersion == "" ||
+	if c.Verifier == nil || c.Evaluation == nil || c.Inputs == nil || c.Migration == nil || c.Sources == nil || c.Topics == nil || c.Rules == nil || c.Validator == nil || c.Blocks == nil || c.FrozenStore == nil || c.Requests == nil || c.Transitions == nil || !identity.Identifier(c.ChangedPackProposal) || !c.Requests.SupportsTenantConcurrency(concurrentFinalProfile) || c.Engine == nil || c.Engine.PerformanceModelMode() != "recorded" || c.ReportingLimits.Validate() != nil || c.ReportingLimits.ModelVersion == "" ||
 		c.ReportingLimits.MaxRequests < concurrentFinalProfile || c.ReportingLimits.MaxTenantBytes <= int64(concurrentFinalProfile)*int64(c.ReportingLimits.MaxArtifactBytes) {
 		return nil, evaluation.ErrMode
 	}
@@ -81,11 +82,9 @@ func NewIntegration(c Integration) (*evaluation.PerformanceReleaseRuntime, error
 	if err != nil {
 		return nil, err
 	}
-	if c.ChangedPackProposal != "" {
-		factory, err = factory.WithPackTransition(c.Evaluation, c.ChangedPackProposal)
-		if err != nil {
-			return nil, err
-		}
+	factory, err = factory.WithPackTransition(c.Evaluation, c.ChangedPackProposal)
+	if err != nil {
+		return nil, err
 	}
-	return &evaluation.PerformanceReleaseRuntime{Verifier: c.Verifier, Service: c.Evaluation, Revisions: revisions, Adapters: factory, Clock: c.Clock}, nil
+	return &evaluation.PerformanceReleaseRuntime{Verifier: c.Verifier, Service: c.Evaluation, Revisions: revisions, Transition: c.Transitions, Adapters: factory, Clock: c.Clock}, nil
 }

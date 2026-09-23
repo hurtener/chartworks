@@ -375,7 +375,9 @@ func finalPerformanceDependencyClosure(base, changed PerformanceBinding, kind st
 	topic := changed.TopicRevision != base.TopicRevision
 	switch kind {
 	case "source_changed":
-		return source && rule && topic && !context
+		// A PostgreSQL source ID is part of its context ID. A different
+		// source therefore changes both hashes, even at source revision 1.
+		return source && context && rule && topic
 	case "rule_changed":
 		return rule && !source && !context && !topic
 	case "context_changed":
@@ -472,19 +474,36 @@ type PerformanceSummary struct {
 
 // PerformanceReport is content-free raw release evidence.
 type PerformanceReport struct {
-	SchemaVersion     int                     `json:"schema_version"`
-	ManifestID        string                  `json:"manifest_id"`
-	ManifestDigest    string                  `json:"manifest_digest"`
-	CurrentBinding    PerformanceBinding      `json:"current_binding"`
-	Kind              PerformanceProfileKind  `json:"kind"`
-	EvidenceMode      PerformanceEvidenceMode `json:"evidence_mode"`
-	Environment       PerformanceEnvironment  `json:"environment"`
-	StartedAt         time.Time               `json:"started_at"`
-	CompletedAt       time.Time               `json:"completed_at"`
-	CorrectnessPassed bool                    `json:"correctness_passed"`
-	Samples           []PerformanceSample     `json:"samples"`
-	Summaries         []PerformanceSummary    `json:"summaries"`
-	EvidenceHash      string                  `json:"evidence_hash"`
+	SchemaVersion     int                             `json:"schema_version"`
+	ManifestID        string                          `json:"manifest_id"`
+	ManifestDigest    string                          `json:"manifest_digest"`
+	CurrentBinding    PerformanceBinding              `json:"current_binding"`
+	Kind              PerformanceProfileKind          `json:"kind"`
+	EvidenceMode      PerformanceEvidenceMode         `json:"evidence_mode"`
+	Environment       PerformanceEnvironment          `json:"environment"`
+	StartedAt         time.Time                       `json:"started_at"`
+	CompletedAt       time.Time                       `json:"completed_at"`
+	CorrectnessPassed bool                            `json:"correctness_passed"`
+	Ordered           bool                            `json:"ordered,omitempty"`
+	Transitions       []PerformanceTransitionEvidence `json:"transitions,omitempty"`
+	Samples           []PerformanceSample             `json:"samples"`
+	Summaries         []PerformanceSummary            `json:"summaries"`
+	EvidenceHash      string                          `json:"evidence_hash"`
+}
+
+// PerformanceTransitionEvidence records the current owner pins observed just
+// before one ordered release step. The report seal covers every transition.
+type PerformanceTransitionEvidence struct {
+	StepID          string `json:"step_id"`
+	BindingDigest   string `json:"binding_digest"`
+	SourceID        string `json:"source_id"`
+	ContextID       string `json:"context_id"`
+	SourceHead      int64  `json:"source_head"`
+	BlockID         string `json:"block_id"`
+	BlockRevision   int64  `json:"block_revision"`
+	BlockDigest     string `json:"block_digest"`
+	TopicPinsDigest string `json:"topic_pins_digest"`
+	RulePinsDigest  string `json:"rule_pins_digest"`
 }
 
 // Validate verifies a stored report against its immutable manifest, including
@@ -496,6 +515,27 @@ func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
 	raw, _ := json.Marshal(manifest)
 	sum := sha256.Sum256(raw)
 	if r.ManifestDigest != hex.EncodeToString(sum[:]) || len(r.Summaries) != len(manifest.Steps) {
+		return ErrInvalid
+	}
+	if r.Ordered {
+		if manifest.Kind != PerformanceFinalStress {
+			return ErrInvalid
+		}
+		allowed := make([]PerformanceStep, 0, len(manifest.Steps))
+		for _, step := range manifest.Steps {
+			if step.Allowed {
+				allowed = append(allowed, step)
+			}
+		}
+		if len(r.Transitions) != len(allowed) {
+			return ErrInvalid
+		}
+		for i, transition := range r.Transitions {
+			if transition.StepID != allowed[i].ID || transition.BindingDigest != allowed[i].Binding.digest() || !identifier(transition.SourceID) || !identifier(transition.ContextID) || transition.SourceHead < 1 || !identifier(transition.BlockID) || transition.BlockRevision < 1 || !validDigest(transition.BlockDigest) || !validDigest(transition.TopicPinsDigest) || !validDigest(transition.RulePinsDigest) {
+				return ErrInvalid
+			}
+		}
+	} else if len(r.Transitions) > 0 {
 		return ErrInvalid
 	}
 	byStep := make(map[string][]PerformanceSample, len(manifest.Steps))
@@ -533,6 +573,83 @@ func (r PerformanceReport) Validate(manifest PerformanceManifest) error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+type performanceTransitionWitness interface {
+	CurrentPerformanceTransition(PerformanceStep) (PerformanceTransitionEvidence, error)
+	PostPerformanceStep(context.Context, PerformanceStep) error
+}
+
+// MeasurePerformanceOrdered keeps a changing owner head current for each
+// release step: prepare, resolve, probe, measure, then re-resolve. A later
+// failed probe leaves CorrectnessPassed false and cannot produce a valid report.
+// The ordinary two-pass harness remains for immutable fixture scenarios.
+func MeasurePerformanceOrdered(ctx context.Context, manifest PerformanceManifest, runner PerformanceRunner, clock Clock) (PerformanceReport, error) {
+	witness, ok := runner.(performanceTransitionWitness)
+	if ctx == nil || runner == nil || !ok || manifest.Validate() != nil || manifest.Kind != PerformanceFinalStress {
+		return PerformanceReport{}, ErrInvalid
+	}
+	if clock == nil {
+		clock = time.Now
+	}
+	raw, _ := json.Marshal(manifest)
+	sum := sha256.Sum256(raw)
+	report := PerformanceReport{SchemaVersion: 1, ManifestID: manifest.ID, ManifestDigest: hex.EncodeToString(sum[:]), CurrentBinding: coldPerformanceBinding(manifest), Kind: manifest.Kind, EvidenceMode: manifest.EvidenceMode, Environment: manifest.Environment, StartedAt: clock().UTC(), Ordered: true}
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(manifest.MaxDurationMS)*time.Millisecond)
+	defer cancel()
+	for _, step := range manifest.Steps {
+		step = manifest.effectiveStep(step)
+		preparer, ok := runner.(performanceStepPreparer)
+		if !ok {
+			return PerformanceReport{}, ErrMode
+		}
+		if err := preparer.PreparePerformanceStep(runCtx, step); err != nil {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), err
+		}
+		if step.Allowed {
+			transition, err := witness.CurrentPerformanceTransition(step)
+			if err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+			report.Transitions = append(report.Transitions, transition)
+		}
+		result, err := runner.Check(runCtx, step)
+		o, outcomeErr := derivePerformanceObservation(manifest.Environment, step, result, false)
+		if err != nil || outcomeErr != nil || validatePerformanceObservation(manifest.Environment, step, o, false) != nil {
+			report.CompletedAt = clock().UTC()
+			if runCtx.Err() != nil {
+				return sealPerformanceReport(report), runCtx.Err()
+			}
+			return sealPerformanceReport(report), ErrGate
+		}
+		if step.ResetBefore {
+			if err := runner.Reset(runCtx); err != nil {
+				report.CompletedAt = clock().UTC()
+				return sealPerformanceReport(report), err
+			}
+		}
+		samples, err := measurePerformanceStep(runCtx, manifest.Environment, step, runner)
+		if err != nil {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), err
+		}
+		report.Samples = append(report.Samples, samples...)
+		summary := summarizePerformance(step.ID, samples)
+		report.Summaries = append(report.Summaries, summary)
+		if summary.Executions != step.ExpectedExecutions || summary.Blocks != step.ExpectedBlocks {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), ErrGate
+		}
+		if err := witness.PostPerformanceStep(runCtx, step); err != nil {
+			report.CompletedAt = clock().UTC()
+			return sealPerformanceReport(report), err
+		}
+	}
+	report.CorrectnessPassed = true
+	report.CompletedAt = clock().UTC()
+	return sealPerformanceReport(report), nil
 }
 
 // MeasurePerformance runs every correctness gate before collecting any timing.

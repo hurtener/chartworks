@@ -18,6 +18,18 @@ type testPackSelection struct {
 	proposals map[string]string
 }
 
+type orderedFrozenBoundaryStub struct{}
+
+func (orderedFrozenBoundaryStub) Admit(context.Context, identity.Envelope, string, reporting.RunRequest) (reporting.RunView, error) {
+	return reporting.RunView{}, ErrMode
+}
+func (orderedFrozenBoundaryStub) Run(context.Context, identity.Envelope, string, bool) (reporting.RunView, error) {
+	return reporting.RunView{}, ErrMode
+}
+func (orderedFrozenBoundaryStub) ReadFrozenRun(context.Context, identity.Envelope, string, bool) (reporting.RunRecord, error) {
+	return reporting.RunRecord{}, ErrMode
+}
+
 func (s *testPackSelection) SelectedPack(ctx context.Context, e identity.Envelope) (PackSelection, error) {
 	if ctx == nil || ctx.Err() != nil || !e.Valid() || !e.Has("ops.write") {
 		return PackSelection{}, ErrPerformanceAuthority
@@ -104,7 +116,7 @@ func TestFrozenReleaseFactoryRequiresAcceptedChangedReportAndSelection(t *testin
 	now := time.Now().UTC().Truncate(time.Second)
 	e, err := identity.FromVerified("tenant", "actor", "session", []string{
 		"ops.write", "cw.tenant.write:tenant", "reporting.execute", "cw.report.execute:workload-report",
-		"cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "query.plan", "query.execute",
+		"cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute",
 	}, now.Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
@@ -143,12 +155,32 @@ func TestFrozenReleaseFactoryRequiresAcceptedChangedReportAndSelection(t *testin
 	selected := PackSelection{Revision: 1, PackDigest: base, ProposalID: "base-proposal", Actor: "reviewer", SelectedAt: now}
 	selection := &testPackSelection{current: selected, proposals: map[string]string{"base-proposal": base, "changed-proposal": changed}}
 	factory := &FrozenPerformanceReleaseAdapterFactory{
-		Inputs:    staticInputResolver{in: LiveInput{Frozen: &FrozenRunInput{BlockID: "block", Request: reporting.RunRequest{Key: "template", Narrative: true}}}},
-		ModelMode: "recorded", Selection: selection, ChangedPackProposal: "changed-proposal",
+		Inputs: staticInputResolver{in: LiveInput{Frozen: &FrozenRunInput{BlockID: "block", Request: reporting.RunRequest{Key: "template", Narrative: true}}}},
+		Runs:   orderedFrozenBoundaryStub{}, Store: orderedFrozenBoundaryStub{}, ModelMode: "recorded", Selection: selection, ChangedPackProposal: "changed-proposal",
 	}
 	adapter, err := factory.NewPerformanceReleaseAdapter(t.Context(), e, manifest, scenarios)
 	if err != nil || adapter == nil {
 		t.Fatal("complete accepted changed report did not enter strict adapter", err)
+	}
+	accepted := make(map[string]PerformanceReleaseEvidence, len(scenarios))
+	for id, scenario := range scenarios {
+		accepted[id] = scenario.Evidence
+	}
+	ordered, err := factory.NewOrderedPerformanceReleaseAdapter(t.Context(), e, manifest, accepted)
+	if err != nil || ordered == nil {
+		t.Fatal("accepted reports could not enter ordered adapter before owner transitions", err)
+	}
+	binder := ordered.(interface {
+		BindPerformanceScenario(context.Context, PerformanceStep, PerformanceScenarioEvidence) error
+	})
+	baseStep, _ := performanceStep(manifest.Steps, "cold")
+	if err := binder.BindPerformanceScenario(t.Context(), baseStep, scenarios[baseStep.ID]); err != nil {
+		t.Fatal("current accepted owner could not bind to ordered adapter", err)
+	}
+	staleScenario := scenarios[baseStep.ID]
+	staleScenario.Revisions.BlockID = "other-block"
+	if err := binder.BindPerformanceScenario(t.Context(), baseStep, staleScenario); !errors.Is(err, ErrPerformanceEvidence) {
+		t.Fatal("ordered adapter bound an unrelated published block", err)
 	}
 	transition := adapter.(interface {
 		PreparePerformanceStep(context.Context, PerformanceStep) error
@@ -230,7 +262,7 @@ func (a *failingChangedPackAdapter) RestorePerformanceSelection(ctx context.Cont
 
 func TestPerformanceReleaseRestoresSelectionAfterChangedPackProbeFailure(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
-	scopes := []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant", "reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "query.plan", "query.execute"}
+	scopes := []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant", "reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute"}
 	e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
@@ -322,11 +354,14 @@ func TestFrozenDependencyClosureRequiresPublishedOwnerPins(t *testing.T) {
 		if kind != "rule_changed" {
 			candidate.TopicPins = changedTopic
 		}
-		if kind == "source_changed" || kind == "context_changed" {
+		if kind == "context_changed" {
 			candidate.SourceHead = 2
 		}
+		if kind == "source_changed" {
+			candidate.SourceID, candidate.ContextID = "source-b", "source-b:v1"
+		}
 		if kind == "context_changed" {
-			candidate.ContextID = "context-b"
+			candidate.ContextID = "source:v2"
 		}
 		if !validFrozenDependencyClosure(base, candidate, kind) {
 			t.Fatal("actual published owner dependency closure was rejected", kind)
@@ -336,11 +371,34 @@ func TestFrozenDependencyClosureRequiresPublishedOwnerPins(t *testing.T) {
 		if validFrozenDependencyClosure(base, missing, kind) {
 			t.Fatal("missing current rule pin was accepted", kind)
 		}
-		if kind == "source_changed" || kind == "context_changed" {
+		missing = candidate
+		missing.BlockID, missing.WorkloadReport = "other-block", "other-block"
+		if validFrozenDependencyClosure(base, missing, kind) {
+			t.Fatal("different block ID supplied a trivial reuse-key change", kind)
+		}
+		missing = candidate
+		missing.TopicPins = append([]reporting.TopicPin(nil), candidate.TopicPins...)
+		missing.TopicPins[0].Topic = "other-topic"
+		if validFrozenDependencyClosure(base, missing, kind) {
+			t.Fatal("different topic identity supplied a trivial reuse-key change", kind)
+		}
+		if kind == "context_changed" {
 			missing = candidate
 			missing.SourceHead = base.SourceHead
 			if validFrozenDependencyClosure(base, missing, kind) {
 				t.Fatal("cohort-only source hash could replace a current source head", kind)
+			}
+		}
+		if kind == "source_changed" {
+			missing = candidate
+			missing.SourceID = base.SourceID
+			if validFrozenDependencyClosure(base, missing, kind) {
+				t.Fatal("source-only hash or context rotation replaced a different source owner", kind)
+			}
+			missing = candidate
+			missing.ContextID = base.ContextID
+			if validFrozenDependencyClosure(base, missing, kind) {
+				t.Fatal("new source ID retained stale context", kind)
 			}
 		}
 	}

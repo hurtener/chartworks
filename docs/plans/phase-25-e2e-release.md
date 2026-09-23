@@ -47,7 +47,7 @@ Record measured limits and accepted support boundaries. D-050 makes this the fin
 
 The [performance evidence contract](../contracts/performance-evidence-v1.md)
 defines the required final-stress scenario counts, authority/revision identity,
-correctness-first gate and raw measurement schema. The release candidate must
+per-step correctness gate and raw measurement schema. The release candidate must
 materialize the actual Phase 24 suite/report hashes and post-Phase-34 source,
 rule, topic, context and runtime-pack revisions. The checked-in synthetic smoke
 does not satisfy AC03.
@@ -120,10 +120,17 @@ request queue and tenant bytes sufficient for 128 simultaneous frozen artifact
 reservations. Current topic publication pins source/context and current rule
 publication pins topic version/digest. The final profile now requires the
 declared primary axis and its exact current-owner dependency closure: rule;
-topic plus rule; source plus topic and rule; or context plus source, topic and
-rule. The resolver checks the selected block's current pins and the gate
+topic plus rule; a different source ID plus its derived context, topic and
+rule; or a rotated context on the same source ID plus source, topic and rule.
+The resolver checks the selected block's current pins and the gate
 requires matching raw changes as well as the product's actual reuse-key
 change. A cohort-only hash or missing collateral pin fails before timing.
+The recorded production composition now requires an operator-owned revision
+transition. The ordered profile measures a step only while its accepted Phase
+24 case is current, records that owner snapshot in the sealed report, and
+re-resolves it after measurement. A later failed step invalidates the entire
+report. No accepted owner transition plan or live cohort is checked in; AC03
+therefore remains open.
 No measurements are labeled a passing AC03 run until the exact profile and
 owner cohort are exercised.
 The required full profile still needs accepted current reports for each
