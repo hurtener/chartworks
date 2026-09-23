@@ -57,29 +57,44 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
-      - uses: actions/cache/restore@v4
-        id: native
-        with:
-          path: |
-            /tmp/chartworks-native
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
-      - name: Build pinned native dependencies
-        run: bash scripts/build-bruin.sh
       - name: Verify source, formatting and plan coherence
         run: |
           set -o pipefail
           go version
           go mod verify
-          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          unformatted=$(git ls-files '*.go' | xargs gofmt -l)
+          if [ -n "$unformatted" ]; then printf '%s\n' "$unformatted"; exit 1; fi
           make planning-check
           git diff --exit-code
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-native/bruin
+            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1
+      - name: Build pinned native dependencies
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native.outputs.cache-hit != 'true'
+        with:
+          path: |
+            /tmp/chartworks-native/bruin
+            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1
+      - name: Bind the pinned native build
+        run: |
+          test -x /tmp/chartworks-native/bruin
+          test -s /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          echo 'CGO_LDFLAGS=-L/tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
+          echo 'CHARTWORKS_TEST_BRUIN_PATH=/tmp/chartworks-native/bruin' >> "$GITHUB_ENV"
       - name: Semantic, routing, context and generation regressions
         run: |
           set -o pipefail
           go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
       - name: Existing integrated NLQ acceptance
+        if: success() || failure()
         run: |
           set -o pipefail
           go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(16|17|18)|TestCW01|TestCW07)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
