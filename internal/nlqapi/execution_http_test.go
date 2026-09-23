@@ -120,7 +120,7 @@ func (executionSourceReader) ReviewBinding(context.Context, identity.Envelope, s
 
 type executionValidator struct{}
 
-func (executionValidator) Validate(context.Context, identity.Envelope, readexec.Request) (readexec.Plan, error) {
+func (executionValidator) ValidateWithin(context.Context, identity.Envelope, readexec.Request, []readexec.RelationScope) (readexec.Plan, error) {
 	return readexec.Plan{}, store.ErrNotFound
 }
 

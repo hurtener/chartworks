@@ -420,7 +420,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			if response == nil || len(response.Data) != end-start {
 				return out, gateway.ErrOutput
 			}
-			if actual != "" && actual != model {
+			if actual != "" && !embeddingModelMatches(p, model, actual) {
 				return out, gateway.ErrSpace
 			}
 			vectors = make([][]float32, end-start)
@@ -453,6 +453,13 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 	e.cache.Put(cacheKey, all)
 	out.Vectors = all
 	return out, nil
+}
+
+// OpenRouter reports this Perplexity embedding model without its route prefix.
+// Keep the configured model in the immutable embedding-space descriptor and
+// receipt request; only this exact provider/model/wire alias is equivalent.
+func embeddingModelMatches(p route, requested, actual string) bool {
+	return actual == requested || p.provider == schemas.ModelProvider("openrouter") && requested == "perplexity/pplx-embed-v1-0.6b" && actual == "pplx-embed-v1-0.6b"
 }
 
 // Rerank orders only sealed candidates through the native SDK and validates a complete permutation.

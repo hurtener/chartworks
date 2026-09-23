@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -53,7 +54,7 @@ func TestPlanAndRunRejectsRevokedQueryActionBeforeAnyDependency(t *testing.T) {
 	}
 }
 
-func (v *sequenceValidator) Validate(context.Context, identity.Envelope, exec.Request) (exec.Plan, error) {
+func (v *sequenceValidator) ValidateWithin(context.Context, identity.Envelope, exec.Request, []exec.RelationScope) (exec.Plan, error) {
 	v.calls++
 	if len(v.errors) == 0 {
 		return exec.Plan{}, nil
@@ -65,6 +66,7 @@ func (v *sequenceValidator) Validate(context.Context, identity.Envelope, exec.Re
 
 type sequenceGateway struct {
 	responses []gateway.Generated
+	prompts   []string
 	ranked    gateway.Ranked
 	rerankErr error
 	calls     int
@@ -85,8 +87,9 @@ func (r *preflightRouter) VerifyOrigin(_ context.Context, _ identity.Envelope, r
 	return r.result, nil
 }
 
-func (g *sequenceGateway) Generate(context.Context, gateway.Call, *gateway.Budget, string, string, string, *gateway.Schema) (gateway.Generated, error) {
+func (g *sequenceGateway) Generate(_ context.Context, _ gateway.Call, _ *gateway.Budget, _, _, prompt string, _ *gateway.Schema) (gateway.Generated, error) {
 	g.calls++
+	g.prompts = append(g.prompts, prompt)
 	if len(g.responses) == 0 {
 		return gateway.Generated{}, gateway.ErrOutput
 	}
@@ -128,6 +131,7 @@ func testGeneration(t *testing.T, e identity.Envelope) (admission, nlq.Generatio
 	}
 	assembled, err := assembler.Assemble(context.Background(), nlq.ContextInput{
 		Locale: nlq.LanguageEnglish, Strategy: nlq.StrategySingleTopic, Topic: "topic", TopicVersion: "v1", Question: "What is revenue?",
+		Relations:   []nlq.SourceRelation{{Topic: "topic", Dataset: "dataset", Name: "analytics.sales", Columns: []string{"id"}}},
 		Constraints: &nlq.ConstraintState{Allowed: true, Required: []nlq.MandatoryConstraint{{ID: "required-filter", Kind: "filter", Text: "tenant_id is the signed tenant"}}},
 		Metrics:     []nlq.PinnedMetric{{ID: "revenue", Text: "sum of amount"}},
 	}, nlq.TierMedium)
@@ -238,7 +242,7 @@ func (r *retainedTopicReader) RetainedContract(_ context.Context, _ identity.Env
 type retainedSourceReader struct{}
 
 func (retainedSourceReader) Binding(context.Context, identity.Envelope, string, string) (exec.Binding, error) {
-	return exec.Binding{Tenant: "tenant", Source: "source", Context: "context", Revision: 1, Dialect: "postgres", Contract: "contract", Fingerprint: strings.Repeat("a", 64), Relations: []exec.Relation{{ID: "dataset", Schema: "analytics", Name: "sales", Columns: []exec.Column{{Name: "id", NativeType: "integer"}}}}}, nil
+	return exec.Binding{Tenant: "tenant", Source: "source", Context: "context", Revision: 1, Dialect: "postgres", Contract: "contract", Fingerprint: strings.Repeat("a", 64), Relations: []exec.Relation{{ID: "dataset", Schema: "analytics", Name: "sales", Columns: []exec.Column{{Name: "id", NativeType: "integer", Category: "integer", Safe: true}}}}}, nil
 }
 
 func (r retainedSourceReader) ReviewBinding(ctx context.Context, e identity.Envelope, source, contextID string) (exec.Binding, error) {
@@ -265,7 +269,7 @@ func TestRetainedAdmissionUsesExactTopicPins(t *testing.T) {
 		return topics.Contract{Publication: topics.Published{
 			State: topics.State{Topic: topic, Version: version, Archived: true},
 			Definition: topics.Definition{Topic: topic, Version: version, Datasets: []topics.Dataset{{
-				ID: dataset, Source: topics.Binding{Source: "source", Context: "context", Dataset: dataset, SourceRevision: 1},
+				ID: dataset, Source: topics.Binding{Source: "source", Context: "context", Dataset: dataset, SourceRevision: 1}, Columns: []semantics.Column{{ID: "id", SourceName: "id", NativeType: "integer", Category: "integer"}},
 			}}},
 		}}
 	}
@@ -273,8 +277,10 @@ func TestRetainedAdmissionUsesExactTopicPins(t *testing.T) {
 		"topic/v1":     published("topic", "v1", "dataset"),
 		"topic-two/v2": published("topic-two", "v2", "dataset-two"),
 	}}
-	service := &Service{topics: reader, sources: retainedSourceReader{}}
-	query := QueryRecord{Topics: []string{"topic", "topic-two"}, TopicVersions: []string{"v1", "v2"}, Context: "context"}
+	binding, _ := retainedSourceReader{}.Binding(context.Background(), e, "source", "context")
+	binding.Relations = append(binding.Relations, exec.Relation{ID: "dataset-two", Schema: "analytics", Name: "sales_two", Columns: []exec.Column{{Name: "id", NativeType: "integer", Category: "integer", Safe: true}}})
+	service := &Service{topics: reader, sources: fixedSourceReader{binding}}
+	query := QueryRecord{ID: "query", Topics: []string{"topic", "topic-two"}, TopicVersions: []string{"v1", "v2"}, Context: "context", RelationScope: []exec.RelationScope{{Dataset: "dataset", Columns: []string{"id"}}, {Dataset: "dataset-two", Columns: []string{"id"}}}}
 	admitted, err := service.retainedAdmission(context.Background(), e, query)
 	if err != nil {
 		t.Fatal(err)
@@ -538,7 +544,7 @@ type unitValidator struct {
 	requests []exec.Request
 }
 
-func (v *unitValidator) Validate(_ context.Context, _ identity.Envelope, request exec.Request) (exec.Plan, error) {
+func (v *unitValidator) ValidateWithin(_ context.Context, _ identity.Envelope, request exec.Request, _ []exec.RelationScope) (exec.Plan, error) {
 	v.requests = append(v.requests, request)
 	if len(v.errors) == 0 {
 		return exec.Plan{}, nil
@@ -585,13 +591,13 @@ func unitContract(topic, version, source, contextID, dataset string, active, arc
 	return topics.Contract{Publication: topics.Published{
 		State: topics.State{Topic: topic, Version: version, Active: active, Archived: archived},
 		Definition: topics.Definition{Topic: topic, Version: version, Datasets: []topics.Dataset{{
-			ID: dataset, Source: topics.Binding{Source: source, Context: contextID, Dataset: dataset, SourceRevision: 1},
+			ID: dataset, Source: topics.Binding{Source: source, Context: contextID, Dataset: dataset, SourceRevision: 1}, Columns: []semantics.Column{{ID: "id", SourceName: "id", NativeType: "integer", Category: "integer"}},
 		}}},
 	}}
 }
 
 func unitQuery(e identity.Envelope, id, topic, version, contextID string, stale bool) QueryRecord {
-	return QueryRecord{ID: id, Session: e.Session(), Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Context: contextID, Locale: nlq.LanguageEnglish, Question: "What is revenue?", SQL: "SELECT id FROM analytics.sales", Status: "planned", EvidenceStale: stale, Route: nlqroute.RouteResult{Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Outcome: nlq.StrategySingleTopic}, Revision: 1}
+	return QueryRecord{ID: id, Session: e.Session(), Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Context: contextID, Locale: nlq.LanguageEnglish, Question: "What is revenue?", SQL: "SELECT id FROM analytics.sales", Status: "planned", EvidenceStale: stale, RelationScope: []exec.RelationScope{{Dataset: "dataset", Columns: []string{"id"}}}, Route: nlqroute.RouteResult{Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Outcome: nlq.StrategySingleTopic, Context: &nlqroute.ContextView{Relations: []nlq.SourceRelation{{Topic: topic, Dataset: "dataset", Name: "analytics.sales", Columns: []string{"id"}}}}}, Revision: 1}
 }
 
 func unitResult(status string) exec.ExecutionReport {
@@ -1218,6 +1224,7 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	query.SQL = "SELECT id, amount FROM analytics.sales WHERE created_at >= $1 ORDER BY id"
 	query.Parameters = []exec.Parameter{{Kind: "text", Value: "2026-01-01"}}
 	query.Generation.Context = admitted.assembled
+	query.Route.Context = &nlqroute.ContextView{Relations: cloneRelations(admitted.assembled.Relations)}
 	repo := newUnitRepository()
 	repo.queries[query.ID] = query
 	validator := &unitValidator{}
@@ -1241,6 +1248,9 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	if len(validator.requests) != 2 || engine.calls != 1 {
 		t.Fatalf("repair path did not validate/repair exactly once: validations=%d gateway_calls=%d", len(validator.requests), engine.calls)
 	}
+	if len(engine.prompts) != 1 || !strings.Contains(engine.prompts[0], "relation[topic/dataset]:analytics.sales columns:id") {
+		t.Fatal("sqlfix prompt lost the sealed schema-qualified source relation")
+	}
 	stored := repo.queries[query.ID]
 	if stored.ExecutionFixes != 1 || stored.Operation != "operation-repair" || stored.Generation.Strategy != nlq.GenerationEditBase || len(stored.Generation.Selected) != 1 || stored.Generation.Selected[0].Key != "previous_sql" || stored.Generation.Selected[0].Text != query.SQL {
 		t.Fatalf("repair lost protected SQL delta or receipt metadata: %#v", stored)
@@ -1250,6 +1260,89 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	}
 	if len(stored.Receipt.Calls) != 1 || stored.Receipt.Calls[0].Role != "sqlfix" || stored.Receipt.Calls[0].Attempts != 1 || stored.Receipt.Calls[0].InputTokens == nil || *stored.Receipt.Calls[0].InputTokens != inputTokens || stored.Receipt.Calls[0].OutputTokens == nil || *stored.Receipt.Calls[0].OutputTokens != outputTokens || stored.Receipt.Calls[0].CostUSD == nil || *stored.Receipt.Calls[0].CostUSD != cost {
 		t.Fatalf("repair receipt was not durably preserved: %#v", stored.Receipt)
+	}
+}
+
+func TestRunRepairPreservesRouteFallbackAndRejectsChangedRelations(t *testing.T) {
+	e := unitEnvelope(t)
+	admitted, _, _, _ := testGeneration(t, e)
+	binding, err := retainedSourceReader{}.Binding(context.Background(), e, "source", "context")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := unitContract("topic", "v1", "source", "context", "dataset", true, false).Publication.Definition
+	scope, relations, err := reviewedProjection([]reviewedDataset{{topic: "topic", dataset: definition.Datasets[0]}}, binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := admission{binding: binding, relationScope: scope, relations: relations}
+	base := unitQuery(e, "query-relations", "topic", "v1", "context", false)
+	base.Generation.Context = admitted.assembled
+	base.Route.Context = &nlqroute.ContextView{
+		Tier: admitted.assembled.Tier, Locale: admitted.assembled.Locale, Strategy: admitted.assembled.Strategy,
+		Topic: admitted.assembled.Topic, TopicVersion: admitted.assembled.TopicVersion,
+		Question: admitted.assembled.Question, Relations: cloneRelations(admitted.assembled.Relations),
+		Constraints: admitted.assembled.Constraints, Metrics: admitted.assembled.Metrics,
+	}
+	service := &Service{}
+	fallback := base
+	fallback.Generation.Context = nlq.AssembledContext{}
+	resealed, err := service.resealQueryContext(context.Background(), fallback, current)
+	if err != nil || !strings.Contains(resealed.Prompt, "relation[topic/dataset]:analytics.sales columns:id") {
+		t.Fatalf("route fallback lost physical relation: %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		edit func(*QueryRecord)
+	}{
+		{"tampered-generation", func(q *QueryRecord) {
+			q.Generation.Context.Relations = cloneRelations(q.Generation.Context.Relations)
+			q.Generation.Context.Relations[0].Columns[0] = "amount"
+		}},
+		{"missing-generation", func(q *QueryRecord) { q.Generation.Context.Relations = nil }},
+		{"missing-route", func(q *QueryRecord) { q.Route.Context.Relations = nil }},
+		{"missing-scope", func(q *QueryRecord) { q.RelationScope = nil }},
+		{"widened-scope", func(q *QueryRecord) {
+			q.RelationScope = []exec.RelationScope{{Dataset: "dataset", Columns: []string{"id", "unreviewed"}}}
+		}},
+		{"stale-route", func(q *QueryRecord) {
+			q.Route.Context.Relations = cloneRelations(q.Route.Context.Relations)
+			q.Route.Context.Relations[0].Name = "analytics.old_sales"
+		}},
+		{"stale-both", func(q *QueryRecord) {
+			q.Generation.Context.Relations = cloneRelations(q.Generation.Context.Relations)
+			q.Generation.Context.Relations[0].Name = "analytics.old_sales"
+			q.Route.Context.Relations = cloneRelations(q.Route.Context.Relations)
+			q.Route.Context.Relations[0].Name = "analytics.old_sales"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := base
+			view := *base.Route.Context
+			q.Route.Context = &view
+			tc.edit(&q)
+			if _, err := service.resealQueryContext(context.Background(), q, current); !errors.Is(err, exec.ErrBinding) {
+				t.Fatalf("changed physical relation reached repair: %v", err)
+			}
+			repo := newUnitRepository()
+			repo.queries[q.ID] = q
+			reader := &unitTopicReader{current: map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)}}
+			executor := &unitExecutor{reports: []exec.ExecutionReport{{Attempt: exec.Attempt{Status: "failed", Code: "query_error"}}}, errors: []error{exec.ErrQuery}}
+			engine := &sequenceGateway{}
+			runner := &Service{topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, executor: executor, engine: engine, repo: repo}
+			wantExecutions := 1
+			if tc.name == "missing-scope" || tc.name == "widened-scope" {
+				wantExecutions = 0
+			}
+			if _, err := runner.Run(context.Background(), e, RunRequest{QueryID: q.ID, Operation: "operation-relations-" + tc.name}); !errors.Is(err, exec.ErrBinding) || executor.calls != wantExecutions || engine.calls != 0 {
+				t.Fatalf("changed relation reached sqlfix: err=%v executions=%d model_calls=%d", err, executor.calls, engine.calls)
+			}
+		})
+	}
+	unsafe := binding.Clone()
+	unsafe.Relations[0].Columns[0].Safe = false
+	if _, _, err := reviewedProjection([]reviewedDataset{{topic: "topic", dataset: definition.Datasets[0]}}, unsafe); !errors.Is(err, exec.ErrBinding) {
+		t.Fatalf("unsafe current source column entered reviewed projection: %v", err)
 	}
 }
 
@@ -1328,9 +1421,9 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	repo := newUnitRepository()
 	binding, _ := retainedSourceReader{}.Binding(context.Background(), e, "source", "context")
 	origin := ExampleOrigin{SchemaVersion: 1, Locale: "en", TopicVersion: "v1", Context: "context", SourceBindingDigest: exec.Hash(binding)}
-	repo.examples["example-1"] = ExampleRecord{ID: "example-1", Topic: "topic", Question: "What is revenue?", SQL: "SELECT secret", State: "candidate", Digest: strings.Repeat("a", 64), Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, Origin: origin, Version: 1}
-	service := &Service{router: &preflightRouter{result: learningRoute(origin, binding)}, topics: reader, sources: retainedSourceReader{}, repo: repo}
-	noInspection, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	repo.examples["example-1"] = ExampleRecord{ID: "example-1", Topic: "topic", Question: "What is revenue?", SQL: "SELECT id FROM analytics.sales", State: "candidate", Digest: strings.Repeat("a", 64), Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, Origin: origin, Version: 1}
+	service := &Service{router: &preflightRouter{result: learningRoute(origin, binding)}, topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, repo: repo}
+	noInspection, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "sources.query", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1377,7 +1470,7 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	}
 	inspect := e
 	inspected, err := service.Examples(context.Background(), inspect, "topic", 1)
-	if err != nil || len(inspected) != 1 || inspected[0].SQL != "SELECT secret" {
+	if err != nil || len(inspected) != 1 || inspected[0].SQL != "SELECT id FROM analytics.sales" {
 		t.Fatalf("authorized SQL inspection was not preserved: %#v %v", inspected, err)
 	}
 	// Rollback must remain available when rerouting is unavailable; only
@@ -1386,6 +1479,61 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	retired, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "example-1", State: "retired", ReviewNote: "withdraw reviewed example"})
 	if err != nil || retired.State != "retired" {
 		t.Fatalf("retirement unexpectedly required rerouting: %#v %v", retired, err)
+	}
+}
+
+type exampleScopeValidatorAdapter struct{ fixedSourceReader }
+
+func (exampleScopeValidatorAdapter) Explain(context.Context, identity.Envelope, exec.Candidate) error {
+	return nil
+}
+
+func TestExampleActivationRequiresReviewedSQLScope(t *testing.T) {
+	binding, err := retainedSourceReader{}.Binding(context.Background(), identity.Envelope{}, "source", "context")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding.Relations[0].Columns = append(binding.Relations[0].Columns, exec.Column{Name: "secret", NativeType: "text", Category: "text", Safe: true})
+	binding.Relations = append(binding.Relations, exec.Relation{ID: "other_dataset", Schema: "analytics", Name: "other_sales", Columns: []exec.Column{{Name: "id", NativeType: "integer", Category: "integer", Safe: true}}})
+	origin := ExampleOrigin{SchemaVersion: 1, Locale: nlq.LanguageEnglish, TopicVersion: "v1", Context: "context", SourceBindingDigest: exec.Hash(binding)}
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "sources.query", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validator, err := exec.NewValidator(exampleScopeValidatorAdapter{fixedSourceReader{binding: binding}}, config.DefaultReadValidation())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := newUnitRepository()
+	for id, sql := range map[string]string{
+		"allowed":           "SELECT id FROM analytics.sales",
+		"unreviewed_column": "SELECT secret FROM analytics.sales",
+		"unreviewed_table":  "SELECT id FROM analytics.other_sales",
+	} {
+		repo.examples[id] = ExampleRecord{ID: id, Topic: "topic", Question: "Which rows?", SQL: sql, State: "candidate", Weight: 0.75, PositiveEvidence: 1, Origin: origin, Version: 1}
+	}
+	service := &Service{router: &preflightRouter{result: learningRoute(origin, binding)}, topics: &unitTopicReader{current: map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)}}, sources: fixedSourceReader{binding: binding}, validator: validator, repo: repo}
+	for _, id := range []string{"unreviewed_column", "unreviewed_table"} {
+		t.Run(id, func(t *testing.T) {
+			_, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: id, State: "active", ReviewNote: "reviewed"})
+			if !errors.Is(err, exec.ErrUnsafe) && !errors.Is(err, exec.ErrBinding) {
+				t.Fatalf("out-of-scope example activated: %v", err)
+			}
+			if got := repo.examples[id]; got.State != "candidate" || got.Version != 1 {
+				t.Fatalf("rejected example reached CAS: %#v", got)
+			}
+		})
+	}
+	active, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "allowed", State: "active", ReviewNote: "reviewed"})
+	if err != nil || active.State != "active" || repo.examples["allowed"].Version != 2 {
+		t.Fatalf("reviewed SQL failed activation: %#v %v", active, err)
+	}
+	// Retirement does not interpret or validate the candidate SQL.
+	service.validator = nil
+	service.router = nil
+	retired, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "unreviewed_column", State: "retired"})
+	if err != nil || retired.State != "retired" {
+		t.Fatalf("non-active transition was blocked by SQL scope: %#v %v", retired, err)
 	}
 }
 
