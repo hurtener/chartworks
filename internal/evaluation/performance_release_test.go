@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/reporting"
 )
 
 func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t *testing.T) {
@@ -19,14 +21,14 @@ func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t
 	scopes := []string{
 		"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant",
 		"reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a",
-		"cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "query.plan", "query.execute",
+		"cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute",
 	}
-	envelope, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(time.Hour), func() time.Time { return now })
+	envelope, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
 	actionScopes := withoutPerformanceScope(scopes, "query.execute")
-	actionEnvelope, err := identity.FromVerified("tenant", "actor", "session", actionScopes, now.Add(time.Hour), func() time.Time { return now })
+	actionEnvelope, err := identity.FromVerified("tenant", "actor", "session", actionScopes, now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +102,160 @@ func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t
 	}
 	if _, err = runtime.Measure(context.Background(), "verified-current-bearer", "verified-current-bearer", manifest); !errors.Is(err, ErrPerformanceAuthority) || factory.calls != 3 {
 		t.Fatal("full-action bearer was accepted for the denial", err, factory.calls)
+	}
+}
+
+func TestPerformanceReleaseRejectsShortVerifiedBearersBeforeAnyAdapter(t *testing.T) {
+	now := time.Now().UTC()
+	scopes := []string{"ops.write", "cw.tenant.write:tenant", "reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute"}
+	makeEnvelope := func(scopes []string, lifetime time.Duration) identity.Envelope {
+		t.Helper()
+		e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(lifetime), time.Now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	for _, short := range []string{"primary", "denial"} {
+		t.Run(short, func(t *testing.T) {
+			primaryLifetime, denialLifetime := 2*time.Hour, 2*time.Hour
+			if short == "primary" {
+				primaryLifetime = 15 * time.Minute
+			} else {
+				denialLifetime = 15 * time.Minute
+			}
+			primary := makeEnvelope(scopes, primaryLifetime)
+			denial := makeEnvelope(withoutPerformanceScope(scopes, "query.execute"), denialLifetime)
+			repo, manifest, revisions := performanceReleaseFixture(t, primary, now)
+			service, err := New(repo, nil, time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			factory := &releaseTestAdapterFactory{adapter: &releaseTestAdapter{mode: PerformanceIntegration, cache: map[string]bool{}}}
+			runtime := &PerformanceReleaseRuntime{Verifier: &releaseTestVerifier{envelope: primary, wantBearer: "current", actionEnvelope: denial, actionBearer: "negative"}, Service: service, Revisions: releaseTestRevisionResolver{evidence: revisions}, Adapters: factory}
+			if _, err := runtime.Measure(t.Context(), "current", "negative", manifest); !errors.Is(err, ErrPerformanceAuthorityWindow) || factory.calls != 0 {
+				t.Fatal("short Pengui authority entered the mutable release adapter", err, factory.calls)
+			}
+		})
+	}
+}
+
+type orderedReleaseState struct {
+	current string
+	byCase  map[string]PerformanceRevisionEvidence
+	staleAt string
+}
+
+func (s *orderedReleaseState) ResolvePerformanceRevisions(_ context.Context, _ identity.Envelope, evidence PerformanceReleaseEvidence) (PerformanceRevisionEvidence, error) {
+	if evidence.Case.ID != s.current {
+		return PerformanceRevisionEvidence{}, ErrPerformanceEvidence
+	}
+	return s.byCase[s.current], nil
+}
+
+func (s *orderedReleaseState) PreparePerformanceRevision(_ context.Context, _ identity.Envelope, step PerformanceStep, evidence PerformanceReleaseEvidence) error {
+	if step.Kind != s.staleAt {
+		s.current = evidence.Case.ID
+	}
+	return nil
+}
+
+type orderedReleaseTestAdapter struct{ *releaseTestAdapter }
+
+func (a *orderedReleaseTestAdapter) BindPerformanceScenario(_ context.Context, step PerformanceStep, scenario PerformanceScenarioEvidence) error {
+	if scenario.Evidence.Case.ID != step.Workload || scenario.Revisions.BlockID == "" {
+		return ErrPerformanceEvidence
+	}
+	return nil
+}
+
+type orderedReleaseTestFactory struct{ adapter *orderedReleaseTestAdapter }
+
+func (f *orderedReleaseTestFactory) NewPerformanceReleaseAdapter(context.Context, identity.Envelope, PerformanceManifest, map[string]PerformanceScenarioEvidence) (PerformanceReleaseAdapter, error) {
+	return nil, ErrMode
+}
+func (f *orderedReleaseTestFactory) NewOrderedPerformanceReleaseAdapter(_ context.Context, _ identity.Envelope, _ PerformanceManifest, _ map[string]PerformanceReleaseEvidence) (PerformanceReleaseAdapter, error) {
+	return f.adapter, nil
+}
+
+func TestPerformanceOrderedReleaseResolvesEachCurrentOwnerAndSealsTransitions(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	scopes := []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant", "reporting.execute", "cw.block.execute:workload-report", "cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute"}
+	e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(2*time.Hour), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	action, err := identity.FromVerified("tenant", "actor", "session", withoutPerformanceScope(scopes, "query.execute"), now.Add(2*time.Hour), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, manifest, base := performanceReleaseFixture(t, e, now)
+	order := map[string]int{}
+	for i, kind := range []string{"cold", "warm", "repeat", "concurrent", "tenant_negative", "context_negative", "actions_negative", "runtime_pack_changed", "rule_changed", "topic_changed", "source_changed", "context_changed"} {
+		order[kind] = i
+	}
+	sort.Slice(manifest.Steps, func(i, j int) bool { return order[manifest.Steps[i].Kind] < order[manifest.Steps[j].Kind] })
+	if !validOrderedPerformanceSteps(manifest.Steps) || manifest.Validate() != nil {
+		t.Fatal("ordered final profile fixture invalid")
+	}
+	variants := performanceReleaseRevisionVariants(base)
+	for caseID, revision := range variants {
+		revision.BlockID = "workload-report"
+		revision.BlockRevision = 1
+		revision.BlockDigest = strings.Repeat("9", 64)
+		revision.SourceHead = 1
+		revision.TopicPins = []reporting.TopicPin{{Topic: "topic", Version: "v1", Digest: strings.Repeat("a", 64)}}
+		revision.RulePins = []reporting.RulePin{{Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("a", 64), RuleVersion: "r1", RuleDigest: strings.Repeat("b", 64)}}
+		switch caseID {
+		case "case-rule":
+			revision.BlockRevision, revision.BlockDigest = 2, strings.Repeat("2", 64)
+			revision.RulePins[0].RuleVersion, revision.RulePins[0].RuleDigest = "r2", strings.Repeat("c", 64)
+		case "case-topic", "case-source", "case-context":
+			revision.BlockRevision = map[string]int64{"case-topic": 3, "case-source": 4, "case-context": 5}[caseID]
+			revision.BlockDigest = strings.Repeat(string(rune('0'+revision.BlockRevision)), 64)
+			revision.TopicPins[0].Version, revision.TopicPins[0].Digest = "v2", strings.Repeat("d", 64)
+			revision.RulePins[0].TopicVersion, revision.RulePins[0].PackDigest = "v2", strings.Repeat("d", 64)
+			revision.RulePins[0].RuleVersion, revision.RulePins[0].RuleDigest = "r3", strings.Repeat("e", 64)
+			if caseID == "case-context" {
+				revision.SourceHead = 2
+			}
+		}
+		variants[caseID] = revision
+	}
+	service, err := New(repo, nil, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &orderedReleaseState{current: "case-base", byCase: variants}
+	adapter := &orderedReleaseTestAdapter{releaseTestAdapter: &releaseTestAdapter{mode: PerformanceIntegration, cache: map[string]bool{}}}
+	runtime := &PerformanceReleaseRuntime{Verifier: &releaseTestVerifier{envelope: e, wantBearer: "current", actionEnvelope: action, actionBearer: "negative"}, Service: service, Revisions: state, Transition: state, Adapters: &orderedReleaseTestFactory{adapter: adapter}}
+	report, err := runtime.Measure(t.Context(), "current", "negative", manifest)
+	if err != nil || !report.CorrectnessPassed || len(report.Transitions) != 9 || report.Validate(manifest) != nil {
+		t.Fatal("ordered release did not seal current owner observations", err, report.CorrectnessPassed, len(report.Transitions))
+	}
+	for i, transition := range report.Transitions {
+		if transition.StepID == "" || transition.SourceID == "" || transition.TopicPinsDigest == "" || transition.RulePinsDigest == "" {
+			t.Fatal("missing ordered owner witness", i, transition)
+		}
+	}
+	tampered := report
+	tampered.Transitions = append([]PerformanceTransitionEvidence(nil), report.Transitions...)
+	tampered.Transitions[0].BlockDigest = strings.Repeat("0", 64)
+	if tampered.Validate(manifest) == nil {
+		t.Fatal("unsealed owner transition was accepted")
+	}
+	state.current = "case-base"
+	state.staleAt = "rule_changed"
+	adapter = &orderedReleaseTestAdapter{releaseTestAdapter: &releaseTestAdapter{mode: PerformanceIntegration, cache: map[string]bool{}}}
+	runtime.Adapters = &orderedReleaseTestFactory{adapter: adapter}
+	failed, err := runtime.Measure(t.Context(), "current", "negative", manifest)
+	if !errors.Is(err, ErrPerformanceEvidence) || failed.CorrectnessPassed || len(failed.Samples) == 0 {
+		t.Fatal("stale current owner became a passing ordered report", err, failed.CorrectnessPassed, len(failed.Samples))
+	}
+	for _, sample := range failed.Samples {
+		if sample.StepID == "step-rule_changed" {
+			t.Fatal("stale owner reached timed rule step")
+		}
 	}
 }
 
@@ -215,7 +371,7 @@ func (r releaseTestRevisionResolver) ResolvePerformanceRevisions(_ context.Conte
 }
 
 type releaseTestAdapterFactory struct {
-	adapter *releaseTestAdapter
+	adapter PerformanceReleaseAdapter
 	calls   int
 }
 
@@ -391,13 +547,23 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 		}
 		switch shape.kind {
 		case "source_changed":
+			binding.ContextDigest = performanceValueDigest(struct{ Tenant, Context string }{e.Tenant(), "context-source-b"})
 			binding.SourceRevision = strings.Repeat("f", 64)
+			binding.TopicRevision = strings.Repeat("6", 64)
+			binding.RuleRevision = strings.Repeat("7", 64)
 		case "rule_changed":
 			binding.RuleRevision = strings.Repeat("1", 64)
 		case "context_changed", "context_negative":
 			binding.ContextDigest = strings.Repeat("2", 64)
+			if shape.kind == "context_changed" {
+				binding.ContextDigest = performanceValueDigest(struct{ Tenant, Context string }{e.Tenant(), "context-b"})
+				binding.SourceRevision = strings.Repeat("8", 64)
+				binding.TopicRevision = strings.Repeat("9", 64)
+				binding.RuleRevision = strings.Repeat("a", 64)
+			}
 		case "topic_changed":
 			binding.TopicRevision = strings.Repeat("3", 64)
+			binding.RuleRevision = strings.Repeat("4", 64)
 		case "runtime_pack_changed":
 			binding.RuntimePackDigest = strings.Repeat("4", 64)
 		case "tenant_negative":
@@ -411,17 +577,23 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 		switch shape.kind {
 		case "source_changed":
 			caseID = "case-source"
-			scenarioRevisions.SourceID = "source-b"
+			scenarioRevisions.SourceID, scenarioRevisions.ContextID = "source-b", "context-source-b"
 			scenarioRevisions.SourceRevision = strings.Repeat("f", 64)
+			scenarioRevisions.TopicRevision = strings.Repeat("6", 64)
+			scenarioRevisions.RuleRevision = strings.Repeat("7", 64)
 		case "rule_changed":
 			caseID = "case-rule"
 			scenarioRevisions.RuleRevision = strings.Repeat("1", 64)
 		case "context_changed":
 			caseID = "case-context"
 			scenarioRevisions.ContextID = "context-b"
+			scenarioRevisions.SourceRevision = strings.Repeat("8", 64)
+			scenarioRevisions.TopicRevision = strings.Repeat("9", 64)
+			scenarioRevisions.RuleRevision = strings.Repeat("a", 64)
 		case "topic_changed":
 			caseID = "case-topic"
 			scenarioRevisions.TopicRevision = strings.Repeat("3", 64)
+			scenarioRevisions.RuleRevision = strings.Repeat("4", 64)
 		case "runtime_pack_changed":
 			caseID = "case-runtime"
 			evidenceReport = alternateRunID
@@ -433,15 +605,7 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 				evidenceReport, evidenceReportHash = baseRunID, phase24Report.EvidenceHash
 			}
 		}
-		if shape.kind == "source_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: current.ContextDigest, ActionsDigest: current.ActionsDigest, SourceRevision: scenarioRevisions.SourceRevision, RuleRevision: current.RuleRevision, TopicRevision: current.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "rule_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: current.ContextDigest, ActionsDigest: current.ActionsDigest, SourceRevision: current.SourceRevision, RuleRevision: scenarioRevisions.RuleRevision, TopicRevision: current.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "context_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: performanceValueDigest(struct{ Tenant, Context string }{e.Tenant(), scenarioRevisions.ContextID}), ActionsDigest: current.ActionsDigest, SourceRevision: current.SourceRevision, RuleRevision: current.RuleRevision, TopicRevision: current.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "topic_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: current.ContextDigest, ActionsDigest: current.ActionsDigest, SourceRevision: current.SourceRevision, RuleRevision: current.RuleRevision, TopicRevision: scenarioRevisions.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "runtime_pack_changed" {
+		if shape.kind == "runtime_pack_changed" {
 			binding.RuntimePackDigest = alternateRuntimePack.Digest
 		}
 		if strings.HasSuffix(shape.kind, "_negative") {
@@ -472,16 +636,57 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 
 func performanceReleaseRevisionVariants(base PerformanceRevisionEvidence) map[string]PerformanceRevisionEvidence {
 	source := base
-	source.SourceID, source.SourceRevision = "source-b", strings.Repeat("f", 64)
+	source.SourceID, source.ContextID = "source-b", "context-source-b"
+	source.SourceRevision, source.TopicRevision, source.RuleRevision = strings.Repeat("f", 64), strings.Repeat("6", 64), strings.Repeat("7", 64)
 	rule := base
 	rule.RuleRevision = strings.Repeat("1", 64)
 	contextRevision := base
 	contextRevision.ContextID = "context-b"
+	contextRevision.SourceRevision, contextRevision.TopicRevision, contextRevision.RuleRevision = strings.Repeat("8", 64), strings.Repeat("9", 64), strings.Repeat("a", 64)
 	topic := base
-	topic.TopicRevision = strings.Repeat("3", 64)
+	topic.TopicRevision, topic.RuleRevision = strings.Repeat("3", 64), strings.Repeat("4", 64)
 	return map[string]PerformanceRevisionEvidence{
 		"case-base": base, "case-source": source, "case-rule": rule,
 		"case-context": contextRevision, "case-topic": topic, "case-runtime": base,
+	}
+}
+
+func TestFinalPerformanceDependencyClosureRejectsMissingAndUnrelatedPins(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{
+		"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant",
+		"reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a",
+		"cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "query.plan", "query.execute",
+	}, now.Add(time.Hour), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, _ := performanceReleaseFixture(t, e, now)
+	if err := manifest.Validate(); err != nil {
+		t.Fatal("current owner dependency closure was rejected", err)
+	}
+	for _, tc := range []struct {
+		kind   string
+		mutate func(*PerformanceBinding)
+	}{
+		{"source_changed", func(b *PerformanceBinding) { b.TopicRevision = manifest.Steps[0].Binding.TopicRevision }},
+		{"source_changed", func(b *PerformanceBinding) { b.ContextDigest = manifest.Steps[0].Binding.ContextDigest }},
+		{"context_changed", func(b *PerformanceBinding) { b.SourceRevision = manifest.Steps[0].Binding.SourceRevision }},
+		{"topic_changed", func(b *PerformanceBinding) { b.RuleRevision = manifest.Steps[0].Binding.RuleRevision }},
+		{"rule_changed", func(b *PerformanceBinding) { b.TopicRevision = strings.Repeat("d", 64) }},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			changed := manifest
+			changed.Steps = append([]PerformanceStep(nil), manifest.Steps...)
+			for i := range changed.Steps {
+				if changed.Steps[i].Kind == tc.kind {
+					tc.mutate(&changed.Steps[i].Binding)
+				}
+			}
+			if !errors.Is(changed.Validate(), ErrInvalid) {
+				t.Fatal("missing or unrelated owner dependency passed final profile")
+			}
+		})
 	}
 }
 

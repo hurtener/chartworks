@@ -1,17 +1,24 @@
 # Performance evidence v1
 
 Status: bounded PERF-01 harness and authority-bound Phase 25 prerequisite
-implemented for review, 2026-09-22. The query adapter composes Plan→Run under
-a PostgreSQL-scoped operation lock and can distinguish physical attempts from
-idempotent replay. It fails closed for final stress: this path does not exercise
-the product's frozen-run reuse identity, and the production performance adapter
-does not yet consume the PostgreSQL read attempt's source-only duration receipt.
-The Phase-34 current-revision resolver and
-production release composition also remain required. Phase 25 still owns the
-final stress execution and decision.
+implemented for review, 2026-09-22. The original Plan→Run adapter remains a
+query-ledger prerequisite and fails closed for result reuse. The draft frozen
+adapter now admits distinct reporting run IDs and reads the product's canonical
+reuse identity, reuse origin, persisted native source-only duration and
+uncopied narrative receipts. Sealed raw samples retain product run IDs, reuse
+keys and origins beside wall, source, model, call and cost observations. A
+missing provider cost remains unknown. A bounded real-PG17 recorded-model test
+exercises cold, warm, repeat and concurrent reuse. The selected Phase-34
+current-revision resolver also reads the protected case's published block pins. These are
+prerequisites, not the final stress execution or Phase 25 release decision.
 
 Performance evidence is valid only after every case passes a correctness probe.
-The harness then records every raw wall-time observation and separately retains
+The immutable-fixture harness probes all cases before timing. The ordered
+current-owner release path probes each case immediately after its authorized
+transition, measures while that revision is current, and re-resolves the owner
+head afterward. A later probe or post-step owner check failure leaves the
+entire report unaccepted, including any earlier samples. The harness records
+every raw wall-time observation and separately retains
 service, source and model time, source/model calls, retries, tokens and cost.
 Unknown model time, token usage or cost remains absent. Summary percentiles are
 derived from the retained raw observations and never replace them.
@@ -26,8 +33,9 @@ The profile binding records hashes of tenant, signed context reach, signed
 actions, source revision, reviewed rule revision, topic publication and
 reviewed runtime pack. A binding digest supplied by the harness is not proof
 that the product uses that key for reuse. The required profile exercises cold,
-warm, repeated and concurrent access plus an exact one-field change for source,
-rule, context, topic and runtime pack. Cross-tenant and
+warm, repeated and concurrent access plus a declared primary axis with its
+exact current-owner dependency closure for source, rule, context and topic.
+The selected runtime-pack change remains one field. Cross-tenant and
 same-tenant/different-context cases and altered signed-action cases must deny
 before source or model work.
 Concurrent cold access must produce one physical execution for one exact
@@ -79,46 +87,118 @@ invalidation.
 The runtime requires a current source/rule/topic/context revision resolver and
 an adapter whose declared evidence, source and model modes match `integration`
 or `live`. Every permitted correctness probe and physical execution must carry
-real source and selected model receipts. The query adapter binds the existing
-governed Plan→Run operation to durable query/read ledgers and requires the
-PostgreSQL cross-process operation lock. Plan→Run has an idempotency ledger, not
-a product result cache: a new operation on each changed binding trivially forces
-work and cannot prove invalidation. The concrete factory rejects all required
-changed-binding steps with `ErrPerformanceReuseUnproven`. Final AC03 requires an
-adapter over reporting's frozen-run path: seal distinct run IDs for the same
-approved block and inputs, exercise `Runs.continueFrozen` and PostgreSQL
-`ReuseFrozenRun`, and observe the actual `RunManifest.ReuseKey`, `ReusedFrom`,
-and physical source attempts. Preload a reusable baseline, then vary exactly
-one current source, rule, context, topic or runtime-pack revision while keeping
-other inputs and signed reach fixed; require one physical call for each changed
-case and zero reuse from the stale baseline. A negative test must substitute a
-reuse key that omits the changed dimension and show that the correctness gate
-fails. The configured Bifrost engine attests `live`; `integration` requires a `gateway.Engine` backed
-by recorded model responses that explicitly attests `recorded`. No production
-recorded engine is included here, so integration mode remains unavailable until
-the composition root supplies that engine. Phase 34 must supply selected
-migration-head source/rule/topic/context evidence through the current-revision
-resolver. Missing resolvers or adapters fail closed. The release orchestration
-is not exposed as an operator CLI until that composition exists.
+real source and selected model receipts. The original Plan→Run adapter binds
+durable query/read ledgers but cannot prove product result reuse. The new
+frozen adapter uses `reporting.Runs.Admit` and `Run` with fresh operation keys,
+reads the protected `RunRecord`, validates `RunManifest.ReuseKey` against
+`ReuseIdentity`, and checks `ReusedFrom` and physical source/model receipts.
+The protected Phase 24 consumer uses the same frozen result digest. A reused
+output's copied narrative receipt is not counted as another model call.
+`releaseprofile.NewIntegration` composes a recorded gateway, published block,
+request runner, PostgreSQL frozen-run repository and its reviewed narrative-pack
+selector. Before executing a selected Phase 24 consumer, the adapter reads the
+product-sealed manifest and requires its selected pack, runtime, configuration
+and narrative-model pin to equal the exact accepted runtime record. A stale
+pin fails before source/model execution or timing. Its resolver selects
+one reviewed Phase-34 cohort for each accepted Phase-24 consumer case, reloads
+the active cutover and its source adapter, checks current topic/rule/source and
+signed context reach, and hashes all rows of a bounded native PostgreSQL
+dataset's validator-safe column projection. Multi-dataset source snapshots fail
+closed until a shared native transaction exists. Missing or changed owner
+evidence fails closed. A pack-neutral protected narrative input can identify
+only its exact published block as the execution target; the resolver checks
+signed block reach and current block/topic/rule/source pins, while the sealed
+frozen manifest checks the selected reviewed runtime pack. A bounded
+real-PostgreSQL recorded test now runs the
+same protected frozen consumer under two independently reviewed packs, records
+distinct passing Phase 24 reports, and observes a changed reuse identity with
+fresh source/model receipts. The strict adapter requires both exact accepted
+reports and an operator-configured approved changed-pack proposal whose stored
+candidate digest matches the report before any selection mutation. Before each
+correctness probe and timed step, it uses the verified Pengui envelope to
+select the report-bound pack through the product's CAS pointer; it restores the
+original accepted selection after success or failure and refuses a foreign
+revision. The product's actual `ReuseKey` must change for every changed
+scenario; a profile-only revision digest cannot create a passing invalidation.
+The recorded composition requires a request queue provisioned for the fixed
+128 concurrent tenant calls and a frozen-run tenant budget above 128 maximum
+artifact reservations before entering a final profile. An absent report,
+proposal, authority or capacity fails before timing. Final
+AC03 still needs accepted Phase 24 cases/reports for every selected current
+source/rule/context/topic revision, current owner-dependent invalidation and
+stale-key substitution through the final correctness gate, the exact final
+stress profile with provisioned concurrency and raw receipts, and live owner
+evidence. Neither this composition nor its recorded fixtures qualifies a live
+model or release stress run. The release orchestration remains internal.
+
+`final_stress` names one primary invalidation axis. Its current-owner
+dependency closure is exact: `rule_changed` changes rule alone;
+`topic_changed` changes topic and its pinning rule; `source_changed` selects a
+different current source ID and therefore changes context, source, topic and
+rule; `context_changed` rotates the same source ID to a new revision and
+therefore changes context, source, topic and rule. The raw source ID distinguishes
+the latter two. A claimed source-head change with an unchanged context cannot
+pass: production source contexts are derived from source ID and revision.
+Tenant, actions and selected runtime pack stay fixed for those four.
+The resolver reads the current Phase 34 source head, source context, active
+topic and reviewed rule, and checks the selected published block's pins.
+The release gate keeps the same published block and topic IDs and compares
+their raw revisions plus source/topic/rule pins for the declared axis. A
+different block or topic ID is not evidence of invalidating one frozen
+consumer's reuse identity. It
+recomputes every binding hash from those owners. A cohort-only hash,
+missing collateral pin or unrelated change fails before measurement; a real
+changed scenario must also change the product's `ReuseKey`. The exact full
+profile and owner evidence have not yet been measured.
+
+The production recorded composition now requires an operator-supplied
+`PerformanceRevisionTransition`. It is not sourced from profile JSON: the
+transition must actually activate the accepted consumer's product owner pins
+under the verified Pengui envelope. The ordered profile sequence is cold,
+warm, repeat, concurrent, the three denial probes, changed reviewed runtime
+pack, rule, topic, source ID, and same-source context rotation. Before each
+allowed step the current resolver checks the exact accepted Phase 24 case and
+report against the active Phase 34 source, topic, rule and block. The sealed
+report records the source ID/head, context and block coordinates and hashes of
+the exact current topic/rule pins for each allowed step. A post-step resolver
+read rejects a concurrently changed owner head. No operator transition or
+accepted current cohort has been supplied to this repository, so this path
+still fails closed and AC03 is open.
+
+The runtime restores only the reviewed runtime-pack selection through its
+guarded CAS pointer. Source, topic, rule and block transitions remain owner
+operations; their caller must arrange authorized publication and recovery.
+The harness never claims to roll back a source rotation or Phase 34 cutover.
+Both verifier-produced Pengui bearers must remain valid beyond the full
+one-hour profile plus a two-minute cleanup/skew reserve before the release
+runtime enters an adapter. The changed-pack selector checks its live harness
+deadline again immediately before advancing the CAS pointer. A default
+15-minute HTTP bearer therefore returns the typed
+`ErrPerformanceAuthorityWindow` result before any pack mutation. The existing
+Pengui job execution broker is not an operator-token renewal contract for this
+measurement; no local issuer or renewal path is introduced. AC03 remains open
+until an owner-approved fresh Pengui authority seam is wired for the full run
+and cleanup. Increasing Chartworks' configured token lifetime is not a
+substitute for that owner contract.
 
 Release reports are atomically created as private `0600` files and an existing
-path is never replaced. The one-hour profile bound includes correctness probes
-as well as timed observations. A permitted integration/live correctness probe
-must carry physical source and model receipts before any timed sample starts.
+path is never replaced. The one-hour profile bound includes correctness probes,
+owner transitions and timed observations. A permitted integration/live
+correctness probe must carry physical source and model receipts before timing
+for that same step starts.
 Read-attempt `created_at` to `finished_at` spans journaling, source work and
 finalization; it is never labeled `source_ns`. A nullable `source_duration_ns`
 on a PostgreSQL physical read attempt measures the native source work after
 connection acquisition through transaction cleanup and subtracts synchronous
 read journal calls. It survives the durable execution receipt. Legacy,
 unissued and uncertain
-attempts remain unknown. The current query adapter does not consume this receipt,
-so its physical-source timing gate still fails closed until the production
-composition wires the exact attempt duration into performance usage.
-The signed-action negative needs a second short-lived Pengui bearer for the
-same subject/reach with exactly `query.plan` or `query.execute` removed. Both
-bearers are verified; the altered envelope is passed through governed
-Plan→Run, and denial with zero source/model work is required. Fixture scopes do
-not construct the envelope.
+attempts remain unknown. The frozen adapter consumes that exact nullable
+receipt; missing duration fails the integration timing gate. The signed-action
+negative needs a second short-lived Pengui bearer for the same subject/reach
+with exactly the active consumer action removed (`reporting.execute` for a
+frozen run, or a query action for Plan→Run). Both bearers are verified; the
+altered envelope is passed through that consumer, and denial with zero
+source/model work is required. Fixture scopes do not construct the envelope.
 
 The checked-in smoke profile caps each step at 32 requests/concurrency and ten
 seconds overall. The final release profile uses these required scenarios:

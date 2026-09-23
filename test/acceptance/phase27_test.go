@@ -23,6 +23,7 @@ import (
 	"github.com/hurtener/chartworks/internal/config"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/reporting"
@@ -35,9 +36,9 @@ import (
 
 // Reporting fixtures explicitly review synthetic column sensitivity before
 // publication. Real unknown columns remain unknown; no production default changes.
-func newReportingFixture(t *testing.T) *phase17Fixture {
+func newReportingFixture(t *testing.T, queueLimits ...jobs.Limits) *phase17Fixture {
 	t.Helper()
-	return newPhase18FixtureReviewed(t, true)
+	return newPhase18FixtureReviewed(t, true, queueLimits...)
 }
 
 func phase27Scopes(tenant string) []string {

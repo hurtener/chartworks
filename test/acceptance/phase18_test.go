@@ -15,6 +15,7 @@ import (
 	"github.com/hurtener/chartworks/internal/auth"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqapi"
 	"github.com/hurtener/chartworks/internal/nlqexec"
@@ -93,9 +94,9 @@ func newPhase18Fixture(t *testing.T) *phase17Fixture {
 	return newPhase18FixtureReviewed(t, false)
 }
 
-func newPhase18FixtureReviewed(t *testing.T, reviewedSyntheticColumns bool) *phase17Fixture {
+func newPhase18FixtureReviewed(t *testing.T, reviewedSyntheticColumns bool, queueLimits ...jobs.Limits) *phase17Fixture {
 	t.Helper()
-	f, draftsService, topicsService, model, pack := publicationFixture(t)
+	f, draftsService, topicsService, model, pack := publicationFixture(t, queueLimits...)
 	e := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
 	pack = phase17EnrichPack(t, f, pack)
 	if reviewedSyntheticColumns {

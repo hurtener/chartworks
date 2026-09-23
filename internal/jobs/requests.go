@@ -183,6 +183,13 @@ func NewRequestRunner(repo RequestRepository, limits Limits) (*RequestRunner, er
 	return &RequestRunner{repo: repo, limits: limits}, nil
 }
 
+// SupportsTenantConcurrency checks the immutable request-queue admission
+// bounds. It is a release precondition, not proof of database/source throughput.
+func (r *RequestRunner) SupportsTenantConcurrency(requested int) bool {
+	return r != nil && requested > 0 && r.limits.TenantConcurrency >= requested && r.limits.GlobalConcurrency >= requested &&
+		r.limits.MaxPendingPerTenant >= requested && r.limits.MaxPending >= requested
+}
+
 // Admit binds an explicit idempotency key to one immutable real target.
 func (r *RequestRunner) Admit(ctx context.Context, e identity.Envelope, key string, input RequestInput) (RequestTask, error) {
 	if ctx == nil || !identity.Identifier(key) {

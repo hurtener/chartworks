@@ -22,8 +22,12 @@ import (
 )
 
 // LiveInput is protected execution material. It is never retained in reports or logs.
+// A narrative frozen case may omit Pack so one reviewed suite can evaluate the
+// same consumer under distinct accepted runtime packs. Its product-sealed pin
+// must then match the selected runtime before source or model execution.
 type LiveInput struct {
 	Pack      PackRevision                `json:"pack"`
+	Frozen    *FrozenRunInput             `json:"frozen,omitempty"`
 	Route     *nlqroute.RouteRequest      `json:"route,omitempty"`
 	Question  *nlqexec.QuestionRequest    `json:"question,omitempty"`
 	Run       *nlqexec.RunRequest         `json:"run,omitempty"`
@@ -33,6 +37,21 @@ type LiveInput struct {
 	Chart     *chartservice.SelectRequest `json:"chart,omitempty"`
 	ReportID  string                      `json:"report_id,omitempty"`
 	ReportRef reporting.Reference         `json:"report_ref,omitempty"`
+}
+
+// ProtectedPackMatches checks the protected input's pack shape. A pack-neutral
+// narrative frozen input still requires the product-sealed selected pack pin
+// before source or model execution; this check grants no authority by itself.
+func ProtectedPackMatches(in LiveInput, selected PackRevision) bool {
+	if validPack(in.Pack) {
+		want, wantErr := digest(selected)
+		got, gotErr := digest(in.Pack)
+		return wantErr == nil && gotErr == nil && want == got
+	}
+	return in.Pack.ID == "" && in.Pack.Revision == 0 && in.Pack.Digest == "" && in.Pack.Model == "" &&
+		len(in.Pack.Models) == 0 && in.Pack.ConfigurationDigest == "" && in.Frozen != nil && in.Frozen.Request.Narrative &&
+		in.Question == nil && in.Run == nil && in.Route == nil && in.Replay == nil && in.Shadow == nil && in.BYO == nil &&
+		in.Chart == nil && (in.ReportID == "" || in.ReportID == in.Frozen.BlockID && identifier(in.ReportID)) && in.ReportRef == (reporting.Reference{})
 }
 
 // ShadowInput compares two retained definitions without fresh planning or provider work.
@@ -70,20 +89,29 @@ type chartRuntime interface {
 type reportRuntime interface {
 	Read(context.Context, identity.Envelope, string, reporting.Reference) (reporting.View, error)
 }
+type frozenRunRuntime interface {
+	Admit(context.Context, identity.Envelope, string, reporting.RunRequest) (reporting.RunView, error)
+	Run(context.Context, identity.Envelope, string, bool) (reporting.RunView, error)
+}
+type frozenRunReader interface {
+	ReadFrozenRun(context.Context, identity.Envelope, string, bool) (reporting.RunRecord, error)
+}
 type byoRuntime interface {
 	Submit(context.Context, identity.Envelope, nlqbyo.SubmitRequest) (nlqbyo.SubmitResult, error)
 }
 
 // GovernedRunner invokes the existing governed services; it does not introduce a second gateway, validator, or executor.
 type GovernedRunner struct {
-	Inputs  LiveInputResolver
-	Routing routingRuntime
-	Query   queryRuntime
-	Saved   SavedInspector
-	Charts  chartRuntime
-	Reports reportRuntime
-	BYO     byoRuntime
-	Clock   Clock
+	Inputs      LiveInputResolver
+	Routing     routingRuntime
+	Query       queryRuntime
+	Saved       SavedInspector
+	Charts      chartRuntime
+	Reports     reportRuntime
+	Frozen      frozenRunRuntime
+	FrozenStore frozenRunReader
+	BYO         byoRuntime
+	Clock       Clock
 }
 
 // Observe resolves protected input and calls the owning governed service.
@@ -105,9 +133,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	if err != nil {
 		return Observation{Usage: reservation.usage()}, err
 	}
-	wantPack, _ := digest(x.Pack)
-	gotPack, _ := digest(in.Pack)
-	if !validPack(in.Pack) || wantPack != gotPack {
+	if !ProtectedPackMatches(in, x.Pack) {
 		return Observation{Usage: reservation.usage()}, ErrReview
 	}
 	if x.RuntimeConfig.Digest != x.Pack.ConfigurationDigest || !packModelsMatchConfig(x.Pack, x.RuntimeConfig) {
@@ -121,6 +147,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	var receipt gateway.Receipt
 	blocked := false
 	var sourceCalls int
+	var usageSourceMS *int64
 	switch x.Case.Stage {
 	case StageRouting:
 		if g.Routing == nil || in.Route == nil {
@@ -209,6 +236,42 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 		result, err = r, e
 		receipt = r.Provenance.Receipt
 	case StageConsumer:
+		if in.Frozen != nil {
+			if in.Run != nil || g.Frozen == nil || g.FrozenStore == nil {
+				return Observation{}, ErrMode
+			}
+			frozen := *in.Frozen
+			if x.ReportRunID != "" {
+				if !identifier(x.ReportRunID) {
+					return Observation{}, ErrMode
+				}
+				key := sha256.Sum256([]byte(x.ReportRunID + ":" + x.Case.ID + ":" + x.Pack.Digest + ":" + frozen.Request.Key))
+				frozen.Request.Key = "eval:" + hex.EncodeToString(key[:])
+			}
+			record, runErr := runFrozenInputChecked(ctx, x.Envelope, g.Frozen, g.FrozenStore, frozen, func(m reporting.RunManifest) error {
+				if !in.Frozen.Request.Narrative {
+					return nil
+				}
+				want, valid := expectedNarrativePin(x.Pack, x.RuntimeConfig, x.RuntimeDigest)
+				if !valid || m.NarrativePackUnavailable || m.NarrativePack == nil || *m.NarrativePack != want || m.ReuseKey != reporting.ReuseIdentity(m) {
+					return ErrReview
+				}
+				return nil
+			})
+			if runErr != nil {
+				return Observation{}, runErr
+			}
+			semantic, calls, sourceNS, modelReceipt, evidenceErr := frozenEvidence(record)
+			if evidenceErr != nil {
+				return Observation{}, evidenceErr
+			}
+			result, receipt, sourceCalls = semantic, modelReceipt, calls
+			if sourceNS != nil {
+				value := *sourceNS / int64(time.Millisecond)
+				usageSourceMS = &value
+			}
+			break
+		}
 		if g.Query == nil || in.Run == nil {
 			return Observation{}, ErrMode
 		}
@@ -275,6 +338,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 		usage.Calls, usage.Retries, usage.Tokens = reserved.Calls, reserved.Retries, reserved.Tokens
 	}
 	usage.SourceCalls = sourceCalls
+	usage.SourceMS = usageSourceMS
 	usage.ServiceMS = clock().Sub(started).Milliseconds()
 	if !receiptMatchesPack(receipt, x.Pack) {
 		return Observation{Usage: usage}, ErrReview

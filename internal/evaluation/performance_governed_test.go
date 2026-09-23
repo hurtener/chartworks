@@ -162,7 +162,7 @@ func TestGovernedPerformanceAdapterRejectsUnsupportedInvalidation(t *testing.T) 
 	now := time.Now().UTC().Truncate(time.Second)
 	envelope, err := identity.FromVerified("tenant", "actor", "session", []string{
 		"ops.write", "cw.tenant.write:tenant", "reporting.execute", "cw.report.execute:workload-report",
-		"cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b",
+		"cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b",
 		"query.plan", "query.execute",
 	}, now.Add(time.Hour), func() time.Time { return now })
 	if err != nil {
@@ -294,6 +294,8 @@ func performanceScenarioInputs(suite Suite) performanceScenarioInputResolver {
 		contextID := "context-a"
 		if workload.ID == "case-context" {
 			contextID = "context-b"
+		} else if workload.ID == "case-source" {
+			contextID = "context-source-b"
 		}
 		pack := suite.Packs[0]
 		if workload.ID == "case-runtime" {

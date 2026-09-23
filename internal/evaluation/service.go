@@ -117,7 +117,7 @@ func (s *Service) ReviewRuntimePack(ctx context.Context, e identity.Envelope, pa
 
 // RegisterInput stores protected live material and returns its canonical reference.
 func (s *Service) RegisterInput(ctx context.Context, e identity.Envelope, retention string, in LiveInput) (ProtectedRef, error) {
-	if ctx == nil || !identifier(retention) || !validPack(in.Pack) {
+	if ctx == nil || !identifier(retention) || !ProtectedPackMatches(in, in.Pack) {
 		return ProtectedRef{}, ErrInvalid
 	}
 	d, err := digest(in)
@@ -299,6 +299,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 		return Report{}, ErrReview
 	}
 	var runtimeConfig gateway.RuntimeConfig
+	var runtimeDigest string
 	if record.Suite.Mode == Live {
 		runtime, runtimeErr := s.repo.AcceptedRuntimePack(ctx, scope, pack.Digest, pack.ConfigurationDigest)
 		if runtimeErr != nil {
@@ -308,6 +309,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 			return Report{}, ErrReview
 		}
 		runtimeConfig = runtime.Config
+		runtimeDigest = runtime.Digest
 	}
 	if err = s.repo.BeginRun(ctx, scope, in); err != nil {
 		return Report{}, err
@@ -323,7 +325,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 	s.mu.Unlock()
 	defer func() { cancel(); s.mu.Lock(); delete(s.running, in.RunID); s.mu.Unlock() }()
 	if runner != nil {
-		runner = authorityRunner{Envelope: e, RuntimeConfig: runtimeConfig, Next: runner}
+		runner = authorityRunner{Envelope: e, RuntimeConfig: runtimeConfig, RuntimeDigest: runtimeDigest, Next: runner}
 	}
 	r, evalErr := EvaluateWithPack(runCtx, in.RunID, record.Suite, pack, runner, s.clock)
 	if r.EvidenceHash != "" {
@@ -337,12 +339,14 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest, r
 type authorityRunner struct {
 	Envelope      identity.Envelope
 	RuntimeConfig gateway.RuntimeConfig
+	RuntimeDigest string
 	Next          Runner
 }
 
 func (a authorityRunner) Observe(ctx context.Context, x Execution) (Observation, error) {
 	x.Envelope = a.Envelope
 	x.RuntimeConfig = a.RuntimeConfig
+	x.RuntimeDigest = a.RuntimeDigest
 	return a.Next.Observe(ctx, x)
 }
 func (s *Service) Read(ctx context.Context, e identity.Envelope, id string) (Report, error) {
@@ -643,6 +647,36 @@ func (s *Service) ReviewOptimization(ctx context.Context, e identity.Envelope, i
 		return ReviewReceipt{}, err
 	}
 	return receipt, nil
+}
+
+// SelectedPack reads the current approved pointer under the same signed scope
+// required to change it during a release profile.
+func (s *Service) SelectedPack(ctx context.Context, e identity.Envelope) (PackSelection, error) {
+	if s == nil || ctx == nil {
+		return PackSelection{}, ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return PackSelection{}, err
+	}
+	return s.repo.SelectedPack(ctx, scope)
+}
+
+// ProposedPackDigest reads the immutable proposed pack before a release
+// transition. SelectPack separately requires the persisted approval and CAS.
+func (s *Service) ProposedPackDigest(ctx context.Context, e identity.Envelope, proposalID string) (string, error) {
+	if s == nil || ctx == nil || !identifier(proposalID) {
+		return "", ErrInvalid
+	}
+	scope, err := access.StoreScope(e, "ops.write", "write")
+	if err != nil {
+		return "", err
+	}
+	p, err := s.repo.ReadProposal(ctx, scope, proposalID)
+	if err != nil || p.Validate() != nil || !validDigest(p.Candidate.PackDigest) {
+		return "", ErrReview
+	}
+	return p.Candidate.PackDigest, nil
 }
 
 // SelectPack advances a CAS pointer only for a persisted approved proposal. Passing an older approved proposal performs an auditable rollback.
