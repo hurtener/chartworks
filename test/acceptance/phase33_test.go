@@ -609,7 +609,7 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 		t.Fatal("server-resolved drift amendment", amendment, err)
 	}
 	bindings, err := onboardingapi.MCPBindings(service)
-	if err != nil || len(bindings) != 6 {
+	if err != nil || len(bindings) != 8 {
 		t.Fatal("MCP consumer bindings", len(bindings), err)
 	}
 	mcpRegistry, err := mcpserver.NewRegistry(bindings)

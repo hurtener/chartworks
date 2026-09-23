@@ -39,6 +39,7 @@ type Service struct {
 	adapter Adapter
 	limits  Limits
 	now     func() time.Time
+	goal    *GoalService
 }
 
 func New(repo Repository, adapter Adapter, limits Limits) (*Service, error) {
@@ -46,6 +47,17 @@ func New(repo Repository, adapter Adapter, limits Limits) (*Service, error) {
 		return nil, ErrInvalid
 	}
 	return &Service{repo: repo, adapter: adapter, limits: limits, now: time.Now}, nil
+}
+
+// NewWithGoal installs the bounded goal discovery service before the coordinator
+// is shared with HTTP and MCP callers.
+func NewWithGoal(repo Repository, adapter Adapter, limits Limits, goal *GoalService) (*Service, error) {
+	s, err := New(repo, adapter, limits)
+	if err != nil || goal == nil {
+		return nil, ErrInvalid
+	}
+	s.goal = goal
+	return s, nil
 }
 
 func require(e identity.Envelope, action, id, permission string) error {

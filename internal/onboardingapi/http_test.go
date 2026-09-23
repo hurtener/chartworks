@@ -56,7 +56,7 @@ func TestRegistryMatchesOnboardingManifest(t *testing.T) {
 	if json.Unmarshal(raw, &manifest) != nil || !reflect.DeepEqual(manifest, registry.Operations()) {
 		t.Fatal("onboarding operation manifest drift")
 	}
-	if len(registry.Definitions()) != 6 {
+	if len(registry.Definitions()) != 8 {
 		t.Fatal("onboarding operation count", len(registry.Definitions()))
 	}
 	if _, err = registry.OpenAPI("Chartworks onboarding", "1"); err != nil {
@@ -110,7 +110,13 @@ func TestMCPBindingsAndHTTPBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry, _ := Registry()
-	definition := registry.Definitions()[0]
+	var definition api.Definition
+	for _, item := range registry.Definitions() {
+		if item.ID == "startOnboarding" {
+			definition = item
+			break
+		}
+	}
 	requestShape, requestErr := api.SchemaFor("probe", reflect.TypeFor[onboarding.StartRequest](), false, api.OptionalJSONFields)
 	responseShape, responseErr := api.SchemaFor("probe", reflect.TypeFor[onboarding.Run](), true)
 	if requestErr != nil || responseErr != nil {
@@ -120,7 +126,7 @@ func TestMCPBindingsAndHTTPBoundaries(t *testing.T) {
 		t.Fatal("MCP and HTTP start schemas diverged")
 	}
 	bindings, err := MCPBindings(service)
-	if err != nil || len(bindings) != 6 {
+	if err != nil || len(bindings) != 8 {
 		t.Fatal(bindings, err)
 	}
 	if bindings, err = MCPBindings(nil); err != nil || bindings != nil {

@@ -1,5 +1,19 @@
 # Behavioral gap analysis and parity expansion
 
+## Business-goal topic authoring submission — 2026-09-22
+
+The isolated Phase 33 goal entry point adds bounded signed-reachable discovery
+of reviewed topics, registered datasets and active private profiles, followed
+by exact current-topic reuse or a new private profile-backed draft. Search is
+deterministic lexical matching with zero gateway calls and no warehouse row
+reads. Candidate coordinates and truncation are inspectable; unresolved
+business meaning still requires ordinary human review/publication. A chosen
+candidate can be passed into the existing selected-coordinate onboarding run.
+`TestBusinessGoalAuthoringPG17` exercises the public SDK over real PostgreSQL
+with synthetic English/Spanish, stale and tenant/context cases. Relevance
+calibration, pagination beyond fixed caps and a fully goal-driven managed-data
+proposal remain open; this submission does not claim them.
+
 ## Current merged rebaseline — 2026-09-22
 
 This is the current disposition at `d1ac39520d9581978a16e06bf6c47b67c742806e`
