@@ -87,6 +87,16 @@ binds the exact reviewed dataset/column/value or temporal range before the exist
 validator issues a plan. Interpretation is not authority: Pengui reach applies
 first, source binding is rechecked, business constraints cannot construct a plan,
 and SQL still passes whole-statement validation and read-only execution.
+For PostgreSQL, the binder also accepts up to four flat named CTEs: each CTE
+may read reviewed schema-qualified base relations or an earlier CTE, and each
+CTE must have a downstream path to the final SELECT. A CTE may feed multiple
+later scopes, but self-joins within one scope are rejected. All active
+constraints must identify one base relation occurrence in one CTE body; row
+predicates are inserted before that CTE's aggregation or join. Missing,
+duplicated or unreachable targets, recursive CTEs, unions, derived or
+correlated SELECTs and other dialects remain typed unsupported cases. This
+bounded transformation does not
+replace the ordinary opaque read plan or reviewed relation scope.
 
 The in-process route seal binds the interpretation, source binding digest and typed
 constraints. A JSON reconstruction cannot manufacture executable filters. Any

@@ -273,11 +273,6 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 				}
 				var binding *readexec.BusinessConstraintError
 				if errors.As(err, &binding) {
-					if tc.id == "observed-range-net" && binding.Code == "unsupported_select_shape" && binding.Field == "sql" {
-						receipts[index].Status = "unsupported"
-						receipts[index].Reason = binding.Code
-						return
-					}
 					receipts[index].Status = "failed"
 					receipts[index].Reason = binding.Code
 					t.Fatalf("live plan (%s): constraint code=%s field=%s", tc.id, binding.Code, binding.Field)
@@ -285,9 +280,6 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 				receipts[index].Status = "failed"
 				receipts[index].Reason = livePlanFailureReason(err)
 				t.Fatalf("live plan (%s): %s", tc.id, receipts[index].Reason)
-			}
-			if tc.id == "observed-range-net" {
-				t.Fatal("natural range net unexpectedly planned without reviewed aggregate binding")
 			}
 			if planned.Status != "planned" || planned.QueryID == "" || len(planned.Receipt.Calls) == 0 {
 				t.Fatalf("missing validated live plan receipt: %s", tc.id)
