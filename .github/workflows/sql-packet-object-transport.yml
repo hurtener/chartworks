@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   objects:
-    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener'
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener' && github.ref == 'refs/heads/codex/sql-semantic-context-recovery'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -16,52 +16,137 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: false
-      - name: Validate exact patch and store immutable objects only
+      - name: Verify and store immutable source objects only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          import base64, gzip, hashlib, io, json, os, pathlib, subprocess, urllib.request
+          import base64, json, os, pathlib, subprocess, urllib.request
           def git(*args):
               return subprocess.check_output(['git', *args]).decode().strip()
-          assert git('rev-parse', 'HEAD^') == 'ffac65cfbab0daa3c99e08fc7687b53c5c463497'
-          encoded = '''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'''
-          encoded = ''.join(encoded.split())
-          assert len(encoded) < 32768
-          with gzip.GzipFile(fileobj=io.BytesIO(base64.b64decode(encoded, validate=True))) as f:
-              patch = f.read(1048577)
-          assert len(patch) < 1048576 and hashlib.sha256(patch).hexdigest() == 'c698b611f564e3484a083c817d398c480df34cd6502542a0cb90ae3dbe5c7d60'
-          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'packet.patch'
-          target.write_bytes(patch)
-          subprocess.run(['git', 'apply', '--check', '--index', str(target)], check=True)
-          subprocess.run(['git', 'apply', '--index', str(target)], check=True)
-          paths = git('diff', '--cached', '--name-only').splitlines()
-          assert len(paths) == 17
+          def api(path, data=None):
+              request = urllib.request.Request('https://api.github.com/repos/hurtener/chartworks/git/'+path,
+                  data=None if data is None else json.dumps(data).encode(),
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'},
+                  method='GET' if data is None else 'POST')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          expected = {
+            '.github/workflows/sql-context-recovery.yml':'b28e0e0456e4e3749c3b3cf4a5b4a7c6f150fc6c',
+            'docs/plans/phase-17-nlq-routing-context.md':'5be1fe72f90946262b0a660d7306b8d23c62dcfa',
+            'docs/plans/phase-18-nlq-generation-execution.md':'2d959044488f1ec6b517b2fc924b64eef4fe8bd9',
+            'docs/reviews/sql-context-recovery.md':'f726c16933b3005a98220c8d4f5aecc05c1e600d',
+            'internal/gateway/bifrost/engine.go':'9a2c44a57255d7ec5443f7fdc4d4da598fd58256',
+            'internal/nlq/context.go':'b2b1f1090f413111084fabc3a9bb87a97e9969b1',
+            'internal/nlq/generation_fit.go':'3544e874571e96b533a07025685deeba3d63981c',
+            'internal/nlqexec/service.go':'923aa8b7ddbdafbc3709c8e926465f7efad180ea',
+            'internal/nlqexec/types.go':'d42e1909f48982f3f9db9ad63824901bd7aa1362',
+            'internal/nlqexec/validation_repair.go':'797c5e1c541b3831a6e8a74c1370a8d67a345278',
+          }
+          for path, sha in expected.items():
+              assert git('hash-object',path) == sha, path
+          permitted_new = {
+            'internal/nlq/prompt_projection.go', 'internal/nlq/prompt_projection_test.go',
+            'internal/nlqexec/generation_examples.go', 'internal/nlqexec/generation_examples_test.go',
+            'internal/nlqroute/prompt_projection_test.go', 'test/acceptance/sql_generation_packet_test.go',
+            'docs/contracts/generation-packet-v2.md',
+          }
+          tree = api('trees/9583b37e436f0131d4919362620016e993b4da5f?recursive=1')
+          blobs = [v for v in tree['tree'] if v['type']=='blob']
+          assert not tree['truncated'] and {v['path'] for v in blobs} == permitted_new
+          for item in blobs:
+              assert item['mode']=='100644' and item['size'] < 32768
+              target = pathlib.Path(item['path'])
+              assert not target.exists()
+              blob = api('blobs/'+item['sha'])
+              assert blob['encoding']=='base64'
+              target.parent.mkdir(parents=True,exist_ok=True)
+              target.write_bytes(base64.b64decode(blob['content']))
+              assert git('hash-object',str(target))==item['sha']
+          def edit(path, old, new, count=1):
+              file=pathlib.Path(path); text=file.read_text()
+              assert text.count(old)==count, (path,old,text.count(old))
+              file.write_text(text.replace(old,new))
+          edit('internal/nlq/context.go','renderRelations(input.Relations)','renderPromptRelations(input)',2)
+          edit('internal/nlq/context.go','renderRelations(output.Relations)','renderPromptRelations(outputInput(output))')
+          edit('internal/nlq/context.go','\t\tout.Constraints = state\n\t}\n\treturn out, nil','\t\tout.Constraints = state\n\t}\n\tif _, _, err := promptRelations(out); err != nil {\n\t\treturn ContextInput{}, err\n\t}\n\treturn out, nil')
+          edit('internal/nlqexec/service.go','s.selectLearnedInstructions(ctx, e, admitted, question.Question, question.Rerank, call, budget)','s.selectGenerationExamples(ctx, e, admitted, question, call, budget)')
+          old='\tcandidate, fixes, receipt, validated, err := s.generateAndValidate(ctx, e, admitted, generation, call, budget, "")'
+          edit('internal/nlqexec/service.go',old,'\tselection.Usage = actualExampleUsage(selection, generation)\n'+old)
+          old='\tSchemaVersion  int                `json:"schema_version,omitempty"`\n\tPolicyVersion'
+          edit('internal/nlqexec/types.go',old,'\tUsage          *ExamplePromptUsage `json:"usage,omitempty"`\n'+old)
+          old='\tfor i, parameter := range unbound.Parameters {'
+          edit('internal/nlqexec/validation_repair.go',old,'\t// Demonstrations are optional strategy material, not instructions to copy\n\t// inside the repair edit packet. Required semantics stay in Context.\n\tif original.Strategy == nlq.GenerationExamples {\n\t\tpacket.Instructions = nil\n\t}\n'+old)
+          old='\tmodel, system, configurationDigest := gateway.ApplyRuntimeConfig(ctx, name, r.Model, system)\n'
+          edit('internal/gateway/bifrost/engine.go',old,old+'\t// The effective reviewed system instruction is part of the actual input.\n\t// Check again after applying it, before admission or provider reservation.\n\tif len(prompt)+len(system)+len(schema.Document()) > e.cfg.Limits.MaxInputBytes {\n\t\treturn out, gateway.ErrInput\n\t}\n')
+          edit('.github/workflows/sql-context-recovery.yml','      - internal/exec/**','      - internal/exec/**\n      - internal/gateway/**')
+          edit('.github/workflows/sql-context-recovery.yml','TestSQLRecoverySelectedIntentAcceptance)$','TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope)$')
+          edit('docs/reviews/sql-context-recovery.md','| AP-02 | Relevant typed prompt projection, examples and complete-request budget | Pending |','| AP-02 | Relevant typed prompt projection, examples and complete-request budget | Selected single-topic physical rendering, strategy-aware optional fitting, example usage and runtime byte recheck implemented; model-specific full-envelope fitting pending |')
+          review='''
+
+          ## AP-02 initial packet checkpoint (SQL-03/04/05)
+
+          [Generation packet v2](../contracts/generation-packet-v2.md) specifies the scoped
+          render-only selected projection, one example lane, precedence-aware fitting and
+          actual usage metadata. Native authority still checks the full reviewed relations.
+          Normal free-text route tests add twenty unrelated hundred-column relations while
+          requiring the same prompt and exact selected dependency content. Missing/foreign
+          column coordinates fail, and legacy/unselected shapes retain their rendering.
+
+          New regressions cover ranked example order, edit/hint suppression, deduplication,
+          whole optional-group pruning, mandatory preservation, oversized demonstration
+          fallback, detached usage receipts, zero irrelevant learned-example selection and
+          repair without nested suppressed demonstrations. A recorded Bifrost wire test
+          checks runtime instructions/model/schema/output ceiling and rejection before any
+          provider call when the effective system addition exceeds the byte ceiling.
+
+          The added `fit`/`usage` evidence is optional on retained legacy JSON: absence is
+          unknown, not zero. Final provider-window allocation, broader root coverage and
+          live owner-cohort comparison are not completed by this slice. No frozen query,
+          report refresh, semantic publication or signed authority policy changes.
+          '''
+          file=pathlib.Path('docs/reviews/sql-context-recovery.md'); file.write_text(file.read_text()+review)
+          phase='''
+
+          ## SQL recovery: strategy-aware generation packet
+
+          The [generation packet v2](../contracts/generation-packet-v2.md) initial AP-02
+          slice keeps complete reviewed relation scope for validation and persistence while
+          rendering selected single-topic metric dependency columns for the model. Required
+          semantics remain atomic. Edits/hints suppress typed examples and skip irrelevant
+          learning work; included demonstrations preserve declared rank and have actual-use
+          evidence. Optional context yields before required instructions. Runtime system
+          additions are byte-checked again before dispatch. Full model-specific provider
+          window fitting and live quality qualification remain pending; frozen refresh
+          and native authority/SQL validation are unchanged.
+          '''
+          for name in ('phase-17-nlq-routing-context.md','phase-18-nlq-generation-execution.md'):
+              file=pathlib.Path('docs/plans')/name; file.write_text(file.read_text()+phase)
+          paths=sorted(set(expected)|permitted_new)
           for path in paths:
-              assert path.startswith(('internal/nlq/', 'internal/nlqexec/', 'internal/nlqroute/', 'docs/')) or path in ('internal/gateway/bifrost/engine.go', 'test/acceptance/sql_generation_packet_test.go', '.github/workflows/sql-context-recovery.yml')
-              assert git('ls-files', '-s', '--', path).startswith('100644 ')
-          transport = '.github/workflows/sql-packet-object-transport.yml'
-          subprocess.run(['git', 'rm', '--cached', transport], check=True)
-          assert git('write-tree') == '343c4228fc975e5dccb98da261571fd7cb38a827'
-          entries = []
+              if path.endswith('.go'):
+                  subprocess.run(['gofmt','-w',path],check=True)
+          subprocess.run(['git','add','--',*paths],check=True)
+          transport='.github/workflows/sql-packet-object-transport.yml'
+          subprocess.run(['git','rm','--cached',transport],check=True)
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'packet-objects'; out.mkdir()
+          computed=git('write-tree')
+          (out/'local-hashes.json').write_text(json.dumps({path:git('hash-object',path) for path in paths},indent=2))
+          assert computed=='343c4228fc975e5dccb98da261571fd7cb38a827', computed
+          entries=[]
           for path in paths:
-              content = pathlib.Path(path).read_text()
-              data = json.dumps({'content':content, 'encoding':'utf-8'}).encode()
-              req = urllib.request.Request('https://api.github.com/repos/hurtener/chartworks/git/blobs', data=data, headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'}, method='POST')
-              with urllib.request.urlopen(req, timeout=30) as response:
-                  result = json.load(response)
-              assert result['sha'] == git('hash-object', path)
-              entries.append({'path':path, 'mode':'100644', 'type':'blob', 'sha':result['sha']})
+              result=api('blobs',{'content':pathlib.Path(path).read_text(),'encoding':'utf-8'})
+              assert result['sha']==git('hash-object',path)
+              entries.append({'path':path,'mode':'100644','type':'blob','sha':result['sha']})
           entries.append({'path':transport,'mode':'100644','type':'blob','sha':None})
-          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'packet-objects'
-          out.mkdir()
-          (out/'manifest.json').write_text(json.dumps({'source_sha':os.environ['GITHUB_SHA'],'tree_sha':git('write-tree'),'entries':entries}, indent=2))
-          print('Verified immutable source objects; no branch ref was modified.')
+          (out/'manifest.json').write_text(json.dumps({'source_sha':os.environ['GITHUB_SHA'],'tree_sha':computed,'entries':entries},indent=2))
+          print('Verified exact immutable source objects; no ref was modified.')
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: packet-source-objects
-          path: ${{ runner.temp }}/packet-objects/manifest.json
+          path: ${{ runner.temp }}/packet-objects/
           retention-days: 7
-# Temporary transport only: no tests run against a patched worktree and no ref
-# is written. The connector publishes the verified tree and removes this file.
+# Temporary authoring transport only. No validation runs on the changed worktree;
+# the connector publishes the exact source and removes this file before tests.
