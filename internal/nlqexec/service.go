@@ -673,10 +673,10 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	if !e.Has("feedback.write") {
 		return ExampleRecord{}, access.ErrForbidden
 	}
-	// Active review validates protected SQL through the read validator. Require
-	// its action before looking up an example ID so missing and existing IDs do
-	// not produce different public errors for a caller lacking that action.
-	if in.State == "active" && !e.Has("sources.query") {
+	// Require every action used by the selected review path before looking up an
+	// example ID. Otherwise a caller lacking a later action could distinguish
+	// existing IDs (forbidden) from missing IDs (not found).
+	if !e.Has("sources.query") || in.State != "active" && (!e.Has("topics.read") || !e.Has("sources.read")) {
 		return ExampleRecord{}, access.ErrForbidden
 	}
 	sc, err := scope(e)
