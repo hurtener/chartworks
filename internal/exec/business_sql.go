@@ -47,6 +47,7 @@ func (b BusinessBoundQuery) GoString() string { return b.String() }
 type businessRange struct {
 	relation Relation
 	alias    string
+	virtual  string
 }
 
 type businessSQLLayout struct {
@@ -55,6 +56,7 @@ type businessSQLLayout struct {
 	having, havingEnd          int
 	rowInsert, aggregateInsert int
 	hasAggregate               bool
+	hasOuterJoin               bool
 }
 
 type businessEdit struct {
@@ -69,8 +71,9 @@ type businessScalar struct {
 
 // BindBusinessConstraints applies closed business predicates to the admitted
 // source coordinates. A bounded single SELECT with qualified base relations is
-// supported, including joins, WHERE, GROUP BY, HAVING and ordering/limits. CTEs,
-// nested SELECTs, set operations and ambiguous self-join targets return explicit
+// supported, including joins, WHERE, GROUP BY, HAVING and ordering/limits. A
+// flat PostgreSQL WITH of independent SELECTs is also supported. Other nested
+// SELECTs, set operations and ambiguous self-join targets return explicit
 // insufficiency rather than dropping a constraint or guessing its meaning.
 // The resulting SQL is NEVER executable without the existing full validator.
 func BindBusinessConstraints(ctx context.Context, binding Binding, statement string, parameters []Parameter, constraints []BusinessConstraint) (BusinessBoundQuery, error) {
@@ -100,7 +103,7 @@ func BindBusinessConstraints(ctx context.Context, binding Binding, statement str
 	if err != nil {
 		return BusinessBoundQuery{}, err
 	}
-	layout, err := businessLayout(statement, tokens, binding)
+	layout, err := businessBindingLayout(ctx, statement, tokens, binding, constraints)
 	if err != nil {
 		return BusinessBoundQuery{}, err
 	}
@@ -119,6 +122,12 @@ func BindBusinessConstraints(ctx context.Context, binding Binding, statement str
 		}
 		if matches != 1 {
 			return BusinessBoundQuery{}, businessError(constraint, "target", "unsupported_missing_or_ambiguous_target")
+		}
+		// A WHERE predicate on a nullable side after an outer join removes
+		// unmatched preserved rows. The binder does not rewrite JOIN inputs or
+		// ON expressions, so refuse the whole target scope conservatively.
+		if layout.hasOuterJoin {
+			return BusinessBoundQuery{}, businessError(constraint, "target", "unsupported_outer_join_target")
 		}
 		column := businessQuote(binding.Dialect, alias) + "." + businessQuote(binding.Dialect, constraint.Column)
 		if constraint.Aggregation != "" {
@@ -343,6 +352,10 @@ func businessApplyEdits(statement string, edits []businessEdit) (string, error) 
 }
 
 func businessLayout(statement string, tokens []businessToken, binding Binding) (businessSQLLayout, error) {
+	return businessLayoutWithVirtual(statement, tokens, binding, nil)
+}
+
+func businessLayoutWithVirtual(statement string, tokens []businessToken, binding Binding, virtual map[string]bool) (businessSQLLayout, error) {
 	out := businessSQLLayout{where: -1, having: -1, whereEnd: len(statement), havingEnd: len(statement), rowInsert: len(statement), aggregateInsert: len(statement)}
 	if len(tokens) < 4 || !tokens[0].word("select") || tokens[0].depth != 0 {
 		return out, businessSQLFailure("unsupported_select_shape")
@@ -402,6 +415,18 @@ func businessLayout(statement string, tokens []businessToken, binding Binding) (
 	if from < 0 || from+1 >= fromEnd {
 		return out, businessSQLFailure("unsupported_missing_from")
 	}
+	for i := from + 1; i < fromEnd; i++ {
+		if tokens[i].depth != 0 || !tokens[i].word("left") && !tokens[i].word("right") && !tokens[i].word("full") {
+			continue
+		}
+		j := i + 1
+		if j < fromEnd && tokens[j].word("outer") {
+			j++
+		}
+		if j < fromEnd && tokens[j].depth == 0 && tokens[j].word("join") {
+			out.hasOuterJoin = true
+		}
+	}
 	for _, token := range tokens {
 		if token.depth != 0 {
 			continue
@@ -431,7 +456,7 @@ func businessLayout(statement string, tokens []businessToken, binding Binding) (
 		if tokens[i].depth != 0 {
 			return out, businessSQLFailure("unsupported_derived_relation")
 		}
-		source, next, err := businessReadRange(tokens, i, fromEnd, binding)
+		source, next, err := businessReadRange(tokens, i, fromEnd, binding, virtual)
 		if err != nil {
 			return out, err
 		}
@@ -448,7 +473,7 @@ func businessLayout(statement string, tokens []businessToken, binding Binding) (
 	return out, nil
 }
 
-func businessReadRange(tokens []businessToken, start, end int, binding Binding) (businessRange, int, error) {
+func businessReadRange(tokens []businessToken, start, end int, binding Binding, virtual map[string]bool) (businessRange, int, error) {
 	var parts []string
 	index := start
 	for index < end {
@@ -473,6 +498,30 @@ func businessReadRange(tokens []businessToken, start, end int, binding Binding) 
 			continue
 		}
 		break
+	}
+	if len(parts) == 1 && virtual[parts[0]] {
+		alias := parts[0]
+		if index < end && tokens[index].word("as") {
+			index++
+			if index >= end || tokens[index].kind != 'w' && tokens[index].kind != 'q' {
+				return businessRange{}, index, businessSQLFailure("invalid_relation_alias")
+			}
+		}
+		if index < end && (tokens[index].kind == 'w' || tokens[index].kind == 'q') {
+			reserved := false
+			for _, word := range []string{"join", "inner", "outer", "left", "right", "full", "cross", "natural", "on", "using"} {
+				reserved = reserved || tokens[index].word(word)
+			}
+			if !reserved {
+				var ok bool
+				alias, ok = businessName(tokens[index], binding.Dialect)
+				if !ok {
+					return businessRange{}, index, businessSQLFailure("invalid_relation_alias")
+				}
+				index++
+			}
+		}
+		return businessRange{alias: alias, virtual: parts[0]}, index, nil
 	}
 	if len(parts) < 2 || len(parts) > 3 || len(parts) == 3 && parts[0] != binding.Catalog {
 		return businessRange{}, index, businessSQLFailure("unsupported_unqualified_or_foreign_relation")
