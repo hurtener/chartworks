@@ -373,27 +373,49 @@ func supportsGrain(grains []semantics.TimeGrain, grain semantics.TimeGrain) bool
 }
 
 func supportsTemporalRequest(grains []semantics.TimeGrain, span parsedSpan, grouping semantics.TimeGrain) bool {
-	if grouping != "" {
-		return supportsGrain(grains, grouping)
-	}
 	// A calendar-year filter does not imply year aggregation. Its reviewed
 	// calendar and timezone are checked after selecting the dimension.
-	if span.grain == "year" {
-		return len(grains) > 0
+	intervalReviewed := (span.grain == "year" && len(grains) > 0) || supportsGrain(grains, semantics.TimeGrain(span.grain))
+	if !intervalReviewed {
+		return false
 	}
-	return supportsGrain(grains, semantics.TimeGrain(span.grain))
+	return grouping == "" || supportsGrain(grains, grouping) && temporalGroupingAligned(span, grouping)
+}
+
+func temporalGroupingAligned(span parsedSpan, grouping semantics.TimeGrain) bool {
+	if span.grain == "year" || grouping == semantics.GrainMonth {
+		return true
+	}
+	start, startErr := time.Parse("2006-01-02", span.start)
+	end, endErr := time.Parse("2006-01-02", span.end)
+	if startErr != nil || endErr != nil {
+		return false
+	}
+	switch grouping {
+	case semantics.GrainQuarter:
+		return (int(start.Month())-1)%3 == 0 && (int(end.Month())-1)%3 == 0
+	case semantics.GrainYear:
+		return start.Month() == time.January && end.Month() == time.January
+	default:
+		return true
+	}
 }
 
 func requestedGroupingGrain(question string, locale nlq.Language) (semantics.TimeGrain, error) {
 	month := locale == nlq.LanguageEnglish && (containsPhrase(question, "by month") || containsPhrase(question, "per month") || containsPhrase(question, "monthly")) ||
 		locale == nlq.LanguageSpanish && (containsPhrase(question, "por mes") || containsPhrase(question, "mensual"))
+	quarter := locale == nlq.LanguageEnglish && (containsPhrase(question, "by quarter") || containsPhrase(question, "per quarter") || containsPhrase(question, "quarterly")) ||
+		locale == nlq.LanguageSpanish && (containsPhrase(question, "por trimestre") || containsPhrase(question, "trimestral"))
 	year := locale == nlq.LanguageEnglish && (containsPhrase(question, "by year") || containsPhrase(question, "per year") || containsPhrase(question, "yearly")) ||
 		locale == nlq.LanguageSpanish && (containsPhrase(question, "por año") || containsPhrase(question, "por ano") || containsPhrase(question, "anual"))
-	if month && year {
+	if (month && quarter) || (month && year) || (quarter && year) {
 		return "", &Clarification{Reason: "ambiguous_temporal_grain", Outcome: semantics.ClarificationConflicting, Prompt: "Choose one reviewed grouping grain for this route."}
 	}
 	if month {
 		return semantics.GrainMonth, nil
+	}
+	if quarter {
+		return semantics.GrainQuarter, nil
 	}
 	if year {
 		return semantics.GrainYear, nil
@@ -484,6 +506,9 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 		}
 	}
 	months := map[string]time.Month{"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12, "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
+	if negatedTemporalRequest(words, months) {
+		return parsedSpan{}, false, &Clarification{Reason: "unsupported_temporal_negation", Outcome: semantics.ClarificationInvalid, Prompt: "Use a positive reviewed period or clarify the excluded dates."}
+	}
 	lastMonth := containsPhrase(question, "last month") || containsPhrase(question, "mes pasado") || containsPhrase(question, "ultimo mes") || containsPhrase(question, "último mes")
 	thisMonth := containsPhrase(question, "this month") || containsPhrase(question, "este mes")
 	monthPositions := make([]int, 0, 2)
@@ -594,6 +619,39 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 		return named[0], true, nil
 	}
 	return parsedSpan{}, false, nil
+}
+
+func negatedTemporalRequest(words []string, months map[string]time.Month) bool {
+	for i, word := range words {
+		_, namedMonth := months[word]
+		relativeMonth := (word == "last" || word == "this") && i+1 < len(words) && words[i+1] == "month" ||
+			(word == "mes" && i+1 < len(words) && words[i+1] == "pasado") ||
+			(word == "este" || word == "ultimo" || word == "último") && i+1 < len(words) && words[i+1] == "mes"
+		year := numericYear(word) && i > 0 && (wordIsYearConnector(words[i-1]))
+		if (namedMonth || relativeMonth || year) && negatedTemporalPrefix(words, i) {
+			return true
+		}
+	}
+	return false
+}
+
+func negatedTemporalPrefix(words []string, i int) bool {
+	if i > 0 && temporalNegator(words[i-1]) {
+		return true
+	}
+	return i > 1 && (words[i-1] == "in" || words[i-1] == "during" || words[i-1] == "en" || words[i-1] == "durante" || words[i-1] == "from" || words[i-1] == "de") && temporalNegator(words[i-2])
+}
+
+func temporalNegator(word string) bool {
+	switch word {
+	case "not", "no", "sin", "except", "excepto", "excluding", "excluyendo", "without":
+		return true
+	}
+	return false
+}
+
+func wordIsYearConnector(word string) bool {
+	return word == "in" || word == "during" || word == "en" || word == "durante"
 }
 
 func invalidTemporalSpanError() error {

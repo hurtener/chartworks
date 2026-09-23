@@ -418,6 +418,7 @@ func testCW07CalendarYearAndMonthRange(t *testing.T) {
 		{"english-year", "What was gross revenue from paid orders by month in 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageEnglish},
 		{"spanish-year", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageSpanish},
 		{"english-range", "What is total net revenue in USD for all paid orders from January through March 2026, after subtracting every refund on those paid orders? Return one number.", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageEnglish},
+		{"aligned-quarter-grouping", "Revenue by quarter from January through March 2026", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageEnglish},
 		{"spanish-range", "Ingresos de enero a marzo de 2026", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageSpanish},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -471,6 +472,16 @@ func testCW07CalendarSpanRejectsUnreviewedOrAmbiguousRequests(t *testing.T) {
 		{"Revenue in 2026 or 2027", "invalid_temporal_span", nlq.LanguageEnglish},
 		{"Revenue in 2026 and last month", "ambiguous_temporal_span", nlq.LanguageEnglish},
 		{"Revenue by month and by year in 2026", "ambiguous_temporal_grain", nlq.LanguageEnglish},
+		{"Revenue by quarter from February through April 2026", "unsupported_temporal_grain", nlq.LanguageEnglish},
+		{"Revenue by quarter from April through January 2026", "ambiguous_temporal_span", nlq.LanguageEnglish},
+		{"Revenue by year from February through April 2026", "unsupported_temporal_grain", nlq.LanguageEnglish},
+		{"Revenue not in 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Revenue not from January through March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Revenue not in March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Revenue not last month", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Ingresos no en 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
+		{"Ingresos no de enero a marzo de 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
+		{"Ingresos sin marzo de 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
 		{"Revenue from January through March 2026 and this month", "ambiguous_temporal_span", nlq.LanguageEnglish},
 		{"Revenue from March through January 2026", "ambiguous_temporal_span", nlq.LanguageEnglish},
 		{"Revenue in March and April 2026", "ambiguous_temporal_span", nlq.LanguageEnglish},
@@ -491,6 +502,22 @@ func testCW07CalendarSpanRejectsUnreviewedOrAmbiguousRequests(t *testing.T) {
 	out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue by year in 2026", InterpretationAnchor: "2026-09-22"})
 	if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "unsupported_temporal_grain" || engine.embeds != 0 {
 		t.Fatalf("unreviewed year grouping reached provider: err=%v out=%#v embeds=%d", err, out, engine.embeds)
+	}
+	quarterOnly := cw07Publication("topic")
+	quarterOnly.Definition.Dimensions[1].Temporal.Grains = []semantics.TimeGrain{semantics.GrainQuarter}
+	service, engine = cw07Service(t, quarterOnly, cw07Binding(1))
+	out, err = service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue by quarter from February through April 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "unsupported_temporal_grain" || engine.embeds != 0 {
+		t.Fatalf("quarter-only policy admitted month interval: err=%v out=%#v embeds=%d", err, out, engine.embeds)
+	}
+	out, err = service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue by quarter in 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 || out.Interpretation.Temporal[0].Grain != "year" {
+		t.Fatalf("calendar-year filter lost quarter-only reviewed grouping: err=%v out=%#v", err, out.Interpretation)
+	}
+	service, _ = cw07Service(t, cw07Publication("topic"), cw07Binding(1))
+	positive, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue excluding refunds in March 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || positive.Interpretation == nil || len(positive.Interpretation.Temporal) != 1 {
+		t.Fatalf("non-temporal exclusion blocked period: err=%v out=%#v", err, positive.Interpretation)
 	}
 }
 
