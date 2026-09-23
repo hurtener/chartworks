@@ -92,12 +92,17 @@ func TestCommerceReportingRecorded(t *testing.T) {
 	model.embeddingMode.Store("fixed")
 	model.rerankMode.Store("fixed")
 	model.mode.Store(phase18RawResponse(t, "SELECT SUM(total_usd) AS gross_revenue FROM analytics.orders WHERE status='paid'"))
+	queryActor := f.token.envelope(t, f.e.Tenant(), f.e.User(), phase18Scopes(f.e.Tenant(), true)...)
 	for _, tc := range liveCommerceQuestions() {
 		request := nlqroute.RouteRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: main.Datasets[0].Source.Context, Locale: tc.locale, Question: tc.text, Kinds: []string{"measure", "dimension", "kpi"}, LimitPerKind: 5, Rerank: true}
 		if tc.metric != "" {
 			request.MetricIDs = []string{tc.metric}
 		}
-		route, routeErr := router.Route(t.Context(), author, request)
+		routeActor := author
+		if strings.HasPrefix(tc.id, "observed-") || tc.id == "gross-es" {
+			routeActor = queryActor
+		}
+		route, routeErr := router.Route(t.Context(), routeActor, request)
 		if routeErr != nil {
 			t.Fatalf("recorded commerce route %s: %v", tc.id, routeErr)
 		}
@@ -112,14 +117,16 @@ func TestCommerceReportingRecorded(t *testing.T) {
 		} else if !strings.Contains(route.Context.Prompt, "analytics.orders") || !strings.Contains(route.Context.Prompt, "analytics.refunds") || !strings.Contains(route.Context.Prompt, "relation[") {
 			t.Fatalf("commerce question %s physical context missing names: relations=%d orders=%t refunds=%t", tc.id, len(route.Context.Relations), strings.Contains(route.Context.Prompt, "analytics.orders"), strings.Contains(route.Context.Prompt, "analytics.refunds"))
 		}
-	}
-	for _, tc := range liveCommerceObservedTemporalCases() {
-		route, err := router.Route(t.Context(), author, nlqroute.RouteRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: main.Datasets[0].Source.Context, Locale: tc.locale, Question: tc.text, MetricIDs: []string{tc.metric}, Kinds: []string{"measure", "dimension", "kpi"}, LimitPerKind: 5, Rerank: true})
-		if err != nil || route.Clarification == nil || route.Clarification.Reason != tc.reason {
-			t.Fatalf("observed temporal case %s: clarification=%v err=%v", tc.id, route.Clarification, err)
+		if strings.HasPrefix(tc.id, "observed-") || tc.id == "gross-es" {
+			end := "2027-01-01"
+			if tc.id == "observed-range-net" {
+				end = "2026-04-01"
+			}
+			if route.Interpretation == nil || len(route.Interpretation.Temporal) != 1 || route.Interpretation.Temporal[0].Start != "2026-01-01" || route.Interpretation.Temporal[0].End != end {
+				t.Fatalf("natural commerce period %s lost reviewed half-open window: %#v", tc.id, route.Interpretation)
+			}
 		}
 	}
-	queryActor := f.token.envelope(t, f.e.Tenant(), f.e.User(), phase18Scopes(f.e.Tenant(), true)...)
 	question := nlqexec.QuestionRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: main.Datasets[0].Source.Context, Locale: nlq.LanguageEnglish, Question: "Gross revenue from paid orders?", MetricIDs: []string{"gross_revenue"}, Kinds: []string{"measure"}, LimitPerKind: 1, Rerank: true}
 	planned, err := query.Plan(t.Context(), queryActor, nlqexec.PlanRequest{QuestionRequest: question})
 	if err != nil {
@@ -264,14 +271,30 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 					receipts[index].Reason = clarification.Reason
 					return
 				}
-				t.Fatalf("live plan (%s): %v", tc.id, err)
+				var binding *readexec.BusinessConstraintError
+				if errors.As(err, &binding) {
+					if tc.id == "observed-range-net" && binding.Code == "unsupported_select_shape" && binding.Field == "sql" {
+						receipts[index].Status = "unsupported"
+						receipts[index].Reason = binding.Code
+						return
+					}
+					receipts[index].Status = "failed"
+					receipts[index].Reason = binding.Code
+					t.Fatalf("live plan (%s): constraint code=%s field=%s", tc.id, binding.Code, binding.Field)
+				}
+				receipts[index].Status = "failed"
+				receipts[index].Reason = livePlanFailureReason(err)
+				t.Fatalf("live plan (%s): %s", tc.id, receipts[index].Reason)
+			}
+			if tc.id == "observed-range-net" {
+				t.Fatal("natural range net unexpectedly planned without reviewed aggregate binding")
 			}
 			if planned.Status != "planned" || planned.QueryID == "" || len(planned.Receipt.Calls) == 0 {
 				t.Fatalf("missing validated live plan receipt: %s", tc.id)
 			}
 			requireLiveModelCall(t, planned.Receipt.Calls, "sqlgen", "openrouter", "openai/gpt-6-luna", "openai/gpt-6-luna", "gpt-6-luna")
-			if tc.id == "underspecified" && len(planned.Assumptions) == 0 && len(planned.Ambiguities) == 0 {
-				t.Fatal("underspecified question planned without visible assumptions or ambiguities")
+			if tc.id == "underspecified" {
+				t.Fatal("underspecified question planned without its required typed clarification")
 			}
 			run, err := query.Run(ctx, queryActor, nlqexec.RunRequest{QueryID: planned.QueryID, Operation: "live-" + tc.id, Rows: 100, Bytes: 1 << 20})
 			if err != nil || run.Execution.Result == nil {
@@ -280,23 +303,10 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 			if tc.wantNet && !liveSingleNumericEquals(run.Execution.Result.Rows, "515") {
 				t.Fatal("net revenue did not preserve order/refund grain; expected 515 USD")
 			}
-			if (tc.id == "gross-en" || tc.id == "gross-es") && !liveRowsContainNumbers(run.Execution.Result.Rows, "80", "240", "320") {
+			if (tc.id == "gross-en" || tc.id == "gross-es" || tc.id == "observed-year-en" || tc.id == "observed-year-es") && !liveRowsContainNumbers(run.Execution.Result.Rows, "80", "240", "320") {
 				t.Fatal("monthly paid gross totals did not match the synthetic January-March fixture")
 			}
 			receipts[index] = liveReceipt{Case: tc.id, Status: run.Status, QueryID: planned.QueryID, RowCount: len(run.Execution.Result.Rows), ModelCalls: len(planned.Receipt.Calls), ModelUsage: planned.Receipt.Calls, RouteOutcome: string(planned.Route.Outcome), SourceStatus: run.Execution.Attempt.Status}
-		})
-	}
-	for _, tc := range liveCommerceObservedTemporalCases() {
-		index := len(receipts)
-		receipts = append(receipts, liveReceipt{Case: tc.id, Status: "not_completed"})
-		t.Run(tc.id, func(t *testing.T) {
-			_, err := query.Plan(ctx, queryActor, nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: main.Datasets[0].Source.Context, Locale: tc.locale, Question: tc.text, MetricIDs: []string{tc.metric}, Kinds: []string{"measure", "dimension", "kpi"}, LimitPerKind: 5, Rerank: true}})
-			var clarification *nlqroute.Clarification
-			if !errors.As(err, &clarification) || clarification.Reason != tc.reason {
-				t.Fatalf("observed temporal case %s: expected %s, got %v", tc.id, tc.reason, err)
-			}
-			receipts[index].Status = "clarification"
-			receipts[index].Reason = clarification.Reason
 		})
 	}
 	// These requests must be denied; an error alone does not measure whether
@@ -466,26 +476,24 @@ type liveCommerceQuestion struct {
 
 func liveCommerceQuestions() []liveCommerceQuestion {
 	return []liveCommerceQuestion{
-		{"gross-en", "What was monthly gross revenue from paid orders? Return three month rows.", nlq.LanguageEnglish, "gross_revenue", false},
-		{"gross-es", "¿Cuáles fueron los ingresos brutos mensuales de pedidos pagados? Devuelve tres filas, una por mes.", nlq.LanguageSpanish, "gross_revenue", false},
+		{"gross-en", "What was gross revenue from paid orders by month? Return three month rows.", nlq.LanguageEnglish, "gross_revenue", false},
+		{"gross-es", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026? Devuelve tres filas, una por mes.", nlq.LanguageSpanish, "gross_revenue", false},
 		{"net-grain", "What is total net revenue in USD for all paid orders after subtracting every refund on those paid orders? Return one number.", nlq.LanguageEnglish, "net_revenue", true},
+		{"observed-year-en", "What was gross revenue from paid orders by month in 2026?", nlq.LanguageEnglish, "gross_revenue", false},
+		{"observed-year-es", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026?", nlq.LanguageSpanish, "gross_revenue", false},
+		{"observed-range-net", "What is total net revenue in USD for all paid orders from January through March 2026, after subtracting every refund on those paid orders? Return one number.", nlq.LanguageEnglish, "net_revenue", true},
 		{"underspecified", "How did sales do in January and February", nlq.LanguageEnglish, "", false},
 	}
 }
 
-func liveCommerceObservedTemporalCases() []struct {
-	id, text       string
-	locale         nlq.Language
-	metric, reason string
-} {
-	return []struct {
-		id, text       string
-		locale         nlq.Language
-		metric, reason string
-	}{
-		{"observed-year-en", "What was gross revenue from paid orders by month in 2026?", nlq.LanguageEnglish, "gross_revenue", "invalid_temporal_span"},
-		{"observed-year-es", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026?", nlq.LanguageSpanish, "gross_revenue", "invalid_temporal_span"},
-		{"observed-range-net", "What is total net revenue in USD for all paid orders from January through March 2026, after subtracting every refund on those paid orders? Return one number.", nlq.LanguageEnglish, "net_revenue", "ambiguous_temporal_span"},
+func livePlanFailureReason(err error) string {
+	switch {
+	case errors.Is(err, nlqexec.ErrValidationBudget):
+		return "validation_budget"
+	case errors.Is(err, readexec.ErrUnsafe):
+		return "sql_safety"
+	default:
+		return "plan_error"
 	}
 }
 
