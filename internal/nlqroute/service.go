@@ -584,6 +584,10 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		result.Confidence = 0
 		return result, nil
 	}
+	hits, err = hydrateSemanticEvidence(ctx, admitted, hits)
+	if err != nil {
+		return RouteResult{}, err
+	}
 	result.Confidence = confidence(hits)
 	if confidenceOverride != nil {
 		result.Confidence = *confidenceOverride
@@ -1097,6 +1101,7 @@ type hitWithTopic struct {
 	topic       string
 	hit         vindex.Hit
 	candidateID string
+	contextText string // Catalog-backed atomic semantic group; never vector origin text.
 }
 
 func flattenHits(queryTopics map[string]string, results []vindex.Result) ([]hitWithTopic, error) {
@@ -1180,7 +1185,7 @@ func makeEvidence(hits []hitWithTopic) []nlq.Evidence {
 		if confidence > 1 {
 			confidence = 1
 		}
-		out[i] = nlq.Evidence{ID: item.candidateID, Text: item.hit.Text, Priority: len(hits) - i, Source: item.topic, Confidence: &confidence}
+		out[i] = nlq.Evidence{ID: item.candidateID, Text: item.contextEvidence(), Priority: len(hits) - i, Source: item.topic, Confidence: &confidence}
 	}
 	return out
 }
@@ -1279,119 +1284,7 @@ func findMetric(def topics.Definition, id string) (nlq.PinnedMetric, bool, error
 // metricClosure resolves the complete transitive semantic graph in deterministic
 // order. It is derived only from the already-authorized retained publication.
 func metricClosure(def topics.Definition, roots []semantics.Reference) ([]nlq.MetricDependency, error) {
-	measures := map[string]semantics.Measure{}
-	kpis := map[string]semantics.KPI{}
-	columns := map[string]semantics.Column{}
-	datasetForColumn := map[string]string{}
-	dimensionsByColumn := map[string][]semantics.Dimension{}
-	for _, dataset := range def.Datasets {
-		for _, column := range dataset.Columns {
-			key := dataset.ID + "\x00" + column.ID
-			columns[key] = column
-			datasetForColumn[key] = dataset.ID
-		}
-	}
-	for _, value := range def.Measures {
-		measures[value.ID] = value
-	}
-	for _, value := range def.Dimensions {
-		key := value.Field.Dataset + "\x00" + value.Field.ID
-		dimensionsByColumn[key] = append(dimensionsByColumn[key], value)
-	}
-	for _, value := range def.KPIs {
-		kpis[value.ID] = value
-	}
-	seen := map[string]bool{}
-	traversed := map[string]bool{}
-	datasets := map[string]bool{}
-	out := []nlq.MetricDependency{}
-	add := func(kind, id string, value any) {
-		key := kind + "\x00" + id
-		if seen[key] {
-			return
-		}
-		raw, err := json.Marshal(value)
-		if err != nil {
-			return
-		}
-		seen[key] = true
-		out = append(out, nlq.MetricDependency{Kind: kind, ID: id, Text: string(raw)})
-	}
-	var visit func(semantics.Reference)
-	visit = func(ref semantics.Reference) {
-		traversalKey := string(ref.Kind) + "\x00" + ref.Dataset + "\x00" + ref.ID
-		if traversed[traversalKey] {
-			return
-		}
-		traversed[traversalKey] = true
-		switch ref.Kind {
-		case semantics.KindKPI:
-			value, ok := kpis[ref.ID]
-			if !ok {
-				return
-			}
-			add("kpi", value.ID, value)
-			for _, input := range value.Inputs {
-				visit(input)
-			}
-			for _, filter := range value.Filters {
-				visit(filter.Field)
-			}
-		case semantics.KindMeasure:
-			value, ok := measures[ref.ID]
-			if !ok {
-				return
-			}
-			add("measure", value.ID, value)
-			visit(value.Field)
-			for _, filter := range value.Filters {
-				visit(filter.Field)
-			}
-		case semantics.KindColumn:
-			key := ref.Dataset + "\x00" + ref.ID
-			value, ok := columns[key]
-			if !ok {
-				return
-			}
-			datasets[datasetForColumn[key]] = true
-			add("column", ref.Dataset+":"+ref.ID, struct {
-				Dataset string           `json:"dataset"`
-				Column  semantics.Column `json:"column"`
-			}{ref.Dataset, value})
-			for _, dimension := range dimensionsByColumn[key] {
-				add("dimension", dimension.ID, dimension)
-				for _, filter := range dimension.Filters {
-					visit(filter.Field)
-				}
-			}
-		}
-	}
-	for _, root := range roots {
-		visit(root)
-	}
-	connecting, err := uniqueJoinSubgraph(def.Joins, datasets)
-	if err != nil {
-		return nil, err
-	}
-	for _, value := range connecting {
-		add("join", value.ID, value)
-		for _, ref := range []semantics.Reference{value.Left, value.Right} {
-			key := ref.Dataset + "\x00" + ref.ID
-			if column, ok := columns[key]; ok {
-				add("column", ref.Dataset+":"+ref.ID, struct {
-					Dataset string           `json:"dataset"`
-					Column  semantics.Column `json:"column"`
-				}{ref.Dataset, column})
-			}
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].ID < out[j].ID
-	})
-	return out, nil
+	return semanticClosure(context.Background(), def, roots)
 }
 
 type joinEdge struct {

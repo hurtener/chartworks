@@ -119,3 +119,15 @@ correction/removal. Exact reference and metric edits now cover dimension and
 metric additions, replacements and removals without silently retaining stale
 selections. Every child reroutes against current signed reach and current
 publications. See [conversational continuity v1](../contracts/conversational-continuity-v1.md).
+
+## SQL context recovery — catalog evidence extension
+
+The [recovery ledger](../reviews/sql-context-recovery.md) separates current
+implementation from remaining selection/rule and live-quality work. Retrieved
+measure/KPI/dimension evidence now resolves through exact catalog facet identities
+and expands transitive semantics as atomic context candidates. Explicit metric pins
+remain mandatory; candidate hydration is not automatic selection or authority.
+The same bounded closure supports metric and dimension roots, checks missing/cyclic
+references and retains unique connecting relationships. Existing AC01–AC06 continue
+to apply. `TestSQLRecovery` in `internal/nlqroute` adds free-text English/Spanish,
+origin corruption, dependency completeness and whole-group omission regressions.

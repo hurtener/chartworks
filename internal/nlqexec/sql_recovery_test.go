@@ -77,9 +77,9 @@ func TestSQLRecoveryValidationRepairCarriesRejectedCandidate(t *testing.T) {
 func TestSQLRecoveryTerminalValidationFailuresDoNotCallRepair(t *testing.T) {
 	for name, failure := range map[string]error{
 		"forbidden": access.ErrForbidden,
-		"binding": exec.ErrBinding,
+		"binding":   exec.ErrBinding,
 		"cancelled": context.Canceled,
-		"deadline": context.DeadlineExceeded,
+		"deadline":  context.DeadlineExceeded,
 		"uncertain": exec.ErrUncertain,
 	} {
 		t.Run(name, func(t *testing.T) {

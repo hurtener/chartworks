@@ -10,7 +10,7 @@ qualification are separate evidence states. Nothing here declares full parity.
 | Packet | Owned behavior | State |
 |---|---|---|
 | AP-00 | Synthetic sentinel cohort, effective request inspection, protected owner comparison | Core engine-request spy implemented; provider-wire/owner baseline pending |
-| AP-01 | Selected semantic roots, catalog hydration, complete dependencies and rule applicability | Pending |
+| AP-01 | Selected semantic roots, catalog hydration, complete dependencies and rule applicability | Candidate hydration/closure implemented; unified root selection and applicability pending |
 | AP-02 | Relevant typed prompt projection, examples and complete-request budget | Pending |
 | AP-03 | Analytical contract and semantic conformance | Pending |
 | AP-04 | Targeted privacy-safe validation repair | Initial implementation; runtime verification pending |
@@ -69,3 +69,29 @@ state, parameter ownership and actual example usage. Separate service/source/
 model duration, calls and available cost; unknown values remain unknown. Freeze
 owner-approved expected outcomes before scoring. Recorded fixtures cannot claim
 live success, and a changed source/model/configuration invalidates the comparison.
+
+## Catalog evidence checkpoint (AP-01A; SQL-01/02)
+
+The normal free-text route now hydrates retrieved measure/KPI/dimension candidates
+from exact admitted catalog coordinates before reranking. It validates kind/ID,
+source, publication version, source-generation digest and the canonical facet body;
+misleading text cannot redefine a root. Original vector text remains unchanged in
+retrieval receipts. A separate versioned context representation includes nested KPI
+constituents, measures, typed physical column mappings, related dimensions/filters,
+and the unique confirmed relationship paths required by those dependencies.
+
+The shared closure supports dimension roots, rejects missing dependencies, duplicate
+coordinates, KPI cycles, ambiguous/disconnected joins and bounded size/depth failure.
+The context assembler retains or omits each hydrated candidate as one unit. Existing
+explicitly pinned metrics remain mandatory. This does NOT automatically pin all
+retrieved candidates, infer grouping selections, change rule applicability, narrow
+physical authorization or alter saved wire contracts. Those AP-01/AP-02 obligations
+remain open; an omitted optional group still requires selection-aware handling in
+that later slice. Context hydration is not an analytical correctness proof.
+
+`TestSQLRecoveryFreeTextKPIHasAtomicCatalogDependencies` calls the normal route with
+no metric IDs or constituent hits in English and Spanish and compares its sealed
+context with the explicit KPI closure. Other focused regressions cover dimension
+connecting paths, corrupted facet text/revisions/origins, detached copies, missing
+constituents/cycles, cancellation and whole-group budget omission. Runtime evidence
+is pending the dedicated committed-source workflow; no live-quality claim is made.

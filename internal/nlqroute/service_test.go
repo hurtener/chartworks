@@ -167,7 +167,7 @@ func newTestService(t *testing.T, rules RuleReader) (*Service, *testEngine, *[]s
 	engine := &testEngine{descriptor: descriptor, events: &events}
 	publication := testPublication()
 	reader := &testTopics{contract: topics.Contract{Publication: publication}, events: &events}
-	index := &testIndex{events: &events, hit: vindex.Hit{ID: "facet", Kind: "measure", SourceID: "source", Text: "revenue measure", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: 0.2}}
+	index := &testIndex{events: &events, hit: vindex.Hit{ID: "facet", Kind: "topic", SourceID: "source", Text: "topic overview", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: 0.2}}
 	service, err := New(reader, rules, index, engine)
 	if err != nil {
 		t.Fatal(err)
