@@ -1,0 +1,68 @@
+name: SQL analytical source objects
+
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths:
+      - scripts/sql-recovery/ap03-*.bin
+      - .github/workflows/sql-analytical-objects.yml
+
+permissions:
+  contents: write
+
+jobs:
+  objects:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener' && github.ref == 'refs/heads/codex/sql-semantic-context-recovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate exact checkpoint and prepare immutable source blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, subprocess
+          chunks = [pathlib.Path(f'scripts/sql-recovery/ap03-{i}.bin').read_bytes() for i in range(4)]
+          assert all(len(x) == 7275 for x in chunks)
+          packed = b''.join(chunks)
+          assert hashlib.sha256(packed).hexdigest() == 'd6111acd07034f0d38985f645f63fef3a611dd4f927aad4b5690c600c3070307'
+          patch = lzma.decompress(packed)
+          assert len(patch) == 127714 and hashlib.sha256(patch).hexdigest() == '6bd71b8422259e79b38ca13aa0df149454914df3cdefe8fa2a6e01673d671ec1'
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'analytical.patch'
+          target.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '--index', str(target)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(target)], check=True)
+          raw = subprocess.check_output(['git', 'diff', '--cached', '--raw', '-z']).decode().split('\0')
+          entries = []
+          for i in range(0, len(raw)-1, 2):
+              header, path = raw[i:i+2]
+              fields = header.split()
+              assert len(fields) == 5 and fields[1] == '100644' and fields[4] in ('A', 'M')
+              assert path.startswith(('internal/exec/', 'internal/nlqexec/', 'internal/nlqapi/', 'internal/store/postgres/', 'test/acceptance/', 'docs/')) or path == '.github/workflows/sql-context-recovery.yml'
+              if path.endswith('.go'):
+                  assert not subprocess.check_output(['gofmt', '-l', path]).strip(), path
+              data = pathlib.Path(path).read_bytes()
+              want = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              response = subprocess.check_output(['gh', 'api', '--method', 'POST', 'repos/hurtener/chartworks/git/blobs', '--input', '-'], input=json.dumps({'encoding': 'base64', 'content': base64.b64encode(data).decode()}).encode())
+              got = json.loads(response)['sha']
+              assert want == got, path
+              entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': got, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
+          assert len(entries) == 23
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'analytical-objects'
+          output.mkdir()
+          (output / 'objects.json').write_text(json.dumps(entries, indent=2) + '\n')
+          (output / 'staging-head.txt').write_text(subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-analytical-objects
+          path: ${{ runner.temp }}/analytical-objects/
+          retention-days: 7
+
+# Temporary authoring transport. Only immutable blobs are written here; no
+# branch is advanced and no modified-worktree test result is used as evidence.
+# Remove this workflow and checkpoint fragments from the delivered tree.
