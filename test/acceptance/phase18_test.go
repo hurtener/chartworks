@@ -505,7 +505,7 @@ func TestPhase18(t *testing.T) {
 		e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-rule-evidence", true)
 		fixture.model.embeddingMode.Store("fixed")
 		fixture.model.rerankMode.Store("fixed")
-		fixture.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
+		fixture.model.mode.Store(phase18RawResponse(t, "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"))
 		rules, err := rulesets.New(fixture.f.db, fixture.f.db, fixture.f.db)
 		if err != nil {
 			t.Fatal("rules service", err)
