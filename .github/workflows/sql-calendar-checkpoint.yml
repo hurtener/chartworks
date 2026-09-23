@@ -23,8 +23,15 @@ jobs:
       - name: Apply explicit source checkpoint and publish a source commit
         run: |
           set -euo pipefail
-          python3 scripts/sql-calendar/checkpoint.py
-          git diff --name-only -z -- '*.go' | xargs -0 -r gofmt -w
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('scripts/sql-calendar/checkpoint.py').read_text()
+          old = "edit('internal/exec/analytical_pg.go', 'if term.column == \"\" || term.aggregate || term.guarded {', 'if term.groupKey() == \"\" || term.aggregate || term.guarded {')"
+          new = "edit('internal/exec/analytical_pg.go', 'if term.column == \"\" || term.aggregate || term.guarded {\\n\\t\\t\\treturn analyticalFailure(\"analytical_shape_unsupported\", true)', 'if term.groupKey() == \"\" || term.aggregate || term.guarded {\\n\\t\\t\\treturn analyticalFailure(\"analytical_shape_unsupported\", true)')"
+          assert source.count(old) == 1
+          exec(compile(source.replace(old,new), 'calendar-checkpoint', 'exec'), {})
+          PY
+          git ls-files -z -- 'internal/exec/*.go' 'internal/nlqexec/*.go' 'test/acceptance/*.go' | xargs -0 -r gofmt -w
           git ls-files --others --exclude-standard -z -- '*.go' | xargs -0 -r gofmt -w
           git add internal/exec internal/nlqexec internal/store/postgres/migrations/055_nlq_analytical_calendar.sql test/acceptance docs/contracts/analytical-calendar-v3.md docs/reviews/sql-context-recovery.md docs/plans/phase-18-nlq-generation-execution.md
           git diff --cached --check
@@ -32,5 +39,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'feat(nlq): enforce reviewed calendar bucket grain with retained policy replay'
           git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
-# Temporary, branch-scoped authoring only. Final verification tests committed
-# source read-only. Remove this workflow and its script before delivery.
+# Temporary authoring transport. Final verification tests committed source only.
