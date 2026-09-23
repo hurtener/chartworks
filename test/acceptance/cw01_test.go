@@ -107,7 +107,12 @@ func TestCW01(t *testing.T) {
 			t.Fatal("governed entity effect lost")
 		}
 		f.run(t, entity, 1, true)
+		f.model.mode.Store(phase18RawResponse(t, "SELECT sum(amount) AS revenue FROM analytics.sales"))
 		choice := f.plan(t, f.question("Choose sales", nlq.LanguageEnglish), "metric", semantics.ClarificationValue{OptionID: "revenue-option"})
+		f.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
+		if choice.Analytical == nil {
+			t.Fatal("selected choice lost analytical proof")
+		}
 		if choice.Route.Resolutions[0].Reference == nil || choice.Route.Resolutions[0].Reference.ID != "revenue" || len(choice.Route.Context.Metrics) != 1 {
 			t.Fatal("reference choice not propagated")
 		}

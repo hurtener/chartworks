@@ -26,6 +26,8 @@ import (
 )
 
 type admission struct {
+	publications  []topics.Published
+	analytical    *exec.AnalyticalContract
 	route         nlqroute.RouteResult
 	assembled     nlq.AssembledContext
 	binding       exec.Binding
@@ -118,6 +120,7 @@ func reviewedProjection(datasets []reviewedDataset, binding exec.Binding) ([]exe
 }
 
 type generatedCandidate struct {
+	analytical    *exec.AnalyticalReceipt
 	clarification *ClarificationEvidence
 	generation    *nlq.GenerationContext // Exact fitted initial packet; not model JSON.
 	SQL           string                 `json:"sql"`
@@ -432,6 +435,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
+			if _, admissionErr = expectedAnalytical(ctx, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
 			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
 		}
 	} else if !errors.Is(replayErr, store.ErrNotFound) {
@@ -467,9 +473,22 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if err := s.verifyQueryClarificationBinding(ctx, e, record, current); err != nil {
 		return RunResult{}, err
 	}
+	current.analytical, err = expectedAnalytical(ctx, record, current)
+	if err != nil {
+		return RunResult{}, err
+	}
 	plan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: record.SQL, Parameters: record.Parameters}, current.relationScope)
 	if err != nil {
 		return RunResult{}, err
+	}
+	if current.analytical != nil {
+		proof, checkErr := exec.CheckAnalyticalPlan(ctx, plan, *current.analytical)
+		if checkErr != nil {
+			return RunResult{}, checkErr
+		}
+		if exec.Hash(proof) != exec.Hash(record.Analytical) {
+			return RunResult{}, exec.ErrBinding
+		}
 	}
 	originalPlan := plan
 	call, err := gateway.Authorize(e, "query.execute", executionPartition(record), current.resources...)
@@ -507,6 +526,13 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		if !correctionEquivalent(record.SQL, record.Parameters, candidate, current.binding, originalPlan, candidatePlan) {
 			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, ErrUnsafeCorrection))
 		}
+		if current.analytical != nil {
+			proof, checkErr := exec.CheckAnalyticalPlan(ctx, candidatePlan, *current.analytical)
+			if checkErr != nil {
+				return s.finishRun(ctx, e, record, report, 1, checkErr)
+			}
+			record.Analytical = proof
+		}
 		plan = candidatePlan
 		record.SQL, record.Parameters, record.Generation = candidate.SQL, candidate.Parameters, gen
 		report, runErr = s.executor.Execute(ctx, e, plan, exec.Options{Operation: in.Operation, Number: 2, Preview: in.Preview, Rows: in.Rows, Bytes: in.Bytes})
@@ -543,6 +569,9 @@ func (s *Service) waitForRun(ctx context.Context, e identity.Envelope, queryID, 
 				return RunResult{}, admissionErr
 			}
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if _, admissionErr = expectedAnalytical(ctx, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
 			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
@@ -994,12 +1023,13 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	record := queryRecord(e, id, "planned", parent, question, admitted)
 	bindParentLineage(&record, observedParent)
 	record.Clarification = candidate.clarification
+	record.AnalyticalVersion, record.Analytical = analyticalRecordVersion, cloneAnalyticalReceipt(candidate.analytical)
 	receipt = appendReceipts(selectionReceipt, receipt)
 	record.Operation, record.SQL, record.Parameters, record.Generation, record.Receipt, record.ValidationFixes, record.ExampleSelection = operation, candidate.SQL, candidate.Parameters, generation, receipt, fixes, selection
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PlanResult{}, err
 	}
-	out := PlanResult{Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: admitted.route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: candidate.Assumptions, Ambiguities: candidate.Ambiguities, Receipt: receipt, validated: validated}
+	out := PlanResult{Analytical: cloneAnalyticalReceipt(record.Analytical), Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: admitted.route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: candidate.Assumptions, Ambiguities: candidate.Ambiguities, Receipt: receipt, validated: validated}
 	if canInspect(e) {
 		out.SQL = candidate.SQL
 	}
@@ -1063,6 +1093,7 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 		if publication.State.Topic != topicID || publication.State.Archived || !publication.State.Active || publication.State.Version != routeVersion(route, topicID) {
 			return admission{}, exec.ErrBinding
 		}
+		result.publications = append(result.publications, publication)
 		for _, dataset := range publication.Definition.Datasets {
 			result.reviewed = append(result.reviewed, reviewedDataset{topic: topicID, dataset: dataset})
 			if in.Context != dataset.Source.Context {
@@ -1627,6 +1658,7 @@ func (s *Service) admissionWith(ctx context.Context, e identity.Envelope, q Quer
 		if publication.State.Topic != topicID || publication.State.Archived || !publication.State.Active || i >= len(q.TopicVersions) || publication.State.Version != q.TopicVersions[i] {
 			return admission{}, exec.ErrBinding
 		}
+		result.publications = append(result.publications, publication)
 		for _, dataset := range publication.Definition.Datasets {
 			result.reviewed = append(result.reviewed, reviewedDataset{topic: topicID, dataset: dataset})
 			if dataset.Source.Context != q.Context {
@@ -1679,6 +1711,7 @@ func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q 
 		if publication.State.Topic != topicID || publication.State.Version != q.TopicVersions[i] || publication.Definition.Topic != topicID || publication.Definition.Version != q.TopicVersions[i] {
 			return admission{}, exec.ErrBinding
 		}
+		result.publications = append(result.publications, publication)
 		for _, dataset := range publication.Definition.Datasets {
 			result.reviewed = append(result.reviewed, reviewedDataset{topic: topicID, dataset: dataset})
 			if dataset.Source.Context != q.Context {
@@ -1736,6 +1769,11 @@ func (s *Service) ensureSession(ctx context.Context, e identity.Envelope, in Que
 }
 
 func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, a admission, generation nlq.GenerationContext, call gateway.Call, budget *gateway.Budget, correction string) (generatedCandidate, int, gateway.Receipt, exec.Plan, error) {
+	contract, contractErr := compileAnalytical(ctx, a)
+	if contractErr != nil {
+		return generatedCandidate{}, 0, gateway.Receipt{}, exec.Plan{}, contractErr
+	}
+	a.analytical = contract
 	candidate, receipt, err := s.generate(ctx, e, a, generation, call, budget, "sqlgen", correction)
 	if err != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
@@ -1751,7 +1789,8 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
 	}
-	plan, validateErr := s.validator.ValidateWithin(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: candidate.SQL, Parameters: candidate.Parameters}, a.relationScope)
+	plan, proof, validateErr := s.validateAnalyticalCandidate(ctx, e, a, candidate)
+	candidate.analytical = proof
 	if validateErr == nil {
 		return candidate, 0, receipt, plan, nil
 	}
@@ -1775,7 +1814,8 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if fixErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, fixErr
 	}
-	plan, validateErr = s.validator.ValidateWithin(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: fixed.SQL, Parameters: fixed.Parameters}, a.relationScope)
+	plan, proof, validateErr = s.validateAnalyticalCandidate(ctx, e, a, fixed)
+	fixed.analytical = proof
 	if validateErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, validateErr)
 	}
@@ -1791,6 +1831,9 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	}
 	dialect := a.binding.Dialect
 	system := "Return one safe, read-only SQL statement for the native " + dialect + " dialect. Never change the topic, source, execution context, required filters, pinned metrics, or permissions. Return only the requested JSON object."
+	if a.analytical != nil {
+		system += " Analytical metrics v1 is enforced for selected user metric roots: use one qualified base table and preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Joins, CTEs, nested SELECTs and windows are not analytically supported by this contract."
+	}
 	if hasActiveBusinessEvidence(a.route) {
 		system += " Reviewed clarification constraints are bound by the service after generation. Select their exact governed base relations; do not invent, repeat, or infer their scalar values or add predicates for those owned targets."
 	}
@@ -1890,7 +1933,7 @@ func (s *Service) finishRun(ctx context.Context, e identity.Envelope, q QueryRec
 }
 
 func (s *Service) runResult(q QueryRecord, report exec.ExecutionReport, inspect bool) RunResult {
-	out := RunResult{Bindings: publicClarificationBinding(q.Clarification), AnswerChanges: publicClarificationChanges(q.Clarification), QueryID: q.ID, SessionID: q.Session, Status: q.Status, EvidenceStale: q.EvidenceStale, Route: q.Route, Confidence: q.Route.Confidence, Assumptions: append([]string(nil), q.Assumptions...), Ambiguities: append([]string(nil), q.Ambiguities...), ValidationFixes: q.ValidationFixes, ExecutionFixes: q.ExecutionFixes, Execution: report, Receipt: q.Receipt}
+	out := RunResult{Analytical: cloneAnalyticalReceipt(q.Analytical), Bindings: publicClarificationBinding(q.Clarification), AnswerChanges: publicClarificationChanges(q.Clarification), QueryID: q.ID, SessionID: q.Session, Status: q.Status, EvidenceStale: q.EvidenceStale, Route: q.Route, Confidence: q.Route.Confidence, Assumptions: append([]string(nil), q.Assumptions...), Ambiguities: append([]string(nil), q.Ambiguities...), ValidationFixes: q.ValidationFixes, ExecutionFixes: q.ExecutionFixes, Execution: report, Receipt: q.Receipt}
 	if q.Result != nil && out.Execution.Result == nil {
 		out.Execution.Result = q.Result
 	}
@@ -2167,6 +2210,9 @@ func validCandidate(c generatedCandidate) bool {
 }
 
 func validationCode(err error, sql string) string {
+	if code := analyticalDiagnostic(err); code != "" {
+		return code
+	}
 	if err == nil {
 		return ""
 	}

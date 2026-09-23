@@ -142,39 +142,41 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
-	Clarification    *ClarificationEvidence       `json:"-"`
-	ID               string                       `json:"id"`
-	Session          string                       `json:"session"`
-	Parent           string                       `json:"parent,omitempty"`
-	ParentRevision   int64                        `json:"parent_revision,omitempty"`
-	ParentDigest     string                       `json:"parent_digest,omitempty"`
-	Operation        string                       `json:"operation,omitempty"`
-	Topic            string                       `json:"topic"`
-	Topics           []string                     `json:"topics"`
-	TopicVersions    []string                     `json:"topic_versions"`
-	RuleVersions     []string                     `json:"rule_versions,omitempty"`
-	Templates        []rulesets.TemplateSelection `json:"templates,omitempty"`
-	ExampleSelection ExampleSelectionEvidence     `json:"example_selection,omitempty"`
-	Context          string                       `json:"context"`
-	Locale           nlq.Language                 `json:"locale"`
-	Question         string                       `json:"question"`
-	Route            nlqroute.RouteResult         `json:"route"`
-	Generation       nlq.GenerationContext        `json:"generation"`
-	RelationScope    []exec.RelationScope         `json:"relation_scope"`
-	SQL              string                       `json:"-"`
-	Parameters       []exec.Parameter             `json:"-"`
-	Receipt          gateway.Receipt              `json:"receipt"`
-	Status           string                       `json:"status"`
-	EvidenceStale    bool                         `json:"evidence_stale,omitempty"`
-	Result           *exec.Result                 `json:"result,omitempty"`
-	Assumptions      []string                     `json:"assumptions,omitempty"`
-	Ambiguities      []string                     `json:"ambiguities,omitempty"`
-	Errors           []string                     `json:"errors,omitempty"`
-	ValidationFixes  int                          `json:"validation_fixes"`
-	ExecutionFixes   int                          `json:"execution_fixes"`
-	Revision         int64                        `json:"revision"`
-	Created          time.Time                    `json:"created_at"`
-	Updated          time.Time                    `json:"updated_at"`
+	AnalyticalVersion int                          `json:"analytical_version,omitempty"`
+	Analytical        *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
+	Clarification     *ClarificationEvidence       `json:"-"`
+	ID                string                       `json:"id"`
+	Session           string                       `json:"session"`
+	Parent            string                       `json:"parent,omitempty"`
+	ParentRevision    int64                        `json:"parent_revision,omitempty"`
+	ParentDigest      string                       `json:"parent_digest,omitempty"`
+	Operation         string                       `json:"operation,omitempty"`
+	Topic             string                       `json:"topic"`
+	Topics            []string                     `json:"topics"`
+	TopicVersions     []string                     `json:"topic_versions"`
+	RuleVersions      []string                     `json:"rule_versions,omitempty"`
+	Templates         []rulesets.TemplateSelection `json:"templates,omitempty"`
+	ExampleSelection  ExampleSelectionEvidence     `json:"example_selection,omitempty"`
+	Context           string                       `json:"context"`
+	Locale            nlq.Language                 `json:"locale"`
+	Question          string                       `json:"question"`
+	Route             nlqroute.RouteResult         `json:"route"`
+	Generation        nlq.GenerationContext        `json:"generation"`
+	RelationScope     []exec.RelationScope         `json:"relation_scope"`
+	SQL               string                       `json:"-"`
+	Parameters        []exec.Parameter             `json:"-"`
+	Receipt           gateway.Receipt              `json:"receipt"`
+	Status            string                       `json:"status"`
+	EvidenceStale     bool                         `json:"evidence_stale,omitempty"`
+	Result            *exec.Result                 `json:"result,omitempty"`
+	Assumptions       []string                     `json:"assumptions,omitempty"`
+	Ambiguities       []string                     `json:"ambiguities,omitempty"`
+	Errors            []string                     `json:"errors,omitempty"`
+	ValidationFixes   int                          `json:"validation_fixes"`
+	ExecutionFixes    int                          `json:"execution_fixes"`
+	Revision          int64                        `json:"revision"`
+	Created           time.Time                    `json:"created_at"`
+	Updated           time.Time                    `json:"updated_at"`
 }
 
 // FeedbackRecord is a reviewable correction. Recording it never publishes a
@@ -398,6 +400,7 @@ type PreflightResult struct {
 // PlanResult contains a validated plan receipt. SQL is included only when the
 // caller has the separate reporting.sql.read authority.
 type PlanResult struct {
+	Analytical      *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
 	Bindings        *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
 	AnswerChanges   []ClarificationChange        `json:"answer_changes,omitempty"`
 	QueryID         string                       `json:"query_id"`
@@ -417,6 +420,7 @@ type PlanResult struct {
 // RunResult contains the opaque executor receipt and normalized rows. The
 // underlying attempt journal remains the source of cancellation/reconciliation.
 type RunResult struct {
+	Analytical      *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
 	Bindings        *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
 	AnswerChanges   []ClarificationChange        `json:"answer_changes,omitempty"`
 	QueryID         string                       `json:"query_id"`

@@ -521,6 +521,11 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 				return ErrUnsafe
 			}
 			switch text(m["kind"]) {
+			case "AEXPR_NULLIF":
+				parts, _ := names(m["name"])
+				if len(parts) != 1 || parts[0] != "=" || m["lexpr"] == nil || m["rexpr"] == nil {
+					return ErrUnsafe
+				}
 			case "AEXPR_OP", "AEXPR_OP_ANY", "AEXPR_OP_ALL", "AEXPR_DISTINCT", "AEXPR_NOT_DISTINCT", "AEXPR_IN", "AEXPR_LIKE", "AEXPR_ILIKE", "AEXPR_BETWEEN", "AEXPR_NOT_BETWEEN", "AEXPR_BETWEEN_SYM", "AEXPR_NOT_BETWEEN_SYM":
 			default:
 				return ErrUnsafe

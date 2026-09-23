@@ -135,7 +135,9 @@ func TestPhase18(t *testing.T) {
 	query, _ := newPhase18Service(t, fixture)
 	ctx := context.Background()
 	e := phase18Envelope(t, fixture, fixture.f.e.User(), "phase18-session", true)
-	salesSQL := "SELECT id, amount FROM analytics.sales ORDER BY id"
+	// The question selects Revenue: preserve this execution fixture's per-id
+	// rows using the actual reviewed SUM, rather than treating raw rows as a metric.
+	salesSQL := "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"
 	// The gateway fixture treats "normal" as inheriting the chat mode; use an
 	// inert recognized-by-default mode so raw chat responses do not corrupt
 	// embedding or rerank wire responses.
@@ -221,7 +223,7 @@ func TestPhase18(t *testing.T) {
 	})
 
 	t.Run("AC04", func(t *testing.T) {
-		zeroSQL := "SELECT id, amount FROM analytics.sales WHERE id = 999 ORDER BY id"
+		zeroSQL := "SELECT id, sum(amount) AS amount FROM analytics.sales WHERE id = 999 GROUP BY id ORDER BY id"
 		fixture.model.mode.Store(phase18RawResponse(t, zeroSQL))
 		planned, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)})
 		if err != nil {

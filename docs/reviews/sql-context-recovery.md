@@ -232,3 +232,23 @@ immutability/redaction, no-dispatch failure, mandatory preservation, ranked omis
 default fallback, unsealed/retained rejection and repair-specific fitting. Runtime
 results are maintained in PR #62 after the exact committed-source workflow completes;
 this checkpoint is not by itself a passing gate or live-model qualification.
+
+## AP-03A — scoped analytical metric proof (implementation checkpoint)
+
+Baseline head: `9c2b71c084cee9f801c662f87af54c12e3d336e7`. The
+[analytical metrics contract](../contracts/analytical-metrics-v1.md) defines the
+new positive native proof and its explicit limits. Catalog-backed user output
+roots compile into a bounded aggregate/arithmetic tree; distinct per-metric
+populations do not become one global intersection. Native-safe wrong aggregates,
+missing filters, integer division and unsupported scopes stop before execution.
+The existing bounded validation correction can repair a candidate without exposing
+private bound scalars. Migration 053 preserves versioned scoped receipts and legacy
+unmeasured disposition through query/saved reads, execution and idempotent replay.
+
+Fixtures now asking for a reviewed Revenue metric return its real SUM (grouped by
+id where the existing execution fixture checks per-id rows), not raw rows disguised
+as a metric. The reference-choice fixture restores its raw-row response after its
+metric-only case so subsequent scalar constraints retain their original assertions.
+New synthetic tests exercise native results, persisted proof fences, private repair
+and terminal replay. Local formatting/diff/planning checks are separate from actual
+runtime tests; the PR records exact CI outcomes. No full AP-03 or live-parity claim.

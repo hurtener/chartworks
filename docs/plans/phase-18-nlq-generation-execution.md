@@ -153,3 +153,15 @@ capacity with byte and operation bounds still enforced. Required semantics and
 full reviewed relation scope remain unchanged, and repair resolves its own role.
 Actual packet-use and estimated per-attempt envelope evidence are distinct from
 reported tokens and live qualification. Retained objects are not reinterpreted.
+
+## SQL recovery AP-03A — scoped analytical metrics
+
+[Analytical metrics v1](../contracts/analytical-metrics-v1.md) adds catalog-derived
+selected aggregate/population contracts after native safety and before execution,
+using the same one-correction budget and private scalar ownership. Versioned query
+proofs reconstruct against exact current/retained publications and remain distinct
+from business approval. Legacy plans stay explicitly unmeasured. New unsupported
+shapes fail explicitly; join/grain/full-question conformance and wider native
+qualification remain open in the SQL recovery program. Real PostgreSQL acceptance
+is `TestSQLRecoveryAnalyticalAcceptance` and
+`TestSQLRecoveryAnalyticalOwnedScalarRepair`; the PR records actually executed results.

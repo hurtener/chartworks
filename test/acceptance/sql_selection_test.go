@@ -37,6 +37,7 @@ func TestSQLRecoverySelectedIntentAcceptance(t *testing.T) {
 	if pending.Route.Selection == nil || pending.Route.Clarification == nil || len(pending.Route.RemoteCalls) != 0 {
 		t.Fatal("catalog-selected metric did not activate clarification before model work")
 	}
+	f.model.mode.Store(phase18RawResponse(t, "SELECT sum(amount) AS revenue FROM analytics.sales"))
 	planned := f.plan(t, question, "amount-required", semantics.ClarificationValue{Number: &semantics.ClarificationNumberInput{Value: "10", Unit: "USD"}})
 	if planned.Route.Selection == nil || len(planned.Route.Context.Metrics) != 1 || len(planned.Route.Request.MetricIDs) != 0 {
 		t.Fatal("free-text selected intent was replaced by caller metric pins")

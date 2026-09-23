@@ -40,7 +40,8 @@ func validationRepairable(err error) bool {
 	// Only classified candidate rejections may spend a repair. Unknown source,
 	// transport and journal failures must not be treated as incorrect SQL.
 	return errors.Is(err, exec.ErrUnsafe) || errors.Is(err, exec.ErrUnsupported) ||
-		errors.Is(err, exec.ErrLimit) || errors.Is(err, exec.ErrQuery)
+		errors.Is(err, exec.ErrLimit) || errors.Is(err, exec.ErrQuery) ||
+		errors.Is(err, exec.ErrAnalyticalMismatch) || errors.Is(err, exec.ErrAnalyticalUnsupported)
 }
 
 func validationRepairContext(ctx context.Context, original nlq.GenerationContext, unbound generatedCandidate, diagnostic string) (nlq.GenerationContext, error) {
@@ -48,7 +49,8 @@ func validationRepairContext(ctx context.Context, original nlq.GenerationContext
 		return nlq.GenerationContext{}, ErrGeneration
 	}
 	switch diagnostic {
-	case "validation_unsafe", "validation_unsupported", "validation_limit", "validation_failed":
+	case "validation_unsafe", "validation_unsupported", "validation_limit", "validation_failed",
+		"analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy", "analytical_shape_unsupported":
 	default:
 		return nlq.GenerationContext{}, ErrGeneration
 	}
