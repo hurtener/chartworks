@@ -268,6 +268,17 @@ func TestPhase18PostgresRuntimeBoundaries(t *testing.T) {
 		if _, err = fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "unsupported"}, scope.Actor()); !errors.Is(err, store.ErrInvalid) {
 			t.Fatalf("unsupported example state was accepted: %v", err)
 		}
+		if _, err = fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "active", ExpectedVersion: stored.Version, ReviewNote: "reviewed"}, scope.Actor()); !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("balanced positive and negative evidence was activated: %v", err)
+		}
+		candidate, err := fixture.f.db.ReadExample(ctx, scope, example.ID)
+		if err != nil || candidate.State != "candidate" || candidate.Version != stored.Version {
+			t.Fatalf("rejected activation changed the candidate: %#v %v", candidate, err)
+		}
+		stored, err = fixture.f.db.UpsertExample(ctx, scope, nlqexec.ExampleRecord{ID: phase18StoreID("e"), Topic: topic, Question: example.Question, SQL: example.SQL, Digest: example.Digest, State: "candidate", Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, EvidenceOutcome: "positive", Origin: origin, Version: 1, Provenance: "phase18-store-example-positive", Created: now, Updated: now})
+		if err != nil || stored.ID != example.ID || stored.PositiveEvidence != 2 || stored.NegativeEvidence != 1 || stored.EvidenceCount != 3 || stored.Weight < 0.60 {
+			t.Fatalf("additional positive evidence was not deduplicated: %#v %v", stored, err)
+		}
 		active, err := fixture.f.db.SetExampleState(ctx, scope, nlqexec.ExampleStateRequest{ExampleID: example.ID, State: "active", ExpectedVersion: stored.Version, ReviewNote: "reviewed"}, scope.Actor())
 		if err != nil || active.State != "active" {
 			t.Fatalf("candidate activation failed: %#v %v", active, err)
@@ -308,7 +319,7 @@ func TestPhase18PostgresRuntimeBoundaries(t *testing.T) {
 		var wg sync.WaitGroup
 		errs := make(chan error, 6)
 		for i, char := range []string{"3", "4", "5", "6", "7", "8"} {
-			queryID := phase18StoreID(char)
+			queryID := strings.Repeat(char, 31) + "a"
 			query := phase18StoreQuery(queryID, "phase18-store-session", topic, contextID, "phase18-learning-"+char, nil, now)
 			if err = fixture.f.db.CreateQuery(ctx, scope, query); err != nil {
 				t.Fatal("create concurrent feedback query", i, err)

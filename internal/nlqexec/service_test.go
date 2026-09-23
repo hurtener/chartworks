@@ -578,7 +578,7 @@ func (x *unitExecutor) Execute(_ context.Context, _ identity.Envelope, _ exec.Pl
 func unitEnvelope(t *testing.T) identity.Envelope {
 	t.Helper()
 	e, err := identity.FromVerified("tenant", "actor", "session", []string{
-		"query.plan", "query.execute", "feedback.write", "reporting.sql.read",
+		"query.plan", "query.execute", "feedback.write", "topics.read", "sources.read", "sources.query", "reporting.sql.read",
 		"cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context",
 	}, time.Now().Add(time.Hour), nil)
 	if err != nil {
@@ -1458,7 +1458,7 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0].SQL != "" {
 		t.Fatalf("example listing leaked protected SQL: %#v %v", listed, err)
 	}
-	denied, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "cw.topic.read:topic"}, time.Now().Add(time.Hour), nil)
+	denied, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "topics.read", "sources.read", "sources.query", "cw.topic.read:topic"}, time.Now().Add(time.Hour), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1496,7 +1496,7 @@ func TestExampleActivationRequiresReviewedSQLScope(t *testing.T) {
 	binding.Relations[0].Columns = append(binding.Relations[0].Columns, exec.Column{Name: "secret", NativeType: "text", Category: "text", Safe: true})
 	binding.Relations = append(binding.Relations, exec.Relation{ID: "other_dataset", Schema: "analytics", Name: "other_sales", Columns: []exec.Column{{Name: "id", NativeType: "integer", Category: "integer", Safe: true}}})
 	origin := ExampleOrigin{SchemaVersion: 1, Locale: nlq.LanguageEnglish, TopicVersion: "v1", Context: "context", SourceBindingDigest: exec.Hash(binding)}
-	e, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "sources.query", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "topics.read", "sources.read", "sources.query", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

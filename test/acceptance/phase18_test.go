@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -257,9 +258,11 @@ func TestPhase18(t *testing.T) {
 			"sources.query",
 			"cw.topic.read:" + fixture.pack.Topic,
 			"cw.source.query:" + fixture.pack.Datasets[0].Source.Source,
-			"cw.dataset.query:" + fixture.pack.Datasets[0].ID,
-			"cw.execution_context.use:" + fixture.context,
 		}
+		for _, dataset := range fixture.pack.Datasets {
+			reviewScopes = append(reviewScopes, "cw.dataset.query:"+dataset.ID)
+		}
+		reviewScopes = append(reviewScopes, "cw.execution_context.use:"+fixture.context)
 		reviewClaims := fixture.model.token.claims(e.Tenant(), e.User(), reviewScopes)
 		reviewClaims["session"] = "phase18-reviewer"
 		reviewToken := fixture.model.token.sign(t, reviewClaims, nil)
@@ -276,18 +279,66 @@ func TestPhase18(t *testing.T) {
 		if verifyErr != nil {
 			t.Fatal("cross-context review authority", verifyErr)
 		}
-		if _, err = query.ExampleState(ctx, crossContext, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) {
+		if _, err = query.ExampleState(ctx, crossContext, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) && !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("review crossed signed context reach: %v", err)
 		}
-		active, err := query.ExampleState(ctx, reviewer, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"})
-		if err != nil || active.State != "active" {
-			t.Fatalf("feedback-only reviewer activation failed: %#v err=%v", active, err)
-		}
-		restarted, _ := newPhase18Service(t, fixture)
-		afterRestart, err := restarted.Examples(ctx, e, fixture.pack.Topic, 8)
-		if err != nil || len(afterRestart) != 1 || afterRestart[0].State != "active" || afterRestart[0].Weight < 0.5 {
-			t.Fatalf("learning did not survive restart: %#v err=%v", afterRestart, err)
-		}
+		t.Run("missing review actions do not reveal example IDs over HTTP", func(t *testing.T) {
+			fullScopes := append(append([]string(nil), reviewScopes...), "topics.read", "sources.read", "cw.source.read:"+fixture.pack.Datasets[0].Source.Source)
+			handler := nlqapi.ExecutionHandler(fixture.model.token.verifier, query, http.NotFoundHandler())
+			call := func(scopes []string, id, state string) *httptest.ResponseRecorder {
+				t.Helper()
+				claims := fixture.model.token.claims(e.Tenant(), e.User(), scopes)
+				claims["session"] = "phase18-reviewer"
+				token := fixture.model.token.sign(t, claims, nil)
+				body, marshalErr := json.Marshal(nlqexec.ExampleStateRequest{ExampleID: id, State: state, ReviewNote: "reviewed positive evidence"})
+				if marshalErr != nil {
+					t.Fatal(marshalErr)
+				}
+				request := httptest.NewRequest(http.MethodPost, "/v1/nlq/examples/state", bytes.NewReader(body))
+				request.Header.Set("Authorization", "Bearer "+token)
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, request)
+				return response
+			}
+			for _, tc := range []struct{ state, absent string }{
+				{"active", "sources.query"},
+				{"candidate", "topics.read"}, {"retired", "topics.read"},
+				{"candidate", "sources.read"}, {"retired", "sources.read"},
+				{"candidate", "sources.query"}, {"retired", "sources.query"},
+			} {
+				withoutAction := make([]string, 0, len(fullScopes)-1)
+				for _, scope := range fullScopes {
+					if scope != tc.absent {
+						withoutAction = append(withoutAction, scope)
+					}
+				}
+				for _, id := range []string{examples[0].ID, strings.Repeat("f", 32)} {
+					response := call(withoutAction, id, tc.state)
+					var result struct {
+						Error string `json:"error"`
+					}
+					if json.Unmarshal(response.Body.Bytes(), &result) != nil || response.Code != http.StatusForbidden || result.Error != "forbidden" {
+						t.Fatalf("%s without %s disclosed example ID: status=%d body=%s", tc.state, tc.absent, response.Code, response.Body.String())
+					}
+				}
+			}
+			if response := call(fullScopes, examples[0].ID, "candidate"); response.Code != http.StatusOK {
+				t.Fatalf("authorized candidate transition failed: status=%d body=%s", response.Code, response.Body.String())
+			}
+			active, err := query.ExampleState(ctx, reviewer, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"})
+			if err != nil || active.State != "active" {
+				t.Fatalf("feedback-only reviewer activation failed: %#v err=%v", active, err)
+			}
+			restarted, _ := newPhase18Service(t, fixture)
+			afterRestart, err := restarted.Examples(ctx, e, fixture.pack.Topic, 8)
+			if err != nil || len(afterRestart) != 1 || afterRestart[0].State != "active" || afterRestart[0].Weight < 0.5 {
+				t.Fatalf("learning did not survive restart: %#v err=%v", afterRestart, err)
+			}
+			if response := call(fullScopes, examples[0].ID, "retired"); response.Code != http.StatusOK {
+				t.Fatalf("authorized retirement failed: status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
 	})
 
 	t.Run("AC06", func(t *testing.T) {
