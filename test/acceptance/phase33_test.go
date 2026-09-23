@@ -576,7 +576,7 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			review, reviewErr := topicService.Review(t.Context(), e, in.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Independent synthetic review"})
+			review, reviewErr := topicService.Review(t.Context(), e, in.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Explicit synthetic approval"})
 			if reviewErr != nil {
 				t.Fatal(reviewErr)
 			}
@@ -619,7 +619,7 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 	var reviewID, digest string
 	var draftRevision int64
 	if err := metadata.QueryRow(t.Context(), `SELECT review_id,draft_revision,digest FROM chartworks.topic_published_versions WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3`, e.Tenant(), in.Topic, published.State.Version).Scan(&reviewID, &draftRevision, &digest); err != nil || reviewID != approvedReview.ID || draftRevision != approvedReview.DraftRevision || digest != published.Digest {
-		t.Fatal("active publication lost its independent review link", err)
+		t.Fatal("active publication lost its explicit approval link", err)
 	}
 	rotated, err := f.s.Rotate(t.Context(), e, in.Source, pack.Datasets[0].Source.SourceRevision)
 	if err != nil || rotated.Revision <= pack.Datasets[0].Source.SourceRevision || rotated.ContextID == in.Context {
