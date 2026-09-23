@@ -504,6 +504,7 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 	model := newGatewayFixture(t, func(cfg *config.Gateway) {
 		embedding := cfg.Roles["embedding"]
 		embedding.MaxBatchItems = 4
+		embedding.MaxBatchBytes = 64 << 10
 		cfg.Roles["embedding"] = embedding
 	})
 	index, err := vindex.New(f.db)
@@ -585,6 +586,10 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 			run, err = client.ResumeOnboarding(t.Context(), id, run.Version)
 		}
 		if err != nil {
+			var status *sdk.StatusError
+			if errors.As(err, &status) {
+				t.Fatal("real domain journey", run.Stage, status.Status, status.Code, err)
+			}
 			t.Fatal("real domain journey", run.Stage, err)
 		}
 	}
