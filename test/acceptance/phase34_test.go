@@ -65,7 +65,13 @@ func (a *phase34Adapter) Apply(_ context.Context, _ identity.Envelope, o migrati
 		if o.Kind == migration.KindSchedule {
 			return m.Destination + ":v1", nil
 		}
+		if o.Kind == migration.KindBlock || o.Kind == migration.KindReport || o.Kind == migration.KindDashboard {
+			return m.Destination + ":draft:1", nil
+		}
 		return m.Destination, nil
+	}
+	if o.Kind == migration.KindBlock || o.Kind == migration.KindReport || o.Kind == migration.KindDashboard {
+		return "dst-" + o.ExternalRef + ":draft:1", nil
 	}
 	return "dst-" + o.ExternalRef, nil
 }
@@ -669,6 +675,7 @@ func phase34RetentionErasure(t *testing.T) {
 		t.Fatal("legal hold erased", err)
 	}
 	phase34ExternalRefAndExpiredExport(t)
+	phase34ImportedRetainedDrill(t)
 }
 
 func phase34ExternalRefAndExpiredExport(t *testing.T) {

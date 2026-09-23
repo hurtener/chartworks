@@ -166,6 +166,35 @@ type EraseRequest struct {
 	Limit int    `json:"limit"`
 }
 
+// RetentionDrillRequest previews or applies due, exactly traced descendant
+// erasure. Expected is the immutable batch's current revision; preview is the
+// default and never writes.
+type RetentionDrillRequest struct {
+	Batch         string `json:"batch"`
+	Expected      int64  `json:"expected_revision"`
+	Limit         int    `json:"limit"`
+	Apply         bool   `json:"apply"`
+	PreviewDigest string `json:"preview_digest,omitempty"`
+}
+
+type RetentionDrillItem struct {
+	Kind       string `json:"kind"`
+	Run        string `json:"run"`
+	Parent     string `json:"parent"`
+	Revision   int64  `json:"revision"`
+	Renditions int64  `json:"renditions"`
+}
+
+type RetentionDrillResult struct {
+	Batch         string               `json:"batch"`
+	Digest        string               `json:"digest"`
+	PreviewDigest string               `json:"preview_digest"`
+	Applied       bool                 `json:"applied"`
+	Items         []RetentionDrillItem `json:"items"`
+	Remaining     int64                `json:"remaining"`
+	BackupScope   string               `json:"backup_scope"`
+}
+
 type ObjectPlan struct {
 	ExternalRef string           `json:"external_ref"`
 	Kind        Kind             `json:"kind"`

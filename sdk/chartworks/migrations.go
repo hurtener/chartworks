@@ -33,6 +33,8 @@ type MigrationExportRequest = migration.ExportRequest
 type MigrationCutoverRequest = migration.CutoverRequest
 type MigrationRollbackRequest = migration.RollbackRequest
 type MigrationEraseRequest = migration.EraseRequest
+type MigrationRetentionDrillRequest = migration.RetentionDrillRequest
+type MigrationRetentionDrillResult = migration.RetentionDrillResult
 
 func (c *Client) DryRunMigration(ctx context.Context, in MigrationDryRunRequest) (out MigrationPlan, err error) {
 	if !identity.Identifier(in.Manifest.Batch) {
@@ -81,5 +83,13 @@ func (c *Client) EraseMigration(ctx context.Context, in MigrationEraseRequest) (
 		return out, ErrMigrationRequest
 	}
 	err = c.callLimit(ctx, "POST", "/v1/migrations/erasures", "", in, &out, 4<<20)
+	return
+}
+
+func (c *Client) DrillMigrationRetention(ctx context.Context, in MigrationRetentionDrillRequest) (out MigrationRetentionDrillResult, err error) {
+	if !identity.Identifier(in.Batch) || in.Expected < 1 || in.Limit < 1 || in.Limit > 100 || in.Apply && len(in.PreviewDigest) != 64 {
+		return out, ErrMigrationRequest
+	}
+	err = c.callLimit(ctx, "POST", "/v1/migrations/retention-drills", "", in, &out, 4<<20)
 	return
 }

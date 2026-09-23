@@ -26,7 +26,7 @@ func TestRegistryMatchesPublishedManifest(t *testing.T) {
 	if json.Unmarshal(raw, &published) != nil || !reflect.DeepEqual(published, registry.Operations()) {
 		t.Fatal("published migration inventory drifted from executable registry")
 	}
-	if len(registry.Definitions()) != 7 {
+	if len(registry.Definitions()) != 8 {
 		t.Fatal("missing migration operations")
 	}
 }
@@ -47,7 +47,7 @@ func TestMCPBindingsUseExecutableRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry, err := mcpserver.NewRegistry(bindings)
-	if err != nil || len(registry.Manifest()) != 7 {
+	if err != nil || len(registry.Manifest()) != 8 {
 		t.Fatal("missing typed migration bindings", err)
 	}
 	absent, err := MCPBindings(nil)

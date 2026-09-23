@@ -48,6 +48,22 @@ func actorTest(t *testing.T, scopes ...string) identity.Envelope {
 	}
 	return e
 }
+
+func TestBlockChartRoleDoesNotPermitIdentityRole(t *testing.T) {
+	allowed := map[string]any{"definition": map[string]any{"outputs": []any{map[string]any{"mapping": map[string]any{"columns": []any{map[string]any{"role": "measure"}}}}}}}
+	if containsForbiddenObject(KindBlock, allowed) {
+		t.Fatal("closed chart column role rejected")
+	}
+	for _, payload := range []map[string]any{
+		{"definition": map[string]any{"role": "admin"}},
+		{"definition": map[string]any{"outputs": []any{map[string]any{"mapping": map[string]any{"columns": []any{map[string]any{"userRole": "admin"}}}}}}},
+		{"definition": map[string]any{"outputs": []any{map[string]any{"mapping": map[string]any{"columns": []any{map[string]any{"role": "measure", "credential": "hidden"}}}}}}},
+	} {
+		if !containsForbiddenObject(KindBlock, payload) {
+			t.Fatal("identity or credential field passed chart exception", payload)
+		}
+	}
+}
 func evidenceTest() []Evidence {
 	hash := strings.Repeat("a", 64)
 	out := []Evidence{}

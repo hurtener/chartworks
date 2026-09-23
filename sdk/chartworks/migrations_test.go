@@ -45,7 +45,10 @@ func TestMigrationMethodsUseTypedRoutes(t *testing.T) {
 	if _, err = client.EraseMigration(t.Context(), MigrationEraseRequest{Batch: "batch", Limit: 1}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"/v1/migrations/dry-runs", "/v1/migrations/imports", "/v1/migrations/resume", "/v1/migrations/exports", "/v1/migrations/cutovers", "/v1/migrations/rollbacks", "/v1/migrations/erasures"}
+	if _, err = client.DrillMigrationRetention(t.Context(), MigrationRetentionDrillRequest{Batch: "batch", Expected: 1, Limit: 1}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/v1/migrations/dry-runs", "/v1/migrations/imports", "/v1/migrations/resume", "/v1/migrations/exports", "/v1/migrations/cutovers", "/v1/migrations/rollbacks", "/v1/migrations/erasures", "/v1/migrations/retention-drills"}
 	if len(paths) != len(want) {
 		t.Fatal(paths)
 	}
@@ -81,5 +84,11 @@ func TestMigrationMethodsRejectInvalidCoordinatesBeforeTransport(t *testing.T) {
 	}
 	if _, err = client.EraseMigration(t.Context(), MigrationEraseRequest{Batch: "batch", Limit: 1001}); err == nil {
 		t.Fatal("oversized erase accepted")
+	}
+	if _, err = client.DrillMigrationRetention(t.Context(), MigrationRetentionDrillRequest{Batch: "batch", Expected: 1, Limit: 101}); err == nil {
+		t.Fatal("oversized retention drill accepted")
+	}
+	if _, err = client.DrillMigrationRetention(t.Context(), MigrationRetentionDrillRequest{Batch: "batch", Expected: 1, Limit: 1, Apply: true}); err == nil {
+		t.Fatal("apply without preview digest accepted")
 	}
 }
