@@ -967,7 +967,7 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err != nil {
 		return PlanResult{}, err
 	}
-	learned, selection, selectionReceipt, err := s.selectLearnedInstructions(ctx, e, admitted, question.Question, question.Rerank, call, budget)
+	learned, selection, selectionReceipt, err := s.selectGenerationExamples(ctx, e, admitted, question, call, budget)
 	if err != nil {
 		return PlanResult{}, err
 	}
@@ -975,6 +975,7 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err != nil {
 		return PlanResult{}, err
 	}
+	selection.Usage = actualExampleUsage(selection, generation)
 	candidate, fixes, receipt, validated, err := s.generateAndValidate(ctx, e, admitted, generation, call, budget, "")
 	if err != nil {
 		return PlanResult{}, err

@@ -570,7 +570,7 @@ func (a *ContextAssembler) usage(input ContextInput, output AssembledContext) ([
 		original string
 		included string
 	}{
-		{LaneHeader, renderHeader(input) + renderRelations(input.Relations), renderHeader(outputInput(output)) + renderRelations(output.Relations)},
+		{LaneHeader, renderHeader(input) + renderPromptRelations(input), renderHeader(outputInput(output)) + renderPromptRelations(outputInput(output))},
 		{LaneEvidence, renderEvidence(input.Evidence), renderEvidence(output.Evidence)},
 		{LaneConstraints, renderConstraints(flattenConstraints(input.Constraints)), renderConstraints(flattenConstraints(output.Constraints))},
 		{LaneMetrics, renderMetrics(input.Metrics), renderMetrics(output.Metrics)},
@@ -597,7 +597,7 @@ func renderWithCandidate(base string, candidate optionalCandidate) string {
 }
 
 func renderBase(input ContextInput, constraints []MandatoryConstraint) string {
-	return renderHeader(input) + renderRelations(input.Relations) + renderConstraints(constraints) + renderMetrics(input.Metrics)
+	return renderHeader(input) + renderPromptRelations(input) + renderConstraints(constraints) + renderMetrics(input.Metrics)
 }
 
 func renderRelations(relations []SourceRelation) string {
@@ -803,6 +803,9 @@ func cloneAndValidateInput(input ContextInput) (ContextInput, error) {
 			return ContextInput{}, err
 		}
 		out.Constraints = state
+	}
+	if _, _, err := promptRelations(out); err != nil {
+		return ContextInput{}, err
 	}
 	return out, nil
 }

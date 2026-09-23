@@ -11,7 +11,7 @@ qualification are separate evidence states. Nothing here declares full parity.
 |---|---|---|
 | AP-00 | Synthetic sentinel cohort, effective request inspection, protected owner comparison | Core engine-request spy implemented; provider-wire/owner baseline pending |
 | AP-01 | Selected semantic roots, catalog hydration, complete dependencies and rule applicability | Catalog-term selection plus explicit/clarified roots feed required closure and rules; vector-only paraphrase intent and owner qualification pending |
-| AP-02 | Relevant typed prompt projection, examples and complete-request budget | Pending |
+| AP-02 | Relevant typed prompt projection, examples and complete-request budget | Selected single-topic physical rendering, strategy-aware optional fitting, example usage and runtime byte recheck implemented; model-specific full-envelope fitting pending |
 | AP-03 | Analytical contract and semantic conformance | Pending |
 | AP-04 | Targeted privacy-safe validation repair | Initial implementation with focused regressions; broader qualification remains open |
 | AP-05 | Analytical state and parameter ownership through follow-ups | Pending |
@@ -192,3 +192,25 @@ obligations. The regression corpus checks API/route adaptation, mandatory closur
 rule fixed point, ambiguous aliases/graphs, shared-topic identity, deterministic
 replay, explicit omissions and a real PostgreSQL/Bifrost-recorded-wire authoring
 flow. Runtime results belong to the exact committed CI run, not this source note.
+
+
+## AP-02 initial packet checkpoint (SQL-03/04/05)
+
+[Generation packet v2](../contracts/generation-packet-v2.md) specifies the scoped
+render-only selected projection, one example lane, precedence-aware fitting and
+actual usage metadata. Native authority still checks the full reviewed relations.
+Normal free-text route tests add twenty unrelated hundred-column relations while
+requiring the same prompt and exact selected dependency content. Missing/foreign
+column coordinates fail, and legacy/unselected shapes retain their rendering.
+
+New regressions cover ranked example order, edit/hint suppression, deduplication,
+whole optional-group pruning, mandatory preservation, oversized demonstration
+fallback, detached usage receipts, zero irrelevant learned-example selection and
+repair without nested suppressed demonstrations. A recorded Bifrost wire test
+checks runtime instructions/model/schema/output ceiling and rejection before any
+provider call when the effective system addition exceeds the byte ceiling.
+
+The added `fit`/`usage` evidence is optional on retained legacy JSON: absence is
+unknown, not zero. Final provider-window allocation, broader root coverage and
+live owner-cohort comparison are not completed by this slice. No frozen query,
+report refresh, semantic publication or signed authority policy changes.

@@ -220,12 +220,13 @@ type ExampleSelection struct {
 // ExampleSelectionEvidence is frozen with the query. Replaying or running a
 // retained plan never reselects examples against mutable learning state.
 type ExampleSelectionEvidence struct {
-	SchemaVersion  int                `json:"schema_version,omitempty"`
-	PolicyVersion  string             `json:"policy_version,omitempty"`
-	Selected       []ExampleSelection `json:"selected,omitempty"`
-	Excluded       []ExampleSelection `json:"excluded,omitempty"`
-	ShadowBaseline []ExampleSelection `json:"shadow_baseline,omitempty"`
-	Receipt        gateway.Receipt    `json:"receipt,omitempty"`
+	Usage          *ExamplePromptUsage `json:"usage,omitempty"`
+	SchemaVersion  int                 `json:"schema_version,omitempty"`
+	PolicyVersion  string              `json:"policy_version,omitempty"`
+	Selected       []ExampleSelection  `json:"selected,omitempty"`
+	Excluded       []ExampleSelection  `json:"excluded,omitempty"`
+	ShadowBaseline []ExampleSelection  `json:"shadow_baseline,omitempty"`
+	Receipt        gateway.Receipt     `json:"receipt,omitempty"`
 }
 
 // ExampleRecord is the DB-first learning projection. State changes are

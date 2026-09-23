@@ -129,3 +129,16 @@ Canonical child requests persist the resulting semantic selections and exact
 observed parent revision/digest; the child insert locks and rechecks the parent so
 concurrent mutation fails closed. Prior SQL remains protected edit context only. See
 [conversational continuity v1](../contracts/conversational-continuity-v1.md).
+
+
+## SQL recovery: strategy-aware generation packet
+
+The [generation packet v2](../contracts/generation-packet-v2.md) initial AP-02
+slice keeps complete reviewed relation scope for validation and persistence while
+rendering selected single-topic metric dependency columns for the model. Required
+semantics remain atomic. Edits/hints suppress typed examples and skip irrelevant
+learning work; included demonstrations preserve declared rank and have actual-use
+evidence. Optional context yields before required instructions. Runtime system
+additions are byte-checked again before dispatch. Full model-specific provider
+window fitting and live quality qualification remain pending; frozen refresh
+and native authority/SQL validation are unchanged.

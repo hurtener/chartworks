@@ -259,6 +259,11 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 		return out, gateway.ErrInput
 	}
 	model, system, configurationDigest := gateway.ApplyRuntimeConfig(ctx, name, r.Model, system)
+	// The effective reviewed system instruction is part of the actual input.
+	// Check again after applying it, before admission or provider reservation.
+	if len(prompt)+len(system)+len(schema.Document()) > e.cfg.Limits.MaxInputBytes {
+		return out, gateway.ErrInput
+	}
 	release, err := e.enter(call, b)
 	if err != nil {
 		return out, err

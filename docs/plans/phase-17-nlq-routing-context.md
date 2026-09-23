@@ -131,3 +131,16 @@ The same bounded closure supports metric and dimension roots, checks missing/cyc
 references and retains unique connecting relationships. Existing AC01–AC06 continue
 to apply. `TestSQLRecovery` in `internal/nlqroute` adds free-text English/Spanish,
 origin corruption, dependency completeness and whole-group omission regressions.
+
+
+## SQL recovery: strategy-aware generation packet
+
+The [generation packet v2](../contracts/generation-packet-v2.md) initial AP-02
+slice keeps complete reviewed relation scope for validation and persistence while
+rendering selected single-topic metric dependency columns for the model. Required
+semantics remain atomic. Edits/hints suppress typed examples and skip irrelevant
+learning work; included demonstrations preserve declared rank and have actual-use
+evidence. Optional context yields before required instructions. Runtime system
+additions are byte-checked again before dispatch. Full model-specific provider
+window fitting and live quality qualification remain pending; frozen refresh
+and native authority/SQL validation are unchanged.

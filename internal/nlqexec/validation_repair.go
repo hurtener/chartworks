@@ -57,6 +57,11 @@ func validationRepairContext(ctx context.Context, original nlq.GenerationContext
 		Parameters:   make([]validationRepairSlot, len(unbound.Parameters)),
 		Instructions: append([]nlq.Instruction(nil), original.Selected...),
 	}
+	// Demonstrations are optional strategy material, not instructions to copy
+	// inside the repair edit packet. Required semantics stay in Context.
+	if original.Strategy == nlq.GenerationExamples {
+		packet.Instructions = nil
+	}
 	for i, parameter := range unbound.Parameters {
 		packet.Parameters[i] = validationRepairSlot{Position: i + 1, Kind: parameter.Kind}
 	}

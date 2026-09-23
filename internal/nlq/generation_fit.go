@@ -25,7 +25,7 @@ func (f *GenerationFit) omit(lane Lane, id, reason string) {
 func (a *ContextAssembler) fitGeneration(ctx context.Context, assembled AssembledContext, editBase, hints, examples, defaults []Instruction) (GenerationContext, error) {
 	result := GenerationContext{
 		MandatoryConstraints: cloneConstraintState(assembled.Constraints),
-		PinnedMetrics: cloneMetrics(assembled.Metrics), Budget: assembled.Budget,
+		PinnedMetrics:        cloneMetrics(assembled.Metrics), Budget: assembled.Budget,
 		Fit: &GenerationFit{Version: "generation-fit-v2"},
 	}
 	// Context examples have already been validated and ranked by the context
