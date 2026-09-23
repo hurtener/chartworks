@@ -23,12 +23,12 @@ func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t
 		"reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a",
 		"cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute",
 	}
-	envelope, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(time.Hour), func() time.Time { return now })
+	envelope, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
 	actionScopes := withoutPerformanceScope(scopes, "query.execute")
-	actionEnvelope, err := identity.FromVerified("tenant", "actor", "session", actionScopes, now.Add(time.Hour), func() time.Time { return now })
+	actionEnvelope, err := identity.FromVerified("tenant", "actor", "session", actionScopes, now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +105,41 @@ func TestPerformanceReleaseRuntimeUsesVerifiedAuthorityAndExactPhase24Evidence(t
 	}
 }
 
+func TestPerformanceReleaseRejectsShortVerifiedBearersBeforeAnyAdapter(t *testing.T) {
+	now := time.Now().UTC()
+	scopes := []string{"ops.write", "cw.tenant.write:tenant", "reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute"}
+	makeEnvelope := func(scopes []string, lifetime time.Duration) identity.Envelope {
+		t.Helper()
+		e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(lifetime), time.Now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	for _, short := range []string{"primary", "denial"} {
+		t.Run(short, func(t *testing.T) {
+			primaryLifetime, denialLifetime := 2*time.Hour, 2*time.Hour
+			if short == "primary" {
+				primaryLifetime = 15 * time.Minute
+			} else {
+				denialLifetime = 15 * time.Minute
+			}
+			primary := makeEnvelope(scopes, primaryLifetime)
+			denial := makeEnvelope(withoutPerformanceScope(scopes, "query.execute"), denialLifetime)
+			repo, manifest, revisions := performanceReleaseFixture(t, primary, now)
+			service, err := New(repo, nil, time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			factory := &releaseTestAdapterFactory{adapter: &releaseTestAdapter{mode: PerformanceIntegration, cache: map[string]bool{}}}
+			runtime := &PerformanceReleaseRuntime{Verifier: &releaseTestVerifier{envelope: primary, wantBearer: "current", actionEnvelope: denial, actionBearer: "negative"}, Service: service, Revisions: releaseTestRevisionResolver{evidence: revisions}, Adapters: factory}
+			if _, err := runtime.Measure(t.Context(), "current", "negative", manifest); !errors.Is(err, ErrPerformanceAuthorityWindow) || factory.calls != 0 {
+				t.Fatal("short Pengui authority entered the mutable release adapter", err, factory.calls)
+			}
+		})
+	}
+}
+
 type orderedReleaseState struct {
 	current string
 	byCase  map[string]PerformanceRevisionEvidence
@@ -146,11 +181,11 @@ func (f *orderedReleaseTestFactory) NewOrderedPerformanceReleaseAdapter(_ contex
 func TestPerformanceOrderedReleaseResolvesEachCurrentOwnerAndSealsTransitions(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	scopes := []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant", "reporting.execute", "cw.block.execute:workload-report", "cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute"}
-	e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(time.Hour), func() time.Time { return now })
+	e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
-	action, err := identity.FromVerified("tenant", "actor", "session", withoutPerformanceScope(scopes, "query.execute"), now.Add(time.Hour), func() time.Time { return now })
+	action, err := identity.FromVerified("tenant", "actor", "session", withoutPerformanceScope(scopes, "query.execute"), now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}

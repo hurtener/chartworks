@@ -298,6 +298,10 @@ func (a *frozenReleaseAdapter) PreparePerformanceStep(ctx context.Context, step 
 		return ErrPerformanceAuthority
 	}
 	if step.Kind == "runtime_pack_changed" {
+		deadline, ok := ctx.Deadline()
+		if !ok || !performanceAuthorityCovers(a.envelope, deadline) {
+			return ErrPerformanceAuthorityWindow
+		}
 		return a.selectPack(ctx, a.changedPack, a.factory.ChangedPackProposal)
 	}
 	return a.selectPack(ctx, a.baseSelection.PackDigest, a.baseSelection.ProposalID)

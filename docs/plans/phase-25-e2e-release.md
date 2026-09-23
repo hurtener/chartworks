@@ -131,6 +131,14 @@ transition. The ordered profile measures a step only while its accepted Phase
 re-resolves it after measurement. A later failed step invalidates the entire
 report. No accepted owner transition plan or live cohort is checked in; AC03
 therefore remains open.
+The release runtime also refuses both Pengui bearers unless their verified
+deadlines cover the one-hour profile and a two-minute cleanup/skew reserve. It
+rechecks that bound before selecting the changed reviewed pack, so the default
+15-minute bearer returns `ErrPerformanceAuthorityWindow` before a profile can
+strand the CAS selection. No Chartworks token renewal or issuer was added;
+AC03 needs a real Pengui fresh-authority seam for the full run and cleanup.
+Changing Chartworks' token-lifetime configuration does not establish that
+authority contract.
 No measurements are labeled a passing AC03 run until the exact profile and
 owner cohort are exercised.
 The required full profile still needs accepted current reports for each

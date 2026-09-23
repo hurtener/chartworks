@@ -169,6 +169,17 @@ The runtime restores only the reviewed runtime-pack selection through its
 guarded CAS pointer. Source, topic, rule and block transitions remain owner
 operations; their caller must arrange authorized publication and recovery.
 The harness never claims to roll back a source rotation or Phase 34 cutover.
+Both verifier-produced Pengui bearers must remain valid beyond the full
+one-hour profile plus a two-minute cleanup/skew reserve before the release
+runtime enters an adapter. The changed-pack selector checks its live harness
+deadline again immediately before advancing the CAS pointer. A default
+15-minute HTTP bearer therefore returns the typed
+`ErrPerformanceAuthorityWindow` result before any pack mutation. The existing
+Pengui job execution broker is not an operator-token renewal contract for this
+measurement; no local issuer or renewal path is introduced. AC03 remains open
+until an owner-approved fresh Pengui authority seam is wired for the full run
+and cleanup. Increasing Chartworks' configured token lifetime is not a
+substitute for that owner contract.
 
 Release reports are atomically created as private `0600` files and an existing
 path is never replaced. The one-hour profile bound includes correctness probes,

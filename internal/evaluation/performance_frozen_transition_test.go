@@ -66,7 +66,8 @@ func (s *testPackSelection) SelectPack(ctx context.Context, e identity.Envelope,
 }
 
 func TestFrozenReleasePackTransitionUsesOrderedCASAndRestores(t *testing.T) {
-	ctx := t.Context()
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Minute))
+	defer cancel()
 	e, err := identity.FromVerified("tenant", "operator", "session", []string{"ops.write"}, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
@@ -109,6 +110,28 @@ func TestFrozenReleasePackTransitionUsesOrderedCASAndRestores(t *testing.T) {
 	}
 	if err := adapter.RestorePerformanceSelection(ctx); !errors.Is(err, ErrPerformanceReuseUnproven) || selection.current.PackDigest != changed {
 		t.Fatal("foreign selection revision was overwritten", err)
+	}
+}
+
+func TestFrozenReleaseExpiryCannotStrandChangedPack(t *testing.T) {
+	now := time.Now().UTC()
+	clock := now
+	e, err := identity.FromVerified("tenant", "operator", "session", []string{"ops.write"}, now.Add(15*time.Minute), func() time.Time { return clock })
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, changed := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	selection := &testPackSelection{current: PackSelection{Revision: 1, PackDigest: base, ProposalID: "base-proposal", Actor: "reviewer", SelectedAt: now}, proposals: map[string]string{"base-proposal": base, "changed-proposal": changed}}
+	adapter := &frozenReleaseAdapter{factory: &FrozenPerformanceReleaseAdapterFactory{Selection: selection, ChangedPackProposal: "changed-proposal"}, envelope: e, baseSelection: selection.current, changedPack: changed, selectionRevision: 1}
+	step := PerformanceStep{Kind: "runtime_pack_changed", Allowed: true}
+	ctx, cancel := context.WithDeadline(t.Context(), now.Add(time.Hour))
+	defer cancel()
+	if err := adapter.PreparePerformanceStep(ctx, step); !errors.Is(err, ErrPerformanceAuthorityWindow) || selection.current.Revision != 1 || selection.current.PackDigest != base {
+		t.Fatal("pack changed despite authority expiring before the run/cleanup deadline", err, selection.current)
+	}
+	clock = now.Add(16 * time.Minute)
+	if err := adapter.RestorePerformanceSelection(t.Context()); !errors.Is(err, ErrPerformanceAuthority) || selection.current.Revision != 1 || selection.current.PackDigest != base {
+		t.Fatal("expired cleanup stranded a changed selection", err, selection.current)
 	}
 }
 
@@ -186,7 +209,9 @@ func TestFrozenReleaseFactoryRequiresAcceptedChangedReportAndSelection(t *testin
 		PreparePerformanceStep(context.Context, PerformanceStep) error
 		RestorePerformanceSelection(context.Context) error
 	})
-	if err := transition.PreparePerformanceStep(t.Context(), changedStep); err != nil || selection.current.PackDigest != changed {
+	stepCtx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Minute))
+	defer cancel()
+	if err := transition.PreparePerformanceStep(stepCtx, changedStep); err != nil || selection.current.PackDigest != changed {
 		t.Fatal("strict adapter did not select the report-bound changed pack", err)
 	}
 	if err := transition.RestorePerformanceSelection(t.Context()); err != nil || selection.current.PackDigest != base {
@@ -263,11 +288,11 @@ func (a *failingChangedPackAdapter) RestorePerformanceSelection(ctx context.Cont
 func TestPerformanceReleaseRestoresSelectionAfterChangedPackProbeFailure(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	scopes := []string{"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant", "reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a", "cw.source.query:source-b", "cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "cw.execution_context.use:context-source-b", "query.plan", "query.execute"}
-	e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(time.Hour), func() time.Time { return now })
+	e, err := identity.FromVerified("tenant", "actor", "session", scopes, now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
-	action, err := identity.FromVerified("tenant", "actor", "session", withoutPerformanceScope(scopes, "query.execute"), now.Add(time.Hour), func() time.Time { return now })
+	action, err := identity.FromVerified("tenant", "actor", "session", withoutPerformanceScope(scopes, "query.execute"), now.Add(2*time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}

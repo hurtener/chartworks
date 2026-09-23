@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"time"
@@ -21,7 +22,20 @@ var (
 	ErrPerformanceEvidence = errors.New("evaluation: performance evidence unavailable")
 	// ErrPerformanceAuthority rejects a profile that does not match current verified reach.
 	ErrPerformanceAuthority = errors.New("evaluation: performance authority mismatch")
+	// ErrPerformanceAuthorityWindow is the explicit unmet-evidence result when
+	// verified Pengui authority cannot cover final_stress and cleanup.
+	ErrPerformanceAuthorityWindow = fmt.Errorf("%w: final stress requires fresh authority through cleanup", ErrPerformanceAuthority)
 )
+
+// A release profile may run for one hour and selection cleanup has a separate
+// five-second timeout. Keep additional room for the verifier's configured
+// clock skew (at most one minute) and scheduling delay. This is a conservative
+// fail-closed bound, not a local renewal of Pengui authority.
+const performanceAuthorityCleanupReserve = 2 * time.Minute
+
+func performanceAuthorityCovers(e identity.Envelope, end time.Time) bool {
+	return e.Valid() && !end.IsZero() && e.Deadline().After(end.Add(performanceAuthorityCleanupReserve))
+}
 
 // PerformanceReleaseEvidence is the exact accepted Phase 24 suite, its passing
 // report, the selected case and the independently reviewed runtime pack. It is
@@ -139,6 +153,13 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	if manifest.Validate() != nil {
 		return PerformanceReport{}, ErrInvalid
 	}
+	// The default Pengui bearer is shorter than final_stress. Do not enter any
+	// mutable pack-selection path unless both verified snapshots can survive
+	// the entire bounded run and the cleanup window.
+	authorityEnd := time.Now().Add(time.Duration(manifest.MaxDurationMS) * time.Millisecond)
+	if !performanceAuthorityCovers(envelope, authorityEnd) {
+		return PerformanceReport{}, ErrPerformanceAuthorityWindow
+	}
 	actionStep, ok := performanceStep(manifest.Steps, "actions_negative")
 	if !ok || actionStep.AuthorityOverride == nil {
 		return PerformanceReport{}, ErrInvalid
@@ -146,6 +167,9 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	actionEnvelope, err := r.Verifier.Verify(ctx, actionNegativeBearer, auth.HTTP)
 	if err != nil || !actionEnvelope.Valid() || actionEnvelope.Tenant() != envelope.Tenant() || actionEnvelope.User() != envelope.User() || actionEnvelope.Session() != envelope.Session() || !sameStrings(actionEnvelope.Scopes(), actionStep.AuthorityOverride.Scopes) || actionEnvelope.Has(actionStep.DeniedAction) {
 		return PerformanceReport{}, ErrPerformanceAuthority
+	}
+	if !performanceAuthorityCovers(actionEnvelope, authorityEnd) {
+		return PerformanceReport{}, ErrPerformanceAuthorityWindow
 	}
 	host := RuntimePerformanceEnvironment(manifest.Environment.RunnerLabel)
 	if manifest.Environment.OS != host.OS || manifest.Environment.Architecture != host.Architecture || manifest.Environment.CPUs != host.CPUs || manifest.Environment.GoVersion != host.GoVersion {
