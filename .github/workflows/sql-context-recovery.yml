@@ -120,7 +120,7 @@ jobs:
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Validation must not modify source
         if: always()
         run: git diff --exit-code
