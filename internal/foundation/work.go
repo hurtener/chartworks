@@ -317,12 +317,17 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 		return nil, err
 	}
 	if v.Onboarding.Enabled {
+		goalService, goalErr := onboarding.NewGoalService(w.sourceService, w.engineering, published, topics)
+		if goalErr != nil {
+			w.close()
+			return nil, goalErr
+		}
 		domains, domainErr := onboarding.NewDomains(w.sourceService, w.engineering, topics, published, w.autopilot)
 		if domainErr != nil {
 			w.close()
 			return nil, domainErr
 		}
-		w.onboarding, domainErr = onboarding.New(db, domains, onboarding.Limits{MaxStages: v.Onboarding.MaxStages, MaxModelCalls: v.Onboarding.MaxModelCalls, MaxTokens: v.Onboarding.MaxTokens, MaxEntities: v.Onboarding.MaxEntities, MaxDuration: time.Duration(v.Onboarding.MaxDuration)})
+		w.onboarding, domainErr = onboarding.NewWithGoal(db, domains, onboarding.Limits{MaxStages: v.Onboarding.MaxStages, MaxModelCalls: v.Onboarding.MaxModelCalls, MaxTokens: v.Onboarding.MaxTokens, MaxEntities: v.Onboarding.MaxEntities, MaxDuration: time.Duration(v.Onboarding.MaxDuration)}, goalService)
 		if domainErr != nil {
 			w.close()
 			return nil, domainErr
