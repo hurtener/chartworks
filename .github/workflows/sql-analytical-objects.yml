@@ -1,0 +1,65 @@
+name: SQL analytical review objects
+
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths:
+      - scripts/sql-recovery/analytical-review.bin
+      - .github/workflows/sql-analytical-objects.yml
+
+permissions:
+  contents: write
+
+jobs:
+  objects:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener' && github.ref == 'refs/heads/codex/sql-semantic-context-recovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate reviewed checkpoint and write immutable blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, subprocess
+          packed = pathlib.Path('scripts/sql-recovery/analytical-review.bin').read_bytes()
+          assert len(packed) == 3096 and hashlib.sha256(packed).hexdigest() == '67fa24886a404e73cbfc5e7c585c88206c0d0e7acd65fb64dd6cd0a9155358ac'
+          patch = lzma.decompress(packed)
+          assert len(patch) == 8770 and hashlib.sha256(patch).hexdigest() == '73f1a47f9a53e06b0452a3e98bc4f79a30c7f1b11dd5a98855fc0f4ce1d9f191'
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'analytical.patch'
+          target.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '--index', str(target)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(target)], check=True)
+          raw = subprocess.check_output(['git', 'diff', '--cached', '--raw', '-z']).decode().split('\0')
+          entries = []
+          for i in range(0, len(raw)-1, 2):
+              header, path = raw[i:i+2]
+              fields = header.split()
+              assert len(fields) == 5 and fields[1] == '100644' and fields[4] in ('A', 'M')
+              assert path.startswith(('internal/exec/', 'internal/nlqapi/', 'docs/'))
+              if path.endswith('.go'):
+                  assert not subprocess.check_output(['gofmt', '-l', path]).strip(), path
+              data = pathlib.Path(path).read_bytes()
+              want = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              response = subprocess.check_output(['gh', 'api', '--method', 'POST', 'repos/hurtener/chartworks/git/blobs', '--input', '-'], input=json.dumps({'encoding': 'base64', 'content': base64.b64encode(data).decode()}).encode())
+              got = json.loads(response)['sha']
+              assert want == got, path
+              entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': got, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
+          assert len(entries) == 4
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'analytical-objects'
+          output.mkdir()
+          (output / 'objects.json').write_text(json.dumps(entries, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-analytical-review-objects
+          path: ${{ runner.temp }}/analytical-objects/
+          retention-days: 7
+
+# Temporary authoring transport. It writes only immutable blobs, never branch
+# refs or main, and produces no modified-worktree test evidence. Remove with
+# the payload when publishing the verified source tree.
