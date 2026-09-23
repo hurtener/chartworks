@@ -108,7 +108,7 @@ func TestSQLRecoverySelectedFactsActivateCompoundRules(t *testing.T) {
 	p := recoveryPublication()
 	metric := semantics.Reference{Kind: semantics.KindKPI, ID: "margin_pct"}
 	family := semantics.Reference{Kind: semantics.KindDimension, ID: "family"}
-	rules := selectionPolicy(t, p, []semantics.RuleDefinition{selectionRule("require-family", semantics.RuleScope{Kind: semantics.RuleScopeEntities, Targets: []semantics.Reference{metric}}, family)}, nil)
+	rules := selectionPolicy(t, p, []semantics.RuleDefinition{selectionRule("require-family", semantics.RuleScope{Kind: semantics.RuleScopeEntities, Targets: []semantics.Reference{metric, family}}, family)}, nil)
 	service, _ := recoveryRouteService(t, p, recoveryFacet(t, p, "kpi", "margin_pct", p.Definition.KPIs[1]))
 	service.rules = rules
 	out, err := service.Route(context.Background(), cw07DiscoveryEnvelope(t), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Gross margin percentage"})
@@ -138,7 +138,8 @@ func TestSQLRecoverySelectedMetricActivatesClarificationBeforeModel(t *testing.T
 	p := recoveryPublication()
 	metric := semantics.Reference{Kind: semantics.KindKPI, ID: "margin_pct"}
 	family := semantics.Reference{Kind: semantics.KindDimension, ID: "family"}
-	pattern := semantics.ClarificationPattern{ID: "grouping", Version: "v1", Targets: []semantics.Reference{family}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "selection-fixture"}, Policy: &semantics.ClarificationPolicy{SchemaVersion: 1, When: semantics.ClarificationWhen{AnyReferences: []semantics.Reference{metric}}, Why: "Choose a grouping for the selected KPI."}, Slots: []semantics.ClarificationSlot{{ID: "group", Kind: semantics.SlotChoice, Required: true, Sensitivity: semantics.LiteralNonSensitive, Prompt: "Which grouping?", Choices: []semantics.ClarificationChoice{{ID: "family-option", Label: "Family", Target: &family}}}}}
+	revenue := semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}
+	pattern := semantics.ClarificationPattern{ID: "grouping", Version: "v1", Targets: []semantics.Reference{metric, family, revenue}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "selection-fixture"}, Policy: &semantics.ClarificationPolicy{SchemaVersion: 1, When: semantics.ClarificationWhen{AnyReferences: []semantics.Reference{metric}}, Why: "Choose a grouping for the selected KPI."}, Slots: []semantics.ClarificationSlot{{ID: "group", Kind: semantics.SlotChoice, Required: true, Sensitivity: semantics.LiteralNonSensitive, Prompt: "Which grouping?", Choices: []semantics.ClarificationChoice{{ID: "family-option", Label: "Family", Target: &family}, {ID: "revenue-option", Label: "Revenue", Target: &revenue}}}}}
 	service, engine := recoveryRouteService(t, p, recoveryFacet(t, p, "kpi", "margin_pct", p.Definition.KPIs[1]))
 	service.rules = selectionPolicy(t, p, nil, []semantics.ClarificationPattern{pattern})
 	in := RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Gross margin percentage"}
@@ -162,7 +163,7 @@ func TestSQLRecoverySelectionDoesNotAnswerWithMetricIngredients(t *testing.T) {
 	metric := semantics.Reference{Kind: semantics.KindKPI, ID: "margin_pct"}
 	revenue := semantics.Reference{Kind: semantics.KindMeasure, ID: "revenue"}
 	cost := semantics.Reference{Kind: semantics.KindMeasure, ID: "costs"}
-	pattern := semantics.ClarificationPattern{ID: "measure", Version: "v1", Targets: []semantics.Reference{revenue, cost}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "selection-fixture"}, Policy: &semantics.ClarificationPolicy{SchemaVersion: 1, When: semantics.ClarificationWhen{AnyReferences: []semantics.Reference{metric}}, Why: "Select one ingredient to inspect."}, Slots: []semantics.ClarificationSlot{{ID: "ingredient", Kind: semantics.SlotChoice, Required: true, Sensitivity: semantics.LiteralNonSensitive, Prompt: "Which ingredient?", Choices: []semantics.ClarificationChoice{{ID: "revenue-option", Label: "Revenue", Target: &revenue}, {ID: "cost-option", Label: "Cost", Target: &cost}}}}}
+	pattern := semantics.ClarificationPattern{ID: "measure", Version: "v1", Targets: []semantics.Reference{metric, revenue, cost}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "selection-fixture"}, Policy: &semantics.ClarificationPolicy{SchemaVersion: 1, When: semantics.ClarificationWhen{AnyReferences: []semantics.Reference{metric}}, Why: "Select one ingredient to inspect."}, Slots: []semantics.ClarificationSlot{{ID: "ingredient", Kind: semantics.SlotChoice, Required: true, Sensitivity: semantics.LiteralNonSensitive, Prompt: "Which ingredient?", Choices: []semantics.ClarificationChoice{{ID: "revenue-option", Label: "Revenue", Target: &revenue}, {ID: "cost-option", Label: "Cost", Target: &cost}}}}}
 	service, engine := recoveryRouteService(t, p, recoveryFacet(t, p, "kpi", "margin_pct", p.Definition.KPIs[1]))
 	service.rules = selectionPolicy(t, p, nil, []semantics.ClarificationPattern{pattern})
 	out, err := service.Route(context.Background(), cw07DiscoveryEnvelope(t), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Gross margin percentage"})
@@ -250,7 +251,7 @@ func TestSQLRecoverySelectionOmissionsCannotDisableRequiredRules(t *testing.T) {
 	metric := semantics.Reference{Kind: semantics.KindKPI, ID: "margin_pct"}
 	family := semantics.Reference{Kind: semantics.KindDimension, ID: "family"}
 	service, engine := recoveryRouteService(t, p, recoveryFacet(t, p, "kpi", "margin_pct", p.Definition.KPIs[1]))
-	service.rules = selectionPolicy(t, p, []semantics.RuleDefinition{selectionRule("required", semantics.RuleScope{Kind: semantics.RuleScopeEntities, Targets: []semantics.Reference{metric}}, family)}, nil)
+	service.rules = selectionPolicy(t, p, []semantics.RuleDefinition{selectionRule("required", semantics.RuleScope{Kind: semantics.RuleScopeEntities, Targets: []semantics.Reference{metric, family}}, family)}, nil)
 	out, err := service.Route(context.Background(), cw07DiscoveryEnvelope(t), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Gross margin percentage", OmittedRoots: []semantics.Reference{family}})
 	if err != nil || out.Clarification == nil || out.Clarification.Reason != "conflicting_semantic_rules" || engine.embeds != 0 {
 		t.Fatal("omission disabled a hard requirement", err)

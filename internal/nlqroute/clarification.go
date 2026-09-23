@@ -85,7 +85,9 @@ func scopedClarificationInputs(in RouteRequest, admitted []admittedTopic) (map[s
 			input.References = selectedRuleReferences(item)
 			input.Selection = &semantics.ClarificationReferenceSelection{References: []semantics.Reference{}}
 			for _, root := range selectedRoots(item.selection) {
-				if root.Reason != "clarification" {
+				// Required dependencies and previous resolutions are not independent
+				// user choices. They still activate rules through References above.
+				if root.Reason != "clarification" && root.Reason != "required_rule" {
 					input.Selection.References = append(input.Selection.References, root.Reference)
 				}
 			}

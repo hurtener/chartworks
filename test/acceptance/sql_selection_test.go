@@ -23,10 +23,11 @@ func TestSQLRecoverySelectedIntentAcceptance(t *testing.T) {
 	amount := semantics.Reference{Kind: semantics.KindColumn, Dataset: f.pack.Datasets[0].ID, ID: "amount"}
 	definition := f.definition
 	definition.Version = "selected-rules-v2"
-	definition.Rules = []semantics.RuleDefinition{{ID: "selected-revenue", Version: "v1", Category: semantics.RuleStructural, Class: semantics.RuleExecutionConstraint, Scope: semantics.RuleScope{Kind: semantics.RuleScopeEntities, Targets: []semantics.Reference{metric}}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "synthetic-selected-review"}, Constraint: &semantics.Constraint{Kind: semantics.ConstraintRequireReference, Target: amount}}}
+	definition.Rules = []semantics.RuleDefinition{{ID: "selected-revenue", Version: "v1", Category: semantics.RuleStructural, Class: semantics.RuleExecutionConstraint, Scope: semantics.RuleScope{Kind: semantics.RuleScopeEntities, Targets: []semantics.Reference{metric, amount}}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "synthetic-selected-review"}, Constraint: &semantics.Constraint{Kind: semantics.ConstraintRequireReference, Target: amount}}}
 	for i := range definition.Patterns {
 		if definition.Patterns[i].ID == "amount-required" {
 			definition.Patterns[i].Policy.When = semantics.ClarificationWhen{AnyReferences: []semantics.Reference{metric}}
+			definition.Patterns[i].Targets = append(definition.Patterns[i].Targets, metric)
 		}
 	}
 	f.publishRules(t, definition, 1)
