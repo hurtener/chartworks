@@ -47,6 +47,7 @@ func (b BusinessBoundQuery) GoString() string { return b.String() }
 type businessRange struct {
 	relation Relation
 	alias    string
+	virtual  string
 }
 
 type businessSQLLayout struct {
@@ -501,7 +502,7 @@ func businessReadRange(tokens []businessToken, start, end int, binding Binding, 
 				index++
 			}
 		}
-		return businessRange{relation: Relation{ID: "__cte_" + parts[0]}, alias: alias}, index, nil
+		return businessRange{alias: alias, virtual: parts[0]}, index, nil
 	}
 	if len(parts) < 2 || len(parts) > 3 || len(parts) == 3 && parts[0] != binding.Catalog {
 		return businessRange{}, index, businessSQLFailure("unsupported_unqualified_or_foreign_relation")

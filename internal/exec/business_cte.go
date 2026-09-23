@@ -57,8 +57,8 @@ func businessBindingLayout(ctx context.Context, statement string, tokens []busin
 		}
 		localUses := map[string]bool{}
 		for _, source := range scope.ranges {
-			if strings.HasPrefix(source.relation.ID, "__cte_") {
-				dependency := strings.TrimPrefix(source.relation.ID, "__cte_")
+			if source.virtual != "" {
+				dependency := source.virtual
 				if localUses[dependency] {
 					return bad, businessSQLFailure("unsupported_select_shape")
 				}

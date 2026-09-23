@@ -67,4 +67,11 @@ func TestBusinessCTERejectsAmbiguousOrUnreachableTargets(t *testing.T) {
 	if _, err := BindBusinessConstraints(context.Background(), b, `WITH p AS (SELECT id FROM analytics.sales) SELECT * FROM p`, nil, []BusinessConstraint{c}); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("unqualified dialect received CTE expansion", err)
 	}
+	shadow := parserBinding()
+	shadow.Relations[0].ID = "__cte_paid"
+	shadowConstraint := businessFixtureConstraint()
+	shadowConstraint.Dataset = "__cte_paid"
+	if out, err := BindBusinessConstraints(context.Background(), shadow, `WITH paid AS (SELECT sale_id FROM analytics.items), totals AS (SELECT sale_id FROM paid) SELECT sale_id FROM totals`, nil, []BusinessConstraint{shadowConstraint}); err == nil || out.SQL != "" {
+		t.Fatal("virtual CTE name impersonated reviewed base relation")
+	}
 }
