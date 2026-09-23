@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -55,12 +54,13 @@ type GenerationContext struct {
 	Tokens               int                `json:"tokens"`
 	Budget               int                `json:"budget"`
 	Context              AssembledContext   `json:"context"`
+	Fit                  *GenerationFit     `json:"fit,omitempty"`
 	seal                 [32]byte
 }
 
 // ResolvePrecedence is the first phase-18 generation-context consumer. It
-// chooses one detached source in the documented order, serializes it with the
-// assembled context and counts that exact final payload. It never evaluates a
+// chooses one detached source in the documented order, fits optional context
+// around it and counts the exact final payload. It never evaluates a
 // rule, widens authority, calls a model, or executes a query.
 func (a *ContextAssembler) ResolvePrecedence(ctx context.Context, input GenerationInput) (GenerationContext, error) {
 	if ctx == nil {
@@ -92,32 +92,7 @@ func (a *ContextAssembler) ResolvePrecedence(ctx context.Context, input Generati
 	if err != nil {
 		return GenerationContext{}, err
 	}
-	result := GenerationContext{
-		MandatoryConstraints: cloneConstraintState(assembled.Constraints),
-		PinnedMetrics:        cloneMetrics(assembled.Metrics),
-		Context:              assembled,
-	}
-	switch {
-	case len(editBase) > 0:
-		result.Strategy, result.FewShotDisabled, result.Selected = GenerationEditBase, true, editBase
-	case len(hints) > 0:
-		result.Strategy, result.FewShotDisabled, result.Selected = GenerationHints, true, hints
-	case len(examples) > 0:
-		result.Strategy, result.Selected = GenerationExamples, examples
-	default:
-		result.Strategy, result.Selected = GenerationDefault, defaults
-	}
-	result.Prompt = renderGenerationPrompt(assembled.Prompt, result.Selected)
-	result.Tokens, err = a.counter.Count(result.Prompt)
-	if err != nil {
-		return GenerationContext{}, err
-	}
-	result.Budget = assembled.Budget
-	if result.Tokens > result.Budget {
-		return GenerationContext{}, &GenerationBudgetError{Tier: assembled.Tier, Budget: result.Budget, RequiredTokens: result.Tokens}
-	}
-	result.seal = sealGenerationContext(result)
-	return result, nil
+	return a.fitGeneration(ctx, assembled, editBase, hints, examples, defaults)
 }
 
 // ResolvePrecedence uses the pinned default tokenizer for callers that do not
@@ -171,7 +146,6 @@ func cloneInstructions(items []Instruction, path string) ([]Instruction, error) 
 		}
 		seen[out[i].Key] = true
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
 }
 
