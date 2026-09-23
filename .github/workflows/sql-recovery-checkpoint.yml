@@ -1,0 +1,57 @@
+name: SQL recovery checkpoint publisher
+
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [scripts/sql-recovery/checkpoint.patch]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sql-recovery-checkpoint-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener' && github.ref == 'refs/heads/codex/sql-semantic-context-recovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Apply and publish the exact branch checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch=scripts/sql-recovery/checkpoint.patch
+          test -f "$patch"
+          test "$(wc -c < "$patch")" -lt 1048576
+          git apply --check --index "$patch"
+          git apply --index "$patch"
+          python3 - <<'PY'
+          import subprocess
+          rows = subprocess.check_output(['git', 'diff', '--cached', '--raw', '-z']).decode().split('\0')
+          count = 0
+          for i in range(0, len(rows)-1, 2):
+              header, path = rows[i:i+2]
+              fields = header.split()
+              if len(fields) != 5 or fields[1] != '100644' or fields[4] not in ('A', 'M'):
+                  raise SystemExit('Only added/modified regular text files may be published')
+              if not path.startswith(('internal/nlq/', 'internal/nlqroute/', 'internal/nlqexec/', 'internal/semantics/', 'docs/')):
+                  raise SystemExit('Checkpoint path is outside the approved SQL recovery scope')
+              count += 1
+          if not 1 <= count <= 30:
+              raise SystemExit('Checkpoint must contain between one and thirty files')
+          PY
+          git rm -- "$patch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(nlq): apply reviewed SQL recovery checkpoint'
+          git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
+
+# Temporary authoring transport for this branch only. It neither runs tests on
+# modified worktrees nor writes main. Remove it before this draft is merge-ready.
+# Subsequent API-authored commits trigger the separate read-only verification.
