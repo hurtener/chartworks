@@ -1,0 +1,66 @@
+name: SQL grain source objects
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/sql-grain-transfer/**, .github/workflows/sql-grain-objects.yml]
+permissions:
+  contents: write
+jobs:
+  source-objects:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener' && github.ref == 'refs/heads/codex/sql-semantic-context-recovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact patch and store source objects without advancing a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, io, json, os, pathlib, subprocess, urllib.request
+          base = 'dba8a7fc16ccd8fc48e49d6d4ce1a436bf4eecee'
+          wanted = 'f6c7923f7761d9b2c6ac56c86039d227cca28ce2'
+          compressed = b''.join(pathlib.Path('.github/sql-grain-transfer/' + str(i)).read_bytes() for i in range(4))
+          assert len(compressed) == 18845
+          with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
+              patch = stream.read(1048577)
+          assert len(patch) == 70376
+          assert hashlib.sha256(patch).hexdigest() == '5d715f63f3a8f5601e10c3d196623e6ac38728a580d98bc6d3df48f1355e7969'
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'grain-objects'
+          out.mkdir()
+          patchfile = out / 'checkpoint.patch'
+          patchfile.write_bytes(patch)
+          subprocess.run(['git', 'read-tree', '--reset', '-u', base], check=True)
+          subprocess.run(['git', 'apply', '--check', '--index', str(patchfile)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(patchfile)], check=True)
+          actual = subprocess.check_output(['git', 'write-tree'], text=True).strip()
+          assert actual == wanted, (actual, wanted)
+          paths = subprocess.check_output(['git', 'diff', '--name-only', '--cached', base], text=True).splitlines()
+          assert len(paths) == 20
+          entries = []
+          for path in paths:
+              assert path.startswith(('internal/exec/', 'internal/nlqexec/', 'internal/store/postgres/', 'test/acceptance/', 'docs/')) or path == '.github/workflows/sql-context-recovery.yml'
+              mode = subprocess.check_output(['git', 'ls-files', '-s', '--', path], text=True).split()[0]
+              assert mode == '100644'
+              data = pathlib.Path(path).read_bytes()
+              assert len(data) < 200000 and b'\0' not in data
+              sha = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              payload = json.dumps({'content': base64.b64encode(data).decode(), 'encoding': 'base64'}).encode()
+              request = urllib.request.Request('https://api.github.com/repos/hurtener/chartworks/git/blobs', data=payload, method='POST', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  result = json.load(response)
+              assert result['sha'] == sha, path
+              entries.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': sha})
+          (out / 'objects.json').write_text(json.dumps({'base': base, 'tree': actual, 'entries': entries}, indent=2) + '\n')
+          print('Verified source objects:', len(entries), 'tree:', actual)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-grain-source-objects
+          path: ${{ runner.temp }}/grain-objects/
+          retention-days: 7
+# Temporary source transport only; it neither tests a modified worktree nor
+# commits or updates any ref. Remove with payload fragments before qualification.
