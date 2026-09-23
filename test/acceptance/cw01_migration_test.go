@@ -31,7 +31,7 @@ func cw01MigrationAcceptance(t *testing.T) {
 	if err := database.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if count(t, connection, `SELECT count(*) FROM chartworks.schema_migrations`) != len(manifest) {
+	if count(t, connection, `SELECT count(*) FROM chartworks.schema_migrations`) != int64(len(manifest)) {
 		t.Fatal("upgrade did not apply the complete forward migration suffix")
 	}
 	for _, migration := range manifest[:35] {
