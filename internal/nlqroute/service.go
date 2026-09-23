@@ -172,6 +172,7 @@ type ContextView struct {
 	TopicVersion string               `json:"topic_version,omitempty"`
 	Topics       []nlq.TopicRevision  `json:"topics,omitempty"`
 	Question     string               `json:"question"`
+	Relations    []nlq.SourceRelation `json:"relations,omitempty"`
 	Prompt       string               `json:"prompt"`
 	Evidence     []nlq.Evidence       `json:"evidence"`
 	Constraints  *nlq.ConstraintState `json:"constraints,omitempty"`
@@ -253,6 +254,7 @@ type admittedTopic struct {
 	binding        *readexec.Binding
 	id             string
 	publication    topics.Published
+	relations      []readexec.Relation
 	rules          rulesets.Published
 	hasRules       bool
 	constraints    *nlq.ConstraintState
@@ -403,7 +405,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		if publication.State.Topic != topic || publication.Definition.Topic != topic || publication.Definition.Version != publication.State.Version || publication.State.Archived || !publication.State.Active || publication.State.Version == "" || !topics.DigestValid(publication.Digest) {
 			return RouteResult{}, store.ErrConflict
 		}
-		item := admittedTopic{id: topic, publication: publication}
+		item := admittedTopic{id: topic, publication: publication, relations: contract.Relations}
 		item.rules, item.hasRules, err = s.readRules(ctx, e, topic, publication.State.Version, publication.Digest)
 		if err != nil {
 			return RouteResult{}, err
@@ -618,6 +620,10 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		}
 	}
 
+	relations, err := sourceRelations(admitted)
+	if err != nil {
+		return RouteResult{}, err
+	}
 	input := nlq.ContextInput{
 		Locale:       in.Locale,
 		Strategy:     result.Outcome,
@@ -625,6 +631,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		TopicVersion: admitted[0].publication.State.Version,
 		Topics:       topicRevisions(admitted),
 		Question:     in.Question,
+		Relations:    relations,
 		Evidence:     makeEvidence(hits),
 		Constraints:  mergeInterpretationConstraints(mergeConstraints(admitted), interpretation),
 		Metrics:      metrics,
@@ -1504,11 +1511,15 @@ func contextView(input nlq.AssembledContext) *ContextView {
 		Tier: input.Tier, Budget: input.Budget, Tokens: input.Tokens, Locale: input.Locale,
 		Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: append([]nlq.TopicRevision(nil), input.Topics...),
 		Question: input.Question, Prompt: input.Prompt, Evidence: append([]nlq.Evidence(nil), input.Evidence...),
-		Metrics: append([]nlq.PinnedMetric(nil), input.Metrics...), Advisory: append([]nlq.OptionalItem(nil), input.Advisory...),
+		Relations: append([]nlq.SourceRelation(nil), input.Relations...),
+		Metrics:   append([]nlq.PinnedMetric(nil), input.Metrics...), Advisory: append([]nlq.OptionalItem(nil), input.Advisory...),
 		Examples: append([]nlq.OptionalItem(nil), input.Examples...),
 	}
 	for i := range out.Metrics {
 		out.Metrics[i].Dependencies = append([]nlq.MetricDependency(nil), input.Metrics[i].Dependencies...)
+	}
+	for i := range out.Relations {
+		out.Relations[i].Columns = append([]string(nil), input.Relations[i].Columns...)
 	}
 	if input.Constraints != nil {
 		constraints := &nlq.ConstraintState{Allowed: input.Constraints.Allowed}
@@ -1525,4 +1536,45 @@ func topicRevisions(admitted []admittedTopic) []nlq.TopicRevision {
 		out[i] = nlq.TopicRevision{Topic: item.id, Version: item.publication.State.Version}
 	}
 	return out
+}
+
+func sourceRelations(admitted []admittedTopic) ([]nlq.SourceRelation, error) {
+	var out []nlq.SourceRelation
+	for _, item := range admitted {
+		// Test doubles predating physical contracts may omit the projection.
+		// Production Contract always returns the verified current relations.
+		if len(item.relations) == 0 {
+			continue
+		}
+		for _, dataset := range item.publication.Definition.Datasets {
+			var matched *readexec.Relation
+			for i := range item.relations {
+				if item.relations[i].ID == dataset.ID {
+					if matched != nil {
+						return nil, readexec.ErrBinding
+					}
+					matched = &item.relations[i]
+				}
+			}
+			if matched == nil || matched.Schema == "" || matched.Name == "" || len(matched.Columns) != len(dataset.Columns) {
+				return nil, readexec.ErrBinding
+			}
+			columns := make([]string, 0, len(dataset.Columns))
+			for _, column := range dataset.Columns {
+				found := false
+				for _, actual := range matched.Columns {
+					if actual.Name == column.SourceName && actual.Safe {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, readexec.ErrBinding
+				}
+				columns = append(columns, column.SourceName)
+			}
+			out = append(out, nlq.SourceRelation{Topic: item.id, Dataset: dataset.ID, Name: matched.Schema + "." + matched.Name, Columns: columns})
+		}
+	}
+	return out, nil
 }

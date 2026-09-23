@@ -100,7 +100,7 @@ type reviewSourceReader interface {
 // wiring supplies *exec.Validator and *exec.Executor; neither interface can
 // construct or deserialize a plan.
 type PlanValidator interface {
-	Validate(context.Context, identity.Envelope, exec.Request) (exec.Plan, error)
+	ValidateWithin(context.Context, identity.Envelope, exec.Request, []exec.RelationScope) (exec.Plan, error)
 }
 
 // PlanExecutor executes only opaque plans issued by the existing read core.
@@ -160,6 +160,7 @@ type QueryRecord struct {
 	Question         string                       `json:"question"`
 	Route            nlqroute.RouteResult         `json:"route"`
 	Generation       nlq.GenerationContext        `json:"generation"`
+	RelationScope    []exec.RelationScope         `json:"relation_scope"`
 	SQL              string                       `json:"-"`
 	Parameters       []exec.Parameter             `json:"-"`
 	Receipt          gateway.Receipt              `json:"receipt"`

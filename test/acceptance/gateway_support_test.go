@@ -134,6 +134,8 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 				result[0]["embedding"] = []float64{1e40, 2}
 			case "model":
 				model = "different-embedding-space"
+			case "openrouter-pplx-alias":
+				model = "pplx-embed-v1-0.6b"
 			case "nonfinite":
 				_, _ = io.WriteString(w, `{"model":"embedding-model","data":[{"index":0,"embedding":[1e400,2]}]}`)
 				return

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
@@ -145,6 +146,9 @@ type Published struct {
 type Contract struct {
 	Publication Published `json:"publication"`
 	ObservedAt  time.Time `json:"observed_at"`
+	// Relations are the current physical names for reviewed datasets only.
+	// They are observed with the same signed source reach as Publication.
+	Relations []readexec.Relation `json:"-"`
 }
 
 // HealthIssue is a content-free current source continuity observation.
