@@ -504,6 +504,7 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 	model := newGatewayFixture(t, func(cfg *config.Gateway) {
 		embedding := cfg.Roles["embedding"]
 		embedding.MaxBatchItems = 4
+		embedding.MaxBatchBytes = 64 << 10
 		cfg.Roles["embedding"] = embedding
 	})
 	index, err := vindex.New(f.db)
@@ -567,6 +568,7 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var approvedReview topics.Review
 	for run.Status != onboarding.StatusComplete {
 		switch {
 		case run.Stage == onboarding.StageReview:
@@ -574,10 +576,11 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			review, reviewErr := topicService.Review(t.Context(), e, in.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Independent synthetic review"})
+			review, reviewErr := topicService.Review(t.Context(), e, in.Topic, topics.ReviewRequest{DraftRevision: draft.Metadata.Revision, Digest: draft.Metadata.Digest, Decision: "approve", Note: "Explicit synthetic approval"})
 			if reviewErr != nil {
 				t.Fatal(reviewErr)
 			}
+			approvedReview = review
 			run, err = client.AnswerOnboarding(t.Context(), id, onboarding.AnswerRequest{ExpectedVersion: run.Version, Review: &onboarding.ReviewReference{ID: review.ID, Revision: review.DraftRevision, Digest: review.Digest}})
 		case run.Status == onboarding.StatusAttention:
 			run, err = client.AnswerOnboarding(t.Context(), id, onboarding.AnswerRequest{ExpectedVersion: run.Version, Answers: phase33Answers(run.Questions, "confirmed_external")})
@@ -585,20 +588,38 @@ func testPhase33RealDomainBoundary(t *testing.T) {
 			run, err = client.ResumeOnboarding(t.Context(), id, run.Version)
 		}
 		if err != nil {
+			var status *sdk.StatusError
+			if errors.As(err, &status) {
+				t.Fatal("real domain journey", run.Stage, status.Status, status.Code, err)
+			}
 			t.Fatal("real domain journey", run.Stage, err)
 		}
 	}
 	if model.requests.Load() < 2 || run.Usage.ModelCalls != run.Limits.MaxModelCalls || run.Usage.Tokens != run.Limits.MaxTokens {
 		t.Fatal("gateway reservation or recorded model boundary missing", model.requests.Load(), run.Usage)
 	}
+	var topicRef onboarding.Reference
 	for _, kind := range []string{"topic", "onboarding_query_intent", "onboarding_block_intent", "onboarding_report_intent"} {
 		found := false
 		for _, ref := range run.References {
 			found = found || ref.Kind == kind
+			if ref.Kind == "topic" && ref.ID == in.Topic {
+				topicRef = ref
+			}
 		}
 		if !found {
 			t.Fatal("missing durable handoff", kind, run.References)
 		}
+	}
+	published, err := topicService.Read(t.Context(), e, in.Topic, "")
+	if err != nil || !published.State.Active || published.State.Archived || published.State.Topic != in.Topic || published.State.Version != in.TopicVersion || published.State.Revision < 1 || published.State.Revision != topicRef.Revision || published.Digest != topicRef.Digest || published.Digest != approvedReview.Digest || published.Definition.Topic != in.Topic || published.Definition.Version != in.TopicVersion {
+		t.Fatal("ledger topic does not match active reviewed publication", err)
+	}
+	metadata := support.Raw(t, f.dsn)
+	var reviewID, digest string
+	var draftRevision int64
+	if err := metadata.QueryRow(t.Context(), `SELECT review_id,draft_revision,digest FROM chartworks.topic_published_versions WHERE tenant_id=$1 AND topic_id=$2 AND version_id=$3`, e.Tenant(), in.Topic, published.State.Version).Scan(&reviewID, &draftRevision, &digest); err != nil || reviewID != approvedReview.ID || draftRevision != approvedReview.DraftRevision || digest != published.Digest {
+		t.Fatal("active publication lost its explicit approval link", err)
 	}
 	rotated, err := f.s.Rotate(t.Context(), e, in.Source, pack.Datasets[0].Source.SourceRevision)
 	if err != nil || rotated.Revision <= pack.Datasets[0].Source.SourceRevision || rotated.ContextID == in.Context {
