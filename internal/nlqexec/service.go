@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -401,7 +402,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		if !executionRepairable(report, runErr) {
 			return s.finishRun(ctx, e, record, report, 0, runErr)
 		}
-		current.assembled, err = s.resealQueryContext(ctx, record)
+		current.assembled, err = s.resealQueryContext(ctx, record, current.binding)
 		if err != nil {
 			return RunResult{}, err
 		}
@@ -1364,7 +1365,7 @@ func redactExample(value ExampleRecord, inspect bool) ExampleRecord {
 	return value
 }
 
-func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord) (nlq.AssembledContext, error) {
+func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, binding exec.Binding) (nlq.AssembledContext, error) {
 	if len(q.Topics) == 0 || len(q.Topics) != len(q.TopicVersions) {
 		return nlq.AssembledContext{}, exec.ErrBinding
 	}
@@ -1377,9 +1378,15 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord) (nlq.As
 		persisted = nlq.AssembledContext{
 			Tier: view.Tier, Budget: view.Budget, Tokens: view.Tokens, Locale: view.Locale, Strategy: view.Strategy,
 			Topic: view.Topic, TopicVersion: view.TopicVersion, Topics: append([]nlq.TopicRevision(nil), view.Topics...),
-			Question: view.Question, Evidence: append([]nlq.Evidence(nil), view.Evidence...), Constraints: view.Constraints,
+			Question: view.Question, Relations: cloneRelations(view.Relations), Evidence: append([]nlq.Evidence(nil), view.Evidence...), Constraints: view.Constraints,
 			Metrics: append([]nlq.PinnedMetric(nil), view.Metrics...), Advisory: append([]nlq.OptionalItem(nil), view.Advisory...), Examples: append([]nlq.OptionalItem(nil), view.Examples...),
 		}
+	}
+	if q.Route.Context != nil && (len(q.Route.Context.Relations) != 0 || len(persisted.Relations) != 0) && !reflect.DeepEqual(q.Route.Context.Relations, persisted.Relations) {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	if err := validateResealedRelations(persisted.Relations, q.Topics, binding); err != nil {
+		return nlq.AssembledContext{}, err
 	}
 	if persisted.Tier == "" {
 		var err error
@@ -1400,7 +1407,7 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord) (nlq.As
 	}
 	assembled, err := assembler.Assemble(ctx, nlq.ContextInput{
 		Locale: persisted.Locale, Strategy: persisted.Strategy, Topic: persisted.Topic, TopicVersion: persisted.TopicVersion,
-		Topics: append([]nlq.TopicRevision(nil), persisted.Topics...), Question: persisted.Question,
+		Topics: append([]nlq.TopicRevision(nil), persisted.Topics...), Question: persisted.Question, Relations: cloneRelations(persisted.Relations),
 		Evidence: append([]nlq.Evidence(nil), persisted.Evidence...), Constraints: persisted.Constraints,
 		Metrics: append([]nlq.PinnedMetric(nil), persisted.Metrics...), Advisory: append([]nlq.OptionalItem(nil), persisted.Advisory...), Examples: append([]nlq.OptionalItem(nil), persisted.Examples...),
 	}, persisted.Tier)
@@ -1422,6 +1429,53 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord) (nlq.As
 		}
 	}
 	return assembled, nil
+}
+
+func cloneRelations(in []nlq.SourceRelation) []nlq.SourceRelation {
+	out := append([]nlq.SourceRelation(nil), in...)
+	for i := range out {
+		out[i].Columns = append([]string(nil), in[i].Columns...)
+	}
+	return out
+}
+
+// Repair may start from a durable, seal-free query record. Rebind physical
+// names against the current source before passing them back to the model.
+func validateResealedRelations(relations []nlq.SourceRelation, topics []string, binding exec.Binding) error {
+	for _, relation := range relations {
+		foundTopic := false
+		for _, topic := range topics {
+			foundTopic = foundTopic || relation.Topic == topic
+		}
+		if !foundTopic {
+			return exec.ErrBinding
+		}
+		var physical *exec.Relation
+		for i := range binding.Relations {
+			if binding.Relations[i].ID == relation.Dataset {
+				if physical != nil {
+					return exec.ErrBinding
+				}
+				physical = &binding.Relations[i]
+			}
+		}
+		if physical == nil || relation.Name != physical.Schema+"."+physical.Name {
+			return exec.ErrBinding
+		}
+		for _, column := range relation.Columns {
+			found := false
+			for _, actual := range physical.Columns {
+				if actual.Name == column {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return exec.ErrBinding
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {

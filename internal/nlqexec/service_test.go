@@ -65,6 +65,7 @@ func (v *sequenceValidator) Validate(context.Context, identity.Envelope, exec.Re
 
 type sequenceGateway struct {
 	responses []gateway.Generated
+	prompts   []string
 	ranked    gateway.Ranked
 	rerankErr error
 	calls     int
@@ -85,8 +86,9 @@ func (r *preflightRouter) VerifyOrigin(_ context.Context, _ identity.Envelope, r
 	return r.result, nil
 }
 
-func (g *sequenceGateway) Generate(context.Context, gateway.Call, *gateway.Budget, string, string, string, *gateway.Schema) (gateway.Generated, error) {
+func (g *sequenceGateway) Generate(_ context.Context, _ gateway.Call, _ *gateway.Budget, _, _, prompt string, _ *gateway.Schema) (gateway.Generated, error) {
 	g.calls++
+	g.prompts = append(g.prompts, prompt)
 	if len(g.responses) == 0 {
 		return gateway.Generated{}, gateway.ErrOutput
 	}
@@ -128,6 +130,7 @@ func testGeneration(t *testing.T, e identity.Envelope) (admission, nlq.Generatio
 	}
 	assembled, err := assembler.Assemble(context.Background(), nlq.ContextInput{
 		Locale: nlq.LanguageEnglish, Strategy: nlq.StrategySingleTopic, Topic: "topic", TopicVersion: "v1", Question: "What is revenue?",
+		Relations:   []nlq.SourceRelation{{Topic: "topic", Dataset: "dataset", Name: "analytics.sales", Columns: []string{"id"}}},
 		Constraints: &nlq.ConstraintState{Allowed: true, Required: []nlq.MandatoryConstraint{{ID: "required-filter", Kind: "filter", Text: "tenant_id is the signed tenant"}}},
 		Metrics:     []nlq.PinnedMetric{{ID: "revenue", Text: "sum of amount"}},
 	}, nlq.TierMedium)
@@ -1218,6 +1221,7 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	query.SQL = "SELECT id, amount FROM analytics.sales WHERE created_at >= $1 ORDER BY id"
 	query.Parameters = []exec.Parameter{{Kind: "text", Value: "2026-01-01"}}
 	query.Generation.Context = admitted.assembled
+	query.Route.Context = &nlqroute.ContextView{Relations: cloneRelations(admitted.assembled.Relations)}
 	repo := newUnitRepository()
 	repo.queries[query.ID] = query
 	validator := &unitValidator{}
@@ -1241,6 +1245,9 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	if len(validator.requests) != 2 || engine.calls != 1 {
 		t.Fatalf("repair path did not validate/repair exactly once: validations=%d gateway_calls=%d", len(validator.requests), engine.calls)
 	}
+	if len(engine.prompts) != 1 || !strings.Contains(engine.prompts[0], "relation[topic/dataset]:analytics.sales columns:id") {
+		t.Fatal("sqlfix prompt lost the sealed schema-qualified source relation")
+	}
 	stored := repo.queries[query.ID]
 	if stored.ExecutionFixes != 1 || stored.Operation != "operation-repair" || stored.Generation.Strategy != nlq.GenerationEditBase || len(stored.Generation.Selected) != 1 || stored.Generation.Selected[0].Key != "previous_sql" || stored.Generation.Selected[0].Text != query.SQL {
 		t.Fatalf("repair lost protected SQL delta or receipt metadata: %#v", stored)
@@ -1250,6 +1257,68 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	}
 	if len(stored.Receipt.Calls) != 1 || stored.Receipt.Calls[0].Role != "sqlfix" || stored.Receipt.Calls[0].Attempts != 1 || stored.Receipt.Calls[0].InputTokens == nil || *stored.Receipt.Calls[0].InputTokens != inputTokens || stored.Receipt.Calls[0].OutputTokens == nil || *stored.Receipt.Calls[0].OutputTokens != outputTokens || stored.Receipt.Calls[0].CostUSD == nil || *stored.Receipt.Calls[0].CostUSD != cost {
 		t.Fatalf("repair receipt was not durably preserved: %#v", stored.Receipt)
+	}
+}
+
+func TestRunRepairPreservesRouteFallbackAndRejectsChangedRelations(t *testing.T) {
+	e := unitEnvelope(t)
+	admitted, _, _, _ := testGeneration(t, e)
+	binding, err := retainedSourceReader{}.Binding(context.Background(), e, "source", "context")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := unitQuery(e, "query-relations", "topic", "v1", "context", false)
+	base.Generation.Context = admitted.assembled
+	base.Route.Context = &nlqroute.ContextView{
+		Tier: admitted.assembled.Tier, Locale: admitted.assembled.Locale, Strategy: admitted.assembled.Strategy,
+		Topic: admitted.assembled.Topic, TopicVersion: admitted.assembled.TopicVersion,
+		Question: admitted.assembled.Question, Relations: cloneRelations(admitted.assembled.Relations),
+		Constraints: admitted.assembled.Constraints, Metrics: admitted.assembled.Metrics,
+	}
+	service := &Service{}
+	fallback := base
+	fallback.Generation.Context = nlq.AssembledContext{}
+	resealed, err := service.resealQueryContext(context.Background(), fallback, binding)
+	if err != nil || !strings.Contains(resealed.Prompt, "relation[topic/dataset]:analytics.sales columns:id") {
+		t.Fatalf("route fallback lost physical relation: %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		edit func(*QueryRecord)
+	}{
+		{"tampered-generation", func(q *QueryRecord) {
+			q.Generation.Context.Relations = cloneRelations(q.Generation.Context.Relations)
+			q.Generation.Context.Relations[0].Columns[0] = "amount"
+		}},
+		{"stale-route", func(q *QueryRecord) {
+			q.Route.Context.Relations = cloneRelations(q.Route.Context.Relations)
+			q.Route.Context.Relations[0].Name = "analytics.old_sales"
+		}},
+		{"stale-both", func(q *QueryRecord) {
+			q.Generation.Context.Relations = cloneRelations(q.Generation.Context.Relations)
+			q.Generation.Context.Relations[0].Name = "analytics.old_sales"
+			q.Route.Context.Relations = cloneRelations(q.Route.Context.Relations)
+			q.Route.Context.Relations[0].Name = "analytics.old_sales"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := base
+			view := *base.Route.Context
+			q.Route.Context = &view
+			tc.edit(&q)
+			if _, err := service.resealQueryContext(context.Background(), q, binding); !errors.Is(err, exec.ErrBinding) {
+				t.Fatalf("changed physical relation reached repair: %v", err)
+			}
+			repo := newUnitRepository()
+			repo.queries[q.ID] = q
+			reader := &unitTopicReader{current: map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)}}
+			executor := &unitExecutor{reports: []exec.ExecutionReport{{Attempt: exec.Attempt{Status: "failed", Code: "query_error"}}}, errors: []error{exec.ErrQuery}}
+			engine := &sequenceGateway{}
+			runner := &Service{topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, executor: executor, engine: engine, repo: repo}
+			if _, err := runner.Run(context.Background(), e, RunRequest{QueryID: q.ID, Operation: "operation-relations-" + tc.name}); !errors.Is(err, exec.ErrBinding) || executor.calls != 1 || engine.calls != 0 {
+				t.Fatalf("changed relation reached sqlfix: err=%v executions=%d model_calls=%d", err, executor.calls, engine.calls)
+			}
+		})
 	}
 }
 
