@@ -1,0 +1,94 @@
+name: SQL context recovery
+
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+  pull_request:
+    paths:
+      - internal/nlq/**
+      - internal/nlqroute/**
+      - internal/nlqexec/**
+      - internal/semantics/**
+      - .github/workflows/sql-context-recovery.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sql-context-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-native
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Capture exact committed source
+        run: |
+          mkdir -p "$RUNNER_TEMP/sql-context-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/sql-context-source/commit.txt"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/sql-context-source/tree.txt"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/sql-context-source/source.tar.gz"
+          (cd "$RUNNER_TEMP/sql-context-source" && sha256sum commit.txt tree.txt source.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-context-source-${{ github.sha }}
+          path: ${{ runner.temp }}/sql-context-source/
+          retention-days: 7
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-native
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+      - name: Build pinned native dependencies
+        run: bash scripts/build-bruin.sh
+      - name: Verify source, formatting and plan coherence
+        run: |
+          set -o pipefail
+          go version
+          go mod verify
+          test -z "$(git ls-files '*.go' | xargs gofmt -l)"
+          make planning-check
+          git diff --exit-code
+      - name: Semantic, routing, context and generation regressions
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
+      - name: Existing integrated NLQ acceptance
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(16|17|18)|TestCW01|TestCW07)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+      - name: Validation must not modify source
+        if: always()
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sql-context-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/sql-context-*.log
+          retention-days: 7
