@@ -18,14 +18,21 @@ type LegacyClarificationChoice struct {
 	Value   string `json:"value"`
 }
 
+// ClarificationReferenceSelection distinguishes selected roots from expression
+// dependencies when auto-resolving a reviewed choice. Nil preserves legacy behavior.
+type ClarificationReferenceSelection struct {
+	References []Reference `json:"references"`
+}
+
 // ClarificationInput is pure interpretation input after topic admission. It has
 // no identity, token, source credential, provider or executable matcher fields.
 type ClarificationInput struct {
-	Locale        string                      `json:"locale"`
-	Question      string                      `json:"question"`
-	References    []Reference                 `json:"references,omitempty"`
-	Answers       []ClarificationAnswer       `json:"answers,omitempty"`
-	LegacyChoices []LegacyClarificationChoice `json:"choices,omitempty"`
+	Selection     *ClarificationReferenceSelection `json:"selection,omitempty"`
+	Locale        string                           `json:"locale"`
+	Question      string                           `json:"question"`
+	References    []Reference                      `json:"references,omitempty"`
+	Answers       []ClarificationAnswer            `json:"answers,omitempty"`
+	LegacyChoices []LegacyClarificationChoice      `json:"choices,omitempty"`
 }
 
 type clarificationKey struct{ pattern, slot string }
@@ -53,6 +60,22 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 			out.Outcome = ClarificationInvalid
 			out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "references", "foreign_answer")}
 			return out
+		}
+	}
+	choiceReferences := input.References
+	if input.Selection != nil {
+		choiceReferences = input.Selection.References
+		if len(choiceReferences) > 128 {
+			out.Outcome = ClarificationInvalid
+			out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "selection", "invalid_union")}
+			return out
+		}
+		for _, ref := range choiceReferences {
+			if !ref.Valid() || !hasReference(input.References, ref) {
+				out.Outcome = ClarificationInvalid
+				out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "selection", "foreign_answer")}
+				return out
+			}
 		}
 	}
 	answers, origins, errors := prepareClarificationAnswers(definition, input)
@@ -138,7 +161,7 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 				value, origin = answer.Value, origins[key]
 			} else if slot.Kind == SlotChoice {
 				for _, choice := range slot.Choices {
-					if choice.Target == nil || !hasReference(input.References, *choice.Target) {
+					if choice.Target == nil || !hasReference(choiceReferences, *choice.Target) {
 						continue
 					}
 					if value != nil && value.OptionID != choice.ID {

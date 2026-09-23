@@ -57,11 +57,11 @@ func (s *Service) validateClarificationOrigin(ctx context.Context, e identity.En
 	// Pending rows created before canonical selection ordering retain their
 	// original byte history. Compare detached canonical projections so an
 	// equivalent submission survives an upgrade without rewriting evidence.
-	incomingSelections := QuestionRequest{References: append([]semantics.Reference(nil), question.References...), MetricIDs: append([]string(nil), question.MetricIDs...)}
-	retainedSelections := QuestionRequest{References: append([]semantics.Reference(nil), request.References...), MetricIDs: append([]string(nil), request.MetricIDs...)}
+	incomingSelections := QuestionRequest{References: append([]semantics.Reference(nil), question.References...), MetricIDs: append([]string(nil), question.MetricIDs...), OmittedRoots: append([]semantics.Reference(nil), question.OmittedRoots...)}
+	retainedSelections := QuestionRequest{References: append([]semantics.Reference(nil), request.References...), MetricIDs: append([]string(nil), request.MetricIDs...), OmittedRoots: append([]semantics.Reference(nil), request.OmittedRoots...)}
 	canonicalizeQuestion(&incomingSelections)
 	canonicalizeQuestion(&retainedSelections)
-	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(incomingSelections.References, retainedSelections.References) || !slices.Equal(incomingSelections.MetricIDs, retainedSelections.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
+	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(incomingSelections.References, retainedSelections.References) || !slices.Equal(incomingSelections.OmittedRoots, retainedSelections.OmittedRoots) || !slices.Equal(incomingSelections.MetricIDs, retainedSelections.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
 		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
 	}
 	return nil

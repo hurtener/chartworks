@@ -80,7 +80,17 @@ func clarificationContext(e identity.Envelope, admitted []admittedTopic) string 
 func scopedClarificationInputs(in RouteRequest, admitted []admittedTopic) (map[string]semantics.ClarificationInput, error) {
 	inputs := map[string]semantics.ClarificationInput{}
 	for _, item := range admitted {
-		inputs[item.id] = semantics.ClarificationInput{Locale: string(in.Locale), Question: in.Question, References: append([]semantics.Reference(nil), in.References...)}
+		input := semantics.ClarificationInput{Locale: string(in.Locale), Question: in.Question, References: append([]semantics.Reference(nil), in.References...)}
+		if item.selection != nil {
+			input.References = selectedRuleReferences(item)
+			input.Selection = &semantics.ClarificationReferenceSelection{References: []semantics.Reference{}}
+			for _, root := range selectedRoots(item.selection) {
+				if root.Reason != "clarification" {
+					input.Selection.References = append(input.Selection.References, root.Reference)
+				}
+			}
+		}
+		inputs[item.id] = input
 	}
 	for _, answer := range semantics.CloneClarificationAnswers(in.Answers) {
 		input, ok := inputs[answer.Topic]
@@ -336,7 +346,7 @@ func businessConstraint(item admittedTopic, resolution semantics.ClarificationRe
 }
 
 func (r RouteResult) resolutionProof() string {
-	return readexec.Hash([]any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business})
+	return readexec.Hash([]any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business, r.Selection})
 }
 
 // ResolvedBusinessConstraints is available only from the in-process sealed
@@ -479,8 +489,34 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	if interpretation != nil {
 		current.SourceBindingDigest = interpretation.BindingDigest
 	}
-	if err := s.prepareClarifications(ctx, e, in, admitted, &current); err != nil {
-		return nil, "", err
+	if previous.Selection != nil {
+		if previous.Selection.Version != semanticSelectionVersion {
+			return nil, "", readexec.ErrBinding
+		}
+		_, missing, templateErr := canonicalTemplates(in.Templates, admitted)
+		if templateErr != nil || missing != "" {
+			return nil, "", readexec.ErrBinding
+		}
+		if err := s.resolveSemanticSelection(ctx, e, in, admitted, &current); err != nil {
+			return nil, "", err
+		}
+		if readexec.Hash(previous.Selection) != readexec.Hash(current.Selection) {
+			return nil, "", readexec.ErrBinding
+		}
+	} else {
+		if len(in.OmittedRoots) != 0 {
+			return nil, "", readexec.ErrBinding
+		}
+		if previous.Context != nil && previous.Context.Constraints != nil {
+			for _, c := range append(append([]nlq.MandatoryConstraint(nil), previous.Context.Constraints.Required...), previous.Context.Constraints.Excluded...) {
+				if c.Kind == "selected_semantics" || c.Kind == "semantic_dependency" || c.Kind == "omitted_semantic_root" {
+					return nil, "", readexec.ErrBinding
+				}
+			}
+		}
+		if err := s.prepareClarifications(ctx, e, in, admitted, &current); err != nil {
+			return nil, "", err
+		}
 	}
 	if current.Clarification != nil && previous.Clarification == nil {
 		return nil, "", current.Clarification

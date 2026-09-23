@@ -79,6 +79,7 @@ func TestSQLRecoveryFreeTextKPIHasAtomicCatalogDependencies(t *testing.T) {
 	}{{nlq.LanguageEnglish, "Gross margin percentage"}, {nlq.LanguageSpanish, "Porcentaje de margen bruto"}} {
 		t.Run(string(input.locale), func(t *testing.T) {
 			p := recoveryPublication()
+			p.Definition.KPIs[1].Aliases = []string{"porcentaje de margen bruto"}
 			hit := recoveryFacet(t, p, "kpi", "margin_pct", p.Definition.KPIs[1])
 			service, _ := recoveryRouteService(t, p, hit)
 			request := RouteRequest{Topic: "topic", Context: "ctx", Locale: input.locale, Question: input.question, Rerank: true}
@@ -87,8 +88,8 @@ func TestSQLRecoveryFreeTextKPIHasAtomicCatalogDependencies(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if out.Context == nil || len(out.Context.Evidence) != 1 || len(out.Context.Metrics) != 0 || len(out.Request.MetricIDs) != 0 {
-				t.Fatal("candidate hydration changed selection or lost evidence")
+			if out.Context == nil || len(out.Context.Evidence) != 1 || len(out.Context.Metrics) != 1 || out.Selection == nil || len(out.Request.MetricIDs) != 0 {
+				t.Fatal("catalog selection did not pin the complete free-text metric")
 			}
 			var group semanticEvidenceGroup
 			if err := json.Unmarshal([]byte(out.Context.Evidence[0].Text), &group); err != nil {

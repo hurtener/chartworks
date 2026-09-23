@@ -115,11 +115,13 @@ type RouteRequest struct {
 	Kinds         []string                        `json:"kinds,omitempty"`
 	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
 	References    []semantics.Reference           `json:"references,omitempty"`
-	Choices       []ChoiceSelection               `json:"choices,omitempty"`
-	JoinChoices   []JoinChoice                    `json:"joins,omitempty"`
-	MetricIDs     []string                        `json:"metric_ids,omitempty"`
-	Examples      []nlq.OptionalItem              `json:"examples,omitempty"`
-	Rerank        bool                            `json:"rerank,omitempty"`
+	// OmittedRoots suppress automatic concept selection; they cannot disable a required rule.
+	OmittedRoots []semantics.Reference `json:"omitted_roots,omitempty"`
+	Choices      []ChoiceSelection     `json:"choices,omitempty"`
+	JoinChoices  []JoinChoice          `json:"joins,omitempty"`
+	MetricIDs    []string              `json:"metric_ids,omitempty"`
+	Examples     []nlq.OptionalItem    `json:"examples,omitempty"`
+	Rerank       bool                  `json:"rerank,omitempty"`
 	// InterpretationAnchor pins relative and month-only temporal language. An
 	// omitted anchor is set by the server and retained in Request for replay.
 	InterpretationAnchor string               `json:"interpretation_anchor,omitempty"`
@@ -202,6 +204,7 @@ type RouteResult struct {
 	Templates      []rulesets.TemplateSelection `json:"templates,omitempty"`
 	Confidence     float64                      `json:"confidence"`
 	Decision       *RoutingDecision             `json:"routing_decision,omitempty"`
+	Selection      *SemanticSelection           `json:"semantic_selection,omitempty"`
 	Interpretation *Interpretation              `json:"interpretation,omitempty"`
 	Tier           nlq.Tier                     `json:"tier,omitempty"`
 	Context        *ContextView                 `json:"context,omitempty"`
@@ -250,6 +253,7 @@ func New(topicsReader TopicReader, rules RuleReader, index IndexReader, engine g
 }
 
 type admittedTopic struct {
+	selection      *semanticSelectionState
 	clarifications *semantics.ClarificationEvaluation
 	binding        *readexec.Binding
 	id             string
@@ -457,7 +461,14 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		result.SourceBindingDigest = interpretation.BindingDigest
 	}
 	result.Request = cloneRouteRequest(in)
-	if err := s.prepareClarifications(ctx, e, in, admitted, &result); err != nil {
+	if err := s.resolveSemanticSelection(ctx, e, in, admitted, &result); err != nil {
+		err = semanticSelectionError(err, in.Locale)
+		var clarification *Clarification
+		if errors.As(err, &clarification) && (strings.HasPrefix(clarification.Reason, "ambiguous_semantic") || strings.HasPrefix(clarification.Reason, "conflicting_semantic")) {
+			result.Request = selectionFailureRequest(in, admitted)
+			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
+			return result, nil
+		}
 		return RouteResult{}, err
 	}
 	if result.Clarification != nil {
@@ -476,7 +487,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 			return RouteResult{}, err
 		}
 	}
-	metrics, err := resolveMetrics(admitted, selectedClarificationMetrics(in.MetricIDs, result.Resolutions))
+	metrics, err := applySelectedContext(admitted, in.OmittedRoots)
 	if err != nil {
 		return RouteResult{}, err
 	}
@@ -636,7 +647,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		Topics:       topicRevisions(admitted),
 		Question:     in.Question,
 		Relations:    relations,
-		Evidence:     makeEvidence(hits),
+		Evidence:     makeSelectionEvidence(hits, admitted, in.OmittedRoots),
 		Constraints:  mergeInterpretationConstraints(mergeConstraints(admitted), interpretation),
 		Metrics:      metrics,
 		Advisory:     mergeAdvisory(admitted),
@@ -698,7 +709,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		}
 		seen[topic] = true
 	}
-	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || len(in.InterpretationEdits) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
+	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.OmittedRoots) > maxSelectionReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || len(in.InterpretationEdits) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
 		return nil, ErrInvalid
 	}
 	if len(in.JoinChoices) > 0 {
@@ -731,6 +742,13 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 		seenRefs[ref] = true
+	}
+	seenOmitted := map[semantics.Reference]bool{}
+	for _, ref := range in.OmittedRoots {
+		if !ref.Valid() || seenOmitted[ref] || seenRefs[ref] {
+			return nil, ErrInvalid
+		}
+		seenOmitted[ref] = true
 	}
 	seenTemplates := map[string]bool{}
 	for _, selection := range in.Templates {
@@ -789,6 +807,7 @@ func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out.Templates = append([]rulesets.TemplateSelection(nil), in.Templates...)
 	out.Kinds = append([]string(nil), in.Kinds...)
 	out.References = append([]semantics.Reference(nil), in.References...)
+	out.OmittedRoots = append([]semantics.Reference(nil), in.OmittedRoots...)
 	out.Choices = append([]ChoiceSelection(nil), in.Choices...)
 	out.Answers = semantics.CloneClarificationAnswers(in.Answers)
 	out.JoinChoices = append([]JoinChoice(nil), in.JoinChoices...)
@@ -867,13 +886,15 @@ func canonicalTemplates(input []rulesets.TemplateSelection, admitted []admittedT
 
 func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in RouteRequest, _ map[string]string, item admittedTopic) (*nlq.ConstraintState, []nlq.OptionalItem, error) {
 	if !item.hasRules {
-		if len(in.References) > 0 {
+		if item.selection == nil && len(in.References) > 0 {
 			return nil, nil, ErrInvalid
 		}
 		return nil, nil, nil
 	}
 	refs := append([]semantics.Reference(nil), in.References...)
-	if item.clarifications != nil {
+	if item.selection != nil {
+		refs = selectedRuleReferences(item)
+	} else if item.clarifications != nil {
 		refs = append([]semantics.Reference(nil), item.clarifications.References...)
 	}
 	if len(refs) == 0 {

@@ -270,6 +270,7 @@ type QuestionRequest struct {
 	Kinds                []string                        `json:"kinds,omitempty"`
 	LimitPerKind         int                             `json:"limit_per_kind,omitempty"`
 	References           []semantics.Reference           `json:"references,omitempty"`
+	OmittedRoots         []semantics.Reference           `json:"omitted_roots,omitempty"`
 	Choices              []nlqroute.ChoiceSelection      `json:"choices,omitempty"`
 	Joins                []nlqroute.JoinChoice           `json:"joins,omitempty"`
 	MetricIDs            []string                        `json:"metric_ids,omitempty"`

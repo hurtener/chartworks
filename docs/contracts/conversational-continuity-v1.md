@@ -11,3 +11,17 @@ Conversation ancestry is bounded to sixteen refinements. Every new child persist
 HTTP, MCP, SDK and generated CLI retain the existing `query_refine_or_clarify` interaction role and one `refineNLQ` operation. The request schema adds only typed refinement fields, so installed-operation discovery and consumer dispatch remain compatible with the consumer-conformance contract. English and Spanish journey fixtures inspect the retained canonical selections and terminal classifications, not SQL string similarity.
 
 The focused journey covers ask, add and remove a dimension, change a metric, filter replacement/removal through interpretation edits, clarification correction/removal through typed answers, semantic republication, and cross-session/cross-context denial. The Phase 24 fixture suite records bilingual EXP-01 cases with protected digests. These deterministic cases do not claim live model quality, an end-user comprehension result, or cross-system parity; those measurements remain in the Phase 34 cutover ledger and final Phase 25 qualification.
+
+
+### Catalog-selected roots
+
+New routes may retain `semantic_selection` version `catalog-selection-v1`.
+Catalog-name/alias roots are carried as exact references into typed refinement.
+A remove/replace also records optional `omitted_roots` so the old utterance does
+not reintroduce the root; explicit add restores it. Shared-topic concepts retain
+exact reference semantics rather than manufacturing ambiguous metric IDs.
+Omissions remain in saved routing and clarification-origin comparison, grant no
+access, and cannot switch off hard rules or constituent dependencies. Nil selection
+uses legacy replay behavior; versioned selection is reconstructed from current
+reviewed pins before clarification replay. This is not a migration of legacy
+scalar/time conversation state, nor a SQL conformance proof.
