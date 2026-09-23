@@ -1,0 +1,36 @@
+name: SQL calendar checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths:
+      - scripts/sql-calendar/checkpoint.py
+      - .github/workflows/sql-calendar-checkpoint.yml
+permissions:
+  contents: write
+jobs:
+  checkpoint:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener' && github.ref == 'refs/heads/codex/sql-semantic-context-recovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Apply explicit source checkpoint and publish a source commit
+        run: |
+          set -euo pipefail
+          python3 scripts/sql-calendar/checkpoint.py
+          git diff --name-only -z -- '*.go' | xargs -0 -r gofmt -w
+          git ls-files --others --exclude-standard -z -- '*.go' | xargs -0 -r gofmt -w
+          git add internal/exec internal/nlqexec internal/store/postgres/migrations/055_nlq_analytical_calendar.sql test/acceptance docs/contracts/analytical-calendar-v3.md docs/reviews/sql-context-recovery.md docs/plans/phase-18-nlq-generation-execution.md
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(nlq): enforce reviewed calendar bucket grain with retained policy replay'
+          git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
+# Temporary, branch-scoped authoring only. Final verification tests committed
+# source read-only. Remove this workflow and its script before delivery.
