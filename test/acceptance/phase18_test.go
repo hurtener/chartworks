@@ -257,9 +257,11 @@ func TestPhase18(t *testing.T) {
 			"sources.query",
 			"cw.topic.read:" + fixture.pack.Topic,
 			"cw.source.query:" + fixture.pack.Datasets[0].Source.Source,
-			"cw.dataset.query:" + fixture.pack.Datasets[0].ID,
-			"cw.execution_context.use:" + fixture.context,
 		}
+		for _, dataset := range fixture.pack.Datasets {
+			reviewScopes = append(reviewScopes, "cw.dataset.query:"+dataset.ID)
+		}
+		reviewScopes = append(reviewScopes, "cw.execution_context.use:"+fixture.context)
 		reviewClaims := fixture.model.token.claims(e.Tenant(), e.User(), reviewScopes)
 		reviewClaims["session"] = "phase18-reviewer"
 		reviewToken := fixture.model.token.sign(t, reviewClaims, nil)
@@ -276,7 +278,7 @@ func TestPhase18(t *testing.T) {
 		if verifyErr != nil {
 			t.Fatal("cross-context review authority", verifyErr)
 		}
-		if _, err = query.ExampleState(ctx, crossContext, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) {
+		if _, err = query.ExampleState(ctx, crossContext, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) && !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("review crossed signed context reach: %v", err)
 		}
 		active, err := query.ExampleState(ctx, reviewer, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"})

@@ -1967,7 +1967,9 @@ func exampleApplicabilityReason(example ExampleRecord, admitted admission, bindi
 	if exec.Hash(example.Origin.RuleVersions) != exec.Hash(admitted.route.RuleVersions) {
 		return "rules_changed"
 	}
-	if exec.Hash(example.Origin.Templates) != exec.Hash(admitted.route.Templates) {
+	// An absent selection has the same meaning whether JSON decoded it as nil
+	// or the router returned an allocated empty slice.
+	if len(example.Origin.Templates)+len(admitted.route.Templates) > 0 && exec.Hash(example.Origin.Templates) != exec.Hash(admitted.route.Templates) {
 		return "templates_changed"
 	}
 	if example.PositiveEvidence < 1 || example.Weight < 0.60 || example.NegativeEvidence >= example.PositiveEvidence {
