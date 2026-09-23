@@ -26,6 +26,13 @@ CREATE TABLE analytics.refunds (
     refunded_at date NOT NULL,
     amount_usd numeric(12,2) NOT NULL CHECK (amount_usd >= 0)
 );
+-- Registered on the source for the same-context scope negative, but absent
+-- from the reviewed commerce topic.
+CREATE TABLE analytics.audit_totals (
+    id integer PRIMARY KEY,
+    total_usd numeric(12,2) NOT NULL
+);
+INSERT INTO analytics.audit_totals VALUES (1,9999.00);
 INSERT INTO analytics.customers VALUES
     (1,'consumer','north'), (2,'business','south'),
     (3,'consumer','west'), (4,'business','north');
@@ -36,6 +43,7 @@ INSERT INTO analytics.orders VALUES
     (104,4,'2026-02-18',150.00,'paid'),
     (105,1,'2026-03-03',80.00,'paid'),
     (106,2,'2026-03-12',60.00,'cancelled');
+ALTER TABLE analytics.orders ADD COLUMN internal_code text NOT NULL DEFAULT 'synthetic';
 INSERT INTO analytics.order_items VALUES
     (1001,101,'apparel',2,70.00), (1002,101,'home',1,50.00),
     (1003,102,'electronics',1,200.00),

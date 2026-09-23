@@ -571,7 +571,7 @@ func TestPhase18(t *testing.T) {
 
 type countingPhase18Validator struct{ calls int }
 
-func (*countingPhase18Validator) Validate(context.Context, identity.Envelope, readexec.Request) (readexec.Plan, error) {
+func (*countingPhase18Validator) ValidateWithin(context.Context, identity.Envelope, readexec.Request, []readexec.RelationScope) (readexec.Plan, error) {
 	return readexec.Plan{}, nil
 }
 

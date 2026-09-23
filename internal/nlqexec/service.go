@@ -26,12 +26,95 @@ import (
 )
 
 type admission struct {
-	route     nlqroute.RouteResult
-	assembled nlq.AssembledContext
-	binding   exec.Binding
-	source    string
-	context   string
-	resources []access.Resource
+	route         nlqroute.RouteResult
+	assembled     nlq.AssembledContext
+	binding       exec.Binding
+	source        string
+	context       string
+	resources     []access.Resource
+	relationScope []exec.RelationScope
+	relations     []nlq.SourceRelation
+	reviewed      []reviewedDataset
+}
+
+type reviewedDataset struct {
+	topic   string
+	dataset topics.Dataset
+}
+
+func cloneRelationScope(in []exec.RelationScope) []exec.RelationScope {
+	out := append([]exec.RelationScope(nil), in...)
+	for i := range out {
+		out[i].Columns = append([]string(nil), in[i].Columns...)
+	}
+	return out
+}
+
+// reviewedProjection is derived from immutable reviewed topic columns and the
+// current source binding. No caller-supplied dataset reach can enlarge it.
+func reviewedProjection(datasets []reviewedDataset, binding exec.Binding) ([]exec.RelationScope, []nlq.SourceRelation, error) {
+	if len(datasets) == 0 || len(datasets) > 128 || !binding.Valid() {
+		return nil, nil, exec.ErrBinding
+	}
+	allowed := map[string]map[string]bool{}
+	relations := make([]nlq.SourceRelation, 0, len(datasets))
+	for _, item := range datasets {
+		dataset := item.dataset
+		if dataset.Source.Source != binding.Source || dataset.Source.Context != binding.Context || dataset.Source.SourceRevision != binding.Revision || dataset.Source.Dataset != dataset.ID || len(dataset.Columns) == 0 || len(dataset.Columns) > 256 {
+			return nil, nil, exec.ErrBinding
+		}
+		var physical *exec.Relation
+		for i := range binding.Relations {
+			if binding.Relations[i].ID == dataset.ID {
+				if physical != nil {
+					return nil, nil, exec.ErrBinding
+				}
+				physical = &binding.Relations[i]
+			}
+		}
+		if physical == nil {
+			return nil, nil, exec.ErrBinding
+		}
+		relation := nlq.SourceRelation{Topic: item.topic, Dataset: dataset.ID, Name: physical.Schema + "." + physical.Name}
+		if allowed[dataset.ID] == nil {
+			allowed[dataset.ID] = map[string]bool{}
+		}
+		seen := map[string]bool{}
+		for _, reviewed := range dataset.Columns {
+			if seen[reviewed.SourceName] {
+				return nil, nil, exec.ErrBinding
+			}
+			seen[reviewed.SourceName] = true
+			found := false
+			for _, actual := range physical.Columns {
+				if actual.Name == reviewed.SourceName && actual.NativeType == reviewed.NativeType && actual.Category == reviewed.Category && actual.Nullable == reviewed.Nullable && actual.Safe {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, nil, exec.ErrBinding
+			}
+			relation.Columns = append(relation.Columns, reviewed.SourceName)
+			allowed[dataset.ID][reviewed.SourceName] = true
+		}
+		relations = append(relations, relation)
+	}
+	ids := make([]string, 0, len(allowed))
+	for id := range allowed {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	scope := make([]exec.RelationScope, 0, len(ids))
+	for _, id := range ids {
+		columns := make([]string, 0, len(allowed[id]))
+		for column := range allowed[id] {
+			columns = append(columns, column)
+		}
+		sort.Strings(columns)
+		scope = append(scope, exec.RelationScope{Dataset: id, Columns: columns})
+	}
+	return scope, relations, nil
 }
 
 type generatedCandidate struct {
@@ -381,7 +464,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if err := s.verifyQueryClarificationBinding(ctx, e, record, current); err != nil {
 		return RunResult{}, err
 	}
-	plan, err := s.validator.Validate(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: record.SQL, Parameters: record.Parameters})
+	plan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: record.SQL, Parameters: record.Parameters}, current.relationScope)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -402,7 +485,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		if !executionRepairable(report, runErr) {
 			return s.finishRun(ctx, e, record, report, 0, runErr)
 		}
-		current.assembled, err = s.resealQueryContext(ctx, record, current.binding)
+		current.assembled, err = s.resealQueryContext(ctx, record, current)
 		if err != nil {
 			return RunResult{}, err
 		}
@@ -411,7 +494,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		if genErr != nil {
 			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, genErr))
 		}
-		candidatePlan, validateErr := s.validator.Validate(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: candidate.SQL, Parameters: candidate.Parameters})
+		candidatePlan, validateErr := s.validator.ValidateWithin(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: candidate.SQL, Parameters: candidate.Parameters}, current.relationScope)
 		if validateErr != nil {
 			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, validateErr))
 		}
@@ -551,7 +634,7 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	// exact stored or corrected SQL against the current binding before attaching
 	// current-origin evidence; a retained binding digest, when present, must also
 	// match exactly.
-	if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: sqlText, Parameters: q.Parameters}); err != nil {
+	if _, err = s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: sqlText, Parameters: q.Parameters}, admitted.relationScope); err != nil {
 		return err
 	}
 	feedbackID := deterministicFeedbackID(e, q, in)
@@ -745,7 +828,7 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 	if in.Example.Digest != exampleDigest(admitted.route.Topic, in.Example.Question, in.Example.SQL) {
 		return ExampleRecord{}, ErrInvalid
 	}
-	if _, err = s.validator.Validate(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: in.Example.SQL}); err != nil {
+	if _, err = s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: in.Example.SQL}, admitted.relationScope); err != nil {
 		return ExampleRecord{}, err
 	}
 	id, err := newID()
@@ -963,6 +1046,7 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 			return admission{}, exec.ErrBinding
 		}
 		for _, dataset := range publication.Definition.Datasets {
+			result.reviewed = append(result.reviewed, reviewedDataset{topic: topicID, dataset: dataset})
 			if in.Context != dataset.Source.Context {
 				// The publication/version was just confirmed against the route, so
 				// a context that does not match it is a malformed caller request.
@@ -990,6 +1074,13 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 			return admission{}, err
 		}
 		if route.SourceBindingDigest != "" && route.SourceBindingDigest != exec.Hash(result.binding) {
+			return admission{}, exec.ErrBinding
+		}
+		result.relationScope, result.relations, err = reviewedProjection(result.reviewed, result.binding)
+		if err != nil {
+			return admission{}, err
+		}
+		if !reflect.DeepEqual(assembled.Relations, result.relations) {
 			return admission{}, exec.ErrBinding
 		}
 	}
@@ -1365,8 +1456,11 @@ func redactExample(value ExampleRecord, inspect bool) ExampleRecord {
 	return value
 }
 
-func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, binding exec.Binding) (nlq.AssembledContext, error) {
+func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, a admission) (nlq.AssembledContext, error) {
 	if len(q.Topics) == 0 || len(q.Topics) != len(q.TopicVersions) {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	if q.Route.Context == nil || len(a.relations) == 0 || !reflect.DeepEqual(q.Route.Context.Relations, a.relations) || !reflect.DeepEqual(q.RelationScope, a.relationScope) {
 		return nlq.AssembledContext{}, exec.ErrBinding
 	}
 	persisted := q.Generation.Context
@@ -1382,10 +1476,10 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, binding
 			Metrics: append([]nlq.PinnedMetric(nil), view.Metrics...), Advisory: append([]nlq.OptionalItem(nil), view.Advisory...), Examples: append([]nlq.OptionalItem(nil), view.Examples...),
 		}
 	}
-	if q.Route.Context != nil && (len(q.Route.Context.Relations) != 0 || len(persisted.Relations) != 0) && !reflect.DeepEqual(q.Route.Context.Relations, persisted.Relations) {
+	if !reflect.DeepEqual(persisted.Relations, a.relations) {
 		return nlq.AssembledContext{}, exec.ErrBinding
 	}
-	if err := validateResealedRelations(persisted.Relations, q.Topics, binding); err != nil {
+	if err := validateResealedRelations(persisted.Relations, q.Topics, a.binding); err != nil {
 		return nlq.AssembledContext{}, err
 	}
 	if persisted.Tier == "" {
@@ -1442,6 +1536,9 @@ func cloneRelations(in []nlq.SourceRelation) []nlq.SourceRelation {
 // Repair may start from a durable, seal-free query record. Rebind physical
 // names against the current source before passing them back to the model.
 func validateResealedRelations(relations []nlq.SourceRelation, topics []string, binding exec.Binding) error {
+	if len(relations) == 0 {
+		return exec.ErrBinding
+	}
 	for _, relation := range relations {
 		foundTopic := false
 		for _, topic := range topics {
@@ -1465,7 +1562,7 @@ func validateResealedRelations(relations []nlq.SourceRelation, topics []string, 
 		for _, column := range relation.Columns {
 			found := false
 			for _, actual := range physical.Columns {
-				if actual.Name == column {
+				if actual.Name == column && actual.Safe {
 					found = true
 					break
 				}
@@ -1506,6 +1603,7 @@ func (s *Service) admissionWith(ctx context.Context, e identity.Envelope, q Quer
 			return admission{}, exec.ErrBinding
 		}
 		for _, dataset := range publication.Definition.Datasets {
+			result.reviewed = append(result.reviewed, reviewedDataset{topic: topicID, dataset: dataset})
 			if dataset.Source.Context != q.Context {
 				return admission{}, exec.ErrBinding
 			}
@@ -1527,6 +1625,10 @@ func (s *Service) admissionWith(ctx context.Context, e identity.Envelope, q Quer
 	result.binding, err = binding(ctx, e, result.source, result.context)
 	if err != nil {
 		return admission{}, err
+	}
+	result.relationScope, result.relations, err = reviewedProjection(result.reviewed, result.binding)
+	if err != nil || q.ID != "" && (len(q.RelationScope) == 0 || !reflect.DeepEqual(q.RelationScope, result.relationScope)) {
+		return admission{}, exec.ErrBinding
 	}
 	return result, nil
 }
@@ -1553,6 +1655,7 @@ func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q 
 			return admission{}, exec.ErrBinding
 		}
 		for _, dataset := range publication.Definition.Datasets {
+			result.reviewed = append(result.reviewed, reviewedDataset{topic: topicID, dataset: dataset})
 			if dataset.Source.Context != q.Context {
 				return admission{}, exec.ErrBinding
 			}
@@ -1574,6 +1677,10 @@ func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q 
 	result.binding, err = s.sources.Binding(ctx, e, result.source, result.context)
 	if err != nil {
 		return admission{}, err
+	}
+	result.relationScope, result.relations, err = reviewedProjection(result.reviewed, result.binding)
+	if err != nil || len(q.RelationScope) == 0 || !reflect.DeepEqual(q.RelationScope, result.relationScope) {
+		return admission{}, exec.ErrBinding
 	}
 	return result, nil
 }
@@ -1612,7 +1719,7 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
 	}
-	plan, validateErr := s.validator.Validate(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: candidate.SQL, Parameters: candidate.Parameters})
+	plan, validateErr := s.validator.ValidateWithin(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: candidate.SQL, Parameters: candidate.Parameters}, a.relationScope)
 	if validateErr == nil {
 		return candidate, 0, receipt, plan, nil
 	}
@@ -1628,7 +1735,7 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if fixErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, fixErr
 	}
-	plan, validateErr = s.validator.Validate(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: fixed.SQL, Parameters: fixed.Parameters})
+	plan, validateErr = s.validator.ValidateWithin(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: fixed.SQL, Parameters: fixed.Parameters}, a.relationScope)
 	if validateErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, validateErr)
 	}
@@ -1891,7 +1998,7 @@ func tokenSet(value string) map[string]bool {
 }
 
 func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequest, a admission) QueryRecord {
-	return QueryRecord{ID: id, Session: e.Session(), Parent: parent, Topic: a.route.Topic, Topics: append([]string(nil), a.route.Topics...), TopicVersions: append([]string(nil), a.route.TopicVersions...), RuleVersions: append([]string(nil), a.route.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), a.route.Templates...), Context: in.Context, Locale: in.Locale, Question: a.route.Request.Question, Route: a.route, Status: status, Assumptions: assumptions(a.route), Ambiguities: ambiguities(a.route), Created: time.Now().UTC(), Updated: time.Now().UTC(), Revision: 1}
+	return QueryRecord{ID: id, Session: e.Session(), Parent: parent, Topic: a.route.Topic, Topics: append([]string(nil), a.route.Topics...), TopicVersions: append([]string(nil), a.route.TopicVersions...), RuleVersions: append([]string(nil), a.route.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), a.route.Templates...), Context: in.Context, Locale: in.Locale, Question: a.route.Request.Question, Route: a.route, RelationScope: cloneRelationScope(a.relationScope), Status: status, Assumptions: assumptions(a.route), Ambiguities: ambiguities(a.route), Created: time.Now().UTC(), Updated: time.Now().UTC(), Revision: 1}
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {

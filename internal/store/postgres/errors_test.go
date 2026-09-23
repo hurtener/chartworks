@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "51" || len(manifest) != 51 {
+	if err != nil || SchemaVersion() != "52" || len(manifest) != 52 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -59,6 +59,7 @@ func TestSafeErrors(t *testing.T) {
 		{47, "migrations/048_evaluation.sql", "evaluation_runs"},
 		{48, "migrations/049_nlq_parent_lineage.sql", "parent_digest"},
 		{49, "migrations/050_migration_cutover.sql", "migration_batches"},
+		{51, "migrations/052_nlq_reviewed_scope.sql", "nlq_relation_scope_immutable"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

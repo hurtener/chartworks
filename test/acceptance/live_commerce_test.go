@@ -32,6 +32,7 @@ import (
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 	"github.com/hurtener/chartworks/internal/sources"
+	"github.com/hurtener/chartworks/internal/store"
 	"github.com/hurtener/chartworks/internal/vindex"
 	"github.com/jackc/pgx/v5"
 )
@@ -124,10 +125,35 @@ func TestCommerceReportingRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recorded Plan on real commerce source: %v", err)
 	}
+	scope, err := store.NewScope(queryActor.Tenant(), queryActor.User())
+	if err != nil {
+		t.Fatal(err)
+	}
+	retainedPlan, err := f.db.ReadQuery(t.Context(), scope, planned.QueryID)
+	if err != nil || len(retainedPlan.RelationScope) != len(main.Datasets) {
+		t.Fatalf("reviewed relation scope did not round trip durably: %v", err)
+	}
+	for _, relation := range retainedPlan.RelationScope {
+		if relation.Dataset == "audit_totals" || slices.Contains(relation.Columns, "internal_code") {
+			t.Fatal("unreviewed relation or column entered durable plan scope")
+		}
+	}
 	run, err := query.Run(t.Context(), queryActor, nlqexec.RunRequest{QueryID: planned.QueryID, Operation: "commerce-recorded-run", Rows: 10, Bytes: 65536})
 	if err != nil || run.Execution.Result == nil || !liveSingleNumericEquals(run.Execution.Result.Rows, "640") {
 		t.Fatalf("recorded Run on real commerce source: %v status=%s", err, run.Status)
 	}
+	// The actor's wildcard dataset reach permits this registered same-source
+	// relation at the read core, but the commerce topic never reviewed it.
+	for _, extraSQL := range []string{"SELECT total_usd FROM analytics.audit_totals", "SELECT internal_code FROM analytics.orders"} {
+		if _, err := f.validator.Validate(t.Context(), queryActor, readexec.Request{Source: main.Datasets[0].Source.Source, Context: main.Datasets[0].Source.Context, SQL: extraSQL}); err != nil {
+			t.Fatalf("same-source scope negative needs an otherwise valid read: %v", err)
+		}
+		model.mode.Store(phase18RawResponse(t, extraSQL))
+		if _, err := query.Plan(t.Context(), queryActor, nlqexec.PlanRequest{QuestionRequest: question}); err == nil {
+			t.Fatal("NLQ planned an unreviewed same-source relation or column")
+		}
+	}
+	model.mode.Store(phase18RawResponse(t, "SELECT SUM(total_usd) AS gross_revenue FROM analytics.orders WHERE status='paid'"))
 	wrong := question
 	wrong.Context = "wrong-context"
 	if _, err := query.Plan(t.Context(), queryActor, nlqexec.PlanRequest{QuestionRequest: wrong}); err == nil {
@@ -602,9 +628,10 @@ func liveCommerceSource(t *testing.T) *engineeringFixture {
 	cfg := f.cfg.Clone()
 	cfg.Connections[0].Relations = []config.SourceRelation{
 		config.SourceRelation{Schema: "analytics", Name: "customers", Columns: []string{"customer_id", "segment", "region"}},
-		config.SourceRelation{Schema: "analytics", Name: "orders", Columns: []string{"order_id", "customer_id", "ordered_at", "total_usd", "status"}},
+		config.SourceRelation{Schema: "analytics", Name: "orders", Columns: []string{"order_id", "customer_id", "ordered_at", "total_usd", "status", "internal_code"}},
 		config.SourceRelation{Schema: "analytics", Name: "order_items", Columns: []string{"item_id", "order_id", "category", "quantity", "amount_usd"}},
 		config.SourceRelation{Schema: "analytics", Name: "refunds", Columns: []string{"refund_id", "order_id", "refunded_at", "amount_usd"}},
+		config.SourceRelation{Schema: "analytics", Name: "audit_totals", Columns: []string{"id", "total_usd"}},
 	}
 	s, err := sources.New(f.db, cfg, f.lookup)
 	if err != nil {

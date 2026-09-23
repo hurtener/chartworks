@@ -53,7 +53,7 @@ func TestPlanAndRunRejectsRevokedQueryActionBeforeAnyDependency(t *testing.T) {
 	}
 }
 
-func (v *sequenceValidator) Validate(context.Context, identity.Envelope, exec.Request) (exec.Plan, error) {
+func (v *sequenceValidator) ValidateWithin(context.Context, identity.Envelope, exec.Request, []exec.RelationScope) (exec.Plan, error) {
 	v.calls++
 	if len(v.errors) == 0 {
 		return exec.Plan{}, nil
@@ -241,7 +241,7 @@ func (r *retainedTopicReader) RetainedContract(_ context.Context, _ identity.Env
 type retainedSourceReader struct{}
 
 func (retainedSourceReader) Binding(context.Context, identity.Envelope, string, string) (exec.Binding, error) {
-	return exec.Binding{Tenant: "tenant", Source: "source", Context: "context", Revision: 1, Dialect: "postgres", Contract: "contract", Fingerprint: strings.Repeat("a", 64), Relations: []exec.Relation{{ID: "dataset", Schema: "analytics", Name: "sales", Columns: []exec.Column{{Name: "id", NativeType: "integer"}}}}}, nil
+	return exec.Binding{Tenant: "tenant", Source: "source", Context: "context", Revision: 1, Dialect: "postgres", Contract: "contract", Fingerprint: strings.Repeat("a", 64), Relations: []exec.Relation{{ID: "dataset", Schema: "analytics", Name: "sales", Columns: []exec.Column{{Name: "id", NativeType: "integer", Category: "integer", Safe: true}}}}}, nil
 }
 
 func (r retainedSourceReader) ReviewBinding(ctx context.Context, e identity.Envelope, source, contextID string) (exec.Binding, error) {
@@ -268,7 +268,7 @@ func TestRetainedAdmissionUsesExactTopicPins(t *testing.T) {
 		return topics.Contract{Publication: topics.Published{
 			State: topics.State{Topic: topic, Version: version, Archived: true},
 			Definition: topics.Definition{Topic: topic, Version: version, Datasets: []topics.Dataset{{
-				ID: dataset, Source: topics.Binding{Source: "source", Context: "context", Dataset: dataset, SourceRevision: 1},
+				ID: dataset, Source: topics.Binding{Source: "source", Context: "context", Dataset: dataset, SourceRevision: 1}, Columns: []semantics.Column{{ID: "id", SourceName: "id", NativeType: "integer", Category: "integer"}},
 			}}},
 		}}
 	}
@@ -276,8 +276,10 @@ func TestRetainedAdmissionUsesExactTopicPins(t *testing.T) {
 		"topic/v1":     published("topic", "v1", "dataset"),
 		"topic-two/v2": published("topic-two", "v2", "dataset-two"),
 	}}
-	service := &Service{topics: reader, sources: retainedSourceReader{}}
-	query := QueryRecord{Topics: []string{"topic", "topic-two"}, TopicVersions: []string{"v1", "v2"}, Context: "context"}
+	binding, _ := retainedSourceReader{}.Binding(context.Background(), e, "source", "context")
+	binding.Relations = append(binding.Relations, exec.Relation{ID: "dataset-two", Schema: "analytics", Name: "sales_two", Columns: []exec.Column{{Name: "id", NativeType: "integer", Category: "integer", Safe: true}}})
+	service := &Service{topics: reader, sources: fixedSourceReader{binding}}
+	query := QueryRecord{ID: "query", Topics: []string{"topic", "topic-two"}, TopicVersions: []string{"v1", "v2"}, Context: "context", RelationScope: []exec.RelationScope{{Dataset: "dataset", Columns: []string{"id"}}, {Dataset: "dataset-two", Columns: []string{"id"}}}}
 	admitted, err := service.retainedAdmission(context.Background(), e, query)
 	if err != nil {
 		t.Fatal(err)
@@ -541,7 +543,7 @@ type unitValidator struct {
 	requests []exec.Request
 }
 
-func (v *unitValidator) Validate(_ context.Context, _ identity.Envelope, request exec.Request) (exec.Plan, error) {
+func (v *unitValidator) ValidateWithin(_ context.Context, _ identity.Envelope, request exec.Request, _ []exec.RelationScope) (exec.Plan, error) {
 	v.requests = append(v.requests, request)
 	if len(v.errors) == 0 {
 		return exec.Plan{}, nil
@@ -588,13 +590,13 @@ func unitContract(topic, version, source, contextID, dataset string, active, arc
 	return topics.Contract{Publication: topics.Published{
 		State: topics.State{Topic: topic, Version: version, Active: active, Archived: archived},
 		Definition: topics.Definition{Topic: topic, Version: version, Datasets: []topics.Dataset{{
-			ID: dataset, Source: topics.Binding{Source: source, Context: contextID, Dataset: dataset, SourceRevision: 1},
+			ID: dataset, Source: topics.Binding{Source: source, Context: contextID, Dataset: dataset, SourceRevision: 1}, Columns: []semantics.Column{{ID: "id", SourceName: "id", NativeType: "integer", Category: "integer"}},
 		}}},
 	}}
 }
 
 func unitQuery(e identity.Envelope, id, topic, version, contextID string, stale bool) QueryRecord {
-	return QueryRecord{ID: id, Session: e.Session(), Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Context: contextID, Locale: nlq.LanguageEnglish, Question: "What is revenue?", SQL: "SELECT id FROM analytics.sales", Status: "planned", EvidenceStale: stale, Route: nlqroute.RouteResult{Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Outcome: nlq.StrategySingleTopic}, Revision: 1}
+	return QueryRecord{ID: id, Session: e.Session(), Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Context: contextID, Locale: nlq.LanguageEnglish, Question: "What is revenue?", SQL: "SELECT id FROM analytics.sales", Status: "planned", EvidenceStale: stale, RelationScope: []exec.RelationScope{{Dataset: "dataset", Columns: []string{"id"}}}, Route: nlqroute.RouteResult{Topic: topic, Topics: []string{topic}, TopicVersions: []string{version}, Outcome: nlq.StrategySingleTopic, Context: &nlqroute.ContextView{Relations: []nlq.SourceRelation{{Topic: topic, Dataset: "dataset", Name: "analytics.sales", Columns: []string{"id"}}}}}, Revision: 1}
 }
 
 func unitResult(status string) exec.ExecutionReport {
@@ -1267,6 +1269,12 @@ func TestRunRepairPreservesRouteFallbackAndRejectsChangedRelations(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	definition := unitContract("topic", "v1", "source", "context", "dataset", true, false).Publication.Definition
+	scope, relations, err := reviewedProjection([]reviewedDataset{{topic: "topic", dataset: definition.Datasets[0]}}, binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := admission{binding: binding, relationScope: scope, relations: relations}
 	base := unitQuery(e, "query-relations", "topic", "v1", "context", false)
 	base.Generation.Context = admitted.assembled
 	base.Route.Context = &nlqroute.ContextView{
@@ -1278,7 +1286,7 @@ func TestRunRepairPreservesRouteFallbackAndRejectsChangedRelations(t *testing.T)
 	service := &Service{}
 	fallback := base
 	fallback.Generation.Context = nlq.AssembledContext{}
-	resealed, err := service.resealQueryContext(context.Background(), fallback, binding)
+	resealed, err := service.resealQueryContext(context.Background(), fallback, current)
 	if err != nil || !strings.Contains(resealed.Prompt, "relation[topic/dataset]:analytics.sales columns:id") {
 		t.Fatalf("route fallback lost physical relation: %v", err)
 	}
@@ -1289,6 +1297,12 @@ func TestRunRepairPreservesRouteFallbackAndRejectsChangedRelations(t *testing.T)
 		{"tampered-generation", func(q *QueryRecord) {
 			q.Generation.Context.Relations = cloneRelations(q.Generation.Context.Relations)
 			q.Generation.Context.Relations[0].Columns[0] = "amount"
+		}},
+		{"missing-generation", func(q *QueryRecord) { q.Generation.Context.Relations = nil }},
+		{"missing-route", func(q *QueryRecord) { q.Route.Context.Relations = nil }},
+		{"missing-scope", func(q *QueryRecord) { q.RelationScope = nil }},
+		{"widened-scope", func(q *QueryRecord) {
+			q.RelationScope = []exec.RelationScope{{Dataset: "dataset", Columns: []string{"id", "unreviewed"}}}
 		}},
 		{"stale-route", func(q *QueryRecord) {
 			q.Route.Context.Relations = cloneRelations(q.Route.Context.Relations)
@@ -1306,7 +1320,7 @@ func TestRunRepairPreservesRouteFallbackAndRejectsChangedRelations(t *testing.T)
 			view := *base.Route.Context
 			q.Route.Context = &view
 			tc.edit(&q)
-			if _, err := service.resealQueryContext(context.Background(), q, binding); !errors.Is(err, exec.ErrBinding) {
+			if _, err := service.resealQueryContext(context.Background(), q, current); !errors.Is(err, exec.ErrBinding) {
 				t.Fatalf("changed physical relation reached repair: %v", err)
 			}
 			repo := newUnitRepository()
@@ -1315,10 +1329,19 @@ func TestRunRepairPreservesRouteFallbackAndRejectsChangedRelations(t *testing.T)
 			executor := &unitExecutor{reports: []exec.ExecutionReport{{Attempt: exec.Attempt{Status: "failed", Code: "query_error"}}}, errors: []error{exec.ErrQuery}}
 			engine := &sequenceGateway{}
 			runner := &Service{topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, executor: executor, engine: engine, repo: repo}
-			if _, err := runner.Run(context.Background(), e, RunRequest{QueryID: q.ID, Operation: "operation-relations-" + tc.name}); !errors.Is(err, exec.ErrBinding) || executor.calls != 1 || engine.calls != 0 {
+			wantExecutions := 1
+			if tc.name == "missing-scope" || tc.name == "widened-scope" {
+				wantExecutions = 0
+			}
+			if _, err := runner.Run(context.Background(), e, RunRequest{QueryID: q.ID, Operation: "operation-relations-" + tc.name}); !errors.Is(err, exec.ErrBinding) || executor.calls != wantExecutions || engine.calls != 0 {
 				t.Fatalf("changed relation reached sqlfix: err=%v executions=%d model_calls=%d", err, executor.calls, engine.calls)
 			}
 		})
+	}
+	unsafe := binding.Clone()
+	unsafe.Relations[0].Columns[0].Safe = false
+	if _, _, err := reviewedProjection([]reviewedDataset{{topic: "topic", dataset: definition.Datasets[0]}}, unsafe); !errors.Is(err, exec.ErrBinding) {
+		t.Fatalf("unsafe current source column entered reviewed projection: %v", err)
 	}
 }
 
