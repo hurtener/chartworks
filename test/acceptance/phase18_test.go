@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -281,6 +282,30 @@ func TestPhase18(t *testing.T) {
 		if _, err = query.ExampleState(ctx, crossContext, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"}); !errors.Is(err, access.ErrNotFound) && !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("review crossed signed context reach: %v", err)
 		}
+		t.Run("missing source action does not reveal example IDs over HTTP", func(t *testing.T) {
+			withoutSourceAction := append([]string{reviewScopes[0]}, reviewScopes[2:]...)
+			tokenClaims := fixture.model.token.claims(e.Tenant(), e.User(), withoutSourceAction)
+			tokenClaims["session"] = "phase18-reviewer"
+			token := fixture.model.token.sign(t, tokenClaims, nil)
+			handler := nlqapi.ExecutionHandler(fixture.model.token.verifier, query, http.NotFoundHandler())
+			for _, id := range []string{examples[0].ID, strings.Repeat("f", 32)} {
+				body, marshalErr := json.Marshal(nlqexec.ExampleStateRequest{ExampleID: id, State: "active", ReviewNote: "reviewed positive evidence"})
+				if marshalErr != nil {
+					t.Fatal(marshalErr)
+				}
+				request := httptest.NewRequest(http.MethodPost, "/v1/nlq/examples/state", bytes.NewReader(body))
+				request.Header.Set("Authorization", "Bearer "+token)
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, request)
+				var result struct {
+					Error string `json:"error"`
+				}
+				if json.Unmarshal(response.Body.Bytes(), &result) != nil || response.Code != http.StatusForbidden || result.Error != "forbidden" {
+					t.Fatalf("example ID disclosed: status=%d body=%s", response.Code, response.Body.String())
+				}
+			}
+		})
 		active, err := query.ExampleState(ctx, reviewer, nlqexec.ExampleStateRequest{ExampleID: examples[0].ID, State: "active", ReviewNote: "reviewed positive evidence"})
 		if err != nil || active.State != "active" {
 			t.Fatalf("feedback-only reviewer activation failed: %#v err=%v", active, err)

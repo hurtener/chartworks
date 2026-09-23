@@ -578,7 +578,7 @@ func (x *unitExecutor) Execute(_ context.Context, _ identity.Envelope, _ exec.Pl
 func unitEnvelope(t *testing.T) identity.Envelope {
 	t.Helper()
 	e, err := identity.FromVerified("tenant", "actor", "session", []string{
-		"query.plan", "query.execute", "feedback.write", "reporting.sql.read",
+		"query.plan", "query.execute", "feedback.write", "sources.query", "reporting.sql.read",
 		"cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context",
 	}, time.Now().Add(time.Hour), nil)
 	if err != nil {
