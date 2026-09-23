@@ -1,13 +1,19 @@
 package acceptance
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/mcpserver"
 	"github.com/hurtener/chartworks/internal/onboarding"
 	"github.com/hurtener/chartworks/internal/onboardingapi"
 	"github.com/hurtener/chartworks/internal/store"
@@ -98,6 +104,68 @@ func TestBusinessGoalAuthoringPG17(t *testing.T) {
 	reuse.Revision++
 	if _, err = service.ChooseGoal(ctx, e, reuse); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("stale topic accepted", err)
+	}
+	// The action may be present while signed topic reach is absent. Both public
+	// transports must conceal that coordinate with the registered 404 code.
+	deniedScopes := []string{"onboarding.read", "onboarding.write", "sources.read", "engineering.read", "topics.read", "cw.tenant.read:" + e.Tenant(), "cw.tenant.write:" + e.Tenant(), "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"}
+	deniedClaims := f.token.claims(e.Tenant(), e.User(), deniedScopes)
+	deniedClaims["session"] = e.Session()
+	deniedBearer := f.token.sign(t, deniedClaims, nil)
+	deniedCases := []struct {
+		path, tool string
+		body       any
+	}{
+		{"/v1/onboarding/goal-search", "search_business_goal", onboarding.GoalSearchRequest{Goal: "Commerce revenue", Locale: "en"}},
+		{"/v1/onboarding/goal-choice", "choose_business_goal", reuse},
+	}
+	for _, test := range deniedCases {
+		raw, _ := json.Marshal(test.body)
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+test.path, bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Authorization", "Bearer "+deniedBearer)
+		request.Header.Set("Content-Type", "application/json")
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(io.LimitReader(response.Body, 1024))
+		response.Body.Close()
+		if err != nil || response.StatusCode != 404 || string(body) != "{\"error\":\"not_found\"}\n" {
+			t.Fatal("HTTP missing topic reach", test.path, response.StatusCode, string(body), err)
+		}
+	}
+	bindings, err := onboardingapi.MCPBindings(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := mcpserver.NewRegistry(bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpService, err := mcpserver.New(f.token.verifier, registry, config.Defaults().MCP, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpClaims := f.token.claims(e.Tenant(), e.User(), append(deniedScopes, "mcp.use"))
+	mcpClaims["session"] = e.Session()
+	mcpClaims["aud"] = f.token.cfg.MCPAudience()
+	mcpBearer := f.token.sign(t, mcpClaims, nil)
+	mcpClient, err := mcpService.Client(func(context.Context) (string, error) { return mcpBearer, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range deniedCases {
+		raw, _ := json.Marshal(test.body)
+		result, err := mcpClient.CallTool(ctx, test.tool, raw)
+		if err != nil || result == nil || !result.IsError {
+			t.Fatal("MCP missing topic reach", test.tool, result, err)
+		}
+		encoded, err := json.Marshal(result.StructuredContent)
+		if err != nil || !strings.Contains(string(encoded), `"code":"not_found"`) || strings.Contains(string(encoded), "unavailable") {
+			t.Fatal("MCP denial mapping", test.tool, string(encoded), err)
+		}
 	}
 	narrow := f.token.envelope(t, e.Tenant(), e.User(), "onboarding.read", "sources.read", "topics.read", "engineering.read", "cw.tenant.read:"+e.Tenant(), "cw.source.read:*", "cw.dataset.query:*", "cw.topic.read:*", "cw.execution_context.use:other-context")
 	if result, err := service.SearchGoal(ctx, narrow, onboarding.GoalSearchRequest{Goal: "revenue", Locale: "en"}); err == nil && len(result.Candidates) != 0 {

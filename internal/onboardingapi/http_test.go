@@ -166,7 +166,7 @@ func TestFailureProjection(t *testing.T) {
 		code   string
 	}{
 		{access.ErrUnauthenticated, 401, "unauthenticated"}, {access.ErrForbidden, 403, "forbidden"},
-		{store.ErrNotFound, 404, "not_found"}, {onboarding.ErrAttention, 409, "attention_required"},
+		{store.ErrNotFound, 404, "not_found"}, {access.ErrNotFound, 404, "not_found"}, {onboarding.ErrAttention, 409, "attention_required"},
 		{onboarding.ErrCancelled, 409, "cancelled"}, {store.ErrConflict, 409, "conflict"},
 		{onboarding.ErrBudget, 429, "budget_exhausted"}, {onboarding.ErrInvalid, 400, "invalid_request"},
 		{errBodyLimit, 413, "limit_exceeded"}, {store.ErrUnavailable, 503, "unavailable"},
@@ -186,7 +186,7 @@ func TestMCPFailureProjection(t *testing.T) {
 		code string
 	}{
 		{access.ErrUnauthenticated, "unauthenticated"}, {access.ErrForbidden, "forbidden"},
-		{store.ErrNotFound, "not_found"}, {store.ErrConflict, "conflict"},
+		{store.ErrNotFound, "not_found"}, {access.ErrNotFound, "not_found"}, {store.ErrConflict, "conflict"},
 		{onboarding.ErrAttention, "attention_required"}, {onboarding.ErrCancelled, "cancelled"},
 		{onboarding.ErrBudget, "budget_exhausted"}, {store.ErrInvalid, "invalid_request"},
 		{context.DeadlineExceeded, "cancelled_or_timed_out"}, {errors.New("private detail"), "unavailable"},
@@ -241,6 +241,8 @@ func TestHandlerDispatchesEveryOnboardingOperation(t *testing.T) {
 		path   string
 		body   any
 	}{
+		{http.MethodPost, "/v1/onboarding/goal-search", onboarding.GoalSearchRequest{Goal: "Review sales", Locale: "en"}},
+		{http.MethodPost, "/v1/onboarding/goal-choice", onboarding.GoalChoiceRequest{Kind: "reuse", Topic: "topic", Version: "v1", Revision: 1, Digest: strings.Repeat("a", 64), Context: "context"}},
 		{http.MethodPost, "/v1/onboarding", start},
 		{http.MethodGet, "/v1/onboarding/run", nil},
 		{http.MethodPost, "/v1/onboarding/resume", onboarding.ResumeRequest{ID: "run", ExpectedVersion: 1}},
@@ -294,6 +296,8 @@ func TestHandlerDispatchesEveryOnboardingOperation(t *testing.T) {
 		name string
 		body any
 	}{
+		{"search_business_goal", onboarding.GoalSearchRequest{Goal: "Review sales", Locale: "en"}},
+		{"choose_business_goal", onboarding.GoalChoiceRequest{Kind: "reuse", Topic: "topic", Version: "v1", Revision: 1, Digest: strings.Repeat("a", 64), Context: "context"}},
 		{"start_onboarding", start},
 		{"get_onboarding", IDRequest{ID: "run"}},
 		{"resume_onboarding", onboarding.ResumeRequest{ID: "run", ExpectedVersion: 1}},

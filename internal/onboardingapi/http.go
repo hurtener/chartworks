@@ -193,7 +193,7 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = 401, "unauthenticated"
 	case errors.Is(err, access.ErrForbidden):
 		status, code = 403, "forbidden"
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, access.ErrNotFound):
 		status, code = 404, "not_found"
 	case errors.Is(err, onboarding.ErrAttention):
 		status, code = 409, "attention_required"

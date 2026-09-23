@@ -86,7 +86,7 @@ func onboardingFault(err error) mcpserver.Fault {
 		code = "unauthenticated"
 	case errors.Is(err, access.ErrForbidden):
 		code = "forbidden"
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, access.ErrNotFound):
 		code = "not_found"
 	case errors.Is(err, store.ErrConflict):
 		code = "conflict"
