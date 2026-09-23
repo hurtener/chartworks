@@ -23,6 +23,10 @@ relative to the query-wide population over one physical base relation:
 
 * SUM, AVG, MIN, MAX, non-null COUNT and COUNT DISTINCT use exact reviewed columns.
   COUNT(column) and COUNT(*) are equivalent only for a non-null source column.
+  The source's broad `numeric` category is not enough to establish numeric versus
+  integer division: the checker uses the verified native integer/numeric type,
+  including native precision/scale metadata. Floating-point, money and custom
+  native types do not acquire exact-arithmetic support from that category alone.
 * Reviewed `eq`, `in` and `not_null` metric filters stay with each aggregate. FILTER
   and a searched CASE with NULL ELSE are accepted equivalent shapes. Different
   populations are not globally intersected. A reviewed filter common to every

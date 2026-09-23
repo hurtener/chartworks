@@ -96,6 +96,7 @@ func TestCW01(t *testing.T) {
 		}
 	})
 	t.Run("AC04", func(t *testing.T) {
+		defer f.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
 		boolean := f.plan(t, f.question("Show active sales", nlq.LanguageSpanish), "state", cw01Bool("falso"))
 		if boolean.Route.Resolutions[0].Value != "false" {
 			t.Fatal("boolean not canonical")

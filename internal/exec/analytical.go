@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
 	pgquery "github.com/wasilibs/go-pgquery"
@@ -273,7 +274,7 @@ func (a *analyticalChecker) expected(e AnalyticalExpression, depth int) (string,
 		if !ok || len(e.Args) != 0 || e.Value != "" || len(e.Filters) > 32 {
 			return "", ErrBinding
 		}
-		if (e.Op == "sum" || e.Op == "avg") && column.Category != "integer" && column.Category != "decimal" && column.Category != "number" {
+		if (e.Op == "sum" || e.Op == "avg") && analyticalNumericKind(column) == "" {
 			return "", analyticalFailure("analytical_type_unsupported", true)
 		}
 		e.Filters = append([]AnalyticalFilter(nil), e.Filters...)
@@ -309,6 +310,45 @@ func (a *analyticalChecker) expected(e AnalyticalExpression, depth int) (string,
 	}
 }
 
+// PostgreSQL discovery deliberately labels integers, decimals, floats and money
+// as the same "numeric" family. Only the verified native type can establish
+// exact arithmetic or whether division truncates. Never infer that distinction
+// from a category or a sampled value. Floating/money/domain types remain outside
+// this first exact-arithmetic proof, even when their broad family is numeric.
+func analyticalNumericKind(column Column) string {
+	switch column.Category {
+	case "numeric", "integer", "decimal", "number":
+	default:
+		return ""
+	}
+	native := strings.TrimPrefix(column.NativeType, "pg_catalog.")
+	switch native {
+	case "int2", "int4", "int8", "smallint", "integer", "bigint":
+		return "integer"
+	case "numeric", "decimal":
+		return "decimal"
+	}
+	base, modifiers, ok := strings.Cut(native, "(")
+	if !ok || (base != "numeric" && base != "decimal") || len(modifiers) > 32 || !strings.HasSuffix(modifiers, ")") {
+		return ""
+	}
+	parts := strings.Split(strings.TrimSuffix(modifiers, ")"), ",")
+	if len(parts) < 1 || len(parts) > 2 {
+		return ""
+	}
+	precision, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || precision < 1 || precision > 1000 {
+		return ""
+	}
+	if len(parts) == 2 {
+		scale, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil || scale < -1000 || scale > 1000 {
+			return ""
+		}
+	}
+	return "decimal"
+}
+
 // Text comparison preserves exact spelling. Numeric comparison is exact rational
 // normalization, never float64. Null/temporal/coercion inference is unsupported.
 func analyticalScalar(column Column, value string) (string, bool) {
@@ -316,7 +356,12 @@ func analyticalScalar(column Column, value string) (string, bool) {
 		return "", false
 	}
 	switch column.Category {
-	case "integer", "decimal", "number":
+	case "numeric", "integer", "decimal", "number":
+		// A type-free synthetic decimal is used only to parse literal AST nodes.
+		// Source comparisons must instead have a supported exact native type.
+		if column.NativeType != "" && analyticalNumericKind(column) == "" || column.Category == "numeric" && column.NativeType == "" {
+			return "", false
+		}
 		return analyticalNumber(value)
 	case "boolean":
 		if value == "true" || value == "false" {

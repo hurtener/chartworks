@@ -123,7 +123,7 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 				term = aliases[parts[0]]
 			}
 		}
-		if term.column == "" || term.aggregate {
+		if term.column == "" || term.aggregate || term.guarded {
 			return analyticalFailure("analytical_shape_unsupported", true)
 		}
 		groups[term.column] = true
@@ -327,7 +327,7 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 		return fail("analytical_expression_unsupported", true)
 	}
 	if c, ok := a.field(node); ok {
-		return analyticalTerm{column: c.Name, numeric: c.Category == "decimal" || c.Category == "number"}, nil
+		return analyticalTerm{column: c.Name, numeric: analyticalNumericKind(c) == "decimal"}, nil
 	}
 	if cast := object(root["TypeCast"]); cast != nil {
 		t := fieldObject(cast["typeName"], "TypeName")
@@ -341,7 +341,7 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 		term, err := a.term(cast["arg"], depth+1)
 		if term.column != "" {
 			c, _ := a.column(term.column)
-			if c.Category != "integer" && c.Category != "decimal" && c.Category != "number" {
+			if analyticalNumericKind(c) == "" {
 				return fail("analytical_type_unsupported", true)
 			}
 		}
@@ -452,7 +452,7 @@ func (a *analyticalChecker) aggregate(f map[string]any, depth int) (analyticalTe
 		if err != nil {
 			return term, err
 		}
-		if term.column == "" || term.aggregate {
+		if term.column == "" || term.aggregate || term.guarded {
 			return fail("analytical_metric_mismatch", false)
 		}
 		column = term.column

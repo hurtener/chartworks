@@ -20,9 +20,9 @@ func analyticalFixture(t *testing.T, sql string, metrics []AnalyticalMetric, par
 		c := &b.Relations[0].Columns[i]
 		switch c.Name {
 		case "id":
-			c.Category = "integer"
+			c.Category = "numeric"
 		case "amount":
-			c.Category = "decimal"
+			c.Category = "numeric"
 			c.Nullable = true
 		case "name":
 			c.Category = "text"
@@ -258,6 +258,42 @@ func TestSQLRecoveryNativeNullifStaysPositive(t *testing.T) {
 	for _, sql := range []string{`SELECT NULLIF(pg_read_file('/etc/passwd'),'')`, `SELECT NULLIF(public.unknown_function(amount),0) FROM analytics.sales`, `SELECT NULLIF((SELECT secret FROM analytics.sales),0)`} {
 		if _, _, err := resolveFixture(sql); err == nil {
 			t.Fatal("NULLIF bypassed native safety")
+		}
+	}
+}
+
+func TestSQLRecoveryAnalyticalRejectsHiddenNullPopulationChanges(t *testing.T) {
+	for _, op := range []string{"sum", "avg", "min", "max", "count"} {
+		for _, arg := range []string{"NULLIF(amount,0)", "NULLIF(amount,0)::numeric"} {
+			p, c := analyticalFixture(t, "SELECT "+op+"("+arg+") FROM analytics.sales", analyticalMetrics(analyticalMeasure(op, "amount")))
+			if _, err := CheckAnalyticalPlan(context.Background(), p, c); err == nil {
+				t.Fatal("NULLIF changed aggregate input population", op, arg)
+			}
+		}
+	}
+	p, c := analyticalFixture(t, `SELECT sum(amount) FROM analytics.sales GROUP BY NULLIF(id,0)`, analyticalMetrics(analyticalMeasure("sum", "amount")))
+	if _, err := CheckAnalyticalPlan(context.Background(), p, c); err == nil {
+		t.Fatal("transformed grouping presented as a direct column")
+	}
+}
+
+func TestSQLRecoveryAnalyticalNativeNumericClassification(t *testing.T) {
+	for _, native := range []string{"integer", "bigint", "int4", "numeric", "numeric(20,3)", "numeric(12,-2)", "decimal(20, 3)", "pg_catalog.numeric"} {
+		t.Run(native, func(t *testing.T) {
+			p, c := analyticalFixture(t, `SELECT sum(amount) FROM analytics.sales`, analyticalMetrics(analyticalMeasure("sum", "amount")))
+			p.candidate.binding.Relations[0].Columns[1].NativeType = native
+			c.Binding = Hash(p.candidate.binding)
+			if _, err := CheckAnalyticalPlan(context.Background(), p, c); err != nil {
+				t.Fatal("verified broad numeric family rejected", err)
+			}
+		})
+	}
+	for _, native := range []string{"", "text", "float8", "double precision", "money", "private.money", "numeric[]", "numeric(20,3)[]", "numeric(0)", "numeric(3);other", "numeric(99999999999999999999)", "numeric(20,3,1)"} {
+		p, c := analyticalFixture(t, `SELECT sum(amount) FROM analytics.sales`, analyticalMetrics(analyticalMeasure("sum", "amount")))
+		p.candidate.binding.Relations[0].Columns[1].NativeType = native
+		c.Binding = Hash(p.candidate.binding)
+		if _, err := CheckAnalyticalPlan(context.Background(), p, c); !errors.Is(err, ErrAnalyticalUnsupported) {
+			t.Fatal("unsupported native type acquired exact arithmetic from category", native, err)
 		}
 	}
 }

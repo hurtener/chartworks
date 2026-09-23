@@ -15,8 +15,8 @@ import (
 
 func analyticalAdmission() admission {
 	columns := []semantics.Column{
-		{ID: "amount", SourceName: "amount_native", NativeType: "numeric", Category: "decimal", Nullable: true, Sensitivity: semantics.LiteralNonSensitive},
-		{ID: "id", SourceName: "id_native", NativeType: "int4", Category: "integer"},
+		{ID: "amount", SourceName: "amount_native", NativeType: "numeric", Category: "numeric", Nullable: true, Sensitivity: semantics.LiteralNonSensitive},
+		{ID: "id", SourceName: "id_native", NativeType: "int4", Category: "numeric"},
 		{ID: "region", SourceName: "region_native", NativeType: "text", Category: "text", Sensitivity: semantics.LiteralNonSensitive},
 	}
 	binding := exec.Binding{Dialect: "postgres", Source: "source", Context: "context", Revision: 1, Relations: []exec.Relation{{ID: "sales", Schema: "analytics", Name: "sales"}}}
