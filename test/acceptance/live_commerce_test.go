@@ -271,7 +271,23 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 					receipts[index].Reason = clarification.Reason
 					return
 				}
-				t.Fatalf("live plan (%s): %v", tc.id, err)
+				var binding *readexec.BusinessConstraintError
+				if errors.As(err, &binding) {
+					if tc.id == "observed-range-net" && binding.Code == "unsupported_select_shape" && binding.Field == "sql" {
+						receipts[index].Status = "unsupported"
+						receipts[index].Reason = binding.Code
+						return
+					}
+					receipts[index].Status = "failed"
+					receipts[index].Reason = binding.Code
+					t.Fatalf("live plan (%s): constraint code=%s field=%s", tc.id, binding.Code, binding.Field)
+				}
+				receipts[index].Status = "failed"
+				receipts[index].Reason = livePlanFailureReason(err)
+				t.Fatalf("live plan (%s): %s", tc.id, receipts[index].Reason)
+			}
+			if tc.id == "observed-range-net" {
+				t.Fatal("natural range net unexpectedly planned without reviewed aggregate binding")
 			}
 			if planned.Status != "planned" || planned.QueryID == "" || len(planned.Receipt.Calls) == 0 {
 				t.Fatalf("missing validated live plan receipt: %s", tc.id)
@@ -460,13 +476,24 @@ type liveCommerceQuestion struct {
 
 func liveCommerceQuestions() []liveCommerceQuestion {
 	return []liveCommerceQuestion{
-		{"gross-en", "What was monthly gross revenue from paid orders? Return three month rows.", nlq.LanguageEnglish, "gross_revenue", false},
+		{"gross-en", "What was gross revenue from paid orders by month? Return three month rows.", nlq.LanguageEnglish, "gross_revenue", false},
 		{"gross-es", "¿Cuáles fueron los ingresos brutos mensuales de pedidos pagados? Devuelve tres filas, una por mes.", nlq.LanguageSpanish, "gross_revenue", false},
 		{"net-grain", "What is total net revenue in USD for all paid orders after subtracting every refund on those paid orders? Return one number.", nlq.LanguageEnglish, "net_revenue", true},
 		{"observed-year-en", "What was gross revenue from paid orders by month in 2026?", nlq.LanguageEnglish, "gross_revenue", false},
 		{"observed-year-es", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026?", nlq.LanguageSpanish, "gross_revenue", false},
 		{"observed-range-net", "What is total net revenue in USD for all paid orders from January through March 2026, after subtracting every refund on those paid orders? Return one number.", nlq.LanguageEnglish, "net_revenue", true},
 		{"underspecified", "How did sales do in January and February", nlq.LanguageEnglish, "", false},
+	}
+}
+
+func livePlanFailureReason(err error) string {
+	switch {
+	case errors.Is(err, nlqexec.ErrValidationBudget):
+		return "validation_budget"
+	case errors.Is(err, readexec.ErrUnsafe):
+		return "sql_safety"
+	default:
+		return "plan_error"
 	}
 }
 
