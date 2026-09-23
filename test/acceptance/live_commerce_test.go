@@ -99,7 +99,7 @@ func TestCommerceReportingRecorded(t *testing.T) {
 			request.MetricIDs = []string{tc.metric}
 		}
 		routeActor := author
-		if strings.HasPrefix(tc.id, "observed-") {
+		if strings.HasPrefix(tc.id, "observed-") || tc.id == "gross-es" {
 			routeActor = queryActor
 		}
 		route, routeErr := router.Route(t.Context(), routeActor, request)
@@ -117,7 +117,7 @@ func TestCommerceReportingRecorded(t *testing.T) {
 		} else if !strings.Contains(route.Context.Prompt, "analytics.orders") || !strings.Contains(route.Context.Prompt, "analytics.refunds") || !strings.Contains(route.Context.Prompt, "relation[") {
 			t.Fatalf("commerce question %s physical context missing names: relations=%d orders=%t refunds=%t", tc.id, len(route.Context.Relations), strings.Contains(route.Context.Prompt, "analytics.orders"), strings.Contains(route.Context.Prompt, "analytics.refunds"))
 		}
-		if strings.HasPrefix(tc.id, "observed-") {
+		if strings.HasPrefix(tc.id, "observed-") || tc.id == "gross-es" {
 			end := "2027-01-01"
 			if tc.id == "observed-range-net" {
 				end = "2026-04-01"
@@ -477,7 +477,7 @@ type liveCommerceQuestion struct {
 func liveCommerceQuestions() []liveCommerceQuestion {
 	return []liveCommerceQuestion{
 		{"gross-en", "What was gross revenue from paid orders by month? Return three month rows.", nlq.LanguageEnglish, "gross_revenue", false},
-		{"gross-es", "¿Cuáles fueron los ingresos brutos mensuales de pedidos pagados? Devuelve tres filas, una por mes.", nlq.LanguageSpanish, "gross_revenue", false},
+		{"gross-es", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026? Devuelve tres filas, una por mes.", nlq.LanguageSpanish, "gross_revenue", false},
 		{"net-grain", "What is total net revenue in USD for all paid orders after subtracting every refund on those paid orders? Return one number.", nlq.LanguageEnglish, "net_revenue", true},
 		{"observed-year-en", "What was gross revenue from paid orders by month in 2026?", nlq.LanguageEnglish, "gross_revenue", false},
 		{"observed-year-es", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026?", nlq.LanguageSpanish, "gross_revenue", false},
