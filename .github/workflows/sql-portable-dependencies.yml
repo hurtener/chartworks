@@ -1,0 +1,54 @@
+name: SQL portable dependency snapshot
+
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-portable-dependencies.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GOFLAGS: '-p=2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      - name: Resolve and verify only public pinned dependency sources
+        run: |
+          go mod download
+          go mod verify
+          git diff --exit-code
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/chartworks-native/bruin
+            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1
+          fail-on-cache-miss: true
+      - name: Archive module sources and pinned native parser only
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/portable"
+          git rev-parse HEAD > "$RUNNER_TEMP/portable/source-commit.txt"
+          cp go.mod go.sum "$RUNNER_TEMP/portable/"
+          go version > "$RUNNER_TEMP/portable/build-toolchain.txt"
+          tar --exclude='./cache/vcs' -czf "$RUNNER_TEMP/portable/modules.tar.gz" -C "$(go env GOMODCACHE)" .
+          tar -czf "$RUNNER_TEMP/portable/native.tar.gz" -C /tmp/chartworks-native source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          (cd "$RUNNER_TEMP/portable" && sha256sum *.txt go.mod go.sum *.tar.gz > SHA256SUMS)
+          du -h "$RUNNER_TEMP/portable/"*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-portable-dependencies
+          path: ${{ runner.temp }}/portable/
+          retention-days: 2
+          compression-level: 0
+          if-no-files-found: error
