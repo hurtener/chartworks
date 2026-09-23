@@ -13,7 +13,7 @@ qualification are separate evidence states. Nothing here declares full parity.
 | AP-01 | Selected semantic roots, catalog hydration, complete dependencies and rule applicability | Candidate hydration/closure implemented; unified root selection and applicability pending |
 | AP-02 | Relevant typed prompt projection, examples and complete-request budget | Pending |
 | AP-03 | Analytical contract and semantic conformance | Pending |
-| AP-04 | Targeted privacy-safe validation repair | Initial implementation; runtime verification pending |
+| AP-04 | Targeted privacy-safe validation repair | Initial implementation with focused regressions; broader qualification remains open |
 | AP-05 | Analytical state and parameter ownership through follow-ups | Pending |
 | AP-06 | Parameterized learning and retained generation evidence | Pending |
 | AP-07 | Generator/validator dialect capability agreement | Native marker-count fallback defect fixed; broader operation matrix and live-engine qualification pending |
@@ -93,8 +93,8 @@ that later slice. Context hydration is not an analytical correctness proof.
 no metric IDs or constituent hits in English and Spanish and compares its sealed
 context with the explicit KPI closure. Other focused regressions cover dimension
 connecting paths, corrupted facet text/revisions/origins, detached copies, missing
-constituents/cycles, cancellation and whole-group budget omission. Runtime evidence
-is pending the dedicated committed-source workflow; no live-quality claim is made.
+constituents/cycles, cancellation and whole-group budget omission. Exact committed
+runtime results are tracked in the PR; no live-quality claim is made.
 
 ## First runtime verification and surrounding defects
 
@@ -104,8 +104,9 @@ topics, context, routing and NLQ execution packages. The full unit command faile
 in two separate existing paths. Investigation found that warehouse validation
 let the fallback erase a native-detected marker when the caller supplied zero
 values. Fallback counting now only compensates for omissions; it may never reduce
-the native AST inspection count. This preserves the existing accepted read subset. The existing six-dialect parameter-contract test is the regression
-oracle. This is native-parser boundary evidence, not live cloud-engine evidence.
+the native AST inspection count. This preserves the existing accepted read subset.
+The existing six-dialect parameter-contract test is the regression oracle. This is
+native-parser boundary evidence, not live cloud-engine evidence.
 
 The HTTP example-activation dispatch fixture also omitted the `sources.query`
 action already required by production. The fixture now supplies that action for
@@ -115,7 +116,27 @@ its recorded response against the same generation schema and emits an actual
 empty parameter array rather than a null array.
 
 The initial integrated acceptance output also exposed reference-choice binding,
-saved-query repository, stale CTE-shape and fixed migration-count failures. Those
-need independent baseline comparison and disposition before this PR is mergeable;
-a passing new regression cohort does not erase broader gate failures. Verification
-results after this checkpoint belong in the PR with their exact source SHA.
+saved-query repository, stale CTE-shape and fixed migration-count failures. They
+led to the integration follow-up below, rather than skipped or removed assertions.
+Verification results after each checkpoint belong in the PR with their exact SHA.
+
+## Integration follow-up
+
+Committed follow-up fixes distinguish a reviewed reference-only clarification from
+an executable scalar predicate. Both paths retain current rule/source replay; a
+reference-only path rejects fabricated SQL binding receipts, altered current choice
+IDs and missing predicate evidence for an actual effect. Saved-query projections
+now derive their field order from the shared scanner list while replacing result
+rows with SQL NULL, retaining the newly added reviewed relation scope.
+
+The CTE acceptance fixture now tests supported flat CTEs positively with actual
+filtered results and keeps an unsupported recursive-shape negative. Migration
+acceptance verifies the shipped 44-entry prefix and all current suffix migrations,
+rather than incorrectly rejecting legitimate later forward migrations by count.
+No migration content, production predicate scope or permission was loosened.
+
+`TestSQLRecoveryReferenceOnly` covers current rule replay and rejects forged binding,
+source, effect and change evidence. Existing saved-query/CW-01 integration tests are
+kept in the dedicated workflow, which also runs the directly changed exec and
+PostgreSQL packages. Full live/owner qualification and the remaining AP packets are
+still pending. The temporary branch-only patch publisher has been removed.

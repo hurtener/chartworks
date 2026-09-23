@@ -9,6 +9,9 @@ on:
       - internal/nlqroute/**
       - internal/nlqexec/**
       - internal/semantics/**
+      - internal/exec/**
+      - internal/store/postgres/**
+      - test/acceptance/**
       - .github/workflows/sql-context-recovery.yml
 
 permissions:
@@ -103,7 +106,7 @@ jobs:
       - name: Semantic, routing, context and generation regressions
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
+          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec ./internal/store/postgres 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
