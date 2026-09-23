@@ -252,3 +252,25 @@ metric-only case so subsequent scalar constraints retain their original assertio
 New synthetic tests exercise native results, persisted proof fences, private repair
 and terminal replay. Local formatting/diff/planning checks are separate from actual
 runtime tests; the PR records exact CI outcomes. No full AP-03 or live-parity claim.
+
+### AP-03A integration and arithmetic review corrections
+
+The first full runtime pass exposed an incorrect assumption in the new checker:
+PostgreSQL source discovery uses the broad `numeric` category for integers,
+decimals, floats and money. The checker now resolves exact arithmetic from verified
+native type metadata (including numeric precision/scale), not from the category or
+sample values. Its pure fixtures use the real source category too. Unknown and
+approximate native types cannot acquire an exact-arithmetic proof through casting.
+
+The adversarial pass also rejects NULLIF hidden inside aggregate inputs or grouping
+terms: that can change the population/grain rather than merely guard a denominator.
+Exact integer/decimal widening remains supported, but casting a text or approximate
+aggregate to numeric is not normalized into the original reviewed metric.
+
+Existing saved-query fixture responses now aggregate revenue per ID instead of
+returning raw detail rows under a metric request; frozen block SQL and source/replay
+assertions are unchanged. A shared model fixture is restored with deferred cleanup
+so a failed subtest cannot change later scalar-filter results. None of these fixes
+relaxes native validation, changes signed permissions or skips failing tests. Exact
+final run evidence belongs in the PR; inventory and intermediate green units are
+not a claim that the full integration passed.

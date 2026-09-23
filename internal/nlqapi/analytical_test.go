@@ -2,10 +2,11 @@ package nlqapi
 
 import (
 	"errors"
-	"github.com/hurtener/chartworks/internal/exec"
-	"github.com/hurtener/chartworks/internal/nlqexec"
 	"net/http"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/nlqexec"
 )
 
 func TestSQLRecoveryAnalyticalErrorsAreDistinct(t *testing.T) {

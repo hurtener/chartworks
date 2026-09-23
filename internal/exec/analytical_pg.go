@@ -7,10 +7,10 @@ import (
 )
 
 type analyticalTerm struct {
-	key                         string
-	column                      string
-	aggregate, numeric, guarded bool
-	constant                    string
+	key                                string
+	column                             string
+	aggregate, numeric, guarded, exact bool
+	constant                           string
 }
 
 func (a *analyticalChecker) query(q map[string]any, expected map[string]int) error {
@@ -327,7 +327,8 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 		return fail("analytical_expression_unsupported", true)
 	}
 	if c, ok := a.field(node); ok {
-		return analyticalTerm{column: c.Name, numeric: analyticalNumericKind(c) == "decimal"}, nil
+		kind := analyticalNumericKind(c)
+		return analyticalTerm{column: c.Name, numeric: kind == "decimal", exact: kind != ""}, nil
 	}
 	if cast := object(root["TypeCast"]); cast != nil {
 		t := fieldObject(cast["typeName"], "TypeName")
@@ -339,21 +340,21 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 			return fail("analytical_expression_unsupported", true)
 		}
 		term, err := a.term(cast["arg"], depth+1)
-		if term.column != "" {
-			c, _ := a.column(term.column)
-			if analyticalNumericKind(c) == "" {
-				return fail("analytical_type_unsupported", true)
-			}
+		if err != nil {
+			return term, err
+		}
+		if !term.exact {
+			return fail("analytical_type_unsupported", true)
 		}
 		term.numeric = true
-		return term, err
+		return term, nil
 	}
 	if value, ok := a.scalar(node, Column{Category: "decimal"}); ok {
 		if object(root["A_Const"]) == nil {
 			return fail("analytical_expression_unsupported", true)
 		}
 		_, integer := analyticalIntegerConstant(node)
-		return analyticalTerm{key: analyticalExprKey("number", "", value, nil, nil), numeric: !integer, constant: value}, nil
+		return analyticalTerm{key: analyticalExprKey("number", "", value, nil, nil), numeric: !integer, exact: true, constant: value}, nil
 	}
 	if f := object(root["FuncCall"]); f != nil {
 		return a.aggregate(f, depth)
@@ -389,6 +390,9 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 		if x.key == "" || y.key == "" || x.guarded || y.guarded && op[0] != "/" {
 			return fail("analytical_metric_mismatch", false)
 		}
+		if !x.exact || !y.exact {
+			return fail("analytical_type_unsupported", true)
+		}
 		if op[0] == "/" {
 			if !x.numeric && !y.numeric {
 				return fail("analytical_integer_division", false)
@@ -397,7 +401,7 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 				return fail("analytical_zero_policy", false)
 			}
 		}
-		return analyticalTerm{key: analyticalExprKey(op[0], "", "", nil, []string{x.key, y.key}), numeric: x.numeric || y.numeric, aggregate: x.aggregate || y.aggregate}, nil
+		return analyticalTerm{key: analyticalExprKey(op[0], "", "", nil, []string{x.key, y.key}), numeric: x.numeric || y.numeric, exact: true, aggregate: x.aggregate || y.aggregate}, nil
 	}
 	return fail("analytical_expression_unsupported", true)
 }
@@ -427,6 +431,7 @@ func (a *analyticalChecker) aggregate(f map[string]any, depth int) (analyticalTe
 	args := array(f["args"])
 	column := ""
 	numeric := op == "avg"
+	exact := op == "count" || op == "distinct_count"
 	predicates := analyticalConjuncts(f["agg_filter"])
 	if truth(f["agg_star"]) {
 		if op != "count" || len(args) != 0 {
@@ -457,6 +462,7 @@ func (a *analyticalChecker) aggregate(f map[string]any, depth int) (analyticalTe
 		}
 		column = term.column
 		numeric = numeric || term.numeric
+		exact = exact || term.exact
 	}
 	filters := map[string]AnalyticalFilter{}
 	for _, p := range predicates {
@@ -481,5 +487,5 @@ func (a *analyticalChecker) aggregate(f map[string]any, depth int) (analyticalTe
 	if op == "count" || op == "distinct_count" {
 		numeric = false // COUNT always returns bigint, regardless of input type.
 	}
-	return analyticalTerm{key: a.aggregateKey(op, column, values), numeric: numeric, aggregate: true}, nil
+	return analyticalTerm{key: a.aggregateKey(op, column, values), numeric: numeric, exact: exact, aggregate: true}, nil
 }

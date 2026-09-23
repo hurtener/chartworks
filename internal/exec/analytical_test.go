@@ -297,3 +297,24 @@ func TestSQLRecoveryAnalyticalNativeNumericClassification(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLRecoveryAnalyticalRejectsResultTypeCoercion(t *testing.T) {
+	for _, statement := range []string{`SELECT min(name)::numeric FROM analytics.sales`, `SELECT (min(name)::numeric)+1 FROM analytics.sales`} {
+		p, c := analyticalFixture(t, statement, analyticalMetrics(analyticalMeasure("min", "name")))
+		if _, err := CheckAnalyticalPlan(context.Background(), p, c); !errors.Is(err, ErrAnalyticalUnsupported) {
+			t.Fatal("text aggregate was reinterpreted as exact numeric", err)
+		}
+	}
+	p, c := analyticalFixture(t, `SELECT min(amount)::numeric FROM analytics.sales`, analyticalMetrics(analyticalMeasure("min", "amount")))
+	p.candidate.binding.Relations[0].Columns[1].NativeType = "double precision"
+	c.Binding = Hash(p.candidate.binding)
+	if _, err := CheckAnalyticalPlan(context.Background(), p, c); !errors.Is(err, ErrAnalyticalUnsupported) {
+		t.Fatal("approximate aggregate acquired an exact cast proof", err)
+	}
+	for _, column := range []string{"amount", "id"} {
+		p, c := analyticalFixture(t, `SELECT min(`+column+`)::numeric FROM analytics.sales`, analyticalMetrics(analyticalMeasure("min", column)))
+		if _, err := CheckAnalyticalPlan(context.Background(), p, c); err != nil {
+			t.Fatal("exact aggregate widening rejected", err)
+		}
+	}
+}
