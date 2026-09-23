@@ -75,3 +75,21 @@ func TestBusinessCTERejectsAmbiguousOrUnreachableTargets(t *testing.T) {
 		t.Fatal("virtual CTE name impersonated reviewed base relation")
 	}
 }
+
+func TestBusinessBindingRejectsOuterJoinTargetScopes(t *testing.T) {
+	binding := parserBinding()
+	c := businessFixtureConstraint()
+	for _, sql := range []string{
+		`SELECT s.id FROM analytics.items i LEFT JOIN analytics.sales s ON s.id=i.sale_id`,
+		`SELECT s.id FROM analytics.sales s RIGHT JOIN analytics.items i ON s.id=i.sale_id`,
+		`SELECT s.id FROM analytics.sales s FULL OUTER JOIN analytics.items i ON s.id=i.sale_id`,
+		`WITH joined AS (SELECT s.id FROM analytics.items i LEFT JOIN analytics.sales s ON s.id=i.sale_id) SELECT id FROM joined`,
+		`WITH base AS (SELECT sale_id FROM analytics.items), joined AS (SELECT s.id FROM base b RIGHT JOIN analytics.sales s ON s.id=b.sale_id) SELECT id FROM joined`,
+	} {
+		out, err := BindBusinessConstraints(context.Background(), binding, sql, nil, []BusinessConstraint{c})
+		var detail *BusinessConstraintError
+		if !errors.As(err, &detail) || detail.Code != "unsupported_outer_join_target" || out.SQL != "" || len(out.Parameters) != 0 {
+			t.Errorf("outer-join scope produced executable SQL: %q: %v", sql, err)
+		}
+	}
+}

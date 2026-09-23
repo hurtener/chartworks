@@ -53,3 +53,43 @@ func TestCommerceBoundCTENetRevenue(t *testing.T) {
 		}
 	}
 }
+
+func TestCommerceCTEOuterJoinTargetFailsClosed(t *testing.T) {
+	f := liveCommerceSource(t)
+	source := f.create(t, "commerce-outer-join-binding")
+	binding, err := f.s.Binding(t.Context(), f.e, source.ID, source.ContextID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ordersID string
+	for _, relation := range binding.Relations {
+		if relation.Name == "orders" {
+			ordersID = relation.ID
+		}
+	}
+	if ordersID == "" {
+		t.Fatal("missing reviewed orders relation")
+	}
+	constraint := readexec.BusinessConstraint{
+		Resolution: readexec.Hash("reviewed-order-minimum"), Dataset: ordersID, Column: "total_usd", SourceRevision: binding.Revision,
+		Kind: "number", Operator: "gte", Nulls: "exclude", Unit: "USD", Precision: 12, Scale: 2, Value: "150.00",
+	}
+	// Correct prejoin filtering retains customers 1 and 3 with NULL orders;
+	// applying the same predicate in WHERE after LEFT JOIN loses those rows.
+	var correctRows, wrongRows int
+	if err := f.admin.QueryRow(t.Context(), `SELECT count(*) FROM analytics.customers c LEFT JOIN (SELECT * FROM analytics.orders WHERE total_usd >= 150) o ON o.customer_id=c.customer_id`).Scan(&correctRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.admin.QueryRow(t.Context(), `SELECT count(*) FROM analytics.customers c LEFT JOIN analytics.orders o ON o.customer_id=c.customer_id WHERE o.total_usd >= 150`).Scan(&wrongRows); err != nil {
+		t.Fatal(err)
+	}
+	if correctRows != 4 || wrongRows != 2 {
+		t.Fatalf("fixture no longer proves outer-join row loss: prejoin=%d where=%d", correctRows, wrongRows)
+	}
+	sql := `WITH joined AS (SELECT c.customer_id,o.total_usd FROM analytics.customers c LEFT JOIN analytics.orders o ON o.customer_id=c.customer_id) SELECT customer_id,total_usd FROM joined`
+	out, err := readexec.BindBusinessConstraints(t.Context(), binding, sql, nil, []readexec.BusinessConstraint{constraint})
+	var detail *readexec.BusinessConstraintError
+	if !errors.As(err, &detail) || detail.Code != "unsupported_outer_join_target" || out.SQL != "" || len(out.Parameters) != 0 {
+		t.Fatal("nullable-side target did not fail closed", err)
+	}
+}

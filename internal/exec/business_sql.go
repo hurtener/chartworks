@@ -56,6 +56,7 @@ type businessSQLLayout struct {
 	having, havingEnd          int
 	rowInsert, aggregateInsert int
 	hasAggregate               bool
+	hasOuterJoin               bool
 }
 
 type businessEdit struct {
@@ -121,6 +122,12 @@ func BindBusinessConstraints(ctx context.Context, binding Binding, statement str
 		}
 		if matches != 1 {
 			return BusinessBoundQuery{}, businessError(constraint, "target", "unsupported_missing_or_ambiguous_target")
+		}
+		// A WHERE predicate on a nullable side after an outer join removes
+		// unmatched preserved rows. The binder does not rewrite JOIN inputs or
+		// ON expressions, so refuse the whole target scope conservatively.
+		if layout.hasOuterJoin {
+			return BusinessBoundQuery{}, businessError(constraint, "target", "unsupported_outer_join_target")
 		}
 		column := businessQuote(binding.Dialect, alias) + "." + businessQuote(binding.Dialect, constraint.Column)
 		if constraint.Aggregation != "" {
@@ -407,6 +414,18 @@ func businessLayoutWithVirtual(statement string, tokens []businessToken, binding
 	}
 	if from < 0 || from+1 >= fromEnd {
 		return out, businessSQLFailure("unsupported_missing_from")
+	}
+	for i := from + 1; i < fromEnd; i++ {
+		if tokens[i].depth != 0 || !tokens[i].word("left") && !tokens[i].word("right") && !tokens[i].word("full") {
+			continue
+		}
+		j := i + 1
+		if j < fromEnd && tokens[j].word("outer") {
+			j++
+		}
+		if j < fromEnd && tokens[j].depth == 0 && tokens[j].word("join") {
+			out.hasOuterJoin = true
+		}
 	}
 	for _, token := range tokens {
 		if token.depth != 0 {

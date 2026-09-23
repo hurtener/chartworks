@@ -97,6 +97,9 @@ duplicated or unreachable targets, recursive CTEs, unions, derived or
 correlated SELECTs and other dialects remain typed unsupported cases. This
 bounded transformation does not
 replace the ordinary opaque read plan or reviewed relation scope.
+The binder also rejects a target SELECT scope containing a LEFT, RIGHT or FULL
+outer join. Inserting its predicate into WHERE could remove preserved rows when
+the target is on the nullable side; no ON or prejoin rewrite is inferred.
 
 The in-process route seal binds the interpretation, source binding digest and typed
 constraints. A JSON reconstruction cannot manufacture executable filters. Any
