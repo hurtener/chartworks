@@ -244,6 +244,26 @@ func minimalInput() ContextInput {
 	}
 }
 
+func TestPhysicalRelationsAreRequiredAndSealed(t *testing.T) {
+	assembler, err := NewDefaultContextAssembler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := minimalInput()
+	input.Relations = []SourceRelation{{Topic: "sales", Dataset: "orders", Name: "analytics.orders", Columns: []string{"total_usd", "status"}}}
+	assembled, err := assembler.Assemble(context.Background(), input, TierLow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(assembled.Prompt, "analytics.orders") || assembled.Audit.Usage[0].IncludedTokens == 0 {
+		t.Fatal("required physical relation was pruned")
+	}
+	assembled.Relations[0].Columns[0] = "unreviewed_column"
+	if _, err := assembler.ResolvePrecedence(context.Background(), GenerationInput{Context: assembled}); err == nil {
+		t.Fatal("modified physical relation escaped context seal")
+	}
+}
+
 func TestAssembledContextWireOmitsPrunedPayload(t *testing.T) {
 	assembler, err := NewDefaultContextAssembler()
 	if err != nil {

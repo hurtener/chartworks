@@ -44,6 +44,7 @@ No disappearance of working replay/refinement/multi-topic/language behavior. Emp
 1. Implement preflight/plan/run/refine, native-dialect schema-constrained generation and one precedence function.
 2. Carry explicit metric choices, previous authorized context/SQL and delta instructions; support confirmed same-source multi-topic queries and bounded self-curation without widening constraints.
 3. Preserve templates/examples lifecycle, corrected feedback, DB-first weighting/deduplication and reviewed rule proposals.
+4. Derive an immutable dataset/column validation scope from each admitted reviewed topic and current source binding. Persist it with the query, compare it on later admission, and use `ValidateWithin` for generation, replay, feedback and repair; a prompt relation name does not grant SQL dependencies.
 
 ## Non-goals
 
@@ -51,7 +52,7 @@ No new agent runtime, hidden SQL correction in the read core, automatic rule pub
 
 ## Config and persistence
 
-NLQ validation/execution correction ceilings, self-curation policy, template weight/similarity thresholds and learning/recency settings. Persist query/session provenance, protected SQL/evidence, examples/weights/feedback and bounded operation usage. One precedence function governs internal generation, template edits and guided follow-ups.
+NLQ validation/execution correction ceilings, self-curation policy, template weight/similarity thresholds and learning/recency settings. Persist query/session provenance, immutable reviewed relation scope, protected SQL/evidence, examples/weights/feedback and bounded operation usage. Existing queries without a pinned relation scope fail closed on revalidation. One precedence function governs internal generation, template edits and guided follow-ups.
 
 ## Acceptance criteria
 

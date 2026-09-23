@@ -251,6 +251,15 @@ type TopicRevision struct {
 	Version string `json:"version"`
 }
 
+// SourceRelation pins a reviewed dataset to its current physical relation.
+// The route supplies this from live source discovery, never caller hints.
+type SourceRelation struct {
+	Topic   string   `json:"topic"`
+	Dataset string   `json:"dataset"`
+	Name    string   `json:"name"`
+	Columns []string `json:"columns"`
+}
+
 // ContextInput is detached, validated input for context assembly.
 type ContextInput struct {
 	Locale       Language         `json:"locale"`
@@ -259,6 +268,7 @@ type ContextInput struct {
 	TopicVersion string           `json:"topic_version,omitempty"`
 	Topics       []TopicRevision  `json:"topics,omitempty"`
 	Question     string           `json:"question"`
+	Relations    []SourceRelation `json:"relations,omitempty"`
 	Evidence     []Evidence       `json:"evidence"`
 	Constraints  *ConstraintState `json:"constraints,omitempty"`
 	Metrics      []PinnedMetric   `json:"metrics"`
@@ -309,6 +319,7 @@ type AssembledContext struct {
 	TopicVersion string           `json:"topic_version,omitempty"`
 	Topics       []TopicRevision  `json:"topics,omitempty"`
 	Question     string           `json:"question"`
+	Relations    []SourceRelation `json:"relations,omitempty"`
 	Prompt       string           `json:"prompt"`
 	Evidence     []Evidence       `json:"evidence"`
 	Constraints  *ConstraintState `json:"constraints,omitempty"`
@@ -413,6 +424,7 @@ func (a *ContextAssembler) Assemble(ctx context.Context, input ContextInput, tie
 	assembled := AssembledContext{
 		Tier: tier, Budget: budget, Locale: copyInput.Locale, Strategy: copyInput.Strategy,
 		Topic: copyInput.Topic, TopicVersion: copyInput.TopicVersion, Topics: cloneTopicRevisions(copyInput.Topics), Question: copyInput.Question,
+		Relations:   cloneSourceRelations(copyInput.Relations),
 		Constraints: cloneConstraintState(copyInput.Constraints), Metrics: cloneMetrics(copyInput.Metrics),
 	}
 	if len(examples) > MaxExamples {
@@ -558,7 +570,7 @@ func (a *ContextAssembler) usage(input ContextInput, output AssembledContext) ([
 		original string
 		included string
 	}{
-		{LaneHeader, renderHeader(input), renderHeader(outputInput(output))},
+		{LaneHeader, renderHeader(input) + renderRelations(input.Relations), renderHeader(outputInput(output)) + renderRelations(output.Relations)},
 		{LaneEvidence, renderEvidence(input.Evidence), renderEvidence(output.Evidence)},
 		{LaneConstraints, renderConstraints(flattenConstraints(input.Constraints)), renderConstraints(flattenConstraints(output.Constraints))},
 		{LaneMetrics, renderMetrics(input.Metrics), renderMetrics(output.Metrics)},
@@ -585,7 +597,27 @@ func renderWithCandidate(base string, candidate optionalCandidate) string {
 }
 
 func renderBase(input ContextInput, constraints []MandatoryConstraint) string {
-	return renderHeader(input) + renderConstraints(constraints) + renderMetrics(input.Metrics)
+	return renderHeader(input) + renderRelations(input.Relations) + renderConstraints(constraints) + renderMetrics(input.Metrics)
+}
+
+func renderRelations(relations []SourceRelation) string {
+	if len(relations) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Use only these reviewed schema-qualified physical relations and columns for SQL:\n")
+	for _, relation := range relations {
+		fmt.Fprintf(&b, "relation[%s/%s]:%s columns:%s\n", relation.Topic, relation.Dataset, relation.Name, strings.Join(relation.Columns, ","))
+	}
+	return b.String()
+}
+
+func cloneSourceRelations(input []SourceRelation) []SourceRelation {
+	out := append([]SourceRelation(nil), input...)
+	for i := range out {
+		out[i].Columns = append([]string(nil), input[i].Columns...)
+	}
+	return out
 }
 
 func renderHeader(input ContextInput) string {
@@ -641,7 +673,7 @@ func renderItem(lane Lane, id, text string) string {
 }
 
 func outputInput(output AssembledContext) ContextInput {
-	return ContextInput{Locale: output.Locale, Strategy: output.Strategy, Topic: output.Topic, TopicVersion: output.TopicVersion, Topics: cloneTopicRevisions(output.Topics), Question: output.Question, Evidence: cloneEvidence(output.Evidence), Constraints: cloneConstraintState(output.Constraints), Metrics: cloneMetrics(output.Metrics), Advisory: cloneOptional(output.Advisory), Examples: cloneOptional(output.Examples)}
+	return ContextInput{Locale: output.Locale, Strategy: output.Strategy, Topic: output.Topic, TopicVersion: output.TopicVersion, Topics: cloneTopicRevisions(output.Topics), Question: output.Question, Relations: cloneSourceRelations(output.Relations), Evidence: cloneEvidence(output.Evidence), Constraints: cloneConstraintState(output.Constraints), Metrics: cloneMetrics(output.Metrics), Advisory: cloneOptional(output.Advisory), Examples: cloneOptional(output.Examples)}
 }
 
 func renderAssembledPrompt(input ContextInput) string {
@@ -721,13 +753,27 @@ func cloneAndValidateInput(input ContextInput) (ContextInput, error) {
 	} else if len(input.Topics) > 1 || len(input.Topics) == 1 && (input.Topic != input.Topics[0].Topic || input.TopicVersion != input.Topics[0].Version) {
 		return ContextInput{}, &ValidationError{Code: CodeInvalidValue, Path: "topics"}
 	}
-	if len(input.Evidence) > 256 || len(input.Metrics) > 128 || len(input.Advisory) > 256 || len(input.Examples) > 256 {
+	if len(input.Relations) > 128 || len(input.Evidence) > 256 || len(input.Metrics) > 128 || len(input.Advisory) > 256 || len(input.Examples) > 256 {
 		return ContextInput{}, &ValidationError{Code: CodeLimit, Path: "lanes"}
 	}
 	if input.Constraints != nil && len(input.Constraints.Required)+len(input.Constraints.Excluded) > MaxConstraints {
 		return ContextInput{}, &ValidationError{Code: CodeLimit, Path: "constraints"}
 	}
 	out := ContextInput{Locale: input.Locale, Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: cloneTopicRevisions(input.Topics), Question: input.Question}
+	seenRelations := map[string]bool{}
+	for _, relation := range input.Relations {
+		key := relation.Topic + "/" + relation.Dataset
+		if !identity.Identifier(relation.Topic) || !identity.Identifier(relation.Dataset) || !validText(relation.Name, 256) || !strings.Contains(relation.Name, ".") || seenRelations[key] || len(relation.Columns) == 0 || len(relation.Columns) > 256 {
+			return ContextInput{}, &ValidationError{Code: CodeInvalidValue, Path: "relations"}
+		}
+		seenRelations[key] = true
+		for _, column := range relation.Columns {
+			if !validText(column, 256) {
+				return ContextInput{}, &ValidationError{Code: CodeInvalidValue, Path: "relations.columns"}
+			}
+		}
+		out.Relations = append(out.Relations, SourceRelation{Topic: relation.Topic, Dataset: relation.Dataset, Name: relation.Name, Columns: append([]string(nil), relation.Columns...)})
+	}
 	seen := map[string]bool{}
 	var err error
 	out.Evidence, err = cloneEvidenceChecked(input.Evidence, seen, "evidence")

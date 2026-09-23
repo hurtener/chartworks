@@ -255,6 +255,7 @@ func TestPhase18(t *testing.T) {
 		}
 		reviewScopes := []string{
 			"feedback.write",
+			"sources.query",
 			"cw.topic.read:" + fixture.pack.Topic,
 			"cw.source.query:" + fixture.pack.Datasets[0].Source.Source,
 			"cw.dataset.query:" + fixture.pack.Datasets[0].ID,
@@ -572,7 +573,7 @@ func TestPhase18(t *testing.T) {
 
 type countingPhase18Validator struct{ calls int }
 
-func (*countingPhase18Validator) Validate(context.Context, identity.Envelope, readexec.Request) (readexec.Plan, error) {
+func (*countingPhase18Validator) ValidateWithin(context.Context, identity.Envelope, readexec.Request, []readexec.RelationScope) (readexec.Plan, error) {
 	return readexec.Plan{}, nil
 }
 
