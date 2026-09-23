@@ -187,7 +187,8 @@ func TestSQLRecoveryAnalyticalAcceptance(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		q.ID = "legacy-analytical-fixture"
+		// Persisted query IDs retain the existing 32-hex schema grammar.
+		q.ID = readexec.Hash([]string{"legacy-analytical-fixture", p.QueryID})[:32]
 		q.Operation = ""
 		q.AnalyticalVersion = 0
 		q.Analytical = nil
