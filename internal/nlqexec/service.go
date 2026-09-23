@@ -726,6 +726,11 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 	if in.State == "active" && (strings.TrimSpace(in.ReviewNote) == "" || example.PositiveEvidence < 1 || example.Weight < 0.60 || example.NegativeEvidence >= example.PositiveEvidence) {
 		return ExampleRecord{}, store.ErrConflict
 	}
+	if in.State == "active" {
+		if _, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: example.SQL}, admitted.relationScope); err != nil {
+			return ExampleRecord{}, err
+		}
+	}
 	// Always CAS the row read above. The store repeats activation eligibility in
 	// the same UPDATE so concurrent negative feedback either wins first and
 	// blocks activation, or observes the completed activation afterwards.

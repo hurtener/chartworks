@@ -25,7 +25,10 @@ and template evidence, then forces the observed row version and evidence thresho
 into one store update so concurrent negative feedback cannot satisfy a stale review.
 The activation check uses a metadata-only origin verifier authorized by
 `feedback.write` plus exact topic-read, source-query, dataset-query and context-use
-reach. It makes no embedding, retrieval, rerank or other model call and does not
+reach. Before the state update, the native validator also checks the retained SQL
+against the current reviewed relation/column scope under `sources.query`; an
+unreviewed column or same-source relation cannot become an active example. It
+makes no embedding, retrieval, rerank or other model call and does not
 require or synthesize the separate `topics.read` action.
 
 ## Evidence aggregation and anti-gaming

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -1420,9 +1421,9 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	repo := newUnitRepository()
 	binding, _ := retainedSourceReader{}.Binding(context.Background(), e, "source", "context")
 	origin := ExampleOrigin{SchemaVersion: 1, Locale: "en", TopicVersion: "v1", Context: "context", SourceBindingDigest: exec.Hash(binding)}
-	repo.examples["example-1"] = ExampleRecord{ID: "example-1", Topic: "topic", Question: "What is revenue?", SQL: "SELECT secret", State: "candidate", Digest: strings.Repeat("a", 64), Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, Origin: origin, Version: 1}
-	service := &Service{router: &preflightRouter{result: learningRoute(origin, binding)}, topics: reader, sources: retainedSourceReader{}, repo: repo}
-	noInspection, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	repo.examples["example-1"] = ExampleRecord{ID: "example-1", Topic: "topic", Question: "What is revenue?", SQL: "SELECT id FROM analytics.sales", State: "candidate", Digest: strings.Repeat("a", 64), Weight: 2.0 / 3.0, Uncertainty: 1 / math.Sqrt(3), EvidenceCount: 1, PositiveEvidence: 1, Origin: origin, Version: 1}
+	service := &Service{router: &preflightRouter{result: learningRoute(origin, binding)}, topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, repo: repo}
+	noInspection, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "sources.query", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1469,7 +1470,7 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	}
 	inspect := e
 	inspected, err := service.Examples(context.Background(), inspect, "topic", 1)
-	if err != nil || len(inspected) != 1 || inspected[0].SQL != "SELECT secret" {
+	if err != nil || len(inspected) != 1 || inspected[0].SQL != "SELECT id FROM analytics.sales" {
 		t.Fatalf("authorized SQL inspection was not preserved: %#v %v", inspected, err)
 	}
 	// Rollback must remain available when rerouting is unavailable; only
@@ -1478,6 +1479,61 @@ func TestLearningOutputsRedactProtectedSQLAndReauthorizeTopic(t *testing.T) {
 	retired, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "example-1", State: "retired", ReviewNote: "withdraw reviewed example"})
 	if err != nil || retired.State != "retired" {
 		t.Fatalf("retirement unexpectedly required rerouting: %#v %v", retired, err)
+	}
+}
+
+type exampleScopeValidatorAdapter struct{ fixedSourceReader }
+
+func (exampleScopeValidatorAdapter) Explain(context.Context, identity.Envelope, exec.Candidate) error {
+	return nil
+}
+
+func TestExampleActivationRequiresReviewedSQLScope(t *testing.T) {
+	binding, err := retainedSourceReader{}.Binding(context.Background(), identity.Envelope{}, "source", "context")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding.Relations[0].Columns = append(binding.Relations[0].Columns, exec.Column{Name: "secret", NativeType: "text", Category: "text", Safe: true})
+	binding.Relations = append(binding.Relations, exec.Relation{ID: "other_dataset", Schema: "analytics", Name: "other_sales", Columns: []exec.Column{{Name: "id", NativeType: "integer", Category: "integer", Safe: true}}})
+	origin := ExampleOrigin{SchemaVersion: 1, Locale: nlq.LanguageEnglish, TopicVersion: "v1", Context: "context", SourceBindingDigest: exec.Hash(binding)}
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"feedback.write", "sources.query", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}, time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validator, err := exec.NewValidator(exampleScopeValidatorAdapter{fixedSourceReader{binding: binding}}, config.DefaultReadValidation())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := newUnitRepository()
+	for id, sql := range map[string]string{
+		"allowed":           "SELECT id FROM analytics.sales",
+		"unreviewed_column": "SELECT secret FROM analytics.sales",
+		"unreviewed_table":  "SELECT id FROM analytics.other_sales",
+	} {
+		repo.examples[id] = ExampleRecord{ID: id, Topic: "topic", Question: "Which rows?", SQL: sql, State: "candidate", Weight: 0.75, PositiveEvidence: 1, Origin: origin, Version: 1}
+	}
+	service := &Service{router: &preflightRouter{result: learningRoute(origin, binding)}, topics: &unitTopicReader{current: map[string]topics.Contract{"topic": unitContract("topic", "v1", "source", "context", "dataset", true, false)}}, sources: fixedSourceReader{binding: binding}, validator: validator, repo: repo}
+	for _, id := range []string{"unreviewed_column", "unreviewed_table"} {
+		t.Run(id, func(t *testing.T) {
+			_, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: id, State: "active", ReviewNote: "reviewed"})
+			if !errors.Is(err, exec.ErrUnsafe) && !errors.Is(err, exec.ErrBinding) {
+				t.Fatalf("out-of-scope example activated: %v", err)
+			}
+			if got := repo.examples[id]; got.State != "candidate" || got.Version != 1 {
+				t.Fatalf("rejected example reached CAS: %#v", got)
+			}
+		})
+	}
+	active, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "allowed", State: "active", ReviewNote: "reviewed"})
+	if err != nil || active.State != "active" || repo.examples["allowed"].Version != 2 {
+		t.Fatalf("reviewed SQL failed activation: %#v %v", active, err)
+	}
+	// Retirement does not interpret or validate the candidate SQL.
+	service.validator = nil
+	service.router = nil
+	retired, err := service.ExampleState(context.Background(), e, ExampleStateRequest{ExampleID: "unreviewed_column", State: "retired"})
+	if err != nil || retired.State != "retired" {
+		t.Fatalf("non-active transition was blocked by SQL scope: %#v %v", retired, err)
 	}
 }
 

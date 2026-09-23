@@ -254,6 +254,7 @@ func TestPhase18(t *testing.T) {
 		}
 		reviewScopes := []string{
 			"feedback.write",
+			"sources.query",
 			"cw.topic.read:" + fixture.pack.Topic,
 			"cw.source.query:" + fixture.pack.Datasets[0].Source.Source,
 			"cw.dataset.query:" + fixture.pack.Datasets[0].ID,
