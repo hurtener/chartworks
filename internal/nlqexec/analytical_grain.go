@@ -82,12 +82,7 @@ func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.Anal
 		if protected[i] || word != "by" && word != "por" && word != "per" {
 			continue
 		}
-		// Ordering and negated grouping are different intentions. This policy does
-		// not turn either into an affirmative grouping contract.
-		if i > 0 && (words[i-1] == "order" || words[i-1] == "ordered" || words[i-1] == "sort" || words[i-1] == "sorted" || words[i-1] == "ordenar" || words[i-1] == "ordenado" || words[i-1] == "not" || words[i-1] == "without" || words[i-1] == "no" || words[i-1] == "sin") {
-			continue
-		}
-		if i > 1 && (words[i-1] == "group" || words[i-1] == "grouped" || words[i-1] == "grouping" || words[i-1] == "agrupar" || words[i-1] == "agrupado") && (words[i-2] == "not" || words[i-2] == "without" || words[i-2] == "no" || words[i-2] == "sin") {
+		if unmeasuredGrainMarker(words, i) {
 			continue
 		}
 		start = i + 1
@@ -211,6 +206,28 @@ func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.Anal
 	sort.Strings(result.Columns)
 	sort.Strings(result.Dimensions)
 	return result, nil
+}
+
+// Explicit ordering/filtering and negative clauses are not affirmative grain.
+// Unknown wording remains outside this versioned recognizer's quality claim.
+func unmeasuredGrainMarker(words []string, i int) bool {
+	if i == 0 {
+		return false
+	}
+	switch words[i-1] {
+	case "order", "ordered", "sort", "sorted", "ordenar", "ordenado",
+		"filter", "filtered", "filtering", "filtrar", "filtrado", "filtrada", "filtrados", "filtradas",
+		"not", "without", "no", "sin":
+		return true
+	case "group", "grouped", "grouping", "agrupar", "agrupado":
+		if i > 1 {
+			switch words[i-2] {
+			case "not", "without", "no", "sin":
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // grainWords preserves commas as list delimiters. Quoted literals are masked
