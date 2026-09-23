@@ -44,7 +44,7 @@ type effects struct{ readOnly, idempotent, destructive, openWorld, persists, pai
 
 func effectFor(effect string) (effects, bool) {
 	switch effect {
-	case "metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "evaluation_evidence_read", "nlq_examples_read", "nlq_examples_export":
+	case "metadata_read", "retained_metadata_read", "byo_context_read", "private_progress_read", "evaluation_evidence_read", "nlq_examples_read", "nlq_examples_export", "bounded_authorized_catalog_read":
 		return effects{readOnly: true, idempotent: true}, true
 	case "caller_data_transform_no_persistence":
 		return effects{readOnly: true, idempotent: true}, true
@@ -54,6 +54,8 @@ func effectFor(effect string) (effects, bool) {
 		return effects{readOnly: true, idempotent: true}, true
 	case "migration_import_commit", "migration_cutover_commit", "migration_erase_commit":
 		return effects{persists: true, idempotent: true}, true
+	case "current_topic_reuse_or_private_draft_write":
+		return effects{persists: true}, true
 	case "bounded_validated_distinct_source_read", "bounded_source_read_optional_model_retained_artifact", "nlq_routing_and_preflight_commit", "nlq_generation_and_plan_commit", "nlq_validated_read_execution", "nlq_refine_generation_and_plan_commit", "nlq_feedback_commit", "nlq_example_import", "byo_context_retrieval_and_commit", "byo_validated_read_and_receipt", "durable_bounded_orchestration":
 		return effects{openWorld: true, persists: true, paid: true}, true
 	case "evaluation_live_or_fixture_run":

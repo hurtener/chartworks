@@ -133,7 +133,7 @@ func TestEXP11CumulativeRegisteredConsumerMatrix(t *testing.T) {
 			t.Fatalf("incomplete consumer/error projection: %#v", row)
 		}
 	}
-	for _, id := range []string{"health", "metrics", "gatewayProbe", "listJobs", "reportingFilterOptions", "reportingExport", "reportingRenditionCreate", "reportingRenditionRead", "reportingRenditionList", "reportingRenditionExpire", "startOnboarding", "getOnboarding", "resumeOnboarding", "answerOnboarding", "cancelOnboarding", "proposeOnboardingDrift"} {
+	for _, id := range []string{"health", "metrics", "gatewayProbe", "listJobs", "reportingFilterOptions", "reportingExport", "reportingRenditionCreate", "reportingRenditionRead", "reportingRenditionList", "reportingRenditionExpire", "searchBusinessGoal", "chooseBusinessGoal", "startOnboarding", "getOnboarding", "resumeOnboarding", "answerOnboarding", "cancelOnboarding", "proposeOnboardingDrift"} {
 		if _, ok := byID[id]; !ok {
 			t.Error("enabled operation missing from generated matrix", id)
 		}

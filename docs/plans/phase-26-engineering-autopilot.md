@@ -50,3 +50,8 @@ Proposal approval and actual effect completion are separate. D-051/D-052 apply. 
 See the [runtime contract](../contracts/reviewed-engineering-and-frozen-runs.md) and
 [review and verification ledger](../reviews/phase-26-28-runtime.md). Exact-source
 acceptance and coverage are required before closure.
+
+Business-goal discovery for topic authoring is now a Phase 33 public entry
+point over authorized current topics and source/profile candidates. Phase 26's
+managed-data `AutopilotGoal` still requires explicit source/context and managed
+destination coordinates; no new autonomous warehouse write path is implied.

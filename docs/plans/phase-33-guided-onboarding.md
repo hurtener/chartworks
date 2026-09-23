@@ -131,3 +131,32 @@ evidence now have a first query-time consumer. Routing never promotes onboarding
 proposals or unresolved fields: only the exact active publication participates, and
 candidate/rejected relationships remain non-executable. Phase 33 composes those
 published semantics without changing that routing authority boundary.
+
+## Business-goal entry point submission
+
+`POST /v1/onboarding/goal-search` now accepts bounded English or Spanish goal
+text without caller-selected source, context, dataset, profile or topic. The
+domain service composes the existing signed-reachable source/dataset catalog,
+actor/session-private profile history and current reviewed-topic catalog. It
+returns inspectable lexical matches and exact source/profile/topic revision
+coordinates. Search caps are eight sources, sixteen datasets per source,
+sixteen topics and twenty-four returned candidates; truncation is explicit.
+The policy makes zero gateway calls and zero warehouse row reads. It does not
+claim semantic equivalence or multilingual model quality; all business meaning
+remains unresolved until a human reviews it.
+
+`POST /v1/onboarding/goal-choice` rechecks a current topic contract for reuse,
+including exact version/revision/digest and chosen signed execution context.
+For a new topic it rechecks the current source revision and active private
+profile, then invokes ordinary profile-backed draft authoring. This leaves the
+topic private and does not review, publish or certify it. HTTP, MCP and Go SDK
+use the same domain methods. The existing selected-coordinate `StartRequest`
+remains the next step for a staged onboarding journey after a person chooses
+the candidate; this submission does not turn a goal into an autonomous run.
+
+`TestBusinessGoalAuthoringPG17` is an additive real PostgreSQL acceptance
+journey with synthetic EN/ES goals, active profile and reviewed-topic
+candidates, private draft/reuse outcomes, stale pins and tenant/context denial.
+It is separate from the original eight Phase 33 acceptance children, which
+continue to cover the resumable selected-coordinate workflow. Live human
+relevance calibration and broader source/catalog pagination remain open.

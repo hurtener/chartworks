@@ -321,6 +321,23 @@ func (s *Service) History(ctx context.Context, e identity.Envelope, source, part
 	return out, err
 }
 
+// ActiveProfile reads the private current head directly. A recent incomplete
+// checkpoint cannot hide an older still-active profile from goal discovery.
+func (s *Service) ActiveProfile(ctx context.Context, e identity.Envelope, source, partition, dataset string) (out ProfileStatus, err error) {
+	repo, ok := s.repo.(interface {
+		ActiveProfile(context.Context, identity.Envelope, string, string, string) (ProfileStatus, error)
+	})
+	if !ok {
+		return out, ErrUnavailable
+	}
+	err = s.call(ctx, e, false, func(ctx context.Context) error {
+		var e2 error
+		out, e2 = repo.ActiveProfile(ctx, e, source, partition, dataset)
+		return e2
+	})
+	return out, err
+}
+
 // RegisterDependency records a consumer's exact version and column dependence.
 // Future consumer services must register their own versions through this seam;
 // this operation does not assert that a reporting definition was published.

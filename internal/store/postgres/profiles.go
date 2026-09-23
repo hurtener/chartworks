@@ -93,6 +93,39 @@ func profileHead(ctx context.Context, tx pgx.Tx, r engineering.ProfileRecord) (s
 	return id, err
 }
 
+// ActiveProfile resolves the actor/session-scoped head before loading its
+// immutable version and repeating signed source/context/dataset checks.
+func (d *DB) ActiveProfile(ctx context.Context, e identity.Envelope, source, partition, dataset string) (out engineering.ProfileStatus, err error) {
+	spec := engineering.ProfileSpec{ID: "active", Source: source, Context: partition, Dataset: dataset}
+	if !spec.Valid() {
+		return out, engineering.ErrInvalid
+	}
+	if err = spec.Require(e, false); err != nil {
+		return out, err
+	}
+	ctx, stop, err := requestContext(ctx, e)
+	if err != nil {
+		return out, err
+	}
+	defer stop()
+	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var id string
+		if err := tx.QueryRow(ctx, `SELECT profile_id FROM chartworks.profile_heads WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND source_id=$4 AND dataset_id=$5`, e.Tenant(), e.User(), e.Session(), source, dataset).Scan(&id); err != nil {
+			return err
+		}
+		r, err := profileTx(ctx, tx, e, id, false, false)
+		if err != nil {
+			return err
+		}
+		if r.Spec.Context != partition || r.State != "complete" || r.Result == nil {
+			return store.ErrNotFound
+		}
+		out = r.Public()
+		return nil
+	})
+	return out, err
+}
+
 // ReserveProfile stores only resolved bounded metadata. It does not create an
 // active pointer or claim sampling/model work has already happened.
 func (d *DB) ReserveProfile(ctx context.Context, e identity.Envelope, r engineering.ProfileRecord) (out engineering.ProfileRecord, err error) {

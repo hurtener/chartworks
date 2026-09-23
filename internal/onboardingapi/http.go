@@ -30,6 +30,8 @@ type route struct {
 
 func Registry() (*api.Registry, error) {
 	routes := []route{
+		{"POST", "/v1/onboarding/goal-search", "searchBusinessGoal", "onboarding.read", "Search signed-reachable reviewed topics and source/profile candidates", reflect.TypeFor[onboarding.GoalSearchRequest](), reflect.TypeFor[onboarding.GoalSearchResult]()},
+		{"POST", "/v1/onboarding/goal-choice", "chooseBusinessGoal", "onboarding.write", "Recheck a reviewed topic or create a private profile-backed draft", reflect.TypeFor[onboarding.GoalChoiceRequest](), reflect.TypeFor[onboarding.GoalChoiceResult]()},
 		{"POST", "/v1/onboarding", "startOnboarding", "onboarding.write", "Start an actor-private resumable onboarding run", reflect.TypeFor[onboarding.StartRequest](), reflect.TypeFor[onboarding.Run]()},
 		{"GET", "/v1/onboarding/{id}", "getOnboarding", "onboarding.read", "Read actor-private onboarding progress", nil, reflect.TypeFor[onboarding.Run]()},
 		{"POST", "/v1/onboarding/resume", "resumeOnboarding", "onboarding.write", "Advance exactly one bounded onboarding stage", reflect.TypeFor[onboarding.ResumeRequest](), reflect.TypeFor[onboarding.Run]()},
@@ -45,6 +47,16 @@ func Registry() (*api.Registry, error) {
 			return nil, err
 		}
 		d := api.Definition{Operation: api.Operation{Method: r.method, Path: r.path, Action: r.action, Effect: "durable_bounded_orchestration"}, ID: r.id, Summary: r.summary, ResourceLoader: "onboarding.Service enforces private run and every delegated source/context/domain target", Audit: "onboarding progress only; no prompts, SQL, rows, credentials or tokens", Replay: "never", Response: response, Errors: errs}
+		if r.id == "searchBusinessGoal" {
+			d.Effect = "bounded_authorized_catalog_read"
+			d.ResourceLoader = "signed source/dataset/context and complete topic dependencies before candidate selection"
+			d.Audit = "read_only_no_domain_audit"
+		}
+		if r.id == "chooseBusinessGoal" {
+			d.Effect = "current_topic_reuse_or_private_draft_write"
+			d.ResourceLoader = "current publication contract or exact active private profile and source revision"
+			d.Audit = "ordinary topic draft save audit; reuse is read only"
+		}
 		if r.method == "GET" {
 			d.Replay = "read"
 			d.Effect = "private_progress_read"
@@ -90,6 +102,16 @@ func Handler(verifier *auth.Verifier, service *onboarding.Service, next http.Han
 		}
 		var out any
 		switch selected.ID {
+		case "searchBusinessGoal":
+			var in onboarding.GoalSearchRequest
+			if err = body(r, &in); err == nil {
+				out, err = service.SearchGoal(r.Context(), e, in)
+			}
+		case "chooseBusinessGoal":
+			var in onboarding.GoalChoiceRequest
+			if err = body(r, &in); err == nil {
+				out, err = service.ChooseGoal(r.Context(), e, in)
+			}
 		case "startOnboarding":
 			var in onboarding.StartRequest
 			if err = body(r, &in); err == nil {
@@ -171,7 +193,7 @@ func failure(w http.ResponseWriter, err error) {
 		status, code = 401, "unauthenticated"
 	case errors.Is(err, access.ErrForbidden):
 		status, code = 403, "forbidden"
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, access.ErrNotFound):
 		status, code = 404, "not_found"
 	case errors.Is(err, onboarding.ErrAttention):
 		status, code = 409, "attention_required"
