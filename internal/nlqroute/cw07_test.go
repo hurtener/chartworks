@@ -416,6 +416,7 @@ func testCW07CalendarYearAndMonthRange(t *testing.T) {
 		locale                                        nlq.Language
 	}{
 		{"english-year", "What was gross revenue from paid orders by month in 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageEnglish},
+		{"modal-may-year", "May I see revenue in 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageEnglish},
 		{"spanish-year", "¿Cuáles fueron los ingresos brutos de pedidos pagados por mes en 2026?", "2026-01-01", "2027-01-01", "year", "explicit_calendar_year", nlq.LanguageSpanish},
 		{"english-range", "What is total net revenue in USD for all paid orders from January through March 2026, after subtracting every refund on those paid orders? Return one number.", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageEnglish},
 		{"aligned-quarter-grouping", "Revenue by quarter from January through March 2026", "2026-01-01", "2026-04-01", "month", "explicit_month_range", nlq.LanguageEnglish},
@@ -477,6 +478,8 @@ func testCW07CalendarSpanRejectsUnreviewedOrAmbiguousRequests(t *testing.T) {
 		{"Revenue by year from February through April 2026", "unsupported_temporal_grain", nlq.LanguageEnglish},
 		{"Revenue not in 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
 		{"Revenue not from January through March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Revenue excluding the period from January through March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
+		{"Ingresos excluyendo el período de enero a marzo de 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
 		{"Revenue not in March 2026", "unsupported_temporal_negation", nlq.LanguageEnglish},
 		{"Revenue not last month", "unsupported_temporal_negation", nlq.LanguageEnglish},
 		{"Ingresos no en 2026", "unsupported_temporal_negation", nlq.LanguageSpanish},
@@ -518,6 +521,10 @@ func testCW07CalendarSpanRejectsUnreviewedOrAmbiguousRequests(t *testing.T) {
 	positive, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue excluding refunds in March 2026", InterpretationAnchor: "2026-09-22"})
 	if err != nil || positive.Interpretation == nil || len(positive.Interpretation.Temporal) != 1 {
 		t.Fatalf("non-temporal exclusion blocked period: err=%v out=%#v", err, positive.Interpretation)
+	}
+	positive, err = service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: nlq.LanguageEnglish, Question: "Revenue excluding refunds from January through March 2026", InterpretationAnchor: "2026-09-22"})
+	if err != nil || positive.Interpretation == nil || len(positive.Interpretation.Temporal) != 1 || positive.Interpretation.Temporal[0].End != "2026-04-01" {
+		t.Fatalf("non-temporal range exclusion blocked period: err=%v out=%#v", err, positive.Interpretation)
 	}
 }
 

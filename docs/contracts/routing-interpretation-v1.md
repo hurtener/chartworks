@@ -55,8 +55,11 @@ temporal policy in addition to the interval grain; month intervals require
 reviewed month support. Calendar-year filters may use any reviewed grouping
 grain, including month or quarter without reviewed year aggregation. A quarter
 or year grouping over a month interval also requires aligned window boundaries.
-Negated temporal requests such as `not in 2026` or `no en 2026` clarify before
-model work rather than becoming inclusive windows.
+Negated temporal requests such as `not in 2026`, `no en 2026`, or
+`excluding the period from January through March 2026` clarify before model
+work rather than becoming inclusive windows. The parser distinguishes a
+sentence-initial modal `May I` from the named month `May`; exclusions of other
+objects, such as refunds, do not negate a nearby positive date range.
 
 One spelling matching multiple reviewed dimensions, one period with multiple
 unnamed temporal dimensions, an unsupported calendar, or a changed source binding

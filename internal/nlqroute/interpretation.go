@@ -506,14 +506,14 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 		}
 	}
 	months := map[string]time.Month{"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12, "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
-	if negatedTemporalRequest(words, months) {
+	if negatedTemporalRequest(words, months, locale) {
 		return parsedSpan{}, false, &Clarification{Reason: "unsupported_temporal_negation", Outcome: semantics.ClarificationInvalid, Prompt: "Use a positive reviewed period or clarify the excluded dates."}
 	}
 	lastMonth := containsPhrase(question, "last month") || containsPhrase(question, "mes pasado") || containsPhrase(question, "ultimo mes") || containsPhrase(question, "último mes")
 	thisMonth := containsPhrase(question, "this month") || containsPhrase(question, "este mes")
 	monthPositions := make([]int, 0, 2)
-	for i, word := range words {
-		if _, ok := months[word]; ok {
+	for i := range words {
+		if _, ok := namedCalendarMonth(words, i, months, locale); ok {
 			monthPositions = append(monthPositions, i)
 		}
 	}
@@ -559,8 +559,8 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 	}
 	var named []parsedSpan
 	seen := map[string]bool{}
-	for i, word := range words {
-		month, ok := months[word]
+	for i := range words {
+		month, ok := namedCalendarMonth(words, i, months, locale)
 		if !ok {
 			continue
 		}
@@ -621,15 +621,45 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 	return parsedSpan{}, false, nil
 }
 
-func negatedTemporalRequest(words []string, months map[string]time.Month) bool {
+func namedCalendarMonth(words []string, i int, months map[string]time.Month, locale nlq.Language) (time.Month, bool) {
+	// Sentence-initial "May I" is a modal request, not a month reference.
+	if locale == nlq.LanguageEnglish && i == 0 && words[i] == "may" && len(words) > 1 && words[1] == "i" {
+		return 0, false
+	}
+	month, ok := months[words[i]]
+	return month, ok
+}
+
+func negatedTemporalRequest(words []string, months map[string]time.Month, locale nlq.Language) bool {
 	for i, word := range words {
-		_, namedMonth := months[word]
+		_, namedMonth := namedCalendarMonth(words, i, months, locale)
 		relativeMonth := (word == "last" || word == "this") && i+1 < len(words) && words[i+1] == "month" ||
 			(word == "mes" && i+1 < len(words) && words[i+1] == "pasado") ||
 			(word == "este" || word == "ultimo" || word == "último") && i+1 < len(words) && words[i+1] == "mes"
 		year := numericYear(word) && i > 0 && (wordIsYearConnector(words[i-1]))
 		if (namedMonth || relativeMonth || year) && negatedTemporalPrefix(words, i) {
 			return true
+		}
+		if rangeStartForLocale(word, locale) && i+1 < len(words) {
+			if _, nextMonth := namedCalendarMonth(words, i+1, months, locale); nextMonth && negatedTemporalRange(words, i) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func negatedTemporalRange(words []string, start int) bool {
+	// Allow only a short temporal noun phrase between negation and "from".
+	// Other objects such as "excluding refunds from January" are not negated dates.
+	for i := start - 1; i >= 0 && i >= start-4; i-- {
+		if temporalNegator(words[i]) {
+			return true
+		}
+		switch words[i] {
+		case "the", "a", "el", "la", "period", "periodo", "período", "date", "dates", "fechas", "range", "rango", "window":
+		default:
+			return false
 		}
 	}
 	return false
