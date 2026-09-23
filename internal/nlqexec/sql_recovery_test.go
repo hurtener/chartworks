@@ -27,11 +27,15 @@ type recoveryRequest struct {
 
 func (g *recoveryCapture) Generate(ctx context.Context, call gateway.Call, budget *gateway.Budget, role, system, prompt string, schema *gateway.Schema) (gateway.Generated, error) {
 	g.requests = append(g.requests, recoveryRequest{Role: role, System: system, Prompt: prompt, Schema: schema.Document()})
-	return g.sequenceGateway.Generate(ctx, call, budget, role, system, prompt, schema)
+	response, err := g.sequenceGateway.Generate(ctx, call, budget, role, system, prompt, schema)
+	if err == nil {
+		err = schema.Validate(response.JSON, 64<<10)
+	}
+	return response, err
 }
 
 func recoveryCandidate(sql string, parameters []exec.Parameter, role string) gateway.Generated {
-	raw, err := json.Marshal(generatedCandidate{SQL: sql, Parameters: parameters, Assumptions: []string{}, Ambiguities: []string{}})
+	raw, err := json.Marshal(generatedCandidate{SQL: sql, Parameters: append([]exec.Parameter{}, parameters...), Assumptions: []string{}, Ambiguities: []string{}})
 	if err != nil {
 		panic(err) // All callers supply synthetic strings and closed parameter DTOs.
 	}

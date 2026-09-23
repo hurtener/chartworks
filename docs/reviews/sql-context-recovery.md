@@ -16,7 +16,7 @@ qualification are separate evidence states. Nothing here declares full parity.
 | AP-04 | Targeted privacy-safe validation repair | Initial implementation; runtime verification pending |
 | AP-05 | Analytical state and parameter ownership through follow-ups | Pending |
 | AP-06 | Parameterized learning and retained generation evidence | Pending |
-| AP-07 | Generator/validator dialect capability agreement | Pending |
+| AP-07 | Generator/validator dialect capability agreement | Native marker-count fallback defect fixed; broader operation matrix and live-engine qualification pending |
 | AP-08 | Ambiguity gating and owner-cohort qualification | Pending |
 
 ## First repair checkpoint (SQL-09, SQL-13, SQL-15)
@@ -95,3 +95,27 @@ context with the explicit KPI closure. Other focused regressions cover dimension
 connecting paths, corrupted facet text/revisions/origins, detached copies, missing
 constituents/cycles, cancellation and whole-group budget omission. Runtime evidence
 is pending the dedicated committed-source workflow; no live-quality claim is made.
+
+## First runtime verification and surrounding defects
+
+At source `44a4d6777a2c8a783171c4ea99a6531a0889e45a`, all thirteen new recovery
+regressions passed under the race detector, as did the semantics/drafts/rulesets/
+topics, context, routing and NLQ execution packages. The full unit command failed
+in two separate existing paths. Investigation found that warehouse validation
+let the fallback erase a native-detected marker when the caller supplied zero
+values. Fallback counting now only compensates for omissions; it may never reduce
+the native AST inspection count. This preserves the existing accepted read subset. The existing six-dialect parameter-contract test is the regression
+oracle. This is native-parser boundary evidence, not live cloud-engine evidence.
+
+The HTTP example-activation dispatch fixture also omitted the `sources.query`
+action already required by production. The fixture now supplies that action for
+the authorized dispatch case and adds an explicit denied-action regression. No
+production authority rule was relaxed. The synthetic request spy now validates
+its recorded response against the same generation schema and emits an actual
+empty parameter array rather than a null array.
+
+The initial integrated acceptance output also exposed reference-choice binding,
+saved-query repository, stale CTE-shape and fixed migration-count failures. Those
+need independent baseline comparison and disposition before this PR is mergeable;
+a passing new regression cohort does not erase broader gate failures. Verification
+results after this checkpoint belong in the PR with their exact source SHA.

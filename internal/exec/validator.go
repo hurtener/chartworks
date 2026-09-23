@@ -187,7 +187,13 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	}
 	parameters := inspection.Parameters
 	if parameters != len(r.Parameters) {
+		// The fallback compensates for omitted markers; it cannot erase markers
+		// already reported by the native parser. In particular, an unsupported
+		// fallback spelling must not turn a missing binding into a zero count.
 		parameters, err = warehouseParameterCount(ctx, r.SQL, binding.Dialect)
+		if parameters < inspection.Parameters {
+			return Plan{}, ErrBinding
+		}
 	}
 	if err != nil || parameters != len(r.Parameters) || len(inspection.Outputs) < 1 || len(inspection.Outputs) > 256 {
 		return Plan{}, ErrBinding
@@ -249,9 +255,9 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	return Plan{candidate: candidate, nativeChecked: true}, nil
 }
 
-// warehouseParameterCount compensates only for native inspection omissions in
-// otherwise parsed read trees (currently LIKE ... ESCAPE). It does not parse or
-// authorize SQL; the native inspection above remains mandatory for the tree.
+// warehouseParameterCount compensates for omitted markers in otherwise parsed
+// read trees (such as LIKE ... ESCAPE). Its result cannot reduce the native
+// inspection count and never authorizes SQL on its own.
 func warehouseParameterCount(ctx context.Context, statement, dialect string) (int, error) {
 	tokens, err := businessScan(ctx, statement, true)
 	if err != nil {
