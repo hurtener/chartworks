@@ -66,6 +66,10 @@ jobs:
           if [ -n "$unformatted" ]; then printf '%s\n' "$unformatted"; exit 1; fi
           make planning-check
           git diff --exit-code
+      - name: Reserve disk for native and race builds
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          df -h
       - uses: actions/cache/restore@v4
         id: native
         with:
@@ -89,10 +93,24 @@ jobs:
           test -s /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
           echo 'CGO_LDFLAGS=-L/tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
           echo 'CHARTWORKS_TEST_BRUIN_PATH=/tmp/chartworks-native/bruin' >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v4
+        id: incremental
+        with:
+          path: /home/runner/.cache/go-build
+          key: sql-context-race-ubuntu24-go1264-${{ github.sha }}
+          restore-keys: |
+            sql-context-race-ubuntu24-go1264-
       - name: Semantic, routing, context and generation regressions
         run: |
           set -o pipefail
           go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sql-context-units-${{ github.sha }}
+          path: ${{ runner.temp }}/sql-context-units.log
+          if-no-files-found: warn
+          retention-days: 7
       - name: Existing integrated NLQ acceptance
         if: success() || failure()
         run: |
@@ -101,6 +119,11 @@ jobs:
       - name: Validation must not modify source
         if: always()
         run: git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always() && steps.incremental.outcome == 'success' && steps.incremental.outputs.cache-hit != 'true'
+        with:
+          path: /home/runner/.cache/go-build
+          key: sql-context-race-ubuntu24-go1264-${{ github.sha }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
