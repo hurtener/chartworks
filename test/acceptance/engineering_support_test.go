@@ -20,6 +20,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/sourceapi"
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store"
@@ -40,7 +41,7 @@ type engineeringFixture struct {
 	reads    atomic.Int64
 }
 
-func newEngineeringFixture(t *testing.T, change func(*config.Values), model gateway.Engine) *engineeringFixture {
+func newEngineeringFixture(t *testing.T, change func(*config.Values), model gateway.Engine, queueLimits ...jobs.Limits) *engineeringFixture {
 	t.Helper()
 	base := newSourceFixture(t, func(c *config.Sources) {
 		c.Connections = append(c.Connections, config.SourceConnection{
@@ -49,7 +50,22 @@ func newEngineeringFixture(t *testing.T, change func(*config.Values), model gate
 			ManagedSchema: "cw_test", Relations: []config.SourceRelation{},
 		})
 	})
+	if len(queueLimits) > 1 {
+		t.Fatal("one isolated fixture queue configuration required")
+	}
+	if len(queueLimits) == 1 {
+		if err := base.db.ConfigureQueue(t.Context(), queueLimits[0]); err != nil {
+			t.Fatal("provision isolated fixture queue before any profile operation", err)
+		}
+	}
 	f := &engineeringFixture{sourceFixture: base, values: config.Defaults(), writer: base.role + "_writer"}
+	if len(queueLimits) == 1 {
+		f.values.Jobs.Workers = queueLimits[0].Workers
+		f.values.Jobs.GlobalConcurrency = queueLimits[0].GlobalConcurrency
+		f.values.Jobs.TenantConcurrency = queueLimits[0].TenantConcurrency
+		f.values.Jobs.MaxPending = queueLimits[0].MaxPending
+		f.values.Jobs.MaxPendingPerTenant = queueLimits[0].MaxPendingPerTenant
+	}
 	f.e = f.actor(t, "source-a", "operator")
 	f.values.Sources = f.cfg.Clone()
 	f.values.Uploads.Enabled = true

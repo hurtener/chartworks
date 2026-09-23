@@ -117,7 +117,7 @@ func (s *Service) ReviewRuntimePack(ctx context.Context, e identity.Envelope, pa
 
 // RegisterInput stores protected live material and returns its canonical reference.
 func (s *Service) RegisterInput(ctx context.Context, e identity.Envelope, retention string, in LiveInput) (ProtectedRef, error) {
-	if ctx == nil || !identifier(retention) || !protectedPackMatches(in, in.Pack) {
+	if ctx == nil || !identifier(retention) || !ProtectedPackMatches(in, in.Pack) {
 		return ProtectedRef{}, ErrInvalid
 	}
 	d, err := digest(in)

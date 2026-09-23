@@ -39,7 +39,10 @@ type LiveInput struct {
 	ReportRef reporting.Reference         `json:"report_ref,omitempty"`
 }
 
-func protectedPackMatches(in LiveInput, selected PackRevision) bool {
+// ProtectedPackMatches checks the protected input's pack shape. A pack-neutral
+// narrative frozen input still requires the product-sealed selected pack pin
+// before source or model execution; this check grants no authority by itself.
+func ProtectedPackMatches(in LiveInput, selected PackRevision) bool {
 	if validPack(in.Pack) {
 		want, wantErr := digest(selected)
 		got, gotErr := digest(in.Pack)
@@ -48,7 +51,7 @@ func protectedPackMatches(in LiveInput, selected PackRevision) bool {
 	return in.Pack.ID == "" && in.Pack.Revision == 0 && in.Pack.Digest == "" && in.Pack.Model == "" &&
 		len(in.Pack.Models) == 0 && in.Pack.ConfigurationDigest == "" && in.Frozen != nil && in.Frozen.Request.Narrative &&
 		in.Question == nil && in.Run == nil && in.Route == nil && in.Replay == nil && in.Shadow == nil && in.BYO == nil &&
-		in.Chart == nil && in.ReportID == "" && in.ReportRef == (reporting.Reference{})
+		in.Chart == nil && (in.ReportID == "" || in.ReportID == in.Frozen.BlockID && identifier(in.ReportID)) && in.ReportRef == (reporting.Reference{})
 }
 
 // ShadowInput compares two retained definitions without fresh planning or provider work.
@@ -130,7 +133,7 @@ func (g *GovernedRunner) Observe(ctx context.Context, x Execution) (Observation,
 	if err != nil {
 		return Observation{Usage: reservation.usage()}, err
 	}
-	if !protectedPackMatches(in, x.Pack) {
+	if !ProtectedPackMatches(in, x.Pack) {
 		return Observation{Usage: reservation.usage()}, ErrReview
 	}
 	if x.RuntimeConfig.Digest != x.Pack.ConfigurationDigest || !packModelsMatchConfig(x.Pack, x.RuntimeConfig) {

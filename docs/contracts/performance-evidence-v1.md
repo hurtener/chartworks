@@ -28,8 +28,9 @@ The profile binding records hashes of tenant, signed context reach, signed
 actions, source revision, reviewed rule revision, topic publication and
 reviewed runtime pack. A binding digest supplied by the harness is not proof
 that the product uses that key for reuse. The required profile exercises cold,
-warm, repeated and concurrent access plus an exact one-field change for source,
-rule, context, topic and runtime pack. Cross-tenant and
+warm, repeated and concurrent access plus a declared primary axis with its
+exact current-owner dependency closure for source, rule, context and topic.
+The selected runtime-pack change remains one field. Cross-tenant and
 same-tenant/different-context cases and altered signed-action cases must deny
 before source or model work.
 Concurrent cold access must produce one physical execution for one exact
@@ -99,7 +100,11 @@ the active cutover and its source adapter, checks current topic/rule/source and
 signed context reach, and hashes all rows of a bounded native PostgreSQL
 dataset's validator-safe column projection. Multi-dataset source snapshots fail
 closed until a shared native transaction exists. Missing or changed owner
-evidence fails closed. A bounded real-PostgreSQL recorded test now runs the
+evidence fails closed. A pack-neutral protected narrative input can identify
+only its exact published block as the execution target; the resolver checks
+signed block reach and current block/topic/rule/source pins, while the sealed
+frozen manifest checks the selected reviewed runtime pack. A bounded
+real-PostgreSQL recorded test now runs the
 same protected frozen consumer under two independently reviewed packs, records
 distinct passing Phase 24 reports, and observes a changed reuse identity with
 fresh source/model receipts. The strict adapter requires both exact accepted
@@ -108,13 +113,31 @@ candidate digest matches the report before any selection mutation. Before each
 correctness probe and timed step, it uses the verified Pengui envelope to
 select the report-bound pack through the product's CAS pointer; it restores the
 original accepted selection after success or failure and refuses a foreign
-revision. An absent report, proposal or authority fails before timing. Final
+revision. The product's actual `ReuseKey` must change for every changed
+scenario; a profile-only revision digest cannot create a passing invalidation.
+The recorded composition requires a request queue provisioned for the fixed
+128 concurrent tenant calls and a frozen-run tenant budget above 128 maximum
+artifact reservations before entering a final profile. An absent report,
+proposal, authority or capacity fails before timing. Final
 AC03 still needs accepted Phase 24 cases/reports for every selected current
-source/rule/context/topic revision, one-field current invalidation and
+source/rule/context/topic revision, current owner-dependent invalidation and
 stale-key substitution through the final correctness gate, the exact final
 stress profile with provisioned concurrency and raw receipts, and live owner
 evidence. Neither this composition nor its recorded fixtures qualifies a live
 model or release stress run. The release orchestration remains internal.
+
+`final_stress` names one primary invalidation axis. Its current-owner
+dependency closure is exact: `rule_changed` changes rule alone;
+`topic_changed` changes topic and its pinning rule; `source_changed` changes
+source, topic and rule; `context_changed` changes context, source, topic and
+rule. Tenant, actions and selected runtime pack stay fixed for those four.
+The resolver reads the current Phase 34 source head, source context, active
+topic and reviewed rule, and checks the selected published block's pins.
+The release gate compares the raw block/source/topic/rule pins for the declared
+axis and recomputes every binding hash from those owners. A cohort-only hash,
+missing collateral pin or unrelated change fails before measurement; a real
+changed scenario must also change the product's `ReuseKey`. The exact full
+profile and owner evidence have not yet been measured.
 
 Release reports are atomically created as private `0600` files and an existing
 path is never replaced. The one-hour profile bound includes correctness probes

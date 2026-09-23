@@ -118,13 +118,13 @@ func (r *RevisionResolver) ResolvePerformanceRevisions(ctx context.Context, e id
 		return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
 	}
 	input, err := r.inputs.ResolveEvaluationInput(ctx, e, proof.Case.Input)
-	if err != nil || !identity.Identifier(input.ReportID) || input.Pack.Digest != proof.RuntimePack.Pack.Digest || input.Pack.CanonicalDigest() != proof.RuntimePack.Pack.CanonicalDigest() || input.Pack.ConfigurationDigest != proof.RuntimePack.Config.Digest {
+	if err != nil || !identity.Identifier(input.ReportID) || !evaluation.ProtectedPackMatches(input, proof.RuntimePack.Pack) {
 		return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
 	}
 	var topicIDs []string
 	var selectedBlock reporting.View
 	if input.Frozen != nil {
-		if r.blocks == nil || input.Run != nil || input.Question != nil || !identity.Identifier(input.Frozen.BlockID) {
+		if r.blocks == nil || input.Run != nil || input.Question != nil || !identity.Identifier(input.Frozen.BlockID) || input.ReportID != input.Frozen.BlockID {
 			return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
 		}
 		selectedBlock, err = r.blocks.Read(ctx, e, input.Frozen.BlockID, input.Frozen.Request.Reference)
@@ -194,8 +194,12 @@ func (r *RevisionResolver) ResolvePerformanceRevisions(ctx context.Context, e id
 	if sourceID == "" || len(datasets) == 0 || input.Frozen != nil && (sourceID != selectedBlock.Source || contextID != selectedBlock.Context) || input.Frozen == nil && contextID != input.Question.Context {
 		return evaluation.PerformanceRevisionEvidence{}, evaluation.ErrPerformanceEvidence
 	}
+	targetKind := "report"
+	if input.Frozen != nil {
+		targetKind = "block"
+	}
 	if err := access.RequireExecution(e, access.Execution{
-		Target:       access.Resource{Tenant: e.Tenant(), Kind: "report", Permission: "execute", ID: input.ReportID},
+		Target:       access.Resource{Tenant: e.Tenant(), Kind: targetKind, Permission: "execute", ID: input.ReportID},
 		Dependencies: []access.Resource{{Tenant: e.Tenant(), Kind: "source", Permission: "query", ID: sourceID}},
 		Contexts:     []access.Resource{{Tenant: e.Tenant(), Kind: "execution_context", Permission: "use", ID: contextID}},
 	}); err != nil {

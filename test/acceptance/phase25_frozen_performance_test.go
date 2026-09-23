@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/gateway/recorded"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/reporting"
 )
 
@@ -76,7 +79,13 @@ func (c *frozenNarrativeCapture) Generate(ctx context.Context, call gateway.Call
 // This is a bounded AC03 prerequisite over real PG17 and a recorded gateway.
 // It does not satisfy the final_stress profile or live-model release criterion.
 func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
-	f := newReportingStoreFixture(t)
+	queueLimits := jobs.Defaults()
+	queueLimits.Workers, queueLimits.GlobalConcurrency, queueLimits.TenantConcurrency = 32, 128, 128
+	f := newReportingStoreFixture(t, queueLimits)
+	reportingLimits := config.DefaultReportingExecution()
+	// Every in-flight request reserves its configured artifact maximum. This
+	// bounded tenant allowance covers 128 such reservations plus retained data.
+	reportingLimits.MaxTenantBytes = 4 << 30
 	f.definition.Outputs = f.definition.Outputs[:2]
 	f.definition.Outputs[1].Narrative.SchemaVersion = "grounded-narrative-v1"
 	f.definition.Outputs[1].Narrative.MaxTokens = 8192
@@ -117,6 +126,10 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	packB.Digest = packB.CanonicalDigest()
 	acceptedPackB := reviewPack(packB, cfgB)
 	selectNarrativePack(t, f.f, f.raw, acceptedPack, 1)
+	requestRunner, err := jobs.NewRequestRunner(f.f.f.db, queueLimits)
+	if err != nil || !requestRunner.SupportsTenantConcurrency(128) {
+		t.Fatal("provision fixed final-profile request concurrency", err)
+	}
 	configuredCtx, err := gateway.WithRuntimeConfig(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +137,10 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	request := reporting.RunRequest{Outputs: []string{"table-main", "narrative-main"}, Narrative: true, Resolution: reporting.Resolution{At: time.Now().UTC().Truncate(time.Second), Timezone: "UTC"}}
 	// Capture each selected pack's exact authorized narrative input outside measurement.
 	capture := &frozenNarrativeCapture{}
-	captureRuns := phase28RunService(t, f.f, f.blocks, f.f.f.db, capture, config.DefaultReportingExecution())
+	captureRuns, err := reporting.NewRuns(f.blocks, f.f.f.db, requestRunner, capture, "policy-v1", reportingLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
 	captureRuns, err = captureRuns.WithReviewedNarrativePacks(f.f.f.db)
 	if err != nil {
 		t.Fatal(err)
@@ -168,13 +184,16 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	}
 	t.Cleanup(engine.Close)
 	diagnostic := &frozenRecordedDiagnostic{Engine: engine}
-	runs := phase28RunService(t, f.f, f.blocks, f.f.f.db, diagnostic, config.DefaultReportingExecution())
+	runs, err := reporting.NewRuns(f.blocks, f.f.f.db, requestRunner, diagnostic, "policy-v1", reportingLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
 	runs, err = runs.WithReviewedNarrativePacks(f.f.f.db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.Key = "p25-protected-template"
-	ref, err := evaluationService.RegisterInput(ctx, operator, "protected", evaluation.LiveInput{Frozen: &evaluation.FrozenRunInput{BlockID: block, Request: request}})
+	ref, err := evaluationService.RegisterInput(ctx, operator, "protected", evaluation.LiveInput{ReportID: block, Frozen: &evaluation.FrozenRunInput{BlockID: block, Request: request}})
 	if err != nil {
 		t.Fatal("register protected frozen consumer", err)
 	}
@@ -205,7 +224,7 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 	if warm.ReusedFrom != cold.RunID || repeat.ReusedFrom != cold.RunID && repeat.ReusedFrom != warm.RunID {
 		t.Fatal("warm/repeat reuse did not lead to measured physical origin", warm.ReusedFrom, repeat.ReusedFrom)
 	}
-	// The reference queue permits two simultaneous requests per tenant.
+	// A small joined group proves two overlapping distinct product operations.
 	const peers = 2
 	var wg sync.WaitGroup
 	results := make([]evaluation.FrozenRunMeasurement, peers)
@@ -238,6 +257,35 @@ func TestPhase25FrozenPerformancePrerequisite(t *testing.T) {
 			t.Fatal("concurrent reuse did not resolve to measured physical origin", result.RunID)
 		}
 	}
+	// This is a bounded recorded integration capacity probe, not the full
+	// final_stress profile or a live owner cohort. Preserve raw per-call wall
+	// latency and require distinct product runs with no copied physical receipts.
+	const provisionedPeers = 128
+	capacityCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	capacityRuns := make([]evaluation.FrozenRunMeasurement, provisionedPeers)
+	capacityErrs := make([]error, provisionedPeers)
+	wallNS := make([]int64, provisionedPeers)
+	capacityStart := make(chan struct{})
+	for i := range provisionedPeers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-capacityStart
+			began := time.Now()
+			capacityRuns[i], capacityErrs[i] = adapter.ObserveBounded(capacityCtx, operator, ref, acceptedPack, fmt.Sprintf("p25-provisioned-peer-%03d", i), 60)
+			wallNS[i] = time.Since(began).Nanoseconds()
+		}(i)
+	}
+	close(capacityStart)
+	wg.Wait()
+	for i, result := range capacityRuns {
+		if capacityErrs[i] != nil || seen[result.RunID] || result.ReuseKey != cold.ReuseKey || result.ReusedFrom == "" || result.Usage.SourceCalls != 0 || result.Usage.ModelCalls != 0 || result.Usage.SourceNS != nil || result.Usage.ModelNS != nil || result.Usage.CostUSD != nil && *result.Usage.CostUSD != 0 || wallNS[i] <= 0 {
+			t.Fatal("provisioned 128-peer recorded reuse failed", i, capacityErrs[i], result)
+		}
+		seen[result.RunID] = true
+	}
+	t.Logf("recorded PG17 provisioned 128-peer reuse: os=%s arch=%s cpus=%d raw_wall_ns=%v", runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), wallNS)
 	// Admit the same protected consumer through a real reviewed Phase 24 suite
 	// and persist its passing report. The release resolver later binds this
 	// exact report hash, never a profile-supplied observation.

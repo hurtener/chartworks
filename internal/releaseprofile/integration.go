@@ -48,7 +48,9 @@ type Integration struct {
 // one recorded gateway.Engine. The Phase 25 release remains fail-closed until
 // accepted current cohort reports and the measured final_stress evidence exist.
 func NewIntegration(c Integration) (*evaluation.PerformanceReleaseRuntime, error) {
-	if c.Verifier == nil || c.Evaluation == nil || c.Inputs == nil || c.Migration == nil || c.Sources == nil || c.Topics == nil || c.Rules == nil || c.Validator == nil || c.Blocks == nil || c.FrozenStore == nil || c.Requests == nil || c.Engine == nil || c.Engine.PerformanceModelMode() != "recorded" || c.ReportingLimits.Validate() != nil || c.ReportingLimits.ModelVersion == "" {
+	const concurrentFinalProfile = 128
+	if c.Verifier == nil || c.Evaluation == nil || c.Inputs == nil || c.Migration == nil || c.Sources == nil || c.Topics == nil || c.Rules == nil || c.Validator == nil || c.Blocks == nil || c.FrozenStore == nil || c.Requests == nil || !c.Requests.SupportsTenantConcurrency(concurrentFinalProfile) || c.Engine == nil || c.Engine.PerformanceModelMode() != "recorded" || c.ReportingLimits.Validate() != nil || c.ReportingLimits.ModelVersion == "" ||
+		c.ReportingLimits.MaxRequests < concurrentFinalProfile || c.ReportingLimits.MaxTenantBytes <= int64(concurrentFinalProfile)*int64(c.ReportingLimits.MaxArtifactBytes) {
 		return nil, evaluation.ErrMode
 	}
 	probe, err := NewNativeDatasetProbe(c.Validator, c.Sources)

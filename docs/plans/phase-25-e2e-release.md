@@ -101,7 +101,7 @@ and returns a recorded receipt with no provider fallback. These tests prove the
 integration seam, not a live model or final stress run.
 Final AC03 must still run the exact stress profile against accepted Phase 24
 case/report evidence for every changed source/rule/context/topic cohort, then
-prove one-field current invalidation and a stale-key negative before timing.
+prove current-owner dependency closure and a stale-key negative before timing.
 The runtime-pack dimension has a product-selected accepted-pack pin in the
 frozen narrative consumer and reuse identity, with bounded recorded invalidation
 evidence. The strict adapter now requires the changed pack's own accepted
@@ -114,6 +114,18 @@ overwriting another operator's choice. The sealed raw samples retain product
 run IDs, reuse keys and origins alongside source-only timing and physical
 gateway usage; unknown provider costs remain unknown. The bounded PG17
 test and transition tests are prerequisites, not a completed `final_stress`.
+The recorded composition also refuses the default two-request tenant queue;
+the fixed 128-peer final profile requires an explicitly provisioned bounded
+request queue and tenant bytes sufficient for 128 simultaneous frozen artifact
+reservations. Current topic publication pins source/context and current rule
+publication pins topic version/digest. The final profile now requires the
+declared primary axis and its exact current-owner dependency closure: rule;
+topic plus rule; source plus topic and rule; or context plus source, topic and
+rule. The resolver checks the selected block's current pins and the gate
+requires matching raw changes as well as the product's actual reuse-key
+change. A cohort-only hash or missing collateral pin fails before timing.
+No measurements are labeled a passing AC03 run until the exact profile and
+owner cohort are exercised.
 The required full profile still needs accepted current reports for each
 source/rule/context/topic cohort, provisioned concurrency, raw recorded and
 live measurements, owner cohort evidence, and the final release bundle.

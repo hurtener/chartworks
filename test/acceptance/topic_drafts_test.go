@@ -17,6 +17,7 @@ import (
 	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/jobs"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/drafts"
 	"github.com/hurtener/chartworks/internal/store"
@@ -28,9 +29,9 @@ import (
 func topicScopes(tenant string) []string {
 	return []string{"topics.write", "topics.read", "topics.export", "topics.review", "topics.publish", "sources.read", "engineering.read", "cw.tenant.write:" + tenant, "cw.topic.write:*", "cw.topic.read:*", "cw.topic.export:*", "cw.topic.publish:*", "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"}
 }
-func topicFixture(t *testing.T) (*engineeringFixture, *drafts.Service, identity.Envelope, semantics.TopicPack) {
+func topicFixture(t *testing.T, queueLimits ...jobs.Limits) (*engineeringFixture, *drafts.Service, identity.Envelope, semantics.TopicPack) {
 	t.Helper()
-	f := newEngineeringFixture(t, nil, nil)
+	f := newEngineeringFixture(t, nil, nil, queueLimits...)
 	source := f.create(t, "topic-source")
 	profile := f.profile(t, f.profileSpec(t, source, "topic-profile", []string{"id", "amount"}, ""))
 	evidence := profile.Profile.Profile

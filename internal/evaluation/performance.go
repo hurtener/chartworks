@@ -184,6 +184,9 @@ func (m PerformanceManifest) Validate() error {
 		if s.AuthorityOverride != nil && !validPerformanceAuthorityFixture(*s.AuthorityOverride) {
 			return ErrInvalid
 		}
+		if s.Allowed && s.AuthorityOverride != nil {
+			return ErrInvalid
+		}
 		ids[s.ID] = true
 		if _, exists := kinds[s.Kind]; exists {
 			return ErrInvalid
@@ -197,6 +200,12 @@ func (m PerformanceManifest) Validate() error {
 	}
 	base := kinds["cold"].Binding
 	for kind, field := range map[string]string{"source_changed": "source", "rule_changed": "rule", "context_changed": "context", "topic_changed": "topic", "runtime_pack_changed": "runtime", "tenant_negative": "tenant", "context_negative": "context", "actions_negative": "actions"} {
+		if m.Kind == PerformanceFinalStress && strings.HasSuffix(kind, "_changed") && kind != "runtime_pack_changed" {
+			if !finalPerformanceDependencyClosure(base, kinds[kind].Binding, kind) {
+				return ErrInvalid
+			}
+			continue
+		}
 		if !onlyPerformanceBindingFieldChanged(base, kinds[kind].Binding, field) {
 			return ErrInvalid
 		}
@@ -350,6 +359,32 @@ func onlyPerformanceBindingFieldChanged(a, b PerformanceBinding, field string) b
 	check("topic", a.TopicRevision, b.TopicRevision)
 	check("runtime", a.RuntimePackDigest, b.RuntimePackDigest)
 	return changed == 1
+}
+
+// Current source/context publications are pinned into topics, and current
+// rules pin the reviewed topic version/digest. A final profile must declare
+// the primary axis and include exactly its owner dependency closure. Values
+// are compared with freshly resolved owner evidence before any measurement.
+func finalPerformanceDependencyClosure(base, changed PerformanceBinding, kind string) bool {
+	if changed.TenantDigest != base.TenantDigest || changed.ActionsDigest != base.ActionsDigest || changed.RuntimePackDigest != base.RuntimePackDigest {
+		return false
+	}
+	source := changed.SourceRevision != base.SourceRevision
+	rule := changed.RuleRevision != base.RuleRevision
+	context := changed.ContextDigest != base.ContextDigest
+	topic := changed.TopicRevision != base.TopicRevision
+	switch kind {
+	case "source_changed":
+		return source && rule && topic && !context
+	case "rule_changed":
+		return rule && !source && !context && !topic
+	case "context_changed":
+		return context && source && topic && rule
+	case "topic_changed":
+		return topic && rule && !source && !context
+	default:
+		return false
+	}
 }
 
 // PerformanceUsage preserves unknown model/token/cost observations as nil.

@@ -24,9 +24,9 @@ type reportingStoreFixture struct {
 	raw             *pgx.Conn
 }
 
-func newReportingStoreFixture(t *testing.T) *reportingStoreFixture {
+func newReportingStoreFixture(t *testing.T, queueLimits ...jobs.Limits) *reportingStoreFixture {
 	t.Helper()
-	f := newReportingFixture(t)
+	f := newReportingFixture(t, queueLimits...)
 	query, topics := newPhase18Service(t, f)
 	blocks, err := reporting.New(f.f.db, topics, f.f.s, f.f.validator, f.f.executor, reporting.CaptureFromQueries(query), config.DefaultReporting())
 	if err != nil {

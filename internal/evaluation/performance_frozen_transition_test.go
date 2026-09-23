@@ -134,6 +134,7 @@ func TestFrozenReleaseFactoryRequiresAcceptedChangedReportAndSelection(t *testin
 		revisions := variants[evidence.Case.ID]
 		revisions.BlockID, revisions.BlockRevision, revisions.BlockDigest, revisions.SourceHead = "block", 1, strings.Repeat("9", 64), 1
 		revisions.TopicPins = []reporting.TopicPin{{Topic: "topic", Version: "v1"}}
+		revisions.RulePins = []reporting.RulePin{{Topic: "topic", TopicVersion: "v1", RuleVersion: "r1"}}
 		scenarios[step.ID] = PerformanceScenarioEvidence{Evidence: evidence, Revisions: revisions}
 	}
 	base := scenarios[manifest.Steps[0].ID].Evidence.RuntimePack.Pack.Digest
@@ -279,5 +280,96 @@ func TestPerformanceLineageRejectsStaleAndInconsistentReuse(t *testing.T) {
 		if err := validatePerformanceLineage(env, stale.outcome, stale.runID, stale.key, stale.origin); err == nil {
 			t.Fatal("inconsistent product reuse lineage passed", stale)
 		}
+	}
+}
+
+func TestFrozenReleaseRejectsChangedBindingWithoutChangedProductKey(t *testing.T) {
+	a := &frozenReleaseAdapter{}
+	base, changed := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	if err := a.verifyProductReuseKey("probe", PerformanceStep{Kind: "cold"}, base); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.verifyProductReuseKey("probe", PerformanceStep{Kind: "warm"}, base); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.verifyProductReuseKey("probe", PerformanceStep{Kind: "source_changed"}, base); !errors.Is(err, ErrPerformanceReuseUnproven) {
+		t.Fatal("profile-only source binding was accepted without product invalidation", err)
+	}
+	if err := a.verifyProductReuseKey("probe", PerformanceStep{Kind: "source_changed"}, changed); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.verifyProductReuseKey("probe", PerformanceStep{Kind: "source_changed"}, strings.Repeat("c", 64)); !errors.Is(err, ErrPerformanceReuseUnproven) {
+		t.Fatal("one scenario changed its product key between observations", err)
+	}
+	if err := a.verifyProductReuseKey("measure", PerformanceStep{Kind: "warm"}, base); !errors.Is(err, ErrPerformanceReuseUnproven) {
+		t.Fatal("timed observations accepted no measured cold lineage", err)
+	}
+}
+
+func TestFrozenDependencyClosureRequiresPublishedOwnerPins(t *testing.T) {
+	base := PerformanceRevisionEvidence{
+		TargetTenant: "tenant", WorkloadReport: "block", BlockID: "block", BlockRevision: 1,
+		BlockDigest: strings.Repeat("a", 64), SourceID: "source", ContextID: "context", SourceHead: 1,
+		TopicPins: []reporting.TopicPin{{Topic: "topic", Version: "v1", Digest: strings.Repeat("b", 64)}},
+		RulePins:  []reporting.RulePin{{Topic: "topic", TopicVersion: "v1", PackDigest: strings.Repeat("b", 64), RuleVersion: "r1", RuleDigest: strings.Repeat("c", 64)}},
+	}
+	changedTopic := []reporting.TopicPin{{Topic: "topic", Version: "v2", Digest: strings.Repeat("d", 64)}}
+	changedRule := []reporting.RulePin{{Topic: "topic", TopicVersion: "v2", PackDigest: strings.Repeat("d", 64), RuleVersion: "r2", RuleDigest: strings.Repeat("e", 64)}}
+	for _, kind := range []string{"source_changed", "rule_changed", "context_changed", "topic_changed"} {
+		candidate := base
+		candidate.BlockRevision, candidate.BlockDigest = 2, strings.Repeat("f", 64)
+		candidate.RulePins = changedRule
+		if kind != "rule_changed" {
+			candidate.TopicPins = changedTopic
+		}
+		if kind == "source_changed" || kind == "context_changed" {
+			candidate.SourceHead = 2
+		}
+		if kind == "context_changed" {
+			candidate.ContextID = "context-b"
+		}
+		if !validFrozenDependencyClosure(base, candidate, kind) {
+			t.Fatal("actual published owner dependency closure was rejected", kind)
+		}
+		missing := candidate
+		missing.RulePins = base.RulePins
+		if validFrozenDependencyClosure(base, missing, kind) {
+			t.Fatal("missing current rule pin was accepted", kind)
+		}
+		if kind == "source_changed" || kind == "context_changed" {
+			missing = candidate
+			missing.SourceHead = base.SourceHead
+			if validFrozenDependencyClosure(base, missing, kind) {
+				t.Fatal("cohort-only source hash could replace a current source head", kind)
+			}
+		}
+	}
+	if !validFrozenDependencyClosure(base, base, "runtime_pack_changed") {
+		t.Fatal("selected pack may change without editing the published block")
+	}
+	stale := base
+	stale.BlockDigest = strings.Repeat("f", 64)
+	if validFrozenDependencyClosure(base, stale, "runtime_pack_changed") {
+		t.Fatal("unrelated block revision rode along with runtime-pack change")
+	}
+}
+
+func TestPerformanceReleaseAuthorizesFrozenBlockTarget(t *testing.T) {
+	scopes := []string{"reporting.execute", "cw.block.execute:block", "cw.source.query:source", "cw.execution_context.use:context"}
+	e, err := identity.FromVerified("tenant", "actor", "session", scopes, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := PerformanceAuthorityFixture{Tenant: e.Tenant(), User: e.User(), Session: e.Session(), Scopes: scopes, TargetTenant: e.Tenant(), ReportID: "block", SourceID: "source", ContextID: "context"}
+	step := PerformanceStep{ID: "cold", Allowed: true}
+	runner := &authorityBoundPerformanceRunner{envelope: e, manifest: PerformanceManifest{Authority: fixture}, targetKind: "block", scenarios: map[string]PerformanceScenarioEvidence{
+		"cold": {Revisions: PerformanceRevisionEvidence{TargetTenant: e.Tenant(), WorkloadReport: "block", BlockID: "block", SourceID: "source", ContextID: "context"}},
+	}, next: &releaseTestAdapter{}}
+	if denied, err := runner.authorize(step); err != nil || denied {
+		t.Fatal("signed block execution reach was not honored", err)
+	}
+	runner.targetKind = "report"
+	if _, err := runner.authorize(step); !errors.Is(err, ErrPerformanceAuthority) {
+		t.Fatal("report reach was confused with signed block reach", err)
 	}
 }

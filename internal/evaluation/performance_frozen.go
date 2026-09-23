@@ -87,7 +87,7 @@ func (f *FrozenPerformanceReleaseAdapterFactory) observe(ctx context.Context, e 
 	}
 	pack, cfg := runtime.Pack, runtime.Config
 	input, err := f.Inputs.ResolveEvaluationInput(ctx, e, ref)
-	if err != nil || input.Frozen == nil || input.Question != nil || input.Run != nil || !protectedPackMatches(input, pack) {
+	if err != nil || input.Frozen == nil || input.Question != nil || input.Run != nil || !ProtectedPackMatches(input, pack) {
 		return FrozenRunMeasurement{}, fmt.Errorf("%w: protected frozen input", ErrPerformanceEvidence)
 	}
 	runInput := *input.Frozen
@@ -201,7 +201,7 @@ func (f *FrozenPerformanceReleaseAdapterFactory) NewPerformanceReleaseAdapter(ct
 }
 
 func frozenRevisionsComplete(r PerformanceRevisionEvidence) bool {
-	return identity.Identifier(r.BlockID) && r.BlockRevision > 0 && validDigest(r.BlockDigest) && r.SourceHead > 0 && len(r.TopicPins) > 0
+	return identity.Identifier(r.BlockID) && r.BlockRevision > 0 && validDigest(r.BlockDigest) && r.SourceHead > 0 && len(r.TopicPins) > 0 && len(r.RulePins) == len(r.TopicPins)
 }
 
 type frozenReleaseAdapter struct {
@@ -213,6 +213,8 @@ type frozenReleaseAdapter struct {
 	changedPack       string
 	selectionMu       sync.Mutex
 	selectionRevision int64
+	keysMu            sync.Mutex
+	productKeys       map[string]map[string]string
 	epoch             atomic.Uint64
 }
 
@@ -305,12 +307,45 @@ func (a *frozenReleaseAdapter) run(ctx context.Context, step PerformanceStep, st
 	if result.SemanticDigest != step.ExpectedDigest || result.ReuseKey == "" {
 		return PerformanceAdapterResult{}, ErrGate
 	}
+	if err := a.verifyProductReuseKey(stage, step, result.ReuseKey); err != nil {
+		return PerformanceAdapterResult{}, err
+	}
 	if stage == "probe" && (result.ReusedFrom != "" || result.Usage.SourceNS == nil || result.Usage.ModelNS == nil) {
 		return PerformanceAdapterResult{}, ErrGate
 	}
 	return PerformanceAdapterResult{SemanticDigest: result.SemanticDigest, BindingDigest: step.Binding.digest(), Receipt: PerformanceReceipt{
 		Usage: result.Usage, RunID: result.RunID, ReuseKey: result.ReuseKey, ReusedFrom: result.ReusedFrom,
 	}}, nil
+}
+
+// A one-field profile binding is insufficient when the product's actual
+// frozen-run key did not change. This guard runs before any timing is accepted.
+func (a *frozenReleaseAdapter) verifyProductReuseKey(stage string, step PerformanceStep, key string) error {
+	if a == nil || (stage != "probe" && stage != "measure") || !validDigest(key) {
+		return ErrPerformanceReuseUnproven
+	}
+	a.keysMu.Lock()
+	defer a.keysMu.Unlock()
+	if a.productKeys == nil {
+		a.productKeys = map[string]map[string]string{}
+	}
+	if a.productKeys[stage] == nil {
+		a.productKeys[stage] = map[string]string{}
+	}
+	seen := a.productKeys[stage]
+	if prior := seen[step.Kind]; prior != "" && prior != key {
+		return ErrPerformanceReuseUnproven
+	}
+	if step.Kind == "cold" {
+		seen[step.Kind] = key
+		return nil
+	}
+	cold := seen["cold"]
+	if cold == "" || strings.HasSuffix(step.Kind, "_changed") && key == cold || !strings.HasSuffix(step.Kind, "_changed") && key != cold {
+		return ErrPerformanceReuseUnproven
+	}
+	seen[step.Kind] = key
+	return nil
 }
 
 func (a *frozenReleaseAdapter) ProbeDeniedAction(ctx context.Context, step PerformanceStep, denied identity.Envelope) (PerformanceAdapterResult, error) {

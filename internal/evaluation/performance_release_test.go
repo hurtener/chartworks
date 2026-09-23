@@ -392,12 +392,21 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 		switch shape.kind {
 		case "source_changed":
 			binding.SourceRevision = strings.Repeat("f", 64)
+			binding.TopicRevision = strings.Repeat("6", 64)
+			binding.RuleRevision = strings.Repeat("7", 64)
 		case "rule_changed":
 			binding.RuleRevision = strings.Repeat("1", 64)
 		case "context_changed", "context_negative":
 			binding.ContextDigest = strings.Repeat("2", 64)
+			if shape.kind == "context_changed" {
+				binding.ContextDigest = performanceValueDigest(struct{ Tenant, Context string }{e.Tenant(), "context-b"})
+				binding.SourceRevision = strings.Repeat("8", 64)
+				binding.TopicRevision = strings.Repeat("9", 64)
+				binding.RuleRevision = strings.Repeat("a", 64)
+			}
 		case "topic_changed":
 			binding.TopicRevision = strings.Repeat("3", 64)
+			binding.RuleRevision = strings.Repeat("4", 64)
 		case "runtime_pack_changed":
 			binding.RuntimePackDigest = strings.Repeat("4", 64)
 		case "tenant_negative":
@@ -411,17 +420,22 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 		switch shape.kind {
 		case "source_changed":
 			caseID = "case-source"
-			scenarioRevisions.SourceID = "source-b"
 			scenarioRevisions.SourceRevision = strings.Repeat("f", 64)
+			scenarioRevisions.TopicRevision = strings.Repeat("6", 64)
+			scenarioRevisions.RuleRevision = strings.Repeat("7", 64)
 		case "rule_changed":
 			caseID = "case-rule"
 			scenarioRevisions.RuleRevision = strings.Repeat("1", 64)
 		case "context_changed":
 			caseID = "case-context"
 			scenarioRevisions.ContextID = "context-b"
+			scenarioRevisions.SourceRevision = strings.Repeat("8", 64)
+			scenarioRevisions.TopicRevision = strings.Repeat("9", 64)
+			scenarioRevisions.RuleRevision = strings.Repeat("a", 64)
 		case "topic_changed":
 			caseID = "case-topic"
 			scenarioRevisions.TopicRevision = strings.Repeat("3", 64)
+			scenarioRevisions.RuleRevision = strings.Repeat("4", 64)
 		case "runtime_pack_changed":
 			caseID = "case-runtime"
 			evidenceReport = alternateRunID
@@ -433,15 +447,7 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 				evidenceReport, evidenceReportHash = baseRunID, phase24Report.EvidenceHash
 			}
 		}
-		if shape.kind == "source_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: current.ContextDigest, ActionsDigest: current.ActionsDigest, SourceRevision: scenarioRevisions.SourceRevision, RuleRevision: current.RuleRevision, TopicRevision: current.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "rule_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: current.ContextDigest, ActionsDigest: current.ActionsDigest, SourceRevision: current.SourceRevision, RuleRevision: scenarioRevisions.RuleRevision, TopicRevision: current.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "context_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: performanceValueDigest(struct{ Tenant, Context string }{e.Tenant(), scenarioRevisions.ContextID}), ActionsDigest: current.ActionsDigest, SourceRevision: current.SourceRevision, RuleRevision: current.RuleRevision, TopicRevision: current.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "topic_changed" {
-			binding = PerformanceBinding{TenantDigest: current.TenantDigest, ContextDigest: current.ContextDigest, ActionsDigest: current.ActionsDigest, SourceRevision: current.SourceRevision, RuleRevision: current.RuleRevision, TopicRevision: scenarioRevisions.TopicRevision, RuntimePackDigest: current.RuntimePackDigest}
-		} else if shape.kind == "runtime_pack_changed" {
+		if shape.kind == "runtime_pack_changed" {
 			binding.RuntimePackDigest = alternateRuntimePack.Digest
 		}
 		if strings.HasSuffix(shape.kind, "_negative") {
@@ -472,16 +478,56 @@ func performanceReleaseFixtureWithoutService(t *testing.T, e identity.Envelope, 
 
 func performanceReleaseRevisionVariants(base PerformanceRevisionEvidence) map[string]PerformanceRevisionEvidence {
 	source := base
-	source.SourceID, source.SourceRevision = "source-b", strings.Repeat("f", 64)
+	source.SourceRevision, source.TopicRevision, source.RuleRevision = strings.Repeat("f", 64), strings.Repeat("6", 64), strings.Repeat("7", 64)
 	rule := base
 	rule.RuleRevision = strings.Repeat("1", 64)
 	contextRevision := base
 	contextRevision.ContextID = "context-b"
+	contextRevision.SourceRevision, contextRevision.TopicRevision, contextRevision.RuleRevision = strings.Repeat("8", 64), strings.Repeat("9", 64), strings.Repeat("a", 64)
 	topic := base
-	topic.TopicRevision = strings.Repeat("3", 64)
+	topic.TopicRevision, topic.RuleRevision = strings.Repeat("3", 64), strings.Repeat("4", 64)
 	return map[string]PerformanceRevisionEvidence{
 		"case-base": base, "case-source": source, "case-rule": rule,
 		"case-context": contextRevision, "case-topic": topic, "case-runtime": base,
+	}
+}
+
+func TestFinalPerformanceDependencyClosureRejectsMissingAndUnrelatedPins(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{
+		"ops.write", "ops.read", "cw.tenant.write:tenant", "cw.tenant.read:tenant",
+		"reporting.execute", "cw.report.execute:workload-report", "cw.source.query:source-a",
+		"cw.execution_context.use:context-a", "cw.execution_context.use:context-b", "query.plan", "query.execute",
+	}, now.Add(time.Hour), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, _ := performanceReleaseFixture(t, e, now)
+	if err := manifest.Validate(); err != nil {
+		t.Fatal("current owner dependency closure was rejected", err)
+	}
+	for _, tc := range []struct {
+		kind   string
+		mutate func(*PerformanceBinding)
+	}{
+		{"source_changed", func(b *PerformanceBinding) { b.TopicRevision = manifest.Steps[0].Binding.TopicRevision }},
+		{"source_changed", func(b *PerformanceBinding) { b.ContextDigest = strings.Repeat("d", 64) }},
+		{"context_changed", func(b *PerformanceBinding) { b.SourceRevision = manifest.Steps[0].Binding.SourceRevision }},
+		{"topic_changed", func(b *PerformanceBinding) { b.RuleRevision = manifest.Steps[0].Binding.RuleRevision }},
+		{"rule_changed", func(b *PerformanceBinding) { b.TopicRevision = strings.Repeat("d", 64) }},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			changed := manifest
+			changed.Steps = append([]PerformanceStep(nil), manifest.Steps...)
+			for i := range changed.Steps {
+				if changed.Steps[i].Kind == tc.kind {
+					tc.mutate(&changed.Steps[i].Binding)
+				}
+			}
+			if !errors.Is(changed.Validate(), ErrInvalid) {
+				t.Fatal("missing or unrelated owner dependency passed final profile")
+			}
+		})
 	}
 }
 

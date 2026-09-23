@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sort"
 	"time"
 
@@ -44,7 +45,9 @@ type PerformanceScenarioEvidence struct {
 // current release snapshot. The phase-34 composition supplies this from the
 // selected migration head and actual source/topic/context stores.
 type PerformanceRevisionEvidence struct {
-	TargetTenant   string
+	TargetTenant string
+	// WorkloadReport is the protected execution target; frozen consumers use
+	// their published block ID and signed block.execute reach.
 	WorkloadReport string
 	SourceID       string
 	ContextID      string
@@ -159,7 +162,7 @@ func (r *PerformanceReleaseRuntime) Measure(ctx context.Context, bearer, actionN
 	if err != nil || adapter == nil || adapter.EvidenceMode() != manifest.EvidenceMode || adapter.SourceMode() != manifest.Environment.SourceMode || adapter.ModelMode() != manifest.Environment.ModelMode {
 		return PerformanceReport{}, ErrMode
 	}
-	bound := &authorityBoundPerformanceRunner{envelope: envelope, actionEnvelope: actionEnvelope, manifest: manifest, next: adapter}
+	bound := &authorityBoundPerformanceRunner{envelope: envelope, actionEnvelope: actionEnvelope, manifest: manifest, targetKind: performanceTargetKind(revisions), scenarios: scenarios, next: adapter}
 	report, err := MeasurePerformance(ctx, manifest, bound, r.Clock)
 	if restore, ok := adapter.(interface{ RestorePerformanceSelection(context.Context) error }); ok {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -283,7 +286,7 @@ func performanceExpected(expected []Expected, observation Observation) bool {
 }
 
 func validatePerformanceReleaseInputs(e identity.Envelope, m PerformanceManifest, evidence PerformanceReleaseEvidence, revisions PerformanceRevisionEvidence) error {
-	if !e.Valid() || evidence.Suite.State != Accepted || evidence.Report.Status != "passed" || revisions.TargetTenant != e.Tenant() || revisions.WorkloadReport == "" || revisions.SourceID != m.Authority.SourceID || revisions.ContextID != m.Authority.ContextID || revisions.WorkloadReport != m.Authority.ReportID || revisions.DatasetDigest != m.Environment.DatasetDigest || revisions.DatasetRows != m.Environment.DatasetRows || !validDigest(revisions.SourceRevision) || !validDigest(revisions.RuleRevision) || !validDigest(revisions.TopicRevision) || !validDigest(evidence.CaseResult.Observation.SemanticDigest) {
+	if !e.Valid() || evidence.Suite.State != Accepted || evidence.Report.Status != "passed" || revisions.TargetTenant != e.Tenant() || revisions.WorkloadReport == "" || revisions.BlockID != "" && revisions.WorkloadReport != revisions.BlockID || revisions.SourceID != m.Authority.SourceID || revisions.ContextID != m.Authority.ContextID || revisions.WorkloadReport != m.Authority.ReportID || revisions.DatasetDigest != m.Environment.DatasetDigest || revisions.DatasetRows != m.Environment.DatasetRows || !validDigest(revisions.SourceRevision) || !validDigest(revisions.RuleRevision) || !validDigest(revisions.TopicRevision) || !validDigest(evidence.CaseResult.Observation.SemanticDigest) {
 		return ErrPerformanceEvidence
 	}
 	coldStep, found := performanceStep(m.Steps, "cold")
@@ -308,6 +311,15 @@ func validatePerformanceReleaseInputs(e identity.Envelope, m PerformanceManifest
 }
 
 func validatePerformanceScenarioEvidence(e identity.Envelope, m PerformanceManifest, base PerformanceReleaseEvidence, scenarios map[string]PerformanceScenarioEvidence) error {
+	cold, found := performanceStep(m.Steps, "cold")
+	if !found {
+		return ErrPerformanceEvidence
+	}
+	baseScenario, ok := scenarios[cold.ID]
+	if !ok {
+		return ErrPerformanceEvidence
+	}
+	targetKind := performanceTargetKind(baseScenario.Revisions)
 	for _, step := range m.Steps {
 		if !step.Allowed {
 			continue
@@ -320,11 +332,11 @@ func validatePerformanceScenarioEvidence(e identity.Envelope, m PerformanceManif
 		if ev.Suite.State != Accepted || ev.Suite.Digest != base.Suite.Digest || ev.Suite.Suite.ID != base.Suite.Suite.ID || ev.Suite.Suite.Revision != base.Suite.Suite.Revision || ev.Case.ID != step.Workload || ev.Case.ID != ev.CaseResult.ID || ev.Case.ID == "" || ev.Case.Stage != StageConsumer || ev.Case.Critical || !ev.CaseResult.Passed || !performanceExpected(ev.Case.Expected, ev.CaseResult.Observation) || ev.CaseResult.Observation.SemanticDigest != step.ExpectedDigest {
 			return ErrPerformanceEvidence
 		}
-		if rev.TargetTenant != e.Tenant() || !identifier(rev.WorkloadReport) || !identifier(rev.SourceID) || !identifier(rev.ContextID) || rev.DatasetDigest != m.Environment.DatasetDigest || rev.DatasetRows != m.Environment.DatasetRows || !validDigest(rev.SourceRevision) || !validDigest(rev.RuleRevision) || !validDigest(rev.TopicRevision) {
+		if rev.TargetTenant != e.Tenant() || !identifier(rev.WorkloadReport) || rev.BlockID != "" && rev.WorkloadReport != rev.BlockID || performanceTargetKind(rev) != targetKind || !identifier(rev.SourceID) || !identifier(rev.ContextID) || rev.DatasetDigest != m.Environment.DatasetDigest || rev.DatasetRows != m.Environment.DatasetRows || !validDigest(rev.SourceRevision) || !validDigest(rev.RuleRevision) || !validDigest(rev.TopicRevision) {
 			return ErrPerformanceEvidence
 		}
 		request := access.Execution{
-			Target:       access.Resource{Tenant: rev.TargetTenant, Kind: "report", Permission: "execute", ID: rev.WorkloadReport},
+			Target:       access.Resource{Tenant: rev.TargetTenant, Kind: targetKind, Permission: "execute", ID: rev.WorkloadReport},
 			Dependencies: []access.Resource{{Tenant: rev.TargetTenant, Kind: "source", Permission: "query", ID: rev.SourceID}},
 			Contexts:     []access.Resource{{Tenant: rev.TargetTenant, Kind: "execution_context", Permission: "use", ID: rev.ContextID}},
 		}
@@ -335,8 +347,54 @@ func validatePerformanceScenarioEvidence(e identity.Envelope, m PerformanceManif
 		if actual != step.Binding {
 			return ErrPerformanceEvidence
 		}
+		if targetKind == "block" && !validFrozenDependencyClosure(baseScenario.Revisions, rev, step.Kind) {
+			return ErrPerformanceEvidence
+		}
 	}
 	return nil
+}
+
+// The current resolver proves each block pin against its owner. This check
+// requires the candidate's raw owner pins to change in the same dependency
+// closure as the declared primary axis, so a profile-only cohort hash cannot
+// stand in for an actual published block/source transition.
+func validFrozenDependencyClosure(base, next PerformanceRevisionEvidence, kind string) bool {
+	if !frozenRevisionsComplete(base) || !frozenRevisionsComplete(next) || base.SourceID != next.SourceID || base.TargetTenant != next.TargetTenant {
+		return false
+	}
+	context := base.ContextID != next.ContextID
+	source := base.SourceHead != next.SourceHead
+	topic := !reflect.DeepEqual(base.TopicPins, next.TopicPins)
+	rule := !reflect.DeepEqual(base.RulePins, next.RulePins)
+	block := base.BlockID != next.BlockID || base.BlockRevision != next.BlockRevision || base.BlockDigest != next.BlockDigest
+	switch kind {
+	case "source_changed":
+		return source && topic && rule && block && !context
+	case "rule_changed":
+		return rule && block && !context && !source && !topic
+	case "context_changed":
+		return context && source && topic && rule && block
+	case "topic_changed":
+		return topic && rule && block && !context && !source
+	case "runtime_pack_changed", "cold", "warm", "repeat", "concurrent":
+		return !context && !source && !topic && !rule && !block
+	default:
+		return false
+	}
+}
+
+func performanceTargetKind(revisions PerformanceRevisionEvidence) string {
+	if revisions.BlockID != "" {
+		return "block"
+	}
+	return "report"
+}
+
+func (r *authorityBoundPerformanceRunner) workloadKind() string {
+	if r.targetKind == "block" {
+		return "block"
+	}
+	return "report"
 }
 
 func performanceStep(steps []PerformanceStep, kind string) (PerformanceStep, bool) {
@@ -391,6 +449,8 @@ type authorityBoundPerformanceRunner struct {
 	envelope       identity.Envelope
 	actionEnvelope identity.Envelope
 	manifest       PerformanceManifest
+	targetKind     string
+	scenarios      map[string]PerformanceScenarioEvidence
 	next           PerformanceReleaseAdapter
 }
 
@@ -464,11 +524,20 @@ func (r *authorityBoundPerformanceRunner) authorize(step PerformanceStep) (bool,
 		return false, ErrPerformanceAuthority
 	}
 	fixture := r.manifest.Authority
-	if step.AuthorityOverride != nil {
+	if step.Allowed {
+		scenario, ok := r.scenarios[step.ID]
+		if !ok || scenario.Revisions.TargetTenant != r.envelope.Tenant() || performanceTargetKind(scenario.Revisions) != r.workloadKind() {
+			return false, ErrPerformanceAuthority
+		}
+		fixture.TargetTenant = scenario.Revisions.TargetTenant
+		fixture.ReportID = scenario.Revisions.WorkloadReport
+		fixture.SourceID = scenario.Revisions.SourceID
+		fixture.ContextID = scenario.Revisions.ContextID
+	} else if step.AuthorityOverride != nil {
 		fixture = *step.AuthorityOverride
 	}
 	request := access.Execution{
-		Target:       access.Resource{Tenant: fixture.TargetTenant, Kind: "report", Permission: "execute", ID: fixture.ReportID},
+		Target:       access.Resource{Tenant: fixture.TargetTenant, Kind: r.workloadKind(), Permission: "execute", ID: fixture.ReportID},
 		Dependencies: []access.Resource{{Tenant: fixture.TargetTenant, Kind: "source", Permission: "query", ID: fixture.SourceID}},
 		Contexts:     []access.Resource{{Tenant: fixture.TargetTenant, Kind: "execution_context", Permission: "use", ID: fixture.ContextID}},
 	}
