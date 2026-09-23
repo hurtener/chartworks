@@ -27,6 +27,30 @@ func (d *DB) PutRendition(ctx context.Context, r rendering.Record) (out renderin
 		return out, store.ErrInvalid
 	}
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		// Retention expiry takes FOR UPDATE on the owning run. This shared lock
+		// fences a new rendition against an approved expiry transaction.
+		var state string
+		var expires time.Time
+		var parentQuery string
+		switch r.Request.View.Kind {
+		case "block":
+			parentQuery = `SELECT state,payload_expires_at FROM chartworks.frozen_runs WHERE tenant_id=$1 AND operation_id=$2 FOR SHARE`
+		case "report", "dashboard":
+			parentQuery = `SELECT state,expires_at FROM chartworks.composition_runs WHERE tenant_id=$1 AND operation_id=$2 AND kind=$3 FOR SHARE`
+		default:
+			return store.ErrInvalid
+		}
+		if r.Request.View.Kind == "block" {
+			e = tx.QueryRow(ctx, parentQuery, r.Tenant, r.Request.View.Run).Scan(&state, &expires)
+		} else {
+			e = tx.QueryRow(ctx, parentQuery, r.Tenant, r.Request.View.Run, r.Request.View.Kind).Scan(&state, &expires)
+		}
+		if e != nil {
+			return e
+		}
+		if state == "expired" || !expires.After(time.Now()) {
+			return store.ErrExpired
+		}
 		if _, e = tx.Exec(ctx, `DELETE FROM chartworks.render_renditions WHERE tenant_id=$1 AND rendition_id=$2 AND expires_at<=$3`, r.Tenant, r.Rendition.ID, r.Rendition.CreatedAt); e != nil {
 			return e
 		}

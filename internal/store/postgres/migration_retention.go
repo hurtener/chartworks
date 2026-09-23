@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"hash"
 	"strconv"
 	"strings"
 
@@ -125,13 +126,17 @@ func (d *DB) DrillRetained(ctx context.Context, e identity.Envelope, in migratio
 		if err != nil {
 			return err
 		}
-		for _, item := range items {
-			if err := requireDrillReach(ctx, tx, e, item); err != nil {
+		fingerprints := make([]string, len(items))
+		for i := range items {
+			item := &items[i]
+			if err := requireDrillReach(ctx, tx, e, *item); err != nil {
 				return err
 			}
-			if err := tx.QueryRow(ctx, `SELECT count(*) FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2`, e.Tenant(), item.Run).Scan(&item.Renditions); err != nil {
+			count, fingerprint, err := renditionSet(ctx, tx, e.Tenant(), item.Run)
+			if err != nil {
 				return err
 			}
+			item.Renditions, fingerprints[i] = count, fingerprint
 			out.Items = append(out.Items, item.RetentionDrillItem)
 		}
 		if err := tx.QueryRow(ctx, dueImportedCountSQL, append([]any{e.Tenant()}, parentArgs(parents)...)...).Scan(&out.Remaining); err != nil {
@@ -140,8 +145,9 @@ func (d *DB) DrillRetained(ctx context.Context, e identity.Envelope, in migratio
 		preview, err := json.Marshal(struct {
 			Batch, Digest string
 			Items         []migration.RetentionDrillItem
+			RenditionSets []string
 			Remaining     int64
-		}{in.Batch, out.Digest, out.Items, out.Remaining})
+		}{in.Batch, out.Digest, out.Items, fingerprints, out.Remaining})
 		if err != nil {
 			return store.ErrInvalid
 		}
@@ -153,12 +159,15 @@ func (d *DB) DrillRetained(ctx context.Context, e identity.Envelope, in migratio
 		if in.PreviewDigest != out.PreviewDigest {
 			return store.ErrConflict
 		}
-		for _, item := range items {
+		for i, item := range items {
 			if item.Kind == "block" {
 				if err := frozenQuotaLock(ctx, tx, e.Tenant()); err != nil {
 					return err
 				}
 				if err := lockDueFrozen(ctx, tx, e.Tenant(), item.Run, item.Parent, item.Revision); err != nil {
+					return err
+				}
+				if err := recheckRenditionSet(ctx, tx, e.Tenant(), item.Run, fingerprints[i]); err != nil {
 					return err
 				}
 				scope, err := store.NewScope(e.Tenant(), e.User())
@@ -170,6 +179,9 @@ func (d *DB) DrillRetained(ctx context.Context, e identity.Envelope, in migratio
 				}
 			} else {
 				if err := lockDueComposition(ctx, tx, e.Tenant(), item); err != nil {
+					return err
+				}
+				if err := recheckRenditionSet(ctx, tx, e.Tenant(), item.Run, fingerprints[i]); err != nil {
 					return err
 				}
 				if err := expireCompositionRunTx(ctx, tx, e, item.Run); err != nil {
@@ -201,6 +213,46 @@ type dueRun struct {
 	migration.RetentionDrillItem
 	context string
 	private bool
+}
+
+func renditionSet(ctx context.Context, tx pgx.Tx, tenant, run string) (int64, string, error) {
+	rows, err := tx.Query(ctx, `SELECT rendition_id,content_digest FROM chartworks.render_renditions WHERE tenant_id=$1 AND run_id=$2 ORDER BY rendition_id`, tenant, run)
+	if err != nil {
+		return 0, "", err
+	}
+	defer rows.Close()
+	h := sha256.New()
+	var count int64
+	for rows.Next() {
+		var id, digest string
+		if err := rows.Scan(&id, &digest); err != nil {
+			return 0, "", err
+		}
+		writeRenditionPart(h, id)
+		writeRenditionPart(h, digest)
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, "", err
+	}
+	return count, hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func writeRenditionPart(h hash.Hash, value string) {
+	_, _ = h.Write([]byte(strconv.Itoa(len(value))))
+	_, _ = h.Write([]byte(":"))
+	_, _ = h.Write([]byte(value))
+}
+
+func recheckRenditionSet(ctx context.Context, tx pgx.Tx, tenant, run, fingerprint string) error {
+	_, current, err := renditionSet(ctx, tx, tenant, run)
+	if err != nil {
+		return err
+	}
+	if current != fingerprint {
+		return store.ErrConflict
+	}
+	return nil
 }
 
 func dueImportedRuns(ctx context.Context, tx pgx.Tx, tenant string, parents []importedParent, limit int) ([]dueRun, error) {

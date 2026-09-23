@@ -668,14 +668,25 @@ func phase34RetentionErasure(t *testing.T) {
 	}
 	hold := phase34Manifest("ac05hold")
 	hold.Objects[0].Retention.LegalHold = true
-	if _, err = s.Import(t.Context(), e, migration.ImportRequest{Manifest: hold}); err != nil {
+	holdBatch, err := s.Import(t.Context(), e, migration.ImportRequest{Manifest: hold})
+	if err != nil {
 		t.Fatal("legal-hold batch import", err)
+	}
+	driller := phase34Actor(t, e.Tenant(), "migration.erase", "reporting.retention", "cw.tenant.erase:"+e.Tenant())
+	holdRequest := migration.RetentionDrillRequest{Batch: hold.Batch, Expected: holdBatch.Revision, Limit: 10}
+	if _, err = s.RetentionDrill(t.Context(), driller, holdRequest); !errors.Is(err, migration.ErrConflict) {
+		t.Fatal("legal hold permitted retained preview", err)
+	}
+	holdRequest.Apply, holdRequest.PreviewDigest = true, strings.Repeat("a", 64)
+	if _, err = s.RetentionDrill(t.Context(), driller, holdRequest); !errors.Is(err, migration.ErrConflict) {
+		t.Fatal("legal hold permitted retained apply", err)
 	}
 	if _, err = s.Erase(t.Context(), e, migration.EraseRequest{Batch: hold.Batch, Limit: 100}); !errors.Is(err, migration.ErrConflict) {
 		t.Fatal("legal hold erased", err)
 	}
 	phase34ExternalRefAndExpiredExport(t)
 	phase34ImportedRetainedDrill(t)
+	phase34ImportedCompositionDrill(t)
 }
 
 func phase34ExternalRefAndExpiredExport(t *testing.T) {

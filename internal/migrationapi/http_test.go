@@ -34,6 +34,16 @@ type migrationHTTPFixture struct {
 	now      time.Time
 }
 
+type retentionRouteRepository struct {
+	migration.Repository
+	seen identity.Envelope
+}
+
+func (r *retentionRouteRepository) DrillRetained(_ context.Context, e identity.Envelope, in migration.RetentionDrillRequest) (migration.RetentionDrillResult, error) {
+	r.seen = e
+	return migration.RetentionDrillResult{Batch: in.Batch, Items: []migration.RetentionDrillItem{}}, nil
+}
+
 func newMigrationHTTPFixture(t *testing.T) *migrationHTTPFixture {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -92,13 +102,14 @@ func TestHTTPRoutesUseVerifiedAuthorityAndTypedService(t *testing.T) {
 	adapter := migration.AdapterFuncs{ValidateFunc: func(context.Context, identity.Envelope, migration.Object, migration.Mapping) error { return nil }, ApplyFunc: func(context.Context, identity.Envelope, migration.Object, migration.Mapping, string) (string, error) {
 		return "target", nil
 	}}
-	service, err := migration.New(migration.NewMemoryRepository(nil), map[migration.Kind]migration.Adapter{migration.KindSource: adapter}, nil, migration.EvidenceVerifierFunc(func(context.Context, identity.Envelope, migration.Evidence) error { return nil }))
+	repo := &retentionRouteRepository{Repository: migration.NewMemoryRepository(nil)}
+	service, err := migration.New(repo, map[migration.Kind]migration.Adapter{migration.KindSource: adapter}, nil, migration.EvidenceVerifierFunc(func(context.Context, identity.Envelope, migration.Evidence) error { return nil }))
 	if err != nil {
 		t.Fatal(err)
 	}
 	fallback := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(418) })
 	handler := Handler(f.verifier, service, fallback)
-	token := f.token(t, "migration.read", "migration.write", "migration.cutover", "migration.erase", "ops.read", "cw.tenant.read:tenant", "cw.tenant.write:tenant", "cw.tenant.erase:tenant", "cw.tenant.export:tenant")
+	token := f.token(t, "migration.read", "migration.write", "migration.cutover", "migration.erase", "reporting.retention", "ops.read", "cw.tenant.read:tenant", "cw.tenant.write:tenant", "cw.tenant.erase:tenant", "cw.tenant.export:tenant")
 	manifest := migrationHTTPManifest()
 	dry, _ := json.Marshal(migration.DryRunRequest{Manifest: manifest})
 	imp, _ := json.Marshal(migration.ImportRequest{Manifest: manifest})
@@ -114,6 +125,7 @@ func TestHTTPRoutesUseVerifiedAuthorityAndTypedService(t *testing.T) {
 		{"/v1/migrations/cutovers", []byte(`{"batch":"missing","expected_generation":0,"route":"route","operator_reference":"drill"}`), 404},
 		{"/v1/migrations/rollbacks", []byte(`{"cohort":"missing","expected_generation":1,"operator_reference":"drill","irreversible_effects":[]}`), 404},
 		{"/v1/migrations/erasures", []byte(`{"batch":"missing","limit":1}`), 404},
+		{"/v1/migrations/retention-drills", []byte(`{"batch":"batch","expected_revision":1,"limit":1,"apply":false}`), 200},
 	}
 	for _, test := range tests {
 		req := httptest.NewRequest(http.MethodPost, test.path, bytes.NewReader(test.body))
@@ -123,6 +135,25 @@ func TestHTTPRoutesUseVerifiedAuthorityAndTypedService(t *testing.T) {
 		handler.ServeHTTP(w, req)
 		if w.Code != test.status || strings.Contains(w.Body.String(), "PRIVATE") || w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s: status=%d body=%s", test.path, w.Code, w.Body.String())
+		}
+	}
+	if repo.seen.Tenant() != "tenant" || repo.seen.User() != "operator" {
+		t.Fatal("retention route did not use verified bearer envelope")
+	}
+	retentionBody := []byte(`{"batch":"batch","expected_revision":1,"limit":1,"apply":false}`)
+	for _, tc := range []struct {
+		name, token string
+		status      int
+	}{{"missing-bearer", "", 401}, {"missing-retention-action", f.token(t, "migration.erase", "cw.tenant.erase:tenant"), 403}, {"missing-erase-resource", f.token(t, "migration.erase", "reporting.retention"), 404}} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/migrations/retention-drills", bytes.NewReader(retentionBody))
+		if tc.token != "" {
+			req.Header.Set("Authorization", "Bearer "+tc.token)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != tc.status {
+			t.Fatal(tc.name, w.Code, w.Body.String())
 		}
 	}
 	unauthorized := httptest.NewRecorder()
