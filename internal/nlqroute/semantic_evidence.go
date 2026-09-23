@@ -17,6 +17,7 @@ type semanticEvidenceGroup struct {
 	TopicVersion string                 `json:"topic_version"`
 	Root         semantics.Reference    `json:"candidate_root"`
 	Dependencies []nlq.MetricDependency `json:"dependencies"`
+	Relations    []nlq.SourceRelation   `json:"relations,omitempty"`
 }
 
 func (h hitWithTopic) contextEvidence() string {
@@ -35,11 +36,17 @@ func hydrateSemanticEvidence(ctx context.Context, admitted []admittedTopic, hits
 		return nil, ErrInvalid
 	}
 	byTopic := make(map[string]topics.Published, len(admitted))
+	physical := make(map[string][]nlq.SourceRelation, len(admitted))
 	for _, item := range admitted {
 		if _, duplicate := byTopic[item.id]; duplicate {
 			return nil, ErrInvalid
 		}
 		byTopic[item.id] = item.publication
+		relations, err := sourceRelations([]admittedTopic{item})
+		if err != nil {
+			return nil, err
+		}
+		physical[item.id] = relations
 	}
 	out := append([]hitWithTopic(nil), hits...)
 	seen := make(map[string]bool, len(out))
@@ -78,10 +85,22 @@ func hydrateSemanticEvidence(ctx context.Context, admitted []admittedTopic, hits
 		if !semanticFacetOriginMatches(publication.Definition, root, hit.hit.SourceID) {
 			return nil, gateway.ErrOutput
 		}
-		raw, err := json.Marshal(semanticEvidenceGroup{
+		group := semanticEvidenceGroup{
 			Version: "semantic-evidence-v1", Topic: hit.topic, TopicVersion: publication.State.Version,
 			Root: root, Dependencies: dependencies,
-		})
+		}
+		// A retained optional concept must keep its physical mappings when the
+		// mandatory schema is narrower. Do not mutate vector-origin text or
+		// select this candidate merely because its dependencies were hydrated.
+		// Older test contracts may omit physical relations; production does not.
+		if len(physical[hit.topic]) != 0 {
+			group.Relations, err = nlq.DependencyRelations(hit.topic, physical[hit.topic], dependencies)
+			if err != nil {
+				return nil, err
+			}
+			group.Version = "semantic-evidence-v2"
+		}
+		raw, err := json.Marshal(group)
 		if err != nil {
 			return nil, gateway.ErrOutput
 		}

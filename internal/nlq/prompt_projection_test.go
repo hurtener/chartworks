@@ -11,6 +11,7 @@ import (
 
 func projectionFixture() ContextInput {
 	in := minimalInput()
+	in.Topic, in.TopicVersion = "topic", "v1"
 	in.Relations = []SourceRelation{{Topic: in.Topic, Dataset: "sales", Name: "analytics.sales", Columns: []string{"amount", "family_id", "unneeded_field"}}, {Topic: in.Topic, Dataset: "family", Name: "analytics.family", Columns: []string{"id", "label"}}}
 	column := func(dataset, id string) MetricDependency {
 		return MetricDependency{Kind: "column", ID: dataset + ":" + id, Text: fmt.Sprintf(`{"dataset":%q,"column":{"id":%q,"source_name":%q,"native_type":"numeric","nullable":false}}`, dataset, id, id)}

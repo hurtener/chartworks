@@ -17,7 +17,13 @@ selected grouping/filter/time definitions and connecting joins. Every rendered
 column must exist in the corresponding full reviewed relation. Missing/foreign
 coordinates are an error, not a fallback to an incomplete prompt. Rich native
 column types, nullability and business meaning remain in mandatory dependencies.
-Optional retrieved text does not establish the physical projection. Unrelated
+Optional retrieved text does not establish the mandatory physical projection.
+A newly hydrated semantic candidate carries its own exact reviewed physical
+mappings with its dependency definitions in `semantic-evidence-v2`; both are
+retained or omitted atomically. Retained v1 evidence is not rewritten. This avoids
+orphaning an optional dimension or metric when deterministic selection covered only
+part of a question. A candidate remains optional and does not activate rules or
+certify a join to the selected graph. Unrelated
 catalog growth therefore does not spend the selected query's prompt budget.
 
 Unselected/legacy contexts, dimension-only contexts without metrics, and multi-topic
