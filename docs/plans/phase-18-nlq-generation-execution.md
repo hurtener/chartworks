@@ -222,3 +222,19 @@ foreign mappings, filter-only fallback, refitting and unrelated schema growth.
 No new migration, action, public field or analytical policy version is introduced.
 Exact passing/failing runtime evidence is recorded in PR #62; this source checkpoint
 alone is not release qualification.
+
+## AP-06A accepted generation explanations
+
+[Generation explanations v1](../contracts/generation-explanations-v1.md) retains
+known-value-redacted assumptions and ambiguities from the accepted candidate in
+existing query fields. Fresh Plan, Run, saved views and replay consume one durable
+value. Failed repairs cannot replace notes; accepted execution corrections and
+refined children describe their own candidates. Preflight and opaque idempotent
+Plan lookup retain their existing boundaries. Historical rows are not backfilled.
+
+The three `TestSQLRecoveryExplanation*Acceptance` tests extend AC01/AC03/AC06
+through actual PostgreSQL/native boundaries and recorded provider responses,
+including EN/ES, restart, private answer replacement and zero-work terminal replay.
+No new permission, model role, migration or analytical proof is introduced. Model
+text is advisory: this does not complete the AP-08 ambiguity gate, AP-05 analytical
+continuity or AP-06 parameterized learning. Exact CI outcomes remain in PR #62.

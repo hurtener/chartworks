@@ -68,12 +68,12 @@ jobs:
           git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
           git ls-tree -r HEAD > "$target/tree.txt"
           git archive --format=tar.gz HEAD > "$target/source.tar.gz"
-          baseline=cf689701cae5898e5d0c2edad4b06287793d6b37
-          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/projection-incremental.patch"
+          baseline=10c06b9c89a5fac960de8db7c342fe8193ccb4ce
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/explanations-incremental.patch"
           git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
-          export GIT_INDEX_FILE="$RUNNER_TEMP/projection-replay.index"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/explanations-replay.index"
           git read-tree "$baseline"
-          git apply --cached "$target/projection-incremental.patch"
+          git apply --cached "$target/explanations-incremental.patch"
           actual=$(git write-tree)
           expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
           test "$actual" = "$expected"
@@ -150,7 +150,7 @@ jobs:
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Summarize actual terminal test events
         if: always()
         run: |
@@ -160,6 +160,8 @@ jobs:
           summary={'head':os.environ['SOURCE_HEAD'],'tested_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'go':subprocess.check_output(['go','version'],text=True).strip(),'suites':{}}
           required_units=['TestSQLRecoveryQueryPopulationCompilerRequiresOwnedConstraints','TestSQLRecoveryQueryPopulationRetainedReplayAndEvidence','TestSQLRecoveryQueryPopulationAbsentIsNotTotalPopulation','TestSQLRecoveryQueryPopulationRejectsAdditionalRestrictions','TestSQLRecoveryQueryPopulationTypedNullRangeAndAggregate','TestSQLRecoveryQueryPopulationCompletenessAndParameterIdentity','TestSQLRecoveryQueryPopulationKeepsMetricPopulationsIndependent','TestSQLRecoveryQueryPopulationProofBoundaries','TestSQLRecoveryScopedProjectionDimensions','TestSQLRecoveryScopedProjectionTopicsAndSharedJoinKeys','TestSQLRecoveryScopedProjectionOwnership','TestSQLRecoveryScopedProjectionConservativeFallback','TestSQLRecoveryScopedProjectionGenerationAndRefit','TestSQLRecoveryScopedProjectionDimensionRoute','TestSQLRecoveryScopedProjectionMultiProducer','TestSQLRecoveryScopedProjectionFilterOnlyAndBounds']
           required_acceptance=['TestSQLRecoveryQueryPopulationAcceptance','TestSQLRecoveryQueryPopulationTemporalAndNumeric','TestSQLRecoveryAnalyticalCalendarAcceptance','TestSQLRecoveryScopedProjectionAcceptance','TestSQLRecoveryScopedProjectionPrivateAcceptance']
+          required_units.extend(['TestSQLRecoveryExplanationsDetachedAndEmpty','TestSQLRecoveryExplanationsRedactKnownBindingsAndAliases','TestSQLRecoveryExplanationsRedactionRemainsBounded','TestSQLRecoveryExplanationsUseAcceptedValidationCandidate','TestSQLRecoveryExplanationsExecutionCorrectionBoundary','TestSQLRecoveryExplanationsReadProjectionAndLegacy','TestSQLRecoveryExplanationsConcurrentReuse'])
+          required_acceptance.extend(['TestSQLRecoveryExplanationLifecycleAcceptance','TestSQLRecoveryExplanationCorrectionAcceptance','TestSQLRecoveryExplanationPrivacyAcceptance'])
           missing=[]
           failures=[]
           for name in ['units','acceptance']:
@@ -175,6 +177,7 @@ jobs:
               packages=[e['Package'] for e in events if e.get('Action')=='pass' and not e.get('Test')]
               required=required_units if name=='units' else required_acceptance
               missing.extend(x for x in required if x not in passed)
+              missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryExplanation'))
               if not packages: missing.append(name+':terminal-package')
               failures.extend(e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail')
               failures.extend(e['Test']+':skipped' for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryScopedProjection'))

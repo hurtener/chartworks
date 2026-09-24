@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
@@ -534,6 +535,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			record.Analytical = proof
 		}
 		plan = candidatePlan
+		retainGenerationExplanations(&record, candidate, nil, nil)
 		record.SQL, record.Parameters, record.Generation = candidate.SQL, candidate.Parameters, gen
 		report, runErr = s.executor.Execute(ctx, e, plan, exec.Options{Operation: in.Operation, Number: 2, Preview: in.Preview, Rows: in.Rows, Bytes: in.Bytes})
 		if runErr != nil || report.Result == nil || report.Attempt.Status == "failed" {
@@ -1023,13 +1025,14 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	record := queryRecord(e, id, "planned", parent, question, admitted)
 	bindParentLineage(&record, observedParent)
 	record.Clarification = candidate.clarification
+	retainGenerationExplanations(&record, candidate, question.Answers, observedParent)
 	record.AnalyticalVersion, record.Analytical = analyticalRecordVersion, cloneAnalyticalReceipt(candidate.analytical)
 	receipt = appendReceipts(selectionReceipt, receipt)
 	record.Operation, record.SQL, record.Parameters, record.Generation, record.Receipt, record.ValidationFixes, record.ExampleSelection = operation, candidate.SQL, candidate.Parameters, generation, receipt, fixes, selection
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PlanResult{}, err
 	}
-	out := PlanResult{Analytical: cloneAnalyticalReceipt(record.Analytical), Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: admitted.route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: candidate.Assumptions, Ambiguities: candidate.Ambiguities, Receipt: receipt, validated: validated}
+	out := PlanResult{Analytical: cloneAnalyticalReceipt(record.Analytical), Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: admitted.route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: append([]string(nil), record.Assumptions...), Ambiguities: append([]string(nil), record.Ambiguities...), Receipt: receipt, validated: validated}
 	if canInspect(e) {
 		out.SQL = candidate.SQL
 	}
@@ -2203,7 +2206,7 @@ func validCandidate(c generatedCandidate) bool {
 		}
 	}
 	for _, text := range append(append([]string{}, c.Assumptions...), c.Ambiguities...) {
-		if len(text) > 1024 || strings.ContainsRune(text, 0) {
+		if len(text) > maxGenerationExplanationBytes || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
 			return false
 		}
 	}

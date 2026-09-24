@@ -15,7 +15,7 @@ qualification are separate evidence states. Nothing here declares full parity.
 | AP-03 | Analytical contract and semantic conformance | Pending |
 | AP-04 | Targeted privacy-safe validation repair | Initial implementation with focused regressions; broader qualification remains open |
 | AP-05 | Analytical state and parameter ownership through follow-ups | Pending |
-| AP-06 | Parameterized learning and retained generation evidence | Pending |
+| AP-06 | Parameterized learning and retained generation evidence | Accepted-candidate explanation custody implemented in AP-06A; parameterized learning remains open |
 | AP-07 | Generator/validator dialect capability agreement | Native marker-count fallback defect fixed; broader operation matrix and live-engine qualification pending |
 | AP-08 | Ambiguity gating and owner-cohort qualification | Pending |
 
@@ -319,3 +319,22 @@ checks. Private values do not enter provider guidance or public receipts. Record
 v4 is forward-only; older policy replay remains distinct. Query-wide natural
 language completeness, ordering, joins and other dialects remain unqualified.
 Tests and actual qualification are recorded in PR #62, not asserted by this plan.
+
+## AP-06A accepted candidate explanation custody
+
+Continuation baseline `10c06b9c89a5fac960de8db7c342fe8193ccb4ce`.
+[Generation explanations](../contracts/generation-explanations-v1.md) closes the
+lifecycle split in which fresh Plan returned model notes but persisted queries
+kept only a generic routing statement. The accepted candidate's bounded, redacted
+notes now populate existing durable fields and all ordinary result projections.
+Validation-rejected proposals do not survive or enter repair prompts. Execution
+correction updates notes only after all applicable acceptance checks; rejected
+corrections retain the prior interpretation. Parent metadata remains immutable.
+Known private parameters and current/parent sensitive answer spellings/aliases are
+removed before storage/response, with whole-note withholding on marker overflow.
+
+No old row, source scope, SQL/parameter proof, public schema or migration changes.
+The opaque idempotent Plan-ID path is deliberately unchanged. Notes remain model
+claims; ambiguity gating and parameterized learning remain separate obligations.
+Unit and actual PostgreSQL/recorded-wire regressions cover both lifecycle and
+privacy boundaries. Exact executed local/CI results are recorded in the PR.
