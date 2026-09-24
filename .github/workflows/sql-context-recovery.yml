@@ -68,12 +68,12 @@ jobs:
           git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
           git ls-tree -r HEAD > "$target/tree.txt"
           git archive --format=tar.gz HEAD > "$target/source.tar.gz"
-          baseline=9f175857796435664ab64f3e2ba8c319257ca4d1
-          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/population-incremental.patch"
+          baseline=cf689701cae5898e5d0c2edad4b06287793d6b37
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/projection-incremental.patch"
           git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
-          export GIT_INDEX_FILE="$RUNNER_TEMP/population-replay.index"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/projection-replay.index"
           git read-tree "$baseline"
-          git apply --cached "$target/population-incremental.patch"
+          git apply --cached "$target/projection-incremental.patch"
           actual=$(git write-tree)
           expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
           test "$actual" = "$expected"
@@ -94,7 +94,11 @@ jobs:
           go version
           go mod verify
           unformatted=$(git ls-files '*.go' | xargs gofmt -l)
-          if [ -n "$unformatted" ]; then printf '%s\n' "$unformatted"; exit 1; fi
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            printf '%s\n' "$unformatted" | xargs gofmt -d
+            exit 1
+          fi
           make planning-check
           git diff --exit-code
       - name: Reserve disk for native and race builds
@@ -142,11 +146,11 @@ jobs:
           path: ${{ runner.temp }}/sql-context-units.log
           if-no-files-found: warn
           retention-days: 7
-      - name: Existing and population-specific integrated NLQ acceptance
+      - name: Existing and recovery-specific integrated NLQ acceptance
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Summarize actual terminal test events
         if: always()
         run: |
@@ -154,7 +158,10 @@ jobs:
           import json, os, pathlib, subprocess
           root=pathlib.Path(os.environ['RUNNER_TEMP'])
           summary={'head':os.environ['SOURCE_HEAD'],'tested_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'go':subprocess.check_output(['go','version'],text=True).strip(),'suites':{}}
+          required_units=['TestSQLRecoveryQueryPopulationCompilerRequiresOwnedConstraints','TestSQLRecoveryQueryPopulationRetainedReplayAndEvidence','TestSQLRecoveryQueryPopulationAbsentIsNotTotalPopulation','TestSQLRecoveryQueryPopulationRejectsAdditionalRestrictions','TestSQLRecoveryQueryPopulationTypedNullRangeAndAggregate','TestSQLRecoveryQueryPopulationCompletenessAndParameterIdentity','TestSQLRecoveryQueryPopulationKeepsMetricPopulationsIndependent','TestSQLRecoveryQueryPopulationProofBoundaries','TestSQLRecoveryScopedProjectionDimensions','TestSQLRecoveryScopedProjectionTopicsAndSharedJoinKeys','TestSQLRecoveryScopedProjectionOwnership','TestSQLRecoveryScopedProjectionConservativeFallback','TestSQLRecoveryScopedProjectionGenerationAndRefit','TestSQLRecoveryScopedProjectionDimensionRoute','TestSQLRecoveryScopedProjectionMultiProducer']
+          required_acceptance=['TestSQLRecoveryQueryPopulationAcceptance','TestSQLRecoveryQueryPopulationTemporalAndNumeric','TestSQLRecoveryAnalyticalCalendarAcceptance','TestSQLRecoveryScopedProjectionAcceptance','TestSQLRecoveryScopedProjectionPrivateAcceptance']
           missing=[]
+          failures=[]
           for name in ['units','acceptance']:
               file=root/f'sql-context-{name}.log'
               events=[]
@@ -166,15 +173,16 @@ jobs:
               passed={e.get('Test') for e in events if e.get('Action')=='pass' and e.get('Test')}
               failed={e.get('Test') for e in events if e.get('Action')=='fail' and e.get('Test')}
               packages=[e['Package'] for e in events if e.get('Action')=='pass' and not e.get('Test')]
-              required=['TestSQLRecoveryQueryPopulationCompilerRequiresOwnedConstraints','TestSQLRecoveryQueryPopulationRetainedReplayAndEvidence','TestSQLRecoveryQueryPopulationAbsentIsNotTotalPopulation','TestSQLRecoveryQueryPopulationRejectsAdditionalRestrictions','TestSQLRecoveryQueryPopulationTypedNullRangeAndAggregate','TestSQLRecoveryQueryPopulationCompletenessAndParameterIdentity','TestSQLRecoveryQueryPopulationKeepsMetricPopulationsIndependent','TestSQLRecoveryQueryPopulationProofBoundaries'] if name=='units' else ['TestSQLRecoveryQueryPopulationAcceptance','TestSQLRecoveryQueryPopulationTemporalAndNumeric','TestSQLRecoveryAnalyticalCalendarAcceptance']
+              required=required_units if name=='units' else required_acceptance
               missing.extend(x for x in required if x not in passed)
               if not packages: missing.append(name+':terminal-package')
-              summary['suites'][name]={'passed':sum(e.get('Action')=='pass' and bool(e.get('Test')) for e in events),'failed':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail'],'skipped':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='skip'],'packages_passed':packages,'population_tests':sorted(x for x in passed if x.startswith('TestSQLRecoveryQueryPopulation') and '/' not in x),'failure_details':[e.get('Output','').strip()[:1200] for e in events if e.get('Test') in failed and e.get('Output') and not e['Output'].startswith(('===','---'))][:25],'non_json':non_json[:8]}
+              failures.extend(e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail')
+              summary['suites'][name]={'passed':sum(e.get('Action')=='pass' and bool(e.get('Test')) for e in events),'failed':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail'],'skipped':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='skip'],'packages_passed':packages,'projection_tests':sorted(x for x in passed if x.startswith('TestSQLRecoveryScopedProjection') and '/' not in x),'failure_details':[e.get('Output','').strip()[:1200] for e in events if e.get('Test') in failed and e.get('Output') and not e['Output'].startswith(('===','---'))][:25],'non_json':non_json[:8]}
           summary['missing_required']=missing
           raw=json.dumps(summary,sort_keys=True)
           (root/'sql-context-summary.json').write_text(raw+'\n')
-          print('POPULATION_QUALIFICATION_SUMMARY='+raw)
-          if missing: raise SystemExit('Missing required passing tests: '+', '.join(missing))
+          print('SQL_CONTEXT_QUALIFICATION_SUMMARY='+raw)
+          if missing or failures: raise SystemExit('Required qualification failed: '+', '.join(missing+failures))
           PY
       - name: Validation must not modify source
         if: always()

@@ -1,9 +1,9 @@
 # Generation packet v2: selected physical context and strategy fit
 
-Status: implemented for review in PR #62; this contract covers the AP-02 initial
-slice. Exact CI results are maintained in the PR, not inferred from this document.
-This extends phases 17/18 and SQL-03/04/05 without changing identity authority,
-SQL approval, or the frozen reporting execution path.
+Status: implemented for review in PR #62; this contract covers AP-02 and its
+scoped extensions. Exact CI results are maintained in the PR, not inferred from
+this document. This extends phases 17/18 and SQL-03/04/05 without changing identity
+authority, SQL approval, or the frozen reporting execution path.
 
 ## Two distinct projections
 
@@ -23,15 +23,58 @@ mappings with its dependency definitions in `semantic-evidence-v2`; both are
 retained or omitted atomically. Retained v1 evidence is not rewritten. This avoids
 orphaning an optional dimension or metric when deterministic selection covered only
 part of a question. A candidate remains optional and does not activate rules or
-certify a join to the selected graph. Unrelated
-catalog growth therefore does not spend the selected query's prompt budget.
+certify a join to the selected graph. Unrelated catalog growth therefore does not
+spend the selected query's prompt budget.
 
-Unselected/legacy contexts, dimension-only contexts without metrics, and multi-topic
-contexts retain the full physical rendering in this first version. There is no
-new authorization subset supplied by a client. No persisted SQL is rewritten.
-The marker `physical_projection:selected-closure-v1` distinguishes the renderer;
-this is not a certificate that free-text intent or SQL semantics are complete.
-Broader paraphrase and continuation interpretation remain separately qualified.
+The original single-topic metric renderer retains the marker
+`physical_projection:selected-closure-v1`. Unselected/legacy inputs still retain
+their full rendering. AP-02C below extends scoped dimension-only and multi-topic
+inputs; it does not rewrite stored SQL or introduce a client authorization subset.
+Neither renderer certifies complete free-text intent or SQL semantics. Broader
+paraphrase and continuation interpretation remain separately qualified.
+
+## AP-02C: topic-scoped dimension and multi-topic rendering
+
+The marker `physical_projection:topic-selected-closure-v2` identifies the extended
+rendering. Dimension-only requests can use their mandatory column closure without
+inventing a pinned metric. Mandatory grouping/filter/clarification dependencies
+remain included even when they are not output columns. Projection does not create
+an analytical metric receipt for a dimension-only query.
+
+Multi-topic inputs resolve each metric namespace and semantic-dependency content
+ID against the admitted topic set. The existing `catalog-selection-v1` producer's
+`selection-` and `semantic-` JSON/SHA256 IDs are used for ownership, not as authority
+or cryptographic authentication. Definitions, selection digests and persisted wire
+schemas are unchanged. Unknown, mixed or ambiguous ownership fails instead of
+borrowing another topic's column mapping. Each dependency is validated against
+that topic's own reviewed relation, including when a dataset is shared. Conflicting
+physical mappings for one semantic column are rejected. Work is bounded by the
+existing relation/topic limits and at most 4,096 combined dependencies.
+
+Shared datasets retain their full per-topic reviewed columns. The existing
+multi-topic admission contract independently confirms the same relationship in
+each topic, so its endpoints are shared datasets; the assembler does not receive
+those join choices. Keeping shared relations prevents removal of confirmed join
+keys outside the selected dimension/metric closure. Columns are never merged
+across topic boundaries, and sharing a dataset does not itself approve a join.
+This conservative envelope is not minimal join-aware projection or fan-out proof.
+Nonshared unneeded relations and columns can be omitted from the rendered schema.
+
+A topic without a selected column closure, an opaque legacy metric, or a dataset-only
+selection keeps its full original physical rendering. An entirely legacy unscoped
+selection keeps the previous behavior; it is not guessed into a new namespace.
+Once scoped mappings are present, missing/foreign columns do not trigger a permissive
+fallback. Returned projected and conservatively retained column slices are detached.
+Optional evidence cannot establish or alter this mandatory projection.
+
+Generation and provider-envelope refitting reuse the context owner's renderer and
+retain the full `Relations` value. No request fields, SQL records, native scopes,
+semantic selection versions, analytical receipts or migration versions change.
+Terminal replay/frozen operations add no model work. New recorded-provider tests
+cover EN/ES dimension planning, private predicate grounding, durable scope, saved
+result privacy and zero-work terminal replay. Producer/assembler tests cover shared
+join keys, topic ownership, conservative fallback and unrelated catalog growth.
+These are software regressions, not live model or cross-dialect qualification.
 
 ## One example lane and declared order
 
@@ -113,7 +156,7 @@ not unlimited verified capacity. Old receipts without envelope evidence stay unk
 Retries reserve the same complete envelope per attempt. Errors and preparation logs
 remain redacted; failure before dispatch creates no fabricated model-attempt receipt.
 
-Broader dimension-only and multi-topic physical projections remain separate work.
-Recorded wire and synthetic fits do not establish live language quality, vendor
-capacity calibration, cloud-dialect parity or performance. Frozen report refresh
-adds no model work.
+Minimal join-aware projection and actual model-window/tokenizer qualification remain
+separate work. Recorded wire and synthetic fits do not establish live language
+quality, vendor capacity calibration, cloud-dialect parity or performance. Frozen
+report refresh adds no model work.

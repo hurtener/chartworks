@@ -59,6 +59,10 @@ func TestSQLRecoveryScopedProjectionDimensions(t *testing.T) {
 	if !reflect.DeepEqual(got.Relations, in.Relations) || len(got.Metrics) != 0 {
 		t.Fatal("projection changed authorization or invented a metric")
 	}
+	after, _ := json.Marshal(in)
+	if string(before) != string(after) {
+		t.Fatal("assembly mutated caller input")
+	}
 	for i := 0; i < 20; i++ {
 		r := SourceRelation{Topic: "topic", Dataset: fmt.Sprintf("extra%d", i), Name: fmt.Sprintf("analytics.extra%d", i)}
 		for j := 0; j < 100; j++ {
@@ -71,10 +75,6 @@ func TestSQLRecoveryScopedProjectionDimensions(t *testing.T) {
 		t.Fatal("unrelated schema consumed dimension budget", err)
 	}
 	original := scopedProjectionFixture()
-	after, _ := json.Marshal(original)
-	if string(before) != string(after) {
-		t.Fatal("fixture is not deterministic")
-	}
 	projected, ok, err := promptRelations(original)
 	if err != nil || !ok {
 		t.Fatal(err)
@@ -124,25 +124,33 @@ func TestSQLRecoveryScopedProjectionTopicsAndSharedJoinKeys(t *testing.T) {
 
 func TestSQLRecoveryScopedProjectionOwnership(t *testing.T) {
 	a, _ := NewDefaultContextAssembler()
-	for name, change := range map[string]func(*ContextInput){
-		"foreign relation": func(in *ContextInput) { in.Relations[0].Topic = "foreign" },
-		"foreign metric": func(in *ContextInput) { in.Metrics[0].ID = "foreign:revenue" },
-		"unqualified metric": func(in *ContextInput) { in.Metrics[0].ID = "revenue" },
-		"foreign dependency": func(in *ContextInput) {
-			in.Constraints.Required[2] = scopedProjectionDependency("foreign", scopedProjectionColumn("north_labels", "label"))
-		},
-		"wrong dependency owner": func(in *ContextInput) {
-			in.Constraints.Required[2] = scopedProjectionDependency("south", scopedProjectionColumn("north_labels", "label"))
-		},
-		"missing column": func(in *ContextInput) { in.Relations[0].Columns = []string{"unused_north"} },
-		"missing metric mapping": func(in *ContextInput) { in.Relations[2].Columns = []string{"unused_south"} },
-		"conflicting shared identity": func(in *ContextInput) { in.Relations[3].Name = "analytics.other" },
-		"malformed dependency": func(in *ContextInput) { in.Constraints.Required[2].Text = "not json" },
-		"mixed unscoped selection": func(in *ContextInput) { in.Constraints.Required[0].ID = "legacy" },
-	} {
+	for _, name := range []string{"foreign relation", "foreign metric", "unqualified metric", "foreign dependency", "wrong dependency owner", "missing column", "missing metric mapping", "conflicting shared identity", "malformed dependency", "mixed unscoped selection", "borrowed shared column"} {
 		t.Run(name, func(t *testing.T) {
 			in := scopedMultiProjectionFixture()
-			change(&in)
+			switch name {
+			case "foreign relation":
+				in.Relations[0].Topic = "foreign"
+			case "foreign metric":
+				in.Metrics[0].ID = "foreign:revenue"
+			case "unqualified metric":
+				in.Metrics[0].ID = "revenue"
+			case "foreign dependency":
+				in.Constraints.Required[2] = scopedProjectionDependency("foreign", scopedProjectionColumn("north_labels", "label"))
+			case "wrong dependency owner":
+				in.Constraints.Required[2] = scopedProjectionDependency("south", scopedProjectionColumn("north_labels", "label"))
+			case "missing column":
+				in.Relations[0].Columns = []string{"unused_north"}
+			case "missing metric mapping":
+				in.Relations[2].Columns = []string{"unused_south"}
+			case "conflicting shared identity":
+				in.Relations[3].Name = "analytics.other"
+			case "malformed dependency":
+				in.Constraints.Required[2].Text = "not json"
+			case "mixed unscoped selection":
+				in.Constraints.Required[0].ID = "legacy"
+			case "borrowed shared column":
+				in.Constraints.Required = append(in.Constraints.Required, scopedProjectionDependency("south", scopedProjectionColumn("shared", "north_reviewed")))
+			}
 			if _, err := a.Assemble(context.Background(), in, TierHigh); !errors.Is(err, ErrInvalid) {
 				t.Fatal("incomplete topic-owned projection accepted", err)
 			}
