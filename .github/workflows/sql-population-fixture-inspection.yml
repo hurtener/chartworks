@@ -5,29 +5,31 @@ on:
     paths: [.github/workflows/sql-population-fixture-inspection.yml]
 permissions:
   contents: read
+  actions: read
 jobs:
   inspect:
     if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener'
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          persist-credentials: false
-      - name: Inspect public synthetic clarification provenance
+          github-token: ${{ github.token }}
+          run-id: 35952275625
+          pattern: sql-context-evidence-1.26.4-*
+          path: ${{ runner.temp }}/evidence
+      - name: Inspect exact retained assertion events
         run: |
-          git rev-parse HEAD
           python3 - <<'PY'
+          import json,os
           from pathlib import Path
-          markers=['policy_not_matched','func populationPrivateQuestion','func matchClarificationPattern','func prepareClarificationAnswers','func TestSQLRecoveryAnalyticalOwnedScalarRepair','func RedactClarificationText']
-          for root in ['internal','test/acceptance']:
-              for p in sorted(Path(root).rglob('*.go')):
-                  lines=p.read_text().splitlines()
-                  for i,line in enumerate(lines):
-                      if any(m in line for m in markers):
-                          print('SOURCE',str(p),i+1)
-                          for j in range(max(0,i-2),min(len(lines),i+50)):
-                              print(f'{j+1}: {lines[j]}')
+          for p in Path(os.environ['RUNNER_TEMP']).glob('evidence/**/*.log'):
+              print('EVIDENCE',p.name)
+              for line in p.read_text().splitlines():
+                  try: e=json.loads(line)
+                  except json.JSONDecodeError: continue
+                  test=e.get('Test','')
+                  if test.startswith('TestSQLRecoveryQueryPopulationAcceptance') and e.get('Action')=='output':
+                      print(e.get('Output','').strip())
           PY
-          git diff --exit-code
-# Temporary source inspection only; no test result or runtime capability claim.
+# Temporary read-only inspection, no changed source or passing-result claim.
