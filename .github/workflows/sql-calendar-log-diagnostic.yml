@@ -1,0 +1,37 @@
+name: Calendar failure evidence
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-calendar-log-diagnostic.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  summarize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 35936835161
+          pattern: sql-context-evidence-*
+          path: ${{ runner.temp }}/evidence
+      - name: Show failed assertions without changing source or results
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          for path in sorted(pathlib.Path(os.environ['RUNNER_TEMP']).glob('evidence/*/*.log')):
+              events=[]
+              for line in path.read_text().splitlines():
+                  try: events.append(json.loads(line))
+                  except json.JSONDecodeError: pass
+              failed={e.get('Test') for e in events if e.get('Action')=='fail' and e.get('Test')}
+              print('SOURCE',path.parent.name,path.name)
+              for e in events:
+                  test=e.get('Test')
+                  text=e.get('Output','').strip()
+                  if test in failed and text and not text.startswith(('===','---')):
+                      print(test, text[:1500])
+              print('SUMMARY',json.dumps({'failures':sorted(failed),'passed':sum(e.get('Action')=='pass' and bool(e.get('Test')) for e in events)}))
+          PY
