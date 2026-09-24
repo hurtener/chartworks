@@ -13,7 +13,7 @@ through the existing executor, and records bounded correction, refinement,
 feedback, and learning state. PostgreSQL query reads consume the phase-16 rule
 publish/retire invalidation ledger. An invalidated query keeps its immutable
 topic/version and rule pins and replays through the retained topic reader rather
-silently using the current publication. The current core evidence is in
+than silently using the current publication. The current core evidence is in
 [phase 18 NLQ runtime evidence](../reviews/phase-18-nlq-runtime.md).
 
 The public HTTP/SDK operation surface and real invalidation consumer are integrated,
@@ -204,19 +204,21 @@ Tests and actual qualification are recorded in PR #62, not asserted by this plan
 ## AP-02C topic-scoped physical context
 
 The [generation packet v2 extension](../contracts/generation-packet-v2.md#ap-02c-topic-scoped-dimension-and-multi-topic-rendering)
-adds dimension-only and per-topic physical rendering from existing mandatory
-selection/dependency identities. Full reviewed relation scope remains unchanged in
-admission, persistence, native validation, saved reads and replay. Shared datasets
-retain each topic's complete reviewed columns to protect independently confirmed
-join endpoints; an opaque or unselected topic keeps its original rendering.
-Missing, conflicting or cross-topic physical mappings fail explicitly. This is
-not minimal join-aware projection, fan-out proof or wider analytical SQL support.
+adds independently selected dimension/column and per-topic physical rendering from
+existing mandatory selection/dependency identities. Full reviewed relation scope
+remains unchanged in admission, persistence, native validation, saved reads and
+replay. Shared datasets retain each topic's complete reviewed columns to protect
+independently confirmed join endpoints. Opaque, unselected and filter-only topics
+keep their original rendering. Missing, conflicting or cross-topic physical
+mappings fail explicitly. This is not minimal join-aware projection, fan-out proof
+or wider analytical SQL support. See the [AP-02C review](../reviews/sql-scoped-projection.md).
 
 `TestSQLRecoveryScopedProjectionAcceptance` and
 `TestSQLRecoveryScopedProjectionPrivateAcceptance` extend AC01/AC02/AC06 with real
 PostgreSQL, recorded provider wire, EN/ES dimension-only generation, private-filter
-grounding, durable scope and zero-work terminal replay. Scoped assembler and actual
-selection-producer tests cover shared join keys, foreign mappings, refitting and
-unrelated schema growth. No new migration, action, public field or analytical
-policy version is introduced. Exact passing/failing runtime evidence is recorded
-in PR #62; this source checkpoint alone is not release qualification.
+grounding, exact source records, durable scope and zero-work terminal replay.
+Scoped assembler and actual selection-producer tests cover shared join keys,
+foreign mappings, filter-only fallback, refitting and unrelated schema growth.
+No new migration, action, public field or analytical policy version is introduced.
+Exact passing/failing runtime evidence is recorded in PR #62; this source checkpoint
+alone is not release qualification.

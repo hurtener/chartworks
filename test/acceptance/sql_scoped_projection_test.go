@@ -17,6 +17,24 @@ func scopedProjectionPack(pack *semantics.TopicPack) {
 	pack.Dimensions = []semantics.Dimension{{ID: "record", Name: "Record", Aliases: []string{"registro"}, Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "id"}, Role: semantics.DimensionCategorical}}
 }
 
+func requireScopedProjectionIDs(t *testing.T, result nlqexec.RunResult, columns int, ids ...string) {
+	t.Helper()
+	if result.Execution.Result == nil || len(result.Execution.Result.Rows) != len(ids) {
+		t.Fatal("wrong dimension result row count")
+	}
+	for i, row := range result.Execution.Result.Rows {
+		if len(row) != columns {
+			t.Fatal("wrong dimension result column count")
+		}
+		// Exact integer values may use the adapter's lossless JSON strings.
+		// Do not round-trip through floating point to compare their identity.
+		raw := string(row[0])
+		if raw != ids[i] && raw != `"`+ids[i]+`"` {
+			t.Fatal("dimension result contains the wrong ordered source record")
+		}
+	}
+}
+
 func TestSQLRecoveryScopedProjectionAcceptance(t *testing.T) {
 	for _, locale := range []nlq.Language{nlq.LanguageEnglish, nlq.LanguageSpanish} {
 		t.Run(string(locale), func(t *testing.T) {
@@ -48,6 +66,7 @@ func TestSQLRecoveryScopedProjectionAcceptance(t *testing.T) {
 				t.Fatal("prompt projection narrowed durable validator scope", err)
 			}
 			r := f.run(t, p, 2, false)
+			requireScopedProjectionIDs(t, r, 1, "1", "2")
 			if r.Analytical != nil {
 				t.Fatal("dimension projection acquired an aggregate proof")
 			}
@@ -57,7 +76,8 @@ func TestSQLRecoveryScopedProjectionAcceptance(t *testing.T) {
 			}
 			metadata := support.Raw(t, f.f.dsn)
 			calls, attempts := f.model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
-			f.run(t, p, 2, false)
+			replayed := f.run(t, p, 2, false)
+			requireScopedProjectionIDs(t, replayed, 1, "1", "2")
 			if f.model.requests.Load() != calls || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != attempts {
 				t.Fatal("terminal replay repeated source or model work")
 			}
@@ -89,7 +109,8 @@ func TestSQLRecoveryScopedProjectionPrivateAcceptance(t *testing.T) {
 		if !strings.Contains(physical, "id") || !strings.Contains(physical, "name") || strings.Contains(physical, "amount") || strings.Contains(physical, "created_at") {
 			t.Fatal("dimension projection lost its private-filter dependency")
 		}
-		f.run(t, p, 1, false)
+		r := f.run(t, p, 1, false)
+		requireScopedProjectionIDs(t, r, 1, "1")
 		f.model.mu.Lock()
 		wire := strings.Join(f.model.requestBodies[start:], "\n")
 		f.model.mu.Unlock()
@@ -115,6 +136,7 @@ func TestSQLRecoveryScopedProjectionPrivateAcceptance(t *testing.T) {
 		if !strings.Contains(physical, "id") || !strings.Contains(physical, "amount") || !strings.Contains(physical, "created_at") || !strings.Contains(physical, "name") {
 			t.Fatal("filter-only request lost unselected detail fields")
 		}
-		f.run(t, p, 1, true)
+		r := f.run(t, p, 1, true)
+		requireScopedProjectionIDs(t, r, 2, "1")
 	})
 }

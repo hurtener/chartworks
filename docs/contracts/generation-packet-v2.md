@@ -36,20 +36,21 @@ paraphrase and continuation interpretation remain separately qualified.
 ## AP-02C: topic-scoped dimension and multi-topic rendering
 
 The marker `physical_projection:topic-selected-closure-v2` identifies the extended
-rendering. Dimension-only requests can use their mandatory column closure without
-inventing a pinned metric. Mandatory grouping/filter/clarification dependencies
-remain included even when they are not output columns. Projection does not create
-an analytical metric receipt for a dimension-only query.
+rendering. Independently selected dimension/column roots can use their mandatory
+column closure without inventing a pinned metric. Mandatory grouping/filter and
+clarification dependencies remain included even when they are not output columns.
+Projection does not create an analytical metric receipt for a dimension-only query.
 
 Multi-topic inputs resolve each metric namespace and semantic-dependency content
 ID against the admitted topic set. The existing `catalog-selection-v1` producer's
 `selection-` and `semantic-` JSON/SHA256 IDs are used for ownership, not as authority
 or cryptographic authentication. Definitions, selection digests and persisted wire
 schemas are unchanged. Unknown, mixed or ambiguous ownership fails instead of
-borrowing another topic's column mapping. Each dependency is validated against
-that topic's own reviewed relation, including when a dataset is shared. Conflicting
-physical mappings for one semantic column are rejected. Work is bounded by the
-existing relation/topic limits and at most 4,096 combined dependencies.
+borrowing another topic's column mapping. Each selected topic's column dependencies
+are validated against that topic's own reviewed relations, even when a dataset is
+shared. Conflicting physical mappings for one semantic column are rejected. Work
+is bounded by the existing relation/topic limits, 128 roots in a selection and at
+most 4,096 combined dependencies.
 
 Shared datasets retain their full per-topic reviewed columns. The existing
 multi-topic admission contract independently confirms the same relationship in
@@ -61,19 +62,23 @@ This conservative envelope is not minimal join-aware projection or fan-out proof
 Nonshared unneeded relations and columns can be omitted from the rendered schema.
 
 A topic without a selected column closure, an opaque legacy metric, or a dataset-only
-selection keeps its full original physical rendering. An entirely legacy unscoped
-selection keeps the previous behavior; it is not guessed into a new namespace.
-Once scoped mappings are present, missing/foreign columns do not trigger a permissive
-fallback. Returned projected and conservatively retained column slices are detached.
-Optional evidence cannot establish or alter this mandatory projection.
+selection keeps its full original physical rendering. The same is true when all
+roots originate only from clarification, required rules or interpreted values/time:
+a known filter does not establish the requested detail output schema. Only existing
+catalog/explicit root reasons make a topic eligible; unknown reasons stay conservative.
+An entirely legacy unscoped selection keeps the previous behavior; it is not guessed
+into a new namespace. Once scoped mappings are present, missing/foreign columns do not
+trigger a permissive fallback. Returned projected and conservatively retained column
+slices are detached. Optional evidence cannot alter the mandatory projection.
 
 Generation and provider-envelope refitting reuse the context owner's renderer and
 retain the full `Relations` value. No request fields, SQL records, native scopes,
 semantic selection versions, analytical receipts or migration versions change.
 Terminal replay/frozen operations add no model work. New recorded-provider tests
-cover EN/ES dimension planning, private predicate grounding, durable scope, saved
-result privacy and zero-work terminal replay. Producer/assembler tests cover shared
-join keys, topic ownership, conservative fallback and unrelated catalog growth.
+cover EN/ES dimension planning, private predicate grounding, filter-only detail
+context, durable scope, saved-result privacy and zero-work terminal replay.
+Producer/assembler tests cover shared join keys, topic ownership, conservative
+fallback and unrelated catalog growth. See the [AP-02C adversarial review](../reviews/sql-scoped-projection.md).
 These are software regressions, not live model or cross-dialect qualification.
 
 ## One example lane and declared order
