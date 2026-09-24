@@ -17,6 +17,18 @@ import (
 	"github.com/hurtener/chartworks/test/support"
 )
 
+// Calendar assertions accept the adapter's lossless PostgreSQL timestamp text
+// as well as RFC3339. Every accepted representation has an explicit UTC offset;
+// a timezone-free string must not silently acquire the test machine's timezone.
+func calendarResultInstant(value string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05.999999999Z07"} {
+		if instant, err := time.Parse(layout, value); err == nil {
+			return instant, nil
+		}
+	}
+	return time.Time{}, errors.New("calendar result requires an explicit-offset timestamp")
+}
+
 func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 	f := newCW01FixtureWithPack(t, func(pack *semantics.TopicPack) {
 		pack.Dimensions = []semantics.Dimension{{ID: "order_date", Name: "Order date", Description: "Synthetic reviewed instant calendar", Aliases: []string{"fecha de pedido"}, Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: pack.Datasets[0].ID, ID: "created_at"}, Role: semantics.DimensionTemporal, Temporal: &semantics.TemporalPolicy{Calendar: "gregorian", Timezone: "America/New_York", Grains: []semantics.TimeGrain{"day", "month", "quarter", "year"}}}}
@@ -52,7 +64,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 				if json.Unmarshal(row[0], &s) != nil {
 					t.Fatal("non-string temporal output")
 				}
-				instant, err := time.Parse(time.RFC3339Nano, s)
+				instant, err := calendarResultInstant(s)
 				if err != nil {
 					t.Fatal("temporal encoding", err)
 				}
@@ -69,6 +81,19 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		}
 		return out
 	}
+	t.Run("explicit-offset result representations", func(t *testing.T) {
+		for _, value := range []string{"2025-01-01 05:00:00+00", "2025-01-01 05:00:00.000000+00:00", "2025-01-01T05:00:00Z", "2025-01-01 00:00:00-05"} {
+			instant, err := calendarResultInstant(value)
+			if err != nil || instant.UTC().Format(time.RFC3339) != "2025-01-01T05:00:00Z" {
+				t.Fatal("timestamp offset lost", value, err)
+			}
+		}
+		for _, value := range []string{"2025-01-01 05:00:00", "2025-01-01", "January"} {
+			if _, err := calendarResultInstant(value); err == nil {
+				t.Fatal("invented timezone in result assertion", value)
+			}
+		}
+	})
 	t.Run("year zone null partitions and immutable replay", func(t *testing.T) {
 		p := plan(t, "Revenue by month of Order date", good)
 		r, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
