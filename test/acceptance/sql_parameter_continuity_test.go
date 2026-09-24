@@ -134,8 +134,11 @@ func TestSQLRecoveryParameterContinuationAcceptance(t *testing.T) {
 func TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance(t *testing.T) {
 	f := newCW01Fixture(t)
 	ctx := context.Background()
-	question := f.question("List sales named", nlq.LanguageEnglish)
+	question := f.question("List named sales", nlq.LanguageEnglish)
 	pending := f.preflight(t, question)
+	if pending.Route.Clarification == nil || pending.Route.Clarification.Reason != "required_answers" {
+		t.Fatal("owned-answer fixture must activate the reviewed named-sales policy")
+	}
 	question.ClarificationQuery = pending.QueryID
 	question.AnswerContext = pending.Route.AnswerContext
 	question.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
