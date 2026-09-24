@@ -25,11 +25,22 @@ concurrency:
 
 jobs:
   verification:
+    name: verification (Go ${{ matrix.go }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - go: '1.26.4'
+            cache: go1264
+          - go: '1.27.1'
+            cache: go1271
     env:
       CGO_ENABLED: '1'
       GOFLAGS: '-p=2'
+      GOTOOLCHAIN: local
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-native
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
     services:
@@ -47,21 +58,36 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Capture exact committed source
+          fetch-depth: 0
+      - name: Capture exact committed source and independently replay the patch
         run: |
-          mkdir -p "$RUNNER_TEMP/sql-context-source"
-          git rev-parse HEAD > "$RUNNER_TEMP/sql-context-source/commit.txt"
-          git ls-tree -r HEAD > "$RUNNER_TEMP/sql-context-source/tree.txt"
-          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/sql-context-source/source.tar.gz"
-          (cd "$RUNNER_TEMP/sql-context-source" && sha256sum commit.txt tree.txt source.tar.gz > SHA256SUMS)
+          set -euo pipefail
+          target="$RUNNER_TEMP/sql-context-source"
+          mkdir -p "$target"
+          git rev-parse HEAD > "$target/commit.txt"
+          git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
+          git ls-tree -r HEAD > "$target/tree.txt"
+          git archive --format=tar.gz HEAD > "$target/source.tar.gz"
+          baseline=b4fe94242b9997d0e4fce7a81a12da4ab0c34beb
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/calendar-incremental.patch"
+          git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/calendar-replay.index"
+          git read-tree "$baseline"
+          git apply --cached "$target/calendar-incremental.patch"
+          actual=$(git write-tree)
+          expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
+          test "$actual" = "$expected"
+          printf 'baseline=%s\nhead=%s\nexpected_tree=%s\nreplayed_tree=%s\n' "$baseline" "$SOURCE_HEAD" "$expected" "$actual" > "$target/patch-check.txt"
+          unset GIT_INDEX_FILE
+          (cd "$target" && sha256sum *.txt *.patch source.tar.gz > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: sql-context-source-${{ github.sha }}
+          name: sql-context-source-${{ matrix.go }}-${{ github.sha }}
           path: ${{ runner.temp }}/sql-context-source/
           retention-days: 7
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.4'
+          go-version: ${{ matrix.go }}
       - name: Verify source, formatting and plan coherence
         run: |
           set -o pipefail
@@ -86,7 +112,7 @@ jobs:
         if: steps.native.outputs.cache-hit != 'true'
         run: bash scripts/build-bruin.sh
       - uses: actions/cache/save@v4
-        if: steps.native.outputs.cache-hit != 'true'
+        if: steps.native.outputs.cache-hit != 'true' && matrix.go == '1.26.4'
         with:
           path: |
             /tmp/chartworks-native/bruin
@@ -102,9 +128,9 @@ jobs:
         id: incremental
         with:
           path: /home/runner/.cache/go-build
-          key: sql-context-race-ubuntu24-go1264-${{ github.sha }}
+          key: sql-context-race-ubuntu24-${{ matrix.cache }}-${{ github.sha }}
           restore-keys: |
-            sql-context-race-ubuntu24-go1264-
+            sql-context-race-ubuntu24-${{ matrix.cache }}-
       - name: Semantic, routing, context and generation regressions
         run: |
           set -o pipefail
@@ -112,15 +138,34 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sql-context-units-${{ github.sha }}
+          name: sql-context-units-${{ matrix.go }}-${{ github.sha }}
           path: ${{ runner.temp }}/sql-context-units.log
           if-no-files-found: warn
           retention-days: 7
-      - name: Existing integrated NLQ acceptance
+      - name: Existing and calendar-specific integrated NLQ acceptance
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+      - name: Summarize actual terminal test events
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          summary={'head':os.environ['SOURCE_HEAD'],'tested_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'go':subprocess.check_output(['go','version'],text=True).strip(),'suites':{}}
+          for name in ['units','acceptance']:
+              file=root/f'sql-context-{name}.log'
+              events=[]
+              if file.exists():
+                  for line in file.read_text().splitlines():
+                      try: events.append(json.loads(line))
+                      except json.JSONDecodeError: pass
+              summary['suites'][name]={'passed':sum(e.get('Action')=='pass' and bool(e.get('Test')) for e in events),'failed':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail'],'skipped':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='skip'],'packages_passed':[e['Package'] for e in events if e.get('Action')=='pass' and not e.get('Test')],'calendar_tests':[e['Test'] for e in events if e.get('Action')=='pass' and e.get('Test','').startswith('TestSQLRecoveryCalendar') and '/' not in e['Test']],'calendar_acceptance':any(e.get('Action')=='pass' and e.get('Test')=='TestSQLRecoveryAnalyticalCalendarAcceptance' for e in events)}
+          raw=json.dumps(summary,sort_keys=True)
+          (root/'sql-context-summary.json').write_text(raw+'\n')
+          print('CALENDAR_QUALIFICATION_SUMMARY='+raw)
+          PY
       - name: Validation must not modify source
         if: always()
         run: git diff --exit-code
@@ -128,10 +173,12 @@ jobs:
         if: always() && steps.incremental.outcome == 'success' && steps.incremental.outputs.cache-hit != 'true'
         with:
           path: /home/runner/.cache/go-build
-          key: sql-context-race-ubuntu24-go1264-${{ github.sha }}
+          key: sql-context-race-ubuntu24-${{ matrix.cache }}-${{ github.sha }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sql-context-evidence-${{ github.sha }}
-          path: ${{ runner.temp }}/sql-context-*.log
+          name: sql-context-evidence-${{ matrix.go }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/sql-context-*.log
+            ${{ runner.temp }}/sql-context-summary.json
           retention-days: 7
