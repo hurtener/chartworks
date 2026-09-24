@@ -35,7 +35,7 @@ func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
 		f.model.mu.Unlock()
 		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
 		if err != nil || p.Analytical == nil || p.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy || p.Analytical.Version != readexec.AnalyticalQueryPopulationVersion || p.ValidationFixes != 1 {
-			t.Fatal("population correction", err)
+			t.Fatalf("population correction: err=%v proof=%+v fixes=%d planned=%v", err, p.Analytical, p.ValidationFixes, p.QueryID != "")
 		}
 		retained = p
 		f.run(t, p, 1, true)
@@ -77,7 +77,7 @@ func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
 			attempts := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 			p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
 			if p.QueryID != "" || !errors.Is(err, readexec.ErrAnalyticalMismatch) || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
-				t.Fatal("extra condition acquired executable result", err)
+				t.Fatalf("extra condition acquired executable result: err=%v proof=%+v fixes=%d planned=%v", err, p.Analytical, p.ValidationFixes, p.QueryID != "")
 			}
 		}
 	})
@@ -112,14 +112,13 @@ func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
 
 func TestSQLRecoveryQueryPopulationTemporalAndNumeric(t *testing.T) {
 	f := newCW01Fixture(t)
-	ctx := context.Background()
 	good := `SELECT sum(amount) AS revenue FROM analytics.sales`
 	for _, tc := range []struct {
 		name, question, pattern string
 		value                   semantics.ClarificationValue
 	}{
 		{"exact threshold", "Revenue large sales", "amount-required", cw01Number("10")},
-		{"instant interval", "Revenue dated sales", "period", cw01Time("2000-01-01T00:00:00Z", "2100-01-01T00:00:00Z", "month")},
+		{"instant interval", "Revenue dated sales", "period", cw01Time("2026-01-02", "2026-01-03", "day")},
 		{"boolean filter", "Revenue active sales", "state", cw01Bool("true")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,9 +127,15 @@ func TestSQLRecoveryQueryPopulationTemporalAndNumeric(t *testing.T) {
 			if p.Analytical == nil || p.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy {
 				t.Fatal("typed query predicate has no proof")
 			}
-			r, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
-			if err != nil || r.Execution.Result == nil || len(r.Execution.Result.Rows) != 1 || readexec.Hash(r.Analytical) != readexec.Hash(p.Analytical) {
-				t.Fatal("typed population result", err)
+			if tc.pattern == "period" {
+				window := p.Route.Resolutions[0].Time
+				if window == nil || window.StartUTC != "2026-01-02T03:00:00Z" || window.EndUTC != "2026-01-03T03:00:00Z" || window.Bounds != "[)" {
+					t.Fatal("reviewed local dates lost their exact instant bounds")
+				}
+			}
+			r := f.run(t, p, 1, true)
+			if readexec.Hash(r.Analytical) != readexec.Hash(p.Analytical) {
+				t.Fatal("typed population proof changed at execution")
 			}
 		})
 	}
