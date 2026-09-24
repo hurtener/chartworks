@@ -14,6 +14,7 @@ func DependencyRelations(topic string, relations []SourceRelation, dependencies 
 		return nil, &ValidationError{Code: CodeInvalidValue, Path: "projection.dependencies"}
 	}
 	needed := map[string]map[string]bool{}
+	coordinates := map[string]string{}
 	for _, d := range dependencies {
 		if d.Kind != "column" {
 			continue
@@ -28,6 +29,10 @@ func DependencyRelations(topic string, relations []SourceRelation, dependencies 
 		if !validText(d.Text, 16<<10) || json.Unmarshal([]byte(d.Text), &value) != nil || !validID(value.Dataset) || !validID(value.Column.ID) || !validText(value.Column.SourceName, 256) || d.ID != value.Dataset+":"+value.Column.ID {
 			return nil, &ValidationError{Code: CodeInvalidValue, Path: "projection.dependencies"}
 		}
+		if prior, exists := coordinates[d.ID]; exists && prior != value.Column.SourceName {
+			return nil, &ValidationError{Code: CodeInvalidValue, Path: "projection.dependencies"}
+		}
+		coordinates[d.ID] = value.Column.SourceName
 		if needed[value.Dataset] == nil {
 			needed[value.Dataset] = map[string]bool{}
 		}
@@ -67,8 +72,8 @@ func DependencyRelations(topic string, relations []SourceRelation, dependencies 
 }
 
 // promptRelations depends only on mandatory state, never optional candidates
-// that can be pruned after the base is rendered. Legacy/unselected and multi-topic
-// contexts keep their existing full rendering.
+// that can be pruned after the base is rendered. The original single-topic
+// metric renderer stays unchanged; scoped dimension/multi-topic inputs use v2.
 func promptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 	selected := false
 	if input.Constraints != nil {
@@ -76,8 +81,11 @@ func promptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 			selected = selected || c.Kind == "selected_semantics"
 		}
 	}
-	if !selected || input.Strategy != StrategySingleTopic || len(input.Metrics) == 0 || len(input.Relations) == 0 {
+	if !selected || len(input.Relations) == 0 {
 		return input.Relations, false, nil
+	}
+	if input.Strategy != StrategySingleTopic || len(input.Metrics) == 0 {
+		return scopedPromptRelations(input)
 	}
 	var dependencies []MetricDependency
 	for _, m := range input.Metrics {
@@ -107,10 +115,14 @@ func renderPromptRelations(input ContextInput) string {
 	if !projected {
 		return rendered
 	}
+	marker := "selected-closure-v1"
+	if input.Strategy == StrategyMultiTopic || len(input.Metrics) == 0 {
+		marker = "topic-selected-closure-v2"
+	}
 	// Optional semantic candidates carry their own verified physical mappings,
 	// admitted or omitted with their definitions as one bounded group. Do not
 	// falsely tell the generator that this mandatory subset is the entire scope.
-	return "physical_projection:selected-closure-v1\n" + strings.Replace(rendered,
+	return "physical_projection:" + marker + "\n" + strings.Replace(rendered,
 		"Use only these reviewed schema-qualified physical relations and columns for SQL:",
 		"Selected reviewed physical relations and columns (retained semantic candidates may supply additional reviewed mappings):", 1)
 }
