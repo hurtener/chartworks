@@ -238,3 +238,16 @@ including EN/ES, restart, private answer replacement and zero-work terminal repl
 No new permission, model role, migration or analytical proof is introduced. Model
 text is advisory: this does not complete the AP-08 ambiguity gate, AP-05 analytical
 continuity or AP-06 parameterized learning. Exact CI outcomes remain in PR #62.
+
+## AP-05A parameter-preserving refinements
+
+The [parameter custody contract](../contracts/refinement-parameters-v1.md) extends
+AC01/AC03 with authorized parent binding retention. Exact private model values are
+not sent to the generator, complete parameter-bearing clauses retain their binding
+roles, and returned placeholders are restored before native/analytical checks and
+owned predicate rebinding. Restart/replay use existing durable fields and the parent
+revision/digest fence. No new model role, migration or public request field is added.
+The dedicated `TestSQLRecoveryParameterContinuationAcceptance` and
+`TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance` exercise actual
+PostgreSQL/recorded-provider boundaries. Full language/time inheritance and explicit
+parameter editing remain separate obligations; test inventory is not runtime proof.

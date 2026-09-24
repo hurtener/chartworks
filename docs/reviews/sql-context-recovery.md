@@ -338,3 +338,22 @@ The opaque idempotent Plan-ID path is deliberately unchanged. Notes remain model
 claims; ambiguity gating and parameterized learning remain separate obligations.
 Unit and actual PostgreSQL/recorded-wire regressions cover both lifecycle and
 privacy boundaries. Exact executed local/CI results are recorded in the PR.
+
+## AP-05A parameter custody checkpoint
+
+Baseline `a2559bdf4e468d6436f0bd37f2066250f628add6`. The
+[refinement parameter contract](../contracts/refinement-parameters-v1.md) closes the
+unbound-SQL/parameter-context gap: the service reauthorizes and verifies the exact
+parent, retains model values privately, and supplies slot metadata to generation.
+A native PostgreSQL clause comparison rejects silent slot reassignment, changed
+Boolean/predicate structure, dropped/literalized placeholders and source changes.
+First candidates and the existing bounded correction both restore original values
+before owned business binding/native validation. Reference-only receipts no longer
+wipe the valid SQL base. Current typed answer replacement does not inherit the old
+owned SQL/value, while independent model slots remain intact.
+
+No migrations, public DTO fields, authority grants or frozen execution changes.
+Unchanged non-PostgreSQL SQL can preserve bindings, but modified parameterized SQL
+requires future native role qualification. Model-slot value edits and full inferred
+scalar/time continuity are explicitly not delivered. Runtime/CI results, source
+hashes and remaining phase status are updated at the PR checkpoint after testing.

@@ -68,12 +68,12 @@ jobs:
           git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
           git ls-tree -r HEAD > "$target/tree.txt"
           git archive --format=tar.gz HEAD > "$target/source.tar.gz"
-          baseline=10c06b9c89a5fac960de8db7c342fe8193ccb4ce
-          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/explanations-incremental.patch"
+          baseline=a2559bdf4e468d6436f0bd37f2066250f628add6
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/parameters-incremental.patch"
           git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
-          export GIT_INDEX_FILE="$RUNNER_TEMP/explanations-replay.index"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/parameters-replay.index"
           git read-tree "$baseline"
-          git apply --cached "$target/explanations-incremental.patch"
+          git apply --cached "$target/parameters-incremental.patch"
           actual=$(git write-tree)
           expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
           test "$actual" = "$expected"
@@ -150,7 +150,7 @@ jobs:
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Summarize actual terminal test events
         if: always()
         run: |
@@ -162,6 +162,8 @@ jobs:
           required_acceptance=['TestSQLRecoveryQueryPopulationAcceptance','TestSQLRecoveryQueryPopulationTemporalAndNumeric','TestSQLRecoveryAnalyticalCalendarAcceptance','TestSQLRecoveryScopedProjectionAcceptance','TestSQLRecoveryScopedProjectionPrivateAcceptance']
           required_units.extend(['TestSQLRecoveryExplanationsDetachedAndEmpty','TestSQLRecoveryExplanationsRedactKnownBindingsAndAliases','TestSQLRecoveryExplanationsRedactionRemainsBounded','TestSQLRecoveryExplanationsUseAcceptedValidationCandidate','TestSQLRecoveryExplanationsExecutionCorrectionBoundary','TestSQLRecoveryExplanationsReadProjectionAndLegacy','TestSQLRecoveryExplanationsConcurrentReuse'])
           required_acceptance.extend(['TestSQLRecoveryExplanationLifecycleAcceptance','TestSQLRecoveryExplanationCorrectionAcceptance','TestSQLRecoveryExplanationPrivacyAcceptance'])
+          required_units.extend(['TestSQLRecoveryParameterClauseContinuity','TestSQLRecoveryParameterClauseRejectsReassignment','TestSQLRecoveryParameterClauseProtectsEveryLocation','TestSQLRecoveryParameterClauseRejectsUnprovedScopes','TestSQLRecoveryParameterClauseOtherDialectsConservative','TestSQLRecoveryParameterClauseBoundsAndCancellation','TestSQLRecoveryParameterClauseConcurrentReuse','TestSQLRecoveryRefinementBaseSeparatesOwnedParameters','TestSQLRecoveryRefinementSlotsPrivateAndFenced','TestSQLRecoveryRefinementRestoresValuesAndRejectsSlotDrift','TestSQLRecoveryRefinementParametersReachValidationNotProvider','TestSQLRecoveryRefinementCorrectionKeepsOriginalBindings'])
+          required_acceptance.extend(['TestSQLRecoveryParameterContinuationAcceptance','TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance'])
           missing=[]
           failures=[]
           for name in ['units','acceptance']:

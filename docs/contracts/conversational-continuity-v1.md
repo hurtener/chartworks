@@ -25,3 +25,15 @@ access, and cannot switch off hard rules or constituent dependencies. Nil select
 uses legacy replay behavior; versioned selection is reconstructed from current
 reviewed pins before clarification replay. This is not a migration of legacy
 scalar/time conversation state, nor a SQL conformance proof.
+
+### Retained model parameter custody
+
+[Refinement parameters v1](refinement-parameters-v1.md) keeps an authorized parent's
+model-authored bindings private during follow-up SQL generation. The edit packet
+contains only previous unbound SQL and slot positions/kinds. PostgreSQL edits must
+preserve complete parameter-bearing clauses and their source namespace; returned
+placeholder values are replaced server-side before owned binding and validation.
+Typed business-answer replacement remains separate from model slot mutation. The
+exact observed parent and existing atomic lineage fence bind the ephemeral state;
+public request schemas cannot supply it. This does not complete inferred filter/
+time inheritance or introduce general free-text parameter-value editing.

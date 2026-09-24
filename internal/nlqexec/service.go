@@ -27,17 +27,18 @@ import (
 )
 
 type admission struct {
-	publications  []topics.Published
-	analytical    *exec.AnalyticalContract
-	route         nlqroute.RouteResult
-	assembled     nlq.AssembledContext
-	binding       exec.Binding
-	source        string
-	context       string
-	resources     []access.Resource
-	relationScope []exec.RelationScope
-	relations     []nlq.SourceRelation
-	reviewed      []reviewedDataset
+	refinementParameters *refinementParameters
+	publications         []topics.Published
+	analytical           *exec.AnalyticalContract
+	route                nlqroute.RouteResult
+	assembled            nlq.AssembledContext
+	binding              exec.Binding
+	source               string
+	context              string
+	resources            []access.Resource
+	relationScope        []exec.RelationScope
+	relations            []nlq.SourceRelation
+	reviewed             []reviewedDataset
 }
 
 type reviewedDataset struct {
@@ -334,6 +335,11 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	if _, err := s.replayQueryClarifications(ctx, e, old); err != nil {
 		return PlanResult{}, err
 	}
+	if old.SQL != "" {
+		if err := s.verifyQueryClarificationBinding(ctx, e, old, parent); err != nil {
+			return PlanResult{}, err
+		}
+	}
 	if len(in.Templates) > 0 && exec.Hash(in.Templates) != exec.Hash(old.Templates) {
 		return PlanResult{}, ErrInvalid
 	}
@@ -356,14 +362,16 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	if question.Question == "" {
 		return PlanResult{}, ErrInvalid
 	}
-	// Answer edits cannot inherit old filters from protected SQL edit context.
-	if len(in.Answers) == 0 && len(in.Choices) == 0 && old.SQL != "" {
-		base := old.SQL
-		if old.Clarification != nil {
-			base = old.Clarification.BaseSQL
-		}
-		if base != "" {
-			question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: base})
+	// Replayed service-owned predicates must not enter the model's edit base.
+	base, parameters, err := refinementSQLBase(old)
+	if err != nil {
+		return PlanResult{}, err
+	}
+	if base != "" && (len(in.Answers) == 0 && len(in.Choices) == 0 || len(parameters) > 0) {
+		question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: base})
+		ctx, err = retainRefinementParameters(ctx, &question, old, base, parameters)
+		if err != nil {
+			return PlanResult{}, err
 		}
 	}
 	return s.plan(ctx, e, question, "", in.QueryID, &old, "query.execute", old.Route.Resolutions...)
@@ -965,10 +973,14 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if observedParent != nil && (observedParent.ID != parent || observedParent.Session != e.Session() || observedParent.Context != question.Context) {
 		return PlanResult{}, ErrForeignSession
 	}
+	if err := refinementParameterState(ctx).verifyParent(observedParent); err != nil {
+		return PlanResult{}, err
+	}
 	admitted, err := s.admit(ctx, e, question, true)
 	if err != nil {
 		return PlanResult{}, err
 	}
+	admitted.refinementParameters = refinementParameterState(ctx)
 	for _, required := range additionalActions {
 		if err := gatewayRequirement(e, required, admitted.resources); err != nil {
 			return PlanResult{}, err
@@ -1784,6 +1796,10 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if candidate.generation != nil {
 		generation = *candidate.generation
 	}
+	candidate, err = restoreRefinementParameters(ctx, a, candidate)
+	if err != nil {
+		return generatedCandidate{}, 0, receipt, exec.Plan{}, err
+	}
 	// Keep the model-authored statement separate from service-owned predicates.
 	// Bound SQL and scalar answers must never become validation-repair input.
 	unbound := candidate
@@ -1810,6 +1826,10 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, fixErr)
 	}
 	fixed, fixErr = restoreValidationRepairParameters(fixed, unbound.Parameters)
+	if fixErr != nil {
+		return generatedCandidate{}, 1, receipt, exec.Plan{}, fixErr
+	}
+	fixed, fixErr = restoreRefinementParameters(ctx, a, fixed)
 	if fixErr != nil {
 		return generatedCandidate{}, 1, receipt, exec.Plan{}, fixErr
 	}
