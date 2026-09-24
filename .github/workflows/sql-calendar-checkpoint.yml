@@ -2,9 +2,7 @@ name: SQL calendar checkpoint
 on:
   push:
     branches: [codex/sql-semantic-context-recovery]
-    paths:
-      - scripts/sql-calendar/checkpoint.py
-      - .github/workflows/sql-calendar-checkpoint.yml
+    paths: [.github/workflows/sql-calendar-checkpoint.yml]
 permissions:
   contents: write
 jobs:
@@ -20,23 +18,28 @@ jobs:
         with:
           go-version: '1.26.4'
           cache: false
-      - name: Apply explicit source checkpoint and publish a source commit
+      - name: Commit current-authoring fixture corrections
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          source = Path('scripts/sql-calendar/checkpoint.py').read_text()
-          old = "edit('internal/exec/analytical_pg.go', 'if term.column == \"\" || term.aggregate || term.guarded {', 'if term.groupKey() == \"\" || term.aggregate || term.guarded {')"
-          new = "edit('internal/exec/analytical_pg.go', 'if term.column == \"\" || term.aggregate || term.guarded {\\n\\t\\t\\treturn analyticalFailure(\"analytical_shape_unsupported\", true)', 'if term.groupKey() == \"\" || term.aggregate || term.guarded {\\n\\t\\t\\treturn analyticalFailure(\"analytical_shape_unsupported\", true)')"
-          assert source.count(old) == 1
-          exec(compile(source.replace(old,new), 'calendar-checkpoint', 'exec'), {})
+          p=Path('test/acceptance/sql_analytical_grain_test.go')
+          s=p.read_text()
+          old='Version != readexec.AnalyticalGrainVersion'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,'Version != readexec.AnalyticalCalendarVersion'))
+          p=Path('test/acceptance/sql_analytical_calendar_test.go')
+          s=p.read_text()
+          assert s.count('result *readexec.Result')==1
+          assert s.count('values(t, r.Execution.Result)')==2
+          s=s.replace('result *readexec.Result','result nlqexec.RunResult').replace('range result.Rows','range result.Execution.Result.Rows').replace('values(t, r.Execution.Result)','values(t, r)')
+          p.write_text(s)
           PY
-          git ls-files -z -- 'internal/exec/*.go' 'internal/nlqexec/*.go' 'test/acceptance/*.go' | xargs -0 -r gofmt -w
-          git ls-files --others --exclude-standard -z -- '*.go' | xargs -0 -r gofmt -w
-          git add internal/exec internal/nlqexec internal/store/postgres/migrations/055_nlq_analytical_calendar.sql test/acceptance docs/contracts/analytical-calendar-v3.md docs/reviews/sql-context-recovery.md docs/plans/phase-18-nlq-generation-execution.md
+          gofmt -w test/acceptance/sql_analytical_grain_test.go test/acceptance/sql_analytical_calendar_test.go
+          git add test/acceptance/sql_analytical_grain_test.go test/acceptance/sql_analytical_calendar_test.go
           git diff --cached --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat(nlq): enforce reviewed calendar bucket grain with retained policy replay'
+          git commit -m 'test(nlq): preserve old proof fixtures and inspect canonical run results'
           git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
-# Temporary authoring transport. Final verification tests committed source only.
+# Temporary authoring only; removed before the delivered committed-source gate.
