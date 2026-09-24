@@ -74,7 +74,7 @@ func TestSQLRecoveryParameterClauseRejectsUnprovedScopes(t *testing.T) {
 		`DELETE FROM analytics.sales WHERE id=$1`,
 	} {
 		if err := CheckParameterContinuity(context.Background(), "postgres", sql, sql, 1); !errors.Is(err, ErrUnsupported) {
-			t.Fatal("unproved scope admitted", err)
+			t.Fatalf("unproved scope admitted for %s: %v", sql, err)
 		}
 	}
 }

@@ -133,7 +133,7 @@ func (s *parameterClauseScan) visit(value any, depth int) (any, bool, error) {
 			switch key {
 			case "location", "stmt_location", "stmt_len":
 				continue
-			case "SelectStmt", "SubLink", "RangeSubselect", "RangeFunction", "JoinExpr", "WithClause", "WindowDef":
+			case "SelectStmt", "SubLink", "RangeSubselect", "RangeFunction", "JoinExpr", "WithClause", "WindowDef", "over":
 				return nil, false, ErrUnsupported
 			case "ParamRef":
 				p := object(item)
