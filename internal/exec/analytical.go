@@ -80,12 +80,13 @@ type AnalyticalMetric struct {
 // does NOT certify question interpretation or query-wide filters. v2 can also
 // prove an explicitly compiled direct-column grain; nil grain remains unmeasured.
 type AnalyticalContract struct {
-	Version   string             `json:"version"`
-	Binding   string             `json:"binding"`
-	Semantics string             `json:"semantics"`
-	Dataset   string             `json:"dataset"`
-	Metrics   []AnalyticalMetric `json:"metrics"`
-	Grain     *AnalyticalGrain   `json:"grain,omitempty"`
+	Version         string                     `json:"version"`
+	Binding         string                     `json:"binding"`
+	Semantics       string                     `json:"semantics"`
+	Dataset         string                     `json:"dataset"`
+	Metrics         []AnalyticalMetric         `json:"metrics"`
+	Grain           *AnalyticalGrain           `json:"grain,omitempty"`
+	QueryPopulation *AnalyticalQueryPopulation `json:"query_population,omitempty"`
 }
 
 func (AnalyticalContract) String() string         { return "analytical-contract(redacted)" }
@@ -95,19 +96,20 @@ func (c AnalyticalContract) LogValue() slog.Value { return slog.StringValue(c.St
 // AnalyticalReceipt is bounded non-executable evidence of the specified checks.
 // Native validation and business approval remain independent requirements.
 type AnalyticalReceipt struct {
-	Version  string   `json:"version"`
-	Scope    string   `json:"scope"`
-	Contract string   `json:"contract"`
-	Query    string   `json:"query"`
-	Metrics  []string `json:"metrics"`
-	Grouping []string `json:"grouping,omitempty"`
+	Version         string   `json:"version"`
+	Scope           string   `json:"scope"`
+	Contract        string   `json:"contract"`
+	Query           string   `json:"query"`
+	Metrics         []string `json:"metrics"`
+	Grouping        []string `json:"grouping,omitempty"`
+	QueryPopulation string   `json:"query_population,omitempty"`
 }
 
 // CheckAnalyticalPlan checks an already native-validated opaque plan. It neither
 // issues plans nor widens the admitted binding, and does no source/model work.
 // Unsupported syntax is not labeled a passed analytical result.
 func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*AnalyticalReceipt, error) {
-	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
+	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion && c.Version != AnalyticalQueryPopulationVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
 		return nil, ErrBinding
 	}
 	if err := ctx.Err(); err != nil {
@@ -130,7 +132,10 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if err := validateAnalyticalGrain(c, relation); err != nil {
 		return nil, err
 	}
-	checker := analyticalChecker{ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain}
+	if err := validateAnalyticalQueryPopulation(ctx, c, p.candidate.binding); err != nil {
+		return nil, err
+	}
+	checker := analyticalChecker{ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
 	expected := map[string]int{}
 	ids := make([]string, 0, len(c.Metrics))
 	seen := map[string]bool{}
@@ -187,19 +192,24 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 		}
 		receipt.Grouping = append([]string(nil), c.Grain.Dimensions...)
 	}
+	if c.QueryPopulation != nil {
+		receipt.QueryPopulation = AnalyticalQueryPopulationPolicy
+	}
 	return receipt, nil
 }
 
 type analyticalChecker struct {
-	ctx        context.Context
-	relation   Relation
-	alias      string
-	parameters []Parameter
-	nodes      int
-	leaves     []AnalyticalExpression
-	grain      *AnalyticalGrain
-	common     map[string]bool
-	global     map[string]bool
+	ctx             context.Context
+	relation        Relation
+	alias           string
+	parameters      []Parameter
+	nodes           int
+	leaves          []AnalyticalExpression
+	grain           *AnalyticalGrain
+	binding         Binding
+	queryPopulation *AnalyticalQueryPopulation
+	common          map[string]bool
+	global          map[string]bool
 }
 
 // Only bounded base-ten literals are normalized. Do not let leading zeroes

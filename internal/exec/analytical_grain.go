@@ -20,7 +20,7 @@ func validateAnalyticalGrain(c AnalyticalContract, relation Relation) error {
 		return nil
 	}
 	g := c.Grain
-	validPolicy := c.Version == AnalyticalGrainVersion && g.Policy == AnalyticalGrainPolicy && len(g.Buckets) == 0 || c.Version == AnalyticalCalendarVersion && g.Policy == AnalyticalCalendarPolicy
+	validPolicy := c.Version == AnalyticalGrainVersion && g.Policy == AnalyticalGrainPolicy && len(g.Buckets) == 0 || (c.Version == AnalyticalCalendarVersion || c.Version == AnalyticalQueryPopulationVersion) && g.Policy == AnalyticalCalendarPolicy
 	if !validPolicy || len(g.Columns)+len(g.Buckets) < 1 || len(g.Columns)+len(g.Buckets) > 16 || len(g.Dimensions) < 1 || len(g.Dimensions) > 16 {
 		return ErrBinding
 	}

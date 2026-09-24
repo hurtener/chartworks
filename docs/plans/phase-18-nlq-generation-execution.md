@@ -189,3 +189,14 @@ instant timezone are required; the complete grouping/output partition set is
 checked after native validation. This is not query-wide population, join or
 ordering conformance. Final runtime qualification is recorded in PR #62; code
 presence alone is not a passing acceptance result.
+
+
+## AP-03C1 owned query-predicate conformance
+
+The [v4 population contract](../contracts/analytical-query-population-v4.md)
+checks complete WHERE/HAVING predicate provenance against authenticated typed
+constraints, retaining common metric filters and all existing native/metric/grain
+checks. Private values do not enter provider guidance or public receipts. Record
+v4 is forward-only; older policy replay remains distinct. Query-wide natural
+language completeness, ordering, joins and other dialects remain unqualified.
+Tests and actual qualification are recorded in PR #62, not asserted by this plan.

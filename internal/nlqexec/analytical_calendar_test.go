@@ -38,7 +38,7 @@ func TestSQLRecoveryCalendarCompilerReviewedBucket(t *testing.T) {
 			a := calendarAdmission(tc.question, "timestamptz")
 			before := exec.Hash(a.route)
 			c, err := compileAnalytical(context.Background(), a)
-			if err != nil || c == nil || c.Version != exec.AnalyticalCalendarVersion || c.Grain == nil || c.Grain.Policy != exec.AnalyticalCalendarPolicy || len(c.Grain.Buckets) != 1 || len(c.Grain.Columns) != tc.columns {
+			if err != nil || c == nil || c.Version != exec.AnalyticalQueryPopulationVersion || c.Grain == nil || c.Grain.Policy != exec.AnalyticalCalendarPolicy || len(c.Grain.Buckets) != 1 || len(c.Grain.Columns) != tc.columns {
 				t.Fatal("compiled bucket", err)
 			}
 			b := c.Grain.Buckets[0]
@@ -116,7 +116,7 @@ func TestSQLRecoveryCalendarRetainedVersionsAndReplay(t *testing.T) {
 			t.Fatal("retained policy reinterpreted", v, err)
 		}
 	}
-	c, err := compileAnalytical(context.Background(), a)
+	c, err := compileAnalyticalVersion(context.Background(), a, 3)
 	if err != nil {
 		t.Fatal(err)
 	}

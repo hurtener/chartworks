@@ -322,7 +322,7 @@ func grainPrefix(words, prefix []string) bool {
 	return true
 }
 
-func analyticalGrainGuidance(contract *exec.AnalyticalContract) string {
+func analyticalGrainGuidanceOnly(contract *exec.AnalyticalContract) string {
 	if contract == nil || contract.Grain == nil {
 		return ""
 	}

@@ -46,7 +46,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		t.Helper()
 		f.model.mode.Store(phase18RawResponse(t, statement))
 		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question(text, nlq.LanguageEnglish)})
-		if err != nil || p.Analytical == nil || p.Analytical.Version != readexec.AnalyticalCalendarVersion || p.Analytical.Scope != readexec.AnalyticalCalendarScope || len(p.Analytical.Grouping) != 1 {
+		if err != nil || p.Analytical == nil || p.Analytical.Version != readexec.AnalyticalQueryPopulationVersion || p.Analytical.Scope != readexec.AnalyticalCalendarScope || len(p.Analytical.Grouping) != 1 {
 			t.Fatal("calendar plan", err)
 		}
 		return p
@@ -111,7 +111,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		}
 		sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
 		saved, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 3 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
+		if err != nil || saved.AnalyticalVersion != 4 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
 			t.Fatal("calendar persistence", err)
 		}
 		projected, err := f.f.db.ReadSavedQuery(ctx, f.e, p.QueryID, false)

@@ -73,6 +73,9 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 			a.global[key] = true
 		}
 	}
+	if err := a.checkQueryPopulation(q); err != nil {
+		return err
+	}
 	targets := array(q["targetList"])
 	if len(targets) == 0 || len(targets) > 256 {
 		return ErrLimit

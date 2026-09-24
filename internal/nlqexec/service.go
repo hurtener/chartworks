@@ -435,7 +435,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
-			if _, admissionErr = expectedAnalytical(ctx, record, admitted); admissionErr != nil {
+			if _, admissionErr = s.expectedAnalytical(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
 			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
@@ -473,7 +473,7 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if err := s.verifyQueryClarificationBinding(ctx, e, record, current); err != nil {
 		return RunResult{}, err
 	}
-	current.analytical, err = expectedAnalytical(ctx, record, current)
+	current.analytical, err = s.expectedAnalytical(ctx, e, record, current)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -571,7 +571,7 @@ func (s *Service) waitForRun(ctx context.Context, e identity.Envelope, queryID, 
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
-			if _, admissionErr = expectedAnalytical(ctx, record, admitted); admissionErr != nil {
+			if _, admissionErr = s.expectedAnalytical(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
 			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
@@ -1769,7 +1769,7 @@ func (s *Service) ensureSession(ctx context.Context, e identity.Envelope, in Que
 }
 
 func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, a admission, generation nlq.GenerationContext, call gateway.Call, budget *gateway.Budget, correction string) (generatedCandidate, int, gateway.Receipt, exec.Plan, error) {
-	contract, contractErr := compileAnalytical(ctx, a)
+	contract, contractErr := compileCurrentAnalytical(ctx, a)
 	if contractErr != nil {
 		return generatedCandidate{}, 0, gateway.Receipt{}, exec.Plan{}, contractErr
 	}

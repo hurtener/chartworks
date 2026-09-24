@@ -17,7 +17,7 @@ import (
 
 // The persisted revision is independent of selection and native validation.
 // Zero means retained legacy evidence, not a claim of analytical correctness.
-const analyticalRecordVersion = 3
+const analyticalRecordVersion = 4
 
 func analyticalUnsupported(code string) error {
 	return &exec.AnalyticalError{Code: code, Unsupported: true}
@@ -30,7 +30,7 @@ func compileAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContra
 	return compileAnalyticalVersion(ctx, a, analyticalRecordVersion)
 }
 
-func compileAnalyticalVersion(ctx context.Context, a admission, version int) (*exec.AnalyticalContract, error) {
+func compileAnalyticalVersion(ctx context.Context, a admission, version int, queryConstraints ...[]exec.BusinessConstraint) (*exec.AnalyticalContract, error) {
 	if version < 1 || version > analyticalRecordVersion {
 		return nil, exec.ErrBinding
 	}
@@ -38,8 +38,11 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int) (*e
 	if version == 2 {
 		proofVersion = exec.AnalyticalGrainVersion
 	}
-	if version == 3 {
+	if version >= 3 {
 		proofVersion = exec.AnalyticalCalendarVersion
+	}
+	if version == 4 {
+		proofVersion = exec.AnalyticalQueryPopulationVersion
 	}
 	if ctx == nil {
 		return nil, exec.ErrBinding
@@ -96,10 +99,15 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int) (*e
 		sort.Slice(out.Metrics, func(i, j int) bool { return out.Metrics[i].ID < out.Metrics[j].ID })
 		if version >= 2 {
 			var err error
-			out.Grain, err = compileAnalyticalGrainPolicy(ctx, a, *out, version == 3)
+			out.Grain, err = compileAnalyticalGrainPolicy(ctx, a, *out, version >= 3)
 			if err != nil {
 				return nil, err
 			}
+		}
+	}
+	if out != nil && version == 4 && len(queryConstraints) > 0 {
+		if err := compileQueryPopulation(ctx, a, out, queryConstraints); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
@@ -311,7 +319,7 @@ func cloneAnalyticalReceipt(r *exec.AnalyticalReceipt) *exec.AnalyticalReceipt {
 // expectedAnalytical checks durable metadata before native planning or replay.
 // A legacy row stays explicitly unmeasured, and a new row cannot silently drop a
 // receipt, change a contract or substitute another query's proof.
-func expectedAnalytical(ctx context.Context, q QueryRecord, a admission) (*exec.AnalyticalContract, error) {
+func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryConstraints ...[]exec.BusinessConstraint) (*exec.AnalyticalContract, error) {
 	if q.AnalyticalVersion == 0 {
 		if q.Analytical != nil {
 			return nil, exec.ErrBinding
@@ -321,7 +329,7 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission) (*exec.
 	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalRecordVersion {
 		return nil, exec.ErrBinding
 	}
-	contract, err := compileAnalyticalVersion(ctx, a, q.AnalyticalVersion)
+	contract, err := compileAnalyticalVersion(ctx, a, q.AnalyticalVersion, queryConstraints...)
 	if err != nil {
 		return nil, err
 	}
@@ -342,6 +350,9 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission) (*exec.
 			want.Scope = exec.AnalyticalCalendarScope
 		}
 		want.Grouping = append([]string(nil), contract.Grain.Dimensions...)
+	}
+	if contract.QueryPopulation != nil {
+		want.QueryPopulation = exec.AnalyticalQueryPopulationPolicy
 	}
 	if q.Analytical == nil || exec.Hash(want) != exec.Hash(q.Analytical) {
 		return nil, exec.ErrBinding
@@ -372,7 +383,7 @@ func analyticalDiagnostic(err error) string {
 		return ""
 	}
 	switch e.Code {
-	case "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
+	case "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
 		return e.Code
 	default:
 		return "analytical_shape_unsupported"
@@ -415,6 +426,9 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == 3 {
 		version = exec.AnalyticalCalendarVersion
 	}
+	if q.AnalyticalVersion == 4 {
+		version = exec.AnalyticalQueryPopulationVersion
+	}
 	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
@@ -427,10 +441,13 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 }
 
 func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
+	if r.QueryPopulation != "" && (r.Version != exec.AnalyticalQueryPopulationVersion || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
+		return false
+	}
 	if r.Scope == exec.AnalyticalMetricScope {
 		return len(r.Grouping) == 0
 	}
-	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || r.Version == exec.AnalyticalCalendarVersion) || r.Scope == exec.AnalyticalCalendarScope && r.Version == exec.AnalyticalCalendarVersion
+	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion)) || r.Scope == exec.AnalyticalCalendarScope && (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion)
 	if !validScope || len(r.Grouping) < 1 || len(r.Grouping) > 16 {
 		return false
 	}
