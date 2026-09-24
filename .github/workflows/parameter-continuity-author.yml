@@ -1,0 +1,72 @@
+name: Parameter continuity checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/parameter-continuity-author.yml]
+permissions:
+  contents: write
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify reviewed patch and publish source objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
+          repo='hurtener/chartworks'
+          base='a2559bdf4e468d6436f0bd37f2066250f628add6'
+          tree='33bafd86ed7b41d465294db46e0068dda52b95c4'
+          baseline_tree='22089b0152dbcf264292ccc9bc696774386257b6'
+          workflow='.github/workflows/parameter-continuity-author.yml'
+          chunks=['f0ed8b2cb6ba0befb9566a3bc15c1f28e4903558','7ed3717335fd186c29ec5bdaeafa3a586327c504','f2fdd9d566d433e3905670ce7e09f6ea866e42af','051a365d6eec2ad523300c06be92c744c12e448e','7ecc34624c70d842d85eb4376eb363017f1b43ca','6a012cb5e5cb96a604a5b7d3458e131cf11f7910','de14dfd59fd464d44be06f50c04aefa92ad17eeb','12b0add56b86e995d5950ae9c70801a9617d3fb0','0d5c362a542387892748522a54546d9ff9441fda']
+          allowed={'.github/workflows/sql-context-recovery.yml','docs/contracts/conversational-continuity-v1.md','docs/contracts/refinement-parameters-v1.md','docs/plans/phase-18-nlq-generation-execution.md','docs/reviews/sql-context-recovery.md','internal/exec/parameter_continuity.go','internal/exec/parameter_continuity_test.go','internal/nlqexec/refinement_parameters.go','internal/nlqexec/refinement_parameters_test.go','internal/nlqexec/service.go','test/acceptance/sql_parameter_continuity_test.go'}
+          def git(*args): return subprocess.check_output(['git',*args])
+          def api(path,body=None):
+              data=None if body is None else json.dumps(body).encode()
+              request=urllib.request.Request('https://api.github.com/repos/'+repo+'/'+path,data=data,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(request,timeout=60) as response: return json.load(response)
+          assert git('rev-parse','HEAD^').decode().strip()==base
+          archive=b''
+          for sha in chunks:
+              response=api('git/blobs/'+sha)
+              assert response['encoding']=='base64'
+              raw=base64.b64decode(response['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              archive+=raw
+          patch=lzma.decompress(archive)
+          assert hashlib.sha256(patch).hexdigest()=='b0f73cf32dff54c49500d43ec594bef85bc80921b3b91d364192d4655ffd5f39'
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'parameter-checkpoint'
+          out.mkdir()
+          target=out/'parameters-incremental.patch';target.write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index',str(target)],check=True)
+          subprocess.run(['git','apply','--index',str(target)],check=True)
+          subprocess.run(['git','rm','--',workflow],check=True)
+          assert git('write-tree').decode().strip()==tree
+          paths=set(git('diff','--cached','--name-only',base).decode().splitlines())
+          assert paths==allowed
+          entries=[]
+          for path in sorted(paths):
+              meta=git('ls-files','--stage','--',path).decode().split()
+              mode,sha=meta[0],meta[1]
+              assert mode in ('100644','100755')
+              raw=git('show',':'+path)
+              made=api('git/blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'})
+              assert made['sha']==sha
+              entries.append({'path':path,'mode':mode,'type':'blob','sha':sha})
+          result=api('git/trees',{'base_tree':baseline_tree,'tree':entries})
+          assert result['sha']==tree
+          (out/'manifest.json').write_text(json.dumps({'base':base,'tree':tree,'patch_sha256':hashlib.sha256(patch).hexdigest(),'entries':entries},indent=2)+'\n')
+          print('Verified exact reviewed implementation tree',tree)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parameter-continuity-authored-source
+          path: ${{ runner.temp }}/parameter-checkpoint/
+          retention-days: 7
