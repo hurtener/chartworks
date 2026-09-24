@@ -1,0 +1,46 @@
+name: SQL population source checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths:
+      - scripts/sql-population/**
+      - .github/workflows/sql-population-checkpoint.yml
+permissions:
+  contents: write
+jobs:
+  checkpoint:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener' && github.ref == 'refs/heads/codex/sql-semantic-context-recovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Apply reviewed source and save exact patch
+        run: |
+          set -euo pipefail
+          python3 scripts/sql-population/apply.py
+          git ls-files --modified --others --exclude-standard -z -- '*.go' | xargs -0 -r gofmt -w
+          git add internal/exec internal/nlqexec internal/store/postgres test/acceptance docs
+          git diff --cached --check
+          make planning-check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(nlq): prove typed query predicate completeness without private prompt values'
+          mkdir -p "$RUNNER_TEMP/population-checkpoint"
+          git diff --binary --full-index 9f175857796435664ab64f3e2ba8c319257ca4d1 HEAD -- internal docs test > "$RUNNER_TEMP/population-checkpoint/population-incremental.patch"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/population-checkpoint/source.txt"
+          (cd "$RUNNER_TEMP/population-checkpoint" && sha256sum * > SHA256SUMS)
+          git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: population-source-checkpoint
+          path: ${{ runner.temp }}/population-checkpoint/
+          retention-days: 7
+# Temporary authoring only. Final verification always tests committed source read-only.
