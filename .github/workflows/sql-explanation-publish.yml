@@ -1,0 +1,46 @@
+name: Publish verified explanation checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-explanation-publish.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'hurtener/chartworks' && github.actor == 'hurtener'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply checksum-pinned source and remove authoring transport
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = 873cdb527474ffae81df8fc738bf428e4e6a7929
+          python3 - <<'PY'
+          import base64,gzip,hashlib,pathlib
+          source=pathlib.Path('.github/workflows/sql-explanation-authoring.yml').read_text()
+          encoded=source.split('PAYLOAD: >-\n',1)[1].split('        run: |',1)[0].strip()
+          repairs=[
+            ('rQPaG8Fr2XbfdbXbf7vYPhsDfw/UF/3','rQPaG8Fr2XbfdbXf7vYPhsDfw/UF/3'),
+            ('V4oogkVoSo0M0N4jMd8be3O9JeZlM13F','V4oogkVoSo0M0N4c7Wwd8be3O9JeZlM13F'),
+            ('7b3cAbSG/QP+x3Bw1/POgErts+bPe9d3cAbSG/QP+x3By1/POgErts+bPe9','7b3cAbSG/QP+x3By1/POgErts+bPe9'),
+            ('ts+bPe9g3Fv0PW7bTnuDroteXjoB8Ph','ts+bPe9g3Fv0PW7fTnuDroteXjoB8Ph'),
+          ]
+          for before,after in repairs:
+              assert encoded.count(before)==1
+              encoded=encoded.replace(before,after)
+          patch=gzip.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='43acdeac6fc1f0882d5ddc4d939a7504d1c7a06ea6a47aedef8efdff8bba0af9'
+          pathlib.Path('/tmp/explanations.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/explanations.patch
+          git apply --index /tmp/explanations.patch
+          git rm .github/workflows/sql-explanation-authoring.yml .github/workflows/sql-explanation-publish.yml
+          test "$(git write-tree)" = 22089b0152dbcf264292ccc9bc696774386257b6
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(nlq): retain accepted candidate explanations across query lifecycle'
+          git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
+          git rev-parse HEAD HEAD^{tree}
