@@ -14,30 +14,41 @@ import (
 	"github.com/hurtener/chartworks/test/support"
 )
 
-func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
-	f := newCW01Fixture(t)
-	ctx := context.Background()
-	metadata := support.Raw(t, f.f.dsn)
-	question := func() nlqexec.QuestionRequest {
-		q := f.question("Revenue named sales", nlq.LanguageEnglish)
-		pending := f.preflight(t, q)
-		q.ClarificationQuery, q.AnswerContext = pending.QueryID, pending.Route.AnswerContext
-		q.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
-		return q
+func populationPrivateQuestion(t *testing.T, f *cw01Fixture) nlqexec.QuestionRequest {
+	t.Helper()
+	q := f.question("Revenue named sales", nlq.LanguageEnglish)
+	pending := f.preflight(t, q)
+	q.ClarificationQuery = pending.QueryID
+	q.AnswerContext = pending.Route.AnswerContext
+	q.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
+	return q
+}
+
+func requirePopulationProof(t *testing.T, p nlqexec.PlanResult, err error, fixes int) {
+	t.Helper()
+	if err == nil && p.Analytical != nil && p.Analytical.QueryPopulation == readexec.AnalyticalQueryPopulationPolicy && p.Analytical.Version == readexec.AnalyticalQueryPopulationVersion && p.ValidationFixes == fixes && p.Bindings != nil {
+		return
 	}
+	// Only public policy/slot metadata, never canonical answers or parameters.
+	for _, group := range p.Route.Clarifications {
+		for _, slot := range group.Slots {
+			t.Logf("population slot: pattern=%s slot=%s outcome=%s reason=%s", slot.Pattern, slot.Slot, slot.Outcome, slot.Reason)
+		}
+	}
+	t.Fatalf("population proof: err=%v proof=%+v fixes=%d binding=%v resolutions=%d answers=%d planned=%v", err, p.Analytical, p.ValidationFixes, p.Bindings != nil, len(p.Route.Resolutions), len(p.Route.Request.Answers), p.QueryID != "")
+}
+
+func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
 	good := `SELECT sum(amount) AS revenue FROM analytics.sales`
-	var retained nlqexec.PlanResult
 	t.Run("private predicate extra narrowing corrected once", func(t *testing.T) {
-		q := question()
+		f := newCW01Fixture(t)
+		q := populationPrivateQuestion(t, f)
 		f.model.mu.Lock()
 		start := len(f.model.requestBodies)
 		f.model.chatSequence = []string{phase18RawResponse(t, good+" WHERE amount < 10"), phase18RawResponse(t, good)}
 		f.model.mu.Unlock()
-		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
-		if err != nil || p.Analytical == nil || p.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy || p.Analytical.Version != readexec.AnalyticalQueryPopulationVersion || p.ValidationFixes != 1 {
-			t.Fatalf("population correction: err=%v proof=%+v fixes=%d planned=%v", err, p.Analytical, p.ValidationFixes, p.QueryID != "")
-		}
-		retained = p
+		p, err := f.query.Plan(context.Background(), f.e, nlqexec.PlanRequest{QuestionRequest: q})
+		requirePopulationProof(t, p, err, 1)
 		f.run(t, p, 1, true)
 		f.model.mu.Lock()
 		wire := strings.Join(f.model.requestBodies[start:], "\n")
@@ -47,11 +58,15 @@ func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
 		}
 	})
 	t.Run("persisted proof and zero-work terminal replay", func(t *testing.T) {
-		if retained.QueryID == "" {
-			t.Fatal("successful private plan required")
-		}
+		f := newCW01Fixture(t)
+		ctx := context.Background()
+		f.model.mode.Store(phase18RawResponse(t, good))
+		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: populationPrivateQuestion(t, f)})
+		requirePopulationProof(t, p, err, 0)
+		f.run(t, p, 1, true)
+		metadata := support.Raw(t, f.f.dsn)
 		sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
-		q, err := f.f.db.ReadQuery(ctx, sc, retained.QueryID)
+		q, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
 		if err != nil || q.AnalyticalVersion != 4 || q.Analytical == nil || q.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy {
 			t.Fatal("query population persistence", err)
 		}
@@ -71,22 +86,25 @@ func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
 		}
 	})
 	t.Run("persistent extra WHERE and HAVING never execute", func(t *testing.T) {
+		f := newCW01Fixture(t)
+		ctx := context.Background()
+		metadata := support.Raw(t, f.f.dsn)
 		for _, suffix := range []string{" WHERE active=true", " WHERE 1=0", " HAVING sum(amount)>0"} {
-			q := question()
+			q := populationPrivateQuestion(t, f)
 			f.model.mode.Store(phase18RawResponse(t, good+suffix))
 			attempts := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 			p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
 			if p.QueryID != "" || !errors.Is(err, readexec.ErrAnalyticalMismatch) || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
-				t.Fatalf("extra condition acquired executable result: err=%v proof=%+v fixes=%d planned=%v", err, p.Analytical, p.ValidationFixes, p.QueryID != "")
+				t.Fatalf("extra condition acquired executable result: err=%v proof=%+v binding=%v resolutions=%d planned=%v", err, p.Analytical, p.Bindings != nil, len(p.Route.Resolutions), p.QueryID != "")
 			}
 		}
 	})
 	t.Run("retained v3 keeps its original narrower claim", func(t *testing.T) {
+		f := newCW01Fixture(t)
+		ctx := context.Background()
 		f.model.mode.Store(phase18RawResponse(t, good))
-		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: question()})
-		if err != nil {
-			t.Fatal(err)
-		}
+		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: populationPrivateQuestion(t, f)})
+		requirePopulationProof(t, p, err, 0)
 		sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
 		q, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
 		if err != nil {
