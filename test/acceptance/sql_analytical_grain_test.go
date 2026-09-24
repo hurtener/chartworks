@@ -51,7 +51,7 @@ func TestSQLRecoveryAnalyticalGrainAcceptance(t *testing.T) {
 		t.Helper()
 		model.mode.Store(phase18RawResponse(t, good))
 		out, err := query.Plan(ctx, pf.e, nlqexec.PlanRequest{QuestionRequest: q})
-		if err != nil || out.Analytical == nil || out.Analytical.Version != readexec.AnalyticalGrainVersion || out.Analytical.Scope != readexec.AnalyticalGrainScope || len(out.Analytical.Grouping) != 1 || out.Analytical.Grouping[0] != pack.Topic+":dimension:record" {
+		if err != nil || out.Analytical == nil || out.Analytical.Version != readexec.AnalyticalCalendarVersion || out.Analytical.Scope != readexec.AnalyticalGrainScope || len(out.Analytical.Grouping) != 1 || out.Analytical.Grouping[0] != pack.Topic+":dimension:record" {
 			t.Fatal("grain plan", err)
 		}
 		return out

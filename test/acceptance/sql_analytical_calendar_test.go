@@ -39,10 +39,10 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		}
 		return p
 	}
-	values := func(t *testing.T, result *readexec.Result) map[string]string {
+	values := func(t *testing.T, result nlqexec.RunResult) map[string]string {
 		t.Helper()
 		out := map[string]string{}
-		for _, row := range result.Rows {
+		for _, row := range result.Execution.Result.Rows {
 			if len(row) != 2 {
 				t.Fatal("calendar output arity")
 			}
@@ -75,7 +75,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		if err != nil || r.Execution.Result == nil || len(r.Execution.Result.Rows) != 4 {
 			t.Fatal("calendar execution", err)
 		}
-		got := values(t, r.Execution.Result)
+		got := values(t, r)
 		want := map[string]string{"2025-01-01T05:00:00Z": "9007199254740996", "2025-03-01T05:00:00Z": "30", "2026-01-01T05:00:00Z": "5.5", "null": "7.25"}
 		for key, v := range want {
 			actual, ok := new(big.Rat).SetString(got[key])
@@ -140,7 +140,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		if err != nil || r.Execution.Result == nil {
 			t.Fatal("day result", err)
 		}
-		got := values(t, r.Execution.Result)
+		got := values(t, r)
 		value, ok := new(big.Rat).SetString(got["2025-03-09T05:00:00Z"])
 		if !ok || value.Cmp(big.NewRat(30, 1)) != 0 {
 			t.Fatal("one local DST day split", got)
