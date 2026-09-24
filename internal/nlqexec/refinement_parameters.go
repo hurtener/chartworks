@@ -64,6 +64,12 @@ func retainRefinementParameters(ctx context.Context, question *QuestionRequest, 
 			return nil, exec.ErrBinding
 		}
 	}
+	// Until there is an explicit typed edit for model-owned scalar slots, a new
+	// free-text question cannot silently mean "use a different private value".
+	// Structured reference/metric edits and reviewed answer edits remain usable.
+	if question.Question != old.Question {
+		return nil, exec.ErrUnsupported
+	}
 	// Only kinds/positions travel to the model. Placeholder scalar output is
 	// ignored and replaced server-side with the exact original private values.
 	slots := make([]validationRepairSlot, len(values))

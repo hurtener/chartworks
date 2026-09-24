@@ -68,6 +68,13 @@ func TestSQLRecoveryRefinementSlotsPrivateAndFenced(t *testing.T) {
 	if err := refinementParameterState(ctx).verifyParent(nil); !errors.Is(err, exec.ErrBinding) {
 		t.Fatal("parent-free state", err)
 	}
+	q.Question = "Use a different scalar filter"
+	if _, err := retainRefinementParameters(context.Background(), &q, old, old.SQL, old.Parameters); !errors.Is(err, exec.ErrUnsupported) {
+		t.Fatal("changed question silently reused private bindings", err)
+	}
+	if _, err := retainRefinementParameters(context.Background(), &q, old, old.SQL, nil); err != nil {
+		t.Fatal("parameter-free question editing was restricted", err)
+	}
 }
 func TestSQLRecoveryRefinementRestoresValuesAndRejectsSlotDrift(t *testing.T) {
 	old := QueryRecord{ID: "parent", Revision: 1, SQL: "SELECT id FROM analytics.sales WHERE amount>$1"}

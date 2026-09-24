@@ -70,7 +70,12 @@ func TestSQLRecoveryParameterContinuationAcceptance(t *testing.T) {
 			f.model.mu.Lock()
 			start := len(f.model.requestBodies)
 			f.model.mu.Unlock()
-			child, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: p.QueryID})
+			callsBefore := f.model.requests.Load()
+			changed, changedErr := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: p.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Use an amount cutoff of 20"}})
+			if !errors.Is(changedErr, readexec.ErrUnsupported) || changed.QueryID != "" || f.model.requests.Load() != callsBefore {
+				t.Fatal("new free-text filter silently kept the old private value", changedErr)
+			}
+			child, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: p.QueryID, QuestionRequest: nlqexec.QuestionRequest{EditBase: []nlq.Instruction{{Key: "output_edit", Text: "Return only IDs in descending order; preserve the current filters and their bindings."}}}})
 			if err != nil || child.QueryID == p.QueryID {
 				t.Fatal("parameterized child", err)
 			}

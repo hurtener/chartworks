@@ -44,6 +44,12 @@ They do not fall back to lexical guessing. Invalid continuity fails before a new
 query is persisted or executed. No third correction or silent binding reset occurs.
 
 There is intentionally no free-text mutation of private model slots in this slice.
+A changed free-text question on a parameterized parent is rejected before new
+model work instead of assuming that its old scalar values still answer it. The
+same-question path can use explicit structural edit instructions or existing
+typed reference/metric edits. Reviewed owned-answer edits remain separate. A
+newly routed Plan is required for new free-text filter/value intent until a typed
+model-slot editing contract is available. Parameter-free Refine remains unchanged.
 Changing a retained parameter's value/type/position, adding/removing a slot, or
 rewriting a bound clause requires a newly routed question until an explicit typed
 parameter-edit contract is implemented. The existing reviewed answer edits remain
