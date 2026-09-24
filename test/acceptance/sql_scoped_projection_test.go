@@ -66,33 +66,55 @@ func TestSQLRecoveryScopedProjectionAcceptance(t *testing.T) {
 }
 
 func TestSQLRecoveryScopedProjectionPrivateAcceptance(t *testing.T) {
-	f := newCW01FixtureWithPack(t, scopedProjectionPack)
-	q := f.question("Record named sales", nlq.LanguageEnglish)
-	q.Kinds = []string{"dimension"}
-	f.model.mode.Store(phase18RawResponse(t, "SELECT id FROM analytics.sales ORDER BY id"))
-	f.model.mu.Lock()
-	start := len(f.model.requestBodies)
-	f.model.mu.Unlock()
-	p := f.plan(t, q, "customer", cw01Text("primero"))
-	if p.Analytical != nil || p.Bindings == nil || p.Route.Context == nil || !strings.Contains(p.Route.Context.Prompt, "topic-selected-closure-v2") {
-		t.Fatal("private dimension predicate lost projection or binding")
-	}
-	// ID answers the dimension request; name is still required by the private
-	// server-owned predicate, even though it is not an output dimension.
-	var physical string
-	for _, line := range strings.Split(p.Route.Context.Prompt, "\n") {
-		if strings.HasPrefix(line, "relation[") {
-			physical += line
+	t.Run("dimension plus private filter", func(t *testing.T) {
+		f := newCW01FixtureWithPack(t, scopedProjectionPack)
+		q := f.question("Record named sales", nlq.LanguageEnglish)
+		q.Kinds = []string{"dimension"}
+		f.model.mode.Store(phase18RawResponse(t, "SELECT id FROM analytics.sales ORDER BY id"))
+		f.model.mu.Lock()
+		start := len(f.model.requestBodies)
+		f.model.mu.Unlock()
+		p := f.plan(t, q, "customer", cw01Text("primero"))
+		if p.Analytical != nil || p.Bindings == nil || p.Route.Context == nil || !strings.Contains(p.Route.Context.Prompt, "topic-selected-closure-v2") {
+			t.Fatal("private dimension predicate lost projection or binding")
 		}
-	}
-	if !strings.Contains(physical, "id") || !strings.Contains(physical, "name") || strings.Contains(physical, "amount") || strings.Contains(physical, "created_at") {
-		t.Fatal("dimension projection lost its private-filter dependency")
-	}
-	f.run(t, p, 1, false)
-	f.model.mu.Lock()
-	wire := strings.Join(f.model.requestBodies[start:], "\n")
-	f.model.mu.Unlock()
-	if !strings.Contains(wire, "topic-selected-closure-v2") || strings.Contains(wire, "cw-alpha-731") || strings.Contains(wire, "alias-secret-731") {
-		t.Fatal("provider projection omitted its marker or exposed private values")
-	}
+		// ID answers the dimension request; name is still required by the private
+		// server-owned predicate, even though it is not an output dimension.
+		var physical string
+		for _, line := range strings.Split(p.Route.Context.Prompt, "\n") {
+			if strings.HasPrefix(line, "relation[") {
+				physical += line
+			}
+		}
+		if !strings.Contains(physical, "id") || !strings.Contains(physical, "name") || strings.Contains(physical, "amount") || strings.Contains(physical, "created_at") {
+			t.Fatal("dimension projection lost its private-filter dependency")
+		}
+		f.run(t, p, 1, false)
+		f.model.mu.Lock()
+		wire := strings.Join(f.model.requestBodies[start:], "\n")
+		f.model.mu.Unlock()
+		if !strings.Contains(wire, "topic-selected-closure-v2") || strings.Contains(wire, "cw-alpha-731") || strings.Contains(wire, "alias-secret-731") {
+			t.Fatal("provider projection omitted its marker or exposed private values")
+		}
+	})
+	t.Run("private filter alone keeps detail context", func(t *testing.T) {
+		f := newCW01FixtureWithPack(t, scopedProjectionPack)
+		q := f.question("named sales", nlq.LanguageEnglish)
+		q.Kinds = []string{"dimension"}
+		f.model.mode.Store(phase18RawResponse(t, "SELECT id, amount FROM analytics.sales ORDER BY id"))
+		p := f.plan(t, q, "customer", cw01Text("primero"))
+		if p.Route.Context == nil || p.Bindings == nil || p.Analytical != nil || strings.Contains(p.Route.Context.Prompt, "physical_projection:") {
+			t.Fatal("private filter became an output selection")
+		}
+		var physical string
+		for _, line := range strings.Split(p.Route.Context.Prompt, "\n") {
+			if strings.HasPrefix(line, "relation[") {
+				physical += line
+			}
+		}
+		if !strings.Contains(physical, "id") || !strings.Contains(physical, "amount") || !strings.Contains(physical, "created_at") || !strings.Contains(physical, "name") {
+			t.Fatal("filter-only request lost unselected detail fields")
+		}
+		f.run(t, p, 1, true)
+	})
 }

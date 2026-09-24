@@ -25,6 +25,31 @@ func projectionOwnerFailure() error {
 	return &ValidationError{Code: CodeInvalidValue, Path: "projection.ownership"}
 }
 
+// independentlySelectedProjection prevents filter-only interpretations and
+// required dependencies from masquerading as a complete output selection.
+// Unknown/clarification-only root reasons conservatively retain the full topic.
+func independentlySelectedProjection(text string) (bool, error) {
+	var roots []struct {
+		Reference struct {
+			Kind string `json:"kind"`
+		} `json:"reference"`
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal([]byte(text), &roots) != nil || len(roots) == 0 || len(roots) > 128 {
+		return false, projectionOwnerFailure()
+	}
+	for _, root := range roots {
+		if root.Reason != "catalog_term" && root.Reason != "explicit_reference" && root.Reason != "explicit_metric" {
+			continue
+		}
+		switch root.Reference.Kind {
+		case "column", "dimension", "measure", "kpi":
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // scopedPromptRelations extends rendering, not the stored authorization scope.
 // Legacy unscoped selection markers cannot guess topic ownership and retain the
 // old rendering. Once a scoped marker is present, incomplete mappings are errors.
@@ -52,6 +77,7 @@ func scopedPromptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 		selectionOwners["selection-"+projectionIdentity(topic)] = topic
 	}
 	selected := map[string]bool{}
+	independent := map[string]bool{}
 	unscoped := false
 	for _, constraint := range input.Constraints.Required {
 		if constraint.Kind != "selected_semantics" {
@@ -62,7 +88,11 @@ func scopedPromptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 			unscoped = true
 			continue
 		}
-		selected[owner] = true
+		eligible, err := independentlySelectedProjection(constraint.Text)
+		if err != nil {
+			return nil, false, err
+		}
+		selected[owner], independent[owner] = true, eligible
 	}
 	if len(selected) == 0 {
 		return input.Relations, false, nil
@@ -166,7 +196,7 @@ func scopedPromptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		if opaque[topic] {
+		if opaque[topic] || !independent[topic] {
 			continue
 		}
 		narrowed[topic] = true
