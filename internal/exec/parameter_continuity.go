@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -71,7 +72,9 @@ func parameterClauses(ctx context.Context, sql string, count int) (map[string]an
 		return nil, ErrLimit
 	}
 	var tree map[string]any
-	if json.Unmarshal([]byte(raw), &tree) != nil {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.UseNumber()
+	if decoder.Decode(&tree) != nil {
 		return nil, ErrBinding
 	}
 	stmts := array(tree["stmts"])
@@ -134,11 +137,12 @@ func (s *parameterClauseScan) visit(value any, depth int) (any, bool, error) {
 				return nil, false, ErrUnsupported
 			case "ParamRef":
 				p := object(item)
-				n, ok := p["number"].(float64)
-				if !ok || n < 1 || n > float64(s.count) || n != float64(int(n)) {
+				number, ok := p["number"].(json.Number)
+				n, err := strconv.Atoi(string(number))
+				if !ok || err != nil || n < 1 || n > s.count {
 					return nil, false, ErrBinding
 				}
-				s.seen[int(n)] = true
+				s.seen[n] = true
 				contains = true
 			}
 			n, has, err := s.visit(item, depth+1)

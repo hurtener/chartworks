@@ -38,6 +38,13 @@ func TestSQLRecoveryParameterClauseRejectsReassignment(t *testing.T) {
 			t.Fatal("changed slot/namespace/clause accepted", after, err)
 		}
 	}
+	// Large exact constants in a protected clause cannot collapse through a
+	// float64 JSON intermediary when comparing the native parser's AST.
+	big := "SELECT id FROM analytics.sales WHERE amount > $1 AND id=9007199254740993"
+	if err := CheckParameterContinuity(context.Background(), "postgres", big, strings.ReplaceAll(big, "9007199254740993", "9007199254740992"), 1); !errors.Is(err, ErrBinding) {
+		t.Fatal("large bound-clause constant lost precision", err)
+	}
+
 }
 func TestSQLRecoveryParameterClauseProtectsEveryLocation(t *testing.T) {
 	for _, pair := range [][2]string{
