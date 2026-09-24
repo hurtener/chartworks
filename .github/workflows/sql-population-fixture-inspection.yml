@@ -14,17 +14,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Inspect public synthetic provider fixture
+      - name: Inspect public synthetic clarification provenance
         run: |
+          git rev-parse HEAD
           python3 - <<'PY'
           from pathlib import Path
-          for p in sorted(Path('test/acceptance').glob('*.go')):
-              lines=p.read_text().splitlines()
-              for i,line in enumerate(lines):
-                  if 'func newGatewayFixture(' in line or ('chatSequence' in line and ('len(' in line or '[]string' in line and 'chatSequence ' in line)):
-                      print('FIXTURE_SOURCE',str(p),i+1)
-                      for j in range(max(0,i-8),min(len(lines),i+24)):
-                          print(f'{j+1}: {lines[j]}')
+          markers=['policy_not_matched','func populationPrivateQuestion','func matchClarificationPattern','func prepareClarificationAnswers','func TestSQLRecoveryAnalyticalOwnedScalarRepair','func RedactClarificationText']
+          for root in ['internal','test/acceptance']:
+              for p in sorted(Path(root).rglob('*.go')):
+                  lines=p.read_text().splitlines()
+                  for i,line in enumerate(lines):
+                      if any(m in line for m in markers):
+                          print('SOURCE',str(p),i+1)
+                          for j in range(max(0,i-2),min(len(lines),i+50)):
+                              print(f'{j+1}: {lines[j]}')
           PY
           git diff --exit-code
 # Temporary source inspection only; no test result or runtime capability claim.
