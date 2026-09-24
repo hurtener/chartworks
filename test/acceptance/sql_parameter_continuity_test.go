@@ -191,12 +191,48 @@ func TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance(t *testing.T) {
 	// Forged service-owned base evidence cannot be borrowed as trusted edit SQL.
 	metadata := support.Raw(t, f.f.dsn)
 	_, err = metadata.Exec(ctx, `UPDATE chartworks.nlq_queries SET clarification=jsonb_set(clarification,'{base_parameters}','[{"kind":"text","value":"forged"}]'::jsonb) WHERE query_id=$1`, p.QueryID)
+	if err == nil || !strings.Contains(err.Error(), "immutable query clarification evidence") {
+		t.Fatal("database did not preserve its immutable evidence fence", err)
+	}
+	unchanged, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
+	if err != nil || unchanged.Clarification == nil || !reflect.DeepEqual(unchanged.Clarification.BaseParameters, modelParameters) {
+		t.Fatal("rejected mutation changed durable base parameters", err)
+	}
+	// Also exercise the service's independent replay check after a faulty
+	// repository read, without disabling or bypassing the database trigger.
+	fault := &parameterReadFault{Repository: f.f.db, query: p.QueryID}
+	_, topicReader := newPhase18Service(t, f.phase17Fixture)
+	guarded, err := nlqexec.New(f.service, topicReader, f.f.s, f.f.validator, f.f.executor, f.model.engine, fault)
 	if err != nil {
-		t.Fatal("tamper fixture", err)
+		t.Fatal(err)
 	}
 	calls := f.model.requests.Load()
-	_, err = f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: p.QueryID})
-	if !errors.Is(err, readexec.ErrBinding) || f.model.requests.Load() != calls {
+	_, err = guarded.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: p.QueryID})
+	if !fault.injected || !errors.Is(err, readexec.ErrBinding) || f.model.requests.Load() != calls {
 		t.Fatal("unverified owned base reached model", err)
 	}
+}
+
+// A read-only fault-injection seam around the real scoped repository. It never
+// changes stored SQL/evidence, source reach or the provider's behavior.
+type parameterReadFault struct {
+	nlqexec.Repository
+	query    string
+	injected bool
+}
+
+func (r *parameterReadFault) ReadQuery(ctx context.Context, scope store.Scope, id string) (nlqexec.QueryRecord, error) {
+	q, err := r.Repository.ReadQuery(ctx, scope, id)
+	if err != nil || id != r.query {
+		return q, err
+	}
+	if q.Clarification == nil || len(q.Clarification.BaseParameters) == 0 {
+		return nlqexec.QueryRecord{}, store.ErrInvalid
+	}
+	copy := *q.Clarification
+	copy.BaseParameters = append([]readexec.Parameter(nil), q.Clarification.BaseParameters...)
+	copy.BaseParameters[0].Value = "forged-read-value"
+	q.Clarification = &copy
+	r.injected = true
+	return q, nil
 }
