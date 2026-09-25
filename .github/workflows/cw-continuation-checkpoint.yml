@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = bcf3cf42936b4f9be0e2bdab271509e652799b7b
+          test "$(git rev-parse HEAD^)" = 6129df3e77e057aad372dd6bae535ca566c6e4d8
           python3 - <<'PY'
           import base64,gzip,hashlib,json,os,pathlib,subprocess,urllib.request
           BASE='bb6cf5b56c17c2b7ae30baf68d87666522ee9c28'
@@ -33,19 +33,18 @@ jobs:
           def request(path,body=None):
               req=urllib.request.Request(api+path,data=None if body is None else json.dumps(body).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
               with urllib.request.urlopen(req,timeout=60) as response: return json.load(response)
-          root=pathlib.Path(os.environ['RUNNER_TEMP']);out=root/'continuation-review';out.mkdir()
           blob=request('/git/blobs/e68c93336768fd183a95f903185d871e260c04a3')
           encoded=''.join(blob['content'].split())
-          (out/'transport.b64').write_text(encoded)
           for before,after in [('LkJjvM3kTV9kc','LkJjvM3kV9kc'),('5z3cd4f4IrHlz','5z3cd4IrHlz'),('Hw/T9PdKccfvs9cW','Hw/T9Kcffvs9cW'),('ROQOJp+ThJfDGK','ROQOJp+ThEfDGK')]:
               assert encoded.count(before)==1, before
               encoded=encoded.replace(before,after)
-          (out/'corrected.b64').write_text(encoded)
-          data=base64.b64decode(encoded+'='*((-len(encoded))%4),validate=True)
+          assert encoded.endswith('/AdswdYEaZQA') and len(encoded)==9195
+          encoded+='A'
+          data=base64.b64decode(encoded,validate=True)
           assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()=='ce29efe76035b7f0a5d868faa7cf03db93d84eb1'
           patch=gzip.decompress(data)
           assert len(patch)==25882 and hashlib.sha256(patch).hexdigest()==DIGEST
-          pp=root/'continuation-review.patch';pp.write_bytes(patch)
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);pp=root/'continuation-review.patch';pp.write_bytes(patch)
           env=dict(os.environ,GIT_INDEX_FILE=str(root/'continuation-review.index'))
           def git(*args): return subprocess.check_output(['git',*args],env=env)
           git('read-tree',BASE);git('apply','--cached','--check',str(pp));git('apply','--cached',str(pp));git('diff','--cached','--check',BASE)
@@ -60,11 +59,10 @@ jobs:
               assert request('/git/blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'})['sha']==sha
               entries.append({'path':path,'mode':mode,'type':'blob','sha':sha})
           result={'baseline':BASE,'authoring_head':os.environ['GITHUB_SHA'],'tree':TREE,'patch_sha256':DIGEST,'entries':entries}
-          (out/'objects.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
+          (root/'continuation-review-objects.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: continuation-review-${{ github.sha }}
-          path: ${{ runner.temp }}/continuation-review/
+          path: ${{ runner.temp }}/continuation-review-objects.json
           retention-days: 7
