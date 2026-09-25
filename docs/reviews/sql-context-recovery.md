@@ -357,3 +357,23 @@ Unchanged non-PostgreSQL SQL can preserve bindings, but modified parameterized S
 requires future native role qualification. Model-slot value edits and full inferred
 scalar/time continuity are explicitly not delivered. Runtime/CI results, source
 hashes and remaining phase status are updated at the PR checkpoint after testing.
+
+## AP-05B — explicit typed model-slot replacements
+
+Continuation baseline: `41acc1cb19353100408f9496c9c6cc221f3e0e14`. The
+[parameter-edit contract](../contracts/refinement-parameter-edits-v1.md) closes the
+absence of explicit value replacement within AP-05A's bounded SQL-role proof.
+Refine may replace an existing model slot with a same-kind private typed value;
+it cannot remove slots, change their role or address a service-owned parameter.
+Selections are detached, parent-fenced and restored before binding/validation and
+again on the existing correction path. Only parameter kinds/positions reach the
+model. New child bindings persist in existing fields, without rewriting ancestors,
+changing analytical versions or exposing values on public responses.
+
+The optional input is defined on the shared Refine DTO, with closed-schema tests.
+Native/analytical checks and zero-work denied/replay expectations remain. Units,
+EN/ES lifecycle, source-result, mixed-owned and correction fixtures are registered
+in the recovery workflow. Local runtime verification cannot be claimed from a
+dependency-missing environment; executed current-head evidence belongs in the PR.
+This slice does not close free-text interpretation, time/value inheritance,
+broader native shapes or live qualification.

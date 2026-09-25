@@ -46,14 +46,18 @@ func refinementSQLBase(old QueryRecord) (string, []exec.Parameter, error) {
 	return sql, append([]exec.Parameter(nil), values...), nil
 }
 
-func retainRefinementParameters(ctx context.Context, question *QuestionRequest, old QueryRecord, sql string, values []exec.Parameter) (context.Context, error) {
+func retainRefinementParameters(ctx context.Context, question *QuestionRequest, old QueryRecord, sql string, values []exec.Parameter, edits ...ParameterEdit) (context.Context, error) {
 	if ctx == nil {
 		return nil, ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(values) == 0 {
+	selected, err := replaceRefinementParameters(ctx, values, edits)
+	if err != nil {
+		return nil, err
+	}
+	if len(selected) == 0 {
 		return ctx, nil
 	}
 	if old.ID == "" || old.Revision < 1 || sql == "" || question == nil || len(values) > 64 {
@@ -64,14 +68,16 @@ func retainRefinementParameters(ctx context.Context, question *QuestionRequest, 
 			return nil, exec.ErrBinding
 		}
 	}
-	// Until there is an explicit typed edit for model-owned scalar slots, a new
-	// free-text question cannot silently mean "use a different private value".
+	// Typed slot replacements express only value changes, not a new free-text
+	// interpretation. A different question could also request new predicates or
+	// slot roles, which this bounded contract does not infer. Require fresh Plan.
 	// Structured reference/metric edits and reviewed answer edits remain usable.
 	if question.Question != old.Question {
 		return nil, exec.ErrUnsupported
 	}
 	// Only kinds/positions travel to the model. Placeholder scalar output is
-	// ignored and replaced server-side with the exact original private values.
+	// ignored and replaced server-side with retained or explicitly replaced
+	// private values; neither old nor replacement values are added to the prompt.
 	slots := make([]validationRepairSlot, len(values))
 	for i, p := range values {
 		slots[i] = validationRepairSlot{Position: i + 1, Kind: p.Kind}
@@ -80,8 +86,8 @@ func retainRefinementParameters(ctx context.Context, question *QuestionRequest, 
 	if err != nil {
 		return nil, ErrGeneration
 	}
-	question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "retained_parameter_slots", Text: "The previous_sql positional bindings are retained privately by the service. Preserve every parameter position and kind, its original source/alias namespace, and every complete SQL clause containing a parameter. Do not substitute literals, drop/add slots, reorder predicates or relocate slots. Return valid placeholder scalar values of the same kinds; the service ignores those values and restores the originals before validation. Output/group/order edits outside bound clauses are permitted. Slot metadata: " + string(raw)})
-	state := &refinementParameters{parent: old.ID, revision: old.Revision, digest: QueryLineageDigest(old), sql: sql, values: append([]exec.Parameter(nil), values...)}
+	question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "retained_parameter_slots", Text: "The previous_sql positional bindings are selected privately by the service, including any explicit typed replacements. Preserve every parameter position and kind, its original source/alias namespace, and every complete SQL clause containing a parameter. Do not substitute literals, drop/add slots, reorder predicates or relocate slots. Return valid placeholder scalar values of the same kinds; the service ignores those values and applies the private selected bindings before validation. Output/group/order edits outside bound clauses are permitted. Slot metadata: " + string(raw)})
+	state := &refinementParameters{parent: old.ID, revision: old.Revision, digest: QueryLineageDigest(old), sql: sql, values: selected}
 	return context.WithValue(ctx, refinementParameterKey{}, state), nil
 }
 

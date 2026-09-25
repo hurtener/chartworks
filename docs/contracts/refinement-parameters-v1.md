@@ -70,3 +70,13 @@ rejection and revision fences, input/output detachment and concurrent native use
 Exact executed results belong in the PR and recovery evidence, not this inventory.
 Inferred scalar/time inheritance, grouping edits, mutable model-slot operations,
 parameterized learning and general query-wide conformance remain open.
+
+## Explicit same-kind replacement extension
+
+[Parameter edits v1](refinement-parameter-edits-v1.md) adds the optional private
+`parameter_edits` list on Refine. Model-owned values can now be replaced explicitly
+without changing their kinds or SQL roles. The unchanged source/clause proof,
+parent revision/lineage fence and owned-parameter separation still apply. The
+original no-edit behavior and changed-free-text rejection remain. This supersedes
+only the earlier absence of a typed model-value edit, not the broader continuity
+or dialect limitations above.

@@ -251,3 +251,20 @@ The dedicated `TestSQLRecoveryParameterContinuationAcceptance` and
 `TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance` exercise actual
 PostgreSQL/recorded-provider boundaries. Full language/time inheritance and explicit
 parameter editing remain separate obligations; test inventory is not runtime proof.
+
+## AP-05B explicit parameter replacements
+
+[Refinement parameter edits](../contracts/refinement-parameter-edits-v1.md) add a
+closed optional Refine input for one-based same-kind model-slot replacements.
+Native parameter-role proof, signed resource reach, parent lineage CAS,
+owned-predicate separation and single-correction budgets are unchanged. New values
+stay outside generated context; only the accepted child binds them durably. Empty
+or malformed edits cannot invent slots, and changed free-text remains separately
+routed. Existing public dispatch derives the field from the shared request DTO.
+
+`TestSQLRecoveryParameterEditLifecycleAcceptance`,
+`TestSQLRecoveryParameterEditBoundariesAcceptance` and
+`TestSQLRecoveryParameterEditOwnedAnswerAcceptance` extend AC01/AC03/AC06 through
+real PostgreSQL/native and recorded-provider boundaries, not live language quality.
+Existing no-edit, analytical, replay and explanation regressions remain required.
+Exact CI outcomes are recorded in PR #62.

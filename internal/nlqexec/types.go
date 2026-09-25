@@ -315,6 +315,7 @@ type RunRequest struct {
 type RefineRequest struct {
 	QueryID string `json:"query_id"`
 	QuestionRequest
+	ParameterEdits []ParameterEdit `json:"parameter_edits,omitempty"`
 	ReferenceEdits []ReferenceEdit `json:"reference_edits,omitempty"`
 	MetricEdits    []MetricEdit    `json:"metric_edits,omitempty"`
 }

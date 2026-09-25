@@ -37,3 +37,13 @@ Typed business-answer replacement remains separate from model slot mutation. The
 exact observed parent and existing atomic lineage fence bind the ephemeral state;
 public request schemas cannot supply it. This does not complete inferred filter/
 time inheritance or introduce general free-text parameter-value editing.
+
+### Explicit model-parameter replacements
+
+[Parameter edits v1](refinement-parameter-edits-v1.md) accepts a bounded optional
+`parameter_edits` list on the existing Refine operation. Each one-based model slot
+can receive one same-kind private replacement; its native clause role is unchanged.
+The parent is reauthorized and fenced before values are selected server-side.
+Owned filters continue through their reviewed answer path, while child persistence
+and replay use the existing protected parameter fields. This is typed value intent,
+not arbitrary changes to the original question or inferred scalar/time inheritance.

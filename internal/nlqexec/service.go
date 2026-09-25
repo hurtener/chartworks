@@ -367,9 +367,12 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	if err != nil {
 		return PlanResult{}, err
 	}
+	if len(in.ParameterEdits) > 0 && len(parameters) == 0 {
+		return PlanResult{}, ErrInvalid
+	}
 	if base != "" && (len(in.Answers) == 0 && len(in.Choices) == 0 || len(parameters) > 0) {
 		question.EditBase = replaceInstruction(question.EditBase, nlq.Instruction{Key: "previous_sql", Text: base})
-		ctx, err = retainRefinementParameters(ctx, &question, old, base, parameters)
+		ctx, err = retainRefinementParameters(ctx, &question, old, base, parameters, in.ParameterEdits...)
 		if err != nil {
 			return PlanResult{}, err
 		}
