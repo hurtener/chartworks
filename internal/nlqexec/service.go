@@ -531,7 +531,10 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		}
 		current.assembled, err = s.resealQueryContext(ctx, record, current)
 		if err != nil {
-			return RunResult{}, err
+			// The physical attempt is already terminal. A retained-context
+			// failure must also finalize its query operation; otherwise every
+			// idempotent retry joins an operation that can never become terminal.
+			return s.finishRun(ctx, e, record, report, 0, errors.Join(ErrExecutionBudget, err))
 		}
 		candidate, gen, correctionReceipt, genErr := s.fixCandidate(ctx, e, current, call, budget, record.SQL, executionErrorCode(report, runErr))
 		record.Receipt = appendReceipts(record.Receipt, correctionReceipt)

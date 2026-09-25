@@ -24,6 +24,13 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 		return analyticalFailure("analytical_shape_unsupported", true)
 	}
 	r := fieldObject(sources[0], "RangeVar")
+	// ONLY is a population-changing relation modifier, not a formatting choice.
+	// The catalog contract describes the reviewed relation including descendants;
+	// no contract authorizes replacing it with the physical parent alone. Native
+	// safety may admit ONLY, but analytical certification must not do so.
+	if !truth(r["inh"]) {
+		return analyticalFailure("analytical_relation_mismatch", false)
+	}
 	if text(r["schemaname"]) != a.relation.Schema || text(r["relname"]) != a.relation.Name {
 		return analyticalFailure("analytical_relation_mismatch", false)
 	}
@@ -366,10 +373,20 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 		return term, nil
 	}
 	if value, ok := a.scalar(node, Column{Category: "decimal"}); ok {
-		if object(root["A_Const"]) == nil {
+		literal := object(root["A_Const"])
+		// A quoted '2' is an unknown-type SQL literal, not a decimal literal.
+		// For example count(*)/'2' resolves to bigint division and truncates.
+		// Do not infer a cast from numeric-looking text when proving arithmetic.
+		if literal == nil || literal["ival"] == nil && literal["fval"] == nil {
 			return fail("analytical_expression_unsupported", true)
 		}
 		_, integer := analyticalIntegerConstant(node)
+		if !integer {
+			// The raw parser also stores bigint-sized integer literals in fval.
+			// Storage in that field does not imply PostgreSQL numeric division.
+			_, integerErr := strconv.ParseInt(text(object(literal["fval"])["fval"]), 10, 64)
+			integer = integerErr == nil
+		}
 		return analyticalTerm{key: analyticalExprKey("number", "", value, nil, nil), numeric: !integer, exact: true, constant: value}, nil
 	}
 	if f := object(root["FuncCall"]); f != nil {

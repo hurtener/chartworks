@@ -320,3 +320,13 @@ state/attempt boundaries, recorded-provider readiness, EN/ES, composed PlanAndRu
 refinement, HTTP/MCP privacy and current authority. Existing ready fixtures declare
 the new output contract explicitly. Runtime results and remaining pending-outcome
 conversation/live-quality qualification belong in the PR tracker.
+
+## Adversarial review — analytical and terminal operation hardening
+
+The [P0/P1 audit](../reviews/sql-adversarial-p0-p1.md) adds independent baseline-red
+regressions for parent-only scans, unknown/bigint numeric literal typing and
+terminal correction-context failures. Current-source acceptance uses exact native
+PostgreSQL results and requires failed analytical proposals to remain non-executable.
+The existing one-correction, immutable proof and private-value boundaries remain.
+No migration, vocabulary expansion or legacy result reinterpretation is introduced.
+The PR ledger records exact executed results before closing each finding.

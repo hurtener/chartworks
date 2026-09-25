@@ -444,3 +444,14 @@ not reported as zero; transient blocked questions are not a new durable workflow
 Recorded ready fixtures change their schema declaration, not their SQL/results or
 assertions. Exact current-head runtime verification is recorded in the PR; this
 checkpoint does not by itself qualify the full AP-08 release/owner-quality program.
+
+## Adversarial P0/P1 hardening checkpoint
+
+At baseline `c8c0a8db9327b147f313830037fcc56353536909`, the dedicated
+[P0/P1 audit](sql-adversarial-p0-p1.md) identifies two analytical correctness defects
+(parent-only relation populations and falsely inferred decimal arithmetic) plus an
+operation-finalization defect after correction-context failure. Fixes preserve
+all existing authority/native/analytical checks and have independent historical
+failure assertions plus actual PostgreSQL result/replay cases. The full existing
+matrix remains selected. Implementation is not runtime qualification: exact-head
+results and the final open/closed finding ledger are maintained in PR #62.
