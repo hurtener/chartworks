@@ -43,7 +43,12 @@ func TestSQLRecoveryParameterizedExampleLifecycleAcceptance(t *testing.T) {
 			if err := f.query.Feedback(ctx, f.e, nlqexec.FeedbackRequest{QueryID: parent.QueryID, Verdict: "positive"}); err != nil {
 				t.Fatal("parameterized feedback", err)
 			}
-			examples, err := f.query.Examples(ctx, f.e, f.pack.Topic, 16)
+			// Keep the established bounded review contract: the newly typed
+			// payload does not expand pagination or bypass argument validation.
+			if _, err := f.query.Examples(ctx, f.e, f.pack.Topic, 16); !errors.Is(err, nlqexec.ErrInvalid) {
+				t.Fatal("typed learning bypassed list limit", err)
+			}
+			examples, err := f.query.Examples(ctx, f.e, f.pack.Topic, nlq.MaxExamples+1)
 			if err != nil || len(examples) != 1 || examples[0].ParameterSchema == nil || examples[0].ParameterSchema.Slots[0].Kind != "number" || examples[0].ParameterSchema.Slots[0].Position != 1 || strings.Contains(examples[0].Question, private) {
 				t.Fatal("template lost schema or retained value", err)
 			}
@@ -55,7 +60,10 @@ func TestSQLRecoveryParameterizedExampleLifecycleAcceptance(t *testing.T) {
 			if err != nil || active.State != "active" || active.ParameterSchema == nil || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != attempts || f.model.requests.Load() != calls {
 				t.Fatal("typed native review executed a query/model or failed", err)
 			}
-			bundle, err := f.query.ExportExamples(ctx, f.e, nlqexec.ExampleExportRequest{Topic: f.pack.Topic, Limit: 16})
+			if _, err := f.query.ExportExamples(ctx, f.e, nlqexec.ExampleExportRequest{Topic: f.pack.Topic, Limit: 16}); !errors.Is(err, nlqexec.ErrInvalid) {
+				t.Fatal("typed learning bypassed export limit", err)
+			}
+			bundle, err := f.query.ExportExamples(ctx, f.e, nlqexec.ExampleExportRequest{Topic: f.pack.Topic, Limit: nlq.MaxExamples + 1})
 			if err != nil || bundle.SchemaVersion != 2 || len(bundle.Examples) != 1 || bundle.Examples[0].SchemaVersion != 2 || bundle.Examples[0].ParameterSchema == nil {
 				t.Fatal("portable typed example", err)
 			}
