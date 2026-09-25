@@ -41,3 +41,31 @@ func TestSQLRecoveryAdversarialRepairContextFailureFinalizesOperation(t *testing
 		t.Fatal("idempotent replay waited on an abandoned operation", err)
 	}
 }
+
+func TestSQLRecoveryAdversarialDurableFailureReceiptGatesCorrection(t *testing.T) {
+	now := time.Now().UTC()
+	valid := exec.ExecutionReport{Attempt: exec.Attempt{Status: "failed", Code: "query_error", RemoteState: "stopped", Finished: &now}}
+	if !executionRepairable(valid, nil) {
+		t.Fatal("durable stopped query failure could not reach correction")
+	}
+	for _, change := range []func(*exec.ExecutionReport){
+		func(r *exec.ExecutionReport) { r.Attempt.RemoteState = "unknown" },
+		func(r *exec.ExecutionReport) { r.Attempt.RemoteState = "running" },
+		func(r *exec.ExecutionReport) { r.Attempt.RemoteState = "not_issued" },
+		func(r *exec.ExecutionReport) { r.Attempt.Finished = nil },
+		func(r *exec.ExecutionReport) { r.Attempt.Code = "source_unavailable" },
+		func(r *exec.ExecutionReport) { r.Attempt.Status = "uncertain" },
+		func(r *exec.ExecutionReport) { r.Result = &exec.Result{} },
+	} {
+		r := valid
+		change(&r)
+		if executionRepairable(r, nil) {
+			t.Fatal("unconfirmed/non-query result authorized correction")
+		}
+	}
+	for _, failure := range []error{errors.New("unclassified failure"), exec.ErrUncertain, exec.ErrBinding, context.Canceled, context.DeadlineExceeded} {
+		if executionRepairable(valid, failure) {
+			t.Fatal("terminal/unknown error authorized correction")
+		}
+	}
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reproduce exact historical regressions without treating a build failure as proof.
 
-Runs only four new tests, copied into an isolated worktree at the pinned review
+Runs only five new tests, copied into an isolated worktree at the pinned review
 baseline. The working implementation is not altered. Expected assertion failures
 are recorded separately from the current-head passing suites.
 """
@@ -17,6 +17,7 @@ CASES = {
     "TestSQLRecoveryAdversarialOnlyCannotChangePopulation": "physical-parent-only scan acquired a complete relation proof",
     "TestSQLRecoveryAdversarialUnknownLiteralCannotProveDecimalDivision": "truncated integer result acquired a decimal-ratio proof",
     "TestSQLRecoveryAdversarialBigintParserStorageIsNotNumericType": "bigint fval acquired a decimal-division proof",
+    "TestSQLRecoveryAdversarialDurableFailureReceiptGatesCorrection": "durable stopped query failure could not reach correction",
     "TestSQLRecoveryAdversarialRepairContextFailureFinalizesOperation": "failed physical attempt not finalized before correction",
 }
 FILES = (

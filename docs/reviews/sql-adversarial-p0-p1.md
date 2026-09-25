@@ -7,13 +7,14 @@ and outstanding findings are recorded in the PR and delivery audit.
 
 ## Findings and regression oracles
 
-### P1-A — parent-only scan can obtain a full-relation metric proof
+### P2-A — analytical parent-only gap already blocked by native validation
 
-Native-safe `SELECT sum(amount) FROM ONLY analytics.sales` names the same parent
-relation as the reviewed metric, but excludes descendant/partition rows. The
-analytical checker previously compared relation names and ignored RangeVar.inh.
-A receipt could therefore claim the selected metric/population while returning a
-smaller aggregate (or NULL for a partitioned parent without physical rows).
+`SELECT sum(amount) FROM ONLY analytics.sales` names the same parent relation but
+excludes descendant/partition rows. The analytical-only checker ignored RangeVar.inh.
+Its isolated regression fails on the baseline, but actual integration established
+that the existing native validator rejects ONLY before a plan reaches this checker.
+Therefore this is defense-in-depth (P2), not a demonstrated baseline execution
+bypass or P1. Native validation was not relaxed to manufacture a counterexample.
 
 The proof now requires the ordinary descendant-inclusive scan; ONLY returns the
 closed analytical relation mismatch. Native read authorization is unchanged:
@@ -24,9 +25,10 @@ closed diagnostic. A retained hash cannot bypass the fresh analytical check
 before nonterminal execution; terminal results remain historical evidence.
 
 The independent PostgreSQL fixture compares parent-only total 30 with ordinary
-relation total 130, proves that the failing proposal passes native validation,
-then checks rejection without a physical attempt and successful bounded repair,
-exact result, persistence/saved projection and no-work terminal replay.
+relation total 130. It preserves and asserts the native rejection, then checks
+no physical attempt, successful bounded repair, exact result, saved projection
+and no-work replay. A pre-fix-looking receipt still cannot bypass native revalidation.
+The actual fail/pass analytical-only test is kept separately from reachability.
 
 ### P1-B — AST literal storage can conceal integer division
 
@@ -53,29 +55,41 @@ structure section 4.1.2.6 (numeric constant typing), and mathematical operators
 section 9.3 (integer division). The actual result assertions are the primary
 software regression oracle, not string matching or model confidence.
 
-### P1-C — correction-context failure can strand an execution operation
+### P1-C — durable query failures do not reach correction; setup must finalize
 
-After a repairable failed physical read, inability to reconstruct retained
-context returned before the query operation was finalized. A retry encountered
-a finished physical attempt but a nonterminal query record; it could wait until
-the caller deadline rather than replay the original failure.
+The real Executor finalizes a failed read in its durable receipt and returns a
+nil Go error when journaling succeeds. NLQ required both code=query_error and a
+Go ErrQuery, so real data-dependent failures never reached the promised bounded
+correction path. The original integration test exposed this boundary mismatch;
+it was not changed to inject an artificial error into the real executor.
 
-The existing finishRun path now records that terminal preparation failure with
-zero model corrections. SQL, bindings, accepted notes and analytical evidence
-are not replaced. No extra model/source call is added. Unit and PostgreSQL tests
-cover old/invalid retained context, a real runtime division error, durable failed
-status and bounded idempotent replay. Cancellation, repository outage and process
-crash recovery remain governed by their existing execution infrastructure; this
-fix does not claim to solve every external failure or invent a successful result.
+The consumer now admits a nil-error query failure only with failed/query_error,
+confirmed stopped remote state, a terminal timestamp and no result rows. Unknown,
+running, unissued, cancelled, timeout, context-changed and generic error outcomes
+remain terminal without correction. A real PostgreSQL division-error fixture gets
+exactly one equivalent correction and two failed read attempts, then immediate
+terminal replay without more model/read work. It does not invent a different
+meaning merely to make the source query succeed.
+
+The adjacent correction-context error path previously returned before finalizing
+the query operation after a typed failed attempt; its baseline unit reproduction
+strands replay. Now that real durable failures can reach it, finishRun is essential:
+it records preparation failure with zero model corrections and preserves accepted
+SQL, bindings, notes and proof. Real PostgreSQL plus old/invalid retained generation
+context covers durable failure and bounded replay. The ordinary Executor interface
+and its durable outcome semantics are unchanged.
+
+Cancellation, repository outage and process-crash recovery remain governed by the
+existing execution infrastructure, not claimed solved by this local terminal path.
 
 ## Verification strategy
 
 The read-only recovery workflow copies only the new regression tests into an
-isolated worktree at the exact baseline. All four top-level baseline tests must
+isolated worktree at the exact baseline. All five top-level baseline tests must
 fail at the intended assertions, with no compilation failure, panic or skip.
 Those expected-red tests are logged separately and never counted as passing
 current-head tests. The current tree runs the complete existing race/acceptance
-matrix plus three new result-based acceptance tests. Existing private-predicate,
+matrix plus four new result-based acceptance tests. Existing private-predicate,
 readiness, lineage, saved-query, parameter, learning and effective-budget cases
 remain selected. No test is removed to obtain a green result.
 
@@ -98,3 +112,13 @@ No P0 has been identified in this pass. The findings above remain unqualified un
 the exact corrected-source tests finish. Final wording must distinguish no known
 open P0/P1 findings within the reviewed/tested scope from proof that no possible
 future defect exists. The PR remains draft while the full recovery program is open.
+
+## First integration feedback
+
+At 0bfd127, both baseline reproduction and full unit suites passed. The native
+acceptance gate correctly failed two new assumptions: ONLY was already blocked by
+native validation, and a real query-error receipt did not carry ErrQuery. Review
+severity was revised to P2 for ONLY, and the production NLQ consumer was corrected
+for the genuine durable-receipt mismatch. Neither the native whitelist nor fixture
+executors were weakened. A new baseline-negative receipt test and native-result
+acceptance case cover the real path before requalifying the whole matrix.

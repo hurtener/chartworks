@@ -44,9 +44,9 @@ func adversarialExactResult(t *testing.T, r nlqexec.RunResult, want string) {
 	}
 }
 
-// Real native-safe statements with observably different source populations must
-// not receive the same stronger analytical approval. Neither source execution
-// nor a model's declared readiness proves this contract by itself.
+// ONLY changes the population, but the current native validator already rejects
+// that shape. Preserve that rejection and demonstrate the real result difference.
+// The analytical-only regression is defense in depth, not a reachable native bypass.
 func TestSQLRecoveryAdversarialOnlyPopulationAcceptance(t *testing.T) {
 	f := newCW01Fixture(t)
 	ctx := context.Background()
@@ -60,15 +60,15 @@ func TestSQLRecoveryAdversarialOnlyPopulationAcceptance(t *testing.T) {
 	if err := f.f.admin.QueryRow(ctx, `SELECT (SELECT sum(amount)::text FROM ONLY analytics.sales),(SELECT sum(amount)::text FROM analytics.sales)`).Scan(&only, &total); err != nil || only != "30.000" || total != "130.000" {
 		t.Fatal("independent ONLY counterexample", only, total, err)
 	}
-	if _, err := f.f.validator.Validate(ctx, f.e, readexec.Request{Source: f.pack.Datasets[0].Source.Source, Context: f.context, SQL: bad}); err != nil {
-		t.Fatal("fixture must be native-safe, not a safety-parser failure", err)
+	if _, err := f.f.validator.Validate(ctx, f.e, readexec.Request{Source: f.pack.Datasets[0].Source.Source, Context: f.context, SQL: bad}); !errors.Is(err, readexec.ErrUnsupported) {
+		t.Fatal("native ONLY rejection must remain intact", err)
 	}
 	metadata := support.Raw(t, f.f.dsn)
 	before := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 	calls := adversarialChatCount(f)
 	f.model.mode.Store(phase18RawResponse(t, bad))
 	p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue", nlq.LanguageEnglish)})
-	if p.QueryID != "" || !errors.Is(err, readexec.ErrAnalyticalMismatch) || adversarialChatCount(f)-calls != 2 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
+	if p.QueryID != "" || !errors.Is(err, readexec.ErrUnsupported) || adversarialChatCount(f)-calls != 2 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
 		t.Fatal("ONLY got an executable analytical plan", err)
 	}
 	f.model.mu.Lock()
@@ -87,7 +87,7 @@ func TestSQLRecoveryAdversarialOnlyPopulationAcceptance(t *testing.T) {
 	f.model.mu.Lock()
 	wire := strings.Join(f.model.requestBodies[start:], "\n")
 	f.model.mu.Unlock()
-	if !strings.Contains(wire, "analytical_relation_mismatch") || !strings.Contains(wire, "rejected_sql") {
+	if !strings.Contains(wire, "validation_unsupported") || !strings.Contains(wire, "rejected_sql") {
 		t.Fatal("repair missing closed diagnostic/unbound candidate")
 	}
 	calls = adversarialChatCount(f)
@@ -118,8 +118,8 @@ func TestSQLRecoveryAdversarialOnlyPopulationAcceptance(t *testing.T) {
 		t.Fatal("retained proof fixture", err)
 	}
 	_, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: original.ID, Operation: original.ID + "-run"})
-	if !errors.Is(err, readexec.ErrAnalyticalMismatch) || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
-		t.Fatal("retained hash bypassed fresh analytical proof", err)
+	if !errors.Is(err, readexec.ErrUnsupported) || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
+		t.Fatal("retained hash bypassed fresh native validation", err)
 	}
 }
 
@@ -218,5 +218,38 @@ func TestSQLRecoveryAdversarialRepairFinalizationAcceptance(t *testing.T) {
 	replay, err := f.query.Run(replayCtx, f.e, nlqexec.RunRequest{QueryID: q.ID, Operation: q.ID + "-run"})
 	if err == nil || errors.Is(err, context.DeadlineExceeded) || replay.Status != "failed" || adversarialChatCount(f) != calls || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != attempts {
 		t.Fatal("replay waited or re-executed after terminal preparation failure", err)
+	}
+}
+
+func TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection(t *testing.T) {
+	f := newCW01Fixture(t)
+	ctx := context.Background()
+	// The SQL is native-safe/EXPLAIN-safe but fails on real row values. A
+	// semantics-preserving correction cannot invent a different denominator.
+	// It gets one attempt, then persists the same explicit failure for replay.
+	statement := `SELECT id,amount/(id-id) AS amount FROM analytics.sales`
+	f.model.mode.Store(phase18RawResponse(t, statement))
+	p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Show reviewed records", nlq.LanguageEnglish)})
+	if err != nil || p.QueryID == "" || p.Analytical != nil {
+		t.Fatal("native-safe runtime failure fixture", err)
+	}
+	metadata := support.Raw(t, f.f.dsn)
+	before := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+	calls := adversarialChatCount(f)
+	out, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
+	if err == nil || !errors.Is(err, nlqexec.ErrExecutionBudget) || out.Status != "failed" || out.ExecutionFixes != 1 || adversarialChatCount(f) != calls+1 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before+2 {
+		t.Fatal("durable query failure did not receive one bounded correction", err)
+	}
+	if out.Execution.Attempt.Code != "query_error" || out.Execution.Attempt.RemoteState != "stopped" || out.Execution.Attempt.Finished == nil || out.Execution.Result != nil {
+		t.Fatal("unconfirmed physical failure treated as terminal correction")
+	}
+	sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
+	q, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
+	if err != nil || q.Status != "failed" || q.ExecutionFixes != 1 || q.SQL != statement {
+		t.Fatal("accepted SQL/failure not retained", err)
+	}
+	out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
+	if err == nil || out.Status != "failed" || adversarialChatCount(f) != calls+1 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before+2 {
+		t.Fatal("terminal retry attempted correction/execution again", err)
 	}
 }

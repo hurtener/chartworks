@@ -2332,7 +2332,17 @@ func executionRepairable(report exec.ExecutionReport, err error) bool {
 	// rejection without exposing provider text. Unknown transport or journal
 	// failures stay terminal; only this registered code can spend the one
 	// execution-correction budget.
-	return report.Attempt.Status == "failed" && report.Attempt.Code == "query_error" && errors.Is(err, exec.ErrQuery)
+	if report.Attempt.Status != "failed" || report.Attempt.Code != "query_error" || report.Result != nil || report.Attempt.RemoteState == "unknown" || report.Attempt.RemoteState == "running" {
+		return false
+	}
+	if errors.Is(err, exec.ErrQuery) {
+		return true
+	}
+	// The real Executor returns durable attempt failures in its receipt and a
+	// nil Go error after successful ledger finalization. Require an explicit
+	// stopped, terminal receipt; do not treat arbitrary nil/error combinations
+	// or unconfirmed remote work as permission to retry.
+	return err == nil && report.Attempt.RemoteState == "stopped" && report.Attempt.Finished != nil
 }
 
 func executionErrorCode(report exec.ExecutionReport, err error) string {

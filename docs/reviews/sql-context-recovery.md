@@ -455,3 +455,11 @@ all existing authority/native/analytical checks and have independent historical
 failure assertions plus actual PostgreSQL result/replay cases. The full existing
 matrix remains selected. Implementation is not runtime qualification: exact-head
 results and the final open/closed finding ledger are maintained in PR #62.
+
+Adversarial integration refined the findings: ONLY is blocked by the existing
+native layer and is defense-in-depth, not a reachable P1. The real Executor's
+nil-error/durable-query-failure contract exposed a separate P1 in NLQ correction
+admission. The consumer now recognizes only stopped terminal query-error receipts
+without rows; it preserves the same single-correction budget, rejects uncertain
+states and finalizes retained-context preparation failures. No native or executor
+interface is weakened. Exact rerun evidence belongs to the final reviewed head.

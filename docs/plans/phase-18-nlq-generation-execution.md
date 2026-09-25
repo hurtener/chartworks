@@ -330,3 +330,9 @@ PostgreSQL results and requires failed analytical proposals to remain non-execut
 The existing one-correction, immutable proof and private-value boundaries remain.
 No migration, vocabulary expansion or legacy result reinterpretation is introduced.
 The PR ledger records exact executed results before closing each finding.
+
+The adversarial correction gate also recognizes the real executor's durable
+failed/query_error receipt (nil transport error) only when stopped and terminal
+with no result. Unknown/unconfirmed outcomes cannot retry. Native validation
+already rejects ONLY, so its analytical hardening is defense-in-depth; this is
+not counted as a demonstrated native execution bypass.
