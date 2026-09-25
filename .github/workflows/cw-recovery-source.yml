@@ -1,0 +1,83 @@
+name: Reviewed recovery source checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/cw-recovery-source.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    if: github.repository == 'hurtener/chartworks' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify reviewed patch and materialize exact source objects
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = b0bde604b81b76a30e9c4b7c8d8987879b11da51
+          python3 - <<'PYCODE'
+          import base64,gzip,hashlib,json,os,pathlib,subprocess,urllib.request
+          BASE='b0bde604b81b76a30e9c4b7c8d8987879b11da51'
+          BASE_TREE='957aa82554a2f55862d2da8555f4eae55c136868'
+          EXPECTED='9c4c21575bb9d82f1187d8db746043908c9f2d18'
+          DIGEST='1add8b8bb1d239e68b923b85c9fb9a1ddf044f2e96ec05b2327d80ccf97c630c'
+          PARTS=['4d9b726f2f4e187f822dbfc75a711541d70975ce','c6d07b3cd6e13a3653e13b6a6b301f34949ab13b','0a24bf1070487214cb8405636bb24bc25a97e4f5','3f5a16fb33323344931f4351fef4aae0fcb6976b']
+          ALLOWED=['.github/workflows/sql-context-recovery.yml','docs/contracts/conditional-clarification-v1.md','docs/reviews/sql-context-recovery.md','docs/reviews/sql-recovery-completion.md','internal/nlqroute/clarification.go','internal/nlqroute/clarification_fixedpoint_test.go','internal/semantics/clarification_evaluate.go','internal/semantics/clarification_fixedpoint_test.go','internal/semantics/clarification_reachability.go','internal/semantics/clarification_reachability_test.go','internal/semantics/clarification_types.go','test/acceptance/sql_clarification_fixedpoint_test.go']
+          api=os.environ['GITHUB_API_URL']+'/repos/'+os.environ['GITHUB_REPOSITORY']
+          def request(path,body=None):
+           data=None if body is None else json.dumps(body).encode()
+           req=urllib.request.Request(api+path,data=data,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+           with urllib.request.urlopen(req,timeout=60) as response:return json.load(response)
+          pieces=[]
+          for sha in PARTS:
+           part=request('/git/blobs/'+sha)
+           assert part['sha']==sha and part['encoding']=='base64'
+           raw=base64.b64decode(part['content'])
+           assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+           pieces.append(raw)
+          patch=gzip.decompress(b''.join(pieces))
+          assert len(patch)==55705 and hashlib.sha256(patch).hexdigest()==DIGEST
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          patchpath=root/'reviewed.patch';patchpath.write_bytes(patch)
+          env=dict(os.environ,GIT_INDEX_FILE=str(root/'reviewed.index'))
+          def git(*args):return subprocess.check_output(['git',*args],env=env)
+          git('read-tree',BASE)
+          git('apply','--cached','--check',str(patchpath))
+          git('apply','--cached',str(patchpath))
+          git('diff','--cached','--check',BASE)
+          assert git('write-tree').decode().strip()==EXPECTED
+          changed=git('diff','--cached','--name-only',BASE).decode().splitlines()
+          assert sorted(changed)==sorted(ALLOWED)
+          assert request('/git/ref/heads/codex/sql-semantic-context-recovery')['object']['sha']==os.environ['GITHUB_SHA']
+          entries=[]
+          for path in changed:
+           entry=git('ls-files','-s','--',path).decode().strip()
+           assert entry
+           mode,sha,stage=entry.split('\t')[0].split()
+           assert mode in ['100644','100755'] and stage=='0'
+           blob=git('cat-file','blob',sha)
+           uploaded=request('/git/blobs',{'content':base64.b64encode(blob).decode(),'encoding':'base64'})
+           assert uploaded['sha']==sha
+           entries.append({'path':path,'mode':mode,'type':'blob','sha':sha})
+          tree=request('/git/trees',{'base_tree':BASE_TREE,'tree':entries})
+          assert tree['sha']==EXPECTED
+          record={'baseline':BASE,'authoring_head':os.environ['GITHUB_SHA'],'tree':EXPECTED,'patch_sha256':DIGEST,'changed_paths':changed}
+          (root/'reviewed-source-objects.json').write_text(json.dumps(record,indent=2)+'\n')
+          print(json.dumps(record))
+          # Source authoring only: no validation claim or ref/commit/push here.
+          # The connected app publishes this tree with an explicit parent and
+          # normal fast-forward. The tree excludes this temporary workflow.
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-recovery-source-${{ github.sha }}
+          path: ${{ runner.temp }}/reviewed-source-objects.json
+          retention-days: 7
