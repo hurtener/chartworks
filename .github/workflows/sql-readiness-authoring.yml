@@ -1,0 +1,68 @@
+name: SQL readiness source checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-readiness-authoring.yml, '.github/readiness-part-*.xz']
+permissions:
+  contents: write
+jobs:
+  objects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify and stage exact reviewed source objects
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, tempfile, urllib.request
+          base='858a4ec90b0600e4e7cb0db5821cbea12f64493d'
+          expected='a324e5f0e37360f9e8041c4f41d23f9828d053a6'
+          repo='hurtener/chartworks'
+          assert os.environ['GITHUB_REPOSITORY']==repo
+          assert os.environ['GITHUB_REF']=='refs/heads/codex/sql-semantic-context-recovery'
+          def git(*args,cwd=None):
+              return subprocess.check_output(['git',*args],cwd=cwd).decode().strip()
+          changes=git('diff','--name-only',base,'HEAD').splitlines()
+          assert all(n=='.github/workflows/sql-readiness-authoring.yml' or n.startswith('.github/readiness-part-') for n in changes)
+          parts=sorted(pathlib.Path('.github').glob('readiness-part-*.xz'))
+          assert len(parts)==12
+          compressed=b''.join(p.read_bytes() for p in parts)
+          assert hashlib.sha256(compressed).hexdigest()=='4d759d8af619700bb6f9d4641bf58332b661fb71e5ecf63941586000f8556bde'
+          patch=lzma.decompress(compressed)
+          assert hashlib.sha256(patch).hexdigest()=='85ff696a168b3fe4ff544a702ff37ee4ed60ca688b00a4e88231e119dc7c7fde'
+          with tempfile.TemporaryDirectory() as temp:
+              root=pathlib.Path(temp)/'source'
+              git('worktree','add','--detach',str(root),base)
+              payload=pathlib.Path(temp)/'change.patch'; payload.write_bytes(patch)
+              git('apply','--check','--index','--unidiff-zero',str(payload),cwd=root)
+              git('apply','--index','--unidiff-zero',str(payload),cwd=root)
+              git('diff','--cached','--check',cwd=root)
+              assert git('write-tree',cwd=root)==expected
+              entries=[]
+              for name in git('diff','--cached','--name-only',cwd=root).splitlines():
+                  assert not name.startswith('.github/readiness-') and name!='.github/workflows/sql-readiness-authoring.yml'
+                  raw=(root/name).read_bytes()
+                  mode,sha,_=git('ls-files','--stage','--',name,cwd=root).split(None,3)[:3]
+                  assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+                  body=json.dumps({'content':base64.b64encode(raw).decode(),'encoding':'base64'}).encode()
+                  request=urllib.request.Request('https://api.github.com/repos/'+repo+'/git/blobs',data=body,method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+                  with urllib.request.urlopen(request,timeout=60) as response:
+                      result=json.load(response)
+                  assert result['sha']==sha
+                  entries.append({'path':name,'mode':mode,'type':'blob','sha':sha})
+              assert len(entries)==28
+              out=pathlib.Path('source-objects');out.mkdir()
+              (out/'manifest.json').write_text(json.dumps({'base':base,'tree':expected,'entries':entries},indent=2)+'\n')
+              print('Verified and staged',len(entries),'reviewed source objects; no ref was written.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-readiness-source-objects
+          path: source-objects
+          retention-days: 7
