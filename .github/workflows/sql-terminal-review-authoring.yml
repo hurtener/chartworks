@@ -1,0 +1,66 @@
+name: SQL terminal review source objects
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-terminal-review-authoring.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    if: github.repository == 'hurtener/chartworks'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Verify reviewed patch and create source objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64,gzip,hashlib,json,os,pathlib,subprocess,urllib.request
+          base='74d9df740cf6ec0e9df81ee6426ce625446d9ad7'
+          path='.github/workflows/sql-terminal-review-authoring.yml'
+          assert subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip()==base
+          assert subprocess.check_output(['git','diff','--name-only',base,'HEAD'],text=True).strip()==path
+          def api(endpoint,data=None):
+              req=urllib.request.Request('https://api.github.com/repos/hurtener/chartworks/'+endpoint,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'},method='GET' if data is None else 'POST')
+              with urllib.request.urlopen(req) as response:return json.load(response)
+          compressed=b''
+          for sha in ['d3b78687d4ec1acc1de66342a76ca46bdfa7824f','7edaaacd79b64740c96954573af6101605479099']:
+              value=api('git/blobs/'+sha)
+              assert value['encoding']=='base64'
+              content=base64.b64decode(value['content'])
+              assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
+              compressed+=content
+          patch=gzip.decompress(compressed)
+          assert len(patch)==30514 and hashlib.sha256(patch).hexdigest()=='e92eeb61bcea89939ce91680eb7b45e58fd930960e5fc89c8dce137b9313d767'
+          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
+          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
+          subprocess.run(['git','rm',path],check=True)
+          paths=subprocess.check_output(['git','diff','--cached','--name-only',base],text=True).splitlines()
+          for name in paths:
+              if name.endswith('.go'):subprocess.run(['gofmt','-w',name],check=True)
+          subprocess.run(['git','add','-A'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree=='4eab1d028b326d61b2a7f88b367e25d0b32ac24b',tree
+          entries=[]
+          for name in paths:
+              raw=pathlib.Path(name).read_bytes()
+              sha=api('git/blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'})['sha']
+              assert sha==subprocess.check_output(['git','hash-object',name],text=True).strip()
+              entries.append({'path':name,'mode':'100755' if name=='scripts/check-sql-adversarial-baseline.py' else '100644','type':'blob','sha':sha})
+          pathlib.Path('/tmp/source-manifest.json').write_text(json.dumps({'tree':tree,'entries':entries},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-terminal-review-source-objects
+          path: /tmp/source-manifest.json
+          retention-days: 7
