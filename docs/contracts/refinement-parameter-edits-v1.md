@@ -76,13 +76,17 @@ terminal replay need neither the original request object nor a new provider call
 Historical rows and no-edit requests retain their behavior. Parameters are not
 added to public Plan/Run responses and SQL-inspection permission is unchanged.
 The generated closed request schema exposes the field only on Refine; no duplicate
-HTTP/MCP/SDK/CLI business implementation is introduced.
+HTTP/MCP/SDK/CLI business implementation is introduced. The Go SDK exports
+`NLQParameterEdit` and `NLQParameter` aliases so callers can construct the request
+without naming an internal package. `RefineNLQ` uses the existing authenticated
+transport and leaves all domain validation in the service.
 
 ## Tests and remaining scope
 
 New unit/schema checks exercise scalar kinds, exact large decimals, Unicode,
 invalid/duplicate/out-of-range edits, input immutability, private-state logging,
-parent fences, correction, clause-role rejection, owned-slot rejection, concurrency
+parent fences, correction, clause-role rejection, owned-slot rejection, the public
+SDK wire/precision/cancellation boundary, concurrency
 and cancellation. Real PostgreSQL/recorded-provider acceptance covers EN/ES restart,
 exact record sets after repeated replacements, original-parent immutability,
 saved-result privacy, zero-work replay, typed owned-answer replacement and denied

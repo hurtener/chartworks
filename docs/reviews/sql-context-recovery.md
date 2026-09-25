@@ -377,3 +377,11 @@ in the recovery workflow. Local runtime verification cannot be claimed from a
 dependency-missing environment; executed current-head evidence belongs in the PR.
 This slice does not close free-text interpretation, time/value inheritance,
 broader native shapes or live qualification.
+
+
+AP-05B review also found that the new field needed named SDK value/edit aliases.
+`NLQRefineRequest` already forwards the service DTO, but external callers should
+not need internal package names to construct its slice elements. Public aliases
+and an external-package authenticated wire test now cover that consumer. The
+recovery suite includes the actual SDK package and requires this test's pass
+marker; forwarding does not duplicate service-side edit validation.

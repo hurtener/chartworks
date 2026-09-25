@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	readexec "github.com/hurtener/chartworks/internal/exec"
+
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
@@ -60,6 +62,14 @@ type NLQRunResult = nlqexec.RunResult
 
 // NLQRefineRequest creates a child plan within the signed session.
 type NLQRefineRequest = nlqexec.RefineRequest
+
+// NLQParameter is a private typed string value for a model-owned NLQ slot.
+// The service owns validation and binding; the SDK only forwards its wire shape.
+type NLQParameter = readexec.Parameter
+
+// NLQParameterEdit explicitly replaces one existing model-owned base slot.
+// Positions are one-based and do not address service-owned predicate bindings.
+type NLQParameterEdit = nlqexec.ParameterEdit
 
 // NLQReferenceEdit adds, replaces, or removes one exact retained semantic reference.
 type NLQReferenceEdit = nlqexec.ReferenceEdit

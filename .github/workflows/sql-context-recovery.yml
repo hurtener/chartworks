@@ -13,6 +13,7 @@ on:
       - internal/gateway/**
       - internal/config/**
       - internal/store/postgres/**
+      - sdk/chartworks/**
       - test/acceptance/**
       - .github/workflows/sql-context-recovery.yml
 
@@ -138,7 +139,7 @@ jobs:
       - name: Semantic, routing, context and generation regressions
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec ./internal/store/postgres ./internal/config ./internal/gateway/... 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
+          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec ./internal/store/postgres ./internal/config ./internal/gateway/... ./sdk/chartworks 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -166,6 +167,7 @@ jobs:
           required_acceptance.extend(['TestSQLRecoveryParameterContinuationAcceptance','TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance'])
           required_units.extend(['TestSQLRecoveryParameterEditsTypedDetachedValues','TestSQLRecoveryParameterEditsInvalidAreAtomic','TestSQLRecoveryParameterEditsPrivateStateAndParentFence','TestSQLRecoveryParameterEditsReboundThroughCorrection','TestSQLRecoveryParameterEditsCannotReassignRolesOrOwnedSlots','TestSQLRecoveryParameterEditsConcurrentAndCancelled','TestSQLRecoveryParameterEditPublicSchema'])
           required_acceptance.extend(['TestSQLRecoveryParameterEditLifecycleAcceptance','TestSQLRecoveryParameterEditBoundariesAcceptance','TestSQLRecoveryParameterEditOwnedAnswerAcceptance'])
+          required_units.append('TestSQLRecoveryParameterEditSDKWire')
           missing=[]
           failures=[]
           for name in ['units','acceptance']:
