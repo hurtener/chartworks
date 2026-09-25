@@ -1,0 +1,75 @@
+name: Recovery tracker authoring checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/cw-recovery-checkpoint.yml]
+permissions:
+  contents: write
+jobs:
+  checkpoint:
+    if: github.repository == 'hurtener/chartworks' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Apply reviewed documentation-only reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = e3db60845d2f9c0938fdc014c47985e7482b3343
+          python3 - <<'PY'
+          from pathlib import Path
+          r=Path('.')
+          status=(r/'docs/reviews/sql-recovery-completion.md').read_text()
+          p=r/'docs/reviews/sql-context-recovery.md';s=p.read_text();a=s.index('## Packets');b=s.index('## First repair checkpoint',a)
+          s=s[:a]+'''## Current completion status
+
+          The [completion tracker](sql-recovery-completion.md) controls the current
+          AP-00–AP-08 status and the finite S1–S12/Q1–Q3 backlog. All phases have delivered
+          increments, but the overall recovery remains **in progress**. The last qualified
+          baseline is `ea38c07`; the P0/P1 review is not full implementation/parity closure.
+
+          '''+status[status.index('## Phase status'):status.index('## Completion checklist')]+'''## Historical implementation checkpoints
+
+          The sections below describe their own checkpoint dates and scopes. Statements
+          that an increment was pending are historical; the current table and completion
+          tracker above supersede them. Their tests/results remain evidence only for the
+          stated source, not automatic evidence for later code.
+
+          '''+s[b:];p.write_text(s)
+          links={
+           'docs/plans/README.md':'../reviews/sql-recovery-completion.md',
+           'docs/plans/phase-16-rules-clarification.md':'../reviews/sql-recovery-completion.md',
+           'docs/plans/phase-17-nlq-routing-context.md':'../reviews/sql-recovery-completion.md',
+           'docs/plans/phase-18-nlq-generation-execution.md':'../reviews/sql-recovery-completion.md',
+           'docs/plans/phase-24-eval.md':'../reviews/sql-recovery-completion.md',
+           'docs/plans/phase-34-migration-parity-cutover.md':'../reviews/sql-recovery-completion.md',
+           'docs/gap-analysis.md':'reviews/sql-recovery-completion.md',
+           'docs/reviews/sql-scoped-projection.md':'sql-recovery-completion.md',
+           'docs/reviews/sql-adversarial-p0-p1.md':'sql-recovery-completion.md',
+          }
+          for name,link in links.items():
+           p=r/name;s=p.read_text();first,rest=s.split('\n',1)
+           note=f'''\n## SQL recovery status — 2026-09-25\n\nThe [AP-00–AP-08 completion tracker]({link}) records the current\nPR #62 implementation and qualification gaps. The recovery is **in progress**.\nExisting shipped phase labels and historical defect-review results do not\nclose this subsequent extension. No required behavior is discarded by this\ntracker correction; prior named acceptance criteria and historical evidence stay.\n\n'''
+           p.write_text(first+'\n'+note+rest)
+          for name in ['docs/plans/phase-17-nlq-routing-context.md','docs/plans/phase-18-nlq-generation-execution.md']:
+           p=r/name;s=p.read_text();s=s.replace('Full model-specific provider\nwindow fitting and live quality qualification remain pending; frozen refresh\nand native authority/SQL validation are unchanged.', 'Effective model-specific provider-envelope fitting is implemented by AP-02B\nbelow. Operator configuration and live quality qualification remain open; frozen\nrefresh and native authority/SQL validation are unchanged.')
+           s=s.replace('No runtime completion is claimed.', 'This original design statement is historical; the shipped baseline and delivered\nconsumer extensions below have their own evidence. Full SQL recovery completion\nis governed by the current tracker linked above.')
+           p.write_text(s)
+          PY
+          export GIT_INDEX_FILE="$RUNNER_TEMP/checked-tracker-index"
+          git read-tree ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7
+          git add docs
+          test "$(git write-tree)" = 957aa82554a2f55862d2da8555f4eae55c136868
+          unset GIT_INDEX_FILE
+          git add docs
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs(nlq): synchronize recovery trackers without closing missing behavior'
+          test "$(git ls-remote origin refs/heads/codex/sql-semantic-context-recovery | cut -f1)" = "$GITHUB_SHA"
+          git push origin HEAD:refs/heads/codex/sql-semantic-context-recovery
+          git rev-parse HEAD
