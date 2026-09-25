@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/engineering"
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqexec"
@@ -25,6 +26,21 @@ func interpretationContinuationFixture(t *testing.T) (*phase17Fixture, *nlqexec.
  INSERT INTO analytics.sales(id,amount,name,created_at) VALUES (3,30,'NORTH','2025-04-01T00:00:00Z'),(4,40,'NORTH','2026-04-10T12:00:00Z'),(5,50,'SOUTH','2026-04-20T12:00:00Z'),(6,60,'NORTH','2025-03-31T23:59:59Z'),(7,70,'NORTH',NULL)`); err != nil {
 		t.Fatal(err)
 	}
+	// The base publication profile deliberately omits name. Establish this
+	// new governed dimension from a real reviewed profile, preserving the
+	// existing predecessor CAS rather than manufacturing semantic columns.
+	old := pack.Datasets[0]
+	profile := f.profile(t, engineering.ProfileSpec{ID: "continuation-profile", Previous: old.Source.ProfileVersion, Source: old.Source.Source, Context: old.Source.Context, Dataset: old.ID, Columns: []string{"id", "amount", "created_at", "active", "name"}, SkipLLM: true}).Profile.Profile
+	dataset := semantics.Dataset{ID: profile.Dataset, Name: "Sales", Source: semantics.SourceReference{Source: old.Source.Source, Context: old.Source.Context, Dataset: profile.Dataset, SourceRevision: profile.SourceRevision, ProfileVersion: profile.Version, ProfileDigest: profile.DeterministicHash()}}
+	for _, column := range profile.Schema {
+		switch column.Name {
+		case "id", "amount", "created_at", "active", "name":
+		default:
+			continue
+		}
+		dataset.Columns = append(dataset.Columns, semantics.Column{ID: column.Name, SourceName: column.Name, Name: column.Name, NativeType: column.NativeType, Category: column.Category, Nullable: column.Nullable})
+	}
+	pack.Datasets[0] = dataset
 	for i := range pack.Datasets[0].Columns {
 		pack.Datasets[0].Columns[i].Sensitivity = semantics.LiteralNonSensitive
 	}
