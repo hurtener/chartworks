@@ -33,6 +33,14 @@ func requireVocabularyWire(t *testing.T, f *cw01Fixture, start int, roles ...str
 				Role    string `json:"role"`
 				Content string `json:"content"`
 			} `json:"messages"`
+			ResponseFormat struct {
+				Type       string `json:"type"`
+				JSONSchema struct {
+					Name   string          `json:"name"`
+					Strict bool            `json:"strict"`
+					Schema json.RawMessage `json:"schema"`
+				} `json:"json_schema"`
+			} `json:"response_format"`
 		}
 		if json.Unmarshal([]byte(body), &packet) != nil {
 			t.Fatal("bad provider JSON")
@@ -49,8 +57,24 @@ func requireVocabularyWire(t *testing.T, f *cw01Fixture, start int, roles ...str
 		if len(packet.Messages) != 2 || packet.Messages[0].Role != "system" || strings.Count(packet.Messages[0].Content, guidance) != 1 || packet.Messages[1].Role != "user" {
 			t.Fatal("wire omitted/replaced server-owned vocabulary")
 		}
-		if !strings.Contains(body, `"response_format"`) || !strings.Contains(body, `"strict":true`) {
+		var schema struct {
+			Type                 string                     `json:"type"`
+			AdditionalProperties *bool                      `json:"additionalProperties"`
+			Properties           map[string]json.RawMessage `json:"properties"`
+			Required             []string                   `json:"required"`
+		}
+		response := packet.ResponseFormat
+		if response.Type != "json_schema" || response.JSONSchema.Name != "nlq_sql_candidate" || !response.JSONSchema.Strict || json.Unmarshal(response.JSONSchema.Schema, &schema) != nil || schema.Type != "object" || schema.AdditionalProperties == nil || *schema.AdditionalProperties {
 			t.Fatal("schema boundary lost")
+		}
+		for _, field := range []string{"sql", "parameters", "assumptions", "ambiguities"} {
+			required := false
+			for _, key := range schema.Required {
+				required = required || key == field
+			}
+			if len(schema.Properties[field]) == 0 || !required {
+				t.Fatal("generation schema lost a required field", field)
+			}
 		}
 		seen = append(seen, role)
 	}
