@@ -141,6 +141,12 @@ func decodeBody(w http.ResponseWriter, r *http.Request, schema interface{ Valida
 
 func failure(w http.ResponseWriter, err error) {
 	status, code := classify(err)
+	problem := nlqexec.GenerationProblem(err)
+	// An authority/native error can take precedence in an error chain. Do not
+	// project model questions under an unrelated (especially denied) code.
+	if !generationdecision.MatchesCode(problem, code) {
+		problem = nil
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
@@ -148,7 +154,7 @@ func failure(w http.ResponseWriter, err error) {
 		Generation    *generationdecision.Problem     `json:"generation,omitempty"`
 		Error         string                          `json:"error"`
 		Clarification *semantics.ClarificationProblem `json:"clarification,omitempty"`
-	}{nlqexec.GenerationProblem(err), code, clarificationProblem(err)})
+	}{problem, code, clarificationProblem(err)})
 }
 
 func isClarification(err error) bool {

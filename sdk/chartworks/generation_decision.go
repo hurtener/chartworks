@@ -16,7 +16,9 @@ type GenerationProblem = generationdecision.Problem
 // DecodeGenerationProblem validates HTTP/MCP problem metadata without copying
 // arbitrary error text into Error(). It cannot certify prose redaction.
 func DecodeGenerationProblem(raw []byte) *GenerationProblem {
-	if _, err := gateway.DecodeJSON(raw, 8192); err != nil {
+	// Eight 512-byte questions may expand to six JSON bytes per ASCII byte.
+	// Bound the encoded object without rejecting a valid escaped projection.
+	if _, err := gateway.DecodeJSON(raw, 32<<10); err != nil {
 		return nil
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))

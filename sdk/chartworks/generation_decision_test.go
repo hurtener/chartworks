@@ -18,6 +18,20 @@ func TestSQLRecoveryDecisionSDKBoundedProblem(t *testing.T) {
 	if p := chartworks.DecodeGenerationProblem([]byte(good)); p == nil || p.Outcome != "clarify" {
 		t.Fatal("valid public problem")
 	}
+	// Normal JSON encoders escape '<' as six bytes. The public character/byte
+	// limits still permit this entire decoded problem; the transport limit must
+	// account for escaping rather than silently discarding valid questions.
+	large := chartworks.GenerationProblem{Version: "generation-decision-v1", Outcome: "clarify", Questions: make([]string, 8)}
+	for i := range large.Questions {
+		large.Questions[i] = strings.Repeat("<", 512)
+	}
+	raw, err := json.Marshal(large)
+	if err != nil || len(raw) <= 8192 || chartworks.DecodeGenerationProblem(raw) == nil {
+		t.Fatal("valid escaped problem discarded", err)
+	}
+	if chartworks.DecodeGenerationProblem([]byte(strings.Repeat(" ", 32<<10)+good)) != nil {
+		t.Fatal("oversized encoded problem admitted")
+	}
 	for _, bad := range []string{`{}`, strings.Replace(good, `"clarify"`, `"ready"`, 1), strings.Replace(good, `"version":`, `"extra":true,"version":`, 1), strings.Replace(good, `"clarify"`, `"clarify","outcome":"ready"`, 1), strings.Replace(good, "¿Qué métrica corresponde?", strings.Repeat("q", 513), 1)} {
 		if chartworks.DecodeGenerationProblem([]byte(bad)) != nil {
 			t.Fatal("malformed untrusted metadata accepted")
