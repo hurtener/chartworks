@@ -1,0 +1,86 @@
+name: SQL fence review source objects
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-fence-review-authoring.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    if: github.repository == 'hurtener/chartworks'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Prepare exact reviewed changes, never push a ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import pathlib, subprocess, json, os, urllib.request, base64
+          baseline='1ec36325b78ed950bb295876f8f335346217b401'
+          assert subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip()==baseline
+          assert subprocess.check_output(['git','diff','--name-only',baseline,'HEAD'],text=True).strip()=='.github/workflows/sql-fence-review-authoring.yml'
+          def replace(path,old,new):
+              p=pathlib.Path(path); s=p.read_text(); assert s.count(old)==1,(path,old); p.write_text(s.replace(old,new,1))
+          replace('internal/store/postgres/postgres.go','\tif errors.Is(err, pgx.ErrNoRows) {','\tif errors.Is(err, readexec.ErrQuery) {\n\t\treturn readexec.ErrQuery\n\t}\n\tif errors.Is(err, pgx.ErrNoRows) {')
+          path='test/acceptance/sql_adversarial_review_test.go'
+          replace(path,'t.Fatal("ONLY got an executable analytical plan", err)','t.Fatalf("ONLY boundary: query_id_present=%t unsupported=%t chat_calls=%d read_attempt_delta=%d: %v", p.QueryID!="", errors.Is(err,readexec.ErrUnsupported), adversarialChatCount(f)-calls, count(t,metadata,`SELECT count(*) FROM chartworks.read_attempts`)-before, err)')
+          replace(path,'t.Fatal("repair setup failure did not finalize query", err)','t.Fatalf("repair setup finalization: budget=%t status=%s fixes=%d chat_delta=%d attempt_status=%s code=%s remote=%s finished=%t: %v", errors.Is(err,nlqexec.ErrExecutionBudget),out.Status,out.ExecutionFixes,adversarialChatCount(f)-calls,out.Execution.Attempt.Status,out.Execution.Attempt.Code,out.Execution.Attempt.RemoteState,out.Execution.Attempt.Finished!=nil,err)')
+          replace(path,'t.Fatal("durable query failure did not receive one bounded correction", err)','t.Fatalf("durable correction: budget=%t status=%s fixes=%d chat_delta=%d read_delta=%d attempt_code=%s remote=%s finished=%t: %v", errors.Is(err,nlqexec.ErrExecutionBudget),out.Status,out.ExecutionFixes,adversarialChatCount(f)-calls,count(t,metadata,`SELECT count(*) FROM chartworks.read_attempts`)-before,out.Execution.Attempt.Code,out.Execution.Attempt.RemoteState,out.Execution.Attempt.Finished!=nil,err)')
+          test='''package postgres
+          import (
+            "context"
+            "errors"
+            "fmt"
+            "testing"
+            readexec "github.com/hurtener/chartworks/internal/exec"
+            "github.com/hurtener/chartworks/internal/store"
+            "github.com/jackc/pgx/v5/pgconn"
+          )
+          func TestSQLRecoveryAdversarialSourceFailureSurvivesRevisionFence(t *testing.T) {
+            // WithSource returns its driver callback through transactionDuration -> safe.
+            // Only the already classified, detail-free source error may cross that fence.
+            for _,err:=range []error{readexec.ErrQuery,fmt.Errorf("private-source-canary: %w",readexec.ErrQuery)} {
+              got:=safe(err)
+              if got!=readexec.ErrQuery || safe(got)!=got {t.Fatal("source failure lost its closed classification")}
+            }
+            // Metadata errors are not validated-source query failures and may not authorize
+            // SQL correction simply because their driver code resembles a data error.
+            for _,code:=range []string{"22012","22003","21000","XX000"} {
+              got:=safe(&pgconn.PgError{Code:code,Message:"private-driver-canary"})
+              if errors.Is(got,readexec.ErrQuery) || got==nil || got.Error()=="private-driver-canary" {t.Fatal("raw metadata error authorized SQL correction")}
+            }
+            for _,err:=range []error{context.Canceled,context.DeadlineExceeded,readexec.ErrUncertain,readexec.ErrBinding,store.ErrUnavailable} {
+              if got:=safe(errors.Join(err,readexec.ErrQuery));got!=err {t.Fatal("query error masked a stronger terminal condition",got)}
+            }
+          }
+          '''
+          pathlib.Path('internal/store/postgres/sql_query_error_test.go').write_text(test)
+          paths=['internal/store/postgres/postgres.go','internal/store/postgres/sql_query_error_test.go',path]
+          subprocess.run(['gofmt','-w',*paths],check=True)
+          subprocess.run(['git','add',*paths],check=True)
+          subprocess.run(['git','rm','.github/workflows/sql-fence-review-authoring.yml'],check=True)
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree=='7eca7377c82ac0b6b8480f6769ab507a5a320d4a',tree
+          entries=[]
+          for path in paths:
+              raw=pathlib.Path(path).read_bytes()
+              req=urllib.request.Request('https://api.github.com/repos/hurtener/chartworks/git/blobs',data=json.dumps({'content':base64.b64encode(raw).decode(),'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'},method='POST')
+              with urllib.request.urlopen(req) as response: sha=json.load(response)['sha']
+              assert sha==subprocess.check_output(['git','hash-object',path],text=True).strip()
+              entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          pathlib.Path('/tmp/source-manifest.json').write_text(json.dumps({'tree':tree,'entries':entries},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-fence-review-source-objects
+          path: /tmp/source-manifest.json
+          retention-days: 7
