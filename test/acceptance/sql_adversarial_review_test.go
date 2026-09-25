@@ -69,7 +69,7 @@ func TestSQLRecoveryAdversarialOnlyPopulationAcceptance(t *testing.T) {
 	f.model.mode.Store(phase18RawResponse(t, bad))
 	p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue", nlq.LanguageEnglish)})
 	if p.QueryID != "" || !errors.Is(err, readexec.ErrUnsupported) || adversarialChatCount(f)-calls != 2 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
-		t.Fatal("ONLY got an executable analytical plan", err)
+		t.Fatalf("ONLY boundary: query_id_present=%t unsupported=%t chat_calls=%d read_attempt_delta=%d: %v", p.QueryID != "", errors.Is(err, readexec.ErrUnsupported), adversarialChatCount(f)-calls, count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)-before, err)
 	}
 	f.model.mu.Lock()
 	start := len(f.model.requestBodies)
@@ -205,7 +205,7 @@ func TestSQLRecoveryAdversarialRepairFinalizationAcceptance(t *testing.T) {
 	calls := adversarialChatCount(f)
 	out, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: q.ID, Operation: q.ID + "-run"})
 	if err == nil || !errors.Is(err, nlqexec.ErrExecutionBudget) || out.Status != "failed" || out.ExecutionFixes != 0 || adversarialChatCount(f) != calls {
-		t.Fatal("repair setup failure did not finalize query", err)
+		t.Fatalf("repair setup finalization: budget=%t status=%s fixes=%d chat_delta=%d attempt_status=%s code=%s remote=%s finished=%t: %v", errors.Is(err, nlqexec.ErrExecutionBudget), out.Status, out.ExecutionFixes, adversarialChatCount(f)-calls, out.Execution.Attempt.Status, out.Execution.Attempt.Code, out.Execution.Attempt.RemoteState, out.Execution.Attempt.Finished != nil, err)
 	}
 	stored, err := f.f.db.ReadQuery(ctx, sc, q.ID)
 	if err != nil || stored.Status != "failed" || stored.SQL != statement {
@@ -238,7 +238,7 @@ func TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection(t *testing.T
 	calls := adversarialChatCount(f)
 	out, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
 	if err == nil || !errors.Is(err, nlqexec.ErrExecutionBudget) || out.Status != "failed" || out.ExecutionFixes != 1 || adversarialChatCount(f) != calls+1 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before+2 {
-		t.Fatal("durable query failure did not receive one bounded correction", err)
+		t.Fatalf("durable correction: budget=%t status=%s fixes=%d chat_delta=%d read_delta=%d attempt_code=%s remote=%s finished=%t: %v", errors.Is(err, nlqexec.ErrExecutionBudget), out.Status, out.ExecutionFixes, adversarialChatCount(f)-calls, count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)-before, out.Execution.Attempt.Code, out.Execution.Attempt.RemoteState, out.Execution.Attempt.Finished != nil, err)
 	}
 	if out.Execution.Attempt.Code != "query_error" || out.Execution.Attempt.RemoteState != "stopped" || out.Execution.Attempt.Finished == nil || out.Execution.Result != nil {
 		t.Fatal("unconfirmed physical failure treated as terminal correction")

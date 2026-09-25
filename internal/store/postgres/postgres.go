@@ -112,6 +112,9 @@ func safe(err error) error {
 			return e
 		}
 	}
+	if errors.Is(err, readexec.ErrQuery) {
+		return readexec.ErrQuery
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.ErrNotFound
 	}
