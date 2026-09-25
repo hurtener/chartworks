@@ -336,3 +336,18 @@ failed/query_error receipt (nil transport error) only when stopped and terminal
 with no result. Unknown/unconfirmed outcomes cannot retry. Native validation
 already rejects ONLY, so its analytical hardening is defense-in-depth; this is
 not counted as a demonstrated native execution bypass.
+
+
+## Adversarial query-finalization and result-custody correction
+
+The [P0/P1 review](../reviews/sql-adversarial-p0-p1.md) covers the source-error
+sanitizer, incomplete receipts, response cancellation and failed reruns. Logical
+query status is terminal even when physical evidence is withheld; uncertain work
+is not retried or claimed stopped. Bounded metadata-only cleanup persists completed
+outcomes after caller cancellation. Failed operations clear prior rows rather than
+returning stale success. Native ledgers, scoped authority, immutable analytical
+proofs and the one-correction policy remain independent and unchanged.
+
+Required regression tests include real PostgreSQL failure/cancellation edges and
+separate exact-baseline assertion failures. Unknown or unavailable metadata still
+cannot be claimed successfully persisted. The PR records actual current-head gates.

@@ -1988,17 +1988,20 @@ func (s *Service) fixCandidate(ctx context.Context, e identity.Envelope, a admis
 }
 
 func (s *Service) finishRun(ctx context.Context, e identity.Envelope, q QueryRecord, report exec.ExecutionReport, fixes int, runErr error) (RunResult, error) {
-	if report.Result != nil {
+	// Each logical operation owns its own result. Never attach rows retained
+	// from a previous successful operation to a later failed/uncertain read.
+	q.Result = nil
+	q.Status, runErr = terminalRunStatus(report, runErr)
+	if runErr == nil && (q.Status == "succeeded" || q.Status == "empty" || q.Status == "truncated") {
 		q.Result = report.Result
+	} else {
+		report.Result = nil
 	}
-	if report.Attempt.Status != "" {
-		q.Status = report.Attempt.Status
-	}
-	if runErr != nil || q.Status == "failed" || q.Status == "uncertain" || q.Status == "cancelled" || q.Status == "timed_out" {
+	if runErr != nil || q.Status == "failed" || q.Status == "uncertain" || q.Status == "cancelled" || q.Status == "timed_out" || q.Status == "interrupted" {
 		q.Errors = []string{executionErrorCode(report, runErr)}
 		if runErr == nil {
 			switch q.Status {
-			case "uncertain":
+			case "uncertain", "interrupted":
 				runErr = exec.ErrUncertain
 			case "cancelled":
 				runErr = exec.ErrCancelled
@@ -2017,7 +2020,12 @@ func (s *Service) finishRun(ctx context.Context, e identity.Envelope, q QueryRec
 		q.Operation = q.ID + ":run"
 	}
 	q.Revision++
-	if err := s.repo.UpdateQuery(ctx, mustScope(e), q, q.Revision-1); err != nil {
+	// Cancellation after the physical read must not abandon its query record.
+	// This bounded cleanup only persists authorized metadata; it neither runs
+	// SQL nor upgrades missing physical evidence into a success/stopped claim.
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	if err := s.repo.UpdateQuery(cleanup, mustScope(e), q, q.Revision-1); err != nil {
 		return RunResult{}, err
 	}
 	out := s.runResult(q, report, canInspect(e))

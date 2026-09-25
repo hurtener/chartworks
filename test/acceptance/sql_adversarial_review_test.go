@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
-	"strings"
 	"testing"
 	"time"
 
@@ -44,82 +43,65 @@ func adversarialExactResult(t *testing.T, r nlqexec.RunResult, want string) {
 	}
 }
 
-// ONLY changes the population, but the current native validator already rejects
-// that shape. Preserve that rejection and demonstrate the real result difference.
-// The analytical-only regression is defense in depth, not a reachable native bypass.
+// ONLY changes the physical population, but current source admission already
+// rejects inheritance as a capability. Keep that earlier boundary: no fake source
+// or weakened admission is introduced just to reach the analytical-only checker.
 func TestSQLRecoveryAdversarialOnlyPopulationAcceptance(t *testing.T) {
 	f := newCW01Fixture(t)
 	ctx := context.Background()
-	if _, err := f.f.admin.Exec(ctx, `UPDATE analytics.sales SET amount=CASE id WHEN 1 THEN 10 ELSE 20 END;
- CREATE TABLE analytics.sales_child () INHERITS (analytics.sales);
- INSERT INTO analytics.sales_child(id,amount) VALUES(3,100)`); err != nil {
-		t.Fatal("inheritance source fixture", err)
+	if _, err := f.f.admin.Exec(ctx, `UPDATE analytics.sales SET amount=CASE id WHEN 1 THEN 10 ELSE 20 END`); err != nil {
+		t.Fatal(err)
 	}
-	bad, good := `SELECT sum(amount) AS revenue FROM ONLY analytics.sales`, `SELECT sum(amount) AS revenue FROM analytics.sales`
-	var only, total string
-	if err := f.f.admin.QueryRow(ctx, `SELECT (SELECT sum(amount)::text FROM ONLY analytics.sales),(SELECT sum(amount)::text FROM analytics.sales)`).Scan(&only, &total); err != nil || only != "30.000" || total != "130.000" {
-		t.Fatal("independent ONLY counterexample", only, total, err)
-	}
-	if _, err := f.f.validator.Validate(ctx, f.e, readexec.Request{Source: f.pack.Datasets[0].Source.Source, Context: f.context, SQL: bad}); !errors.Is(err, readexec.ErrUnsupported) {
-		t.Fatal("native ONLY rejection must remain intact", err)
-	}
-	metadata := support.Raw(t, f.f.dsn)
-	before := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
-	calls := adversarialChatCount(f)
-	f.model.mode.Store(phase18RawResponse(t, bad))
+	good, bad := `SELECT sum(amount) AS revenue FROM analytics.sales`, `SELECT sum(amount) AS revenue FROM ONLY analytics.sales`
+	f.model.mode.Store(phase18RawResponse(t, good))
 	p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue", nlq.LanguageEnglish)})
-	if p.QueryID != "" || !errors.Is(err, readexec.ErrUnsupported) || adversarialChatCount(f)-calls != 2 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
-		t.Fatalf("ONLY boundary: query_id_present=%t unsupported=%t chat_calls=%d read_attempt_delta=%d: %v", p.QueryID != "", errors.Is(err, readexec.ErrUnsupported), adversarialChatCount(f)-calls, count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)-before, err)
-	}
-	f.model.mu.Lock()
-	start := len(f.model.requestBodies)
-	f.model.chatSequence = []string{phase18RawResponse(t, bad), phase18RawResponse(t, good)}
-	f.model.mu.Unlock()
-	p, err = f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue", nlq.LanguageEnglish)})
-	if err != nil || p.Analytical == nil || p.ValidationFixes != 1 || p.SQL != good {
-		t.Fatal("bounded ONLY repair", err)
+	if err != nil || p.Analytical == nil {
+		t.Fatal("ordinary supported source", err)
 	}
 	out, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
 	if err != nil {
-		t.Fatal("normal descendant-inclusive execution", err)
+		t.Fatal("ordinary positive execution", err)
 	}
-	adversarialExactResult(t, out, "130")
-	f.model.mu.Lock()
-	wire := strings.Join(f.model.requestBodies[start:], "\n")
-	f.model.mu.Unlock()
-	if !strings.Contains(wire, "validation_unsupported") || !strings.Contains(wire, "rejected_sql") {
-		t.Fatal("repair missing closed diagnostic/unbound candidate")
-	}
-	calls = adversarialChatCount(f)
-	before = count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+	adversarialExactResult(t, out, "30")
+	metadata := support.Raw(t, f.f.dsn)
+	before, calls := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`), adversarialChatCount(f)
 	replay, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
 	if err != nil || adversarialChatCount(f) != calls || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
-		t.Fatal("terminal replay introduced execution", err)
+		t.Fatal("supported replay introduced work", err)
 	}
-	adversarialExactResult(t, replay, "130")
-	sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
+	adversarialExactResult(t, replay, "30")
 	saved, err := f.f.db.ReadSavedQuery(ctx, f.e, p.QueryID, false)
 	if err != nil || saved.Result != nil || saved.SQL != good || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
 		t.Fatal("saved proof/result projection", err)
 	}
-	original, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
-	if err != nil {
-		t.Fatal(err)
+	// A second valid but unexecuted plan must be re-admitted after source drift;
+	// its previously valid analytical digest cannot override current capabilities.
+	pending, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue", nlq.LanguageEnglish)})
+	if err != nil || pending.QueryID == "" || pending.QueryID == p.QueryID {
+		t.Fatal("pending pre-drift plan", err)
 	}
-	// Simulate a pre-fix retained selected-metric receipt, without altering the
-	// immutable original row. Its hashes alone must not bypass fresh checking.
-	original.ID = readexec.Hash([]string{p.QueryID, "retained-only"})[:32]
-	original.Operation = ""
-	original.Status = "planned"
-	original.Result = nil
-	original.SQL = bad
-	original.Analytical.Query = readexec.AnalyticalQueryDigest(bad, original.Parameters)
-	if err = f.f.db.CreateQuery(ctx, sc, original); err != nil {
-		t.Fatal("retained proof fixture", err)
+	if _, err := f.f.admin.Exec(ctx, `CREATE TABLE analytics.sales_child () INHERITS (analytics.sales);
+ INSERT INTO analytics.sales_child(id,amount) VALUES(3,100)`); err != nil {
+		t.Fatal("inheritance source fixture", err)
 	}
-	_, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: original.ID, Operation: original.ID + "-run"})
-	if !errors.Is(err, readexec.ErrUnsupported) || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
-		t.Fatal("retained hash bypassed fresh native validation", err)
+	var only, total string
+	if err := f.f.admin.QueryRow(ctx, `SELECT (SELECT sum(amount)::text FROM ONLY analytics.sales),(SELECT sum(amount)::text FROM analytics.sales)`).Scan(&only, &total); err != nil || only != "30.000" || total != "130.000" {
+		t.Fatal("independent ONLY counterexample", only, total, err)
+	}
+	before, calls = count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`), adversarialChatCount(f)
+	for _, sql := range []string{bad, good} {
+		if _, err := f.f.validator.Validate(ctx, f.e, readexec.Request{Source: f.pack.Datasets[0].Source.Source, Context: f.context, SQL: sql}); !errors.Is(err, readexec.ErrUnsupported) {
+			t.Fatal("inherited source admission must remain unsupported", err)
+		}
+		f.model.mode.Store(phase18RawResponse(t, sql))
+		blocked, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue", nlq.LanguageEnglish)})
+		if blocked.QueryID != "" || !errors.Is(err, readexec.ErrUnsupported) || adversarialChatCount(f) != calls || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
+			t.Fatal("source inheritance reached generation/execution", err)
+		}
+	}
+	_, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: pending.QueryID, Operation: pending.QueryID + "-run"})
+	if !errors.Is(err, readexec.ErrUnsupported) || adversarialChatCount(f) != calls || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
+		t.Fatal("retained proof bypassed current source admission", err)
 	}
 }
 

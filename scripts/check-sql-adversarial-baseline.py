@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reproduce exact historical regressions without treating a build failure as proof.
 
-Runs only five new tests, copied into an isolated worktree at the pinned review
+Runs only ten new tests, copied into an isolated worktree at the pinned review
 baseline. The working implementation is not altered. Expected assertion failures
 are recorded separately from the current-head passing suites.
 """
@@ -19,10 +19,17 @@ CASES = {
     "TestSQLRecoveryAdversarialBigintParserStorageIsNotNumericType": "bigint fval acquired a decimal-division proof",
     "TestSQLRecoveryAdversarialDurableFailureReceiptGatesCorrection": "durable stopped query failure could not reach correction",
     "TestSQLRecoveryAdversarialRepairContextFailureFinalizesOperation": "failed physical attempt not finalized before correction",
+    "TestSQLRecoveryAdversarialSourceFailureSurvivesRevisionFence": "source failure lost its closed classification",
+    "TestSQLRecoveryAdversarialMissingReceiptFinalizesUncertain": "missing physical receipt left an unfinished query or fabricated success",
+    "TestSQLRecoveryAdversarialFailedRerunDiscardsPreviousRows": "failed operation returned stale successful rows",
+    "TestSQLRecoveryAdversarialCancelledCallerCanFinalize": "caller cancellation abandoned known finalization",
+    "TestSQLRecoveryAdversarialReceiptErrorsNeverExposeRows": "invalid/missing receipt acquired a result or success",
 }
 FILES = (
     "internal/exec/analytical_adversarial_test.go",
     "internal/nlqexec/adversarial_execution_test.go",
+    "internal/nlqexec/adversarial_finalization_test.go",
+    "internal/store/postgres/sql_query_error_test.go",
 )
 
 
@@ -31,7 +38,7 @@ def main():
     output = Path(os.environ["RUNNER_TEMP"]) / "sql-adversarial-baseline"
     output.mkdir(exist_ok=True)
     baseline = Path(tempfile.mkdtemp(prefix="review-baseline-", dir=os.environ["RUNNER_TEMP"]))
-    command = ["go", "test", "-race", "-count=1", "-timeout=5m", "-json", "./internal/exec", "./internal/nlqexec", "-run", "^TestSQLRecoveryAdversarial"]
+    command = ["go", "test", "-race", "-count=1", "-timeout=5m", "-json", "./internal/exec", "./internal/nlqexec", "./internal/store/postgres", "-run", "^TestSQLRecoveryAdversarial"]
     try:
         subprocess.run(["git", "worktree", "add", "--detach", str(baseline), BASE], cwd=root, check=True)
         for path in FILES:
