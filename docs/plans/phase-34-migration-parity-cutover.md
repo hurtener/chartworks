@@ -1,5 +1,14 @@
 # Phase 34 — migration-parity-cutover
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+
 Status: in_progress. Owner: internal/migration, internal/migrationapi, test/acceptance. Hard dependencies: 14, 16, 18, 19, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33.
 
 ## Authority and design

@@ -5,19 +5,33 @@ This is a recovery extension of phases 16–18 and 24, not a new release gate.
 Implementation, passing synthetic fixtures, native execution, and live owner
 qualification are separate evidence states. Nothing here declares full parity.
 
-## Packets
+## Current completion status
 
-| Packet | Owned behavior | State |
-|---|---|---|
-| AP-00 | Synthetic sentinel cohort, effective request inspection, protected owner comparison | Core engine-request spy implemented; provider-wire/owner baseline pending |
-| AP-01 | Selected semantic roots, catalog hydration, complete dependencies and rule applicability | Catalog-term selection plus explicit/clarified roots feed required closure and rules; vector-only paraphrase intent and owner qualification pending |
-| AP-02 | Relevant typed prompt projection, examples and complete-request budget | Selected single-topic physical rendering, strategy-aware optional fitting, example usage and runtime byte recheck implemented; model-specific full-envelope fitting pending |
-| AP-03 | Analytical contract and semantic conformance | Pending |
-| AP-04 | Targeted privacy-safe validation repair | Initial implementation with focused regressions; broader qualification remains open |
-| AP-05 | Analytical state and parameter ownership through follow-ups | Pending |
-| AP-06 | Parameterized learning and retained generation evidence | Accepted-candidate explanation custody implemented in AP-06A; parameterized learning remains open |
-| AP-07 | Generator/validator dialect capability agreement | Native marker-count fallback defect fixed; broader operation matrix and live-engine qualification pending |
-| AP-08 | Ambiguity gating and owner-cohort qualification | Pending |
+The [completion tracker](sql-recovery-completion.md) controls the current
+AP-00–AP-08 status and the finite S1–S12/Q1–Q3 backlog. All phases have delivered
+increments, but the overall recovery remains **in progress**. The last qualified
+baseline is `ea38c07`; the P0/P1 review is not full implementation/parity closure.
+
+## Phase status
+
+| Phase | Delivered implementation | Remaining implementation | Qualification still required |
+|---|---|---|---|
+| AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
+| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1: answer-dependent cross-pattern applicability; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
+| AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
+| AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
+| AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
+| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody; explicit same-kind parameter replacement; public SDK | S8: inferred scalar/time inheritance and explicit replacement/removal; S9: grouping changes and broader native role proof | Multi-turn EN/ES business journeys, restart/replay and language quality |
+| AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
+| AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
+| AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |
+
+## Historical implementation checkpoints
+
+The sections below describe their own checkpoint dates and scopes. Statements
+that an increment was pending are historical; the current table and completion
+tracker above supersede them. Their tests/results remain evidence only for the
+stated source, not automatic evidence for later code.
 
 ## First repair checkpoint (SQL-09, SQL-13, SQL-15)
 

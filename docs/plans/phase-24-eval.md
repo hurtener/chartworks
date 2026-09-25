@@ -1,5 +1,14 @@
 # Phase 24 — eval
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+
 Status: in_progress. Owner: internal/evaluation, internal/nlq. Hard dependencies: 18, 19, 20, 29. Current contract: [evaluation v1](../contracts/evaluation-v1.md).
 
 ## Authority and design

@@ -1,5 +1,14 @@
 # SQL context recovery AP-02C — scoped physical projection
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+
 Continuation baseline: `cf689701cae5898e5d0c2edad4b06287793d6b37` in PR #62.
 Owning runtime remains phases 17/18 and the
 [generation packet contract](../contracts/generation-packet-v2.md).

@@ -1,5 +1,14 @@
 # SQL recovery adversarial P0/P1 review
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+
 Baseline: PR #62, `c8c0a8db9327b147f313830037fcc56353536909`.
 This is an adversarial review of the current recovery implementation, not a new
 capability slice or a blanket release approval. Exact final CI/source evidence

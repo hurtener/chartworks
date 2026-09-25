@@ -1,5 +1,14 @@
 # Phase 18 — nlq-generation-execution
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+
 Status: shipped. Owner: internal/nlq. Hard dependencies: 09, 10, 17. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 Proposed PR #11 delivery; this status becomes effective after every required hosted
@@ -69,7 +78,9 @@ Implement `TestPhase18/AC01` through `TestPhase18/AC06` with real semantic/sourc
 
 ## Glossary, decisions and deviations
 
-Refinement and self-curation remain explicit governed exploration. D-049 applies. No runtime completion is claimed.
+Refinement and self-curation remain explicit governed exploration. D-049 applies. This original design statement is historical; the shipped baseline and delivered
+consumer extensions below have their own evidence. Full SQL recovery completion
+is governed by the current tracker linked above.
 
 
 ## CW-01 delivered clarification extension
@@ -139,9 +150,9 @@ rendering selected single-topic metric dependency columns for the model. Require
 semantics remain atomic. Edits/hints suppress typed examples and skip irrelevant
 learning work; included demonstrations preserve declared rank and have actual-use
 evidence. Optional context yields before required instructions. Runtime system
-additions are byte-checked again before dispatch. Full model-specific provider
-window fitting and live quality qualification remain pending; frozen refresh
-and native authority/SQL validation are unchanged.
+additions are byte-checked again before dispatch. Effective model-specific provider-envelope fitting is implemented by AP-02B
+below. Operator configuration and live quality qualification remain open; frozen
+refresh and native authority/SQL validation are unchanged.
 
 ## SQL recovery: effective-envelope refitting
 
