@@ -7,6 +7,7 @@ import (
 	readexec "github.com/hurtener/chartworks/internal/exec"
 
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlq/exampleparams"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 )
@@ -79,6 +80,15 @@ type NLQMetricEdit = nlqexec.MetricEdit
 
 // NLQFeedbackRequest records a bounded review of one planned query.
 type NLQFeedbackRequest = nlqexec.FeedbackRequest
+
+// NLQExampleParameterSchema is a reviewed value-free positional binding contract.
+type NLQExampleParameterSchema = exampleparams.Schema
+
+// NLQExampleParameterSlot never contains a previous query's value or default.
+type NLQExampleParameterSlot = exampleparams.Slot
+
+// NLQPortableExample is the protected versioned import/export row.
+type NLQPortableExample = nlqexec.PortableExample
 
 // NLQExampleStateRequest advances one reviewed example through its lifecycle.
 type NLQExampleStateRequest = nlqexec.ExampleStateRequest

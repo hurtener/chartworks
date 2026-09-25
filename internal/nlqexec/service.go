@@ -685,7 +685,18 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	feedbackID := deterministicFeedbackID(e, q, in)
 	feedback := FeedbackRecord{ID: feedbackID, QueryID: q.ID, Session: e.Session(), Verdict: in.Verdict, Correction: correction, Note: in.Note, Provenance: "phase18.feedback", Created: time.Now().UTC()}
 	var example ExampleRecord
-	if len(q.Route.Resolutions) == 0 {
+	eligible := !hasActiveBusinessEvidence(q.Route) && (q.Clarification == nil || q.Clarification.Binding.SchemaVersion == 0)
+	if eligible && len(q.Parameters) > 0 {
+		// Feedback can still be recorded when a statement is unsuitable for a
+		// reusable demonstration. Never publish known binding literals/comments.
+		if checkErr := exec.CheckLearningParameterContent(ctx, sqlText, q.Parameters); checkErr != nil {
+			if !errors.Is(checkErr, exec.ErrUnsupported) {
+				return checkErr
+			}
+			eligible = false
+		}
+	}
+	if eligible {
 		id, idErr := newID()
 		if idErr != nil {
 			return idErr
@@ -696,10 +707,15 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 		} else {
 			negative = 1
 		}
+		question, parameterSchema, err := learnedParameterSchema(ctx, q)
+		if err != nil {
+			return err
+		}
 		now := time.Now().UTC()
 		example = ExampleRecord{
-			ID: id, Topic: q.Topic, Question: q.Question, SQL: sqlText,
-			Digest: exampleDigest(q.Topic, q.Question, sqlText), State: "candidate",
+			ParameterSchema: parameterSchema,
+			ID:              id, Topic: q.Topic, Question: question, SQL: sqlText,
+			Digest: parameterExampleDigest(q.Topic, question, sqlText, parameterSchema), State: "candidate",
 			Weight: evidenceScore(positive, negative), Uncertainty: evidenceUncertainty(positive, negative),
 			EvidenceCount: 1, PositiveEvidence: positive, NegativeEvidence: negative, EvidenceOutcome: in.Verdict,
 			Origin:  ExampleOrigin{SchemaVersion: 1, Locale: q.Locale, TopicVersion: q.TopicVersions[0], Context: q.Context, SourceBindingDigest: currentBindingDigest, RuleVersions: append([]string(nil), q.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), q.Templates...)},
@@ -778,7 +794,11 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 		return ExampleRecord{}, store.ErrConflict
 	}
 	if in.State == "active" {
-		if _, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: example.SQL}, admitted.relationScope); err != nil {
+		parameters, parameterErr := exampleValidationParameters(example)
+		if parameterErr != nil {
+			return ExampleRecord{}, parameterErr
+		}
+		if _, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: example.SQL, Parameters: parameters}, admitted.relationScope); err != nil {
 			return ExampleRecord{}, err
 		}
 	}
@@ -816,10 +836,11 @@ func (s *Service) Examples(ctx context.Context, e identity.Envelope, topic strin
 	if err != nil {
 		return nil, err
 	}
-	if !canInspect(e) {
-		for i := range examples {
-			examples[i].SQL = ""
+	for i := range examples {
+		if !ExampleParametersValid(examples[i]) {
+			return nil, exec.ErrBinding
 		}
+		examples[i] = redactExample(examples[i], canInspect(e))
 	}
 	return examples, nil
 }
@@ -850,7 +871,13 @@ func (s *Service) ExportExamples(ctx context.Context, e identity.Envelope, in Ex
 	}
 	bundle := ExampleBundle{SchemaVersion: 1, Topic: in.Topic, Examples: make([]PortableExample, 0, len(examples))}
 	for _, example := range examples {
-		bundle.Examples = append(bundle.Examples, PortableExample{SchemaVersion: 1, Question: example.Question, SQL: example.SQL, Digest: example.Digest, Origin: example.Origin, PositiveEvidence: example.PositiveEvidence, NegativeEvidence: example.NegativeEvidence})
+		if !ExampleParametersValid(example) {
+			return ExampleBundle{}, exec.ErrBinding
+		}
+		if example.ParameterSchema != nil {
+			bundle.SchemaVersion = 2
+		}
+		bundle.Examples = append(bundle.Examples, PortableExample{SchemaVersion: portableExampleVersion(example.ParameterSchema), ParameterSchema: example.ParameterSchema.Clone(), Question: example.Question, SQL: example.SQL, Digest: example.Digest, Origin: example.Origin, PositiveEvidence: example.PositiveEvidence, NegativeEvidence: example.NegativeEvidence})
 	}
 	return bundle, nil
 }
@@ -859,7 +886,7 @@ func (s *Service) ExportExamples(ctx context.Context, e identity.Envelope, in Ex
 // environment and the native SQL validator. Imported evidence is always a
 // candidate and requires a separate explicit review before activation.
 func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in ExampleImportRequest) (ExampleRecord, error) {
-	if ctx == nil || !e.Valid() || in.Example.SchemaVersion != 1 || !topics.DigestValid(in.Example.Digest) || in.Example.PositiveEvidence < 0 || in.Example.NegativeEvidence < 0 || in.Example.PositiveEvidence+in.Example.NegativeEvidence < 1 || in.Example.PositiveEvidence+in.Example.NegativeEvidence > 1000 {
+	if ctx == nil || !e.Valid() || !portableExampleValid(in.Example) || !topics.DigestValid(in.Example.Digest) || in.Example.PositiveEvidence < 0 || in.Example.NegativeEvidence < 0 || in.Example.PositiveEvidence+in.Example.NegativeEvidence < 1 || in.Example.PositiveEvidence+in.Example.NegativeEvidence > 1000 {
 		return ExampleRecord{}, ErrInvalid
 	}
 	if !e.Has("feedback.write") || !canInspect(e) {
@@ -878,13 +905,17 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 	if admitted.route.Context == nil || admitted.route.Topic == "" {
 		return ExampleRecord{}, nlqroute.ErrNoRoute
 	}
-	if reason := exampleApplicabilityReason(ExampleRecord{State: "active", Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Weight: 1, PositiveEvidence: 1, Origin: in.Example.Origin}, admitted, exec.Hash(admitted.binding)); reason != "" {
+	if reason := exampleApplicabilityReason(ExampleRecord{ParameterSchema: in.Example.ParameterSchema, Digest: in.Example.Digest, State: "active", Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Weight: 1, PositiveEvidence: 1, Origin: in.Example.Origin}, admitted, exec.Hash(admitted.binding)); reason != "" {
 		return ExampleRecord{}, exec.ErrBinding
 	}
-	if in.Example.Digest != exampleDigest(admitted.route.Topic, in.Example.Question, in.Example.SQL) {
+	if in.Example.Digest != parameterExampleDigest(admitted.route.Topic, in.Example.Question, in.Example.SQL, in.Example.ParameterSchema) {
 		return ExampleRecord{}, ErrInvalid
 	}
-	if _, err = s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: in.Example.SQL}, admitted.relationScope); err != nil {
+	parameters, parameterErr := exampleValidationParameters(ExampleRecord{Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Digest: in.Example.Digest, ParameterSchema: in.Example.ParameterSchema})
+	if parameterErr != nil {
+		return ExampleRecord{}, parameterErr
+	}
+	if _, err = s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: in.Example.SQL, Parameters: parameters}, admitted.relationScope); err != nil {
 		return ExampleRecord{}, err
 	}
 	id, err := newID()
@@ -897,7 +928,7 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 		outcome = "positive"
 	}
 	now := time.Now().UTC()
-	stored, _, err := s.repo.ImportExample(ctx, mustScope(e), ExampleRecord{ID: id, Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Digest: in.Example.Digest, State: "candidate", Weight: evidenceScore(positive, negative), Uncertainty: evidenceUncertainty(positive, negative), EvidenceCount: positive + negative, PositiveEvidence: positive, NegativeEvidence: negative, EvidenceOutcome: outcome, Origin: in.Example.Origin, Version: 1, Provenance: "neutral-import-v1", Created: now, Updated: now})
+	stored, _, err := s.repo.ImportExample(ctx, mustScope(e), ExampleRecord{ParameterSchema: in.Example.ParameterSchema.Clone(), ID: id, Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Digest: in.Example.Digest, State: "candidate", Weight: evidenceScore(positive, negative), Uncertainty: evidenceUncertainty(positive, negative), EvidenceCount: positive + negative, PositiveEvidence: positive, NegativeEvidence: negative, EvidenceOutcome: outcome, Origin: in.Example.Origin, Version: 1, Provenance: "neutral-import-v1", Created: now, Updated: now})
 	if err != nil {
 		return ExampleRecord{}, err
 	}
@@ -1524,6 +1555,7 @@ func (s *Service) learningQuery(ctx context.Context, e identity.Envelope, topic 
 }
 
 func redactExample(value ExampleRecord, inspect bool) ExampleRecord {
+	value.ParameterSchema = value.ParameterSchema.Clone()
 	if !inspect {
 		value.SQL = ""
 	}
@@ -2055,7 +2087,7 @@ func (s *Service) selectLearnedInstructions(ctx context.Context, e identity.Enve
 	for i, candidate := range candidates {
 		record := candidate.record
 		evidence.Selected = append(evidence.Selected, ExampleSelection{ExampleID: record.ID, Version: record.Version, Lane: "examples", Position: i + 1, Decision: "selected", Score: record.Weight, Uncertainty: record.Uncertainty, RankScore: candidate.rankScore})
-		result = append(result, nlq.Instruction{Key: "learned-" + record.ID, Text: "question:" + record.Question + " sql:" + record.SQL})
+		result = append(result, nlq.Instruction{Key: "learned-" + record.ID, Text: learnedExampleText(record)})
 	}
 	evidence.Receipt = receipt
 	return result, evidence, receipt, nil
@@ -2078,7 +2110,7 @@ func exampleApplicabilityReason(example ExampleRecord, admitted admission, bindi
 	if example.State != "active" {
 		return "not_active"
 	}
-	if example.SQL == "" || example.Question == "" {
+	if example.SQL == "" || example.Question == "" || !ExampleParametersValid(example) {
 		return "invalid_content"
 	}
 	if example.Origin.SchemaVersion != 1 {

@@ -268,3 +268,20 @@ routed. Existing public dispatch derives the field from the shared request DTO.
 real PostgreSQL/native and recorded-provider boundaries, not live language quality.
 Existing no-edit, analytical, replay and explanation regressions remain required.
 Exact CI outcomes are recorded in PR #62.
+
+## AP-06B typed learned-example checkpoint
+
+[Parameterized examples v1](../contracts/parameterized-examples-v1.md) carries
+value-free slot metadata from validated feedback through candidate persistence,
+current-source native review, protected portable import/export and the existing
+example prompt lane. Fixed public dry-validation probes never become source-query
+bindings or demonstrated defaults. New queries supply and validate their own
+parameters. The immutable schema is additive in migration 057; legacy rows stay
+unchanged. Unpublishable bound annotations/predicates still allow feedback recording.
+
+The new `TestSQLRecoveryParameterizedExample*Acceptance` and
+`TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates` tests extend AC03/AC06
+without changing signed reach, native authority, retry limits or frozen refresh.
+This checkpoint is not qualified solely from added tests: exact executed local and
+native/CI outcomes are recorded in the delivery evidence. Per-dialect and protected
+owner qualification remain separate.

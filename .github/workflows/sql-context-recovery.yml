@@ -69,12 +69,12 @@ jobs:
           git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
           git ls-tree -r HEAD > "$target/tree.txt"
           git archive --format=tar.gz HEAD > "$target/source.tar.gz"
-          baseline=41acc1cb19353100408f9496c9c6cc221f3e0e14
-          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/parameter-edits-incremental.patch"
+          baseline=c655c8fc1c4f81b3e66f8501187b78538b49fbe5
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/learning-incremental.patch"
           git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
-          export GIT_INDEX_FILE="$RUNNER_TEMP/parameter-edits-replay.index"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/learning-replay.index"
           git read-tree "$baseline"
-          git apply --cached "$target/parameter-edits-incremental.patch"
+          git apply --cached "$target/learning-incremental.patch"
           actual=$(git write-tree)
           expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
           test "$actual" = "$expected"
@@ -151,7 +151,7 @@ jobs:
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Summarize actual terminal test events
         if: always()
         run: |
@@ -168,6 +168,8 @@ jobs:
           required_units.extend(['TestSQLRecoveryParameterEditsTypedDetachedValues','TestSQLRecoveryParameterEditsInvalidAreAtomic','TestSQLRecoveryParameterEditsPrivateStateAndParentFence','TestSQLRecoveryParameterEditsReboundThroughCorrection','TestSQLRecoveryParameterEditsCannotReassignRolesOrOwnedSlots','TestSQLRecoveryParameterEditsConcurrentAndCancelled','TestSQLRecoveryParameterEditPublicSchema'])
           required_acceptance.extend(['TestSQLRecoveryParameterEditLifecycleAcceptance','TestSQLRecoveryParameterEditBoundariesAcceptance','TestSQLRecoveryParameterEditOwnedAnswerAcceptance'])
           required_units.append('TestSQLRecoveryParameterEditSDKWire')
+          required_units.extend(['TestSQLRecoveryExampleParameterSchema','TestSQLRecoveryExampleParameterSchemaRejectsInvalid','TestSQLRecoveryExampleParameterSchemaConcurrent','TestSQLRecoveryLearningParametersDoNotCarryHistoricalValues','TestSQLRecoveryLearningParameterIdentityAndProbes','TestSQLRecoveryLearningParameterBoundsAndCancellation','TestSQLRecoveryLearningParameterPortableVersion','TestSQLRecoveryLearningParameterNativeReviewUsesOnlyProbes','TestSQLRecoveryLearningDoesNotPublishCopiedBindingLiterals','TestSQLRecoveryLearningMarkersAreNotBindings','TestSQLRecoveryParameterizedExampleSDKWire'])
+          required_acceptance.extend(['TestSQLRecoveryParameterizedExampleLifecycleAcceptance','TestSQLRecoveryParameterizedExampleNativeReviewFailure','TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates'])
           missing=[]
           failures=[]
           for name in ['units','acceptance']:
@@ -184,6 +186,7 @@ jobs:
               required=required_units if name=='units' else required_acceptance
               missing.extend(x for x in required if x not in passed)
               missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryExplanation'))
+              missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith(('TestSQLRecoveryExampleParameter','TestSQLRecoveryLearning','TestSQLRecoveryParameterizedExample')))
               if not packages: missing.append(name+':terminal-package')
               failures.extend(e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail')
               failures.extend(e['Test']+':skipped' for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryScopedProjection'))

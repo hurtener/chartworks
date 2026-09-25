@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlq/exampleparams"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
@@ -234,26 +235,27 @@ type ExampleSelectionEvidence struct {
 // ExampleRecord is the DB-first learning projection. State changes are
 // explicit and audited; feedback only creates or strengthens a candidate.
 type ExampleRecord struct {
-	ID               string        `json:"id"`
-	Topic            string        `json:"topic"`
-	Question         string        `json:"question"`
-	SQL              string        `json:"-"`
-	Digest           string        `json:"digest"`
-	State            string        `json:"state"`
-	Weight           float64       `json:"weight"`
-	Uncertainty      float64       `json:"uncertainty"`
-	EvidenceCount    int           `json:"evidence_count"`
-	PositiveEvidence int           `json:"positive_evidence"`
-	NegativeEvidence int           `json:"negative_evidence"`
-	EvidenceOutcome  string        `json:"-"`
-	Origin           ExampleOrigin `json:"origin"`
-	Version          int64         `json:"version"`
-	ReviewedBy       string        `json:"reviewed_by,omitempty"`
-	ReviewNote       string        `json:"-"`
-	ReviewedAt       *time.Time    `json:"reviewed_at,omitempty"`
-	Provenance       string        `json:"provenance"`
-	Created          time.Time     `json:"created_at"`
-	Updated          time.Time     `json:"updated_at"`
+	ParameterSchema  *exampleparams.Schema `json:"parameter_schema,omitempty"`
+	ID               string                `json:"id"`
+	Topic            string                `json:"topic"`
+	Question         string                `json:"question"`
+	SQL              string                `json:"-"`
+	Digest           string                `json:"digest"`
+	State            string                `json:"state"`
+	Weight           float64               `json:"weight"`
+	Uncertainty      float64               `json:"uncertainty"`
+	EvidenceCount    int                   `json:"evidence_count"`
+	PositiveEvidence int                   `json:"positive_evidence"`
+	NegativeEvidence int                   `json:"negative_evidence"`
+	EvidenceOutcome  string                `json:"-"`
+	Origin           ExampleOrigin         `json:"origin"`
+	Version          int64                 `json:"version"`
+	ReviewedBy       string                `json:"reviewed_by,omitempty"`
+	ReviewNote       string                `json:"-"`
+	ReviewedAt       *time.Time            `json:"reviewed_at,omitempty"`
+	Provenance       string                `json:"provenance"`
+	Created          time.Time             `json:"created_at"`
+	Updated          time.Time             `json:"updated_at"`
 }
 
 // QuestionRequest is shared by preflight and plan. The verified envelope
@@ -358,13 +360,14 @@ type ExampleStateRequest struct {
 // present only on the explicit export/import operations, never ordinary list
 // projections or logs.
 type PortableExample struct {
-	SchemaVersion    int           `json:"schema_version"`
-	Question         string        `json:"question"`
-	SQL              string        `json:"sql"`
-	Digest           string        `json:"digest"`
-	Origin           ExampleOrigin `json:"origin"`
-	PositiveEvidence int           `json:"positive_evidence"`
-	NegativeEvidence int           `json:"negative_evidence"`
+	ParameterSchema  *exampleparams.Schema `json:"parameter_schema,omitempty"`
+	SchemaVersion    int                   `json:"schema_version"`
+	Question         string                `json:"question"`
+	SQL              string                `json:"sql"`
+	Digest           string                `json:"digest"`
+	Origin           ExampleOrigin         `json:"origin"`
+	PositiveEvidence int                   `json:"positive_evidence"`
+	NegativeEvidence int                   `json:"negative_evidence"`
 }
 
 // ExampleExportRequest selects a bounded protected learning export.

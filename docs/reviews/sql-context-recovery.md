@@ -385,3 +385,25 @@ not need internal package names to construct its slice elements. Public aliases
 and an external-package authenticated wire test now cover that consumer. The
 recovery suite includes the actual SDK package and requires this test's pass
 marker; forwarding does not duplicate service-side edit validation.
+
+## AP-06B — typed learned SQL examples (unpublished implementation checkpoint)
+
+Baseline verified at `c655c8fc1c4f81b3e66f8501187b78538b49fbe5`, which includes
+explicit typed parameter replacements and their public SDK support beyond the
+older PR-body checkpoint. That baseline's standard and expanded CI are green; those
+results do not qualify this continuation.
+
+[Parameterized examples v1](../contracts/parameterized-examples-v1.md) adds a
+strict, value-free positional schema to learned candidates. Review and import use
+public typed probes with the existing native validator rather than private historic
+values. Questions are known-value redacted; unsupported/private copied SQL
+annotations are not proposed for learning. Service-owned predicate queries retain
+feedback without automatic examples. Immutable schema persistence, a versioned
+digest/portable row and public SDK aliases preserve the contract through reuse.
+
+Implemented tests cover the pure schema, service/type/digest seams, conservative
+SQL disclosure, SDK transport and actual PostgreSQL/recorded-provider lifecycle.
+The current environment exposes no GitHub write actions and has no native/module
+cache, so patch checkpoints are the publication mechanism for this continuation.
+Only actually executed checks may be marked passed in the delivery summary. The
+new integration/migration tests remain a required gate; AP-06 is not declared closed.
