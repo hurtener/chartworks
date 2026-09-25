@@ -98,11 +98,18 @@ func learnedExampleText(x ExampleRecord) string {
 	if x.ParameterSchema == nil {
 		return text
 	}
-	raw, err := json.Marshal(x.ParameterSchema)
+	// The context owner accepts a single-line instruction. Encode the full
+	// typed demonstration as data so multiline SQL and literal whitespace are
+	// preserved exactly, not normalized or treated as instruction boundaries.
+	raw, err := json.Marshal(struct {
+		Question        string                `json:"question"`
+		SQL             string                `json:"sql"`
+		ParameterSchema *exampleparams.Schema `json:"parameter_schema"`
+	}{x.Question, x.SQL, x.ParameterSchema})
 	if err != nil {
 		return ""
 	} // bounded validated schema
-	return text + " parameter_schema:" + string(raw) + "\nThis reviewed SQL demonstration has abstract positional parameters, not reusable values. Resolve the current question's values and produce the current candidate's parameter bindings. Do not copy a previous question's constants, invent validation-probe values, or treat redaction markers as values."
+	return "Reviewed parameterized SQL demonstration: " + string(raw) + " This reviewed SQL demonstration has abstract positional parameters, not reusable values. Resolve the current question's values and produce the current candidate's parameter bindings. Do not copy a previous question's constants, invent validation-probe values, or treat redaction markers as values."
 }
 
 func portableExampleVersion(schema *exampleparams.Schema) int {

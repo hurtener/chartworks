@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
 )
 
@@ -37,8 +38,42 @@ func TestSQLRecoveryLearningParametersDoNotCarryHistoricalValues(t *testing.T) {
 			t.Fatal("historical binding entered demonstration")
 		}
 	}
-	if !strings.Contains(rendered, "parameter_schema:") || !strings.Contains(rendered, `"position":1`) || !strings.Contains(rendered, `"kind":"number"`) || strings.Contains(rendered, `"value":`) {
+	if !strings.Contains(rendered, `"parameter_schema":`) || !strings.Contains(rendered, `"position":1`) || !strings.Contains(rendered, `"kind":"number"`) || strings.Contains(rendered, `"value":`) {
 		t.Fatal("not a typed value-free demonstration")
+	}
+	// Exercise the actual owner boundary, including multiline SQL containing
+	// meaningful literal whitespace. The renderer must escape data, not relax
+	// instruction framing or silently rewrite the SQL template.
+	assembler, err := nlq.NewDefaultContextAssembler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := assembler.Assemble(context.Background(), nlq.ContextInput{Topic: "topic", TopicVersion: "v1", Locale: nlq.LanguageEnglish, Strategy: nlq.StrategySingleTopic, Question: "Current question"}, nlq.TierHigh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sql := range []string{x.SQL, "SELECT id, 'two  spaces' AS label\nFROM analytics.sales\nWHERE amount>$1 AND name=$2"} {
+		row := x
+		row.SQL = sql
+		row.Digest = parameterExampleDigest(row.Topic, row.Question, row.SQL, row.ParameterSchema)
+		text := learnedExampleText(row)
+		if strings.ContainsAny(text, "\r\n") {
+			t.Fatal("typed example violated single-line context framing")
+		}
+		generation, err := assembler.ResolvePrecedence(context.Background(), nlq.GenerationInput{Context: base, Examples: []nlq.Instruction{{Key: "learned-" + row.ID, Text: text}}})
+		if err != nil || generation.Strategy != nlq.GenerationExamples || len(generation.Selected) != 1 || generation.Selected[0].Text != text {
+			t.Fatal("typed example rejected by real context owner", err)
+		}
+		decoder := json.NewDecoder(strings.NewReader(strings.TrimPrefix(text, "Reviewed parameterized SQL demonstration: ")))
+		var decoded struct {
+			Question        string          `json:"question"`
+			SQL             string          `json:"sql"`
+			ParameterSchema json.RawMessage `json:"parameter_schema"`
+		}
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&decoded) != nil || decoded.Question != row.Question || decoded.SQL != row.SQL || len(decoded.ParameterSchema) == 0 {
+			t.Fatal("single-line encoding changed exact template data")
+		}
 	}
 	if exec.Hash(q) != before {
 		t.Fatal("mutated source query")
