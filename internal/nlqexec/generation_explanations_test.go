@@ -17,7 +17,7 @@ import (
 
 func explanationCandidate(t *testing.T, sql string, assumptions, ambiguities []string, parameters ...exec.Parameter) gateway.Generated {
 	t.Helper()
-	raw, err := json.Marshal(generatedCandidate{SQL: sql, Parameters: append([]exec.Parameter{}, parameters...), Assumptions: assumptions, Ambiguities: ambiguities})
+	raw, err := json.Marshal(generatedCandidate{Decision: "ready", Questions: []string{}, SQL: sql, Parameters: append([]exec.Parameter{}, parameters...), Assumptions: append([]string{}, assumptions...), Ambiguities: append([]string{}, ambiguities...)})
 	if err != nil {
 		t.Fatal(err)
 	}

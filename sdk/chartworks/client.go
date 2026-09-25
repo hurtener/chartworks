@@ -53,6 +53,7 @@ type GatewayReceipt = gateway.Receipt
 // bounded usage metadata, never the raw rejection body. Typed helpers without an
 // operation inventory leave Code empty. Error() remains content-free.
 type StatusError struct {
+	Generation    *GenerationProblem
 	Clarification *ClarificationProblem
 	Status        int
 	Code          string
@@ -220,6 +221,9 @@ func (c *Client) exchange(ctx context.Context, method, path, key, media string, 
 			rejected.Receipt = readFailureReceipt(bytes.NewReader(raw))
 		} else if strings.HasPrefix(path, "/v1/nlq/") {
 			rejected.Clarification = readClarificationProblem(bytes.NewReader(raw))
+			if rejected.Status == http.StatusUnprocessableEntity {
+				rejected.Generation = readGenerationProblem(raw)
+			}
 		}
 		return rejected
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlq/generationdecision"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
@@ -144,9 +145,10 @@ func failure(w http.ResponseWriter, err error) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(struct {
+		Generation    *generationdecision.Problem     `json:"generation,omitempty"`
 		Error         string                          `json:"error"`
 		Clarification *semantics.ClarificationProblem `json:"clarification,omitempty"`
-	}{code, clarificationProblem(err)})
+	}{nlqexec.GenerationProblem(err), code, clarificationProblem(err)})
 }
 
 func isClarification(err error) bool {
@@ -179,6 +181,10 @@ func classify(err error) (int, string) {
 		status, code = http.StatusUnprocessableEntity, "analytical_mismatch"
 	case errors.Is(err, readexec.ErrAnalyticalUnsupported):
 		status, code = http.StatusUnprocessableEntity, "analytical_unsupported"
+	case errors.Is(err, nlqexec.ErrGenerationClarification):
+		status, code = http.StatusUnprocessableEntity, "generation_clarification_required"
+	case errors.Is(err, nlqexec.ErrGenerationContext):
+		status, code = http.StatusUnprocessableEntity, "generation_context_insufficient"
 	case errors.Is(err, nlqexec.ErrValidationBudget):
 		status, code = http.StatusUnprocessableEntity, "validation_budget_exhausted"
 	case errors.Is(err, nlqexec.ErrExecutionBudget):

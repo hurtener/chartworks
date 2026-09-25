@@ -54,7 +54,7 @@ func phase18Token(t *testing.T, fixture *phase17Fixture, user, session string, s
 
 func phase18RawResponse(t *testing.T, sql string) string {
 	t.Helper()
-	content, err := json.Marshal(map[string]any{"sql": sql, "parameters": []any{}, "assumptions": []string{}, "ambiguities": []string{}})
+	content, err := json.Marshal(map[string]any{"decision": "ready", "questions": []string{}, "sql": sql, "parameters": []any{}, "assumptions": []string{}, "ambiguities": []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}

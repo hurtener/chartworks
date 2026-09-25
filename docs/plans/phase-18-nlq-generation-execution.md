@@ -303,3 +303,20 @@ coverage with EN/ES, bounded invalid-function correction, private filters, exact
 results and zero-work replay. Registry/native/service tests enforce the original
 lists and namespace/parameter conventions. The PR records executed verification;
 full per-engine and live analytical qualification remains open.
+
+## AP-08A model-reported readiness
+
+[Generation decisions v1](../contracts/generation-decisions-v1.md) requires a closed
+ready/clarify/insufficient-context response from each fresh SQL generation/repair.
+Only ready candidates reach the existing validators. Blocked decisions carry no
+SQL/bindings, are not automatic repair input, and cannot publish or execute a plan.
+HTTP/MCP/SDK use distinct bounded, known-value-redacted problem metadata; this is
+not a deterministic reviewed AnswerContext or a model-generated authority token.
+Legacy stored notes and frozen replay are not reinterpreted. The original route,
+private bindings, one-correction limit and native/analytical checks remain.
+
+The two `TestSQLRecoveryDecision*Acceptance` tests exercise actual PostgreSQL
+state/attempt boundaries, recorded-provider readiness, EN/ES, composed PlanAndRun,
+refinement, HTTP/MCP privacy and current authority. Existing ready fixtures declare
+the new output contract explicitly. Runtime results and remaining pending-outcome
+conversation/live-quality qualification belong in the PR tracker.

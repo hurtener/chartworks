@@ -18,7 +18,7 @@ import (
 
 func parameterResponse(t *testing.T, sql string, parameters []readexec.Parameter) string {
 	t.Helper()
-	content, err := json.Marshal(map[string]any{"sql": sql, "parameters": parameters, "assumptions": []string{}, "ambiguities": []string{}})
+	content, err := json.Marshal(map[string]any{"decision": "ready", "questions": []string{}, "sql": sql, "parameters": parameters, "assumptions": []string{}, "ambiguities": []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}

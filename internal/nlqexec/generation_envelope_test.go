@@ -39,7 +39,7 @@ func TestSQLRecoveryServiceRefitsBeforeGenerateAndRetainsActualPacket(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := json.Marshal(guidance)
+	encoded, err := json.Marshal(guidance + generationDecisionInstruction)
 	if err != nil {
 		t.Fatal(err)
 	}

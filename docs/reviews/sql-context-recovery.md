@@ -425,3 +425,22 @@ analytical version, retry allowance or frozen-execution behavior changes. Broade
 function signatures, read shapes, per-engine native/analytical qualification and
 live-owner quality remain open under AP-07. Exact CI results belong in PR #62;
 this implementation inventory alone is not a passing/runtime claim.
+
+## AP-08A readiness discriminator (implementation checkpoint)
+
+Continuation baseline `858a4ec90b0600e4e7cb0db5821cbea12f64493d`.
+[Generation decisions](../contracts/generation-decisions-v1.md) closes the control
+flow gap in which a model could only return SQL plus unclassified ambiguity prose.
+New generation/repair responses must distinguish ready, user clarification, and
+insufficient reviewed context. Incompatible mixtures or missing declarations fail;
+blocked results never reach the next SQL validation or a new physical execution.
+A positive model declaration remains subject to all existing proofs. The protocol
+cannot itself prove the model detected every material ambiguity.
+
+No previous query/explanation is backfilled or given a new interpretation. Typed
+errors preserve bounded redacted questions across HTTP/MCP/SDK without minting a
+plan, reviewed answer token or source permission. Earlier routing/model work is
+not reported as zero; transient blocked questions are not a new durable workflow.
+Recorded ready fixtures change their schema declaration, not their SQL/results or
+assertions. Exact current-head runtime verification is recorded in the PR; this
+checkpoint does not by itself qualify the full AP-08 release/owner-quality program.

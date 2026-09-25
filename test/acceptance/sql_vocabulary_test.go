@@ -67,7 +67,7 @@ func requireVocabularyWire(t *testing.T, f *cw01Fixture, start int, roles ...str
 		if response.Type != "json_schema" || response.JSONSchema.Name != "nlq_sql_candidate" || !response.JSONSchema.Strict || json.Unmarshal(response.JSONSchema.Schema, &schema) != nil || schema.Type != "object" || schema.AdditionalProperties == nil || *schema.AdditionalProperties {
 			t.Fatal("schema boundary lost")
 		}
-		for _, field := range []string{"sql", "parameters", "assumptions", "ambiguities"} {
+		for _, field := range []string{"decision", "questions", "sql", "parameters", "assumptions", "ambiguities"} {
 			required := false
 			for _, key := range schema.Required {
 				required = required || key == field

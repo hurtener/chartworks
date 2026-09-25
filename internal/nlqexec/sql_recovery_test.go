@@ -35,7 +35,7 @@ func (g *recoveryCapture) Generate(ctx context.Context, call gateway.Call, budge
 }
 
 func recoveryCandidate(sql string, parameters []exec.Parameter, role string) gateway.Generated {
-	raw, err := json.Marshal(generatedCandidate{SQL: sql, Parameters: append([]exec.Parameter{}, parameters...), Assumptions: []string{}, Ambiguities: []string{}})
+	raw, err := json.Marshal(generatedCandidate{Decision: "ready", Questions: []string{}, SQL: sql, Parameters: append([]exec.Parameter{}, parameters...), Assumptions: []string{}, Ambiguities: []string{}})
 	if err != nil {
 		panic(err) // All callers supply synthetic strings and closed parameter DTOs.
 	}

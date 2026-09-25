@@ -28,6 +28,9 @@ import (
 )
 
 type admission struct {
+	decisionParent       *QueryRecord
+	decisionParameters   []exec.Parameter
+	decisionAnswers      []semantics.ClarificationAnswer
 	refinementParameters *refinementParameters
 	publications         []topics.Published
 	analytical           *exec.AnalyticalContract
@@ -123,6 +126,8 @@ func reviewedProjection(datasets []reviewedDataset, binding exec.Binding) ([]exe
 }
 
 type generatedCandidate struct {
+	Decision      string   `json:"decision"`
+	Questions     []string `json:"questions"`
 	analytical    *exec.AnalyticalReceipt
 	clarification *ClarificationEvidence
 	generation    *nlq.GenerationContext // Exact fitted initial packet; not model JSON.
@@ -134,9 +139,11 @@ type generatedCandidate struct {
 
 var generationSchema, generationSchemaErr = gateway.NewSchema("nlq_sql_candidate", []byte(`{
   "type":"object","additionalProperties":false,
-  "required":["sql","parameters","assumptions","ambiguities"],
+  "required":["decision","questions","sql","parameters","assumptions","ambiguities"],
   "properties":{
-    "sql":{"type":"string","minLength":1,"maxLength":32768},
+    "decision":{"type":"string","enum":["ready","clarify","insufficient_context"]},
+    "questions":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":512}},
+    "sql":{"type":"string","maxLength":32768},
     "parameters":{"type":"array","maxItems":64,"items":{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"type":"string","enum":["null","text","boolean","integer","number"]},"value":{"type":"string","maxLength":4096}}}},
     "assumptions":{"type":"array","maxItems":32,"items":{"type":"string","maxLength":1024}},
     "ambiguities":{"type":"array","maxItems":32,"items":{"type":"string","maxLength":1024}}
@@ -503,6 +510,8 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			return RunResult{}, exec.ErrBinding
 		}
 	}
+	current.decisionParameters = append([]exec.Parameter(nil), record.Parameters...)
+	current.decisionParent = &record
 	originalPlan := plan
 	call, err := gateway.Authorize(e, "query.execute", executionPartition(record), current.resources...)
 	if err != nil {
@@ -1016,6 +1025,8 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 		return PlanResult{}, err
 	}
 	admitted.refinementParameters = refinementParameterState(ctx)
+	admitted.decisionParent = observedParent
+	admitted.decisionAnswers = semantics.CloneClarificationAnswers(question.Answers)
 	for _, required := range additionalActions {
 		if err := gatewayRequirement(e, required, admitted.resources); err != nil {
 			return PlanResult{}, err
@@ -1852,6 +1863,7 @@ func (s *Service) generateAndValidate(ctx context.Context, e identity.Envelope, 
 	if !validationRepairable(validateErr) {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, validateErr
 	}
+	a.decisionParameters = append([]exec.Parameter(nil), unbound.Parameters...)
 	repairContext, repairErr := validationRepairContext(ctx, generation, unbound, validationCode(validateErr, unbound.SQL))
 	if repairErr != nil {
 		return generatedCandidate{}, 0, receipt, exec.Plan{}, errors.Join(ErrValidationBudget, repairErr)
@@ -1899,8 +1911,9 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	if err != nil {
 		return generatedCandidate{}, gateway.Receipt{}, exec.ErrUnsupported
 	}
-	system := "Return one safe, read-only SQL statement for the native " + dialect + " dialect. Never change the topic, source, execution context, required filters, pinned metrics, or permissions. Return only the requested JSON object."
+	system := "Return one readiness decision for the native " + dialect + " dialect. A ready decision must contain one safe, read-only SQL statement. Never change the topic, source, execution context, required filters, pinned metrics, or permissions. Return only the requested JSON object."
 	system += vocabulary
+	system += generationDecisionInstruction
 	if a.analytical != nil {
 		system += " Analytical metric conformance is enforced for selected user metric roots: use one qualified base table and preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Joins, CTEs, nested SELECTs and windows are not analytically supported by this contract."
 		system += analyticalGrainGuidance(a.analytical)
@@ -1937,7 +1950,15 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 		return generatedCandidate{}, generated.Receipt, err
 	}
 	var candidate generatedCandidate
-	if json.Unmarshal(generated.JSON, &candidate) != nil || !validCandidate(candidate) {
+	// Revalidate at this consumer too: custom/recorded engines cannot bypass the
+	// required discriminator or closed shape merely by implementing Engine.
+	if generationSchema.Validate(generated.JSON, 64<<10) != nil || json.Unmarshal(generated.JSON, &candidate) != nil {
+		return generatedCandidate{}, generated.Receipt, ErrGeneration
+	}
+	if err := candidateDecision(a, candidate); err != nil {
+		return generatedCandidate{}, generated.Receipt, err
+	}
+	if !validCandidate(candidate) {
 		return generatedCandidate{}, generated.Receipt, ErrGeneration
 	}
 	candidate.generation = &generation

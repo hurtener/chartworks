@@ -17,7 +17,7 @@ import (
 
 func explanationRawResponse(t *testing.T, sql string, assumptions, ambiguities []string) string {
 	t.Helper()
-	content, err := json.Marshal(map[string]any{"sql": sql, "parameters": []any{}, "assumptions": assumptions, "ambiguities": ambiguities})
+	content, err := json.Marshal(map[string]any{"decision": "ready", "questions": []string{}, "sql": sql, "parameters": []any{}, "assumptions": assumptions, "ambiguities": ambiguities})
 	if err != nil {
 		t.Fatal(err)
 	}
