@@ -15,6 +15,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
@@ -1888,7 +1889,18 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 		return generatedCandidate{}, gateway.Receipt{}, generationSchemaErr
 	}
 	dialect := a.binding.Dialect
+	if ctx == nil {
+		return generatedCandidate{}, gateway.Receipt{}, ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return generatedCandidate{}, gateway.Receipt{}, err
+	}
+	vocabulary, err := sqlpolicy.Guidance(dialect)
+	if err != nil {
+		return generatedCandidate{}, gateway.Receipt{}, exec.ErrUnsupported
+	}
 	system := "Return one safe, read-only SQL statement for the native " + dialect + " dialect. Never change the topic, source, execution context, required filters, pinned metrics, or permissions. Return only the requested JSON object."
+	system += vocabulary
 	if a.analytical != nil {
 		system += " Analytical metric conformance is enforced for selected user metric roots: use one qualified base table and preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Joins, CTEs, nested SELECTs and windows are not analytically supported by this contract."
 		system += analyticalGrainGuidance(a.analytical)

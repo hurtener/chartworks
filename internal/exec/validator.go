@@ -9,6 +9,7 @@ import (
 
 	bruinsql "github.com/bruin-data/bruin/pkg/sqlparser"
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 	"github.com/hurtener/chartworks/internal/identity"
 	pgquery "github.com/wasilibs/go-pgquery"
 )
@@ -170,9 +171,8 @@ func (v *Validator) validate(ctx context.Context, e identity.Envelope, r Request
 }
 
 func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, r Request, binding, scoped Binding, scopeDigest string) (Plan, error) {
-	dialects := map[string]string{"mysql": "mysql", "sqlserver": "tsql", "bigquery": "bigquery", "snowflake": "snowflake", "databricks": "databricks"}
-	dialect, ok := dialects[binding.Dialect]
-	if !ok {
+	dialect, ok := sqlpolicy.NativeDialect(binding.Dialect)
+	if !ok || binding.Dialect == "postgres" {
 		return Plan{}, ErrUnsupported
 	}
 	select {
@@ -233,9 +233,8 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 			return Plan{}, ErrUnsafe
 		}
 	}
-	allowedFunctions := map[string]bool{"abs": true, "avg": true, "coalesce": true, "count": true, "length": true, "lower": true, "max": true, "min": true, "round": true, "sum": true, "upper": true}
 	for _, function := range inspection.Functions {
-		if !allowedFunctions[strings.ToLower(function)] {
+		if !sqlpolicy.AllowsFunction(binding.Dialect, []string{function}) {
 			return Plan{}, ErrUnsupported
 		}
 	}

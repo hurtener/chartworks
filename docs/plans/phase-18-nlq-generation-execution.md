@@ -285,3 +285,21 @@ without changing signed reach, native authority, retry limits or frozen refresh.
 This checkpoint is not qualified solely from added tests: exact executed local and
 native/CI outcomes are recorded in the delivery evidence. Per-dialect and protected
 owner qualification remain separate.
+
+## AP-07A shared native-name vocabulary
+
+[Read-SQL vocabulary v1](../contracts/sql-vocabulary-v1.md) uses one immutable
+registry for validator function/type/operator/value name gates and server-owned
+SQL-generation/correction guidance. The underlying accepted names and native safety
+rules are unchanged. Both model roles receive the admitted dialect's exact snapshot
+before complete-envelope fitting; no extra role/call or permission is introduced.
+Unknown dialects fail rather than borrow another engine's profile. Retained SQL and
+analytical versions are not rewritten. Names are necessary but not sufficient;
+source scope, typed arguments, full-tree safety and analytical proof still apply.
+
+`TestSQLRecoveryVocabularyProviderAcceptance` and
+`TestSQLRecoveryVocabularyKeepsStrongerProofs` extend real PostgreSQL/recorded-wire
+coverage with EN/ES, bounded invalid-function correction, private filters, exact
+results and zero-work replay. Registry/native/service tests enforce the original
+lists and namespace/parameter conventions. The PR records executed verification;
+full per-engine and live analytical qualification remains open.

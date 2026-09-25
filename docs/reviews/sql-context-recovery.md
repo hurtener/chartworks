@@ -407,3 +407,21 @@ The current environment exposes no GitHub write actions and has no native/module
 cache, so patch checkpoints are the publication mechanism for this continuation.
 Only actually executed checks may be marked passed in the delivery summary. The
 new integration/migration tests remain a required gate; AP-06 is not declared closed.
+
+## AP-07A — shared validator/generator vocabulary
+
+Continuation baseline: `2838b22dc681ce2cdddda911ab11660dc3f91eb6`.
+[Read-SQL vocabulary v1](../contracts/sql-vocabulary-v1.md) gives the existing native
+name gates and generation/correction instructions one immutable owner. This is a
+function/type/operator/value-name refactor and a concrete prompt consumer, not new
+SQL grammar, vendor capability discovery or proof of analytical intent. Frozen
+baseline lists and parser-backed tests guard against accidental permission widening.
+
+The profile is derived from the admitted dialect and included before full provider
+fitting. Runtime model overrides cannot change the source dialect. Registry digest,
+case/namespace/marker behavior and private-value boundaries are tested. Unknown
+profiles fail without model dispatch. No migration, response field, source scope,
+analytical version, retry allowance or frozen-execution behavior changes. Broader
+function signatures, read shapes, per-engine native/analytical qualification and
+live-owner quality remain open under AP-07. Exact CI results belong in PR #62;
+this implementation inventory alone is not a passing/runtime claim.

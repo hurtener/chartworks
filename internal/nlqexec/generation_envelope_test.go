@@ -2,11 +2,13 @@ package nlqexec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/nlq"
 )
@@ -31,7 +33,17 @@ func TestSQLRecoveryServiceRefitsBeforeGenerateAndRetainsActualPacket(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := &envelopeCapture{maxBytes: 2400, recoveryCapture: recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{recoveryCandidate("SELECT id FROM analytics.sales", nil, "sqlgen")}}}}
+	// Retain the original optional-content budget after accounting for the new
+	// mandatory vocabulary's exact JSON string overhead. No runtime cap changes.
+	guidance, err := sqlpolicy.Guidance(admitted.binding.Dialect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(guidance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &envelopeCapture{maxBytes: 2400 + len(encoded) - 2, recoveryCapture: recoveryCapture{sequenceGateway: sequenceGateway{responses: []gateway.Generated{recoveryCandidate("SELECT id FROM analytics.sales", nil, "sqlgen")}}}}
 	svc := &Service{engine: model, validator: &sequenceValidator{}}
 	got, fixes, _, _, err := svc.generateAndValidate(context.Background(), e, admitted, g, call, budget, "")
 	if err != nil {

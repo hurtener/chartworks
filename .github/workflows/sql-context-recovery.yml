@@ -69,12 +69,12 @@ jobs:
           git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
           git ls-tree -r HEAD > "$target/tree.txt"
           git archive --format=tar.gz HEAD > "$target/source.tar.gz"
-          baseline=c655c8fc1c4f81b3e66f8501187b78538b49fbe5
-          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/learning-incremental.patch"
+          baseline=2838b22dc681ce2cdddda911ab11660dc3f91eb6
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/sql-vocabulary-incremental.patch"
           git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
-          export GIT_INDEX_FILE="$RUNNER_TEMP/learning-replay.index"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/sql-vocabulary-replay.index"
           git read-tree "$baseline"
-          git apply --cached "$target/learning-incremental.patch"
+          git apply --cached "$target/sql-vocabulary-incremental.patch"
           actual=$(git write-tree)
           expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
           test "$actual" = "$expected"
@@ -139,7 +139,7 @@ jobs:
       - name: Semantic, routing, context and generation regressions
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec ./internal/store/postgres ./internal/config ./internal/gateway/... ./sdk/chartworks 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
+          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec/... ./internal/store/postgres ./internal/config ./internal/gateway/... ./sdk/chartworks 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -151,7 +151,7 @@ jobs:
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestSQLRecoveryVocabularyProviderAcceptance|TestSQLRecoveryVocabularyKeepsStrongerProofs|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Summarize actual terminal test events
         if: always()
         run: |
@@ -170,6 +170,8 @@ jobs:
           required_units.append('TestSQLRecoveryParameterEditSDKWire')
           required_units.extend(['TestSQLRecoveryExampleParameterSchema','TestSQLRecoveryExampleParameterSchemaRejectsInvalid','TestSQLRecoveryExampleParameterSchemaConcurrent','TestSQLRecoveryLearningParametersDoNotCarryHistoricalValues','TestSQLRecoveryLearningParameterIdentityAndProbes','TestSQLRecoveryLearningParameterBoundsAndCancellation','TestSQLRecoveryLearningParameterPortableVersion','TestSQLRecoveryLearningParameterNativeReviewUsesOnlyProbes','TestSQLRecoveryLearningDoesNotPublishCopiedBindingLiterals','TestSQLRecoveryLearningMarkersAreNotBindings','TestSQLRecoveryParameterizedExampleSDKWire'])
           required_acceptance.extend(['TestSQLRecoveryParameterizedExampleLifecycleAcceptance','TestSQLRecoveryParameterizedExampleNativeReviewFailure','TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates'])
+          required_units.extend(['TestSQLRecoveryVocabularyPreservesValidatorLists','TestSQLRecoveryVocabularyExactDialectsAndMarkers','TestSQLRecoveryVocabularyRejectsForeignNames','TestSQLRecoveryVocabularyDetachedDigestAndGuidance','TestSQLRecoveryVocabularyConcurrent','TestSQLRecoveryVocabularyPostgresNative','TestSQLRecoveryVocabularyWarehouseNative','TestSQLRecoveryVocabularyParameterSpelling','TestSQLRecoveryVocabularyGenerationAndRepair','TestSQLRecoveryVocabularyUnknownAndCancelledBeforeModel','TestSQLRecoveryVocabularyIncludedBeforeEnvelopeFit'])
+          required_acceptance.extend(['TestSQLRecoveryVocabularyProviderAcceptance','TestSQLRecoveryVocabularyKeepsStrongerProofs'])
           missing=[]
           failures=[]
           for name in ['units','acceptance']:
@@ -187,6 +189,7 @@ jobs:
               missing.extend(x for x in required if x not in passed)
               missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryExplanation'))
               missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith(('TestSQLRecoveryExampleParameter','TestSQLRecoveryLearning','TestSQLRecoveryParameterizedExample')))
+              failures.extend(e['Test']+':skipped' for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryVocabulary'))
               if not packages: missing.append(name+':terminal-package')
               failures.extend(e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail')
               failures.extend(e['Test']+':skipped' for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryScopedProjection'))
