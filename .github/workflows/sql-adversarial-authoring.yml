@@ -1,0 +1,77 @@
+name: SQL adversarial source checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-adversarial-authoring.yml]
+permissions:
+  contents: write
+jobs:
+  objects:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the pinned patch and create detached source objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os, pathlib, subprocess, urllib.request
+          root=pathlib.Path.cwd()
+          base='c8c0a8db9327b147f313830037fcc56353536909'
+          base_tree='767af65a4f28d456f6294e1891a8fd7e19fa4b80'
+          temporary='.github/workflows/sql-adversarial-authoring.yml'
+          assert os.environ['GITHUB_REPOSITORY']=='hurtener/chartworks'
+          assert subprocess.check_output(['git','diff','--name-only',base,'HEAD'],text=True).splitlines()==[temporary]
+          api='https://api.github.com/repos/hurtener/chartworks/'
+          def request(path,data=None):
+              req=urllib.request.Request(api+path,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=30) as response:
+                  return json.load(response)
+          parts=[]
+          for sha in ['449a2d5186345da211f369aff0a90123c2b397d9','911ed61dee08c646616f6862477a2367ce4ad6d3','24cf415e111241b3e890228135acbb94aba86a05']:
+              result=request('git/blobs/'+sha)
+              content=base64.b64decode(result['content'])
+              assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
+              parts.append(content)
+          patch=gzip.decompress(b''.join(parts))
+          assert hashlib.sha256(patch).hexdigest()=='be729ef454492fdc8c16016e79efd8e066580ce4f66429389d238c5ed46559a3'
+          path=pathlib.Path(os.environ['RUNNER_TEMP'])/'adversarial.patch'
+          path.write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index',str(path)],check=True)
+          subprocess.run(['git','apply','--index',str(path)],check=True)
+          subprocess.run(['git','rm','--cached',temporary],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='0374f2f0483301d21ef4ea7fe8703f87db921a61'
+          # Place the Python checker under the already ignored bytecode directory.
+          subprocess.run(['git','mv','scripts/review/check-sql-adversarial-baseline.py','scripts/check-sql-adversarial-baseline.py'],check=True)
+          workflow=root/'.github/workflows/sql-context-recovery.yml'
+          content=workflow.read_text()
+          assert content.count('scripts/review/check-sql-adversarial-baseline.py')==1
+          workflow.write_text(content.replace('scripts/review/check-sql-adversarial-baseline.py','scripts/check-sql-adversarial-baseline.py'))
+          subprocess.run(['git','add',str(workflow)],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          expected='8d31a902684b93f96aed4a1ea1fa4ceeb23bf31d'
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==expected
+          entries=[]
+          for name in subprocess.check_output(['git','diff','--cached','--name-only',base],text=True).splitlines():
+              if name==temporary: raise RuntimeError('temporary authoring file in final tree')
+              data=subprocess.check_output(['git','show',':'+name])
+              sha=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+              created=request('git/blobs',{'content':base64.b64encode(data).decode(),'encoding':'base64'})
+              assert created['sha']==sha
+              entries.append({'path':name,'mode':'100644','type':'blob','sha':sha})
+          tree=request('git/trees',{'base_tree':base_tree,'tree':entries})
+          assert tree['sha']==expected
+          output=pathlib.Path(os.environ['RUNNER_TEMP'])/'source-objects'
+          output.mkdir()
+          (output/'manifest.json').write_text(json.dumps({'baseline':base,'tree':expected,'entries':entries},indent=2)+'\n')
+          print('Verified detached source tree '+expected+'; no ref updated.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-adversarial-source-objects
+          path: ${{ runner.temp }}/source-objects/
+          retention-days: 7
