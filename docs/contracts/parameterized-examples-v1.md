@@ -1,8 +1,8 @@
 # Parameterized learned examples v1
 
-Status: AP-06B implementation checkpoint in PR #62. Integration and native
-qualification are pending until the required-toolchain recovery workflow runs.
-This contract does not authorize SQL or certify generic parameter values.
+Status: AP-06B software implementation in PR #62, recovered from the earlier local
+checkpoint. Exact-head executed evidence and remaining qualification are recorded
+in the PR. This contract does not authorize SQL or certify generic parameter values.
 
 ## Data ownership and lifecycle
 
@@ -51,7 +51,9 @@ the version-two contract. There is no value-bearing import extension.
 
 Ordinary example views still honor SQL-inspection permissions; only safe slot
 metadata is added. Export/import remain protected SQL operations. Public SDK
-aliases expose the typed schema and slots without bypassing the service.
+aliases expose the typed schema and slots without bypassing the service. Existing
+bounded list/export limits are unchanged; typed templates cannot request an
+expanded result set. Acceptance checks valid and over-limit requests separately.
 
 ## Generation and persistence
 
