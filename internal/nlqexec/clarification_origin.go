@@ -65,7 +65,13 @@ func (s *Service) validateClarificationOrigin(ctx context.Context, e identity.En
 	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(incomingSelections.References, retainedSelections.References) || !slices.Equal(incomingSelections.OmittedRoots, retainedSelections.OmittedRoots) || !slices.Equal(incomingSelections.MetricIDs, retainedSelections.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
 		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
 	}
-	if exec.Hash(nlqroute.CloneInterpretationSelections(question.InterpretationSelections)) != exec.Hash(nlqroute.CloneInterpretationSelections(request.InterpretationSelections)) || exec.Hash(nlqroute.CloneInterpretationEdits(question.InterpretationEdits)) != exec.Hash(nlqroute.CloneInterpretationEdits(request.InterpretationEdits)) || (question.InterpretationAnchor != "" && question.InterpretationAnchor != request.InterpretationAnchor) {
+	anchorChanged := question.InterpretationAnchor != "" && question.InterpretationAnchor != request.InterpretationAnchor
+	// A continued pending form already pins its inherited anchor. Omitting it
+	// must not silently re-anchor relative words at a later submission date.
+	if len(request.InterpretationSelections) > 0 && question.InterpretationAnchor != request.InterpretationAnchor {
+		anchorChanged = true
+	}
+	if exec.Hash(nlqroute.CloneInterpretationSelections(question.InterpretationSelections)) != exec.Hash(nlqroute.CloneInterpretationSelections(request.InterpretationSelections)) || exec.Hash(nlqroute.CloneInterpretationEdits(question.InterpretationEdits)) != exec.Hash(nlqroute.CloneInterpretationEdits(request.InterpretationEdits)) || anchorChanged {
 		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
 	}
 	return nil

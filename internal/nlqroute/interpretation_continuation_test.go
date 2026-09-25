@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	readexec "github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/nlq"
@@ -154,5 +155,42 @@ func TestSQLRecoveryInterpretationSelectionCopiesAndBounds(t *testing.T) {
 	}
 	if !reflect.DeepEqual(CloneInterpretationSelections(nil), []InterpretationSelection(nil)) {
 		t.Fatal("legacy nil changed")
+	}
+}
+
+func TestSQLRecoveryContinuationCalendarBoundaries(t *testing.T) {
+	for _, tc := range []struct{ question, anchor, start, end, grain string }{
+		{"last quarter", "2026-01-15", "2025-10-01", "2026-01-01", "quarter"},
+		{"este trimestre", "2024-02-29", "2024-01-01", "2024-04-01", "quarter"},
+		{"this year", "2024-02-29", "2024-01-01", "2025-01-01", "year"},
+		{"año pasado", "2026-09-22", "2025-01-01", "2026-01-01", "year"},
+	} {
+		t.Run(tc.question, func(t *testing.T) {
+			anchor, err := time.Parse("2006-01-02", tc.anchor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, has, err := continuationSpan(normalizedPhrase(tc.question), anchor, parsedSpan{}, false, nil)
+			if err != nil || !has || got.start != tc.start || got.end != tc.end || got.grain != tc.grain {
+				t.Fatal("calendar rollover or leap-year changed interval", got, err)
+			}
+		})
+	}
+	for _, tc := range []struct{ question, anchor string }{
+		{"last year", "0001-01-01"}, {"last quarter", "0001-02-01"},
+		{"this year", "9999-01-01"}, {"this quarter", "9999-12-01"},
+		{"this year last quarter", "2026-09-22"}, {"not last quarter", "2026-09-22"},
+	} {
+		anchor, err := time.Parse("2006-01-02", tc.anchor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, has, err := continuationSpan(normalizedPhrase(tc.question), anchor, parsedSpan{}, false, nil); err == nil || has {
+			t.Fatal("ambiguous, negated or out-of-domain interval admitted", tc)
+		}
+	}
+	anchor, _ := time.Parse("2006-01-02", "2026-09-22")
+	if _, has, err := continuationSpan("last year", anchor, parsedSpan{start: "2025-03-01", end: "2025-04-01", grain: "month"}, true, nil); err == nil || has {
+		t.Fatal("new relative period silently replaced an explicit conflicting date")
 	}
 }

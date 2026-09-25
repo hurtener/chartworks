@@ -492,3 +492,19 @@ The next [interpretation continuity](../contracts/interpretation-continuity-v1.m
 checkpoint implements retained inferred value/calendar state with current admission,
 exact anchor, explicit replacement/removal and replay. It adds no SQL authority or
 private-value echo. Current-checkpoint runtime results remain pending until CI.
+
+
+### S8 integration review checkpoint
+
+At `bb6cf5b`, both toolchains passed 1,660 unit/subtest events (the existing paid
+live-rerank smoke remained skipped). Existing acceptance passed, but the new
+fixture failed publication because `NORTH` and its redundant `north` alias
+normalize to the same reviewed term. The fixture removes only duplicate aliases;
+authoring validation and actual result assertions remain intact. This was not a
+successful new lifecycle run and is not recorded as S8 qualification.
+
+The next correction also checks relative-year/quarter domain bounds, preserves
+explicit versus default saved anchors, and rejects omitted anchors on a continued
+pending form. New regressions exercise real saved-question preparation/execution
+and metadata recovery, not just saved JSON projection. Final current-head runtime
+results remain required before closing the S8 checkbox.

@@ -30,7 +30,7 @@ func interpretationContinuationFixture(t *testing.T) (*phase17Fixture, *nlqexec.
 	}
 	id := pack.Datasets[0].ID
 	pack.Dimensions = []semantics.Dimension{
-		{ID: "region", Name: "Region", Aliases: []string{"región"}, Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: id, ID: "name"}, Role: semantics.DimensionCategorical, Values: []semantics.GovernedValue{{ID: "north", Value: "NORTH", Aliases: []string{"north", "norte"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "synthetic-north", Policy: "review-v1"}}, {ID: "south", Value: "SOUTH", Aliases: []string{"south", "sur"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "synthetic-south", Policy: "review-v1"}}}},
+		{ID: "region", Name: "Region", Aliases: []string{"región"}, Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: id, ID: "name"}, Role: semantics.DimensionCategorical, Values: []semantics.GovernedValue{{ID: "north", Value: "NORTH", Aliases: []string{"norte"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "synthetic-north", Policy: "review-v1"}}, {ID: "south", Value: "SOUTH", Aliases: []string{"sur"}, Sensitivity: semantics.LiteralNonSensitive, Provenance: semantics.ValueProvenance{Kind: "review", Evidence: "synthetic-south", Policy: "review-v1"}}}},
 		{ID: "event_date", Name: "Event date", Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: id, ID: "created_at"}, Role: semantics.DimensionTemporal, Temporal: &semantics.TemporalPolicy{Calendar: "gregorian", Timezone: "UTC", Grains: []semantics.TimeGrain{semantics.GrainMonth, semantics.GrainQuarter, semantics.GrainYear}}},
 	}
 	pub := f.token.envelope(t, f.e.Tenant(), f.e.User(), topicScopes(f.e.Tenant())...)
@@ -186,5 +186,40 @@ func TestSQLRecoveryInterpretationContinuationEditsAcceptance(t *testing.T) {
 	raw, err := json.Marshal(stored.Route.Request.InterpretationSelections)
 	if err != nil || len(raw) == 0 || len(stored.Parameters) != 3 {
 		t.Fatal("durable typed selections/bindings", err)
+	}
+}
+
+func TestSQLRecoverySavedInterpretationContinuationAcceptance(t *testing.T) {
+	f, query := interpretationContinuationFixture(t)
+	ctx := context.Background()
+	pub, err := f.service.Route(ctx, f.e, nlqroute.RouteRequest{Topic: f.pack.Topic, Context: f.context, Locale: nlq.LanguageEnglish, Question: "Revenue north in March 2025", InterpretationAnchor: "2026-09-22", Kinds: []string{"measure"}, LimitPerKind: 1})
+	if err != nil || pub.Interpretation == nil {
+		t.Fatal("reviewed saved intent", err)
+	}
+	for _, anchor := range []string{"", "2026-09-22"} {
+		selection := &nlqexec.SavedSelections{Kinds: []string{"measure"}, LimitPerKind: 1, InterpretationAnchor: anchor, InterpretationSelections: nlqroute.RetainedInterpretationSelections(pub.Interpretation), MetricIDs: []string{"revenue"}}
+		in := nlqexec.SavedQuestion{Durability: "replayable", Context: f.context, Question: "Show reviewed records", Topics: []nlqexec.SavedTopic{{Topic: f.pack.Topic, Version: f.pack.Version, Digest: pub.Interpretation.Pins[0].Digest}}, Selections: selection}
+		evidence, err := query.InspectSaved(ctx, f.e, in)
+		if err != nil {
+			t.Fatal("saved inspect", err)
+		}
+		operation := "continuation-saved-default"
+		if anchor != "" {
+			operation = "continuation-saved-pinned"
+		}
+		planned, err := query.PrepareSaved(ctx, f.e, in, evidence, operation, "en")
+		if err != nil {
+			t.Fatal("saved prepare", anchor, err)
+		}
+		out, err := query.RunSaved(ctx, f.e, in, evidence, planned, 100, 1<<20, false)
+		if err != nil {
+			t.Fatal("saved execute", err)
+		}
+		requireParameterIDs(t, nlqexec.RunResult{Execution: out.Execution}, "1", "6")
+		calls := f.model.requests.Load()
+		recovered, err := query.RecoverSaved(ctx, f.e, in, evidence, operation)
+		if err != nil || recovered.Query != planned.Query || f.model.requests.Load() != calls {
+			t.Fatal("saved recovery reinterpreted or generated", err)
+		}
 	}
 }

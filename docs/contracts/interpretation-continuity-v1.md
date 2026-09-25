@@ -69,3 +69,13 @@ restart, original parent immutability, exact lineage/intervals, saved result pri
 zero-work replay, typed date edits and cross-session denial. Tests must actually run;
 this inventory is not green evidence. General paraphrases, grouping changes,
 new scalar domains and live owner qualification remain separately tracked.
+
+## Anchor and bound review
+
+A pending continuation form pins its inherited anchor: an answer cannot omit that
+anchor to rebase relative words at a later submission date. Replayable saved
+questions may explicitly pin an anchor; when absent, they retain the existing
+per-planning server-anchor behavior instead of comparing an absent request value
+with a generated default. Their explicitly selected civil intervals remain exact.
+Relative year/quarter expansion obeys the same year 1–9999 domain and alignment
+checks as typed periods. Leap-year and year-rollover regressions cover the bounds.

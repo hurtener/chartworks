@@ -81,6 +81,7 @@ func TestSQLRecoveryContinuationCannotBorrowClarificationOrigin(t *testing.T) {
 			q.InterpretationSelections[0].Period.End = "2026-07-01"
 		},
 		func(q *QuestionRequest) { q.InterpretationAnchor = "2026-12-22" },
+		func(q *QuestionRequest) { q.InterpretationAnchor = "" },
 		func(q *QuestionRequest) {
 			q.InterpretationEdits = []nlqroute.InterpretationEdit{{Target: "topic:date:time", Action: "remove"}}
 		},
@@ -118,5 +119,30 @@ func TestSQLRecoveryContinuationConcurrentCopies(t *testing.T) {
 	}
 	if exec.Hash(parent) != before {
 		t.Fatal("shared parent mutated")
+	}
+}
+
+func TestSQLRecoverySavedInterpretationAnchorPolicy(t *testing.T) {
+	for _, pinned := range []bool{false, true} {
+		for _, seeded := range []bool{false, true} {
+			in := savedSelectionFixture()
+			in.Selections = &SavedSelections{}
+			if pinned {
+				in.Selections.InterpretationAnchor = "2026-09-22"
+			}
+			if seeded {
+				in.Selections.InterpretationSelections = []nlqroute.InterpretationSelection{{Topic: "sales", Dimension: "date", Period: &nlqroute.InterpretationPeriod{Start: "2025-03-01", End: "2025-04-01", Grain: "month"}}}
+			}
+			q := QueryRecord{Context: in.Context, Topics: []string{"sales"}, TopicVersions: []string{"v1"}, SQL: "SELECT amount FROM analytics.sales"}
+			q.Route.Request = savedRouting(in, nlq.LanguageEnglish).routeRequest()
+			q.Route.Request.InterpretationAnchor = "2026-09-22" // Server-populated anchor.
+			if !savedRecordMatches(q, in) {
+				t.Fatal("saved anchor semantics rejected exact routing", pinned, seeded)
+			}
+			q.Route.Request.InterpretationAnchor = "2026-10-22"
+			if savedRecordMatches(q, in) == pinned {
+				t.Fatal("explicit anchor and server default were conflated", pinned, seeded)
+			}
+		}
 	}
 }

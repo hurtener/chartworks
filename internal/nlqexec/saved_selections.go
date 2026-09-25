@@ -63,7 +63,10 @@ func savedSelectionsMatch(q QueryRecord, in SavedQuestion) bool {
 	r := q.Route.Request
 	actual := SavedSelections{InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections), InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, OmittedRoots: r.OmittedRoots, Choices: r.Choices,
 		Joins: r.JoinChoices, MetricIDs: r.MetricIDs, Rerank: r.Rerank}
-	if len(r.InterpretationSelections) > 0 {
+	// An explicit saved anchor is pinned. Absence keeps the existing per-plan
+	// server-anchor semantics; it must not compare an absent input to a
+	// generated default or make an otherwise valid saved question unexecutable.
+	if in.Selections != nil && in.Selections.InterpretationAnchor != "" {
 		actual.InterpretationAnchor = r.InterpretationAnchor
 	}
 	var expected SavedSelections

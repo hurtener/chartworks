@@ -267,7 +267,11 @@ func continuationSpan(question string, anchor time.Time, base parsedSpan, has bo
 		return parsedSpan{}, false, ambiguousTemporalSpanError()
 	}
 	if len(expressions) == 1 {
-		return expressions[0], true, nil
+		span := expressions[0]
+		if !(InterpretationPeriod{Start: span.start, End: span.end, Grain: span.grain}).valid() {
+			return parsedSpan{}, false, invalidTemporalSpanError()
+		}
+		return span, true, nil
 	}
 	return base, has, nil
 }
