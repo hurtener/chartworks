@@ -18,7 +18,7 @@ No scope has been discarded and no release or cutover has been approved.
 | Phase | Delivered implementation | Remaining implementation | Qualification still required |
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
-| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1: answer-dependent cross-pattern applicability; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
+| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1 implemented in this checkpoint, integration qualification pending; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
@@ -92,3 +92,21 @@ plans 16, 17, 18, 24 and 34 link here. The existing 34-phase registry and
 224-criterion coverage map retain their established scope/status; AP increments
 are not new numbered phases and do not alter historical acceptance counts.
 Historical checkpoint logs, decisions and named criteria are not overwritten.
+
+## S1 implementation checkpoint — dependent clarification
+
+The evaluator now resolves answer-dependent reference/effect applicability to a
+bounded positive fixed point. Inactive submitted answers cannot seed it; invalid
+or conflicting answers return no partial resolution group. Original choices stay
+separate from derived facts. Reachable typed branches are source-pinned during
+initial preflight so a later controlling answer does not invalidate its own
+answer context. This preflight hint is not retained or accepted from JSON.
+
+New unit/route regressions cover English/Spanish sequential and simultaneous
+answers, exact values, inactive/disabled branches, cycles, defaults, contradiction,
+reference bounds, independent choice provenance, detached concurrent reuse, source
+rotation and canonical pending/accepted replay. Local complete `semantics` and
+`nlqroute` package runs passed on Go 1.27.1. A larger race run is in progress; no
+race or PostgreSQL integration result is claimed yet. Two new real-PostgreSQL
+acceptance tests and exact-name CI requirements are committed with this slice.
+S1 remains unchecked until that exact-source native qualification succeeds.

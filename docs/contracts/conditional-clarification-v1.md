@@ -31,6 +31,39 @@ semantic or physical target are evaluated as a group, including incompatible
 units/time policies and jointly empty scalar intersections. Priority never makes
 one incompatible mandatory policy win.
 
+## Answer-dependent applicability (AP-01 / S1)
+
+The evaluator computes a least positive fixed point from the admitted initial
+facts and question. A successfully parsed reference choice, reviewed default or
+typed effect target in an already active pattern may activate another reviewed
+pattern. It cannot activate a disabled pattern or bootstrap an otherwise inactive
+cycle using supplied answers. An answer that remains inactive after convergence
+is invalid. Active invalid values and incompatible effects remain atomic failures;
+no partial resolutions or executable predicates escape those outcomes.
+
+Applicability facts remain separate from the original selected roots. Resolving
+one choice does not automatically answer another independent choice. Local slot
+prerequisites, reviewed defaults and stable ordering retain their original rules.
+The closure is limited to 128 facts; every changing pass adds a fact. It accepts
+simultaneous parent/dependent answers as well as separate preflight submissions.
+No new model call, authored matcher language or publication rewrite is introduced.
+
+Preflight computes a non-retained over-approximation of reachable reference-choice
+branches solely to decide whether to read the current source binding. A reachable
+future typed predicate is source-pinned before issuing its answer context. This
+hint never adds a selected reference, resolution, constraint or execution grant;
+JSON cannot supply it. Unrelated policies and unseeded cycles do not trigger it.
+Source rotation/revision and current authority checks remain enforced on answers.
+
+Canonical pending and accepted state replays through this same evaluator. A
+historical receipt that omitted a newly reachable requirement must be replanned;
+replay does not silently add that requirement or certify an old incomplete plan.
+Changing a controlling answer requires explicit removal of now-inactive retained
+answers; the unbound base is regenerated and old owned predicates cannot survive.
+Synthetic and real-source coverage is in `clarification_fixedpoint_test.go` and
+`sql_clarification_fixedpoint_test.go`; actual executed evidence is tracked in the
+[completion tracker](../reviews/sql-recovery-completion.md).
+
 ## Declared effects and exact values
 
 Reference choices use only `option_id`, mapped to an exact reviewed semantic

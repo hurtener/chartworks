@@ -193,11 +193,12 @@ type ClarificationSlotOutcome struct {
 // ClarificationEvaluation is atomic with respect to invalid/conflicting input:
 // neither outcome returns partially accepted resolutions or reference choices.
 type ClarificationEvaluation struct {
-	SchemaVersion int                        `json:"schema_version"`
-	Outcome       ClarificationOutcome       `json:"outcome"`
-	Slots         []ClarificationSlotOutcome `json:"slots"`
-	Resolutions   []ClarificationResolution  `json:"resolutions,omitempty"`
-	References    []Reference                `json:"references,omitempty"`
-	Errors        []ClarificationFieldError  `json:"errors,omitempty"`
-	Dispositions  []string                   `json:"dispositions,omitempty"`
+	mayRequireSourceBinding bool
+	SchemaVersion           int                        `json:"schema_version"`
+	Outcome                 ClarificationOutcome       `json:"outcome"`
+	Slots                   []ClarificationSlotOutcome `json:"slots"`
+	Resolutions             []ClarificationResolution  `json:"resolutions,omitempty"`
+	References              []Reference                `json:"references,omitempty"`
+	Errors                  []ClarificationFieldError  `json:"errors,omitempty"`
+	Dispositions            []string                   `json:"dispositions,omitempty"`
 }

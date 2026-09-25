@@ -157,7 +157,7 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 			return &Clarification{Reason: "clarification_" + string(evaluation.Outcome), Outcome: evaluation.Outcome, Questions: evaluation.Slots, Errors: evaluation.Errors}
 		}
 		missing = missing || evaluation.Outcome == semantics.ClarificationMissing
-		needsBinding := false
+		needsBinding := evaluation.MayRequireSourceBinding()
 		for _, state := range evaluation.Slots {
 			if state.Effect != nil && (state.Outcome != semantics.ClarificationNotApplicable || state.Reason == "optional_omitted") {
 				needsBinding = true

@@ -83,9 +83,55 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 		out.Outcome, out.Errors = ClarificationInvalid, errors
 		return out
 	}
+	// Applicability is a positive, bounded fixed point. Only successfully parsed
+	// references from already applicable slots may activate another pattern.
+	// Supplied answers in an inactive pattern are NOT seeds. Defer their
+	// not_applicable errors until the reachable closure has been evaluated.
+	// Keep the original selection separate: applicability facts never become
+	// independent user choices for automatic reference-slot resolution.
+	facts := append([]Reference(nil), input.References...)
+	for pass := 0; pass <= 128; pass++ {
+		out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, false)
+		if out.Outcome == ClarificationInvalid || out.Outcome == ClarificationConflicting {
+			return out
+		}
+		changed := false
+		for _, resolution := range out.Resolutions {
+			ref := resolution.Reference
+			if ref == nil && resolution.Effect != nil {
+				ref = &resolution.Effect.Target
+			}
+			if ref == nil || hasReference(facts, *ref) {
+				continue
+			}
+			if len(facts) >= 128 {
+				out.Outcome, out.Resolutions, out.References = ClarificationInvalid, nil, nil
+				out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "references", "invalid_union")}
+				return out
+			}
+			facts = append(facts, *ref)
+			changed = true
+		}
+		if !changed {
+			out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, true)
+			if out.Outcome != ClarificationInvalid && out.Outcome != ClarificationConflicting {
+				out.mayRequireSourceBinding = possibleClarificationBinding(definition, input, answers)
+			}
+			return out
+		}
+	}
+	// Each changing pass added at least one of the 128 bounded facts. Retain a
+	// defensive terminal outcome rather than returning a partial resolution.
+	out.Outcome, out.Resolutions, out.References = ClarificationInvalid, nil, nil
+	out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "references", "invalid_union")}
+	return out
+}
+
+func resolveClarificationPass(model RuleModel, definition RuleSetDefinition, input ClarificationInput, facts, choiceReferences []Reference, answers map[clarificationKey]ClarificationAnswer, origins map[clarificationKey]string, final bool) ClarificationEvaluation {
+	out := ClarificationEvaluation{SchemaVersion: ClarificationSchemaVersion, Outcome: ClarificationNotApplicable, Slots: []ClarificationSlotOutcome{}}
 	patterns := make([]rankedClarificationPattern, 0, len(definition.Patterns))
 	for _, pattern := range definition.Patterns {
-		active, specificity := matchClarificationPattern(pattern, input.Question, input.References)
+		active, specificity := matchClarificationPattern(pattern, input.Question, facts)
 		required := false
 		for _, slot := range pattern.Slots {
 			required = required || slot.Required
@@ -144,7 +190,7 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 				state.Reason = "reviewed_disabled"
 			}
 			if !active {
-				if supplied {
+				if supplied && final {
 					field := clarificationError(input.Locale, "value", "not_applicable")
 					annotateClarificationError(field, definition.Topic, pattern.ID, slot.ID)
 					state.Outcome, state.Errors = ClarificationInvalid, []ClarificationFieldError{*field}
