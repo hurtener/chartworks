@@ -1,0 +1,60 @@
+name: Parameter edit SDK checkpoint
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/parameter-edit-sdk-author.yml]
+permissions:
+  contents: write
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact consumer patch and publish source objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os, pathlib, subprocess, urllib.request
+          repo='hurtener/chartworks';base='7eec0f3a0aaa7562a6fcc9359e29d41973ef8441'
+          tree='bf457f9a0d278c32d2a13aacea054bf9fd005d82'
+          workflow='.github/workflows/parameter-edit-sdk-author.yml'
+          allowed={'.github/workflows/sql-context-recovery.yml','docs/contracts/refinement-parameter-edits-v1.md','docs/reviews/sql-context-recovery.md','sdk/chartworks/nlq.go','sdk/chartworks/nlq_parameter_edits_test.go'}
+          def git(*args): return subprocess.check_output(['git',*args])
+          def api(path,body=None):
+              data=None if body is None else json.dumps(body).encode()
+              request=urllib.request.Request('https://api.github.com/repos/'+repo+'/'+path,data=data,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(request,timeout=60) as response: return json.load(response)
+          assert git('rev-parse','HEAD^').decode().strip()==base
+          response=api('git/blobs/b9f686c66a0d0bca58d7039f97e40c2339c19fc2');assert response['encoding']=='base64'
+          compressed=base64.b64decode(response['content'])
+          assert hashlib.sha1(b'blob '+str(len(compressed)).encode()+b'\0'+compressed).hexdigest()=='b9f686c66a0d0bca58d7039f97e40c2339c19fc2'
+          patch=gzip.decompress(compressed)
+          assert hashlib.sha256(patch).hexdigest()=='e9e717a608b98cedb5e0e5b262851738f8e7071a0e74c956683b24d4bf9ce8ce'
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'parameter-edit-sdk';out.mkdir()
+          target=out/'sdk-checkpoint.patch';target.write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index',str(target)],check=True)
+          subprocess.run(['git','apply','--index',str(target)],check=True)
+          subprocess.run(['git','rm','--',workflow],check=True)
+          assert git('write-tree').decode().strip()==tree
+          paths=set(git('diff','--cached','--name-only',base).decode().splitlines());assert paths==allowed
+          entries=[]
+          for path in sorted(paths):
+              meta=git('ls-files','--stage','--',path).decode().split();mode,sha=meta[0],meta[1]
+              assert mode in ('100644','100755')
+              raw=git('show',':'+path)
+              if not path.startswith('.github/'):
+                  made=api('git/blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'});assert made['sha']==sha
+              entries.append({'path':path,'mode':mode,'type':'blob','sha':sha})
+          (out/'manifest.json').write_text(json.dumps({'base':base,'tree':tree,'entries':entries},indent=2)+'\n')
+          print('Verified exact reviewed SDK tree',tree)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parameter-edit-sdk-objects
+          path: ${{ runner.temp }}/parameter-edit-sdk
+          retention-days: 7
