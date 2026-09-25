@@ -78,6 +78,16 @@ type NLQReferenceEdit = nlqexec.ReferenceEdit
 // NLQMetricEdit adds, replaces, or removes one exact retained metric pin.
 type NLQMetricEdit = nlqexec.MetricEdit
 
+// NLQInterpretationSelection retains an exact reviewed value or calendar interval.
+// It grants no source reach; the current router resolves all coordinates again.
+type NLQInterpretationSelection = nlqroute.InterpretationSelection
+
+// NLQInterpretationPeriod is a civil half-open interval under reviewed policy.
+type NLQInterpretationPeriod = nlqroute.InterpretationPeriod
+
+// NLQInterpretationEdit removes/replaces a current inferred target.
+type NLQInterpretationEdit = nlqroute.InterpretationEdit
+
 // NLQFeedbackRequest records a bounded review of one planned query.
 type NLQFeedbackRequest = nlqexec.FeedbackRequest
 

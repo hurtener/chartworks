@@ -17,11 +17,11 @@ baseline is `ea38c07`; the P0/P1 review is not full implementation/parity closur
 | Phase | Delivered implementation | Remaining implementation | Qualification still required |
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
-| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1 implemented in this checkpoint, integration qualification pending; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
+| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1 qualified at 6273c80; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
-| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody; explicit same-kind parameter replacement; public SDK | S8: inferred scalar/time inheritance and explicit replacement/removal; S9: grouping changes and broader native role proof | Multi-turn EN/ES business journeys, restart/replay and language quality |
+| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody; explicit same-kind parameter replacement; public SDK | S8 implemented for resolved governed values/calendar intervals; current checkpoint qualification pending; S9: grouping changes and broader native role proof | Multi-turn EN/ES business journeys, restart/replay and language quality |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
 | AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |
@@ -477,3 +477,18 @@ admission. The consumer now recognizes only stopped terminal query-error receipt
 without rows; it preserves the same single-correction budget, rejects uncertain
 states and finalizes retained-context preparation failures. No native or executor
 interface is weakened. Exact rerun evidence belongs to the final reviewed head.
+
+
+## S1 qualification and S8 continuation checkpoint
+
+S1's exact head `6273c80` passed standard CI 36168685672 and recovery 36168685555:
+1,647 unit/subtest passes and 193 native/PostgreSQL acceptance passes on each
+supported Go version. Both final artifact logs were independently parsed; no new
+test skipped. The existing opt-in paid reranker remains unqualified. This closes
+S1, not S2 or the rest of the AP-01 phase. Historical sections above retain their
+original dates/status snapshots.
+
+The next [interpretation continuity](../contracts/interpretation-continuity-v1.md)
+checkpoint implements retained inferred value/calendar state with current admission,
+exact anchor, explicit replacement/removal and replay. It adds no SQL authority or
+private-value echo. Current-checkpoint runtime results remain pending until CI.

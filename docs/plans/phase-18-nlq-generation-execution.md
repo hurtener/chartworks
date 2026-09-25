@@ -362,3 +362,15 @@ proofs and the one-correction policy remain independent and unchanged.
 Required regression tests include real PostgreSQL failure/cancellation edges and
 separate exact-baseline assertion failures. Unknown or unavailable metadata still
 cannot be claimed successfully persisted. The PR records actual current-head gates.
+
+
+## Retained inferred interpretation (S8)
+
+The [interpretation continuity contract](../contracts/interpretation-continuity-v1.md)
+extends the existing router and Refine consumer with detached reviewed value IDs
+and exact half-open calendar selections. Source/semantic admission and parent
+lineage still precede inheritance. Fresh recognized dimension intent replaces its
+old value; explicit value/time edits support replacement/removal. Replay and saved
+routing retain anchors and selections. General grouping edits, wider language and
+owner qualification are separate requirements. The canonical completion tracker
+records actual tests; implementation text alone is not a passed integration gate.

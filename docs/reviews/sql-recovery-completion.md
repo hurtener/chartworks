@@ -1,7 +1,8 @@
 # SQL recovery — completion tracker
 
 PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Last qualified tree: `87b93e15a03a15c194575ba2b6fbe2207033d1a2`.
+Latest qualified implementation: `6273c80d677dfb6c396d3747422c5001b93ea2c0`;
+qualified tree: `9c4c21575bb9d82f1187d8db746043908c9f2d18`.
 Updated 2026-09-25. This is the current AP-00–AP-08 tracker. Historical
 checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
 at its stated revision, not the current completion status.
@@ -18,11 +19,11 @@ No scope has been discarded and no release or cutover has been approved.
 | Phase | Delivered implementation | Remaining implementation | Qualification still required |
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
-| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1 implemented in this checkpoint, integration qualification pending; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
+| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1 qualified at 6273c80; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
-| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody; explicit same-kind parameter replacement; public SDK | S8: inferred scalar/time inheritance and explicit replacement/removal; S9: grouping changes and broader native role proof | Multi-turn EN/ES business journeys, restart/replay and language quality |
+| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody; explicit same-kind parameter replacement; public SDK | S8 implemented for resolved governed values/calendar intervals; current checkpoint qualification pending; S9: grouping changes and broader native role proof | Multi-turn EN/ES business journeys, restart/replay and language quality |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
 | AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |
@@ -34,7 +35,7 @@ closes only with implemented consumers, negative tests, applicable persistence a
 surface behavior, and exact-source executed evidence. Narrow delivered subsets
 remain described explicitly; they do not close the parent requirement.
 
-- [ ] S1 — Answer-dependent cross-pattern applicability, fixed-point convergence,
+- [x] S1 — Answer-dependent cross-pattern applicability, fixed-point convergence,
   inactive answers, contradiction/cycle bounds and deterministic replay.
 - [ ] S2 — Free-text paraphrase selection grounded in authorized reviewed concepts,
   confidence/ambiguity handling, complete closure and no incidental-root promotion.
@@ -105,8 +106,21 @@ answer context. This preflight hint is not retained or accepted from JSON.
 New unit/route regressions cover English/Spanish sequential and simultaneous
 answers, exact values, inactive/disabled branches, cycles, defaults, contradiction,
 reference bounds, independent choice provenance, detached concurrent reuse, source
-rotation and canonical pending/accepted replay. Local complete `semantics` and
-`nlqroute` package runs passed on Go 1.27.1. A larger race run is in progress; no
-race or PostgreSQL integration result is claimed yet. Two new real-PostgreSQL
-acceptance tests and exact-name CI requirements are committed with this slice.
-S1 remains unchecked until that exact-source native qualification succeeds.
+rotation and canonical pending/accepted replay. S1 qualification completed on the exact published tree: standard CI run
+36168685672 and recovery run 36168685555 passed. Both Go 1.26.4 and 1.27.1
+artifacts were downloaded and their JSON terminal events parsed: 1,647 passing
+unit/subtest events and 193 passing acceptance events per toolchain, with no
+failures or acceptance skips. The sole unit skip is the existing opt-in paid
+reranker. All ten required S1 unit tests and both new PostgreSQL lifecycle/invalid
+acceptance tests passed. Recorded model responses are not live quality evidence.
+
+## S8 implementation checkpoint — retained inferred intent
+
+[Interpretation continuity v1](../contracts/interpretation-continuity-v1.md) makes
+resolved reviewed value IDs/operators and exact calendar intervals durable through
+abbreviated refinements. The current router re-resolves all fields and owned
+predicates; source/parent authority is unchanged. New recognized language replaces
+the same dimension; explicit edits can remove/replace values or intervals. The
+original anchor is retained and current/retained requests replay deterministically.
+SDK and saved/clarification-origin paths use the same request contract. S8 remains
+unchecked until this checkpoint's native and surface qualification succeeds.

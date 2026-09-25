@@ -164,3 +164,15 @@ capacity with byte and operation bounds still enforced. Required semantics and
 full reviewed relation scope remain unchanged, and repair resolves its own role.
 Actual packet-use and estimated per-attempt envelope evidence are distinct from
 reported tokens and live qualification. Retained objects are not reinterpreted.
+
+
+## Retained inferred interpretation (S8)
+
+The [interpretation continuity contract](../contracts/interpretation-continuity-v1.md)
+extends the existing router and Refine consumer with detached reviewed value IDs
+and exact half-open calendar selections. Source/semantic admission and parent
+lineage still precede inheritance. Fresh recognized dimension intent replaces its
+old value; explicit value/time edits support replacement/removal. Replay and saved
+routing retain anchors and selections. General grouping edits, wider language and
+owner qualification are separate requirements. The canonical completion tracker
+records actual tests; implementation text alone is not a passed integration gate.

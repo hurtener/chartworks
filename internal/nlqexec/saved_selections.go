@@ -14,15 +14,18 @@ import (
 // source bindings or authority. The existing router resolves every choice
 // against the pinned/current reviewed semantic definitions before generation.
 type SavedSelections struct {
-	Templates    []rulesets.TemplateSelection `json:"templates,omitempty"`
-	Kinds        []string                     `json:"kinds,omitempty"`
-	LimitPerKind int                          `json:"limit_per_kind,omitempty"`
-	References   []semantics.Reference        `json:"references,omitempty"`
-	OmittedRoots []semantics.Reference        `json:"omitted_roots,omitempty"`
-	Choices      []nlqroute.ChoiceSelection   `json:"choices,omitempty"`
-	Joins        []nlqroute.JoinChoice        `json:"joins,omitempty"`
-	MetricIDs    []string                     `json:"metric_ids,omitempty"`
-	Rerank       bool                         `json:"rerank,omitempty"`
+	InterpretationAnchor     string                             `json:"interpretation_anchor,omitempty"`
+	InterpretationSelections []nlqroute.InterpretationSelection `json:"interpretation_selections,omitempty"`
+	InterpretationEdits      []nlqroute.InterpretationEdit      `json:"interpretation_edits,omitempty"`
+	Templates                []rulesets.TemplateSelection       `json:"templates,omitempty"`
+	Kinds                    []string                           `json:"kinds,omitempty"`
+	LimitPerKind             int                                `json:"limit_per_kind,omitempty"`
+	References               []semantics.Reference              `json:"references,omitempty"`
+	OmittedRoots             []semantics.Reference              `json:"omitted_roots,omitempty"`
+	Choices                  []nlqroute.ChoiceSelection         `json:"choices,omitempty"`
+	Joins                    []nlqroute.JoinChoice              `json:"joins,omitempty"`
+	MetricIDs                []string                           `json:"metric_ids,omitempty"`
+	Rerank                   bool                               `json:"rerank,omitempty"`
 }
 
 func savedRouting(in SavedQuestion, language nlq.Language) QuestionRequest {
@@ -32,6 +35,9 @@ func savedRouting(in SavedQuestion, language nlq.Language) QuestionRequest {
 	}
 	if in.Selections != nil {
 		s := in.Selections
+		q.InterpretationAnchor = s.InterpretationAnchor
+		q.InterpretationSelections = nlqroute.CloneInterpretationSelections(s.InterpretationSelections)
+		q.InterpretationEdits = nlqroute.CloneInterpretationEdits(s.InterpretationEdits)
 		q.Templates = slices.Clone(s.Templates)
 		q.Kinds, q.LimitPerKind = slices.Clone(s.Kinds), s.LimitPerKind
 		q.References, q.Choices = slices.Clone(s.References), slices.Clone(s.Choices)
@@ -55,8 +61,11 @@ func savedSelectionsMatch(q QueryRecord, in SavedQuestion) bool {
 		return true
 	}
 	r := q.Route.Request
-	actual := SavedSelections{Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, OmittedRoots: r.OmittedRoots, Choices: r.Choices,
+	actual := SavedSelections{InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections), InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, OmittedRoots: r.OmittedRoots, Choices: r.Choices,
 		Joins: r.JoinChoices, MetricIDs: r.MetricIDs, Rerank: r.Rerank}
+	if len(r.InterpretationSelections) > 0 {
+		actual.InterpretationAnchor = r.InterpretationAnchor
+	}
 	var expected SavedSelections
 	if in.Selections != nil {
 		expected = *in.Selections

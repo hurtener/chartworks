@@ -124,8 +124,9 @@ type RouteRequest struct {
 	Rerank       bool                  `json:"rerank,omitempty"`
 	// InterpretationAnchor pins relative and month-only temporal language. An
 	// omitted anchor is set by the server and retained in Request for replay.
-	InterpretationAnchor string               `json:"interpretation_anchor,omitempty"`
-	InterpretationEdits  []InterpretationEdit `json:"interpretation_edits,omitempty"`
+	InterpretationAnchor     string                    `json:"interpretation_anchor,omitempty"`
+	InterpretationEdits      []InterpretationEdit      `json:"interpretation_edits,omitempty"`
+	InterpretationSelections []InterpretationSelection `json:"interpretation_selections,omitempty"`
 }
 
 // ClarificationChoice is a detached presentation choice. It is not authority
@@ -791,6 +792,9 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 	}
+	if !validateInterpretationSelections(in.InterpretationSelections) {
+		return nil, ErrInvalid
+	}
 	seenEdits := map[string]bool{}
 	for _, edit := range in.InterpretationEdits {
 		if !edit.valid() || seenEdits[edit.Target] {
@@ -813,7 +817,8 @@ func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out.JoinChoices = append([]JoinChoice(nil), in.JoinChoices...)
 	out.MetricIDs = append([]string(nil), in.MetricIDs...)
 	out.Examples = append([]nlq.OptionalItem(nil), in.Examples...)
-	out.InterpretationEdits = append([]InterpretationEdit(nil), in.InterpretationEdits...)
+	out.InterpretationEdits = CloneInterpretationEdits(in.InterpretationEdits)
+	out.InterpretationSelections = CloneInterpretationSelections(in.InterpretationSelections)
 	for i := range out.Examples {
 		if out.Examples[i].Confidence != nil {
 			confidence := *out.Examples[i].Confidence
