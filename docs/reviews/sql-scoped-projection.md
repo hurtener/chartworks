@@ -63,3 +63,13 @@ complete resulting tree. Formatting and validation are read-only; errors are fix
 in commits, never by rewriting tested source in CI. No new migration, action scope,
 public operation or analytical proof version is introduced. Owner/live quality,
 minimal join-aware projection and the other AP-00–AP-08 obligations remain open.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

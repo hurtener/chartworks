@@ -10,7 +10,7 @@ qualification are separate evidence states. Nothing here declares full parity.
 The [completion tracker](sql-recovery-completion.md) controls the current
 AP-00–AP-08 status and the finite S1–S12/Q1–Q3 backlog. All phases have delivered
 increments, but the overall recovery remains **in progress**. The latest qualified
-runtime is `93539cc` (S1 and S8 delivered in their declared scope). The historical
+runtime is `996db06` (S1/S8 and the S9 grouping slice qualified in their declared scopes). The historical
 `ea38c07` P0/P1 review is not full implementation/parity closure.
 
 ## Phase status
@@ -22,7 +22,7 @@ runtime is `93539cc` (S1 and S8 delivered in their declared scope). The historic
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
-| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc | S9: grouping changes and broader native role proof | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
+| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 remainder: wider native parameter-role proof for required complex query shapes | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
 | AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |
@@ -534,3 +534,36 @@ provider call or source execution is added to that pending read. See the current
 [completion tracker](sql-recovery-completion.md) and
 [grouping contract](../contracts/grouping-continuity-v1.md) for scope and evidence;
 full S9 remains open until its wider parameter-role obligations are implemented.
+
+
+## Qualified S9 grouping slice — pending-refinement boundary closed
+
+Runtime `996db063d214ae086f4fe4383028348abe9d7282`, tree
+`56f8d6ad5cdffad092b1df86b85679b6ded12a77`, passed standard
+[CI 36240900999](https://github.com/hurtener/chartworks/actions/runs/36240900999)
+and [recovery 36240901003](https://github.com/hurtener/chartworks/actions/runs/36240901003).
+Each Go 1.26.4/1.27.1 job records 1,708 passing unit/subtest events across 20
+packages and 207 passing PostgreSQL/native acceptance events. No failure or
+acceptance skip occurred; the existing paid live-rerank smoke is the sole opt-in
+unit skip. All 16 grouping/pending unit/SDK tests and four S9 acceptance tests
+passed. Toolchains repeat scenarios; counts are not additive coverage.
+
+The previously failing 799eeb1 pending private-answer/group-change case now passes.
+A strictly unplanned form resolves current reviewed scope before original-form
+replay; it does not borrow the executable-query scope fallback. Planned records
+still require nonempty exact scope. Tests reject executable evidence on a pending
+form, action/session/context/source drift, cancelled work, unplanned Run and a
+changed stateless Plan submission. The source pending form remains immutable.
+
+The broader S9 implementation now has integrated evidence for reviewed EN/ES
+replacement and inheritance, exact scalar totals, calendar reselection after a
+total, S8 value/time independence, private parameter roles and owned predicates,
+managed saved questions, immutable versions and zero-work terminal replay.
+No join/nested/window parameter-role capability was added. **S9 remains open for
+those required broader roles**, and the remaining S2-S7/S10-S12/Q1-Q3 obligations
+are unchanged. Recorded fixtures do not establish live model/owner/engine parity.
+
+Publishing transport/checksum failures remain infrastructure failures, not runtime
+passes. All temporary authoring files are excluded from this runtime tree. Local
+formatting/diff/planning checks passed; missing modules prevented local native Go
+compilation, so all full runtime qualification above is from Actions.

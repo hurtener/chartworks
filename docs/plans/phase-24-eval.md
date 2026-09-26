@@ -103,3 +103,13 @@ semantic-republication cases. The real PostgreSQL service journey inspects the
 persisted canonical route and fail-closed session/context/publication outcomes.
 This closes the fixture/runtime disposition; live calibrated comparison remains
 Phase 34/25 evidence.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

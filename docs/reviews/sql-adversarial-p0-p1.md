@@ -195,3 +195,13 @@ and absent replay rows. It is not a test-only fake failure.
 All new cases are part of exact-baseline expected-red reproduction and required
 current-head test checks. Earlier failed runs remain failed evidence. The final PR
 summary records observed qualification, not a promise of complete release parity.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

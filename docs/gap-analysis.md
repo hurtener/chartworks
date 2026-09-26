@@ -1139,3 +1139,13 @@ The repository coverage map is linked here for traceability only. No mapping alo
 ## Review disposition
 
 The canonical document incorporates the original 26 finding records, the three dated REP refresh findings (29 tracked findings total), the full 63-feature ledger, the 12 explicit expansion frontiers, and the neutral clarification/underspecification, chart-breadth, semantic/context and reporting refreshes. Source-side evidence is represented only by abstract IDs. The current rebaseline above supersedes dated status prose below; it changes documentation only and is not a live parity or release claim.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

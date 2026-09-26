@@ -1,7 +1,7 @@
 # Grouping continuity v1 (S9)
 
-Status: implementation checkpoint in PR #62; runtime qualification is tracked by
-exact committed-source evidence. Extends phases 17/18 and the existing
+Status: grouping and pending-refinement slice qualified at `996db06` in PR #62.
+Broader S9 native parameter roles remain open; exact evidence is in the tracker. Extends phases 17/18 and the existing
 [interpretation continuity](interpretation-continuity-v1.md),
 [analytical grouping](analytical-grain-v2.md) and
 [calendar grouping](analytical-calendar-v3.md) contracts.
@@ -125,3 +125,13 @@ existing authorized Refine path owns the interpretation change.
 Regression qualification is recorded against the exact published source, including
 actual pending-form answer/refinement and rejected unplanned Run. This subsection
 records behavior and bounds, not a claim that an unexecuted checkpoint is green.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

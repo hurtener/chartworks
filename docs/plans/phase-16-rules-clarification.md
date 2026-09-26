@@ -127,3 +127,13 @@ rechecking the caller's current source/context reach. Reporting capture and
 migration-040 regressions cover template provenance removal/recapture and
 populated legacy revision shapes. The executed boundary and remaining human/live
 calibration are recorded in [the EXP-05 review](../reviews/exp05-rule-interactions.md).
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

@@ -119,3 +119,13 @@ The existing Pengui provider bearer serialization is now consumed by phases03/04
 Standing risks remain dialect safety, complete dependency manifests, unsafe artifact-context reuse, retry reference/window drift, private previews, exact numeric values and overstated external atomicity. Their later real-adapter tests remain required. D-059–D-061 record the implemented authority decisions without weakening those obligations.
 
 Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](../contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.
