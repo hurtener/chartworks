@@ -138,7 +138,7 @@ func TestSQLRecoveryConfirmedJoinProjectionAcceptance(t *testing.T) {
 			metadata := support.Raw(t, f.f.dsn)
 			calls, attempts := f.model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 			requireScopedProjectionIDs(t, f.run(t, p, 2, false), 1, "1", "2")
-			if calls != f.model.requests.Load() || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != attempts {
+			if calls != f.model.requests.Load() || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
 				t.Fatal("replay repeated work")
 			}
 		})
