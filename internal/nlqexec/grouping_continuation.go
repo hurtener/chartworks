@@ -24,10 +24,21 @@ func retainGrouping(ctx context.Context, old QueryRecord, parent admission, cons
 		return err
 	}
 	if old.SQL == "" {
-		question.Grouping = nlqroute.CloneGrouping(old.Route.Request.Grouping)
-		if delta.Grouping != nil {
-			question.Grouping = nlqroute.CloneGrouping(delta.Grouping)
+		// Pending forms have no analytical SQL proof yet. Their protected
+		// logical request can still be replaced by a new complete question;
+		// otherwise a stale explicit set would override its recognized words.
+		selected := nlqroute.CloneGrouping(delta.Grouping)
+		if selected == nil && delta.Question != "" && delta.Question != old.Question {
+			var err error
+			selected, err = groupingFromQuestion(ctx, parent, question, old.Route.Request.Grouping != nil)
+			if err != nil {
+				return err
+			}
 		}
+		if selected == nil {
+			selected = nlqroute.CloneGrouping(old.Route.Request.Grouping)
+		}
+		question.Grouping = selected
 		return nil
 	}
 	prior, err := expectedAnalytical(ctx, old, parent, constraints)
@@ -86,7 +97,18 @@ func retainGrouping(ctx context.Context, old QueryRecord, parent admission, cons
 // *candidates*. Those candidates are never installed as selected rule facts.
 // Only its resolved grouping keys are sent to normal authorized routing.
 func groupingFromQuestion(ctx context.Context, parent admission, q *QuestionRequest, requireResolved bool) (*nlqroute.GroupingSelection, error) {
-	words := grainWords(semantics.RedactClarificationText(q.Question, q.Answers, parent.route.Resolutions))
+	redactions := semantics.CloneClarificationResolutions(parent.route.Resolutions)
+	// A still-pending scalar has not acquired a resolution/sensitivity record
+	// yet. Its spelling is value data, not grouping syntax. Redact all submitted
+	// scalar spellings for this local recognizer without changing stored answers
+	// or promoting these temporary descriptors into resolved rule facts.
+	for _, answer := range q.Answers {
+		if answer.Value != nil && answer.Value.OptionID == "" {
+			redactions = append(redactions, semantics.ClarificationResolution{Topic: answer.Topic, Pattern: answer.Pattern, Slot: answer.Slot, Sensitivity: semantics.LiteralSensitive})
+		}
+	}
+	text := semantics.RedactClarificationText(q.Question, q.Answers, redactions)
+	words := grainWords(text)
 	switch strings.Join(words, " ") {
 	case "total", "grand total", "overall total", "total general", "sin agrupar", "without grouping", "no grouping":
 		return &nlqroute.GroupingSelection{Policy: nlqroute.GroupingPolicy, Keys: []nlqroute.GroupingKey{}}, nil
@@ -97,6 +119,7 @@ func groupingFromQuestion(ctx context.Context, parent admission, q *QuestionRequ
 	candidate := parent
 	candidate.route = parent.route
 	candidate.route.Request = q.routeRequest()
+	candidate.route.Request.Question = text
 	candidate.route.Selection = &nlqroute.SemanticSelection{}
 	for _, publication := range parent.publications {
 		def := publication.Definition

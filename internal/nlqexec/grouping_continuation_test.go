@@ -201,3 +201,28 @@ func TestSQLRecoveryGroupingSharedFieldKeepsCalendarIdentity(t *testing.T) {
 		t.Fatal("verified grouping expanded into an unintended cross-product", q.Grouping, err)
 	}
 }
+
+func TestSQLRecoveryGroupingPendingReplacementKeepsScalarDataSeparate(t *testing.T) {
+	a := grainAdmission("Revenue by Region")
+	group := &nlqroute.GroupingSelection{Policy: nlqroute.GroupingPolicy, Keys: []nlqroute.GroupingKey{{Topic: "sales_topic", Dimension: "region"}}}
+	a.route.Request.Grouping = group
+	old := QueryRecord{Status: "preflight", Question: "Revenue by Region", Route: a.route}
+	delta := QuestionRequest{Question: "Revenue by Order"}
+	q := refinementQuestion(old, delta)
+	if err := retainGrouping(context.Background(), old, a, nil, delta, &q); err != nil || q.Grouping == nil || len(q.Grouping.Keys) != 1 || q.Grouping.Keys[0].Dimension != "order" {
+		t.Fatal("pending explicit group overrode the new reviewed question", q.Grouping, err)
+	}
+	value := "by Order"
+	delta = QuestionRequest{Question: "Revenue for customer by Order", Answers: []semantics.ClarificationAnswer{{Topic: "sales_topic", Pattern: "customer", Slot: "name", Value: &semantics.ClarificationValue{Text: &value}}}}
+	q = refinementQuestion(old, delta)
+	before := exec.Hash([]any{old, a.route, q})
+	if got, err := groupingFromQuestion(context.Background(), a, &q, true); err != nil || got != nil {
+		t.Fatal("unresolved scalar spelling became a grouping", got, err)
+	}
+	if exec.Hash([]any{old, a.route, q}) != before {
+		t.Fatal("temporary redaction mutated request or parent")
+	}
+	if err := retainGrouping(context.Background(), old, a, nil, delta, &q); err != nil || !reflect.DeepEqual(q.Grouping, group) {
+		t.Fatal("scalar text changed inherited pending group", err)
+	}
+}

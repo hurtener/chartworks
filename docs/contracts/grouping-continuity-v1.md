@@ -100,3 +100,9 @@ an explicit logical set resolves the ambiguity. Tests
 cover that shared-field case, independently changed inferred values/periods,
 period removal with calendar grouping intact, and managed saved grouping questions
 through inspect/prepare/execute/recover with mismatch rejection.
+
+Pending forms also allow an authorized Refine question to replace their prior
+explicit grouping. A supplied but not-yet-resolved scalar is masked before this
+local recognition, even though it does not yet have a sensitivity resolution.
+Those ephemeral redaction descriptors never become resolved answers or rule facts.
+The ordinary pending-origin and current reviewed answer checks still run.

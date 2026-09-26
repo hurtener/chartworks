@@ -205,6 +205,20 @@ func TestSQLRecoveryGroupingPrivateBindingsAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	groupingSums(t, out, "5", "10")
+	// An unresolved preflight with an explicit record grouping must not force
+	// that old set over a new reviewed status-group phrase during answer/refine.
+	q = f.question("Revenue named sales by Record", nlq.LanguageEnglish)
+	q.Grouping = groupingState(f, "record")
+	pending = f.preflight(t, q)
+	resumed, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: pending.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Revenue named sales by Status", Answers: []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}}})
+	if err != nil || resumed.Route.Request.Grouping == nil || len(resumed.Route.Request.Grouping.Keys) != 1 || resumed.Route.Request.Grouping.Keys[0].Dimension != "status" || resumed.Bindings == nil {
+		t.Fatal("pending answer/refine retained obsolete group", err)
+	}
+	out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: resumed.QueryID, Operation: resumed.QueryID + "-run"})
+	if err != nil {
+		t.Fatal("pending grouped result", err)
+	}
+	groupingSums(t, out, "5", "10")
 }
 
 func TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance(t *testing.T) {
