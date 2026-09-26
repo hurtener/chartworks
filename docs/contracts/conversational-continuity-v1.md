@@ -59,3 +59,20 @@ old value; explicit value/time edits support replacement/removal. Replay and sav
 routing retain anchors and selections. General grouping edits, wider language and
 owner qualification are separate requirements. The canonical completion tracker
 records actual tests; implementation text alone is not a passed integration gate.
+
+
+### Current S8 qualification and retained boundaries
+
+[Interpretation continuity](interpretation-continuity-v1.md) is qualified at
+`93539cc` for reviewed non-sensitive governed values and exact calendar intervals,
+including multi-turn replacement/removal and an explicitly empty continuation.
+The parser marker survives removal of all filters; legacy absence preserves its
+old parsing semantics. An empty carried form no longer supplies an unrelated
+answer pin, while actual answers and explicit mismatched pins remain fenced.
+
+The earlier parameter-only and catalog-root increments did not themselves supply
+this inheritance. This S8 result adds it without backfilling old records or widening
+private model-parameter edits. S9 owns the remaining grouping/role changes; S2 and
+Q1–Q3 own broader language and actual parity qualification. The
+[completion tracker](../reviews/sql-recovery-completion.md) is the single status
+source. No numbered-phase or historical acceptance status is replaced here.

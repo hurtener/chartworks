@@ -9,19 +9,20 @@ qualification are separate evidence states. Nothing here declares full parity.
 
 The [completion tracker](sql-recovery-completion.md) controls the current
 AP-00–AP-08 status and the finite S1–S12/Q1–Q3 backlog. All phases have delivered
-increments, but the overall recovery remains **in progress**. The last qualified
-baseline is `ea38c07`; the P0/P1 review is not full implementation/parity closure.
+increments, but the overall recovery remains **in progress**. The latest qualified
+runtime is `93539cc` (S1 and S8 delivered in their declared scope). The historical
+`ea38c07` P0/P1 review is not full implementation/parity closure.
 
 ## Phase status
 
 | Phase | Delivered implementation | Remaining implementation | Qualification still required |
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
-| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1 qualified at 6273c80; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
+| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
-| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody; explicit same-kind parameter replacement; public SDK | S8 implemented for resolved governed values/calendar intervals; current checkpoint qualification pending; S9: grouping changes and broader native role proof | Multi-turn EN/ES business journeys, restart/replay and language quality |
+| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc | S9: grouping changes and broader native role proof | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
 | AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |

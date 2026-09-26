@@ -1,7 +1,7 @@
 # Retained inferred values and time windows
 
-Status: S8 implementation checkpoint in PR #62. Exact runtime qualification is
-recorded in the completion tracker. This extends existing deterministic value/time
+Status: S8 qualified at `93539cc` in PR #62. Exact Go 1.26.4/1.27.1 runtime
+evidence and the remaining program backlog are in the completion tracker. This extends existing deterministic value/time
 interpretation, typed business binding and parent lineage; it is not a second SQL
 executor, an authority snapshot or unrestricted conversation interpretation.
 
@@ -64,7 +64,7 @@ fields retain historical wire and replay behavior.
 The new unit/SDK fixtures cover exact dates/anchors, eq/ne coexistence, replacement,
 removal, re-selection, cloned intervals, invalid unions and ranges, sensitive/foreign
 IDs, source rotation, replay substitution, cancellation and saved-state forwarding.
-The two PostgreSQL/recorded-provider acceptance tests cover EN/ES multi-turn results,
+The three PostgreSQL/recorded-provider acceptance tests cover EN/ES multi-turn results,
 restart, original parent immutability, exact lineage/intervals, saved result privacy,
 zero-work replay, typed date edits and cross-session denial. Tests must actually run;
 this inventory is not green evidence. General paraphrases, grouping changes,
@@ -108,3 +108,13 @@ Replayed interpretation digests bind the parser version. Non-sensitive reviewed
 value IDs, exact civil intervals and current source rules remain the only retained
 interpretation inputs. This does not expand grouping inference or private model
 parameter language beyond its existing safety contract.
+
+
+## Qualification boundary
+
+The full current S8 acceptance and review record is the
+[completion tracker](../reviews/sql-recovery-completion.md#s8-qualified-result--governed-values-and-calendar-continuation).
+Both toolchains passed the three real PostgreSQL/recorded-provider acceptance
+tests, including empty-state removal/reselection, source/session rejection,
+saved anchors and zero-work replay. General language comprehension, grouping
+continuity and live owner comparison are not certified by these fixtures.

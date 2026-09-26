@@ -1,8 +1,8 @@
 # SQL recovery — completion tracker
 
 PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Latest qualified implementation: `6273c80d677dfb6c396d3747422c5001b93ea2c0`;
-qualified tree: `9c4c21575bb9d82f1187d8db746043908c9f2d18`.
+Latest qualified implementation: `93539ccdf6cea974c50597fce568306d2d62f6c7`;
+qualified tree: `193cf00efa78ad3e15f2d137d61efb61f03babda`.
 Updated 2026-09-25. This is the current AP-00–AP-08 tracker. Historical
 checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
 at its stated revision, not the current completion status.
@@ -19,11 +19,11 @@ No scope has been discarded and no release or cutover has been approved.
 | Phase | Delivered implementation | Remaining implementation | Qualification still required |
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
-| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay | S1 qualified at 6273c80; S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
+| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
-| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody; explicit same-kind parameter replacement; public SDK | S8 implemented for resolved governed values/calendar intervals; current checkpoint qualification pending; S9: grouping changes and broader native role proof | Multi-turn EN/ES business journeys, restart/replay and language quality |
+| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc | S9: grouping changes and broader native role proof | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
 | AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |
@@ -48,8 +48,10 @@ remain described explicitly; they do not close the parent requirement.
 - [ ] S6 — Per-dialect analytical proof for the required engine/query matrix.
 - [ ] S7 — Additional bounded diagnostic/correction coverage, never raw driver text
   or uncertain execution as permission to repair.
-- [ ] S8 — Inferred scalar/time context inherited across abbreviated follow-ups;
-  explicit replacement/removal, exact retained anchor, private bindings and replay.
+- [x] S8 — Inferred reviewed governed-value/calendar context inherited across
+  abbreviated follow-ups; explicit replacement/removal, exact retained anchor,
+  empty-state parser policy, private binding boundaries and replay. Qualified
+  93539cc in the documented deterministic EN/ES scope; general language remains S2.
 - [ ] S9 — Grouping edits and broader native parameter-role proofs without silently
   retaining obsolete grain or granting authority from prior SQL.
 - [ ] S10 — Reviewed reusable learning for service-owned predicates and required
@@ -122,10 +124,11 @@ abbreviated refinements. The current router re-resolves all fields and owned
 predicates; source/parent authority is unchanged. New recognized language replaces
 the same dimension; explicit edits can remove/replace values or intervals. The
 original anchor is retained and current/retained requests replay deterministically.
-SDK and saved/clarification-origin paths use the same request contract. S8 remains
-unchecked until this checkpoint's native and surface qualification succeeds.
+SDK and saved/clarification-origin paths use the same request contract. This
+checkpoint was initially unqualified; the exact corrected S8 qualification below
+now controls its status. Historical failed runs are not relabeled passes.
 
-## S8 removal correction — current qualification checkpoint
+## S8 removal correction — historical failing checkpoint
 
 Observed baseline `d4d64b4`: the existing suite passed units, but typed removal of
 all inferred predicates failed acceptance. Its unrelated, empty answer context
@@ -133,9 +136,10 @@ was being carried as if it authenticated an answer. The correction clears that
 input pin only after parent authorization/replay when no reviewed answer or legacy
 choice remains. Explicit mismatched pins and answered forms stay fenced. The
 acceptance test additionally checks restarted terminal replay and stale-pin denial.
-This source checkpoint remains unqualified until the updated suite completes.
+The corrected implementation was subsequently qualified at 93539cc, as recorded
+below. The failing d4d64b4 acceptance run remains historical failed evidence.
 
-## S8 empty-state review follow-up — qualification pending
+## S8 empty-state review follow-up
 
 The bounded continuation grammar is now explicitly retainable even with zero
 remaining filters. Earlier nonempty selections opted into it implicitly; dropping
@@ -143,4 +147,40 @@ all selections could otherwise change a later `last quarter` request into a
 historical unrecognized phrase. The additive `continuation-v1` policy is carried
 by Refine/saved selections/SDK and pinned by pending-origin and replay checks.
 Absent policy preserves legacy behavior. Exact EN/ES empty-state and multi-turn
-source-result tests cover it; a source checkpoint is not a passing qualification.
+source-result tests passed at the qualified revision below. A policy marker is
+parser mode, not source permission, a private scalar value or an analytical proof.
+
+
+## S8 qualified result — governed values and calendar continuation
+
+Runtime head `93539ccdf6cea974c50597fce568306d2d62f6c7`, tree
+`193cf00efa78ad3e15f2d137d61efb61f03babda`, tested merge
+`9974ba43f8712a5ae2d8608c7d8d7b2b9933c5ee`. Standard CI
+[36213684087](https://github.com/hurtener/chartworks/actions/runs/36213684087) and
+expanded recovery [36213684093](https://github.com/hurtener/chartworks/actions/runs/36213684093)
+passed. Each Go 1.26.4/1.27.1 artifact independently records **1,672 passing
+unit/subtest events across 20 packages**, zero failures, one existing opt-in paid
+live-reranker skip, and **198 passing PostgreSQL/native acceptance events**, zero
+failures/skips. All 17 required S8 unit/SDK tests and three acceptance tests passed.
+The two toolchains repeat the same scenarios; these counts are not additive coverage.
+
+The acceptance sequence covers North/March, South retaining March, last quarter
+retaining South, explicit interval replacement, removing both filters, restarting
+and replaying the unfiltered child, then selecting a quarter again from that empty
+state. Exact source record IDs, source/session fences, immutable parent lineage,
+current policy reconstruction and no-extra-provider/read terminal replay are checked.
+Saved-query default and explicit anchors are separately tested. Marker/anchor
+omission or substitution cannot borrow another pending clarification origin.
+
+The two review corrections were necessary: carrying an empty form pin rejected
+removal of the last inferred predicate; dropping parser mode on empty state lost
+a later relative-period interpretation. The fixes preserve answered-form pins,
+legacy parsing, typed model-parameter custody and source authorization. No database
+migration, new model role/public operation, additional inference call or frozen
+report interpretation is introduced. Local formatting/diff/planning checks passed;
+local native Go tests were blocked before compilation by absent offline modules.
+Runtime evidence is from Actions, not a claimed local/live-model run.
+
+S8's finite software slice is closed. S9 grouping edits, S2 generalized language,
+all other unchecked S items and Q1/Q2/Q3 remain open. The earlier P0/P1 baseline
+review is not a blanket guarantee for every new source revision.

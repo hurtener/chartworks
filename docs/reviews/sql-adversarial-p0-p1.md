@@ -8,6 +8,11 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
+Current qualified runtime: `93539cc` (tree `193cf00`). S1 and S8 are complete
+within their documented software scope. S8's Go 1.26.4/1.27.1 native suites passed;
+S2–S7, S9–S12 and Q1–Q3 remain open. Exact counts and acceptance boundaries live
+in the linked completion tracker. This mirror does not recertify historical code.
+
 
 Baseline: PR #62, `c8c0a8db9327b147f313830037fcc56353536909`.
 This is an adversarial review of the current recovery implementation, not a new

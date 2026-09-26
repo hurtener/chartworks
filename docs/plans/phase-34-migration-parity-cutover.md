@@ -8,6 +8,11 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
+Current qualified runtime: `93539cc` (tree `193cf00`). S1 and S8 are complete
+within their documented software scope. S8's Go 1.26.4/1.27.1 native suites passed;
+S2–S7, S9–S12 and Q1–Q3 remain open. Exact counts and acceptance boundaries live
+in the linked completion tracker. This mirror does not recertify historical code.
+
 
 Status: in_progress. Owner: internal/migration, internal/migrationapi, test/acceptance. Hard dependencies: 14, 16, 18, 19, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33.
 
