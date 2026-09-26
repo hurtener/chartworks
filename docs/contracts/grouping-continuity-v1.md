@@ -37,7 +37,9 @@ recognizer and its column/source checks. Candidate dimensions considered during
 recognition are not promoted into rule facts. No provider call is added. When no
 grouping change is recognized, the previous group survives a filter/period change.
 An explicit affirmative but unresolvable grouping fails rather than silently
-retaining the obsolete group. Exact standalone `total`, `grand total`, `overall
+retaining an existing verified group. When the parent had no measured grain, an
+unrecognized raw-column phrase stays on the pre-existing unmeasured routing path;
+no old group is silently inherited and no new correctness proof is manufactured. Exact standalone `total`, `grand total`, `overall
 total`, `total general`, `sin agrupar`, `without grouping` and `no grouping` clear
 it. General paraphrase/negative-language understanding remains S2, not an implicit
 claim of this recognizer. Private answers are redacted before recognition.
@@ -84,3 +86,17 @@ current commands/results are in the PR and completion tracker.
 Remaining S9: wider native parameter-role proof for required complex SQL shapes,
 explicit broader language/grouping intent and owner journeys. S2/S4/S5/S6 keep their
 original scope. A safe unsupported result is not counted as implemented support.
+
+### Additional review cases
+
+Multiple temporal dimensions may share one physical timestamp while declaring
+separate grain/timezone policies. Reconstructing a logical grouping checks the full
+bucket definition against that dimension's reviewed policy, not just its column.
+An existing explicit grouping retains its original protected dimension-to-grain
+pairing instead of expanding a flat set into every possible combination. When a
+flat older/natural proof leaves two same-field dimensions compatible with multiple
+buckets, reconstruction returns unsupported rather than guessing those pairings;
+an explicit logical set resolves the ambiguity. Tests
+cover that shared-field case, independently changed inferred values/periods,
+period removal with calendar grouping intact, and managed saved grouping questions
+through inspect/prepare/execute/recover with mismatch rejection.

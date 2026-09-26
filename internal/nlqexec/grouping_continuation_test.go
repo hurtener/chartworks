@@ -61,9 +61,21 @@ func TestSQLRecoveryGroupingInheritanceAndReplacement(t *testing.T) {
 	if exec.Hash(parent) != before {
 		t.Fatal("parent mutated")
 	}
-	q := QuestionRequest{}
-	if err := retainGrouping(context.Background(), parent, a, nil, QuestionRequest{Question: "Now by Unknown"}, &q); !errors.Is(err, exec.ErrAnalyticalUnsupported) {
+	unknown := QuestionRequest{Question: "Now by Unknown"}
+	q := refinementQuestion(parent, unknown)
+	if err := retainGrouping(context.Background(), parent, a, nil, unknown, &q); !errors.Is(err, exec.ErrAnalyticalUnsupported) {
 		t.Fatal("unknown new grouping silently inherited old", err)
+	}
+	// Existing requests without a verified grain remain unmeasured when the new
+	// wording names a raw column rather than a reviewed selected dimension.
+	// There is no old group to silently inherit; normal route/native validation
+	// must still process the whole new request (covered by phase18 AC01/AC06).
+	unmeasured := grainAdmission("Revenue")
+	unmeasuredParent := groupingParent(t, unmeasured, 4)
+	rawColumn := QuestionRequest{Question: "Show revenue by id"}
+	unmeasuredQuestion := refinementQuestion(unmeasuredParent, rawColumn)
+	if err := retainGrouping(context.Background(), unmeasuredParent, unmeasured, nil, rawColumn, &unmeasuredQuestion); err != nil || unmeasuredQuestion.Grouping != nil {
+		t.Fatal("unmeasured legacy grouping acquired a contract or new rejection", err)
 	}
 	q = refinementQuestion(parent, QuestionRequest{Grouping: &nlqroute.GroupingSelection{Policy: nlqroute.GroupingPolicy}})
 	if err := retainGrouping(context.Background(), parent, a, nil, QuestionRequest{Grouping: q.Grouping}, &q); err != nil || len(q.Grouping.Keys) != 0 {
@@ -139,12 +151,53 @@ func TestSQLRecoveryGroupingCalendarAndPrivateValues(t *testing.T) {
 	value := "by Order"
 	a.route.Resolutions = []semantics.ClarificationResolution{{Topic: "sales_topic", Pattern: "private", Slot: "value", Value: value, Sensitivity: semantics.LiteralSensitive}}
 	next := QuestionRequest{Question: "Revenue for by Order", Answers: []semantics.ClarificationAnswer{{Topic: "sales_topic", Pattern: "private", Slot: "value", Value: &semantics.ClarificationValue{Text: &value}}}}
-	if g, err := groupingFromQuestion(context.Background(), a, &next); err != nil || g != nil {
+	if g, err := groupingFromQuestion(context.Background(), a, &next, true); err != nil || g != nil {
 		t.Fatal("sensitive literal became grouping", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := retainGrouping(ctx, p, a, nil, QuestionRequest{}, &q); !errors.Is(err, context.Canceled) {
 		t.Fatal("ignored cancellation", err)
+	}
+}
+
+func TestSQLRecoveryGroupingSharedFieldKeepsCalendarIdentity(t *testing.T) {
+	a := calendarAdmission("Revenue", "timestamptz")
+	first := &a.publications[0].Definition.Dimensions[2]
+	first.Temporal.Grains = []semantics.TimeGrain{semantics.GrainMonth}
+	first.Temporal.Timezone = "UTC"
+	second := *first
+	second.ID, second.Name = "event_local", "Local date"
+	second.Temporal = &semantics.TemporalPolicy{Calendar: "gregorian", Timezone: "America/New_York", Grains: []semantics.TimeGrain{semantics.GrainDay}}
+	a.publications[0].Definition.Dimensions = append(a.publications[0].Definition.Dimensions, second)
+	a.route.Selection.Topics[0].Roots = append(a.route.Selection.Topics[0].Roots, nlqroute.SelectedRoot{Reference: semantics.Reference{Kind: semantics.KindDimension, ID: second.ID}, Reason: "grouping"})
+	group := &nlqroute.GroupingSelection{Policy: nlqroute.GroupingPolicy, Keys: []nlqroute.GroupingKey{{Topic: "sales_topic", Dimension: "event", Grain: semantics.GrainMonth}, {Topic: "sales_topic", Dimension: second.ID, Grain: semantics.GrainDay}}}
+	a.route.Request.Grouping = group
+	analyticalReseal(&a)
+	proof, err := compileAnalytical(context.Background(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := logicalGrouping(a, proof.Grain)
+	if err != nil || !reflect.DeepEqual(got, nlqroute.CloneGrouping(group)) {
+		t.Fatal("calendar identity crossed between shared-field dimensions", got, err)
+	}
+	// When both dimensions permit both grains in the same zone, the flat receipt
+	// sets alone do not retain the original pairing. The protected request does.
+	a.publications[0].Definition.Dimensions[2].Temporal.Grains = []semantics.TimeGrain{semantics.GrainMonth, semantics.GrainDay}
+	a.publications[0].Definition.Dimensions[3].Temporal = &semantics.TemporalPolicy{Calendar: "gregorian", Timezone: "UTC", Grains: []semantics.TimeGrain{semantics.GrainMonth, semantics.GrainDay}}
+	analyticalReseal(&a)
+	proof, err = compileAnalytical(context.Background(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = logicalGrouping(a, proof.Grain); !errors.Is(err, exec.ErrAnalyticalUnsupported) {
+		t.Fatal("ambiguous flat calendar proof invented dimension/grain pairings", err)
+	}
+	old := groupingParent(t, a, analyticalRecordVersion)
+	old.Analytical.Scope = exec.AnalyticalCalendarScope
+	q := refinementQuestion(old, QuestionRequest{})
+	if err := retainGrouping(context.Background(), old, a, nil, QuestionRequest{}, &q); err != nil || !reflect.DeepEqual(q.Grouping, nlqroute.CloneGrouping(group)) {
+		t.Fatal("verified grouping expanded into an unintended cross-product", q.Grouping, err)
 	}
 }

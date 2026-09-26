@@ -36,14 +36,21 @@ func retainGrouping(ctx context.Context, old QueryRecord, parent admission, cons
 	}
 	var inherited *nlqroute.GroupingSelection
 	if prior != nil && prior.Grain != nil {
-		inherited, err = logicalGrouping(parent, prior.Grain)
-		if err != nil {
-			return err
+		if old.Route.Request.Grouping != nil {
+			// expectedAnalytical has just reconstructed this exact request and
+			// proof. Preserve its dimension-to-grain mapping, not a cross-product
+			// guessed from dimensions sharing a physical timestamp column.
+			inherited = nlqroute.CloneGrouping(old.Route.Request.Grouping)
+		} else {
+			inherited, err = logicalGrouping(parent, prior.Grain)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	selected := nlqroute.CloneGrouping(delta.Grouping)
 	if selected == nil && delta.Question != "" && delta.Question != old.Question {
-		selected, err = groupingFromQuestion(ctx, parent, question)
+		selected, err = groupingFromQuestion(ctx, parent, question, inherited != nil)
 		if err != nil {
 			return err
 		}
@@ -78,7 +85,7 @@ func retainGrouping(ctx context.Context, old QueryRecord, parent admission, cons
 // This reuses the existing bounded recognizer with reviewed dimensions as local
 // *candidates*. Those candidates are never installed as selected rule facts.
 // Only its resolved grouping keys are sent to normal authorized routing.
-func groupingFromQuestion(ctx context.Context, parent admission, q *QuestionRequest) (*nlqroute.GroupingSelection, error) {
+func groupingFromQuestion(ctx context.Context, parent admission, q *QuestionRequest, requireResolved bool) (*nlqroute.GroupingSelection, error) {
 	words := grainWords(semantics.RedactClarificationText(q.Question, q.Answers, parent.route.Resolutions))
 	switch strings.Join(words, " ") {
 	case "total", "grand total", "overall total", "total general", "sin agrupar", "without grouping", "no grouping":
@@ -116,7 +123,7 @@ func groupingFromQuestion(ctx context.Context, parent admission, q *QuestionRequ
 		return nil, err
 	}
 	if grain == nil {
-		if recognized {
+		if recognized && requireResolved {
 			return nil, analyticalUnsupported("analytical_grain_unsupported")
 		}
 		return nil, nil
@@ -138,6 +145,8 @@ func logicalGrouping(a admission, grain *exec.AnalyticalGrain) (*nlqroute.Groupi
 		return out, nil
 	}
 	usedColumns, usedBuckets := map[string]bool{}, map[string]bool{}
+	calendarOwners := map[string]map[string]bool{}
+	calendarChoices := map[string]int{}
 	for _, id := range grain.Dimensions {
 		matches := 0
 		for _, p := range a.publications {
@@ -146,31 +155,44 @@ func logicalGrouping(a admission, grain *exec.AnalyticalGrain) (*nlqroute.Groupi
 					continue
 				}
 				matches++
-				var physical string
+				var field semantics.Column
+				fields := 0
 				for _, dataset := range p.Definition.Datasets {
 					if dataset.ID == d.Field.Dataset {
 						for _, c := range dataset.Columns {
 							if c.ID == d.Field.ID {
-								physical = c.SourceName
+								field = c
+								fields++
 							}
 						}
 					}
 				}
-				if physical == "" {
+				if fields != 1 || field.SourceName == "" {
 					return nil, exec.ErrBinding
 				}
 				matched := false
 				for _, column := range grain.Columns {
-					if column == physical {
+					if column == field.SourceName && d.Role != semantics.DimensionTemporal && len(d.Filters) == 0 {
 						out.Keys = append(out.Keys, nlqroute.GroupingKey{Topic: p.Definition.Topic, Dimension: d.ID})
 						usedColumns[column] = true
 						matched = true
 					}
 				}
 				for _, bucket := range grain.Buckets {
-					if bucket.Column == physical {
+					if bucket.Column == field.SourceName {
+						dim := grainDimension{id: d.ID, field: d.Field, role: d.Role, filters: d.Filters, temporal: d.Temporal}
+						reviewed, err := compileCalendarBucket(dim, field, bucket.Grain)
+						if err != nil || reviewed != bucket {
+							continue
+						}
 						out.Keys = append(out.Keys, nlqroute.GroupingKey{Topic: p.Definition.Topic, Dimension: d.ID, Grain: semantics.TimeGrain(bucket.Grain)})
-						usedBuckets[exec.Hash(bucket)] = true
+						bucketID := exec.Hash(bucket)
+						usedBuckets[bucketID] = true
+						if calendarOwners[bucketID] == nil {
+							calendarOwners[bucketID] = map[string]bool{}
+						}
+						calendarOwners[bucketID][id] = true
+						calendarChoices[id]++
 						matched = true
 					}
 				}
@@ -181,6 +203,19 @@ func logicalGrouping(a admission, grain *exec.AnalyticalGrain) (*nlqroute.Groupi
 		}
 		if matches != 1 {
 			return nil, exec.ErrBinding
+		}
+	}
+	// A flat legacy/natural proof may not encode which of two same-field
+	// dimensions owned which of two compatible buckets. Do not invent all
+	// pairings; the caller can provide an explicit logical set. Multiple buckets
+	// on a single dimension and multiple labels for one bucket are unambiguous.
+	for _, owners := range calendarOwners {
+		if len(owners) > 1 {
+			for id := range owners {
+				if calendarChoices[id] > 1 {
+					return nil, analyticalUnsupported("analytical_grain_unsupported")
+				}
+			}
 		}
 	}
 	if len(usedColumns) != len(grain.Columns) || len(usedBuckets) != len(grain.Buckets) {
