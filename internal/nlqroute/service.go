@@ -122,6 +122,9 @@ type RouteRequest struct {
 	MetricIDs    []string              `json:"metric_ids,omitempty"`
 	Examples     []nlq.OptionalItem    `json:"examples,omitempty"`
 	Rerank       bool                  `json:"rerank,omitempty"`
+	// InterpretationPolicy preserves the continuation parser when there are no
+	// retained filters. Its absence preserves historical request semantics.
+	InterpretationPolicy string `json:"interpretation_policy,omitempty"`
 	// InterpretationAnchor pins relative and month-only temporal language. An
 	// omitted anchor is set by the server and retained in Request for replay.
 	InterpretationAnchor     string                    `json:"interpretation_anchor,omitempty"`
@@ -791,6 +794,9 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		if parsed, err := time.Parse("2006-01-02", in.InterpretationAnchor); err != nil || parsed.Format("2006-01-02") != in.InterpretationAnchor {
 			return nil, ErrInvalid
 		}
+	}
+	if in.InterpretationPolicy != "" && in.InterpretationPolicy != InterpretationContinuationPolicy {
+		return nil, ErrInvalid
 	}
 	if !validateInterpretationSelections(in.InterpretationSelections) {
 		return nil, ErrInvalid

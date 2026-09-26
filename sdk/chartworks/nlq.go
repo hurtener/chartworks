@@ -78,6 +78,10 @@ type NLQReferenceEdit = nlqexec.ReferenceEdit
 // NLQMetricEdit adds, replaces, or removes one exact retained metric pin.
 type NLQMetricEdit = nlqexec.MetricEdit
 
+// NLQInterpretationContinuationPolicy preserves the versioned continuation parser,
+// even after all value/time selections have been explicitly removed.
+const NLQInterpretationContinuationPolicy = nlqroute.InterpretationContinuationPolicy
+
 // NLQInterpretationSelection retains an exact reviewed value or calendar interval.
 // It grants no source reach; the current router resolves all coordinates again.
 type NLQInterpretationSelection = nlqroute.InterpretationSelection

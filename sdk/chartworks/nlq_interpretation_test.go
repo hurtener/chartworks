@@ -14,6 +14,7 @@ import (
 
 func TestSQLRecoveryInterpretationSDKWire(t *testing.T) {
 	in := chartworks.NLQRefineRequest{QueryID: "parent"}
+	in.InterpretationPolicy = chartworks.NLQInterpretationContinuationPolicy
 	in.InterpretationSelections = []chartworks.NLQInterpretationSelection{{Topic: "topic", Dimension: "region", Value: "north", Operator: "eq"}}
 	in.InterpretationEdits = []chartworks.NLQInterpretationEdit{{Target: "topic:date:time", Action: "replace", Period: &chartworks.NLQInterpretationPeriod{Start: "2026-01-01", End: "2026-04-01", Grain: "quarter"}}}
 	before, _ := json.Marshal(in)

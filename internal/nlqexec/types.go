@@ -281,6 +281,7 @@ type QuestionRequest struct {
 	MetricIDs                []string                           `json:"metric_ids,omitempty"`
 	Examples                 []nlq.OptionalItem                 `json:"examples,omitempty"`
 	Rerank                   bool                               `json:"rerank,omitempty"`
+	InterpretationPolicy     string                             `json:"interpretation_policy,omitempty"`
 	InterpretationAnchor     string                             `json:"interpretation_anchor,omitempty"`
 	InterpretationEdits      []nlqroute.InterpretationEdit      `json:"interpretation_edits,omitempty"`
 	InterpretationSelections []nlqroute.InterpretationSelection `json:"interpretation_selections,omitempty"`

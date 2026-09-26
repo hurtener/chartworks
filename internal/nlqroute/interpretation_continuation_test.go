@@ -194,3 +194,42 @@ func TestSQLRecoveryContinuationCalendarBoundaries(t *testing.T) {
 		t.Fatal("new relative period silently replaced an explicit conflicting date")
 	}
 }
+
+func TestSQLRecoveryInterpretationContinuationEmptyState(t *testing.T) {
+	for _, tc := range []struct {
+		locale   nlq.Language
+		question string
+	}{{nlq.LanguageEnglish, "Now last quarter"}, {nlq.LanguageSpanish, "Ahora el trimestre pasado"}} {
+		t.Run(string(tc.locale), func(t *testing.T) {
+			p := cw07Publication("topic")
+			p.Definition.Dimensions[1].Temporal.Grains = append(p.Definition.Dimensions[1].Temporal.Grains, semantics.GrainQuarter)
+			svc, engine := cw07Service(t, p, cw07Binding(1))
+			e := testEnvelope(t, true)
+			in := RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, InterpretationAnchor: "2026-09-22", InterpretationPolicy: InterpretationContinuationPolicy}
+			out, err := svc.Route(context.Background(), e, in)
+			if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 || out.Interpretation.Temporal[0].LocalStart != "2026-04-01" || out.Interpretation.Temporal[0].LocalEnd != "2026-07-01" {
+				t.Fatal("empty continuation lost calendar parser", err)
+			}
+			calls := engine.embeds
+			if _, _, err = svc.ReplayClarifications(context.Background(), e, out); err != nil || engine.embeds != calls {
+				t.Fatal("empty-state replay changed behavior", err)
+			}
+			tampered := out
+			tampered.Request = cloneRouteRequest(out.Request)
+			tampered.Request.InterpretationPolicy = ""
+			if _, _, err = svc.ReplayClarifications(context.Background(), e, tampered); err == nil || engine.embeds != calls {
+				t.Fatal("retained continuation policy could be downgraded")
+			}
+			in.InterpretationPolicy = ""
+			legacy, err := svc.Route(context.Background(), e, in)
+			if err != nil || legacy.Interpretation.Parser != "deterministic-span-v2" || len(legacy.Interpretation.Temporal) != 0 {
+				t.Fatal("historical absent policy was reinterpreted", err)
+			}
+			in.InterpretationPolicy = "unknown"
+			calls = engine.embeds
+			if _, err = svc.Route(context.Background(), e, in); !errors.Is(err, ErrInvalid) || engine.embeds != calls {
+				t.Fatal("unknown policy reached a provider", err)
+			}
+		})
+	}
+}

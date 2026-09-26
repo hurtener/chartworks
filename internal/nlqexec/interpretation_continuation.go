@@ -23,6 +23,9 @@ func retainInferredInterpretation(parent QueryRecord, delta QuestionRequest, que
 		}
 	}
 	question.InterpretationSelections = selected
+	if parent.Route.Interpretation != nil && delta.InterpretationPolicy == "" {
+		question.InterpretationPolicy = nlqroute.InterpretationContinuationPolicy
+	}
 	if parent.Route.Interpretation != nil && delta.InterpretationAnchor == "" {
 		question.InterpretationAnchor = parent.Route.Interpretation.Anchor
 	}

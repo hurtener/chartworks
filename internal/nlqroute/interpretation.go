@@ -238,7 +238,8 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		out.Values = append(out.Values, ValueInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, GovernedValue: candidate.value.ID, CanonicalValue: candidate.value.Value, Operator: op, Geography: geography, Provenance: "reviewed_governed_value"})
 	}
 	span, hasSpan, spanErr := temporalSpan(question, in.Locale, anchor)
-	if len(in.InterpretationSelections) > 0 {
+	if len(in.InterpretationSelections) > 0 || in.InterpretationPolicy == InterpretationContinuationPolicy {
+		out.Parser = "deterministic-continuation-v1"
 		span, hasSpan, spanErr = continuationSpan(question, anchor, span, hasSpan, spanErr)
 	}
 	if spanErr != nil {

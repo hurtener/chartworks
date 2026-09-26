@@ -195,6 +195,16 @@ func TestSQLRecoveryInterpretationContinuationEditsAcceptance(t *testing.T) {
 	if len(removed.Route.Interpretation.Values)+len(removed.Route.Interpretation.Temporal) != 0 {
 		t.Fatal("removed state remained active")
 	}
+	// No remaining value/time selection must not disable relative-date parsing.
+	periodOnly, periodErr := query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: removed.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Now last quarter"}})
+	if periodErr != nil || periodOnly.Route.Request.InterpretationPolicy != nlqroute.InterpretationContinuationPolicy {
+		t.Fatal("empty-state relative continuation", periodErr)
+	}
+	periodRows, periodErr := query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: periodOnly.QueryID, Operation: periodOnly.QueryID + "-run"})
+	if periodErr != nil {
+		t.Fatal(periodErr)
+	}
+	requireParameterIDs(t, periodRows, "4", "5")
 	// A changed prompt can explicitly select a previously removed value again.
 	again, err := query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: removed.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Now south"}})
 	if err != nil {

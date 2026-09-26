@@ -89,3 +89,22 @@ predicate is removed, including the legitimate absence of a predicate binding.
 Explicit caller context mismatches still fail; a carried answer/choice still pins
 the original context. Direct pending-answer submissions, source revision checks
 and retained executable-query replay retain their existing provenance fences.
+
+## Empty continuation state retains its parser policy
+
+Optional `interpretation_policy: "continuation-v1"` records the reviewed
+continuation grammar independently of whether any scalar/date filters remain.
+Refine carries it after authenticated parent replay, including after removal of
+every filter. A subsequent `last quarter`/`trimestre pasado` therefore does not
+silently revert to a historical parser merely because the selection list became
+empty. The policy and original anchor survive saved selections, SDK transport and
+pending-origin checks. Missing/changed pending policy or anchor is not an equivalent
+answer submission, and unknown policies fail before provider work.
+
+An absent policy still invokes the historical parser unless retained selections
+already explicitly opt into continuation; no old row is rewritten. The field
+selects no value, grants no access and does not authorize arbitrary prior SQL.
+Replayed interpretation digests bind the parser version. Non-sensitive reviewed
+value IDs, exact civil intervals and current source rules remain the only retained
+interpretation inputs. This does not expand grouping inference or private model
+parameter language beyond its existing safety contract.

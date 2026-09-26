@@ -177,3 +177,54 @@ func TestSQLRecoveryContinuationPinsOnlyCarriedAnswers(t *testing.T) {
 		t.Fatal("legacy choice lost its context fence", err)
 	}
 }
+
+func TestSQLRecoveryEmptyContinuationPolicyIsDurable(t *testing.T) {
+	parent := QueryRecord{Route: nlqroute.RouteResult{Interpretation: &nlqroute.Interpretation{Anchor: "2026-09-22"}}}
+	q := refinementQuestion(parent, QuestionRequest{})
+	retainInferredInterpretation(parent, QuestionRequest{}, &q)
+	if q.InterpretationPolicy != nlqroute.InterpretationContinuationPolicy || q.routeRequest().InterpretationPolicy != q.InterpretationPolicy || len(q.InterpretationSelections) != 0 {
+		t.Fatal("empty state dropped parser policy")
+	}
+	saved := savedSelectionFixture()
+	saved.Selections = &SavedSelections{InterpretationPolicy: q.InterpretationPolicy, InterpretationAnchor: q.InterpretationAnchor}
+	reconstructed := savedRouting(saved, nlq.LanguageEnglish)
+	if reconstructed.InterpretationPolicy != q.InterpretationPolicy {
+		t.Fatal("saved policy lost")
+	}
+	record := QueryRecord{Context: saved.Context, Topics: []string{"sales"}, TopicVersions: []string{"v1"}, SQL: "SELECT amount FROM analytics.sales", Route: nlqroute.RouteResult{Request: reconstructed.routeRequest()}}
+	if !savedRecordMatches(record, saved) {
+		t.Fatal("same saved parser rejected")
+	}
+	record.Route.Request.InterpretationPolicy = ""
+	if savedRecordMatches(record, saved) {
+		t.Fatal("saved parser downgraded")
+	}
+}
+
+func TestSQLRecoveryEmptyContinuationOriginRetainsPolicyAndAnchor(t *testing.T) {
+	e := unitEnvelope(t)
+	repo := newUnitRepository()
+	q := unitQuery(e, "pending-empty-continuation", "topic", "v1", "context", false)
+	q.Status, q.SQL = "preflight", ""
+	q.Route.AnswerContext = "answer-context"
+	q.Route.Request = nlqroute.RouteRequest{Question: "Revenue", Locale: nlq.LanguageEnglish, Context: "context", Topics: []string{"topic"}, InterpretationAnchor: "2026-09-22", InterpretationPolicy: nlqroute.InterpretationContinuationPolicy}
+	repo.queries[q.ID] = q
+	service := &Service{repo: repo}
+	in := QuestionRequest{Question: "Revenue", Locale: nlq.LanguageEnglish, Context: "context", Topics: []string{"topic"}, ClarificationQuery: q.ID, AnswerContext: q.Route.AnswerContext, InterpretationAnchor: q.Route.Request.InterpretationAnchor, InterpretationPolicy: q.Route.Request.InterpretationPolicy, Answers: []semantics.ClarificationAnswer{{Topic: "topic"}}}
+	if err := service.validateClarificationOrigin(context.Background(), e, in, "query.plan"); err != nil {
+		t.Fatal("unchanged empty-state origin", err)
+	}
+	for _, change := range []func(*QuestionRequest){
+		func(in *QuestionRequest) { in.InterpretationPolicy = "" },
+		func(in *QuestionRequest) { in.InterpretationAnchor = "" },
+		func(in *QuestionRequest) { in.InterpretationAnchor = "2026-12-22" },
+	} {
+		changed := in
+		change(&changed)
+		err := service.validateClarificationOrigin(context.Background(), e, changed, "query.plan")
+		var clarification *nlqroute.Clarification
+		if !errors.As(err, &clarification) || clarification.Reason != "clarification_question_mismatch" {
+			t.Fatal("empty selections lost pending context fence", err)
+		}
+	}
+}

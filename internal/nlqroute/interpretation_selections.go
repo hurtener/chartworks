@@ -11,6 +11,11 @@ import (
 	"github.com/hurtener/chartworks/internal/semantics"
 )
 
+// InterpretationContinuationPolicy explicitly retains continuation parsing when
+// every filter has been removed. An absent policy keeps historical parser
+// behavior; this mode selects no values and grants no source authority.
+const InterpretationContinuationPolicy = "continuation-v1"
+
 // InterpretationPeriod is a civil, half-open reviewed-calendar interval. It
 // contains no SQL, timezone override or source authority. Current catalog policy
 // determines the source type, calendar, timezone and executable bound values.

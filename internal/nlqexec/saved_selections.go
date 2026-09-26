@@ -14,6 +14,7 @@ import (
 // source bindings or authority. The existing router resolves every choice
 // against the pinned/current reviewed semantic definitions before generation.
 type SavedSelections struct {
+	InterpretationPolicy     string                             `json:"interpretation_policy,omitempty"`
 	InterpretationAnchor     string                             `json:"interpretation_anchor,omitempty"`
 	InterpretationSelections []nlqroute.InterpretationSelection `json:"interpretation_selections,omitempty"`
 	InterpretationEdits      []nlqroute.InterpretationEdit      `json:"interpretation_edits,omitempty"`
@@ -35,6 +36,7 @@ func savedRouting(in SavedQuestion, language nlq.Language) QuestionRequest {
 	}
 	if in.Selections != nil {
 		s := in.Selections
+		q.InterpretationPolicy = s.InterpretationPolicy
 		q.InterpretationAnchor = s.InterpretationAnchor
 		q.InterpretationSelections = nlqroute.CloneInterpretationSelections(s.InterpretationSelections)
 		q.InterpretationEdits = nlqroute.CloneInterpretationEdits(s.InterpretationEdits)
@@ -61,7 +63,7 @@ func savedSelectionsMatch(q QueryRecord, in SavedQuestion) bool {
 		return true
 	}
 	r := q.Route.Request
-	actual := SavedSelections{InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections), InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, OmittedRoots: r.OmittedRoots, Choices: r.Choices,
+	actual := SavedSelections{InterpretationPolicy: r.InterpretationPolicy, InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections), InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, OmittedRoots: r.OmittedRoots, Choices: r.Choices,
 		Joins: r.JoinChoices, MetricIDs: r.MetricIDs, Rerank: r.Rerank}
 	// An explicit saved anchor is pinned. Absence keeps the existing per-plan
 	// server-anchor semantics; it must not compare an absent input to a

@@ -134,3 +134,13 @@ input pin only after parent authorization/replay when no reviewed answer or lega
 choice remains. Explicit mismatched pins and answered forms stay fenced. The
 acceptance test additionally checks restarted terminal replay and stale-pin denial.
 This source checkpoint remains unqualified until the updated suite completes.
+
+## S8 empty-state review follow-up — qualification pending
+
+The bounded continuation grammar is now explicitly retainable even with zero
+remaining filters. Earlier nonempty selections opted into it implicitly; dropping
+all selections could otherwise change a later `last quarter` request into a
+historical unrecognized phrase. The additive `continuation-v1` policy is carried
+by Refine/saved selections/SDK and pinned by pending-origin and replay checks.
+Absent policy preserves legacy behavior. Exact EN/ES empty-state and multi-turn
+source-result tests cover it; a source checkpoint is not a passing qualification.
