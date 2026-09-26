@@ -1,8 +1,9 @@
 # SQL recovery — completion tracker
 
 PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Latest qualified implementation: `996db063d214ae086f4fe4383028348abe9d7282`;
-qualified tree: `56f8d6ad5cdffad092b1df86b85679b6ded12a77`.
+Latest qualified implementation: `8cceaa1c0f1accbd0a4cd0cd7050c4a02dd37ebd`;
+qualified tree: `1a7a78b57afbaad364606c875da5ce89a8d54cb6`.
+S3 confirmed-join projection is implemented in the next checkpoint; qualification pending.
 Updated 2026-09-26. This is the current AP-00–AP-08 tracker. Historical
 checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
 at its stated revision, not the current completion status.
@@ -20,10 +21,10 @@ No scope has been discarded and no release or cutover has been approved.
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
 | AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
-| AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: minimal confirmed-join-aware projection | Operator tokenizer/model-window/framing qualification |
+| AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: exact confirmed-join-aware projection implemented; runtime qualification pending | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
-| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 remainder: wider native parameter-role proof for required complex query shapes | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
+| AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 native parameter-scope extension qualified at 8cceaa1 for immutable CTE/derived/join/subquery/window/set inputs and eligible outer edits; wider language is S2 | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
 | AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |
@@ -52,9 +53,11 @@ remain described explicitly; they do not close the parent requirement.
   abbreviated follow-ups; explicit replacement/removal, exact retained anchor,
   empty-state parser policy, private binding boundaries and replay. Qualified
   93539cc in the documented deterministic EN/ES scope; general language remains S2.
-- [ ] S9 — Grouping continuity, explicit totals/calendar replacement, saved state and
-  pending refinement qualified at 996db06. Wider required native parameter-role
-  proofs remain open; no authority comes from prior SQL.
+- [x] S9 — Grouping continuity, totals/calendar edits and pending refinement plus
+  native parameter-role custody through fixed CTE/derived/join/subquery/window/set
+  inputs. Qualified at 8cceaa1 within the published contracts; no authority or
+  analytical join-correctness certificate comes from prior SQL. General language
+  and per-engine analytical support remain S2/S5/S6/Q2.
 - [ ] S10 — Reviewed reusable learning for service-owned predicates and required
   parameter domains, with no historical value, authority or default leakage.
 - [ ] S11 — Proven syntax/signature/type matrix and generator/validator agreement.
@@ -251,3 +254,22 @@ Publishing transport/checksum failures remain infrastructure failures, not runti
 passes. All temporary authoring files are excluded from this runtime tree. Local
 formatting/diff/planning checks passed; missing modules prevented local native Go
 compilation, so all full runtime qualification above is from Actions.
+
+
+## S9 parameter-scope qualification and S3 checkpoint
+
+The previously local extension is now published at `8cceaa1`. Standard CI
+36261550780 and recovery 36261550809 passed. Per Go 1.26.4/1.27.1: 1,779
+unit/subtest passes across 21 packages and 227 acceptance passes, zero failures
+or acceptance skips. The sole unit skip is the existing opt-in paid live rerank.
+All native scope and actual PostgreSQL lifecycle/rejection tests passed. Counts
+repeat the same cases across toolchains and are not additive coverage. S9's fixed
+input-graph custody does not imply analytical fan-out proof or arbitrary SQL rewrites.
+
+S3 now carries confirmed same-relationship endpoint coordinates into mandatory
+rendering via the [join projection contract](../contracts/confirmed-join-projection-v1.md).
+Exact selected columns and join keys remain; unrelated shared columns can drop.
+Complete authority and stored validation scope stay unchanged. All S3 software
+tests still require exact-source execution before its checkbox can close. Local
+native setup remains blocked by missing offline modules. No readiness transition
+is authorized while other S/Q requirements are incomplete.

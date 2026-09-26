@@ -658,6 +658,9 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		Advisory:     mergeAdvisory(admitted),
 		Examples:     append([]nlq.OptionalItem(nil), in.Examples...),
 	}
+	if err := attachJoinProjection(ctx, &input, admitted, in.JoinChoices); err != nil {
+		return RouteResult{}, err
+	}
 	tier, err := nlq.TierForConfidence(result.Confidence)
 	if err != nil {
 		return RouteResult{}, err

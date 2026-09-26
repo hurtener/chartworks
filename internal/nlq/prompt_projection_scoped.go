@@ -54,6 +54,9 @@ func independentlySelectedProjection(text string) (bool, error) {
 // Legacy unscoped selection markers cannot guess topic ownership and retain the
 // old rendering. Once a scoped marker is present, incomplete mappings are errors.
 func scopedPromptRelations(input ContextInput) ([]SourceRelation, bool, error) {
+	if hasJoinProjection(input) && (len(input.Relations) == 0 || input.Strategy != StrategyMultiTopic) {
+		return nil, false, projectionOwnerFailure()
+	}
 	if input.Constraints == nil || len(input.Relations) == 0 || (input.Strategy != StrategySingleTopic && input.Strategy != StrategyMultiTopic) {
 		return input.Relations, false, nil
 	}
@@ -94,7 +97,7 @@ func scopedPromptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 		}
 		selected[owner], independent[owner] = true, eligible
 	}
-	if len(selected) == 0 {
+	if len(selected) == 0 && !hasJoinProjection(input) {
 		return input.Relations, false, nil
 	}
 	if unscoped {
@@ -173,6 +176,16 @@ func scopedPromptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 		}
 	}
 
+	joinDependencies, joinAware, err := confirmedJoinDependencies(input, topics, byTopic)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, topic := range topics {
+		if err := appendDependencies(topic, joinDependencies[topic]); err != nil {
+			return nil, false, err
+		}
+	}
+
 	type coordinate struct{ topic, dataset string }
 	projected := map[coordinate]SourceRelation{}
 	narrowed := map[string]bool{}
@@ -210,11 +223,11 @@ func scopedPromptRelations(input ContextInput) ([]SourceRelation, bool, error) {
 	var out []SourceRelation
 	for _, relation := range input.Relations {
 		// The multi-topic admission contract requires independently confirmed
-		// relationships over shared datasets. Join choices are not serialized
-		// in ContextInput. Retain every shared relation's own reviewed columns
+		// relationships over shared datasets. Legacy ContextInput has no
+		// explicit confirmed-join markers, so retain those shared columns
 		// so projection cannot orphan a confirmed join not in a metric closure.
 		// Do not merge columns between topics or infer a join from this rule.
-		if !narrowed[relation.Topic] || len(datasetOwners[relation.Dataset]) > 1 {
+		if !narrowed[relation.Topic] || len(datasetOwners[relation.Dataset]) > 1 && !joinAware {
 			item := relation
 			item.Columns = append([]string(nil), relation.Columns...)
 			out = append(out, item)

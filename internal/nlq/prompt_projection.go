@@ -75,6 +75,9 @@ func DependencyRelations(topic string, relations []SourceRelation, dependencies 
 // that can be pruned after the base is rendered. The original single-topic
 // metric renderer stays unchanged; scoped dimension/multi-topic inputs use v2.
 func promptRelations(input ContextInput) ([]SourceRelation, bool, error) {
+	if hasJoinProjection(input) {
+		return scopedPromptRelations(input)
+	}
 	selected := false
 	if input.Constraints != nil {
 		for _, c := range input.Constraints.Required {
@@ -118,6 +121,9 @@ func renderPromptRelations(input ContextInput) string {
 	marker := "selected-closure-v1"
 	if input.Strategy == StrategyMultiTopic || len(input.Metrics) == 0 {
 		marker = "topic-selected-closure-v2"
+		if hasJoinProjection(input) {
+			marker = "confirmed-join-closure-v3"
+		}
 	}
 	// Optional semantic candidates carry their own verified physical mappings,
 	// admitted or omitted with their definitions as one bounded group. Do not

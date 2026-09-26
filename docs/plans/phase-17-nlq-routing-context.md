@@ -199,3 +199,12 @@ totals/calendar selection and the strict pending-refinement admission fix.
 Executable scope, form origin, private binding and immutable-parent checks remain.
 S9 broader native parameter roles and the remaining S/Q requirements are still
 open; historical checkpoint prose above is not the current completion claim.
+
+
+## S3 confirmed relationship rendering
+
+[Confirmed join projection](../contracts/confirmed-join-projection-v1.md) carries
+current independent join choices from routing into bounded mandatory context.
+The existing physical mapper validates each topic's endpoints and preserves full
+source authority. This closes a render-only gap, not S5 analytical joins. Current
+implementation/qualification status is the [completion tracker](../reviews/sql-recovery-completion.md).

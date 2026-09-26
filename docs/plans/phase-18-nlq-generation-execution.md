@@ -400,3 +400,12 @@ totals/calendar selection and the strict pending-refinement admission fix.
 Executable scope, form origin, private binding and immutable-parent checks remain.
 S9 broader native parameter roles and the remaining S/Q requirements are still
 open; historical checkpoint prose above is not the current completion claim.
+
+
+## S3 required join keys through generation
+
+[Confirmed join projection](../contracts/confirmed-join-projection-v1.md) participates
+in normal generation/refit while full relations remain in native validation and
+durable queries. Required join keys cannot disappear with optional evidence.
+See the [completion tracker](../reviews/sql-recovery-completion.md) for actual
+S9 qualification and S3 runtime results; no whole-program closure is implied.

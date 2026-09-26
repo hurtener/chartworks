@@ -161,7 +161,8 @@ not unlimited verified capacity. Old receipts without envelope evidence stay unk
 Retries reserve the same complete envelope per attempt. Errors and preparation logs
 remain redacted; failure before dispatch creates no fabricated model-attempt receipt.
 
-Minimal join-aware projection and actual model-window/tokenizer qualification remain
-separate work. Recorded wire and synthetic fits do not establish live language
+[Confirmed-join projection](confirmed-join-projection-v1.md) now carries exact
+join keys into new mandatory rendering; its current qualification is in the
+completion tracker. Actual model-window/tokenizer qualification remains open. Recorded wire and synthetic fits do not establish live language
 quality, vendor capacity calibration, cloud-dialect parity or performance. Frozen
 report refresh adds no model work.
