@@ -520,3 +520,17 @@ remain independently checked. Forward migration 059 adds v5; old receipts retain
 their own grammar. See [the contract](../contracts/grouping-continuity-v1.md).
 Full S9 remains open pending this checkpoint's test evidence and broader native
 parameter-role coverage. No safe rejection has been relabeled as parity.
+
+
+## S9 pending-form source-admission correction
+
+The new pending answer-plus-grouping refinement acceptance found that normal
+executable admission rejected an intentionally scopeless preflight before it
+could resolve its new grouping. The correction reuses current source/catalog
+resolution under a separate unplanned-only admission boundary, then retains the
+existing authenticated form replay, child lineage and fresh native/analytical
+checks. Planned queries with missing scope still fail. No permission, migration,
+provider call or source execution is added to that pending read. See the current
+[completion tracker](sql-recovery-completion.md) and
+[grouping contract](../contracts/grouping-continuity-v1.md) for scope and evidence;
+full S9 remains open until its wider parameter-role obligations are implemented.

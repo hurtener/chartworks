@@ -210,6 +210,26 @@ func TestSQLRecoveryGroupingPrivateBindingsAcceptance(t *testing.T) {
 	q = f.question("Revenue named sales by Record", nlq.LanguageEnglish)
 	q.Grouping = groupingState(f, "record")
 	pending = f.preflight(t, q)
+	sc, _ = store.NewScope(f.e.Tenant(), f.e.User())
+	pendingRecord, err := f.f.db.ReadQuery(ctx, sc, pending.QueryID)
+	if err != nil || len(pendingRecord.RelationScope) != 0 || pendingRecord.SQL != "" {
+		t.Fatal("pending form unexpectedly contains executable scope", err)
+	}
+	originalPending := nlqexec.QueryLineageDigest(pendingRecord)
+	beforeCalls := f.model.requests.Load()
+	if _, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: pending.QueryID, Operation: pending.QueryID + "-must-not-run"}); !errors.Is(err, nlqexec.ErrNoPlan) || f.model.requests.Load() != beforeCalls {
+		t.Fatal("unplanned form executed or generated SQL", err)
+	}
+	// A new grouping cannot borrow the original form through the stateless
+	// Plan submission; only authorized Refine may create the changed child.
+	changed := q
+	changed.ClarificationQuery, changed.AnswerContext = pending.QueryID, pending.Route.AnswerContext
+	changed.Question = "Revenue named sales by Status"
+	changed.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
+	if _, err = f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: changed}); err == nil || f.model.requests.Load() != beforeCalls {
+		t.Fatal("changed question borrowed the original preflight", err)
+	}
+	f.query, _ = newPhase18Service(t, f.phase17Fixture)
 	resumed, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: pending.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Revenue named sales by Status", Answers: []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}}})
 	if err != nil || resumed.Route.Request.Grouping == nil || len(resumed.Route.Request.Grouping.Keys) != 1 || resumed.Route.Request.Grouping.Keys[0].Dimension != "status" || resumed.Bindings == nil {
 		t.Fatal("pending answer/refine retained obsolete group", err)
@@ -219,6 +239,10 @@ func TestSQLRecoveryGroupingPrivateBindingsAcceptance(t *testing.T) {
 		t.Fatal("pending grouped result", err)
 	}
 	groupingSums(t, out, "5", "10")
+	unchanged, err := f.f.db.ReadQuery(ctx, sc, pending.QueryID)
+	if err != nil || nlqexec.QueryLineageDigest(unchanged) != originalPending {
+		t.Fatal("refining the pending grouping mutated its source form", err)
+	}
 }
 
 func TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance(t *testing.T) {

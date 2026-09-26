@@ -198,3 +198,22 @@ S9 is not marked complete: runtime qualification for this checkpoint is pending,
 and broader native parameter-role proofs for required nested/multi-relation shapes
 remain unimplemented. Existing S8 scalar/time behavior is preserved; S2 language,
 S4 analytical breadth and S5/S6 native/engine obligations are not reduced.
+
+
+## S9 grouping-continuity qualification work
+
+The branch now implements explicit complete grouping sets, verified inheritance,
+reviewed EN/ES replacement and explicit scalar totals, composing with S8 filters,
+calendar anchors, private model slots and service-owned predicates. Exact version-5
+proofs, SDK/saved-state transport, pending origins and shared-field calendar mapping
+have regressions. S9 remains open for broader required native parameter-role shapes;
+this does not reduce S2/S4/S5/S6 or the owner qualification backlog.
+
+Baseline `799eeb1` passed standard CI and 1,684 expanded unit/subtest events, but
+its acceptance test exposed a real pending-admission gap: an unplanned preflight
+was incorrectly required to carry a nonempty executable scope. A separate strictly
+unplanned refinement path now resolves current authority before original-form
+replay, while planned execution keeps its scope fence. Negative tests cover
+executable-evidence substitution, current source drift, partition/session/action
+checks and cancelled requests. Expanded results for the corrected head must be
+observed before this checkpoint is counted as qualified.

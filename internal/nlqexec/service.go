@@ -1206,9 +1206,12 @@ func (s *Service) admit(ctx context.Context, e identity.Envelope, in QuestionReq
 }
 
 // admissionForQuery selects the same exact/current publication boundary used
-// by execution. It is shared by refinement and terminal replay so neither can
-// use the repository projection as a substitute for addressed-resource checks.
+// by execution. Pending refinement has no executable scope yet and uses a
+// separate fully reauthorized reader; it cannot issue or reuse an execution plan.
 func (s *Service) admissionForQuery(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	if q.SQL == "" {
+		return s.pendingRefinementAdmission(ctx, e, q)
+	}
 	if q.EvidenceStale {
 		return s.retainedAdmission(ctx, e, q)
 	}
@@ -1726,6 +1729,19 @@ func (s *Service) reviewAdmission(ctx context.Context, e identity.Envelope, q Qu
 }
 
 func (s *Service) admissionWith(ctx context.Context, e identity.Envelope, q QueryRecord, contract func(context.Context, identity.Envelope, string) (topics.Contract, error), binding func(context.Context, identity.Envelope, string, string) (exec.Binding, error)) (admission, error) {
+	result, err := s.resolveCurrentAdmission(ctx, e, q, contract, binding)
+	if err != nil {
+		return admission{}, err
+	}
+	if q.ID != "" && (len(q.RelationScope) == 0 || !reflect.DeepEqual(q.RelationScope, result.relationScope)) {
+		return admission{}, exec.ErrBinding
+	}
+	return result, nil
+}
+
+// resolveCurrentAdmission resolves only current reviewed source reach. It never
+// establishes that a stored query has a native plan or an executable scope.
+func (s *Service) resolveCurrentAdmission(ctx context.Context, e identity.Envelope, q QueryRecord, contract func(context.Context, identity.Envelope, string) (topics.Contract, error), binding func(context.Context, identity.Envelope, string, string) (exec.Binding, error)) (admission, error) {
 	result := admission{route: q.Route}
 	for i, topicID := range q.Topics {
 		contractValue, err := contract(ctx, e, topicID)
@@ -1762,7 +1778,7 @@ func (s *Service) admissionWith(ctx context.Context, e identity.Envelope, q Quer
 		return admission{}, err
 	}
 	result.relationScope, result.relations, err = reviewedProjection(result.reviewed, result.binding)
-	if err != nil || q.ID != "" && (len(q.RelationScope) == 0 || !reflect.DeepEqual(q.RelationScope, result.relationScope)) {
+	if err != nil {
 		return admission{}, exec.ErrBinding
 	}
 	return result, nil

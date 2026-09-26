@@ -106,3 +106,22 @@ explicit grouping. A supplied but not-yet-resolved scalar is masked before this
 local recognition, even though it does not yet have a sensitivity resolution.
 Those ephemeral redaction descriptors never become resolved answers or rule facts.
 The ordinary pending-origin and current reviewed answer checks still run.
+
+
+### Pending-form admission is not executable-query admission
+
+A pending preflight intentionally has no validated SQL relation-scope receipt.
+Refining it first reauthorizes the exact current topic versions and source binding,
+then replays its original clarification/selection evidence before constructing a
+new child. It must not be rejected solely because it lacks a planned-query scope,
+but it also must not use that absence as an executable-scope fallback. The pending
+path rejects any SQL, parameters, operation/result, analytical receipt, correction
+count or stale evidence. Actual planned-query and terminal replay admission still
+require the exact retained nonempty relation scope. Parent metadata is never filled
+in or mutated during this read. New child native and analytical validation remain
+mandatory. A changed stateless Plan submission cannot borrow the old form; the
+existing authorized Refine path owns the interpretation change.
+
+Regression qualification is recorded against the exact published source, including
+actual pending-form answer/refinement and rejected unplanned Run. This subsection
+records behavior and bounds, not a claim that an unexecuted checkpoint is green.
