@@ -3,6 +3,7 @@ package nlqexec
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -144,5 +145,35 @@ func TestSQLRecoverySavedInterpretationAnchorPolicy(t *testing.T) {
 				t.Fatal("explicit anchor and server default were conflated", pinned, seeded)
 			}
 		}
+	}
+}
+
+func TestSQLRecoveryContinuationPinsOnlyCarriedAnswers(t *testing.T) {
+	parent := QueryRecord{Route: nlqroute.RouteResult{AnswerContext: "parent-binding-context"}}
+	before := exec.Hash(parent)
+	for _, provided := range []string{"", parent.Route.AnswerContext} {
+		out := QuestionRequest{AnswerContext: "unused-old-context", Locale: nlq.LanguageEnglish}
+		if err := mergeRefinementClarifications(parent, QuestionRequest{AnswerContext: provided}, &out); err != nil || out.AnswerContext != "" {
+			t.Fatal("inferred-only continuation retained a stale form pin", err)
+		}
+	}
+	out := QuestionRequest{Locale: nlq.LanguageEnglish}
+	err := mergeRefinementClarifications(parent, QuestionRequest{AnswerContext: "foreign-context"}, &out)
+	var clarification *nlqroute.Clarification
+	if !errors.As(err, &clarification) || clarification.Reason != "stale_answer" {
+		t.Fatal("explicit foreign pin was ignored", err)
+	}
+	if exec.Hash(parent) != before {
+		t.Fatal("parent pin was mutated")
+	}
+	// A genuinely carried reviewed answer must retain its original pin.
+	parent.Route.Request.Answers = []semantics.ClarificationAnswer{{Topic: "topic", TopicVersion: "v1", RulesetVersion: "r1", Pattern: "metric", PatternVersion: "v1", Slot: "metric", Value: &semantics.ClarificationValue{OptionID: "revenue"}}}
+	if err := mergeRefinementClarifications(parent, QuestionRequest{}, &out); err != nil || out.AnswerContext != parent.Route.AnswerContext || len(out.Answers) != 1 {
+		t.Fatal("reviewed answer lost its context fence", err)
+	}
+	// Legacy choices are also answers, not inferred state.
+	parent.Route.Request.Answers = nil
+	if err := mergeRefinementClarifications(parent, QuestionRequest{Choices: []nlqroute.ChoiceSelection{{Pattern: "metric", Slot: "metric", Value: "revenue"}}}, &out); err != nil || out.AnswerContext != parent.Route.AnswerContext || len(out.Choices) != 1 {
+		t.Fatal("legacy choice lost its context fence", err)
 	}
 }

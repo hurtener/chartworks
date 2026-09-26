@@ -79,3 +79,13 @@ per-planning server-anchor behavior instead of comparing an absent request value
 with a generated default. Their explicitly selected civil intervals remain exact.
 Relative year/quarter expansion obeys the same year 1–9999 domain and alignment
 checks as typed periods. Leap-year and year-rollover regressions cover the bounds.
+
+## Removing the last inferred predicate
+
+A same-session Refine with no carried reviewed answers or legacy choices does not
+reuse a form-specific `answer_context`. The parent is reauthorized and its business
+evidence replayed first. Route computes a fresh context when the final inferred
+predicate is removed, including the legitimate absence of a predicate binding.
+Explicit caller context mismatches still fail; a carried answer/choice still pins
+the original context. Direct pending-answer submissions, source revision checks
+and retained executable-query replay retain their existing provenance fences.

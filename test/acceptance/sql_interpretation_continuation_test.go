@@ -3,6 +3,7 @@ package acceptance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -167,13 +168,30 @@ func TestSQLRecoveryInterpretationContinuationEditsAcceptance(t *testing.T) {
 	requireParameterIDs(t, out, "4")
 	removed, err := query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: child.QueryID, QuestionRequest: nlqexec.QuestionRequest{InterpretationEdits: []nlqroute.InterpretationEdit{{Target: topic + ":event_date:time", Action: "remove"}, {Target: topic + ":region:north", Action: "remove"}}}})
 	if err != nil {
-		t.Fatal("typed date/value removal", err)
+		t.Fatalf("typed date/value removal: %#v", err)
 	}
 	out, err = query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: removed.QueryID, Operation: removed.QueryID + "-run"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireParameterIDs(t, out, "1", "2", "3", "4", "5", "6", "7")
+	if len(removed.Route.Request.Answers) != 0 || len(removed.Route.Request.Choices) != 0 || removed.Route.Request.AnswerContext != "" || removed.Route.AnswerContext == child.Route.AnswerContext {
+		t.Fatal("inferred-only removal failed to issue fresh unbound context")
+	}
+	beforeReplay := f.model.requests.Load()
+	metadata := support.Raw(t, f.f.dsn)
+	attempts := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+	query, _ = newPhase18Service(t, f)
+	replayed, replayErr := query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: removed.QueryID, Operation: removed.QueryID + "-run"})
+	if replayErr != nil || f.model.requests.Load() != beforeReplay || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != attempts {
+		t.Fatal("unbound continuation replay performed work or lost provenance", replayErr)
+	}
+	requireParameterIDs(t, replayed, "1", "2", "3", "4", "5", "6", "7")
+	_, badPinErr := query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: removed.QueryID, QuestionRequest: nlqexec.QuestionRequest{AnswerContext: child.Route.AnswerContext}})
+	var stale *nlqroute.Clarification
+	if !errors.As(badPinErr, &stale) || stale.Reason != "stale_answer" || f.model.requests.Load() != beforeReplay {
+		t.Fatal("caller-supplied stale pin escaped provenance check", badPinErr)
+	}
 	if len(removed.Route.Interpretation.Values)+len(removed.Route.Interpretation.Temporal) != 0 {
 		t.Fatal("removed state remained active")
 	}

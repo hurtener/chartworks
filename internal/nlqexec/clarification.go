@@ -247,7 +247,16 @@ func mergeRefinementClarifications(old QueryRecord, delta QuestionRequest, out *
 		return err
 	}
 	out.Answers, out.Choices = merged, choices
-	out.AnswerContext = old.Route.AnswerContext
+	out.AnswerContext = ""
+	// Refine has already reauthorized and replayed the parent. Only carried
+	// answers/choices need the old form's pin. An inferred-only continuation
+	// can remove its last predicate, changing the optional binding component
+	// of the freshly computed context without changing source authority.
+	// Explicit caller pins are still checked above, and answered forms retain
+	// their exact original pin so policy/source changes cannot be bypassed.
+	if len(merged) > 0 || len(choices) > 0 {
+		out.AnswerContext = old.Route.AnswerContext
+	}
 	return nil
 }
 

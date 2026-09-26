@@ -124,3 +124,13 @@ the same dimension; explicit edits can remove/replace values or intervals. The
 original anchor is retained and current/retained requests replay deterministically.
 SDK and saved/clarification-origin paths use the same request contract. S8 remains
 unchecked until this checkpoint's native and surface qualification succeeds.
+
+## S8 removal correction — current qualification checkpoint
+
+Observed baseline `d4d64b4`: the existing suite passed units, but typed removal of
+all inferred predicates failed acceptance. Its unrelated, empty answer context
+was being carried as if it authenticated an answer. The correction clears that
+input pin only after parent authorization/replay when no reviewed answer or legacy
+choice remains. Explicit mismatched pins and answered forms stay fenced. The
+acceptance test additionally checks restarted terminal replay and stale-pin denial.
+This source checkpoint remains unqualified until the updated suite completes.
