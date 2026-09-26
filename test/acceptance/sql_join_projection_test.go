@@ -57,7 +57,19 @@ func confirmedProjectionFixture(t *testing.T) *cw01Fixture {
 	}
 	pf := &phase17Fixture{f: f, pack: pack, related: related, model: model, service: route, context: d.Source.Context}
 	pf.e = phase18Envelope(t, pf, f.e.User(), "confirmed-projection", true)
-	out := &cw01Fixture{phase17Fixture: pf, published: published, rules: rules, definition: cw01Definition(published)}
+	// Publication canonicalization may sort the shared Items dataset first.
+	// Bind this synthetic private Sales policy by its stable ID, not list order.
+	policyView := published
+	policyView.Definition.Datasets = nil
+	for _, dataset := range published.Definition.Datasets {
+		if dataset.ID == d.ID {
+			policyView.Definition.Datasets = append(policyView.Definition.Datasets, dataset)
+		}
+	}
+	if len(policyView.Definition.Datasets) != 1 {
+		t.Fatal("reviewed Sales policy target missing")
+	}
+	out := &cw01Fixture{phase17Fixture: pf, published: published, rules: rules, definition: cw01Definition(policyView)}
 	out.query, _ = newPhase18Service(t, pf)
 	out.publishRules(t, out.definition, 0)
 	model.embeddingMode.Store("fixed")
