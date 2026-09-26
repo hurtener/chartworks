@@ -567,8 +567,16 @@ func TestPhase17(t *testing.T) {
 			t.Fatalf("mandatory budget did not produce typed insufficiency: %v", err)
 		}
 		out, err := fixture.service.Route(ctx, fixture.e, nlqroute.RouteRequest{Topic: fixture.pack.Topic, Context: fixture.context, Locale: nlq.LanguageEnglish, Question: "What is revenue with active constraints?", Kinds: []string{"measure"}, LimitPerKind: 1, MetricIDs: []string{"revenue"}})
-		if err != nil || out.Context == nil || len(out.Context.Metrics) != 1 || out.Context.Constraints == nil || len(out.Context.Constraints.Required) != 1 || out.Context.Constraints.Required[0].ID != "dataset:"+fixture.pack.Datasets[0].ID {
+		if err != nil || out.Context == nil || len(out.Context.Metrics) != 1 || out.Context.Metrics[0].ID != fixture.pack.Topic+":revenue" || out.Context.Constraints == nil {
 			t.Fatalf("active rule constraint or pinned metric was lost: out=%#v err=%v", out, err)
+		}
+		var requiredDataset, selectedGraph bool
+		for _, constraint := range out.Context.Constraints.Required {
+			requiredDataset = requiredDataset || constraint.Kind == "required" && constraint.ID == "dataset:"+fixture.pack.Datasets[0].ID
+			selectedGraph = selectedGraph || constraint.Kind == "selected_semantics"
+		}
+		if !requiredDataset || !selectedGraph {
+			t.Fatal("required dataset and selected graph must both survive context assembly")
 		}
 		if len(out.Context.Advisory) != 1 || out.Context.Advisory[0].ID != fixture.pack.Topic+":revenue-advisory" {
 			t.Fatalf("active advisory rule was not carried into context: %#v", out.Context.Advisory)

@@ -104,6 +104,7 @@ type ChoiceSelection struct {
 // Topic reach, source bindings, rule text and facet text are resolved from
 // current published state by Service.Route.
 type RouteRequest struct {
+	Grouping      *GroupingSelection              `json:"grouping,omitempty"`
 	Answers       []semantics.ClarificationAnswer `json:"answers,omitempty"`
 	AnswerContext string                          `json:"answer_context,omitempty"`
 	Topic         string                          `json:"topic,omitempty"`
@@ -115,15 +116,21 @@ type RouteRequest struct {
 	Kinds         []string                        `json:"kinds,omitempty"`
 	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
 	References    []semantics.Reference           `json:"references,omitempty"`
-	Choices       []ChoiceSelection               `json:"choices,omitempty"`
-	JoinChoices   []JoinChoice                    `json:"joins,omitempty"`
-	MetricIDs     []string                        `json:"metric_ids,omitempty"`
-	Examples      []nlq.OptionalItem              `json:"examples,omitempty"`
-	Rerank        bool                            `json:"rerank,omitempty"`
+	// OmittedRoots suppress automatic concept selection; they cannot disable a required rule.
+	OmittedRoots []semantics.Reference `json:"omitted_roots,omitempty"`
+	Choices      []ChoiceSelection     `json:"choices,omitempty"`
+	JoinChoices  []JoinChoice          `json:"joins,omitempty"`
+	MetricIDs    []string              `json:"metric_ids,omitempty"`
+	Examples     []nlq.OptionalItem    `json:"examples,omitempty"`
+	Rerank       bool                  `json:"rerank,omitempty"`
+	// InterpretationPolicy preserves the continuation parser when there are no
+	// retained filters. Its absence preserves historical request semantics.
+	InterpretationPolicy string `json:"interpretation_policy,omitempty"`
 	// InterpretationAnchor pins relative and month-only temporal language. An
 	// omitted anchor is set by the server and retained in Request for replay.
-	InterpretationAnchor string               `json:"interpretation_anchor,omitempty"`
-	InterpretationEdits  []InterpretationEdit `json:"interpretation_edits,omitempty"`
+	InterpretationAnchor     string                    `json:"interpretation_anchor,omitempty"`
+	InterpretationEdits      []InterpretationEdit      `json:"interpretation_edits,omitempty"`
+	InterpretationSelections []InterpretationSelection `json:"interpretation_selections,omitempty"`
 }
 
 // ClarificationChoice is a detached presentation choice. It is not authority
@@ -202,6 +209,7 @@ type RouteResult struct {
 	Templates      []rulesets.TemplateSelection `json:"templates,omitempty"`
 	Confidence     float64                      `json:"confidence"`
 	Decision       *RoutingDecision             `json:"routing_decision,omitempty"`
+	Selection      *SemanticSelection           `json:"semantic_selection,omitempty"`
 	Interpretation *Interpretation              `json:"interpretation,omitempty"`
 	Tier           nlq.Tier                     `json:"tier,omitempty"`
 	Context        *ContextView                 `json:"context,omitempty"`
@@ -250,6 +258,7 @@ func New(topicsReader TopicReader, rules RuleReader, index IndexReader, engine g
 }
 
 type admittedTopic struct {
+	selection      *semanticSelectionState
 	clarifications *semantics.ClarificationEvaluation
 	binding        *readexec.Binding
 	id             string
@@ -457,7 +466,14 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		result.SourceBindingDigest = interpretation.BindingDigest
 	}
 	result.Request = cloneRouteRequest(in)
-	if err := s.prepareClarifications(ctx, e, in, admitted, &result); err != nil {
+	if err := s.resolveSemanticSelection(ctx, e, in, admitted, &result); err != nil {
+		err = semanticSelectionError(err, in.Locale)
+		var clarification *Clarification
+		if errors.As(err, &clarification) && (strings.HasPrefix(clarification.Reason, "ambiguous_semantic") || strings.HasPrefix(clarification.Reason, "conflicting_semantic")) {
+			result.Request = selectionFailureRequest(in, admitted)
+			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
+			return result, nil
+		}
 		return RouteResult{}, err
 	}
 	if result.Clarification != nil {
@@ -476,7 +492,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 			return RouteResult{}, err
 		}
 	}
-	metrics, err := resolveMetrics(admitted, selectedClarificationMetrics(in.MetricIDs, result.Resolutions))
+	metrics, err := applySelectedContext(admitted, in.OmittedRoots)
 	if err != nil {
 		return RouteResult{}, err
 	}
@@ -584,6 +600,10 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		result.Confidence = 0
 		return result, nil
 	}
+	hits, err = hydrateSemanticEvidence(ctx, admitted, hits)
+	if err != nil {
+		return RouteResult{}, err
+	}
 	result.Confidence = confidence(hits)
 	if confidenceOverride != nil {
 		result.Confidence = *confidenceOverride
@@ -632,7 +652,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		Topics:       topicRevisions(admitted),
 		Question:     in.Question,
 		Relations:    relations,
-		Evidence:     makeEvidence(hits),
+		Evidence:     makeSelectionEvidence(hits, admitted, in.OmittedRoots),
 		Constraints:  mergeInterpretationConstraints(mergeConstraints(admitted), interpretation),
 		Metrics:      metrics,
 		Advisory:     mergeAdvisory(admitted),
@@ -670,6 +690,9 @@ func admissionVector(dimensions int) []float32 {
 }
 
 func normalizeRequest(in RouteRequest) ([]string, error) {
+	if err := ValidateGrouping(in.Grouping); err != nil {
+		return nil, err
+	}
 	if (in.Locale != nlq.LanguageEnglish && in.Locale != nlq.LanguageSpanish) || !validQuestion(in.Question) || !identity.Identifier(in.Context) {
 		return nil, ErrInvalid
 	}
@@ -694,7 +717,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 		}
 		seen[topic] = true
 	}
-	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || len(in.InterpretationEdits) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
+	if len(in.Kinds) > maxKinds || in.LimitPerKind < 0 || in.LimitPerKind > 10 || len(in.References) > maxReferences || len(in.OmittedRoots) > maxSelectionReferences || len(in.MetricIDs) > maxMetricIDs || len(in.Examples) > maxExamples || len(in.JoinChoices) > maxTopics || len(in.Choices) > 64 || len(in.Answers) > 64 || len(in.Templates) > maxTopics || len(in.InterpretationEdits) > 64 || in.AnswerContext != "" && !topics.DigestValid(in.AnswerContext) {
 		return nil, ErrInvalid
 	}
 	if len(in.JoinChoices) > 0 {
@@ -727,6 +750,13 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 		seenRefs[ref] = true
+	}
+	seenOmitted := map[semantics.Reference]bool{}
+	for _, ref := range in.OmittedRoots {
+		if !ref.Valid() || seenOmitted[ref] || seenRefs[ref] {
+			return nil, ErrInvalid
+		}
+		seenOmitted[ref] = true
 	}
 	seenTemplates := map[string]bool{}
 	for _, selection := range in.Templates {
@@ -769,6 +799,12 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 	}
+	if in.InterpretationPolicy != "" && in.InterpretationPolicy != InterpretationContinuationPolicy {
+		return nil, ErrInvalid
+	}
+	if !validateInterpretationSelections(in.InterpretationSelections) {
+		return nil, ErrInvalid
+	}
 	seenEdits := map[string]bool{}
 	for _, edit := range in.InterpretationEdits {
 		if !edit.valid() || seenEdits[edit.Target] {
@@ -781,16 +817,19 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 
 func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out := in
+	out.Grouping = CloneGrouping(in.Grouping)
 	out.Topics = append([]string(nil), in.Topics...)
 	out.Templates = append([]rulesets.TemplateSelection(nil), in.Templates...)
 	out.Kinds = append([]string(nil), in.Kinds...)
 	out.References = append([]semantics.Reference(nil), in.References...)
+	out.OmittedRoots = append([]semantics.Reference(nil), in.OmittedRoots...)
 	out.Choices = append([]ChoiceSelection(nil), in.Choices...)
 	out.Answers = semantics.CloneClarificationAnswers(in.Answers)
 	out.JoinChoices = append([]JoinChoice(nil), in.JoinChoices...)
 	out.MetricIDs = append([]string(nil), in.MetricIDs...)
 	out.Examples = append([]nlq.OptionalItem(nil), in.Examples...)
-	out.InterpretationEdits = append([]InterpretationEdit(nil), in.InterpretationEdits...)
+	out.InterpretationEdits = CloneInterpretationEdits(in.InterpretationEdits)
+	out.InterpretationSelections = CloneInterpretationSelections(in.InterpretationSelections)
 	for i := range out.Examples {
 		if out.Examples[i].Confidence != nil {
 			confidence := *out.Examples[i].Confidence
@@ -863,13 +902,15 @@ func canonicalTemplates(input []rulesets.TemplateSelection, admitted []admittedT
 
 func (s *Service) resolveRules(ctx context.Context, e identity.Envelope, in RouteRequest, _ map[string]string, item admittedTopic) (*nlq.ConstraintState, []nlq.OptionalItem, error) {
 	if !item.hasRules {
-		if len(in.References) > 0 {
+		if item.selection == nil && len(in.References) > 0 {
 			return nil, nil, ErrInvalid
 		}
 		return nil, nil, nil
 	}
 	refs := append([]semantics.Reference(nil), in.References...)
-	if item.clarifications != nil {
+	if item.selection != nil {
+		refs = selectedRuleReferences(item)
+	} else if item.clarifications != nil {
 		refs = append([]semantics.Reference(nil), item.clarifications.References...)
 	}
 	if len(refs) == 0 {
@@ -1097,6 +1138,7 @@ type hitWithTopic struct {
 	topic       string
 	hit         vindex.Hit
 	candidateID string
+	contextText string // Catalog-backed atomic semantic group; never vector origin text.
 }
 
 func flattenHits(queryTopics map[string]string, results []vindex.Result) ([]hitWithTopic, error) {
@@ -1180,7 +1222,7 @@ func makeEvidence(hits []hitWithTopic) []nlq.Evidence {
 		if confidence > 1 {
 			confidence = 1
 		}
-		out[i] = nlq.Evidence{ID: item.candidateID, Text: item.hit.Text, Priority: len(hits) - i, Source: item.topic, Confidence: &confidence}
+		out[i] = nlq.Evidence{ID: item.candidateID, Text: item.contextEvidence(), Priority: len(hits) - i, Source: item.topic, Confidence: &confidence}
 	}
 	return out
 }
@@ -1279,119 +1321,7 @@ func findMetric(def topics.Definition, id string) (nlq.PinnedMetric, bool, error
 // metricClosure resolves the complete transitive semantic graph in deterministic
 // order. It is derived only from the already-authorized retained publication.
 func metricClosure(def topics.Definition, roots []semantics.Reference) ([]nlq.MetricDependency, error) {
-	measures := map[string]semantics.Measure{}
-	kpis := map[string]semantics.KPI{}
-	columns := map[string]semantics.Column{}
-	datasetForColumn := map[string]string{}
-	dimensionsByColumn := map[string][]semantics.Dimension{}
-	for _, dataset := range def.Datasets {
-		for _, column := range dataset.Columns {
-			key := dataset.ID + "\x00" + column.ID
-			columns[key] = column
-			datasetForColumn[key] = dataset.ID
-		}
-	}
-	for _, value := range def.Measures {
-		measures[value.ID] = value
-	}
-	for _, value := range def.Dimensions {
-		key := value.Field.Dataset + "\x00" + value.Field.ID
-		dimensionsByColumn[key] = append(dimensionsByColumn[key], value)
-	}
-	for _, value := range def.KPIs {
-		kpis[value.ID] = value
-	}
-	seen := map[string]bool{}
-	traversed := map[string]bool{}
-	datasets := map[string]bool{}
-	out := []nlq.MetricDependency{}
-	add := func(kind, id string, value any) {
-		key := kind + "\x00" + id
-		if seen[key] {
-			return
-		}
-		raw, err := json.Marshal(value)
-		if err != nil {
-			return
-		}
-		seen[key] = true
-		out = append(out, nlq.MetricDependency{Kind: kind, ID: id, Text: string(raw)})
-	}
-	var visit func(semantics.Reference)
-	visit = func(ref semantics.Reference) {
-		traversalKey := string(ref.Kind) + "\x00" + ref.Dataset + "\x00" + ref.ID
-		if traversed[traversalKey] {
-			return
-		}
-		traversed[traversalKey] = true
-		switch ref.Kind {
-		case semantics.KindKPI:
-			value, ok := kpis[ref.ID]
-			if !ok {
-				return
-			}
-			add("kpi", value.ID, value)
-			for _, input := range value.Inputs {
-				visit(input)
-			}
-			for _, filter := range value.Filters {
-				visit(filter.Field)
-			}
-		case semantics.KindMeasure:
-			value, ok := measures[ref.ID]
-			if !ok {
-				return
-			}
-			add("measure", value.ID, value)
-			visit(value.Field)
-			for _, filter := range value.Filters {
-				visit(filter.Field)
-			}
-		case semantics.KindColumn:
-			key := ref.Dataset + "\x00" + ref.ID
-			value, ok := columns[key]
-			if !ok {
-				return
-			}
-			datasets[datasetForColumn[key]] = true
-			add("column", ref.Dataset+":"+ref.ID, struct {
-				Dataset string           `json:"dataset"`
-				Column  semantics.Column `json:"column"`
-			}{ref.Dataset, value})
-			for _, dimension := range dimensionsByColumn[key] {
-				add("dimension", dimension.ID, dimension)
-				for _, filter := range dimension.Filters {
-					visit(filter.Field)
-				}
-			}
-		}
-	}
-	for _, root := range roots {
-		visit(root)
-	}
-	connecting, err := uniqueJoinSubgraph(def.Joins, datasets)
-	if err != nil {
-		return nil, err
-	}
-	for _, value := range connecting {
-		add("join", value.ID, value)
-		for _, ref := range []semantics.Reference{value.Left, value.Right} {
-			key := ref.Dataset + "\x00" + ref.ID
-			if column, ok := columns[key]; ok {
-				add("column", ref.Dataset+":"+ref.ID, struct {
-					Dataset string           `json:"dataset"`
-					Column  semantics.Column `json:"column"`
-				}{ref.Dataset, column})
-			}
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].ID < out[j].ID
-	})
-	return out, nil
+	return semanticClosure(context.Background(), def, roots)
 }
 
 type joinEdge struct {

@@ -238,7 +238,7 @@ func TestExecutionHandlerDispatchesRegisteredErrorPaths(t *testing.T) {
 	service, engine := newExecutionTestService(t)
 	handler := ExecutionHandler(fixture.verifier, service, http.NotFoundHandler())
 	scopes := []string{
-		"query.preflight", "query.plan", "query.execute", "feedback.write",
+		"query.preflight", "query.plan", "query.execute", "feedback.write", "sources.query",
 		"cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context",
 	}
 	tests := []struct {
@@ -296,5 +296,19 @@ func TestExecutionHandlerPreservesHTTPBoundaries(t *testing.T) {
 	}
 	if engine.calls != 0 {
 		t.Fatalf("invalid or denied request reached gateway %d times", engine.calls)
+	}
+}
+
+// The dispatch fixture above includes every action required by activation. A
+// partial bearer must still fail at the real service boundary, not be repaired
+// by weakening production authorization to match an old test expectation.
+func TestSQLRecoveryExampleActivationRequiresSourceAction(t *testing.T) {
+	fixture := newExecutionTokenFixture(t)
+	service, engine := newExecutionTestService(t)
+	handler := ExecutionHandler(fixture.verifier, service, http.NotFoundHandler())
+	scopes := []string{"feedback.write", "cw.topic.read:topic", "cw.source.query:source", "cw.dataset.query:dataset", "cw.execution_context.use:context"}
+	response := callExecutionHandler(t, handler, http.MethodPost, "/v1/nlq/examples/state", fixture.token(t, "source-action-required", scopes), `{"example_id":"example","state":"active"}`)
+	if response.Code != http.StatusForbidden || executionErrorCode(t, response) != "forbidden" || engine.calls != 0 {
+		t.Fatal("example activation bypassed its required source action")
 	}
 }

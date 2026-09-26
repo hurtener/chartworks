@@ -125,17 +125,18 @@ func (c Candidates) Items() []Candidate { return append([]Candidate(nil), c.item
 
 // Usage reports observations, never a fabricated zero bill. Nil cost/counts mean unknown.
 type Usage struct {
-	Role                string   `json:"role"`
-	Provider            string   `json:"provider"`
-	RequestedModel      string   `json:"requested_model"`
-	ActualModel         string   `json:"actual_model,omitempty"`
-	ConfigurationDigest string   `json:"configuration_digest,omitempty"`
-	Attempts            int      `json:"attempts"`
-	DurationMS          int64    `json:"duration_ms"`
-	InputTokens         *int     `json:"input_tokens,omitempty"`
-	OutputTokens        *int     `json:"output_tokens,omitempty"`
-	CostUSD             *float64 `json:"cost_usd,omitempty"`
-	Cached              bool     `json:"cached"`
+	Envelope            *PromptEnvelopeUsage `json:"envelope,omitempty"`
+	Role                string               `json:"role"`
+	Provider            string               `json:"provider"`
+	RequestedModel      string               `json:"requested_model"`
+	ActualModel         string               `json:"actual_model,omitempty"`
+	ConfigurationDigest string               `json:"configuration_digest,omitempty"`
+	Attempts            int                  `json:"attempts"`
+	DurationMS          int64                `json:"duration_ms"`
+	InputTokens         *int                 `json:"input_tokens,omitempty"`
+	OutputTokens        *int                 `json:"output_tokens,omitempty"`
+	CostUSD             *float64             `json:"cost_usd,omitempty"`
+	Cached              bool                 `json:"cached"`
 }
 
 // Receipt includes every attempted provider call, including failures with unknown usage.

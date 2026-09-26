@@ -21,9 +21,10 @@ const interpretationVersion = "semantic-interpretation-v1"
 // target. Replacement values must be reviewed governed-value IDs; arbitrary
 // literals cannot become executable constraints through this seam.
 type InterpretationEdit struct {
-	Target string `json:"target"`
-	Action string `json:"action"`
-	Value  string `json:"value,omitempty"`
+	Target string                `json:"target"`
+	Action string                `json:"action"`
+	Value  string                `json:"value,omitempty"`
+	Period *InterpretationPeriod `json:"period,omitempty"`
 }
 
 func (e InterpretationEdit) valid() bool {
@@ -32,9 +33,9 @@ func (e InterpretationEdit) valid() bool {
 	}
 	switch e.Action {
 	case "remove":
-		return e.Value == ""
+		return e.Value == "" && e.Period == nil
 	case "replace":
-		return identity.Identifier(e.Value)
+		return e.Period != nil && e.Value == "" && e.Period.valid() || e.Period == nil && identity.Identifier(e.Value)
 	default:
 		return false
 	}
@@ -172,7 +173,7 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 	}
 	for _, edit := range in.InterpretationEdits {
 		kind, ok := knownTargets[edit.Target]
-		if !ok || kind == "time" && edit.Action == "replace" {
+		if !ok || kind == "time" && edit.Action == "replace" && edit.Period == nil || kind == "value" && edit.Period != nil {
 			return nil, nil, ErrInvalid
 		}
 	}
@@ -184,6 +185,10 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		return a.Dataset < b.Dataset
 	})
 	values = dedupeValueCandidates(values)
+	fresh := map[string]bool{}
+	for _, v := range values {
+		fresh[v.item.id+"\x00"+v.dim.ID] = true
+	}
 	byPhrase := map[string][]valueCandidate{}
 	for _, candidate := range values {
 		byPhrase[candidate.phrase] = append(byPhrase[candidate.phrase], candidate)
@@ -233,6 +238,10 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		out.Values = append(out.Values, ValueInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, GovernedValue: candidate.value.ID, CanonicalValue: candidate.value.Value, Operator: op, Geography: geography, Provenance: "reviewed_governed_value"})
 	}
 	span, hasSpan, spanErr := temporalSpan(question, in.Locale, anchor)
+	if len(in.InterpretationSelections) > 0 || in.InterpretationPolicy == InterpretationContinuationPolicy {
+		out.Parser = "deterministic-continuation-v1"
+		span, hasSpan, spanErr = continuationSpan(question, anchor, span, hasSpan, spanErr)
+	}
 	if spanErr != nil {
 		return nil, nil, spanErr
 	}
@@ -265,15 +274,33 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 					}
 				}
 			}
+			if len(named) == 0 {
+				for _, candidate := range eligible {
+					for _, prior := range in.InterpretationSelections {
+						if prior.Period != nil && prior.Topic == candidate.item.id && prior.Dimension == candidate.dim.ID {
+							named = append(named, candidate)
+						}
+					}
+				}
+			}
 			eligible = named
 		}
 		if len(eligible) != 1 {
 			return nil, nil, &Clarification{Reason: "ambiguous_temporal_dimension", Outcome: semantics.ClarificationConflicting, Prompt: "Choose the reviewed temporal dimension for this period."}
 		}
 		candidate := eligible[0]
+		fresh[candidate.item.id+"\x00"+candidate.dim.ID] = true
 		target := interpretationTarget(candidate.item.id, candidate.dim.ID, "time")
 		_, _, remove := applyInterpretationEdit(in.InterpretationEdits, target)
 		if !remove {
+			for _, edit := range in.InterpretationEdits {
+				if edit.Target == target && edit.Period != nil {
+					span = parsedSpan{start: edit.Period.Start, end: edit.Period.End, grain: edit.Period.Grain, provenance: "explicit_reviewed_interval"}
+					if !supportsTemporalRequest(candidate.dim.Temporal.Grains, span, groupGrain) {
+						return nil, nil, ErrInvalid
+					}
+				}
+			}
 			tz := candidate.dim.Temporal.Timezone
 			kind := temporalColumnType(candidate.column)
 			if tz == "" && kind == "date" {
@@ -295,6 +322,13 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 			out.Temporal = append(out.Temporal, TemporalInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, Grain: span.grain, Calendar: calendar, TimeZone: tz, TemporalType: temporalType, LocalStart: span.start, LocalEnd: span.end, Start: start, End: end, Provenance: span.provenance})
 		}
 	}
+	if err := s.mergeRetainedInterpretation(ctx, *in, admitted, out, fresh); err != nil {
+		return nil, nil, err
+	}
+	if len(out.Values)+len(out.Temporal) > 128 {
+		return nil, nil, ErrInvalid
+	}
+	sort.Slice(out.Temporal, func(i, j int) bool { return out.Temporal[i].ID < out.Temporal[j].ID })
 	sort.Slice(out.Values, func(i, j int) bool { return out.Values[i].ID < out.Values[j].ID })
 	constraints := make([]readexec.BusinessConstraint, 0, len(out.Values)+len(out.Temporal))
 	reader, needsBinding := s.topics.(clarificationBindingReader)

@@ -19,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlq/generationdecision"
 	"github.com/hurtener/chartworks/internal/nlqbyo"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
@@ -140,13 +141,20 @@ func decodeBody(w http.ResponseWriter, r *http.Request, schema interface{ Valida
 
 func failure(w http.ResponseWriter, err error) {
 	status, code := classify(err)
+	problem := nlqexec.GenerationProblem(err)
+	// An authority/native error can take precedence in an error chain. Do not
+	// project model questions under an unrelated (especially denied) code.
+	if !generationdecision.MatchesCode(problem, code) {
+		problem = nil
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(struct {
+		Generation    *generationdecision.Problem     `json:"generation,omitempty"`
 		Error         string                          `json:"error"`
 		Clarification *semantics.ClarificationProblem `json:"clarification,omitempty"`
-	}{code, clarificationProblem(err)})
+	}{problem, code, clarificationProblem(err)})
 }
 
 func isClarification(err error) bool {
@@ -175,6 +183,14 @@ func classify(err error) (int, string) {
 		status, code = http.StatusConflict, "no_plan"
 	case errors.Is(err, nlqexec.ErrRefinementLimit):
 		status, code = http.StatusConflict, "new_question_required"
+	case errors.Is(err, readexec.ErrAnalyticalMismatch):
+		status, code = http.StatusUnprocessableEntity, "analytical_mismatch"
+	case errors.Is(err, readexec.ErrAnalyticalUnsupported):
+		status, code = http.StatusUnprocessableEntity, "analytical_unsupported"
+	case errors.Is(err, nlqexec.ErrGenerationClarification):
+		status, code = http.StatusUnprocessableEntity, "generation_clarification_required"
+	case errors.Is(err, nlqexec.ErrGenerationContext):
+		status, code = http.StatusUnprocessableEntity, "generation_context_insufficient"
 	case errors.Is(err, nlqexec.ErrValidationBudget):
 		status, code = http.StatusUnprocessableEntity, "validation_budget_exhausted"
 	case errors.Is(err, nlqexec.ErrExecutionBudget):

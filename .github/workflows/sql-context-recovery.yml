@@ -1,0 +1,246 @@
+name: SQL context recovery
+
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+  pull_request:
+    paths:
+      - internal/nlq/**
+      - internal/nlqroute/**
+      - internal/nlqexec/**
+      - internal/semantics/**
+      - internal/exec/**
+      - internal/gateway/**
+      - internal/config/**
+      - internal/store/postgres/**
+      - sdk/chartworks/**
+      - test/acceptance/**
+      - .github/workflows/sql-context-recovery.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sql-context-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verification:
+    name: verification (Go ${{ matrix.go }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - go: '1.26.4'
+            cache: go1264
+          - go: '1.27.1'
+            cache: go1271
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: '-p=2'
+      GOTOOLCHAIN: local
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-native
+      CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Capture exact committed source and independently replay the patch
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/sql-context-source"
+          mkdir -p "$target"
+          git rev-parse HEAD > "$target/commit.txt"
+          git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
+          git ls-tree -r HEAD > "$target/tree.txt"
+          git archive --format=tar.gz HEAD > "$target/source.tar.gz"
+          baseline=6edeacc5070366c7bac882226cc2ac5524d85b99
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/parameter-scopes-incremental.patch"
+          git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/sql-continuation-replay.index"
+          git read-tree "$baseline"
+          git apply --cached "$target/parameter-scopes-incremental.patch"
+          actual=$(git write-tree)
+          expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
+          test "$actual" = "$expected"
+          printf 'baseline=%s\nhead=%s\nexpected_tree=%s\nreplayed_tree=%s\n' "$baseline" "$SOURCE_HEAD" "$expected" "$actual" > "$target/patch-check.txt"
+          unset GIT_INDEX_FILE
+          (cd "$target" && sha256sum *.txt *.patch source.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-context-source-${{ matrix.go }}-${{ github.sha }}
+          path: ${{ runner.temp }}/sql-context-source/
+          retention-days: 7
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Verify source, formatting and plan coherence
+        run: |
+          set -o pipefail
+          go version
+          go mod verify
+          unformatted=$(git ls-files '*.go' | xargs gofmt -l)
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            printf '%s\n' "$unformatted" | xargs gofmt -d
+            exit 1
+          fi
+          make planning-check
+          git diff --exit-code
+      - name: Reserve disk for native and race builds
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          df -h
+      - uses: actions/cache/restore@v4
+        id: native
+        with:
+          path: |
+            /tmp/chartworks-native/bruin
+            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1
+      - name: Build pinned native dependencies
+        if: steps.native.outputs.cache-hit != 'true'
+        run: bash scripts/build-bruin.sh
+      - uses: actions/cache/save@v4
+        if: steps.native.outputs.cache-hit != 'true' && matrix.go == '1.26.4'
+        with:
+          path: |
+            /tmp/chartworks-native/bruin
+            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1
+      - name: Bind the pinned native build
+        run: |
+          test -x /tmp/chartworks-native/bruin
+          test -s /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
+          echo 'CGO_LDFLAGS=-L/tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release' >> "$GITHUB_ENV"
+          echo 'CHARTWORKS_TEST_BRUIN_PATH=/tmp/chartworks-native/bruin' >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v4
+        id: incremental
+        with:
+          path: /home/runner/.cache/go-build
+          key: sql-context-race-ubuntu24-${{ matrix.cache }}-${{ github.sha }}
+          restore-keys: |
+            sql-context-race-ubuntu24-${{ matrix.cache }}-
+      - name: Reproduce exact pre-fix P1 assertion failures in an isolated baseline
+        run: python3 scripts/check-sql-adversarial-baseline.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sql-adversarial-baseline-${{ matrix.go }}-${{ github.sha }}
+          path: ${{ runner.temp }}/sql-adversarial-baseline/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Semantic, routing, context and generation regressions
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec/... ./internal/store/postgres ./internal/config ./internal/gateway/... ./sdk/chartworks ./internal/api ./internal/mcpserver 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sql-context-units-${{ matrix.go }}-${{ github.sha }}
+          path: ${{ runner.temp }}/sql-context-units.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Existing and recovery-specific integrated NLQ acceptance
+        if: success() || failure()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoveryInterpretationContinuationLifecycleAcceptance|TestSQLRecoveryInterpretationContinuationEditsAcceptance|TestSQLRecoverySavedInterpretationContinuationAcceptance|TestSQLRecoveryDependentClarificationLifecycleAcceptance|TestSQLRecoveryDependentClarificationInvalidAcceptance|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestSQLRecoveryVocabularyProviderAcceptance|TestSQLRecoveryVocabularyKeepsStrongerProofs|TestSQLRecoveryDecisionNoExecutablePlanAcceptance|TestSQLRecoveryDecisionTransportsPrivacyAcceptance|TestSQLRecoveryAdversarialOnlyPopulationAcceptance|TestSQLRecoveryAdversarialIntegerDivisionAcceptance|TestSQLRecoveryAdversarialRepairFinalizationAcceptance|TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection|TestSQLRecoveryAdversarialUnknownJournalAcceptance|TestSQLRecoveryAdversarialFailedRerunClearsRowsAcceptance|TestSQLRecoveryGroupingContinuationLifecycleAcceptance|TestSQLRecoveryGroupingPrivateBindingsAcceptance|TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance|TestSQLRecoverySavedGroupingContinuationAcceptance|TestSQLRecoveryParameterScopesLifecycleAcceptance|TestSQLRecoveryParameterScopesRejectionAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+      - name: Summarize actual terminal test events
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          summary={'head':os.environ['SOURCE_HEAD'],'tested_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'go':subprocess.check_output(['go','version'],text=True).strip(),'suites':{}}
+          required_units=['TestSQLRecoveryQueryPopulationCompilerRequiresOwnedConstraints','TestSQLRecoveryQueryPopulationRetainedReplayAndEvidence','TestSQLRecoveryQueryPopulationAbsentIsNotTotalPopulation','TestSQLRecoveryQueryPopulationRejectsAdditionalRestrictions','TestSQLRecoveryQueryPopulationTypedNullRangeAndAggregate','TestSQLRecoveryQueryPopulationCompletenessAndParameterIdentity','TestSQLRecoveryQueryPopulationKeepsMetricPopulationsIndependent','TestSQLRecoveryQueryPopulationProofBoundaries','TestSQLRecoveryScopedProjectionDimensions','TestSQLRecoveryScopedProjectionTopicsAndSharedJoinKeys','TestSQLRecoveryScopedProjectionOwnership','TestSQLRecoveryScopedProjectionConservativeFallback','TestSQLRecoveryScopedProjectionGenerationAndRefit','TestSQLRecoveryScopedProjectionDimensionRoute','TestSQLRecoveryScopedProjectionMultiProducer','TestSQLRecoveryScopedProjectionFilterOnlyAndBounds']
+          required_acceptance=['TestSQLRecoveryQueryPopulationAcceptance','TestSQLRecoveryQueryPopulationTemporalAndNumeric','TestSQLRecoveryAnalyticalCalendarAcceptance','TestSQLRecoveryScopedProjectionAcceptance','TestSQLRecoveryScopedProjectionPrivateAcceptance']
+          required_units.extend(['TestSQLRecoveryAnswerDependentClarification','TestSQLRecoveryInactiveAnswersCannotSeedApplicability','TestSQLRecoveryDerivedFactsAreNotAutomaticChoices','TestSQLRecoveryClarificationCyclesNeedASeed','TestSQLRecoveryDependentInvalidAndConflictAreAtomic','TestSQLRecoveryAnswerDependentClarificationConcurrentCopies','TestSQLRecoveryPotentialBindingIsNotAResolution','TestSQLRecoveryClarificationClosureIsBounded','TestSQLRecoveryDependentAnswersKeepPreflightBinding','TestSQLRecoveryDependentAnswerSourceRotationAndInactiveIsolation'])
+          required_acceptance.extend(['TestSQLRecoveryDependentClarificationLifecycleAcceptance','TestSQLRecoveryDependentClarificationInvalidAcceptance'])
+          required_units.extend(['TestSQLRecoveryInterpretationContinuationKeepsExactState','TestSQLRecoveryInterpretationContinuationReplacesAndRemoves','TestSQLRecoveryInterpretationContinuationRejectsForeignState','TestSQLRecoveryInterpretationContinuationReplayAndSourceFence','TestSQLRecoveryInterpretationSelectionCopiesAndBounds','TestSQLRecoveryRefinementRetainsResolvedInterpretation','TestSQLRecoveryRefinementDoesNotReapplyObsoleteInterpretationEdits','TestSQLRecoverySavedInterpretationSelectionsAreExplicit','TestSQLRecoveryInterpretationSDKWire','TestSQLRecoveryContinuationCannotBorrowClarificationOrigin','TestSQLRecoveryContinuationConcurrentCopies','TestSQLRecoveryContinuationCalendarBoundaries','TestSQLRecoverySavedInterpretationAnchorPolicy'])
+          required_acceptance.extend(['TestSQLRecoveryInterpretationContinuationLifecycleAcceptance','TestSQLRecoveryInterpretationContinuationEditsAcceptance','TestSQLRecoverySavedInterpretationContinuationAcceptance'])
+          required_units.extend(['TestSQLRecoveryContinuationPinsOnlyCarriedAnswers','TestSQLRecoveryInterpretationContinuationEmptyState','TestSQLRecoveryEmptyContinuationPolicyIsDurable','TestSQLRecoveryEmptyContinuationOriginRetainsPolicyAndAnchor'])
+          required_units.extend(['TestSQLRecoveryExplanationsDetachedAndEmpty','TestSQLRecoveryExplanationsRedactKnownBindingsAndAliases','TestSQLRecoveryExplanationsRedactionRemainsBounded','TestSQLRecoveryExplanationsUseAcceptedValidationCandidate','TestSQLRecoveryExplanationsExecutionCorrectionBoundary','TestSQLRecoveryExplanationsReadProjectionAndLegacy','TestSQLRecoveryExplanationsConcurrentReuse'])
+          required_acceptance.extend(['TestSQLRecoveryExplanationLifecycleAcceptance','TestSQLRecoveryExplanationCorrectionAcceptance','TestSQLRecoveryExplanationPrivacyAcceptance'])
+          required_units.extend(['TestSQLRecoveryParameterClauseContinuity','TestSQLRecoveryParameterClauseRejectsReassignment','TestSQLRecoveryParameterClauseProtectsEveryLocation','TestSQLRecoveryParameterClauseRejectsUnprovedScopes','TestSQLRecoveryParameterClauseOtherDialectsConservative','TestSQLRecoveryParameterClauseBoundsAndCancellation','TestSQLRecoveryParameterClauseConcurrentReuse','TestSQLRecoveryRefinementBaseSeparatesOwnedParameters','TestSQLRecoveryRefinementSlotsPrivateAndFenced','TestSQLRecoveryRefinementRestoresValuesAndRejectsSlotDrift','TestSQLRecoveryRefinementParametersReachValidationNotProvider','TestSQLRecoveryRefinementCorrectionKeepsOriginalBindings'])
+          required_acceptance.extend(['TestSQLRecoveryParameterContinuationAcceptance','TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance'])
+          required_units.extend(['TestSQLRecoveryParameterEditsTypedDetachedValues','TestSQLRecoveryParameterEditsInvalidAreAtomic','TestSQLRecoveryParameterEditsPrivateStateAndParentFence','TestSQLRecoveryParameterEditsReboundThroughCorrection','TestSQLRecoveryParameterEditsCannotReassignRolesOrOwnedSlots','TestSQLRecoveryParameterEditsConcurrentAndCancelled','TestSQLRecoveryParameterEditPublicSchema'])
+          required_acceptance.extend(['TestSQLRecoveryParameterEditLifecycleAcceptance','TestSQLRecoveryParameterEditBoundariesAcceptance','TestSQLRecoveryParameterEditOwnedAnswerAcceptance'])
+          required_units.append('TestSQLRecoveryParameterEditSDKWire')
+          required_units.extend(['TestSQLRecoveryExampleParameterSchema','TestSQLRecoveryExampleParameterSchemaRejectsInvalid','TestSQLRecoveryExampleParameterSchemaConcurrent','TestSQLRecoveryLearningParametersDoNotCarryHistoricalValues','TestSQLRecoveryLearningParameterIdentityAndProbes','TestSQLRecoveryLearningParameterBoundsAndCancellation','TestSQLRecoveryLearningParameterPortableVersion','TestSQLRecoveryLearningParameterNativeReviewUsesOnlyProbes','TestSQLRecoveryLearningDoesNotPublishCopiedBindingLiterals','TestSQLRecoveryLearningMarkersAreNotBindings','TestSQLRecoveryParameterizedExampleSDKWire'])
+          required_acceptance.extend(['TestSQLRecoveryParameterizedExampleLifecycleAcceptance','TestSQLRecoveryParameterizedExampleNativeReviewFailure','TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates'])
+          required_units.extend(['TestSQLRecoveryVocabularyPreservesValidatorLists','TestSQLRecoveryVocabularyExactDialectsAndMarkers','TestSQLRecoveryVocabularyRejectsForeignNames','TestSQLRecoveryVocabularyDetachedDigestAndGuidance','TestSQLRecoveryVocabularyConcurrent','TestSQLRecoveryVocabularyPostgresNative','TestSQLRecoveryVocabularyWarehouseNative','TestSQLRecoveryVocabularyParameterSpelling','TestSQLRecoveryVocabularyGenerationAndRepair','TestSQLRecoveryVocabularyUnknownAndCancelledBeforeModel','TestSQLRecoveryVocabularyIncludedBeforeEnvelopeFit'])
+          required_acceptance.extend(['TestSQLRecoveryVocabularyProviderAcceptance','TestSQLRecoveryVocabularyKeepsStrongerProofs'])
+          required_units.extend(['TestSQLRecoveryDecisionClosedUnion','TestSQLRecoveryDecisionBoundsAndPublicProjection','TestSQLRecoveryDecisionConcurrent','TestSQLRecoveryDecisionBlocksBeforeValidation','TestSQLRecoveryDecisionRejectsMissingAndContradictoryWire','TestSQLRecoveryDecisionStopsValidationRepair','TestSQLRecoveryDecisionStopsExecutionCorrection','TestSQLRecoveryDecisionPrivacyAndDetachment','TestSQLRecoveryDecisionReadyKeepsCaveatsAndLegacyReads','TestSQLRecoveryDecisionHTTPDiscriminators','TestSQLRecoveryDecisionSDKBoundedProblem','TestSQLRecoveryDecisionSDKNoAutomaticRetry'])
+          required_acceptance.extend(['TestSQLRecoveryDecisionNoExecutablePlanAcceptance','TestSQLRecoveryDecisionTransportsPrivacyAcceptance'])
+          required_units.extend(['TestSQLRecoveryAdversarialOnlyCannotChangePopulation','TestSQLRecoveryAdversarialUnknownLiteralCannotProveDecimalDivision','TestSQLRecoveryAdversarialBigintParserStorageIsNotNumericType','TestSQLRecoveryAdversarialRepairContextFailureFinalizesOperation','TestSQLRecoveryAdversarialDurableFailureReceiptGatesCorrection'])
+          required_acceptance.extend(['TestSQLRecoveryAdversarialOnlyPopulationAcceptance','TestSQLRecoveryAdversarialIntegerDivisionAcceptance','TestSQLRecoveryAdversarialRepairFinalizationAcceptance','TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection'])
+          required_units.extend(['TestSQLRecoveryAdversarialSourceFailureSurvivesRevisionFence','TestSQLRecoveryAdversarialMissingReceiptFinalizesUncertain','TestSQLRecoveryAdversarialFailedRerunDiscardsPreviousRows','TestSQLRecoveryAdversarialCancelledCallerCanFinalize','TestSQLRecoveryAdversarialReceiptErrorsNeverExposeRows'])
+          required_acceptance.extend(['TestSQLRecoveryAdversarialUnknownJournalAcceptance','TestSQLRecoveryAdversarialFailedRerunClearsRowsAcceptance'])
+          required_units.extend(['TestSQLRecoveryGroupingShapeAndCopies','TestSQLRecoveryGroupingReplacesInferredRootsBeforeRules','TestSQLRecoveryGroupingRejectsMissingOrOmittedRootsBeforeModel','TestSQLRecoveryExplicitTotalIsNotUnknownGrain','TestSQLRecoveryGroupingEditsKeepBoundParameterRoles','TestSQLRecoveryGroupingInheritanceAndReplacement','TestSQLRecoveryGroupingCompileAndRetainedVersionFences','TestSQLRecoveryGroupingPendingOriginAndSavedState','TestSQLRecoveryGroupingCalendarAndPrivateValues','TestSQLRecoveryGroupingSharedFieldKeepsCalendarIdentity','TestSQLRecoveryGroupingPendingReplacementKeepsScalarDataSeparate','TestSQLRecoveryGroupingSDKReplacementAndTotal'])
+          required_acceptance.extend(['TestSQLRecoveryGroupingContinuationLifecycleAcceptance','TestSQLRecoveryGroupingPrivateBindingsAcceptance','TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance','TestSQLRecoverySavedGroupingContinuationAcceptance'])
+          required_units.extend(['TestSQLRecoveryPendingRefinementReadsCurrentScopeWithoutIssuingPlan','TestSQLRecoveryPendingRefinementCannotCarryExecutableEvidence','TestSQLRecoveryPendingRefinementPreservesSourceAndPolicyPins','TestSQLRecoveryPendingRefinementStillRequiresActorActionAndCancellation'])
+          required_units.extend(['TestSQLRecoveryParameterScopesPositive','TestSQLRecoveryParameterScopesRejectRebinding','TestSQLRecoveryParameterOutputNamespaceFences','TestSQLRecoveryParameterScopesNativeSafetyIndependent','TestSQLRecoveryParameterScopesNativeConcurrency'])
+          required_acceptance.extend(['TestSQLRecoveryParameterScopesLifecycleAcceptance','TestSQLRecoveryParameterScopesRejectionAcceptance'])
+          required_units.extend(['TestSQLRecoveryParameterScopeCoreImmutableGraphs', 'TestSQLRecoveryParameterScopeCoreRejectsRebinding', 'TestSQLRecoveryParameterScopeCoreSetAndJoinNodes', 'TestSQLRecoveryParameterScopeCoreCommandsStayUnsupported', 'TestSQLRecoveryParameterScopeCoreOutputDependencies', 'TestSQLRecoveryParameterScopeCoreExactLiteralsAndLocations', 'TestSQLRecoveryParameterScopeCoreMalformedAndBounded', 'TestSQLRecoveryParameterScopeCoreConcurrentDetached', 'TestSQLRecoveryParameterScopeCoreIndirectValueConsumers'])
+          missing=[]
+          failures=[]
+          for name in ['units','acceptance']:
+              file=root/f'sql-context-{name}.log'
+              events=[]
+              non_json=[]
+              if file.exists():
+                  for line in file.read_text().splitlines():
+                      try: events.append(json.loads(line))
+                      except json.JSONDecodeError: non_json.append(line[:400])
+              passed={e.get('Test') for e in events if e.get('Action')=='pass' and e.get('Test')}
+              failed={e.get('Test') for e in events if e.get('Action')=='fail' and e.get('Test')}
+              packages=[e['Package'] for e in events if e.get('Action')=='pass' and not e.get('Test')]
+              required=required_units if name=='units' else required_acceptance
+              missing.extend(x for x in required if x not in passed)
+              missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryAdversarial'))
+              missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryExplanation'))
+              missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith(('TestSQLRecoveryExampleParameter','TestSQLRecoveryLearning','TestSQLRecoveryParameterizedExample')))
+              failures.extend(e['Test']+':skipped' for e in events if e.get('Action')=='skip' and e.get('Test','').startswith(('TestSQLRecoveryVocabulary','TestSQLRecoveryDecision')))
+              failures.extend(e['Test']+':skipped' for e in events if e.get('Action')=='skip' and e.get('Test','').startswith(('TestSQLRecoveryParameterScope','TestSQLRecoveryParameterOutputNamespace')))
+              if not packages: missing.append(name+':terminal-package')
+              failures.extend(e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail')
+              failures.extend(e['Test']+':skipped' for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryScopedProjection'))
+              summary['suites'][name]={'passed':sum(e.get('Action')=='pass' and bool(e.get('Test')) for e in events),'failed':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='fail'],'skipped':[e.get('Test',e.get('Package')) for e in events if e.get('Action')=='skip'],'packages_passed':packages,'projection_tests':sorted(x for x in passed if x.startswith('TestSQLRecoveryScopedProjection') and '/' not in x),'failure_details':[e.get('Output','').strip()[:1200] for e in events if e.get('Test') in failed and e.get('Output') and not e['Output'].startswith(('===','---'))][:25],'non_json':non_json[:8]}
+          summary['missing_required']=missing
+          raw=json.dumps(summary,sort_keys=True)
+          (root/'sql-context-summary.json').write_text(raw+'\n')
+          print('SQL_CONTEXT_QUALIFICATION_SUMMARY='+raw)
+          if missing or failures: raise SystemExit('Required qualification failed: '+', '.join(missing+failures))
+          PY
+      - name: Validation must not modify source
+        if: always()
+        run: git diff --exit-code
+      - uses: actions/cache/save@v4
+        if: always() && steps.incremental.outcome == 'success' && steps.incremental.outputs.cache-hit != 'true'
+        with:
+          path: /home/runner/.cache/go-build
+          key: sql-context-race-ubuntu24-${{ matrix.cache }}-${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sql-context-evidence-${{ matrix.go }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/sql-context-*.log
+            ${{ runner.temp }}/sql-context-summary.json
+          retention-days: 7

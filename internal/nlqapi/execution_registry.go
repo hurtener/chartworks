@@ -89,6 +89,8 @@ func executionErrors() []api.ErrorResponse {
 		{Status: http.StatusConflict, Code: "no_plan"},
 		{Status: http.StatusConflict, Code: "new_question_required"},
 		{Status: http.StatusRequestEntityTooLarge, Code: "limit_exceeded"},
+		{Status: http.StatusUnprocessableEntity, Code: "generation_clarification_required", Generation: true},
+		{Status: http.StatusUnprocessableEntity, Code: "generation_context_insufficient", Generation: true},
 		{Status: http.StatusUnprocessableEntity, Code: "insufficient_context"},
 		{Status: http.StatusUnprocessableEntity, Code: "sql_unsafe"},
 		{Status: http.StatusUnprocessableEntity, Code: "unsupported"},

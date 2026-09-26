@@ -18,14 +18,21 @@ type LegacyClarificationChoice struct {
 	Value   string `json:"value"`
 }
 
+// ClarificationReferenceSelection distinguishes selected roots from expression
+// dependencies when auto-resolving a reviewed choice. Nil preserves legacy behavior.
+type ClarificationReferenceSelection struct {
+	References []Reference `json:"references"`
+}
+
 // ClarificationInput is pure interpretation input after topic admission. It has
 // no identity, token, source credential, provider or executable matcher fields.
 type ClarificationInput struct {
-	Locale        string                      `json:"locale"`
-	Question      string                      `json:"question"`
-	References    []Reference                 `json:"references,omitempty"`
-	Answers       []ClarificationAnswer       `json:"answers,omitempty"`
-	LegacyChoices []LegacyClarificationChoice `json:"choices,omitempty"`
+	Selection     *ClarificationReferenceSelection `json:"selection,omitempty"`
+	Locale        string                           `json:"locale"`
+	Question      string                           `json:"question"`
+	References    []Reference                      `json:"references,omitempty"`
+	Answers       []ClarificationAnswer            `json:"answers,omitempty"`
+	LegacyChoices []LegacyClarificationChoice      `json:"choices,omitempty"`
 }
 
 type clarificationKey struct{ pattern, slot string }
@@ -55,14 +62,76 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 			return out
 		}
 	}
+	choiceReferences := input.References
+	if input.Selection != nil {
+		choiceReferences = input.Selection.References
+		if len(choiceReferences) > 128 {
+			out.Outcome = ClarificationInvalid
+			out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "selection", "invalid_union")}
+			return out
+		}
+		for _, ref := range choiceReferences {
+			if !ref.Valid() || !hasReference(input.References, ref) {
+				out.Outcome = ClarificationInvalid
+				out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "selection", "foreign_answer")}
+				return out
+			}
+		}
+	}
 	answers, origins, errors := prepareClarificationAnswers(definition, input)
 	if len(errors) != 0 {
 		out.Outcome, out.Errors = ClarificationInvalid, errors
 		return out
 	}
+	// Applicability is a positive, bounded fixed point. Only successfully parsed
+	// references from already applicable slots may activate another pattern.
+	// Supplied answers in an inactive pattern are NOT seeds. Defer their
+	// not_applicable errors until the reachable closure has been evaluated.
+	// Keep the original selection separate: applicability facts never become
+	// independent user choices for automatic reference-slot resolution.
+	facts := append([]Reference(nil), input.References...)
+	for pass := 0; pass <= 128; pass++ {
+		out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, false)
+		if out.Outcome == ClarificationInvalid || out.Outcome == ClarificationConflicting {
+			return out
+		}
+		changed := false
+		for _, resolution := range out.Resolutions {
+			ref := resolution.Reference
+			if ref == nil && resolution.Effect != nil {
+				ref = &resolution.Effect.Target
+			}
+			if ref == nil || hasReference(facts, *ref) {
+				continue
+			}
+			if len(facts) >= 128 {
+				out.Outcome, out.Resolutions, out.References = ClarificationInvalid, nil, nil
+				out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "references", "invalid_union")}
+				return out
+			}
+			facts = append(facts, *ref)
+			changed = true
+		}
+		if !changed {
+			out = resolveClarificationPass(model, definition, input, facts, choiceReferences, answers, origins, true)
+			if out.Outcome != ClarificationInvalid && out.Outcome != ClarificationConflicting {
+				out.mayRequireSourceBinding = possibleClarificationBinding(definition, input, answers)
+			}
+			return out
+		}
+	}
+	// Each changing pass added at least one of the 128 bounded facts. Retain a
+	// defensive terminal outcome rather than returning a partial resolution.
+	out.Outcome, out.Resolutions, out.References = ClarificationInvalid, nil, nil
+	out.Errors = []ClarificationFieldError{*clarificationError(input.Locale, "references", "invalid_union")}
+	return out
+}
+
+func resolveClarificationPass(model RuleModel, definition RuleSetDefinition, input ClarificationInput, facts, choiceReferences []Reference, answers map[clarificationKey]ClarificationAnswer, origins map[clarificationKey]string, final bool) ClarificationEvaluation {
+	out := ClarificationEvaluation{SchemaVersion: ClarificationSchemaVersion, Outcome: ClarificationNotApplicable, Slots: []ClarificationSlotOutcome{}}
 	patterns := make([]rankedClarificationPattern, 0, len(definition.Patterns))
 	for _, pattern := range definition.Patterns {
-		active, specificity := matchClarificationPattern(pattern, input.Question, input.References)
+		active, specificity := matchClarificationPattern(pattern, input.Question, facts)
 		required := false
 		for _, slot := range pattern.Slots {
 			required = required || slot.Required
@@ -121,7 +190,7 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 				state.Reason = "reviewed_disabled"
 			}
 			if !active {
-				if supplied {
+				if supplied && final {
 					field := clarificationError(input.Locale, "value", "not_applicable")
 					annotateClarificationError(field, definition.Topic, pattern.ID, slot.ID)
 					state.Outcome, state.Errors = ClarificationInvalid, []ClarificationFieldError{*field}
@@ -138,7 +207,7 @@ func ResolveClarifications(model RuleModel, input ClarificationInput) Clarificat
 				value, origin = answer.Value, origins[key]
 			} else if slot.Kind == SlotChoice {
 				for _, choice := range slot.Choices {
-					if choice.Target == nil || !hasReference(input.References, *choice.Target) {
+					if choice.Target == nil || !hasReference(choiceReferences, *choice.Target) {
 						continue
 					}
 					if value != nil && value.OptionID != choice.ID {

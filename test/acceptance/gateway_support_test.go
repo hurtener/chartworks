@@ -35,6 +35,7 @@ type gatewayFixture struct {
 	mu                  sync.Mutex
 	models, keys, paths []string
 	requestBodies       []string
+	chatSequence        []string // Recorded per-chat responses, protected by mu.
 	ca                  string
 	server              *httptest.Server
 }
@@ -60,14 +61,18 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 			return
 		}
 		model, _ := input["model"].(string)
+		mode := f.mode.Load().(string)
 		f.mu.Lock()
+		if !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") && len(f.chatSequence) > 0 {
+			mode = f.chatSequence[0]
+			f.chatSequence = f.chatSequence[1:]
+		}
 		f.models = append(f.models, model)
 		f.keys = append(f.keys, r.Header.Get("Authorization"))
 		f.paths = append(f.paths, r.URL.Path)
 		f.requestBodies = append(f.requestBodies, string(data))
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		mode := f.mode.Load().(string)
 		embeddingMode := f.embeddingMode.Load().(string)
 		if embeddingMode == "normal" {
 			embeddingMode = mode

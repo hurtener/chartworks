@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 
+	readexec "github.com/hurtener/chartworks/internal/exec"
+
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlq/exampleparams"
 	"github.com/hurtener/chartworks/internal/nlqexec"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 )
@@ -61,14 +64,45 @@ type NLQRunResult = nlqexec.RunResult
 // NLQRefineRequest creates a child plan within the signed session.
 type NLQRefineRequest = nlqexec.RefineRequest
 
+// NLQParameter is a private typed string value for a model-owned NLQ slot.
+// The service owns validation and binding; the SDK only forwards its wire shape.
+type NLQParameter = readexec.Parameter
+
+// NLQParameterEdit explicitly replaces one existing model-owned base slot.
+// Positions are one-based and do not address service-owned predicate bindings.
+type NLQParameterEdit = nlqexec.ParameterEdit
+
 // NLQReferenceEdit adds, replaces, or removes one exact retained semantic reference.
 type NLQReferenceEdit = nlqexec.ReferenceEdit
 
 // NLQMetricEdit adds, replaces, or removes one exact retained metric pin.
 type NLQMetricEdit = nlqexec.MetricEdit
 
+// NLQInterpretationContinuationPolicy preserves the versioned continuation parser,
+// even after all value/time selections have been explicitly removed.
+const NLQInterpretationContinuationPolicy = nlqroute.InterpretationContinuationPolicy
+
+// NLQInterpretationSelection retains an exact reviewed value or calendar interval.
+// It grants no source reach; the current router resolves all coordinates again.
+type NLQInterpretationSelection = nlqroute.InterpretationSelection
+
+// NLQInterpretationPeriod is a civil half-open interval under reviewed policy.
+type NLQInterpretationPeriod = nlqroute.InterpretationPeriod
+
+// NLQInterpretationEdit removes/replaces a current inferred target.
+type NLQInterpretationEdit = nlqroute.InterpretationEdit
+
 // NLQFeedbackRequest records a bounded review of one planned query.
 type NLQFeedbackRequest = nlqexec.FeedbackRequest
+
+// NLQExampleParameterSchema is a reviewed value-free positional binding contract.
+type NLQExampleParameterSchema = exampleparams.Schema
+
+// NLQExampleParameterSlot never contains a previous query's value or default.
+type NLQExampleParameterSlot = exampleparams.Slot
+
+// NLQPortableExample is the protected versioned import/export row.
+type NLQPortableExample = nlqexec.PortableExample
 
 // NLQExampleStateRequest advances one reviewed example through its lifecycle.
 type NLQExampleStateRequest = nlqexec.ExampleStateRequest
@@ -176,3 +210,13 @@ func (c *Client) ImportExampleNLQ(ctx context.Context, in NLQExampleImportReques
 	err = c.callLimit(ctx, "POST", "/v1/nlq/examples/import", "", in, &out, 2<<20)
 	return
 }
+
+// NLQGroupingPolicy identifies a complete reviewed grouping replacement.
+const NLQGroupingPolicy = nlqroute.GroupingPolicy
+
+// NLQGroupingSelection is logical user intent; empty Keys requests a total.
+// Every key is resolved against current authorized source/catalog definitions.
+type NLQGroupingSelection = nlqroute.GroupingSelection
+
+// NLQGroupingKey selects a direct dimension or a reviewed calendar bucket.
+type NLQGroupingKey = nlqroute.GroupingKey

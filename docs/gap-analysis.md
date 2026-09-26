@@ -1,5 +1,19 @@
 # Behavioral gap analysis and parity expansion
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+Current qualified runtime: `93539cc` (tree `193cf00`). S1 and S8 are complete
+within their documented software scope. S8's Go 1.26.4/1.27.1 native suites passed;
+S2–S7, S9–S12 and Q1–Q3 remain open. Exact counts and acceptance boundaries live
+in the linked completion tracker. This mirror does not recertify historical code.
+
+
 ## Business-goal topic authoring submission — 2026-09-22
 
 The isolated Phase 33 goal entry point adds bounded signed-reachable discovery
@@ -1125,3 +1139,13 @@ The repository coverage map is linked here for traceability only. No mapping alo
 ## Review disposition
 
 The canonical document incorporates the original 26 finding records, the three dated REP refresh findings (29 tracked findings total), the full 63-feature ledger, the 12 explicit expansion frontiers, and the neutral clarification/underspecification, chart-breadth, semantic/context and reporting refreshes. Source-side evidence is represented only by abstract IDs. The current rebaseline above supersedes dated status prose below; it changes documentation only and is not a live parity or release claim.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

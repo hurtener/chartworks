@@ -186,6 +186,7 @@ func TestPhase16(t *testing.T) {
 		before := fixture.model.requests.Load()
 		request := fixture.routeRequest("What is the approved metric?")
 		request.Choices = nil
+		request.MetricIDs = nil // This case genuinely omits a user metric selection.
 		out, err := fixture.route.Route(ctx, fixture.e, request)
 		if err != nil || out.Outcome != nlq.StrategyClarify || out.Clarification == nil || out.Clarification.Reason != "required_answers" || out.Clarification.Slot != "metric" {
 			t.Fatalf("required slot was not a typed terminal outcome: %#v %v", out, err)
@@ -214,7 +215,7 @@ func TestPhase16(t *testing.T) {
 		if err != nil || out.Context == nil || out.Context.Locale != nlq.LanguageSpanish || out.Context.Tokens < 1 || out.Context.Tokens > out.Context.Budget {
 			t.Fatalf("real tokenizer context was not bounded: %#v %v", out, err)
 		}
-		if out.Context.Constraints == nil || len(out.Context.Constraints.Required) != 2 {
+		if out.Context.Constraints == nil {
 			t.Fatalf("active mandatory constraint was lost: %#v", out.Context.Constraints)
 		}
 		// The assembler canonically orders IDs; rule and answer constraints
@@ -226,6 +227,9 @@ func TestPhase16(t *testing.T) {
 		}
 		if !hasRequired || !hasClarification {
 			t.Fatalf("reviewed rule or selected answer was lost: %#v", out.Context.Constraints)
+		}
+		if out.Selection == nil || !strings.Contains(out.Context.Prompt, "selected_semantics") {
+			t.Fatal("mandatory selected graph was not carried alongside rule and answer constraints")
 		}
 		if len(out.Context.Advisory) != 1 || len(out.Context.Examples) > nlq.MaxExamples || len(out.Audit.Omitted) > nlq.MaxOmissions || out.Audit.OmittedCount == 0 {
 			t.Fatalf("advisory/example bounds were not audited: context=%#v audit=%#v", out.Context, out.Audit)

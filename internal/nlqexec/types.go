@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlq/exampleparams"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
@@ -142,39 +143,41 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
-	Clarification    *ClarificationEvidence       `json:"-"`
-	ID               string                       `json:"id"`
-	Session          string                       `json:"session"`
-	Parent           string                       `json:"parent,omitempty"`
-	ParentRevision   int64                        `json:"parent_revision,omitempty"`
-	ParentDigest     string                       `json:"parent_digest,omitempty"`
-	Operation        string                       `json:"operation,omitempty"`
-	Topic            string                       `json:"topic"`
-	Topics           []string                     `json:"topics"`
-	TopicVersions    []string                     `json:"topic_versions"`
-	RuleVersions     []string                     `json:"rule_versions,omitempty"`
-	Templates        []rulesets.TemplateSelection `json:"templates,omitempty"`
-	ExampleSelection ExampleSelectionEvidence     `json:"example_selection,omitempty"`
-	Context          string                       `json:"context"`
-	Locale           nlq.Language                 `json:"locale"`
-	Question         string                       `json:"question"`
-	Route            nlqroute.RouteResult         `json:"route"`
-	Generation       nlq.GenerationContext        `json:"generation"`
-	RelationScope    []exec.RelationScope         `json:"relation_scope"`
-	SQL              string                       `json:"-"`
-	Parameters       []exec.Parameter             `json:"-"`
-	Receipt          gateway.Receipt              `json:"receipt"`
-	Status           string                       `json:"status"`
-	EvidenceStale    bool                         `json:"evidence_stale,omitempty"`
-	Result           *exec.Result                 `json:"result,omitempty"`
-	Assumptions      []string                     `json:"assumptions,omitempty"`
-	Ambiguities      []string                     `json:"ambiguities,omitempty"`
-	Errors           []string                     `json:"errors,omitempty"`
-	ValidationFixes  int                          `json:"validation_fixes"`
-	ExecutionFixes   int                          `json:"execution_fixes"`
-	Revision         int64                        `json:"revision"`
-	Created          time.Time                    `json:"created_at"`
-	Updated          time.Time                    `json:"updated_at"`
+	AnalyticalVersion int                          `json:"analytical_version,omitempty"`
+	Analytical        *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
+	Clarification     *ClarificationEvidence       `json:"-"`
+	ID                string                       `json:"id"`
+	Session           string                       `json:"session"`
+	Parent            string                       `json:"parent,omitempty"`
+	ParentRevision    int64                        `json:"parent_revision,omitempty"`
+	ParentDigest      string                       `json:"parent_digest,omitempty"`
+	Operation         string                       `json:"operation,omitempty"`
+	Topic             string                       `json:"topic"`
+	Topics            []string                     `json:"topics"`
+	TopicVersions     []string                     `json:"topic_versions"`
+	RuleVersions      []string                     `json:"rule_versions,omitempty"`
+	Templates         []rulesets.TemplateSelection `json:"templates,omitempty"`
+	ExampleSelection  ExampleSelectionEvidence     `json:"example_selection,omitempty"`
+	Context           string                       `json:"context"`
+	Locale            nlq.Language                 `json:"locale"`
+	Question          string                       `json:"question"`
+	Route             nlqroute.RouteResult         `json:"route"`
+	Generation        nlq.GenerationContext        `json:"generation"`
+	RelationScope     []exec.RelationScope         `json:"relation_scope"`
+	SQL               string                       `json:"-"`
+	Parameters        []exec.Parameter             `json:"-"`
+	Receipt           gateway.Receipt              `json:"receipt"`
+	Status            string                       `json:"status"`
+	EvidenceStale     bool                         `json:"evidence_stale,omitempty"`
+	Result            *exec.Result                 `json:"result,omitempty"`
+	Assumptions       []string                     `json:"assumptions,omitempty"`
+	Ambiguities       []string                     `json:"ambiguities,omitempty"`
+	Errors            []string                     `json:"errors,omitempty"`
+	ValidationFixes   int                          `json:"validation_fixes"`
+	ExecutionFixes    int                          `json:"execution_fixes"`
+	Revision          int64                        `json:"revision"`
+	Created           time.Time                    `json:"created_at"`
+	Updated           time.Time                    `json:"updated_at"`
 }
 
 // FeedbackRecord is a reviewable correction. Recording it never publishes a
@@ -220,67 +223,73 @@ type ExampleSelection struct {
 // ExampleSelectionEvidence is frozen with the query. Replaying or running a
 // retained plan never reselects examples against mutable learning state.
 type ExampleSelectionEvidence struct {
-	SchemaVersion  int                `json:"schema_version,omitempty"`
-	PolicyVersion  string             `json:"policy_version,omitempty"`
-	Selected       []ExampleSelection `json:"selected,omitempty"`
-	Excluded       []ExampleSelection `json:"excluded,omitempty"`
-	ShadowBaseline []ExampleSelection `json:"shadow_baseline,omitempty"`
-	Receipt        gateway.Receipt    `json:"receipt,omitempty"`
+	Usage          *ExamplePromptUsage `json:"usage,omitempty"`
+	SchemaVersion  int                 `json:"schema_version,omitempty"`
+	PolicyVersion  string              `json:"policy_version,omitempty"`
+	Selected       []ExampleSelection  `json:"selected,omitempty"`
+	Excluded       []ExampleSelection  `json:"excluded,omitempty"`
+	ShadowBaseline []ExampleSelection  `json:"shadow_baseline,omitempty"`
+	Receipt        gateway.Receipt     `json:"receipt,omitempty"`
 }
 
 // ExampleRecord is the DB-first learning projection. State changes are
 // explicit and audited; feedback only creates or strengthens a candidate.
 type ExampleRecord struct {
-	ID               string        `json:"id"`
-	Topic            string        `json:"topic"`
-	Question         string        `json:"question"`
-	SQL              string        `json:"-"`
-	Digest           string        `json:"digest"`
-	State            string        `json:"state"`
-	Weight           float64       `json:"weight"`
-	Uncertainty      float64       `json:"uncertainty"`
-	EvidenceCount    int           `json:"evidence_count"`
-	PositiveEvidence int           `json:"positive_evidence"`
-	NegativeEvidence int           `json:"negative_evidence"`
-	EvidenceOutcome  string        `json:"-"`
-	Origin           ExampleOrigin `json:"origin"`
-	Version          int64         `json:"version"`
-	ReviewedBy       string        `json:"reviewed_by,omitempty"`
-	ReviewNote       string        `json:"-"`
-	ReviewedAt       *time.Time    `json:"reviewed_at,omitempty"`
-	Provenance       string        `json:"provenance"`
-	Created          time.Time     `json:"created_at"`
-	Updated          time.Time     `json:"updated_at"`
+	ParameterSchema  *exampleparams.Schema `json:"parameter_schema,omitempty"`
+	ID               string                `json:"id"`
+	Topic            string                `json:"topic"`
+	Question         string                `json:"question"`
+	SQL              string                `json:"-"`
+	Digest           string                `json:"digest"`
+	State            string                `json:"state"`
+	Weight           float64               `json:"weight"`
+	Uncertainty      float64               `json:"uncertainty"`
+	EvidenceCount    int                   `json:"evidence_count"`
+	PositiveEvidence int                   `json:"positive_evidence"`
+	NegativeEvidence int                   `json:"negative_evidence"`
+	EvidenceOutcome  string                `json:"-"`
+	Origin           ExampleOrigin         `json:"origin"`
+	Version          int64                 `json:"version"`
+	ReviewedBy       string                `json:"reviewed_by,omitempty"`
+	ReviewNote       string                `json:"-"`
+	ReviewedAt       *time.Time            `json:"reviewed_at,omitempty"`
+	Provenance       string                `json:"provenance"`
+	Created          time.Time             `json:"created_at"`
+	Updated          time.Time             `json:"updated_at"`
 }
 
 // QuestionRequest is shared by preflight and plan. The verified envelope
 // supplies tenant, actor and session; none of those are accepted from JSON.
 type QuestionRequest struct {
+	Grouping *nlqroute.GroupingSelection `json:"grouping,omitempty"`
 	// ClarificationQuery anchors a typed submission to a retained preflight in
 	// the current actor/session. The ID grants no authority and is rechecked.
-	ClarificationQuery   string                          `json:"clarification_query,omitempty"`
-	Answers              []semantics.ClarificationAnswer `json:"answers,omitempty"`
-	AnswerContext        string                          `json:"answer_context,omitempty"`
-	Topic                string                          `json:"topic,omitempty"`
-	Topics               []string                        `json:"topics,omitempty"`
-	Context              string                          `json:"context"`
-	Locale               nlq.Language                    `json:"locale"`
-	Question             string                          `json:"question"`
-	Templates            []rulesets.TemplateSelection    `json:"templates,omitempty"`
-	Kinds                []string                        `json:"kinds,omitempty"`
-	LimitPerKind         int                             `json:"limit_per_kind,omitempty"`
-	References           []semantics.Reference           `json:"references,omitempty"`
-	Choices              []nlqroute.ChoiceSelection      `json:"choices,omitempty"`
-	Joins                []nlqroute.JoinChoice           `json:"joins,omitempty"`
-	MetricIDs            []string                        `json:"metric_ids,omitempty"`
-	Examples             []nlq.OptionalItem              `json:"examples,omitempty"`
-	Rerank               bool                            `json:"rerank,omitempty"`
-	InterpretationAnchor string                          `json:"interpretation_anchor,omitempty"`
-	InterpretationEdits  []nlqroute.InterpretationEdit   `json:"interpretation_edits,omitempty"`
-	EditBase             []nlq.Instruction               `json:"edit_base,omitempty"`
-	Hints                []nlq.Instruction               `json:"hints,omitempty"`
-	ExampleInput         []nlq.Instruction               `json:"example_instructions,omitempty"`
-	Default              []nlq.Instruction               `json:"default_instructions,omitempty"`
+	ClarificationQuery       string                             `json:"clarification_query,omitempty"`
+	Answers                  []semantics.ClarificationAnswer    `json:"answers,omitempty"`
+	AnswerContext            string                             `json:"answer_context,omitempty"`
+	Topic                    string                             `json:"topic,omitempty"`
+	Topics                   []string                           `json:"topics,omitempty"`
+	Context                  string                             `json:"context"`
+	Locale                   nlq.Language                       `json:"locale"`
+	Question                 string                             `json:"question"`
+	Templates                []rulesets.TemplateSelection       `json:"templates,omitempty"`
+	Kinds                    []string                           `json:"kinds,omitempty"`
+	LimitPerKind             int                                `json:"limit_per_kind,omitempty"`
+	References               []semantics.Reference              `json:"references,omitempty"`
+	OmittedRoots             []semantics.Reference              `json:"omitted_roots,omitempty"`
+	Choices                  []nlqroute.ChoiceSelection         `json:"choices,omitempty"`
+	Joins                    []nlqroute.JoinChoice              `json:"joins,omitempty"`
+	MetricIDs                []string                           `json:"metric_ids,omitempty"`
+	Examples                 []nlq.OptionalItem                 `json:"examples,omitempty"`
+	Rerank                   bool                               `json:"rerank,omitempty"`
+	InterpretationPolicy     string                             `json:"interpretation_policy,omitempty"`
+	InterpretationAnchor     string                             `json:"interpretation_anchor,omitempty"`
+	InterpretationEdits      []nlqroute.InterpretationEdit      `json:"interpretation_edits,omitempty"`
+	InterpretationSelections []nlqroute.InterpretationSelection `json:"interpretation_selections,omitempty"`
+	EditBase                 []nlq.Instruction                  `json:"edit_base,omitempty"`
+	Hints                    []nlq.Instruction                  `json:"hints,omitempty"`
+	ExampleInput             []nlq.Instruction                  `json:"example_instructions,omitempty"`
+	Default                  []nlq.Instruction                  `json:"default_instructions,omitempty"`
 }
 
 // SemanticReference is accepted through the semantic package's typed value. This
@@ -311,6 +320,7 @@ type RunRequest struct {
 type RefineRequest struct {
 	QueryID string `json:"query_id"`
 	QuestionRequest
+	ParameterEdits []ParameterEdit `json:"parameter_edits,omitempty"`
 	ReferenceEdits []ReferenceEdit `json:"reference_edits,omitempty"`
 	MetricEdits    []MetricEdit    `json:"metric_edits,omitempty"`
 }
@@ -353,13 +363,14 @@ type ExampleStateRequest struct {
 // present only on the explicit export/import operations, never ordinary list
 // projections or logs.
 type PortableExample struct {
-	SchemaVersion    int           `json:"schema_version"`
-	Question         string        `json:"question"`
-	SQL              string        `json:"sql"`
-	Digest           string        `json:"digest"`
-	Origin           ExampleOrigin `json:"origin"`
-	PositiveEvidence int           `json:"positive_evidence"`
-	NegativeEvidence int           `json:"negative_evidence"`
+	ParameterSchema  *exampleparams.Schema `json:"parameter_schema,omitempty"`
+	SchemaVersion    int                   `json:"schema_version"`
+	Question         string                `json:"question"`
+	SQL              string                `json:"sql"`
+	Digest           string                `json:"digest"`
+	Origin           ExampleOrigin         `json:"origin"`
+	PositiveEvidence int                   `json:"positive_evidence"`
+	NegativeEvidence int                   `json:"negative_evidence"`
 }
 
 // ExampleExportRequest selects a bounded protected learning export.
@@ -396,6 +407,7 @@ type PreflightResult struct {
 // PlanResult contains a validated plan receipt. SQL is included only when the
 // caller has the separate reporting.sql.read authority.
 type PlanResult struct {
+	Analytical      *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
 	Bindings        *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
 	AnswerChanges   []ClarificationChange        `json:"answer_changes,omitempty"`
 	QueryID         string                       `json:"query_id"`
@@ -415,6 +427,7 @@ type PlanResult struct {
 // RunResult contains the opaque executor receipt and normalized rows. The
 // underlying attempt journal remains the source of cancellation/reconciliation.
 type RunResult struct {
+	Analytical      *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
 	Bindings        *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
 	AnswerChanges   []ClarificationChange        `json:"answer_changes,omitempty"`
 	QueryID         string                       `json:"query_id"`

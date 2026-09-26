@@ -38,7 +38,7 @@ func cw07Service(t *testing.T, publication topics.Published, binding readexec.Bi
 	descriptor := gateway.EmbeddingSpace{Provider: "fixture", Route: "embedding", Endpoint: "default", Model: "embedding-model", Revision: "generation-1", Dimensions: 2, Preprocessing: "raw", InputType: "text", Normalization: "l2"}
 	engine := &testEngine{descriptor: descriptor, events: &events}
 	reader := &testTopics{contract: topics.Contract{Publication: publication}, events: &events, binding: binding}
-	index := &testIndex{events: &events, hit: vindex.Hit{ID: "facet", Kind: "measure", SourceID: "source", Text: "revenue measure", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: 0.2}}
+	index := &testIndex{events: &events, hit: vindex.Hit{ID: "facet", Kind: "topic", SourceID: "source", Text: "topic overview", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: 0.2}}
 	service, err := New(reader, testRules{err: store.ErrNotFound}, index, engine)
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +173,7 @@ func (i *cw07Index) Search(_ context.Context, _ identity.Envelope, queries []vin
 	out := make([]vindex.Result, len(queries))
 	for n, q := range queries {
 		distance := i.distances[q.Topic]
-		out[n] = vindex.Result{ID: q.ID, Publication: vindex.Publication{Version: "v1", Generation: "generation", Revision: 1}, Hits: []vindex.Hit{{ID: "topic-facet", Kind: "topic", SourceID: "source", Text: q.Topic + " topic", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: distance}, {ID: "measure-facet", Kind: "measure", SourceID: "source", Text: q.Topic + " measure", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: distance + 0.02}}}
+		out[n] = vindex.Result{ID: q.ID, Publication: vindex.Publication{Version: "v1", Generation: "generation", Revision: 1}, Hits: []vindex.Hit{{ID: "topic-facet", Kind: "topic", SourceID: "source", Text: q.Topic + " topic", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: distance}, {ID: "entity-facet", Kind: "entity", SourceID: "source", Text: q.Topic + " entity", Generation: "generation", Version: "v1", SourceGeneration: "source-generation", Distance: distance + 0.02}}}
 	}
 	return out, nil
 }

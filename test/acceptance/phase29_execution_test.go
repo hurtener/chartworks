@@ -87,7 +87,7 @@ func newPhase29Execution(t *testing.T, live bool) *phase29ExecutionFixture {
 	base.Outputs = append(base.Outputs, second)
 	f.model.embeddingMode.Store("fixed")
 	f.model.rerankMode.Store("fixed")
-	f.model.mode.Store(phase18RawResponse(t, base.SQL))
+	f.model.mode.Store(phase18RawResponse(t, "SELECT id, sum(amount) AS amount FROM analytics.sales GROUP BY id ORDER BY id"))
 	return &phase29ExecutionFixture{f: f, blocks: blocks, runs: runs, query: query, documents: documents, compositions: compositions, blockAuthor: blockAuthor, author: author, execute: execute, base: base, limits: limits}
 }
 

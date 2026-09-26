@@ -119,5 +119,5 @@ func ValidateGateway(g Gateway, enabled bool) error {
 			}
 		}
 	}
-	return nil
+	return validateModelWindows(g)
 }

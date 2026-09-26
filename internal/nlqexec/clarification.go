@@ -63,6 +63,9 @@ func bindClarificationCandidate(ctx context.Context, a admission, candidate gene
 	if err != nil {
 		return generatedCandidate{}, err
 	}
+	if len(constraints) == 0 && referenceOnlyBindingMatches(a.route, a.binding) {
+		return candidate, nil
+	}
 	if len(constraints) == 0 || exec.Hash(a.binding) != a.route.SourceBindingDigest {
 		return generatedCandidate{}, exec.ErrBinding
 	}
@@ -132,7 +135,7 @@ func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identit
 		return err
 	}
 	if len(constraints) == 0 {
-		return exec.ErrBinding
+		return validateReferenceOnlyEvidence(record, a.binding)
 	}
 	evidence := record.Clarification
 	if evidence == nil || evidence.SchemaVersion != 1 || evidence.BaseSQL == "" || evidence.Binding.SchemaVersion != 1 || evidence.Binding.Validation == nil || !evidence.Binding.Validation.Validated || evidence.Binding.Validation.Source != a.binding.Source || evidence.Binding.Validation.Context != a.binding.Context || evidence.Binding.Validation.Dialect != a.binding.Dialect || evidence.Binding.Validation.Contract != a.binding.Contract || evidence.Binding.SourceBinding != exec.Hash(a.binding) {
@@ -244,7 +247,16 @@ func mergeRefinementClarifications(old QueryRecord, delta QuestionRequest, out *
 		return err
 	}
 	out.Answers, out.Choices = merged, choices
-	out.AnswerContext = old.Route.AnswerContext
+	out.AnswerContext = ""
+	// Refine has already reauthorized and replayed the parent. Only carried
+	// answers/choices need the old form's pin. An inferred-only continuation
+	// can remove its last predicate, changing the optional binding component
+	// of the freshly computed context without changing source authority.
+	// Explicit caller pins are still checked above, and answered forms retain
+	// their exact original pin so policy/source changes cannot be bypassed.
+	if len(merged) > 0 || len(choices) > 0 {
+		out.AnswerContext = old.Route.AnswerContext
+	}
 	return nil
 }
 

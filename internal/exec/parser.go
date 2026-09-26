@@ -3,6 +3,8 @@ package exec
 import (
 	"fmt"
 	"strings"
+
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 )
 
 // The parser is PostgreSQL's grammar compiled to WASM. This resolver is deliberately
@@ -411,42 +413,11 @@ func columnVisible(s *sqlScope, parts []string, outputs bool) bool {
 	}
 	return count == 1
 }
-func safeFunction(parts []string) bool {
-	if len(parts) == 2 && parts[0] == "pg_catalog" {
-		parts = parts[1:]
-	}
-	if len(parts) != 1 {
-		return false
-	}
-	switch parts[0] {
-	case "count", "sum", "avg", "min", "max", "abs", "round", "ceil", "ceiling", "floor", "lower", "upper", "length", "char_length", "octet_length", "trim", "btrim", "ltrim", "rtrim", "substring", "substr", "replace", "like_escape", "date_trunc", "date_part", "extract", "row_number", "rank", "dense_rank", "lag", "lead", "first_value", "last_value", "nth_value", "ntile", "percent_rank", "cume_dist":
-		return true
-	}
-	return false
-}
-func safeType(parts []string) bool {
-	if len(parts) == 2 && parts[0] == "pg_catalog" {
-		parts = parts[1:]
-	}
-	if len(parts) != 1 {
-		return false
-	}
-	switch parts[0] {
-	case "int2", "int4", "int8", "numeric", "float4", "float8", "bool", "text", "varchar", "bpchar", "date", "timestamp", "timestamptz", "time", "timetz", "interval", "uuid", "json", "jsonb", "bytea", "money":
-		return true
-	}
-	return false
-}
+func safeFunction(parts []string) bool { return sqlpolicy.AllowsFunction("postgres", parts) }
+func safeType(parts []string) bool     { return sqlpolicy.AllowsPostgresType(parts) }
 func safeOperator(v any) bool {
 	parts, ok := names(v)
-	if !ok || len(parts) != 1 {
-		return false
-	}
-	switch parts[0] {
-	case "+", "-", "*", "/", "%", "=", "<>", "!=", "<", ">", "<=", ">=", "||", "~~", "!~~", "~~*", "!~~*":
-		return true
-	}
-	return false
+	return ok && sqlpolicy.AllowsPostgresOperator(parts)
 }
 func (r *sqlResolver) optional(v any, s *sqlScope, outputs bool) error {
 	if v == nil {
@@ -521,6 +492,11 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 				return ErrUnsafe
 			}
 			switch text(m["kind"]) {
+			case "AEXPR_NULLIF":
+				parts, _ := names(m["name"])
+				if len(parts) != 1 || parts[0] != "=" || m["lexpr"] == nil || m["rexpr"] == nil {
+					return ErrUnsafe
+				}
 			case "AEXPR_OP", "AEXPR_OP_ANY", "AEXPR_OP_ALL", "AEXPR_DISTINCT", "AEXPR_NOT_DISTINCT", "AEXPR_IN", "AEXPR_LIKE", "AEXPR_ILIKE", "AEXPR_BETWEEN", "AEXPR_NOT_BETWEEN", "AEXPR_BETWEEN_SYM", "AEXPR_NOT_BETWEEN_SYM":
 			default:
 				return ErrUnsafe
@@ -672,9 +648,7 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 			if !only(m, "op", "typmod") {
 				return ErrUnsafe
 			}
-			switch text(m["op"]) {
-			case "SVFOP_CURRENT_DATE", "SVFOP_CURRENT_TIME", "SVFOP_CURRENT_TIME_N", "SVFOP_CURRENT_TIMESTAMP", "SVFOP_CURRENT_TIMESTAMP_N", "SVFOP_LOCALTIME", "SVFOP_LOCALTIME_N", "SVFOP_LOCALTIMESTAMP", "SVFOP_LOCALTIMESTAMP_N":
-			default:
+			if !sqlpolicy.AllowsPostgresValue(text(m["op"])) {
 				return ErrUnsafe
 			}
 		case "GroupingSet":

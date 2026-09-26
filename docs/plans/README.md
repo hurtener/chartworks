@@ -1,5 +1,19 @@
 # Chartworks — actionable implementation plan
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+Current qualified runtime: `93539cc` (tree `193cf00`). S1 and S8 are complete
+within their documented software scope. S8's Go 1.26.4/1.27.1 native suites passed;
+S2–S7, S9–S12 and Q1–Q3 remain open. Exact counts and acceptance boundaries live
+in the linked completion tracker. This mirror does not recertify historical code.
+
+
 The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
 
 Phases **01–22 and 32 are shipped**. Phases 23, 24, 26–31, 33 and 34 are in progress;
@@ -105,3 +119,13 @@ The existing Pengui provider bearer serialization is now consumed by phases03/04
 Standing risks remain dialect safety, complete dependency manifests, unsafe artifact-context reuse, retry reference/window drift, private previews, exact numeric values and overstated external atomicity. Their later real-adapter tests remain required. D-059–D-061 record the implemented authority decisions without weakening those obligations.
 
 Read execution now extends the merged phase-09 validator on the existing source/store seams. See [D-065](../contracts/read-execution.md) for exact typed results, bounded attempts and cancellation/reconciliation. Final named acceptance and read-only CI establish readiness, not this status paragraph.
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

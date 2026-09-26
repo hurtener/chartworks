@@ -1,5 +1,19 @@
 # Phase 16 — rules-clarification
 
+## SQL recovery status — 2026-09-25
+
+The [AP-00–AP-08 completion tracker](../reviews/sql-recovery-completion.md) records the current
+PR #62 implementation and qualification gaps. The recovery is **in progress**.
+Existing shipped phase labels and historical defect-review results do not
+close this subsequent extension. No required behavior is discarded by this
+tracker correction; prior named acceptance criteria and historical evidence stay.
+
+Current qualified runtime: `93539cc` (tree `193cf00`). S1 and S8 are complete
+within their documented software scope. S8's Go 1.26.4/1.27.1 native suites passed;
+S2–S7, S9–S12 and Q1–Q3 remain open. Exact counts and acceptance boundaries live
+in the linked completion tracker. This mirror does not recertify historical code.
+
+
 Status: shipped. Owner: internal/semantics, internal/nlq. Hard dependencies: 05, 15. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
 
 Proposed PR #11 delivery; this status becomes effective after every required hosted
@@ -113,3 +127,13 @@ rechecking the caller's current source/context reach. Reporting capture and
 migration-040 regressions cover template provenance removal/recapture and
 populated legacy revision shapes. The executed boundary and remaining human/live
 calibration are recorded in [the EXP-05 review](../reviews/exp05-rule-interactions.md).
+
+
+## S9 qualified grouping slice — current disposition
+
+The [completion tracker](../reviews/sql-recovery-completion.md) records runtime `996db06` and exact
+Go 1.26.4/1.27.1 qualification for grouping inheritance/replacement, explicit
+totals/calendar selection and the strict pending-refinement admission fix.
+Executable scope, form origin, private binding and immutable-parent checks remain.
+S9 broader native parameter roles and the remaining S/Q requirements are still
+open; historical checkpoint prose above is not the current completion claim.

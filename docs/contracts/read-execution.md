@@ -157,3 +157,13 @@ registers no pretend scheduled warehouse target or stored result cache.
 See [the adversarial review](../reviews/phase-09-10-adversarial.md) for executable
 regressions and final verification requirements. Real PostgreSQL fixtures do not
 establish cloud-engine compatibility, production deployment or model quality.
+
+## Shared read name policy (AP-07A)
+
+The [versioned SQL vocabulary](sql-vocabulary-v1.md) is the common owner of existing
+PostgreSQL function/type/operator/value gates and the warehouse function gate. The
+NLQ system prompt consumes a detached snapshot; the validator never trusts that
+snapshot as input. Positive name membership is not sufficient for an opaque Plan.
+Native tree/dependency checks, current source authority, EXPLAIN and analytical
+restrictions remain independent. This refactor does not widen the accepted grammar
+or turn provider assertions into source execution permission.

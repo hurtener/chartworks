@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/hurtener/chartworks/internal/access"
+	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/nlqroute"
@@ -57,11 +58,20 @@ func (s *Service) validateClarificationOrigin(ctx context.Context, e identity.En
 	// Pending rows created before canonical selection ordering retain their
 	// original byte history. Compare detached canonical projections so an
 	// equivalent submission survives an upgrade without rewriting evidence.
-	incomingSelections := QuestionRequest{References: append([]semantics.Reference(nil), question.References...), MetricIDs: append([]string(nil), question.MetricIDs...)}
-	retainedSelections := QuestionRequest{References: append([]semantics.Reference(nil), request.References...), MetricIDs: append([]string(nil), request.MetricIDs...)}
+	incomingSelections := QuestionRequest{References: append([]semantics.Reference(nil), question.References...), MetricIDs: append([]string(nil), question.MetricIDs...), OmittedRoots: append([]semantics.Reference(nil), question.OmittedRoots...)}
+	retainedSelections := QuestionRequest{References: append([]semantics.Reference(nil), request.References...), MetricIDs: append([]string(nil), request.MetricIDs...), OmittedRoots: append([]semantics.Reference(nil), request.OmittedRoots...)}
 	canonicalizeQuestion(&incomingSelections)
 	canonicalizeQuestion(&retainedSelections)
-	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(incomingSelections.References, retainedSelections.References) || !slices.Equal(incomingSelections.MetricIDs, retainedSelections.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
+	if question.Question != request.Question || question.Locale != request.Locale || question.Context != old.Context || !slices.Equal(topics, old.Topics) || !slices.Equal(incomingSelections.References, retainedSelections.References) || !slices.Equal(incomingSelections.OmittedRoots, retainedSelections.OmittedRoots) || !slices.Equal(incomingSelections.MetricIDs, retainedSelections.MetricIDs) || !slices.Equal(question.Joins, request.JoinChoices) || question.AnswerContext == "" || question.AnswerContext != old.Route.AnswerContext {
+		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
+	}
+	anchorChanged := question.InterpretationAnchor != "" && question.InterpretationAnchor != request.InterpretationAnchor
+	// A continued pending form already pins its inherited anchor. Omitting it
+	// must not silently re-anchor relative words at a later submission date.
+	if (len(request.InterpretationSelections) > 0 || request.InterpretationPolicy != "") && question.InterpretationAnchor != request.InterpretationAnchor {
+		anchorChanged = true
+	}
+	if exec.Hash(nlqroute.CloneGrouping(question.Grouping)) != exec.Hash(nlqroute.CloneGrouping(request.Grouping)) || question.InterpretationPolicy != request.InterpretationPolicy || exec.Hash(nlqroute.CloneInterpretationSelections(question.InterpretationSelections)) != exec.Hash(nlqroute.CloneInterpretationSelections(request.InterpretationSelections)) || exec.Hash(nlqroute.CloneInterpretationEdits(question.InterpretationEdits)) != exec.Hash(nlqroute.CloneInterpretationEdits(request.InterpretationEdits)) || anchorChanged {
 		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
 	}
 	return nil
