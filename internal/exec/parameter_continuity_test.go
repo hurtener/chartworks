@@ -65,16 +65,19 @@ func TestSQLRecoveryParameterClauseProtectsEveryLocation(t *testing.T) {
 	}
 }
 func TestSQLRecoveryParameterClauseRejectsUnprovedScopes(t *testing.T) {
+	// Nonrecursive SELECT scopes moved to the explicit positive/negative scope
+	// corpus. Unsafe command/recursive/function sources remain unsupported.
 	for _, sql := range []string{
-		`WITH x AS (SELECT id FROM analytics.sales WHERE id=$1) SELECT * FROM x`,
-		`SELECT id FROM analytics.sales WHERE id=$1 UNION SELECT id FROM analytics.sales`,
-		`SELECT id FROM analytics.sales WHERE id=$1 AND id IN (SELECT id FROM analytics.sales)`,
-		`SELECT s.id FROM analytics.sales s JOIN analytics.items i ON i.id=s.id WHERE s.id=$1`,
-		`SELECT sum(amount) OVER () FROM analytics.sales WHERE id=$1`,
+		`WITH RECURSIVE x AS (SELECT id FROM analytics.sales WHERE id=$1) SELECT id FROM x`,
+		`WITH x AS (DELETE FROM analytics.sales WHERE id=$1 RETURNING id) SELECT id FROM x`,
+		`SELECT value FROM generate_series(1,$1) AS value`,
+		`SELECT id INTO copied FROM analytics.sales WHERE id=$1`,
+		`SELECT id FROM analytics.sales WHERE id=$1 FOR UPDATE`,
 		`DELETE FROM analytics.sales WHERE id=$1`,
+		`SELECT id FROM analytics.sales WHERE id=$1; SELECT id FROM analytics.sales`,
 	} {
 		if err := CheckParameterContinuity(context.Background(), "postgres", sql, sql, 1); !errors.Is(err, ErrUnsupported) {
-			t.Fatalf("unproved scope admitted for %s: %v", sql, err)
+			t.Fatalf("unproved command/scope admitted: %v", err)
 		}
 	}
 }
