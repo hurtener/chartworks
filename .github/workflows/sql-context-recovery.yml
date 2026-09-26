@@ -10,6 +10,7 @@ on:
       - internal/nlqexec/**
       - internal/semantics/**
       - internal/exec/**
+      - internal/sources/**
       - internal/gateway/**
       - internal/config/**
       - internal/store/postgres/**
@@ -69,12 +70,12 @@ jobs:
           git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
           git ls-tree -r HEAD > "$target/tree.txt"
           git archive --format=tar.gz HEAD > "$target/source.tar.gz"
-          baseline=8cceaa1c0f1accbd0a4cd0cd7050c4a02dd37ebd
-          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/join-projection-incremental.patch"
+          baseline=c18a5b2a530a5a27ffb38db8f24613f4fb5bd1c7
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/diagnostics-incremental.patch"
           git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
           export GIT_INDEX_FILE="$RUNNER_TEMP/sql-continuation-replay.index"
           git read-tree "$baseline"
-          git apply --cached "$target/join-projection-incremental.patch"
+          git apply --cached "$target/diagnostics-incremental.patch"
           actual=$(git write-tree)
           expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
           test "$actual" = "$expected"
@@ -148,7 +149,7 @@ jobs:
       - name: Semantic, routing, context and generation regressions
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec/... ./internal/store/postgres ./internal/config ./internal/gateway/... ./sdk/chartworks ./internal/api ./internal/mcpserver 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
+          go test -race -count=1 -timeout=15m -json ./internal/semantics/... ./internal/nlq... ./internal/exec/... ./internal/sources ./internal/store/postgres ./internal/config ./internal/gateway/... ./sdk/chartworks ./internal/api ./internal/mcpserver 2>&1 | tee "$RUNNER_TEMP/sql-context-units.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -160,7 +161,7 @@ jobs:
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoveryInterpretationContinuationLifecycleAcceptance|TestSQLRecoveryInterpretationContinuationEditsAcceptance|TestSQLRecoverySavedInterpretationContinuationAcceptance|TestSQLRecoveryDependentClarificationLifecycleAcceptance|TestSQLRecoveryDependentClarificationInvalidAcceptance|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestSQLRecoveryVocabularyProviderAcceptance|TestSQLRecoveryVocabularyKeepsStrongerProofs|TestSQLRecoveryDecisionNoExecutablePlanAcceptance|TestSQLRecoveryDecisionTransportsPrivacyAcceptance|TestSQLRecoveryAdversarialOnlyPopulationAcceptance|TestSQLRecoveryAdversarialIntegerDivisionAcceptance|TestSQLRecoveryAdversarialRepairFinalizationAcceptance|TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection|TestSQLRecoveryAdversarialUnknownJournalAcceptance|TestSQLRecoveryAdversarialFailedRerunClearsRowsAcceptance|TestSQLRecoveryGroupingContinuationLifecycleAcceptance|TestSQLRecoveryGroupingPrivateBindingsAcceptance|TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance|TestSQLRecoverySavedGroupingContinuationAcceptance|TestSQLRecoveryParameterScopesLifecycleAcceptance|TestSQLRecoveryParameterScopesRejectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionPrivateAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoveryInterpretationContinuationLifecycleAcceptance|TestSQLRecoveryInterpretationContinuationEditsAcceptance|TestSQLRecoverySavedInterpretationContinuationAcceptance|TestSQLRecoveryDependentClarificationLifecycleAcceptance|TestSQLRecoveryDependentClarificationInvalidAcceptance|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestSQLRecoveryVocabularyProviderAcceptance|TestSQLRecoveryVocabularyKeepsStrongerProofs|TestSQLRecoveryDecisionNoExecutablePlanAcceptance|TestSQLRecoveryDecisionTransportsPrivacyAcceptance|TestSQLRecoveryAdversarialOnlyPopulationAcceptance|TestSQLRecoveryAdversarialIntegerDivisionAcceptance|TestSQLRecoveryAdversarialRepairFinalizationAcceptance|TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection|TestSQLRecoveryAdversarialUnknownJournalAcceptance|TestSQLRecoveryAdversarialFailedRerunClearsRowsAcceptance|TestSQLRecoveryGroupingContinuationLifecycleAcceptance|TestSQLRecoveryGroupingPrivateBindingsAcceptance|TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance|TestSQLRecoverySavedGroupingContinuationAcceptance|TestSQLRecoveryParameterScopesLifecycleAcceptance|TestSQLRecoveryParameterScopesRejectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionPrivateAcceptance|TestSQLRecoveryQueryDiagnosticNativeValidationAcceptance|TestSQLRecoveryQueryDiagnosticPrivateBindingsAcceptance|TestSQLRecoveryQueryDiagnosticPhysicalReceiptAcceptance|TestSQLRecoveryQueryDiagnosticDataAndWindowMatrix|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Summarize actual terminal test events
         if: always()
         run: |
@@ -200,6 +201,8 @@ jobs:
           required_units.extend(['TestSQLRecoveryParameterScopeCoreImmutableGraphs', 'TestSQLRecoveryParameterScopeCoreRejectsRebinding', 'TestSQLRecoveryParameterScopeCoreSetAndJoinNodes', 'TestSQLRecoveryParameterScopeCoreCommandsStayUnsupported', 'TestSQLRecoveryParameterScopeCoreOutputDependencies', 'TestSQLRecoveryParameterScopeCoreExactLiteralsAndLocations', 'TestSQLRecoveryParameterScopeCoreMalformedAndBounded', 'TestSQLRecoveryParameterScopeCoreConcurrentDetached', 'TestSQLRecoveryParameterScopeCoreIndirectValueConsumers'])
           required_units.extend(['TestSQLRecoveryConfirmedJoinProjectionMinimal','TestSQLRecoveryConfirmedJoinProjectionRejectsInvalidSets','TestSQLRecoveryConfirmedJoinProjectionDirectionAndLegacy','TestSQLRecoveryConfirmedJoinProjectionFallbackAndRefit','TestSQLRecoveryConfirmedJoinProjectionProducer','TestSQLRecoveryConfirmedJoinProjectionAdmissionAtomic'])
           required_acceptance.extend(['TestSQLRecoveryConfirmedJoinProjectionAcceptance','TestSQLRecoveryConfirmedJoinProjectionPrivateAcceptance'])
+          required_units.extend(['TestSQLRecoveryDiagnosticExactStates', 'TestSQLRecoveryDiagnosticClosedDetachedHints', 'TestSQLRecoveryQueryRejectionClosedValue', 'TestSQLRecoveryNativeDiagnosticBoundaries', 'TestSQLRecoveryNativeDiagnosticsNeverPromoteTerminal', 'TestSQLRecoverySpecificValidationDiagnostics', 'TestSQLRecoverySpecificDiagnosticReceiptGate', 'TestSQLRecoveryDiagnosticPacketRejectsUntrustedReason', 'TestSQLRecoveryDiagnosticMigrationVocabulary'])
+          required_acceptance.extend(['TestSQLRecoveryQueryDiagnosticNativeValidationAcceptance', 'TestSQLRecoveryQueryDiagnosticPrivateBindingsAcceptance', 'TestSQLRecoveryQueryDiagnosticPhysicalReceiptAcceptance', 'TestSQLRecoveryQueryDiagnosticDataAndWindowMatrix'])
           missing=[]
           failures=[]
           for name in ['units','acceptance']:

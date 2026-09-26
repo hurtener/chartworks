@@ -8,10 +8,10 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
-Current qualified runtime: `93539cc` (tree `193cf00`). S1 and S8 are complete
-within their documented software scope. S8's Go 1.26.4/1.27.1 native suites passed;
-S2–S7, S9–S12 and Q1–Q3 remain open. Exact counts and acceptance boundaries live
-in the linked completion tracker. This mirror does not recertify historical code.
+Current qualified runtime: `c18a5b2`. S1/S3/S8/S9 are qualified within their
+documented software scopes; new S7 diagnostics still await exact-source testing.
+The canonical completion tracker owns the remaining S/Q status. Historical
+checkpoint evidence below is not automatically evidence for later source.
 
 
 The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.
@@ -129,3 +129,12 @@ totals/calendar selection and the strict pending-refinement admission fix.
 Executable scope, form origin, private binding and immutable-parent checks remain.
 S9 broader native parameter roles and the remaining S/Q requirements are still
 open; historical checkpoint prose above is not the current completion claim.
+
+
+### Current SQL recovery checkpoint — S3 qualified, S7 under test
+
+The canonical completion tracker records S3/S9 qualification at c18a5b2 and
+the new closed source-diagnostics implementation. Specific native causes do not
+authorize different SQL semantics, extra attempts, or disclosure of source error
+text. New S7 integration qualification is still pending; all other unchecked S/Q
+items remain open. Historical acceptance and release claims keep their old scope.

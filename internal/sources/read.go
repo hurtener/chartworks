@@ -396,10 +396,16 @@ func readFailure(ctx context.Context, err error) error {
 	// PostgreSQL condition such as division by zero. Preserve only a typed,
 	// detail-free rejection so an owning consumer may spend one correction
 	// attempt; native SQLSTATE/message text never crosses this boundary.
+	classified := postgresQueryRejection(ctx, err)
+	if !errors.Is(classified, store.ErrUnavailable) || errors.Is(err, store.ErrUnavailable) {
+		return classified
+	}
+	// Preserve the legacy generic data-error classification when this
+	// vocabulary does not identify a narrower reviewed SQLSTATE.
 	if errors.As(err, &pg) && (strings.HasPrefix(pg.Code, "22") || pg.Code == "21000") {
 		return readexec.ErrQuery
 	}
-	return safe(err)
+	return classified
 }
 
 func resultField(name string, oid uint32) (readexec.Field, error) {

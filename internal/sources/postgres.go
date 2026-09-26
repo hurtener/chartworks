@@ -266,7 +266,7 @@ func explain(ctx context.Context, tx readTransaction, statement string, paramete
 	var plan json.RawMessage
 	// The candidate has already passed the positive grammar and dependency checks.
 	if err = tx.QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+statement, args...).Scan(&plan); err != nil {
-		return safe(err)
+		return postgresQueryRejection(ctx, err)
 	}
 	if !json.Valid(plan) || len(plan) > 1<<20 {
 		return readexec.ErrUnsafe

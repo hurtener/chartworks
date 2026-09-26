@@ -222,7 +222,7 @@ func TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection(t *testing.T
 	if err == nil || !errors.Is(err, nlqexec.ErrExecutionBudget) || out.Status != "failed" || out.ExecutionFixes != 1 || adversarialChatCount(f) != calls+1 || count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before+2 {
 		t.Fatalf("durable correction: budget=%t status=%s fixes=%d chat_delta=%d read_delta=%d attempt_code=%s remote=%s finished=%t: %v", errors.Is(err, nlqexec.ErrExecutionBudget), out.Status, out.ExecutionFixes, adversarialChatCount(f)-calls, count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)-before, out.Execution.Attempt.Code, out.Execution.Attempt.RemoteState, out.Execution.Attempt.Finished != nil, err)
 	}
-	if out.Execution.Attempt.Code != "query_error" || out.Execution.Attempt.RemoteState != "stopped" || out.Execution.Attempt.Finished == nil || out.Execution.Result != nil {
+	if out.Execution.Attempt.Code != "query_division_by_zero" || out.Execution.Attempt.RemoteState != "stopped" || out.Execution.Attempt.Finished == nil || out.Execution.Result != nil {
 		t.Fatal("unconfirmed physical failure treated as terminal correction")
 	}
 	sc, _ := store.NewScope(f.e.Tenant(), f.e.User())

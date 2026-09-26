@@ -10,7 +10,8 @@ qualification are separate evidence states. Nothing here declares full parity.
 The [completion tracker](sql-recovery-completion.md) controls the current
 AP-00–AP-08 status and the finite S1–S12/Q1–Q3 backlog. All phases have delivered
 increments, but the overall recovery remains **in progress**. The latest qualified
-runtime is `996db06` (S1/S8 and the S9 grouping slice qualified in their declared scopes). The historical
+runtime is `c18a5b2` (S1/S3/S8/S9 qualified in their declared scopes). S7 has
+a new implementation checkpoint awaiting its own runtime evidence. The historical
 `ea38c07` P0/P1 review is not full implementation/parity closure.
 
 ## Phase status
@@ -19,9 +20,9 @@ runtime is `996db06` (S1/S8 and the S9 grouping slice qualified in their declare
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
 | AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
-| AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: exact confirmed-join-aware projection implemented; runtime qualification pending | Operator tokenizer/model-window/framing qualification |
+| AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3 complete at c18a5b2: exact confirmed joins and mandatory projection; no remaining S3 software item | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
-| AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
+| AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: closed EXPLAIN/read diagnostic vocabulary and bounded consumers implemented; exact-source qualification pending | Broader privacy, repair/result and engine matrix within existing attempt limits |
 | AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 native parameter-scope extension qualified at 8cceaa1 for immutable CTE/derived/join/subquery/window/set inputs and eligible outer edits; wider language is S2 | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
@@ -576,3 +577,14 @@ qualification at 8cceaa1. S3 is implemented in the next source checkpoint and
 remains unqualified until its real producer/provider/persistence tests pass. See
 [the confirmed-join contract](../contracts/confirmed-join-projection-v1.md). No
 execution/analytical join admission, migration, authority or legacy prompt is widened.
+
+
+## S7 closed source diagnostics — implementation checkpoint
+
+The [diagnostic contract](../contracts/query-repair-diagnostics-v1.md) controls
+exact native code mapping, private-data exclusion, hard terminal precedence,
+durable receipt requirements and existing correction limits. Current local
+implementation has pure tests; no baseline CI count is attributed to this new
+source. The canonical tracker retains the pending exact-head qualification.
+S3 was independently verified green at c18a5b2, with 1,804 unit/subtest and
+233 PostgreSQL acceptance passes per toolchain; no new test skip.

@@ -128,3 +128,12 @@ totals/calendar selection and the strict pending-refinement admission fix.
 Executable scope, form origin, private binding and immutable-parent checks remain.
 S9 broader native parameter roles and the remaining S/Q requirements are still
 open; historical checkpoint prose above is not the current completion claim.
+
+
+### Current SQL recovery checkpoint — S3 qualified, S7 under test
+
+The canonical completion tracker records S3/S9 qualification at c18a5b2 and
+the new closed source-diagnostics implementation. Specific native causes do not
+authorize different SQL semantics, extra attempts, or disclosure of source error
+text. New S7 integration qualification is still pending; all other unchecked S/Q
+items remain open. Historical acceptance and release claims keep their old scope.

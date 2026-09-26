@@ -15,6 +15,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/exec/querydiagnostic"
 	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -1956,6 +1957,9 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	suffix := "\ndialect:" + dialect + "\nsource_context:" + a.context
 	if correction != "" {
 		suffix += "\ncorrection_reason:" + correction
+		if hint := querydiagnostic.Hint(correction); hint != "" {
+			suffix += "\ncorrection_guidance:" + hint
+		}
 	}
 	// Production Bifrost provides its effective server-owned request bounds.
 	// Recorded engines without provider configuration retain the sealed tier.
@@ -2342,6 +2346,9 @@ func validCandidate(c generatedCandidate) bool {
 }
 
 func validationCode(err error, sql string) string {
+	if code := exec.QueryRejectionCode(err); code != "" && validationRepairable(err) {
+		return code
+	}
 	if code := analyticalDiagnostic(err); code != "" {
 		return code
 	}
@@ -2362,18 +2369,21 @@ func validationCode(err error, sql string) string {
 }
 
 func executionRepairable(report exec.ExecutionReport, err error) bool {
-	if report.Attempt.Status == "uncertain" || report.Attempt.Status == "cancelled" || report.Attempt.Status == "timed_out" || errors.Is(err, exec.ErrUncertain) || errors.Is(err, exec.ErrCancelled) || errors.Is(err, exec.ErrTimeout) || errors.Is(err, exec.ErrBinding) || errors.Is(err, exec.ErrLimit) || errors.Is(err, exec.ErrType) || errors.Is(err, exec.ErrUnsupported) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrUnavailable) || errors.Is(err, store.ErrConflict) {
+	if report.Attempt.Status == "uncertain" || report.Attempt.Status == "cancelled" || report.Attempt.Status == "timed_out" || errors.Is(err, exec.ErrUncertain) || errors.Is(err, exec.ErrCancelled) || errors.Is(err, exec.ErrTimeout) || errors.Is(err, exec.ErrBinding) || errors.Is(err, exec.ErrLimit) || errors.Is(err, exec.ErrType) || errors.Is(err, exec.ErrUnsupported) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrUnavailable) || errors.Is(err, store.ErrConflict) || errors.Is(err, access.ErrForbidden) || errors.Is(err, access.ErrNotFound) || errors.Is(err, access.ErrUnauthenticated) || errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrInvalid) {
 		return false
 	}
 	// The source boundary may explicitly classify a durable, retryable query
 	// rejection without exposing provider text. Unknown transport or journal
 	// failures stay terminal; only this registered code can spend the one
 	// execution-correction budget.
-	if report.Attempt.Status != "failed" || report.Attempt.Code != "query_error" || report.Result != nil || report.Attempt.RemoteState == "unknown" || report.Attempt.RemoteState == "running" {
+	if report.Attempt.Status != "failed" || !querydiagnostic.Known(report.Attempt.Code) || report.Result != nil || report.Attempt.RemoteState == "unknown" || report.Attempt.RemoteState == "running" {
+		return false
+	}
+	if report.Attempt.Code != "query_error" && (report.Attempt.RemoteState != "stopped" || report.Attempt.Finished == nil || report.Attempt.Rows != 0 || report.Attempt.Bytes != 0) {
 		return false
 	}
 	if errors.Is(err, exec.ErrQuery) {
-		return true
+		return exec.QueryRejectionCode(err) == report.Attempt.Code
 	}
 	// The real Executor returns durable attempt failures in its receipt and a
 	// nil Go error after successful ledger finalization. Require an explicit

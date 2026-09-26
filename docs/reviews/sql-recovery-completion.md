@@ -1,9 +1,10 @@
 # SQL recovery — completion tracker
 
 PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Latest qualified implementation: `8cceaa1c0f1accbd0a4cd0cd7050c4a02dd37ebd`;
-qualified tree: `1a7a78b57afbaad364606c875da5ce89a8d54cb6`.
-S3 confirmed-join projection is implemented in the next checkpoint; qualification pending.
+Latest qualified implementation: `c18a5b2a530a5a27ffb38db8f24613f4fb5bd1c7`;
+qualified tree: `b9b1722fcaf0fcae7038c8033128a07bfe310d45`.
+S3 and S9 are qualified. S7 diagnostics are implemented in this checkpoint,
+with new native/integrated qualification pending; baseline passes do not certify it.
 Updated 2026-09-26. This is the current AP-00–AP-08 tracker. Historical
 checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
 at its stated revision, not the current completion status.
@@ -21,9 +22,9 @@ No scope has been discarded and no release or cutover has been approved.
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
 | AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | S2: reviewed, bounded paraphrase selection | Held-out selection/ambiguity calibration, not similarity-as-confidence |
-| AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3: exact confirmed-join-aware projection implemented; runtime qualification pending | Operator tokenizer/model-window/framing qualification |
+| AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3 complete at c18a5b2: exact confirmed joins and mandatory projection; no remaining S3 software item | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
-| AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: additional safe diagnostic/correction classes where acceptance requires them | Broader privacy, repair/result and engine matrix within existing attempt limits |
+| AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7: closed EXPLAIN/read diagnostic vocabulary and bounded consumers implemented; exact-source qualification pending | Broader privacy, repair/result and engine matrix within existing attempt limits |
 | AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 native parameter-scope extension qualified at 8cceaa1 for immutable CTE/derived/join/subquery/window/set inputs and eligible outer edits; wider language is S2 | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
 | AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
@@ -40,7 +41,7 @@ remain described explicitly; they do not close the parent requirement.
   inactive answers, contradiction/cycle bounds and deterministic replay.
 - [ ] S2 — Free-text paraphrase selection grounded in authorized reviewed concepts,
   confidence/ambiguity handling, complete closure and no incidental-root promotion.
-- [ ] S3 — Confirmed join coordinates reach render-only projection; join keys stay,
+- [x] S3 — Confirmed join coordinates reach render-only projection; join keys stay,
   unrelated columns drop, full validation authority and ambiguous-path behavior stay.
 - [ ] S4 — Reviewed ordering/limit/filter intent and required analytical expression
   coverage; exact semantics and bounded correction rather than SQL string equality.
@@ -273,3 +274,24 @@ Complete authority and stored validation scope stay unchanged. All S3 software
 tests still require exact-source execution before its checkbox can close. Local
 native setup remains blocked by missing offline modules. No readiness transition
 is authorized while other S/Q requirements are incomplete.
+
+
+## Qualified S3 baseline and S7 implementation checkpoint
+
+S3 head `c18a5b2`, tree `b9b1722fcaf0fcae7038c8033128a07bfe310d45`, passed
+CI 36273934611 and recovery 36273934618. Both downloaded Go 1.26.4/1.27.1
+artifacts independently show 1,804 passing unit/subtest events across 21 packages
+and 233 passing acceptance events, zero failures or acceptance skips. The existing
+paid reranker is the sole opt-in unit skip. These qualify confirmed-join projection
+and the previously qualified S9 scope guard, not analytical join/fan-out correctness.
+
+[Query-repair diagnostics v1](../contracts/query-repair-diagnostics-v1.md) adds a
+closed source rejection vocabulary shared by EXPLAIN, physical reads, durable
+attempt receipts and existing validation/execution correction consumers. No raw
+driver text crosses those boundaries. Permissions, cancellation and uncertain
+outcomes cannot use a query diagnostic to trigger repair. Migration 060 extends
+only the bounded attempt-code enum/outcome shape. The original correction ceiling,
+private bindings, native/analytical checks and SQL equivalence are unchanged.
+New unit/source tests and PostgreSQL/recorded-provider result tests require actual
+qualification before S7 can close. Local registry tests are not native proof.
+All unchecked S/Q obligations remain open; this PR is not ready for review.

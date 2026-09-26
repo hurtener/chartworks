@@ -7,6 +7,7 @@ import (
 
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/exec/querydiagnostic"
 	"github.com/hurtener/chartworks/internal/nlq"
 	"github.com/hurtener/chartworks/internal/store"
 )
@@ -15,11 +16,12 @@ import (
 // explanations, bound SQL and upstream error bodies. It is internal model input,
 // not an executable plan or a new public wire contract.
 type validationRepairPacket struct {
-	Version      string                 `json:"version"`
-	RejectedSQL  string                 `json:"rejected_sql"`
-	Parameters   []validationRepairSlot `json:"parameter_slots"`
-	Diagnostic   string                 `json:"diagnostic"`
-	Instructions []nlq.Instruction      `json:"original_instructions"`
+	Version            string                 `json:"version"`
+	RejectedSQL        string                 `json:"rejected_sql"`
+	Parameters         []validationRepairSlot `json:"parameter_slots"`
+	Diagnostic         string                 `json:"diagnostic"`
+	DiagnosticGuidance string                 `json:"diagnostic_guidance,omitempty"`
+	Instructions       []nlq.Instruction      `json:"original_instructions"`
 }
 
 type validationRepairSlot struct {
@@ -52,10 +54,12 @@ func validationRepairContext(ctx context.Context, original nlq.GenerationContext
 	case "validation_unsafe", "validation_unsupported", "validation_limit", "validation_failed",
 		"analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy", "analytical_shape_unsupported":
 	default:
-		return nlq.GenerationContext{}, ErrGeneration
+		if !querydiagnostic.Known(diagnostic) {
+			return nlq.GenerationContext{}, ErrGeneration
+		}
 	}
 	packet := validationRepairPacket{
-		Version: "validation-repair-v1", RejectedSQL: unbound.SQL, Diagnostic: diagnostic,
+		Version: "validation-repair-v1", RejectedSQL: unbound.SQL, Diagnostic: diagnostic, DiagnosticGuidance: querydiagnostic.Hint(diagnostic),
 		Parameters:   make([]validationRepairSlot, len(unbound.Parameters)),
 		Instructions: append([]nlq.Instruction(nil), original.Selected...),
 	}
