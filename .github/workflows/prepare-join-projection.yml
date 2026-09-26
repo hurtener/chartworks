@@ -1,0 +1,54 @@
+name: Prepare confirmed-join projection
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/prepare-join-projection.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 8cceaa1c0f1accbd0a4cd0cd7050c4a02dd37ebd
+          persist-credentials: false
+      - name: Verify patch and create source objects without moving a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,os,pathlib,subprocess,urllib.request
+          base='https://api.github.com/repos/hurtener/chartworks/git/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def request(path,body=None):
+              req=urllib.request.Request(base+path,data=json.dumps(body).encode() if body is not None else None,headers=headers,method='POST' if body is not None else 'GET')
+              with urllib.request.urlopen(req,timeout=30) as response:return json.load(response)
+          def blob(raw):return hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+          chunks=['22066f8c47a9ea8b5616a1544d9af9db11282d3f','185fb9ef85d4a306f152e5d797d5d10e6bf499db','07445cc674563321cff9ab446108bcbd70de186d','bda6cc68bc216d12a2b88ca1b02ecf6fd17312c0','5bf02152a284d679cfa06564696f505e888074e8','cba30a832d3825b9610db307a6f5afdee7345f5c','f7d6e198a947ad3ec735ff22f872279d6a7a8815']
+          data=b''
+          for sha in chunks:
+              raw=base64.b64decode(request('blobs/'+sha)['content'])
+              assert blob(raw)==sha
+              data+=raw
+          patch=gzip.decompress(data)
+          assert len(patch)==65489 and hashlib.sha256(patch).hexdigest()=='824436456ca70fa23acb565917c13f5c4b329d6496e5cd76cc1abee51c4d3e66'
+          path=pathlib.Path('/tmp/join-projection.patch');path.write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index',str(path)],check=True)
+          subprocess.run(['git','apply','--index',str(path)],check=True)
+          expected='5ebb914d94483bba6134010aa0eeaa583d44b7e6'
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==expected
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==15
+          assert all(p.startswith(('internal/nlq/','internal/nlqroute/','test/acceptance/','docs/')) or p=='.github/workflows/sql-context-recovery.yml' for p in paths)
+          entries=[]
+          for path in paths:
+              raw=pathlib.Path(path).read_bytes()
+              sha=request('blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'})['sha']
+              assert sha==blob(raw)
+              entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          tree=request('trees',{'base_tree':'1a7a78b57afbaad364606c875da5ce89a8d54cb6','tree':entries})['sha']
+          assert tree==expected
+          print('VERIFIED_SOURCE_TREE='+tree)
+          PY
