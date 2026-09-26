@@ -348,7 +348,11 @@ func businessConstraint(item admittedTopic, resolution semantics.ClarificationRe
 }
 
 func (r RouteResult) resolutionProof() string {
-	return readexec.Hash([]any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business, r.Selection})
+	parts := []any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business, r.Selection}
+	if r.Request.Grouping != nil {
+		parts = append(parts, CloneGrouping(r.Request.Grouping))
+	}
+	return readexec.Hash(parts)
 }
 
 // ResolvedBusinessConstraints is available only from the in-process sealed

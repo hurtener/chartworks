@@ -181,3 +181,11 @@ old value; explicit value/time edits support replacement/removal. Replay and sav
 routing retain anchors and selections. General grouping edits, wider language and
 owner qualification are separate requirements. The canonical completion tracker
 records actual tests; implementation text alone is not a passed integration gate.
+
+## S9 grouping continuity checkpoint
+
+[Grouping continuity v1](../contracts/grouping-continuity-v1.md) adds a complete
+logical grouping set to existing requests. The router resolves it from current
+admitted definitions before selection/rules, retains all required dependencies,
+and does not infer stale grouping roots from the old utterance. Pending origin
+and protected route evidence include the set. Full source authority is unchanged.

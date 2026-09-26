@@ -348,7 +348,7 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 		kind := analyticalNumericKind(c)
 		return analyticalTerm{column: c.Name, numeric: kind == "decimal", exact: kind != ""}, nil
 	}
-	if a.grain != nil && a.grain.Policy == AnalyticalCalendarPolicy {
+	if a.grain != nil && (a.grain.Policy == AnalyticalCalendarPolicy || a.grain.Policy == AnalyticalGroupingPolicy) {
 		if term, handled, err := a.calendarTerm(node, depth); handled {
 			return term, err
 		}

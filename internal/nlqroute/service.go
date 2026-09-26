@@ -104,6 +104,7 @@ type ChoiceSelection struct {
 // Topic reach, source bindings, rule text and facet text are resolved from
 // current published state by Service.Route.
 type RouteRequest struct {
+	Grouping      *GroupingSelection              `json:"grouping,omitempty"`
 	Answers       []semantics.ClarificationAnswer `json:"answers,omitempty"`
 	AnswerContext string                          `json:"answer_context,omitempty"`
 	Topic         string                          `json:"topic,omitempty"`
@@ -689,6 +690,9 @@ func admissionVector(dimensions int) []float32 {
 }
 
 func normalizeRequest(in RouteRequest) ([]string, error) {
+	if err := ValidateGrouping(in.Grouping); err != nil {
+		return nil, err
+	}
 	if (in.Locale != nlq.LanguageEnglish && in.Locale != nlq.LanguageSpanish) || !validQuestion(in.Question) || !identity.Identifier(in.Context) {
 		return nil, ErrInvalid
 	}
@@ -813,6 +817,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 
 func cloneRouteRequest(in RouteRequest) RouteRequest {
 	out := in
+	out.Grouping = CloneGrouping(in.Grouping)
 	out.Topics = append([]string(nil), in.Topics...)
 	out.Templates = append([]rulesets.TemplateSelection(nil), in.Templates...)
 	out.Kinds = append([]string(nil), in.Kinds...)

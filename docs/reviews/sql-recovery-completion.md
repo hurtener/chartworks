@@ -184,3 +184,17 @@ Runtime evidence is from Actions, not a claimed local/live-model run.
 S8's finite software slice is closed. S9 grouping edits, S2 generalized language,
 all other unchecked S items and Q1/Q2/Q3 remain open. The earlier P0/P1 baseline
 review is not a blanket guarantee for every new source revision.
+
+## S9 grouping implementation checkpoint — qualification pending
+
+Baseline `cccf55c761d3404da2ccd1d277ff3f67f44ca710`. The
+[grouping continuity contract](../contracts/grouping-continuity-v1.md) describes
+complete typed grouping sets, inherited verified grains, exact reviewed EN/ES
+replacement, deliberate scalar totals, calendar re-selection and private-parameter
+composition. Migration 059 distinguishes v5 from retained v0-v4. Pending origins,
+SDK/saved state and source/analytical replay retain the grouping identity.
+
+S9 is not marked complete: runtime qualification for this checkpoint is pending,
+and broader native parameter-role proofs for required nested/multi-relation shapes
+remain unimplemented. Existing S8 scalar/time behavior is preserved; S2 language,
+S4 analytical breadth and S5/S6 native/engine obligations are not reduced.

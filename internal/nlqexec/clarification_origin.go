@@ -71,7 +71,7 @@ func (s *Service) validateClarificationOrigin(ctx context.Context, e identity.En
 	if (len(request.InterpretationSelections) > 0 || request.InterpretationPolicy != "") && question.InterpretationAnchor != request.InterpretationAnchor {
 		anchorChanged = true
 	}
-	if question.InterpretationPolicy != request.InterpretationPolicy || exec.Hash(nlqroute.CloneInterpretationSelections(question.InterpretationSelections)) != exec.Hash(nlqroute.CloneInterpretationSelections(request.InterpretationSelections)) || exec.Hash(nlqroute.CloneInterpretationEdits(question.InterpretationEdits)) != exec.Hash(nlqroute.CloneInterpretationEdits(request.InterpretationEdits)) || anchorChanged {
+	if exec.Hash(nlqroute.CloneGrouping(question.Grouping)) != exec.Hash(nlqroute.CloneGrouping(request.Grouping)) || question.InterpretationPolicy != request.InterpretationPolicy || exec.Hash(nlqroute.CloneInterpretationSelections(question.InterpretationSelections)) != exec.Hash(nlqroute.CloneInterpretationSelections(request.InterpretationSelections)) || exec.Hash(nlqroute.CloneInterpretationEdits(question.InterpretationEdits)) != exec.Hash(nlqroute.CloneInterpretationEdits(request.InterpretationEdits)) || anchorChanged {
 		return clarificationOriginError(question.Locale, "clarification_question_mismatch")
 	}
 	return nil

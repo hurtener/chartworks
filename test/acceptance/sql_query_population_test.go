@@ -26,7 +26,7 @@ func populationPrivateQuestion(t *testing.T, f *cw01Fixture) nlqexec.QuestionReq
 
 func requirePopulationProof(t *testing.T, p nlqexec.PlanResult, err error, fixes int) {
 	t.Helper()
-	if err == nil && p.Analytical != nil && p.Analytical.QueryPopulation == readexec.AnalyticalQueryPopulationPolicy && p.Analytical.Version == readexec.AnalyticalQueryPopulationVersion && p.ValidationFixes == fixes && p.Bindings != nil {
+	if err == nil && p.Analytical != nil && p.Analytical.QueryPopulation == readexec.AnalyticalQueryPopulationPolicy && p.Analytical.Version == readexec.AnalyticalGroupingVersion && p.ValidationFixes == fixes && p.Bindings != nil {
 		return
 	}
 	// Only public policy/slot metadata, never canonical answers or parameters.
@@ -67,7 +67,7 @@ func TestSQLRecoveryQueryPopulationAcceptance(t *testing.T) {
 		metadata := support.Raw(t, f.f.dsn)
 		sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
 		q, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
-		if err != nil || q.AnalyticalVersion != 4 || q.Analytical == nil || q.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy {
+		if err != nil || q.AnalyticalVersion != 5 || q.Analytical == nil || q.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy {
 			t.Fatal("query population persistence", err)
 		}
 		projected, err := f.f.db.ReadSavedQuery(ctx, f.e, q.ID, false)

@@ -117,7 +117,7 @@ func TestSQLRecoveryAnalyticalAcceptance(t *testing.T) {
 		}
 		scope, _ := store.NewScope(pf.e.Tenant(), pf.e.User())
 		saved, err := f.db.ReadQuery(ctx, scope, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 4 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
+		if err != nil || saved.AnalyticalVersion != 5 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
 			t.Fatal("proof persistence", err)
 		}
 		projected, err := f.db.ReadSavedQuery(ctx, pf.e, p.QueryID, false)

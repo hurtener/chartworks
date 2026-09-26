@@ -48,7 +48,7 @@ func TestSQLRecoveryGrainCompilerEnglishSpanishAndLists(t *testing.T) {
 			a := grainAdmission(tc.question)
 			before, _ := json.Marshal(a.route)
 			c, err := compileAnalytical(context.Background(), a)
-			if err != nil || c == nil || c.Version != exec.AnalyticalQueryPopulationVersion || c.Grain == nil || !reflect.DeepEqual(c.Grain.Columns, tc.columns) {
+			if err != nil || c == nil || c.Version != exec.AnalyticalGroupingVersion || c.Grain == nil || !reflect.DeepEqual(c.Grain.Columns, tc.columns) {
 				t.Fatal("incorrect grouping compilation", err)
 			}
 			after, _ := json.Marshal(a.route)

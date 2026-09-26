@@ -39,7 +39,7 @@ func independentlySelectedProjection(text string) (bool, error) {
 		return false, projectionOwnerFailure()
 	}
 	for _, root := range roots {
-		if root.Reason != "catalog_term" && root.Reason != "explicit_reference" && root.Reason != "explicit_metric" {
+		if root.Reason != "catalog_term" && root.Reason != "explicit_reference" && root.Reason != "explicit_metric" && root.Reason != "grouping" {
 			continue
 		}
 		switch root.Reference.Kind {

@@ -26,7 +26,7 @@ type grainDimension struct {
 func compileAnalyticalGrain(ctx context.Context, a admission, contract exec.AnalyticalContract) (*exec.AnalyticalGrain, error) {
 	return compileAnalyticalGrainPolicy(ctx, a, contract, false)
 }
-func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exec.AnalyticalContract, calendar bool) (*exec.AnalyticalGrain, error) {
+func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exec.AnalyticalContract, calendar bool, recognized ...*bool) (*exec.AnalyticalGrain, error) {
 	question := semantics.RedactClarificationText(a.route.Request.Question, a.route.Request.Answers, a.route.Resolutions)
 	if len(question) > 16<<10 {
 		return nil, exec.ErrLimit
@@ -95,6 +95,9 @@ func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exe
 	if start < 0 {
 		return nil, nil
 	} // Unknown is not a scalar-total assertion.
+	if len(recognized) > 0 && recognized[0] != nil {
+		*recognized[0] = true
+	}
 	if len(a.publications) != 1 {
 		return nil, analyticalUnsupported("analytical_grain_unsupported")
 	}
@@ -325,6 +328,9 @@ func grainPrefix(words, prefix []string) bool {
 func analyticalGrainGuidanceOnly(contract *exec.AnalyticalContract) string {
 	if contract == nil || contract.Grain == nil {
 		return ""
+	}
+	if contract.Grain.Policy == exec.AnalyticalGroupingPolicy && len(contract.Grain.Dimensions) == 0 {
+		return " The selected output is explicitly a scalar total. Return only selected aggregate/KPI outputs, without GROUP BY or nonaggregate projected keys. Preserve the separately reviewed row filters."
 	}
 	// All content is already validated reviewed physical/semantic coordinates,
 	// never private scalar answers. This is counted by full-envelope fitting.

@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "58" || len(manifest) != 58 {
+	if err != nil || SchemaVersion() != "59" || len(manifest) != 59 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -66,6 +66,7 @@ func TestSafeErrors(t *testing.T) {
 		{55, "migrations/056_nlq_query_population.sql", "owned-query-predicates-v1"},
 		{56, "migrations/057_nlq_example_parameters.sql", "nlq_example_parameters_immutable"},
 		{57, "migrations/058_read_query_error.sql", "'query_error'"},
+		{58, "migrations/059_nlq_grouping_continuity.sql", "analytical-metrics-v5"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

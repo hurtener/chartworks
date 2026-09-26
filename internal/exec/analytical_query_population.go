@@ -59,7 +59,7 @@ func validateAnalyticalQueryPopulation(ctx context.Context, c AnalyticalContract
 	if c.QueryPopulation == nil {
 		return nil
 	}
-	if c.Version != AnalyticalQueryPopulationVersion || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
+	if (c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion) || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
 		return ErrBinding
 	}
 	canonical, err := NewAnalyticalQueryPopulation(ctx, binding, c.Dataset, c.QueryPopulation.Constraints)

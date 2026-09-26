@@ -379,3 +379,14 @@ old value; explicit value/time edits support replacement/removal. Replay and sav
 routing retain anchors and selections. General grouping edits, wider language and
 owner qualification are separate requirements. The canonical completion tracker
 records actual tests; implementation text alone is not a passed integration gate.
+
+## S9 grouping continuation checkpoint
+
+[Grouping continuity v1](../contracts/grouping-continuity-v1.md) inherits only a
+reconstructed parent grain, supports a new complete reviewed EN/ES grouping and
+explicit full-set replacement/total, and keeps filter/time/private slot custody.
+Migration 059 pins the v5 policy without upgrading old rows. The native checker
+compares projected and grouped keys even for a scalar total. New acceptance cases
+are TestSQLRecoveryGroupingContinuationLifecycleAcceptance and
+TestSQLRecoveryGroupingPrivateBindingsAcceptance; their observed runtime results
+belong to the exact-head ledger. Broader native parameter roles remain open.

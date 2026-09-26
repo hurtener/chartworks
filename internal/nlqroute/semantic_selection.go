@@ -235,6 +235,9 @@ func initialSemanticSelection(ctx context.Context, in RouteRequest, admitted []a
 			return ErrInvalid
 		}
 	}
+	if err := selectGrouping(ctx, in, admitted); err != nil {
+		return err
+	}
 	if err := selectCatalogTerms(ctx, in, admitted); err != nil {
 		return err
 	}
@@ -307,6 +310,9 @@ func selectCatalogTerms(ctx context.Context, in RouteRequest, admitted []admitte
 			}
 		}
 		for _, v := range item.publication.Definition.Dimensions {
+			if in.Grouping != nil && !groupingContains(in.Grouping, item.id, v.ID) {
+				continue
+			}
 			if err := add(i, semantics.Reference{Kind: semantics.KindDimension, ID: v.ID}, v.Name, v.Aliases); err != nil {
 				return err
 			}

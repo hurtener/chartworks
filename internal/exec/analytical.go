@@ -20,6 +20,15 @@ const AnalyticalVersion = "analytical-metrics-v1"
 // v1 remains a distinct retained policy and must never be upgraded on replay.
 const AnalyticalGrainVersion = "analytical-metrics-v2"
 
+// AnalyticalGroupingVersion pins explicit replacement/inherited grouping intent.
+const AnalyticalGroupingVersion = "analytical-metrics-v5"
+
+// AnalyticalGroupingPolicy permits a deliberately empty grouping (scalar total).
+const AnalyticalGroupingPolicy = "reviewed-grouping-v1"
+
+// AnalyticalTotalScope distinguishes a proved total from unmeasured grouping.
+const AnalyticalTotalScope = "selected_metric_expression_population_and_scalar_total;single_base_relation"
+
 const (
 	// AnalyticalMetricScope does not certify the query-wide population or grain.
 	AnalyticalMetricScope = "selected_metric_expression_and_population;single_base_relation"
@@ -109,7 +118,7 @@ type AnalyticalReceipt struct {
 // issues plans nor widens the admitted binding, and does no source/model work.
 // Unsupported syntax is not labeled a passed analytical result.
 func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*AnalyticalReceipt, error) {
-	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion && c.Version != AnalyticalQueryPopulationVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
+	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion && c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
 		return nil, ErrBinding
 	}
 	if err := ctx.Err(); err != nil {
@@ -187,6 +196,9 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	receipt := &AnalyticalReceipt{Version: c.Version, Scope: AnalyticalMetricScope, Contract: Hash(c), Query: AnalyticalQueryDigest(sql, p.candidate.parameters), Metrics: ids}
 	if c.Grain != nil {
 		receipt.Scope = AnalyticalGrainScope
+		if c.Grain.Policy == AnalyticalGroupingPolicy && len(c.Grain.Dimensions) == 0 {
+			receipt.Scope = AnalyticalTotalScope
+		}
 		if len(c.Grain.Buckets) > 0 {
 			receipt.Scope = AnalyticalCalendarScope
 		}

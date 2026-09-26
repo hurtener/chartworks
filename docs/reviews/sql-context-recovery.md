@@ -509,3 +509,14 @@ explicit versus default saved anchors, and rejects omitted anchors on a continue
 pending form. New regressions exercise real saved-question preparation/execution
 and metadata recovery, not just saved JSON projection. Final current-head runtime
 results remain required before closing the S8 checkbox.
+
+## S9 grouping checkpoint — not yet qualified
+
+The current [completion tracker](sql-recovery-completion.md) records a grouping
+continuity implementation from cccf55c. Explicit logical grouping overrides old
+utterance grouping, inherited grains come only from reconstructed parent proof,
+and exact totals differ from unknown grain. Filters and private parameter roles
+remain independently checked. Forward migration 059 adds v5; old receipts retain
+their own grammar. See [the contract](../contracts/grouping-continuity-v1.md).
+Full S9 remains open pending this checkpoint's test evidence and broader native
+parameter-role coverage. No safe rejection has been relabeled as parity.

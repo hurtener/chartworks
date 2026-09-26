@@ -210,3 +210,13 @@ func (c *Client) ImportExampleNLQ(ctx context.Context, in NLQExampleImportReques
 	err = c.callLimit(ctx, "POST", "/v1/nlq/examples/import", "", in, &out, 2<<20)
 	return
 }
+
+// NLQGroupingPolicy identifies a complete reviewed grouping replacement.
+const NLQGroupingPolicy = nlqroute.GroupingPolicy
+
+// NLQGroupingSelection is logical user intent; empty Keys requests a total.
+// Every key is resolved against current authorized source/catalog definitions.
+type NLQGroupingSelection = nlqroute.GroupingSelection
+
+// NLQGroupingKey selects a direct dimension or a reviewed calendar bucket.
+type NLQGroupingKey = nlqroute.GroupingKey

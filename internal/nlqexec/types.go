@@ -261,6 +261,7 @@ type ExampleRecord struct {
 // QuestionRequest is shared by preflight and plan. The verified envelope
 // supplies tenant, actor and session; none of those are accepted from JSON.
 type QuestionRequest struct {
+	Grouping *nlqroute.GroupingSelection `json:"grouping,omitempty"`
 	// ClarificationQuery anchors a typed submission to a retained preflight in
 	// the current actor/session. The ID grants no authority and is rechecked.
 	ClarificationQuery       string                             `json:"clarification_query,omitempty"`

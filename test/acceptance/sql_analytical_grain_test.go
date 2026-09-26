@@ -51,7 +51,7 @@ func TestSQLRecoveryAnalyticalGrainAcceptance(t *testing.T) {
 		t.Helper()
 		model.mode.Store(phase18RawResponse(t, good))
 		out, err := query.Plan(ctx, pf.e, nlqexec.PlanRequest{QuestionRequest: q})
-		if err != nil || out.Analytical == nil || out.Analytical.Version != readexec.AnalyticalQueryPopulationVersion || out.Analytical.Scope != readexec.AnalyticalGrainScope || len(out.Analytical.Grouping) != 1 || out.Analytical.Grouping[0] != pack.Topic+":dimension:record" {
+		if err != nil || out.Analytical == nil || out.Analytical.Version != readexec.AnalyticalGroupingVersion || out.Analytical.Scope != readexec.AnalyticalGrainScope || len(out.Analytical.Grouping) != 1 || out.Analytical.Grouping[0] != pack.Topic+":dimension:record" {
 			t.Fatal("grain plan", err)
 		}
 		return out
@@ -79,7 +79,7 @@ func TestSQLRecoveryAnalyticalGrainAcceptance(t *testing.T) {
 		}
 		sc, _ := store.NewScope(pf.e.Tenant(), pf.e.User())
 		saved, err := f.db.ReadQuery(ctx, sc, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 4 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
+		if err != nil || saved.AnalyticalVersion != 5 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
 			t.Fatal("grain receipt lost", err)
 		}
 		projected, err := f.db.ReadSavedQuery(ctx, pf.e, p.QueryID, false)

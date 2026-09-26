@@ -17,7 +17,7 @@ import (
 
 // The persisted revision is independent of selection and native validation.
 // Zero means retained legacy evidence, not a claim of analytical correctness.
-const analyticalRecordVersion = 4
+const analyticalRecordVersion = 5
 
 func analyticalUnsupported(code string) error {
 	return &exec.AnalyticalError{Code: code, Unsupported: true}
@@ -43,6 +43,12 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 	}
 	if version == 4 {
 		proofVersion = exec.AnalyticalQueryPopulationVersion
+	}
+	if version == 5 {
+		proofVersion = exec.AnalyticalGroupingVersion
+	}
+	if version < 5 && a.route.Request.Grouping != nil {
+		return nil, exec.ErrBinding
 	}
 	if ctx == nil {
 		return nil, exec.ErrBinding
@@ -99,13 +105,20 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 		sort.Slice(out.Metrics, func(i, j int) bool { return out.Metrics[i].ID < out.Metrics[j].ID })
 		if version >= 2 {
 			var err error
-			out.Grain, err = compileAnalyticalGrainPolicy(ctx, a, *out, version >= 3)
+			if version >= 5 && a.route.Request.Grouping != nil {
+				out.Grain, err = compileGroupingSelection(ctx, a, *out)
+			} else {
+				out.Grain, err = compileAnalyticalGrainPolicy(ctx, a, *out, version >= 3)
+			}
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-	if out != nil && version == 4 && len(queryConstraints) > 0 {
+	if out == nil && a.route.Request.Grouping != nil {
+		return nil, analyticalUnsupported("analytical_grain_unsupported")
+	}
+	if out != nil && version >= 4 && len(queryConstraints) > 0 {
 		if err := compileQueryPopulation(ctx, a, out, queryConstraints); err != nil {
 			return nil, err
 		}
@@ -346,6 +359,9 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 	sort.Strings(want.Metrics)
 	if contract.Grain != nil {
 		want.Scope = exec.AnalyticalGrainScope
+		if contract.Grain.Policy == exec.AnalyticalGroupingPolicy && len(contract.Grain.Dimensions) == 0 {
+			want.Scope = exec.AnalyticalTotalScope
+		}
 		if len(contract.Grain.Buckets) > 0 {
 			want.Scope = exec.AnalyticalCalendarScope
 		}
@@ -429,6 +445,9 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == 4 {
 		version = exec.AnalyticalQueryPopulationVersion
 	}
+	if q.AnalyticalVersion == 5 {
+		version = exec.AnalyticalGroupingVersion
+	}
 	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
@@ -441,13 +460,16 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 }
 
 func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
-	if r.QueryPopulation != "" && (r.Version != exec.AnalyticalQueryPopulationVersion || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
+	if r.QueryPopulation != "" && ((r.Version != exec.AnalyticalQueryPopulationVersion && r.Version != exec.AnalyticalGroupingVersion) || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
 		return false
+	}
+	if r.Scope == exec.AnalyticalTotalScope {
+		return r.Version == exec.AnalyticalGroupingVersion && len(r.Grouping) == 0
 	}
 	if r.Scope == exec.AnalyticalMetricScope {
 		return len(r.Grouping) == 0
 	}
-	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion)) || r.Scope == exec.AnalyticalCalendarScope && (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion)
+	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || r.Version == exec.AnalyticalGroupingVersion)) || r.Scope == exec.AnalyticalCalendarScope && (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || r.Version == exec.AnalyticalGroupingVersion)
 	if !validScope || len(r.Grouping) < 1 || len(r.Grouping) > 16 {
 		return false
 	}
