@@ -90,7 +90,7 @@ func TestSQLRecoveryParameterScopesNativeSafetyIndependent(t *testing.T) {
 		if err := CheckParameterContinuity(context.Background(), "postgres", base, sql, 1); err != nil {
 			t.Fatal("custody checker incorrectly owns new output authority", err)
 		}
-		if _, _, err := resolveFixture(sql, Parameter{Kind: "integer", Value: "1"}); err == nil {
+		if _, _, err := resolveFixture(sql); err == nil {
 			t.Fatal("continuity widened native function authority")
 		}
 	}
@@ -99,7 +99,7 @@ func TestSQLRecoveryParameterScopesNativeSafetyIndependent(t *testing.T) {
 		`SELECT s.id FROM analytics.sales s JOIN analytics.sales t ON s.id=t.id AND t.amount>$1`,
 		`SELECT id,sum(amount) OVER (ORDER BY id ROWS BETWEEN $1 PRECEDING AND CURRENT ROW) AS rolling FROM analytics.sales`,
 	} {
-		if _, _, err := resolveFixture(sql, Parameter{Kind: "integer", Value: "1"}); err != nil {
+		if _, _, err := resolveFixture(sql); err != nil {
 			t.Fatal("existing native positive grammar does not accept supported role shape", err)
 		}
 	}
