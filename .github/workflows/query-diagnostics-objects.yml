@@ -1,0 +1,55 @@
+name: Prepare checked query-diagnostic objects
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/query-diagnostics-objects.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c18a5b2a530a5a27ffb38db8f24613f4fb5bd1c7
+          persist-credentials: false
+      - name: Verify exact source without moving any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,os,pathlib,subprocess,urllib.request
+          base='https://api.github.com/repos/hurtener/chartworks/git/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def request(path,body=None):
+              req=urllib.request.Request(base+path,data=json.dumps(body).encode() if body is not None else None,headers=headers,method='POST' if body is not None else 'GET')
+              with urllib.request.urlopen(req,timeout=30) as response:return json.load(response)
+          chunks=['5b0a645c52da34812c5a857f8747cd7cbf37c78e','f176ce52d886b4128804f4cf4282ac621e5b0f47','aea8b30d241e60db93eddf380b20e34594d5aaf4','1909da3ad95da024cd05f8222df78d3150914ed9','237d69042fdd6e48ed54b757c1dacbc238ac56eb','ebb7c507825f771849fd8d2edd09bbd26352bfb0','d8b36c36b4d0a833683c648b4a7c934889663d2a','aa10fff7d397eb5c4f6b3b25ddbea438692cec2c']
+          data=b''
+          for sha in chunks:
+              raw=base64.b64decode(request('blobs/'+sha)['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              data+=raw
+          patch=gzip.decompress(data)
+          assert len(patch)==106488
+          assert hashlib.sha256(patch).hexdigest()=='fb52aa2a5b7a0b78e918bb8f035840f05164498d9256c5feb0b30b4e72387e60'
+          pathlib.Path('/tmp/diagnostics.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index','/tmp/diagnostics.patch'],check=True)
+          subprocess.run(['git','apply','--index','/tmp/diagnostics.patch'],check=True)
+          expected='d43b89ef663f6b28162f988e81f8d33394f32d6c'
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==expected
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==37
+          assert all(p.startswith(('internal/exec/','internal/sources/','internal/nlqexec/','internal/store/postgres/','docs/','test/acceptance/')) or p in ('.github/workflows/sql-context-recovery.yml','scripts/coverage-bands.conf') for p in paths)
+          entries=[]
+          for path in paths:
+              raw=pathlib.Path(path).read_bytes()
+              sha=request('blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'})['sha']
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          tree=request('trees',{'base_tree':'b9b1722fcaf0fcae7038c8033128a07bfe310d45','tree':entries})['sha']
+          assert tree==expected
+          print('VERIFIED_SOURCE_TREE='+tree)
+          PY
