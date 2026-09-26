@@ -1,0 +1,45 @@
+name: Prepare S8 correction
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-continuation-checkpoint.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d4d64b469b984de306cf2caa5de9140b7e84e161
+          persist-credentials: false
+      - name: Validate exact patch and create only reviewed Git objects
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAYLOAD: H4sIAAAAAAAC/7VZ627jNhb+PX4K1sV2k9qWrYsvSjGLBpkUHWwWM00G/bNYZCiRirWVJY8oOeNNA/Qddp+wT7LfISnZTuwm02kDxJalw8PDc/nOR0qkScIGg5u0YnwoilgN4yKvSh5XapjmlSyXpax4lRb5gB6keZ1W68HKdRaCRZ84oJPmQn5koSu90BOJl0xHown3A+4mE84nvpdIfzyRkTsaT0du6Dhx7MUuH3kTfzyeThJfjN1ZOB6FfDqJRtNZ7AnPD6JZzFwoCoLOYDD45FV0er3ep6/k22/ZYBr2fdbDp+sz/F7LkcrDMeJ6n+Q1TslzhN8/jeVGySM75KsVFmqtKcsGKhMXFYslLkuU545GSecVK+aGWqmIrntWyw27Tas44u5G5LHklBRMy4XVWOezdXKYlkx+XWRqnVbbGfJmMSSROV2nGtPnQoqBywdMcoliW02GXMsOKVpKtJS+TlkHoqDLup6mqguNXvAXeeOzsbPeC58uwBxnltrOBSGHBom41INHdm2pkTWCVNhKNCLIjMjbo4vmlAXwFLMkdUAQsAgmLNWrBKrvos0P51kaTPVsmpTYxhKsFTjPDACGeGVXXuqhvMXTsIFkfWDA58RJ29qnkmcpol0qxUGeLd1vhfdSzTXcsVKVUagWVlFsSSco50Uk68ybmqDNnFiPkSsXiipVkSj42ni4meAHriN5cd6ToEsovAX29FpDmmfgMfCbGIhcLcWyXD62CxXC0piO1lInSYLcYXTaCsCsGiNPJKVkRdphHwdZFMMil3SWVlPQCiyW6CLYNpySbT+3GY5SJ/ZzrLoIFwiHdcRBnrJVQNvrAHdxDlchrkWTbFyGUZSOankEYwhgmHaOlhibHJ33icThWWLlWyPKi78USSalDXdCIu8EkHKJy54WrMWvNhRmTJmebhNBYvCNxuowWTALYW24bJsFbNM/OHCSe/RVXxlDXLjRco/lf85jqwYSAlEHHpspvAIft5qlGsWShDM6F5bv1PXtyNXnjWrIwAymjtPw+y1FmczlbCokTc66Ol10HZBZeq84e93GmOVWE9yEXPAoem/KJvgMxFCMLk49IRxC+xqnBGErHtNLjpVUjnTSLUUdSzKI/JcdFMUzWtPoetkdBgiBHwbU6UGyzUhNMByHZWNATex+DqmrSClOsdngeSPHbtsn/+Sbqu0YG5uwP6ZXMXqFx2sxHiKUJdqEEwbxuwIBWy/y/YIZjrViZVDlSlVExNsOlzXt0IQloNZwtw4WDBhKEQ/nhgsMIzn1dfgyKtokmuBFmkpefyieTdVSa4P4NCeUxncVEJKSc44ikz1k1Fbf/3fkuFOUJXIkeYMnkSo+kXaFXMWMnQDnTMpu/Bts65KyImarkgqmFSrm/Ywxm50FDqqAeplS+kNbOaASVklKCsUgvqcTcCrucNJMoAjPROSbFxzqNLAlLYUtvaMX69zsMnDQKNV7BVagYaEs3tLAIuOOCn3gpCUg4NSWKwEvkGZZCLyUzeyHQmHlHgpdutHNQPVkbRPJltUtUEjbOOVqiWY71EdhitqNMFnKbWPtmSE5X7f5pHzPDWSUM7fqcSY/iBiIxryufGSwn9spzLRJpPjsjrGH/ZDnJJYK83nvGcgp1ifivFYvAVcrJLq9XRpplMWzigmyp&
+        run: |
+          python3 - <<'PY'
+          import os,base64,gzip,hashlib,json,pathlib,subprocess,urllib.request
+          raw=gzip.decompress(base64.b64decode(os.environ['PAYLOAD'],validate=True))
+          assert hashlib.sha256(raw).hexdigest()=='be4b860616b1d9410ab660b8ce1cc92dc079f9bc692f217cd0ddf395a96a0a92'
+          pathlib.Path('/tmp/s8.patch').write_bytes(raw)
+          subprocess.run(['git','apply','--check','--index','/tmp/s8.patch'],check=True)
+          subprocess.run(['git','apply','--index','/tmp/s8.patch'],check=True)
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree=='1ce495f55deea9895a6c431894409a3d08827b4a'
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert set(paths)=={'internal/nlqexec/clarification.go','internal/nlqexec/interpretation_continuation_test.go','test/acceptance/sql_interpretation_continuation_test.go','docs/contracts/interpretation-continuity-v1.md','docs/reviews/sql-recovery-completion.md'}
+          def post(path,body):
+            req=urllib.request.Request('https://api.github.com/repos/hurtener/chartworks/git/'+path,data=json.dumps(body).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'},method='POST')
+            with urllib.request.urlopen(req,timeout=30) as response:return json.load(response)
+          entries=[]
+          for path in paths:
+            data=pathlib.Path(path).read_bytes()
+            sha=post('blobs',{'encoding':'base64','content':base64.b64encode(data).decode()})['sha']
+            assert sha==hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+            entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          actual=post('trees',{'base_tree':'a4a2ea05978a64c68afc798221ab88ff0eddb494','tree':entries})['sha']
+          assert actual==tree
+          print('VERIFIED_TREE='+tree)
+          PY
