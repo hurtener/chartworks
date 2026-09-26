@@ -215,6 +215,9 @@ func TestSQLRecoveryGroupingPendingReplacementKeepsScalarDataSeparate(t *testing
 	value := "by Order"
 	delta = QuestionRequest{Question: "Revenue for customer by Order", Answers: []semantics.ClarificationAnswer{{Topic: "sales_topic", Pattern: "customer", Slot: "name", Value: &semantics.ClarificationValue{Text: &value}}}}
 	q = refinementQuestion(old, delta)
+	if err := mergeRefinementClarifications(old, delta, &q); err != nil {
+		t.Fatal(err)
+	}
 	before := exec.Hash([]any{old, a.route, q})
 	if got, err := groupingFromQuestion(context.Background(), a, &q, true); err != nil || got != nil {
 		t.Fatal("unresolved scalar spelling became a grouping", got, err)
