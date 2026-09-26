@@ -1,0 +1,69 @@
+name: Prepare grouping continuity objects
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/sql-grouping-checkpoint.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cccf55c761d3404da2ccd1d277ff3f67f44ca710
+          persist-credentials: false
+      - name: Reconstruct and verify immutable patch objects
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import os,json,base64,gzip,hashlib,pathlib,subprocess,urllib.request
+          base='https://api.github.com/repos/hurtener/chartworks/git/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def req(path,body=None):
+            request=urllib.request.Request(base+path,data=json.dumps(body).encode() if body is not None else None,headers=headers,method='POST' if body is not None else 'GET')
+            with urllib.request.urlopen(request,timeout=30) as response:return json.load(response)
+          actual=['c1124fc190cf078bd6272157a7d5747bff48b548','b766d2ef01d77aa74f71a7924050ef667fe83221','c20f729ca1a4ab22f92838897f6b02c894a9f97a','6e51ccaa887318682efec72f3b10c7e24bc8fbca']
+          expected=['13286b0acaec516c1d622d9014aa62430b3c2d6c','b766d2ef01d77aa74f71a7924050ef667fe83221','930503b36f942d6f961f96199eca4397c8349a58','6e51ccaa887318682efec72f3b10c7e24bc8fbca']
+          data=b''
+          for i,sha in enumerate(actual):
+            raw=base64.b64decode(req('blobs/'+sha)['content'])
+            assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+            # Exact repair of transport transcription only. Independent original
+            # chunk, complete patch and complete source-tree hashes remain required.
+            text=base64.b64encode(raw).decode()
+            if i==0:
+              assert text.count('WwCfkEHHRZJX')==1 and text.count('dVeIV2ZXZPzP9x')==1
+              text=text.replace('WwCfkEHHRZJX','WwCfkEHHRZLX').replace('dVeIV2ZXZPzP9x','dVeIV2ZXZzP9x')+'1'
+            if i==2:
+              assert text.count('TeLqJAsgi')==1
+              text=text.replace('TeLqJAsgi','TeLqJ3gJAsgi')+'L'
+            raw=base64.b64decode(text,validate=True)
+            assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==expected[i]
+            data+=raw
+          patch=gzip.decompress(data)
+          assert hashlib.sha256(patch).hexdigest()=='0fdceda49c588baa7fb3c1b4bec9aeb36744dd18a3c41853ad7faa338f03da24'
+          pathlib.Path('/tmp/grouping.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index','/tmp/grouping.patch'],check=True)
+          subprocess.run(['git','apply','--index','/tmp/grouping.patch'],check=True)
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree=='65180eb6f7c7482655db9de54b8f12c7168ffb33'
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==37
+          entries=[]
+          for path in paths:
+            raw=pathlib.Path(path).read_bytes()
+            sha=req('blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'})['sha']
+            assert sha==hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+            entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          manifest={'base_commit':'cccf55c761d3404da2ccd1d277ff3f67f44ca710','base_tree':'786ca3abd5673d1d480513c9eeedfafb41696d4a','tree':tree,'entries':entries}
+          pathlib.Path('/tmp/grouping-objects.json').write_text(json.dumps(manifest,indent=2))
+          print(json.dumps(manifest))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grouping-source-objects
+          path: /tmp/grouping-objects.json
+          retention-days: 7
