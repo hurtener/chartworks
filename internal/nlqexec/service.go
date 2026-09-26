@@ -2369,7 +2369,7 @@ func validationCode(err error, sql string) string {
 }
 
 func executionRepairable(report exec.ExecutionReport, err error) bool {
-	if report.Attempt.Status == "uncertain" || report.Attempt.Status == "cancelled" || report.Attempt.Status == "timed_out" || errors.Is(err, exec.ErrUncertain) || errors.Is(err, exec.ErrCancelled) || errors.Is(err, exec.ErrTimeout) || errors.Is(err, exec.ErrBinding) || errors.Is(err, exec.ErrLimit) || errors.Is(err, exec.ErrType) || errors.Is(err, exec.ErrUnsupported) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrUnavailable) || errors.Is(err, store.ErrConflict) || errors.Is(err, access.ErrForbidden) || errors.Is(err, access.ErrNotFound) || errors.Is(err, access.ErrUnauthenticated) || errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrInvalid) {
+	if report.Attempt.Status == "uncertain" || report.Attempt.Status == "cancelled" || report.Attempt.Status == "timed_out" || errors.Is(err, exec.ErrUncertain) || errors.Is(err, exec.ErrCancelled) || errors.Is(err, exec.ErrTimeout) || errors.Is(err, exec.ErrBinding) || errors.Is(err, exec.ErrLimit) || errors.Is(err, exec.ErrType) || errors.Is(err, exec.ErrUnsupported) || errors.Is(err, exec.ErrUnsafe) || errors.Is(err, exec.ErrReplay) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrUnavailable) || errors.Is(err, store.ErrConflict) || errors.Is(err, access.ErrForbidden) || errors.Is(err, access.ErrNotFound) || errors.Is(err, access.ErrUnauthenticated) || errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrInvalid) {
 		return false
 	}
 	// The source boundary may explicitly classify a durable, retryable query

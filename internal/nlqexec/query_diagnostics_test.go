@@ -38,6 +38,13 @@ func TestSQLRecoverySpecificValidationDiagnostics(t *testing.T) {
 	}
 }
 func TestSQLRecoverySpecificDiagnosticReceiptGate(t *testing.T) {
+	// Pure candidate shape/complexity rejections keep the existing validation
+	// repair. Only the contradictory joined source failure is terminal.
+	for _, err := range []error{exec.ErrUnsafe, exec.ErrUnsupported, exec.ErrLimit} {
+		if !validationRepairable(err) {
+			t.Fatal("candidate validation repair regressed", err)
+		}
+	}
 	now := time.Now().UTC()
 	for _, code := range querydiagnostic.Codes() {
 		report := exec.ExecutionReport{Attempt: exec.Attempt{Status: "failed", Code: code, RemoteState: "stopped", Finished: &now}}
@@ -46,7 +53,7 @@ func TestSQLRecoverySpecificDiagnosticReceiptGate(t *testing.T) {
 				t.Fatal("confirmed rejection cannot reach existing repair", code)
 			}
 		}
-		for _, terminal := range []error{exec.ErrUncertain, exec.ErrTimeout, exec.ErrCancelled, exec.ErrBinding, exec.ErrLimit, exec.ErrType, exec.ErrUnsupported, context.Canceled, context.DeadlineExceeded, store.ErrUnavailable, store.ErrConflict, access.ErrForbidden, access.ErrNotFound, access.ErrUnauthenticated} {
+		for _, terminal := range []error{exec.ErrUncertain, exec.ErrTimeout, exec.ErrCancelled, exec.ErrBinding, exec.ErrLimit, exec.ErrType, exec.ErrUnsupported, exec.ErrUnsafe, exec.ErrReplay, store.ErrInvalid, store.ErrNotFound, context.Canceled, context.DeadlineExceeded, store.ErrUnavailable, store.ErrConflict, access.ErrForbidden, access.ErrNotFound, access.ErrUnauthenticated} {
 			if executionRepairable(report, errors.Join(exec.QueryRejection(code), terminal)) || validationRepairable(errors.Join(exec.QueryRejection(code), terminal)) {
 				t.Fatal("terminal cause allowed repair", code, terminal)
 			}

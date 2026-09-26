@@ -2,6 +2,7 @@ package exec
 
 import (
 	"errors"
+
 	"github.com/hurtener/chartworks/internal/exec/querydiagnostic"
 )
 

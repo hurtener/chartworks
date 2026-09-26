@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/hurtener/chartworks/internal/exec/querydiagnostic"
 	"strings"
 	"testing"
+
+	"github.com/hurtener/chartworks/internal/exec/querydiagnostic"
 )
 
 func TestSQLRecoveryQueryRejectionClosedValue(t *testing.T) {

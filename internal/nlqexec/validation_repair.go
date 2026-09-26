@@ -34,9 +34,20 @@ func validationRepairable(err error) bool {
 		access.ErrNotFound, access.ErrForbidden, access.ErrUnauthenticated,
 		exec.ErrBinding, exec.ErrUncertain, exec.ErrCancelled, exec.ErrTimeout,
 		context.Canceled, context.DeadlineExceeded, store.ErrUnavailable, store.ErrConflict,
+		store.ErrInvalid, store.ErrNotFound, exec.ErrType, exec.ErrReplay,
 	} {
 		if errors.Is(err, terminal) {
 			return false
+		}
+	}
+	// Candidate syntax/shape/complexity failures can use their established local
+	// validation repair. But if a source query rejection is joined with one of
+	// those terminal boundary failures, the diagnostic cannot override the failure.
+	if errors.Is(err, exec.ErrQuery) {
+		for _, terminal := range []error{exec.ErrLimit, exec.ErrUnsupported, exec.ErrUnsafe} {
+			if errors.Is(err, terminal) {
+				return false
+			}
 		}
 	}
 	// Only classified candidate rejections may spend a repair. Unknown source,
