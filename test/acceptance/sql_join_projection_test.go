@@ -100,6 +100,11 @@ func confirmedPhysicalLines(prompt string) string {
 
 func TestSQLRecoveryConfirmedJoinProjectionAcceptance(t *testing.T) {
 	f := confirmedProjectionFixture(t)
+	// The reviewed relationship, not canonical dataset order, identifies the
+	// independent expected source scopes used below.
+	if len(f.pack.Joins) != 1 || f.pack.Joins[0].Left.ID != "id" || f.pack.Joins[0].Right.ID != "sale_id" || f.pack.Joins[0].Left.Dataset == f.pack.Joins[0].Right.Dataset {
+		t.Fatal("unexpected synthetic relationship coordinates")
+	}
 	ctx := context.Background()
 	for _, locale := range []nlq.Language{nlq.LanguageEnglish, nlq.LanguageSpanish} {
 		t.Run(string(locale), func(t *testing.T) {
@@ -127,12 +132,12 @@ func TestSQLRecoveryConfirmedJoinProjectionAcceptance(t *testing.T) {
 				t.Fatal("durable full schema lost", err)
 			}
 			expectedScope := map[string][]string{
-				f.pack.Datasets[0].ID: {"active", "amount", "created_at", "id", "name"},
-				f.pack.Datasets[1].ID: {"quantity", "sale_id"},
+				f.pack.Joins[0].Left.Dataset:  {"active", "amount", "created_at", "id", "name"},
+				f.pack.Joins[0].Right.Dataset: {"quantity", "sale_id"},
 			}
 			for _, r := range saved.RelationScope {
 				if !reflect.DeepEqual(r.Columns, expectedScope[r.Dataset]) {
-					t.Fatal("validator source columns were pruned or their dataset identity changed")
+					t.Fatalf("validator source scope changed: dataset=%s columns=%v want=%v", r.Dataset, r.Columns, expectedScope[r.Dataset])
 				}
 				delete(expectedScope, r.Dataset)
 			}
@@ -171,7 +176,7 @@ func TestSQLRecoveryConfirmedJoinProjectionAcceptance(t *testing.T) {
 				scopes = append(scopes, scope)
 			}
 		}
-		scopes = append(scopes, "cw.dataset.query:"+f.pack.Datasets[0].ID)
+		scopes = append(scopes, "cw.dataset.query:"+f.pack.Joins[0].Left.Dataset)
 		restricted := f.model.token.envelope(t, f.e.Tenant(), f.e.User(), scopes...)
 		before := f.model.requests.Load()
 		if _, err := f.query.Plan(ctx, restricted, nlqexec.PlanRequest{QuestionRequest: confirmedProjectionQuestion(f, nlq.LanguageEnglish, false)}); err == nil || before != f.model.requests.Load() {
