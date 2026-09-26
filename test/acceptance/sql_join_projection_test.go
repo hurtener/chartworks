@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -113,10 +114,18 @@ func TestSQLRecoveryConfirmedJoinProjectionAcceptance(t *testing.T) {
 			if err != nil || len(saved.RelationScope) != 2 || len(saved.Generation.Context.Relations) != 4 || readexec.Hash(saved.Generation.Context.Relations) != readexec.Hash(p.Route.Context.Relations) {
 				t.Fatal("durable full schema lost", err)
 			}
+			expectedScope := map[string][]string{
+				f.pack.Datasets[0].ID: {"active", "amount", "created_at", "id", "name"},
+				f.pack.Datasets[1].ID: {"quantity", "sale_id"},
+			}
 			for _, r := range saved.RelationScope {
-				if r.Name == "sales" && len(r.Columns) != 5 || r.Name == "items" && len(r.Columns) != 2 {
-					t.Fatal("validator source columns were pruned")
+				if !reflect.DeepEqual(r.Columns, expectedScope[r.Dataset]) {
+					t.Fatal("validator source columns were pruned or their dataset identity changed")
 				}
+				delete(expectedScope, r.Dataset)
+			}
+			if len(expectedScope) != 0 {
+				t.Fatal("validator relation disappeared from durable scope")
 			}
 			// Recreate the service so saved context, not in-process helper state, owns execution.
 			f.query, _ = newPhase18Service(t, f.phase17Fixture)
@@ -129,7 +138,7 @@ func TestSQLRecoveryConfirmedJoinProjectionAcceptance(t *testing.T) {
 			metadata := support.Raw(t, f.f.dsn)
 			calls, attempts := f.model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 			requireScopedProjectionIDs(t, f.run(t, p, 2, false), 1, "1", "2")
-			if calls != f.model.requests.Load() || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
+			if calls != f.model.requests.Load() || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != attempts {
 				t.Fatal("replay repeated work")
 			}
 		})
