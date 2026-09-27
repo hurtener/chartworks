@@ -112,8 +112,12 @@ func safe(err error) error {
 			return e
 		}
 	}
-	if errors.Is(err, readexec.ErrQuery) {
-		return readexec.ErrQuery
+	// WithSource and other scoped transaction callbacks may carry an already
+	// classified source rejection. Preserve its closed code, never its wrapper
+	// text or an unclassified metadata driver's error body. Terminal sentinels
+	// above still dominate a joined diagnosis.
+	if code := readexec.QueryRejectionCode(err); code != "" {
+		return readexec.QueryRejection(code)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.ErrNotFound
