@@ -124,7 +124,8 @@ func TestSQLRecoveryGroundedConceptAmbiguityAcceptance(t *testing.T) {
 		before := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
 		queries := count(t, metadata, `SELECT count(*) FROM chartworks.nlq_queries`)
 		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
-		if !errors.Is(err, nlqroute.ErrClarification) || p.QueryID != "" || count(t, metadata, `SELECT count(*) FROM chartworks.nlq_queries`) != queries {
+		var clarification *nlqroute.Clarification
+		if !errors.As(err, &clarification) || p.QueryID != "" || count(t, metadata, `SELECT count(*) FROM chartworks.nlq_queries`) != queries {
 			t.Fatal("ambiguous Plan must return its closed non-executable error without a query record", decision, err)
 		}
 		// Options belong to the existing protected Preflight response; Plan's
