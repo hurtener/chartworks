@@ -1,0 +1,49 @@
+name: Prepare verified metadata-diagnostic correction
+on:
+  push:
+    branches: [codex/sql-semantic-context-recovery]
+    paths: [.github/workflows/diagnostic-metadata-objects.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 31c09909a9a8dd6dddee400302f6c9e3af8f976c
+          persist-credentials: false
+      - name: Validate exact three-file correction without moving refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,os,pathlib,subprocess,urllib.request
+          api='https://api.github.com/repos/hurtener/chartworks/git/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def request(path,body=None):
+              req=urllib.request.Request(api+path,headers=headers,data=json.dumps(body).encode() if body is not None else None,method='POST' if body is not None else 'GET')
+              with urllib.request.urlopen(req,timeout=30) as response:return json.load(response)
+          sha='13c73030ab7d704b3c1735a95a84ff4dd4ea573a'
+          data=base64.b64decode(request('blobs/'+sha)['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+          patch=gzip.decompress(data)
+          assert len(patch)==6629 and hashlib.sha256(patch).hexdigest()=='8146e90d8b4a3c302d455fb40d929192175ae393ab4e3e12cb714d0e19a2860f'
+          pathlib.Path('/tmp/metadata.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index','/tmp/metadata.patch'],check=True)
+          subprocess.run(['git','apply','--index','/tmp/metadata.patch'],check=True)
+          expected='b323b8903ddef37a6bb3ad13696b7abb86db3275'
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==expected
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert paths==['.github/workflows/sql-context-recovery.yml','internal/store/postgres/postgres.go','internal/store/postgres/query_diagnostics_test.go']
+          entries=[]
+          for path in paths:
+              raw=pathlib.Path(path).read_bytes()
+              sha=request('blobs',{'content':base64.b64encode(raw).decode(),'encoding':'base64'})['sha']
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          tree=request('trees',{'base_tree':'85563f945f6dc29f14e3111f72ce8bce812c09f8','tree':entries})['sha']
+          assert tree==expected
+          print('VERIFIED_SOURCE_TREE='+tree)
+          PY
