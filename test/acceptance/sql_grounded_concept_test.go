@@ -3,6 +3,7 @@ package acceptance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -79,12 +80,7 @@ func TestSQLRecoveryGroundedConceptLifecycleAcceptance(t *testing.T) {
 				t.Fatal("terminal replay repeated work", err)
 			}
 			requireExplanationSum(t, replay, "9007199254740998.625")
-			f.model.mu.Lock()
-			wire := strings.Join(f.model.requestBodies[start:], "\n")
-			f.model.mu.Unlock()
-			if !strings.Contains(wire, "nlq_concept_choice") || !strings.Contains(wire, "model-clarify") || !strings.Contains(wire, "sum(amount)") {
-				t.Fatal("not the real structured provider/generation path")
-			}
+			assertGroundedProviderRequests(t, f.model, start, text, locale, stored)
 			// The previous independent model choice is retained as a reviewed typed root.
 			f.model.mode.Store(phase18RawResponse(t, `SELECT sum(amount) AS paid FROM analytics.sales`))
 			child, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: p.QueryID})
@@ -126,21 +122,32 @@ func TestSQLRecoveryGroundedConceptAmbiguityAcceptance(t *testing.T) {
 		}
 		f.model.mode.Store(groundedWireResponse(t, map[string]any{"decision": decision, "selected": []any{}, "alternatives": alternatives}))
 		before := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+		queries := count(t, metadata, `SELECT count(*) FROM chartworks.nlq_queries`)
 		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
-		if err != nil || p.QueryID != "" || p.Route.Clarification == nil || p.Route.Context != nil || p.Route.Concepts == nil {
-			t.Fatal("model ambiguity became executable", decision, err)
+		if !errors.Is(err, nlqroute.ErrClarification) || p.QueryID != "" || count(t, metadata, `SELECT count(*) FROM chartworks.nlq_queries`) != queries {
+			t.Fatal("ambiguous Plan must return its closed non-executable error without a query record", decision, err)
+		}
+		// Options belong to the existing protected Preflight response; Plan's
+		// established error path is not a successful, partially filled plan.
+		pending, err := f.query.Preflight(ctx, f.e, nlqexec.PreflightRequest{QuestionRequest: q})
+		if err != nil || pending.QueryID == "" || pending.Route.Clarification == nil || pending.Route.Context != nil || pending.Route.Concepts == nil {
+			t.Fatal("missing non-executable reviewed alternatives", decision, err)
+		}
+		calls := f.model.requests.Load()
+		if _, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: pending.QueryID, Operation: pending.QueryID + "-blocked"}); err == nil || calls != f.model.requests.Load() {
+			t.Fatal("pending concept alternatives became executable or reselected", err)
 		}
 		if count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) != before {
 			t.Fatal("blocked selector executed")
 		}
 		if decision == "clarify" {
-			if len(p.Route.Concepts.Options) != 2 {
+			if len(pending.Route.Concepts.Options) != 2 {
 				t.Fatal("missing reviewed alternatives")
 			}
 			explicit := q
-			explicit.References = []semantics.Reference{p.Route.Concepts.Options[0].Reference}
+			explicit.References = []semantics.Reference{pending.Route.Concepts.Options[0].Reference}
 			if explicit.References[0].ID != "revenue" {
-				explicit.References[0] = p.Route.Concepts.Options[1].Reference
+				explicit.References[0] = pending.Route.Concepts.Options[1].Reference
 			}
 			f.model.mode.Store(phase18RawResponse(t, `SELECT sum(amount) AS paid FROM analytics.sales`))
 			p, err = f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: explicit})
