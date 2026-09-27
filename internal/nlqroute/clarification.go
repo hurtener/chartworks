@@ -352,6 +352,9 @@ func (r RouteResult) resolutionProof() string {
 	if r.Request.Grouping != nil {
 		parts = append(parts, CloneGrouping(r.Request.Grouping))
 	}
+	if r.Concepts != nil {
+		parts = append(parts, r.Concepts)
+	}
 	return readexec.Hash(parts)
 }
 
@@ -485,7 +488,25 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	if !contextMatches(admitted, in.Context) {
 		return nil, "", readexec.ErrBinding
 	}
-	current := RouteResult{Outcome: previous.Outcome}
+	current := RouteResult{Outcome: previous.Outcome, conceptReplay: true}
+	if previous.Concepts != nil {
+		value := previous.Concepts.clone()
+		current.Concepts = &value
+	}
+	modelRoots := false
+	if previous.Selection != nil {
+		for _, topic := range previous.Selection.Topics {
+			for _, root := range topic.Roots {
+				modelRoots = modelRoots || root.Reason == "grounded_model"
+			}
+		}
+	}
+	if modelRoots && (in.ConceptPolicy != GroundedConceptPolicy || previous.Concepts == nil) {
+		return nil, "", readexec.ErrBinding
+	}
+	if in.ConceptPolicy == "" && previous.Concepts != nil {
+		return nil, "", readexec.ErrBinding
+	}
 	interpretation, constraints, err := s.interpret(ctx, e, &in, admitted)
 	if err != nil {
 		return nil, "", err
@@ -494,6 +515,9 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	current.business = append(current.business, constraints...)
 	if interpretation != nil {
 		current.SourceBindingDigest = interpretation.BindingDigest
+	}
+	if previous.Concepts != nil && previous.Selection == nil {
+		return nil, "", readexec.ErrBinding
 	}
 	if previous.Selection != nil {
 		if previous.Selection.Version != semanticSelectionVersion {
@@ -506,7 +530,7 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 		if err := s.resolveSemanticSelection(ctx, e, in, admitted, &current); err != nil {
 			return nil, "", err
 		}
-		if readexec.Hash(previous.Selection) != readexec.Hash(current.Selection) {
+		if readexec.Hash(previous.Concepts) != readexec.Hash(current.Concepts) || readexec.Hash(previous.Selection) != readexec.Hash(current.Selection) {
 			return nil, "", readexec.ErrBinding
 		}
 	} else {

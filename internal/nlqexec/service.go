@@ -1029,6 +1029,19 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err := refinementParameterState(ctx).verifyParent(observedParent); err != nil {
 		return PlanResult{}, err
 	}
+	if observedParent != nil && question.ClarificationQuery != "" && observedParent.Route.Concepts != nil {
+		keeper, ok := s.router.(interface {
+			GroundedOrigin(context.Context, identity.Envelope, nlqroute.RouteResult) (context.Context, error)
+		})
+		if !ok {
+			return PlanResult{}, exec.ErrBinding
+		}
+		var keepErr error
+		ctx, keepErr = keeper.GroundedOrigin(ctx, e, observedParent.Route)
+		if keepErr != nil {
+			return PlanResult{}, keepErr
+		}
+	}
 	admitted, err := s.admit(ctx, e, question, true)
 	if err != nil {
 		return PlanResult{}, err
@@ -1222,7 +1235,8 @@ func (s *Service) admissionForQuery(ctx context.Context, e identity.Envelope, q 
 func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest {
 	request := old.Route.Request
 	base := QuestionRequest{
-		Topic: request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
+		ConceptPolicy: request.ConceptPolicy,
+		Topic:         request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
 		Question: request.Question, Templates: append([]rulesets.TemplateSelection(nil), request.Templates...), Kinds: append([]string(nil), request.Kinds...), LimitPerKind: request.LimitPerKind,
 		References: append([]semantics.Reference(nil), request.References...), OmittedRoots: append([]semantics.Reference(nil), request.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), request.Choices...),
 		Joins: append([]nlqroute.JoinChoice(nil), request.JoinChoices...), MetricIDs: append([]string(nil), request.MetricIDs...),
@@ -1240,6 +1254,9 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 	base.Choices = append([]nlqroute.ChoiceSelection(nil), base.Choices...)
 	base.MetricIDs = append([]string(nil), base.MetricIDs...)
 	base.Examples = append([]nlq.OptionalItem(nil), base.Examples...)
+	if delta.ConceptPolicy != "" {
+		base.ConceptPolicy = delta.ConceptPolicy
+	}
 	if delta.Question != "" {
 		base.Question = delta.Question
 	}
@@ -2250,7 +2267,7 @@ func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequ
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {
-	return nlqroute.RouteRequest{Grouping: nlqroute.CloneGrouping(r.Grouping), Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Templates: append([]rulesets.TemplateSelection(nil), r.Templates...), Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), OmittedRoots: append([]semantics.Reference(nil), r.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank, InterpretationPolicy: r.InterpretationPolicy, InterpretationAnchor: r.InterpretationAnchor, InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections)}
+	return nlqroute.RouteRequest{ConceptPolicy: r.ConceptPolicy, Grouping: nlqroute.CloneGrouping(r.Grouping), Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Templates: append([]rulesets.TemplateSelection(nil), r.Templates...), Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), OmittedRoots: append([]semantics.Reference(nil), r.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank, InterpretationPolicy: r.InterpretationPolicy, InterpretationAnchor: r.InterpretationAnchor, InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections)}
 }
 
 func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
@@ -2266,6 +2283,9 @@ func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
 }
 
 func validateQuestion(in QuestionRequest) error {
+	if in.ConceptPolicy != "" && in.ConceptPolicy != nlqroute.GroundedConceptPolicy {
+		return ErrInvalid
+	}
 	if !identity.Identifier(in.Context) || (in.Locale != nlq.LanguageEnglish && in.Locale != nlq.LanguageSpanish) || len(in.Question) == 0 || len(in.Question) > 16<<10 || strings.TrimSpace(in.Question) != in.Question || strings.ContainsAny(in.Question, "\x00\r\n") {
 		return ErrInvalid
 	}

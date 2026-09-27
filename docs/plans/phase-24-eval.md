@@ -122,3 +122,14 @@ the new closed source-diagnostics implementation. Specific native causes do not
 authorize different SQL semantics, extra attempts, or disclosure of source error
 text. New S7 integration qualification is still pending; all other unchecked S/Q
 items remain open. Historical acceptance and release claims keep their old scope.
+
+
+## Current SQL recovery: S7 qualification and S2 grounded policy
+
+The [canonical completion tracker](../reviews/sql-recovery-completion.md) now records qualified S7 diagnostics
+at 2dd7e9b and the new [bounded grounded concept policy](../contracts/grounded-concept-selection-v1.md) awaiting its
+own runtime qualification. The optional clarify-role choice feeds reviewed
+closure/rules, not SQL authority. Explicit choices and historical replay retain
+their behavior; unknown/ambiguous model choices cannot produce executable plans.
+No interpretation-confidence, live quality or full-recovery completion is inferred
+from these software changes. Historical results above retain their stated scope.

@@ -220,3 +220,14 @@ type NLQGroupingSelection = nlqroute.GroupingSelection
 
 // NLQGroupingKey selects a direct dimension or a reviewed calendar bucket.
 type NLQGroupingKey = nlqroute.GroupingKey
+
+// NLQGroundedConceptPolicy enables one bounded model-assisted catalog selection
+// when explicit references or metrics have not already fixed the intended roots.
+const NLQGroundedConceptPolicy = nlqroute.GroundedConceptPolicy
+
+// NLQConceptEvidence identifies reviewed candidates selected for a paraphrase.
+// It is descriptive provenance, not authority or calibrated model confidence.
+type NLQConceptEvidence = nlqroute.ConceptEvidence
+
+// NLQConceptOption carries a current reviewed reference for explicit replanning.
+type NLQConceptOption = nlqroute.ConceptOption

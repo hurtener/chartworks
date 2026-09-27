@@ -27,7 +27,7 @@ func retainCatalogSelection(old QueryRecord, question *QuestionRequest) {
 	}
 	for _, topic := range old.Route.Selection.Topics {
 		for _, root := range topic.Roots {
-			if root.Reason != "catalog_term" {
+			if root.Reason != "catalog_term" && root.Reason != "grounded_model" {
 				continue
 			}
 			question.References = mergeReferences(question.References, []semantics.Reference{root.Reference})

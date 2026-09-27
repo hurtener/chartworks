@@ -104,6 +104,7 @@ type ChoiceSelection struct {
 // Topic reach, source bindings, rule text and facet text are resolved from
 // current published state by Service.Route.
 type RouteRequest struct {
+	ConceptPolicy string                          `json:"concept_policy,omitempty"`
 	Grouping      *GroupingSelection              `json:"grouping,omitempty"`
 	Answers       []semantics.ClarificationAnswer `json:"answers,omitempty"`
 	AnswerContext string                          `json:"answer_context,omitempty"`
@@ -191,6 +192,8 @@ type ContextView struct {
 // RouteResult is a detached routing and context result. A Clarification or
 // StrategyNoRoute result has no Context and therefore cannot reach generation.
 type RouteResult struct {
+	Concepts            *ConceptEvidence `json:"concept_selection,omitempty"`
+	conceptReplay       bool
 	AnswerContext       string                              `json:"answer_context,omitempty"`
 	SourceBindingDigest string                              `json:"source_binding_digest,omitempty"`
 	Clarifications      []semantics.ClarificationEvaluation `json:"clarifications,omitempty"`
@@ -693,6 +696,9 @@ func admissionVector(dimensions int) []float32 {
 }
 
 func normalizeRequest(in RouteRequest) ([]string, error) {
+	if err := validateConceptPolicy(in.ConceptPolicy); err != nil {
+		return nil, err
+	}
 	if err := ValidateGrouping(in.Grouping); err != nil {
 		return nil, err
 	}

@@ -95,7 +95,7 @@ func sealClarificationCandidate(candidate *generatedCandidate, plan exec.Plan, p
 }
 
 func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Envelope, record QueryRecord) ([]exec.BusinessConstraint, error) {
-	if record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
+	if !usesGroundedConcepts(record.Route) && record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
 		return nil, nil
 	}
 	replayer, ok := s.router.(clarificationReplayer)
@@ -117,6 +117,15 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 // answer as validator-issued proof; Run still performs normal fresh validation.
 func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identity.Envelope, record QueryRecord, a admission) error {
 	if !hasActiveBusinessEvidence(record.Route) {
+		if usesGroundedConcepts(record.Route) {
+			values, err := s.replayQueryClarifications(ctx, e, record)
+			if err != nil {
+				return err
+			}
+			if len(values) != 0 {
+				return exec.ErrBinding
+			}
+		}
 		if record.Clarification != nil {
 			evidence := record.Clarification
 			if evidence.SchemaVersion != 1 || evidence.BaseSQL != "" || len(evidence.BaseParameters) != 0 || evidence.Binding.SchemaVersion != 0 {
@@ -290,4 +299,22 @@ func publicClarificationChanges(evidence *ClarificationEvidence) []Clarification
 		return nil
 	}
 	return append([]ClarificationChange(nil), evidence.Changes...)
+}
+
+// A retained model-origin root cannot be downgraded merely by dropping the
+// optional policy/evidence fields from serialized query metadata.
+func usesGroundedConcepts(route nlqroute.RouteResult) bool {
+	if route.Concepts != nil || route.Request.ConceptPolicy != "" {
+		return true
+	}
+	if route.Selection != nil {
+		for _, topic := range route.Selection.Topics {
+			for _, root := range topic.Roots {
+				if root.Reason == "grounded_model" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

@@ -14,6 +14,7 @@ import (
 // source bindings or authority. The existing router resolves every choice
 // against the pinned/current reviewed semantic definitions before generation.
 type SavedSelections struct {
+	ConceptPolicy            string                             `json:"concept_policy,omitempty"`
 	Grouping                 *nlqroute.GroupingSelection        `json:"grouping,omitempty"`
 	InterpretationPolicy     string                             `json:"interpretation_policy,omitempty"`
 	InterpretationAnchor     string                             `json:"interpretation_anchor,omitempty"`
@@ -37,6 +38,7 @@ func savedRouting(in SavedQuestion, language nlq.Language) QuestionRequest {
 	}
 	if in.Selections != nil {
 		s := in.Selections
+		q.ConceptPolicy = s.ConceptPolicy
 		q.Grouping = nlqroute.CloneGrouping(s.Grouping)
 		q.InterpretationPolicy = s.InterpretationPolicy
 		q.InterpretationAnchor = s.InterpretationAnchor
@@ -65,7 +67,7 @@ func savedSelectionsMatch(q QueryRecord, in SavedQuestion) bool {
 		return true
 	}
 	r := q.Route.Request
-	actual := SavedSelections{Grouping: nlqroute.CloneGrouping(r.Grouping), InterpretationPolicy: r.InterpretationPolicy, InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections), InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, OmittedRoots: r.OmittedRoots, Choices: r.Choices,
+	actual := SavedSelections{ConceptPolicy: r.ConceptPolicy, Grouping: nlqroute.CloneGrouping(r.Grouping), InterpretationPolicy: r.InterpretationPolicy, InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections), InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), Templates: q.Templates, Kinds: r.Kinds, LimitPerKind: r.LimitPerKind, References: r.References, OmittedRoots: r.OmittedRoots, Choices: r.Choices,
 		Joins: r.JoinChoices, MetricIDs: r.MetricIDs, Rerank: r.Rerank}
 	// An explicit saved anchor is pinned. Absence keeps the existing per-plan
 	// server-anchor semantics; it must not compare an absent input to a

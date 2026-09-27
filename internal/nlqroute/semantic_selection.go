@@ -238,8 +238,10 @@ func initialSemanticSelection(ctx context.Context, in RouteRequest, admitted []a
 	if err := selectGrouping(ctx, in, admitted); err != nil {
 		return err
 	}
-	if err := selectCatalogTerms(ctx, in, admitted); err != nil {
-		return err
+	if in.ConceptPolicy != GroundedConceptPolicy || len(in.References)+len(in.MetricIDs) > 0 {
+		if err := selectCatalogTerms(ctx, in, admitted); err != nil {
+			return err
+		}
 	}
 	if interpretation != nil {
 		add := func(topic, dimension, reason string) error {
@@ -512,10 +514,17 @@ func selectedRuleReferences(item admittedTopic) []semantics.Reference {
 }
 
 // resolveSemanticSelection keeps all intermediate work request-local. It is
-// bounded by reference count and passes, and makes no learned-model calls.
+// bounded by reference count and passes. An explicit grounded policy may run
+// one bounded concept selection before this otherwise deterministic fixed point.
 func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envelope, in RouteRequest, admitted []admittedTopic, result *RouteResult) error {
 	if err := initialSemanticSelection(ctx, in, admitted, result.Interpretation); err != nil {
 		return err
+	}
+	if err := s.selectGroundedConcepts(ctx, e, &in, admitted, result); err != nil {
+		return err
+	}
+	if result.Clarification != nil {
+		return nil
 	}
 	base := *result
 	for pass := 0; pass < maxSelectionPasses; pass++ {
@@ -595,6 +604,10 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 		}
 		if changed {
 			continue
+		}
+		if current.Concepts != nil && current.Request.Question != in.Question {
+			// Additional canonical redaction must never leave unreplayable span proof.
+			return readexec.ErrBinding
 		}
 		current.Selection = selectionView(admitted)
 		*result = current
