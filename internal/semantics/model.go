@@ -423,19 +423,20 @@ func (e CanonicalEntity) Reference() Reference {
 // TopicPack is an authoring definition only. Lifecycle stage, active pointers, ready
 // facets, authority, and current source health are separate state owned by later work.
 type TopicPack struct {
-	SchemaVersion         int                    `json:"schema_version"`
-	Topic                 string                 `json:"topic"`
-	Version               string                 `json:"version"`
-	Name                  string                 `json:"name"`
-	Description           string                 `json:"description"`
-	Datasets              []Dataset              `json:"datasets"`
-	Measures              []Measure              `json:"measures"`
-	Dimensions            []Dimension            `json:"dimensions"`
-	KPIs                  []KPI                  `json:"kpis"`
-	Joins                 []Join                 `json:"joins"`
-	RelationshipDecisions []RelationshipDecision `json:"relationship_decisions,omitempty"`
-	CanonicalEntities     []CanonicalEntity      `json:"canonical_entities"`
-	Unresolved            []UnresolvedSemantic   `json:"unresolved,omitempty"`
+	GroupedPopulation     *GroupedPopulationPolicy `json:"grouped_population,omitempty"`
+	SchemaVersion         int                      `json:"schema_version"`
+	Topic                 string                   `json:"topic"`
+	Version               string                   `json:"version"`
+	Name                  string                   `json:"name"`
+	Description           string                   `json:"description"`
+	Datasets              []Dataset                `json:"datasets"`
+	Measures              []Measure                `json:"measures"`
+	Dimensions            []Dimension              `json:"dimensions"`
+	KPIs                  []KPI                    `json:"kpis"`
+	Joins                 []Join                   `json:"joins"`
+	RelationshipDecisions []RelationshipDecision   `json:"relationship_decisions,omitempty"`
+	CanonicalEntities     []CanonicalEntity        `json:"canonical_entities"`
+	Unresolved            []UnresolvedSemantic     `json:"unresolved,omitempty"`
 }
 
 func validLine(s string, maximum int) bool {

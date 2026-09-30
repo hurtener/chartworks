@@ -1,6 +1,6 @@
 # Behavioral gap analysis and parity expansion
 
-## SQL recovery status — 2026-09-25
+## SQL recovery status — 2026-09-30
 
 The [AP-00–AP-08 completion tracker](reviews/sql-recovery-completion.md) records the current
 PR #62 implementation and qualification gaps. The recovery is **in progress**.
@@ -8,10 +8,13 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
-Current qualified runtime: `c18a5b2`. S1/S3/S8/S9 are qualified within their
-documented software scopes; new S7 diagnostics still await exact-source testing.
-The canonical completion tracker owns the remaining S/Q status. Historical
-checkpoint evidence below is not automatically evidence for later source.
+Current hosted-qualified checkpoint: `c755ad3`. The subsequent runtime tree
+`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification,
+including finite S10/S11 domain/signature completion. Its final published head
+still needs hosted checks. S4/S5/S6 and the explicitly documented legacy predicate
+approval/resume path remain implementation work; Q1/Q2/Q3 are separate gates.
+The canonical tracker controls current scope; historical evidence below does not
+qualify later source.
 
 
 ## Business-goal topic authoring submission — 2026-09-22

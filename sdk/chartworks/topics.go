@@ -14,6 +14,12 @@ import (
 // TopicPack is the complete private semantic authoring definition.
 type TopicPack = semantics.TopicPack
 
+// TopicGroupedPopulationPolicy pins reviewed cross-fact group alignment.
+type TopicGroupedPopulationPolicy = semantics.GroupedPopulationPolicy
+
+// TopicGroupedPopulationUnionPolicy preserves NULL groups and missing measures.
+const TopicGroupedPopulationUnionPolicy = semantics.GroupedPopulationUnionPolicy
+
 // TopicDataset is one source-bound semantic dataset.
 type TopicDataset = semantics.Dataset
 

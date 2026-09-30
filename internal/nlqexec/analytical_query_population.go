@@ -40,7 +40,15 @@ func compileQueryPopulation(ctx context.Context, a admission, contract *exec.Ana
 		return exec.ErrBinding
 	}
 	var err error
-	contract.QueryPopulation, err = exec.NewAnalyticalQueryPopulation(ctx, a.binding, contract.Dataset, supplied[0])
+	if contract.Version == exec.AnalyticalGroupedPopulationsVersion {
+		ids := make([]string, 0, len(a.relationScope))
+		for _, scope := range a.relationScope {
+			ids = append(ids, scope.Dataset)
+		}
+		contract.QueryPopulation, err = exec.NewAnalyticalQueryPopulationWithin(ctx, a.binding, ids, supplied[0])
+	} else {
+		contract.QueryPopulation, err = exec.NewAnalyticalQueryPopulation(ctx, a.binding, contract.Dataset, supplied[0])
+	}
 	return err
 }
 

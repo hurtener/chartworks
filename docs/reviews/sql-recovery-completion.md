@@ -1,10 +1,13 @@
 # SQL recovery — completion tracker
 
 PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Latest qualified implementation: `2dd7e9b9bfa91a84831843e4bf2413aaa6e5d02d`;
-qualified tree: `b323b8903ddef37a6bb3ad13696b7abb86db3275`.
-S1/S3/S7/S8/S9 are qualified in their documented scopes. The S2 grounded-policy
-implementation below requires its own exact-source qualification before closure.
+Latest hosted-qualified checkpoint: `c755ad3c5311cd606b58ef5b32be7030f0f2d3bd`
+(tree `3d638fa90133806e0c2cf599705c5066d4d4445b`). The subsequent runtime tree
+`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification
+below; its new published head still requires hosted qualification.
+S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented finite software
+scopes. S4/S5/S6 and Q1/Q2/Q3 remain open; the legacy-refinement review transition
+and its remaining approval/resume work are explicit below.
 Updated 2026-09-30. This is the current AP-00–AP-08 tracker. Historical
 checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
 at its stated revision, not the current completion status.
@@ -21,14 +24,14 @@ No scope has been discarded and no release or cutover has been approved.
 | Phase | Delivered implementation | Remaining implementation | Qualification still required |
 |---|---|---|---|
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
-| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | S2: explicit grounded-v1 candidate/decision/closure and replay implementation; exact-source qualification pending | Held-out selection/ambiguity calibration, not similarity-as-confidence |
+| AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | No remaining finite S2 software item after c755ad3; model calibration remains qualification | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3 complete at c18a5b2: exact confirmed joins and mandatory projection; no remaining S3 software item | Operator tokenizer/model-window/framing qualification |
 | AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7 complete at 2dd7e9b: closed diagnostic vocabulary and bounded consumers qualified; wider engine quality remains Q2 | Broader privacy, repair/result and engine matrix within existing attempt limits |
 | AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 native parameter-scope extension qualified at 8cceaa1 for immutable CTE/derived/join/subquery/window/set inputs and eligible outer edits; wider language is S2 | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
-| AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | S10: reviewed service-owned predicate learning and additional required parameter domains | Parameter-domain/probe and dialect matrix; owner result quality |
-| AP-07 | One generator/validator name vocabulary across six dialect profiles | S11: proven syntax/function signature/type matrix shared at generation and validation boundaries | Actual required engines plus selected analytical cases |
-| AP-08 | Strict ready/clarify/insufficient-context outcomes; blocks cannot yield an executable plan; bounded redacted questions and HTTP/MCP/SDK parity | S12: durable pending-question/resumption and richer reviewed choices | Calibrated ambiguity detection, paired result quality and release evidence |
+| AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | No remaining finite S10 item in the admitted nine-domain matrix; unknown/custom domains do not borrow authority | Actual remaining engine/profile qualification; owner result quality |
+| AP-07 | One generator/validator name vocabulary across six dialect profiles | No remaining finite S11 item in the shared admitted profile; native EXPLAIN resolves unknown catalog/parameter types | Actual required engines plus selected analytical cases |
+| AP-08 | Strict readiness outcomes plus qualified protected pending/resume state across Plan, Refine and correction, reviewed choices, expiry, private/calendar continuation and replay | No remaining finite S12 software item after c755ad3; model question quality remains qualification | Calibrated ambiguity detection, paired result quality and release evidence |
 
 ## Completion checklist
 
@@ -39,8 +42,10 @@ remain described explicitly; they do not close the parent requirement.
 
 - [x] S1 — Answer-dependent cross-pattern applicability, fixed-point convergence,
   inactive answers, contradiction/cycle bounds and deterministic replay.
-- [ ] S2 — Free-text paraphrase selection grounded in authorized reviewed concepts,
-  confidence/ambiguity handling, complete closure and no incidental-root promotion.
+- [x] S2 — Bounded free-text paraphrase selection grounded in authorized reviewed
+  concepts, typed ambiguity handling, complete closure and no incidental-root
+  promotion. Exact-source qualified at c755ad3; held-out model calibration is Q1/Q2,
+  not a claim of arbitrary natural-language correctness.
 - [x] S3 — Confirmed join coordinates reach render-only projection; join keys stay,
   unrelated columns drop, full validation authority and ambiguous-path behavior stay.
 - [ ] S4 — Reviewed ordering/limit/filter intent and required analytical expression
@@ -59,11 +64,18 @@ remain described explicitly; they do not close the parent requirement.
   inputs. Qualified at 8cceaa1 within the published contracts; no authority or
   analytical join-correctness certificate comes from prior SQL. General language
   and per-engine analytical support remain S2/S5/S6/Q2.
-- [ ] S10 — Reviewed reusable learning for service-owned predicates and required
-  parameter domains, with no historical value, authority or default leakage.
-- [ ] S11 — Proven syntax/signature/type matrix and generator/validator agreement.
-- [ ] S12 — Protected durable pending-question state, exact choice/answer origin,
-  resumable resolution, expiry/current context checks and bounded model work.
+- [x] S10 — Reviewed reusable learning for service-owned predicates and nine
+  admitted parameter domains, with value-free native provenance, independent
+  public-probe review/import and durable reuse. Qualified in the local integrated
+  runtime tree below; engine/profile exclusions remain explicit in the contract.
+- [x] S11 — Shared admitted syntax/signature/type matrix and generator/validator
+  agreement, including scoped logical outputs, special/calendar expressions and
+  bounded effective-native inspection. Qualified in the local integrated runtime
+  tree below; actual remaining cloud-engine qualification remains Q2.
+- [x] S12 — Protected durable pending-question state, exact reviewed choice/answer
+  origin, Plan/Refine/correction resumption, expiry/current context checks and
+  bounded model work. Exact-source qualified at c755ad3, including private
+  parameter/calendar continuity and atomic correction handoff; calibration stays Q1/Q2.
 - [ ] Q1 — Protected original/replacement comparison on the same reviewed definitions,
   source snapshot, question/locale/anchor and independently frozen expected results.
 - [ ] Q2 — Required real-engine/model/tokenizer configuration qualification; recorded
@@ -373,3 +385,79 @@ remain S4/S5/S6 work. Applicable live model/tokenizer and cloud-engine inputs,
 protected independently expected owner cohorts and final release/cutover evidence
 remain Q1/Q2/Q3. The checked-in synthetic Commerce cohort supplies independent
 known results for local integration, not production-owner parity.
+
+
+## Qualified c755ad3 checkpoint
+
+Standard [CI 36769404584](https://github.com/hurtener/chartworks/actions/runs/36769404584)
+and [recovery 36769404618](https://github.com/hurtener/chartworks/actions/runs/36769404618)
+completed successfully for exact head `c755ad3c5311cd606b58ef5b32be7030f0f2d3bd`,
+tree `3d638fa90133806e0c2cf599705c5066d4d4445b`, on Go 1.26.4 and 1.27.1.
+Local Go 1.27.1 final race JSON recorded 2,130 passing test/subtest events across
+25 packages and 275 PostgreSQL/native acceptance events, no failures and no
+acceptance skips. The sole unit skip was the explicitly paid live reranker.
+Actual MySQL 8.4.7 cases used native validation and real result reads. These counts
+are not additive scenario coverage across toolchains and do not include live models.
+
+Independent exact-tree review found no outstanding confirmed P0/P1 in its reviewed
+scope. A child-pending replay validation gap found during review was fixed and has
+an executed regression. Historical failed integration runs remain failed evidence.
+The result closes S2 and S12 finite software work; it does not close advanced
+analytical shapes, additional parameter/function domains, or Q1/Q2/Q3.
+
+## Subsequent software increment — integrated qualification pending
+
+- S4 v7 requires both owned-query-population and order/limit policies, including
+  an explicit empty policy when no restriction was requested. Reviewed COALESCE
+  is compiled rather than inferred; v0–v6 replay keeps its prior semantics.
+  See [analytical intent v7](../contracts/analytical-intent-v7.md)
+- S5 adds [reviewed grouped populations](../contracts/analytical-grouped-populations-v1.md):
+  independent 2–4 fact lanes, a UNION-distinct group-key spine, NULL-equal alignment,
+  physical dimension-key proofs, immutable replay and no invented zero filling
+- Direct joined predicates on secondary relations use the exact proved graph and
+  typed current binding. Owned aggregate predicates have their own fan-out checks
+- MySQL uniqueness is discovered from complete plain-column keys under a read-
+  transaction metadata-lock fence. Prefix/expression/partial composite evidence
+  cannot substitute for the required keys; old no-key sources retain their policy
+- S6 extends native dialect proofs with calendar, scalar CTE/derived, exact numeric
+  and output-alias cases. Applicable actual PostgreSQL/MySQL results are distinct
+  from the other dialects' structural/recorded evidence
+- S10 [parameter domains v2](../contracts/parameter-domains-v2.md) use sealed plans,
+  SQL/catalog evidence and fixed public probes, not historical scalar values
+- S11 extends shared signature/result-family metadata and scoped logical outputs;
+  transparent-parenthesis support in the pinned native dependency is an explicit
+  checksummed build input with independent safety regressions
+
+The [finite software matrix](sql-recovery-software-matrix.md) separates remaining
+implementation from external qualification. New unchecked items do not become
+complete merely because a focused subset passed. No merge or deployment is claimed.
+
+## v7 grouped, domain and effective-native checkpoint — locally qualified
+
+The frozen runtime tree `0ce69bd875deb82df3d3276cbd1c060f815ebfbd` was tested
+with Go 1.27.1 race detection, PostgreSQL 17.6/pgvector 0.8.2, MySQL 8.4.7,
+and the pinned effective native parser (base `5f562c2959496a04d57f5f199f5e3ad22159fa9f`,
+transparent-parenthesis patch `36df84c68505e3a1bfe2a5a5a0d77aafde06abcae57f4f31cbbd0a73d44f268f`).
+
+- 2,301 passing unit/subtest events across 25 packages; zero failures; only the
+  explicitly opt-in paid live-reranker test skipped
+- 299 passing integrated acceptance events; zero failures or skips
+- All 285 mandatory unit and 65 mandatory acceptance names passed
+- Actual source checks cover grouped missing/NULL fact lanes, immutable v7
+  absence/null policy, private joined predicates, MySQL key metadata-lock fencing,
+  calendar/session-drift/nested/owned-filter results and nine-domain learning
+- Actual provider-wire assertions verify coherent grouped instructions for both
+  generation and correction; recorded responses are not live-provider evidence
+- Initial integration found contradictory grouped guidance and legacy fixtures
+  inventing filters. Those failures were retained, fixed and fully rerun
+
+A retained pre-v7 query is never promoted into new predicate authority. Exact old
+receipt/native evidence and replay remain supported. A refinement lacking current
+reviewed filter/limit provenance returns fixed value-free EN/ES review guidance
+before model calls or row execution; safe legacy and currently owned predicates
+continue. A successful approval/resume path for an unreviewed legacy predicate
+is remaining explicit S4/S9 work, not a claim of unchanged automatic continuity.
+
+[Finite software matrix](sql-recovery-software-matrix.md) identifies the remaining
+derived/grouped/calendar/placement and temporal policies. Hosted exact-head checks,
+owner cohorts, live providers and remaining real engines retain separate gates.

@@ -1,6 +1,9 @@
 package sqlpolicy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFunctionSignaturesCoverVocabulary(t *testing.T) {
 	for _, d := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
@@ -19,6 +22,9 @@ func TestFunctionSignaturesCoverVocabulary(t *testing.T) {
 			args := make([]string, len(s.Arguments))
 			for i := range args {
 				args[i] = "unknown"
+				if strings.HasPrefix(s.Arguments[i], "unit-") {
+					args[i] = s.Arguments[i]
+				}
 			}
 			if !AllowsCall(d, name, args, false, s.Kind == "window", false, false, false, false) {
 				t.Fatal("signature rejects own arity", d, name)
@@ -54,7 +60,7 @@ func TestFunctionSignatureTypesAndSyntax(t *testing.T) {
 		{"postgres", "lower", []string{"integer"}, false, false, false, false, false, false, false},
 		{"postgres", "abs", []string{"text"}, false, false, false, false, false, false, false},
 		{"postgres", "sum", []string{"interval"}, false, false, false, false, false, false, true},
-		{"bigquery", "sum", []string{"interval"}, false, false, false, false, false, false, false},
+		{"bigquery", "sum", []string{"interval"}, false, false, false, false, false, false, true},
 		{"postgres", "count", nil, true, false, false, false, false, false, true},
 		{"postgres", "count", nil, true, false, true, false, false, false, false},
 		{"postgres", "sum", nil, true, false, false, false, false, false, false},

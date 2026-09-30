@@ -32,7 +32,7 @@ func originExampleDigest(topic, question, sql string, parameters *exampleparams.
 // an exact, authenticated binder reconstruction can establish the stored base.
 // A manually corrected bound statement lacks that base proof; its feedback is
 // recorded without auto-learning. A reviewer can import a new unbound template.
-func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope, q QueryRecord, a admission, correction string) (QueryRecord, string, bool, error) {
+func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope, q QueryRecord, a admission, correction string, provedBase ...*exec.Plan) (QueryRecord, string, bool, error) {
 	if ctx == nil {
 		return QueryRecord{}, "", false, ErrInvalid
 	}
@@ -111,8 +111,12 @@ func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope,
 	}
 	// This is a dry check, not execution. The base must stand on its own for
 	// native structure, while live parameter values remain private to this call.
-	if _, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: base.SQL, Parameters: base.Parameters}, a.relationScope); err != nil {
+	plan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: a.source, Context: a.context, SQL: base.SQL, Parameters: base.Parameters}, a.relationScope)
+	if err != nil {
 		return QueryRecord{}, "", false, err
+	}
+	if len(provedBase) == 1 && provedBase[0] != nil {
+		*provedBase[0] = plan
 	}
 	return base, OwnedExamplePolicy, true, nil
 }

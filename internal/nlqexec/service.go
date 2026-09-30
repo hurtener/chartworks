@@ -20,6 +20,7 @@ import (
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq"
+	"github.com/hurtener/chartworks/internal/nlq/exampleparams"
 	"github.com/hurtener/chartworks/internal/nlqroute"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/rulesets"
@@ -362,6 +363,9 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 		if err := s.verifyQueryClarificationBinding(ctx, e, old, parent); err != nil {
 			return PlanResult{}, err
 		}
+	}
+	if err := s.reviewLegacyAnalyticalContinuation(ctx, e, old, parent, parentConstraints); err != nil {
+		return PlanResult{}, err
 	}
 	if len(in.Templates) > 0 && exec.Hash(in.Templates) != exec.Hash(old.Templates) {
 		return PlanResult{}, ErrInvalid
@@ -725,13 +729,14 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	// exact stored or corrected SQL against the current binding before attaching
 	// current-origin evidence; a retained binding digest, when present, must also
 	// match exactly.
-	if _, err = s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: sqlText, Parameters: q.Parameters}, admitted.relationScope); err != nil {
+	learningPlan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: sqlText, Parameters: q.Parameters}, admitted.relationScope)
+	if err != nil {
 		return err
 	}
 	feedbackID := deterministicFeedbackID(e, q, in)
 	feedback := FeedbackRecord{ID: feedbackID, QueryID: q.ID, Session: e.Session(), Verdict: in.Verdict, Correction: correction, Note: in.Note, Provenance: "phase18.feedback", Created: time.Now().UTC()}
 	var example ExampleRecord
-	learning, bindingPolicy, eligible, learningErr := s.reusableLearningBase(ctx, e, q, admitted, correction)
+	learning, bindingPolicy, eligible, learningErr := s.reusableLearningBase(ctx, e, q, admitted, correction, &learningPlan)
 	if learningErr != nil {
 		return learningErr
 	}
@@ -748,6 +753,16 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 			eligible = false
 		}
 	}
+	var learnedQuestion string
+	var learnedSchema *exampleparams.Schema
+	if eligible {
+		learnedQuestion, learnedSchema, err = learnedParameterSchemaFromPlan(ctx, e, learning, learningPlan, admitted.binding, bindingPolicy)
+		if errors.Is(err, exec.ErrUnsupported) {
+			eligible = false
+		} else if err != nil {
+			return err
+		}
+	}
 	if eligible {
 		id, idErr := newID()
 		if idErr != nil {
@@ -759,10 +774,7 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 		} else {
 			negative = 1
 		}
-		question, parameterSchema, err := learnedParameterSchema(ctx, learning, bindingPolicy)
-		if err != nil {
-			return err
-		}
+		question, parameterSchema := learnedQuestion, learnedSchema
 		now := time.Now().UTC()
 		example = ExampleRecord{
 			ParameterSchema: parameterSchema,
@@ -851,7 +863,11 @@ func (s *Service) ExampleState(ctx context.Context, e identity.Envelope, in Exam
 		if parameterErr != nil {
 			return ExampleRecord{}, parameterErr
 		}
-		if _, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: example.SQL, Parameters: parameters}, admitted.relationScope); err != nil {
+		plan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: example.SQL, Parameters: parameters}, admitted.relationScope)
+		if err != nil {
+			return ExampleRecord{}, err
+		}
+		if err := verifyExampleParameterDomains(ctx, e, example.ParameterSchema, plan, admitted.binding); err != nil {
 			return ExampleRecord{}, err
 		}
 	}
@@ -969,7 +985,11 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 	if parameterErr != nil {
 		return ExampleRecord{}, parameterErr
 	}
-	if _, err = s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: in.Example.SQL, Parameters: parameters}, admitted.relationScope); err != nil {
+	plan, err := s.validator.ValidateWithin(ctx, e, exec.Request{Source: admitted.source, Context: admitted.context, SQL: in.Example.SQL, Parameters: parameters}, admitted.relationScope)
+	if err != nil {
+		return ExampleRecord{}, err
+	}
+	if err := verifyExampleParameterDomains(ctx, e, in.Example.ParameterSchema, plan, admitted.binding); err != nil {
 		return ExampleRecord{}, err
 	}
 	id, err := newID()
@@ -2035,11 +2055,16 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	system += vocabulary
 	system += generationDecisionInstruction
 	if a.analytical != nil {
-		system += " Analytical metric conformance is enforced for selected user metric roots: preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Windows and set operations are not analytically supported by this contract."
-		if len(a.analytical.Joins) == 0 && len(a.analytical.Populations) == 0 {
+		system += " Analytical metric conformance is enforced for selected user metric roots: preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero."
+		if a.analytical.GroupedPopulations != nil {
+			system += " Windows are not analytically supported. Only the reviewed UNION DISTINCT of grouped lane keys is supported for the group-key spine; all other set operations are unsupported."
+		} else {
+			system += " Windows and set operations are not analytically supported by this contract."
+		}
+		if len(a.analytical.Joins) == 0 && len(a.analytical.Populations) == 0 && a.analytical.GroupedPopulations == nil {
 			system += " Use one qualified base relation, with no joins or nested SELECTs."
 		}
-		system += analyticalGrainGuidance(a.analytical)
+		system += analyticalGrainGuidanceForDialect(a.binding.Dialect, a.analytical)
 	}
 	if hasActiveBusinessEvidence(a.route) {
 		system += " Reviewed clarification constraints are bound by the service after generation. Select their exact governed base relations; do not invent, repeat, or infer their scalar values or add predicates for those owned targets."

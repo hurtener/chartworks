@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/nlq/exampleparams"
 	"github.com/hurtener/chartworks/internal/semantics"
 )
@@ -72,7 +73,11 @@ func parameterExampleDigest(topic, question, sql string, schema *exampleparams.S
 	if schema == nil {
 		return exampleDigest(topic, question, sql)
 	}
-	return exec.Hash([]any{"parameterized-example-v1", topic, question, sql, schema})
+	domain := "parameterized-example-v1"
+	if schema.Version == exampleparams.DomainVersion {
+		domain = "parameterized-example-v2"
+	}
+	return exec.Hash([]any{domain, topic, question, sql, schema})
 }
 
 // Probes are for current-source native dry validation only, never execution,
@@ -121,6 +126,9 @@ func learnedExampleText(x ExampleRecord) string {
 }
 
 func portableExampleVersion(schema *exampleparams.Schema, policy ...string) int {
+	if schema != nil && schema.Version == exampleparams.DomainVersion {
+		return 4
+	}
 	if len(policy) == 1 && policy[0] == OwnedExamplePolicy {
 		return 3
 	}
@@ -134,4 +142,53 @@ func portableExampleValid(row PortableExample) bool {
 		return false
 	}
 	return validExampleBindingPolicy(row.Origin.BindingPolicy) && row.ParameterSchema.Validate() == nil
+}
+
+// Keep legacy records unchanged. Domain metadata is added only by a live sealed
+// native plan; test/legacy validators returning zero plans can produce v1 only.
+func learnedParameterSchemaFromPlan(ctx context.Context, e identity.Envelope, q QueryRecord, plan exec.Plan, binding exec.Binding, policy string) (string, *exampleparams.Schema, error) {
+	question, schema, err := learnedParameterSchema(ctx, q, policy)
+	if err != nil || schema == nil || !plan.Receipt().Validated {
+		return question, schema, err
+	}
+	// Preserve non-text schemas. No specialized domain
+	// is asserted and their original public-probe review remains mandatory.
+	hasText := false
+	for _, slot := range schema.Slots {
+		hasText = hasText || slot.Kind == "text"
+	}
+	if !hasText {
+		return question, schema, nil
+	}
+	domains, err := plan.LearningParameterDomains(ctx, e, binding)
+	if err != nil {
+		return "", nil, err
+	}
+	schema, err = schema.WithDomains(domains)
+	if err != nil {
+		return "", nil, exec.ErrBinding
+	}
+	return question, schema, nil
+}
+
+func verifyExampleParameterDomains(ctx context.Context, e identity.Envelope, schema *exampleparams.Schema, plan exec.Plan, binding exec.Binding) error {
+	if schema == nil || schema.Version == exampleparams.Version {
+		return nil
+	}
+	if schema.Validate() != nil {
+		return exec.ErrBinding
+	}
+	domains, err := plan.LearningParameterDomains(ctx, e, binding)
+	if err != nil {
+		return err
+	}
+	if len(domains) != len(schema.Slots) {
+		return exec.ErrBinding
+	}
+	for i, domain := range domains {
+		if domain != schema.Slots[i].Domain {
+			return exec.ErrBinding
+		}
+	}
+	return nil
 }

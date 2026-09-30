@@ -93,6 +93,24 @@ func TestSQLRecoveryAnalyticalJoinedCommerceAcceptance(t *testing.T) {
 	if _, err = query.Plan(t.Context(), actor, nlqexec.PlanRequest{QuestionRequest: request}); err == nil {
 		t.Fatal("fan-out candidate accepted")
 	}
+	// Reviewed governed predicates on the joined dimension retain their current
+	// source/alias provenance; the reusable SQL supplies no historical value.
+	for _, region := range []struct{ label, amount string }{{"north", "350.00"}, {"south", "200.00"}} {
+		request.Question = "Gross revenue for " + region.label + " by Customer region"
+		model.mode.Store(phase18RawResponse(t, sql))
+		filtered, err := query.Plan(t.Context(), actor, nlqexec.PlanRequest{QuestionRequest: request})
+		if err != nil {
+			t.Fatal("joined current predicate plan", err)
+		}
+		out, err := query.Run(t.Context(), actor, nlqexec.RunRequest{QueryID: filtered.QueryID, Operation: filtered.QueryID + "-filtered"})
+		if err != nil || out.Execution.Result == nil || len(out.Execution.Result.Rows) != 1 {
+			t.Fatal("joined current predicate result", err)
+		}
+		var name, amount string
+		if json.Unmarshal(out.Execution.Result.Rows[0][0], &name) != nil || json.Unmarshal(out.Execution.Result.Rows[0][1], &amount) != nil || name != region.label || amount != region.amount {
+			t.Fatal("joined current predicate changed population", name, amount)
+		}
+	}
 	// Independent scalar aggregates cannot multiply the two fact populations.
 	request.Question = "Net revenue"
 	request.MetricIDs = []string{"net_revenue"}

@@ -223,7 +223,18 @@ func TestPhase18(t *testing.T) {
 	})
 
 	t.Run("AC04", func(t *testing.T) {
-		zeroSQL := "SELECT id, sum(amount) AS amount FROM analytics.sales WHERE id = 999 GROUP BY id ORDER BY id"
+		// Exercise genuine empty source data. A generated WHERE id=999 would
+		// invent an unreviewed restriction under the v7 population contract.
+		if _, err := fixture.f.admin.Exec(ctx, "CREATE TEMP TABLE phase18_empty_backup AS TABLE analytics.sales; DELETE FROM analytics.sales"); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			fixture.model.mode.Store(phase18RawResponse(t, salesSQL))
+			if _, err := fixture.f.admin.Exec(context.Background(), "INSERT INTO analytics.sales SELECT * FROM phase18_empty_backup; DROP TABLE phase18_empty_backup"); err != nil {
+				t.Error(err)
+			}
+		})
+		zeroSQL := salesSQL
 		fixture.model.mode.Store(phase18RawResponse(t, zeroSQL))
 		planned, err := query.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: phase18Question(fixture, nlq.LanguageEnglish, fixture.pack.Topic)})
 		if err != nil {

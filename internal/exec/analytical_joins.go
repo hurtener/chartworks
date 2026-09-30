@@ -28,7 +28,7 @@ func analyticalJoinRelation(c AnalyticalContract, b Binding, base Relation) (Rel
 	if len(c.Joins) == 0 {
 		return base, nil
 	}
-	if c.Version != AnalyticalIntentVersion || len(c.Joins) > 3 {
+	if (c.Version != AnalyticalIntentVersion && c.Version != AnalyticalGroupedPopulationsVersion) || len(c.Joins) > 3 {
 		return Relation{}, ErrBinding
 	}
 	relations := map[string]Relation{}
@@ -311,6 +311,17 @@ func analyticalJoinMetricSides(c AnalyticalContract, edge AnalyticalJoin) (bool,
 	}
 	for _, m := range c.Metrics {
 		visit(m.Expression)
+	}
+	if c.QueryPopulation != nil {
+		for _, constraint := range c.QueryPopulation.Constraints {
+			if constraint.Aggregation != "" {
+				if left[constraint.Dataset] {
+					l = true
+				} else {
+					r = true
+				}
+			}
+		}
 	}
 	return l, r
 }

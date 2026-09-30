@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"reflect"
 	"sort"
 )
 
@@ -58,7 +59,7 @@ func DiffModels(before, after Model) (VersionDiff, error) {
 	if before.Digest() == "" || after.Digest() == "" || before.pack.Topic != after.pack.Topic {
 		return VersionDiff{}, invalid(CodeEvidenceMismatch, "diff.topic")
 	}
-	out := VersionDiff{Topic: before.pack.Topic, BeforeVersion: before.pack.Version, AfterVersion: after.pack.Version, BeforeDigest: before.Digest(), AfterDigest: after.Digest(), MetadataChanged: before.pack.Name != after.pack.Name || before.pack.Description != after.pack.Description, Changes: []EntityChange{}, Counts: []ChangeCount{}}
+	out := VersionDiff{Topic: before.pack.Topic, BeforeVersion: before.pack.Version, AfterVersion: after.pack.Version, BeforeDigest: before.Digest(), AfterDigest: after.Digest(), MetadataChanged: before.pack.Name != after.pack.Name || before.pack.Description != after.pack.Description || !reflect.DeepEqual(before.pack.GroupedPopulation, after.pack.GroupedPopulation), Changes: []EntityChange{}, Counts: []ChangeCount{}}
 	left, right := entityDigests(before), entityDigests(after)
 	keys := make([]Reference, 0, len(left)+len(right))
 	for ref := range left {

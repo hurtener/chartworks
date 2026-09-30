@@ -2,7 +2,6 @@ package exec
 
 import (
 	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
-	"strings"
 )
 
 func (r *sqlResolver) functionSignature(m map[string]any, name string) bool {
@@ -60,19 +59,20 @@ func signatureExpressionType(v any) string {
 		if !ok || !sqlpolicy.AllowsFunction("postgres", p) {
 			return "unknown"
 		}
-		s, ok := sqlpolicy.FunctionSignature("postgres", p[len(p)-1])
-		if !ok {
-			return "unknown"
+		args := array(c["args"])
+		types := make([]string, len(args))
+		for i, arg := range args {
+			types[i] = signatureExpressionType(arg)
 		}
-		if s.Result == "same" {
-			args := array(c["args"])
-			if len(args) > 0 {
-				return signatureExpressionType(args[0])
-			}
-		}
-		if s.Result != "same" && !strings.Contains(s.Result, "|") {
-			return s.Result
-		}
+		return sqlpolicy.FunctionResultType("postgres", p[len(p)-1], types)
 	}
 	return "unknown"
+}
+
+func (r *sqlResolver) specialSignature(name string, args []any) bool {
+	types := make([]string, len(args))
+	for i, arg := range args {
+		types[i] = signatureExpressionType(arg)
+	}
+	return sqlpolicy.AllowsExpression("postgres", name, types)
 }

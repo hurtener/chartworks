@@ -4,6 +4,10 @@ Status: AP-06B software implementation in PR #62, recovered from the earlier loc
 checkpoint. Exact-head executed evidence and remaining qualification are recorded
 in the PR. This contract does not authorize SQL or certify generic parameter values.
 
+The additive [native-proved domains v2](parameter-domains-v2.md) contract supports
+new date/time/interval/UUID/JSON text domains through independent native proof.
+The v1 behavior described here remains unchanged for historical schemas.
+
 ## Data ownership and lifecycle
 
 A reviewed SQL demonstration may have `parameter_schema` version
@@ -90,6 +94,6 @@ immutability, protected import, static-probe rejection and ineligible annotation
 The completion report must distinguish actually executed tests from added tests.
 Public-probe acceptance, the forward migration and recorded full-flow tests require
 the normal native/toolchain/dependency environment. Neither source review nor the
-pure-schema test substitutes for those gates. Broader parameter-domain validation,
+pure-schema test substitutes for those gates. The required native-proved domain increment is described separately in v2;
 per-dialect qualification and live-owner result quality remain open. Frozen report
 refresh, source authorization and inference-free retained execution are unchanged.

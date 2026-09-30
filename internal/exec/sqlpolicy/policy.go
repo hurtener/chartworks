@@ -15,7 +15,7 @@ import (
 
 // Version changes when this vocabulary or its interpretation changes. Retained
 // query/analytical policy versions remain separate; this is generation guidance.
-const Version = "read-sql-vocabulary-v2"
+const Version = "read-sql-vocabulary-v3"
 
 // ErrDialect is closed and never includes untrusted dialect text.
 var ErrDialect = errors.New("sqlpolicy: unsupported dialect")
@@ -35,21 +35,22 @@ const postgresOperators = "+ - * / % = <> != < > <= >= || ~~ !~~ ~~* !~~*"
 // planning and analytical restrictions can still reject any particular use.
 // No source identifiers, question, values, credentials or permissions are here.
 type Profile struct {
-	FunctionSyntax     CallSyntax        `json:"function_syntax"`
-	Version            string            `json:"version"`
-	Dialect            string            `json:"dialect"`
-	Parser             string            `json:"parser"`
-	NativeDialect      string            `json:"native_dialect"`
-	ParameterStyle     string            `json:"parameter_style"`
-	NativeCoercions    bool              `json:"native_input_coercions,omitempty"`
-	Signatures         map[string]string `json:"function_signatures"`
-	Functions          []string          `json:"function_names"`
-	FunctionNamespaces []string          `json:"function_namespaces,omitempty"`
-	CastTypes          []string          `json:"cast_ast_type_names,omitempty"`
-	Operators          []string          `json:"operator_ast_names,omitempty"`
-	Expressions        []string          `json:"special_expressions,omitempty"`
-	ValueKeywords      []string          `json:"value_keywords,omitempty"`
-	Digest             string            `json:"digest,omitempty"`
+	ExpressionSignatures map[string]string `json:"expression_signatures,omitempty"`
+	FunctionSyntax       CallSyntax        `json:"function_syntax"`
+	Version              string            `json:"version"`
+	Dialect              string            `json:"dialect"`
+	Parser               string            `json:"parser"`
+	NativeDialect        string            `json:"native_dialect"`
+	ParameterStyle       string            `json:"parameter_style"`
+	NativeCoercions      bool              `json:"native_input_coercions,omitempty"`
+	Signatures           map[string]string `json:"function_signatures"`
+	Functions            []string          `json:"function_names"`
+	FunctionNamespaces   []string          `json:"function_namespaces,omitempty"`
+	CastTypes            []string          `json:"cast_ast_type_names,omitempty"`
+	Operators            []string          `json:"operator_ast_names,omitempty"`
+	Expressions          []string          `json:"special_expressions,omitempty"`
+	ValueKeywords        []string          `json:"value_keywords,omitempty"`
+	Digest               string            `json:"digest,omitempty"`
 }
 
 // NativeDialect maps only exact admitted source dialects to the existing parser
@@ -75,7 +76,7 @@ func ForDialect(dialect string) (Profile, error) {
 	if !ok {
 		return Profile{}, ErrDialect
 	}
-	out := Profile{Version: Version, Dialect: dialect, Parser: "warehouse-native-read", NativeDialect: native, ParameterStyle: "positional-question-mark", Functions: words(warehouseFunctions)}
+	out := Profile{Version: Version, Dialect: dialect, Parser: "warehouse-native-read", NativeDialect: native, ParameterStyle: "positional-question-mark", Functions: words(warehouseFunctionVocabulary(dialect))}
 	switch dialect {
 	case "postgres":
 		out.Parser, out.ParameterStyle = "postgres-native-ast", "dollar-numbered"
@@ -90,6 +91,13 @@ func ForDialect(dialect string) (Profile, error) {
 		}
 	case "sqlserver", "bigquery":
 		out.ParameterStyle = "at-p-numbered"
+	}
+	if len(out.Expressions) > 0 {
+		out.ExpressionSignatures = make(map[string]string, len(out.Expressions))
+		for _, name := range out.Expressions {
+			signature, _ := ExpressionSignature(dialect, name)
+			out.ExpressionSignatures[name] = signature.String()
+		}
 	}
 	out.FunctionSyntax = FunctionSyntax(dialect)
 	out.Signatures = make(map[string]string, len(out.Functions))
@@ -116,7 +124,7 @@ func AllowsFunction(dialect string, parts []string) bool {
 	if _, ok := NativeDialect(dialect); !ok || len(parts) != 1 || len(parts[0]) > 128 {
 		return false
 	}
-	return contains(warehouseFunctions, strings.ToLower(parts[0]))
+	return contains(warehouseFunctionVocabulary(dialect), strings.ToLower(parts[0]))
 }
 
 // AllowsPostgresType is the positive native TypeCast name gate, not a claim

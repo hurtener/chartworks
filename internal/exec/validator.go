@@ -199,7 +199,6 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 		return Plan{}, ErrBinding
 	}
 	dependencies := make([]string, 0, len(inspection.Tables))
-	selected := make([]Relation, 0, len(inspection.Tables))
 	for _, table := range inspection.Tables {
 		var relation Relation
 		matches := 0
@@ -212,31 +211,6 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 			return Plan{}, ErrUnsafe
 		}
 		dependencies = append(dependencies, relation.ID)
-		selected = append(selected, relation)
-	}
-	for _, column := range inspection.Columns {
-		if column.Name == "*" || !SQLIdentifier(strings.ToLower(column.Name)) {
-			return Plan{}, ErrUnsupported
-		}
-		matches := 0
-		for _, relation := range selected {
-			if column.Table != "" && !warehouseRelationMatches(binding, relation, column.Table, true) {
-				continue
-			}
-			for _, candidate := range relation.Columns {
-				if candidate.Name == column.Name && candidate.Safe {
-					matches++
-				}
-			}
-		}
-		if matches != 1 {
-			return Plan{}, ErrUnsafe
-		}
-	}
-	for _, function := range inspection.Functions {
-		if function != "window_function" && !sqlpolicy.AllowsFunction(binding.Dialect, []string{function}) {
-			return Plan{}, ErrUnsupported
-		}
 	}
 	// Keep the structural companion within the same native-work semaphore.
 	select {
@@ -244,10 +218,32 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	case <-ctx.Done():
 		return Plan{}, ctx.Err()
 	}
-	err = warehouseFunctionSignatures(ctx, r.SQL, binding.Dialect, dialect, v.limits.MaxASTNodes, v.limits.MaxASTDepth)
+	callEvidence, signatureErr := warehouseSignatureEvidence(ctx, r.SQL, binding.Dialect, dialect, v.limits.MaxASTNodes, v.limits.MaxASTDepth)
 	<-v.slots
-	if err != nil {
-		return Plan{}, err
+	if signatureErr != nil {
+		return Plan{}, signatureErr
+	}
+	resolvedDependencies, resolvedOutputs, scopeErr := warehouseResolveScope(ctx, callEvidence.tree, binding, scoped, len(r.Parameters))
+	if scopeErr != nil {
+		return Plan{}, scopeErr
+	}
+	nativeDependencies := map[string]bool{}
+	for _, id := range dependencies {
+		nativeDependencies[id] = true
+	}
+	if len(nativeDependencies) != len(resolvedDependencies) || !reflect.DeepEqual(resolvedOutputs, inspection.Outputs) {
+		return Plan{}, ErrUnsafe
+	}
+	for _, id := range resolvedDependencies {
+		if !nativeDependencies[id] {
+			return Plan{}, ErrUnsafe
+		}
+	}
+	dependencies = resolvedDependencies
+	for _, function := range inspection.Functions {
+		if function != "window_function" && !sqlpolicy.AllowsFunction(binding.Dialect, []string{function}) {
+			return Plan{}, ErrUnsupported
+		}
 	}
 	for _, output := range inspection.Outputs {
 		if !SQLIdentifier(strings.ToLower(output)) {

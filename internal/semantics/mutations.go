@@ -1,6 +1,9 @@
 package semantics
 
-import "github.com/hurtener/chartworks/internal/identity"
+import (
+	"github.com/hurtener/chartworks/internal/identity"
+	"sort"
+)
 
 // EntityMutation is one closed put or delete in an atomic draft mutation batch.
 type EntityMutation struct {
@@ -167,6 +170,14 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 		if ref.Kind == KindDataset && ref.ID == oldDataset {
 			ref.ID = replacement.Dataset
 		}
+	}
+	if pack.GroupedPopulation != nil {
+		for i, id := range pack.GroupedPopulation.Datasets {
+			if id == oldDataset {
+				pack.GroupedPopulation.Datasets[i] = replacement.Dataset
+			}
+		}
+		sort.Strings(pack.GroupedPopulation.Datasets)
 	}
 	for i := range pack.Measures {
 		rewrite(&pack.Measures[i].Field)

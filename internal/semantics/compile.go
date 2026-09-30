@@ -131,10 +131,16 @@ func validateShape(p TopicPack) error {
 			}
 		}
 	}
+	if err := validateGroupedPopulationReferences(p); err != nil {
+		return err
+	}
 	return validateEntities(p)
 }
 
 func validateEntities(p TopicPack) error {
+	if err := validateGroupedPopulationPolicy(p.GroupedPopulation); err != nil {
+		return err
+	}
 	for i, v := range p.Measures {
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Aggregation.valid() || !validOptionalLine(v.Unit, 64) || !validAliases(v.Aliases) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "measures["+itoa(i)+"]")
@@ -626,6 +632,7 @@ func sortFilters(values []SemanticFilter) {
 }
 
 func clonePack(p TopicPack) TopicPack {
+	p.GroupedPopulation = cloneGroupedPopulation(p.GroupedPopulation)
 	p.Datasets = append([]Dataset(nil), p.Datasets...)
 	for i := range p.Datasets {
 		p.Datasets[i].Columns = append([]Column(nil), p.Datasets[i].Columns...)

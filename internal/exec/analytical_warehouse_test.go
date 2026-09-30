@@ -152,3 +152,41 @@ func TestSQLRecoveryWarehouseAnalyticalAverageTypes(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLRecoveryWarehouseExactNumericRendering(t *testing.T) {
+	for _, dialect := range []string{"mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
+		p, c := analyticalFixture(t, "SELECT sum(amount)/-2 FROM analytics.sales", analyticalMetrics(AnalyticalExpression{Op: "/", Args: []AnalyticalExpression{analyticalMeasure("sum", "amount"), {Op: "number", Value: "-2"}}}))
+		p.candidate.binding.Dialect = dialect
+		c.Binding = Hash(p.candidate.binding)
+		c.Version = AnalyticalIntentVersion
+		if _, err := CheckAnalyticalPlan(context.Background(), p, c); err != nil {
+			t.Fatal("signed exact constant", dialect, err)
+		}
+		statement := "SELECT avg(CAST(id AS DECIMAL(38,10))) FROM analytics.sales"
+		if dialect == "bigquery" {
+			statement = "SELECT avg(CAST(id AS NUMERIC)) FROM analytics.sales"
+		}
+		p, c = analyticalFixture(t, statement, analyticalMetrics(analyticalMeasure("avg", "id")))
+		p.candidate.binding.Dialect = dialect
+		c.Binding = Hash(p.candidate.binding)
+		c.Version = AnalyticalIntentVersion
+		if _, err := CheckAnalyticalPlan(context.Background(), p, c); err != nil {
+			t.Fatal("exact integral average", dialect, err)
+		}
+		p.candidate.statement = "SELECT avg(CAST(id AS DECIMAL(5,2))) FROM analytics.sales"
+		if _, err := CheckAnalyticalPlan(context.Background(), p, c); err == nil {
+			t.Fatal("narrowing integral cast", dialect)
+		}
+	}
+	p, c := analyticalFixture(t, "SELECT sum(amount)*CAST('1.1' AS NUMERIC) FROM analytics.sales", analyticalMetrics(AnalyticalExpression{Op: "*", Args: []AnalyticalExpression{analyticalMeasure("sum", "amount"), {Op: "number", Value: "1.1"}}}))
+	p.candidate.binding.Dialect = "bigquery"
+	c.Binding = Hash(p.candidate.binding)
+	c.Version = AnalyticalIntentVersion
+	if _, err := CheckAnalyticalPlan(context.Background(), p, c); err != nil {
+		t.Fatal("typed exact BQ decimal literal", err)
+	}
+	p.candidate.statement = "SELECT sum(amount)*CAST('1.1000000001' AS NUMERIC) FROM analytics.sales"
+	if _, err := CheckAnalyticalPlan(context.Background(), p, c); err == nil {
+		t.Fatal("rounding decimal literal")
+	}
+}

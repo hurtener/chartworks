@@ -3,7 +3,7 @@ package exec
 import "strings"
 
 func analyticalPopulationRelation(c AnalyticalContract, b Binding, base Relation) (Relation, error) {
-	if c.Version != AnalyticalIntentVersion || len(c.Populations) < 2 || len(c.Populations) > 4 || len(c.Joins) > 0 || c.QueryPopulation != nil || c.Grain != nil && len(c.Grain.Columns)+len(c.Grain.Buckets) > 0 {
+	if (c.Version != AnalyticalIntentVersion && c.Version != AnalyticalGroupedPopulationsVersion) || len(c.Populations) < 2 || len(c.Populations) > 4 || len(c.Joins) > 0 || c.QueryPopulation != nil && (c.Version != AnalyticalGroupedPopulationsVersion || len(c.QueryPopulation.Constraints) != 0) || c.Grain != nil && len(c.Grain.Columns)+len(c.Grain.Buckets) > 0 {
 		return Relation{}, ErrBinding
 	}
 	out := base

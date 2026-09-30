@@ -18,7 +18,7 @@ import (
 
 // The persisted revision is independent of selection and native validation.
 // Zero means retained legacy evidence, not a claim of analytical correctness.
-const analyticalRecordVersion = 6
+const analyticalRecordVersion = 7
 
 func analyticalUnsupported(code string) error {
 	return &exec.AnalyticalError{Code: code, Unsupported: true}
@@ -48,8 +48,11 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 	if version == 5 {
 		proofVersion = exec.AnalyticalGroupingVersion
 	}
-	if version == 6 {
+	if version >= 6 {
 		proofVersion = exec.AnalyticalIntentVersion
+	}
+	if version == 7 {
+		proofVersion = exec.AnalyticalGroupedPopulationsVersion
 	}
 	if version < 5 && a.route.Request.Grouping != nil {
 		return nil, exec.ErrBinding
@@ -76,7 +79,7 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 		if pick.Topic != def.Topic || pick.TopicVersion != def.Version || pick.PackDigest != publication.Digest || !topics.DigestValid(publication.Digest) || len(pick.Roots) > 128 {
 			return nil, exec.ErrBinding
 		}
-		compiler := &analyticalCompiler{expandedExpressions: version >= 6, joins: version >= 6, ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
+		compiler := &analyticalCompiler{reviewedNullPolicy: version >= 7, expandedExpressions: version >= 6, joins: version >= 6, ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
 		for _, root := range pick.Roots {
 			if root.Reference.Kind != semantics.KindMeasure && root.Reference.Kind != semantics.KindKPI || root.Reason == "required_rule" {
 				continue
@@ -140,10 +143,19 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 			return nil, err
 		}
 	}
+	if out != nil && version >= 7 && out.Intent == nil {
+		out.Intent = &exec.AnalyticalIntent{Policy: exec.AnalyticalIntentPolicy}
+	}
 	if out != nil && out.Intent != nil && out.QueryPopulation == nil {
 		out.QueryPopulation = &exec.AnalyticalQueryPopulation{Policy: exec.AnalyticalQueryPopulationPolicy}
 	}
 	if out != nil && version >= 6 {
+		if handled, err := compileAnalyticalGroupedPopulations(ctx, a, out); handled {
+			if err != nil {
+				return nil, err
+			}
+			return out, nil
+		}
 		if err := compileAnalyticalJoins(ctx, a, out); err != nil {
 			return nil, err
 		}
@@ -152,6 +164,7 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 }
 
 type analyticalCompiler struct {
+	reviewedNullPolicy  bool
 	expandedExpressions bool
 	joins               bool
 	ctx                 context.Context
@@ -336,6 +349,11 @@ func (c *analyticalCompiler) expression(node ast.Expr, inputs map[string]semanti
 			return bad, analyticalUnsupported("analytical_expression_unsupported")
 		}
 		return exec.AnalyticalExpression{Op: "number", Value: n.Value}, nil
+	case *ast.CallExpr:
+		if !c.reviewedNullPolicy {
+			return bad, analyticalUnsupported("analytical_expression_unsupported")
+		}
+		return c.nullPolicyCall(n, inputs, used, filters, depth)
 	case *ast.UnaryExpr:
 		if !c.expandedExpressions || (n.Op != token.ADD && n.Op != token.SUB) {
 			return bad, analyticalUnsupported("analytical_expression_unsupported")
@@ -433,6 +451,9 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 	if len(contract.Populations) > 0 {
 		want.Scope = strings.ReplaceAll(want.Scope, "single_base_relation", "independent_singleton_populations")
 	}
+	if contract.GroupedPopulations != nil {
+		want.Scope = strings.ReplaceAll(want.Scope, "single_base_relation", "independent_grouped_populations")
+	}
 	if q.Analytical == nil || exec.Hash(want) != exec.Hash(q.Analytical) {
 		return nil, exec.ErrBinding
 	}
@@ -498,6 +519,9 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 		return q.Analytical == nil
 	}
 	r := q.Analytical
+	if q.AnalyticalVersion == 7 && (r == nil || r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
+		return false
+	}
 	version := exec.AnalyticalVersion
 	if q.AnalyticalVersion == 2 {
 		version = exec.AnalyticalGrainVersion
@@ -514,6 +538,9 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == 6 {
 		version = exec.AnalyticalIntentVersion
 	}
+	if q.AnalyticalVersion == 7 {
+		version = exec.AnalyticalGroupedPopulationsVersion
+	}
 	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
@@ -526,7 +553,7 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 }
 
 func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
-	if r.Version == exec.AnalyticalIntentVersion {
+	if r.Version == exec.AnalyticalIntentVersion || r.Version == exec.AnalyticalGroupedPopulationsVersion {
 		copy := *r
 		if strings.HasSuffix(r.Scope, ";physically_unique_reviewed_joins") {
 			copy.Scope = strings.TrimSuffix(r.Scope, "physically_unique_reviewed_joins") + "single_base_relation"
@@ -537,22 +564,28 @@ func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
 			}
 			copy.Scope = strings.TrimSuffix(r.Scope, "independent_singleton_populations") + "single_base_relation"
 		}
+		if strings.HasSuffix(r.Scope, ";independent_grouped_populations") {
+			if r.Version != exec.AnalyticalGroupedPopulationsVersion || len(r.Grouping) == 0 || r.Scope != strings.ReplaceAll(exec.AnalyticalGrainScope, "single_base_relation", "independent_grouped_populations") {
+				return false
+			}
+			copy.Scope = strings.TrimSuffix(r.Scope, "independent_grouped_populations") + "single_base_relation"
+		}
 		r = &copy
 	}
 
-	if r.Intent != "" && (r.Version != exec.AnalyticalIntentVersion || r.Intent != exec.AnalyticalIntentPolicy) {
+	if r.Intent != "" && ((r.Version != exec.AnalyticalIntentVersion && r.Version != exec.AnalyticalGroupedPopulationsVersion) || r.Intent != exec.AnalyticalIntentPolicy) {
 		return false
 	}
-	if r.QueryPopulation != "" && ((r.Version != exec.AnalyticalQueryPopulationVersion && r.Version != exec.AnalyticalGroupingVersion && r.Version != exec.AnalyticalIntentVersion) || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
+	if r.QueryPopulation != "" && ((r.Version != exec.AnalyticalQueryPopulationVersion && r.Version != exec.AnalyticalGroupingVersion && (r.Version != exec.AnalyticalIntentVersion && r.Version != exec.AnalyticalGroupedPopulationsVersion)) || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
 		return false
 	}
 	if r.Scope == exec.AnalyticalTotalScope {
-		return (r.Version == exec.AnalyticalGroupingVersion || r.Version == exec.AnalyticalIntentVersion) && len(r.Grouping) == 0
+		return (r.Version == exec.AnalyticalGroupingVersion || (r.Version == exec.AnalyticalIntentVersion || r.Version == exec.AnalyticalGroupedPopulationsVersion)) && len(r.Grouping) == 0
 	}
 	if r.Scope == exec.AnalyticalMetricScope {
 		return len(r.Grouping) == 0
 	}
-	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || (r.Version == exec.AnalyticalGroupingVersion || r.Version == exec.AnalyticalIntentVersion))) || r.Scope == exec.AnalyticalCalendarScope && (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || (r.Version == exec.AnalyticalGroupingVersion || r.Version == exec.AnalyticalIntentVersion))
+	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || (r.Version == exec.AnalyticalGroupingVersion || (r.Version == exec.AnalyticalIntentVersion || r.Version == exec.AnalyticalGroupedPopulationsVersion)))) || r.Scope == exec.AnalyticalCalendarScope && (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || (r.Version == exec.AnalyticalGroupingVersion || (r.Version == exec.AnalyticalIntentVersion || r.Version == exec.AnalyticalGroupedPopulationsVersion)))
 	if !validScope || len(r.Grouping) < 1 || len(r.Grouping) > 16 {
 		return false
 	}

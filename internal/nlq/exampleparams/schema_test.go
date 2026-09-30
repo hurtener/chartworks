@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -44,7 +45,7 @@ func TestSQLRecoveryExampleParameterSchema(t *testing.T) {
 	}
 }
 func TestSQLRecoveryExampleParameterSchemaRejectsInvalid(t *testing.T) {
-	for _, s := range []*Schema{{}, {Version: Version}, {Version: "future", Slots: []Slot{{1, "integer"}}}, {Version: Version, Slots: []Slot{{0, "integer"}}}, {Version: Version, Slots: []Slot{{2, "integer"}}}, {Version: Version, Slots: []Slot{{1, "text"}, {1, "integer"}}}, {Version: Version, Slots: []Slot{{1, "secret-kind"}}}, {Version: Version, Slots: make([]Slot, 65)}} {
+	for _, s := range []*Schema{{}, {Version: Version}, {Version: "future", Slots: []Slot{{Position: 1, Kind: "integer"}}}, {Version: Version, Slots: []Slot{{Position: 0, Kind: "integer"}}}, {Version: Version, Slots: []Slot{{Position: 2, Kind: "integer"}}}, {Version: Version, Slots: []Slot{{Position: 1, Kind: "text"}, {Position: 1, Kind: "integer"}}}, {Version: Version, Slots: []Slot{{Position: 1, Kind: "secret-kind"}}}, {Version: Version, Slots: make([]Slot, 65)}} {
 		if !errors.Is(s.Validate(), ErrInvalid) {
 			t.Fatal("invalid schema accepted")
 		}
@@ -90,7 +91,7 @@ func FuzzSQLRecoveryExampleParameterSchema(f *testing.F) {
 	f.Add("text", 1, Version)
 	f.Add("null", 0, "future")
 	f.Fuzz(func(t *testing.T, kind string, position int, version string) {
-		s := &Schema{Version: version, Slots: []Slot{{position, kind}}}
+		s := &Schema{Version: version, Slots: []Slot{{Position: position, Kind: kind}}}
 		v, err := s.ProbeValues()
 		if err != nil {
 			if v != nil {
@@ -102,4 +103,70 @@ func FuzzSQLRecoveryExampleParameterSchema(f *testing.F) {
 			t.Fatal("invalid accepted schema")
 		}
 	})
+}
+
+func TestSQLRecoveryExampleParameterDomains(t *testing.T) {
+	base, _ := New([]string{"text", "text", "text", "text", "number"})
+	schema, err := base.WithDomains([]string{"date", "timestamp", "timestamptz", "uuid", ""})
+	if err != nil || schema.Version != DomainVersion {
+		t.Fatal(schema, err)
+	}
+	probes, err := schema.ProbeValues()
+	if err != nil || !reflect.DeepEqual(probes, []string{"2000-01-02", "2000-01-02 03:04:05", "2000-01-02T03:04:05Z", "00000000-0000-4000-8000-000000000001", "1"}) {
+		t.Fatal(probes, err)
+	}
+	if base.Version != Version || base.Slots[0].Domain != "" {
+		t.Fatal("rewrote historical schema")
+	}
+	unchanged, err := base.WithDomains(make([]string, 5))
+	if err != nil || !reflect.DeepEqual(base, unchanged) {
+		t.Fatal("legacy schema changed", err)
+	}
+	for _, mutate := range []func(*Schema){func(s *Schema) { s.Version = Version }, func(s *Schema) { s.Slots[0].Kind = "integer" }, func(s *Schema) { s.Slots[0].Domain = "caller-defined" }, func(s *Schema) {
+		for i := range s.Slots {
+			s.Slots[i].Domain = ""
+		}
+	}} {
+		bad := schema.Clone()
+		mutate(bad)
+		if bad.Validate() == nil {
+			t.Fatal("invalid domain schema")
+		}
+	}
+	if _, err := base.WithDomains([]string{"date"}); err == nil {
+		t.Fatal("partial proof accepted")
+	}
+	raw, _ := json.Marshal(schema)
+	if strings.Contains(string(raw), "2000") || strings.Contains(string(raw), "value") || strings.Contains(string(raw), "default") {
+		t.Fatal("value-bearing schema")
+	}
+}
+
+func TestSQLRecoveryExampleParameterDomainInventory(t *testing.T) {
+	domains := []string{"date", "timestamp", "timestamptz", "uuid", "time", "timetz", "interval", "json", "jsonb"}
+	kinds := make([]string, len(domains))
+	for i := range kinds {
+		kinds[i] = "text"
+	}
+	base, _ := New(kinds)
+	schema, err := base.WithDomains(domains)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probes, err := schema.ProbeValues()
+	want := []string{"2000-01-02", "2000-01-02 03:04:05", "2000-01-02T03:04:05Z", "00000000-0000-4000-8000-000000000001", "03:04:05", "03:04:05+00:00", "1 day", "{}", "{}"}
+	if err != nil || !reflect.DeepEqual(probes, want) {
+		t.Fatal("canonical public probes", probes, err)
+	}
+	raw, _ := json.Marshal(schema)
+	for _, value := range probes {
+		if strings.Contains(string(raw), value) {
+			t.Fatal("probe retained in schema")
+		}
+	}
+	for _, domain := range []string{"enum", "vendor.json", "user-defined", "array", "sql-expression"} {
+		if _, err := base.WithDomains(append([]string{domain}, domains[1:]...)); err == nil {
+			t.Fatal("arbitrary domain", domain)
+		}
+	}
 }

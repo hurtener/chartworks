@@ -125,7 +125,7 @@ func TestSQLRecoveryGroupingContinuationLifecycleAcceptance(t *testing.T) {
 				t.Fatal("replay made model/source call")
 			}
 			saved, err := f.f.db.ReadSavedQuery(ctx, f.e, calendar.QueryID, false)
-			if err != nil || saved.Result != nil || saved.AnalyticalVersion != 6 || !reflect.DeepEqual(saved.Route.Request.Grouping, calendar.Route.Request.Grouping) {
+			if err != nil || saved.Result != nil || saved.AnalyticalVersion != 7 || !reflect.DeepEqual(saved.Route.Request.Grouping, calendar.Route.Request.Grouping) {
 				t.Fatal("saved grouping projection", err)
 			}
 			for _, mutate := range []string{`analytical_version=4`, `analytical=NULL`, `analytical=jsonb_set(analytical,'{contract}',to_jsonb(repeat('0',64)))`} {
@@ -149,99 +149,165 @@ func TestSQLRecoveryGroupingContinuationLifecycleAcceptance(t *testing.T) {
 }
 
 func TestSQLRecoveryGroupingPrivateBindingsAcceptance(t *testing.T) {
-	f := groupingContinuationFixture(t)
-	ctx := context.Background()
-	base := `SELECT id,sum(amount) AS revenue FROM analytics.sales WHERE amount > $1 GROUP BY id ORDER BY id`
-	private := []readexec.Parameter{{Kind: "number", Value: "12.3456"}}
-	f.model.mode.Store(parameterResponse(t, base, private))
-	p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue by Record", nlq.LanguageEnglish)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.model.mu.Lock()
-	start := len(f.model.requestBodies)
-	f.model.mu.Unlock()
-	grouped := `SELECT active,sum(amount) AS revenue FROM analytics.sales WHERE amount > $1 GROUP BY active ORDER BY active`
-	f.model.mode.Store(parameterResponse(t, grouped, []readexec.Parameter{{Kind: "number", Value: "0"}}))
-	f.query, _ = newPhase18Service(t, f.phase17Fixture)
-	child, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: p.QueryID, QuestionRequest: nlqexec.QuestionRequest{Grouping: groupingState(f, "status")}})
-	if err != nil {
-		t.Fatal("group edit changed protected slots", err)
-	}
-	out, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: child.QueryID, Operation: child.QueryID + "-run"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	groupingSums(t, out, "20")
-	sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
-	saved, err := f.f.db.ReadQuery(ctx, sc, child.QueryID)
-	if err != nil || !reflect.DeepEqual(saved.Parameters, private) {
-		t.Fatal("lost private bindings", err)
-	}
-	f.model.mu.Lock()
-	wire := strings.Join(f.model.requestBodies[start:], "\n")
-	f.model.mu.Unlock()
-	if strings.Contains(wire, private[0].Value) || !strings.Contains(wire, "retained_parameter_slots") {
-		t.Fatal("private value leaked or slot metadata lost")
-	}
-	// Reviewed customer bindings are re-applied separately from grouping/SQL.
-	q := f.question("Revenue named sales by Record", nlq.LanguageEnglish)
-	pending := f.preflight(t, q)
-	q.ClarificationQuery = pending.QueryID
-	q.AnswerContext = pending.Route.AnswerContext
-	q.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
-	f.model.mode.Store(phase18RawResponse(t, `SELECT id,sum(amount) AS revenue FROM analytics.sales GROUP BY id ORDER BY id`))
-	parent, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
-	if err != nil {
-		t.Fatal("owned parent", err)
-	}
-	f.model.mode.Store(phase18RawResponse(t, `SELECT active,sum(amount) AS revenue FROM analytics.sales GROUP BY active ORDER BY active`))
-	owned, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: parent.QueryID, QuestionRequest: nlqexec.QuestionRequest{Grouping: groupingState(f, "status")}})
-	if err != nil || owned.Bindings == nil {
-		t.Fatal("owned filters/grouping", err)
-	}
-	out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: owned.QueryID, Operation: owned.QueryID + "-run"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	groupingSums(t, out, "5", "10")
-	// An unresolved preflight with an explicit record grouping must not force
-	// that old set over a new reviewed status-group phrase during answer/refine.
-	q = f.question("Revenue named sales by Record", nlq.LanguageEnglish)
-	q.Grouping = groupingState(f, "record")
-	pending = f.preflight(t, q)
-	sc, _ = store.NewScope(f.e.Tenant(), f.e.User())
-	pendingRecord, err := f.f.db.ReadQuery(ctx, sc, pending.QueryID)
-	if err != nil || len(pendingRecord.RelationScope) != 0 || pendingRecord.SQL != "" {
-		t.Fatal("pending form unexpectedly contains executable scope", err)
-	}
-	originalPending := nlqexec.QueryLineageDigest(pendingRecord)
-	beforeCalls := f.model.requests.Load()
-	if _, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: pending.QueryID, Operation: pending.QueryID + "-must-not-run"}); !errors.Is(err, nlqexec.ErrNoPlan) || f.model.requests.Load() != beforeCalls {
-		t.Fatal("unplanned form executed or generated SQL", err)
-	}
-	// A new grouping cannot borrow the original form through the stateless
-	// Plan submission; only authorized Refine may create the changed child.
-	changed := q
-	changed.ClarificationQuery, changed.AnswerContext = pending.QueryID, pending.Route.AnswerContext
-	changed.Question = "Revenue named sales by Status"
-	changed.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
-	if _, err = f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: changed}); err == nil || f.model.requests.Load() != beforeCalls {
-		t.Fatal("changed question borrowed the original preflight", err)
-	}
-	f.query, _ = newPhase18Service(t, f.phase17Fixture)
-	resumed, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: pending.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Revenue named sales by Status", Answers: []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}}})
-	if err != nil || resumed.Route.Request.Grouping == nil || len(resumed.Route.Request.Grouping.Keys) != 1 || resumed.Route.Request.Grouping.Keys[0].Dimension != "status" || resumed.Bindings == nil {
-		t.Fatal("pending answer/refine retained obsolete group", err)
-	}
-	out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: resumed.QueryID, Operation: resumed.QueryID + "-run"})
-	if err != nil {
-		t.Fatal("pending grouped result", err)
-	}
-	groupingSums(t, out, "5", "10")
-	unchanged, err := f.f.db.ReadQuery(ctx, sc, pending.QueryID)
-	if err != nil || nlqexec.QueryLineageDigest(unchanged) != originalPending {
-		t.Fatal("refining the pending grouping mutated its source form", err)
+	for _, locale := range []nlq.Language{nlq.LanguageEnglish, nlq.LanguageSpanish} {
+		t.Run(string(locale), func(t *testing.T) {
+			f := groupingContinuationFixture(t)
+			ctx := context.Background()
+			base := `SELECT id,sum(amount) AS revenue FROM analytics.sales WHERE amount > $1 GROUP BY id ORDER BY id`
+			private := []readexec.Parameter{{Kind: "number", Value: "12.3456"}}
+			// Current intent never authorizes a predicate merely because a model supplied
+			// a private slot. Preserve the old custody case as explicit v6 replay below.
+			metadata := support.Raw(t, f.f.dsn)
+			attempts := count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+			f.model.mode.Store(parameterResponse(t, base, private))
+			p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question("Revenue by Record", nlq.LanguageEnglish)})
+			if !errors.Is(err, readexec.ErrAnalyticalMismatch) || p.QueryID != "" || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
+				t.Fatal("current intent admitted an unowned private predicate", err)
+			}
+			f.model.mode.Store(phase18RawResponse(t, `SELECT id,sum(amount) AS revenue FROM analytics.sales GROUP BY id ORDER BY id`))
+			q0 := f.question("Revenue by Record", locale)
+			q0.Grouping = groupingState(f, "record")
+			p, err = f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q0})
+			if err != nil {
+				t.Fatal("current fixture origin", err)
+			}
+			sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
+			legacy, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding, err := f.f.s.Binding(ctx, f.e, f.pack.Datasets[0].Source.Source, f.context)
+			if err != nil {
+				t.Fatal(err)
+			}
+			contract := readexec.AnalyticalContract{
+				Version: readexec.AnalyticalIntentVersion, Binding: readexec.Hash(binding), Semantics: legacy.Route.Selection.Digest,
+				Dataset: f.pack.Datasets[0].ID,
+				Metrics: []readexec.AnalyticalMetric{{ID: f.pack.Topic + ":measure:revenue", Expression: readexec.AnalyticalExpression{Op: "sum", Column: "amount"}}},
+				Grain:   &readexec.AnalyticalGrain{Policy: readexec.AnalyticalGroupingPolicy, Columns: []string{"id"}, Dimensions: []string{f.pack.Topic + ":dimension:record"}},
+			}
+			legacy.ID = readexec.Hash([]string{"retained-v6-private-grouping", p.QueryID})[:32]
+			legacy.Operation, legacy.SQL, legacy.Parameters = "", base, private
+			legacy.AnalyticalVersion = 6
+			legacy.Analytical = &readexec.AnalyticalReceipt{Version: contract.Version, Scope: readexec.AnalyticalGrainScope, Contract: readexec.Hash(contract), Query: readexec.AnalyticalQueryDigest(base, private), Metrics: []string{contract.Metrics[0].ID}, Grouping: contract.Grain.Dimensions}
+			if err := f.f.db.CreateQuery(ctx, sc, legacy); err != nil {
+				t.Fatal("retained v6 private fixture", err)
+			}
+			f.query, _ = newPhase18Service(t, f.phase17Fixture)
+			out, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: legacy.ID, Operation: legacy.ID + "-run"})
+			if err != nil || out.Analytical == nil || out.Analytical.Version != readexec.AnalyticalIntentVersion {
+				t.Fatal("retained private predicate replay", err)
+			}
+			groupingSums(t, out, "20")
+			saved, err := f.f.db.ReadQuery(ctx, sc, legacy.ID)
+			if err != nil || !reflect.DeepEqual(saved.Parameters, private) {
+				t.Fatal("lost retained private bindings", err)
+			}
+			retainedDigest := nlqexec.QueryLineageDigest(saved)
+			f.model.mu.Lock()
+			start := len(f.model.requestBodies)
+			f.model.mu.Unlock()
+			grouped := `SELECT active,sum(amount) AS revenue FROM analytics.sales WHERE amount > $1 GROUP BY active ORDER BY active`
+			f.model.mode.Store(parameterResponse(t, grouped, []readexec.Parameter{{Kind: "number", Value: "0"}}))
+			attempts = count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+			calls := f.model.requests.Load()
+			child, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: legacy.ID, QuestionRequest: nlqexec.QuestionRequest{Grouping: groupingState(f, "status")}})
+			if !errors.Is(err, nlqexec.ErrGenerationContext) || nlqexec.GenerationProblem(err) == nil || child.QueryID != "" || calls != f.model.requests.Load() || attempts != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
+				t.Fatal("group edit inherited unreviewed predicate authority", err)
+			}
+			reviewProblem := nlqexec.GenerationProblem(err)
+			saved, err = f.f.db.ReadQuery(ctx, sc, legacy.ID)
+			if err != nil || nlqexec.QueryLineageDigest(saved) != retainedDigest || !reflect.DeepEqual(saved.Parameters, private) {
+				t.Fatal("rejected upgrade changed retained private bindings", err)
+			}
+			f.model.mu.Lock()
+			wire := strings.Join(f.model.requestBodies[start:], "\n")
+			f.model.mu.Unlock()
+			if wire != "" || strings.Contains(strings.Join(reviewProblem.Questions, " "), private[0].Value) {
+				t.Fatal("legacy review exposed private values or called the provider")
+			}
+			if locale == nlq.LanguageSpanish && !strings.HasPrefix(reviewProblem.Questions[0], "Revisa") {
+				t.Fatal("review guidance did not preserve locale")
+			}
+			// A legacy parameter/policy version is not itself a reason to block edits.
+			// With no unowned population, the same retained v6 proof upgrades normally.
+			clear := legacy
+			clear.ID = readexec.Hash([]string{"retained-v6-reviewed-grouping", legacy.ID})[:32]
+			clear.SQL, clear.Parameters = `SELECT id,sum(amount) AS revenue FROM analytics.sales GROUP BY id ORDER BY id`, nil
+			clear.Analytical = &readexec.AnalyticalReceipt{Version: contract.Version, Scope: readexec.AnalyticalGrainScope, Contract: readexec.Hash(contract), Query: readexec.AnalyticalQueryDigest(clear.SQL, nil), Metrics: []string{contract.Metrics[0].ID}, Grouping: contract.Grain.Dimensions}
+			if err := f.f.db.CreateQuery(ctx, sc, clear); err != nil {
+				t.Fatal(err)
+			}
+			f.model.mode.Store(phase18RawResponse(t, `SELECT active,sum(amount) AS revenue FROM analytics.sales GROUP BY active ORDER BY active`))
+			upgraded, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: clear.ID, QuestionRequest: nlqexec.QuestionRequest{Grouping: groupingState(f, "status")}})
+			if err != nil || upgraded.Analytical == nil || upgraded.Analytical.Version != readexec.AnalyticalGroupedPopulationsVersion {
+				t.Fatal("valid legacy grouping upgrade", err)
+			}
+			out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: upgraded.QueryID, Operation: upgraded.QueryID + "-run"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			groupingSums(t, out, "5", "30")
+			// Reviewed customer bindings are re-applied separately from grouping/SQL.
+			q := f.question("Revenue named sales by Record", nlq.LanguageEnglish)
+			pending := f.preflight(t, q)
+			q.ClarificationQuery = pending.QueryID
+			q.AnswerContext = pending.Route.AnswerContext
+			q.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
+			f.model.mode.Store(phase18RawResponse(t, `SELECT id,sum(amount) AS revenue FROM analytics.sales GROUP BY id ORDER BY id`))
+			parent, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
+			if err != nil {
+				t.Fatal("owned parent", err)
+			}
+			f.model.mode.Store(phase18RawResponse(t, `SELECT active,sum(amount) AS revenue FROM analytics.sales GROUP BY active ORDER BY active`))
+			owned, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: parent.QueryID, QuestionRequest: nlqexec.QuestionRequest{Grouping: groupingState(f, "status")}})
+			if err != nil || owned.Bindings == nil {
+				t.Fatal("owned filters/grouping", err)
+			}
+			out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: owned.QueryID, Operation: owned.QueryID + "-run"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			groupingSums(t, out, "5", "10")
+			// An unresolved preflight with an explicit record grouping must not force
+			// that old set over a new reviewed status-group phrase during answer/refine.
+			q = f.question("Revenue named sales by Record", nlq.LanguageEnglish)
+			q.Grouping = groupingState(f, "record")
+			pending = f.preflight(t, q)
+			sc, _ = store.NewScope(f.e.Tenant(), f.e.User())
+			pendingRecord, err := f.f.db.ReadQuery(ctx, sc, pending.QueryID)
+			if err != nil || len(pendingRecord.RelationScope) != 0 || pendingRecord.SQL != "" {
+				t.Fatal("pending form unexpectedly contains executable scope", err)
+			}
+			originalPending := nlqexec.QueryLineageDigest(pendingRecord)
+			beforeCalls := f.model.requests.Load()
+			if _, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: pending.QueryID, Operation: pending.QueryID + "-must-not-run"}); !errors.Is(err, nlqexec.ErrNoPlan) || f.model.requests.Load() != beforeCalls {
+				t.Fatal("unplanned form executed or generated SQL", err)
+			}
+			// A new grouping cannot borrow the original form through the stateless
+			// Plan submission; only authorized Refine may create the changed child.
+			changed := q
+			changed.ClarificationQuery, changed.AnswerContext = pending.QueryID, pending.Route.AnswerContext
+			changed.Question = "Revenue named sales by Status"
+			changed.Answers = []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}
+			if _, err = f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: changed}); err == nil || f.model.requests.Load() != beforeCalls {
+				t.Fatal("changed question borrowed the original preflight", err)
+			}
+			f.query, _ = newPhase18Service(t, f.phase17Fixture)
+			resumed, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: pending.QueryID, QuestionRequest: nlqexec.QuestionRequest{Question: "Revenue named sales by Status", Answers: []semantics.ClarificationAnswer{f.answer(t, "customer", cw01Text("primero"))}}})
+			if err != nil || resumed.Route.Request.Grouping == nil || len(resumed.Route.Request.Grouping.Keys) != 1 || resumed.Route.Request.Grouping.Keys[0].Dimension != "status" || resumed.Bindings == nil {
+				t.Fatal("pending answer/refine retained obsolete group", err)
+			}
+			out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: resumed.QueryID, Operation: resumed.QueryID + "-run"})
+			if err != nil {
+				t.Fatal("pending grouped result", err)
+			}
+			groupingSums(t, out, "5", "10")
+			unchanged, err := f.f.db.ReadQuery(ctx, sc, pending.QueryID)
+			if err != nil || nlqexec.QueryLineageDigest(unchanged) != originalPending {
+				t.Fatal("refining the pending grouping mutated its source form", err)
+			}
+		})
 	}
 }
 

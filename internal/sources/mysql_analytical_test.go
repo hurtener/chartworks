@@ -24,72 +24,8 @@ import (
 // TestSQLRecoveryMySQLAnalyticalLocal uses the real source adapter, catalog,
 // native EXPLAIN and plan-only execution. Only repository persistence is in memory.
 func TestSQLRecoveryMySQLAnalyticalLocal(t *testing.T) {
-	adminDSN := os.Getenv("CHARTWORKS_TEST_MYSQL_DSN")
-	if adminDSN == "" {
-		t.Skip("CHARTWORKS_TEST_MYSQL_DSN is not set")
-	}
-	cfg, err := mysql.ParseDSN(adminDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var nonce [8]byte
-	if _, err = rand.Read(nonce[:]); err != nil {
-		t.Fatal(err)
-	}
-	name := "cw_analytical_" + hex.EncodeToString(nonce[:])
-	admin, err := sql.Open("mysql", adminDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		for _, s := range []string{"DROP DATABASE IF EXISTS " + name, "DROP USER IF EXISTS '" + name + "'@'%'"} {
-			if _, e := admin.ExecContext(ctx, s); e != nil {
-				t.Errorf("synthetic cleanup: %v", e)
-			}
-		}
-		if e := admin.Close(); e != nil {
-			t.Error(e)
-		}
-	})
-	for _, s := range []string{
-		"CREATE DATABASE " + name,
-		"CREATE TABLE " + name + ".sales(id BIGINT PRIMARY KEY,amount DECIMAL(20,2),category VARCHAR(20) NOT NULL)",
-		"INSERT INTO " + name + ".sales VALUES(1,10,'A'),(2,10,'A'),(3,30,'B'),(4,NULL,'B')",
-		"CREATE USER '" + name + "'@'%' IDENTIFIED BY 'SYNTHETIC_Analytical_Password9!'",
-		"GRANT SELECT ON " + name + ".* TO '" + name + "'@'%'",
-	} {
-		if _, err = admin.ExecContext(t.Context(), s); err != nil {
-			t.Fatal("synthetic setup", err)
-		}
-	}
-	cfg.User, cfg.Passwd, cfg.DBName = name, "SYNTHETIC_Analytical_Password9!", name
-	settings := config.DefaultSources()
-	settings.Enabled = true
-	settings.Connections = []config.SourceConnection{{Dialect: "mysql", AllowInsecureLocal: true, Tenant: "tenant", ID: "warehouse", Version: "v1", ReadDSN: "env:MYSQL_ANALYTICAL_DSN", Relations: []config.SourceRelation{{Schema: name, Name: "sales", Columns: []string{"id", "amount", "category"}}}}}
-	service, err := New(&cloudMemoryRepository{records: map[string]Record{}}, settings, func(k string) (string, bool) { return cfg.FormatDSN(), k == "MYSQL_ANALYTICAL_DSN" })
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(service.Close)
-	dataset := "ds:" + readexec.Hash([]string{"source", name, "sales"})[:32]
-	e, err := identity.FromVerified("tenant", "actor", "session", []string{"sources.write", "sources.read", "sources.query", "cw.tenant.write:tenant", "cw.source.read:source", "cw.source.write:source", "cw.source.query:source", "cw.execution_context.use:source:v1", "cw.dataset.query:" + dataset}, time.Now().Add(time.Hour), time.Now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, err := service.Create(t.Context(), e, CreateRequest{ID: "source", Name: "Synthetic analytical source", Connection: "warehouse"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	binding, err := service.Binding(t.Context(), e, source.ID, source.ContextID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	validator, err := readexec.NewValidator(service, config.DefaultReadValidation())
-	if err != nil {
-		t.Fatal(err)
-	}
+	fixture := newMySQLAnalyticalFixture(t)
+	service, e, binding, dataset, name, validator := fixture.service, fixture.envelope, fixture.binding, fixture.dataset, fixture.schema, fixture.validator
 	measure := func(op, column string) readexec.AnalyticalExpression {
 		return readexec.AnalyticalExpression{Op: op, Column: column}
 	}
@@ -103,6 +39,8 @@ func TestSQLRecoveryMySQLAnalyticalLocal(t *testing.T) {
 	}{
 		{"sum", "sum(amount)", measure("sum", "amount"), "50"},
 		{"avg", "avg(amount)", measure("avg", "amount"), "16.666667"},
+		{"avg_integral_cast", "avg(CAST(id AS DECIMAL(38,10)))", measure("avg", "id"), "2.5"},
+		{"signed_constant", "sum(amount)/-2", readexec.AnalyticalExpression{Op: "/", Args: []readexec.AnalyticalExpression{measure("sum", "amount"), {Op: "number", Value: "-2"}}}, "-25"},
 		{"count", "count(id)", measure("count", "id"), "4"},
 		{"distinct_count", "count(DISTINCT amount)", measure("distinct_count", "amount"), "2"},
 		{"ratio_case_guard", "CASE WHEN count(id)=0 THEN NULL ELSE sum(amount)/count(id) END", ratio, "12.5"},
@@ -111,7 +49,7 @@ func TestSQLRecoveryMySQLAnalyticalLocal(t *testing.T) {
 	for i, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			statement := "SELECT " + tc.projection + " AS value FROM " + name + ".sales"
-			plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: source.ID, Context: source.ContextID, SQL: statement})
+			plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: binding.Source, Context: binding.Context, SQL: statement})
 			if err != nil {
 				t.Fatal("native validation", err)
 			}
@@ -163,8 +101,8 @@ func TestSQLRecoveryMySQLAnalyticalLocal(t *testing.T) {
 		for _, tc := range []struct {
 			suffix string
 			pass   bool
-		}{{"ORDER BY sum(amount) DESC LIMIT 1", true}, {"ORDER BY sum(amount) ASC LIMIT 1", false}, {"ORDER BY sum(amount) DESC LIMIT 2", false}, {"", false}} {
-			plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: source.ID, Context: source.ContextID, SQL: "SELECT category,sum(amount) AS revenue FROM " + name + ".sales GROUP BY category " + tc.suffix})
+		}{{"ORDER BY sum(amount) DESC LIMIT 1", true}, {"ORDER BY revenue DESC LIMIT 1", true}, {"ORDER BY sum(amount) ASC LIMIT 1", false}, {"ORDER BY sum(amount) DESC LIMIT 2", false}, {"", false}} {
+			plan, err := validator.Validate(t.Context(), e, readexec.Request{Source: binding.Source, Context: binding.Context, SQL: "SELECT category,sum(amount) AS revenue FROM " + name + ".sales GROUP BY category " + tc.suffix})
 			if err != nil {
 				t.Fatal("native validation", err)
 			}
@@ -173,11 +111,100 @@ func TestSQLRecoveryMySQLAnalyticalLocal(t *testing.T) {
 				t.Fatalf("order/limit pass=%v: %v", tc.pass, err)
 			}
 			if tc.pass {
-				result, err := service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: 10 * time.Second, CancelGrace: time.Second, PlannerCost: 1e6}, "ffffffffffffffffffffffffffffffff", &cloudObserverCapture{})
+				result, err := service.ExecuteRead(t.Context(), e, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: 10 * time.Second, CancelGrace: time.Second, PlannerCost: 1e6}, readexec.Hash(tc.suffix)[:32], &cloudObserverCapture{})
 				if err != nil || len(result.Result.Rows) != 1 || string(result.Result.Rows[0][0]) != `"B"` {
 					t.Fatalf("ordered limited native result: %v %#v", err, result.Result.Rows)
 				}
 			}
 		}
 	})
+}
+
+type mysqlAnalyticalFixture struct {
+	service         *Service
+	envelope        identity.Envelope
+	binding         readexec.Binding
+	dataset, schema string
+	admin           *sql.DB
+	validator       *readexec.Validator
+}
+
+func newMySQLAnalyticalFixture(t *testing.T, timezones ...string) mysqlAnalyticalFixture {
+	t.Helper()
+	adminDSN := os.Getenv("CHARTWORKS_TEST_MYSQL_DSN")
+	if adminDSN == "" {
+		t.Skip("CHARTWORKS_TEST_MYSQL_DSN is not set")
+	}
+	cfg, err := mysql.ParseDSN(adminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nonce [8]byte
+	if _, err = rand.Read(nonce[:]); err != nil {
+		t.Fatal(err)
+	}
+	name := "cw_analytical_" + hex.EncodeToString(nonce[:])
+	admin, err := sql.Open("mysql", adminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		for _, s := range []string{"DROP DATABASE IF EXISTS " + name, "DROP USER IF EXISTS '" + name + "'@'%'"} {
+			if _, e := admin.ExecContext(ctx, s); e != nil {
+				t.Errorf("synthetic cleanup: %v", e)
+			}
+		}
+		if e := admin.Close(); e != nil {
+			t.Error(e)
+		}
+	})
+	for _, s := range []string{
+		"CREATE DATABASE " + name,
+		"CREATE TABLE " + name + ".sales(id BIGINT PRIMARY KEY,amount DECIMAL(20,2),category VARCHAR(20) NOT NULL,created_at DATETIME(6),created_timestamp TIMESTAMP(6) NULL)",
+		"CREATE TABLE " + name + ".items(id BIGINT PRIMARY KEY,quantity DECIMAL(20,2))",
+		"INSERT INTO " + name + ".items VALUES(1,3),(2,4)",
+		"INSERT INTO " + name + ".sales(id,amount,category) VALUES(1,10,'A'),(2,10,'A'),(3,30,'B'),(4,NULL,'B')",
+		"CREATE USER '" + name + "'@'%' IDENTIFIED BY 'SYNTHETIC_Analytical_Password9!'",
+		"GRANT SELECT ON " + name + ".* TO '" + name + "'@'%'",
+	} {
+		if _, err = admin.ExecContext(t.Context(), s); err != nil {
+			t.Fatal("synthetic setup", err)
+		}
+	}
+	cfg.User, cfg.Passwd, cfg.DBName = name, "SYNTHETIC_Analytical_Password9!", name
+	if len(timezones) > 0 {
+		if cfg.Params == nil {
+			cfg.Params = map[string]string{}
+		}
+		cfg.Params["time_zone"] = "'" + timezones[0] + "'"
+	}
+	settings := config.DefaultSources()
+	settings.Enabled = true
+	settings.Connections = []config.SourceConnection{{Dialect: "mysql", AllowInsecureLocal: true, Tenant: "tenant", ID: "warehouse", Version: "v1", ReadDSN: "env:MYSQL_ANALYTICAL_DSN", Relations: []config.SourceRelation{{Schema: name, Name: "sales", Columns: []string{"id", "amount", "category", "created_at", "created_timestamp"}}, {Schema: name, Name: "items", Columns: []string{"id", "quantity"}}}}}
+	service, err := New(&cloudMemoryRepository{records: map[string]Record{}}, settings, func(k string) (string, bool) { return cfg.FormatDSN(), k == "MYSQL_ANALYTICAL_DSN" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(service.Close)
+	dataset := "ds:" + readexec.Hash([]string{"source", name, "sales"})[:32]
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"sources.write", "sources.read", "sources.query", "cw.tenant.write:tenant", "cw.source.read:source", "cw.source.write:source", "cw.source.query:source", "cw.execution_context.use:source:v1", "cw.dataset.query:" + dataset, "cw.dataset.query:ds:" + readexec.Hash([]string{"source", name, "items"})[:32]}, time.Now().Add(time.Hour), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := service.Create(t.Context(), e, CreateRequest{ID: "source", Name: "Synthetic analytical source", Connection: "warehouse"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := service.Binding(t.Context(), e, source.ID, source.ContextID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validator, err := readexec.NewValidator(service, config.DefaultReadValidation())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return mysqlAnalyticalFixture{service: service, envelope: e, binding: binding, dataset: dataset, schema: name, admin: admin, validator: validator}
 }

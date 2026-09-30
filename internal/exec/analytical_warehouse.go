@@ -31,6 +31,10 @@ type warehouseAnalyticalNormalizer struct {
 	ctx               context.Context
 	binding           Binding
 	nodes, parameters int
+	aliases           map[string]string
+	sources           map[string]bool
+	ctes              map[string]bool
+	queryDepth        int
 }
 
 func warehouseEmpty(v any) bool {
@@ -92,10 +96,65 @@ func (n *warehouseAnalyticalNormalizer) unsupported() (map[string]any, error) {
 }
 func (n *warehouseAnalyticalNormalizer) selectNode(root map[string]any) (map[string]any, error) {
 	s := object(root["select"])
-	if len(root) != 1 || !warehouseAnalyticalFields(s, "expressions", "from", "joins", "where_clause", "group_by", "having", "order_by", "limit", "offset", "fetch", "top") {
+	if len(root) != 1 || !warehouseAnalyticalFields(s, "expressions", "from", "joins", "where_clause", "group_by", "having", "order_by", "limit", "offset", "fetch", "top", "with") {
 		return n.unsupported()
 	}
+	n.queryDepth++
+	defer func() { n.queryDepth-- }()
+	if n.queryDepth > 8 {
+		return nil, ErrLimit
+	}
+	oldCTEs := n.ctes
+	n.ctes = map[string]bool{}
+	for name, present := range oldCTEs {
+		n.ctes[name] = present
+	}
+	defer func() { n.ctes = oldCTEs }()
+	var ctes []any
+	if with := object(s["with"]); with != nil {
+		if !warehouseAnalyticalFields(with, "ctes") || len(array(with["ctes"])) > 4 {
+			return n.unsupported()
+		}
+		for _, raw := range array(with["ctes"]) {
+			cte := object(raw)
+			name := text(object(cte["alias"])["name"])
+			if name == "" || n.ctes[name] || !warehouseAnalyticalFields(cte, "alias", "this", "alias_first") {
+				return n.unsupported()
+			}
+			n.ctes[name] = true
+		}
+		for _, raw := range array(with["ctes"]) {
+			cte := object(raw)
+			q, err := n.selectNode(object(cte["this"]))
+			if err != nil {
+				return nil, err
+			}
+			ctes = append(ctes, map[string]any{"CommonTableExpr": map[string]any{"ctename": text(object(cte["alias"])["name"]), "ctequery": map[string]any{"SelectStmt": q}, "ctematerialized": "CTEMaterializeDefault"}})
+		}
+	}
+	oldAliases, oldSources := n.aliases, n.sources
+	n.aliases, n.sources = map[string]string{}, map[string]bool{}
+	defer func() { n.aliases, n.sources = oldAliases, oldSources }()
+	// Source coordinates are collected without visiting expression parameters.
+	for _, raw := range array(object(s["from"])["expressions"]) {
+		if table := object(object(raw)["table"]); table != nil && !n.ctes[text(object(table["name"])["name"])] {
+			if _, err := n.table(raw); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, raw := range array(s["joins"]) {
+		node := object(raw)["this"]
+		if table := object(object(node)["table"]); table != nil && !n.ctes[text(object(table["name"])["name"])] {
+			if _, err := n.table(node); err != nil {
+				return nil, err
+			}
+		}
+	}
 	q := map[string]any{"op": "SETOP_NONE"}
+	if len(ctes) > 0 {
+		q["withClause"] = map[string]any{"ctes": ctes}
+	}
 	// TOP precedes every positional expression in its source grammar.
 	if top := object(s["top"]); top != nil {
 		if n.binding.Dialect != "sqlserver" || !warehouseAnalyticalFields(top, "this", "parenthesized") {
@@ -131,7 +190,7 @@ func (n *warehouseAnalyticalNormalizer) selectNode(root map[string]any) (map[str
 	}
 	q["targetList"] = targets
 	from := object(s["from"])
-	if !warehouseAnalyticalFields(from, "expressions") || len(array(from["expressions"])) != 1 {
+	if !warehouseAnalyticalFields(from, "expressions") || len(array(from["expressions"])) < 1 || len(array(from["expressions"])) > 4 || len(array(from["expressions"])) > 1 && len(array(s["joins"])) > 0 {
 		return n.unsupported()
 	}
 	relation, err := n.table(array(from["expressions"])[0])
@@ -161,7 +220,15 @@ func (n *warehouseAnalyticalNormalizer) selectNode(root map[string]any) (map[str
 		}
 		relation = map[string]any{"JoinExpr": join}
 	}
-	q["fromClause"] = []any{relation}
+	relations := []any{relation}
+	for _, raw := range array(from["expressions"])[1:] {
+		r, err := n.table(raw)
+		if err != nil {
+			return nil, err
+		}
+		relations = append(relations, r)
+	}
+	q["fromClause"] = relations
 	if w := object(s["where_clause"]); w != nil {
 		if !warehouseAnalyticalFields(w, "this") {
 			return n.unsupported()
@@ -282,6 +349,21 @@ func (n *warehouseAnalyticalNormalizer) selectNode(root map[string]any) (map[str
 	return q, nil
 }
 func (n *warehouseAnalyticalNormalizer) table(node any) (any, error) {
+	if sq := object(object(node)["subquery"]); sq != nil {
+		if !warehouseAnalyticalFields(sq, "this", "alias") {
+			return n.unsupported()
+		}
+		name := text(object(sq["alias"])["name"])
+		if name == "" {
+			return n.unsupported()
+		}
+		q, err := n.selectNode(object(sq["this"]))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"RangeSubselect": map[string]any{"subquery": map[string]any{"SelectStmt": q}, "alias": map[string]any{"Alias": map[string]any{"aliasname": name}}}}, nil
+	}
+
 	t := object(object(node)["table"])
 	if !warehouseAnalyticalFields(t, "name", "schema", "catalog", "alias", "alias_explicit_as") {
 		return n.unsupported()
@@ -296,6 +378,13 @@ func (n *warehouseAnalyticalNormalizer) table(node any) (any, error) {
 	if catalog != "" {
 		coordinate = catalog + "." + coordinate
 	}
+	if schema == "" && catalog == "" && n.ctes[name] {
+		out := map[string]any{"relname": name, "inh": true}
+		if alias := object(t["alias"]); alias != nil {
+			out["alias"] = map[string]any{"Alias": map[string]any{"aliasname": text(alias["name"])}}
+		}
+		return map[string]any{"RangeVar": out}, nil
+	}
 	matches := 0
 	var physical Relation
 	for _, r := range n.binding.Relations {
@@ -306,6 +395,13 @@ func (n *warehouseAnalyticalNormalizer) table(node any) (any, error) {
 	}
 	if matches != 1 {
 		return nil, ErrBinding
+	}
+	if n.sources != nil {
+		n.sources[physical.ID] = true
+		n.aliases[physical.Name] = physical.ID
+		if alias := object(t["alias"]); alias != nil {
+			n.aliases[text(alias["name"])] = physical.ID
+		}
 	}
 	out := map[string]any{"schemaname": physical.Schema, "relname": physical.Name, "inh": true}
 	if alias := object(t["alias"]); alias != nil {
@@ -323,6 +419,9 @@ func (n *warehouseAnalyticalNormalizer) expr(node any, depth int) (any, error) {
 	}
 	if literal, ok := node.(string); ok && literal == "null" {
 		return map[string]any{"A_Const": map[string]any{"isnull": true}}, nil
+	}
+	if x, handled, err := n.mysqlQuarter(node, depth); handled {
+		return x, err
 	}
 	m := object(node)
 	if len(m) != 1 {
@@ -367,6 +466,9 @@ func (n *warehouseAnalyticalNormalizer) expr(node any, depth int) (any, error) {
 		}
 		switch text(b["literal_type"]) {
 		case "number":
+			if n.binding.Dialect == "bigquery" && strings.ContainsAny(text(b["value"]), ".eE") {
+				return n.unsupported()
+			}
 			return warehouseConst(text(b["value"]), false), nil
 		case "string":
 			return warehouseConst(text(b["value"]), true), nil
@@ -412,6 +514,16 @@ func (n *warehouseAnalyticalNormalizer) expr(node any, depth int) (any, error) {
 	case "neg":
 		if !warehouseAnalyticalFields(b, "this") {
 			return n.unsupported()
+		}
+		if lit := object(object(b["this"])["literal"]); lit != nil && text(lit["literal_type"]) == "number" {
+			value := text(lit["value"])
+			if n.binding.Dialect == "bigquery" && strings.ContainsAny(value, ".eE") {
+				return n.unsupported()
+			}
+			if _, ok := analyticalNumber(value); !ok {
+				return n.unsupported()
+			}
+			return warehouseConst("-"+value, false), nil
 		}
 		x, err := child(b["this"])
 		if err != nil {
@@ -503,8 +615,11 @@ func (n *warehouseAnalyticalNormalizer) expr(node any, depth int) (any, error) {
 
 func (n *warehouseAnalyticalNormalizer) function(m map[string]any, depth int) (any, error) {
 	name, args, b, ok := warehouseCall(m)
-	if !ok || !warehouseAnalyticalFields(b, "name", "original_name", "args", "this", "distinct", "star", "filter") {
+	if !ok || !warehouseAnalyticalFields(b, "name", "original_name", "args", "this", "expressions", "distinct", "star", "filter") {
 		return n.unsupported()
+	}
+	if x, handled, err := n.calendarFunction(name, args, b, depth); handled {
+		return x, err
 	}
 	var values []any
 	for _, arg := range args {
@@ -513,6 +628,12 @@ func (n *warehouseAnalyticalNormalizer) function(m map[string]any, depth int) (a
 			return nil, err
 		}
 		values = append(values, x)
+	}
+	if name == "coalesce" {
+		if len(values) < 2 || len(values) > 8 || truth(b["distinct"]) || b["filter"] != nil {
+			return n.unsupported()
+		}
+		return map[string]any{"CoalesceExpr": map[string]any{"args": values}}, nil
 	}
 	if name == "nullif" {
 		if len(values) != 2 || truth(b["distinct"]) {
@@ -548,26 +669,26 @@ func (n *warehouseAnalyticalNormalizer) cast(b map[string]any, depth int) (any, 
 	if !warehouseAnalyticalFields(b, "this", "to", "double_colon_syntax") {
 		return n.unsupported()
 	}
+	if x, handled, err := n.mysqlCalendarCast(b, depth); handled {
+		return x, err
+	}
 	typ := object(b["to"])
 	name := text(typ["data_type"])
 	target := ""
 	switch name {
 	case "decimal", "numeric", "big_numeric":
-		// Warehouse decimal casts have finite/default scales. Only a known integral
-		// count can be widened here without silently rounding a reviewed decimal.
-		call, args, _, ok := warehouseCall(object(b["this"]))
-		_ = args
-		if !ok || call != "count" {
+		if !warehouseAnalyticalFields(typ, "data_type", "precision", "scale") {
 			return n.unsupported()
 		}
-		precision, _ := typ["precision"].(float64)
-		scale, _ := typ["scale"].(float64)
-		if n.binding.Dialect == "bigquery" && precision == 0 {
-			precision = 38
-			scale = 9
+		literal, ok, err := n.numericCast(typ, b["this"])
+		if err != nil {
+			return nil, err
 		}
-		if precision < 19 || scale < 0 || precision-scale < 19 {
+		if !ok {
 			return n.unsupported()
+		}
+		if literal != nil {
+			return literal, nil
 		}
 		target = "numeric"
 	case "date":
@@ -586,7 +707,19 @@ func (n *warehouseAnalyticalNormalizer) cast(b map[string]any, depth int) (any, 
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"TypeCast": map[string]any{"arg": x, "typeName": map[string]any{"TypeName": map[string]any{"names": warehouseNames(target)}}}}, nil
+	typeNode := map[string]any{"names": warehouseNames(target)}
+	// Precision changes can change a temporal bound. Retain explicit modifiers
+	// for population comparison rather than reducing DATE/TIME casts to a name.
+	if target != "numeric" {
+		if precision, present := typ["precision"]; present && precision != nil {
+			number, ok := precision.(float64)
+			if !ok || number < 0 || number > 9 || number != float64(int(number)) {
+				return n.unsupported()
+			}
+			typeNode["typmods"] = []any{warehouseConst(strconv.Itoa(int(number)), false)}
+		}
+	}
+	return map[string]any{"TypeCast": map[string]any{"arg": x, "typeName": map[string]any{"TypeName": typeNode}}}, nil
 }
 
 // This detached view records source-engine scalar semantics for the proof. It
@@ -610,7 +743,7 @@ func warehouseAnalyticalRelation(dialect string, r Relation) Relation {
 		case "timestamp":
 			if dialect == "bigquery" {
 				c.NativeType = "timestamptz"
-			} else if dialect == "mysql" || dialect == "databricks" || dialect == "sqlserver" {
+			} else if dialect == "mysql" || dialect == "databricks" || dialect == "sqlserver" || dialect == "snowflake" {
 				c.NativeType = "unproved_session_timestamp"
 			} else {
 				c.NativeType = "timestamp"

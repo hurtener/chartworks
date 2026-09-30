@@ -10,16 +10,23 @@ import (
 // Call evidence is extracted by the same pinned warehouse grammar. This pass
 // supplements, and never replaces, positive statement/dependency inspection.
 func warehouseFunctionSignatures(ctx context.Context, sql, dialect, native string, nodes, depth int) error {
+	_, err := warehouseSignatureEvidence(ctx, sql, dialect, native, nodes, depth)
+	return err
+}
+
+func warehouseSignatureEvidence(ctx context.Context, sql, dialect, native string, nodes, depth int) (warehouseCallEvidence, error) {
+	evidence := warehouseCallEvidence{}
 	root, err := signatureparser.Inspect(ctx, sql, native, nodes, depth)
 	if err != nil {
 		if err == context.Canceled || err == context.DeadlineExceeded {
-			return err
+			return evidence, err
 		}
-		return ErrUnsupported
+		return evidence, ErrUnsupported
 	}
+	evidence.tree = root
 	visited := 0
-	var walk func(any, bool, bool) error
-	walk = func(v any, over, within bool) error {
+	var walk func(any, bool) error
+	walk = func(v any, over bool) error {
 		visited++
 		if visited > 100000 {
 			return ErrUnsupported
@@ -29,7 +36,7 @@ func warehouseFunctionSignatures(ctx context.Context, sql, dialect, native strin
 		}
 		if list, ok := v.([]any); ok {
 			for _, item := range list {
-				if err := walk(item, false, false); err != nil {
+				if err := walk(item, false); err != nil {
 					return err
 				}
 			}
@@ -44,12 +51,12 @@ func warehouseFunctionSignatures(ctx context.Context, sql, dialect, native strin
 				if w["this"] == nil || w["over"] == nil || w["keep"] != nil {
 					return ErrUnsupported
 				}
-				if err := walk(w["this"], true, false); err != nil {
+				if err := walk(w["this"], true); err != nil {
 					return err
 				}
-				return walk(w["over"], false, false)
+				return walk(w["over"], false)
 			}
-			if w := object(m["within_group"]); w != nil {
+			if object(m["within_group"]) != nil {
 				return ErrUnsupported
 			}
 			name, args, body, call := warehouseCall(m)
@@ -71,26 +78,53 @@ func warehouseFunctionSignatures(ctx context.Context, sql, dialect, native strin
 						types = nil
 						break
 					}
+					if form, unit := sqlpolicy.CalendarArgument(dialect, name, i); unit {
+						if _, ok := warehouseCalendarUnit(dialect, name, i, arg); !ok {
+							return ErrUnsupported
+						}
+						types[i] = "unit-" + form
+						continue
+					}
 					types[i] = warehouseSignatureType(arg, dialect)
 					if literal := object(object(arg)["literal"]); text(literal["literal_type"]) == "string" && !sqlpolicy.AllowsLiteralArgument(dialect, name, i, text(literal["value"])) {
 						return ErrUnsupported
 					}
 				}
-				if !sqlpolicy.AllowsCall(dialect, name, types, star, over, truth(body["distinct"]), body["filter"] != nil, len(array(body["order_by"])) > 0, within) {
+				if !sqlpolicy.AllowsCall(dialect, name, types, star, over, truth(body["distinct"]), body["filter"] != nil, len(array(body["order_by"])) > 0, false) {
 					return ErrUnsupported
 				}
+				// Traverse every ordinary argument and modifier. Only the exact validated
+				// unit occurrence is omitted; equal names elsewhere are still collected.
+				for i, arg := range args {
+					if _, unit := sqlpolicy.CalendarArgument(dialect, name, i); unit {
+						continue
+					}
+					if err := walk(arg, false); err != nil {
+						return err
+					}
+				}
+				for key, child := range body {
+					switch key {
+					case "args", "this", "expression", "expressions", "decimals", "field":
+						continue
+					}
+					if err := walk(child, false); err != nil {
+						return err
+					}
+				}
+				return nil
 			} else if over {
 				return ErrUnsupported
 			}
 		}
 		for _, child := range m {
-			if err := walk(child, false, false); err != nil {
+			if err := walk(child, false); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	return walk(root, false, false)
+	return evidence, walk(root, false)
 }
 
 // Every admitted function node has an explicit argument topology. Unknown
@@ -132,6 +166,8 @@ func warehouseCall(m map[string]any) (string, []any, map[string]any, bool) {
 			if b["expression"] != nil {
 				args = append(args, b["expression"])
 			}
+		case "extract":
+			args = []any{map[string]any{"calendar_unit": strings.ToLower(text(b["field"]))}, b["this"]}
 		case "coalesce":
 			args = array(b["expressions"])
 		default:
@@ -154,6 +190,9 @@ func warehouseSignatureType(v any, dialect string) string {
 		switch text(lit["literal_type"]) {
 		case "number":
 			if strings.ContainsAny(text(lit["value"]), ".eE") {
+				if dialect == "bigquery" || strings.ContainsAny(text(lit["value"]), "eE") {
+					return "float"
+				}
 				return "numeric"
 			}
 			return "integer"
@@ -171,7 +210,7 @@ func warehouseSignatureType(v any, dialect string) string {
 			return "integer"
 		case "float", "double":
 			return "float"
-		case "decimal":
+		case "decimal", "numeric", "big_numeric":
 			return "numeric"
 		case "char", "var_char", "string", "text", "text_with_length", "n_char", "n_var_char":
 			return "text"
@@ -189,16 +228,11 @@ func warehouseSignatureType(v any, dialect string) string {
 		if dialect == "sqlserver" && name == "len" {
 			name = "length"
 		}
-		s, ok := sqlpolicy.FunctionSignature(dialect, name)
-		if !ok {
-			return "unknown"
+		types := make([]string, len(args))
+		for i, arg := range args {
+			types[i] = warehouseSignatureType(arg, dialect)
 		}
-		if s.Result == "same" && len(args) > 0 {
-			return warehouseSignatureType(args[0], dialect)
-		}
-		if s.Result != "same" && !strings.Contains(s.Result, "|") {
-			return s.Result
-		}
+		return sqlpolicy.FunctionResultType(dialect, name, types)
 	}
 	return "unknown"
 }

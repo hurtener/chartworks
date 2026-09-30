@@ -380,6 +380,9 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 			return term, err
 		}
 	}
+	if c := object(root["CoalesceExpr"]); c != nil && a.reviewedNullPolicy {
+		return a.coalesceTerm(c, depth)
+	}
 	if c := object(root["CaseExpr"]); c != nil && a.expandedExpressions {
 		return a.caseRatioTerm(c, depth)
 	}

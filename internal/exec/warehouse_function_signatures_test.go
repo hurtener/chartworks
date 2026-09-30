@@ -30,7 +30,7 @@ func TestWarehouseFunctionSignaturesNative(t *testing.T) {
 				positive = append(positive, "round(id)", "length('abc')")
 			}
 			if dialect == "bigquery" {
-				positive = append(positive, "round(CAST(1.25 AS DECIMAL(10,2)),1,'ROUND_HALF_EVEN')")
+				positive = append(positive, "round(CAST(1.25 AS DECIMAL(10,2)),1,'ROUND_HALF_EVEN')", "round(coalesce(1,CAST(1.25 AS DECIMAL(10,2))),1,'ROUND_HALF_EVEN')")
 			}
 			if dialect == "snowflake" {
 				positive = append(positive, "round(CAST(1.25 AS DECIMAL(10,2)),1,'HALF_TO_EVEN')")
@@ -50,7 +50,7 @@ func TestWarehouseFunctionSignaturesNative(t *testing.T) {
 				negative = append(negative, "sum(id) FILTER (WHERE id > 0)")
 			}
 			if dialect == "bigquery" {
-				negative = append(negative, "abs(CAST('abc' AS STRING))", "lower(1)")
+				negative = append(negative, "abs(CAST('abc' AS STRING))", "lower(1)", "round(1.25,1,'ROUND_HALF_EVEN')", "round(avg(1),1,'ROUND_HALF_EVEN')")
 			}
 			if dialect == "sqlserver" {
 				negative = append(negative, "round(id)")

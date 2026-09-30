@@ -9,6 +9,9 @@ import (
 // Version identifies the bounded value-free learned-example contract.
 const Version = "example-parameters-v1"
 
+// DomainVersion adds server-proved SQL input domains without historical values.
+const DomainVersion = "example-parameters-v2"
+
 // MaxSlots matches the native execution parameter limit.
 const MaxSlots = 64
 
@@ -20,6 +23,7 @@ var ErrInvalid = errors.New("learning: invalid example parameter schema")
 type Slot struct {
 	Position int    `json:"position"`
 	Kind     string `json:"kind"`
+	Domain   string `json:"domain,omitempty"`
 }
 
 // Schema is optional on historical parameter-free examples. Versioned examples
@@ -49,12 +53,24 @@ func (s *Schema) Validate() error {
 	if s == nil {
 		return nil
 	}
-	if s.Version != Version || len(s.Slots) < 1 || len(s.Slots) > MaxSlots {
+	if (s.Version != Version && s.Version != DomainVersion) || len(s.Slots) < 1 || len(s.Slots) > MaxSlots {
 		return ErrInvalid
 	}
+	hasDomain := false
 	for i, slot := range s.Slots {
 		if slot.Position != i+1 {
 			return ErrInvalid
+		}
+		if slot.Domain != "" {
+			if s.Version != DomainVersion || slot.Kind != "text" {
+				return ErrInvalid
+			}
+			switch slot.Domain {
+			case "date", "timestamp", "timestamptz", "uuid", "time", "timetz", "interval", "json", "jsonb":
+			default:
+				return ErrInvalid
+			}
+			hasDomain = true
 		}
 		switch slot.Kind {
 		case "null", "text", "boolean", "integer", "number":
@@ -62,7 +78,29 @@ func (s *Schema) Validate() error {
 			return ErrInvalid
 		}
 	}
+	if s.Version == DomainVersion && !hasDomain {
+		return ErrInvalid
+	}
 	return nil
+}
+
+// WithDomains copies a valid v1 schema and adds independently proved domains.
+// An all-empty proof preserves the historical schema and digest version.
+func (s *Schema) WithDomains(domains []string) (*Schema, error) {
+	if s == nil || s.Version != Version || s.Validate() != nil || len(domains) != len(s.Slots) {
+		return nil, ErrInvalid
+	}
+	out := s.Clone()
+	for i, domain := range domains {
+		out.Slots[i].Domain = domain
+		if domain != "" {
+			out.Version = DomainVersion
+		}
+	}
+	if err := out.Validate(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Clone detaches a trusted schema, preserving legacy nil.
@@ -91,6 +129,24 @@ func (s *Schema) ProbeValues() ([]string, error) {
 		switch slot.Kind {
 		case "text":
 			values[i] = "example"
+			switch slot.Domain {
+			case "date":
+				values[i] = "2000-01-02"
+			case "timestamp":
+				values[i] = "2000-01-02 03:04:05"
+			case "timestamptz":
+				values[i] = "2000-01-02T03:04:05Z"
+			case "uuid":
+				values[i] = "00000000-0000-4000-8000-000000000001"
+			case "time":
+				values[i] = "03:04:05"
+			case "timetz":
+				values[i] = "03:04:05+00:00"
+			case "interval":
+				values[i] = "1 day"
+			case "json", "jsonb":
+				values[i] = "{}"
+			}
 		case "integer", "number":
 			values[i] = "1"
 		case "boolean":

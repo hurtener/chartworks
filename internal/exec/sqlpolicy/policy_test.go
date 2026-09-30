@@ -28,7 +28,7 @@ func TestSQLRecoveryVocabularyPreservesValidatorLists(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := strings.Fields(oldWarehouseFunctions)
+			want := strings.Fields(expectedWarehouseFunctions(dialect))
 			if dialect == "postgres" {
 				want = strings.Fields(oldPostgresFunctions)
 			}
@@ -192,7 +192,7 @@ func FuzzSQLVocabularyNames(f *testing.F) {
 		}
 		for _, dialect := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
 			got := AllowsFunction(dialect, []string{name})
-			want := strings.Fields(oldWarehouseFunctions)
+			want := strings.Fields(expectedWarehouseFunctions(dialect))
 			match := strings.ToLower(name)
 			if dialect == "postgres" {
 				want = strings.Fields(oldPostgresFunctions)
@@ -203,4 +203,19 @@ func FuzzSQLVocabularyNames(f *testing.F) {
 			}
 		}
 	})
+}
+
+func expectedWarehouseFunctions(dialect string) string {
+	extra := ""
+	switch dialect {
+	case "mysql":
+		extra = " date_format extract makedate"
+	case "sqlserver":
+		extra = " datetrunc"
+	case "bigquery":
+		extra = " date_trunc datetime_trunc timestamp_trunc"
+	case "snowflake", "databricks":
+		extra = " date_trunc"
+	}
+	return oldWarehouseFunctions + extra
 }

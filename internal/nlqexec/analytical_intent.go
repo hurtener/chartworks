@@ -29,7 +29,7 @@ func compileAnalyticalIntent(ctx context.Context, a admission, c exec.Analytical
 	var choices []choice
 	for i, pick := range a.route.Selection.Topics {
 		def := a.publications[i].Definition
-		compiler := analyticalCompiler{joins: c.Version == exec.AnalyticalIntentVersion, ctx: ctx, definition: def, binding: a.binding, dataset: c.Dataset}
+		compiler := analyticalCompiler{joins: c.Version == exec.AnalyticalIntentVersion || c.Version == exec.AnalyticalGroupedPopulationsVersion, ctx: ctx, definition: def, binding: a.binding, dataset: c.Dataset}
 		for _, root := range pick.Roots {
 			if err := ctx.Err(); err != nil {
 				return nil, a, err
@@ -64,7 +64,7 @@ func compileAnalyticalIntent(ctx context.Context, a admission, c exec.Analytical
 						for _, grain := range d.Temporal.Grains {
 							names := map[semantics.TimeGrain][]string{"day": {"day of", "día de", "dia de"}, "month": {"month of", "mes de"}, "quarter": {"quarter of", "trimestre de"}, "year": {"year of", "año de", "ano de"}}[grain]
 							bucket := exec.AnalyticalBucket{Column: col.SourceName, Grain: string(grain), Calendar: d.Temporal.Calendar}
-							if exec.AnalyticalCalendarKind(col.NativeType, col.Category) == "instant" {
+							if exec.AnalyticalCalendarKindForDialect(a.binding.Dialect, col.NativeType, col.Category) == "instant" {
 								bucket.Timezone = d.Temporal.Timezone
 							}
 							for _, name := range names {
@@ -207,6 +207,13 @@ func compileAnalyticalIntent(ctx context.Context, a admission, c exec.Analytical
 		o.Nulls = "last"
 		if o.Descending {
 			o.Nulls = "first"
+		}
+		switch a.binding.Dialect {
+		case "mysql", "sqlserver", "bigquery", "databricks":
+			o.Nulls = "first"
+			if o.Descending {
+				o.Nulls = "last"
+			}
 		}
 		if position+1 < len(words) && (words[position] == "nulls" || words[position] == "nulos") {
 			switch words[position+1] {

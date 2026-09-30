@@ -34,17 +34,18 @@ type PortableDataset struct {
 // session, lifecycle state, or authority fields are representable here. Free text
 // remains authoring content; this projection is not a natural-language sanitizer.
 type PortablePack struct {
-	SchemaVersion         int                    `json:"schema_version"`
-	Name                  string                 `json:"name"`
-	Description           string                 `json:"description"`
-	Datasets              []PortableDataset      `json:"datasets"`
-	Measures              []Measure              `json:"measures"`
-	Dimensions            []Dimension            `json:"dimensions"`
-	KPIs                  []KPI                  `json:"kpis"`
-	Joins                 []Join                 `json:"joins"`
-	RelationshipDecisions []RelationshipDecision `json:"relationship_decisions,omitempty"`
-	CanonicalEntities     []CanonicalEntity      `json:"canonical_entities"`
-	Unresolved            []UnresolvedSemantic   `json:"unresolved,omitempty"`
+	GroupedPopulation     *GroupedPopulationPolicy `json:"grouped_population,omitempty"`
+	SchemaVersion         int                      `json:"schema_version"`
+	Name                  string                   `json:"name"`
+	Description           string                   `json:"description"`
+	Datasets              []PortableDataset        `json:"datasets"`
+	Measures              []Measure                `json:"measures"`
+	Dimensions            []Dimension              `json:"dimensions"`
+	KPIs                  []KPI                    `json:"kpis"`
+	Joins                 []Join                   `json:"joins"`
+	RelationshipDecisions []RelationshipDecision   `json:"relationship_decisions,omitempty"`
+	CanonicalEntities     []CanonicalEntity        `json:"canonical_entities"`
+	Unresolved            []UnresolvedSemantic     `json:"unresolved,omitempty"`
 }
 
 // ExportColumnSlot maps a stable column ID to a neutral logical slot.
@@ -112,6 +113,7 @@ func ExportPortable(model Model, mapping []ExportDatasetSlots) (PortablePack, er
 	if err := remapColumns(&p, refs); err != nil {
 		return PortablePack{}, err
 	}
+	out.GroupedPopulation = p.GroupedPopulation
 	out.Measures, out.Dimensions, out.KPIs, out.Joins, out.RelationshipDecisions, out.CanonicalEntities, out.Unresolved = p.Measures, p.Dimensions, p.KPIs, p.Joins, p.RelationshipDecisions, p.CanonicalEntities, p.Unresolved
 	sort.Slice(out.Datasets, func(i, j int) bool { return out.Datasets[i].Slot < out.Datasets[j].Slot })
 	if _, err := portableDigest(out); err != nil {
@@ -222,13 +224,14 @@ func ImportDraftCandidate(input PortablePack, bindings DraftBindings) (DraftCand
 		p.Datasets = append(p.Datasets, bound)
 	}
 	// Clone the semantic collections before rewriting any supplied reference.
-	semantic := clonePack(TopicPack{Measures: input.Measures, Dimensions: input.Dimensions, KPIs: input.KPIs, Joins: input.Joins, RelationshipDecisions: input.RelationshipDecisions, CanonicalEntities: input.CanonicalEntities, Unresolved: input.Unresolved})
+	semantic := clonePack(TopicPack{GroupedPopulation: input.GroupedPopulation, Measures: input.Measures, Dimensions: input.Dimensions, KPIs: input.KPIs, Joins: input.Joins, RelationshipDecisions: input.RelationshipDecisions, CanonicalEntities: input.CanonicalEntities, Unresolved: input.Unresolved})
 	if err := remapColumns(&semantic, refs); err != nil {
 		return DraftCandidate{}, err
 	}
 	if _, err := portableDigest(input); err != nil {
 		return DraftCandidate{}, err
 	}
+	p.GroupedPopulation = semantic.GroupedPopulation
 	p.Measures, p.Dimensions, p.KPIs, p.Joins, p.RelationshipDecisions, p.CanonicalEntities, p.Unresolved = semantic.Measures, semantic.Dimensions, semantic.KPIs, semantic.Joins, semantic.RelationshipDecisions, semantic.CanonicalEntities, semantic.Unresolved
 	model, err := Compile(p)
 	if err != nil {
@@ -267,7 +270,7 @@ func portableBounds(p PortablePack) error {
 			return invalid(CodeLimit, "portable.canonical_entities")
 		}
 	}
-	return validateEntities(TopicPack{Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, RelationshipDecisions: p.RelationshipDecisions, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved})
+	return validateEntities(TopicPack{GroupedPopulation: p.GroupedPopulation, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, RelationshipDecisions: p.RelationshipDecisions, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved})
 }
 
 func portableDigest(p PortablePack) (string, error) {
@@ -296,6 +299,24 @@ func remapColumns(p *TopicPack, refs map[Reference]Reference) error {
 		}
 		*ref = mapped
 		return nil
+	}
+	if p.GroupedPopulation != nil {
+		for i, id := range p.GroupedPopulation.Datasets {
+			mapped := ""
+			for from, to := range refs {
+				if from.Dataset == id {
+					if mapped != "" && mapped != to.Dataset {
+						return invalid(CodeInvalidReference, "portable.grouped_population")
+					}
+					mapped = to.Dataset
+				}
+			}
+			if mapped == "" {
+				return invalid(CodeMissingReference, "portable.grouped_population")
+			}
+			p.GroupedPopulation.Datasets[i] = mapped
+		}
+		sort.Strings(p.GroupedPopulation.Datasets)
 	}
 	for i := range p.Measures {
 		if err := remap(&p.Measures[i].Field); err != nil {

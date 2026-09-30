@@ -22,7 +22,8 @@ suppress automatic learning while preserving feedback. This is literal-based
 protection, not general secret recognition or a license to export source data.
 
 Independent model slots retain only their canonical positions/kinds through the
-existing `example-parameters-v1` schema. Service-owned customer/numeric/Boolean
+existing `example-parameters-v1` schema, or separately proved value-free domains
+through [native-proved domains v2](parameter-domains-v2.md). Service-owned customer/numeric/Boolean
 filters and calendar endpoints never become model slots, example defaults or
 probe values. The next request computes those predicates afresh through its
 current reviewed route. Existing immutable source/context/topic/rule/template
@@ -54,6 +55,8 @@ the binder and native/analytical validators remain the enforcement boundary.
 ## Portability and deliberate exclusions
 
 Marked portable rows use version 3, whether or not independent model slots exist.
+A marked row with the new domain schema uses portable version 4; the same original
+policy and source origin remain bound to its full schema.
 The source origin, binding policy, exact SQL and any value-free slot schema travel
 together. Protected import reauthorizes and reroutes its current anchor, requires
 current owned constraints, dry-validates the base and creates a candidate requiring
@@ -65,9 +68,9 @@ BaseSQL. Its feedback is recorded but it does not automatically become this kind
 of template; explicit protected import supplies a newly reviewed unbound template.
 Reference-only selection or unsupported bases are not silently reclassified as
 owned-filter templates. Canonical model parameter kinds remain text/integer/number/
-Boolean/null; implicit type-dependent conversions that fail public probes remain
-unreviewable. This is not arbitrary parameter-domain inference or live engine
-qualification. Private/current source permissions are not relaxed for review,
+Boolean/null; additional text domains require the separate v2 native proof.
+Other type-dependent conversions that fail public probes remain unreviewable.
+This is not arbitrary parameter-domain inference or live engine qualification. Private/current source permissions are not relaxed for review,
 import, consumption or ordinary example listing.
 
 ## Required verification

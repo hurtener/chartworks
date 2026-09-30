@@ -6,13 +6,18 @@ import "strings"
 // mandatory for coercion, overload resolution, collation and engine-version rules.
 // Arguments use | for alternatives and ? for optional trailing arguments.
 type Signature struct {
-	RoundingModes   []string `json:"rounding_modes,omitempty"`
-	NativeCoercions bool     `json:"native_coercions,omitempty"`
-	SQLName         string   `json:"sql_name,omitempty"`
-	Arguments       []string `json:"arguments"`
-	Variadic        bool     `json:"variadic,omitempty"`
-	Kind            string   `json:"kind"`
-	Result          string   `json:"result"`
+	ResultByInput   map[string]string `json:"result_by_input,omitempty"`
+	UnitIndex       int               `json:"unit_index,omitempty"`
+	UnitForm        string            `json:"unit_form,omitempty"`
+	Units           []string          `json:"units,omitempty"`
+	Syntax          string            `json:"syntax,omitempty"`
+	RoundingModes   []string          `json:"rounding_modes,omitempty"`
+	NativeCoercions bool              `json:"native_coercions,omitempty"`
+	SQLName         string            `json:"sql_name,omitempty"`
+	Arguments       []string          `json:"arguments"`
+	Variadic        bool              `json:"variadic,omitempty"`
+	Kind            string            `json:"kind"`
+	Result          string            `json:"result"`
 }
 
 func FunctionSignature(dialect, name string) (Signature, bool) {
@@ -80,11 +85,46 @@ func FunctionSignature(dialect, name string) (Signature, bool) {
 	case "date_trunc":
 		s.Arguments = []string{"text", "temporal|interval", "text?"}
 		s.Result = "temporal|interval"
+		if dialect == "snowflake" || dialect == "databricks" {
+			s.Arguments = []string{"unit-string", "temporal"}
+			s.UnitForm = "string"
+			s.Result = "temporal"
+		}
+		if dialect == "bigquery" {
+			s.Arguments = []string{"temporal", "unit-keyword", "text?"}
+			s.UnitForm = "keyword"
+			s.UnitIndex = 1
+			s.Result = "temporal"
+		}
+	case "datetime_trunc", "timestamp_trunc":
+		s.Arguments = []string{"temporal", "unit-keyword"}
+		s.UnitForm = "keyword"
+		s.UnitIndex = 1
+		s.Result = "temporal"
+		if name == "timestamp_trunc" {
+			s.Arguments = append(s.Arguments, "text?")
+		}
+	case "datetrunc":
+		s.Arguments = []string{"unit-keyword", "temporal"}
+		s.UnitForm = "keyword"
+		s.Result = "temporal"
+	case "date_format":
+		s.Arguments = []string{"temporal", "text"}
+		s.Result = "text"
+	case "makedate":
+		s.Arguments = []string{"integer", "integer"}
+		s.Result = "temporal"
 	case "date_part", "extract":
 		s.Arguments = []string{"text", "temporal|interval"}
 		s.Result = "numeric"
 		if name == "date_part" {
 			s.Result = "float"
+		}
+		if dialect == "mysql" && name == "extract" {
+			s.Arguments = []string{"unit-keyword", "temporal"}
+			s.UnitForm = "keyword"
+			s.Result = "integer"
+			s.Syntax = "EXTRACT(unit FROM value)"
 		}
 	case "row_number", "rank", "dense_rank":
 		s.Kind = "window"
@@ -116,13 +156,17 @@ func FunctionSignature(dialect, name string) (Signature, bool) {
 	default:
 		return Signature{}, false
 	}
-	if dialect != "postgres" && (name == "sum" || name == "avg") {
+	if dialect != "postgres" && dialect != "bigquery" && dialect != "databricks" && (name == "sum" || name == "avg") {
 		s.Arguments = []string{"numeric"}
 		s.Result = "same"
 	}
 	if dialect == "sqlserver" && name == "length" {
 		s.SQLName = "len"
 	}
+	if s.UnitForm != "" {
+		s.Units = []string{"day", "month", "quarter", "year"}
+	}
+	s.ResultByInput = resultTypes(dialect, name)
 	return s, true
 }
 
@@ -145,7 +189,14 @@ func AllowsCall(dialect, name string, arguments []string, star, over, distinct, 
 	if !ok {
 		return false
 	}
+	return allowsTypedCall(dialect, name, s, arguments, star, over, distinct, filter, ordered, within)
+}
+
+func allowsTypedCall(dialect, name string, s Signature, arguments []string, star, over, distinct, filter, ordered, within bool) bool {
 	name = strings.ToLower(name)
+	if s.UnitForm != "" && (len(arguments) <= s.UnitIndex || arguments[s.UnitIndex] != "unit-"+s.UnitForm) {
+		return false
+	}
 	forms := FunctionSyntax(dialect)
 	if filter && !forms.AggregateFilter || ordered && !forms.AggregateOrder || over && filter && !forms.WindowFilter {
 		return false
@@ -174,6 +225,18 @@ func AllowsCall(dialect, name string, arguments []string, star, over, distinct, 
 	if len(arguments) < required || !s.Variadic && len(arguments) > len(s.Arguments) {
 		return false
 	}
+	reference := "unknown"
+	if len(arguments) > 0 {
+		reference = arguments[0]
+	}
+	if s.Kind == "special" || name == "coalesce" {
+		for _, a := range arguments {
+			if a != "unknown" {
+				reference = a
+				break
+			}
+		}
+	}
 	for i, a := range arguments {
 		j := i
 		if j >= len(s.Arguments) {
@@ -181,7 +244,7 @@ func AllowsCall(dialect, name string, arguments []string, star, over, distinct, 
 		}
 		want := strings.TrimSuffix(s.Arguments[j], "?")
 		if want == "same" {
-			if !s.NativeCoercions && len(arguments) > 0 && a != "unknown" && arguments[0] != "unknown" && a != arguments[0] && !(numericType(a) && numericType(arguments[0])) {
+			if !s.NativeCoercions && len(arguments) > 0 && a != "unknown" && reference != "unknown" && a != reference && !(numericType(a) && numericType(reference)) {
 				return false
 			}
 			continue
@@ -227,9 +290,25 @@ func (s Signature) String() string {
 	if s.Variadic {
 		args += "..."
 	}
-	result := s.Kind + "(" + args + ")->" + s.Result
+	returns := s.Result
+	if len(s.ResultByInput) > 0 {
+		rules := []string{}
+		for _, input := range []string{"integer", "numeric", "float", "interval"} {
+			if output := s.ResultByInput[input]; output != "" {
+				rules = append(rules, input+":"+output)
+			}
+		}
+		returns = "arg1{" + strings.Join(rules, ",") + "}"
+	}
+	result := s.Kind + "(" + args + ")->" + returns
 	if len(s.RoundingModes) > 0 {
 		result += ";arg3={" + strings.Join(s.RoundingModes, "|") + "}"
+	}
+	if len(s.Units) > 0 {
+		result += ";unit={" + strings.Join(s.Units, "|") + "}"
+	}
+	if s.Syntax != "" {
+		result += ";syntax=" + s.Syntax
 	}
 	if s.SQLName != "" {
 		result = s.SQLName + ":" + result

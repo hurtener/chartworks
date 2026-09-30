@@ -26,6 +26,12 @@ func groupingParent(t *testing.T, a admission, version int) QueryRecord {
 	} else {
 		q.Analytical.Scope = exec.AnalyticalMetricScope
 	}
+	if c.Intent != nil {
+		q.Analytical.Intent = exec.AnalyticalIntentPolicy
+	}
+	if c.QueryPopulation != nil {
+		q.Analytical.QueryPopulation = exec.AnalyticalQueryPopulationPolicy
+	}
 	return q
 }
 func TestSQLRecoveryGroupingInheritanceAndReplacement(t *testing.T) {

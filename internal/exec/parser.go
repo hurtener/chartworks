@@ -497,6 +497,9 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 				if len(parts) != 1 || parts[0] != "=" || m["lexpr"] == nil || m["rexpr"] == nil {
 					return ErrUnsafe
 				}
+				if !r.specialSignature("nullif", []any{m["lexpr"], m["rexpr"]}) {
+					return ErrUnsupported
+				}
 			case "AEXPR_OP", "AEXPR_OP_ANY", "AEXPR_OP_ALL", "AEXPR_DISTINCT", "AEXPR_NOT_DISTINCT", "AEXPR_IN", "AEXPR_LIKE", "AEXPR_ILIKE", "AEXPR_BETWEEN", "AEXPR_NOT_BETWEEN", "AEXPR_BETWEEN_SYM", "AEXPR_NOT_BETWEEN_SYM":
 			default:
 				return ErrUnsafe
@@ -560,6 +563,22 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 		case "CoalesceExpr", "MinMaxExpr":
 			if !only(m, "args", "op", "coalescetype", "coalescecollid", "minmaxtype", "minmaxcollid", "inputcollid") {
 				return ErrUnsafe
+			}
+			name := "coalesce"
+			if kind == "MinMaxExpr" {
+				switch text(m["op"]) {
+				case "IS_GREATEST":
+					name = "greatest"
+				case "IS_LEAST":
+					name = "least"
+				default:
+					return ErrUnsafe
+				}
+			} else if m["op"] != nil {
+				return ErrUnsafe
+			}
+			if !r.specialSignature(name, array(m["args"])) {
+				return ErrUnsupported
 			}
 			if err := r.expressions(m["args"], s, outputs); err != nil {
 				return err

@@ -32,6 +32,12 @@ func (p AnalyticalQueryPopulation) LogValue() slog.Value { return slog.StringVal
 // The caller must obtain them from current sealed routing or authenticated replay.
 // This check validates coordinates/types; it does not establish authority.
 func NewAnalyticalQueryPopulation(ctx context.Context, binding Binding, dataset string, constraints []BusinessConstraint) (*AnalyticalQueryPopulation, error) {
+	return NewAnalyticalQueryPopulationWithin(ctx, binding, []string{dataset}, constraints)
+}
+
+// NewAnalyticalQueryPopulationWithin checks a restrictive set of admitted relation
+// coordinates; like the single-source form it establishes no source authority.
+func NewAnalyticalQueryPopulationWithin(ctx context.Context, binding Binding, datasets []string, constraints []BusinessConstraint) (*AnalyticalQueryPopulation, error) {
 	if ctx == nil {
 		return nil, ErrBinding
 	}
@@ -39,14 +45,30 @@ func NewAnalyticalQueryPopulation(ctx context.Context, binding Binding, dataset 
 		return nil, err
 	}
 	_, knownDialect := sqlpolicy.NativeDialect(binding.Dialect)
-	if !knownDialect || dataset == "" || len(constraints) < 1 || len(constraints) > 64 {
+	if !knownDialect || len(datasets) < 1 || len(datasets) > 32 || len(constraints) < 1 || len(constraints) > 64 {
 		return nil, ErrBinding
+	}
+	allowed := map[string]bool{}
+	for _, id := range datasets {
+		if id == "" || allowed[id] {
+			return nil, ErrBinding
+		}
+		found := 0
+		for _, r := range binding.Relations {
+			if r.ID == id {
+				found++
+			}
+		}
+		if found != 1 {
+			return nil, ErrBinding
+		}
+		allowed[id] = true
 	}
 	if err := ValidateBusinessConstraints(binding, constraints); err != nil {
 		return nil, err
 	}
 	for _, c := range constraints {
-		if c.Dataset != dataset {
+		if !allowed[c.Dataset] {
 			return nil, analyticalFailure("analytical_query_population_unsupported", true)
 		}
 	}
@@ -59,13 +81,29 @@ func validateAnalyticalQueryPopulation(ctx context.Context, c AnalyticalContract
 	if c.QueryPopulation == nil {
 		return nil
 	}
-	if (c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion && c.Version != AnalyticalIntentVersion) || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
+	if (c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion && (c.Version != AnalyticalIntentVersion && c.Version != AnalyticalGroupedPopulationsVersion)) || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
 		return ErrBinding
 	}
-	if c.Version == AnalyticalIntentVersion && c.Intent != nil && len(c.QueryPopulation.Constraints) == 0 {
+	if (c.Version == AnalyticalIntentVersion || c.Version == AnalyticalGroupedPopulationsVersion) && c.Intent != nil && len(c.QueryPopulation.Constraints) == 0 {
 		return ctx.Err()
 	}
-	canonical, err := NewAnalyticalQueryPopulation(ctx, binding, c.Dataset, c.QueryPopulation.Constraints)
+	var canonical *AnalyticalQueryPopulation
+	var err error
+	if c.Version == AnalyticalGroupedPopulationsVersion {
+		ids := []string{c.Dataset}
+		seen := map[string]bool{c.Dataset: true}
+		for _, j := range c.Joins {
+			for _, id := range []string{j.Left, j.Right} {
+				if !seen[id] {
+					ids = append(ids, id)
+					seen[id] = true
+				}
+			}
+		}
+		canonical, err = NewAnalyticalQueryPopulationWithin(ctx, binding, ids, c.QueryPopulation.Constraints)
+	} else {
+		canonical, err = NewAnalyticalQueryPopulation(ctx, binding, c.Dataset, c.QueryPopulation.Constraints)
+	}
 	if err != nil {
 		return err
 	}
@@ -83,7 +121,10 @@ func (a *analyticalChecker) checkQueryPopulation(q map[string]any) error {
 	if a.queryPopulation == nil {
 		return nil
 	}
-	base := "SELECT count(*) FROM " + businessQuote(a.binding.Dialect, a.relation.Schema) + "." + businessQuote(a.binding.Dialect, a.relation.Name) + " AS " + businessQuote(a.binding.Dialect, a.alias)
+	base, err := a.populationBaseSQL()
+	if err != nil {
+		return err
+	}
 	bound, err := BindBusinessConstraints(a.ctx, a.binding, base, nil, a.queryPopulation.Constraints)
 	if err != nil {
 		return err

@@ -20,7 +20,7 @@ func calendarGrainWord(s string) string {
 		return ""
 	}
 }
-func compileCalendarBucket(d grainDimension, col semantics.Column, grain string) (exec.AnalyticalBucket, error) {
+func compileCalendarBucket(d grainDimension, col semantics.Column, grain string, dialects ...string) (exec.AnalyticalBucket, error) {
 	bad := func() (exec.AnalyticalBucket, error) {
 		return exec.AnalyticalBucket{}, analyticalUnsupported("analytical_grain_unsupported")
 	}
@@ -37,7 +37,11 @@ func compileCalendarBucket(d grainDimension, col semantics.Column, grain string)
 		return bad()
 	}
 	b := exec.AnalyticalBucket{Column: col.SourceName, Grain: grain, Calendar: "gregorian"}
-	switch exec.AnalyticalCalendarKind(col.NativeType, col.Category) {
+	dialect := "postgres"
+	if len(dialects) > 0 {
+		dialect = dialects[0]
+	}
+	switch exec.AnalyticalCalendarKindForDialect(dialect, col.NativeType, col.Category) {
 	case "date", "civil":
 	case "instant":
 		b.Timezone = d.temporal.Timezone

@@ -21,7 +21,7 @@ func compileGroupingSelection(ctx context.Context, a admission, contract exec.An
 		return nil, analyticalUnsupported("analytical_grain_unsupported")
 	}
 	def := a.publications[0].Definition
-	compiler := analyticalCompiler{joins: contract.Version == exec.AnalyticalIntentVersion, ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
+	compiler := analyticalCompiler{joins: contract.Version == exec.AnalyticalIntentVersion || contract.Version == exec.AnalyticalGroupedPopulationsVersion, ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
 	out := &exec.AnalyticalGrain{Policy: exec.AnalyticalGroupingPolicy, Columns: []string{}, Dimensions: []string{}}
 	columns, ids, buckets := map[string]bool{}, map[string]bool{}, map[string]exec.AnalyticalBucket{}
 	for _, key := range in.Keys {
@@ -62,7 +62,7 @@ func compileGroupingSelection(ctx context.Context, a admission, contract exec.An
 					return nil, exec.ErrBinding
 				}
 				dim := grainDimension{id: d.ID, field: d.Field, role: d.Role, filters: d.Filters, temporal: d.Temporal}
-				bucket, err := compileCalendarBucket(dim, column, string(key.Grain))
+				bucket, err := compileCalendarBucket(dim, column, string(key.Grain), a.binding.Dialect)
 				if err != nil {
 					return nil, err
 				}

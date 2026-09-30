@@ -53,9 +53,26 @@ remain unchanged and are not upgraded during replay. Source binding, semantic
 revision, selected outputs, exact SQL/parameters and the complete analytical
 contract remain digest-bound. Reconstructed proofs must match on replay.
 
-Grouped multi-fact preaggregation, general CTE/window/set programs, broader join
-forms, composite reviewed relationship authoring and all required dialect/engine
-qualification remain explicit recovery work. Unit parser cases are not actual
+The [v7 grouped-population contract](analytical-grouped-populations-v1.md) adds
+reviewed grouped multi-fact CTE lanes. General CTE/window/set programs, grouped
+calendar/derived and owned-predicate projection, broader join forms, composite
+reviewed relationship authoring and all required dialect/engine qualification
+remain explicit recovery work. Unit parser cases are not actual
 engine result evidence. Synthetic Commerce acceptance checks independently fixed
 regional totals and net revenue through real PostgreSQL/native boundaries with
 recorded provider responses, not live model quality or production-owner parity.
+
+
+### MySQL physical-key increment
+
+MySQL 8.4 discovers complete visible-column BTREE uniqueness, excluding prefix and
+expression indexes. A zero-row access opens each registered base table inside the
+same read-only transaction before catalog inspection; its metadata lock stays held
+through the actual read. Real-engine tests block concurrent index DDL during that
+transaction, then reject stale key evidence after it closes. Legacy no-key bindings
+retain their original policy and gain no join authority implicitly. The ordinary
+native statement/dependency/permission checks remain mandatory.
+
+MySQL text-index uniqueness is not analytical evidence until collation identity and
+comparison coercibility are sealed. A full text index is excluded alongside prefix
+and expression indexes; numerical physical-key paths remain supported.

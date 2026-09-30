@@ -99,7 +99,7 @@ func TestSQLRecoveryQueryPopulationRetainedReplayAndEvidence(t *testing.T) {
 
 func TestSQLRecoveryQueryPopulationAbsentIsNotTotalPopulation(t *testing.T) {
 	a := analyticalAdmission()
-	c, err := compileCurrentAnalytical(context.Background(), a)
+	c, err := compileAnalyticalVersion(context.Background(), a, 6)
 	if err != nil || c == nil || c.QueryPopulation != nil || analyticalPopulationGuidance(c) != "" {
 		t.Fatal("unresolved population became an exhaustive predicate claim", err)
 	}

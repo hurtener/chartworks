@@ -37,3 +37,29 @@ A name allowlist or AST fixture is not actual-engine qualification. The structur
 suite covers five warehouse grammars with positive and adversarial cases; actual
 MySQL tests separately validate source results, and do not qualify the four remote
 engines. Current-source CI/race and engine evidence belong in the completion ledger.
+
+## Subsequent structural calendar and nested-lane implementation
+
+The next increment adds registered native calendar forms: MySQL civil/date
+DATE_FORMAT cast-to-date buckets and an exact EXTRACT/MAKEDATE quarter anchor;
+SQL Server DATETRUNC for date/civil values; BigQuery DATE_TRUNC, DATETIME_TRUNC and
+TIMESTAMP_TRUNC with exact reviewed/default-UTC zone; and Snowflake/Databricks
+DATE_TRUNC over date/TIMESTAMP_NTZ. Year boundaries, NULL groups, argument positions,
+full date-part identity and timezone are preserved. Keyword exemptions are provided
+by the shared structural signature policy, not general name exemptions. MySQL
+session-sensitive TIMESTAMP and other unproved session-dependent types are not
+certified as civil time. Actual MySQL calendar tests run under multiple session
+zones and verify this distinction.
+
+Native CTE/derived ASTs can now reach the independent singleton-population proof,
+with scoped CTE names, bounded nesting, exact derived aliases and source parameter
+order. No extra row filter, grouping, local limit or arithmetic substitution is
+introduced by normalization. Source-authority validation of derived-column lineage
+remains an independent prerequisite. BigQuery untyped fractional literals are
+FLOAT64 and cannot acquire exact decimal proof merely from their spelling. Explicit
+temporal cast precision is retained in predicate comparison.
+
+These additions do not replace real-engine qualification for each advertised engine
+or close every remaining S6 form. Original native parser syntax/work limits remain
+in force. The generation packet now chooses calendar guidance by dialect from the
+same registered vocabulary and exact bucket contract.
