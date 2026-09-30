@@ -63,7 +63,7 @@ func validationRepairContext(ctx context.Context, original nlq.GenerationContext
 	}
 	switch diagnostic {
 	case "validation_unsafe", "validation_unsupported", "validation_limit", "validation_failed",
-		"analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy", "analytical_shape_unsupported":
+		"analytical_order_mismatch", "analytical_limit_mismatch", "analytical_join_mismatch", "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy", "analytical_shape_unsupported":
 	default:
 		if !querydiagnostic.Known(diagnostic) {
 			return nlq.GenerationContext{}, ErrGeneration

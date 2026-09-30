@@ -45,7 +45,17 @@ jobs:
       SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       CHARTWORKS_BRUIN_BUILD_DIR: /tmp/chartworks-native
       CHARTWORKS_TEST_STORE_URL: postgres://chartworks:chartworks@localhost:5434/chartworks?sslmode=disable
+      CHARTWORKS_TEST_MYSQL_DSN: "root:chartworks@tcp(127.0.0.1:33316)/?parseTime=true"
     services:
+      mysql:
+        image: mysql:8.4.7
+        ports: [33316:3306]
+        env:
+          MYSQL_ROOT_PASSWORD: chartworks
+          MYSQL_ROOT_HOST: '%'
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pchartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 30
       postgres:
         image: pgvector/pgvector:0.8.2-pg17
         ports: [5434:5432]
@@ -70,12 +80,12 @@ jobs:
           git rev-parse "$SOURCE_HEAD" > "$target/head.txt"
           git ls-tree -r HEAD > "$target/tree.txt"
           git archive --format=tar.gz HEAD > "$target/source.tar.gz"
-          baseline=2dd7e9b9bfa91a84831843e4bf2413aaa6e5d02d
-          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/concepts-incremental.patch"
+          baseline=683de09464f5f022d03c3e1b9c0ad1270e3a52d8
+          git diff --binary --full-index "$baseline" "$SOURCE_HEAD" > "$target/completion-incremental.patch"
           git diff --stat "$baseline" "$SOURCE_HEAD" > "$target/changes.txt"
           export GIT_INDEX_FILE="$RUNNER_TEMP/sql-continuation-replay.index"
           git read-tree "$baseline"
-          git apply --cached "$target/concepts-incremental.patch"
+          git apply --cached "$target/completion-incremental.patch"
           actual=$(git write-tree)
           expected=$(git rev-parse "$SOURCE_HEAD^{tree}")
           test "$actual" = "$expected"
@@ -103,17 +113,15 @@ jobs:
           fi
           make planning-check
           git diff --exit-code
-      - name: Reserve disk for native and race builds
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
-          df -h
+      - name: Inspect available build disk
+        run: df -h
       - uses: actions/cache/restore@v4
         id: native
         with:
           path: |
             /tmp/chartworks-native/bruin
-            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
-          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1
+            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/lib*.a
+          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**') }}
       - name: Build pinned native dependencies
         if: steps.native.outputs.cache-hit != 'true'
         run: bash scripts/build-bruin.sh
@@ -122,8 +130,8 @@ jobs:
         with:
           path: |
             /tmp/chartworks-native/bruin
-            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/libbruin_rustsqlparser.a
-          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1
+            /tmp/chartworks-native/source/pkg/sqlparser/rustffi/target/release/lib*.a
+          key: sql-context-native-ubuntu24-go1264-rust1981-5f562c2959496a04d57f5f199f5e3ad22159fa9f-v1-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**') }}
       - name: Bind the pinned native build
         run: |
           test -x /tmp/chartworks-native/bruin
@@ -161,7 +169,7 @@ jobs:
         if: success() || failure()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoveryInterpretationContinuationLifecycleAcceptance|TestSQLRecoveryInterpretationContinuationEditsAcceptance|TestSQLRecoverySavedInterpretationContinuationAcceptance|TestSQLRecoveryDependentClarificationLifecycleAcceptance|TestSQLRecoveryDependentClarificationInvalidAcceptance|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestSQLRecoveryVocabularyProviderAcceptance|TestSQLRecoveryVocabularyKeepsStrongerProofs|TestSQLRecoveryDecisionNoExecutablePlanAcceptance|TestSQLRecoveryDecisionTransportsPrivacyAcceptance|TestSQLRecoveryAdversarialOnlyPopulationAcceptance|TestSQLRecoveryAdversarialIntegerDivisionAcceptance|TestSQLRecoveryAdversarialRepairFinalizationAcceptance|TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection|TestSQLRecoveryAdversarialUnknownJournalAcceptance|TestSQLRecoveryAdversarialFailedRerunClearsRowsAcceptance|TestSQLRecoveryGroupingContinuationLifecycleAcceptance|TestSQLRecoveryGroupingPrivateBindingsAcceptance|TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance|TestSQLRecoverySavedGroupingContinuationAcceptance|TestSQLRecoveryParameterScopesLifecycleAcceptance|TestSQLRecoveryParameterScopesRejectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionPrivateAcceptance|TestSQLRecoveryQueryDiagnosticNativeValidationAcceptance|TestSQLRecoveryQueryDiagnosticPrivateBindingsAcceptance|TestSQLRecoveryQueryDiagnosticPhysicalReceiptAcceptance|TestSQLRecoveryQueryDiagnosticDataAndWindowMatrix|TestSQLRecoveryGroundedConceptLifecycleAcceptance|TestSQLRecoveryGroundedConceptAmbiguityAcceptance|TestSQLRecoveryGroundedConceptPrivatePendingAcceptance|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
+          go test -race -count=1 -timeout=15m -json ./test/acceptance -run '^(TestPhase(05|16|17|18)|TestCW01|TestCW07|TestSQLRecoveryInterpretationContinuationLifecycleAcceptance|TestSQLRecoveryInterpretationContinuationEditsAcceptance|TestSQLRecoverySavedInterpretationContinuationAcceptance|TestSQLRecoveryDependentClarificationLifecycleAcceptance|TestSQLRecoveryDependentClarificationInvalidAcceptance|TestSQLRecoverySelectedIntentAcceptance|TestSQLRecoveryProviderEnvelope|TestSQLRecoveryCompleteProviderEnvelope|TestSQLRecoveryAnalyticalAcceptance|TestSQLRecoveryAnalyticalOwnedScalarRepair|TestSQLRecoveryAnalyticalGrainAcceptance|TestSQLRecoveryAnalyticalGrainPartitions|TestSQLRecoveryAnalyticalGrainOwnedScalar|TestSQLRecoveryAnalyticalCalendarAcceptance|TestSQLRecoveryQueryPopulationAcceptance|TestSQLRecoveryQueryPopulationTemporalAndNumeric|TestSQLRecoveryScopedProjectionAcceptance|TestSQLRecoveryScopedProjectionPrivateAcceptance|TestSQLRecoveryExplanationLifecycleAcceptance|TestSQLRecoveryExplanationCorrectionAcceptance|TestSQLRecoveryExplanationPrivacyAcceptance|TestSQLRecoveryParameterContinuationAcceptance|TestSQLRecoveryParameterContinuationOwnedAnswerAcceptance|TestSQLRecoveryParameterEditLifecycleAcceptance|TestSQLRecoveryParameterEditBoundariesAcceptance|TestSQLRecoveryParameterEditOwnedAnswerAcceptance|TestSQLRecoveryParameterizedExampleLifecycleAcceptance|TestSQLRecoveryParameterizedExampleNativeReviewFailure|TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates|TestSQLRecoveryVocabularyProviderAcceptance|TestSQLRecoveryVocabularyKeepsStrongerProofs|TestSQLRecoveryDecisionNoExecutablePlanAcceptance|TestSQLRecoveryDecisionTransportsPrivacyAcceptance|TestSQLRecoveryAdversarialOnlyPopulationAcceptance|TestSQLRecoveryAdversarialIntegerDivisionAcceptance|TestSQLRecoveryAdversarialRepairFinalizationAcceptance|TestSQLRecoveryAdversarialDurableQueryFailureReachesCorrection|TestSQLRecoveryAdversarialUnknownJournalAcceptance|TestSQLRecoveryAdversarialFailedRerunClearsRowsAcceptance|TestSQLRecoveryGroupingContinuationLifecycleAcceptance|TestSQLRecoveryGroupingPrivateBindingsAcceptance|TestSQLRecoveryGroupingComposesWithInferredFiltersAcceptance|TestSQLRecoverySavedGroupingContinuationAcceptance|TestSQLRecoveryParameterScopesLifecycleAcceptance|TestSQLRecoveryParameterScopesRejectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionAcceptance|TestSQLRecoveryConfirmedJoinProjectionPrivateAcceptance|TestSQLRecoveryQueryDiagnosticNativeValidationAcceptance|TestSQLRecoveryQueryDiagnosticPrivateBindingsAcceptance|TestSQLRecoveryQueryDiagnosticPhysicalReceiptAcceptance|TestSQLRecoveryQueryDiagnosticDataAndWindowMatrix|TestSQLRecoveryOwnedExamplePrivateLifecycleAcceptance|TestSQLRecoveryOwnedExampleModelSlotsAcceptance|TestSQLRecoveryOwnedExampleCalendarAndBooleanAcceptance|TestSQLRecoveryOwnedExampleCorrectedBoundFeedbackIsNotTemplate|TestSQLRecoveryGroundedConceptLifecycleAcceptance|TestSQLRecoveryGroundedConceptAmbiguityAcceptance|TestSQLRecoveryGroundedConceptPrivatePendingAcceptance|TestSQLRecoveryAnalyticalIntentAcceptance|TestSQLRecoveryAnalyticalJoinedCommerceAcceptance|TestSQLRecoveryPhysicalUniqueCatalogAcceptance|TestSQLRecoveryDurableGenerationQuestionsAcceptance|TestSQLRecoveryDurablePrivateRefinementAcceptance|TestSQLRecoveryDurableCorrectionQuestionsAcceptance|TestSQLRecoveryDurableGovernedAnswerAcceptance|TestSQLRecoveryDurableCalendarGroupingAcceptance|TestCommerceSyntheticFixture|TestCommerceReportingRecorded|TestCommerceBoundCTENetRevenue|TestGatewayAdversarialWire|TestGatewayLocalBounds|TestGatewayConcurrentReuse)$' 2>&1 | tee "$RUNNER_TEMP/sql-context-acceptance.log"
       - name: Summarize actual terminal test events
         if: always()
         run: |
@@ -205,6 +213,13 @@ jobs:
           required_acceptance.extend(['TestSQLRecoveryQueryDiagnosticNativeValidationAcceptance', 'TestSQLRecoveryQueryDiagnosticPrivateBindingsAcceptance', 'TestSQLRecoveryQueryDiagnosticPhysicalReceiptAcceptance', 'TestSQLRecoveryQueryDiagnosticDataAndWindowMatrix'])
           required_units.extend(['TestSQLRecoveryConceptChoiceGroundedSpans', 'TestSQLRecoveryConceptChoiceRejectsUngroundedAndAmbiguous', 'TestSQLRecoveryConceptChoiceClosedOutcomes', 'TestSQLRecoveryConceptChoiceTamperAndPolicy', 'TestSQLRecoveryConceptChoiceBoundsCancellation', 'TestSQLRecoveryConceptChoiceConcurrentDetached', 'TestSQLRecoveryGroundedConceptRoutesFullKPIClosure', 'TestSQLRecoveryGroundedConceptExplicitAndLegacyNoCall', 'TestSQLRecoveryGroundedConceptAmbiguityHasReviewedOptions', 'TestSQLRecoveryGroundedConceptMalformedOutputAndAdmission', 'TestSQLRecoveryGroundedConceptReplayRejectsTamperWithoutModel', 'TestSQLRecoveryGroundedConceptBoundsAndPrivateCatalog', 'TestSQLRecoveryGroundedConceptRunAlwaysReplays', 'TestSQLRecoveryGroundedConceptSavedPolicyAndEdits', 'TestSQLRecoveryGroundedConceptRejectsForeignPolicyBeforeRouting', 'TestSQLRecoveryGroundedConceptSDKPolicyAndChoices'])
           required_acceptance.extend(['TestSQLRecoveryGroundedConceptLifecycleAcceptance', 'TestSQLRecoveryGroundedConceptAmbiguityAcceptance', 'TestSQLRecoveryGroundedConceptPrivatePendingAcceptance'])
+          required_units.extend(['TestSQLRecoveryOwnedLearningBaseDoesNotCarryPredicates','TestSQLRecoveryOwnedLearningRequiresExactBindingProof','TestSQLRecoveryOwnedLearningSuppressesLiteralsAliasesAndManualCorrections','TestSQLRecoveryOwnedLearningPortableIdentityAndProbes','TestSQLRecoveryOwnedLearningInstructionHasOneBoundedLane','TestSQLRecoveryOwnedLearningCannotTakeAuthorityFromJSON','TestSQLRecoveryOwnedExampleSDKWire'])
+          required_acceptance.extend(['TestSQLRecoveryOwnedExamplePrivateLifecycleAcceptance','TestSQLRecoveryOwnedExampleModelSlotsAcceptance','TestSQLRecoveryOwnedExampleCalendarAndBooleanAcceptance','TestSQLRecoveryOwnedExampleCorrectedBoundFeedbackIsNotTemplate'])
+          required_units.extend(['TestSQLRecoveryAnalyticalOrderLimitConformance', 'TestSQLRecoveryAnalyticalIntentParametersAndEmptyPopulation', 'TestSQLRecoveryAnalyticalUnaryExpressions', 'TestSQLRecoveryAnalyticalLimitWithoutRanking', 'TestSQLRecoveryAnalyticalCaseRatioEquivalence', 'TestSQLRecoveryAnalyticalCalendarOrdering', 'TestSQLRecoveryIndependentScalarPopulations', 'TestSQLRecoveryIndependentPopulationAdversaries', 'TestSQLRecoveryIndependentCountsRemainSourceBound', 'TestSQLRecoveryAnalyticalPhysicalJoins', 'TestSQLRecoveryAnalyticalJoinRequiresPhysicalKeys', 'TestUniqueKeyBindingBoundsAndDetach', 'TestPostgresFunctionSignatureNativeAST', 'TestWarehouseFunctionSignaturesNative', 'TestFunctionSignaturesCoverVocabulary', 'TestFunctionSignatureTypesAndSyntax', 'TestNativeStructuralEvidence', 'TestNativeStructuralCancellationDuringCall', 'TestNativeStructuralAdmissionCancellation', 'TestNativeStructuralRejectsStaleArchive', 'TestSQLRecoveryReviewedAnalyticalIntentCompiler', 'TestSQLRecoveryReviewedAnalyticalIntentRejectsAmbiguity', 'TestSQLRecoveryAnalyticalIntentRetainedVersions', 'TestSQLRecoveryReviewedUnaryExpressionCompiler', 'TestSQLRecoveryReviewedLimitWithoutRanking', 'TestSQLRecoveryReviewedCalendarOrdering', 'TestSQLRecoveryIndependentMetricCompiler', 'TestSQLRecoveryJoinedDimensionCompiler', 'TestGenerationPendingPersistenceAndRestartReplay', 'TestGenerationPendingOriginRejectsBeforeDependencies', 'TestGenerationPendingReviewedChoicesAndOrigin', 'TestGenerationPendingCurrentSourceAndExpiry', 'TestGenerationPendingRejectsExecutableState', 'TestGenerationPendingRunCannotEraseResumeOperation', 'TestSQLRecoveryOwnedLearningNeutralPrefixParameter'])
+          required_acceptance.extend(['TestSQLRecoveryAnalyticalIntentAcceptance', 'TestSQLRecoveryAnalyticalJoinedCommerceAcceptance', 'TestSQLRecoveryPhysicalUniqueCatalogAcceptance', 'TestSQLRecoveryDurableGenerationQuestionsAcceptance', 'TestSQLRecoveryDurablePrivateRefinementAcceptance', 'TestSQLRecoveryDurableCorrectionQuestionsAcceptance', 'TestSQLRecoveryDurableGovernedAnswerAcceptance', 'TestSQLRecoveryDurableCalendarGroupingAcceptance', 'TestCommerceSyntheticFixture', 'TestCommerceReportingRecorded', 'TestCommerceBoundCTENetRevenue'])
+          required_units.extend(['TestSQLRecoveryWarehouseAnalyticalStructure', 'TestSQLRecoveryWarehouseAnalyticalMetrics', 'TestSQLRecoveryWarehouseAnalyticalPolicyIsolation', 'TestSQLRecoveryWarehouseAnalyticalPopulationsAndRatios', 'TestSQLRecoveryWarehouseAnalyticalOrderLimit', 'TestNativeStructuralCancellationDuringCall', 'TestNativeStructuralAdmissionCancellation', 'TestNativeStructuralRejectsStaleArchive'])
+          required_units.append('TestSQLRecoveryWarehouseAnalyticalAverageTypes')
+          required_units.extend(['TestSQLRecoveryMySQLAnalyticalLocal','TestMySQLSourceProbeLocal','TestStoredUniqueKeyPolicyNeverDowngradesProof','TestGenerationPendingChildReplayRevalidatesEvidence','TestSQLRecoveryReviewedArithmeticWords'])
           missing=[]
           failures=[]
           for name in ['units','acceptance']:
@@ -220,6 +235,7 @@ jobs:
               packages=[e['Package'] for e in events if e.get('Action')=='pass' and not e.get('Test')]
               required=required_units if name=='units' else required_acceptance
               missing.extend(x for x in required if x not in passed)
+              missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and (e.get('Test','').startswith(('TestSQLRecovery','TestGenerationPending')) or e.get('Test','') in required))
               missing.extend("skipped:"+e.get("Test","") for e in events if e.get("Action")=="skip" and e.get("Test","").startswith(("TestSQLRecoveryGroundedConcept","TestSQLRecoveryConceptChoice")))
               missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryConfirmedJoinProjection'))
               missing.extend('skipped:'+e.get('Test','') for e in events if e.get('Action')=='skip' and e.get('Test','').startswith('TestSQLRecoveryAdversarial'))

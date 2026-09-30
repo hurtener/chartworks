@@ -14,7 +14,7 @@ import (
 // learnedParameterSchema extracts kinds only. Query-owned scalar bindings never
 // enter reusable examples. The question is a value-free demonstration label,
 // not an executable interpretation or a source of parameter values for reuse.
-func learnedParameterSchema(ctx context.Context, q QueryRecord) (string, *exampleparams.Schema, error) {
+func learnedParameterSchema(ctx context.Context, q QueryRecord, bindingPolicy ...string) (string, *exampleparams.Schema, error) {
 	if ctx == nil {
 		return "", nil, ErrInvalid
 	}
@@ -43,6 +43,11 @@ func learnedParameterSchema(ctx context.Context, q QueryRecord) (string, *exampl
 		return "", nil, ErrInvalid
 	}
 	question := semantics.RedactClarificationText(q.Question, nil, redactions)
+	// The owned-learning producer already redacted the catalog suffix. The
+	// fixed server-authored prefix cannot reveal a coincidentally equal value.
+	if len(bindingPolicy) == 1 && bindingPolicy[0] == OwnedExamplePolicy && neutralOwnedExampleQuestion(q.Question) {
+		question = q.Question
+	}
 	if strings.TrimSpace(question) == "" || len(question) > 16384 || !utf8.ValidString(question) || strings.ContainsRune(question, 0) {
 		return "", nil, ErrInvalid
 	}
@@ -54,13 +59,13 @@ func learnedParameterSchema(ctx context.Context, q QueryRecord) (string, *exampl
 // the new digest domain. Storage immutability and portable row versions separately
 // prevent dropping a new template schema and presenting it as a legacy example.
 func ExampleParametersValid(x ExampleRecord) bool {
-	if x.ParameterSchema.Validate() != nil {
+	if !validExampleBindingPolicy(x.Origin.BindingPolicy) || x.ParameterSchema.Validate() != nil {
 		return false
 	}
-	if x.ParameterSchema == nil {
+	if x.ParameterSchema == nil && x.Origin.BindingPolicy == "" {
 		return true
 	}
-	return x.Digest == parameterExampleDigest(x.Topic, x.Question, x.SQL, x.ParameterSchema) && x.Question != "" && x.SQL != "" && len(x.Question) <= 16384 && len(x.SQL) <= 32768 && utf8.ValidString(x.Question) && utf8.ValidString(x.SQL) && !strings.ContainsRune(x.Question+x.SQL, 0)
+	return (x.Origin.BindingPolicy == "" || neutralOwnedExampleQuestion(x.Question)) && x.Digest == originExampleDigest(x.Topic, x.Question, x.SQL, x.ParameterSchema, x.Origin) && x.Question != "" && x.SQL != "" && len(x.Question) <= 16384 && len(x.SQL) <= 32768 && utf8.ValidString(x.Question) && utf8.ValidString(x.SQL) && !strings.ContainsRune(x.Question+x.SQL, 0)
 }
 
 func parameterExampleDigest(topic, question, sql string, schema *exampleparams.Schema) string {
@@ -94,6 +99,9 @@ func exampleValidationParameters(x ExampleRecord) ([]exec.Parameter, error) {
 }
 
 func learnedExampleText(x ExampleRecord) string {
+	if x.Origin.BindingPolicy != "" {
+		return ownedExampleInstruction(x)
+	}
 	text := "question:" + x.Question + " sql:" + x.SQL
 	if x.ParameterSchema == nil {
 		return text
@@ -112,15 +120,18 @@ func learnedExampleText(x ExampleRecord) string {
 	return "Reviewed parameterized SQL demonstration: " + string(raw) + " This reviewed SQL demonstration has abstract positional parameters, not reusable values. Resolve the current question's values and produce the current candidate's parameter bindings. Do not copy a previous question's constants, invent validation-probe values, or treat redaction markers as values."
 }
 
-func portableExampleVersion(schema *exampleparams.Schema) int {
+func portableExampleVersion(schema *exampleparams.Schema, policy ...string) int {
+	if len(policy) == 1 && policy[0] == OwnedExamplePolicy {
+		return 3
+	}
 	if schema != nil {
 		return 2
 	}
 	return 1
 }
 func portableExampleValid(row PortableExample) bool {
-	if row.SchemaVersion != portableExampleVersion(row.ParameterSchema) {
+	if row.SchemaVersion != portableExampleVersion(row.ParameterSchema, row.Origin.BindingPolicy) {
 		return false
 	}
-	return row.ParameterSchema.Validate() == nil
+	return validExampleBindingPolicy(row.Origin.BindingPolicy) && row.ParameterSchema.Validate() == nil
 }

@@ -198,6 +198,12 @@ func (s *Service) Plan(ctx context.Context, e identity.Envelope, in PlanRequest)
 	if err := requireQuestionAction(e, "query.plan", in.QuestionRequest); err != nil {
 		return PlanResult{}, err
 	}
+	if in.GenerationQuery != "" || in.GenerationContext != "" {
+		return s.resumeGeneration(ctx, e, in)
+	}
+	if strings.HasPrefix(in.Operation, "resume:") {
+		return PlanResult{}, ErrInvalid
+	}
 	if err := validateQuestion(in.QuestionRequest); err != nil {
 		return PlanResult{}, err
 	}
@@ -246,7 +252,7 @@ func (s *Service) PlanAndRun(ctx context.Context, e identity.Envelope, plan Plan
 	compose := func() error {
 		record, readErr := s.repo.ReadOperation(ctx, scopeValue, plan.Operation)
 		if readErr == nil {
-			planned, readErr = reusablePlanResult(record, e, plan.QuestionRequest, plan.Operation, plan.ClarificationQuery)
+			planned, readErr = s.reusablePlanResult(ctx, record, e, plan.QuestionRequest, plan.Operation, plan.ClarificationQuery)
 			if readErr != nil {
 				return readErr
 			}
@@ -313,6 +319,13 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 	}
 	if !e.Has("query.execute") {
 		return PlanResult{}, access.ErrForbidden
+	}
+	if in.GenerationQuery != "" || in.GenerationContext != "" {
+		return s.resumeGenerationRefinement(ctx, e, in)
+	}
+	if generationContinuationState(ctx) == nil {
+		original := in
+		ctx = withGenerationContinuation(ctx, &generationContinuation{refinement: &original})
 	}
 	old, err := s.repo.ReadQuery(ctx, mustScope(e), in.QueryID)
 	if err != nil {
@@ -391,7 +404,11 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 			return PlanResult{}, err
 		}
 	}
-	return s.plan(ctx, e, question, "", in.QueryID, &old, "query.execute", old.Route.Resolutions...)
+	operation := ""
+	if origin := generationContinuationState(ctx).pendingOrigin(); origin != nil {
+		operation = "resume:" + origin.ID
+	}
+	return s.plan(ctx, e, question, operation, in.QueryID, &old, "query.execute", old.Route.Resolutions...)
 }
 
 func (s *Service) checkRefinementDepth(ctx context.Context, e identity.Envelope, q QueryRecord) error {
@@ -464,6 +481,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			if _, admissionErr = s.expectedAnalytical(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
+			if decision, handled := s.replayGenerationCorrection(ctx, e, record); handled {
+				return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), decision
+			}
 			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
 		}
 	} else if !errors.Is(replayErr, store.ErrNotFound) {
@@ -477,6 +497,10 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	}
 	if record.Session != e.Session() || record.Status == "preflight" || record.SQL == "" {
 		return RunResult{}, ErrNoPlan
+	}
+	// A pending-question continuation keeps its one durable operation identity.
+	if strings.HasPrefix(record.Operation, "resume:") && record.Operation != in.Operation {
+		return RunResult{}, store.ErrConflict
 	}
 	record.Operation = in.Operation
 	var current admission
@@ -545,6 +569,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		candidate, gen, correctionReceipt, genErr := s.fixCandidate(ctx, e, current, call, budget, record.SQL, executionErrorCode(report, runErr))
 		record.Receipt = appendReceipts(record.Receipt, correctionReceipt)
 		if genErr != nil {
+			if GenerationProblem(genErr) != nil {
+				ctx = context.WithValue(ctx, generationCorrectionKey{}, &generationCorrection{admitted: current, generation: gen, receipt: correctionReceipt})
+			}
 			return s.finishRun(ctx, e, record, report, 1, errors.Join(ErrExecutionBudget, genErr))
 		}
 		candidatePlan, validateErr := s.validator.ValidateWithin(ctx, e, exec.Request{Source: current.source, Context: current.context, SQL: candidate.SQL, Parameters: candidate.Parameters}, current.relationScope)
@@ -704,11 +731,17 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 	feedbackID := deterministicFeedbackID(e, q, in)
 	feedback := FeedbackRecord{ID: feedbackID, QueryID: q.ID, Session: e.Session(), Verdict: in.Verdict, Correction: correction, Note: in.Note, Provenance: "phase18.feedback", Created: time.Now().UTC()}
 	var example ExampleRecord
-	eligible := !hasActiveBusinessEvidence(q.Route) && (q.Clarification == nil || q.Clarification.Binding.SchemaVersion == 0)
-	if eligible && len(q.Parameters) > 0 {
+	learning, bindingPolicy, eligible, learningErr := s.reusableLearningBase(ctx, e, q, admitted, correction)
+	if learningErr != nil {
+		return learningErr
+	}
+	if eligible {
+		sqlText = learning.SQL
+	}
+	if eligible && len(learning.Parameters) > 0 {
 		// Feedback can still be recorded when a statement is unsuitable for a
 		// reusable demonstration. Never publish known binding literals/comments.
-		if checkErr := exec.CheckLearningParameterContent(ctx, sqlText, q.Parameters); checkErr != nil {
+		if checkErr := exec.CheckLearningParameterContent(ctx, sqlText, learning.Parameters); checkErr != nil {
 			if !errors.Is(checkErr, exec.ErrUnsupported) {
 				return checkErr
 			}
@@ -726,7 +759,7 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 		} else {
 			negative = 1
 		}
-		question, parameterSchema, err := learnedParameterSchema(ctx, q)
+		question, parameterSchema, err := learnedParameterSchema(ctx, learning, bindingPolicy)
 		if err != nil {
 			return err
 		}
@@ -737,9 +770,10 @@ func (s *Service) Feedback(ctx context.Context, e identity.Envelope, in Feedback
 			Digest: parameterExampleDigest(q.Topic, question, sqlText, parameterSchema), State: "candidate",
 			Weight: evidenceScore(positive, negative), Uncertainty: evidenceUncertainty(positive, negative),
 			EvidenceCount: 1, PositiveEvidence: positive, NegativeEvidence: negative, EvidenceOutcome: in.Verdict,
-			Origin:  ExampleOrigin{SchemaVersion: 1, Locale: q.Locale, TopicVersion: q.TopicVersions[0], Context: q.Context, SourceBindingDigest: currentBindingDigest, RuleVersions: append([]string(nil), q.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), q.Templates...)},
+			Origin:  ExampleOrigin{BindingPolicy: bindingPolicy, SchemaVersion: 1, Locale: q.Locale, TopicVersion: q.TopicVersions[0], Context: q.Context, SourceBindingDigest: currentBindingDigest, RuleVersions: append([]string(nil), q.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), q.Templates...)},
 			Version: 1, Provenance: "feedback:" + feedbackID, Created: now, Updated: now,
 		}
+		example.Digest = originExampleDigest(example.Topic, example.Question, example.SQL, example.ParameterSchema, example.Origin)
 	}
 	_, _, err = s.repo.ApplyFeedback(ctx, sc, feedback, example)
 	return err
@@ -893,10 +927,8 @@ func (s *Service) ExportExamples(ctx context.Context, e identity.Envelope, in Ex
 		if !ExampleParametersValid(example) {
 			return ExampleBundle{}, exec.ErrBinding
 		}
-		if example.ParameterSchema != nil {
-			bundle.SchemaVersion = 2
-		}
-		bundle.Examples = append(bundle.Examples, PortableExample{SchemaVersion: portableExampleVersion(example.ParameterSchema), ParameterSchema: example.ParameterSchema.Clone(), Question: example.Question, SQL: example.SQL, Digest: example.Digest, Origin: example.Origin, PositiveEvidence: example.PositiveEvidence, NegativeEvidence: example.NegativeEvidence})
+		bundle.SchemaVersion = max(bundle.SchemaVersion, portableExampleVersion(example.ParameterSchema, example.Origin.BindingPolicy))
+		bundle.Examples = append(bundle.Examples, PortableExample{SchemaVersion: portableExampleVersion(example.ParameterSchema, example.Origin.BindingPolicy), ParameterSchema: example.ParameterSchema.Clone(), Question: example.Question, SQL: example.SQL, Digest: example.Digest, Origin: example.Origin, PositiveEvidence: example.PositiveEvidence, NegativeEvidence: example.NegativeEvidence})
 	}
 	return bundle, nil
 }
@@ -927,10 +959,13 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 	if reason := exampleApplicabilityReason(ExampleRecord{ParameterSchema: in.Example.ParameterSchema, Digest: in.Example.Digest, State: "active", Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Weight: 1, PositiveEvidence: 1, Origin: in.Example.Origin}, admitted, exec.Hash(admitted.binding)); reason != "" {
 		return ExampleRecord{}, exec.ErrBinding
 	}
-	if in.Example.Digest != parameterExampleDigest(admitted.route.Topic, in.Example.Question, in.Example.SQL, in.Example.ParameterSchema) {
+	if in.Example.Digest != originExampleDigest(admitted.route.Topic, in.Example.Question, in.Example.SQL, in.Example.ParameterSchema, in.Example.Origin) {
 		return ExampleRecord{}, ErrInvalid
 	}
-	parameters, parameterErr := exampleValidationParameters(ExampleRecord{Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Digest: in.Example.Digest, ParameterSchema: in.Example.ParameterSchema})
+	if !ownedExampleApplicable(ExampleRecord{Origin: in.Example.Origin}, admitted) {
+		return ExampleRecord{}, exec.ErrBinding
+	}
+	parameters, parameterErr := exampleValidationParameters(ExampleRecord{Topic: admitted.route.Topic, Question: in.Example.Question, SQL: in.Example.SQL, Digest: in.Example.Digest, ParameterSchema: in.Example.ParameterSchema, Origin: in.Example.Origin})
 	if parameterErr != nil {
 		return ExampleRecord{}, parameterErr
 	}
@@ -955,14 +990,14 @@ func (s *Service) ImportExample(ctx context.Context, e identity.Envelope, in Exa
 }
 
 func (s *Service) plan(ctx context.Context, e identity.Envelope, question QuestionRequest, operation, parent string, observedParent *QueryRecord, action string, previous ...semantics.ClarificationResolution) (PlanResult, error) {
-	if operation == "" || action != "query.plan" || ctx == nil || !e.Valid() || !identity.Identifier(operation) {
+	if operation == "" || (action != "query.plan" && generationContinuationState(ctx).pendingOrigin() == nil) || ctx == nil || !e.Valid() || !identity.Identifier(operation) {
 		return s.planFresh(ctx, e, question, operation, parent, observedParent, action, previous...)
 	}
 	var result PlanResult
 	compose := func() error {
 		record, err := s.repo.ReadOperation(ctx, mustScope(e), operation)
 		if err == nil {
-			result, err = reusablePlanResult(record, e, question, operation, parent)
+			result, err = s.reusablePlanResult(ctx, record, e, question, operation, parent)
 			return err
 		}
 		if !errors.Is(err, store.ErrNotFound) {
@@ -987,7 +1022,28 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 	return result, nil
 }
 
-func reusablePlanResult(record QueryRecord, e identity.Envelope, question QuestionRequest, operation, parent string) (PlanResult, error) {
+func (s *Service) reusablePlanResult(ctx context.Context, record QueryRecord, e identity.Envelope, question QuestionRequest, operation, parent string) (PlanResult, error) {
+	if record.Session != e.Session() || record.Operation != operation {
+		return PlanResult{}, store.ErrConflict
+	}
+	if record.GenerationPending != nil && generationContinuationState(ctx).pendingOrigin() == nil {
+		if record.Parent != parent || exec.Hash(question) != exec.Hash(record.GenerationPending.Request) {
+			return PlanResult{}, store.ErrConflict
+		}
+		if err := s.checkGenerationPending(ctx, e, record); err != nil {
+			return PlanResult{}, err
+		}
+		return PlanResult{}, &generationDecisionError{problem: record.GenerationPending.Problem}
+	}
+	if result, err, handled := generationResolutionReplay(ctx, record); handled {
+		if record.GenerationPending != nil {
+			if pendingErr := s.checkGenerationPending(ctx, e, record); pendingErr != nil {
+				return PlanResult{}, pendingErr
+			}
+		}
+		return result, err
+	}
+
 	if record.ID == "" || record.Operation != operation || record.Session != e.Session() || record.Parent != parent || record.Context != question.Context || record.Locale != question.Locale || record.Question != question.Question || len(question.EditBase)+len(question.Hints)+len(question.ExampleInput)+len(question.Default) != 0 {
 		return PlanResult{}, store.ErrConflict
 	}
@@ -995,6 +1051,12 @@ func reusablePlanResult(record QueryRecord, e identity.Envelope, question Questi
 	got, gotErr := json.Marshal(record.Route.Request)
 	if wantErr != nil || gotErr != nil || string(want) != string(got) {
 		return PlanResult{}, store.ErrConflict
+	}
+	if record.GenerationPending != nil {
+		if err := s.checkGenerationPending(ctx, e, record); err != nil {
+			return PlanResult{}, err
+		}
+		return PlanResult{}, &generationDecisionError{problem: record.GenerationPending.Problem}
 	}
 	// Idempotent lookup exposes only the opaque plan ID. Run performs the full
 	// current-reach/source fence before executing or returning retained output.
@@ -1026,6 +1088,9 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if observedParent != nil && (observedParent.ID != parent || observedParent.Session != e.Session() || observedParent.Context != question.Context) {
 		return PlanResult{}, ErrForeignSession
 	}
+	if strings.HasPrefix(operation, "resume:") && (generationContinuationState(ctx).pendingOrigin() == nil || operation != "resume:"+generationContinuationState(ctx).pendingOrigin().ID) {
+		return PlanResult{}, ErrInvalid
+	}
 	if err := refinementParameterState(ctx).verifyParent(observedParent); err != nil {
 		return PlanResult{}, err
 	}
@@ -1054,6 +1119,7 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 			return PlanResult{}, err
 		}
 	}
+	submittedQuestion := question
 	question = redactClarificationInstructions(question, admitted.route)
 	if admitted.route.Context == nil {
 		if admitted.route.Clarification != nil {
@@ -1089,6 +1155,9 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	}
 	candidate, fixes, receipt, validated, err := s.generateAndValidate(ctx, e, admitted, generation, call, budget, "")
 	if err != nil {
+		if GenerationProblem(err) != nil {
+			return PlanResult{}, s.persistGenerationPending(ctx, e, submittedQuestion, operation, parent, observedParent, admitted, generation, appendReceipts(selectionReceipt, receipt), fixes, err)
+		}
 		return PlanResult{}, err
 	}
 	if candidate.generation != nil {
@@ -1104,6 +1173,7 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	}
 	record := queryRecord(e, id, "planned", parent, question, admitted)
 	bindParentLineage(&record, observedParent)
+	bindGenerationContinuation(ctx, &record)
 	record.Clarification = candidate.clarification
 	retainGenerationExplanations(&record, candidate, question.Answers, observedParent)
 	record.AnalyticalVersion, record.Analytical = analyticalRecordVersion, cloneAnalyticalReceipt(candidate.analytical)
@@ -1965,7 +2035,10 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 	system += vocabulary
 	system += generationDecisionInstruction
 	if a.analytical != nil {
-		system += " Analytical metric conformance is enforced for selected user metric roots: use one qualified base table and preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Joins, CTEs, nested SELECTs and windows are not analytically supported by this contract."
+		system += " Analytical metric conformance is enforced for selected user metric roots: preserve exact reviewed aggregations and per-metric populations. Required-only dependencies are not extra outputs. Use FILTER or CASE with NULL ELSE for different populations; do not intersect different metric filters globally. Arithmetic KPI expressions use numeric division and NULLIF(denominator,0), yielding NULL on zero. Windows and set operations are not analytically supported by this contract."
+		if len(a.analytical.Joins) == 0 && len(a.analytical.Populations) == 0 {
+			system += " Use one qualified base relation, with no joins or nested SELECTs."
+		}
 		system += analyticalGrainGuidance(a.analytical)
 	}
 	if hasActiveBusinessEvidence(a.route) {
@@ -2075,6 +2148,12 @@ func (s *Service) finishRun(ctx context.Context, e identity.Envelope, q QueryRec
 	// SQL nor upgrades missing physical evidence into a success/stopped claim.
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
+	if decision, handled := s.finalizeGenerationCorrection(cleanup, e, q, runErr); handled {
+		if GenerationProblem(decision) == nil {
+			return RunResult{}, decision
+		}
+		return s.runResult(q, report, canInspect(e)), decision
+	}
 	if err := s.repo.UpdateQuery(cleanup, mustScope(e), q, q.Revision-1); err != nil {
 		return RunResult{}, err
 	}
@@ -2117,6 +2196,11 @@ func (s *Service) selectLearnedInstructions(ctx context.Context, e identity.Enve
 		selection := ExampleSelection{ExampleID: example.ID, Version: example.Version, Lane: "examples", Score: example.Weight, Uncertainty: example.Uncertainty}
 		if reason := exampleApplicabilityReason(example, admitted, bindingDigest); reason != "" {
 			selection.Decision, selection.Reason = "excluded", reason
+			evidence.Excluded = append(evidence.Excluded, selection)
+			continue
+		}
+		if !ownedExampleApplicable(example, admitted) {
+			selection.Decision, selection.Reason = "excluded", "current_owned_predicates_required"
 			evidence.Excluded = append(evidence.Excluded, selection)
 			continue
 		}
@@ -2283,6 +2367,9 @@ func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
 }
 
 func validateQuestion(in QuestionRequest) error {
+	if in.GenerationQuery != "" || in.GenerationContext != "" {
+		return ErrInvalid
+	}
 	if in.ConceptPolicy != "" && in.ConceptPolicy != nlqroute.GroundedConceptPolicy {
 		return ErrInvalid
 	}

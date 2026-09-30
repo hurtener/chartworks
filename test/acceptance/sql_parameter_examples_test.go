@@ -167,8 +167,16 @@ func TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates(t *testing.T) 
 		t.Fatal(err)
 	}
 	examples, err := f.query.Examples(ctx, f.e, f.pack.Topic, 8)
-	if err != nil || len(examples) != 0 {
-		t.Fatal("service-owned private predicate became demonstration", err)
+	if err != nil || len(examples) != 1 || examples[0].Origin.BindingPolicy != nlqexec.OwnedExamplePolicy || examples[0].ParameterSchema != nil {
+		t.Fatal("private predicate was not separated from the reusable base", err)
+	}
+	bundle, err := f.query.ExportExamples(ctx, f.e, nlqexec.ExampleExportRequest{Topic: f.pack.Topic, Limit: 8})
+	if err != nil || len(bundle.Examples) != 1 || bundle.Examples[0].SQL != "SELECT sum(amount) FROM analytics.sales" {
+		t.Fatal("bound SQL became demonstration", err)
+	}
+	raw, _ := json.Marshal(bundle)
+	if strings.Contains(string(raw), "cw-alpha-731") || strings.Contains(string(raw), "alias-secret-731") {
+		t.Fatal("private value in unbound export")
 	}
 	// Valid SQL can carry an annotation with a private value. Record feedback,
 	// but refuse to publish that text as an automatically proposed example.
@@ -181,7 +189,7 @@ func TestSQLRecoveryLearningDoesNotCopyOwnedOrAnnotatedPredicates(t *testing.T) 
 		t.Fatal("feedback unnecessarily blocked", err)
 	}
 	examples, err = f.query.Examples(ctx, f.e, f.pack.Topic, 8)
-	if err != nil || len(examples) != 0 {
+	if err != nil || len(examples) != 1 {
 		t.Fatal("annotated bound SQL was proposed for reuse", err)
 	}
 }

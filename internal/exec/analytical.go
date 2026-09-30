@@ -2,7 +2,6 @@ package exec
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"math/big"
@@ -10,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	pgquery "github.com/wasilibs/go-pgquery"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 )
 
 // AnalyticalVersion identifies the closed, scoped metric proof and its policy.
@@ -89,6 +88,8 @@ type AnalyticalMetric struct {
 // does NOT certify question interpretation or query-wide filters. v2 can also
 // prove an explicitly compiled direct-column grain; nil grain remains unmeasured.
 type AnalyticalContract struct {
+	Populations     []string                   `json:"populations,omitempty"`
+	Joins           []AnalyticalJoin           `json:"joins,omitempty"`
 	Version         string                     `json:"version"`
 	Binding         string                     `json:"binding"`
 	Semantics       string                     `json:"semantics"`
@@ -96,6 +97,7 @@ type AnalyticalContract struct {
 	Metrics         []AnalyticalMetric         `json:"metrics"`
 	Grain           *AnalyticalGrain           `json:"grain,omitempty"`
 	QueryPopulation *AnalyticalQueryPopulation `json:"query_population,omitempty"`
+	Intent          *AnalyticalIntent          `json:"intent,omitempty"`
 }
 
 func (AnalyticalContract) String() string         { return "analytical-contract(redacted)" }
@@ -112,24 +114,33 @@ type AnalyticalReceipt struct {
 	Metrics         []string `json:"metrics"`
 	Grouping        []string `json:"grouping,omitempty"`
 	QueryPopulation string   `json:"query_population,omitempty"`
+	Intent          string   `json:"intent,omitempty"`
 }
 
 // CheckAnalyticalPlan checks an already native-validated opaque plan. It neither
 // issues plans nor widens the admitted binding, and does no source/model work.
 // Unsupported syntax is not labeled a passed analytical result.
 func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*AnalyticalReceipt, error) {
-	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion && c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
+	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion && c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion && c.Version != AnalyticalIntentVersion) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
 		return nil, ErrBinding
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if p.candidate.binding.Dialect != "postgres" {
+	_, knownDialect := sqlpolicy.NativeDialect(p.candidate.binding.Dialect)
+	if p.candidate.binding.Dialect != "postgres" && (c.Version != AnalyticalIntentVersion || !knownDialect) {
 		return nil, analyticalFailure("analytical_dialect_unsupported", true)
+	}
+	proofBinding := p.candidate.binding
+	if proofBinding.Dialect != "postgres" {
+		proofBinding.Relations = append([]Relation(nil), proofBinding.Relations...)
+		for i, r := range proofBinding.Relations {
+			proofBinding.Relations[i] = warehouseAnalyticalRelation(proofBinding.Dialect, r)
+		}
 	}
 	var relation Relation
 	matches := 0
-	for _, r := range p.candidate.binding.Relations {
+	for _, r := range proofBinding.Relations {
 		if r.ID == c.Dataset {
 			relation = r
 			matches++
@@ -138,13 +149,41 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if matches != 1 {
 		return nil, ErrBinding
 	}
+	var joinErr error
+	if len(c.Populations) > 0 {
+		relation, joinErr = analyticalPopulationRelation(c, proofBinding, relation)
+	} else {
+		relation, joinErr = analyticalJoinRelation(c, proofBinding, relation)
+	}
+	if joinErr != nil {
+		return nil, joinErr
+	}
 	if err := validateAnalyticalGrain(c, relation); err != nil {
 		return nil, err
 	}
 	if err := validateAnalyticalQueryPopulation(ctx, c, p.candidate.binding); err != nil {
 		return nil, err
 	}
-	checker := analyticalChecker{ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
+	if err := validateAnalyticalIntent(c); err != nil {
+		return nil, err
+	}
+	if c.Intent != nil {
+		for _, o := range c.Intent.Order {
+			if o.Column != "" {
+				found := false
+				for _, col := range relation.Columns {
+					if col.Name == o.Column && col.Safe {
+						found = true
+					}
+				}
+				if !found {
+					return nil, ErrBinding
+				}
+			}
+		}
+	}
+	checker := analyticalChecker{populations: c.Populations, expandedExpressions: c.Version == AnalyticalIntentVersion, joins: c.Joins, joinAliases: map[string]string{}, joinUsed: map[int]bool{}, intent: c.Intent, ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
+	checker.intentMetricKeys = map[string]string{}
 	expected := map[string]int{}
 	ids := make([]string, 0, len(c.Metrics))
 	seen := map[string]bool{}
@@ -161,6 +200,7 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 		if len(checker.leaves) == before {
 			return nil, analyticalFailure("analytical_expression_unsupported", true)
 		}
+		checker.intentMetricKeys[metric.ID] = key
 		expected[key]++
 		ids = append(ids, metric.ID)
 	}
@@ -170,26 +210,16 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if len(sql) == 0 || len(sql) > 32<<10 || strings.Count(sql, "(") > 256 {
 		return nil, ErrLimit
 	}
-	raw, err := pgquery.ParseToJSON(sql)
+	q, err := analyticalSQLTree(ctx, sql, p.candidate.binding)
 	if err != nil {
-		return nil, analyticalFailure("analytical_shape_unsupported", true)
-	}
-	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	var tree map[string]any
-	if json.Unmarshal([]byte(raw), &tree) != nil {
-		return nil, ErrBinding
+	if len(c.Populations) > 0 {
+		err = checker.queryIndependent(q, expected)
+	} else {
+		err = checker.query(q, expected)
 	}
-	stmts := array(tree["stmts"])
-	if len(stmts) != 1 {
-		return nil, ErrBinding
-	}
-	stmt := object(object(stmts[0])["stmt"])
-	if len(stmt) != 1 || stmt["SelectStmt"] == nil {
-		return nil, ErrBinding
-	}
-	if err = checker.query(object(stmt["SelectStmt"]), expected); err != nil {
+	if err != nil {
 		return nil, err
 	}
 	sort.Strings(ids)
@@ -207,21 +237,39 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if c.QueryPopulation != nil {
 		receipt.QueryPopulation = AnalyticalQueryPopulationPolicy
 	}
+	if c.Intent != nil {
+		receipt.Intent = AnalyticalIntentPolicy
+	}
+	if len(c.Joins) > 0 {
+		receipt.Scope = analyticalJoinScope(receipt.Scope)
+	}
+	if len(c.Populations) > 0 {
+		receipt.Scope = strings.ReplaceAll(receipt.Scope, "single_base_relation", "independent_singleton_populations")
+	}
 	return receipt, nil
 }
 
 type analyticalChecker struct {
-	ctx             context.Context
-	relation        Relation
-	alias           string
-	parameters      []Parameter
-	nodes           int
-	leaves          []AnalyticalExpression
-	grain           *AnalyticalGrain
-	binding         Binding
-	queryPopulation *AnalyticalQueryPopulation
-	common          map[string]bool
-	global          map[string]bool
+	populationSource    string
+	populations         []string
+	derivedTerms        map[string]analyticalTerm
+	expandedExpressions bool
+	joins               []AnalyticalJoin
+	joinAliases         map[string]string
+	joinUsed            map[int]bool
+	ctx                 context.Context
+	relation            Relation
+	alias               string
+	parameters          []Parameter
+	nodes               int
+	leaves              []AnalyticalExpression
+	grain               *AnalyticalGrain
+	binding             Binding
+	queryPopulation     *AnalyticalQueryPopulation
+	intent              *AnalyticalIntent
+	intentMetricKeys    map[string]string
+	common              map[string]bool
+	global              map[string]bool
 }
 
 // Only bounded base-ten literals are normalized. Do not let leading zeroes

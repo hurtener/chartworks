@@ -21,7 +21,7 @@ func compileGroupingSelection(ctx context.Context, a admission, contract exec.An
 		return nil, analyticalUnsupported("analytical_grain_unsupported")
 	}
 	def := a.publications[0].Definition
-	compiler := analyticalCompiler{ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
+	compiler := analyticalCompiler{joins: contract.Version == exec.AnalyticalIntentVersion, ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
 	out := &exec.AnalyticalGrain{Policy: exec.AnalyticalGroupingPolicy, Columns: []string{}, Dimensions: []string{}}
 	columns, ids, buckets := map[string]bool{}, map[string]bool{}, map[string]exec.AnalyticalBucket{}
 	for _, key := range in.Keys {

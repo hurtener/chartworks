@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/semantics/topics"
@@ -17,7 +18,7 @@ import (
 
 // The persisted revision is independent of selection and native validation.
 // Zero means retained legacy evidence, not a claim of analytical correctness.
-const analyticalRecordVersion = 5
+const analyticalRecordVersion = 6
 
 func analyticalUnsupported(code string) error {
 	return &exec.AnalyticalError{Code: code, Unsupported: true}
@@ -47,6 +48,9 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 	if version == 5 {
 		proofVersion = exec.AnalyticalGroupingVersion
 	}
+	if version == 6 {
+		proofVersion = exec.AnalyticalIntentVersion
+	}
 	if version < 5 && a.route.Request.Grouping != nil {
 		return nil, exec.ErrBinding
 	}
@@ -72,7 +76,7 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 		if pick.Topic != def.Topic || pick.TopicVersion != def.Version || pick.PackDigest != publication.Digest || !topics.DigestValid(publication.Digest) || len(pick.Roots) > 128 {
 			return nil, exec.ErrBinding
 		}
-		compiler := &analyticalCompiler{ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
+		compiler := &analyticalCompiler{expandedExpressions: version >= 6, joins: version >= 6, ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
 		for _, root := range pick.Roots {
 			if root.Reference.Kind != semantics.KindMeasure && root.Reference.Kind != semantics.KindKPI || root.Reason == "required_rule" {
 				continue
@@ -81,7 +85,8 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 				return nil, exec.ErrBinding
 			}
 			if out == nil {
-				if a.binding.Dialect != "postgres" {
+				_, knownDialect := sqlpolicy.NativeDialect(a.binding.Dialect)
+				if !knownDialect || a.binding.Dialect != "postgres" && version < 6 {
 					return nil, analyticalUnsupported("analytical_dialect_unsupported")
 				}
 				out = &exec.AnalyticalContract{Version: proofVersion, Binding: exec.Hash(a.binding), Semantics: selected.Digest}
@@ -92,13 +97,25 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 			}
 
 			if out.Dataset != "" && out.Dataset != compiler.dataset {
-				return nil, analyticalUnsupported("analytical_join_unsupported")
+				if version < 6 {
+					return nil, analyticalUnsupported("analytical_join_unsupported")
+				}
+				expression = rebaseAnalyticalExpression(expression, compiler.dataset, out.Dataset)
 			}
-			out.Dataset = compiler.dataset
+			if out.Dataset == "" {
+				out.Dataset = compiler.dataset
+			}
 			out.Metrics = append(out.Metrics, exec.AnalyticalMetric{ID: pick.Topic + ":" + string(root.Reference.Kind) + ":" + root.Reference.ID, Expression: expression})
 			if len(out.Metrics) > 32 {
 				return nil, exec.ErrLimit
 			}
+		}
+	}
+	if out != nil && version >= 6 {
+		var err error
+		out.Intent, a, err = compileAnalyticalIntent(ctx, a, *out)
+		if err != nil {
+			return nil, err
 		}
 	}
 	if out != nil {
@@ -123,16 +140,26 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 			return nil, err
 		}
 	}
+	if out != nil && out.Intent != nil && out.QueryPopulation == nil {
+		out.QueryPopulation = &exec.AnalyticalQueryPopulation{Policy: exec.AnalyticalQueryPopulationPolicy}
+	}
+	if out != nil && version >= 6 {
+		if err := compileAnalyticalJoins(ctx, a, out); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
 type analyticalCompiler struct {
-	ctx        context.Context
-	definition topics.Definition
-	binding    exec.Binding
-	dataset    string
-	visiting   map[semantics.Reference]bool
-	nodes      int
+	expandedExpressions bool
+	joins               bool
+	ctx                 context.Context
+	definition          topics.Definition
+	binding             exec.Binding
+	dataset             string
+	visiting            map[semantics.Reference]bool
+	nodes               int
 }
 
 func (c *analyticalCompiler) column(ref semantics.Reference) (semantics.Column, error) {
@@ -158,13 +185,15 @@ func (c *analyticalCompiler) column(ref semantics.Reference) (semantics.Column, 
 	if found != 1 || column.SourceName == "" {
 		return column, exec.ErrBinding
 	}
-	if c.dataset != "" && c.dataset != ref.Dataset {
+	if !c.joins && c.dataset != "" && c.dataset != ref.Dataset {
 		return column, analyticalUnsupported("analytical_join_unsupported")
 	}
-	c.dataset = ref.Dataset
+	if c.dataset == "" {
+		c.dataset = ref.Dataset
+	}
 	found = 0
 	for _, relation := range c.binding.Relations {
-		if relation.ID != c.dataset {
+		if relation.ID != ref.Dataset {
 			continue
 		}
 		for _, actual := range relation.Columns {
@@ -176,6 +205,7 @@ func (c *analyticalCompiler) column(ref semantics.Reference) (semantics.Column, 
 	if found != 1 {
 		return column, exec.ErrBinding
 	}
+	column.SourceName = exec.AnalyticalColumnName(c.dataset, ref.Dataset, column.SourceName)
 	return column, nil
 }
 
@@ -259,7 +289,11 @@ func (c *analyticalCompiler) metric(ref semantics.Reference, inherited []semanti
 				}
 				inputs[input.ID] = input
 			}
-			expr, err := parser.ParseExpr(k.Expression)
+			expressionText := k.Expression
+			if c.expandedExpressions {
+				expressionText = reviewedArithmeticWords(expressionText, inputs)
+			}
+			expr, err := parser.ParseExpr(expressionText)
 			if err != nil {
 				return bad, analyticalUnsupported("analytical_expression_unsupported")
 			}
@@ -302,6 +336,26 @@ func (c *analyticalCompiler) expression(node ast.Expr, inputs map[string]semanti
 			return bad, analyticalUnsupported("analytical_expression_unsupported")
 		}
 		return exec.AnalyticalExpression{Op: "number", Value: n.Value}, nil
+	case *ast.UnaryExpr:
+		if !c.expandedExpressions || (n.Op != token.ADD && n.Op != token.SUB) {
+			return bad, analyticalUnsupported("analytical_expression_unsupported")
+		}
+		x, err := c.expression(n.X, inputs, used, filters, depth+1)
+		if err != nil {
+			return bad, err
+		}
+		if n.Op == token.ADD {
+			return x, nil
+		}
+		if x.Op == "number" {
+			if strings.HasPrefix(x.Value, "-") {
+				x.Value = strings.TrimPrefix(x.Value, "-")
+			} else {
+				x.Value = "-" + x.Value
+			}
+			return x, nil
+		}
+		return exec.AnalyticalExpression{Op: "-", Args: []exec.AnalyticalExpression{{Op: "number", Value: "0"}, x}}, nil
 	case *ast.BinaryExpr:
 		if n.Op != token.ADD && n.Op != token.SUB && n.Op != token.MUL && n.Op != token.QUO {
 			return bad, analyticalUnsupported("analytical_expression_unsupported")
@@ -370,6 +424,15 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 	if contract.QueryPopulation != nil {
 		want.QueryPopulation = exec.AnalyticalQueryPopulationPolicy
 	}
+	if contract.Intent != nil {
+		want.Intent = exec.AnalyticalIntentPolicy
+	}
+	if len(contract.Joins) > 0 {
+		want.Scope = strings.ReplaceAll(want.Scope, "single_base_relation", "physically_unique_reviewed_joins")
+	}
+	if len(contract.Populations) > 0 {
+		want.Scope = strings.ReplaceAll(want.Scope, "single_base_relation", "independent_singleton_populations")
+	}
 	if q.Analytical == nil || exec.Hash(want) != exec.Hash(q.Analytical) {
 		return nil, exec.ErrBinding
 	}
@@ -399,7 +462,7 @@ func analyticalDiagnostic(err error) string {
 		return ""
 	}
 	switch e.Code {
-	case "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
+	case "analytical_join_mismatch", "analytical_order_mismatch", "analytical_limit_mismatch", "analytical_query_population_mismatch", "analytical_grain_mismatch", "analytical_metric_mismatch", "analytical_population_mismatch", "analytical_relation_mismatch", "analytical_integer_division", "analytical_zero_policy":
 		return e.Code
 	default:
 		return "analytical_shape_unsupported"
@@ -448,6 +511,9 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == 5 {
 		version = exec.AnalyticalGroupingVersion
 	}
+	if q.AnalyticalVersion == 6 {
+		version = exec.AnalyticalIntentVersion
+	}
 	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
@@ -460,16 +526,33 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 }
 
 func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
-	if r.QueryPopulation != "" && ((r.Version != exec.AnalyticalQueryPopulationVersion && r.Version != exec.AnalyticalGroupingVersion) || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
+	if r.Version == exec.AnalyticalIntentVersion {
+		copy := *r
+		if strings.HasSuffix(r.Scope, ";physically_unique_reviewed_joins") {
+			copy.Scope = strings.TrimSuffix(r.Scope, "physically_unique_reviewed_joins") + "single_base_relation"
+		}
+		if strings.HasSuffix(r.Scope, ";independent_singleton_populations") {
+			if len(r.Grouping) > 0 {
+				return false
+			}
+			copy.Scope = strings.TrimSuffix(r.Scope, "independent_singleton_populations") + "single_base_relation"
+		}
+		r = &copy
+	}
+
+	if r.Intent != "" && (r.Version != exec.AnalyticalIntentVersion || r.Intent != exec.AnalyticalIntentPolicy) {
+		return false
+	}
+	if r.QueryPopulation != "" && ((r.Version != exec.AnalyticalQueryPopulationVersion && r.Version != exec.AnalyticalGroupingVersion && r.Version != exec.AnalyticalIntentVersion) || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy) {
 		return false
 	}
 	if r.Scope == exec.AnalyticalTotalScope {
-		return r.Version == exec.AnalyticalGroupingVersion && len(r.Grouping) == 0
+		return (r.Version == exec.AnalyticalGroupingVersion || r.Version == exec.AnalyticalIntentVersion) && len(r.Grouping) == 0
 	}
 	if r.Scope == exec.AnalyticalMetricScope {
 		return len(r.Grouping) == 0
 	}
-	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || r.Version == exec.AnalyticalGroupingVersion)) || r.Scope == exec.AnalyticalCalendarScope && (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || r.Version == exec.AnalyticalGroupingVersion)
+	validScope := r.Scope == exec.AnalyticalGrainScope && (r.Version == exec.AnalyticalGrainVersion || (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || (r.Version == exec.AnalyticalGroupingVersion || r.Version == exec.AnalyticalIntentVersion))) || r.Scope == exec.AnalyticalCalendarScope && (r.Version == exec.AnalyticalCalendarVersion || r.Version == exec.AnalyticalQueryPopulationVersion || (r.Version == exec.AnalyticalGroupingVersion || r.Version == exec.AnalyticalIntentVersion))
 	if !validScope || len(r.Grouping) < 1 || len(r.Grouping) > 16 {
 		return false
 	}

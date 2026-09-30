@@ -201,7 +201,7 @@ func (s *Service) executeNative(ctx context.Context, e identity.Envelope, p read
 			err = readFailure(ctx, err)
 		}
 	}()
-	binding, err := s.inspectReadContext(ctx, tx, c, record.Source.ID, record.Source.Revision, location)
+	binding, err := s.inspectReadContext(withStoredKeyPolicy(ctx, record.Binding), tx, c, record.Source.ID, record.Source.Revision, location)
 	if err != nil {
 		return out, err
 	}
@@ -523,7 +523,7 @@ func (s *Service) ControlRead(ctx context.Context, e identity.Envelope, control 
 			}
 			// Prove actual credentials/catalog context before observing a native identity;
 			// a replacement database cannot falsely prove an old backend stopped.
-			_, err = s.probe(ctx, c, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
+			_, err = s.probe(withStoredKeyPolicy(ctx, record.Binding), c, id, record.Source.Revision, func(ctx context.Context, tx readTransaction, b readexec.Binding) error {
 				if readexec.Hash(b) != readexec.Hash(record.Binding) {
 					return readexec.ErrBinding
 				}

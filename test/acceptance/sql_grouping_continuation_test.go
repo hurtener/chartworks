@@ -125,7 +125,7 @@ func TestSQLRecoveryGroupingContinuationLifecycleAcceptance(t *testing.T) {
 				t.Fatal("replay made model/source call")
 			}
 			saved, err := f.f.db.ReadSavedQuery(ctx, f.e, calendar.QueryID, false)
-			if err != nil || saved.Result != nil || saved.AnalyticalVersion != 5 || !reflect.DeepEqual(saved.Route.Request.Grouping, calendar.Route.Request.Grouping) {
+			if err != nil || saved.Result != nil || saved.AnalyticalVersion != 6 || !reflect.DeepEqual(saved.Route.Request.Grouping, calendar.Route.Request.Grouping) {
 				t.Fatal("saved grouping projection", err)
 			}
 			for _, mutate := range []string{`analytical_version=4`, `analytical=NULL`, `analytical=jsonb_set(analytical,'{contract}',to_jsonb(repeat('0',64)))`} {

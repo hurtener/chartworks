@@ -19,33 +19,51 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 	if !only(q, "targetList", "fromClause", "whereClause", "groupClause", "havingClause", "sortClause", "limitOffset", "limitCount", "limitOption", "op") || text(q["op"]) != "" && text(q["op"]) != "SETOP_NONE" {
 		return analyticalFailure("analytical_shape_unsupported", true)
 	}
-	sources := array(q["fromClause"])
-	if len(sources) != 1 || object(sources[0])["RangeVar"] == nil {
-		return analyticalFailure("analytical_shape_unsupported", true)
-	}
-	r := fieldObject(sources[0], "RangeVar")
-	// ONLY is a population-changing relation modifier, not a formatting choice.
-	// The catalog contract describes the reviewed relation including descendants;
-	// no contract authorizes replacing it with the physical parent alone. Native
-	// safety may admit ONLY, but analytical certification must not do so.
-	if !truth(r["inh"]) {
-		return analyticalFailure("analytical_relation_mismatch", false)
-	}
-	if text(r["schemaname"]) != a.relation.Schema || text(r["relname"]) != a.relation.Name {
-		return analyticalFailure("analytical_relation_mismatch", false)
-	}
-	a.alias = a.relation.Name
-	if alias := object(r["alias"]); alias != nil {
-		alias = fieldObject(alias, "Alias")
-		if len(array(alias["colnames"])) > 0 {
+	if len(a.joins) > 0 {
+		sources := array(q["fromClause"])
+		if len(sources) != 1 {
+			return analyticalFailure("analytical_join_mismatch", false)
+		}
+		if _, err := a.joinSources(sources[0]); err != nil {
+			return err
+		}
+		if len(a.joinUsed) != len(a.joins) {
+			return analyticalFailure("analytical_join_mismatch", false)
+		}
+		for key, node := range q {
+			if key != "fromClause" && !analyticalFlat(node, 0) {
+				return analyticalFailure("analytical_shape_unsupported", true)
+			}
+		}
+	} else {
+		sources := array(q["fromClause"])
+		if len(sources) != 1 || object(sources[0])["RangeVar"] == nil {
 			return analyticalFailure("analytical_shape_unsupported", true)
 		}
-		a.alias = text(alias["aliasname"])
-	}
-	// Even a same-table nested SELECT can alter cardinality/populations. This
-	// narrower checker admits one base scope, never dead or shadowed CTE evidence.
-	if !analyticalFlat(q, 0) {
-		return analyticalFailure("analytical_shape_unsupported", true)
+		r := fieldObject(sources[0], "RangeVar")
+		// ONLY is a population-changing relation modifier, not a formatting choice.
+		// The catalog contract describes the reviewed relation including descendants;
+		// no contract authorizes replacing it with the physical parent alone. Native
+		// safety may admit ONLY, but analytical certification must not do so.
+		if !truth(r["inh"]) {
+			return analyticalFailure("analytical_relation_mismatch", false)
+		}
+		if text(r["schemaname"]) != a.relation.Schema || text(r["relname"]) != a.relation.Name {
+			return analyticalFailure("analytical_relation_mismatch", false)
+		}
+		a.alias = a.relation.Name
+		if alias := object(r["alias"]); alias != nil {
+			alias = fieldObject(alias, "Alias")
+			if len(array(alias["colnames"])) > 0 {
+				return analyticalFailure("analytical_shape_unsupported", true)
+			}
+			a.alias = text(alias["aliasname"])
+		}
+		// Even a same-table nested SELECT can alter cardinality/populations. This
+		// narrower checker admits one base scope, never dead or shadowed CTE evidence.
+		if !analyticalFlat(q, 0) {
+			return analyticalFailure("analytical_shape_unsupported", true)
+		}
 	}
 	common := map[string]int{}
 	filters := map[string]AnalyticalFilter{}
@@ -101,7 +119,7 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 		}
 		terms[i] = term
 		if name := text(t["name"]); name != "" {
-			if _, exists := aliases[name]; exists && a.grain != nil {
+			if _, exists := aliases[name]; exists && (a.grain != nil || a.intent != nil) {
 				return analyticalFailure("analytical_output_ambiguous", true)
 			}
 			aliases[name] = term
@@ -149,6 +167,9 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 		}
 	}
 	if err := a.checkGrain(groups, terms); err != nil {
+		return err
+	}
+	if err := a.checkIntent(q, terms, aliases); err != nil {
 		return err
 	}
 	return a.ctx.Err()
@@ -199,6 +220,9 @@ func analyticalIntegerConstant(node any) (int, bool) {
 	return int(n), n == float64(int(n))
 }
 func (a *analyticalChecker) field(node any) (Column, bool) {
+	if len(a.joinAliases) > 0 {
+		return a.joinedField(node)
+	}
 	m := object(object(node)["ColumnRef"])
 	if m == nil {
 		return Column{}, false
@@ -324,7 +348,7 @@ func (a *analyticalChecker) aggregateKey(op, column string, filters []Analytical
 	if op == "count" {
 		c, ok := a.column(column)
 		if column == "" || ok && !c.Nullable {
-			op, column = "count_rows", ""
+			op, column = "count_rows", a.countPopulation(column)
 		}
 	}
 	return analyticalExprKey(op, column, "", filters, nil)
@@ -344,6 +368,9 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 	if len(root) != 1 {
 		return fail("analytical_expression_unsupported", true)
 	}
+	if term, ok := a.derivedTerm(node); ok {
+		return term, nil
+	}
 	if c, ok := a.field(node); ok {
 		kind := analyticalNumericKind(c)
 		return analyticalTerm{column: c.Name, numeric: kind == "decimal", exact: kind != ""}, nil
@@ -352,6 +379,9 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 		if term, handled, err := a.calendarTerm(node, depth); handled {
 			return term, err
 		}
+	}
+	if c := object(root["CaseExpr"]); c != nil && a.expandedExpressions {
+		return a.caseRatioTerm(c, depth)
 	}
 	if cast := object(root["TypeCast"]); cast != nil {
 		t := fieldObject(cast["typeName"], "TypeName")
@@ -409,6 +439,20 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 			x.guarded = true
 			return x, nil
 		}
+		if a.expandedExpressions && text(e["kind"]) == "AEXPR_OP" && e["lexpr"] == nil && e["rexpr"] != nil && (op[0] == "+" || op[0] == "-") {
+			x, err := a.term(e["rexpr"], depth+1)
+			if err != nil {
+				return x, err
+			}
+			if x.key == "" || !x.exact || x.guarded {
+				return fail("analytical_expression_unsupported", true)
+			}
+			if op[0] == "-" {
+				x.key = analyticalExprKey("-", "", "", nil, []string{analyticalExprKey("number", "", "0", nil, nil), x.key})
+				x.constant = ""
+			}
+			return x, nil
+		}
 		if text(e["kind"]) != "AEXPR_OP" || !strings.Contains("+-*/", op[0]) || len(op[0]) != 1 || e["lexpr"] == nil || e["rexpr"] == nil {
 			return fail("analytical_expression_unsupported", true)
 		}
@@ -427,14 +471,14 @@ func (a *analyticalChecker) term(node any, depth int) (analyticalTerm, error) {
 			return fail("analytical_type_unsupported", true)
 		}
 		if op[0] == "/" {
-			if !x.numeric && !y.numeric {
+			if !x.numeric && !y.numeric && a.binding.Dialect != "mysql" {
 				return fail("analytical_integer_division", false)
 			}
 			if !y.guarded && (y.constant == "" || y.constant == "0") {
 				return fail("analytical_zero_policy", false)
 			}
 		}
-		return analyticalTerm{key: analyticalExprKey(op[0], "", "", nil, []string{x.key, y.key}), numeric: x.numeric || y.numeric, exact: true, aggregate: x.aggregate || y.aggregate}, nil
+		return analyticalTerm{key: analyticalExprKey(op[0], "", "", nil, []string{x.key, y.key}), numeric: x.numeric || y.numeric || op[0] == "/" && a.binding.Dialect == "mysql", exact: true, aggregate: x.aggregate || y.aggregate}, nil
 	}
 	return fail("analytical_expression_unsupported", true)
 }
@@ -463,7 +507,7 @@ func (a *analyticalChecker) aggregate(f map[string]any, depth int) (analyticalTe
 	}
 	args := array(f["args"])
 	column := ""
-	numeric := op == "avg"
+	numeric := op == "avg" && a.binding.Dialect != "sqlserver" && a.binding.Dialect != "bigquery" && a.binding.Dialect != "databricks"
 	exact := op == "count" || op == "distinct_count"
 	predicates := analyticalConjuncts(f["agg_filter"])
 	if truth(f["agg_star"]) {
@@ -493,8 +537,11 @@ func (a *analyticalChecker) aggregate(f map[string]any, depth int) (analyticalTe
 		if term.column == "" || term.aggregate || term.guarded {
 			return fail("analytical_metric_mismatch", false)
 		}
+		if op == "avg" && (a.binding.Dialect == "sqlserver" || a.binding.Dialect == "bigquery" || a.binding.Dialect == "databricks") && !term.numeric {
+			return fail("analytical_integer_average", false)
+		}
 		column = term.column
-		numeric = numeric || term.numeric
+		numeric = numeric || term.numeric || a.binding.Dialect == "mysql" && op == "sum"
 		exact = exact || term.exact
 	}
 	filters := map[string]AnalyticalFilter{}

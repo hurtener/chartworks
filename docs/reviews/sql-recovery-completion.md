@@ -5,7 +5,7 @@ Latest qualified implementation: `2dd7e9b9bfa91a84831843e4bf2413aaa6e5d02d`;
 qualified tree: `b323b8903ddef37a6bb3ad13696b7abb86db3275`.
 S1/S3/S7/S8/S9 are qualified in their documented scopes. The S2 grounded-policy
 implementation below requires its own exact-source qualification before closure.
-Updated 2026-09-26. This is the current AP-00–AP-08 tracker. Historical
+Updated 2026-09-30. This is the current AP-00–AP-08 tracker. Historical
 checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
 at its stated revision, not the current completion status.
 
@@ -315,3 +315,61 @@ selection. This is structurally grounded model interpretation, not calibrated
 confidence or arbitrary natural-language correctness. S2's exact-source gate is
 pending in this checkpoint; held-out comparison and deployment-model calibration
 remain Q1/Q2/Q3. No other unchecked requirement is removed by this increment.
+
+
+## S10 current-only reusable bases — qualification pending
+
+The [owned-example contract](../contracts/owned-example-learning-v1.md) adds
+value-free reuse of an authenticated binder base with current sealed predicate
+requirements. Old customer values, date bounds, private aliases and original
+question text do not become template content or defaults. Independent model
+slots retain only their existing canonical schema. An origin policy, immutable
+storage, versioned portability, native re-review, current-source admission and
+existing analytical checks protect all consumer paths. New EN/ES customer,
+calendar, Boolean, numeric and mixed-slot lifecycle/negative tests are mandatory.
+This checkpoint is implemented but not counted as a qualified completion until
+its full recovery matrix has actually passed. S4/S5/S6/S11/S12 and Q1–Q3 remain
+open; no claim of live provider/owner parity follows from these synthetic tests.
+
+
+## 2026-09-30 integrated recovery checkpoint — qualification in progress
+
+The new source increment restores the previously checksummed owned-example
+implementation, then extends the runtime consumers rather than relabeling safe
+rejection as product support. It includes:
+
+- S4: v6 reviewed EN/ES order/limit intent, exact native output/ordinal/expression
+  matching, NULL ordering and count/offset policy, unary arithmetic and guarded
+  CASE ratio equivalence, plus existing calendar identities
+- S5: [physical key-backed joins and independent singleton populations](../contracts/analytical-join-populations-v1.md),
+  including source catalog uniqueness, exact reviewed INNER/LEFT relationships,
+  per-metric fan-out proof, joined grouping, and real CTE/derived aggregate lanes
+- S10: [value-free owned-example learning](../contracts/owned-example-learning-v1.md),
+  reconstructing and reviewing only the authenticated unbound template, fresh
+  service-owned predicates and independent model-slot schemas
+- S11: [shared function signatures](../contracts/read-function-signatures-v2.md)
+  and a bounded companion using the existing pinned native parser dependency,
+  with one registry shared by generation and native validation
+- S12: [durable protected questions](../contracts/durable-generation-questions-v1.md),
+  reviewed resumption, current authority/source checks, private refinement,
+  atomic terminal-correction handoff and no-extra-model replay
+
+Forward migrations 061/062 retain old records unchanged while adding immutable
+pending/resolution evidence and v6 analytical receipt scopes. The two temporary
+source-object preparation workflows are removed from runtime source. New review,
+engine and release evidence is still required before overall completion or merge.
+
+Local qualification now has an actual Go 1.27.1 compiler, the pinned native parser
+and query subprocess, disposable PostgreSQL 17.6 with pgvector 0.8.2 and disposable
+MySQL 8.4.7. Early runs found and corrected real repair-code, pending-audit and
+receipt-scope integration omissions; those failed runs are not passing evidence.
+Final exact-source unit/race/acceptance and hosted CI results will be recorded
+only after their terminal results are observed. Recorded provider responses remain
+recorded; no paid model call or production credential was used.
+
+Remaining requirements are not discarded: grouped multi-fact preaggregation,
+broader nested/window/set analytical proofs and the required engine/query matrix
+remain S4/S5/S6 work. Applicable live model/tokenizer and cloud-engine inputs,
+protected independently expected owner cohorts and final release/cutover evidence
+remain Q1/Q2/Q3. The checked-in synthetic Commerce cohort supplies independent
+known results for local integration, not production-owner parity.

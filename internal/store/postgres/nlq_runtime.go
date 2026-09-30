@@ -74,7 +74,7 @@ func (d *DB) ReadSession(ctx context.Context, scope store.Scope, id string) (out
 func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord) error {
 	decodedDigest, digestErr := hex.DecodeString(q.ParentDigest)
 	lineageValid := q.Parent == "" && q.ParentRevision == 0 && q.ParentDigest == "" || identity.Identifier(q.Parent) && q.ParentRevision > 0 && digestErr == nil && len(decodedDigest) == 32 && q.ParentDigest == strings.ToLower(q.ParentDigest)
-	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !nlqexec.AnalyticalRecordValid(q) || !lineageValid || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
+	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !nlqexec.AnalyticalRecordValid(q) || !nlqexec.GenerationPendingValid(q) || !lineageValid || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -90,7 +90,11 @@ func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 		if err := insertNLQQuery(ctx, tx, scope, q); err != nil {
 			return err
 		}
-		return auditJob(ctx, tx, scope, "nlq.query_planned", q.ID)
+		event := "nlq.query_planned"
+		if q.GenerationPending != nil {
+			event = "nlq.generation_pending"
+		}
+		return auditJob(ctx, tx, scope, event, q.ID)
 	})
 }
 
@@ -281,7 +285,21 @@ func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec
 	if q.Analytical == nil {
 		analytical = nil
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21::jsonb,$22::jsonb,$23,$24::jsonb,$25::jsonb,$26::jsonb,$27::jsonb,$28,$29,$30,$31,$32,$33::jsonb,$34::jsonb,$35,$36::jsonb)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), nullableInt64(q.ParentRevision), nullableString(q.ParentDigest), operation, q.Topic, topics, versions, rules, templates, selection, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated, clarification, relationScope, q.AnalyticalVersion, analytical)
+	pending, e := marshalNLQ(q.GenerationPending)
+	if e != nil {
+		return e
+	}
+	if q.GenerationPending == nil {
+		pending = nil
+	}
+	resolution, e := marshalNLQ(q.GenerationResolution)
+	if e != nil {
+		return e
+	}
+	if q.GenerationResolution == nil {
+		resolution = nil
+	}
+	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical,generation_pending,generation_resolution) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21::jsonb,$22::jsonb,$23,$24::jsonb,$25::jsonb,$26::jsonb,$27::jsonb,$28,$29,$30,$31,$32,$33::jsonb,$34::jsonb,$35,$36::jsonb,$37::jsonb,$38::jsonb)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), nullableInt64(q.ParentRevision), nullableString(q.ParentDigest), operation, q.Topic, topics, versions, rules, templates, selection, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated, clarification, relationScope, q.AnalyticalVersion, analytical, pending, resolution)
 	return e
 }
 
@@ -299,7 +317,7 @@ func nullableInt64(value int64) any {
 	return value
 }
 
-const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical`
+const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical,generation_pending,generation_resolution`
 
 // ReadQuery returns protected query metadata and consumes rule invalidation fences.
 func (d *DB) ReadQuery(ctx context.Context, scope store.Scope, id string) (out nlqexec.QueryRecord, err error) {
@@ -372,8 +390,8 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 	var tenantValue, actorValue string
 	var parent, parentDigest, operation, sqlText *string
 	var parentRevision *int64
-	var topics, versions, rules, templates, selection, route, generation, params, receipt, result, assumptions, ambiguities, queryErrors, clarification, relationScope, analytical []byte
-	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &parentRevision, &parentDigest, &operation, &out.Topic, &topics, &versions, &rules, &templates, &selection, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated, &clarification, &relationScope, &out.AnalyticalVersion, &analytical); err != nil {
+	var topics, versions, rules, templates, selection, route, generation, params, receipt, result, assumptions, ambiguities, queryErrors, clarification, relationScope, analytical, pending, resolution []byte
+	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &parentRevision, &parentDigest, &operation, &out.Topic, &topics, &versions, &rules, &templates, &selection, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated, &clarification, &relationScope, &out.AnalyticalVersion, &analytical, &pending, &resolution); err != nil {
 		return err
 	}
 	_ = tenantValue
@@ -411,6 +429,16 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 	}
 	if len(analytical) > 0 && string(analytical) != "null" {
 		if json.Unmarshal(analytical, &out.Analytical) != nil {
+			return store.ErrMigration
+		}
+	}
+	if len(resolution) > 0 && string(resolution) != "null" {
+		if json.Unmarshal(resolution, &out.GenerationResolution) != nil || !nlqexec.GenerationResolutionValid(*out) {
+			return store.ErrMigration
+		}
+	}
+	if len(pending) > 0 && string(pending) != "null" {
+		if json.Unmarshal(pending, &out.GenerationPending) != nil || !nlqexec.GenerationPendingValid(*out) {
 			return store.ErrMigration
 		}
 	}
@@ -540,6 +568,19 @@ func stringValue(value *string) string {
 
 // UpdateQuery advances mutable execution metadata under a query revision CAS.
 func (d *DB) UpdateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord, expected int64) error {
+	return d.updateNLQQuery(ctx, scope, q, expected, nil)
+}
+
+// FinalizeGenerationPending commits a failed read and its non-executable question
+// together, so a crash cannot leave an abandoned run or lose the answer origin.
+func (d *DB) FinalizeGenerationPending(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord, expected int64, pending nlqexec.QueryRecord) error {
+	if q.Status != "failed" || pending.GenerationPending == nil || !nlqexec.GenerationPendingValid(pending) || pending.Parent != q.ID || pending.ParentRevision != q.Revision || pending.ParentDigest != nlqexec.QueryLineageDigest(q) || pending.Session != q.Session || pending.Context != q.Context {
+		return store.ErrInvalid
+	}
+	return d.updateNLQQuery(ctx, scope, q, expected, &pending)
+}
+
+func (d *DB) updateNLQQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord, expected int64, pending *nlqexec.QueryRecord) error {
 	if err := checkScope(scope); err != nil || q.ID == "" || q.Session == "" || expected < 1 || q.Revision != expected+1 || !nlqexec.AnalyticalRecordValid(q) {
 		return store.ErrInvalid
 	}
@@ -589,13 +630,34 @@ func (d *DB) UpdateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 	if q.Analytical == nil {
 		analytical = nil
 	}
+	updated := time.Now().UTC()
+	if pending != nil {
+		updated = q.Updated
+	}
 	err := d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		tag, e := tx.Exec(ctx, `UPDATE chartworks.nlq_queries SET operation=$5,generation=$6::jsonb,sql_text=$7,parameters=$8::jsonb,receipt=$9::jsonb,status=$10,result=$11::jsonb,assumptions=$12::jsonb,ambiguities=$13::jsonb,errors=$14::jsonb,validation_fixes=$15,execution_fixes=$16,revision=$17,updated_at=$18,analytical=$20::jsonb WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND query_id=$4 AND revision=$19 AND analytical_version=$21`, scope.Tenant(), scope.Actor(), q.Session, q.ID, operation, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, time.Now().UTC(), expected, analytical, q.AnalyticalVersion)
+		tag, e := tx.Exec(ctx, `UPDATE chartworks.nlq_queries SET operation=$5,generation=$6::jsonb,sql_text=$7,parameters=$8::jsonb,receipt=$9::jsonb,status=$10,result=$11::jsonb,assumptions=$12::jsonb,ambiguities=$13::jsonb,errors=$14::jsonb,validation_fixes=$15,execution_fixes=$16,revision=$17,updated_at=$18,analytical=$20::jsonb WHERE tenant_id=$1 AND actor_id=$2 AND session_id=$3 AND query_id=$4 AND revision=$19 AND analytical_version=$21`, scope.Tenant(), scope.Actor(), q.Session, q.ID, operation, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, updated, expected, analytical, q.AnalyticalVersion)
 		if e != nil {
 			return e
 		}
 		if tag.RowsAffected() != 1 {
 			return store.ErrConflict
+		}
+		if pending != nil {
+			// Bind the exact PostgreSQL representation after timestamp/JSON
+			// normalization, inside the same transaction and row lock.
+			var finalized nlqexec.QueryRecord
+			if err := scanNLQQuery(tx.QueryRow(ctx, `SELECT `+nlqQueryColumns+` FROM chartworks.nlq_queries WHERE tenant_id=$1 AND actor_id=$2 AND query_id=$3`, scope.Tenant(), scope.Actor(), q.ID), &finalized); err != nil {
+				return err
+			}
+			copy := *pending
+			copy.ParentRevision = finalized.Revision
+			copy.ParentDigest = nlqexec.QueryLineageDigest(finalized)
+			if err := insertNLQQuery(ctx, tx, scope, copy); err != nil {
+				return err
+			}
+			if err := auditJob(ctx, tx, scope, "nlq.generation_pending", pending.ID); err != nil {
+				return err
+			}
 		}
 		return auditJob(ctx, tx, scope, "nlq.query_executed", q.ID)
 	})

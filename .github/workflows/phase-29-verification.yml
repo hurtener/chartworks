@@ -45,13 +45,11 @@ jobs:
           if test -n "$files"; then
             if ! gofmt -d $files; then echo 'Formatting differences remain; final formatting gate is required.'; fi
           fi
-      - name: Reserve native build disk
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       - uses: actions/cache/restore@v4
         id: rust-cache
         with:
           path: /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target
-          key: phase29-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-bruin.sh') }}
+          key: phase29-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-bruin.sh') }}-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**') }}
       - name: Build the pinned native parser and runner
         id: native
         run: |

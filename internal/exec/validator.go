@@ -234,9 +234,20 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 		}
 	}
 	for _, function := range inspection.Functions {
-		if !sqlpolicy.AllowsFunction(binding.Dialect, []string{function}) {
+		if function != "window_function" && !sqlpolicy.AllowsFunction(binding.Dialect, []string{function}) {
 			return Plan{}, ErrUnsupported
 		}
+	}
+	// Keep the structural companion within the same native-work semaphore.
+	select {
+	case v.slots <- struct{}{}:
+	case <-ctx.Done():
+		return Plan{}, ctx.Err()
+	}
+	err = warehouseFunctionSignatures(ctx, r.SQL, binding.Dialect, dialect, v.limits.MaxASTNodes, v.limits.MaxASTDepth)
+	<-v.slots
+	if err != nil {
+		return Plan{}, err
 	}
 	for _, output := range inspection.Outputs {
 		if !SQLIdentifier(strings.ToLower(output)) {

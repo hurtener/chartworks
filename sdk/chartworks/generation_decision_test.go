@@ -29,7 +29,7 @@ func TestSQLRecoveryDecisionSDKBoundedProblem(t *testing.T) {
 	if err != nil || len(raw) <= 8192 || chartworks.DecodeGenerationProblem(raw) == nil {
 		t.Fatal("valid escaped problem discarded", err)
 	}
-	if chartworks.DecodeGenerationProblem([]byte(strings.Repeat(" ", 32<<10)+good)) != nil {
+	if chartworks.DecodeGenerationProblem([]byte(strings.Repeat(" ", 64<<10)+good)) != nil {
 		t.Fatal("oversized encoded problem admitted")
 	}
 	for _, bad := range []string{`{}`, strings.Replace(good, `"clarify"`, `"ready"`, 1), strings.Replace(good, `"version":`, `"extra":true,"version":`, 1), strings.Replace(good, `"clarify"`, `"clarify","outcome":"ready"`, 1), strings.Replace(good, "¿Qué métrica corresponde?", strings.Repeat("q", 513), 1)} {

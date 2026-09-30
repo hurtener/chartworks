@@ -14,6 +14,10 @@ git -C "$root/source" checkout --detach FETCH_HEAD
 test "$(git -C "$root/source" rev-parse HEAD)" = "$commit"
 rustup toolchain install 1.98.1 --profile minimal
 cargo +1.98.1 build --release --locked --manifest-path "$root/source/pkg/sqlparser/rustffi/Cargo.toml"
+# Compile Chartworks-owned structural evidence against the same pinned parser.
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CARGO_TARGET_DIR="$root/signatures-target" cargo +1.98.1 build --release --locked --manifest-path "$repo/internal/exec/signatureparser/rustffi/Cargo.toml"
+cp "$root/signatures-target/release/libchartworks_signatures.a" "$root/source/pkg/sqlparser/rustffi/target/release/"
 export CGO_ENABLED=1
 export CGO_LDFLAGS="-L$root/source/pkg/sqlparser/rustffi/target/release"
 go -C "$root/source" build -tags=bruin_no_duckdb -ldflags "-s -w -X main.version=v0.11.749($commit) -X main.commit=$commit" -o "$root/bruin" .

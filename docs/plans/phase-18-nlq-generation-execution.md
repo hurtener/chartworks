@@ -429,3 +429,15 @@ closure/rules, not SQL authority. Explicit choices and historical replay retain
 their behavior; unknown/ambiguous model choices cannot produce executable plans.
 No interpretation-confidence, live quality or full-recovery completion is inferred
 from these software changes. Historical results above retain their stated scope.
+
+## S10 — current-only service-owned predicate examples
+
+[Owned-example learning](../contracts/owned-example-learning-v1.md) reuses the
+protected binder's unbound base rather than retaining a previous customer's or
+period's predicates. Current sealed constraints are required for consumption and
+import; review, public probes, origin immutability and SQL inspection remain in
+force. Existing model slots stay value-free. Bound manual corrections are not
+misidentified as an authenticated replacement base. Version-three portable rows
+retain the immutable policy; old records are unchanged. No migration or added
+model operation is introduced. Exact lifecycle/negative result tests are mandatory
+in the recovery workflow, with observed results recorded in the canonical tracker.

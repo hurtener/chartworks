@@ -609,3 +609,28 @@ New software tests cover the core, route producer, execution consumer, saved/SDK
 projection and real PostgreSQL/recorded-provider journeys. Their test inventory is
 not a completed runtime gate. The existing owner/engine/quality obligations and
 all other unchecked S entries remain open; the PR is not ready for review yet.
+
+
+## S10 current-only reusable bases — qualification pending
+
+The [owned-example contract](../contracts/owned-example-learning-v1.md) adds
+value-free reuse of an authenticated binder base with current sealed predicate
+requirements. Old customer values, date bounds, private aliases and original
+question text do not become template content or defaults. Independent model
+slots retain only their existing canonical schema. An origin policy, immutable
+storage, versioned portability, native re-review, current-source admission and
+existing analytical checks protect all consumer paths. New EN/ES customer,
+calendar, Boolean, numeric and mixed-slot lifecycle/negative tests are mandatory.
+This checkpoint is implemented but not counted as a qualified completion until
+its full recovery matrix has actually passed. S4/S5/S6/S11/S12 and Q1–Q3 remain
+open; no claim of live provider/owner parity follows from these synthetic tests.
+
+
+## 2026-09-30 recovery integration
+
+The [current tracker](sql-recovery-completion.md) records a new integrated source
+checkpoint covering reviewed ordering, physical join and singleton population
+proofs, service-owned learning, structural function signatures and durable model
+questions. Forward migrations preserve retained evidence. Preliminary failed
+integration runs remain failures; final exact-source native/race and PostgreSQL/
+MySQL results and hosted qualification will be recorded after observation.

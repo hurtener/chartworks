@@ -57,11 +57,11 @@ func TestSQLRecoveryDecisionNoExecutablePlanAcceptance(t *testing.T) {
 			}
 			f.model.mode.Store(decisionRawResponse(t, kind, asked))
 			beforeCalls := decisionChatCount(f)
-			plans := count(t, db, `SELECT count(*) FROM chartworks.nlq_queries`)
+			plans := count(t, db, `SELECT count(*) FROM chartworks.nlq_queries WHERE sql_text IS NOT NULL`)
 			attempts := count(t, db, `SELECT count(*) FROM chartworks.read_attempts`)
 			out, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
 			problem := nlqexec.GenerationProblem(err)
-			if out.QueryID != "" || problem == nil || problem.Outcome != kind || problem.Questions[0] != asked || decisionChatCount(f) != beforeCalls+1 || count(t, db, `SELECT count(*) FROM chartworks.nlq_queries`) != plans || count(t, db, `SELECT count(*) FROM chartworks.read_attempts`) != attempts {
+			if out.QueryID != "" || problem == nil || problem.Outcome != kind || problem.Questions[0] != asked || decisionChatCount(f) != beforeCalls+1 || count(t, db, `SELECT count(*) FROM chartworks.nlq_queries WHERE sql_text IS NOT NULL`) != plans || count(t, db, `SELECT count(*) FROM chartworks.read_attempts`) != attempts {
 				t.Fatal("blocked generation created/executed a plan or retried", err)
 			}
 		}

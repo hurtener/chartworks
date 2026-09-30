@@ -151,7 +151,7 @@ func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exe
 	}
 	buckets := map[string]exec.AnalyticalBucket{}
 	columns, dimensions := map[string]bool{}, map[string]bool{}
-	compiler := analyticalCompiler{ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
+	compiler := analyticalCompiler{joins: contract.Version == exec.AnalyticalIntentVersion, ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
 	for start < len(words) {
 		if err := ctx.Err(); err != nil {
 			return nil, err

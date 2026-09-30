@@ -42,7 +42,7 @@ jobs:
         id: native
         with:
           path: /tmp/chartworks-bruin
-          key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+          key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**') }}
       - name: Build immutable native validation dependency
         if: steps.native.outputs.cache-hit != 'true'
         run: bash scripts/build-bruin.sh
@@ -50,7 +50,7 @@ jobs:
         if: steps.native.outputs.cache-hit != 'true'
         with:
           path: /tmp/chartworks-bruin
-          key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f
+          key: clients-bruin-ubuntu24-amd64-go1.26.4-rust1.98.1-5f562c2959496a04d57f5f199f5e3ad22159fa9f-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**') }}
       - name: Select exact dependency and record source
         run: |
           test "$(git -C /tmp/chartworks-bruin/source rev-parse HEAD)" = 5f562c2959496a04d57f5f199f5e3ad22159fa9f

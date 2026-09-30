@@ -27,12 +27,13 @@ type readTransaction interface {
 }
 
 type tableEvidence struct {
-	OID     int64
-	Owner   int64
-	ACL     string
-	Schema  string
-	Name    string
-	Columns []columnEvidence
+	OID        int64
+	Owner      int64
+	ACL        string
+	Schema     string
+	Name       string
+	Columns    []columnEvidence
+	UniqueKeys [][]string `json:",omitempty"`
 }
 type columnEvidence struct {
 	Name     string
@@ -204,6 +205,11 @@ func discoverRelation(ctx context.Context, tx readTransaction, relation config.S
 	if len(columns) != len(relation.Columns) {
 		return out, nil, readexec.ErrBinding
 	}
+	rows.Close()
+	out.UniqueKeys, err = discoverUniqueKeys(ctx, tx, out.OID, columns)
+	if err != nil {
+		return out, nil, err
+	}
 	return out, columns, nil
 }
 func safeOID(oid int64) bool {
@@ -315,8 +321,11 @@ func (s *Service) inspectReadContext(ctx context.Context, tx readTransaction, c 
 		if e != nil {
 			return readexec.Binding{}, e
 		}
+		if legacy, _ := ctx.Value(legacyUniqueKeyPolicy{}).(bool); legacy {
+			proof.UniqueKeys = nil
+		}
 		evidence.Tables = append(evidence.Tables, proof)
-		out.Relations = append(out.Relations, readexec.Relation{ID: "ds:" + readexec.Hash([]string{id, relation.Schema, relation.Name})[:32], Schema: relation.Schema, Name: relation.Name, Columns: columns})
+		out.Relations = append(out.Relations, readexec.Relation{ID: "ds:" + readexec.Hash([]string{id, relation.Schema, relation.Name})[:32], Schema: relation.Schema, Name: relation.Name, Columns: columns, UniqueKeys: proof.UniqueKeys})
 	}
 	out.Contract = "source-contract:" + readexec.Hash([]any{c.Version, out.Relations})[:32]
 	out.Fingerprint = readexec.Hash(evidence)

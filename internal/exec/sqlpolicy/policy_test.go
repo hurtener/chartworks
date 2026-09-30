@@ -15,7 +15,9 @@ import (
 // Freeze the pre-refactor validator lists independently. Updating production
 // names requires a deliberate policy/test review, not a regenerated golden.
 const oldPostgresFunctions = "count sum avg min max abs round ceil ceiling floor lower upper length char_length octet_length trim btrim ltrim rtrim substring substr replace like_escape date_trunc date_part extract row_number rank dense_rank lag lead first_value last_value nth_value ntile percent_rank cume_dist"
-const oldWarehouseFunctions = "abs avg coalesce count length lower max min round sum upper"
+
+// NULLIF is the reviewed S11 addition for analytical zero-denominator guards.
+const oldWarehouseFunctions = "abs avg coalesce count length lower max min nullif round sum upper"
 const oldPostgresTypes = "int2 int4 int8 numeric float4 float8 bool text varchar bpchar date timestamp timestamptz time timetz interval uuid json jsonb bytea money"
 const oldPostgresOperators = "+ - * / % = <> != < > <= >= || ~~ !~~ ~~* !~~*"
 
@@ -144,7 +146,7 @@ func TestSQLRecoveryVocabularyDetachedDigestAndGuidance(t *testing.T) {
 		t.Fatal("snapshot mutated live validator policy")
 	}
 	text, err := Guidance("postgres")
-	if err != nil || len(text) > 4096 || !strings.Contains(text, digest) || !strings.Contains(text, "necessary, not sufficient") || !strings.Contains(text, "No vocabulary entry grants permission") {
+	if err != nil || len(text) > 8192 || !strings.Contains(text, digest) || !strings.Contains(text, "necessary, not sufficient") || !strings.Contains(text, "No vocabulary entry grants permission") {
 		t.Fatal("unbounded or overstated guidance")
 	}
 	prefix := " Validator name vocabulary (necessary, not sufficient): "

@@ -17,8 +17,8 @@ type GenerationProblem = generationdecision.Problem
 // arbitrary error text into Error(). It cannot certify prose redaction.
 func DecodeGenerationProblem(raw []byte) *GenerationProblem {
 	// Eight 512-byte questions may expand to six JSON bytes per ASCII byte.
-	// Bound the encoded object without rejecting a valid escaped projection.
-	if _, err := gateway.DecodeJSON(raw, 32<<10); err != nil {
+	// Include the bounded reviewed choice catalog in the encoded object limit.
+	if _, err := gateway.DecodeJSON(raw, 64<<10); err != nil {
 		return nil
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))

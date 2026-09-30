@@ -81,7 +81,7 @@ func TestSQLRecoveryAnalyticalCompilationRejectsForeignOrUnsupported(t *testing.
 		func(a *admission) { a.publications[0].Definition.Measures[0].Field.ID = "missing" },
 		func(a *admission) { a.binding.Relations[0].Columns[0].Safe = false },
 		func(a *admission) { a.binding.Revision++ },
-		func(a *admission) { a.binding.Dialect = "mysql" },
+		func(a *admission) { a.binding.Dialect = "unsupported" },
 	} {
 		a := analyticalAdmission()
 		mutate(&a)

@@ -3,8 +3,11 @@
 package generationdecision
 
 import (
+	"encoding/hex"
 	"errors"
+	"github.com/hurtener/chartworks/internal/identity"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -23,10 +26,20 @@ var ErrInvalid = errors.New("nlq: invalid generation decision")
 // Problem is the public, redacted non-executable outcome. The owner redacts
 // private values before constructing it. Questions are model-authored requests,
 // never authoritative catalog choices or instructions for automatic execution.
+type Choice struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
 type Problem struct {
-	Version   string   `json:"version"`
-	Outcome   string   `json:"outcome"`
-	Questions []string `json:"questions"`
+	Resume        string    `json:"resume,omitempty"`
+	QueryID       string    `json:"query_id,omitempty"`
+	AnswerContext string    `json:"answer_context,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at,omitempty"`
+	Choices       []Choice  `json:"choices,omitempty"`
+	Version       string    `json:"version"`
+	Outcome       string    `json:"outcome"`
+	Questions     []string  `json:"questions"`
 }
 
 // Check enforces the decision half of the response union. hasSQL and counts
@@ -69,6 +82,27 @@ func Public(p Problem) *Problem {
 	if p.Version != Version || p.Outcome != Clarify && p.Outcome != Insufficient || !validQuestions(p.Questions) {
 		return nil
 	}
+	if (p.QueryID == "") != (p.AnswerContext == "") || len(p.Choices) > 128 {
+		return nil
+	}
+	if p.QueryID == "" {
+		if !p.ExpiresAt.IsZero() || len(p.Choices) != 0 || p.Resume != "" {
+			return nil
+		}
+	} else {
+		digest, err := hex.DecodeString(p.AnswerContext)
+		if (p.Resume != "plan" && p.Resume != "refine") || !identity.Identifier(p.QueryID) || err != nil || len(digest) != 32 || strings.ToLower(p.AnswerContext) != p.AnswerContext || p.ExpiresAt.IsZero() {
+			return nil
+		}
+	}
+	seen := map[Choice]bool{}
+	for _, c := range p.Choices {
+		if !identity.Identifier(c.ID) || c.Kind != "measure" && c.Kind != "kpi" && c.Kind != "dimension" || seen[c] {
+			return nil
+		}
+		seen[c] = true
+	}
+	p.Choices = append([]Choice(nil), p.Choices...)
 	p.Questions = append([]string(nil), p.Questions...)
 	return &p
 }

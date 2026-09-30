@@ -101,6 +101,33 @@ func TestSQLRecoveryAnalyticalAcceptance(t *testing.T) {
 		}
 		return n
 	}
+	t.Run("CASE denominator guards preserve exact ratio and NULL semantics", func(t *testing.T) {
+		defer func() {
+			if _, err := f.admin.Exec(ctx, `UPDATE analytics.sales SET amount=5 WHERE id=2`); err != nil {
+				t.Error(err)
+			}
+		}()
+		for _, amount := range []string{"5", "0", "NULL"} {
+			if _, err := f.admin.Exec(ctx, `UPDATE analytics.sales SET amount=`+amount+` WHERE id=2`); err != nil {
+				t.Fatal(err)
+			}
+			for _, sql := range []string{
+				`SELECT CASE WHEN sum(amount) FILTER (WHERE id=2)=0 THEN NULL ELSE sum(amount) FILTER (WHERE id=1)/sum(amount) FILTER (WHERE id=2) END FROM analytics.sales`,
+				`SELECT CASE WHEN sum(amount) FILTER (WHERE id=2)<>0 THEN sum(amount) FILTER (WHERE id=1)/sum(amount) FILTER (WHERE id=2) END FROM analytics.sales`,
+			} {
+				p := plan(t, question("population_ratio"), sql)
+				out := run(t, p)
+				if len(out.Execution.Result.Rows) != 1 || len(out.Execution.Result.Rows[0]) != 1 {
+					t.Fatal("ratio shape")
+				}
+				if amount == "5" {
+					value(t, out.Execution.Result.Rows[0][0], "2")
+				} else if string(out.Execution.Result.Rows[0][0]) != "null" {
+					t.Fatal("zero/NULL denominator did not remain NULL")
+				}
+			}
+		}
+	})
 	t.Run("distinct metric populations and replay", func(t *testing.T) {
 		p := plan(t, question("alpha_sales", "beta_sales"), `SELECT sum(amount) FILTER (WHERE id=1) AS alpha, sum(CASE WHEN id=2 THEN amount ELSE NULL END) AS beta FROM analytics.sales`)
 		out := run(t, p)
@@ -117,7 +144,7 @@ func TestSQLRecoveryAnalyticalAcceptance(t *testing.T) {
 		}
 		scope, _ := store.NewScope(pf.e.Tenant(), pf.e.User())
 		saved, err := f.db.ReadQuery(ctx, scope, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 5 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
+		if err != nil || saved.AnalyticalVersion != 6 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
 			t.Fatal("proof persistence", err)
 		}
 		projected, err := f.db.ReadSavedQuery(ctx, pf.e, p.QueryID, false)

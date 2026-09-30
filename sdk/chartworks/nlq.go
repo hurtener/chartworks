@@ -101,6 +101,13 @@ type NLQExampleParameterSchema = exampleparams.Schema
 // NLQExampleParameterSlot never contains a previous query's value or default.
 type NLQExampleParameterSlot = exampleparams.Slot
 
+// NLQOwnedExamplePolicy marks a value-free base for this request's owned filters.
+// It never supplies predicates, prior values or source permission.
+const NLQOwnedExamplePolicy = nlqexec.OwnedExamplePolicy
+
+// NLQExampleOrigin identifies the current reviewed source/semantic contract.
+type NLQExampleOrigin = nlqexec.ExampleOrigin
+
 // NLQPortableExample is the protected versioned import/export row.
 type NLQPortableExample = nlqexec.PortableExample
 

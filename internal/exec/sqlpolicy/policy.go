@@ -15,16 +15,17 @@ import (
 
 // Version changes when this vocabulary or its interpretation changes. Retained
 // query/analytical policy versions remain separate; this is generation guidance.
-const Version = "read-sql-vocabulary-v1"
+const Version = "read-sql-vocabulary-v2"
 
 // ErrDialect is closed and never includes untrusted dialect text.
 var ErrDialect = errors.New("sqlpolicy: unsupported dialect")
 
-// These are the existing validator lists, not all functions of the named DBMS.
+// These are the registered read vocabularies, not all functions of a DBMS.
+// Warehouse NULLIF is the reviewed analytical zero-denominator addition.
 // Space-delimited constants avoid mutable shared maps/slices and have one owner
 // for lookup and exported snapshots. PostgreSQL names are native AST spellings.
 const postgresFunctions = "count sum avg min max abs round ceil ceiling floor lower upper length char_length octet_length trim btrim ltrim rtrim substring substr replace like_escape date_trunc date_part extract row_number rank dense_rank lag lead first_value last_value nth_value ntile percent_rank cume_dist"
-const warehouseFunctions = "abs avg coalesce count length lower max min round sum upper"
+const warehouseFunctions = "abs avg coalesce count length lower max min nullif round sum upper"
 const postgresTypes = "int2 int4 int8 numeric float4 float8 bool text varchar bpchar date timestamp timestamptz time timetz interval uuid json jsonb bytea money"
 const postgresValueOps = "SVFOP_CURRENT_DATE SVFOP_CURRENT_TIME SVFOP_CURRENT_TIME_N SVFOP_CURRENT_TIMESTAMP SVFOP_CURRENT_TIMESTAMP_N SVFOP_LOCALTIME SVFOP_LOCALTIME_N SVFOP_LOCALTIMESTAMP SVFOP_LOCALTIMESTAMP_N"
 const postgresOperators = "+ - * / % = <> != < > <= >= || ~~ !~~ ~~* !~~*"
@@ -34,18 +35,21 @@ const postgresOperators = "+ - * / % = <> != < > <= >= || ~~ !~~ ~~* !~~*"
 // planning and analytical restrictions can still reject any particular use.
 // No source identifiers, question, values, credentials or permissions are here.
 type Profile struct {
-	Version            string   `json:"version"`
-	Dialect            string   `json:"dialect"`
-	Parser             string   `json:"parser"`
-	NativeDialect      string   `json:"native_dialect"`
-	ParameterStyle     string   `json:"parameter_style"`
-	Functions          []string `json:"function_names"`
-	FunctionNamespaces []string `json:"function_namespaces,omitempty"`
-	CastTypes          []string `json:"cast_ast_type_names,omitempty"`
-	Operators          []string `json:"operator_ast_names,omitempty"`
-	Expressions        []string `json:"special_expressions,omitempty"`
-	ValueKeywords      []string `json:"value_keywords,omitempty"`
-	Digest             string   `json:"digest,omitempty"`
+	FunctionSyntax     CallSyntax        `json:"function_syntax"`
+	Version            string            `json:"version"`
+	Dialect            string            `json:"dialect"`
+	Parser             string            `json:"parser"`
+	NativeDialect      string            `json:"native_dialect"`
+	ParameterStyle     string            `json:"parameter_style"`
+	NativeCoercions    bool              `json:"native_input_coercions,omitempty"`
+	Signatures         map[string]string `json:"function_signatures"`
+	Functions          []string          `json:"function_names"`
+	FunctionNamespaces []string          `json:"function_namespaces,omitempty"`
+	CastTypes          []string          `json:"cast_ast_type_names,omitempty"`
+	Operators          []string          `json:"operator_ast_names,omitempty"`
+	Expressions        []string          `json:"special_expressions,omitempty"`
+	ValueKeywords      []string          `json:"value_keywords,omitempty"`
+	Digest             string            `json:"digest,omitempty"`
 }
 
 // NativeDialect maps only exact admitted source dialects to the existing parser
@@ -86,6 +90,13 @@ func ForDialect(dialect string) (Profile, error) {
 		}
 	case "sqlserver", "bigquery":
 		out.ParameterStyle = "at-p-numbered"
+	}
+	out.FunctionSyntax = FunctionSyntax(dialect)
+	out.Signatures = make(map[string]string, len(out.Functions))
+	for _, name := range out.Functions {
+		signature, _ := FunctionSignature(dialect, name)
+		out.Signatures[name] = signature.String()
+		out.NativeCoercions = signature.NativeCoercions
 	}
 	raw, _ := json.Marshal(out) // Closed fields only; serialization cannot fail.
 	hash := sha256.Sum256(raw)
@@ -149,5 +160,5 @@ func Guidance(dialect string) (string, error) {
 		return "", err
 	}
 	raw, _ := json.Marshal(profile)
-	return " Validator name vocabulary (necessary, not sufficient): " + string(raw) + ". Use only the listed function names or special expression forms. PostgreSQL cast names are native AST spellings. These are read-validator limits, not all database capabilities; types, whole-tree safety, reviewed source scope and active analytical rules can narrow them further. Unlisted categories are not advertised. No vocabulary entry grants permission.", nil
+	return " Validator name vocabulary (necessary, not sufficient): " + string(raw) + ". Use only the listed function names or special expression forms and their kind(arguments)->result signatures; sql-name: prefixes specify call spelling, ? marks optional arguments, ... marks repetition, same refers to the first argument, and window functions require OVER. native_input_coercions delegates implicit conversions to mandatory native planning. PostgreSQL cast names are native AST spellings. These are read-validator limits, not all database capabilities; types, whole-tree safety, reviewed source scope and active analytical rules can narrow them further. Unlisted categories are not advertised. No vocabulary entry grants permission.", nil
 }

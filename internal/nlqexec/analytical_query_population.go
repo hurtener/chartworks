@@ -65,5 +65,5 @@ func analyticalPopulationGuidance(contract *exec.AnalyticalContract) string {
 }
 
 func analyticalGrainGuidance(contract *exec.AnalyticalContract) string {
-	return analyticalGrainGuidanceOnly(contract) + analyticalPopulationGuidance(contract)
+	return analyticalGrainGuidanceOnly(contract) + analyticalPopulationGuidance(contract) + analyticalIntentGuidance(contract) + analyticalJoinGuidance(contract)
 }

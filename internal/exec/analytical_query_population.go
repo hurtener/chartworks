@@ -2,11 +2,10 @@ package exec
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"sort"
 
-	pgquery "github.com/wasilibs/go-pgquery"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 )
 
 // AnalyticalQueryPopulationVersion adds optional, server-owned query predicate
@@ -39,7 +38,8 @@ func NewAnalyticalQueryPopulation(ctx context.Context, binding Binding, dataset 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if binding.Dialect != "postgres" || dataset == "" || len(constraints) < 1 || len(constraints) > 64 {
+	_, knownDialect := sqlpolicy.NativeDialect(binding.Dialect)
+	if !knownDialect || dataset == "" || len(constraints) < 1 || len(constraints) > 64 {
 		return nil, ErrBinding
 	}
 	if err := ValidateBusinessConstraints(binding, constraints); err != nil {
@@ -59,8 +59,11 @@ func validateAnalyticalQueryPopulation(ctx context.Context, c AnalyticalContract
 	if c.QueryPopulation == nil {
 		return nil
 	}
-	if (c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion) || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
+	if (c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion && c.Version != AnalyticalIntentVersion) || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
 		return ErrBinding
+	}
+	if c.Version == AnalyticalIntentVersion && c.Intent != nil && len(c.QueryPopulation.Constraints) == 0 {
+		return ctx.Err()
 	}
 	canonical, err := NewAnalyticalQueryPopulation(ctx, binding, c.Dataset, c.QueryPopulation.Constraints)
 	if err != nil {
@@ -80,7 +83,7 @@ func (a *analyticalChecker) checkQueryPopulation(q map[string]any) error {
 	if a.queryPopulation == nil {
 		return nil
 	}
-	base := "SELECT count(*) FROM " + businessQuote("postgres", a.relation.Schema) + "." + businessQuote("postgres", a.relation.Name) + " AS " + businessQuote("postgres", a.alias)
+	base := "SELECT count(*) FROM " + businessQuote(a.binding.Dialect, a.relation.Schema) + "." + businessQuote(a.binding.Dialect, a.relation.Name) + " AS " + businessQuote(a.binding.Dialect, a.alias)
 	bound, err := BindBusinessConstraints(a.ctx, a.binding, base, nil, a.queryPopulation.Constraints)
 	if err != nil {
 		return err
@@ -88,22 +91,10 @@ func (a *analyticalChecker) checkQueryPopulation(q map[string]any) error {
 	if len(bound.SQL) > 32<<10 {
 		return ErrLimit
 	}
-	raw, err := pgquery.ParseToJSON(bound.SQL)
+	expected, err := analyticalSQLTree(a.ctx, bound.SQL, a.binding)
 	if err != nil {
-		return analyticalFailure("analytical_query_population_unsupported", true)
-	}
-	if err := a.ctx.Err(); err != nil {
 		return err
 	}
-	var tree map[string]any
-	if json.Unmarshal([]byte(raw), &tree) != nil || len(array(tree["stmts"])) != 1 {
-		return ErrBinding
-	}
-	stmt := object(object(array(tree["stmts"])[0])["stmt"])
-	if len(stmt) != 1 || object(stmt["SelectStmt"]) == nil {
-		return ErrBinding
-	}
-	expected := object(stmt["SelectStmt"])
 	for _, clause := range []string{"whereClause", "havingClause"} {
 		if err := a.matchPopulationClause(q[clause], expected[clause], bound.Parameters, clause == "whereClause"); err != nil {
 			return err

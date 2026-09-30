@@ -534,6 +534,9 @@ func (r *sqlResolver) expr(v any, s *sqlScope, outputs bool) error {
 			if !ok || !safeFunction(parts) {
 				return ErrUnsafe
 			}
+			if !r.functionSignature(m, parts[len(parts)-1]) {
+				return ErrUnsupported
+			}
 			if truth(m["agg_star"]) && (parts[len(parts)-1] != "count" || len(array(m["args"])) != 0) {
 				return ErrUnsafe
 			}

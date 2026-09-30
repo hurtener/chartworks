@@ -57,7 +57,7 @@ jobs:
             /tmp/chartworks-native
             ~/.cargo/registry
             ~/.cargo/git
-          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**') }}
       - name: Build the pinned native read-parser dependency
         run: bash scripts/build-bruin.sh
       - uses: actions/cache/save@v4
@@ -67,7 +67,7 @@ jobs:
             /tmp/chartworks-native
             ~/.cargo/registry
             ~/.cargo/git
-          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**') }}
       - name: Record exact committed source
         run: |
           git log -1 --format='commit=%H%ntree=%T%nparents=%P'

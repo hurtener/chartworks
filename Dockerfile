@@ -13,6 +13,7 @@ ENV CHARTWORKS_BRUIN_BUILD_DIR=/opt/chartworks-bruin CGO_ENABLED=1
 ENV CGO_LDFLAGS=-L/opt/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
 WORKDIR /src
 COPY scripts/build-bruin.sh scripts/build-bruin.sh
+COPY internal/exec/signatureparser/rustffi internal/exec/signatureparser/rustffi
 RUN bash scripts/build-bruin.sh
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify

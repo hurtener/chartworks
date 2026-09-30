@@ -18,9 +18,10 @@ can propose a parameterized candidate using the SQL shape and slot types. Known
 binding spellings are redacted from its question label with the existing literal
 redactor. The candidate digest binds topic, redacted question, exact SQL and typed
 schema under a distinct versioned domain. Feedback can still be recorded when a
-query is unsuitable for reusable learning. Service-owned scalar/time/predicate
-bindings are not proposed automatically as reusable examples, even if the query
-has no explicit clarification-answer list.
+query is unsuitable for reusable learning. Service-owned scalar/time/predicate bindings themselves are never proposed as
+reusable values or defaults. The separate [owned-example learning policy](owned-example-learning-v1.md)
+can now propose an authenticated unbound base, with an immutable current-predicate
+marker and no historical question/answer values.
 
 The post-validation disclosure check uses the existing bounded SQL scanner, not a
 new permissive safety parser. Unsupported comments/quoted forms and known binding
