@@ -399,6 +399,7 @@ func recordedGeneratedStep(t *testing.T, columns []semantics.Reference) string {
 
 func TestGeneratedTopicPipelineRecorded(t *testing.T) {
 	model := newGatewayFixture(t, func(c *config.Gateway) {
+		recordedLiveChatCaps(c)
 		r := c.Roles["embedding"]
 		r.MaxBatchItems = 64
 		r.MaxBatchBytes = 65536
@@ -429,6 +430,7 @@ func TestGeneratedTopicPipelineRecorded(t *testing.T) {
 
 func TestGeneratedTopicProfileHeadFreshness(t *testing.T) {
 	model := newGatewayFixture(t, func(c *config.Gateway) {
+		recordedLiveChatCaps(c)
 		r := c.Roles["embedding"]
 		r.MaxBatchItems = 64
 		r.MaxBatchBytes = 65536
@@ -597,6 +599,7 @@ func recordedPaidGeneratedStep(t *testing.T, columns []semantics.Reference) stri
 
 func TestGeneratedTopicPaidVocabularyPipelineRecorded(t *testing.T) {
 	model := newGatewayFixture(t, func(c *config.Gateway) {
+		recordedLiveChatCaps(c)
 		r := c.Roles["embedding"]
 		r.MaxBatchItems = 64
 		r.MaxBatchBytes = 65536

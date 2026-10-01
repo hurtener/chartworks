@@ -97,7 +97,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 			return
 		}
 		if strings.HasPrefix(mode, "chat_raw:") && !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") {
-			_, _ = io.WriteString(w, strings.TrimPrefix(mode, "chat_raw:"))
+			_, _ = io.WriteString(w, encodeRecordedStrictResponse(t, strings.TrimPrefix(mode, "chat_raw:"), input))
 			return
 		}
 		if strings.HasPrefix(mode, "raw:") {

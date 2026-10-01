@@ -15,10 +15,23 @@ listed below and in the [software matrix](sql-recovery-software-matrix.md).
 PR #63 is stacked on this checkpoint. It contains the subsequent captured-report
 variants, retained amount-completeness transport, ownership/retention, explicit
 saved-origin derivation, PNG renditions and deterministic statistical narratives.
-Its `608f2d9` hosted reporting run passed scheduling, actual browser, chart and
-retention checks but failed isolated renderer AC03/AC04/AC05 with `launch_denied`.
-Those increments must not be described as absent from the stacked source or as
-full renderer qualification. [Reporting evidence](https://github.com/hurtener/chartworks/actions/runs/36836789817).
+The recovered charged-memory renderer is published at `9797f3518adcc2b037600172eb5a2b7badc04706`.
+Its standard CI and both SQL recovery jobs passed. Reporting passed scheduling,
+actual browser, charts, retained disclosures/PNG/ownership, units and build, but
+kernel memory/stability gates and Phase32 AC03/AC04/AC05 fail because the runner
+lacks the required operator-provisioned cgroup root. This is still unqualified
+kernel isolation, not permission to remove the guard.
+[Reporting evidence](https://github.com/hurtener/chartworks/actions/runs/36912568242).
+
+PR #64 is stacked on #63 at `3a3e5095940602ec5e091b3a7670e766ba6d87c0`.
+Both Go 1.26.4 and 1.27.1 recorded 3,230 unit/subtest passes across 32 packages
+and 421 acceptance passes, zero failures or missing required cases, and only the
+opt-in live reranker skip. Tested merge `f807e921878e45157034adb577ffdb64a41a5d17`
+has exactly the head tree `bba449315e59d301d916824c4360731bc514e826`.
+All eight grouped-period variants passed. Standard CI passed; reporting retains
+only the inherited kernel isolation failures described above.
+[SQL recovery](https://github.com/hurtener/chartworks/actions/runs/36917357859),
+[reporting](https://github.com/hurtener/chartworks/actions/runs/36917358205).
 
 ## Current residual software and qualification
 
@@ -34,7 +47,7 @@ full renderer qualification. [Reporting evidence](https://github.com/hurtener/ch
   Required remaining dialects need concrete consumers and physical uniqueness
   evidence, not only parser normalization. Named-local-zone MySQL instant buckets
   and hour/week/fiscal/occurrence-aware DST grain remain outside the admitted proof
-- Scoped schema-2 query receipts are ineligible for the existing schema-1 reusable
+- Scoped schema-2/schema-3 query receipts are ineligible for the schema-1 reusable
   learning consumer. That continuation does not reopen the completed S10 baseline
 - Topic generation/enhancement/review/publication and correction-derived learning
   have recorded-provider, real-source consumers. The unchanged independent-oracle
@@ -512,6 +525,8 @@ After integration with renderer head `9797f35`, 50 focused race events and 18
 PostgreSQL/reporting events passed (82.085 seconds for the source suite), with
 zero failures/skips; full build and vet also passed. The hosted workflow explicitly
 requires the new family and all eight variant pass events.
-These are recorded-provider software results. The new exact head still needs
-hosted qualification; no generic-filter, live-model, renderer-kernel or release
-gate is closed by this increment.
+Hosted recovery at `3a3e509` now passes on both Go toolchains: 3,230 unit/subtest
+and 421 acceptance events each, including every required variant. The tested
+merge tree equals the published head tree, as recorded above. These remain
+recorded-provider software results; no generic-filter, live-model, renderer-kernel
+or release gate is closed by this increment.

@@ -133,16 +133,16 @@ own exact entry; it cannot inherit a different model's window. Unknown overrides
 fail before dispatch. Entries are operator-owned configuration, not query inputs or
 a model-discovery service. No real model capacities are inferred from names.
 
-The versioned `utf8-json-byte-bound-v1` admission policy counts the normalized JSON
-chat payload's UTF-8 bytes, including escaped system/user messages, model ID, strict
-response schema and output/store parameters, plus the configured protocol reserve.
+The versioned `utf8-json-wire-byte-bound-v2` admission policy counts the SDK-style
+indented JSON chat payload's UTF-8 bytes, including escaped system/user messages, model ID, strict projected
+response schema, capability-routing preferences and output/store parameters, plus the configured protocol reserve.
 It then reserves the complete role output ceiling. This is deliberately conservative
 for byte-based remote tokenizers and is NOT a claim of exact provider tokenization.
 Operators must qualify their tokenizer/adapter framing and reserve; the accepted
 remote routes use the existing OpenAI/OpenRouter adapter. This does not replace the
 pinned cl100k semantic-tier budget or create a second semantic pruner.
 
-If no model-window policy is configured, normalized request-byte and operation limits
+If no model-window policy is configured, indented request-byte and operation limits
 still apply and optional content is refitted, but model capacity remains explicitly
 unknown. No guessed context size is inserted for legacy installations. The default
 protocol reservation for this legacy mode remains 1,024 units. With explicit windows,
@@ -152,12 +152,15 @@ reservation/dispatch; a preparation object never grants permission to execute.
 Runtime model override slices are copied when installed to prevent configuration
 changes between fitting and dispatch.
 
-Each actual attempt may carry `Usage.envelope` (`prompt-envelope-v1`): policy,
-effective-input/policy digest, normalized bytes, input upper bound, protocol/output
+Each actual attempt may carry `Usage.envelope` (`prompt-envelope-v2`): policy,
+effective-input/policy digest, indented bytes, input upper bound, protocol/output
 reserves and configured context limit. It contains no raw system/prompt/schema or
 private scalar values. Estimated admission counts remain distinct from nullable
 provider-reported `input_tokens`/`output_tokens`. Zero context limit means unconfigured,
 not unlimited verified capacity. Old receipts without envelope evidence stay unknown.
+The [strict transport contract](strict-provider-schemas-v1.md) adds projection policy,
+original/wire schema digests and explicit local assertions to this redacted receipt.
+Legacy v1 receipts retain their original normalized-byte meaning.
 Retries reserve the same complete envelope per attempt. Errors and preparation logs
 remain redacted; failure before dispatch creates no fabricated model-attempt receipt.
 

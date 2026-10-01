@@ -98,3 +98,12 @@ advisory uses an independent one-call, 64K-token, 30-second operation allowance 
 its own configured output cap. It is not a fallback to `enhance`. Existing manual
 and legacy draft review/publication remain available without this role. The reference
 configuration leaves it disabled so an upgrade does not silently add model spend.
+
+### Strict provider schema projection
+
+[Strict provider schema transport v1](strict-provider-schemas-v1.md) defines the
+lossless optional-field projection shared by preparation and dispatch, required
+original-domain validation, explicit local-only uniqueness, conservative unsupported
+schema rejection, OpenRouter capability routing and indented envelope accounting.
+Schemas and raw prompts remain private; redacted receipts bind both domain and wire
+schema identities. No live support claim follows from recorded-provider tests.

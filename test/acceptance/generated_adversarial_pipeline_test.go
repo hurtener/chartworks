@@ -242,6 +242,7 @@ func recordedAdversarialStep(t *testing.T, columns []semantics.Reference, datase
 func generateAdversarialPublished(t *testing.T, netMode ...bool) (*generatedTopicHarness, *gatewayFixture, drafts.Version, map[string]string) {
 	t.Helper()
 	model := newGatewayFixture(t, func(c *config.Gateway) {
+		recordedLiveChatCaps(c)
 		r := c.Roles["embedding"]
 		r.MaxBatchItems = 128
 		r.MaxBatchBytes = 128 << 10
@@ -288,6 +289,7 @@ func generateAdversarialPublished(t *testing.T, netMode ...bool) (*generatedTopi
 	}
 	t.Logf("recorded generated candidate: profiles=%d pages=%d measures=%d composite_candidates=%d advisory=%s", len(current.Pack.Datasets), len(report.Steps), len(current.Pack.Measures), len(current.Pack.RelationshipDecisions), current.Quality.Status)
 	current = confirmAdversarialCandidate(t, h, model, current, datasets, vocabulary, report, netMode...)
+	assertRecordedAuthoringEnvelopes(t, report)
 	return h, model, current, datasets
 }
 

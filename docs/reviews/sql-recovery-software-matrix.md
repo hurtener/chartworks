@@ -31,13 +31,15 @@ persistence/transport/replay evidence. Known software gaps stay in this table un
 implemented or explicitly approved as equivalent behavior; they are not renamed
 as external calibration simply to make a checklist green.
 
-Current exact-head hosted evidence at `9ada852c`: both Go 1.26.4/1.27.1
-recorded 2,998 unit/subtest events and 412 acceptance events with zero failures or
-missing requirements. The paid-reranker opt-in skip is not a live pass. The
-nineteen-case generated-topic corpus uses independent exact-rational source-row
-oracles; its former eight-answer/five-clarification failures are fixed in this
-checkpoint. [Recovery run](https://github.com/hurtener/chartworks/actions/runs/36814989291).
-The final manual release gate and live gateway E2E cohort were not run there.
+Current stacked hosted evidence at `3a3e509`: both Go 1.26.4/1.27.1 recorded
+3,230 unit/subtest events across 32 packages and 421 acceptance events, with zero
+failures or missing requirements. Tested merge `f807e92` has the identical
+`bba44931` source tree. The paid-reranker opt-in skip is not a live pass. The
+nineteen-case generated-topic corpus retains its independent exact-rational
+source-row oracles; all eight grouped-period variants are additionally required.
+[Recovery run](https://github.com/hurtener/chartworks/actions/runs/36917357859).
+Reporting retains its explicit operator-provisioned cgroup/kernel failures;
+manual final release and successful live generated-topic E2E remain unqualified.
 
 ## External qualification, distinct from implementation
 

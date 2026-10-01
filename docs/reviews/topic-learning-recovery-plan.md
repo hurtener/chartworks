@@ -1,7 +1,9 @@
 # Topic authoring and learning recovery milestone
 
 Status: software consumers implemented with recorded-provider evidence at
-`9ada852c`; live/comparative qualification remains open, updated 2026-10-01.
+`9ada852c`, retained by the passing Go 1.26.4/1.27.1 suites at stacked `3a3e509`;
+live/comparative qualification remains open, updated 2026-10-01.
+[Current recorded recovery evidence](https://github.com/hurtener/chartworks/actions/runs/36917357859).
 This is a bounded NLQ milestone;
 additional SQL-shape breadth is deferred. Already discovered correctness defects
 remain mandatory fixes. This plan does not declare live SQL or release completion.
@@ -15,8 +17,8 @@ review → explicit publication approval → current learned context → correct
 
 Existing reviewed SQL examples, exact topic publication and semantic dependencies
 are real consumers. They do not alone demonstrate topic-meaning learning. The
-current live Commerce fixture uses manually authored topics and `SkipLLM:true`;
-its six failed SQL plans do not measure enrichment. A subsequent one-case trace
+earlier live Commerce diagnostic used manually authored topics and `SkipLLM:true`;
+its six failed SQL plans did not measure enrichment. Its subsequent one-case trace
 shows the reviewed temporal dimension in context but no corresponding calendar
 proof guidance for “by month”; model generation and repair therefore disagree
 with the compiled intent. Fix and measure this linkage rather than weakening
