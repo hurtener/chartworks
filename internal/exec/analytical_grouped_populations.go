@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"context"
 	"sort"
 	"strings"
 )
@@ -19,10 +20,16 @@ type AnalyticalGroupedPopulations struct {
 	Lanes  []AnalyticalGroupedLane `json:"lanes"`
 }
 
+// AnalyticalGroupedOwnedPopulationsVersion adds authenticated per-fact period
+// ownership without changing any retained grouped policy.
+const AnalyticalGroupedOwnedPopulationsVersion = "analytical-metrics-v10"
+const AnalyticalGroupedOwnedPopulationPolicy = "grouped-owned-query-predicates-v1"
+
 type AnalyticalGroupedLane struct {
-	Domain  string           `json:"domain,omitempty"`
-	Dataset string           `json:"dataset"`
-	Joins   []AnalyticalJoin `json:"joins,omitempty"`
+	QueryPopulation *AnalyticalQueryPopulation `json:"query_population,omitempty"`
+	Domain          string                     `json:"domain,omitempty"`
+	Dataset         string                     `json:"dataset"`
+	Joins           []AnalyticalJoin           `json:"joins,omitempty"`
 }
 
 func analyticalColumnDataset(base, name string) string {
@@ -87,7 +94,7 @@ func groupedLeaves(c AnalyticalContract, dataset string) []AnalyticalExpression 
 // detached contract-wide namespace. It never validates a raw cross-fact join.
 func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (Relation, error) {
 	g := c.GroupedPopulations
-	if (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion) || (b.Dialect != "postgres" && !(b.Dialect == "mysql" && c.Version == AnalyticalGroupedProgramsVersion)) || g == nil || g.Policy != AnalyticalGroupedPopulationPolicy || (len(g.Lanes) < 2 || len(g.Lanes) > 4) || len(c.Joins)+len(c.Populations) != 0 || c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) < 1 || c.Version == AnalyticalGroupedPopulationsVersion && len(c.Grain.Buckets) != 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
+	if (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion && c.Version != AnalyticalGroupedOwnedPopulationsVersion) || (b.Dialect != "postgres" && !(b.Dialect == "mysql" && c.Version == AnalyticalGroupedProgramsVersion)) || g == nil || g.Policy != AnalyticalGroupedPopulationPolicy || (len(g.Lanes) < 2 || len(g.Lanes) > 4) || len(c.Joins)+len(c.Populations) != 0 || c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) < 1 || c.Version == AnalyticalGroupedPopulationsVersion && len(c.Grain.Buckets) != 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
 		return Relation{}, ErrBinding
 	}
 	all := map[string]Column{}
@@ -113,17 +120,37 @@ func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (
 		if c.Version == AnalyticalGroupedPopulationsVersion && lane.Domain != "" || lane.Domain != "" && lane.Domain != AnalyticalGroupDomainRaw && lane.Domain != AnalyticalGroupDomainQualifying {
 			return Relation{}, ErrBinding
 		}
+		if c.Version == AnalyticalGroupedOwnedPopulationsVersion {
+			if b.Dialect != "postgres" || lane.QueryPopulation == nil || len(lane.QueryPopulation.Constraints) != 1 || lane.Domain == "" {
+				return Relation{}, ErrBinding
+			}
+			for _, join := range lane.Joins {
+				if join.Type != "inner" {
+					return Relation{}, ErrBinding
+				}
+			}
+			for _, constraint := range lane.QueryPopulation.Constraints {
+				if constraint.Kind != "time_window" || constraint.Aggregation != "" {
+					return Relation{}, ErrBinding
+				}
+			}
+		} else if lane.QueryPopulation != nil {
+			return Relation{}, ErrBinding
+		}
 		leaves := groupedLeaves(c, lane.Dataset)
 		if len(leaves) == 0 {
 			return Relation{}, ErrBinding
 		}
-		local := AnalyticalContract{Version: AnalyticalIntentVersion, Dataset: lane.Dataset, Joins: lane.Joins}
+		local := AnalyticalContract{Version: AnalyticalGroupedProgramsVersion, Dataset: lane.Dataset, Joins: lane.Joins, QueryPopulation: lane.QueryPopulation}
 		for i, leaf := range leaves {
 			local.Metrics = append(local.Metrics, AnalyticalMetric{ID: string(rune('a' + i)), Expression: rebaseGroupedExpression(leaf, c.Dataset, lane.Dataset)})
 		}
 
 		joined, err := analyticalJoinRelation(local, b, root)
 		if err != nil {
+			return Relation{}, err
+		}
+		if err := validateAnalyticalQueryPopulation(context.Background(), local, b); err != nil {
 			return Relation{}, err
 		}
 		available := map[string]bool{}
@@ -202,7 +229,7 @@ type analyticalGroupedOutput struct {
 }
 
 func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected map[string]int, policy *AnalyticalGroupedPopulations) error {
-	if a.groupedExtensions {
+	if a.groupedExtensions && !a.groupedOwned {
 		if handled, err := a.groupedFinalProjection(q, expected, policy); handled {
 			return err
 		}
@@ -212,7 +239,7 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 		return fail()
 	}
 	var inlineSpine map[string]any
-	if a.groupedExtensions {
+	if a.groupedExtensions && !a.groupedOwned {
 		sources := array(q["fromClause"])
 		if len(sources) == 1 {
 			raw := sources[0]
@@ -453,7 +480,7 @@ func groupedCTERef(rv map[string]any) (string, string, bool) {
 }
 
 func (a *analyticalChecker) groupedLane(q map[string]any, policy *AnalyticalGroupedPopulations, used map[string]bool) (analyticalGroupedOutput, error) {
-	if a.groupedExtensions {
+	if a.groupedExtensions && !a.groupedOwned {
 		if proof, handled, err := a.groupedLaneProjection(q, policy, used); handled {
 			return proof, err
 		}
@@ -512,6 +539,9 @@ func (a *analyticalChecker) groupedLane(q map[string]any, policy *AnalyticalGrou
 	local.relation.Schema = text(rv["schemaname"])
 	local.relation.Name = text(rv["relname"])
 	local.queryPopulation = &AnalyticalQueryPopulation{Policy: AnalyticalQueryPopulationPolicy}
+	if lane.QueryPopulation != nil {
+		local.queryPopulation = lane.QueryPopulation
+	}
 	if len(lane.Joins) == 0 {
 		alias := text(rv["relname"])
 		if av := object(rv["alias"]); av != nil {
@@ -633,3 +663,8 @@ func (a *analyticalChecker) groupedSpine(q map[string]any, lanes map[string]anal
 	}
 	return outputs, nil
 }
+
+func (AnalyticalGroupedPopulations) String() string {
+	return "analytical-grouped-populations(redacted)"
+}
+func (p AnalyticalGroupedPopulations) GoString() string { return p.String() }

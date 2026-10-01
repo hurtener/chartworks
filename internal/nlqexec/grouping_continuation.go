@@ -195,16 +195,19 @@ func logicalGrouping(a admission, grain *exec.AnalyticalGrain) (*nlqroute.Groupi
 				}
 				matched := false
 				for _, column := range grain.Columns {
-					if column == field.SourceName && d.Role != semantics.DimensionTemporal && len(d.Filters) == 0 {
+					if (column == field.SourceName || column == d.Field.Dataset+"/"+field.SourceName) && d.Role != semantics.DimensionTemporal && len(d.Filters) == 0 {
 						out.Keys = append(out.Keys, nlqroute.GroupingKey{Topic: p.Definition.Topic, Dimension: d.ID})
 						usedColumns[column] = true
 						matched = true
 					}
 				}
 				for _, bucket := range grain.Buckets {
-					if bucket.Column == field.SourceName {
+					if bucket.Column == field.SourceName || bucket.Column == d.Field.Dataset+"/"+field.SourceName {
 						dim := grainDimension{id: d.ID, field: d.Field, role: d.Role, filters: d.Filters, temporal: d.Temporal}
 						reviewed, err := compileCalendarBucket(dim, field, bucket.Grain)
+						// Qualification is admitted only after the exact reviewed dataset
+						// and source field matched above; no suffix-only alias inference.
+						reviewed.Column = bucket.Column
 						if err != nil || reviewed != bucket {
 							continue
 						}

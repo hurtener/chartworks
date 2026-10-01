@@ -56,7 +56,7 @@ func hasActiveBusinessEvidence(route nlqroute.RouteResult) bool {
 }
 
 func bindClarificationCandidate(ctx context.Context, a admission, candidate generatedCandidate) (generatedCandidate, error) {
-	if a.analytical != nil && a.analytical.ScalarPopulations != nil {
+	if a.analytical != nil && (a.analytical.ScalarPopulations != nil || a.analytical.Version == exec.AnalyticalGroupedOwnedPopulationsVersion) {
 		return bindScalarPeriodCandidate(ctx, a, candidate)
 	}
 	if !hasActiveBusinessEvidence(a.route) {
@@ -119,7 +119,7 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 // before a new execution. It does not trust stored SQL, a digest, or a previous
 // answer as validator-issued proof; Run still performs normal fresh validation.
 func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identity.Envelope, record QueryRecord, a admission) error {
-	if isScalarPeriodRecord(record) {
+	if isScalarPeriodRecord(record) || isGroupedPeriodRecord(record) {
 		return s.verifyScalarPeriodBinding(ctx, e, record, a)
 	}
 	if !hasActiveBusinessEvidence(record.Route) {

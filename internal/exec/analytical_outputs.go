@@ -25,6 +25,19 @@ type AnalyticalCompletenessObligation struct {
 }
 
 func validateAnalyticalCapabilities(c AnalyticalContract, b Binding) error {
+	if c.Version == AnalyticalGroupedOwnedPopulationsVersion {
+		if b.Dialect != "postgres" || c.GroupedPopulations == nil || c.ScalarPopulations != nil || c.Completeness != nil {
+			return ErrBinding
+		}
+		return nil
+	}
+	if c.GroupedPopulations != nil {
+		for _, lane := range c.GroupedPopulations.Lanes {
+			if lane.QueryPopulation != nil {
+				return ErrBinding
+			}
+		}
+	}
 	if c.Version != AnalyticalScopedPopulationsVersion {
 		if c.ScalarPopulations != nil || c.Completeness != nil {
 			return ErrBinding
@@ -135,7 +148,7 @@ func AnalyticalOutputsValid(r *AnalyticalReceipt) bool {
 	if r == nil {
 		return false
 	}
-	if r.Version != AnalyticalScopedPopulationsVersion {
+	if r.Version != AnalyticalScopedPopulationsVersion && r.Version != AnalyticalGroupedOwnedPopulationsVersion {
 		return len(r.Outputs) == 0 && r.Completeness == nil
 	}
 	if len(r.Outputs) != len(r.Metrics) || len(r.Outputs) == 0 {
@@ -145,6 +158,9 @@ func AnalyticalOutputsValid(r *AnalyticalReceipt) bool {
 		if output.Metric != r.Metrics[i] || output.Column < 0 || output.Column > 255 {
 			return false
 		}
+	}
+	if r.Version == AnalyticalGroupedOwnedPopulationsVersion && r.Completeness != nil {
+		return false
 	}
 	if r.Completeness != nil {
 		p := r.Completeness

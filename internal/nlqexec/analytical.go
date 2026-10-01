@@ -20,6 +20,7 @@ import (
 // Zero means retained legacy evidence, not a claim of analytical correctness.
 const analyticalRecordVersion = 8
 const analyticalScopedRecordVersion = 9
+const analyticalGroupedOwnedRecordVersion = 10
 
 func analyticalUnsupported(code string) error {
 	return &exec.AnalyticalError{Code: code, Unsupported: true}
@@ -39,7 +40,7 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 	if len(queryConstraints) == 1 {
 		a.calendarConstraints = append([]exec.BusinessConstraint(nil), queryConstraints[0]...)
 	}
-	if version < 1 || version > analyticalScopedRecordVersion {
+	if version < 1 || version > analyticalGroupedOwnedRecordVersion {
 		return nil, exec.ErrBinding
 	}
 	proofVersion := exec.AnalyticalVersion
@@ -63,6 +64,9 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 	}
 	if version >= 8 {
 		proofVersion = exec.AnalyticalGroupedProgramsVersion
+	}
+	if version >= analyticalScopedRecordVersion && selectedKnownAmountCompleteness(a) && (selectedMetricPeriods(a) || len(a.metricPeriods) != 0) {
+		return nil, analyticalUnsupported("analytical_completeness_scope_unsupported")
 	}
 	if selectedMetricPeriods(a) && len(a.metricPeriods) == 0 {
 		return nil, analyticalUnsupported(AnalyticalMetricPeriodReviewCode)
@@ -92,7 +96,7 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 		if pick.Topic != def.Topic || pick.TopicVersion != def.Version || pick.PackDigest != publication.Digest || !topics.DigestValid(publication.Digest) || len(pick.Roots) > 128 {
 			return nil, exec.ErrBinding
 		}
-		compiler := &analyticalCompiler{scopedPopulations: version == analyticalScopedRecordVersion && !selectedKnownAmountCompleteness(a), reviewedNullPolicy: version >= 7, expandedExpressions: version >= 6, joins: version >= 6, ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
+		compiler := &analyticalCompiler{scopedPopulations: version >= analyticalScopedRecordVersion && !selectedKnownAmountCompleteness(a), reviewedNullPolicy: version >= 7, expandedExpressions: version >= 6, joins: version >= 6, ctx: ctx, definition: def, binding: a.binding, visiting: map[semantics.Reference]bool{}}
 		for _, root := range pick.Roots {
 			if root.Reference.Kind != semantics.KindMeasure && root.Reference.Kind != semantics.KindKPI || root.Reason == "required_rule" {
 				continue
@@ -163,8 +167,11 @@ func compileAnalyticalVersion(ctx context.Context, a admission, version int, que
 		out.QueryPopulation = &exec.AnalyticalQueryPopulation{Policy: exec.AnalyticalQueryPopulationPolicy}
 	}
 	ordinaryCompleteness := out != nil && version == analyticalScopedRecordVersion && selectedKnownAmountCompleteness(a)
-	if out != nil && version == analyticalScopedRecordVersion && !ordinaryCompleteness {
+	if out != nil && version >= analyticalScopedRecordVersion && !ordinaryCompleteness {
 		out.Version = exec.AnalyticalScopedPopulationsVersion
+		if version == analyticalGroupedOwnedRecordVersion && out.Grain != nil && len(out.Grain.Columns)+len(out.Grain.Buckets) > 0 {
+			out.Version = exec.AnalyticalGroupedOwnedPopulationsVersion
+		}
 		handled, err := compileAnalyticalScalarPopulations(ctx, a, out)
 		if err != nil {
 			return nil, err
@@ -460,7 +467,7 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 		}
 		return nil, nil
 	}
-	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalScopedRecordVersion {
+	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalGroupedOwnedRecordVersion {
 		return nil, exec.ErrBinding
 	}
 	contract, err := compileAnalyticalVersion(ctx, a, q.AnalyticalVersion, queryConstraints...)
@@ -505,6 +512,9 @@ func expectedAnalytical(ctx context.Context, q QueryRecord, a admission, queryCo
 	}
 	if contract.GroupedPopulations != nil {
 		want.Scope = strings.ReplaceAll(want.Scope, "single_base_relation", "independent_grouped_populations")
+	}
+	if contract.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
+		want.Scope = strings.ReplaceAll(want.Scope, "independent_grouped_populations", "independent_owned_grouped_populations")
 	}
 	if completeness := compiledKnownAmountCompleteness(contract); completeness != nil {
 		want.Completeness = completeness
@@ -555,7 +565,7 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == 0 {
 		return q.Analytical == nil
 	}
-	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalScopedRecordVersion {
+	if q.AnalyticalVersion < 1 || q.AnalyticalVersion > analyticalGroupedOwnedRecordVersion {
 		return false
 	}
 	selected := false
@@ -609,6 +619,9 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 	if q.AnalyticalVersion == analyticalScopedRecordVersion {
 		version = exec.AnalyticalScopedPopulationsVersion
 	}
+	if q.AnalyticalVersion == analyticalGroupedOwnedRecordVersion {
+		version = exec.AnalyticalGroupedOwnedPopulationsVersion
+	}
 	if r == nil || q.SQL == "" || r.Version != version || !analyticalReceiptScopeValid(r) || !topics.DigestValid(r.Contract) || !topics.DigestValid(r.Query) || r.Query != exec.AnalyticalQueryDigest(q.SQL, q.Parameters) || len(r.Metrics) == 0 || len(r.Metrics) > 32 {
 		return false
 	}
@@ -623,6 +636,16 @@ func AnalyticalRecordValid(q QueryRecord) bool {
 func analyticalReceiptScopeValid(r *exec.AnalyticalReceipt) bool {
 	if !exec.AnalyticalOutputsValid(r) {
 		return false
+	}
+	if r.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
+		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy || r.Completeness != nil || !strings.HasSuffix(r.Scope, ";independent_owned_grouped_populations") {
+			return false
+		}
+		copy := *r
+		copy.Version = exec.AnalyticalGroupedProgramsVersion
+		copy.Outputs = nil
+		copy.Scope = strings.ReplaceAll(r.Scope, "independent_owned_grouped_populations", "independent_grouped_populations")
+		r = &copy
 	}
 	if r.Version == exec.AnalyticalScopedPopulationsVersion {
 		if r.Intent != exec.AnalyticalIntentPolicy || r.QueryPopulation != exec.AnalyticalQueryPopulationPolicy {

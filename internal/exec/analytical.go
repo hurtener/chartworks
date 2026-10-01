@@ -166,7 +166,7 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if c.ScalarPopulations != nil {
 		relation, joinErr = analyticalScalarRelation(ctx, c, proofBinding, relation)
 	} else if c.GroupedPopulations != nil {
-		relation, joinErr = analyticalGroupedRelation(standard, proofBinding, relation)
+		relation, joinErr = analyticalGroupedRelation(c, proofBinding, relation)
 	} else if len(c.Populations) > 0 {
 		relation, joinErr = analyticalPopulationRelation(standard, proofBinding, relation)
 	} else {
@@ -202,7 +202,7 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 			}
 		}
 	}
-	checker := analyticalChecker{scalarPopulations: c.ScalarPopulations, ordinaryGroupProof: standard.Version == AnalyticalGroupedProgramsVersion && c.ScalarPopulations == nil && c.GroupedPopulations == nil && len(c.Populations) == 0, ordinaryGroupDomain: c.GroupDomain, groupedExtensions: standard.Version == AnalyticalGroupedProgramsVersion, reviewedNullPolicy: (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), populations: c.Populations, expandedExpressions: standard.Version == AnalyticalIntentVersion || (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), joins: c.Joins, joinAliases: map[string]string{}, joinUsed: map[int]bool{}, intent: c.Intent, ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
+	checker := analyticalChecker{groupedOwned: c.Version == AnalyticalGroupedOwnedPopulationsVersion, scalarPopulations: c.ScalarPopulations, ordinaryGroupProof: standard.Version == AnalyticalGroupedProgramsVersion && c.ScalarPopulations == nil && c.GroupedPopulations == nil && len(c.Populations) == 0, ordinaryGroupDomain: c.GroupDomain, groupedExtensions: standard.Version == AnalyticalGroupedProgramsVersion, reviewedNullPolicy: (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), populations: c.Populations, expandedExpressions: standard.Version == AnalyticalIntentVersion || (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), joins: c.Joins, joinAliases: map[string]string{}, joinUsed: map[int]bool{}, intent: c.Intent, ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
 	if c.ScalarPopulations != nil {
 		for _, lane := range c.ScalarPopulations.Lanes {
 			checker.populations = append(checker.populations, lane.Dataset)
@@ -284,11 +284,14 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if c.GroupedPopulations != nil {
 		receipt.Scope = strings.ReplaceAll(receipt.Scope, "single_base_relation", "independent_grouped_populations")
 	}
+	if c.Version == AnalyticalGroupedOwnedPopulationsVersion {
+		receipt.Scope = strings.ReplaceAll(receipt.Scope, "independent_grouped_populations", "independent_owned_grouped_populations")
+	}
 	if c.Completeness != nil {
 		receipt.Completeness = CloneAnalyticalCompleteness(c.Completeness)
 		receipt.Scope += AnalyticalCompletenessScope
 	}
-	if c.Version == AnalyticalScopedPopulationsVersion {
+	if c.Version == AnalyticalScopedPopulationsVersion || c.Version == AnalyticalGroupedOwnedPopulationsVersion {
 		receipt.Outputs, err = checker.provedOutputs(ids)
 		if err != nil {
 			return nil, err
@@ -298,6 +301,7 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 }
 
 type analyticalChecker struct {
+	groupedOwned         bool
 	finalTerms           []analyticalTerm
 	scalarPopulations    *AnalyticalScalarPopulations
 	ordinaryGroupProof   bool

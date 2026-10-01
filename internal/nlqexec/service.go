@@ -371,6 +371,14 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 			return PlanResult{}, err
 		}
 	}
+	if isScalarPeriodRecord(old) || isGroupedPeriodRecord(old) {
+		// Grouping continuation reconstructs the parent contract from current
+		// authenticated period applications, never from stored route JSON.
+		parent, parentConstraints, err = s.scalarPeriodAdmission(ctx, e, old, parent)
+		if err != nil {
+			return PlanResult{}, err
+		}
+	}
 	reviewErr := s.reviewLegacyAnalyticalContinuation(ctx, e, old, parent, parentConstraints)
 	if in.IntentReview != nil {
 		domainReview := old.AnalyticalVersion == 7 && isGroupedDomainReview(reviewErr)

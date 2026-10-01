@@ -22,9 +22,11 @@ full renderer qualification. [Reporting evidence](https://github.com/hurtener/ch
 
 ## Current residual software and qualification
 
-- Grouped multi-fact programs reject query-owned constraints; scoped v9 period
-  applications are PostgreSQL-only scalar flat CTE lanes. Grouped per-fact periods
-  and generic fact/shared-dimension filters need explicit placement and receipts
+- V10 now composes authenticated reviewed fact-owned periods with grouped
+  PostgreSQL region/calendar CTE lanes, schema-3 custody and exact replay. See the
+  [grouped-period contract](../contracts/analytical-grouped-owned-periods-v1.md).
+  Generic non-temporal fact/shared-dimension filters, derived owned-lane binding
+  and broader dialects remain open; scalar v9 receipts retain their old meaning
 - Outer joins have equality-key proof but no reviewed ON-versus-WHERE predicate
   placement policy. Analytical windows/general sets remain unsupported except
   the reviewed UNION DISTINCT group-key spine
@@ -490,3 +492,26 @@ is remaining explicit S4/S9 work, not a claim of unchanged automatic continuity.
 [Finite software matrix](sql-recovery-software-matrix.md) identifies the remaining
 derived/grouped/calendar/placement and temporal policies. Hosted exact-head checks,
 owner cohorts, live providers and remaining real engines retain separate gates.
+
+
+## Grouped owned-period checkpoint — v10
+
+The bounded grouped-period consumer now passes eight real PostgreSQL variants:
+region/month × cohort/activity × raw/qualifying group domains. Independent source-row
+oracles preserve NULL keys, all-NULL measures, zero versus absent counts, canceled-only
+groups, month/year boundaries and prior/future order-month activity keys. Initial
+HTTP/SDK Plan and terminal Run replay preserve schema-3 custody; altered policy,
+source/context, population identity, parameter indexes and output ordinals fail closed.
+Period refinement uses current authenticated mappings and preserves its unbound base.
+
+Completed local evidence: 1,120 full exec/NLQ race events (one existing optional
+MySQL-fixture skip), 29 focused v10 events, 22 retained PostgreSQL regression
+events, all 40 unchanged generated-adversarial events, 261 store/API/SDK events,
+and all eight new source variants. Planning, vet and whitespace checks passed.
+After integration with renderer head `9797f35`, 50 focused race events and 18
+PostgreSQL/reporting events passed (82.085 seconds for the source suite), with
+zero failures/skips; full build and vet also passed. The hosted workflow explicitly
+requires the new family and all eight variant pass events.
+These are recorded-provider software results. The new exact head still needs
+hosted qualification; no generic-filter, live-model, renderer-kernel or release
+gate is closed by this increment.

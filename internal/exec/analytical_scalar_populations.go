@@ -207,10 +207,10 @@ func (a *analyticalChecker) scopedSingletonLane(q map[string]any, alias string, 
 	return nil
 }
 
-// V9 composes unchanged v8 standard proofs with its separately gated scalar
-// placement proof. Keep c itself intact for the original contract digest.
+// V9 and v10 compose unchanged v8 standard proofs with separately gated
+// ownership proofs. Keep c itself intact for the original contract digest.
 func analyticalStandardPolicy(c AnalyticalContract) AnalyticalContract {
-	if c.Version == AnalyticalScopedPopulationsVersion {
+	if c.Version == AnalyticalScopedPopulationsVersion || c.Version == AnalyticalGroupedOwnedPopulationsVersion {
 		c.Version = AnalyticalGroupedProgramsVersion
 	}
 	return c
