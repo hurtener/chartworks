@@ -200,10 +200,12 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 		t.Fatal("exact retained read", err)
 	}
 	exported, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, pack.Version, drafts.Export)
-	publicExport := exported
-	publicExport.Receipt = gateway.Receipt{}
-	if err != nil || !reflect.DeepEqual(publicExport, published) || len(exported.Receipt.Calls) == 0 || len(published.Receipt.Calls) != 0 {
-		t.Fatal("publication public projection or retained private receipt changed", err)
+	// Compare the public wire contract, not time.Time's process-local location
+	// pointers. PostgreSQL and JSON may represent the same UTC instant differently.
+	exportedJSON, exportedErr := json.Marshal(exported)
+	publishedJSON, publishedErr := json.Marshal(published)
+	if err != nil || exportedErr != nil || publishedErr != nil || string(exportedJSON) != string(publishedJSON) || !exported.PublishedAt.Equal(published.PublishedAt) || len(exported.Receipt.Calls) == 0 || len(published.Receipt.Calls) != 0 {
+		t.Fatal("publication public wire projection or retained private receipt changed", err, exportedErr, publishedErr)
 	}
 
 	for _, exportScopes := range [][]string{
