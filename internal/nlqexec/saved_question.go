@@ -257,6 +257,8 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 		}
 		parent := original
 		original.ID, original.Parent, original.Operation = id, in.Query, operation
+		// The child has its own saved-operation identity; the parent Plan reservation remains with the parent.
+		original.PlanOperation, original.PlanRequestDigest = "", ""
 		bindParentLineage(&original, &parent)
 		original.Status, original.Result, original.Revision = "planned", nil, 1
 		original.Created, original.Updated, original.ExecutionFixes = time.Now().UTC(), time.Now().UTC(), 0

@@ -323,8 +323,26 @@ func testPhase29DynamicDurability(t *testing.T) {
 	}
 	sc, _ := store.NewScope(f.execute.Tenant(), f.execute.User())
 	original, err := f.f.f.db.ReadQuery(ctx, sc, queryResult.Query.Query)
-	if err != nil || original.Operation != queryResult.QueryPlan.Operation || original.Result == nil {
+	if err != nil || original.Operation != queryResult.QueryPlan.Operation || original.Result == nil || original.PlanOperation != queryResult.QueryPlan.Operation || original.PlanRequestDigest == "" {
 		t.Fatal("session-bound execution mutated its origin", err)
+	}
+	childRecord, err := f.f.f.db.ReadComposition(ctx, f.execute, sessionRun.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkedChildren := 0
+	for _, result := range childRecord.Results {
+		if result.Query == nil {
+			continue
+		}
+		checkedChildren++
+		child, err := f.f.f.db.ReadQuery(ctx, sc, result.Query.Query)
+		if err != nil || child.ID == original.ID || child.Parent != original.ID || child.PlanOperation != "" || child.PlanRequestDigest != "" || child.ParentDigest != nlqexec.QueryLineageDigest(original) {
+			t.Fatal("saved child borrowed parent Plan identity", err)
+		}
+	}
+	if checkedChildren != 1 {
+		t.Fatal("saved query child evidence missing", checkedChildren)
 	}
 	foreign := phase27Actor(t, f.f, "different-query-owner", phase29RuntimeScopes(f.execute.Tenant()))
 	if _, err := f.compositions.Run(ctx, foreign, sessionRun.ID, false); err == nil {
