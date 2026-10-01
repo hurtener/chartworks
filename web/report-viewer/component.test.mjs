@@ -72,6 +72,9 @@ async function check(expression,message){assert.equal(await evaluate(expression)
 const doc=`document.getElementById('viewer').contentDocument`;
 const body=`${doc}.getElementById('report-viewer')`;
 const waitTitle=title=>until(()=>evaluate(`${body}?.querySelector('h1')?.textContent===${JSON.stringify(title)}`),'render did not finish: '+title);
+// A rendered notification does not acknowledge completion of a prior mutation.
+// The real component keeps Run disabled until that promise has settled.
+const waitRunEnabled=()=>until(()=>evaluate(`Array.from(${body}.querySelectorAll('button')).some(b=>b.textContent==='Run with these filters'&&!b.disabled)`),'prior filter mutation did not settle');
 const waitCalls=n=>until(()=>evaluate(`calls.length>=${n}`),'bridge request missing');
 let restoreSequence=0;
 // Posting a notification is asynchronous. A unique rendered marker proves the
@@ -83,6 +86,7 @@ const restore=async()=>{
   await waitTitle(marker);
   await evaluate('show(fixture.view)');
   await waitTitle(fixtures.view.summary.target.id);
+  await waitRunEnabled();
 };
 try{
   let port;
@@ -266,9 +270,9 @@ try{
       // A distinct rendered title acknowledges this hostile notification before
       // clicking; the unchanged fixture title could still belong to restore().
       const marker='invalid-selection-'+i;
-      await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id=${JSON.stringify(marker)};v.accepted_selection.selected=${JSON.stringify(ids)};show(v);})()`);await waitTitle(marker);
+      await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id=${JSON.stringify(marker)};v.accepted_selection.selected=${JSON.stringify(ids)};show(v);})()`);await waitTitle(marker);await waitRunEnabled();
       await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click()`);
-      await until(()=>evaluate(`${body}.textContent.includes('invalid_request')`),'invalid accepted selection was not rejected');
+      await until(()=>evaluate(`${body}.textContent.includes('invalid_request')`),'invalid accepted selection was not rejected: '+i);
       await check(`calls.filter(c=>c.name==='reporting_run').length===${runs}`,'malformed accepted selection cannot widen an explicit run');
     }
     // Corrupted/misrouted provider responses must not change the resource that
