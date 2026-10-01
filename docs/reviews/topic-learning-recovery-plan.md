@@ -1,6 +1,8 @@
 # Topic authoring and learning recovery milestone
 
-Status: implementation plan, 2026-09-30. This is the next bounded NLQ milestone;
+Status: software consumers implemented with recorded-provider evidence at
+`9ada852c`; live/comparative qualification remains open, updated 2026-10-01.
+This is a bounded NLQ milestone;
 additional SQL-shape breadth is deferred. Already discovered correctness defects
 remain mandatory fixes. This plan does not declare live SQL or release completion.
 
@@ -130,13 +132,14 @@ obligations remain enforced throughout.
   actual profile/onboarding/enhancement/advisory/review/publication/query tests.
   Paid gross is 640 and monthly values are 320, 240 and 80, checked against an
   independent source-row oracle. These use recorded model responses
-- A separate adversarial generated-topic corpus currently exposes release
-  blockers: eight known-answer cases fail temporal/intent admission, five required
-  clarification contracts fail, and three of those accept an unrelated gross
-  candidate for net, uncertain-total or ambiguous-time questions. Six authority
-  and unsafe-shape rejection cases pass. Preserve those questions and exact
-  expected contracts; generic refusal is not a correct clarification
-- This checkpoint is partial. Live generated-topic quality and those adversarial
-  intent/uncertainty consumers remain open. Live requalification is additionally
-  blocked by an explicit provider-network policy denial; no alternative route is
-  authorized. Recorded lifecycle results do not establish live model quality
+- The unchanged adversarial generated-topic corpus now passes eight known-answer,
+  five exact clarification and six authority/unsafe-shape rejection contracts at
+  `9ada852c`. Independently frozen exact-rational source-row oracles check results;
+  no question or expected contract was relaxed to achieve this checkpoint
+- The four software stages above have concrete consumers, including current
+  profile-head freshness, cross-page composite relationship authoring and later
+  prompt/result use after reviewed topic feedback publication. The same-snapshot
+  A/B/C/D comparison and live generated-topic quality remain open. A live
+  configuration test is not a gateway E2E pass; paid execution additionally needs
+  reconciled shared budget and permitted provider access. Recorded lifecycle
+  results do not establish live model quality

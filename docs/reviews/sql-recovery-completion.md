@@ -1,19 +1,45 @@
 # SQL recovery — completion tracker
 
-PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Latest hosted-qualified SQL checkpoint: `9ada852c5a78490dff5ba9aeb300e9d927031522`
-(tree `6982af6dfeaa40989f80b477071c165e31a29160`). Its standard CI and both SQL
-recovery runs passed. The generated-topic v9 recorded cohort passes eight answer,
-five exact clarification and six rejection contracts. This is not live-model
-qualification, a merge approval or full migration parity.
+PR #62 latest hosted-qualified checkpoint: `9ada852c5a78490dff5ba9aeb300e9d927031522`
+(tree `6982af6dfeaa40989f80b477071c165e31a29160`). On this exact head, both
+Go 1.26.4 and 1.27.1 recovery jobs recorded 2,998 passing unit/subtest events
+across 32 packages and 412 acceptance events, with zero failures or missing
+required tests. The sole opt-in paid-reranker skip is not live model evidence.
+[Hosted recovery](https://github.com/hurtener/chartworks/actions/runs/36814989291).
 
-S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented finite software
-scopes. S4/S5/S6 parent scopes and Q1/Q2/Q3 remain open outside the admitted matrix.
-Reviewed v1–v6 intent replacement and v7 group-domain review/resume are implemented;
-special-origin saved descendants remain a separate reporting continuation boundary.
-Updated 2026-10-01. This is the current AP-00–AP-08 tracker. Historical
-checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
-at its stated revision, not the current completion status.
+Updated 2026-10-01. S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented
+finite software scopes. S4/S5/S6 and Q1/Q2/Q3 remain open. Later sections retain
+historical evidence at their stated revision; the current finite residuals are
+listed below and in the [software matrix](sql-recovery-software-matrix.md).
+
+PR #63 is stacked on this checkpoint. It contains the subsequent captured-report
+variants, retained amount-completeness transport, ownership/retention, explicit
+saved-origin derivation, PNG renditions and deterministic statistical narratives.
+Its `608f2d9` hosted reporting run passed scheduling, actual browser, chart and
+retention checks but failed isolated renderer AC03/AC04/AC05 with `launch_denied`.
+Those increments must not be described as absent from the stacked source or as
+full renderer qualification. [Reporting evidence](https://github.com/hurtener/chartworks/actions/runs/36836789817).
+
+## Current residual software and qualification
+
+- Grouped multi-fact programs reject query-owned constraints; scoped v9 period
+  applications are PostgreSQL-only scalar flat CTE lanes. Grouped per-fact periods
+  and generic fact/shared-dimension filters need explicit placement and receipts
+- Outer joins have equality-key proof but no reviewed ON-versus-WHERE predicate
+  placement policy. Analytical windows/general sets remain unsupported except
+  the reviewed UNION DISTINCT group-key spine
+- Grouped proof covers PostgreSQL/MySQL; scoped scalar proof covers PostgreSQL.
+  Required remaining dialects need concrete consumers and physical uniqueness
+  evidence, not only parser normalization. Named-local-zone MySQL instant buckets
+  and hour/week/fiscal/occurrence-aware DST grain remain outside the admitted proof
+- Scoped schema-2 query receipts are ineligible for the existing schema-1 reusable
+  learning consumer. That continuation does not reopen the completed S10 baseline
+- Topic generation/enhancement/review/publication and correction-derived learning
+  have recorded-provider, real-source consumers. The unchanged independent-oracle
+  corpus now passes all eight answer, five clarification and six rejection contracts
+- Same-snapshot A/B/C/D comparison, live generated-topic quality, required engine
+  qualification, owner results and final phase-34/25 release evidence remain open.
+  Configuration-only live tests and hosted unit success do not close those gates
 
 **Overall: in progress.** All nine phases have delivered increments; none is
 claimed fully closed. A fixed defect review, a safe unsupported disposition, and

@@ -141,4 +141,12 @@ explicit retries; never reconstruct lost values or silently rewrite empty SQL.
 
 ## Bounded PNG continuation
 
-D-091 permits single-output PNG through the same sealed retained-input and isolated-worker contract. Preserve visible value roles, empty/truncated state, page scope and required amount disclosure. No arbitrary SVG/URL/font input, silent cropping, production in-process fallback or security-limit expansion is permitted. Full-report PNG and PDF remain separate scope.
+D-091 permits single-output PNG through the same sealed retained-input and isolated-worker contract. Preserve visible value roles, empty/truncated state, page scope and required amount disclosure. No arbitrary SVG/URL/font input, silent cropping, production in-process fallback or unapproved security-limit expansion is permitted. Full-report PNG and PDF remain separate scope.
+
+## Renderer charged-memory contract
+
+D-093 explicitly separates the approved 3 GiB virtual-address ceiling from kernel
+charged-memory enforcement of at most 1 GiB per render. Require the admitted
+cgroup v2 hierarchy and atomic namespace placement; absent enforcement fails
+closed. Host provisioning and security-setting changes are separate approval.
+Pure and recorded tests never replace the kernel deployment gate.

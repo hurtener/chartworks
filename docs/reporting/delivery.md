@@ -57,3 +57,9 @@ The executable schedule and Apps consumer is now documented in
 implemented retained-catalog delivery and the actual bundled read viewer from
 this design's later phase-32 SSR/BFF/export work. No notification-sent or production
 cutover claim follows from a catalog artifact or browser rendering test.
+
+Renderer memory enforcement follows [D-093](../decisions/2026-10-01-renderer-charged-memory.md): a preconfigured cgroup v2
+charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-address
+ceiling. Missing controller or namespace enforcement fails closed; the application
+does not provision the host or substitute in-process rendering. Deployment
+qualification remains separate from pure functional tests.

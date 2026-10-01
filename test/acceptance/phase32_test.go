@@ -224,7 +224,7 @@ func phase32Injection(t *testing.T) {
 	if _, err = s.Export(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), hostile); err == nil {
 		t.Fatal("external theme accepted")
 	}
-	sealed := []byte(`{"version":"chartworks-render-worker-v1","request":{"view":{"kind":"block","run":"run","page":"","widget":"","output":"table","offset":0,"limit":2},"format":"html","theme":"light","width":800,"height":420,"network_url":"https://example.invalid"},"view":{}}`)
+	sealed := []byte(`{"version":"chartworks-render-worker-v2","request":{"view":{"kind":"block","run":"run","page":"","widget":"","output":"table","offset":0,"limit":2},"format":"html","theme":"light","width":800,"height":420,"network_url":"https://example.invalid"},"view":{}}`)
 	var worker bytes.Buffer
 	// WorkerMain installs irreversible process limits. Exercise hostile input
 	// in the real static child, never poison the acceptance/race process.
@@ -237,7 +237,7 @@ func phase32Injection(t *testing.T) {
 		t.Fatal("positive worker startup before hostile input", err)
 	}
 	command := exec.CommandContext(t.Context(), workerPath, "--sealed-render-worker")
-	command.Env = []string{"GOMEMLIMIT_BYTES=1073741824", "RENDER_MAX_INPUT_BYTES=1048576", "RENDER_MAX_OUTPUT_BYTES=1048576"}
+	command.Env = []string{"RENDER_MEMORY_CONTRACT=charged-memory-v1", "GOMEMLIMIT_BYTES=1073741824", "RENDER_MAX_INPUT_BYTES=1048576", "RENDER_MAX_OUTPUT_BYTES=1048576"}
 	command.Stdin = bytes.NewReader(sealed)
 	command.Stdout = &worker
 	if err := command.Run(); err == nil || worker.Len() != 0 {

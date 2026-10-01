@@ -78,3 +78,15 @@ qualification: the isolated worker still has reproduced virtual-address pressure
 under the unchanged cap, and the current hosted runner rejects namespace launch.
 The isolation acceptance tests remain mandatory. Recorded rendering tests do not
 replace that gate or the separate live-model qualification.
+
+## Charged-memory continuation — 2026-10-01
+
+[D-093](../decisions/2026-10-01-renderer-charged-memory.md) supersedes the former
+address-space-only memory limit. Production requires a preconfigured cgroup v2
+nsdelegate hierarchy, atomic clone3 membership, an aggregate charged-memory limit
+of at most 1 GiB with swap/HugeTLB disabled, and a separate 3 GiB virtual ceiling.
+Missing enforcement has no fallback. Host provisioning remains separate approval.
+`TestRendererKernelMemoryContract` under the `renderer_integration` tag is a
+mandatory deployment gate alongside the existing AC01–AC08; absence is failure,
+not a planning skip. Pure tests and recorded functional rendering do not qualify
+a host that cannot provide the boundary.

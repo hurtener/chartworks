@@ -16,13 +16,13 @@ resumption, expiry/current authority, immutable origin and bounded model work.
 General-language calibration and owner expected-result cohorts remain separate
 from the existence and enforcement of these software contracts.
 
-## Locally qualified subsequent implementation
+## Current finite implementation and residuals (2026-10-01)
 
 | Item | Implemented/current evidence | Remaining closeable software work |
 |---|---|---|
-| S4 | Mandatory v7 filter/limit policies, exact reviewed ordering, numeric/unary/CASE/COALESCE expressions, actual default-policy and result cases | Compose owned predicates with remaining S5 forms; implement explicit reviewed approval/resume for legacy unowned predicate refinements |
-| S5 | Physically proved raw joins; singleton CTE/derived aggregates; reviewed 2–4 fact grouped CTE lanes; actual PostgreSQL/MySQL source/key/results | Grouped derived/calendar forms and owned-predicate projection; explicit outer-join predicate placement; required analytical window/set forms and composite relationship authoring |
-| S6 | Closed structural proof across native dialect profiles; actual PostgreSQL/MySQL aggregates, grouping, calendar, aliases and nested scalar cases | Extend remaining required S5 forms per dialect; source-backed temporal-instant/session-zone cases; transparent-parenthesis patch is locally qualified |
+| S4 | Mandatory v7 filter/limit policies, exact reviewed ordering, numeric/unary/CASE/COALESCE expressions, actual default-policy and result cases | Compose owned predicates with grouped/scoped S5 forms; legacy v1–v6 intent approval/resume and retained-v7 group-domain review are implemented |
+| S5 | Physically proved raw joins; singleton CTE/derived aggregates; reviewed 2–4 fact grouped CTE lanes; actual PostgreSQL/MySQL source/key/results | Grouped/scoped owned-predicate placement; explicit outer-join ON predicate policy; required analytical windows/general sets. V8 derived/calendar projections and composite relationship authoring are implemented |
+| S6 | Closed structural proof across native dialect profiles; actual PostgreSQL/MySQL aggregates, grouping, calendar, aliases and nested scalar cases | Extend grouped/scoped proof beyond its PostgreSQL/MySQL subset and add physical-key evidence consumers for required remote engines. PostgreSQL instant/session-zone and MySQL UTC-instant cases are implemented; MySQL named-local-zone cases remain rejected |
 | S10 | Qualified: reviewed owned templates and all nine native-proved value-free domains, public probes, durable import/review/reuse and old-policy preservation | No remaining software item in the admitted matrix; custom enum/check values are never inferred. Remaining actual engines are Q2 |
 | S11 | Qualified: shared generation/validation signatures, primitive/result-family and special/calendar syntax, bounded native inspection and scoped logical outputs | No remaining software item in the admitted shared profile; remaining actual engine qualification is Q2 |
 
@@ -30,6 +30,14 @@ Every closure requires the integrated source revision, required tests and applic
 persistence/transport/replay evidence. Known software gaps stay in this table until
 implemented or explicitly approved as equivalent behavior; they are not renamed
 as external calibration simply to make a checklist green.
+
+Current exact-head hosted evidence at `9ada852c`: both Go 1.26.4/1.27.1
+recorded 2,998 unit/subtest events and 412 acceptance events with zero failures or
+missing requirements. The paid-reranker opt-in skip is not a live pass. The
+nineteen-case generated-topic corpus uses independent exact-rational source-row
+oracles; its former eight-answer/five-clarification failures are fixed in this
+checkpoint. [Recovery run](https://github.com/hurtener/chartworks/actions/runs/36814989291).
+The final manual release gate and live gateway E2E cohort were not run there.
 
 ## External qualification, distinct from implementation
 

@@ -212,3 +212,9 @@ Read execution now extends the merged phase-09 validator on the existing source/
 The shipped implementation adds bounded CSV/XLSX/Parquet ingestion into the managed PostgreSQL workspace and versioned deterministic profiling through the existing validator, executor, operation ledger, source registry and optional Bifrost `profile_summary` role. The executable HTTP and SDK surface is recorded in the [engineering operation manifest](docs/contracts/chartworks-engineering-operations.json); mutation registration follows `uploads.enabled` and `profiling.enabled`, while retained reads and cancellation remain available.
 
 This does not qualify MySQL, SQL Server, BigQuery, Snowflake or Databricks, publish semantics, or claim live model/deployment evidence. The [phase evidence ledger](docs/reviews/phase-11-12-current-evidence.md) separates accepted local runtime evidence from the pending final cloud rerun.
+
+Renderer memory enforcement follows [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md): a preconfigured cgroup v2
+charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-address
+ceiling. Missing controller or namespace enforcement fails closed; the application
+does not provision the host or substitute in-process rendering. Deployment
+qualification remains separate from pure functional tests.

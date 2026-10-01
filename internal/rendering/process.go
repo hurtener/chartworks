@@ -7,21 +7,39 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"reflect"
 	"runtime/debug"
 	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/hurtener/chartworks/internal/rendering/containment"
 	"github.com/hurtener/chartworks/internal/reporting"
 )
 
+type memoryGroup interface {
+	FD() int
+	Kill() error
+	OOMKilled() (bool, error)
+	Close() error
+}
+
 // Process supervises a fixed executable through a sealed stdin/stdout protocol.
 type Process struct {
-	path    string
-	options Options
-	slots   chan struct{}
+	path           string
+	options        Options
+	slots          chan struct{}
+	failed         atomic.Bool
+	launchMu       sync.Mutex
+	newMemoryGroup func(string, int64) (memoryGroup, error)
 }
+
+// poison serializes with launch so no new child starts after cleanup failure.
+func (p *Process) poison() { p.launchMu.Lock(); p.failed.Store(true); p.launchMu.Unlock() }
 
 func NewProcess(path string, options Options) (*Process, error) {
 	if path == "" || path[0] != '/' || !options.valid() {
@@ -34,7 +52,10 @@ func NewProcess(path string, options Options) (*Process, error) {
 	if err := sandboxSupported(options.Isolation); err != nil {
 		return nil, err
 	}
-	return &Process{path: path, options: options, slots: make(chan struct{}, options.MaxConcurrent)}, nil
+	if err := admitMemoryRoot(options); err != nil {
+		return nil, err
+	}
+	return &Process{path: path, options: options, slots: make(chan struct{}, options.MaxConcurrent), newMemoryGroup: func(root string, budget int64) (memoryGroup, error) { return containment.New(root, budget) }}, nil
 }
 
 type workerResponse struct {
@@ -72,9 +93,15 @@ func sealedDigest(work SealedWork) string {
 }
 
 // Process executes one sealed render in a fresh sandboxed worker process.
-func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, error) {
+func (p *Process) Process(ctx context.Context, work SealedWork) (result Rendition, resultErr error) {
 	if p == nil || ctx == nil || work.Version != WorkerProtocolVersion || !validWorkerRequest(work) {
 		return Rendition{}, ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return Rendition{}, err
+	}
+	if p.failed.Load() {
+		return Rendition{}, containment.ErrUnavailable
 	}
 	wantDigest := sealedDigest(work)
 	if work.Digest != "" && work.Digest != wantDigest {
@@ -93,19 +120,68 @@ func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, erro
 	}
 	bounded, cancel := context.WithTimeout(ctx, p.options.MaxTime)
 	defer cancel()
+	if p.newMemoryGroup == nil {
+		return Rendition{}, ErrInvalid
+	}
+	group, err := p.newMemoryGroup(p.options.CgroupRoot, p.options.MaxMemoryBytes)
+	if err != nil {
+		if errors.Is(err, containment.ErrCleanup) {
+			p.poison()
+		}
+		return Rendition{}, err
+	}
+	cleaned := false
+	defer func() {
+		if !cleaned && group.Close() != nil {
+			p.poison()
+			result = Rendition{}
+			resultErr = errors.Join(resultErr, containment.ErrCleanup)
+		}
+	}()
 	cmd, cleanup, err := sandboxCommand(bounded, p.path, p.options.Isolation)
 	if err != nil {
 		return Rendition{}, err
 	}
 	defer cleanup()
+	if err := bindMemoryGroup(cmd, group); err != nil {
+		return Rendition{}, err
+	}
+	cmd.WaitDelay = 500 * time.Millisecond
+	cmd.Cancel = func() error {
+		if err := group.Kill(); err != nil {
+			p.poison()
+			_ = cmd.Process.Kill()
+			return err
+		}
+		return nil
+	}
 	// Each render is one bounded job; avoid host-sized runtime worker pools
 	// consuming the isolated process address-space budget.
-	cmd.Env = []string{"GOMAXPROCS=1", "GOMEMLIMIT=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10) + "B", "GOMEMLIMIT_BYTES=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10), "RENDER_MAX_INPUT_BYTES=" + strconv.Itoa(p.options.MaxInputBytes), "RENDER_MAX_OUTPUT_BYTES=" + strconv.Itoa(p.options.MaxOutputBytes)}
+	cmd.Env = []string{"RENDER_MEMORY_CONTRACT=" + containment.ContractVersion, "GOMAXPROCS=1", "GOMEMLIMIT=" + strconv.FormatInt(containment.HeapBytes(p.options.MaxMemoryBytes), 10) + "B", "GOMEMLIMIT_BYTES=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10), "RENDER_MAX_INPUT_BYTES=" + strconv.Itoa(p.options.MaxInputBytes), "RENDER_MAX_OUTPUT_BYTES=" + strconv.Itoa(p.options.MaxOutputBytes)}
 	cmd.Stdin = bytes.NewReader(wire)
 	out := &cappedBuffer{max: p.options.MaxOutputBytes}
 	diagnostics := &cappedBuffer{max: 4096}
 	cmd.Stdout, cmd.Stderr = out, diagnostics
-	err = cmd.Run()
+	p.launchMu.Lock()
+	if p.failed.Load() {
+		err = containment.ErrUnavailable
+	} else {
+		err = cmd.Start()
+	}
+	p.launchMu.Unlock()
+	if err == nil {
+		err = cmd.Wait()
+	}
+	oom, eventErr := group.OOMKilled()
+	cleanupErr := group.Close()
+	cleaned = true
+	if cleanupErr != nil {
+		p.poison()
+		return Rendition{}, errors.Join(fmt.Errorf("%w: cleanup_failed", ErrWorker), containment.ErrCleanup)
+	}
+	if p.failed.Load() {
+		return Rendition{}, fmt.Errorf("%w: supervisor_unavailable", ErrWorker)
+	}
 	if bounded.Err() != nil {
 		if errors.Is(bounded.Err(), context.DeadlineExceeded) {
 			return Rendition{}, ErrTimeout
@@ -114,6 +190,12 @@ func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, erro
 	}
 	if out.exceeded || out.Len() >= out.max {
 		return Rendition{}, ErrOutputLimit
+	}
+	if eventErr != nil {
+		return Rendition{}, fmt.Errorf("%w: memory_accounting_unavailable", ErrWorker)
+	}
+	if oom {
+		return Rendition{}, fmt.Errorf("%w: memory_budget", ErrWorker)
 	}
 	if err != nil {
 		return Rendition{}, workerProcessError(err, diagnostics.Bytes())
@@ -181,11 +263,14 @@ func validateWorkerRendition(ctx context.Context, work SealedWork, r Rendition) 
 	return ctx.Err()
 }
 func WorkerMain(stdin io.Reader, stdout io.Writer, maxInput, maxOutput int, memory int64) error {
-	if stdin == nil || stdout == nil || maxInput < 1024 || maxInput > 64<<20 || maxOutput < 1024 || maxOutput > 64<<20 || memory < 32<<20 {
+	if os.Getenv("RENDER_MEMORY_CONTRACT") != containment.ContractVersion || stdin == nil || stdout == nil || maxInput < 1024 || maxInput > 64<<20 || maxOutput < 1024 || maxOutput > 64<<20 || memory < 32<<20 {
 		return ErrInvalid
 	}
-	debug.SetMemoryLimit(memory)
-	if err := applyMemoryLimit(memory); err != nil {
+	if !containment.ValidBudget(memory) {
+		return ErrInvalid
+	}
+	debug.SetMemoryLimit(containment.HeapBytes(memory))
+	if err := applyMemoryLimit(containment.AddressSpaceBytes); err != nil {
 		return ErrInvalid
 	}
 	raw, err := io.ReadAll(io.LimitReader(stdin, int64(maxInput)+1))
