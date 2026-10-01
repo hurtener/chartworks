@@ -56,8 +56,16 @@ from physical proof. PR #67 published that correction at
 provider limitation: quoted canonical column coordinates cannot be strict string
 enum literals. The quality-role continuation uses exact request-local handles,
 a complete measured mapping and canonical-schema validation after decoding.
-No identities or findings are guessed, dropped or silently approved. This is not
-a successful live publication/SQL result or full semantic-quality qualification.
+No identities or findings are guessed, dropped or silently approved.
+
+The subsequent PR #68 candidate `a2567f816dce7c52981e2ef9e17af544f7bb6b50`
+passed the fixed synthetic live baseline: two enhancement pages, valid retained
+review, explicit operator publication and two correct generated SQL queries.
+Gross was USD 700.00; monthly results were USD 320.00/240.00/140.00. One genuine
+uniqueness-evidence advisory was preserved and adjudicated against the fixture's
+actual primary key. Ten provider calls cost USD 0.007315153; no SQL correction
+was used. See [exact qualification and limits](generated-topic-live-qualification.md).
+This is bounded live evidence, not full semantic-quality or migration qualification.
 
 ## Current residual software and qualification
 

@@ -75,5 +75,7 @@ advice, explicit operator adjudication and the two result oracles. Hosted requir
 case lists include both new acceptance roots. Run evidence belongs to an exact
 source checkpoint; these test descriptions do not themselves establish a pass.
 
-Live generated-topic-to-SQL quality, broader engine coverage, charged-memory
-renderer qualification and final release gates remain separately open.
+The [fixed live baseline](../reviews/generated-topic-live-qualification.md) now
+passes generated-topic publication and two SQL result oracles while preserving
+one operator-adjudicated advisory. Broader live quality, engine coverage,
+charged-memory renderer qualification and final release gates remain open.

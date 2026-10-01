@@ -42,7 +42,7 @@ Semantics batch/token/concurrency limits, compact-card caps, supported locale li
 
 ## Tests, coverage and smoke
 
-`TestPhase15/AC01` through `TestPhase15/AC06` exercise real PostgreSQL/pgvector publication races, source changes, draft mutations and neutral portability goldens. Recorded gateway fixtures are the reproducible acceptance path; live semantic quality has not been measured and is not inferred from those fixtures. COMMON.md sets coverage; `scripts/smoke/phase-15.sh` requires all six results.
+`TestPhase15/AC01` through `TestPhase15/AC06` exercise real PostgreSQL/pgvector publication races, source changes, draft mutations and neutral portability goldens. Recorded gateway fixtures are the reproducible acceptance path and do not establish live quality. The [2026-10-01 fixed live baseline](../reviews/generated-topic-live-qualification.md) separately measures one generated topic and two correct queries; broader live quality remains open. COMMON.md sets coverage; `scripts/smoke/phase-15.sh` requires all six results.
 
 ## Glossary, decisions and deviations
 
@@ -181,9 +181,10 @@ advisory retained by migration 067. Generated completions bind exact digest and
 coverage before explicit human review. Manual/legacy publication policy remains
 explicit; model findings are never publication authority. Focused synthetic
 transport/adversarial tests and AC05 are acceptance targets, not live semantic
-quality measurements. Actual profile → generated topic → reviewed publication →
-correct SQL still requires the finite live evaluation owned by the integration
-workstream; reviewed SQL examples are a separate learning mechanism.
+quality measurements. The [fixed live baseline](../reviews/generated-topic-live-qualification.md)
+now measures actual profile → generated topic → reviewed publication → correct SQL
+for two synthetic queries. Broader predeclared cohorts and source qualification
+remain open; reviewed SQL examples are a separate learning mechanism.
 
 The [request-bound quality-review contract](../contracts/topic-quality-review-bindings-v1.md)
 closes the producer/consumer identity mismatch: the exact digests and complete
