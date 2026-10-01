@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"reflect"
@@ -117,7 +116,7 @@ func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, erro
 		return Rendition{}, ErrOutputLimit
 	}
 	if err != nil {
-		return Rendition{}, fmt.Errorf("%w: process", ErrWorker)
+		return Rendition{}, workerProcessError(err, diagnostics.Bytes())
 	}
 	var response workerResponse
 	dec := json.NewDecoder(bytes.NewReader(out.Bytes()))
