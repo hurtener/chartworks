@@ -32,8 +32,12 @@ func compileAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContra
 }
 
 func compileAnalyticalVersion(ctx context.Context, a admission, version int, queryConstraints ...[]exec.BusinessConstraint) (*exec.AnalyticalContract, error) {
-	if len(queryConstraints) > 1 { return nil, exec.ErrBinding }
-	if len(queryConstraints) == 1 { a.calendarConstraints = append([]exec.BusinessConstraint(nil),queryConstraints[0]...) }
+	if len(queryConstraints) > 1 {
+		return nil, exec.ErrBinding
+	}
+	if len(queryConstraints) == 1 {
+		a.calendarConstraints = append([]exec.BusinessConstraint(nil), queryConstraints[0]...)
+	}
 	if version < 1 || version > analyticalRecordVersion {
 		return nil, exec.ErrBinding
 	}

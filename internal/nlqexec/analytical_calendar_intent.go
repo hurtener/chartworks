@@ -58,7 +58,9 @@ func calendarWordsWithoutOwnedYear(a admission, words []string) []string {
 	if len(constraints) == 0 {
 		var err error
 		constraints, err = a.route.ResolvedBusinessConstraints()
-		if err != nil { return words }
+		if err != nil {
+			return words
+		}
 	}
 	for _, temporal := range a.route.Interpretation.Temporal {
 		if temporal.LocalStart != year+"-01-01" || temporal.LocalEnd != fmt.Sprintf("%04d-01-01", n+1) {
