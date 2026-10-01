@@ -182,3 +182,27 @@ invent that ownership from a prefix. Deletion always reports
 not verification of complete historical erasure. Prospective registry ownership
 survives composition expiry and later Run-key changes, so newly registered owned
 queries are still erased when their document is deleted.
+
+### Saved derivation of reviewed query origins
+
+A session-bound saved operation may derive from an already resolved generation
+question or a complete reviewed-intent replacement. Its immutable
+`saved_copy_parent` and exact parent revision/digest identify the derivation;
+it does not copy the parent's direct submission seals or reserve the parent's
+Plan operation. Creation checks the exact copied executable and semantic payload
+while holding the existing retention fence and parent lock. The original
+protected record remains unchanged.
+
+Admission traverses a bounded, same-actor/session/context saved-copy chain,
+checks every exact parent pin and immutable semantic partition, and validates the
+original continuation/review evidence. Expiration of an already consumed answer
+form does not demand a new answer. Missing, changed, erased or foreign origins
+fail closed. This does not make a saved definition an execution capability.
+
+Ordinary source authorization and validation still apply. A terminal equivalent
+SQL correction is accepted only with identical parameters and fresh native
+parent/child validation followed by the existing structural equivalence proof;
+that source inspection runs after execution authorization. Changed nonterminal
+SQL or semantic meaning is rejected. Existing deletion ownership follows the
+explicit saved-copy relation, retaining independent reviewed assets according
+to their own lifecycle.

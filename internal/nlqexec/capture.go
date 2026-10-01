@@ -73,6 +73,9 @@ func (s *Service) CaptureDefinition(ctx context.Context, e identity.Envelope, id
 	if err := access.Require(e, "query.execute", admitted.resources...); err != nil {
 		return out, err
 	}
+	if err := s.verifySavedDerivationExecution(ctx, e, q, admitted); err != nil {
+		return out, err
+	}
 	if err := s.verifyAnalyticalOutputReplay(ctx, e, q, admitted); err != nil {
 		return out, err
 	}

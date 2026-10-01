@@ -74,7 +74,7 @@ func (d *DB) ReadSession(ctx context.Context, scope store.Scope, id string) (out
 func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord) error {
 	decodedDigest, digestErr := hex.DecodeString(q.ParentDigest)
 	lineageValid := q.Parent == "" && q.ParentRevision == 0 && q.ParentDigest == "" || identity.Identifier(q.Parent) && q.ParentRevision > 0 && digestErr == nil && len(decodedDigest) == 32 && q.ParentDigest == strings.ToLower(q.ParentDigest)
-	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !nlqexec.AnalyticalRecordValid(q) || !nlqexec.GenerationPendingValid(q) || !nlqexec.IntentReviewValid(q) || !nlqexec.PlanSubmissionValid(q) || !lineageValid || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
+	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !nlqexec.AnalyticalRecordValid(q) || !nlqexec.GenerationPendingValid(q) || !nlqexec.IntentReviewValid(q) || !nlqexec.PlanSubmissionValid(q) || !nlqexec.SavedDerivationValid(q) || !lineageValid || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -88,6 +88,9 @@ func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.Query
 			}
 			if parent.Revision != q.ParentRevision || nlqexec.QueryLineageDigest(parent) != q.ParentDigest {
 				return store.ErrConflict
+			}
+			if q.SavedCopyParent != "" && !nlqexec.SavedDerivationCreationValid(q, parent) {
+				return store.ErrInvalid
 			}
 		}
 		if q.IntentReview != nil {
@@ -470,7 +473,7 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 			return store.ErrMigration
 		}
 	}
-	if !nlqexec.AnalyticalRecordValid(*out) || !nlqexec.IntentReviewValid(*out) || !nlqexec.PlanSubmissionValid(*out) {
+	if !nlqexec.AnalyticalRecordValid(*out) || !nlqexec.IntentReviewValid(*out) || !nlqexec.PlanSubmissionValid(*out) || !nlqexec.SavedDerivationValid(*out) {
 		return store.ErrMigration
 	}
 	if len(result) > 0 {

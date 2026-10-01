@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "75" || len(manifest) != 75 {
+	if err != nil || SchemaVersion() != "76" || len(manifest) != 76 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -83,6 +83,7 @@ func TestSafeErrors(t *testing.T) {
 		{72, "migrations/073_nlq_plan_submission.sql", "nlq_plan_submission_immutable"},
 		{73, "migrations/074_nlq_query_retention.sql", "nlq_query_origins"},
 		{74, "migrations/075_png_renditions.sql", "render_renditions_format_check"},
+		{75, "migrations/076_saved_query_derivation.sql", "nlq_saved_derivation_shape"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

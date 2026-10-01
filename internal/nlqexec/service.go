@@ -504,6 +504,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 			if admissionErr = gatewayRequirement(e, "query.execute", admitted.resources); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
+			if admissionErr = s.verifySavedDerivationExecution(ctx, e, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
@@ -550,6 +553,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 		return RunResult{}, err
 	}
 	if err := gatewayRequirement(e, "query.execute", current.resources); err != nil {
+		return RunResult{}, err
+	}
+	if err := s.verifySavedDerivationExecution(ctx, e, record, current); err != nil {
 		return RunResult{}, err
 	}
 	if err := s.verifyQueryClarificationBinding(ctx, e, record, current); err != nil {
@@ -657,6 +663,9 @@ func (s *Service) waitForRun(ctx context.Context, e identity.Envelope, queryID, 
 				return RunResult{}, admissionErr
 			}
 			if admissionErr = gatewayRequirement(e, "query.execute", admitted.resources); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if admissionErr = s.verifySavedDerivationExecution(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
 			if admissionErr = s.verifyQueryClarificationBinding(ctx, e, record, admitted); admissionErr != nil {
@@ -1902,6 +1911,9 @@ func validateResealedRelations(relations []nlq.SourceRelation, topics []string, 
 }
 
 func (s *Service) currentAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	if err := s.verifySavedDerivation(ctx, e, q); err != nil {
+		return admission{}, err
+	}
 	if err := s.verifyIntentReview(ctx, e, q); err != nil {
 		return admission{}, err
 	}
@@ -1981,6 +1993,9 @@ func (s *Service) resolveCurrentAdmission(ctx context.Context, e identity.Envelo
 // active pointers, while a query whose rule evidence was invalidated must
 // replay only against the immutable retained definitions it originally used.
 func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q QueryRecord) (admission, error) {
+	if err := s.verifySavedDerivation(ctx, e, q); err != nil {
+		return admission{}, err
+	}
 	if err := s.verifyIntentReview(ctx, e, q); err != nil {
 		return admission{}, err
 	}

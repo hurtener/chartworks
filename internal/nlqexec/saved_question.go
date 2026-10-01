@@ -261,6 +261,9 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 		// The child has its own saved-operation identity; the parent Plan reservation remains with the parent.
 		original.PlanOperation, original.PlanRequestDigest = "", ""
 		original.SavedCopyParent = parent.ID
+		// This is an explicit saved derivation. Direct submissions remain sealed
+		// on the exact protected parent and are revalidated through that lineage.
+		original.GenerationResolution, original.IntentReview = nil, nil
 		bindParentLineage(&original, &parent)
 		original.Status, original.Result, original.Revision = "planned", nil, 1
 		original.Created, original.Updated, original.ExecutionFixes = time.Now().UTC(), time.Now().UTC(), 0
