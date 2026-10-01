@@ -51,8 +51,13 @@ enhancement responses and reached whole-topic review, but the advisory used
 unqualified entity references and failed before final draft save. Offline replay
 isolated that exact mismatch. The [request-bound review correction](../contracts/topic-quality-review-bindings-v1.md)
 retains all downstream validation and distinguishes declared business meaning
-from physical proof. This is not a successful live publication/SQL result or
-full semantic-quality qualification.
+from physical proof. PR #67 published that correction at
+`48e759cfd9e4a39e2c613ec1a7485ae91299e978`. A subsequent live call exposed a stricter
+provider limitation: quoted canonical column coordinates cannot be strict string
+enum literals. The quality-role continuation uses exact request-local handles,
+a complete measured mapping and canonical-schema validation after decoding.
+No identities or findings are guessed, dropped or silently approved. This is not
+a successful live publication/SQL result or full semantic-quality qualification.
 
 ## Current residual software and qualification
 

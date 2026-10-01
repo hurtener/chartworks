@@ -187,7 +187,10 @@ workstream; reviewed SQL examples are a separate learning mechanism.
 
 The [request-bound quality-review contract](../contracts/topic-quality-review-bindings-v1.md)
 closes the producer/consumer identity mismatch: the exact digests and complete
-coverage identifiers constrain both the domain and projected provider schema.
+coverage identifiers constrain the canonical domain; request-local handles and
+a complete measured mapping constrain the provider schema when canonical JSON
+coordinates contain quotes. Canonical identities are restored and independently
+validated before any advisory is retained.
 Declared business definitions remain distinct from physical proof. Retained
 `needs_review` findings require explicit operator adjudication; they are never
 rewritten into approval. Recorded real-source tests exercise unchanged candidate

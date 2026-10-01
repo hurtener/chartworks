@@ -82,6 +82,13 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 			rerankMode = mode
 		}
 		if mode == "topic_quality_echo" || mode == "topic_quality_findings" || mode == "topic_quality_unqualified" {
+			// Recorded reproduction of the observed strict-provider restriction.
+			// Only enum literals are restricted, not ordinary request JSON strings.
+			if recordedQualityQuotedEnums(input["response_format"]) {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "Invalid schema: double quote is not allowed in string literals for structured outputs (strict=true)"}})
+				return
+			}
 			var material map[string]any
 			messages, _ := input["messages"].([]any)
 			for _, message := range messages {

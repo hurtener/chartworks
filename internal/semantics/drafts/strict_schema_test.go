@@ -13,11 +13,11 @@ func TestActualDraftStrictProviderSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	review, err := qualityReviewSchema(model.Digest(), material.Digest, qualityCoverage(model.Pack()))
+	review, err := newQualityReviewTransport(model.Digest(), material.Digest, qualityCoverage(model.Pack()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, raw := range map[string][]byte{"topic_enhancement_step": enhancementSchema, "topic_quality_review": review.Document()} {
+	for name, raw := range map[string][]byte{"topic_enhancement_step": enhancementSchema, "topic_quality_review": review.schema.Document()} {
 		t.Run(name, func(t *testing.T) {
 			domain, err := gateway.NewSchema(name, raw)
 			if err != nil {

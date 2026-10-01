@@ -2,11 +2,13 @@ package acceptance
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/semantics"
 	sdk "github.com/hurtener/chartworks/sdk/chartworks"
 )
@@ -25,6 +27,14 @@ func recordedQualityAnswer(t *testing.T, mode string, context, material map[stri
 		}
 		if mode == "topic_quality_unqualified" {
 			entity = strings.TrimPrefix(entity, "measure:")
+		} else {
+			for _, raw := range material["entity_references"].([]any) {
+				ref := raw.(map[string]any)
+				if ref["entity"] == entity {
+					entity = ref["handle"].(string)
+					break
+				}
+			}
 		}
 		answer["status"] = "needs_review"
 		answer["findings"] = []any{map[string]any{"code": "incomplete_evidence", "entities": []string{entity}, "detail": "An operator must verify that the declared all-order gross definition matches the intended business requirement."}}
@@ -161,8 +171,62 @@ func assertRecordedQualityBinding(t *testing.T, body string) bool {
 	item := recordedStrictReferences(t, findings["items"].(map[string]any), root)
 	entities := recordedStrictReferences(t, item["properties"].(map[string]any)["entities"].(map[string]any), root)
 	entity := recordedStrictReferences(t, entities["items"].(map[string]any), root)
-	if !reflect.DeepEqual(entity["enum"], input["coverage"]) {
-		t.Fatal("wire lost complete coverage enum")
+	handles := []any{}
+	canonical := []any{}
+	for _, raw := range input["entity_references"].([]any) {
+		ref := raw.(map[string]any)
+		handles = append(handles, ref["handle"])
+		canonical = append(canonical, ref["entity"])
+	}
+	if !reflect.DeepEqual(entity["enum"], handles) || !reflect.DeepEqual(canonical, input["coverage"]) {
+		t.Fatal("wire lost complete handle-to-coverage mapping")
+	}
+	if input["review_reference_encoding"] != "request-local-handles-v1" || len(input["canonical_review_schema_digest"].(string)) != 64 {
+		t.Fatal("canonical binding omitted from measured request")
 	}
 	return true
+}
+
+// This 400 fixture is deliberately faithful to the observed provider limitation.
+// A subsequent successful full role call must use a quote-free handle enum,
+// rather than weakening strictness or rewriting canonical semantic identifiers.
+func TestGeneratedTopicReviewQuotedEnumProviderContract(t *testing.T) {
+	f := newGatewayFixture(t, recordedLiveChatCaps)
+	f.mode.Store("topic_quality_echo")
+	schema, err := gateway.NewSchema("topic_quality_review", []byte(`{"type":"object","additionalProperties":false,"required":["entity"],"properties":{"entity":{"type":"string","enum":["column:[\"orders\",\"amount\"]"]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := f.requests.Load()
+	out, err := f.engine.Generate(t.Context(), f.call, gatewayBudget(t, f.call, 1), "topic_review", "Synthetic strict enum contract", "Synthetic request", schema)
+	if !errors.Is(err, gateway.ErrUnavailable) || len(out.JSON) != 0 || f.requests.Load() != before+1 {
+		t.Fatal("quoted enum restriction was not reproduced without retries", err)
+	}
+}
+
+func recordedQualityQuotedEnums(value any) bool {
+	switch x := value.(type) {
+	case map[string]any:
+		for key, child := range x {
+			if key == "enum" {
+				if entries, ok := child.([]any); ok {
+					for _, v := range entries {
+						if s, ok := v.(string); ok && strings.ContainsRune(s, '"') {
+							return true
+						}
+					}
+				}
+			}
+			if recordedQualityQuotedEnums(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range x {
+			if recordedQualityQuotedEnums(child) {
+				return true
+			}
+		}
+	}
+	return false
 }

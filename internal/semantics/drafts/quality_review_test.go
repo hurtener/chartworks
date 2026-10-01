@@ -23,7 +23,35 @@ func (e qualityTestEngine) Generate(_ context.Context, _ gateway.Call, _ *gatewa
 	if role != "topic_review" || !strings.Contains(system, "entire candidate") {
 		return gateway.Generated{}, gateway.ErrInput
 	}
-	return e.generate(input, schema)
+	generated, err := e.generate(input, schema)
+	if err != nil {
+		return generated, err
+	}
+	// Recorded providers must choose the exposed request-local handle, just as
+	// the actual SDK fixture does; unknown references remain invalid.
+	var supplied struct {
+		EntityReferences []qualityEntityReference `json:"entity_references"`
+	}
+	_ = json.Unmarshal([]byte(input), &supplied)
+	var response map[string]any
+	if json.Unmarshal(generated.JSON, &response) != nil {
+		return generated, nil
+	}
+	findings, _ := response["findings"].([]any)
+	for _, finding := range findings {
+		f, _ := finding.(map[string]any)
+		entities, _ := f["entities"].([]any)
+		for i, entity := range entities {
+			for _, ref := range supplied.EntityReferences {
+				if entity == ref.Entity {
+					entities[i] = ref.Handle
+					break
+				}
+			}
+		}
+	}
+	generated.JSON, _ = json.Marshal(response)
+	return generated, nil
 }
 
 func TestWholeTopicReviewBindsFullCandidateAndCannotMutate(t *testing.T) {

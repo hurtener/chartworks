@@ -7,12 +7,31 @@ include the canonical kind prefix and, for columns, the encoded dataset/column
 pair. Bare IDs, display names and dotted shorthand are not alternate identities.
 
 The schema template is immutable and parsed into a fresh private document for
-each request. The strict provider projection and full SDK-style envelope measure
-that same bound schema. The complete list is never truncated or replaced with
-unconstrained strings to fit provider enum, schema-byte or context limits. Those
-limits fail closed before inference; no model budget or authority is increased.
-The existing digest comparisons and `QualityReview.ValidFor` remain independent
-consumer checks. Invalid provider advice cannot save the final draft page or
+each request. The canonical domain schema continues to bind those exact identities.
+A subsequent live provider restriction rejected embedded quotes in strict enum
+literals, including the quotes in canonical JSON column coordinates. The quality
+role therefore exposes a complete `entity_references` array of `{handle, entity}`
+pairs. Provider choices are exact deterministic request-local handles such as
+`e000000`, not new semantic identities. The input names the encoding version and
+the canonical domain-schema digest; both the mapping and digest are included in
+the complete measured request.
+
+The gateway validates and measures the strict handle schema. The quality boundary
+then validates the handle-only response, restores each canonical reference using
+only this request's map, and independently validates the original canonical
+schema before the existing digest comparisons and `QualityReview.ValidFor`.
+Unknown handles, raw canonical references on the handle wire, stale bindings and
+references absent from the original domain schema fail closed. Findings, status
+and detail are otherwise unchanged. Handles are never persisted as entity IDs.
+A handle reused in another request does not survive its exact digest bindings.
+
+The complete list is never truncated or replaced with unconstrained strings to
+fit provider enum, schema-byte or context limits. These limits fail closed before
+inference; no model budget or authority is increased. Other gateway roles are not
+rewritten: inspected dynamic concept IDs are hashes and visual candidate IDs are
+restricted identifiers; the enhancement/SQL/engineering/feedback/narrative enums
+are closed quote-free vocabularies. This is a bounded quality-role compatibility
+correction, not a claim about every provider's full JSON Schema implementation. Invalid provider advice cannot save the final draft page or
 replace the preceding durable checkpoint. Validation errors preserve the gateway
 error class and disclose only a bounded stage, not identities or model content.
 
@@ -45,9 +64,12 @@ findings and `needs_review` status valid. The generated candidate independently
 passed the synthetic business contract. This isolates the identity contract
 failure from the separate quality of advisory wording.
 
-Unit regressions cover exact domain and projected-wire enums, all digest drifts,
-bare and shorthand references, cross-request concurrent isolation, immutable
-inputs, actual envelope accounting and provider/schema bounds. Real SDK and
+Unit regressions cover exact canonical-domain and provider-handle enums, quote
+and Unicode preservation, unknown handles, all digest drifts, bare and shorthand
+references, cross-request concurrent isolation, immutable inputs, original-domain
+validation after mapping, actual envelope accounting and provider/schema bounds.
+A recorded SDK fixture reproduces the observed quoted-enum HTTP400 before checking
+the successful handle-encoded role call; strictness is never disabled. Real SDK and
 PostgreSQL tests cover the serialized bound schema, durable rollback, retained
 advice, explicit operator adjudication and the two result oracles. Hosted required
 case lists include both new acceptance roots. Run evidence belongs to an exact

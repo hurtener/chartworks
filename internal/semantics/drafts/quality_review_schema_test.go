@@ -72,8 +72,9 @@ func TestQualityReviewSchemaBindsEveryDigestAndEntity(t *testing.T) {
 	// A valid advisory must still pass the unchanged domain consumer; it is not an
 	// approval and its findings must survive augmentation intact.
 	service := Service{engine: qualityTestEngine{generate: func(_ string, sent *gateway.Schema) (gateway.Generated, error) {
-		if string(sent.Document()) != string(domain.Document()) {
-			t.Fatal("consumer sent a different schema")
+		transport, err := newQualityReviewTransport(model.Digest(), material.Digest, coverage)
+		if err != nil || string(sent.Document()) != string(transport.schema.Document()) {
+			t.Fatal("consumer sent a different transport schema", err)
 		}
 		return gateway.Generated{JSON: raw}, nil
 	}}}
@@ -140,8 +141,15 @@ func TestQualityReviewSchemaCompleteEnvelopeAndBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, _ := json.Marshal(map[string]any{"context": material, "coverage": coverage, "coverage_digest": readexec.Hash(coverage)})
-	envelope, err := gateway.NewPromptEnvelope("openrouter", "test/pinned-model", qualityReviewInstructions, "", schema, 65536, 65536, 1024, 4096)
+	transport, err := newQualityReviewTransport(model.Digest(), material.Digest, coverage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(transport.domain.Document()) != string(schema.Document()) {
+		t.Fatal("canonical schema drift")
+	}
+	input, _ := json.Marshal(map[string]any{"context": material, "coverage": coverage, "coverage_digest": readexec.Hash(coverage), "review_reference_encoding": "request-local-handles-v1", "canonical_review_schema_digest": transport.domainDigest(), "entity_references": transport.references})
+	envelope, err := gateway.NewPromptEnvelope("openrouter", "test/pinned-model", qualityReviewInstructions, "", transport.schema, 65536, 65536, 1024, 4096)
 	if err != nil {
 		t.Fatal(err)
 	}

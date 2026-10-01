@@ -1,12 +1,10 @@
 package drafts
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -188,27 +186,28 @@ func deterministicQualityFindings(p semantics.TopicPack, redactions []authoringR
 func (s *Service) reviewAuthoringCandidate(ctx context.Context, call gateway.Call, budget *gateway.Budget, model semantics.Model, material authoringContext) (*QualityReview, gateway.Receipt, error) {
 	coverage := qualityCoverage(model.Pack())
 	coverageDigest := readexec.Hash(coverage)
+	transport, err := newQualityReviewTransport(model.Digest(), material.Digest, coverage)
+	if err != nil {
+		return nil, gateway.Receipt{}, err
+	}
 	input := struct {
-		Context        authoringContext `json:"context"`
-		Coverage       []string         `json:"coverage"`
-		CoverageDigest string           `json:"coverage_digest"`
-	}{material, coverage, coverageDigest}
+		Context            authoringContext         `json:"context"`
+		Coverage           []string                 `json:"coverage"`
+		CoverageDigest     string                   `json:"coverage_digest"`
+		ReferenceEncoding  string                   `json:"review_reference_encoding"`
+		DomainSchemaDigest string                   `json:"canonical_review_schema_digest"`
+		EntityReferences   []qualityEntityReference `json:"entity_references"`
+	}{material, coverage, coverageDigest, "request-local-handles-v1", transport.domainDigest(), transport.references}
 	raw, err := json.Marshal(input)
 	if err != nil || len(raw) > maxAuthoringContextBytes {
 		return nil, gateway.Receipt{}, gateway.ErrBudget
 	}
-	schema, err := qualityReviewSchema(model.Digest(), material.Digest, coverage)
-	if err != nil {
-		return nil, gateway.Receipt{}, err
-	}
-	generated, err := s.engine.Generate(ctx, call, budget, "topic_review", qualityReviewInstructions, string(raw), schema)
+	generated, err := s.engine.Generate(ctx, call, budget, "topic_review", qualityReviewInstructions, string(raw), transport.schema)
 	if err != nil {
 		return nil, generated.Receipt, err
 	}
-	var wire qualityWire
-	decoder := json.NewDecoder(bytes.NewReader(generated.JSON))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&wire) != nil || decoder.Decode(new(any)) != io.EOF || wire.CandidateDigest != model.Digest() || wire.ContextDigest != material.Digest || wire.CoverageDigest != coverageDigest {
+	wire, decodeErr := transport.decode(generated.JSON)
+	if decodeErr != nil || wire.CandidateDigest != model.Digest() || wire.ContextDigest != material.Digest || wire.CoverageDigest != coverageDigest {
 		return nil, generated.Receipt, fmt.Errorf("%w: topic review wire or digest binding", gateway.ErrOutput)
 	}
 	q := &QualityReview{CandidateDigest: wire.CandidateDigest, ContextDigest: wire.ContextDigest, CoverageDigest: wire.CoverageDigest, Coverage: coverage, Status: wire.Status, Findings: wire.Findings}
