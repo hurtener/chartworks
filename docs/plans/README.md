@@ -8,13 +8,18 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
-Current hosted-qualified checkpoint: `c755ad3`. The subsequent runtime tree
-`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification,
-including finite S10/S11 domain/signature completion. Its final published head
-still needs hosted checks. S4/S5/S6 and the explicitly documented legacy predicate
-approval/resume path remain implementation work; Q1/Q2/Q3 are separate gates.
-The canonical tracker controls current scope; historical evidence below does not
-qualify later source.
+Current hosted-qualified SQL checkpoint: `9ada852c5a78490dff5ba9aeb300e9d927031522`.
+Its v9 continuation includes generated-topic acceptance, scoped fact populations,
+proof-bound amount companions and durable original Plan-operation replay. The
+recorded adversarial cohort passes eight answers, five exact clarifications and
+six rejections; it is not live-model or migration-parity evidence.
+
+The separate reporting continuation adds reviewed amount disclosure, exact private
+query ownership and bounded single-output PNG under D-091. Its current qualification
+is tracked separately: namespace launch and virtual-address compatibility remain
+renderer deployment blockers. Historical phase labels do not close these gates.
+S4/S5/S6 parent scopes and Q1/Q2/Q3 remain bounded by their documented supported
+matrices rather than being declared complete from a passing subset.
 
 
 The [behavioral gap analysis](../gap-analysis.md) records source-parity findings, expansion frontiers and closure evidence.

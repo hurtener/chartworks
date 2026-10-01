@@ -796,3 +796,5 @@ Performance continuation: [D-088 authority-bound measurements and deferred final
 Migration and cutover continuation: [D-089 neutral manifests import private state and cut over one fenced occurrence stream](decisions/2026-09-22-migration-cutover.md).
 
 Model gateway continuation: [D-090 OpenRouter rerank through a bounded Bifrost custom provider](decisions/2026-09-22-openrouter-rerank.md).
+
+PNG continuation: [D-091 bounded single-output raster renditions with visible retained meaning](decisions/2026-10-01-bounded-png-renditions.md).

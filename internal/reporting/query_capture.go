@@ -38,7 +38,7 @@ func (a queryBlockCapture) Capture(ctx context.Context, e identity.Envelope, id 
 	if err != nil {
 		return Capture{}, err
 	}
-	out := Capture{SQL: captured.SQL, Parameters: captured.Parameters, Schema: captured.Schema, Source: captured.Source, Context: captured.Context, Question: captured.Question, Topics: []TopicPin{}}
+	out := Capture{AmountCompleteness: clone(captured.AmountCompleteness), SQL: captured.SQL, Parameters: captured.Parameters, Schema: captured.Schema, Source: captured.Source, Context: captured.Context, Question: captured.Question, Topics: []TopicPin{}}
 	for _, publication := range captured.Publications {
 		out.Topics = append(out.Topics, TopicPin{Topic: publication.Definition.Topic, Version: publication.Definition.Version, Digest: publication.Digest})
 	}

@@ -119,7 +119,11 @@ func ExecutionDigest(d Definition) string {
 	if d.SchemaVersion == SchemaVersion {
 		return base
 	}
-	return digest([]any{"block-execution-policy-v2", base, d.QueryLimits, d.ResultPolicy})
+	base = digest([]any{"block-execution-policy-v2", base, d.QueryLimits, d.ResultPolicy})
+	if len(d.AmountCompleteness) > 0 {
+		base = digest([]any{ReviewedAmountCompletenessPolicy, base, d.AmountCompleteness})
+	}
+	return base
 }
 
 // templateSelections validates and canonicalizes template provenance against
@@ -231,6 +235,9 @@ func validateDefinition(ctx context.Context, d Definition, limits config.Reporti
 			return ErrInvalid
 		}
 		policyFields[policy.Field] = true
+	}
+	if err := validateAmountDeclarations(d); err != nil {
+		return err
 	}
 	outputIDs := map[string]bool{}
 	orders := map[int]bool{}

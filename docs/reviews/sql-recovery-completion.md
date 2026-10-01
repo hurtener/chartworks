@@ -1,14 +1,17 @@
 # SQL recovery — completion tracker
 
 PR #62; implementation baseline `ea38c0774ac9f16bc7a7d3ffeeb4f26b666320c7`.
-Latest hosted-qualified checkpoint: `c755ad3c5311cd606b58ef5b32be7030f0f2d3bd`
-(tree `3d638fa90133806e0c2cf599705c5066d4d4445b`). The subsequent runtime tree
-`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification
-below; its new published head still requires hosted qualification.
+Latest hosted-qualified SQL checkpoint: `9ada852c5a78490dff5ba9aeb300e9d927031522`
+(tree `6982af6dfeaa40989f80b477071c165e31a29160`). Its standard CI and both SQL
+recovery runs passed. The generated-topic v9 recorded cohort passes eight answer,
+five exact clarification and six rejection contracts. This is not live-model
+qualification, a merge approval or full migration parity.
+
 S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented finite software
-scopes. S4/S5/S6 and Q1/Q2/Q3 remain open; the legacy-refinement review transition
-and its remaining approval/resume work are explicit below.
-Updated 2026-09-30. This is the current AP-00–AP-08 tracker. Historical
+scopes. S4/S5/S6 parent scopes and Q1/Q2/Q3 remain open outside the admitted matrix.
+Reviewed v1–v6 intent replacement and v7 group-domain review/resume are implemented;
+special-origin saved descendants remain a separate reporting continuation boundary.
+Updated 2026-10-01. This is the current AP-00–AP-08 tracker. Historical
 checkpoint prose in the [recovery ledger](sql-context-recovery.md) is evidence
 at its stated revision, not the current completion status.
 
@@ -26,7 +29,7 @@ No scope has been discarded and no release or cutover has been approved.
 | AP-00 | Exact source snapshots; engine and effective provider-wire capture; EN/ES synthetic fixtures | Paired cohort execution/reporting as needed by the existing evaluation runtime | Same-snapshot original/replacement owner cohort with frozen expected results; opt-in live diagnostics |
 | AP-01 | Catalog-backed atomic dependencies; nested KPI closure; selected roots shared with rules and clarification; provenance, omissions and replay; S1 dependent applicability qualified at 6273c80 | No remaining finite S2 software item after c755ad3; model calibration remains qualification | Held-out selection/ambiguity calibration, not similarity-as-confidence |
 | AP-02 | Metric/dimension/multi-topic prompt projection; ranked examples and actual-use evidence; strategy and effective-envelope fitting | S3 complete at c18a5b2: exact confirmed joins and mandatory projection; no remaining S3 software item | Operator tokenizer/model-window/framing qualification |
-| AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | S4: reviewed intent for order/limit/filter and broader expressions; S5: physically backed join/fan-out proof and required nested/multi-relation forms; S6: required dialect proof | Business-result cohorts and actual required engines; safe rejection is not support |
+| AP-03 | Native-first selected metrics, exact arithmetic, independent populations, direct/calendar grain, typed WHERE/HAVING and versioned replay | V9 delivers reviewed order/limit/filter, physical join/fan-out proof, grouped programs and scoped PostgreSQL fact lanes. Remaining S4/S5 capability is outside these documented closed forms; S6 retains non-PostgreSQL scoped-lane and required dialect boundaries | Business-result cohorts and actual required engines; safe rejection is not support |
 | AP-04 | Targeted unbound SQL repair, private binding restoration, bounded attempts, terminal exclusions and actual durable source-error path | S7 complete at 2dd7e9b: closed diagnostic vocabulary and bounded consumers qualified; wider engine quality remains Q2 | Broader privacy, repair/result and engine matrix within existing attempt limits |
 | AP-05 | Protected parent lineage; typed reference/metric edits; model-slot custody/replacement; S8 governed scalar/calendar inheritance, replacement/removal, empty-state policy, SDK, saved views and replay qualified at 93539cc; S9 grouping inheritance/replacement/totals/calendar and pending refinement qualified at 996db06 | S9 native parameter-scope extension qualified at 8cceaa1 for immutable CTE/derived/join/subquery/window/set inputs and eligible outer edits; wider language is S2 | Wider language and owner journeys beyond the checked EN/ES continuation grammar |
 | AP-06 | Durable accepted redacted explanations; value-free typed learned examples through review, persistence, import/export and generation | No remaining finite S10 item in the admitted nine-domain matrix; unknown/custom domains do not borrow authority | Actual remaining engine/profile qualification; owner result quality |

@@ -1646,9 +1646,10 @@ func QueryLineageDigest(q QueryRecord) string {
 		Clarification     *ClarificationEvidence `json:"clarification,omitempty"`
 		SQL               string                 `json:"sql"`
 		Parameters        []exec.Parameter       `json:"parameters"`
+		SavedCopyParent   string                 `json:"saved_copy_parent,omitempty"`
 		PlanOperation     string                 `json:"plan_operation,omitempty"`
 		PlanRequestDigest string                 `json:"plan_request_digest,omitempty"`
-	}{Record: q, Clarification: q.Clarification, SQL: q.SQL, Parameters: q.Parameters, PlanOperation: q.PlanOperation, PlanRequestDigest: q.PlanRequestDigest})
+	}{Record: q, Clarification: q.Clarification, SQL: q.SQL, Parameters: q.Parameters, PlanOperation: q.PlanOperation, PlanRequestDigest: q.PlanRequestDigest, SavedCopyParent: q.SavedCopyParent})
 }
 
 func bindParentLineage(child *QueryRecord, parent *QueryRecord) {

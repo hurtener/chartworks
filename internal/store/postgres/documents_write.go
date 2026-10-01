@@ -282,6 +282,9 @@ func (d *DB) CommitDocument(ctx context.Context, e identity.Envelope, proof repo
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, e.Tenant()); err != nil {
+			return err
+		}
 		if _, err := proof.Checked(e); err != nil {
 			return err
 		}
@@ -363,6 +366,9 @@ func (d *DB) QuarantineDocument(ctx context.Context, e identity.Envelope, proof 
 	}
 	defer cancel()
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := queryRetentionFence(ctx, tx, e.Tenant()); err != nil {
+			return err
+		}
 		if _, err := proof.Checked(e); err != nil {
 			return err
 		}

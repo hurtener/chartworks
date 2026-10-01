@@ -2,7 +2,6 @@ package rendering
 
 import (
 	"fmt"
-	"html"
 	"math"
 	"strings"
 
@@ -13,9 +12,9 @@ var chartPalette = []string{"#16877c", "#db6b4f", "#5d6fb6", "#d5a62e", "#7b5aa6
 
 type plotBox struct{ x, y, w, h float64 }
 
-func drawChartGeometry(b *strings.Builder, c *charts.Output, width, height int, foreground, background, timezone string) error {
+func appendChartGeometry(b *drawingScene, c *charts.Output, width, height int, foreground, background, timezone string) error {
 	box := plotBox{48, 36, math.Max(1, float64(width-64)), math.Max(1, float64(height-76))}
-	fmt.Fprintf(b, "<g class=\"plot\" stroke=\"%s\" fill=\"none\"><path d=\"M%.1f %.1fV%.1fH%.1f\"/></g>", foreground, box.x, box.y, box.y+box.h, box.x+box.w)
+	b.add(drawingPrimitive{kind: "axis", stroke: foreground, x: box.x, y: box.y, h: box.y + box.h, w: box.x + box.w})
 	switch c.Kind {
 	case charts.Line, charts.Area:
 		drawLines(b, c, box, c.Kind == charts.Area, timezone)
@@ -81,7 +80,7 @@ func orderedGroups(points []charts.Point) ([]string, []string, map[string][]char
 	return categories, series, groups
 }
 
-func drawGroupedBars(b *strings.Builder, c *charts.Output, box plotBox, horizontal bool, timezone string) {
+func drawGroupedBars(b *drawingScene, c *charts.Output, box plotBox, horizontal bool, timezone string) {
 	lo, hi, found := valueRange(c.Points, func(p charts.Point) charts.Value { return p.Value }, true)
 	if !found {
 		return
@@ -103,19 +102,19 @@ func drawGroupedBars(b *strings.Builder, c *charts.Output, box plotBox, horizont
 			}
 			si := seriesIndex[seriesKey(p)]
 			color := chartPalette[si%len(chartPalette)]
-			label := html.EscapeString(pointLabel(c, p, timezone))
+			label := pointLabel(c, p, timezone)
 			if horizontal {
 				x := scaled(value, lo, hi, box.x, box.w)
-				fmt.Fprintf(b, "<rect class=\"bar\" data-layout=\"grouped\" data-category=\"%s\" data-series=\"%s\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), html.EscapeString(seriesKey(p)), math.Min(x, zeroX), box.y+float64(ci)*outer+float64(si)*inner+1, math.Abs(x-zeroX), math.Max(1, inner-2), color, label)
+				b.add(drawingPrimitive{kind: "rect", class: "bar", layout: "grouped", category: category, series: seriesKey(p), x: math.Min(x, zeroX), y: box.y + float64(ci)*outer + float64(si)*inner + 1, w: math.Abs(x - zeroX), h: math.Max(1, inner-2), fill: color, title: label})
 			} else {
 				y := box.y + box.h - scaled(value, lo, hi, 0, box.h)
-				fmt.Fprintf(b, "<rect class=\"column\" data-layout=\"grouped\" data-category=\"%s\" data-series=\"%s\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), html.EscapeString(seriesKey(p)), box.x+float64(ci)*outer+float64(si)*inner+1, math.Min(y, zeroY), math.Max(1, inner-2), math.Abs(y-zeroY), color, label)
+				b.add(drawingPrimitive{kind: "rect", class: "column", layout: "grouped", category: category, series: seriesKey(p), x: box.x + float64(ci)*outer + float64(si)*inner + 1, y: math.Min(y, zeroY), w: math.Max(1, inner-2), h: math.Abs(y - zeroY), fill: color, title: label})
 			}
 		}
 	}
 }
 
-func drawStackedBars(b *strings.Builder, c *charts.Output, box plotBox, horizontal bool, timezone string) {
+func drawStackedBars(b *drawingScene, c *charts.Output, box plotBox, horizontal bool, timezone string) {
 	categories, series, groups := orderedGroups(c.Points)
 	lo, hi, found := 0.0, 0.0, false
 	for _, category := range categories {
@@ -160,30 +159,30 @@ func drawStackedBars(b *strings.Builder, c *charts.Output, box plotBox, horizont
 			}
 			end := start + v
 			color := chartPalette[seriesIndex[seriesKey(p)]%len(chartPalette)]
-			label := html.EscapeString(pointLabel(c, p, timezone))
+			label := pointLabel(c, p, timezone)
 			if horizontal {
 				x1, x2 := scaled(start, lo, hi, box.x, box.w), scaled(end, lo, hi, box.x, box.w)
-				fmt.Fprintf(b, "<rect class=\"bar\" data-layout=\"stacked\" data-category=\"%s\" data-start=\"%.6g\" data-end=\"%.6g\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), start, end, math.Min(x1, x2), box.y+float64(ci)*band+2, math.Abs(x2-x1), math.Max(1, band-4), color, label)
+				b.add(drawingPrimitive{kind: "rect", class: "bar", layout: "stacked", category: category, start: start, end: end, x: math.Min(x1, x2), y: box.y + float64(ci)*band + 2, w: math.Abs(x2 - x1), h: math.Max(1, band-4), fill: color, title: label})
 			} else {
 				y1, y2 := box.y+box.h-scaled(start, lo, hi, 0, box.h), box.y+box.h-scaled(end, lo, hi, 0, box.h)
-				fmt.Fprintf(b, "<rect class=\"column\" data-layout=\"stacked\" data-category=\"%s\" data-start=\"%.6g\" data-end=\"%.6g\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", html.EscapeString(category), start, end, box.x+float64(ci)*band+2, math.Min(y1, y2), math.Max(1, band-4), math.Abs(y2-y1), color, label)
+				b.add(drawingPrimitive{kind: "rect", class: "column", layout: "stacked", category: category, start: start, end: end, x: box.x + float64(ci)*band + 2, y: math.Min(y1, y2), w: math.Max(1, band-4), h: math.Abs(y2 - y1), fill: color, title: label})
 			}
 		}
 	}
 }
 
-func drawExactLabels(b *strings.Builder, c *charts.Output, foreground, timezone string) {
-	b.WriteString("<g class=\"exact-labels\" fill=\"" + foreground + "\">")
+func drawExactLabels(b *drawingScene, c *charts.Output, foreground, timezone string) {
+	b.add(drawingPrimitive{kind: "labels_start", fill: foreground})
 	for index, point := range c.Points {
 		if index >= 8 {
 			break
 		}
 		label := pointLabel(c, point, timezone)
 		if label != "" {
-			fmt.Fprintf(b, "<text x=\"56\" y=\"%d\">%s</text>", 52+index*16, html.EscapeString(label))
+			b.add(drawingPrimitive{kind: "text", x: 56, y: float64(52 + index*16), text: label})
 		}
 	}
-	b.WriteString("</g>")
+	b.add(drawingPrimitive{kind: "group_end"})
 }
 
 func coordinate(v charts.Value) (float64, bool) {
@@ -244,7 +243,7 @@ func pointLabel(c *charts.Output, point charts.Point, timezone string) string {
 	return strings.Join(parts, " · ")
 }
 
-func drawBars(b *strings.Builder, c *charts.Output, box plotBox, horizontal bool, timezone string) {
+func drawBars(b *drawingScene, c *charts.Output, box plotBox, horizontal bool, timezone string) {
 	lo, hi, found := valueRange(c.Points, func(p charts.Point) charts.Value { return p.Value }, true)
 	if !found {
 		return
@@ -259,18 +258,18 @@ func drawBars(b *strings.Builder, c *charts.Output, box plotBox, horizontal bool
 			continue
 		}
 		color := chartPalette[index%len(chartPalette)]
-		label := html.EscapeString(pointLabel(c, point, timezone))
+		label := pointLabel(c, point, timezone)
 		if horizontal {
 			x := scaled(value, lo, hi, box.x, box.w)
-			fmt.Fprintf(b, "<rect class=\"bar\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", math.Min(x, zeroX), box.y+float64(index)*band+2, math.Abs(x-zeroX), math.Max(1, band-4), color, label)
+			b.add(drawingPrimitive{kind: "rect", class: "bar", x: math.Min(x, zeroX), y: box.y + float64(index)*band + 2, w: math.Abs(x - zeroX), h: math.Max(1, band-4), fill: color, title: label})
 		} else {
 			y := box.y + box.h - scaled(value, lo, hi, 0, box.h)
-			fmt.Fprintf(b, "<rect class=\"column\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", box.x+float64(index)*band+2, math.Min(y, zeroY), math.Max(1, band-4), math.Abs(y-zeroY), color, label)
+			b.add(drawingPrimitive{kind: "rect", class: "column", x: box.x + float64(index)*band + 2, y: math.Min(y, zeroY), w: math.Max(1, band-4), h: math.Abs(y - zeroY), fill: color, title: label})
 		}
 	}
 }
 
-func drawLines(b *strings.Builder, c *charts.Output, box plotBox, area bool, timezone string) {
+func drawLines(b *drawingScene, c *charts.Output, box plotBox, area bool, timezone string) {
 	lo, hi, found := valueRange(c.Points, func(p charts.Point) charts.Value { return p.Value }, false)
 	if !found {
 		return
@@ -285,8 +284,8 @@ func drawLines(b *strings.Builder, c *charts.Output, box plotBox, area bool, tim
 	}
 	for seriesIndex, key := range order {
 		points := groups[key]
-		segments, labels := [][]string{}, [][]string{}
-		coords, segmentLabels := []string{}, []string{}
+		segments, labels := [][]drawingPoint{}, [][]string{}
+		coords, segmentLabels := []drawingPoint{}, []string{}
 		for index, point := range points {
 			value, ok := coordinate(point.Value)
 			if !ok {
@@ -298,7 +297,7 @@ func drawLines(b *strings.Builder, c *charts.Output, box plotBox, area bool, tim
 			}
 			x := box.x + float64(index)*box.w/float64(max(1, len(points)-1))
 			y := box.y + box.h - scaled(value, lo, hi, 0, box.h)
-			coords = append(coords, fmt.Sprintf("%.1f,%.1f", x, y))
+			coords = append(coords, drawingPoint{x, y})
 			segmentLabels = append(segmentLabels, pointLabel(c, point, timezone))
 		}
 		if len(coords) != 0 {
@@ -310,16 +309,16 @@ func drawLines(b *strings.Builder, c *charts.Output, box plotBox, area bool, tim
 		color := chartPalette[seriesIndex%len(chartPalette)]
 		for segmentIndex, segment := range segments {
 			if area {
-				firstX, lastX := strings.SplitN(segment[0], ",", 2)[0], strings.SplitN(segment[len(segment)-1], ",", 2)[0]
-				polygon := fmt.Sprintf("%s,%.1f %s %s,%.1f", firstX, box.y+box.h, strings.Join(segment, " "), lastX, box.y+box.h)
-				fmt.Fprintf(b, "<polygon class=\"area\" points=\"%s\" fill=\"%s\" fill-opacity=\"0.28\"/>", polygon, color)
+				polygon := append([]drawingPoint{{segment[0].x, box.y + box.h}}, segment...)
+				polygon = append(polygon, drawingPoint{segment[len(segment)-1].x, box.y + box.h})
+				b.add(drawingPrimitive{kind: "polygon", class: "area", points: polygon, fill: color, opacity: 0.28})
 			}
-			fmt.Fprintf(b, "<polyline class=\"line\" points=\"%s\" fill=\"none\" stroke=\"%s\" stroke-width=\"2\"><title>%s</title></polyline>", strings.Join(segment, " "), color, html.EscapeString(strings.Join(labels[segmentIndex], " | ")))
+			b.add(drawingPrimitive{kind: "polyline", class: "line", points: segment, stroke: color, title: strings.Join(labels[segmentIndex], " | ")})
 		}
 	}
 }
 
-func drawScatter(b *strings.Builder, c *charts.Output, box plotBox, timezone string) {
+func drawScatter(b *drawingScene, c *charts.Output, box plotBox, timezone string) {
 	xlo, xhi, xfound := valueRange(c.Points, func(p charts.Point) charts.Value { return p.X }, false)
 	ylo, yhi, yfound := valueRange(c.Points, func(p charts.Point) charts.Value { return p.Y }, false)
 	if !xfound || !yfound {
@@ -337,11 +336,11 @@ func drawScatter(b *strings.Builder, c *charts.Output, box plotBox, timezone str
 				radius = math.Min(18, 4+math.Sqrt(size))
 			}
 		}
-		fmt.Fprintf(b, "<circle class=\"scatter\" cx=\"%.1f\" cy=\"%.1f\" r=\"%.1f\" fill=\"%s\"><title>%s</title></circle>", scaled(xv, xlo, xhi, box.x, box.w), box.y+box.h-scaled(yv, ylo, yhi, 0, box.h), radius, chartPalette[index%len(chartPalette)], html.EscapeString(pointLabel(c, point, timezone)))
+		b.add(drawingPrimitive{kind: "circle", class: "scatter", x: scaled(xv, xlo, xhi, box.x, box.w), y: box.y + box.h - scaled(yv, ylo, yhi, 0, box.h), r: radius, fill: chartPalette[index%len(chartPalette)], title: pointLabel(c, point, timezone)})
 	}
 }
 
-func drawHeatmap(b *strings.Builder, c *charts.Output, box plotBox, timezone string) {
+func drawHeatmap(b *drawingScene, c *charts.Output, box plotBox, timezone string) {
 	lo, hi, found := valueRange(c.Points, func(p charts.Point) charts.Value { return p.Value }, false)
 	if !found {
 		return
@@ -379,11 +378,11 @@ func drawHeatmap(b *strings.Builder, c *charts.Output, box plotBox, timezone str
 		}
 		opacity := 0.2 + 0.8*(value-lo)/(hi-lo)
 		x, y := axis(point.X), axis(point.Y)
-		fmt.Fprintf(b, "<rect class=\"heatmap\" data-x=\"%s\" data-y=\"%s\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"#16877c\" fill-opacity=\"%.3f\"><title>%s</title></rect>", html.EscapeString(x), html.EscapeString(y), box.x+float64(xi[x])*cellW, box.y+float64(yi[y])*cellH, math.Max(1, cellW-2), math.Max(1, cellH-2), opacity, html.EscapeString(pointLabel(c, point, timezone)))
+		b.add(drawingPrimitive{kind: "rect", class: "heatmap", layout: "heatmap", category: x, series: y, x: box.x + float64(xi[x])*cellW, y: box.y + float64(yi[y])*cellH, w: math.Max(1, cellW-2), h: math.Max(1, cellH-2), fill: "#16877c", opacity: opacity, title: pointLabel(c, point, timezone)})
 	}
 }
 
-func drawPie(b *strings.Builder, c *charts.Output, box plotBox, donut bool, background, timezone string) {
+func drawPie(b *drawingScene, c *charts.Output, box plotBox, donut bool, background, timezone string) {
 	total := 0.0
 	for _, point := range c.Points {
 		if value, ok := coordinate(point.Value); ok && value > 0 {
@@ -405,15 +404,15 @@ func drawPie(b *strings.Builder, c *charts.Output, box plotBox, donut bool, back
 		if next-angle > math.Pi {
 			large = 1
 		}
-		fmt.Fprintf(b, "<path class=\"slice\" d=\"M%.1f %.1fL%.1f %.1fA%.1f %.1f 0 %d 1 %.1f %.1fZ\" fill=\"%s\"><title>%s</title></path>", cx, cy, x1, y1, radius, radius, large, x2, y2, chartPalette[index%len(chartPalette)], html.EscapeString(pointLabel(c, point, timezone)))
+		b.add(drawingPrimitive{kind: "slice", class: "slice", x: cx, y: cy, r: radius, start: angle, end: next, large: large, points: []drawingPoint{{x1, y1}, {x2, y2}}, fill: chartPalette[index%len(chartPalette)], title: pointLabel(c, point, timezone)})
 		angle = next
 	}
 	if donut {
-		fmt.Fprintf(b, "<circle class=\"donut-hole\" cx=\"%.1f\" cy=\"%.1f\" r=\"%.1f\" fill=\"%s\"/>", cx, cy, radius*0.5, background)
+		b.add(drawingPrimitive{kind: "circle", class: "donut-hole", x: cx, y: cy, r: radius * 0.5, fill: background})
 	}
 }
 
-func drawTreemap(b *strings.Builder, c *charts.Output, box plotBox, timezone string) {
+func drawTreemap(b *drawingScene, c *charts.Output, box plotBox, timezone string) {
 	total := 0.0
 	for _, node := range c.Hierarchy {
 		if value, ok := coordinate(node.Value); ok && value > 0 {
@@ -438,7 +437,7 @@ func drawTreemap(b *strings.Builder, c *charts.Output, box plotBox, timezone str
 				continue
 			}
 			width := box.w * value / total
-			fmt.Fprintf(b, "<rect class=\"treemap\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", x, box.y, math.Max(1, width-2), box.h, chartPalette[index%len(chartPalette)], html.EscapeString(pointLabel(c, point, timezone)))
+			b.add(drawingPrimitive{kind: "rect", class: "treemap", x: x, y: box.y, w: math.Max(1, width-2), h: box.h, fill: chartPalette[index%len(chartPalette)], title: pointLabel(c, point, timezone)})
 			x += width
 		}
 		return
@@ -456,12 +455,12 @@ func drawTreemap(b *strings.Builder, c *charts.Output, box plotBox, timezone str
 			}
 		}
 		label := strings.Join(labels, " / ") + " · " + formatValue(node.Value, chartColumn(c, c.Mapping.Bindings.Value), timezone)
-		fmt.Fprintf(b, "<rect class=\"treemap\" x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"%s\"><title>%s</title></rect>", x, box.y, math.Max(1, width-2), box.h, chartPalette[index%len(chartPalette)], html.EscapeString(label))
+		b.add(drawingPrimitive{kind: "rect", class: "treemap", x: x, y: box.y, w: math.Max(1, width-2), h: box.h, fill: chartPalette[index%len(chartPalette)], title: label})
 		x += width
 	}
 }
 
-func drawSparkline(b *strings.Builder, values []charts.Value, width, height int) {
+func appendSparkline(b *drawingScene, values []charts.Value, width, height int) {
 	points := make([]charts.Point, len(values))
 	for index, value := range values {
 		points[index].Value = value
@@ -470,14 +469,14 @@ func drawSparkline(b *strings.Builder, values []charts.Value, width, height int)
 	if !found {
 		return
 	}
-	coords := []string{}
+	coords := []drawingPoint{}
 	for index, value := range values {
 		coordinate, ok := coordinate(value)
 		if ok {
-			coords = append(coords, fmt.Sprintf("%.1f,%.1f", 16+float64(index)*float64(width-32)/float64(max(1, len(values)-1)), float64(height-16)-scaled(coordinate, lo, hi, 0, 48)))
+			coords = append(coords, drawingPoint{16 + float64(index)*float64(width-32)/float64(max(1, len(values)-1)), float64(height-16) - scaled(coordinate, lo, hi, 0, 48)})
 		}
 	}
 	if len(coords) != 0 {
-		fmt.Fprintf(b, "<polyline class=\"sparkline\" points=\"%s\" fill=\"none\" stroke=\"#16877c\" stroke-width=\"2\"/>", strings.Join(coords, " "))
+		b.add(drawingPrimitive{kind: "polyline", class: "sparkline", points: coords, stroke: "#16877c"})
 	}
 }

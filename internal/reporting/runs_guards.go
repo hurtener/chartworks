@@ -101,6 +101,9 @@ func CheckFrozenOutput(m RunManifest, o RetainedOutput, starting bool) error {
 	if saved == nil || saved.Kind != o.Kind || saved.Intent != nil && !saved.Intent.Enabled {
 		return ErrInvalid
 	}
+	if err := checkAmountDisclosures(m, *saved, o, starting); err != nil {
+		return err
+	}
 	if m.Selection != nil {
 		if digest(o.Intent) != digest(saved.Intent) || digest(o.ResultPolicy) != digest(m.ResultPolicy) {
 			return ErrInvalid

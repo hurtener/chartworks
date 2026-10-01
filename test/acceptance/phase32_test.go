@@ -405,7 +405,7 @@ func phase32ExportMatrix(t *testing.T) {
 	v := &phase32Viewer{value: phase32View()}
 	s, _ := rendering.NewManaged(v, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 1 << 20}, 1<<20, phase32Options())
 	actor := phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run")
-	for _, format := range []string{"json", "csv", "html"} {
+	for _, format := range []string{"json", "csv", "html", "png"} {
 		if _, err := s.Export(t.Context(), actor, phase32Request(format)); err != nil {
 			t.Fatal(format, err)
 		}
@@ -418,7 +418,7 @@ func phase32ExportMatrix(t *testing.T) {
 	if svg, err := s.Export(t.Context(), actor, phase32Request("svg")); err != nil || !strings.Contains(svg.Content, "<svg") {
 		t.Fatal("svg", err)
 	}
-	for _, format := range []string{"pdf", "png"} {
+	for _, format := range []string{"pdf"} {
 		if _, err := s.Export(t.Context(), actor, phase32Request(format)); !errors.Is(err, rendering.ErrInvalid) {
 			t.Fatal("unsupported advertised", format, err)
 		}
@@ -430,7 +430,7 @@ func phase32ExportMatrix(t *testing.T) {
 	ids := map[string]bool{}
 	for _, d := range registry.Definitions() {
 		ids[d.ID] = true
-		if strings.Contains(strings.ToLower(d.Summary), "pdf") || strings.Contains(strings.ToLower(d.Summary), "png") {
+		if strings.Contains(strings.ToLower(d.Summary), "pdf") {
 			t.Fatal(d.ID)
 		}
 	}

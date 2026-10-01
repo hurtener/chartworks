@@ -22,7 +22,7 @@ scoped to BLK-01/05/07, not overall phase completion or migration parity.
 | Report/revision | Draft/review/published; grid/filter/widget definitions, explicit dynamic mode, partial policy and private preview | 29 |
 | Dashboard/revision | Ordered exact report-revision page references and nondisclosing page redaction | 29 |
 | Schedule/occurrence | Functional typed target, Pengui binding ref, exact due/window/revisions, failure/overlap/catch-up policy | 06, 30 |
-| Rendition/export | Exact artifact, renderer/theme/version/viewport, static HTML/SVG or explicit data export; no execution side effect | 32 |
+| Rendition/export | Exact artifact, renderer/theme/version/viewport, static HTML/SVG, bounded single-output PNG or explicit data export; no execution side effect | 32 |
 | External references | Neutral source identity/revision mapping, dry-run errors/quarantine, no imported credentials/authority | 34 |
 
 Closed write schemas reject unknown fields, invalid IDs/references and impossible unions. Canonicalization is versioned. Hashes distinguish executable meaning, complete revision and rendition; server timestamps/provenance do not become executable authority. Store methods require tenant and verified operation context. Add tables with their first domain consumer, not one table for every conceptual noun.
@@ -45,7 +45,7 @@ Exact OpenAPI request/response structs and operation registrations are delivered
 | `/v1/dashboards` | Create/get/list/draft/update/publish/archive and exact report-page references | 29 |
 | `/v1/reporting-schedules` | Create/read/update/test/pause/resume/retire; occurrence and delivery-intent/history; attention/error status | 30 |
 | `/v1/report-runs/{id}/render` | Authorized HTML/SVG render/read and versioned rendition metadata; no new query | 32 |
-| `/v1/report-runs/{id}/export` | Explicit permitted JSON/CSV/HTML/SVG export, retention and limits | 32 |
+| `/v1/report-runs/{id}/export` | Explicit permitted JSON/CSV/HTML/SVG and bounded single-output PNG export, retention and limits | 32 |
 | `/v1/onboarding` | Submit/status/answer unresolved slots/resume/cancel and references to ordinary reviewed artifacts | 33 |
 | `/v1/imports` | Authorized neutral dry-run/validate/apply/status; unsupported record quarantine | 34 |
 

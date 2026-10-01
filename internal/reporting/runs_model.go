@@ -224,18 +224,19 @@ type NarrativeResult struct {
 // RetainedOutput is one independently checkpointed fan-out of the same logical
 // normalized result. A failed narrative is explicit, not an empty successful one.
 type RetainedOutput struct {
-	ResultPolicy   []EffectiveFieldPolicy `json:"result_policy,omitempty"`
-	Intent         *OutputIntent          `json:"intent,omitempty"`
-	EvidencePolicy []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
-	ID             string                 `json:"id"`
-	Kind           string                 `json:"kind"`
-	State          string                 `json:"state"`
-	Code           string                 `json:"code,omitempty"`
-	Digest         string                 `json:"digest"`
-	Chart          *charts.Output         `json:"chart,omitempty"`
-	Narrative      *NarrativeResult       `json:"narrative,omitempty"`
-	ReservedCalls  int                    `json:"reserved_calls"`
-	ReservedTokens int                    `json:"reserved_tokens"`
+	AmountCompleteness []AmountDisclosure     `json:"amount_completeness,omitempty"`
+	ResultPolicy       []EffectiveFieldPolicy `json:"result_policy,omitempty"`
+	Intent             *OutputIntent          `json:"intent,omitempty"`
+	EvidencePolicy     []EffectiveFieldPolicy `json:"evidence_policy,omitempty"`
+	ID                 string                 `json:"id"`
+	Kind               string                 `json:"kind"`
+	State              string                 `json:"state"`
+	Code               string                 `json:"code,omitempty"`
+	Digest             string                 `json:"digest"`
+	Chart              *charts.Output         `json:"chart,omitempty"`
+	Narrative          *NarrativeResult       `json:"narrative,omitempty"`
+	ReservedCalls      int                    `json:"reserved_calls"`
+	ReservedTokens     int                    `json:"reserved_tokens"`
 }
 
 // OutputSummary excludes values and narrative text from list/summary responses.

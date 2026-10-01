@@ -4,7 +4,7 @@ Status: current design, 2026-09-04. Phases 31 and 32 own delivery. Harbor/Pengui
 
 ## Shared contract, separate adapters
 
-A sealed authorized artifact feeds the versioned presentation contract. API data, the Apps viewer, a BFF-backed iframe and static HTML/SVG use it. The viewer/renderer cannot choose source tables, generate SQL or fetch new warehouse data simply because it opens. A data-changing filter creates an explicit authorized run; local sorting/redraw is local.
+A sealed authorized artifact feeds the versioned presentation contract. API data, the Apps viewer, a BFF-backed iframe and static HTML/SVG and bounded single-output PNG use it. The viewer/renderer cannot choose source tables, generate SQL or fetch new warehouse data simply because it opens. A data-changing filter creates an explicit authorized run; local sorting/redraw is local.
 
 Build a small Svelte/TypeScript or framework-light read viewer, not a full builder application. Share output interpretation, exact labels/units, theme/locale, errors, current business trust and partial/freshness indicators. An unsupported chart fallback is visible and does not satisfy chart parity.
 
@@ -26,7 +26,7 @@ The serving BFF response applies approved frame-ancestor policy and ordinary bro
 
 ## Genuine SSR work to implement
 
-Go generates safe tables, KPI labels and text. An optional pinned ECharts SVG worker renders chart SVG from sealed typed input; ECharts documents a JavaScript server SVG path, not a native Go renderer. [V1] The worker has no warehouse/model tokens, network egress, arbitrary URL loading or user script execution. Use bounded IPC/argv, CPU/memory/time/concurrency/output size and a supervised lifecycle; return typed failures without taking artifact reads down.
+Go generates safe tables, KPI labels and text. A pinned isolated Go worker renders chart SVG and bounded single-output PNG from the shared sealed typed input. The historical external-engine design is superseded by D-091. The worker has no warehouse/model tokens, network egress, arbitrary URL loading or user script execution. Use bounded IPC/argv, CPU/memory/time/concurrency/output size and a supervised lifecycle; return typed failures without taking artifact reads down.
 
 Render input includes exact data/spec, artifact ID, renderer/theme version and viewport. Sanitize labels/Markdown/SVG and reject scripts/events/foreign objects/external references/unsafe formatter and CSS options. Avoid trusting a string as HTML just because a model produced it. Retained rendered bytes inherit artifact privacy/context/expiry.
 
@@ -34,7 +34,7 @@ SSR acceptance disables client chart JavaScript and still observes the promised 
 
 ## Export and side effects
 
-Deliver explicitly authorized JSON/CSV/HTML/SVG exports with row/byte limits, spreadsheet-injection protection and exact metadata. CSV safety must not silently change the canonical data; record escaping/export representation. Full PDF/PNG/paginated document rendering is separate later scope and is never implied by SVG support.
+Deliver explicitly authorized JSON/CSV/HTML/SVG exports with row/byte limits, spreadsheet-injection protection and exact metadata. CSV safety must not silently change the canonical data; record escaping/export representation. Bounded single-output PNG is explicitly supported under [D-091](../decisions/2026-10-01-bounded-png-renditions.md). Full-report PNG, PDF and paginated document rendering remain separate scope.
 
 Catalog delivery is already useful. Outbound notifications are Pengui integration effects with a durable intent/receipt, not an email subsystem in the renderer. Never claim delivery because recipients were stored. A downloaded authorized file cannot be recalled; apply the separate export permission accordingly.
 

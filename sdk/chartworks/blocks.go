@@ -34,6 +34,15 @@ type BlockQueryLimits = reporting.QueryLimits
 // BlockResultFieldPolicy can only restrict inherited reviewed sensitivity.
 type BlockResultFieldPolicy = reporting.ResultFieldPolicy
 
+// BlockAmountDeclaration is explicit reviewed missing-amount meaning.
+type BlockAmountDeclaration = reporting.AmountDeclaration
+
+// BlockAmountOutputBinding distinguishes an amount from a reviewed count output.
+type BlockAmountOutputBinding = reporting.AmountOutputBinding
+
+// BlockAmountDisclosure describes returned values, not source-wide completeness.
+type BlockAmountDisclosure = reporting.AmountDisclosure
+
 // BlockEffectiveFieldPolicy is metadata, not a data-access grant.
 type BlockEffectiveFieldPolicy = reporting.EffectiveFieldPolicy
 

@@ -124,7 +124,10 @@ func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, erro
 	if dec.Decode(&response) != nil || dec.Decode(new(any)) != io.EOF || response.Version != WorkerProtocolVersion || response.RequestDigest != wantDigest {
 		return Rendition{}, ErrWorker
 	}
-	if err = validateWorkerRendition(work, response.Rendition); err != nil {
+	if err = validateWorkerRendition(bounded, work, response.Rendition); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return Rendition{}, ErrTimeout
+		}
 		return Rendition{}, err
 	}
 	return response.Rendition, nil
@@ -132,17 +135,23 @@ func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, erro
 
 func validWorkerRequest(work SealedWork) bool {
 	r := work.Request
-	if !oneOf(r.Format, "html", "svg") || !oneOf(r.Theme, "light", "dark") || r.Width < 320 || r.Width > 4096 {
+	if !oneOf(r.Format, "html", "svg", "png") || !oneOf(r.Theme, "light", "dark") || r.Width < 320 || r.Width > 4096 {
 		return false
 	}
 	if work.Composition != nil {
-		return r.Full && r.Height >= 1 && r.Height <= 1_000_000 && work.Composition.Content != "" && work.Composition.SourceDigest != ""
+		return r.Format != "png" && r.Full && r.Height >= 1 && r.Height <= 1_000_000 && work.Composition.Content != "" && work.Composition.SourceDigest != ""
 	}
 	return !r.Full && r.Height >= 200 && r.Height <= 4096 && work.View.Output != nil && work.View.Output.State == "succeeded" && work.View.Output.RetainedDigest != ""
 }
 
-func validateWorkerRendition(work SealedWork, r Rendition) error {
-	media := map[string]string{"html": "text/html; charset=utf-8", "svg": "image/svg+xml"}[work.Request.Format]
+func validateWorkerRendition(ctx context.Context, work SealedWork, r Rendition) error {
+	if ctx == nil {
+		return ErrWorker
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	media := map[string]string{"html": "text/html; charset=utf-8", "svg": "image/svg+xml", "png": "image/png"}[work.Request.Format]
 	tz := work.View.Timezone
 	if tz == "" {
 		tz = "UTC"
@@ -158,11 +167,18 @@ func validateWorkerRendition(work SealedWork, r Rendition) error {
 		}
 		expectedSource = work.View.Output.RetainedDigest
 	}
-	d := sha256.Sum256([]byte(r.Content))
-	if r.State != "succeeded" || r.Version != Version || r.Format != work.Request.Format || r.MediaType != media || r.Theme != work.Request.Theme || r.Width != work.Request.Width || r.Height != work.Request.Height || r.SourceDigest != expectedSource || !reflect.DeepEqual(r.Projection, projection) || r.Bytes != len(r.Content) || r.Digest != hex.EncodeToString(d[:]) || !safeStatic(r.Format, r.Content) {
+	raw, err := renditionContent(ctx, r, 64<<20)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return ErrWorker
 	}
-	return nil
+	d := sha256.Sum256(raw)
+	if r.State != "succeeded" || r.Version != Version || r.Format != work.Request.Format || r.MediaType != media || r.Theme != work.Request.Theme || r.Width != work.Request.Width || r.Height != work.Request.Height || r.SourceDigest != expectedSource || !reflect.DeepEqual(r.Projection, projection) || r.Bytes != len(raw) || r.Digest != hex.EncodeToString(d[:]) || (r.Format != "png" && !safeStatic(r.Format, r.Content)) {
+		return ErrWorker
+	}
+	return ctx.Err()
 }
 func WorkerMain(stdin io.Reader, stdout io.Writer, maxInput, maxOutput int, memory int64) error {
 	if stdin == nil || stdout == nil || maxInput < 1024 || maxInput > 64<<20 || maxOutput < 1024 || maxOutput > 64<<20 || memory < 32<<20 {
@@ -208,7 +224,7 @@ type LocalProcessor struct{ MaxBytes int }
 
 // Process exists for deterministic tests. Production foundation construction
 // accepts only the configured sandboxed Process.
-func (l LocalProcessor) Process(_ context.Context, w SealedWork) (Rendition, error) {
+func (l LocalProcessor) Process(ctx context.Context, w SealedWork) (Rendition, error) {
 	if w.Composition != nil {
 		if !safeStatic(w.Request.Format, w.Composition.Content) {
 			return Rendition{}, ErrInvalid
@@ -216,5 +232,5 @@ func (l LocalProcessor) Process(_ context.Context, w SealedWork) (Rendition, err
 		digest := sha256.Sum256([]byte(w.Composition.Content))
 		return Rendition{State: "succeeded", Version: Version, Format: w.Request.Format, MediaType: map[string]string{"html": "text/html; charset=utf-8", "svg": "image/svg+xml"}[w.Request.Format], Theme: w.Request.Theme, Width: w.Request.Width, Height: w.Request.Height, SourceDigest: w.Composition.SourceDigest, Digest: hex.EncodeToString(digest[:]), Bytes: len(w.Composition.Content), Content: w.Composition.Content}, nil
 	}
-	return renderSealed(w.Request, w.View, l.MaxBytes)
+	return renderSealedContext(ctx, w.Request, w.View, l.MaxBytes)
 }

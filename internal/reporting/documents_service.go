@@ -325,7 +325,7 @@ func (s *Documents) Read(ctx context.Context, e identity.Envelope, kind, id stri
 	if !e.Valid() {
 		return DocumentView{}, access.ErrUnauthenticated
 	}
-	return DocumentView{State: state, Revision: snapshot.Revision.Number, Digest: snapshot.Revision.Digest, Private: private, Definition: d}, ctx.Err()
+	return DocumentView{UnavailableQueries: snapshot.UnavailableQueries, State: state, Revision: snapshot.Revision.Number, Digest: snapshot.Revision.Digest, Private: private, Definition: d}, ctx.Err()
 }
 
 // List reads a bounded public metadata index, never raw results or SQL.

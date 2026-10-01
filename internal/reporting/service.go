@@ -147,7 +147,7 @@ func project(snapshot Snapshot, now time.Time) View {
 			trust.Certification = "stale"
 		}
 	}
-	out := View{State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Rules: clone(d.Rules), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
+	out := View{AmountCompleteness: clone(d.AmountCompleteness), State: publicState(snapshot.State, private), Revision: r.Number, RevisionID: r.ID, Digest: r.Digest, ExecutionDigest: r.ExecutionDigest, Metadata: clone(d.Metadata), Source: d.Source, Context: d.Context, Topics: clone(d.Topics), Rules: clone(d.Rules), Parameters: clone(d.Parameters), ExpectedSchema: clone(d.ExpectedSchema), Outputs: OutputDefinitions(d), Actor: r.Actor, CreatedAt: r.CreatedAt, Private: private, Trust: trust}
 	out.SchemaVersion = d.SchemaVersion
 	out.QueryLimits = clone(d.QueryLimits)
 	out.ResultPolicy = ResolveResultPolicy(d, nil, nil)
@@ -254,6 +254,9 @@ func (s *Service) Edit(ctx context.Context, e identity.Envelope, id string, in E
 	if base.State.Archived {
 		return View{}, store.ErrConflict
 	}
+	if err := retainAmountDeclarations(base.Revision.Definition, in.Definition); err != nil {
+		return View{}, err
+	}
 	captured := (in.Definition.Template != nil || len(in.Definition.Templates) > 0) &&
 		digest(in.Definition.Template) == digest(base.Revision.Definition.Template) &&
 		digest(in.Definition.Templates) == digest(base.Revision.Definition.Templates) &&
@@ -327,6 +330,9 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 			return View{}, err
 		}
 		d.Rules = clone(captured.Rules)
+	}
+	if err := seedAmountDeclarations(&d, captured.AmountCompleteness); err != nil {
+		return View{}, err
 	}
 	if err := validateDefinition(ctx, d, s.limits, true); err != nil {
 		return View{}, err

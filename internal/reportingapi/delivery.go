@@ -156,7 +156,7 @@ func DeliveryMCPBindings(service *reporting.Delivery, execution bool, renderer .
 	}
 	out = append(out, view)
 	if len(renderer) == 1 && renderer[0] != nil {
-		export, err := mcpserver.Bind(registry, "reportingExport", "reporting_export", "reporting", "Export one retained output as bounded JSON, CSV, static HTML or static SVG. Performs no source or model work.", renderer[0].Export, mapper)
+		export, err := mcpserver.Bind(registry, "reportingExport", "reporting_export", "reporting", "Export one retained output as bounded JSON, CSV, static HTML, SVG or single-output PNG. Performs no source or model work.", renderer[0].Export, mapper)
 		if err != nil {
 			return nil, err
 		}

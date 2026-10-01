@@ -143,6 +143,7 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
+	SavedCopyParent      string                       `json:"-"`
 	PlanOperation        string                       `json:"-"`
 	PlanRequestDigest    string                       `json:"-"`
 	IntentReview         *IntentReviewEvidence        `json:"intent_review,omitempty"`

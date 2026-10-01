@@ -208,6 +208,9 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 			}
 		}
 	}
+	if out.State == "succeeded" {
+		out.AmountCompleteness = reviewedAmountDisclosures(m.Revision.Definition, m.Revision.Digest, saved, result)
+	}
 	out.Digest = digest(out)
 	return out, nil
 }

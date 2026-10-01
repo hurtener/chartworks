@@ -260,6 +260,11 @@ try{
   }
 
   if(suite==='all'||suite==='security'){
+    await restore();
+    await evaluate(`(()=>{const v=JSON.parse(JSON.stringify(fixture.view));v.summary.target.id='amount-disclosure';v.output.amount_completeness=[{label:'Known amount <script>inert</script>',evidence:'reviewed_definition',definition_digest:'a'.repeat(64),declaration:'known',value_field:'value',unknown_count_field:'counter',query_outcome:'succeeded',rows_scope:'visible_source_rows',role:'unknown_count',unit:'count',result:{policy:'reviewed-amount-completeness-v1',scope:'returned_query_rows',metric:'known',value_column:1,unknown_count_metric:'counter',unknown_count_column:0,status:'incomplete',rows:[{row:0,status:'incomplete',unknown_count:'9007199254740993'}]}}];show(v);})()`);
+    await waitTitle('amount-disclosure');
+    await check(`${body}.textContent.includes('Unknown amount count (displayed rows): 9007199254740993')&&${body}.textContent.includes('Evidence: reviewed definition')&&${body}.textContent.includes('Displayed metric unit: count')`,'exact retained amount disclosure and count role remain visible');
+    await check(`${body}.textContent.includes('<script>inert</script>')&&${body}.querySelector('script')===null`,'reviewed disclosure labels remain inert text');
     await restore();const policyRunCount=await evaluate("calls.filter(c=>c.name==='reporting_run').length");
     await evaluate(`Array.from(${body}.querySelectorAll('button')).find(b=>b.textContent==='Run with these filters').click();`);
     await until(()=>evaluate(`calls.filter(c=>c.name==='reporting_run').length===${policyRunCount+1}`),'certified filter run was not emitted');

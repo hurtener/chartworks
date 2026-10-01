@@ -138,3 +138,7 @@ scan-byte guarantees. Persist cancel intent and only signal the original owned
 connection, never a reusable PID. Final receipt/audit commit must resolve late
 cancellation before exposing values. Reconcile uncertain physical attempts before
 explicit retries; never reconstruct lost values or silently rewrite empty SQL.
+
+## Bounded PNG continuation
+
+D-091 permits single-output PNG through the same sealed retained-input and isolated-worker contract. Preserve visible value roles, empty/truncated state, page scope and required amount disclosure. No arbitrary SVG/URL/font input, silent cropping, production in-process fallback or security-limit expansion is permitted. Full-report PNG and PDF remain separate scope.

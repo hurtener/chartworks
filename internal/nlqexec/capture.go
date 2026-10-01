@@ -15,16 +15,25 @@ import (
 // CaptureEvidence is a private, source-backed handoff to definition authoring.
 // It carries no publication, certification or result-retention authority. Public
 // query routes continue using their existing SQL-redacted response projections.
+type CapturedAmountCompleteness struct {
+	MetricLabel        string
+	Metric             string
+	ValueColumn        int
+	UnknownCountMetric string
+	UnknownCountColumn int
+}
+
 type CaptureEvidence struct {
-	SQL          string
-	Parameters   []exec.Parameter
-	Schema       []exec.Field
-	Source       string
-	Context      string
-	Publications []topics.Published
-	RuleVersions []string
-	Templates    []rulesets.TemplateSelection
-	Question     string
+	AmountCompleteness []CapturedAmountCompleteness
+	SQL                string
+	Parameters         []exec.Parameter
+	Schema             []exec.Field
+	Source             string
+	Context            string
+	Publications       []topics.Published
+	RuleVersions       []string
+	Templates          []rulesets.TemplateSelection
+	Question           string
 }
 
 // CaptureDefinition reads a completed, same-actor/same-session query and rechecks
@@ -64,13 +73,34 @@ func (s *Service) CaptureDefinition(ctx context.Context, e identity.Envelope, id
 	if err := access.Require(e, "query.execute", admitted.resources...); err != nil {
 		return out, err
 	}
+	if err := s.verifyAnalyticalOutputReplay(ctx, e, q, admitted); err != nil {
+		return out, err
+	}
 	out = CaptureEvidence{SQL: q.SQL, Parameters: append([]exec.Parameter{}, q.Parameters...), Schema: append([]exec.Field{}, q.Result.Schema...), Source: admitted.source, Context: admitted.context, Question: q.Question, Publications: []topics.Published{}, RuleVersions: append([]string{}, q.RuleVersions...), Templates: append([]rulesets.TemplateSelection{}, q.Templates...)}
+	for _, item := range resultAmountCompleteness(q.Analytical, nil, false) {
+		out.AmountCompleteness = append(out.AmountCompleteness, CapturedAmountCompleteness{Metric: item.Metric, ValueColumn: item.ValueColumn, UnknownCountMetric: item.UnknownCountMetric, UnknownCountColumn: item.UnknownCountColumn})
+	}
 	for i, topic := range q.Topics {
 		contract, err := s.topics.RetainedContract(ctx, e, topic, q.TopicVersions[i])
 		if err != nil {
 			return CaptureEvidence{}, err
 		}
 		out.Publications = append(out.Publications, contract.Publication)
+	}
+	for i := range out.AmountCompleteness {
+		item := &out.AmountCompleteness[i]
+		for _, publication := range out.Publications {
+			for _, measure := range publication.Definition.Measures {
+				if item.Metric == publication.Definition.Topic+":measure:"+measure.ID {
+					item.MetricLabel = measure.Name
+				}
+			}
+			for _, kpi := range publication.Definition.KPIs {
+				if item.Metric == publication.Definition.Topic+":kpi:"+kpi.ID {
+					item.MetricLabel = kpi.Name
+				}
+			}
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return CaptureEvidence{}, err

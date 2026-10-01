@@ -83,6 +83,23 @@ jobs:
           set -o pipefail
           go test -race -count=1 -timeout=5m ./test/acceptance -run '^TestCW02RichCharts$' 2>&1 | tee /tmp/reporting-cw02.log
           go test -race -count=1 -cover ./internal/charts ./web/report-viewer 2>&1 | tee /tmp/reporting-charts.log
+      - name: Retained disclosure, PNG and ownership lifecycles
+        if: always()
+        run: |
+          set -o pipefail
+          node --test web/report-viewer/display_intent.test.mjs web/report-viewer/amount_completeness.test.mjs
+          go test -race -count=1 -json -timeout=12m ./test/acceptance -run '^(TestCapturedAmountCompletenessLifecycle|TestPNGRenditionRetainedTransportsAndExpiry|TestRetentionOriginalOperationAudit|TestRetentionConcurrentMutationFences|TestRetentionLateResultAndRendition|TestRetentionLegacyCheckpointAndExactGroupOwnership|TestRetentionLearningContributionCustody|TestRetentionExpiredLegacyOwnershipLimit|TestSQLRecoveryExampleRequalificationAcceptance|TestReportingCompositionData)$' 2>&1 | tee /tmp/reporting-continuation.log
+          python3 - <<'PYVERIFY'
+          import json, pathlib
+          required = set(['TestCapturedAmountCompletenessLifecycle', 'TestPNGRenditionRetainedTransportsAndExpiry', 'TestRetentionOriginalOperationAudit', 'TestRetentionConcurrentMutationFences', 'TestRetentionLateResultAndRendition', 'TestRetentionLegacyCheckpointAndExactGroupOwnership', 'TestRetentionLearningContributionCustody', 'TestRetentionExpiredLegacyOwnershipLimit', 'TestSQLRecoveryExampleRequalificationAcceptance', 'TestReportingCompositionData'])
+          events=[]
+          for line in pathlib.Path('/tmp/reporting-continuation.log').read_text().splitlines():
+              try: events.append(json.loads(line))
+              except ValueError: pass
+          passed={e.get('Test') for e in events if e.get('Action')=='pass'}
+          assert required <= passed, sorted(required-passed)
+          assert not [e for e in events if e.get('Action') in ('fail','skip')]
+          PYVERIFY
       - name: Captured variants, durable deletion and isolated rendering
         if: always()
         run: |
@@ -108,7 +125,18 @@ jobs:
         if: always()
         run: |
           set -o pipefail
-          go test -race -count=1 -timeout=10m ./internal/config ./internal/calendars ./internal/jobs ./internal/gateway ./internal/reporting ./internal/reportingapi ./internal/store/postgres ./internal/workapi ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
+          go test -race -count=1 -json -timeout=10m ./internal/charts ./internal/config ./internal/calendars ./internal/jobs ./internal/gateway ./internal/reporting ./internal/reportingapi ./internal/rendering/... ./internal/store/postgres ./internal/workapi ./internal/mcpserver ./web/report-viewer ./sdk/chartworks 2>&1 | tee /tmp/reporting-units.log
+          python3 - <<'PYVERIFY'
+          import json, pathlib
+          required=set(['TestReviewedAmountDeclarationBindings', 'TestReviewedAmountResultDisclosure', 'TestReviewedAmountRetainedIntegrity', 'TestAmountDisclosurePagingUsesSourceRows', 'TestAmountDisclosureHonorsReviewedTableVisibility', 'TestAmountDisclosureAllStaticFormats', 'TestAmountDisclosureRejectsForgeryAndOmission', 'TestEmptyCSVKeepsCoverageEnvelopeWithoutInventingRows', 'TestTableSourceRowsPreserveSortedTiesAndNulls', 'TestSourceRowsKeepOmittedChartPointIdentity', 'TestPNGRasterCoversCatalogAndThemes', 'TestPNGRasterBudgetsAndCancellation', 'TestPNGRichKPIAndTableTotals', 'TestDrawingScenePreservesExistingSVG', 'TestDrawingSceneRejectsOpenOrOversizedPrimitives', 'TestPNGWireRejectsCorruptionAndBudgetEscape', 'TestPNGSealedProjectionAndRawDigest', 'TestPNGWireBoundsDecodedScanlines', 'TestPNGManagedRetainedLifecycle', 'TestPNGDisclosureSurvivesBinaryProjection', 'TestPNGReturnsValidatedBinaryUnderBrowserBinding', 'TestReportingPNGEnvelopeRoundTrip', 'TestPNGRasterPreservesResultMeaning', 'TestPNGEmptyPageDoesNotInventRowRange', 'TestBinaryTransportRejectsUntrustedResponsesAndRequests', 'FuzzPNGClosedByteContract', 'TestPNGRasterRejectsMalformedRetainedProjection', 'TestPNGRasterRejectsUnrepresentableDisclosure', 'TestPNGRasterKPIKeepsTitleAndRejectsClippedRoles'])
+          events=[]
+          for line in pathlib.Path('/tmp/reporting-units.log').read_text().splitlines():
+              try: events.append(json.loads(line))
+              except ValueError: pass
+          passed={e.get('Test') for e in events if e.get('Action')=='pass'}
+          assert required <= passed, sorted(required-passed)
+          assert not [e for e in events if e.get('Action')=='fail']
+          PYVERIFY
       - name: Planning, formatting and actual build
         if: always()
         run: |

@@ -90,7 +90,7 @@ The shared read viewer consumes versioned specs and artifacts through the establ
 
 Iframe uses an authenticated Pengui/client BFF which forwards a scoped JWT server-side. Chartworks returns authorized HTML/SVG/data. No local embed grants/bootstrap codes/cookies/token minting or bearer URLs. The serving BFF controls approved ancestors and user session behavior.
 
-Go renders tables/KPIs/text; a pinned isolated ECharts worker renders SVG from sealed typed data, with no network/arbitrary URLs/scripts/source/model credentials. Bound resources and sanitize output. SSR must show promised chart content with client chart JavaScript disabled. Authorized JSON/CSV/HTML/SVG export is explicit; PDF/PNG/paginated document generation is later scope, not implied.
+Go renders tables/KPIs/text; a pinned isolated Go worker renders SVG and bounded single-output PNG from sealed typed data, with no network/arbitrary URLs/scripts/source/model credentials. Bound resources and sanitize output. SSR must show promised chart content with client chart JavaScript disabled. Authorized JSON/CSV/HTML/SVG export and the explicit [D-091 PNG contract](docs/decisions/2026-10-01-bounded-png-renditions.md) preserve retained meaning. Full-report PNG, PDF and paginated document generation remain separate scope.
 
 ## 9. Delivery and closure
 
