@@ -65,7 +65,16 @@ func TestCW06RulesReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal("reporting service", err)
 	}
-	definition := phase27Definition(t, f, e, "SELECT id, amount FROM analytics.sales ORDER BY id /* CW06_RULE_SNAPSHOT */")
+	definition := phase27Definition(t, f, e, "SELECT sum(amount) AS amount FROM analytics.sales /* CW06_RULE_SNAPSHOT */")
+	// Explicitly author the supported grounded narrative contract before migration.
+	for i := range definition.Outputs {
+		if n := definition.Outputs[i].Narrative; n != nil {
+			n.PolicyVersion = reporting.NarrativePolicyVersion
+			n.Instructions = "evidence_only"
+			n.SchemaVersion = "grounded-narrative-v1"
+			n.MaxClaims = 5
+		}
+	}
 	definition, err = reporting.MigrateDefinition(definition)
 	if err != nil {
 		t.Fatal("migrate definition", err)
@@ -95,7 +104,9 @@ func TestCW06RulesReporting(t *testing.T) {
 		t.Fatalf("initial certification not healthy: %#v %v", before.Trust, err)
 	}
 
-	next := phase16RuleDefinition(publishedTopic)
+	// Amend the actual published snapshot; an unrelated phase-16 fixture has
+	// different dataset order and clarification requirements.
+	next := phase27Copy(t, publishedRules.Definition)
 	next.Version = "rules-v2"
 	next.Rules = append(next.Rules, semantics.RuleDefinition{ID: "cw06-v2-advisory", Version: "v1", Category: semantics.RuleSemantic, Class: semantics.RuleAdvisoryContext, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTemplate, Template: "monthly_sales"}, Priority: 10, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "cw06-review-v2"}, Guidance: &semantics.AdvisoryGuidance{Text: "Use the reviewed monthly template context.", Sensitivity: semantics.LiteralNonSensitive}})
 	next.Rules = append(next.Rules, semantics.RuleDefinition{ID: "cw06-v2-quarterly", Version: "v1", Category: semantics.RuleSemantic, Class: semantics.RuleAdvisoryContext, Scope: semantics.RuleScope{Kind: semantics.RuleScopeTemplate, Template: "quarterly_sales"}, Priority: 9, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "cw06-review-v2"}, Guidance: &semantics.AdvisoryGuidance{Text: "Use the reviewed quarterly template context.", Sensitivity: semantics.LiteralNonSensitive}})
@@ -267,7 +278,7 @@ func TestCW06RulesReporting(t *testing.T) {
 	}
 	executor := phase27Actor(t, f, f.f.e.User(), phase28Scopes(f.f.e.Tenant()))
 	runs := phase28RunService(t, f, blocks, f.f.db, nil, config.DefaultReportingExecution())
-	if _, err = runs.Admit(ctx, executor, recaptured.State.ID, reporting.RunRequest{Key: "cw06-publish-during-seal"}); !errors.Is(err, reporting.ErrStale) {
+	if _, err = runs.Admit(ctx, executor, recaptured.State.ID, reporting.RunRequest{Key: "cw06-publish-during-seal", Outputs: []string{"table-main"}}); !errors.Is(err, reporting.ErrStale) {
 		t.Fatalf("publish during frozen seal returned %v", err)
 	}
 	if err = <-publishErr; err != nil {

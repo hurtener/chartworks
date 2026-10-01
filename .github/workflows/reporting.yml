@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: reporting-final-${{ github.sha }}
+  group: reporting-final-${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   contracts:
@@ -32,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Bind native parser build identity
         run: bash scripts/native-build-env.sh
@@ -82,6 +83,27 @@ jobs:
           set -o pipefail
           go test -race -count=1 -timeout=5m ./test/acceptance -run '^TestCW02RichCharts$' 2>&1 | tee /tmp/reporting-cw02.log
           go test -race -count=1 -cover ./internal/charts ./web/report-viewer 2>&1 | tee /tmp/reporting-charts.log
+      - name: Captured variants, durable deletion and isolated rendering
+        if: always()
+        run: |
+          set -o pipefail
+          go test -race -count=1 -json -timeout=12m ./test/acceptance -run '^(TestCapturedQueryVariantReportLifecycle|TestCW11ReportingLifecycleAndCatalog|TestCW11DeletionErasesOwnedDynamicQueries|TestCW11CatalogDoesNotLeakPrivateDraftEditor|TestDocumentDeletionEmptyScheduleReplayWire|TestPhase27|TestPhase32)$' 2>&1 | tee /tmp/reporting-recovery.log
+          go test -race -count=1 -json ./internal/reporting -run '^TestCapturedQueryVariant' 2>&1 | tee /tmp/reporting-variant-units.log
+          python3 - <<'PYVERIFY'
+          import json, pathlib
+          required = {'TestCapturedQueryVariantReportLifecycle', 'TestDocumentDeletionEmptyScheduleReplayWire', 'TestPhase27', 'TestPhase32', 'TestCapturedQueryVariantPinsAndLowering', 'TestCapturedQueryVariantSchedulePins', 'TestCW11ReportingLifecycleAndCatalog', 'TestCW11DeletionErasesOwnedDynamicQueries', 'TestCW11CatalogDoesNotLeakPrivateDraftEditor'}
+          registry=json.loads(pathlib.Path('docs/plans/phase-registry.json').read_text())['phases']
+          for phase in ['27','32']:
+              required.update(f'TestPhase{phase}/AC{i:02d}' for i in range(1,registry[phase]['acceptance_count']+1))
+          events=[]
+          for name in ['reporting-recovery.log','reporting-variant-units.log']:
+              for line in pathlib.Path('/tmp',name).read_text().splitlines():
+                  try: events.append(json.loads(line))
+                  except ValueError: pass
+          passed={e.get('Test') for e in events if e.get('Action')=='pass'}
+          assert required <= passed, sorted(required-passed)
+          assert not [e for e in events if e.get('Action') in ('fail','skip')]
+          PYVERIFY
       - name: Error, configuration, queue, API, migration and SDK regressions
         if: always()
         run: |

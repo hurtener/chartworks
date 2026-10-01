@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -184,6 +185,10 @@ func phase32StaticWorker(t *testing.T) {
 	if err != nil || graphic.Height != 408 || !strings.Contains(graphic.Content, `height="408"`) || !strings.Contains(graphic.Content, `x="141"`) || !strings.Contains(graphic.Content, "Exact &lt;text&gt;") {
 		t.Fatal("svg composition geometry", err, graphic.Content)
 	}
+	localComposition, _ := rendering.NewManaged(compositionViewer, rendering.NewMemoryRepository(), rendering.LocalProcessor{MaxBytes: 4 << 20}, 4<<20, phase32Options())
+	if _, err := localComposition.Generate(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), full); err != nil {
+		t.Fatal("svg table composition before worker isolation", err)
+	}
 	tableGraphic, err := compositionService.Generate(t.Context(), phase32Actor(t, "reporting.read", "reporting.export", "cw.run.export:run"), full)
 	if err != nil || !strings.Contains(tableGraphic.Content, `data-kind="table"`) || !strings.Contains(tableGraphic.Content, "12,345,678,901,234,567,890.12 USD") {
 		t.Fatal("svg table composition", err, tableGraphic.Content)
@@ -221,7 +226,21 @@ func phase32Injection(t *testing.T) {
 	}
 	sealed := []byte(`{"version":"chartworks-render-worker-v1","request":{"view":{"kind":"block","run":"run","page":"","widget":"","output":"table","offset":0,"limit":2},"format":"html","theme":"light","width":800,"height":420,"network_url":"https://example.invalid"},"view":{}}`)
 	var worker bytes.Buffer
-	if err := rendering.WorkerMain(bytes.NewReader(sealed), &worker, 1<<20, 1<<20, 1<<30); !errors.Is(err, rendering.ErrInvalid) || worker.Len() != 0 {
+	// WorkerMain installs irreversible process limits. Exercise hostile input
+	// in the real static child, never poison the acceptance/race process.
+	workerPath := mustExecutable32(t)
+	processor, err := rendering.NewProcess(workerPath, phase32Options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = processor.Process(t.Context(), rendering.SealedWork{Version: rendering.WorkerProtocolVersion, Request: phase32Request("html"), View: phase32View()}); err != nil {
+		t.Fatal("positive worker startup before hostile input", err)
+	}
+	command := exec.CommandContext(t.Context(), workerPath, "--sealed-render-worker")
+	command.Env = []string{"GOMEMLIMIT_BYTES=1073741824", "RENDER_MAX_INPUT_BYTES=1048576", "RENDER_MAX_OUTPUT_BYTES=1048576"}
+	command.Stdin = bytes.NewReader(sealed)
+	command.Stdout = &worker
+	if err := command.Run(); err == nil || worker.Len() != 0 {
 		t.Fatal("open worker input accepted", err, worker.String())
 	}
 }
@@ -309,26 +328,50 @@ func phase32ExactFidelity(t *testing.T) {
 	}
 }
 
+// phase32ExpiryClock advances only the repository's supplied expiry instant.
+// Production authorization and real PostgreSQL deletion/audit still execute.
+type phase32ExpiryClock struct {
+	rendering.Repository
+	at time.Time
+}
+
+func (r *phase32ExpiryClock) ExpireRenditions(ctx context.Context, tenant, actor string, _ time.Time, limit int) (int64, error) {
+	return r.Repository.ExpireRenditions(ctx, tenant, actor, r.at, limit)
+}
+
 func phase32Lifecycle(t *testing.T) {
-	dsn := support.Database(t)
-	repo := support.Open(t, dsn)
-	view := phase32View()
-	view.Summary.Expires = time.Now().Add(150 * time.Millisecond)
-	v := &phase32Viewer{value: view}
+	fixture := newPhase31Fixture(t, false)
+	d := fixture.domain
+	d.block(t, "rendition-lifecycle", d.base)
+	run, err := d.runs.Admit(t.Context(), d.execute, "rendition-lifecycle", reporting.RunRequest{Key: "rendition-lifecycle", Outputs: []string{"table-main"}})
+	if err != nil {
+		t.Fatal("admit retained rendition source", err)
+	}
+	if _, err = d.runs.Run(t.Context(), d.execute, run.ID, false); err != nil {
+		t.Fatal("execute retained rendition source", err)
+	}
+	request := phase32Request("html")
+	request.View.Run, request.View.Output = run.ID, "table-main"
+	actor := phase27Actor(t, d.f, d.execute.User(), []string{"reporting.read", "reporting.export", "reporting.retention", "cw.run.read:*", "cw.run.export:*", "cw.execution_context.use:" + run.Context, "cw.tenant.erase:" + d.execute.Tenant()})
+	view, err := fixture.service.View(t.Context(), actor, request.View)
+	if err != nil {
+		t.Fatal("read retained rendition source", err)
+	}
+	repo := d.f.f.db
+	expiryClock := &phase32ExpiryClock{Repository: repo, at: time.Now()}
 	opts := phase32Options()
-	s, _ := rendering.NewManaged(v, repo, rendering.LocalProcessor{MaxBytes: 4 << 20}, 4<<20, opts)
-	actor := phase32Actor(t, "reporting.read", "reporting.export", "reporting.retention", "cw.run.export:run", "cw.tenant.erase:tenant")
-	a, err := s.Generate(t.Context(), actor, phase32Request("html"))
+	s, _ := rendering.NewManaged(fixture.service, expiryClock, rendering.LocalProcessor{MaxBytes: 4 << 20}, 4<<20, opts)
+	a, err := s.Generate(t.Context(), actor, request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := s.Generate(t.Context(), actor, phase32Request("html"))
+	b, err := s.Generate(t.Context(), actor, request)
 	if err != nil || a.ID != b.ID || a.Digest != b.Digest {
 		t.Fatal("idempotency", err, a.ID, b.ID)
 	}
 	opts.ThemeVersion = "theme-v2"
-	s2, _ := rendering.NewManaged(v, repo, rendering.LocalProcessor{MaxBytes: 4 << 20}, 4<<20, opts)
-	c, err := s2.Generate(t.Context(), actor, phase32Request("html"))
+	s2, _ := rendering.NewManaged(fixture.service, expiryClock, rendering.LocalProcessor{MaxBytes: 4 << 20}, 4<<20, opts)
+	c, err := s2.Generate(t.Context(), actor, request)
 	if err != nil || c.ID == a.ID {
 		t.Fatal("version history collapsed", err, c.ID)
 	}
@@ -336,7 +379,10 @@ func phase32Lifecycle(t *testing.T) {
 	if err != nil || read.Content == "" {
 		t.Fatal(err)
 	}
-	time.Sleep(175 * time.Millisecond)
+	if before, err := s.Expire(t.Context(), actor, rendering.ExpireRequest{Limit: 10}); err != nil || before.Count != 0 {
+		t.Fatal("rendition expired before its retained boundary", err, before)
+	}
+	expiryClock.at = view.Summary.Expires.Add(time.Microsecond)
 	expired, err := s.Expire(t.Context(), actor, rendering.ExpireRequest{Limit: 10})
 	if err != nil || expired.Count < 2 {
 		t.Fatal("retention coupling", expired, err)
@@ -344,14 +390,13 @@ func phase32Lifecycle(t *testing.T) {
 	if _, err = s.Read(t.Context(), actor, rendering.ReadRequest{ID: a.ID}); err == nil {
 		t.Fatal("deleted rendition remained readable")
 	}
-	raw := support.Raw(t, dsn)
+	raw := support.Raw(t, d.f.f.dsn)
 	var created, erased int
-	if err = raw.QueryRow(t.Context(), `SELECT count(*) FILTER(WHERE action='rendition.created'),count(*) FILTER(WHERE action='rendition.expired') FROM chartworks.audit_events WHERE tenant_id='tenant'`).Scan(&created, &erased); err != nil || created != 2 || erased != 2 {
+	if err = raw.QueryRow(t.Context(), `SELECT count(*) FILTER(WHERE action='rendition.created'),count(*) FILTER(WHERE action='rendition.expired') FROM chartworks.audit_events WHERE tenant_id=$1`, actor.Tenant()).Scan(&created, &erased); err != nil || created != 2 || erased != 2 {
 		t.Fatal("rendition audit lifecycle", created, erased, err)
 	}
-	fixture := newPhase31Fixture(t, false)
 	bindings, err := reportingapi.DeliveryMCPBindings(fixture.service, true, s)
-	if err != nil || len(bindings) != 10 {
+	if err != nil || len(bindings) != 12 {
 		t.Fatal("durable rendition MCP consumers", len(bindings), err)
 	}
 }

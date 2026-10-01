@@ -247,6 +247,7 @@ type RulePin struct {
 
 // Provenance records the server-derived origin of an authored revision.
 type Provenance struct {
+	CaptureDigest    string                    `json:"capture_digest,omitempty"`
 	Kind             string                    `json:"kind"`
 	ParentRevision   int64                     `json:"parent_revision,omitempty"`
 	Query            string                    `json:"query,omitempty"`

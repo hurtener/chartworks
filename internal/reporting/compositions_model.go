@@ -40,11 +40,12 @@ type CompositionRequest struct {
 
 // CompositionWidget keeps per-widget provenance and its original output subset.
 type CompositionWidget struct {
-	Selection  *OutputSelection `json:"selection,omitempty"`
-	Definition Widget           `json:"definition"`
-	Parameters []BoundValue     `json:"parameters"`
-	Group      string           `json:"group,omitempty"`
-	Code       string           `json:"code,omitempty"`
+	Variant    *QueryVariantReference `json:"variant,omitempty"`
+	Selection  *OutputSelection       `json:"selection,omitempty"`
+	Definition Widget                 `json:"definition"`
+	Parameters []BoundValue           `json:"parameters"`
+	Group      string                 `json:"group,omitempty"`
+	Code       string                 `json:"code,omitempty"`
 }
 
 // CompositionPage pins an exact report revision and its independently checked reach.
@@ -63,29 +64,30 @@ type CompositionPage struct {
 // CompositionGroup seals one query/value/context identity and its output union.
 // It is private persistence input, never the public metadata response.
 type CompositionGroup struct {
-	QueryLimits    *QueryLimits        `json:"query_limits,omitempty"`
-	ID             string              `json:"id"`
-	Kind           string              `json:"kind"`
-	Block          string              `json:"block,omitempty"`
-	Revision       int64               `json:"revision,omitempty"`
-	Definition     string              `json:"definition_digest,omitempty"`
-	Execution      string              `json:"execution_digest,omitempty"`
-	Rules          []RulePin           `json:"rules,omitempty"`
-	Outputs        []string            `json:"outputs"`
-	Arguments      []Argument          `json:"arguments"`
-	Resolved       Resolved            `json:"resolved"`
-	Resolution     Resolution          `json:"resolution"`
-	Binding        exec.Binding        `json:"binding"`
-	Locale         string              `json:"locale"`
-	Policy         string              `json:"policy"`
-	Private        bool                `json:"private"`
-	Narrative      bool                `json:"narrative"`
-	Query          *QueryWidget        `json:"query,omitempty"`
-	Origin         *QueryOrigin        `json:"origin,omitempty"`
-	References     []ResourceReference `json:"references"`
-	Trust          *Trust              `json:"trust,omitempty"`
-	ReservedCalls  int                 `json:"reserved_calls"`
-	ReservedTokens int                 `json:"reserved_tokens"`
+	Variant        *QueryVariantReference `json:"variant,omitempty"`
+	QueryLimits    *QueryLimits           `json:"query_limits,omitempty"`
+	ID             string                 `json:"id"`
+	Kind           string                 `json:"kind"`
+	Block          string                 `json:"block,omitempty"`
+	Revision       int64                  `json:"revision,omitempty"`
+	Definition     string                 `json:"definition_digest,omitempty"`
+	Execution      string                 `json:"execution_digest,omitempty"`
+	Rules          []RulePin              `json:"rules,omitempty"`
+	Outputs        []string               `json:"outputs"`
+	Arguments      []Argument             `json:"arguments"`
+	Resolved       Resolved               `json:"resolved"`
+	Resolution     Resolution             `json:"resolution"`
+	Binding        exec.Binding           `json:"binding"`
+	Locale         string                 `json:"locale"`
+	Policy         string                 `json:"policy"`
+	Private        bool                   `json:"private"`
+	Narrative      bool                   `json:"narrative"`
+	Query          *QueryWidget           `json:"query,omitempty"`
+	Origin         *QueryOrigin           `json:"origin,omitempty"`
+	References     []ResourceReference    `json:"references"`
+	Trust          *Trust                 `json:"trust,omitempty"`
+	ReservedCalls  int                    `json:"reserved_calls"`
+	ReservedTokens int                    `json:"reserved_tokens"`
 }
 
 // CompositionManifest is immutable and bound to an existing request operation.

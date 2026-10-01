@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -112,6 +113,11 @@ func TestCW11ReportingLifecycleAndCatalog(t *testing.T) {
 	replayed, err := f.domain.documents.Delete(ctx, deleter, "report", state.ID, request)
 	if err != nil || !replayed.DeletedAt.Equal(deleted.DeletedAt) {
 		t.Fatal("idempotent replay", replayed, err)
+	}
+	firstWire, _ := json.Marshal(deleted)
+	replayWire, _ := json.Marshal(replayed)
+	if string(firstWire) != string(replayWire) {
+		t.Fatal("deletion replay changed wire receipt")
 	}
 	changed := request
 	changed.Key = "cw11-delete-changed"
@@ -298,4 +304,23 @@ func TestCW11CatalogDoesNotLeakPrivateDraftEditor(t *testing.T) {
 		}
 	}
 	t.Fatal("published report omitted from catalog")
+}
+
+func TestDocumentDeletionEmptyScheduleReplayWire(t *testing.T) {
+	f := newPhase29Execution(t, false)
+	state := f.report(t, "empty-deletion", phase29Text("Disposable report"), false)
+	request := reporting.DocumentDeleteRequest{ExpectedVersion: state.Version, Key: "delete", Reason: "Synthetic retention check"}
+	first, err := f.documents.Delete(t.Context(), f.author, "report", state.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.documents.Delete(t.Context(), f.author, "report", state.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := json.Marshal(first)
+	b, _ := json.Marshal(second)
+	if string(a) != string(b) {
+		t.Fatal("empty schedule deletion receipt changed across replay")
+	}
 }

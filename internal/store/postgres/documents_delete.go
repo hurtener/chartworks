@@ -137,6 +137,7 @@ func replayDocumentDeletion(ctx context.Context, tx pgx.Tx, e identity.Envelope,
 	if key != in.Key || actor != e.User() || reason != in.Reason || out.DeletedVersion != in.ExpectedVersion+1 || json.Unmarshal(schedules, &out.RetiredSchedules) != nil {
 		return reporting.DocumentDeletion{}, true, store.ErrConflict
 	}
+	out.DeletedAt = out.DeletedAt.UTC()
 	out.Kind, out.ID = kind, id
 	return out, true, nil
 }
@@ -284,7 +285,8 @@ func (d *DB) DeleteDocument(ctx context.Context, e identity.Envelope, kind, id s
 		if err != nil {
 			return err
 		}
-		now := time.Now().UTC()
+		// PostgreSQL retains microseconds; the first response must match its replay.
+		now := time.Now().UTC().Truncate(time.Microsecond)
 		schedulesJSON, _ := json.Marshal(impact.MatchingSchedules)
 		if _, err = tx.Exec(ctx, `INSERT INTO chartworks.document_deletion_tombstones
  (tenant_id,kind,document_id,deletion_key,expected_version,deleted_version,actor_id,reason,erased_revisions,erased_runs,erased_child_runs,erased_queries,retired_schedules,deleted_at)
@@ -334,7 +336,7 @@ func (d *DB) DeleteDocument(ctx context.Context, e identity.Envelope, kind, id s
 		if err := auditJob(ctx, tx, scope, "document.deleted", id); err != nil {
 			return err
 		}
-		out = reporting.DocumentDeletion{Kind: kind, ID: id, DeletedVersion: in.ExpectedVersion + 1, ErasedRevisions: impact.RevisionCount, ErasedRuns: len(runs), ErasedChildRuns: childRuns, ErasedQueries: erasedQueries, RetiredSchedules: append([]string(nil), impact.MatchingSchedules...), DeletedAt: now}
+		out = reporting.DocumentDeletion{Kind: kind, ID: id, DeletedVersion: in.ExpectedVersion + 1, ErasedRevisions: impact.RevisionCount, ErasedRuns: len(runs), ErasedChildRuns: childRuns, ErasedQueries: erasedQueries, RetiredSchedules: append([]string{}, impact.MatchingSchedules...), DeletedAt: now}
 		sort.Strings(out.RetiredSchedules)
 		if !e.Valid() {
 			return access.ErrUnauthenticated

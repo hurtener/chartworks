@@ -1,0 +1,24 @@
+name: Reporting recovery
+on:
+  pull_request:
+    paths:
+      - 'internal/reporting/**'
+      - 'internal/reportingapi/**'
+      - 'internal/rendering/**'
+      - 'internal/store/postgres/blocks_read.go'
+      - 'internal/store/postgres/documents*.go'
+      - 'internal/store/postgres/reporting*.go'
+      - 'sdk/chartworks/query_variants.go'
+      - 'test/acceptance/phase27*.go'
+      - 'test/acceptance/phase32*.go'
+      - 'test/acceptance/report_query_variants_test.go'
+      - 'test/acceptance/cw11_reporting_lifecycle_test.go'
+      - '.github/workflows/reporting*.yml'
+  push:
+    branches: ['codex/report-captured-variants']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    uses: ./.github/workflows/reporting.yml

@@ -62,7 +62,7 @@ func main(){_,_=os.Stdout.Write(make([]byte,4096))}`
 	case "clean":
 		source = `package main
 import("os";"github.com/hurtener/chartworks/internal/rendering")
-func main(){if os.Getenv("SECRET_CANARY")!=""{os.Exit(7)};if rendering.WorkerMain(os.Stdin,os.Stdout,4<<20,4<<20,1<<30)!=nil{os.Exit(1)}}`
+func main(){if os.Getenv("SECRET_CANARY")!="" || os.Getenv("GOMAXPROCS")!="1"{os.Exit(7)};if rendering.WorkerMain(os.Stdin,os.Stdout,4<<20,4<<20,1<<30)!=nil{os.Exit(1)}}`
 	default:
 		t.Fatal("unknown probe")
 	}

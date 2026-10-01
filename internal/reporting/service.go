@@ -341,7 +341,7 @@ func (s *Service) CaptureQuery(ctx context.Context, e identity.Envelope, in Capt
 	if _, err = s.resolveRules(ctx, e, d, false); err != nil {
 		return View{}, err
 	}
-	r, err := s.newRevision(e, 1, d, Provenance{Kind: "query_capture", Query: in.Query, OriginalQuestion: captured.Question, Template: clone(captured.Template), Templates: clone(captured.Templates)})
+	r, err := s.newRevision(e, 1, d, Provenance{Kind: "query_capture", Query: in.Query, CaptureDigest: digest(captured), OriginalQuestion: captured.Question, Template: clone(captured.Template), Templates: clone(captured.Templates)})
 	if err != nil {
 		return View{}, err
 	}

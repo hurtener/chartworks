@@ -58,12 +58,13 @@ type BlockWidget struct {
 // Replayable questions have exact semantic pins and explicit routing choices.
 // Session-bound references use the original query's choices and actor/session.
 type QueryWidget struct {
-	Durability string           `json:"durability" jsonschema:"enum=replayable,enum=session_bound"`
-	Context    string           `json:"context"`
-	Topics     []TopicPin       `json:"topics"`
-	Question   string           `json:"question,omitempty"`
-	Query      string           `json:"query,omitempty"`
-	Selections *QuerySelections `json:"selections,omitempty"`
+	Variant    *QueryVariantReference `json:"variant,omitempty"`
+	Durability string                 `json:"durability" jsonschema:"enum=replayable,enum=session_bound,enum=captured_variant"`
+	Context    string                 `json:"context"`
+	Topics     []TopicPin             `json:"topics"`
+	Question   string                 `json:"question,omitempty"`
+	Query      string                 `json:"query,omitempty"`
+	Selections *QuerySelections       `json:"selections,omitempty"`
 }
 
 // FilterBinding names one declared filter and one block parameter.

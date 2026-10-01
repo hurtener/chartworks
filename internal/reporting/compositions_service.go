@@ -257,6 +257,15 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 		page := CompositionPage{ID: source.id, Report: source.snapshot.State.ID, Revision: source.snapshot.Revision.Number, Digest: source.snapshot.Revision.Digest,
 			Title: source.title, Private: source.snapshot.PublishedAt == nil, Locale: d.Locale, Timezone: d.Timezone, Widgets: []CompositionWidget{}}
 		for _, widget := range d.Widgets {
+			var variant *QueryVariantReference
+			if IsCapturedQueryVariant(widget) {
+				variant = clone(widget.Query.Variant)
+				var err error
+				widget, err = CapturedVariantBlock(widget)
+				if err != nil {
+					return CompositionManifest{}, err
+				}
+			}
 			widgetCount++
 			if widgetCount > limits.Composition.MaxWidgets {
 				return CompositionManifest{}, ErrBudget
@@ -276,6 +285,16 @@ func (s *Compositions) resolve(ctx context.Context, e identity.Envelope, task jo
 					return CompositionManifest{}, ErrInvalid
 				}
 				group, groupErr = s.resolveQuery(ctx, e, m, d, widget, source.snapshot.Revision.Origins, resolution)
+			}
+			if variant != nil && groupErr == nil {
+				captured, readErr := s.documents.blocks.repo.ReadBlock(ctx, e, variant.Block, Reference{Revision: variant.Revision}, Execute)
+				if readErr != nil {
+					groupErr = readErr
+				} else {
+					groupErr = CheckCapturedQueryVariant(variant, captured)
+				}
+				group.Variant = clone(variant)
+				cw.Variant = clone(variant)
 			}
 			delete(overrides, widget.ID)
 			if groupErr != nil {
@@ -367,7 +386,11 @@ func groupIdentity(g CompositionGroup) string {
 	if g.Kind == "query" {
 		return digest([]any{g.Kind, g.Origin, g.Query, g.Binding, g.Locale, g.Private, g.Resolution})
 	}
-	return digest([]any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Rules, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Resolution, g.QueryLimits})
+	parts := []any{g.Kind, g.Block, g.Revision, g.Definition, g.Execution, g.Rules, g.Resolved.Parameters, g.Binding, g.Policy, g.Locale, g.Private, g.Resolution, g.QueryLimits}
+	if g.Variant != nil {
+		parts = append(parts, g.Variant)
+	}
+	return digest(parts)
 }
 
 func (s *Compositions) resolveBlock(ctx context.Context, e identity.Envelope, m CompositionManifest, d DocumentDefinition, w Widget, filters, overrides []Argument, resolution Resolution, memo map[string]compositionBlockSource) (CompositionGroup, CompositionWidget, error) {

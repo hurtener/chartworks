@@ -450,12 +450,13 @@ func TestPhase27(t *testing.T) {
 		// or a fabricated positive validation record.
 		f.model.embeddingMode.Store("fixed")
 		f.model.rerankMode.Store("fixed")
-		f.model.mode.Store(phase18RawResponse(t, base.SQL))
+		captureBase := phase27Definition(t, f, e, "SELECT sum(amount) AS amount FROM analytics.sales")
+		f.model.mode.Store(phase18RawResponse(t, captureBase.SQL))
 		planned, err := queryService.Plan(ctx, e, nlqexec.PlanRequest{QuestionRequest: phase18Question(f, nlq.LanguageEnglish, f.pack.Topic), Operation: "p27-capture-query"})
 		if err != nil {
 			t.Fatal("capture query plan", err)
 		}
-		capture := sdk.BlockCaptureRequest{ID: "p27-captured", Query: planned.QueryID, Metadata: base.Metadata, Outputs: base.Outputs}
+		capture := sdk.BlockCaptureRequest{ID: "p27-captured", Query: planned.QueryID, Metadata: captureBase.Metadata, Outputs: captureBase.Outputs}
 		if _, err := client.CaptureBlock(ctx, capture); err == nil {
 			t.Fatal("planned query accepted as executed capture")
 		}
@@ -469,7 +470,7 @@ func TestPhase27(t *testing.T) {
 			t.Fatal("source-backed capture", captured, err)
 		}
 		capturedSQL, err := client.ReadBlockSQL(ctx, capture.ID, sdk.BlockReference{Draft: true})
-		if err != nil || capturedSQL.Definition == nil || reporting.DefinitionDigest(*capturedSQL.Definition) != capturedSQL.Digest || capturedSQL.SQL != base.SQL || capturedSQL.Provenance.Query != planned.QueryID || capturedSQL.Provenance.Kind != "query_capture" {
+		if err != nil || capturedSQL.Definition == nil || reporting.DefinitionDigest(*capturedSQL.Definition) != capturedSQL.Digest || capturedSQL.SQL != captureBase.SQL || capturedSQL.Provenance.Query != planned.QueryID || capturedSQL.Provenance.Kind != "query_capture" {
 			t.Fatal("capture provenance", capturedSQL, err)
 		}
 		wrongSession, err := f.f.token.verifier.Verify(ctx, phase27Token(t, f, e.User(), "other-session", phase27Scopes(e.Tenant())), auth.HTTP)

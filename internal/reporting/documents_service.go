@@ -103,6 +103,26 @@ func (s *Documents) checkReferences(ctx context.Context, e identity.Envelope, ki
 		}
 	}
 	for _, w := range d.Widgets {
+		if IsCapturedQueryVariant(w) {
+			if s.blocks == nil {
+				return nil, ErrUnavailable
+			}
+			pin := w.Query.Variant
+			if !validVariantReference(pin) {
+				return nil, ErrInvalid
+			}
+			captured, err := s.blocks.repo.ReadBlock(ctx, e, pin.Block, Reference{Revision: pin.Revision}, Read)
+			if err != nil {
+				return nil, err
+			}
+			if err = CheckCapturedQueryVariant(pin, captured); err != nil {
+				return nil, err
+			}
+			w, err = CapturedVariantBlock(w)
+			if err != nil {
+				return nil, err
+			}
+		}
 		switch w.Kind {
 		case "block":
 			if s.blocks == nil {

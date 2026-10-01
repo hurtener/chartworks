@@ -99,7 +99,9 @@ func (p *Process) Process(ctx context.Context, work SealedWork) (Rendition, erro
 		return Rendition{}, err
 	}
 	defer cleanup()
-	cmd.Env = []string{"GOMEMLIMIT=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10) + "B", "GOMEMLIMIT_BYTES=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10), "RENDER_MAX_INPUT_BYTES=" + strconv.Itoa(p.options.MaxInputBytes), "RENDER_MAX_OUTPUT_BYTES=" + strconv.Itoa(p.options.MaxOutputBytes)}
+	// Each render is one bounded job; avoid host-sized runtime worker pools
+	// consuming the isolated process address-space budget.
+	cmd.Env = []string{"GOMAXPROCS=1", "GOMEMLIMIT=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10) + "B", "GOMEMLIMIT_BYTES=" + strconv.FormatInt(p.options.MaxMemoryBytes, 10), "RENDER_MAX_INPUT_BYTES=" + strconv.Itoa(p.options.MaxInputBytes), "RENDER_MAX_OUTPUT_BYTES=" + strconv.Itoa(p.options.MaxOutputBytes)}
 	cmd.Stdin = bytes.NewReader(wire)
 	out := &cappedBuffer{max: p.options.MaxOutputBytes}
 	diagnostics := &cappedBuffer{max: 4096}
