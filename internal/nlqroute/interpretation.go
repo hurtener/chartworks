@@ -238,6 +238,11 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		out.Values = append(out.Values, ValueInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, GovernedValue: candidate.value.ID, CanonicalValue: candidate.value.Value, Operator: op, Geography: geography, Provenance: "reviewed_governed_value"})
 	}
 	span, hasSpan, spanErr := temporalSpan(question, in.Locale, anchor)
+	if spanErr != nil && len(requestedPeriodDimensions(*in, admitted)) > 0 {
+		if mapped, ok := commonMappedYear(question, in.Locale); ok {
+			span, hasSpan, spanErr = mapped, true, nil
+		}
+	}
 	if len(in.InterpretationSelections) > 0 || in.InterpretationPolicy == InterpretationContinuationPolicy {
 		out.Parser = "deterministic-continuation-v1"
 		span, hasSpan, spanErr = continuationSpan(question, anchor, span, hasSpan, spanErr)
@@ -247,6 +252,9 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 	}
 	if hasSpan {
 		groupGrain, groupErr := requestedGroupingGrain(question, in.Locale)
+		if explicit := reviewedCalendarGrouping(*in, admitted); explicit != "" {
+			groupGrain = explicit
+		}
 		if groupErr != nil {
 			return nil, nil, groupErr
 		}
@@ -256,10 +264,23 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 				eligible = append(eligible, candidate)
 			}
 		}
+		periodDimensions := requestedPeriodDimensions(*in, admitted)
+		if len(periodDimensions) > 0 {
+			mapped := eligible[:0]
+			for _, candidate := range eligible {
+				if periodDimensions[candidate.item.id+"\x00"+candidate.dim.ID] {
+					mapped = append(mapped, candidate)
+				}
+			}
+			eligible = mapped
+			if len(eligible) != len(periodDimensions) {
+				return nil, nil, readexec.ErrBinding
+			}
+		}
 		if len(eligible) == 0 {
 			return nil, nil, &Clarification{Reason: "unsupported_temporal_grain", Outcome: semantics.ClarificationInvalid, Prompt: "No reviewed temporal dimension supports this period grain."}
 		}
-		if len(eligible) > 1 {
+		if len(eligible) > 1 && len(periodDimensions) == 0 {
 			var named []struct {
 				item    *admittedTopic
 				dim     semantics.Dimension
@@ -275,6 +296,16 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 				}
 			}
 			if len(named) == 0 {
+				facts := requestedMetricFacts(*in, admitted)
+				if len(facts) == 1 {
+					for _, candidate := range eligible {
+						if facts[candidate.item.id+"\x00"+candidate.dataset.ID] {
+							named = append(named, candidate)
+						}
+					}
+				}
+			}
+			if len(named) == 0 {
 				for _, candidate := range eligible {
 					for _, prior := range in.InterpretationSelections {
 						if prior.Period != nil && prior.Topic == candidate.item.id && prior.Dimension == candidate.dim.ID {
@@ -285,41 +316,47 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 			}
 			eligible = named
 		}
-		if len(eligible) != 1 {
+		if len(eligible) != 1 && len(periodDimensions) == 0 {
 			return nil, nil, &Clarification{Reason: "ambiguous_temporal_dimension", Outcome: semantics.ClarificationConflicting, Prompt: "Choose the reviewed temporal dimension for this period."}
 		}
-		candidate := eligible[0]
-		fresh[candidate.item.id+"\x00"+candidate.dim.ID] = true
-		target := interpretationTarget(candidate.item.id, candidate.dim.ID, "time")
-		_, _, remove := applyInterpretationEdit(in.InterpretationEdits, target)
-		if !remove {
-			for _, edit := range in.InterpretationEdits {
-				if edit.Target == target && edit.Period != nil {
-					span = parsedSpan{start: edit.Period.Start, end: edit.Period.End, grain: edit.Period.Grain, provenance: "explicit_reviewed_interval"}
-					if !supportsTemporalRequest(candidate.dim.Temporal.Grains, span, groupGrain) {
-						return nil, nil, ErrInvalid
+		if in.Grouping == nil && len(eligible) == 1 && reviewedCalendarGrouping(*in, admitted) != "" {
+			candidate := eligible[0]
+			in.Grouping = &GroupingSelection{Policy: GroupingPolicy, Keys: []GroupingKey{{Topic: candidate.item.id, Dimension: candidate.dim.ID, Grain: groupGrain}}}
+		}
+		for _, candidate := range eligible {
+			candidateSpan := span
+			fresh[candidate.item.id+"\x00"+candidate.dim.ID] = true
+			target := interpretationTarget(candidate.item.id, candidate.dim.ID, "time")
+			_, _, remove := applyInterpretationEdit(in.InterpretationEdits, target)
+			if !remove {
+				for _, edit := range in.InterpretationEdits {
+					if edit.Target == target && edit.Period != nil {
+						candidateSpan = parsedSpan{start: edit.Period.Start, end: edit.Period.End, grain: edit.Period.Grain, provenance: "explicit_reviewed_interval"}
+						if !supportsTemporalRequest(candidate.dim.Temporal.Grains, candidateSpan, groupGrain) {
+							return nil, nil, ErrInvalid
+						}
 					}
 				}
+				tz := candidate.dim.Temporal.Timezone
+				kind := temporalColumnType(candidate.column)
+				if tz == "" && kind == "date" {
+					tz = "UTC"
+				}
+				if tz == "" {
+					return nil, nil, &Clarification{Reason: "unsupported_temporal_timezone", Outcome: semantics.ClarificationInvalid, Prompt: "This temporal dimension needs a reviewed timezone before interpretation."}
+				}
+				calendar := candidate.dim.Temporal.Calendar
+				if calendar != "gregorian" {
+					return nil, nil, &Clarification{Reason: "unsupported_calendar", Outcome: semantics.ClarificationInvalid, Prompt: "This temporal calendar is not supported by deterministic interpretation."}
+				}
+				temporalType := temporalColumnType(candidate.column)
+				start, end, boundaryErr := temporalBoundaryValues(candidateSpan.start, candidateSpan.end, tz, temporalType)
+				if boundaryErr != nil {
+					return nil, nil, boundaryErr
+				}
+				id := readexec.Hash([]any{interpretationVersion, target, start, end, candidateSpan.grain, tz, temporalType, out.Pins})
+				out.Temporal = append(out.Temporal, TemporalInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, Grain: candidateSpan.grain, Calendar: calendar, TimeZone: tz, TemporalType: temporalType, LocalStart: candidateSpan.start, LocalEnd: candidateSpan.end, Start: start, End: end, Provenance: candidateSpan.provenance})
 			}
-			tz := candidate.dim.Temporal.Timezone
-			kind := temporalColumnType(candidate.column)
-			if tz == "" && kind == "date" {
-				tz = "UTC"
-			}
-			if tz == "" {
-				return nil, nil, &Clarification{Reason: "unsupported_temporal_timezone", Outcome: semantics.ClarificationInvalid, Prompt: "This temporal dimension needs a reviewed timezone before interpretation."}
-			}
-			calendar := candidate.dim.Temporal.Calendar
-			if calendar != "gregorian" {
-				return nil, nil, &Clarification{Reason: "unsupported_calendar", Outcome: semantics.ClarificationInvalid, Prompt: "This temporal calendar is not supported by deterministic interpretation."}
-			}
-			temporalType := temporalColumnType(candidate.column)
-			start, end, boundaryErr := temporalBoundaryValues(span.start, span.end, tz, temporalType)
-			if boundaryErr != nil {
-				return nil, nil, boundaryErr
-			}
-			id := readexec.Hash([]any{interpretationVersion, target, start, end, span.grain, tz, temporalType, out.Pins})
-			out.Temporal = append(out.Temporal, TemporalInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, Grain: span.grain, Calendar: calendar, TimeZone: tz, TemporalType: temporalType, LocalStart: span.start, LocalEnd: span.end, Start: start, End: end, Provenance: span.provenance})
 		}
 	}
 	if err := s.mergeRetainedInterpretation(ctx, *in, admitted, out, fresh); err != nil {
@@ -557,7 +594,7 @@ func temporalSpan(question string, locale nlq.Language, anchor time.Time) (parse
 		}
 		if yearTokens == 1 {
 			for i, word := range words {
-				if !numericYear(word) || i == 0 || !yearConnectorForLocale(words[i-1], locale) {
+				if !numericYear(word) || !calendarYearConnector(words, i, locale) {
 					continue
 				}
 				year, err := strconv.Atoi(word)

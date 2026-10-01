@@ -53,12 +53,18 @@ func qualityCoverage(p semantics.TopicPack) []string {
 	}
 	for _, v := range p.Measures {
 		out = append(out, "measure:"+v.ID)
+		if v.Completeness != nil {
+			out = append(out, "amount_completeness:"+v.ID)
+		}
 	}
 	for _, v := range p.Dimensions {
 		out = append(out, "dimension:"+v.ID)
 	}
 	for _, v := range p.KPIs {
 		out = append(out, "kpi:"+v.ID)
+		if v.Periods != nil {
+			out = append(out, "metric_periods:"+v.ID)
+		}
 	}
 	for _, v := range p.Joins {
 		out = append(out, "join:"+v.ID)

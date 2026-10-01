@@ -89,7 +89,7 @@ func TestFilterOptionDialectMatrixUsesNativeAdmission(t *testing.T) {
 		{"sqlserver", []string{"[warehouse].[analytics].[sales]", "@p1", "TOP (11)", "DESC"}},
 		{"bigquery", []string{"`warehouse.analytics.sales`", "@p1", "NULLS LAST", "LIMIT 11"}},
 		{"snowflake", []string{`"warehouse"."analytics"."sales"`, "?", "NULLS LAST", "LIMIT 11"}},
-		{"databricks", []string{"`warehouse`.`analytics`.`sales`", "?", "NULLS LAST", "LIMIT 11"}},
+		{"databricks", []string{"`warehouse`.`analytics`.`sales`", ":p1", ":p2", "NULLS LAST", "LIMIT 11"}},
 	} {
 		dialect := test.dialect
 		t.Run(dialect, func(t *testing.T) {

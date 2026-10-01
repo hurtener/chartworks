@@ -115,7 +115,7 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 		if client == nil {
 			a := &account{provider: native, key: secret, endpoint: endpoint, ca: transport.CACertPEM, private: transport.AllowPrivateNetwork, concurrency: cfg.Limits.Concurrency, timeout: seconds, openRouterRerank: openRouterRerank, environmentProxy: transport.EnvironmentProxy}
 			var err error
-			client, err = core.Init(lifetime, schemas.BifrostConfig{Account: a, Logger: quietLogger{}, InitialPoolSize: cfg.Limits.Concurrency, DropExcessRequests: true})
+			client, err = core.Init(lifetime, schemas.BifrostConfig{Account: a, Logger: quietLogger{}, LLMPlugins: []schemas.LLMPlugin{requestIsolation{}}, InitialPoolSize: cfg.Limits.Concurrency, DropExcessRequests: true})
 			if err != nil {
 				e.Close()
 				return nil, gateway.ErrUnavailable
@@ -307,7 +307,7 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 		if err = gateway.ReserveAttempt(ctx, b, call, reservation); err != nil {
 			return out, err
 		}
-		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
+		bc, bcCancel := isolatedBifrostContext(ctx)
 		start := time.Now()
 		response, be := p.client.ChatCompletionRequest(bc, &schemas.BifrostChatRequest{Provider: p.provider, Model: model, Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: &prompt}}}, Params: &schemas.ChatParameters{ResponseFormat: &format, MaxCompletionTokens: &r.MaxTokens, Store: core.Ptr(false)}})
 		bcCancel()
@@ -420,7 +420,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			if err = gateway.ReserveAttempt(ctx, b, call, bytes+128*(end-start)); err != nil {
 				return out, err
 			}
-			bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
+			bc, bcCancel := isolatedBifrostContext(ctx)
 			began := time.Now()
 			response, be := p.client.EmbeddingRequest(bc, &schemas.BifrostEmbeddingRequest{Provider: p.provider, Model: model, Input: &schemas.EmbeddingInput{Texts: append([]string(nil), texts[start:end]...)}, Params: &schemas.EmbeddingParameters{Dimensions: &r.Dimensions}})
 			bcCancel()
@@ -546,7 +546,7 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 		if err = gateway.ReserveAttempt(ctx, b, call, size+128*len(items)); err != nil {
 			return out, err
 		}
-		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
+		bc, bcCancel := isolatedBifrostContext(ctx)
 		start := time.Now()
 		response, be := p.client.RerankRequest(bc, &schemas.BifrostRerankRequest{Provider: p.provider, Model: model, Query: query, Documents: documents, Params: &schemas.RerankParameters{TopN: core.Ptr(len(items)), ReturnDocuments: core.Ptr(false)}})
 		bcCancel()

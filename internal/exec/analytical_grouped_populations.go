@@ -425,6 +425,7 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 		return err
 	}
 	a.groupedOutput = outputs
+	a.finalTerms = terms
 	return a.ctx.Err()
 }
 

@@ -573,7 +573,7 @@ func (a *ContextAssembler) usage(input ContextInput, output AssembledContext) ([
 		{LaneHeader, renderHeader(input) + renderPromptRelations(input), renderHeader(outputInput(output)) + renderPromptRelations(outputInput(output))},
 		{LaneEvidence, renderEvidence(input.Evidence), renderEvidence(output.Evidence)},
 		{LaneConstraints, renderConstraints(flattenConstraints(input.Constraints)), renderConstraints(flattenConstraints(output.Constraints))},
-		{LaneMetrics, renderMetrics(input.Metrics), renderMetrics(output.Metrics)},
+		{LaneMetrics, renderScopedMetrics(input), renderScopedMetrics(outputInput(output))},
 		{LaneAdvisory, renderOptional(LaneAdvisory, input.Advisory), renderOptional(LaneAdvisory, output.Advisory)},
 		{LaneExamples, renderOptional(LaneExamples, input.Examples), renderOptional(LaneExamples, output.Examples)},
 	}
@@ -597,7 +597,7 @@ func renderWithCandidate(base string, candidate optionalCandidate) string {
 }
 
 func renderBase(input ContextInput, constraints []MandatoryConstraint) string {
-	return renderHeader(input) + renderPromptRelations(input) + renderConstraints(constraints) + renderMetrics(input.Metrics)
+	return renderHeader(input) + renderPromptRelations(input) + renderConstraints(constraints) + renderScopedMetrics(input)
 }
 
 func renderRelations(relations []SourceRelation) string {
@@ -782,6 +782,9 @@ func cloneAndValidateInput(input ContextInput) (ContextInput, error) {
 	}
 	out.Metrics, err = cloneMetricsChecked(input.Metrics, seen)
 	if err != nil {
+		return ContextInput{}, err
+	}
+	if _, err = metricRendering(out); err != nil {
 		return ContextInput{}, err
 	}
 	out.Advisory, err = cloneOptionalChecked(input.Advisory, seen, "advisory")

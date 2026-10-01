@@ -212,7 +212,7 @@ but no literal population proposal can be resolved without an authorized mapping
 
 The model may return `filter_proposals` selecting vocabulary IDs for a current-step
 measure and `value_proposals` selecting IDs for a current categorical dimension.
-Only same-dataset text `eq` or finite `in` with NULL exclusion are supported. The
+Text `eq` or finite `in` with NULL exclusion is supported. Same-dataset is the default; the bounded relationship exception below requires an independently proved v9 lane consumer. The
 server resolves strings and seals `author_input` provenance; model-supplied SQL,
 new strings, unknown IDs, cross-field mixtures and changed NULL semantics are not
 admitted. Existing protected filters and values cannot be silently overwritten.
@@ -226,3 +226,67 @@ is still private material requiring exact whole-topic review and explicit human
 publication approval. Neither a vocabulary entry nor a successful SQL run approves
 topic meaning. Schema/profile-only and vocabulary-assisted generated evaluations
 are separate corpus conditions; expected numeric results are not authoring input.
+
+### Supplemental counts and reviewed KPI periods
+
+Enhancement may return at most eight `count_proposals` for current-page fields.
+Each supplies a name, description, aliases and unit, while the server derives the
+stable field-bound measure ID and fixes its aggregation to `count`. This is
+`COUNT(column)`: NULL values do not count, zero values do, and repeated identifiers
+are not deduplicated. A nonnullable row-identity count can therefore differ from a
+nullable amount count. The proposal preserves the column's original SUM or
+dimension and cannot select a new source, field, ID, DISTINCT operation or SQL.
+The admitted metric catalog labels the supplemental ID with its exact field and
+aggregation. Existing same-dataset vocabulary filters can target that ID. Normal
+whole-topic advisory, explicit human review and publication remain required.
+
+A KPI may optionally carry `periods` with policy `metric-period-bindings-v1` and
+one to four exact `{measure, dimension}` bindings. Bindings cover every transitive
+leaf measure exactly once, point to reviewed temporal dimensions, and agree on
+one axis for all leaves of the same fact. A parent KPI cannot override an
+already-reviewed nested KPI's period. Cross-dataset axes need a confirmed
+nonmultiplying relationship and later physical proof. Cohort/order time and
+refund-activity time are separate business meanings. The metadata contains no
+SQL, year, literal bounds, permissions or inferred business definition. It is
+canonicalized, digest-bound, cloned, carried through portable drafts, and included
+as dependency evidence without becoming an output, grouping request or selected
+metric root. Missing metadata preserves legacy definitions but grants no default
+time-basis interpretation to a new lane consumer.
+
+### Exact relationship-bound vocabulary filters
+
+An optional `filter_proposals[].join_id` may select one already-confirmed direct
+INNER relationship from the measure fact (left) to the vocabulary field's dataset
+(right), with many-to-one or one-to-one cardinality and retained review evidence.
+Unknown, candidate, rejected, inverted, indirect, multiplying and LEFT paths are
+not admitted. The value remains caller-supplied, non-sensitive, origin-bound
+authoring input; a relationship does not authorize disclosure or invent membership.
+
+The exact join ID persists as `SemanticFilter.relationship`, survives cloning,
+portable drafts and immutable digests, and enters dependency evidence. It cannot
+be silently dropped or changed during enhancement. Generic/retained consumers
+must fail closed; only the versioned scalar lane consumer may admit it after
+checking exact placement and physical nonmultiplication. New vocabulary admission
+does not itself grant execution, topic publication or broader source access.
+
+### Known-amount completeness obligation
+
+A numeric SUM may declare `completeness` with policy
+`known-amount-with-unknown-count-v1` and an exact `unknown_count` KPI reference.
+The companion must be exactly `COUNT(nonnullable fact identity) - COUNT(the
+same amount field)`, with COUNT rather than DISTINCT and the same canonical
+mandatory filter population, including exact relationship identity. Cosmetic
+filter IDs do not change that population. The companion has no extra KPI filters
+or independent period mapping: it inherits the owning measure's current query
+population and grouping. Independent cohort/activity companions retain their own
+period definitions and cannot be silently reused or overridden by this link.
+
+The dependency graph is acyclic: SUM points to the companion KPI, which points to
+two separate COUNT measures and their columns. COUNT measures cannot themselves
+carry completeness links. The metadata and reference survive cloning, portable
+transport, immutable hashing and dependency expansion; expansion alone does not
+select another output. A later execution consumer must select the exact required
+companion and bind metric identities to result columns using proof-issued output
+evidence. Alias/ordinal guessing, NULL/missing companion values, and truncated
+results cannot establish amount completeness. This is distinct from chart/result
+truncation completeness and does not claim full-source coverage.

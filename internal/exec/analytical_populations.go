@@ -72,6 +72,9 @@ func (a *analyticalChecker) derivedTerm(node any) (analyticalTerm, bool) {
 }
 
 func (a *analyticalChecker) queryIndependent(q map[string]any, expected map[string]int) error {
+	if a.scalarPopulations != nil && object(q["withClause"]) == nil {
+		return analyticalFailure("analytical_shape_unsupported", true)
+	}
 	if !only(q, "targetList", "fromClause", "withClause", "sortClause", "limitOffset", "limitCount", "limitOption", "op") || text(q["op"]) != "" && text(q["op"]) != "SETOP_NONE" {
 		return analyticalFailure("analytical_shape_unsupported", true)
 	}
@@ -129,6 +132,9 @@ func (a *analyticalChecker) queryIndependent(q map[string]any, expected map[stri
 				alias = text(v["aliasname"])
 			}
 		} else if rs := object(object(raw)["RangeSubselect"]); rs != nil {
+			if a.scalarPopulations != nil {
+				return analyticalFailure("analytical_shape_unsupported", true)
+			}
 			if truth(rs["lateral"]) || !only(rs, "subquery", "alias", "lateral") {
 				return analyticalFailure("analytical_shape_unsupported", true)
 			}
@@ -190,10 +196,14 @@ func (a *analyticalChecker) queryIndependent(q map[string]any, expected map[stri
 	if err := a.checkIntent(q, terms, output); err != nil {
 		return err
 	}
+	a.finalTerms = terms
 	return a.ctx.Err()
 }
 
 func (a *analyticalChecker) singletonLane(q map[string]any, alias string, used map[string]bool) error {
+	if a.scalarPopulations != nil {
+		return a.scopedSingletonLane(q, alias, used)
+	}
 	if !only(q, "targetList", "fromClause", "whereClause", "limitOption", "op") || text(q["limitOption"]) != "" && text(q["limitOption"]) != "LIMIT_OPTION_DEFAULT" || text(q["op"]) != "" && text(q["op"]) != "SETOP_NONE" {
 		return analyticalFailure("analytical_shape_unsupported", true)
 	}

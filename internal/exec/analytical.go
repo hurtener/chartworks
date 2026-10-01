@@ -88,6 +88,8 @@ type AnalyticalMetric struct {
 // does NOT certify question interpretation or query-wide filters. v2 can also
 // prove an explicitly compiled direct-column grain; nil grain remains unmeasured.
 type AnalyticalContract struct {
+	Completeness       *AnalyticalCompleteness       `json:"completeness,omitempty"`
+	ScalarPopulations  *AnalyticalScalarPopulations  `json:"scalar_populations,omitempty"`
 	GroupDomain        *AnalyticalGroupDomain        `json:"group_domain,omitempty"`
 	GroupedPopulations *AnalyticalGroupedPopulations `json:"grouped_populations,omitempty"`
 	Populations        []string                      `json:"populations,omitempty"`
@@ -109,31 +111,37 @@ func (c AnalyticalContract) LogValue() slog.Value { return slog.StringValue(c.St
 // AnalyticalReceipt is bounded non-executable evidence of the specified checks.
 // Native validation and business approval remain independent requirements.
 type AnalyticalReceipt struct {
-	Version         string   `json:"version"`
-	Scope           string   `json:"scope"`
-	Contract        string   `json:"contract"`
-	Query           string   `json:"query"`
-	Metrics         []string `json:"metrics"`
-	Grouping        []string `json:"grouping,omitempty"`
-	QueryPopulation string   `json:"query_population,omitempty"`
-	Intent          string   `json:"intent,omitempty"`
+	Completeness    *AnalyticalCompleteness `json:"completeness,omitempty"`
+	Outputs         []AnalyticalOutput      `json:"outputs,omitempty"`
+	Version         string                  `json:"version"`
+	Scope           string                  `json:"scope"`
+	Contract        string                  `json:"contract"`
+	Query           string                  `json:"query"`
+	Metrics         []string                `json:"metrics"`
+	Grouping        []string                `json:"grouping,omitempty"`
+	QueryPopulation string                  `json:"query_population,omitempty"`
+	Intent          string                  `json:"intent,omitempty"`
 }
 
 // CheckAnalyticalPlan checks an already native-validated opaque plan. It neither
 // issues plans nor widens the admitted binding, and does no source/model work.
 // Unsupported syntax is not labeled a passed analytical result.
 func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*AnalyticalReceipt, error) {
-	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (c.Version != AnalyticalVersion && c.Version != AnalyticalGrainVersion && c.Version != AnalyticalCalendarVersion && c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion && c.Version != AnalyticalIntentVersion && (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion)) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
+	if err := validateAnalyticalCapabilities(c, p.candidate.binding); err != nil {
+		return nil, err
+	}
+	standard := analyticalStandardPolicy(c)
+	if ctx == nil || !p.nativeChecked || !p.candidate.checked || !p.candidate.owner.Valid() || (standard.Version != AnalyticalVersion && standard.Version != AnalyticalGrainVersion && standard.Version != AnalyticalCalendarVersion && standard.Version != AnalyticalQueryPopulationVersion && standard.Version != AnalyticalGroupingVersion && standard.Version != AnalyticalIntentVersion && (standard.Version != AnalyticalGroupedPopulationsVersion && standard.Version != AnalyticalGroupedProgramsVersion)) || c.Binding != Hash(p.candidate.binding) || len(c.Semantics) != 64 || len(c.Metrics) == 0 || len(c.Metrics) > 32 {
 		return nil, ErrBinding
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if (c.Version == AnalyticalGroupedPopulationsVersion || c.Version == AnalyticalGroupedProgramsVersion) && (c.Intent == nil || c.QueryPopulation == nil) {
+	if (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion) && (c.Intent == nil || c.QueryPopulation == nil) {
 		return nil, ErrBinding
 	}
 	_, knownDialect := sqlpolicy.NativeDialect(p.candidate.binding.Dialect)
-	if p.candidate.binding.Dialect != "postgres" && (c.Version != AnalyticalIntentVersion && (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion) || !knownDialect) {
+	if p.candidate.binding.Dialect != "postgres" && (standard.Version != AnalyticalIntentVersion && (standard.Version != AnalyticalGroupedPopulationsVersion && standard.Version != AnalyticalGroupedProgramsVersion) || !knownDialect) {
 		return nil, analyticalFailure("analytical_dialect_unsupported", true)
 	}
 	proofBinding := p.candidate.binding
@@ -155,26 +163,28 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 		return nil, ErrBinding
 	}
 	var joinErr error
-	if c.GroupedPopulations != nil {
-		relation, joinErr = analyticalGroupedRelation(c, proofBinding, relation)
+	if c.ScalarPopulations != nil {
+		relation, joinErr = analyticalScalarRelation(ctx, c, proofBinding, relation)
+	} else if c.GroupedPopulations != nil {
+		relation, joinErr = analyticalGroupedRelation(standard, proofBinding, relation)
 	} else if len(c.Populations) > 0 {
-		relation, joinErr = analyticalPopulationRelation(c, proofBinding, relation)
+		relation, joinErr = analyticalPopulationRelation(standard, proofBinding, relation)
 	} else {
-		relation, joinErr = analyticalJoinRelation(c, proofBinding, relation)
+		relation, joinErr = analyticalJoinRelation(standard, proofBinding, relation)
 	}
 	if joinErr != nil {
 		return nil, joinErr
 	}
-	if err := validateAnalyticalGroupDomain(c); err != nil {
+	if err := validateAnalyticalGroupDomain(standard); err != nil {
 		return nil, err
 	}
-	if err := validateAnalyticalGrain(c, relation); err != nil {
+	if err := validateAnalyticalGrain(standard, relation); err != nil {
 		return nil, err
 	}
-	if err := validateAnalyticalQueryPopulation(ctx, c, p.candidate.binding); err != nil {
+	if err := validateAnalyticalQueryPopulation(ctx, standard, p.candidate.binding); err != nil {
 		return nil, err
 	}
-	if err := validateAnalyticalIntent(c); err != nil {
+	if err := validateAnalyticalIntent(standard); err != nil {
 		return nil, err
 	}
 	if c.Intent != nil {
@@ -192,7 +202,12 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 			}
 		}
 	}
-	checker := analyticalChecker{ordinaryGroupProof: c.Version == AnalyticalGroupedProgramsVersion && c.GroupedPopulations == nil && len(c.Populations) == 0, ordinaryGroupDomain: c.GroupDomain, groupedExtensions: c.Version == AnalyticalGroupedProgramsVersion, reviewedNullPolicy: (c.Version == AnalyticalGroupedPopulationsVersion || c.Version == AnalyticalGroupedProgramsVersion), populations: c.Populations, expandedExpressions: c.Version == AnalyticalIntentVersion || (c.Version == AnalyticalGroupedPopulationsVersion || c.Version == AnalyticalGroupedProgramsVersion), joins: c.Joins, joinAliases: map[string]string{}, joinUsed: map[int]bool{}, intent: c.Intent, ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
+	checker := analyticalChecker{scalarPopulations: c.ScalarPopulations, ordinaryGroupProof: standard.Version == AnalyticalGroupedProgramsVersion && c.ScalarPopulations == nil && c.GroupedPopulations == nil && len(c.Populations) == 0, ordinaryGroupDomain: c.GroupDomain, groupedExtensions: standard.Version == AnalyticalGroupedProgramsVersion, reviewedNullPolicy: (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), populations: c.Populations, expandedExpressions: standard.Version == AnalyticalIntentVersion || (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), joins: c.Joins, joinAliases: map[string]string{}, joinUsed: map[int]bool{}, intent: c.Intent, ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
+	if c.ScalarPopulations != nil {
+		for _, lane := range c.ScalarPopulations.Lanes {
+			checker.populations = append(checker.populations, lane.Dataset)
+		}
+	}
 	if c.GroupedPopulations != nil {
 		for _, lane := range c.GroupedPopulations.Lanes {
 			checker.populations = append(checker.populations, lane.Dataset)
@@ -231,7 +246,7 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	}
 	if c.GroupedPopulations != nil {
 		err = checker.queryGroupedPopulations(q, expected, c.GroupedPopulations)
-	} else if len(c.Populations) > 0 {
+	} else if c.ScalarPopulations != nil || len(c.Populations) > 0 {
 		err = checker.queryIndependent(q, expected)
 	} else {
 		err = checker.query(q, expected)
@@ -263,13 +278,28 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if len(c.Populations) > 0 {
 		receipt.Scope = strings.ReplaceAll(receipt.Scope, "single_base_relation", "independent_singleton_populations")
 	}
+	if c.ScalarPopulations != nil {
+		receipt.Scope = strings.ReplaceAll(receipt.Scope, "single_base_relation", "independent_scoped_singleton_populations")
+	}
 	if c.GroupedPopulations != nil {
 		receipt.Scope = strings.ReplaceAll(receipt.Scope, "single_base_relation", "independent_grouped_populations")
+	}
+	if c.Completeness != nil {
+		receipt.Completeness = CloneAnalyticalCompleteness(c.Completeness)
+		receipt.Scope += AnalyticalCompletenessScope
+	}
+	if c.Version == AnalyticalScopedPopulationsVersion {
+		receipt.Outputs, err = checker.provedOutputs(ids)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return receipt, nil
 }
 
 type analyticalChecker struct {
+	finalTerms           []analyticalTerm
+	scalarPopulations    *AnalyticalScalarPopulations
 	ordinaryGroupProof   bool
 	ordinaryGroupDomain  *AnalyticalGroupDomain
 	ordinaryDomainProved bool

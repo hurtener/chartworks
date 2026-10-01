@@ -30,7 +30,7 @@ func refinementSQLBase(old QueryRecord) (string, []exec.Parameter, error) {
 	sql, values := old.SQL, old.Parameters
 	if old.Clarification != nil && old.Clarification.Binding.SchemaVersion != 0 {
 		evidence := old.Clarification
-		if evidence.SchemaVersion != 1 || evidence.Binding.SchemaVersion != 1 || evidence.BaseSQL == "" {
+		if evidence.SchemaVersion != 1 || !clarificationBindingSchemaValid(old) || evidence.BaseSQL == "" {
 			return "", nil, exec.ErrBinding
 		}
 		sql, values = evidence.BaseSQL, evidence.BaseParameters

@@ -31,6 +31,7 @@ type AuthoringValue struct {
 // VocabularyFilterProposal selects approved input IDs; it cannot supply SQL or
 // novel literals. It still requires normal explicit topic review/publication.
 type VocabularyFilterProposal struct {
+	JoinID        string   `json:"join_id,omitempty"`
 	Measure       string   `json:"measure"`
 	ID            string   `json:"id"`
 	Operator      string   `json:"operator"`
@@ -127,16 +128,23 @@ func ResolveAuthoringFilter(model semantics.Model, catalog []AuthoringValue, pro
 	}
 	if dataset == "" {
 		for _, field := range semantics.GenerationColumns(model) {
-			if semantics.GeneratedEntityID(semantics.EnhancementMeasure, field.Dataset, field.ID) == proposal.Measure {
+			if semantics.GeneratedEntityID(semantics.EnhancementMeasure, field.Dataset, field.ID) == proposal.Measure || GeneratedCountMeasureID(field.Dataset, field.ID) == proposal.Measure {
 				dataset = field.Dataset
 				break
 			}
 		}
 	}
-	if dataset == "" || values[0].Field.Dataset != dataset {
+	if dataset == "" {
 		return semantics.SemanticFilter{}, gateway.ErrOutput
 	}
-	out := semantics.SemanticFilter{ID: proposal.ID, Field: values[0].Field, Operator: proposal.Operator}
+	if values[0].Field.Dataset != dataset {
+		if _, ok := semantics.PopulationRelationship(model.Pack(), dataset, values[0].Field.Dataset, proposal.JoinID); !ok {
+			return semantics.SemanticFilter{}, gateway.ErrOutput
+		}
+	} else if proposal.JoinID != "" {
+		return semantics.SemanticFilter{}, gateway.ErrOutput
+	}
+	out := semantics.SemanticFilter{Relationship: proposal.JoinID, ID: proposal.ID, Field: values[0].Field, Operator: proposal.Operator}
 	for _, v := range values {
 		out.Values = append(out.Values, v.Value)
 	}
@@ -209,6 +217,13 @@ func resolveVocabularyProposals(pack semantics.TopicPack, wire *enhancementWire,
 				matched = true
 			}
 		}
+		for i := range wire.CountProposals {
+			r := &wire.CountProposals[i]
+			if GeneratedCountMeasureID(r.Dataset, r.Column) == proposal.Measure {
+				r.Filters = append(r.Filters, filter)
+				matched = true
+			}
+		}
 		if !matched {
 			return gateway.ErrOutput
 		}
@@ -238,7 +253,7 @@ func addVocabularySchemas(properties map[string]any) {
 	properties["group_domain"] = map[string]any{"type": "object", "additionalProperties": false, "required": []string{"policy", "domain"}, "properties": map[string]any{"policy": map[string]any{"const": "metric-group-domain-v1"}, "domain": map[string]any{"enum": []string{"raw_source_groups", "qualifying_population"}}}}
 	id := map[string]any{"type": "string", "minLength": 1, "maxLength": 128}
 	ids := map[string]any{"type": "array", "minItems": 1, "maxItems": 32, "items": id}
-	properties["filter_proposals"] = map[string]any{"type": "array", "maxItems": 32, "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"measure", "id", "operator", "nulls", "vocabulary_ids"}, "properties": map[string]any{"measure": id, "id": id, "operator": map[string]any{"enum": []string{"eq", "in"}}, "nulls": map[string]any{"const": "exclude"}, "vocabulary_ids": ids}}}
+	properties["filter_proposals"] = map[string]any{"type": "array", "maxItems": 32, "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"measure", "id", "operator", "nulls", "vocabulary_ids"}, "properties": map[string]any{"measure": id, "id": id, "join_id": id, "operator": map[string]any{"enum": []string{"eq", "in"}}, "nulls": map[string]any{"const": "exclude"}, "vocabulary_ids": ids}}}
 	properties["value_proposals"] = map[string]any{"type": "array", "maxItems": 32, "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"dataset", "column", "vocabulary_ids"}, "properties": map[string]any{"dataset": id, "column": id, "vocabulary_ids": ids}}}
 }
 

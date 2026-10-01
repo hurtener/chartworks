@@ -199,6 +199,7 @@ type RouteResult struct {
 	Clarifications      []semantics.ClarificationEvaluation `json:"clarifications,omitempty"`
 	Resolutions         []semantics.ClarificationResolution `json:"resolutions,omitempty"`
 	business            []readexec.BusinessConstraint
+	metricPeriods       []MetricPeriodApplication
 	resolutionSeal      string
 	Outcome             nlq.Strategy `json:"outcome"`
 	// Request is the bounded, caller-selected routing input that was admitted
@@ -453,6 +454,14 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if !contextMatches(admitted, in.Context) {
 		return RouteResult{}, readexec.ErrBinding
 	}
+	if unresolved := unresolvedQuestionRequirements(in); unresolved != nil {
+		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		return result, nil
+	}
+	if unresolved := requestedNetMeaning(in, admitted); unresolved != nil {
+		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		return result, nil
+	}
 	interpretation, interpretationConstraints, err := s.interpret(ctx, e, &in, admitted)
 	if err != nil {
 		var clarification *Clarification
@@ -481,6 +490,28 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	}
 	if result.Clarification != nil {
 		return result, nil
+	}
+	meaningRequest := in
+	meaningRequest.MetricIDs = nil
+	meaningRequest.References = nil
+	if result.Selection != nil {
+		for _, topic := range result.Selection.Topics {
+			for _, root := range topic.Roots {
+				meaningRequest.References = append(meaningRequest.References, root.Reference)
+			}
+		}
+	}
+	if unresolved := requestedNetMeaning(meaningRequest, admitted); unresolved != nil {
+		result.Outcome, result.Clarification = nlq.StrategyClarify, unresolved
+		return result, nil
+	}
+	if err := bindMetricPeriodApplications(&result, admitted); err != nil {
+		var clarification *Clarification
+		if errors.As(err, &clarification) {
+			result.Outcome, result.Clarification = nlq.StrategyClarify, clarification
+			return result, nil
+		}
+		return RouteResult{}, err
 	}
 	in = cloneRouteRequest(result.Request)
 	for i := range admitted {

@@ -349,6 +349,9 @@ func businessConstraint(item admittedTopic, resolution semantics.ClarificationRe
 
 func (r RouteResult) resolutionProof() string {
 	parts := []any{r.AnswerContext, r.SourceBindingDigest, r.Resolutions, r.Interpretation, r.business, r.Selection}
+	if len(r.metricPeriods) > 0 {
+		parts = append(parts, r.metricPeriods)
+	}
 	if r.Request.Grouping != nil {
 		parts = append(parts, CloneGrouping(r.Request.Grouping))
 	}
@@ -467,6 +470,10 @@ func selectedClarificationMetrics(ids []string, resolutions []semantics.Clarific
 // ReplayClarifications reevaluates stored canonical answers with current bearer
 // reach and publication/source pins, without embedding, generation or execution.
 func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope, previous RouteResult) ([]readexec.BusinessConstraint, string, error) {
+	return s.replayClarifications(ctx, e, previous, nil)
+}
+
+func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope, previous RouteResult, applications *[]MetricPeriodApplication) ([]readexec.BusinessConstraint, string, error) {
 	in := cloneRouteRequest(previous.Request)
 	ids, err := normalizeRequest(in)
 	if err != nil {
@@ -557,6 +564,12 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 	freshInterpretation, _ := json.Marshal(current.Interpretation)
 	if string(old) != string(fresh) || string(oldInterpretation) != string(freshInterpretation) || previous.AnswerContext != current.AnswerContext || previous.SourceBindingDigest != current.SourceBindingDigest {
 		return nil, "", clarificationFailure(in.Locale, "answers", "stale_answer_resolution")
+	}
+	if err := bindMetricPeriodApplications(&current, admitted); err != nil {
+		return nil, "", err
+	}
+	if applications != nil {
+		*applications = current.metricPeriods
 	}
 	return append([]readexec.BusinessConstraint(nil), current.business...), current.SourceBindingDigest, nil
 }

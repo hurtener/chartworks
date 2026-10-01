@@ -268,9 +268,17 @@ func preserveProtectedEnhancementMeaning(p semantics.TopicPack, proposals []sema
 		item := &proposals[i]
 		ref := semantics.Reference{Kind: semantics.KindColumn, Dataset: item.Dataset, ID: item.Column}
 		for _, v := range p.Measures {
-			if v.Field == ref && v.ID == semantics.GeneratedEntityID(semantics.EnhancementMeasure, item.Dataset, item.Column) && len(v.Filters) > 0 {
+			if v.Field == ref && v.ID == semantics.GeneratedEntityID(semantics.EnhancementMeasure, item.Dataset, item.Column) && (len(v.Filters) > 0 || v.Completeness != nil) {
 				if item.Kind != semantics.EnhancementMeasure {
 					return gateway.ErrOutput
+				}
+				if v.Completeness != nil {
+					if item.Completeness == nil {
+						copied := *v.Completeness
+						item.Completeness = &copied
+					} else if !reflect.DeepEqual(item.Completeness, v.Completeness) {
+						return gateway.ErrOutput
+					}
 				}
 				var err error
 				item.Filters, err = mergeProtectedFilters(v.Filters, item.Filters)

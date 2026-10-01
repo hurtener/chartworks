@@ -340,6 +340,11 @@ func remapColumns(p *TopicPack, refs map[Reference]Reference) error {
 		sort.Strings(p.GroupedPopulation.Datasets)
 	}
 	for i := range p.Measures {
+		if p.Measures[i].Completeness != nil {
+			if err := remap(&p.Measures[i].Completeness.UnknownCount); err != nil {
+				return err
+			}
+		}
 		if err := remap(&p.Measures[i].Field); err != nil {
 			return err
 		}
@@ -360,6 +365,17 @@ func remapColumns(p *TopicPack, refs map[Reference]Reference) error {
 		}
 	}
 	for i := range p.KPIs {
+		if p.KPIs[i].Periods != nil {
+			for j := range p.KPIs[i].Periods.Bindings {
+				binding := &p.KPIs[i].Periods.Bindings[j]
+				if err := remap(&binding.Measure); err != nil {
+					return err
+				}
+				if err := remap(&binding.Dimension); err != nil {
+					return err
+				}
+			}
+		}
 		for j := range p.KPIs[i].Inputs {
 			if err := remap(&p.KPIs[i].Inputs[j]); err != nil {
 				return err

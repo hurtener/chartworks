@@ -50,3 +50,33 @@ Neither an implementation percentage nor a local passing suite authorizes merge,
 deployment, customer-data use, paid provider work or a broader support claim.
 
 Integrated local evidence: runtime tree `0ce69bd875deb82df3d3276cbd1c060f815ebfbd`, 2,301 unit/subtest passes and 299 acceptance passes, zero failures; one opt-in paid-reranker skip. All 350 mandatory named tests passed. Hosted qualification applies separately to the final published head.
+
+## Reviewed v9 candidate: generated-topic and result obligations
+
+The subsequent candidate adds fact-owned scalar period applications, exact
+relationship-bound populations, supplemental COUNT authoring, and reviewed
+known-amount completeness outputs. Its recorded generated-topic corpus uses
+four actual source profiles, paginated model proposals, explicit relationship
+confirmation, a fresh whole-topic advisory and human publication review before
+loading held-out questions. The unchanged corpus has eight answer contracts,
+five exact clarification contracts and six rejection contracts; all nineteen
+passed the actual PostgreSQL/native candidate run. Gross and monthly answers
+include proof-issued unknown-count ordinals and structured completeness, while
+cohort/activity answers retain independently mapped fact periods and companion
+counts. HTTP/SDK result and replay checks also passed. These are recorded-model
+consumer results, not a claim about live model reasoning.
+
+The v9 scalar consumer is PostgreSQL-only and bounded to flat aggregate lanes.
+Ordinary known-amount completeness additionally has actual MySQL evidence.
+Missing-value policies for null-extended identities remain unsupported and are
+rejected; ordinary completeness does not inherit scalar-lane relationship
+permissions. Current source proof, effective joined nullability, typed period
+custody and exact final output ordinals are re-established during replay.
+
+This candidate also fixes the bounded provider cancellation request-ownership
+race and the reporting option builder's Databricks marker mismatch. Its full
+integrated source snapshot and hosted qualification must be recorded separately
+before treating these focused results as a release gate. Live provider access,
+remaining engine qualification, report renderer stability and browser execution
+remain separate unresolved gates. No full product parity or merge readiness is
+claimed by the nineteen-case result.

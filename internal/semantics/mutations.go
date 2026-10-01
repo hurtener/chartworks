@@ -188,6 +188,9 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 		sort.Strings(pack.GroupedPopulation.Datasets)
 	}
 	for i := range pack.Measures {
+		if pack.Measures[i].Completeness != nil {
+			rewrite(&pack.Measures[i].Completeness.UnknownCount)
+		}
 		rewrite(&pack.Measures[i].Field)
 		for j := range pack.Measures[i].Filters {
 			rewrite(&pack.Measures[i].Filters[j].Field)
@@ -200,6 +203,12 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 		}
 	}
 	for i := range pack.KPIs {
+		if pack.KPIs[i].Periods != nil {
+			for j := range pack.KPIs[i].Periods.Bindings {
+				rewrite(&pack.KPIs[i].Periods.Bindings[j].Measure)
+				rewrite(&pack.KPIs[i].Periods.Bindings[j].Dimension)
+			}
+		}
 		for j := range pack.KPIs[i].Inputs {
 			rewrite(&pack.KPIs[i].Inputs[j])
 		}

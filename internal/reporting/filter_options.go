@@ -98,6 +98,8 @@ func filterPlaceholder(dialect string, index int) string {
 		return "$" + strconv.Itoa(index)
 	case "sqlserver", "bigquery":
 		return "@p" + strconv.Itoa(index)
+	case "databricks":
+		return ":p" + strconv.Itoa(index)
 	default:
 		return "?"
 	}

@@ -36,6 +36,10 @@ func rebaseAnalyticalExpression(e exec.AnalyticalExpression, from, to string) ex
 // output relations. Unselected relationships cannot silently expand populations;
 // ambiguous paths require review instead of a convenient model-selected join.
 func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.AnalyticalContract) error {
+	return compileAnalyticalJoinTree(ctx, a, c, true, nil)
+}
+
+func compileAnalyticalJoinTree(ctx context.Context, a admission, c *exec.AnalyticalContract, independent bool, required map[string]bool) error {
 	needed := map[string]bool{c.Dataset: true}
 	field := func(name string) {
 		if p := strings.SplitN(name, "/", 2); len(p) == 2 {
@@ -69,9 +73,12 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 		}
 	}
 	if len(needed) == 1 {
+		if len(required) > 0 {
+			return exec.ErrBinding
+		}
 		return nil
 	}
-	if len(needed) > 1 && (c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) == 0) && (c.QueryPopulation == nil || (c.Version == exec.AnalyticalGroupedPopulationsVersion || c.Version == exec.AnalyticalGroupedProgramsVersion) && len(c.QueryPopulation.Constraints) == 0) {
+	if independent && len(needed) > 1 && (c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) == 0) && (c.QueryPopulation == nil || (c.Version == exec.AnalyticalGroupedPopulationsVersion || c.Version == exec.AnalyticalGroupedProgramsVersion) && len(c.QueryPopulation.Constraints) == 0) {
 		if a.binding.Dialect != "postgres" {
 			return analyticalUnsupported("analytical_shape_unsupported")
 		}
@@ -85,6 +92,8 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 		return exec.ErrLimit
 	}
 	var candidates []exec.AnalyticalJoin
+	requiredHashes := map[string]bool{}
+	seenRequired := map[string]bool{}
 	seen := map[string]bool{}
 	for _, pub := range a.publications {
 		def := pub.Definition
@@ -145,11 +154,18 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 			}
 			x.LeftColumns, x.RightColumns = lefts, rights
 			key := exec.Hash(x)
+			if required[def.Topic+":"+j.ID] {
+				requiredHashes[key] = true
+				seenRequired[def.Topic+":"+j.ID] = true
+			}
 			if !seen[key] {
 				candidates = append(candidates, x)
 				seen[key] = true
 			}
 		}
+	}
+	if len(seenRequired) != len(required) {
+		return exec.ErrBinding
 	}
 	if len(candidates) > 8 {
 		return exec.ErrLimit
@@ -206,6 +222,13 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 				complete = false
 			}
 		}
+		chosenHashes := map[string]bool{}
+		for _, j := range ordered {
+			chosenHashes[exec.Hash(j)] = true
+		}
+		for key := range requiredHashes {
+			complete = complete && chosenHashes[key]
+		}
 		if complete {
 			solutions = append(solutions, ordered)
 		}
@@ -218,6 +241,9 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 }
 
 func analyticalJoinGuidance(c *exec.AnalyticalContract, dialects ...string) string {
+	if c != nil && c.ScalarPopulations != nil {
+		return analyticalScalarPopulationGuidance(c)
+	}
 	if c != nil && c.GroupedPopulations != nil {
 		return analyticalGroupedPopulationGuidance(c, dialects...)
 	}

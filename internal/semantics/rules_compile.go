@@ -320,13 +320,29 @@ func dependencyGraphPack(pack TopicPack) map[Reference][]Reference {
 		}
 	}
 	for _, measure := range pack.Measures {
-		graph[Reference{Kind: KindMeasure, ID: measure.ID}] = []Reference{measure.Field}
+		dependencies := []Reference{measure.Field}
+		if measure.Completeness != nil {
+			dependencies = append(dependencies, measure.Completeness.UnknownCount)
+		}
+		for _, filter := range measure.Filters {
+			dependencies = append(dependencies, filter.Field)
+			if filter.Relationship != "" {
+				dependencies = append(dependencies, Reference{Kind: KindJoin, ID: filter.Relationship})
+			}
+		}
+		graph[Reference{Kind: KindMeasure, ID: measure.ID}] = dependencies
 	}
 	for _, dimension := range pack.Dimensions {
 		graph[Reference{Kind: KindDimension, ID: dimension.ID}] = []Reference{dimension.Field}
 	}
 	for _, kpi := range pack.KPIs {
-		graph[Reference{Kind: KindKPI, ID: kpi.ID}] = kpi.Inputs
+		dependencies := append([]Reference(nil), kpi.Inputs...)
+		if kpi.Periods != nil {
+			for _, binding := range kpi.Periods.Bindings {
+				dependencies = append(dependencies, binding.Dimension)
+			}
+		}
+		graph[Reference{Kind: KindKPI, ID: kpi.ID}] = dependencies
 	}
 	for _, join := range pack.Joins {
 		graph[Reference{Kind: KindJoin, ID: join.ID}] = join.References()

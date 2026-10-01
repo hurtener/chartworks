@@ -178,6 +178,7 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 	if err := a.checkIntent(q, terms, aliases); err != nil {
 		return err
 	}
+	a.finalTerms = terms
 	return a.ctx.Err()
 }
 func analyticalFlat(node any, depth int) bool {

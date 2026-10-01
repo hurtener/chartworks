@@ -74,7 +74,7 @@ func (d *DB) ReadSession(ctx context.Context, scope store.Scope, id string) (out
 func (d *DB) CreateQuery(ctx context.Context, scope store.Scope, q nlqexec.QueryRecord) error {
 	decodedDigest, digestErr := hex.DecodeString(q.ParentDigest)
 	lineageValid := q.Parent == "" && q.ParentRevision == 0 && q.ParentDigest == "" || identity.Identifier(q.Parent) && q.ParentRevision > 0 && digestErr == nil && len(decodedDigest) == 32 && q.ParentDigest == strings.ToLower(q.ParentDigest)
-	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !nlqexec.AnalyticalRecordValid(q) || !nlqexec.GenerationPendingValid(q) || !nlqexec.IntentReviewValid(q) || !lineageValid || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
+	if err := checkScope(scope); err != nil || !identity.Identifier(q.ID) || !identity.Identifier(q.Session) || !identity.Identifier(q.Topic) || !identity.Identifier(q.Context) || q.Revision != 1 || q.Status == "" || !nlqexec.AnalyticalRecordValid(q) || !nlqexec.GenerationPendingValid(q) || !nlqexec.IntentReviewValid(q) || !nlqexec.PlanSubmissionValid(q) || !lineageValid || !validTemplateSelectionEvidence(q.Templates, q.Route.Templates, q.Route.Request.Templates, q.Topics, q.TopicVersions, q.RuleVersions) {
 		return store.ErrInvalid
 	}
 	return d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -317,7 +317,7 @@ func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec
 	if q.IntentReview == nil {
 		intentReview = nil
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical,generation_pending,generation_resolution,intent_review) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21::jsonb,$22::jsonb,$23,$24::jsonb,$25::jsonb,$26::jsonb,$27::jsonb,$28,$29,$30,$31,$32,$33::jsonb,$34::jsonb,$35,$36::jsonb,$37::jsonb,$38::jsonb,$39::jsonb)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), nullableInt64(q.ParentRevision), nullableString(q.ParentDigest), operation, q.Topic, topics, versions, rules, templates, selection, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated, clarification, relationScope, q.AnalyticalVersion, analytical, pending, resolution, intentReview)
+	_, e = tx.Exec(ctx, `INSERT INTO chartworks.nlq_queries(tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical,generation_pending,generation_resolution,intent_review,plan_operation,plan_request_digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21::jsonb,$22::jsonb,$23,$24::jsonb,$25::jsonb,$26::jsonb,$27::jsonb,$28,$29,$30,$31,$32,$33::jsonb,$34::jsonb,$35,$36::jsonb,$37::jsonb,$38::jsonb,$39::jsonb,$40,$41)`, scope.Tenant(), scope.Actor(), q.Session, q.ID, nullableString(q.Parent), nullableInt64(q.ParentRevision), nullableString(q.ParentDigest), operation, q.Topic, topics, versions, rules, templates, selection, q.Context, q.Locale, q.Question, route, generation, sqlText, params, receipt, q.Status, result, assumptions, ambiguities, errorsJSON, q.ValidationFixes, q.ExecutionFixes, q.Revision, q.Created, q.Updated, clarification, relationScope, q.AnalyticalVersion, analytical, pending, resolution, intentReview, nullableString(q.PlanOperation), nullableString(q.PlanRequestDigest))
 	return e
 }
 
@@ -335,7 +335,7 @@ func nullableInt64(value int64) any {
 	return value
 }
 
-const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical,generation_pending,generation_resolution,intent_review`
+const nlqQueryColumns = `tenant_id,actor_id,session_id,query_id,parent_id,parent_revision,parent_digest,operation,topic_id,topics,topic_versions,rule_versions,template_selections,example_selection,context_id,locale,question,route,generation,sql_text,parameters,receipt,status,result,assumptions,ambiguities,errors,validation_fixes,execution_fixes,revision,created_at,updated_at,clarification,relation_scope,analytical_version,analytical,generation_pending,generation_resolution,intent_review,plan_operation,plan_request_digest`
 
 // ReadQuery returns protected query metadata and consumes rule invalidation fences.
 func (d *DB) ReadQuery(ctx context.Context, scope store.Scope, id string) (out nlqexec.QueryRecord, err error) {
@@ -406,16 +406,17 @@ func markRuleEvidenceStale(ctx context.Context, tx pgx.Tx, tenant string, out *n
 
 func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 	var tenantValue, actorValue string
-	var parent, parentDigest, operation, sqlText *string
+	var parent, parentDigest, operation, sqlText, planOperation, planRequestDigest *string
 	var parentRevision *int64
 	var topics, versions, rules, templates, selection, route, generation, params, receipt, result, assumptions, ambiguities, queryErrors, clarification, relationScope, analytical, pending, resolution, intentReview []byte
-	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &parentRevision, &parentDigest, &operation, &out.Topic, &topics, &versions, &rules, &templates, &selection, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated, &clarification, &relationScope, &out.AnalyticalVersion, &analytical, &pending, &resolution, &intentReview); err != nil {
+	if err := row.Scan(&tenantValue, &actorValue, &out.Session, &out.ID, &parent, &parentRevision, &parentDigest, &operation, &out.Topic, &topics, &versions, &rules, &templates, &selection, &out.Context, &out.Locale, &out.Question, &route, &generation, &sqlText, &params, &receipt, &out.Status, &result, &assumptions, &ambiguities, &queryErrors, &out.ValidationFixes, &out.ExecutionFixes, &out.Revision, &out.Created, &out.Updated, &clarification, &relationScope, &out.AnalyticalVersion, &analytical, &pending, &resolution, &intentReview, &planOperation, &planRequestDigest); err != nil {
 		return err
 	}
 	_ = tenantValue
 	_ = actorValue
 	out.Parent, out.Operation, out.SQL = stringValue(parent), stringValue(operation), stringValue(sqlText)
 	out.ParentDigest = stringValue(parentDigest)
+	out.PlanOperation, out.PlanRequestDigest = stringValue(planOperation), stringValue(planRequestDigest)
 	if parentRevision != nil {
 		out.ParentRevision = *parentRevision
 	}
@@ -465,7 +466,7 @@ func scanNLQQuery(row pgx.Row, out *nlqexec.QueryRecord) error {
 			return store.ErrMigration
 		}
 	}
-	if !nlqexec.AnalyticalRecordValid(*out) || !nlqexec.IntentReviewValid(*out) {
+	if !nlqexec.AnalyticalRecordValid(*out) || !nlqexec.IntentReviewValid(*out) || !nlqexec.PlanSubmissionValid(*out) {
 		return store.ErrMigration
 	}
 	if len(result) > 0 {

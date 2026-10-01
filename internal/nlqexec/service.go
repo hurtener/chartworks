@@ -30,6 +30,7 @@ import (
 )
 
 type admission struct {
+	metricPeriods        []nlqroute.MetricPeriodApplication
 	calendarConstraints  []exec.BusinessConstraint
 	decisionParent       *QueryRecord
 	decisionParameters   []exec.Parameter
@@ -252,7 +253,7 @@ func (s *Service) PlanAndRun(ctx context.Context, e identity.Envelope, plan Plan
 	var planned PlanResult
 	var result RunResult
 	compose := func() error {
-		record, readErr := s.repo.ReadOperation(ctx, scopeValue, plan.Operation)
+		record, readErr := s.readPlanOperation(ctx, scopeValue, plan.Operation)
 		if readErr == nil {
 			planned, readErr = s.reusablePlanResult(ctx, record, e, plan.QuestionRequest, plan.Operation, plan.ClarificationQuery)
 			if readErr != nil {
@@ -463,6 +464,13 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 	if err != nil {
 		return RunResult{}, err
 	}
+	if reserved, lookupErr := s.readPlanOperation(ctx, scopeValue, in.Operation); lookupErr == nil {
+		if reserved.ID != in.QueryID {
+			return RunResult{}, store.ErrConflict
+		}
+	} else if !errors.Is(lookupErr, store.ErrNotFound) {
+		return RunResult{}, lookupErr
+	}
 	var record QueryRecord
 	if replay, replayErr := s.repo.ReadOperation(ctx, scopeValue, in.Operation); replayErr == nil {
 		if replay.ID != in.QueryID {
@@ -500,6 +508,9 @@ func (s *Service) Run(ctx context.Context, e identity.Envelope, in RunRequest) (
 				return RunResult{}, admissionErr
 			}
 			if _, admissionErr = s.expectedAnalytical(ctx, e, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if admissionErr = s.verifyAnalyticalOutputReplay(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
 			if decision, handled := s.replayGenerationCorrection(ctx, e, record); handled {
@@ -652,6 +663,9 @@ func (s *Service) waitForRun(ctx context.Context, e identity.Envelope, queryID, 
 				return RunResult{}, admissionErr
 			}
 			if _, admissionErr = s.expectedAnalytical(ctx, e, record, admitted); admissionErr != nil {
+				return RunResult{}, admissionErr
+			}
+			if admissionErr = s.verifyAnalyticalOutputReplay(ctx, e, record, admitted); admissionErr != nil {
 				return RunResult{}, admissionErr
 			}
 			return s.runResult(record, exec.ExecutionReport{}, canInspect(e)), replayError(record.Status)
@@ -1042,7 +1056,7 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 	}
 	var result PlanResult
 	compose := func() error {
-		record, err := s.repo.ReadOperation(ctx, mustScope(e), operation)
+		record, err := s.readPlanOperation(ctx, mustScope(e), operation)
 		if err == nil {
 			result, err = s.reusablePlanResult(ctx, record, e, question, operation, parent)
 			return err
@@ -1070,6 +1084,12 @@ func (s *Service) plan(ctx context.Context, e identity.Envelope, question Questi
 }
 
 func (s *Service) reusablePlanResult(ctx context.Context, record QueryRecord, e identity.Envelope, question QuestionRequest, operation, parent string) (PlanResult, error) {
+	if record.PlanOperation != "" {
+		if !PlanSubmissionValid(record) || record.Session != e.Session() || record.Parent != parent || record.PlanOperation != operation || record.PlanRequestDigest != planSubmissionDigest(question) {
+			return PlanResult{}, store.ErrConflict
+		}
+		return PlanResult{QueryID: record.ID, SessionID: record.Session, Status: "planned"}, nil
+	}
 	if record.Session != e.Session() || record.Operation != operation {
 		return PlanResult{}, store.ErrConflict
 	}
@@ -1250,9 +1270,12 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	bindIntentReview(ctx, &record)
 	record.Clarification = candidate.clarification
 	retainGenerationExplanations(&record, candidate, question.Answers, observedParent)
-	record.AnalyticalVersion, record.Analytical = analyticalRecordVersion, cloneAnalyticalReceipt(candidate.analytical)
+	record.AnalyticalVersion, record.Analytical = analyticalVersionForReceipt(candidate.analytical), cloneAnalyticalReceipt(candidate.analytical)
 	receipt = appendReceipts(selectionReceipt, receipt)
 	record.Operation, record.SQL, record.Parameters, record.Generation, record.Receipt, record.ValidationFixes, record.ExampleSelection = operation, candidate.SQL, candidate.Parameters, generation, receipt, fixes, selection
+	if action == "query.plan" && operation != "" && !strings.HasPrefix(operation, "resume:") {
+		record.PlanOperation, record.PlanRequestDigest = operation, planSubmissionDigest(submittedQuestion)
+	}
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PlanResult{}, err
 	}
@@ -1273,11 +1296,11 @@ func (s *Service) ResolveOperationQueryID(ctx context.Context, e identity.Envelo
 	if err := e.Has("query.execute"); !err {
 		return "", access.ErrForbidden
 	}
-	record, err := s.repo.ReadOperation(ctx, mustScope(e), operation)
+	record, err := s.readPlanOperation(ctx, mustScope(e), operation)
 	if err != nil {
 		return "", err
 	}
-	if record.ID == "" || record.Operation != operation || record.Session != e.Session() {
+	if record.ID == "" || (record.Operation != operation && record.PlanOperation != operation) || record.Session != e.Session() {
 		return "", ErrForeignSession
 	}
 	return record.ID, nil
@@ -1619,11 +1642,13 @@ func QueryLineageDigest(q QueryRecord) string {
 	}
 	q.EvidenceStale = false
 	return exec.Hash(struct {
-		Record        QueryRecord            `json:"record"`
-		Clarification *ClarificationEvidence `json:"clarification,omitempty"`
-		SQL           string                 `json:"sql"`
-		Parameters    []exec.Parameter       `json:"parameters"`
-	}{Record: q, Clarification: q.Clarification, SQL: q.SQL, Parameters: q.Parameters})
+		Record            QueryRecord            `json:"record"`
+		Clarification     *ClarificationEvidence `json:"clarification,omitempty"`
+		SQL               string                 `json:"sql"`
+		Parameters        []exec.Parameter       `json:"parameters"`
+		PlanOperation     string                 `json:"plan_operation,omitempty"`
+		PlanRequestDigest string                 `json:"plan_request_digest,omitempty"`
+	}{Record: q, Clarification: q.Clarification, SQL: q.SQL, Parameters: q.Parameters, PlanOperation: q.PlanOperation, PlanRequestDigest: q.PlanRequestDigest})
 }
 
 func bindParentLineage(child *QueryRecord, parent *QueryRecord) {
@@ -2122,7 +2147,7 @@ func (s *Service) generate(ctx context.Context, e identity.Envelope, a admission
 		} else {
 			system += " Windows and set operations are not analytically supported by this contract."
 		}
-		if len(a.analytical.Joins) == 0 && len(a.analytical.Populations) == 0 && a.analytical.GroupedPopulations == nil {
+		if len(a.analytical.Joins) == 0 && len(a.analytical.Populations) == 0 && a.analytical.GroupedPopulations == nil && a.analytical.ScalarPopulations == nil {
 			system += " Use one qualified base relation, with no joins or nested SELECTs."
 		}
 		system += analyticalGrainGuidanceForDialect(a.binding.Dialect, a.analytical)
@@ -2255,6 +2280,7 @@ func (s *Service) runResult(q QueryRecord, report exec.ExecutionReport, inspect 
 	if q.Result != nil && out.Execution.Result == nil {
 		out.Execution.Result = q.Result
 	}
+	out.AmountCompleteness = resultAmountCompleteness(q.Analytical, out.Execution.Result, (q.Status == "succeeded" || q.Status == "empty") && !q.EvidenceStale)
 	if inspect {
 		out.SQL = q.SQL
 	}

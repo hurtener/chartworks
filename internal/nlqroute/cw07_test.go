@@ -425,8 +425,22 @@ func testCW07CalendarYearAndMonthRange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			publication := cw07Publication("topic")
 			publication.Definition.Dimensions[1].Temporal.Grains = []semantics.TimeGrain{semantics.GrainMonth, semantics.GrainQuarter}
-			service, engine := cw07Service(t, publication, cw07Binding(1))
-			out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, InterpretationAnchor: "2026-09-22"})
+			binding := cw07Binding(1)
+			var metrics []string
+			if tc.name == "english-range" {
+				// Temporal routing now also requires the requested net meaning.
+				// Supply a reviewed numeric definition rather than silently routing
+				// this question against a topic containing only dates/geography.
+				for _, id := range []string{"gross", "refunds"} {
+					publication.Definition.Datasets[0].Columns = append(publication.Definition.Datasets[0].Columns, semantics.Column{ID: id, SourceName: id, Name: id, NativeType: "numeric", Category: "number", Sensitivity: semantics.LiteralNonSensitive})
+					publication.Definition.Measures = append(publication.Definition.Measures, semantics.Measure{ID: id, Name: id, Field: semantics.Reference{Kind: semantics.KindColumn, Dataset: "dataset", ID: id}, Aggregation: semantics.Aggregation("sum"), Unit: "USD"})
+					binding.Relations[0].Columns = append(binding.Relations[0].Columns, readexec.Column{Name: id, NativeType: "numeric", Category: "number", Safe: true})
+				}
+				publication.Definition.KPIs = []semantics.KPI{{ID: "net_revenue", Name: "Net revenue", Expression: "gross-refunds", Inputs: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "gross"}, {Kind: semantics.KindMeasure, ID: "refunds"}}, Unit: "USD"}}
+				metrics = []string{"net_revenue"}
+			}
+			service, engine := cw07Service(t, publication, binding)
+			out, err := service.Route(context.Background(), testEnvelope(t, true), RouteRequest{Topic: "topic", Context: "ctx", Locale: tc.locale, Question: tc.question, MetricIDs: metrics, InterpretationAnchor: "2026-09-22"})
 			if err != nil || out.Interpretation == nil || len(out.Interpretation.Temporal) != 1 || engine.embeds != 1 {
 				t.Fatalf("temporal interpretation unavailable: err=%v out=%#v embeds=%d", err, out, engine.embeds)
 			}

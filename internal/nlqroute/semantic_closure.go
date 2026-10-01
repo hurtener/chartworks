@@ -26,6 +26,13 @@ func semanticClosure(ctx context.Context, def topics.Definition, roots []semanti
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	joins := map[string]semantics.Join{}
+	for _, join := range def.Joins {
+		if _, duplicate := joins[join.ID]; duplicate {
+			return nil, ErrMetricContext
+		}
+		joins[join.ID] = join
+	}
 	measures := map[string]semantics.Measure{}
 	kpis := map[string]semantics.KPI{}
 	dimensions := map[string]semantics.Dimension{}
@@ -104,6 +111,11 @@ func semanticClosure(ctx context.Context, def topics.Definition, roots []semanti
 	var visit func(semantics.Reference, int) error
 	visitFilters := func(filters []semantics.SemanticFilter, depth int) error {
 		for _, filter := range filters {
+			if filter.Relationship != "" {
+				if err := visit(semantics.Reference{Kind: semantics.KindJoin, ID: filter.Relationship}, depth+1); err != nil {
+					return err
+				}
+			}
 			if err := visit(filter.Field, depth+1); err != nil {
 				return err
 			}
@@ -142,6 +154,13 @@ func semanticClosure(ctx context.Context, def topics.Definition, roots []semanti
 					return err
 				}
 			}
+			if value.Periods != nil {
+				for _, binding := range value.Periods.Bindings {
+					if err := visit(binding.Dimension, depth+1); err != nil {
+						return err
+					}
+				}
+			}
 			return visitFilters(value.Filters, depth)
 		case semantics.KindMeasure:
 			value, ok := measures[ref.ID]
@@ -153,6 +172,11 @@ func semanticClosure(ctx context.Context, def topics.Definition, roots []semanti
 			}
 			if err := visit(value.Field, depth+1); err != nil {
 				return err
+			}
+			if value.Completeness != nil {
+				if err := visit(value.Completeness.UnknownCount, depth+1); err != nil {
+					return err
+				}
 			}
 			return visitFilters(value.Filters, depth)
 		case semantics.KindDimension:
@@ -167,6 +191,20 @@ func semanticClosure(ctx context.Context, def topics.Definition, roots []semanti
 				return err
 			}
 			return visitFilters(value.Filters, depth)
+		case semantics.KindJoin:
+			value, ok := joins[ref.ID]
+			if !ok {
+				return ErrMetricContext
+			}
+			if err := add("join", value.ID, value); err != nil {
+				return err
+			}
+			for _, field := range value.References() {
+				if err := visit(field, depth+1); err != nil {
+					return err
+				}
+			}
+			return nil
 		case semantics.KindColumn:
 			if err := addColumn(ref); err != nil {
 				return err

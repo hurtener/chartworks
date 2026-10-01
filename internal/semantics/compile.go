@@ -49,6 +49,15 @@ func Compile(input TopicPack) (Model, error) {
 	if err = kpiCycles(p); err != nil {
 		return Model{}, err
 	}
+	if err = validateCompletenessReferences(p); err != nil {
+		return Model{}, err
+	}
+	if err = validateRelationshipFilters(p); err != nil {
+		return Model{}, err
+	}
+	if err = validateMetricPeriodReferences(p); err != nil {
+		return Model{}, err
+	}
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return Model{}, invalid(CodeInvalidValue, "pack")
@@ -145,6 +154,9 @@ func validateEntities(p TopicPack) error {
 		return err
 	}
 	for i, v := range p.Measures {
+		if err := validateCompletenessShape(v.Completeness); err != nil {
+			return err
+		}
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !v.Aggregation.valid() || !validOptionalLine(v.Unit, 64) || !validAliases(v.Aliases) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "measures["+itoa(i)+"]")
 		}
@@ -158,6 +170,9 @@ func validateEntities(p TopicPack) error {
 		}
 	}
 	for i, v := range p.KPIs {
+		if err := validateMetricPeriodsShape(v.Periods); err != nil {
+			return err
+		}
 		if !identity.Identifier(v.ID) || !validLine(v.Name, 256) || !validText(v.Description, 4096) || !validLine(v.Expression, 4096) || len(v.Inputs) < 1 || len(v.Inputs) > 32 || !validAliases(v.Aliases) || !validOptionalLine(v.Unit, 64) || !validFilters(v.Filters) {
 			return invalid(CodeInvalidValue, "kpis["+itoa(i)+"]")
 		}
@@ -267,6 +282,9 @@ func validFilters(values []SemanticFilter) bool {
 	}
 	seen := map[string]bool{}
 	for _, value := range values {
+		if value.Relationship != "" && !identity.Identifier(value.Relationship) {
+			return false
+		}
 		if !identity.Identifier(value.ID) || !value.Field.Valid() || value.Field.Kind != KindColumn || value.Operator != "eq" && value.Operator != "in" && value.Operator != "not_null" || len(value.Values) > 32 || value.Operator == "not_null" && len(value.Values) != 0 || value.Operator != "not_null" && len(value.Values) == 0 || seen[value.ID] {
 			return false
 		}
@@ -627,6 +645,11 @@ func canonicalOrder(p *TopicPack) {
 	sort.Slice(p.KPIs, func(i, j int) bool { return p.KPIs[i].ID < p.KPIs[j].ID })
 	for i := range p.KPIs {
 		sort.Slice(p.KPIs[i].Inputs, func(a, b int) bool { return p.KPIs[i].Inputs[a].key() < p.KPIs[i].Inputs[b].key() })
+		if p.KPIs[i].Periods != nil {
+			sort.Slice(p.KPIs[i].Periods.Bindings, func(a, b int) bool {
+				return p.KPIs[i].Periods.Bindings[a].Measure.key() < p.KPIs[i].Periods.Bindings[b].Measure.key()
+			})
+		}
 		sort.Strings(p.KPIs[i].Aliases)
 		sortFilters(p.KPIs[i].Filters)
 	}
@@ -668,6 +691,7 @@ func clonePack(p TopicPack) TopicPack {
 	}
 	p.Measures = append([]Measure(nil), p.Measures...)
 	for i := range p.Measures {
+		p.Measures[i].Completeness = cloneCompleteness(p.Measures[i].Completeness)
 		p.Measures[i].Aliases = append([]string(nil), p.Measures[i].Aliases...)
 		p.Measures[i].Filters = cloneFilters(p.Measures[i].Filters)
 	}
@@ -687,6 +711,7 @@ func clonePack(p TopicPack) TopicPack {
 	}
 	p.KPIs = append([]KPI(nil), p.KPIs...)
 	for i := range p.KPIs {
+		p.KPIs[i].Periods = cloneMetricPeriods(p.KPIs[i].Periods)
 		p.KPIs[i].Inputs = append([]Reference(nil), p.KPIs[i].Inputs...)
 		p.KPIs[i].Aliases = append([]string(nil), p.KPIs[i].Aliases...)
 		p.KPIs[i].Filters = cloneFilters(p.KPIs[i].Filters)

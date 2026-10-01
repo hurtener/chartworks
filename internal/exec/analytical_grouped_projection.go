@@ -149,6 +149,7 @@ func (a *analyticalChecker) groupedFinalProjection(q map[string]any, expected ma
 		return true, err
 	}
 	a.groupedOutput = out
+	a.finalTerms = terms
 	return true, a.ctx.Err()
 }
 

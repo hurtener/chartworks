@@ -14,14 +14,29 @@ func compileCurrentAnalytical(ctx context.Context, a admission) (contract *exec.
 			err = ordinaryGroupDomainReview(a.route.Request.Locale)
 		}
 	}()
+	version := analyticalRecordVersion
+	if selectedKnownAmountCompleteness(a) {
+		version = analyticalScopedRecordVersion
+	}
+	if selectedMetricPeriods(a) {
+		applications, readErr := a.route.ResolvedMetricPeriodApplications()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if len(applications) == 0 {
+			return nil, analyticalUnsupported(AnalyticalMetricPeriodReviewCode)
+		}
+		a.metricPeriods = applications
+		version = analyticalScopedRecordVersion
+	}
 	if !hasActiveBusinessEvidence(a.route) {
-		return compileAnalyticalVersion(ctx, a, analyticalRecordVersion)
+		return compileAnalyticalVersion(ctx, a, version)
 	}
 	constraints, err := a.route.ResolvedBusinessConstraints()
 	if err != nil {
 		return nil, err
 	}
-	return compileAnalyticalVersion(ctx, a, analyticalRecordVersion, constraints)
+	return compileAnalyticalVersion(ctx, a, version, constraints)
 }
 
 func compileQueryPopulation(ctx context.Context, a admission, contract *exec.AnalyticalContract, supplied [][]exec.BusinessConstraint) error {
@@ -60,6 +75,13 @@ func compileQueryPopulation(ctx context.Context, a admission, contract *exec.Ana
 // Persisted route JSON has no in-process predicate seal. Reconstruct through the
 // existing authenticated router replay, never by trusting saved resolutions.
 func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) (*exec.AnalyticalContract, error) {
+	if isScalarPeriodRecord(q) {
+		a, constraints, err := s.scalarPeriodAdmission(ctx, e, q, a)
+		if err != nil {
+			return nil, err
+		}
+		return expectedAnalytical(ctx, q, a, constraints)
+	}
 	if q.AnalyticalVersion < 4 || !hasActiveBusinessEvidence(q.Route) {
 		return expectedAnalytical(ctx, q, a)
 	}
@@ -71,6 +93,9 @@ func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q
 }
 
 func analyticalPopulationGuidance(contract *exec.AnalyticalContract) string {
+	if contract != nil && contract.ScalarPopulations != nil {
+		return ""
+	}
 	if contract == nil || contract.QueryPopulation == nil {
 		return ""
 	}

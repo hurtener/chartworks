@@ -143,6 +143,8 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
+	PlanOperation        string                       `json:"-"`
+	PlanRequestDigest    string                       `json:"-"`
 	IntentReview         *IntentReviewEvidence        `json:"intent_review,omitempty"`
 	GenerationResolution *GenerationResolution        `json:"generation_resolution,omitempty"`
 	GenerationPending    *GenerationPending           `json:"generation_pending,omitempty"`
@@ -437,21 +439,22 @@ type PlanResult struct {
 // RunResult contains the opaque executor receipt and normalized rows. The
 // underlying attempt journal remains the source of cancellation/reconciliation.
 type RunResult struct {
-	Analytical      *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
-	Bindings        *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
-	AnswerChanges   []ClarificationChange        `json:"answer_changes,omitempty"`
-	QueryID         string                       `json:"query_id"`
-	SessionID       string                       `json:"session_id"`
-	Status          string                       `json:"status"`
-	EvidenceStale   bool                         `json:"evidence_stale,omitempty"`
-	Route           nlqroute.RouteResult         `json:"route"`
-	Confidence      float64                      `json:"confidence"`
-	Assumptions     []string                     `json:"assumptions,omitempty"`
-	Ambiguities     []string                     `json:"ambiguities,omitempty"`
-	Execution       exec.ExecutionReport         `json:"execution"`
-	ValidationFixes int                          `json:"validation_fixes"`
-	ExecutionFixes  int                          `json:"execution_fixes"`
-	SQL             string                       `json:"sql,omitempty"`
+	AmountCompleteness []AmountCompleteness         `json:"amount_completeness,omitempty"`
+	Analytical         *exec.AnalyticalReceipt      `json:"analytical,omitempty"`
+	Bindings           *exec.BusinessBindingReceipt `json:"bindings,omitempty"`
+	AnswerChanges      []ClarificationChange        `json:"answer_changes,omitempty"`
+	QueryID            string                       `json:"query_id"`
+	SessionID          string                       `json:"session_id"`
+	Status             string                       `json:"status"`
+	EvidenceStale      bool                         `json:"evidence_stale,omitempty"`
+	Route              nlqroute.RouteResult         `json:"route"`
+	Confidence         float64                      `json:"confidence"`
+	Assumptions        []string                     `json:"assumptions,omitempty"`
+	Ambiguities        []string                     `json:"ambiguities,omitempty"`
+	Execution          exec.ExecutionReport         `json:"execution"`
+	ValidationFixes    int                          `json:"validation_fixes"`
+	ExecutionFixes     int                          `json:"execution_fixes"`
+	SQL                string                       `json:"sql,omitempty"`
 	// Receipt is internal measurement evidence. Public RunResult JSON never
 	// contains gateway receipts; evaluation consumes it inside the service.
 	Receipt gateway.Receipt `json:"-"`

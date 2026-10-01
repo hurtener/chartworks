@@ -534,6 +534,11 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 		changed := false
 		for i := range admitted {
 			item := &admitted[i]
+			addedCompleteness, err := selectCompletenessOutputs(ctx, in, item)
+			if err != nil {
+				return err
+			}
+			changed = changed || addedCompleteness
 			if err := expandSelectedFacts(ctx, item); err != nil {
 				return err
 			}
