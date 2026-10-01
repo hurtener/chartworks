@@ -54,7 +54,22 @@ func attachJoinProjection(ctx context.Context, input *nlq.ContextInput, admitted
 				owned = append(owned, r)
 			}
 		}
-		c, err := nlq.JoinProjectionConstraint(nlq.ConfirmedJoinProjection{Version: "confirmed-joins-v1", Topic: item.id, ID: chosen.ID, Type: string(chosen.Type), Cardinality: string(chosen.Cardinality), Left: left, Right: right}, owned)
+		projection := nlq.ConfirmedJoinProjection{Version: "confirmed-joins-v1", Topic: item.id, ID: chosen.ID, Type: string(chosen.Type), Cardinality: string(chosen.Cardinality), Left: left, Right: right}
+		if len(chosen.AdditionalKeys) > 0 {
+			projection.Version = "confirmed-joins-v2"
+		}
+		for _, pair := range chosen.AdditionalKeys {
+			left, err := projectionJoinColumn(item.publication.Definition, pair.Left)
+			if err != nil {
+				return err
+			}
+			right, err := projectionJoinColumn(item.publication.Definition, pair.Right)
+			if err != nil {
+				return err
+			}
+			projection.AdditionalKeys = append(projection.AdditionalKeys, nlq.JoinProjectionPair{Left: left, Right: right})
+		}
+		c, err := nlq.JoinProjectionConstraint(projection, owned)
 		if err != nil {
 			return err
 		}

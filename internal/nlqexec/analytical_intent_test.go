@@ -29,7 +29,7 @@ func TestSQLRecoveryReviewedAnalyticalIntentCompiler(t *testing.T) {
 			a := grainAdmission(tc.question)
 			before, _ := json.Marshal(a.route)
 			c, err := compileCurrentAnalytical(context.Background(), a)
-			if err != nil || c == nil || c.Version != exec.AnalyticalGroupedPopulationsVersion || c.Intent == nil {
+			if err != nil || c == nil || c.Version != exec.AnalyticalGroupedProgramsVersion || c.Intent == nil {
 				t.Fatal("missing intent", err)
 			}
 			if len(c.Intent.Order) != tc.count || c.Intent.Limit != tc.limit || c.Intent.Order[0].Descending != tc.desc || c.Grain == nil || len(c.Grain.Columns) != 1 || c.Grain.Columns[0] != "region_native" {

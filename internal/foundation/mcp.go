@@ -26,11 +26,14 @@ import (
 	"github.com/hurtener/chartworks/internal/sourceapi"
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/topicapi"
+	"github.com/hurtener/chartworks/internal/topicfeedback"
+	"github.com/hurtener/chartworks/internal/topicfeedbackapi"
 )
 
 // mountMCP composes real services before the common HTTP registry guard. It does
 // not create an additional server, issuer, query engine or analytical session.
 type deliveryServices struct {
+	topicFeedback    *topicfeedback.Service
 	delivery         *reporting.Delivery
 	renderer         *rendering.Service
 	evaluation       *evaluation.Service
@@ -53,6 +56,12 @@ func mountMCP(v config.Values, verifier *auth.Verifier, source *sources.Service,
 		{"query", func() ([]mcpserver.Binding, error) { return nlqapi.ExecutionMCPBindings(query) }},
 		{"byo", func() ([]mcpserver.Binding, error) { return nlqapi.BYOMCPBindings(byo) }},
 		{"chart", func() ([]mcpserver.Binding, error) { return chartapi.MCPBindings(charts) }},
+		{"topic_feedback", func() ([]mcpserver.Binding, error) {
+			if len(services) == 1 {
+				return topicfeedbackapi.MCPBindings(services[0].topicFeedback)
+			}
+			return nil, nil
+		}},
 		{"onboarding", func() ([]mcpserver.Binding, error) {
 			if len(services) == 1 {
 				return onboardingapi.MCPBindings(services[0].onboarding)

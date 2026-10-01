@@ -444,3 +444,21 @@ misidentified as an authenticated replacement base. Version-three portable rows
 retain the immutable policy; old records are unchanged. No migration or added
 model operation is introduced. Exact lifecycle/negative result tests are mandatory
 in the recovery workflow, with observed results recorded in the canonical tracker.
+
+## Explicit semantic correction consumer (2026-09-30)
+
+The [semantic feedback proposal contract](../contracts/topic-feedback-proposals-v1.md)
+adds a concrete current-author-intent consumer over owned negative/corrected
+query evidence. `internal/topicfeedback` owns bounded generation, immutable
+proposal provenance and explicit application into the existing private draft
+lifecycle. `internal/topicfeedbackapi` provides registered HTTP/MCP operations;
+the SDK exposes the same service. Migration 069 stores detached proposals and
+content-free document-origin tombstones. Active publication and matching facets
+still require the existing explicit review/publish path.
+
+`TestTopicFeedbackProposalLifecycle` covers real metadata/native execution with
+a recorded provider, including the eventual published semantic prompt and
+numeric result. `TestTopicFeedbackDocumentRetentionBoundary` covers report
+origin erasure before/after apply and concurrent create/apply versus deletion.
+These recorded tests do not claim live model-generation quality. Prior learning
+examples retain their original semantic version; requalification is separate.

@@ -200,9 +200,12 @@ func TestTopicPublicationAPIAndAtomicLifecycle(t *testing.T) {
 		t.Fatal("exact retained read", err)
 	}
 	exported, err := f.db.ReadPublishedTopic(ctx, e, pack.Topic, pack.Version, drafts.Export)
-	if err != nil || !reflect.DeepEqual(exported, published) {
-		t.Fatal("authorized publication export did not retain the exact version", err)
+	publicExport := exported
+	publicExport.Receipt = gateway.Receipt{}
+	if err != nil || !reflect.DeepEqual(publicExport, published) || len(exported.Receipt.Calls) == 0 || len(published.Receipt.Calls) != 0 {
+		t.Fatal("publication public projection or retained private receipt changed", err)
 	}
+
 	for _, exportScopes := range [][]string{
 		{"topics.export", "sources.read", "cw.topic.read:" + pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"},
 		{"topics.read", "sources.read", "cw.topic.export:" + pack.Topic, "cw.source.read:*", "cw.dataset.query:*", "cw.execution_context.use:*"},

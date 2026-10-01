@@ -3,6 +3,8 @@ package nlqexec
 import (
 	"context"
 	"github.com/hurtener/chartworks/internal/exec"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"strings"
 	"testing"
 )
@@ -41,6 +43,50 @@ func TestSQLRecoveryWarehouseOrderingDefaults(t *testing.T) {
 		c, err := compileCurrentAnalytical(context.Background(), a)
 		if err != nil || c.Intent == nil || c.Intent.Order[0].Nulls != "first" {
 			t.Fatal("native default ordering", dialect, err)
+		}
+	}
+}
+
+func TestSQLRecoveryMySQLUTCInstantCompiler(t *testing.T) {
+	dimension := grainDimension{role: semantics.DimensionTemporal, temporal: &semantics.TemporalPolicy{Calendar: "gregorian", Timezone: "UTC", Grains: []semantics.TimeGrain{semantics.GrainMonth}}}
+	column := semantics.Column{SourceName: "created_at", NativeType: "timestamp(6)", Category: "temporal"}
+	bucket, err := compileCalendarBucket(dimension, column, "month", "mysql")
+	if err != nil || bucket.Timezone != "UTC" {
+		t.Fatal("explicit UTC bucket compile", err)
+	}
+	contract := &exec.AnalyticalContract{Grain: &exec.AnalyticalGrain{Policy: exec.AnalyticalCalendarPolicy, Buckets: []exec.AnalyticalBucket{bucket}}}
+	if !strings.Contains(analyticalGrainGuidanceForDialect("mysql", contract), sqlpolicy.MySQLUTCInstantSyntax) {
+		t.Fatal("native exact conversion missing from guidance")
+	}
+	dimension.temporal.Timezone = "America/New_York"
+	if _, err = compileCalendarBucket(dimension, column, "month", "mysql"); err == nil {
+		t.Fatal("unproved local instant rendering sent to generation")
+	}
+	column.NativeType = "datetime(6)"
+	bucket, err = compileCalendarBucket(dimension, column, "month", "mysql")
+	if err != nil || bucket.Timezone != "" {
+		t.Fatal("civil source acquired zone", err)
+	}
+}
+
+func TestSQLRecoveryMySQLGroupedGuidance(t *testing.T) {
+	for _, calendar := range []bool{false, true} {
+		c := &exec.AnalyticalContract{Version: exec.AnalyticalGroupedProgramsVersion, GroupedPopulations: &exec.AnalyticalGroupedPopulations{Policy: exec.AnalyticalGroupedPopulationPolicy}, Grain: &exec.AnalyticalGrain{Columns: []string{"group"}}}
+		if calendar {
+			c.Grain.Columns = nil
+			c.Grain.Buckets = []exec.AnalyticalBucket{{Column: "created_at", Grain: "month", Calendar: "gregorian"}}
+		}
+		got := analyticalGrainGuidanceForDialect("mysql", c)
+		for _, required := range []string{"UNION (distinct", "<=>", "Exact compiled lane contract", "LEFT JOIN every lane", "Preserve missing lane measures as NULL"} {
+			if !strings.Contains(got, required) {
+				t.Fatalf("calendar=%v missing %s", calendar, required)
+			}
+		}
+		if strings.Contains(got, "IS NOT DISTINCT FROM") {
+			t.Fatal("non-MySQL equality leaked into dialect guidance")
+		}
+		if calendar && !strings.Contains(got, "DATE_FORMAT") {
+			t.Fatal("calendar rendering missing")
 		}
 	}
 }

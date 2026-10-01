@@ -27,7 +27,7 @@ func validateAnalyticalIntent(c AnalyticalContract) error {
 		return nil
 	}
 	p := c.Intent
-	if (c.Version != AnalyticalIntentVersion && c.Version != AnalyticalGroupedPopulationsVersion) || p.Policy != AnalyticalIntentPolicy || len(p.Order) > 16 || p.Limit < 0 || p.Limit > 100000 {
+	if (c.Version != AnalyticalIntentVersion && (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion)) || p.Policy != AnalyticalIntentPolicy || len(p.Order) > 16 || p.Limit < 0 || p.Limit > 100000 {
 		return ErrBinding
 	}
 	seen := map[string]bool{}

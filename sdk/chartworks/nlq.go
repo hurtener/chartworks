@@ -64,6 +64,9 @@ type NLQRunResult = nlqexec.RunResult
 // NLQRefineRequest creates a child plan within the signed session.
 type NLQRefineRequest = nlqexec.RefineRequest
 
+// NLQLegacyIntentReview replaces complete intent using a current protected preflight.
+type NLQLegacyIntentReview = nlqexec.LegacyIntentReview
+
 // NLQParameter is a private typed string value for a model-owned NLQ slot.
 // The service owns validation and binding; the SDK only forwards its wire shape.
 type NLQParameter = readexec.Parameter

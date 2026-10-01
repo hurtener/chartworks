@@ -46,7 +46,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		t.Helper()
 		f.model.mode.Store(phase18RawResponse(t, statement))
 		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: f.question(text, nlq.LanguageEnglish)})
-		if err != nil || p.Analytical == nil || p.Analytical.Version != readexec.AnalyticalGroupedPopulationsVersion || p.Analytical.Scope != readexec.AnalyticalCalendarScope || len(p.Analytical.Grouping) != 1 {
+		if err != nil || p.Analytical == nil || p.Analytical.Version != readexec.AnalyticalGroupedProgramsVersion || p.Analytical.Scope != readexec.AnalyticalCalendarScope || len(p.Analytical.Grouping) != 1 {
 			t.Fatal("calendar plan", err)
 		}
 		return p
@@ -95,7 +95,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		}
 	})
 	t.Run("year zone null partitions and immutable replay", func(t *testing.T) {
-		p := plan(t, "Revenue by month of Order date", good)
+		p := plan(t, "Revenue by month", good)
 		r, err := f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: p.QueryID, Operation: p.QueryID + "-run"})
 		if err != nil || r.Execution.Result == nil || len(r.Execution.Result.Rows) != 4 {
 			t.Fatal("calendar execution", err)
@@ -111,7 +111,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 		}
 		sc, _ := store.NewScope(f.e.Tenant(), f.e.User())
 		saved, err := f.f.db.ReadQuery(ctx, sc, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 7 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
+		if err != nil || saved.AnalyticalVersion != 8 || readexec.Hash(saved.Analytical) != readexec.Hash(p.Analytical) {
 			t.Fatal("calendar persistence", err)
 		}
 		projected, err := f.f.db.ReadSavedQuery(ctx, f.e, p.QueryID, false)
@@ -131,7 +131,7 @@ func TestSQLRecoveryAnalyticalCalendarAcceptance(t *testing.T) {
 	})
 	t.Run("Spanish reviewed calendar", func(t *testing.T) {
 		f.model.mode.Store(phase18RawResponse(t, good))
-		q := f.question("Revenue por mes de fecha de pedido", nlq.LanguageSpanish)
+		q := f.question("Revenue por mes", nlq.LanguageSpanish)
 		p, err := f.query.Plan(ctx, f.e, nlqexec.PlanRequest{QuestionRequest: q})
 		if err != nil || p.Analytical == nil || p.Analytical.Scope != readexec.AnalyticalCalendarScope {
 			t.Fatal("Spanish calendar", err)

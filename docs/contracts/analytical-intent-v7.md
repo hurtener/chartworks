@@ -59,3 +59,14 @@ Successful grouping changes over legacy unreviewed predicates remain a concrete
 continuation gap: they require a versioned, exact-origin inherited-predicate proof
 that cannot authorize newly invented filters. Existing S9 continuity must not be
 reported as unchanged until that policy and its runtime proof are implemented.
+
+## Current calendar intent alignment
+
+The current v8 compiler also recognizes a terminal explicit `by month` / `por mes`
+(or another supported calendar unit) when exactly one selected reviewed temporal
+dimension in the selected metric dataset admits that grain. It preserves that
+field's reviewed calendar and time basis. Exact dimension names retain precedence;
+quoted values, negation, filter phrases and metric names do not imply grouping.
+An absent or ambiguous time basis returns a bounded request for reviewed date and
+grouping selection before SQL generation. Retained v1–v7 compilation is unchanged.
+This finite grammar does not claim general natural-language interpretation.

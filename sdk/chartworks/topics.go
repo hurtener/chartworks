@@ -62,6 +62,9 @@ type TopicKPI = semantics.KPI
 // TopicJoin is an equality relationship between datasets.
 type TopicJoin = semantics.Join
 
+// TopicJoinKeyPair is one exact reviewed equality in a composite relationship.
+type TopicJoinKeyPair = semantics.JoinKeyPair
+
 // TopicRelationshipEvidence records reviewed grain/cardinality provenance.
 type TopicRelationshipEvidence = semantics.RelationshipEvidence
 
@@ -205,8 +208,9 @@ type TopicDraftRevision struct {
 
 // TopicDraft contains one private immutable pack and metadata.
 type TopicDraft struct {
-	Metadata TopicDraftRevision `json:"metadata"`
-	Pack     TopicPack          `json:"pack"`
+	Quality  *drafts.QualityReview `json:"quality_review,omitempty"`
+	Metadata TopicDraftRevision    `json:"metadata"`
+	Pack     TopicPack             `json:"pack"`
 }
 
 // SaveTopicDraftRequest creates one CAS-fenced private revision.
@@ -235,6 +239,12 @@ type RebindTopicDatasetRequest = drafts.RebindRequest
 
 // EnhanceTopicRequest advances one bounded generation checkpoint.
 type EnhanceTopicRequest = drafts.EnhanceRequest
+
+// TopicAuthoringValue is explicit non-sensitive vocabulary bound to source/profile evidence.
+type TopicAuthoringValue = drafts.AuthoringValue
+
+// TopicQualityReview is an immutable advisory, never publication approval.
+type TopicQualityReview = drafts.QualityReview
 
 // EnhanceTopicResult includes the committed draft and next stable cursor.
 type EnhanceTopicResult = drafts.EnhanceResult

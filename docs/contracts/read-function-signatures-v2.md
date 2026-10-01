@@ -150,3 +150,23 @@ parser compatibility fixes require a reviewed, reproducible dependency change.
 Exact-source integrated regression and actual required-engine/model/result
 qualification remain release obligations in Q1/Q2/Q3. No profile or fixture
 substitutes for those runs.
+
+## MySQL session-independent UTC instant form
+
+The MySQL profile additionally exposes one structural temporal syntax contract:
+`CAST(physical_timestamp AT TIME ZONE '+00:00' AS DATETIME(6))` (`'UTC'` is the
+only alternative literal). The same registry supplies generation guidance,
+allowed zone literals and the exact physical TIMESTAMP precision family.
+The scope consumer requires a currently allowed physical TIMESTAMP column,
+retains microsecond precision, and validates every child. Civil DATETIME,
+logical outputs without physical type evidence, arbitrary expressions, dynamic
+or named regional zones, reduced precision and standalone AT TIME ZONE fail
+closed. This does not authorize general timezone conversion or an ordinary
+function name. Analytical bucket proof additionally checks the enclosing exact
+calendar form. Native source EXPLAIN remains mandatory.
+
+`TestMySQLUTCInstantContract`, `TestWarehouseUTCInstantScope` and
+`TestWarehouseUTCInstantValidatorNative` cover the shared contract, physical
+binding, type/zone/precision negatives, and pre-EXPLAIN rejection. This extension
+requires the separately versioned primary native node patch; the companion
+source and pinned grammar remain unchanged.

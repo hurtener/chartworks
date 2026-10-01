@@ -16,7 +16,7 @@ func TestSQLRecoveryReviewedNullPolicyCompiler(t *testing.T) {
 	if err != nil || c == nil || c.Metrics[0].Expression.Op != "coalesce" || c.Metrics[0].Expression.Args[1].Value != "0" {
 		t.Fatal("reviewed fallback", err)
 	}
-	if c.Version != exec.AnalyticalGroupedPopulationsVersion || c.Intent == nil || c.Intent.Order != nil || c.Intent.Limit != 0 || c.QueryPopulation == nil || len(c.QueryPopulation.Constraints) != 0 {
+	if c.Version != exec.AnalyticalGroupedProgramsVersion || c.Intent == nil || c.Intent.Order != nil || c.Intent.Limit != 0 || c.QueryPopulation == nil || len(c.QueryPopulation.Constraints) != 0 {
 		t.Fatal("missing default non-narrowing intent")
 	}
 	if _, err := compileAnalyticalVersion(context.Background(), a, 6); err == nil {

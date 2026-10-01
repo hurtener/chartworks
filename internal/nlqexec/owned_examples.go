@@ -22,6 +22,9 @@ func validExampleBindingPolicy(policy string) bool {
 }
 
 func originExampleDigest(topic, question, sql string, parameters *exampleparams.Schema, origin ExampleOrigin) string {
+	if origin.Requalification != nil {
+		return exec.Hash([]any{ExampleRequalificationPolicy, topic, question, sql, parameters, origin})
+	}
 	if origin.BindingPolicy == "" {
 		return parameterExampleDigest(topic, question, sql, parameters)
 	}

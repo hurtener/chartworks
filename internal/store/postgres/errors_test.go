@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "64" || len(manifest) != 64 {
+	if err != nil || SchemaVersion() != "71" || len(manifest) != 71 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -72,6 +72,13 @@ func TestSafeErrors(t *testing.T) {
 		{61, "migrations/062_nlq_analytical_intent.sql", "analytical-metrics-v6"},
 		{62, "migrations/063_nlq_grouped_populations.sql", "analytical-metrics-v7"},
 		{63, "migrations/064_nlq_example_parameter_domains.sql", "example-parameters-v2"},
+		{64, "migrations/065_nlq_grouped_programs.sql", "analytical-metrics-v8"},
+		{65, "migrations/066_nlq_intent_review.sql", "nlq_intent_review_immutable"},
+		{66, "migrations/067_topic_authoring_quality.sql", "topic_authoring_quality_complete"},
+		{67, "migrations/068_generation_example_retrieval.sql", "nlq_examples_generation_origin"},
+		{68, "migrations/069_topic_feedback_proposals.sql", "topic_feedback_proposals"},
+		{69, "migrations/070_topic_authoring_vocabulary.sql", "vocabulary"},
+		{70, "migrations/071_example_requalification.sql", "nlq_example_requalification_shape"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

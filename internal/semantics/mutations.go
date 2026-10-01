@@ -177,6 +177,14 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 				pack.GroupedPopulation.Datasets[i] = replacement.Dataset
 			}
 		}
+		for i, domain := range pack.GroupedPopulation.GroupDomains {
+			if domain.Dataset == oldDataset {
+				pack.GroupedPopulation.GroupDomains[i].Dataset = replacement.Dataset
+			}
+		}
+		sort.Slice(pack.GroupedPopulation.GroupDomains, func(i, j int) bool {
+			return pack.GroupedPopulation.GroupDomains[i].Dataset < pack.GroupedPopulation.GroupDomains[j].Dataset
+		})
 		sort.Strings(pack.GroupedPopulation.Datasets)
 	}
 	for i := range pack.Measures {
@@ -202,10 +210,18 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 	for i := range pack.Joins {
 		rewrite(&pack.Joins[i].Left)
 		rewrite(&pack.Joins[i].Right)
+		for k := range pack.Joins[i].AdditionalKeys {
+			rewrite(&pack.Joins[i].AdditionalKeys[k].Left)
+			rewrite(&pack.Joins[i].AdditionalKeys[k].Right)
+		}
 	}
 	for i := range pack.RelationshipDecisions {
 		rewrite(&pack.RelationshipDecisions[i].Left)
 		rewrite(&pack.RelationshipDecisions[i].Right)
+		for k := range pack.RelationshipDecisions[i].AdditionalKeys {
+			rewrite(&pack.RelationshipDecisions[i].AdditionalKeys[k].Left)
+			rewrite(&pack.RelationshipDecisions[i].AdditionalKeys[k].Right)
+		}
 	}
 	for i := range pack.CanonicalEntities {
 		for j := range pack.CanonicalEntities[i].Keys {

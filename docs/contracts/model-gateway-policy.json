@@ -18,6 +18,7 @@
   "roles": [
     "embedding",
     "enhance",
+    "topic_review",
     "sqlgen",
     "sqlfix",
     "clarify",

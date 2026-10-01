@@ -171,3 +171,16 @@ selections and locale. They are reviewable evidence rather than topic publicatio
 content: importing or recording an example cannot amend semantics or expand signed
 reach. Stale or incomplete origins remain inspectable candidates but cannot enter
 generation. See [learning lifecycle v1](../contracts/learning-lifecycle-v1.md).
+
+## Evidence-bound generation recovery
+
+The current candidate adds the [evidence-bound authoring contract](../contracts/topic-drafts-v1.md#evidence-bound-authoring-and-whole-candidate-advisory):
+complete authorized profile/business context, page-independent relationship
+visibility, preserved protected values/filters, and a final whole-candidate
+advisory retained by migration 067. Generated completions bind exact digest and
+coverage before explicit human review. Manual/legacy publication policy remains
+explicit; model findings are never publication authority. Focused synthetic
+transport/adversarial tests and AC05 are acceptance targets, not live semantic
+quality measurements. Actual profile → generated topic → reviewed publication →
+correct SQL still requires the finite live evaluation owned by the integration
+workstream; reviewed SQL examples are a separate learning mechanism.

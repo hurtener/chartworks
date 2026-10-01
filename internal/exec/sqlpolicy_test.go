@@ -100,6 +100,8 @@ func TestSQLRecoveryVocabularyParameterSpelling(t *testing.T) {
 			expected = "$2"
 		case "at-p-numbered":
 			expected = "@p2"
+		case "colon-p-numbered":
+			expected = ":p2"
 		case "positional-question-mark":
 		default:
 			t.Fatal("unknown advertised style")

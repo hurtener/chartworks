@@ -63,7 +63,7 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 			field(b.Column)
 		}
 	}
-	if c.Version == exec.AnalyticalGroupedPopulationsVersion && c.QueryPopulation != nil {
+	if (c.Version == exec.AnalyticalGroupedPopulationsVersion || c.Version == exec.AnalyticalGroupedProgramsVersion) && c.QueryPopulation != nil {
 		for _, constraint := range c.QueryPopulation.Constraints {
 			needed[constraint.Dataset] = true
 		}
@@ -71,7 +71,7 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 	if len(needed) == 1 {
 		return nil
 	}
-	if len(needed) > 1 && (c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) == 0) && (c.QueryPopulation == nil || c.Version == exec.AnalyticalGroupedPopulationsVersion && len(c.QueryPopulation.Constraints) == 0) {
+	if len(needed) > 1 && (c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) == 0) && (c.QueryPopulation == nil || (c.Version == exec.AnalyticalGroupedPopulationsVersion || c.Version == exec.AnalyticalGroupedProgramsVersion) && len(c.QueryPopulation.Constraints) == 0) {
 		if a.binding.Dialect != "postgres" {
 			return analyticalUnsupported("analytical_shape_unsupported")
 		}
@@ -102,20 +102,48 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 				continue
 			}
 			compiler := analyticalCompiler{ctx: ctx, definition: def, binding: a.binding, joins: true}
-			lc, err := compiler.column(j.Left)
-			if err != nil {
-				return err
+			x := exec.AnalyticalJoin{Left: j.Left.Dataset, Right: j.Right.Dataset, Type: string(j.Type)}
+			pairs := j.KeyPairs()
+			if len(pairs) == 0 {
+				return exec.ErrBinding
 			}
-			compiler.dataset = ""
-			rc, err := compiler.column(j.Right)
-			if err != nil {
-				return err
+			for _, pair := range pairs {
+				compiler.dataset = ""
+				lc, err := compiler.column(pair.Left)
+				if err != nil {
+					return err
+				}
+				compiler.dataset = ""
+				rc, err := compiler.column(pair.Right)
+				if err != nil {
+					return err
+				}
+				x.LeftColumns = append(x.LeftColumns, lc.SourceName)
+				x.RightColumns = append(x.RightColumns, rc.SourceName)
 			}
-			x := exec.AnalyticalJoin{Left: j.Left.Dataset, Right: j.Right.Dataset, Type: string(j.Type), LeftColumns: []string{lc.SourceName}, RightColumns: []string{rc.SourceName}}
 			if j.Type == semantics.JoinInner && x.Left > x.Right {
 				x.Left, x.Right = x.Right, x.Left
 				x.LeftColumns, x.RightColumns = x.RightColumns, x.LeftColumns
 			}
+			// Equality conjunction order is not relationship meaning. Preserve pairs
+			// while canonicalizing independently authored composite definitions.
+			indices := make([]int, len(x.LeftColumns))
+			for i := range indices {
+				indices[i] = i
+			}
+			sort.Slice(indices, func(i, j int) bool {
+				a, b := indices[i], indices[j]
+				if x.LeftColumns[a] != x.LeftColumns[b] {
+					return x.LeftColumns[a] < x.LeftColumns[b]
+				}
+				return x.RightColumns[a] < x.RightColumns[b]
+			})
+			lefts, rights := make([]string, 0, len(indices)), make([]string, 0, len(indices))
+			for _, i := range indices {
+				lefts = append(lefts, x.LeftColumns[i])
+				rights = append(rights, x.RightColumns[i])
+			}
+			x.LeftColumns, x.RightColumns = lefts, rights
 			key := exec.Hash(x)
 			if !seen[key] {
 				candidates = append(candidates, x)
@@ -189,9 +217,9 @@ func compileAnalyticalJoins(ctx context.Context, a admission, c *exec.Analytical
 	return exec.ValidateAnalyticalJoins(*c, a.binding)
 }
 
-func analyticalJoinGuidance(c *exec.AnalyticalContract) string {
+func analyticalJoinGuidance(c *exec.AnalyticalContract, dialects ...string) string {
 	if c != nil && c.GroupedPopulations != nil {
-		return analyticalGroupedPopulationGuidance(c)
+		return analyticalGroupedPopulationGuidance(c, dialects...)
 	}
 	if c != nil && len(c.Populations) > 0 {
 		return " Compute each selected source population in its own single-row aggregate CTE or derived table, with exactly its reviewed metric filters and named outputs. Combine those singleton rows by CROSS JOIN and apply only the reviewed arithmetic at the outer SELECT. Do not join raw fact rows, add grouping, coalesce empty aggregates, or substitute extra population filters."

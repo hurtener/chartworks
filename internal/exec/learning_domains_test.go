@@ -190,11 +190,11 @@ func TestSQLRecoveryLearningWarehouseDomainMatrix(t *testing.T) {
 		{"sqlserver", `SELECT CAST(@p1 AS date) AS d,CAST(@p2 AS datetime2(3)) AS t,CAST(@p3 AS datetimeoffset) AS z,CAST(@p4 AS uniqueidentifier) AS u FROM analytics.sales`, []string{"date", "timestamp", "timestamptz", "uuid"}},
 		{"bigquery", `SELECT CAST(@p1 AS DATE) AS d,CAST(@p2 AS DATETIME) AS t,CAST(@p3 AS TIMESTAMP) AS z FROM analytics.sales`, []string{"date", "timestamp", "timestamptz"}},
 		{"snowflake", `SELECT CAST(? AS DATE) AS d,CAST(? AS TIMESTAMP_NTZ) AS t,CAST(? AS TIMESTAMP_TZ) AS z FROM analytics.sales`, []string{"date", "timestamp", "timestamptz"}},
-		{"databricks", `SELECT CAST(? AS DATE) AS d,CAST(? AS TIMESTAMP_NTZ) AS t,CAST(? AS TIMESTAMP) AS z FROM analytics.sales`, []string{"date", "timestamp", "timestamptz"}},
+		{"databricks", `SELECT CAST(:p1 AS DATE) AS d,CAST(:p2 AS TIMESTAMP_NTZ) AS t,CAST(:p3 AS TIMESTAMP) AS z FROM analytics.sales`, []string{"date", "timestamp", "timestamptz"}},
 		{"sqlserver", `SELECT id FROM analytics.sales WHERE day = @p2 AND moment > @p1 AND instant < @p3`, []string{"timestamp", "date", "timestamptz"}},
 		{"bigquery", `SELECT id FROM analytics.sales WHERE day = @p2 AND moment > @p1 AND instant < @p3`, []string{"timestamp", "date", "timestamptz"}},
 		{"snowflake", `SELECT id FROM analytics.sales WHERE day=? AND moment>? AND instant<?`, []string{"date", "timestamp", "timestamptz"}},
-		{"databricks", `SELECT id FROM analytics.sales WHERE day=? AND moment>? AND instant<?`, []string{"date", "timestamp", "timestamptz"}},
+		{"databricks", `SELECT id FROM analytics.sales WHERE day=:p1 AND moment>:p2 AND instant<:p3`, []string{"date", "timestamp", "timestamptz"}},
 	} {
 		t.Run(tc.dialect+tc.sql, func(t *testing.T) {
 			parameters := make([]Parameter, len(tc.domains))
@@ -270,7 +270,13 @@ func TestSQLRecoveryLearningWarehouseDomainConflicts(t *testing.T) {
 func TestSQLRecoveryLearningWarehouseDomainScopedCasts(t *testing.T) {
 	for _, dialect := range []string{"mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
 		marker := "?"
+		if dialect == "databricks" {
+			marker = ":p1"
+		}
 		next := "?"
+		if dialect == "databricks" {
+			next = ":p2"
+		}
 		if dialect == "sqlserver" || dialect == "bigquery" {
 			marker = "@p1"
 			next = "@p2"
@@ -304,6 +310,9 @@ func TestSQLRecoveryLearningWarehouseDomainScopedCasts(t *testing.T) {
 func TestSQLRecoveryLearningDomainSourceAliasesNeverSupplyLineage(t *testing.T) {
 	for _, dialect := range []string{"postgres", "mysql", "sqlserver", "bigquery", "snowflake", "databricks"} {
 		marker := "?"
+		if dialect == "databricks" {
+			marker = ":p1"
+		}
 		if dialect == "postgres" {
 			marker = "$1"
 		}
@@ -333,6 +342,9 @@ func TestSQLRecoveryLearningAdditionalNativeDomains(t *testing.T) {
 	} {
 		t.Run(tc.dialect+tc.cast, func(t *testing.T) {
 			marker := "?"
+			if tc.dialect == "databricks" {
+				marker = ":p1"
+			}
 			if tc.dialect == "postgres" {
 				marker = "$1"
 			}

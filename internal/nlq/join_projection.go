@@ -3,6 +3,7 @@ package nlq
 import (
 	"encoding/json"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -17,14 +18,20 @@ type JoinProjectionColumn struct {
 // ConfirmedJoinProjection names the selected, independently confirmed join of
 // one topic. Every topic must supply the same relationship. Legacy packets with
 // no such metadata keep the conservative complete-shared-relation rendering.
+type JoinProjectionPair struct {
+	Left  JoinProjectionColumn `json:"left"`
+	Right JoinProjectionColumn `json:"right"`
+}
+
 type ConfirmedJoinProjection struct {
-	Version     string               `json:"version"`
-	Topic       string               `json:"topic"`
-	ID          string               `json:"id"`
-	Type        string               `json:"type"`
-	Cardinality string               `json:"cardinality"`
-	Left        JoinProjectionColumn `json:"left"`
-	Right       JoinProjectionColumn `json:"right"`
+	Version        string               `json:"version"`
+	Topic          string               `json:"topic"`
+	ID             string               `json:"id"`
+	Type           string               `json:"type"`
+	Cardinality    string               `json:"cardinality"`
+	Left           JoinProjectionColumn `json:"left"`
+	Right          JoinProjectionColumn `json:"right"`
+	AdditionalKeys []JoinProjectionPair `json:"additional_keys,omitempty"`
 }
 
 const joinProjectionKind = "confirmed_join_projection"
@@ -68,20 +75,58 @@ func joinColumnDependency(column JoinProjectionColumn) MetricDependency {
 	return MetricDependency{Kind: "column", ID: column.Dataset + ":" + column.ID, Text: string(raw)}
 }
 
+func joinProjectionPairs(join ConfirmedJoinProjection) []JoinProjectionPair {
+	if len(join.AdditionalKeys) > 15 {
+		return nil
+	}
+	return append([]JoinProjectionPair{{Left: join.Left, Right: join.Right}}, join.AdditionalKeys...)
+}
 func validateJoinProjection(join ConfirmedJoinProjection, relations []SourceRelation) ([]MetricDependency, error) {
-	if join.Version != "confirmed-joins-v1" || !validID(join.Topic) || !validID(join.ID) || (join.Type != "inner" && join.Type != "left") || join.Cardinality != "one_to_one" || join.Left.Dataset == join.Right.Dataset {
+	if (join.Version != "confirmed-joins-v1" && join.Version != "confirmed-joins-v2") || (join.Version == "confirmed-joins-v1" && len(join.AdditionalKeys) != 0) || (join.Version == "confirmed-joins-v2" && len(join.AdditionalKeys) == 0) || !validID(join.Topic) || !validID(join.ID) || (join.Type != "inner" && join.Type != "left") || join.Cardinality != "one_to_one" || join.Left.Dataset == join.Right.Dataset {
 		return nil, projectionOwnerFailure()
 	}
-	for _, col := range []JoinProjectionColumn{join.Left, join.Right} {
-		if !validID(col.Dataset) || !validID(col.ID) || !validText(col.Name, 256) {
+	pairs := joinProjectionPairs(join)
+	if len(pairs) == 0 {
+		return nil, projectionOwnerFailure()
+	}
+	seenLeft, seenRight := map[string]bool{}, map[string]bool{}
+	var deps []MetricDependency
+	for _, pair := range pairs {
+		if pair.Left.Dataset != join.Left.Dataset || pair.Right.Dataset != join.Right.Dataset || seenLeft[pair.Left.ID] || seenRight[pair.Right.ID] {
 			return nil, projectionOwnerFailure()
 		}
+		seenLeft[pair.Left.ID], seenRight[pair.Right.ID] = true, true
+		for _, col := range []JoinProjectionColumn{pair.Left, pair.Right} {
+			if !validID(col.Dataset) || !validID(col.ID) || !validText(col.Name, 256) {
+				return nil, projectionOwnerFailure()
+			}
+			deps = append(deps, joinColumnDependency(col))
+		}
 	}
-	deps := []MetricDependency{joinColumnDependency(join.Left), joinColumnDependency(join.Right)}
 	if _, err := DependencyRelations(join.Topic, relations, deps); err != nil {
 		return nil, err
 	}
 	return deps, nil
+}
+func joinProjectionRelationship(join ConfirmedJoinProjection) string {
+	if join.Version == "confirmed-joins-v1" {
+		left, right := join.Left, join.Right
+		if join.Type == "inner" && left.Dataset > right.Dataset {
+			left, right = right, left
+		}
+		return projectionIdentity([]any{join.Type, join.Cardinality, left, right})
+	}
+	var pairs []string
+	reverse := join.Type == "inner" && join.Left.Dataset > join.Right.Dataset
+	for _, pair := range joinProjectionPairs(join) {
+		if reverse {
+			pair.Left, pair.Right = pair.Right, pair.Left
+		}
+		raw, _ := json.Marshal(pair)
+		pairs = append(pairs, string(raw))
+	}
+	sort.Strings(pairs)
+	return projectionIdentity([]any{join.Version, join.Type, join.Cardinality, pairs})
 }
 
 // confirmedJoinDependencies validates complete independently-owned coordinates.
@@ -106,18 +151,14 @@ func confirmedJoinDependencies(input ContextInput, topics []string, byTopic map[
 		var join ConfirmedJoinProjection
 		decoder := json.NewDecoder(strings.NewReader(c.Text))
 		decoder.DisallowUnknownFields()
-		if len(c.Text) > 4096 || decoder.Decode(&join) != nil || decoder.Decode(new(any)) != io.EOF || !known[join.Topic] || out[join.Topic] != nil || c.ID != "join-projection-"+projectionIdentity([]string{join.Topic, join.ID}) {
+		if len(c.Text) > 16<<10 || decoder.Decode(&join) != nil || decoder.Decode(new(any)) != io.EOF || !known[join.Topic] || out[join.Topic] != nil || c.ID != "join-projection-"+projectionIdentity([]string{join.Topic, join.ID}) {
 			return nil, false, projectionOwnerFailure()
 		}
 		deps, err := validateJoinProjection(join, byTopic[join.Topic])
 		if err != nil {
 			return nil, false, err
 		}
-		left, right := join.Left, join.Right
-		if join.Type == "inner" && (left.Dataset > right.Dataset || left.Dataset == right.Dataset && left.ID > right.ID) {
-			left, right = right, left
-		}
-		key := projectionIdentity([]any{join.Type, join.Cardinality, left, right})
+		key := joinProjectionRelationship(join)
 		if relationship != "" && relationship != key {
 			return nil, false, projectionOwnerFailure()
 		}

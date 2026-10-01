@@ -39,13 +39,40 @@ func (s *Service) reviewLegacyAnalyticalContinuation(ctx context.Context, e iden
 		return exec.ErrBinding
 	}
 	_, err = exec.CheckAnalyticalPlan(ctx, plan, *current)
-	var failure *exec.AnalyticalError
-	if errors.As(err, &failure) && (failure.Code == "analytical_query_population_mismatch" || failure.Code == "analytical_limit_mismatch" || failure.Code == "analytical_order_mismatch") {
-		question := "Please review the retained query's filters and result limits as governed intent before refining it. The original query remains available for replay."
+	if legacyCurrentIntentReviewNeeded(old.AnalyticalVersion, current, err) {
+		question := "Please review the complete current intent in a new preflight, then submit its query ID, answer context and typed answers as intent_review. This replaces the old intent; the original query remains available for replay."
 		if old.Locale == nlq.LanguageSpanish {
-			question = "Revisa los filtros y límites de resultados de la consulta conservada como intención gobernada antes de modificarla. La consulta original sigue disponible para reproducirla."
+			question = "Revisa la intención actual completa en una nueva consulta previa; envía su identificador, contexto y respuestas tipadas en intent_review. Esto reemplaza la intención anterior; la consulta original sigue disponible para reproducirla."
 		}
 		return &generationDecisionError{problem: generationdecision.Problem{Version: generationdecision.Version, Outcome: generationdecision.Insufficient, Questions: []string{question}}}
 	}
 	return err
+}
+
+// This classification is used only after the exact retained proof succeeds.
+// It requests a complete, independently reviewed current intent; it never
+// approves the old SQL under the current contract or copies its predicates.
+func legacyCurrentIntentReviewNeeded(version int, current *exec.AnalyticalContract, err error) bool {
+	var failure *exec.AnalyticalError
+	if !errors.As(err, &failure) {
+		return false
+	}
+	switch failure.Code {
+	case "analytical_query_population_mismatch", "analytical_limit_mismatch", "analytical_order_mismatch":
+		return true
+	case "analytical_population_mismatch":
+		// V8 proves ordinary group existence before checking query-owned WHERE.
+		// An unowned legacy WHERE can therefore surface at this earlier gate.
+		// Keep the dedicated retained-v7 group-policy review path distinct.
+		return version >= 1 && version <= 6 && current != nil && current.Version == exec.AnalyticalGroupedProgramsVersion && current.GroupedPopulations == nil && len(current.Populations) == 0 && current.Grain != nil && len(current.Grain.Columns)+len(current.Grain.Buckets) > 0
+	}
+	return false
+}
+
+func groupedDomainReviewGuidance(old QueryRecord) error {
+	question := "Review which groups should exist in a current published grouping policy, create a new preflight, then submit its query ID and catalog selection digest as intent_review. The retained query is not approved for replay by this review."
+	if old.Locale == nlq.LanguageSpanish {
+		question = "Revisa qué grupos deben existir en una política publicada actual, crea una nueva consulta previa y envía su identificador y resumen de selección en intent_review. Esta revisión no aprueba la reproducción de la consulta conservada."
+	}
+	return &generationDecisionError{problem: generationdecision.Problem{Version: generationdecision.Version, Outcome: generationdecision.Insufficient, Questions: []string{question}}}
 }

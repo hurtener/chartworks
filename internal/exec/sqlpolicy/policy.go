@@ -35,6 +35,7 @@ const postgresOperators = "+ - * / % = <> != < > <= >= || ~~ !~~ ~~* !~~*"
 // planning and analytical restrictions can still reject any particular use.
 // No source identifiers, question, values, credentials or permissions are here.
 type Profile struct {
+	TemporalSyntax       string            `json:"temporal_syntax,omitempty"`
 	ExpressionSignatures map[string]string `json:"expression_signatures,omitempty"`
 	FunctionSyntax       CallSyntax        `json:"function_syntax"`
 	Version              string            `json:"version"`
@@ -78,6 +79,8 @@ func ForDialect(dialect string) (Profile, error) {
 	}
 	out := Profile{Version: Version, Dialect: dialect, Parser: "warehouse-native-read", NativeDialect: native, ParameterStyle: "positional-question-mark", Functions: words(warehouseFunctionVocabulary(dialect))}
 	switch dialect {
+	case "mysql":
+		out.TemporalSyntax = MySQLUTCInstantSyntax
 	case "postgres":
 		out.Parser, out.ParameterStyle = "postgres-native-ast", "dollar-numbered"
 		out.Functions, out.FunctionNamespaces = words(postgresFunctions), []string{"pg_catalog"}
@@ -91,6 +94,8 @@ func ForDialect(dialect string) (Profile, error) {
 		}
 	case "sqlserver", "bigquery":
 		out.ParameterStyle = "at-p-numbered"
+	case "databricks":
+		out.ParameterStyle = "colon-p-numbered"
 	}
 	if len(out.Expressions) > 0 {
 		out.ExpressionSignatures = make(map[string]string, len(out.Expressions))

@@ -119,6 +119,7 @@ func (s *Service) prepareGenerationPending(ctx context.Context, e identity.Envel
 	pending.Problem = *problem
 	q.GenerationPending = pending
 	bindGenerationContinuation(ctx, &q)
+	bindIntentReview(ctx, &q)
 	q.Operation, q.Generation, q.Receipt, q.ValidationFixes = operation, generation, receipt, fixes
 	return q, nil
 }
@@ -205,6 +206,9 @@ func (s *Service) resumeGeneration(ctx context.Context, e identity.Envelope, in 
 }
 
 func (s *Service) checkGenerationPending(ctx context.Context, e identity.Envelope, q QueryRecord) error {
+	if err := s.verifyIntentReview(ctx, e, q); err != nil {
+		return err
+	}
 	p := q.GenerationPending
 	if p == nil || !GenerationPendingValid(q) || q.EvidenceStale || q.Session != e.Session() || !time.Now().Before(p.Problem.ExpiresAt) {
 		return exec.ErrBinding

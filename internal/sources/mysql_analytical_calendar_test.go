@@ -135,3 +135,65 @@ func TestSQLRecoveryMySQLReviewedNullPolicyLocal(t *testing.T) {
 		t.Fatal("unreviewed zero fill admitted")
 	}
 }
+
+// Explicit UTC retrieval must keep the same partitions under differing session
+// offsets, including instants adjacent to US DST transitions and UTC midnight.
+func TestSQLRecoveryMySQLUTCInstantCalendarLocal(t *testing.T) {
+	for zi, zone := range []string{"+00:00", "+05:30", "-07:00"} {
+		t.Run(zone, func(t *testing.T) {
+			f := newMySQLAnalyticalFixture(t, zone)
+			conn, err := f.admin.Conn(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			if _, err = conn.ExecContext(t.Context(), "SET SESSION time_zone='+00:00'"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = conn.ExecContext(t.Context(), "UPDATE "+f.schema+".sales SET created_timestamp=CASE id WHEN 1 THEN '2026-01-01 00:00:00.000001' WHEN 2 THEN '2026-03-08 06:59:59.999999' WHEN 3 THEN '2026-11-01 06:00:00.000001' ELSE NULL END"); err != nil {
+				t.Fatal(err)
+			}
+			utc := "CAST(created_timestamp AT TIME ZONE '+00:00' AS DATETIME(6))"
+			for gi, tc := range []struct {
+				grain, expr string
+				want        []string
+			}{
+				{"month", "CAST(DATE_FORMAT(" + utc + ",'%Y-%m-01') AS DATE)", []string{`null`, `"2026-01-01 00:00:00"`, `"2026-03-01 00:00:00"`, `"2026-11-01 00:00:00"`}},
+				{"quarter", "MAKEDATE(EXTRACT(YEAR FROM " + utc + "),1) + INTERVAL (EXTRACT(QUARTER FROM " + utc + ")-1) QUARTER", []string{`null`, `"2026-01-01 00:00:00"`, `"2026-10-01 00:00:00"`}},
+			} {
+				statement := "SELECT " + tc.expr + " AS period,sum(amount) AS value FROM " + f.schema + ".sales GROUP BY 1 ORDER BY period"
+				plan, err := f.validator.Validate(t.Context(), f.envelope, readexec.Request{Source: f.binding.Source, Context: f.binding.Context, SQL: statement})
+				if err != nil {
+					t.Fatal("native UTC bucket", err)
+				}
+				c := readexec.AnalyticalContract{Version: readexec.AnalyticalGroupedProgramsVersion, Binding: readexec.Hash(f.binding), Semantics: readexec.Hash("synthetic-utc-bucket"), Dataset: f.dataset, Metrics: []readexec.AnalyticalMetric{{ID: "revenue", Expression: readexec.AnalyticalExpression{Op: "sum", Column: "amount"}}}, Grain: &readexec.AnalyticalGrain{Policy: readexec.AnalyticalCalendarPolicy, Dimensions: []string{"period"}, Buckets: []readexec.AnalyticalBucket{{Column: "created_timestamp", Calendar: "gregorian", Grain: tc.grain, Timezone: "UTC"}}}, Intent: &readexec.AnalyticalIntent{Policy: readexec.AnalyticalIntentPolicy}, QueryPopulation: &readexec.AnalyticalQueryPopulation{Policy: readexec.AnalyticalQueryPopulationPolicy}}
+				if _, err = readexec.CheckAnalyticalPlan(t.Context(), plan, c); err != nil {
+					t.Fatal("UTC bucket proof", err)
+				}
+				result, err := f.service.ExecuteRead(t.Context(), f.envelope, plan, readexec.Limits{Rows: 10, Bytes: 4096, Timeout: 10 * time.Second, CancelGrace: time.Second, PlannerCost: 1e6}, fmt.Sprintf("%032x", 501+zi*10+gi), &cloudObserverCapture{})
+				if err != nil || len(result.Result.Rows) != len(tc.want) {
+					t.Fatalf("UTC result %v %#v", err, result.Result.Rows)
+				}
+				for i, row := range result.Result.Rows {
+					if string(row[0]) != tc.want[i] {
+						t.Fatalf("UTC partition %s != %s", row[0], tc.want[i])
+					}
+				}
+				wantValues := []string{`null`, `"10.00"`, `"10.00"`, `"30.00"`}
+				if tc.grain == "quarter" {
+					wantValues = []string{`null`, `"20.00"`, `"30.00"`}
+				}
+				for i, row := range result.Result.Rows {
+					if string(row[1]) != wantValues[i] {
+						t.Fatalf("UTC aggregate %s != %s", row[1], wantValues[i])
+					}
+				}
+
+				c.Grain.Buckets[0].Timezone = "America/New_York"
+				if _, err = readexec.CheckAnalyticalPlan(t.Context(), plan, c); err == nil {
+					t.Fatal("UTC result borrowed local-zone proof")
+				}
+			}
+		})
+	}
+}

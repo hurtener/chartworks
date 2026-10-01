@@ -131,6 +131,11 @@ type mysqlAnalyticalFixture struct {
 
 func newMySQLAnalyticalFixture(t *testing.T, timezones ...string) mysqlAnalyticalFixture {
 	t.Helper()
+	return newMySQLGroupedFixture(t, false, timezones...)
+}
+
+func newMySQLGroupedFixture(t *testing.T, grouped bool, timezones ...string) mysqlAnalyticalFixture {
+	t.Helper()
 	adminDSN := os.Getenv("CHARTWORKS_TEST_MYSQL_DSN")
 	if adminDSN == "" {
 		t.Skip("CHARTWORKS_TEST_MYSQL_DSN is not set")
@@ -173,6 +178,18 @@ func newMySQLAnalyticalFixture(t *testing.T, timezones ...string) mysqlAnalytica
 			t.Fatal("synthetic setup", err)
 		}
 	}
+	if grouped {
+		for _, statement := range []string{
+			"CREATE TABLE " + name + ".dimensions(id BIGINT PRIMARY KEY,group_key BIGINT NULL,created_at DATETIME(6) NULL)",
+			"INSERT INTO " + name + ".dimensions VALUES(1,10,'2026-01-01'),(2,10,'2026-01-15'),(3,20,'2026-02-01'),(4,NULL,NULL)",
+			"UPDATE " + name + ".sales SET amount=5 WHERE id=4",
+			"INSERT INTO " + name + ".items VALUES(5,9)",
+		} {
+			if _, err = admin.ExecContext(t.Context(), statement); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	cfg.User, cfg.Passwd, cfg.DBName = name, "SYNTHETIC_Analytical_Password9!", name
 	if len(timezones) > 0 {
 		if cfg.Params == nil {
@@ -183,13 +200,16 @@ func newMySQLAnalyticalFixture(t *testing.T, timezones ...string) mysqlAnalytica
 	settings := config.DefaultSources()
 	settings.Enabled = true
 	settings.Connections = []config.SourceConnection{{Dialect: "mysql", AllowInsecureLocal: true, Tenant: "tenant", ID: "warehouse", Version: "v1", ReadDSN: "env:MYSQL_ANALYTICAL_DSN", Relations: []config.SourceRelation{{Schema: name, Name: "sales", Columns: []string{"id", "amount", "category", "created_at", "created_timestamp"}}, {Schema: name, Name: "items", Columns: []string{"id", "quantity"}}}}}
+	if grouped {
+		settings.Connections[0].Relations = append(settings.Connections[0].Relations, config.SourceRelation{Schema: name, Name: "dimensions", Columns: []string{"id", "group_key", "created_at"}})
+	}
 	service, err := New(&cloudMemoryRepository{records: map[string]Record{}}, settings, func(k string) (string, bool) { return cfg.FormatDSN(), k == "MYSQL_ANALYTICAL_DSN" })
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(service.Close)
 	dataset := "ds:" + readexec.Hash([]string{"source", name, "sales"})[:32]
-	e, err := identity.FromVerified("tenant", "actor", "session", []string{"sources.write", "sources.read", "sources.query", "cw.tenant.write:tenant", "cw.source.read:source", "cw.source.write:source", "cw.source.query:source", "cw.execution_context.use:source:v1", "cw.dataset.query:" + dataset, "cw.dataset.query:ds:" + readexec.Hash([]string{"source", name, "items"})[:32]}, time.Now().Add(time.Hour), time.Now)
+	e, err := identity.FromVerified("tenant", "actor", "session", []string{"sources.write", "sources.read", "sources.query", "cw.tenant.write:tenant", "cw.source.read:source", "cw.source.write:source", "cw.source.query:source", "cw.execution_context.use:source:v1", "cw.dataset.query:" + dataset, "cw.dataset.query:ds:" + readexec.Hash([]string{"source", name, "items"})[:32], "cw.dataset.query:ds:" + readexec.Hash([]string{"source", name, "dimensions"})[:32]}, time.Now().Add(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ func analyticalJoinRelation(c AnalyticalContract, b Binding, base Relation) (Rel
 	if len(c.Joins) == 0 {
 		return base, nil
 	}
-	if (c.Version != AnalyticalIntentVersion && c.Version != AnalyticalGroupedPopulationsVersion) || len(c.Joins) > 3 {
+	if (c.Version != AnalyticalIntentVersion && (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion)) || len(c.Joins) > 3 {
 		return Relation{}, ErrBinding
 	}
 	relations := map[string]Relation{}

@@ -78,6 +78,10 @@ func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exe
 			}
 		}
 	}
+	if contract.Version >= exec.AnalyticalGroupedProgramsVersion {
+		words = calendarWordsWithoutOwnedYear(a, words)
+	}
+	protected = protected[:len(words)]
 	start := -1
 	for i, word := range words {
 		if err := ctx.Err(); err != nil {
@@ -151,7 +155,7 @@ func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exe
 	}
 	buckets := map[string]exec.AnalyticalBucket{}
 	columns, dimensions := map[string]bool{}, map[string]bool{}
-	compiler := analyticalCompiler{joins: contract.Version == exec.AnalyticalIntentVersion || contract.Version == exec.AnalyticalGroupedPopulationsVersion, ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
+	compiler := analyticalCompiler{joins: contract.Version == exec.AnalyticalIntentVersion || (contract.Version == exec.AnalyticalGroupedPopulationsVersion || contract.Version == exec.AnalyticalGroupedProgramsVersion), ctx: ctx, definition: def, binding: a.binding, dataset: contract.Dataset}
 	for start < len(words) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -180,6 +184,17 @@ func compileAnalyticalGrainPolicy(ctx context.Context, a admission, contract exe
 					return nil, analyticalUnsupported("analytical_grain_unsupported")
 				}
 			}
+		}
+		// v8 adds the uniquely reviewed bare-unit form (by month / por mes).
+		// Named dimensions retain precedence and retained v1-v7 replay is unchanged.
+		if calendar && contract.Version >= exec.AnalyticalGroupedProgramsVersion && len(choices) == 0 && grain == "" && calendarGrainWord(words[start]) != "" {
+			grain = calendarGrainWord(words[start])
+			var err error
+			choices, err = implicitCalendarDimension(a, contract, terms, grain)
+			if err != nil {
+				return nil, err
+			}
+			width = 1
 		}
 		if len(choices) == 0 && len(dimensions) == 0 {
 			return nil, nil

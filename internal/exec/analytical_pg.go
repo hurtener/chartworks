@@ -98,6 +98,12 @@ func (a *analyticalChecker) query(q map[string]any, expected map[string]int) err
 			a.global[key] = true
 		}
 	}
+	if err := a.checkGroupedDomain(q); err != nil {
+		return err
+	}
+	if err := a.checkOrdinaryGroupDomain(q); err != nil {
+		return err
+	}
 	if err := a.checkQueryPopulation(q); err != nil {
 		return err
 	}

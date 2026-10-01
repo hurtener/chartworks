@@ -143,6 +143,7 @@ type SessionRecord struct {
 // QueryRecord contains protected generation and result metadata. It is never
 // returned directly from a public route; Response redacts SQL by default.
 type QueryRecord struct {
+	IntentReview         *IntentReviewEvidence        `json:"intent_review,omitempty"`
 	GenerationResolution *GenerationResolution        `json:"generation_resolution,omitempty"`
 	GenerationPending    *GenerationPending           `json:"generation_pending,omitempty"`
 	AnalyticalVersion    int                          `json:"analytical_version,omitempty"`
@@ -199,6 +200,7 @@ type FeedbackRecord struct {
 // produced it. A matching display name or tenant is never enough to make an
 // example applicable to a later generation.
 type ExampleOrigin struct {
+	Requalification     *ExampleRequalification      `json:"requalification,omitempty"`
 	BindingPolicy       string                       `json:"binding_policy,omitempty"`
 	SchemaVersion       int                          `json:"schema_version"`
 	Locale              nlq.Language                 `json:"locale"`
@@ -226,13 +228,14 @@ type ExampleSelection struct {
 // ExampleSelectionEvidence is frozen with the query. Replaying or running a
 // retained plan never reselects examples against mutable learning state.
 type ExampleSelectionEvidence struct {
-	Usage          *ExamplePromptUsage `json:"usage,omitempty"`
-	SchemaVersion  int                 `json:"schema_version,omitempty"`
-	PolicyVersion  string              `json:"policy_version,omitempty"`
-	Selected       []ExampleSelection  `json:"selected,omitempty"`
-	Excluded       []ExampleSelection  `json:"excluded,omitempty"`
-	ShadowBaseline []ExampleSelection  `json:"shadow_baseline,omitempty"`
-	Receipt        gateway.Receipt     `json:"receipt,omitempty"`
+	Eligibility    *ExampleEligibilityEvidence `json:"eligibility,omitempty"`
+	Usage          *ExamplePromptUsage         `json:"usage,omitempty"`
+	SchemaVersion  int                         `json:"schema_version,omitempty"`
+	PolicyVersion  string                      `json:"policy_version,omitempty"`
+	Selected       []ExampleSelection          `json:"selected,omitempty"`
+	Excluded       []ExampleSelection          `json:"excluded,omitempty"`
+	ShadowBaseline []ExampleSelection          `json:"shadow_baseline,omitempty"`
+	Receipt        gateway.Receipt             `json:"receipt,omitempty"`
 }
 
 // ExampleRecord is the DB-first learning projection. State changes are
@@ -324,7 +327,8 @@ type RunRequest struct {
 
 // RefineRequest creates a child query in the same signed session.
 type RefineRequest struct {
-	QueryID string `json:"query_id"`
+	IntentReview *LegacyIntentReview `json:"intent_review,omitempty"`
+	QueryID      string              `json:"query_id"`
 	QuestionRequest
 	ParameterEdits []ParameterEdit `json:"parameter_edits,omitempty"`
 	ReferenceEdits []ReferenceEdit `json:"reference_edits,omitempty"`

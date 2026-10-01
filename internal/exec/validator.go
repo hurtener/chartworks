@@ -185,15 +185,13 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return Plan{}, ErrUnsafe
 	}
-	parameters := inspection.Parameters
-	if parameters != len(r.Parameters) {
-		// The fallback compensates for omitted markers; it cannot erase markers
-		// already reported by the native parser. In particular, an unsupported
-		// fallback spelling must not turn a missing binding into a zero count.
-		parameters, err = warehouseParameterCount(ctx, r.SQL, binding.Dialect)
-		if parameters < inspection.Parameters {
-			return Plan{}, ErrBinding
-		}
+	// Corroborate every accepted statement, including the zero/zero case:
+	// native structural inspection can omit markers nested under an expression.
+	// The bounded scanner cannot erase any marker already reported by native
+	// inspection, and quoted text never supplies a business binding.
+	parameters, occurrences, err := warehouseParameterEvidence(ctx, r.SQL, binding.Dialect)
+	if occurrences < inspection.Parameters {
+		return Plan{}, ErrBinding
 	}
 	if err != nil || parameters != len(r.Parameters) || len(inspection.Outputs) < 1 || len(inspection.Outputs) > 256 {
 		return Plan{}, ErrBinding
@@ -265,9 +263,14 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 // read trees (such as LIKE ... ESCAPE). Its result cannot reduce the native
 // inspection count and never authorizes SQL on its own.
 func warehouseParameterCount(ctx context.Context, statement, dialect string) (int, error) {
+	n, _, err := warehouseParameterEvidence(ctx, statement, dialect)
+	return n, err
+}
+
+func warehouseParameterEvidence(ctx context.Context, statement, dialect string) (int, int, error) {
 	tokens, err := businessScan(ctx, statement, true)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	seen := map[int]bool{}
 	positional := 0
@@ -278,16 +281,16 @@ func warehouseParameterCount(ctx context.Context, statement, dialect string) (in
 		positional++
 		index, err := businessParameterIndex(token.text, dialect, positional)
 		if err != nil || index < 1 || index > 64 {
-			return 0, ErrBinding
+			return 0, 0, ErrBinding
 		}
 		seen[index] = true
 	}
 	for i := 1; i <= len(seen); i++ {
 		if !seen[i] {
-			return 0, ErrBinding
+			return 0, 0, ErrBinding
 		}
 	}
-	return len(seen), nil
+	return len(seen), positional, nil
 }
 
 func warehouseRelationMatches(binding Binding, relation Relation, name string, allowBare bool) bool {

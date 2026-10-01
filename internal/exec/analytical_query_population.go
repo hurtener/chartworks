@@ -81,15 +81,15 @@ func validateAnalyticalQueryPopulation(ctx context.Context, c AnalyticalContract
 	if c.QueryPopulation == nil {
 		return nil
 	}
-	if (c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion && (c.Version != AnalyticalIntentVersion && c.Version != AnalyticalGroupedPopulationsVersion)) || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
+	if (c.Version != AnalyticalQueryPopulationVersion && c.Version != AnalyticalGroupingVersion && (c.Version != AnalyticalIntentVersion && (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion))) || c.QueryPopulation.Policy != AnalyticalQueryPopulationPolicy {
 		return ErrBinding
 	}
-	if (c.Version == AnalyticalIntentVersion || c.Version == AnalyticalGroupedPopulationsVersion) && c.Intent != nil && len(c.QueryPopulation.Constraints) == 0 {
+	if (c.Version == AnalyticalIntentVersion || (c.Version == AnalyticalGroupedPopulationsVersion || c.Version == AnalyticalGroupedProgramsVersion)) && c.Intent != nil && len(c.QueryPopulation.Constraints) == 0 {
 		return ctx.Err()
 	}
 	var canonical *AnalyticalQueryPopulation
 	var err error
-	if c.Version == AnalyticalGroupedPopulationsVersion {
+	if c.Version == AnalyticalGroupedPopulationsVersion || c.Version == AnalyticalGroupedProgramsVersion {
 		ids := []string{c.Dataset}
 		seen := map[string]bool{c.Dataset: true}
 		for _, j := range c.Joins {
@@ -137,6 +137,15 @@ func (a *analyticalChecker) checkQueryPopulation(q map[string]any) error {
 		return err
 	}
 	for _, clause := range []string{"whereClause", "havingClause"} {
+		if clause == "whereClause" && a.ordinaryDomainProved {
+			continue
+		}
+		if clause == "whereClause" && a.groupedDomainProved {
+			if len(a.queryPopulation.Constraints) != 0 {
+				return ErrBinding
+			}
+			continue
+		}
 		if err := a.matchPopulationClause(q[clause], expected[clause], bound.Parameters, clause == "whereClause"); err != nil {
 			return err
 		}

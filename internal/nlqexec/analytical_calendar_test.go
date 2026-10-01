@@ -38,7 +38,7 @@ func TestSQLRecoveryCalendarCompilerReviewedBucket(t *testing.T) {
 			a := calendarAdmission(tc.question, "timestamptz")
 			before := exec.Hash(a.route)
 			c, err := compileAnalytical(context.Background(), a)
-			if err != nil || c == nil || c.Version != exec.AnalyticalGroupedPopulationsVersion || c.Grain == nil || c.Grain.Policy != exec.AnalyticalCalendarPolicy || len(c.Grain.Buckets) != 1 || len(c.Grain.Columns) != tc.columns {
+			if err != nil || c == nil || c.Version != exec.AnalyticalGroupedProgramsVersion || c.Grain == nil || c.Grain.Policy != exec.AnalyticalCalendarPolicy || len(c.Grain.Buckets) != 1 || len(c.Grain.Columns) != tc.columns {
 				t.Fatal("compiled bucket", err)
 			}
 			b := c.Grain.Buckets[0]
@@ -85,7 +85,7 @@ func TestSQLRecoveryCalendarCompilerRefusesUnreviewedPolicy(t *testing.T) {
 }
 
 func TestSQLRecoveryCalendarCompilerUnknownAndLiteralIntent(t *testing.T) {
-	for _, q := range []string{"Revenue by month", "Revenue filtered by month of Order date", "Revenue sin agrupar por mes de fecha de pedido", "Revenue for “by month of Order date”", "Revenue not grouped by month of Order date"} {
+	for _, q := range []string{"Revenue filtered by month of Order date", "Revenue sin agrupar por mes de fecha de pedido", "Revenue for “by month of Order date”", "Revenue not grouped by month of Order date"} {
 		c, err := compileAnalytical(context.Background(), calendarAdmission(q, "timestamptz"))
 		if err != nil || c == nil || c.Grain != nil {
 			t.Fatal("unknown/literal/negative became calendar", q, err)

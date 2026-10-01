@@ -36,6 +36,7 @@ type Dataset struct {
 
 // Definition is an immutable public semantic topic payload.
 type Definition struct {
+	GroupDomain           *semantics.GroupDomainPolicy       `json:"group_domain,omitempty"`
 	GroupedPopulation     *semantics.GroupedPopulationPolicy `json:"grouped_population,omitempty"`
 	SchemaVersion         int                                `json:"schema_version"`
 	Topic                 string                             `json:"topic"`
@@ -54,7 +55,7 @@ type Definition struct {
 
 // Project removes private profile provenance from a compiled pack.
 func Project(p semantics.TopicPack) Definition {
-	out := Definition{GroupedPopulation: p.GroupedPopulation, SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, RelationshipDecisions: p.RelationshipDecisions, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved}
+	out := Definition{GroupDomain: p.GroupDomain, GroupedPopulation: p.GroupedPopulation, SchemaVersion: p.SchemaVersion, Topic: p.Topic, Version: p.Version, Name: p.Name, Description: p.Description, Measures: p.Measures, Dimensions: p.Dimensions, KPIs: p.KPIs, Joins: p.Joins, RelationshipDecisions: p.RelationshipDecisions, CanonicalEntities: p.CanonicalEntities, Unresolved: p.Unresolved}
 	for _, d := range p.Datasets {
 		out.Datasets = append(out.Datasets, Dataset{d.ID, d.Name, Binding{d.Source.Source, d.Source.Context, d.ID, d.Source.SourceRevision}, d.Columns})
 	}

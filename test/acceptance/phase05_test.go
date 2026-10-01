@@ -40,7 +40,7 @@ func TestPhase05(t *testing.T) {
 				t.Fatalf("actual SDK role %s: %v; routes %s", role, err, f.recordString())
 			}
 		}
-		if f.requests.Load() != 10 {
+		if f.requests.Load() != int64(len(config.RoleNames())) {
 			t.Fatalf("unexpected SDK request count %d", f.requests.Load())
 		}
 		f.mu.Lock()

@@ -30,7 +30,7 @@ Where a supported custom endpoint is necessary, configure it within Bifrost and 
 
 ## Role configuration and lifecycle
 
-The closed role set is `embedding`, `enhance`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Every role resolves its provider, model, endpoint/credential reference, timeout and input/output limits independently. Roles may share one resolved provider client when that full configuration matches; never force embedding or reranking to follow the completion model's provider.
+The closed role set is `embedding`, `enhance`, `topic_review`, `sqlgen`, `sqlfix`, `clarify`, `pipeline_draft`, `profile_summary`, `rerank`, `narrative`, `visual_rank`. Every role resolves its provider, model, endpoint/credential reference, timeout and input/output limits independently. Roles may share one resolved provider client when that full configuration matches; never force embedding or reranking to follow the completion model's provider.
 
 `gateway.driver` is `bifrost` in production. `gateway.bifrost.providers` contains configured provider entries with secret references; `gateway.roles` maps roles to those entries and their model/limits. Optional roles declare `enabled` and an explicit failure policy. Exact input-type/preprocessing options are part of the embedding identity. One canonical config decoder maps the reference excerpt; do not keep competing flat and nested aliases.
 
@@ -88,3 +88,13 @@ envelope receipts separately from reported usage, and rejects unregistered runti
 model overrides when window enforcement is enabled. No provider capacity is guessed.
 This extends the existing byte-bound operation reservation; it does not replace
 semantic-tier tokenization or introduce a second inference transport.
+
+### Optional whole-topic review
+
+`topic_review` is an independently routed structured role, disabled unless explicitly
+configured with `enabled: true`. New bounded topic enhancement preflights this role
+before any model work and fails closed when it is unavailable. Its complete-candidate
+advisory uses an independent one-call, 64K-token, 30-second operation allowance and
+its own configured output cap. It is not a fallback to `enhance`. Existing manual
+and legacy draft review/publication remain available without this role. The reference
+configuration leaves it disabled so an upgrade does not silently add model spend.

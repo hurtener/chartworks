@@ -329,7 +329,7 @@ func dependencyGraphPack(pack TopicPack) map[Reference][]Reference {
 		graph[Reference{Kind: KindKPI, ID: kpi.ID}] = kpi.Inputs
 	}
 	for _, join := range pack.Joins {
-		graph[Reference{Kind: KindJoin, ID: join.ID}] = []Reference{join.Left, join.Right}
+		graph[Reference{Kind: KindJoin, ID: join.ID}] = join.References()
 	}
 	return graph
 }

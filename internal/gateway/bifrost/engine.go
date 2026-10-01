@@ -21,7 +21,9 @@ import (
 // The application composition root uses zero values; no request or JSON config can enable it.
 type TransportOptions struct {
 	AllowPrivateNetwork bool
-	CACertPEM           string
+	// EnvironmentProxy uses the existing trusted host proxy only for fixed official OpenRouter destinations.
+	EnvironmentProxy bool
+	CACertPEM        string
 }
 type route struct {
 	client           *core.Bifrost
@@ -76,6 +78,10 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 		if !used[p.Name] {
 			continue
 		}
+		if transport.EnvironmentProxy && !environmentProxyDestination(p, transport) {
+			e.Close()
+			return nil, gateway.ErrInput
+		}
 		secret, ok := lookup(strings.TrimPrefix(p.APIKey, "env:"))
 		if !ok || secret == "" || len(secret) > 8192 {
 			e.Close()
@@ -102,12 +108,12 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 				}
 			}
 		}
-		fingerprint, _ := json.Marshal([]any{native, endpoint, secret, transport.CACertPEM, transport.AllowPrivateNetwork, seconds, cfg.Limits.Concurrency})
+		fingerprint, _ := json.Marshal([]any{native, endpoint, secret, transport.CACertPEM, transport.AllowPrivateNetwork, transport.EnvironmentProxy, seconds, cfg.Limits.Concurrency})
 		hash := sha256.Sum256(fingerprint)
 		key := hex.EncodeToString(hash[:])
 		client := shared[key]
 		if client == nil {
-			a := &account{provider: native, key: secret, endpoint: endpoint, ca: transport.CACertPEM, private: transport.AllowPrivateNetwork, concurrency: cfg.Limits.Concurrency, timeout: seconds, openRouterRerank: openRouterRerank}
+			a := &account{provider: native, key: secret, endpoint: endpoint, ca: transport.CACertPEM, private: transport.AllowPrivateNetwork, concurrency: cfg.Limits.Concurrency, timeout: seconds, openRouterRerank: openRouterRerank, environmentProxy: transport.EnvironmentProxy}
 			var err error
 			client, err = core.Init(lifetime, schemas.BifrostConfig{Account: a, Logger: quietLogger{}, InitialPoolSize: cfg.Limits.Concurrency, DropExcessRequests: true})
 			if err != nil {
@@ -191,6 +197,14 @@ func (e *Engine) enter(call gateway.Call, b *gateway.Budget) (func(), error) {
 		e.wg.Done()
 	}, nil
 }
+
+// RoleEnabled reports configured role availability without provider I/O. Optional
+// authoring review is admitted before any earlier generation call can spend.
+func (e *Engine) RoleEnabled(name string) bool {
+	_, _, err := e.role(name)
+	return err == nil
+}
+
 func (e *Engine) role(name string) (config.Role, route, error) {
 	r, ok := e.cfg.Roles[name]
 	if !ok || config.OptionalRole(name) && !r.Enabled {

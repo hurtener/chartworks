@@ -8,7 +8,12 @@ import (
 )
 
 // New plans consume only the in-process router's protected predicate seal.
-func compileCurrentAnalytical(ctx context.Context, a admission) (*exec.AnalyticalContract, error) {
+func compileCurrentAnalytical(ctx context.Context, a admission) (contract *exec.AnalyticalContract, err error) {
+	defer func() {
+		if isGroupedDomainReview(err) {
+			err = ordinaryGroupDomainReview(a.route.Request.Locale)
+		}
+	}()
 	if !hasActiveBusinessEvidence(a.route) {
 		return compileAnalyticalVersion(ctx, a, analyticalRecordVersion)
 	}
@@ -40,7 +45,7 @@ func compileQueryPopulation(ctx context.Context, a admission, contract *exec.Ana
 		return exec.ErrBinding
 	}
 	var err error
-	if contract.Version == exec.AnalyticalGroupedPopulationsVersion {
+	if contract.Version == exec.AnalyticalGroupedPopulationsVersion || contract.Version == exec.AnalyticalGroupedProgramsVersion {
 		ids := make([]string, 0, len(a.relationScope))
 		for _, scope := range a.relationScope {
 			ids = append(ids, scope.Dataset)
@@ -68,6 +73,12 @@ func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q
 func analyticalPopulationGuidance(contract *exec.AnalyticalContract) string {
 	if contract == nil || contract.QueryPopulation == nil {
 		return ""
+	}
+	if contract.GroupDomain != nil {
+		return analyticalGroupDomainGuidance(contract)
+	}
+	if contract.Version == exec.AnalyticalGroupedProgramsVersion && contract.GroupedPopulations != nil {
+		return " Query-owned predicates are supplied and verified by the service from typed reviewed constraints; do not invent WHERE/HAVING restrictions or inline private values. Each lane has a separately reviewed group-domain policy: follow its exact WHERE placement and retain every aggregate's own FILTER/CASE population. Raw-source groups and qualifying-population groups are not interchangeable."
 	}
 	return " Query-wide predicates are supplied and verified by the service from typed reviewed constraints. Do not invent extra WHERE or HAVING restrictions or inline private values. Keep metric-specific filters on their own aggregates; only a reviewed filter shared by every selected metric may be moved to WHERE. The service binds the query-wide scalar/time/aggregate predicates after generation."
 }

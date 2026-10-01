@@ -38,6 +38,16 @@ func (n *warehouseAnalyticalNormalizer) calendarColumn(node any) (Column, bool) 
 	return out, matches == 1
 }
 func (n *warehouseAnalyticalNormalizer) canonicalCalendar(source any, unit, timezone string, depth int) (any, error) {
+	if field, ok := n.mysqlUTCInstant(source); ok {
+		if timezone != "" {
+			return n.unsupported()
+		}
+		x, err := n.expr(field, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"WarehouseCalendarBucket": map[string]any{"source": x, "grain": unit, "timezone": "UTC", "representation": "civil"}}, nil
+	}
 	col, ok := n.calendarColumn(source)
 	if !ok {
 		return n.unsupported()
@@ -157,6 +167,9 @@ func (n *warehouseAnalyticalNormalizer) mysqlCalendarCast(b map[string]any, dept
 	if err != nil {
 		return nil, true, err
 	}
+	if object(object(x)["WarehouseCalendarBucket"]) != nil {
+		return x, true, nil
+	}
 	return map[string]any{"TypeCast": map[string]any{"arg": x, "typeName": map[string]any{"TypeName": map[string]any{"names": warehouseNames("date")}}}}, true, nil
 }
 
@@ -223,6 +236,13 @@ func (n *warehouseAnalyticalNormalizer) mysqlQuarter(node any, depth int) (any, 
 	same, ok := warehouseExtract(offset["left"], "quarter")
 	if !ok {
 		return fail()
+	}
+	if _, ok := n.mysqlUTCInstant(source); ok {
+		if Hash(source) != Hash(same) {
+			return fail()
+		}
+		x, err := n.canonicalCalendar(source, "quarter", "", depth)
+		return x, true, err
 	}
 	first, err := n.expr(source, depth+1)
 	if err != nil {

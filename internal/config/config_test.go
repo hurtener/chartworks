@@ -38,7 +38,7 @@ func TestConfigurationRules(t *testing.T) {
 	v := good()
 	v.Gateway.Bifrost.Providers = []Provider{{Name: "remote", Type: "openrouter", APIKey: "env:KEY", BaseURL: "https://provider.example"}}
 	v.Gateway.Bifrost.Providers = append(v.Gateway.Bifrost.Providers, Provider{Name: "reranker", Type: "cohere", APIKey: "env:KEY"})
-	for _, name := range []string{"embedding", "enhance", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank"} {
+	for _, name := range []string{"embedding", "enhance", "topic_review", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank"} {
 		v.Gateway.Roles[name] = Role{Provider: "remote", Model: "model", Timeout: Duration(time.Second), Dimensions: 1024, MaxBatchItems: 64, MaxBatchBytes: 1000, MaxCandidates: 64, MaxTokens: 100, OnFailure: ""}
 	}
 	rr := v.Gateway.Roles["rerank"]
@@ -86,7 +86,7 @@ func TestConfigurationRules(t *testing.T) {
 	copy := cfg.Values()
 	copy.Gateway.Bifrost.Providers[0].Name = "changed"
 	delete(copy.Gateway.Roles, "embedding")
-	if cfg.Values().Gateway.Bifrost.Providers[0].Name != "remote" || len(cfg.Values().Gateway.Roles) != 10 {
+	if cfg.Values().Gateway.Bifrost.Providers[0].Name != "remote" || len(cfg.Values().Gateway.Roles) != len(RoleNames()) {
 		t.Fatal("shared configuration mutated")
 	}
 }

@@ -67,3 +67,36 @@ func TestSQLRecoveryGroupedPolicyPortableRemapping(t *testing.T) {
 		t.Fatal("import mutated input")
 	}
 }
+
+func TestSQLRecoveryGroupedDomainReviewAndPortability(t *testing.T) {
+	base, mapping, _, bindings := portableFixture(t)
+	p := base.Pack()
+	p.GroupedPopulation = &GroupedPopulationPolicy{Policy: GroupedPopulationUnionPolicy, Datasets: []string{"customers", "orders"}, GroupDomains: []GroupedPopulationDomain{{Dataset: "customers", Domain: "raw_source_groups"}, {Dataset: "orders", Domain: "qualifying_population"}}}
+	model, err := Compile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.GroupedPopulation.GroupDomains[0].Domain = "mutated"
+	if model.Pack().GroupedPopulation.GroupDomains[0].Domain != "raw_source_groups" {
+		t.Fatal("domain alias mutated reviewed model")
+	}
+	exported, err := ExportPortable(model, mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported, err := ImportDraftCandidate(exported, bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []GroupedPopulationDomain{{Dataset: "buyers_data", Domain: "raw_source_groups"}, {Dataset: "purchases_data", Domain: "qualifying_population"}}
+	if !reflect.DeepEqual(imported.Pack().GroupedPopulation.GroupDomains, want) {
+		t.Fatal("domain mapping lost exact fact origin")
+	}
+	for _, domains := range [][]GroupedPopulationDomain{{{Dataset: "orders", Domain: "qualifying_population"}}, {{Dataset: "customers", Domain: "zero_fill"}, {Dataset: "orders", Domain: "qualifying_population"}}, {{Dataset: "customers", Domain: "raw_source_groups"}, {Dataset: "customers", Domain: "qualifying_population"}}} {
+		p = model.Pack()
+		p.GroupedPopulation.GroupDomains = domains
+		if _, err := Compile(p); err == nil {
+			t.Fatal("incomplete, foreign or unknown domain accepted")
+		}
+	}
+}

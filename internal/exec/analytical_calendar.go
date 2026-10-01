@@ -99,6 +99,9 @@ func calendarLiteral(node any) (string, bool) {
 // are checked. EXTRACT(month), display strings and session-zone coercions do not
 // acquire bucket equivalence. It runs only under the new versioned grain policy.
 func (a *analyticalChecker) calendarTerm(node any, depth int) (analyticalTerm, bool, error) {
+	if term, handled, err := a.warehouseCalendarTerm(node); handled {
+		return term, true, err
+	}
 	bad := func() (analyticalTerm, bool, error) {
 		return analyticalTerm{}, true, analyticalFailure("analytical_grain_unsupported", true)
 	}

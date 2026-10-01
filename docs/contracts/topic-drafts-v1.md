@@ -130,3 +130,99 @@ persists its cursor and gateway receipt with the resulting immutable draft revis
 and retains unresolved outcomes through publication projection and neutral
 portability. Phase 16 execution/replay/shadow/provider quality remains separately
 owned. Live provider quality is not inferred from recorded gateway fixtures.
+
+## Evidence-bound authoring and whole-candidate advisory
+
+Enhancement checks the complete topic dependency reach, active profile digests,
+and current discovered source revision/schema before any gateway request. Its
+mandatory context includes the exact business definition, existing semantic
+entities/aliases/temporal policies/grouped-population policy, confirmed and proposed
+relationships (including composite keys), and profile origins, policy digests,
+observation time and sampling limits. Only aggregate observed/null/distinct counts
+are supplied; reviewed non-sensitive columns may also carry closed type-family
+counts. Raw rows, ranges, latest values and optional profile-summary prose are not
+supplied. Governed values and filter literals are withheld unless they match an explicitly
+admitted non-sensitive vocabulary; filter structure remains visible. These omissions require human adjudication and do not
+silently remove filters or governed values from the retained candidate.
+
+Context is canonical, digest-bound and limited to 1,024 columns and 128 KiB per
+model input. Exceeding a mandatory bound fails before that call rather than
+truncating the candidate. Relationship proposals may cross the 32-column page
+boundary through the complete authorized column catalog; one endpoint must be in
+the current page. New relationship provenance is assigned by the service to the
+exact authoring-context digest. Proposals do not become executable joins, and a
+sample never proves key uniqueness or grants authority.
+
+The final page performs a bounded `topic_review` gateway call against the entire
+new candidate. A closed advisory binds the exact candidate/context/coverage digests
+and lists every reviewed entity. Findings cover ambiguity, aliases, grain,
+temporal coherence, unresolved relationships/columns and incomplete evidence.
+Deterministic collision, missing-definition, unresolved and redaction checks are
+retained alongside model findings. The model cannot return edits or publication
+approval; even `no_findings` is not a correctness proof. Any provider, output,
+coverage, source-drift or budget failure leaves the prior draft/checkpoint intact.
+The optional, independently routed `topic_review` role must be explicitly enabled;
+enhancement preflights it before any model call and fails closed when disabled.
+The reference configuration leaves it disabled. Each generation/review call has a one-call, 64K-token, 30-second cap; the final page
+therefore permits at most two calls, 128K reserved tokens and 60 seconds of model
+work, still subject to request and bearer expiry.
+
+Migration 067 retains the input digest and advisory atomically with the immutable
+generation checkpoint. New generated completions require a matching advisory for
+explicit human approval; incomplete generated checkpoints cannot be approved.
+Manual and legacy drafts retain their explicit human review policy without
+fabricated model evidence. A later ordinary edit is a new manual draft; a prior
+report never becomes evidence for its changed digest. Human review and publication
+remain separate signed operations. SQL-example feedback does not supply topic
+meaning or authorize semantic changes.
+
+`TestAuthoringContext*`, `TestAuthoringRelationshipCatalogCrossesPagesWithoutWidening`,
+`TestEnhancementPreservesWithheldProtectedMeaning`, `TestWholeTopicReview*`, and
+`TestPhase15/AC05` exercise the bounded transport and lifecycle with synthetic
+profiles and recorded gateway responses. These checks do not establish live model
+quality or end-to-end numerical SQL correctness.
+
+Generated advisories also require every pinned profile to remain the active head
+with its exact digest, even when source revision and schema are unchanged. Approval
+and pre-model publication enforce that condition; publication repeats it under
+profile-head share locks through commit. Historical report reads remain immutable.
+After profile replacement, an explicit rebind and fresh complete generation review
+produce new evidence; old review receipts cannot publish the stale generated draft.
+
+## Explicit authoring vocabulary and population proposals
+
+`EnhanceRequest.vocabulary` is optional on the existing HTTP/MCP/SDK enhancement
+operation. The Go SDK exposes `TopicAuthoringValue`. Each entry contains `id`, an
+exact column `field`, the complete matching `origin` source/profile reference,
+`kind: text`, `value`, bounded aliases, `sensitivity: non_sensitive`, and
+`nulls: exclude`. At most 32 entries and 32 KiB are admitted. Values are at most
+256 UTF-8 bytes; identifiers, aliases, duplicate or ambiguous spellings, source
+origin and text-column types are checked. The referenced column must already be explicitly classified non-sensitive in the
+draft; unknown and sensitive classifications are rejected. The existing CAS draft
+save supplies a separate, explicit author privacy annotation. A value-only assertion
+never silently reclassifies the entire field. Source profiles currently have no separate sensitivity
+classification; profile range permission is never reused as permission to disclose
+sampled values. Inputs are explicit author assertions, not observed membership.
+
+The first generation step seals a canonical catalog in migration 070's immutable
+checkpoint. Omitted catalogs on later pages inherit it; a supplied different
+catalog conflicts before any model call. Source/profile drift still fails admission
+and generated review/publication. Existing requests without a catalog remain valid,
+but no literal population proposal can be resolved without an authorized mapping.
+
+The model may return `filter_proposals` selecting vocabulary IDs for a current-step
+measure and `value_proposals` selecting IDs for a current categorical dimension.
+Only same-dataset text `eq` or finite `in` with NULL exclusion are supported. The
+server resolves strings and seals `author_input` provenance; model-supplied SQL,
+new strings, unknown IDs, cross-field mixtures and changed NULL semantics are not
+admitted. Existing protected filters and values cannot be silently overwritten.
+Explicitly admitted values can reach whole-topic review; other literals remain
+withheld and generate an incomplete-evidence finding.
+
+An optional `group_domain` proposal uses only `metric-group-domain-v1` with
+`raw_source_groups` or `qualifying_population`. Existing policy cannot be changed
+by enhancement. Choosing the domain needs business meaning; the model's proposal
+is still private material requiring exact whole-topic review and explicit human
+publication approval. Neither a vocabulary entry nor a successful SQL run approves
+topic meaning. Schema/profile-only and vocabulary-assisted generated evaluations
+are separate corpus conditions; expected numeric results are not authoring input.

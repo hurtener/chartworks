@@ -45,6 +45,9 @@ func compileCalendarBucket(d grainDimension, col semantics.Column, grain string,
 	case "date", "civil":
 	case "instant":
 		b.Timezone = d.temporal.Timezone
+		if dialect == "mysql" && b.Timezone != "UTC" {
+			return bad()
+		}
 		if b.Timezone == "" || b.Timezone == "Local" || len(b.Timezone) > 128 {
 			return bad()
 		}

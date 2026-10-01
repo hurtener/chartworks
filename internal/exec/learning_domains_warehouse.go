@@ -323,7 +323,7 @@ func (p *learningDomainProof) warehouseWalk(v any, scope learningDomainScope, de
 }
 
 func (p *learningDomainProof) namedMarkers() bool {
-	return p.binding.Dialect == "sqlserver" || p.binding.Dialect == "bigquery"
+	return p.binding.Dialect == "sqlserver" || p.binding.Dialect == "bigquery" || p.binding.Dialect == "databricks"
 }
 func (p *learningDomainProof) warehouseNamedParameter(v any) (int, bool) {
 	if !p.namedMarkers() {
@@ -334,6 +334,10 @@ func (p *learningDomainProof) warehouseNamedParameter(v any) (int, bool) {
 		return 0, false
 	}
 	name := ""
+	prefix, style := "@p", "At"
+	if p.binding.Dialect == "databricks" {
+		prefix, style = ":p", "Colon"
+	}
 	if c := object(m["column"]); c != nil {
 		n := object(c["name"])
 		if c["table"] != nil || truth(n["quoted"]) || truth(c["join_mark"]) {
@@ -341,16 +345,16 @@ func (p *learningDomainProof) warehouseNamedParameter(v any) (int, bool) {
 		}
 		name = text(n["name"])
 	} else if c := object(m["parameter"]); c != nil {
-		if !warehouseAnalyticalFields(c, "name", "index", "style") || text(c["style"]) != "At" || c["index"] != nil {
+		if !warehouseAnalyticalFields(c, "name", "index", "style") || text(c["style"]) != style || c["index"] != nil {
 			return 0, false
 		}
-		name = "@" + text(c["name"])
+		name = prefix[:1] + text(c["name"])
 	}
-	if !strings.HasPrefix(name, "@p") {
+	if !strings.HasPrefix(name, prefix) {
 		return 0, false
 	}
-	n, err := strconv.Atoi(strings.TrimPrefix(name, "@p"))
-	if err != nil || n < 1 || n > 64 || name != "@p"+strconv.Itoa(n) {
+	n, err := strconv.Atoi(strings.TrimPrefix(name, prefix))
+	if err != nil || n < 1 || n > 64 || name != prefix+strconv.Itoa(n) {
 		return 0, false
 	}
 	return n, true

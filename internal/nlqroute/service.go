@@ -1071,19 +1071,25 @@ func confirmJoins(admitted []admittedTopic, choices []JoinChoice) *Clarification
 }
 
 type joinRelationship struct {
-	left, right semantics.Reference
+	keys        string
 	typeName    semantics.JoinType
 	cardinality semantics.Cardinality
 }
 
 func normalizedRelationship(join semantics.Join) joinRelationship {
-	left, right := join.Left, join.Right
-	// Inner equality is symmetric. A left join is directional even at one-to-one
-	// cardinality because it retains unmatched rows from its left endpoint.
-	if join.Type == semantics.JoinInner && referenceID(right) < referenceID(left) {
-		left, right = right, left
+	pairs := join.KeyPairs()
+	keys := make([]string, 0, len(pairs))
+	reverse := join.Type == semantics.JoinInner && join.Right.Dataset < join.Left.Dataset
+	for _, p := range pairs {
+		left, right := p.Left, p.Right
+		if reverse {
+			left, right = right, left
+		}
+		raw, _ := json.Marshal(semantics.JoinKeyPair{Left: left, Right: right})
+		keys = append(keys, string(raw))
 	}
-	return joinRelationship{left: left, right: right, typeName: join.Type, cardinality: join.Cardinality}
+	sort.Strings(keys)
+	return joinRelationship{keys: readexec.Hash(keys), typeName: join.Type, cardinality: join.Cardinality}
 }
 
 func sameJoinSource(def topics.Definition, join semantics.Join) bool {

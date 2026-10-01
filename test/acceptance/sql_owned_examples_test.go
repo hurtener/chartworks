@@ -121,7 +121,10 @@ func TestSQLRecoveryOwnedExamplePrivateLifecycleAcceptance(t *testing.T) {
 			if err != nil || unbound.ExampleSelection.Usage != nil && len(unbound.ExampleSelection.Usage.Used) != 0 {
 				t.Fatal("owned template used without current predicates", err)
 			}
-			found := false
+			// The production reader records its eligibility fence before limiting
+			// candidates, so excluded historical IDs need not be fetched.
+			eligibility := unbound.ExampleSelection.Eligibility
+			found := eligibility != nil && eligibility.Version == "current-example-eligibility-v1" && eligibility.OriginDigest != "" && !eligibility.CurrentOwnedPredicates
 			for _, excluded := range unbound.ExampleSelection.Excluded {
 				if excluded.ExampleID == active.ID && excluded.Reason == "current_owned_predicates_required" {
 					found = true

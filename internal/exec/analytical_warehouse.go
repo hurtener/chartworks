@@ -95,6 +95,9 @@ func (n *warehouseAnalyticalNormalizer) unsupported() (map[string]any, error) {
 	return nil, analyticalFailure("analytical_shape_unsupported", true)
 }
 func (n *warehouseAnalyticalNormalizer) selectNode(root map[string]any) (map[string]any, error) {
+	if union := object(root["union"]); len(root) == 1 && union != nil {
+		return n.unionNode(union)
+	}
 	s := object(root["select"])
 	if len(root) != 1 || !warehouseAnalyticalFields(s, "expressions", "from", "joins", "where_clause", "group_by", "having", "order_by", "limit", "offset", "fetch", "top", "with") {
 		return n.unsupported()
@@ -435,6 +438,19 @@ func (n *warehouseAnalyticalNormalizer) expr(node any, depth int) (any, error) {
 	}
 	child := func(v any) (any, error) { return n.expr(v, depth+1) }
 	switch kind {
+	case "null_safe_eq":
+		if !warehouseAnalyticalFields(b, "left", "right") {
+			return n.unsupported()
+		}
+		left, err := child(b["left"])
+		if err != nil {
+			return nil, err
+		}
+		right, err := child(b["right"])
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"A_Expr": map[string]any{"kind": "AEXPR_NOT_DISTINCT", "name": warehouseNames("="), "lexpr": left, "rexpr": right}}, nil
 	case "null":
 		return map[string]any{"A_Const": map[string]any{"isnull": true}}, nil
 	case "paren":
@@ -486,7 +502,7 @@ func (n *warehouseAnalyticalNormalizer) expr(node any, depth int) (any, error) {
 		if !warehouseAnalyticalFields(b, "name", "index", "style") {
 			return n.unsupported()
 		}
-		if text(b["style"]) != "At" || (n.binding.Dialect != "sqlserver" && n.binding.Dialect != "bigquery") {
+		if !((text(b["style"]) == "At" && (n.binding.Dialect == "sqlserver" || n.binding.Dialect == "bigquery")) || (text(b["style"]) == "Colon" && n.binding.Dialect == "databricks")) {
 			return n.unsupported()
 		}
 		name := strings.TrimPrefix(text(b["name"]), "p")
@@ -741,7 +757,7 @@ func warehouseAnalyticalRelation(dialect string, r Relation) Relation {
 		case "datetime", "datetime2", "timestamp_ntz", "timestamp without time zone":
 			c.NativeType = "timestamp"
 		case "timestamp":
-			if dialect == "bigquery" {
+			if dialect == "bigquery" || dialect == "mysql" {
 				c.NativeType = "timestamptz"
 			} else if dialect == "mysql" || dialect == "databricks" || dialect == "sqlserver" || dialect == "snowflake" {
 				c.NativeType = "unproved_session_timestamp"

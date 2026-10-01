@@ -20,6 +20,7 @@ type AnalyticalGroupedPopulations struct {
 }
 
 type AnalyticalGroupedLane struct {
+	Domain  string           `json:"domain,omitempty"`
 	Dataset string           `json:"dataset"`
 	Joins   []AnalyticalJoin `json:"joins,omitempty"`
 }
@@ -86,7 +87,7 @@ func groupedLeaves(c AnalyticalContract, dataset string) []AnalyticalExpression 
 // detached contract-wide namespace. It never validates a raw cross-fact join.
 func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (Relation, error) {
 	g := c.GroupedPopulations
-	if c.Version != AnalyticalGroupedPopulationsVersion || b.Dialect != "postgres" || g == nil || g.Policy != AnalyticalGroupedPopulationPolicy || (len(g.Lanes) < 2 || len(g.Lanes) > 4) || len(c.Joins)+len(c.Populations) != 0 || c.Grain == nil || len(c.Grain.Columns) < 1 || len(c.Grain.Buckets) != 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
+	if (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion) || (b.Dialect != "postgres" && !(b.Dialect == "mysql" && c.Version == AnalyticalGroupedProgramsVersion)) || g == nil || g.Policy != AnalyticalGroupedPopulationPolicy || (len(g.Lanes) < 2 || len(g.Lanes) > 4) || len(c.Joins)+len(c.Populations) != 0 || c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) < 1 || c.Version == AnalyticalGroupedPopulationsVersion && len(c.Grain.Buckets) != 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
 		return Relation{}, ErrBinding
 	}
 	all := map[string]Column{}
@@ -109,6 +110,9 @@ func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (
 			return Relation{}, ErrBinding
 		}
 		hasBase = hasBase || root.ID == base.ID
+		if c.Version == AnalyticalGroupedPopulationsVersion && lane.Domain != "" || lane.Domain != "" && lane.Domain != AnalyticalGroupDomainRaw && lane.Domain != AnalyticalGroupDomainQualifying {
+			return Relation{}, ErrBinding
+		}
 		leaves := groupedLeaves(c, lane.Dataset)
 		if len(leaves) == 0 {
 			return Relation{}, ErrBinding
@@ -135,6 +139,11 @@ func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (
 		}
 		for _, column := range c.Grain.Columns {
 			if !available[column] {
+				return Relation{}, analyticalFailure("analytical_grain_mismatch", false)
+			}
+		}
+		for _, bucket := range c.Grain.Buckets {
+			if !available[bucket.Column] {
 				return Relation{}, analyticalFailure("analytical_grain_mismatch", false)
 			}
 		}
@@ -189,20 +198,49 @@ func ValidateAnalyticalGroupedPopulations(c AnalyticalContract, b Binding) error
 type analyticalGroupedOutput struct {
 	dataset string
 	terms   map[string]analyticalTerm
-	groups  map[string]string // SQL output name -> exact reviewed physical grouping name
+	groups  map[string]analyticalTerm // SQL output name -> exact reviewed grouping term
 }
 
 func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected map[string]int, policy *AnalyticalGroupedPopulations) error {
+	if a.groupedExtensions {
+		if handled, err := a.groupedFinalProjection(q, expected, policy); handled {
+			return err
+		}
+	}
 	fail := func() error { return analyticalFailure("analytical_population_mismatch", false) }
 	if !only(q, "targetList", "fromClause", "withClause", "sortClause", "limitOffset", "limitCount", "limitOption", "op") || text(q["op"]) != "" && text(q["op"]) != "SETOP_NONE" {
 		return fail()
 	}
+	var inlineSpine map[string]any
+	if a.groupedExtensions {
+		sources := array(q["fromClause"])
+		if len(sources) == 1 {
+			raw := sources[0]
+			for depth := 0; depth < 4; depth++ {
+				j := object(object(raw)["JoinExpr"])
+				if j == nil {
+					break
+				}
+				raw = j["larg"]
+			}
+			if query, _, ok := groupedDerivedSource(raw); ok {
+				inlineSpine = query
+			}
+		}
+	}
+	cteCount := len(policy.Lanes) + 1
+	if inlineSpine != nil {
+		cteCount--
+	}
 	with := object(q["withClause"])
-	if with == nil || truth(with["recursive"]) || !only(with, "ctes", "recursive", "location") || len(array(with["ctes"])) != len(policy.Lanes)+1 {
+	if with == nil || truth(with["recursive"]) || !only(with, "ctes", "recursive", "location") || len(array(with["ctes"])) != cteCount {
 		return fail()
 	}
 	ctes := map[string]map[string]any{}
 	var spine string
+	if inlineSpine != nil {
+		spine = "\x00spine"
+	}
 	lanes := map[string]analyticalGroupedOutput{}
 	used := map[string]bool{}
 	for _, raw := range array(with["ctes"]) {
@@ -232,7 +270,11 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 	if spine == "" || len(lanes) != len(policy.Lanes) || len(used) != len(policy.Lanes) {
 		return fail()
 	}
-	keys, err := a.groupedSpine(ctes[spine], lanes)
+	spineQuery := ctes[spine]
+	if inlineSpine != nil {
+		spineQuery = inlineSpine
+	}
+	keys, err := a.groupedSpine(spineQuery, lanes)
 	if err != nil {
 		return err
 	}
@@ -246,6 +288,15 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 	joined := map[string]bool{}
 	var read func(any) error
 	read = func(raw any) error {
+		if inlineSpine != nil && len(aliases) == 0 {
+			if query, alias, ok := groupedDerivedSource(raw); ok {
+				if Hash(query) != Hash(inlineSpine) {
+					return fail()
+				}
+				aliases[alias] = spine
+				return nil
+			}
+		}
 		if rv := object(object(raw)["RangeVar"]); rv != nil {
 			name, alias, ok := groupedCTERef(rv)
 			if !ok || name != spine || len(aliases) != 0 {
@@ -288,11 +339,11 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 			if aliases[right[0]] == spine {
 				left, right = right, left
 			}
-			column := keys[left[1]]
-			if aliases[left[0]] != spine || right[0] != alias || column == "" || lane.groups[right[1]] != column || matched[column] {
+			key := keys[left[1]].groupKey()
+			if aliases[left[0]] != spine || right[0] != alias || key == "" || lane.groups[right[1]].groupKey() != key || matched[key] {
 				return fail()
 			}
-			matched[column] = true
+			matched[key] = true
 		}
 		return nil
 	}
@@ -309,8 +360,11 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 	outer.relation.Columns = nil
 	for alias, name := range aliases {
 		if name == spine {
-			for name, column := range keys {
-				outer.derivedTerms[alias+"."+name] = analyticalTerm{column: column}
+			for name, term := range keys {
+				if !a.groupedExtensions {
+					term = analyticalTerm{column: term.column}
+				}
+				outer.derivedTerms[alias+"."+name] = term
 			}
 			continue
 		}
@@ -348,7 +402,11 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 			return fail()
 		}
 		terms[i] = term
-		if name := text(t["name"]); name != "" {
+		name := text(t["name"])
+		if a.groupedExtensions {
+			name = groupedOutputName(t)
+		}
+		if name != "" {
 			if _, exists := outputs[name]; exists {
 				return fail()
 			}
@@ -366,6 +424,7 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 	if err := outer.checkIntent(q, terms, outputs); err != nil {
 		return err
 	}
+	a.groupedOutput = outputs
 	return a.ctx.Err()
 }
 
@@ -393,6 +452,11 @@ func groupedCTERef(rv map[string]any) (string, string, bool) {
 }
 
 func (a *analyticalChecker) groupedLane(q map[string]any, policy *AnalyticalGroupedPopulations, used map[string]bool) (analyticalGroupedOutput, error) {
+	if a.groupedExtensions {
+		if proof, handled, err := a.groupedLaneProjection(q, policy, used); handled {
+			return proof, err
+		}
+	}
 	fail := func() (analyticalGroupedOutput, error) {
 		return analyticalGroupedOutput{}, analyticalFailure("analytical_population_mismatch", false)
 	}
@@ -433,6 +497,9 @@ func (a *analyticalChecker) groupedLane(q map[string]any, policy *AnalyticalGrou
 	local.leaves = nil
 	local.intent = nil
 	local.nodes = 0
+	local.groupedLaneProof = true
+	local.groupedDomain = lane.Domain
+	local.groupedDomainProved = false
 	local.joins = lane.Joins
 	local.joinAliases = map[string]string{}
 	local.joinUsed = map[int]bool{}
@@ -467,7 +534,7 @@ func (a *analyticalChecker) groupedLane(q map[string]any, policy *AnalyticalGrou
 	if err := local.query(q, want); err != nil {
 		return analyticalGroupedOutput{}, err
 	}
-	out := analyticalGroupedOutput{dataset: id, terms: map[string]analyticalTerm{}, groups: map[string]string{}}
+	out := analyticalGroupedOutput{dataset: id, terms: map[string]analyticalTerm{}, groups: map[string]analyticalTerm{}}
 	for _, raw := range array(q["targetList"]) {
 		target := fieldObject(raw, "ResTarget")
 		name := text(target["name"])
@@ -482,22 +549,22 @@ func (a *analyticalChecker) groupedLane(q map[string]any, policy *AnalyticalGrou
 			return analyticalGroupedOutput{}, err
 		}
 		out.terms[name] = term
-		if term.column != "" {
-			out.groups[name] = term.column
+		if term.groupKey() != "" {
+			out.groups[name] = term
 		}
 	}
 	return out, nil
 }
 
-func (a *analyticalChecker) groupedSpine(q map[string]any, lanes map[string]analyticalGroupedOutput) (map[string]string, error) {
-	fail := func() (map[string]string, error) {
+func (a *analyticalChecker) groupedSpine(q map[string]any, lanes map[string]analyticalGroupedOutput) (map[string]analyticalTerm, error) {
+	fail := func() (map[string]analyticalTerm, error) {
 		return nil, analyticalFailure("analytical_population_mismatch", false)
 	}
 	if text(q["op"]) != "SETOP_UNION" || truth(q["all"]) || !only(q, "op", "all", "larg", "rarg", "limitOption") {
 		return fail()
 	}
 	var ordered []string
-	outputs := map[string]string{}
+	outputs := map[string]analyticalTerm{}
 	seen := map[string]bool{}
 	var branches []map[string]any
 	var flatten func(map[string]any, int) bool
@@ -532,7 +599,7 @@ func (a *analyticalChecker) groupedSpine(q map[string]any, lanes map[string]anal
 		}
 		seen[name] = true
 		targets := array(query["targetList"])
-		if len(targets) != len(a.grain.Columns) {
+		if len(targets) != len(a.grain.Columns)+len(a.grain.Buckets) {
 			return fail()
 		}
 		selected := map[string]bool{}
@@ -542,22 +609,23 @@ func (a *analyticalChecker) groupedSpine(q map[string]any, lanes map[string]anal
 			if !ok || len(parts) < 1 || len(parts) > 2 || len(parts) == 2 && parts[0] != alias {
 				return fail()
 			}
-			column := lane.groups[parts[len(parts)-1]]
-			if column == "" || selected[column] {
+			term := lane.groups[parts[len(parts)-1]]
+			key := term.groupKey()
+			if key == "" || selected[key] {
 				return fail()
 			}
-			selected[column] = true
+			selected[key] = true
 			if branch == 0 {
-				ordered = append(ordered, column)
+				ordered = append(ordered, key)
 				outName := text(target["name"])
 				if outName == "" {
 					outName = parts[len(parts)-1]
 				}
-				if outputs[outName] != "" {
+				if outputs[outName].groupKey() != "" {
 					return fail()
 				}
-				outputs[outName] = column
-			} else if ordered[i] != column {
+				outputs[outName] = term
+			} else if ordered[i] != key {
 				return fail()
 			}
 		}

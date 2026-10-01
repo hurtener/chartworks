@@ -137,7 +137,7 @@ func catalogReference(def topics.Definition, ref semantics.Reference) (any, []se
 	case semantics.KindJoin:
 		for _, j := range def.Joins {
 			if j.ID == ref.ID {
-				return j, []semantics.Reference{j.Left, j.Right}, true
+				return j, j.References(), true
 			}
 		}
 	case semantics.KindCanonicalEntity:
@@ -525,6 +525,9 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 	}
 	if result.Clarification != nil {
 		return nil
+	}
+	if err := selectImplicitCalendar(ctx, in, admitted); err != nil {
+		return err
 	}
 	base := *result
 	for pass := 0; pass < maxSelectionPasses; pass++ {

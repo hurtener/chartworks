@@ -198,7 +198,7 @@ func semanticClosure(ctx context.Context, def topics.Definition, roots []semanti
 		if err := add("join", join.ID, join); err != nil {
 			return nil, err
 		}
-		for _, ref := range []semantics.Reference{join.Left, join.Right} {
+		for _, ref := range join.References() {
 			if err := addColumn(ref); err != nil {
 				return nil, err
 			}

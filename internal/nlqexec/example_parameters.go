@@ -60,10 +60,10 @@ func learnedParameterSchema(ctx context.Context, q QueryRecord, bindingPolicy ..
 // the new digest domain. Storage immutability and portable row versions separately
 // prevent dropping a new template schema and presenting it as a legacy example.
 func ExampleParametersValid(x ExampleRecord) bool {
-	if !validExampleBindingPolicy(x.Origin.BindingPolicy) || x.ParameterSchema.Validate() != nil {
+	if !validExampleBindingPolicy(x.Origin.BindingPolicy) || !x.Origin.Requalification.Valid() || x.ParameterSchema.Validate() != nil {
 		return false
 	}
-	if x.ParameterSchema == nil && x.Origin.BindingPolicy == "" {
+	if x.ParameterSchema == nil && x.Origin.BindingPolicy == "" && x.Origin.Requalification == nil {
 		return true
 	}
 	return (x.Origin.BindingPolicy == "" || neutralOwnedExampleQuestion(x.Question)) && x.Digest == originExampleDigest(x.Topic, x.Question, x.SQL, x.ParameterSchema, x.Origin) && x.Question != "" && x.SQL != "" && len(x.Question) <= 16384 && len(x.SQL) <= 32768 && utf8.ValidString(x.Question) && utf8.ValidString(x.SQL) && !strings.ContainsRune(x.Question+x.SQL, 0)
@@ -137,11 +137,18 @@ func portableExampleVersion(schema *exampleparams.Schema, policy ...string) int 
 	}
 	return 1
 }
+func portableExampleOriginVersion(schema *exampleparams.Schema, origin ExampleOrigin) int {
+	if origin.Requalification != nil {
+		return 5
+	}
+	return portableExampleVersion(schema, origin.BindingPolicy)
+}
+
 func portableExampleValid(row PortableExample) bool {
-	if row.SchemaVersion != portableExampleVersion(row.ParameterSchema, row.Origin.BindingPolicy) {
+	if row.SchemaVersion != portableExampleOriginVersion(row.ParameterSchema, row.Origin) {
 		return false
 	}
-	return validExampleBindingPolicy(row.Origin.BindingPolicy) && row.ParameterSchema.Validate() == nil
+	return validExampleBindingPolicy(row.Origin.BindingPolicy) && row.Origin.Requalification.Valid() && row.ParameterSchema.Validate() == nil
 }
 
 // Keep legacy records unchanged. Domain metadata is added only by a live sealed

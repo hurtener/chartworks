@@ -29,7 +29,7 @@ func compileAnalyticalIntent(ctx context.Context, a admission, c exec.Analytical
 	var choices []choice
 	for i, pick := range a.route.Selection.Topics {
 		def := a.publications[i].Definition
-		compiler := analyticalCompiler{joins: c.Version == exec.AnalyticalIntentVersion || c.Version == exec.AnalyticalGroupedPopulationsVersion, ctx: ctx, definition: def, binding: a.binding, dataset: c.Dataset}
+		compiler := analyticalCompiler{joins: c.Version == exec.AnalyticalIntentVersion || c.Version == exec.AnalyticalGroupedPopulationsVersion || c.Version == exec.AnalyticalGroupedProgramsVersion, ctx: ctx, definition: def, binding: a.binding, dataset: c.Dataset}
 		for _, root := range pick.Roots {
 			if err := ctx.Err(); err != nil {
 				return nil, a, err

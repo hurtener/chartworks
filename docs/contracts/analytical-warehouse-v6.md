@@ -63,3 +63,23 @@ These additions do not replace real-engine qualification for each advertised eng
 or close every remaining S6 form. Original native parser syntax/work limits remain
 in force. The generation packet now chooses calendar guidance by dialect from the
 same registered vocabulary and exact bucket contract.
+
+## Explicit MySQL UTC instant partitions
+
+MySQL TIMESTAMP fields can now supply reviewed UTC day/month/quarter/year buckets
+through `CAST(physical_timestamp AT TIME ZONE '+00:00' AS DATETIME(6))` inside the
+same exact calendar forms. The shared native policy also permits the literal UTC
+spelling. The full conversion is checked against the physical native type; lower
+precision, dynamic/different zones and civil or derived inputs are not equivalent.
+The canonical proof retains UTC partition identity separately from its civil output
+representation. It never treats raw session-zone TIMESTAMP formatting as UTC.
+The source semantics follow the [MySQL 8.4 cast contract](https://dev.mysql.com/doc/refman/8.4/en/cast-functions.html).
+
+Actual MySQL tests cover UTC month/quarter boundaries, microseconds, NULL groups,
+exact sums, and DST-boundary instants under three fixed session offsets. These
+qualify explicit UTC conversion; they do not qualify named local-zone conversion
+or certify the server's timezone database. Other reviewed instant zones continue
+to need an explicit native proof. Snowflake nullable ranking already has deterministic
+contract null placement: explicit matching NULLS FIRST/LAST passes, while an omitted
+session-dependent default cannot receive that proof. This is structural evidence,
+not an additional remote-engine qualification claim.

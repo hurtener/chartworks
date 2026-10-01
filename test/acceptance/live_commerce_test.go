@@ -127,6 +127,28 @@ func TestCommerceReportingRecorded(t *testing.T) {
 			}
 		}
 	}
+	// Replay the exact annual natural-language live cases against recorded SQL;
+	// this gate composes the independently owned year with reviewed month grain.
+	for _, tc := range liveCommerceQuestions() {
+		if tc.id != "observed-year-en" && tc.id != "observed-year-es" {
+			continue
+		}
+		model.mode.Store(phase18RawResponse(t, "SELECT date_trunc('month',CAST(ordered_at AS timestamp without time zone)) AS period,sum(total_usd) AS gross_revenue FROM analytics.orders WHERE status='paid' GROUP BY 1"))
+		annual, planErr := query.Plan(t.Context(), queryActor, nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: main.Datasets[0].Source.Context, Locale: tc.locale, Question: tc.text, MetricIDs: []string{tc.metric}, Kinds: []string{"measure", "dimension", "kpi"}, LimitPerKind: 5, Rerank: true}})
+		if planErr != nil {
+			t.Fatalf("recorded exact annual plan %s: %v", tc.id, planErr)
+		}
+		result, runErr := query.Run(t.Context(), queryActor, nlqexec.RunRequest{QueryID: annual.QueryID, Operation: annual.QueryID + "-annual", Rows: 10, Bytes: 65536})
+		if runErr != nil || result.Execution.Result == nil || len(result.Execution.Result.Rows) != 3 || !liveRowsContainNumbers(result.Execution.Result.Rows, "80", "240", "320") {
+			t.Fatalf("recorded annual month rows %s: %v", tc.id, runErr)
+		}
+		calls := model.requests.Load()
+		replayed, replayErr := query.Run(t.Context(), queryActor, nlqexec.RunRequest{QueryID: annual.QueryID, Operation: annual.QueryID + "-annual", Rows: 10, Bytes: 65536})
+		if replayErr != nil || replayed.Execution.Result == nil || readexec.Hash(replayed.Execution.Result.Rows) != readexec.Hash(result.Execution.Result.Rows) || model.requests.Load() != calls {
+			t.Fatal("annual owned-calendar replay changed", replayErr)
+		}
+	}
+	model.mode.Store(phase18RawResponse(t, "SELECT SUM(total_usd) AS gross_revenue FROM analytics.orders WHERE status='paid'"))
 	question := nlqexec.QuestionRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: main.Datasets[0].Source.Context, Locale: nlq.LanguageEnglish, Question: "Gross revenue from paid orders?", MetricIDs: []string{"gross_revenue"}, Kinds: []string{"measure"}, LimitPerKind: 1, Rerank: true}
 	planned, err := query.Plan(t.Context(), queryActor, nlqexec.PlanRequest{QuestionRequest: question})
 	if err != nil {
@@ -212,7 +234,10 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 		t.Skip("set CHARTWORKS_LIVE_E2E=1 for the paid provider gate")
 	}
 	artifactDir := liveArtifactDir(t)
-	engine := liveGateway(t)
+	engine := &liveReceiptEngine{Engine: liveGateway(t), traceEnabled: os.Getenv("CHARTWORKS_LIVE_SYNTHETIC_TRACE") == "1"}
+	if engine.traceEnabled {
+		defer func() { writeLiveJSON(t, artifactDir, "generation-trace.json", engine.traceSnapshot()) }()
+	}
 	f := liveCommerceSource(t)
 	main, distractor := liveCommerceTopics(t, f)
 	index, err := vindex.New(f.db)
@@ -256,6 +281,12 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 		index := len(receipts)
 		receipts = append(receipts, liveReceipt{Case: tc.id, Status: "not_completed"})
 		t.Run(tc.id, func(t *testing.T) {
+			usageStart := engine.count()
+			defer func() {
+				receipts[index].ModelUsage = engine.since(usageStart)
+				receipts[index].ModelCalls = len(receipts[index].ModelUsage)
+				receipts[index].ModelCallsKnown = true
+			}()
 			request := nlqexec.QuestionRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: main.Datasets[0].Source.Context, Locale: tc.locale, Question: tc.text, Kinds: []string{"measure", "dimension", "kpi"}, LimitPerKind: 5, Rerank: true}
 			if tc.metric != "" {
 				request.MetricIDs = []string{tc.metric}
@@ -315,6 +346,12 @@ func TestLiveCommerceGatewayE2E(t *testing.T) {
 		index := len(receipts)
 		receipts = append(receipts, liveReceipt{Case: negative.name, Status: "not_completed"})
 		t.Run(negative.name, func(t *testing.T) {
+			usageStart := engine.count()
+			defer func() {
+				receipts[index].ModelUsage = engine.since(usageStart)
+				receipts[index].ModelCalls = len(receipts[index].ModelUsage)
+				receipts[index].ModelCallsKnown = true
+			}()
 			_, err := query.Plan(ctx, negative.actor, nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{Topic: main.Topic, Topics: []string{main.Topic}, Context: negative.context, Locale: nlq.LanguageEnglish, Question: "Gross revenue?", Kinds: []string{"measure"}, LimitPerKind: 1}})
 			if err == nil {
 				t.Fatal("authority or context negative unexpectedly planned")
@@ -387,7 +424,7 @@ func liveRowsContainNumbers(rows [][]json.RawMessage, wants ...string) bool {
 	return len(remaining) == 0
 }
 
-func liveRerankProbe(t *testing.T, engine *bifrost.Engine, e identity.Envelope, main, distractor semantics.TopicPack) map[string]any {
+func liveRerankProbe(t *testing.T, engine gateway.Engine, e identity.Envelope, main, distractor semantics.TopicPack) map[string]any {
 	t.Helper()
 	resources := []access.Resource{{Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: main.Topic}, {Tenant: e.Tenant(), Kind: "topic", Permission: "read", ID: distractor.Topic}}
 	call, err := gateway.Authorize(e, "topics.read", main.Datasets[0].Source.Context, resources...)
@@ -448,15 +485,16 @@ func requireLiveModelCall(t *testing.T, calls []gateway.Usage, role, provider, r
 }
 
 type liveReceipt struct {
-	Case         string          `json:"case"`
-	Status       string          `json:"status"`
-	Reason       string          `json:"reason,omitempty"`
-	QueryID      string          `json:"query_id"`
-	RowCount     int             `json:"row_count"`
-	ModelCalls   int             `json:"model_calls"`
-	ModelUsage   []gateway.Usage `json:"model_usage,omitempty"`
-	RouteOutcome string          `json:"route_outcome"`
-	SourceStatus string          `json:"source_status"`
+	Case            string          `json:"case"`
+	Status          string          `json:"status"`
+	Reason          string          `json:"reason,omitempty"`
+	QueryID         string          `json:"query_id"`
+	RowCount        int             `json:"row_count"`
+	ModelCalls      int             `json:"model_calls"`
+	ModelCallsKnown bool            `json:"model_calls_known"`
+	ModelUsage      []gateway.Usage `json:"model_usage,omitempty"`
+	RouteOutcome    string          `json:"route_outcome"`
+	SourceStatus    string          `json:"source_status"`
 }
 
 type liveCommerceQuestion struct {
@@ -479,11 +517,44 @@ func liveCommerceQuestions() []liveCommerceQuestion {
 }
 
 func livePlanFailureReason(err error) string {
+	var a *readexec.AnalyticalError
+	if errors.As(err, &a) {
+		switch a.Code {
+		case "analytical_dialect_unsupported", "analytical_expression_unsupported", "analytical_filter_type_unsupported", "analytical_grain_mismatch", "analytical_grain_unsupported", "analytical_integer_average", "analytical_integer_division", "analytical_intent_unsupported", "analytical_join_ambiguous", "analytical_join_cardinality_unproven", "analytical_join_mismatch", "analytical_join_unsupported", "analytical_limit_mismatch", "analytical_metric_mismatch", "analytical_order_mismatch", "analytical_output_ambiguous", "analytical_population_mismatch", "analytical_population_unsupported", "analytical_query_population_mismatch", "analytical_query_population_unsupported", "analytical_relation_mismatch", "analytical_shape_unsupported", "analytical_type_unsupported", "analytical_zero_policy":
+			return a.Code
+		default:
+			return "plan_error"
+		}
+	}
 	switch {
 	case errors.Is(err, nlqexec.ErrValidationBudget):
 		return "validation_budget"
+	case errors.Is(err, nlqexec.ErrGenerationClarification):
+		return "generation_clarification"
+	case errors.Is(err, nlqexec.ErrGenerationContext):
+		return "generation_context_insufficient"
+	case errors.Is(err, nlqexec.ErrGeneration):
+		return "generation_failed"
+	case errors.Is(err, gateway.ErrOutput):
+		return "provider_output"
+	case errors.Is(err, gateway.ErrUnavailable):
+		return "provider_unavailable"
+	case errors.Is(err, gateway.ErrInput):
+		return "gateway_input"
+	case errors.Is(err, gateway.ErrBudget):
+		return "gateway_budget"
+	case errors.Is(err, nlq.ErrInsufficient):
+		return "context_envelope"
 	case errors.Is(err, readexec.ErrUnsafe):
 		return "sql_safety"
+	case errors.Is(err, readexec.ErrBinding):
+		return "source_binding"
+	case errors.Is(err, readexec.ErrUnsupported):
+		return "native_unsupported"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline"
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
 	default:
 		return "plan_error"
 	}
@@ -572,7 +643,7 @@ func writeLiveJSON(t *testing.T, dir, name string, value any) {
 func liveGateway(t *testing.T) *bifrost.Engine {
 	t.Helper()
 	g := liveGatewayConfig(t)
-	engine, err := bifrost.New(t.Context(), g, os.LookupEnv, bifrost.TransportOptions{})
+	engine, err := bifrost.New(t.Context(), g, os.LookupEnv, bifrost.TransportOptions{EnvironmentProxy: os.Getenv("CHARTWORKS_LIVE_ENV_PROXY") == "1"})
 	if err != nil {
 		t.Fatalf("live gateway construction: %v", err)
 	}
@@ -731,6 +802,8 @@ func liveCommerceTopics(t *testing.T, f *engineeringFixture) (semantics.TopicPac
 		Dimensions: []semantics.Dimension{{ID: "customer_segment", Name: "Customer segment", Field: col(customers, "segment"), Role: semantics.DimensionCategorical}},
 		Joins:      []semantics.Join{{ID: "retention-orders-customers", Name: "Orders to customers", Left: col(orders, "customer_id"), Right: col(customers, "customer_id"), Type: semantics.JoinInner, Cardinality: semantics.CardinalityManyToOne}},
 	}
+	// Reviewed paid-only grouped expectations exclude canceled-only groups.
+	main.GroupDomain = &semantics.GroupDomainPolicy{Policy: semantics.MetricGroupDomainPolicy, Domain: "qualifying_population"}
 	for _, p := range []semantics.TopicPack{main, distractor} {
 		if _, err := semantics.Compile(p); err != nil {
 			t.Fatalf("synthetic reviewed pack %s: %v", p.Topic, err)

@@ -68,7 +68,7 @@ func TestSQLRecoveryAnalyticalIntentAcceptance(t *testing.T) {
 		}
 		sc, _ := store.NewScope(pf.e.Tenant(), pf.e.User())
 		saved, err := f.db.ReadQuery(ctx, sc, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 7 || saved.Analytical.Intent != readexec.AnalyticalIntentPolicy {
+		if err != nil || saved.AnalyticalVersion != 8 || saved.Analytical.Intent != readexec.AnalyticalIntentPolicy {
 			t.Fatal("lost durable intent", err)
 		}
 		restarted, _ := newPhase18Service(t, pf)

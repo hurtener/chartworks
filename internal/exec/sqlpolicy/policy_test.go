@@ -76,7 +76,7 @@ func TestSQLRecoveryVocabularyPreservesValidatorLists(t *testing.T) {
 }
 
 func TestSQLRecoveryVocabularyExactDialectsAndMarkers(t *testing.T) {
-	for _, tc := range []struct{ dialect, native, style string }{{"postgres", "postgres", "dollar-numbered"}, {"mysql", "mysql", "positional-question-mark"}, {"sqlserver", "tsql", "at-p-numbered"}, {"bigquery", "bigquery", "at-p-numbered"}, {"snowflake", "snowflake", "positional-question-mark"}, {"databricks", "databricks", "positional-question-mark"}} {
+	for _, tc := range []struct{ dialect, native, style string }{{"postgres", "postgres", "dollar-numbered"}, {"mysql", "mysql", "positional-question-mark"}, {"sqlserver", "tsql", "at-p-numbered"}, {"bigquery", "bigquery", "at-p-numbered"}, {"snowflake", "snowflake", "positional-question-mark"}, {"databricks", "databricks", "colon-p-numbered"}} {
 		p, err := ForDialect(tc.dialect)
 		if err != nil || p.NativeDialect != tc.native || p.ParameterStyle != tc.style {
 			t.Fatal(tc, err)

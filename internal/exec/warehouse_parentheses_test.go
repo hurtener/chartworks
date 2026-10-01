@@ -24,6 +24,9 @@ func TestWarehouseTransparentParenthesesNative(t *testing.T) {
 				t.Fatal(err)
 			}
 			marker := "?"
+			if dialect == "databricks" {
+				marker = ":p1"
+			}
 			if dialect == "sqlserver" || dialect == "bigquery" {
 				marker = "@p1"
 			}

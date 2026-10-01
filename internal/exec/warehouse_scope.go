@@ -25,8 +25,9 @@ type warehouseReadScope struct {
 	parent  *warehouseReadScope
 }
 type warehouseScopeSource struct {
-	columns map[string]int
-	safe    map[string]bool
+	columns     map[string]int
+	safe        map[string]bool
+	nativeTypes map[string]string
 }
 type warehouseQueryScope struct {
 	names []string
@@ -341,7 +342,16 @@ func (r *warehouseScopeResolver) from(v any, s *warehouseReadScope, depth int) e
 			label = physical.Name
 		}
 		r.dependencies[physical.ID] = true
-		return r.add(s, label, columns, allowed)
+		if err := r.add(s, label, columns, allowed); err != nil {
+			return err
+		}
+		source := s.sources[label]
+		source.nativeTypes = map[string]string{}
+		for _, column := range physical.Columns {
+			source.nativeTypes[column.Name] = column.NativeType
+		}
+		s.sources[label] = source
+		return nil
 	}
 	if sub := object(m["subquery"]); sub != nil {
 		if !warehouseScopeFields(sub, "this", "alias", "column_aliases", "order_by", "limit", "offset", "modifiers_inside") || sub["alias"] == nil {
@@ -510,6 +520,12 @@ func (r *warehouseScopeResolver) expr(v any, s *warehouseReadScope, star bool, d
 		return nil
 	}
 	if len(m) == 1 {
+		if cast := object(m["cast"]); cast != nil && object(object(cast["this"])["at_time_zone"]) != nil {
+			return r.mysqlUTCInstant(cast, s)
+		}
+		if m["at_time_zone"] != nil {
+			return ErrUnsupported
+		}
 		if column := object(m["column"]); column != nil {
 			return r.column(column, s)
 		}

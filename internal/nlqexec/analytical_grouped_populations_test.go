@@ -45,7 +45,7 @@ func TestSQLRecoveryGroupedPopulationCompiler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Version != exec.AnalyticalGroupedPopulationsVersion || c.GroupedPopulations == nil || len(c.GroupedPopulations.Lanes) != 2 || len(c.Joins) > 0 || len(c.Populations) > 0 || exec.Hash(a.publications) != before {
+	if c.Version != exec.AnalyticalGroupedProgramsVersion || c.GroupedPopulations == nil || len(c.GroupedPopulations.Lanes) != 2 || len(c.Joins) > 0 || len(c.Populations) > 0 || exec.Hash(a.publications) != before {
 		t.Fatal("missing grouped source-backed contract", c)
 	}
 	if !strings.Contains(analyticalJoinGuidance(c), "IS NOT DISTINCT FROM") {

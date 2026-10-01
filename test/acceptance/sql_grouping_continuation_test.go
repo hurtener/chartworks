@@ -125,7 +125,7 @@ func TestSQLRecoveryGroupingContinuationLifecycleAcceptance(t *testing.T) {
 				t.Fatal("replay made model/source call")
 			}
 			saved, err := f.f.db.ReadSavedQuery(ctx, f.e, calendar.QueryID, false)
-			if err != nil || saved.Result != nil || saved.AnalyticalVersion != 7 || !reflect.DeepEqual(saved.Route.Request.Grouping, calendar.Route.Request.Grouping) {
+			if err != nil || saved.Result != nil || saved.AnalyticalVersion != 8 || !reflect.DeepEqual(saved.Route.Request.Grouping, calendar.Route.Request.Grouping) {
 				t.Fatal("saved grouping projection", err)
 			}
 			for _, mutate := range []string{`analytical_version=4`, `analytical=NULL`, `analytical=jsonb_set(analytical,'{contract}',to_jsonb(repeat('0',64)))`} {
@@ -240,7 +240,7 @@ func TestSQLRecoveryGroupingPrivateBindingsAcceptance(t *testing.T) {
 			}
 			f.model.mode.Store(phase18RawResponse(t, `SELECT active,sum(amount) AS revenue FROM analytics.sales GROUP BY active ORDER BY active`))
 			upgraded, err := f.query.Refine(ctx, f.e, nlqexec.RefineRequest{QueryID: clear.ID, QuestionRequest: nlqexec.QuestionRequest{Grouping: groupingState(f, "status")}})
-			if err != nil || upgraded.Analytical == nil || upgraded.Analytical.Version != readexec.AnalyticalGroupedPopulationsVersion {
+			if err != nil || upgraded.Analytical == nil || upgraded.Analytical.Version != readexec.AnalyticalGroupedProgramsVersion {
 				t.Fatal("valid legacy grouping upgrade", err)
 			}
 			out, err = f.query.Run(ctx, f.e, nlqexec.RunRequest{QueryID: upgraded.QueryID, Operation: upgraded.QueryID + "-run"})

@@ -51,7 +51,7 @@ func TestSQLRecoveryDefaultIntentNullPolicyAcceptance(t *testing.T) {
 		t.Helper()
 		model.mode.Store(phase18RawResponse(t, good))
 		p, err := query.Plan(ctx, pf.e, nlqexec.PlanRequest{QuestionRequest: request})
-		if err != nil || p.Analytical == nil || p.Analytical.Version != readexec.AnalyticalGroupedPopulationsVersion || p.Analytical.Intent != readexec.AnalyticalIntentPolicy || p.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy {
+		if err != nil || p.Analytical == nil || p.Analytical.Version != readexec.AnalyticalGroupedProgramsVersion || p.Analytical.Intent != readexec.AnalyticalIntentPolicy || p.Analytical.QueryPopulation != readexec.AnalyticalQueryPopulationPolicy {
 			t.Fatal("mandatory reviewed intent", err)
 		}
 		return p
@@ -77,7 +77,7 @@ func TestSQLRecoveryDefaultIntentNullPolicyAcceptance(t *testing.T) {
 		out := runZero(t, p)
 		scope, _ := store.NewScope(pf.e.Tenant(), pf.e.User())
 		saved, err := f.db.ReadQuery(ctx, scope, p.QueryID)
-		if err != nil || saved.AnalyticalVersion != 7 || !nlqexec.AnalyticalRecordValid(saved) {
+		if err != nil || saved.AnalyticalVersion != 8 || !nlqexec.AnalyticalRecordValid(saved) {
 			t.Fatal("persisted v7 proof", err)
 		}
 		for _, marker := range []string{"intent", "query_population"} {

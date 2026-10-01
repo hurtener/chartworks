@@ -81,6 +81,13 @@
         "model": "deepseek/deepseek-v4-flash",
         "timeout": "10s",
         "max_tokens": 512
+      },
+      "topic_review": {
+        "enabled": false,
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": "30s",
+        "max_tokens": 4096
       }
     },
     "max_attempts_per_call": 2

@@ -205,6 +205,11 @@ func warehouseSignatureType(v any, dialect string) string {
 		}
 	}
 	if cast := object(m["cast"]); cast != nil {
+		if dialect == "mysql" {
+			if _, ok := mysqlUTCInstantShape(cast); ok {
+				return "temporal"
+			}
+		}
 		switch text(object(cast["to"])["data_type"]) {
 		case "tiny_int", "small_int", "int", "big_int":
 			return "integer"
