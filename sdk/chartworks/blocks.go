@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
 	"github.com/hurtener/chartworks/internal/reporting"
 )
@@ -18,6 +19,10 @@ const BlockDefinitionVersion = reporting.CurrentSchemaVersion
 
 // BlockNarrativePolicyVersion pins deterministic bounded narrative rendering.
 const BlockNarrativePolicyVersion = reporting.NarrativePolicyVersion
+
+// BlockStatisticalNarrativePolicyVersion opts into reviewed deterministic statistics.
+const BlockStatisticalNarrativePolicyVersion = reporting.StatisticalNarrativePolicyVersion
+const BlockStatisticalNarrativeSchemaVersion = reporting.StatisticalNarrativeSchemaVersion
 
 // BlockOutputMetadata is inert localized output text.
 type BlockOutputMetadata = reporting.OutputMetadata
@@ -115,6 +120,20 @@ type BlockResolved = reporting.Resolved
 
 // BlockNarrative mirrors the common governed block wire contract.
 type BlockNarrative = reporting.Narrative
+
+type BlockNarrativeStatistic = reporting.NarrativeStatistic
+type BlockNarrativeFieldRef = reporting.NarrativeFieldRef
+
+// BlockSchemaField permits authoring exact expected-schema coordinates.
+type BlockSchemaField = exec.Field
+type BlockNarrativeTimeOrder = reporting.NarrativeTimeOrder
+
+type BlockNarrativePopulation = reporting.NarrativePopulation
+type BlockNarrativeTrendEvidence = reporting.NarrativeTrendEvidence
+type BlockNarrativeExtremaEvidence = reporting.NarrativeExtremaEvidence
+type BlockNarrativeVarianceEvidence = reporting.NarrativeVarianceEvidence
+type BlockNarrativeAmountEvidence = reporting.NarrativeAmountEvidence
+type BlockNarrativeStatisticEvidence = reporting.NarrativeStatisticEvidence
 
 // BlockOutput mirrors the common governed block wire contract.
 type BlockOutput = reporting.Output

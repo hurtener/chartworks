@@ -162,14 +162,23 @@ func (s *Runs) makeOutput(ctx context.Context, e identity.Envelope, inv jobs.Inv
 	} else {
 		n := saved.Narrative
 		available := !m.NarrativePackUnavailable && (s.packSelector == nil || m.NarrativePack != nil) &&
-			n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && n.SchemaVersion == "grounded-narrative-v1"
+			n != nil && s.model != nil && m.Model == s.modelVersion && n.ModelVersion == s.modelVersion && narrativeSchemaSupported(*n)
 		versioned := m.Revision.Definition.SchemaVersion == CurrentSchemaVersion || n != nil && n.PolicyVersion != ""
 		if n == nil || !available && !versioned {
 			// Preserve the legacy unavailable receipt. Versioned policies first
 			// resolve deterministic evidence exclusions, even without a model.
 			out.State, out.Code = "failed", "narrative_unavailable"
 		} else {
-			prepared, err := prepareNarrative(m, result, *n)
+			if n.PolicyVersion == StatisticalNarrativePolicyVersion {
+				// Local calculation and provider work share the authored deadline,
+				// intersected with accepted and current limits. No extra CPU window
+				// is granted before the gateway reservation.
+				duration := min(time.Duration(n.TimeoutMillis)*time.Millisecond, time.Duration(m.Limits.NarrativeTimeout), time.Duration(s.limits.NarrativeTimeout))
+				var stop context.CancelFunc
+				ctx, stop = context.WithTimeout(ctx, duration)
+				defer stop()
+			}
+			prepared, err := prepareOutputNarrative(ctx, m, result, saved)
 			if err != nil {
 				out.State, out.Code = "failed", "narrative_evidence_unavailable"
 				if errors.Is(err, ErrBudget) {

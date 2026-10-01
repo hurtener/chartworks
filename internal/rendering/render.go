@@ -368,6 +368,17 @@ func renderHTML(out *reporting.ViewerOutput, page reporting.ViewerPage, theme st
 		b.WriteString("<p>")
 		b.WriteString(html.EscapeString(out.Narrative.Text))
 		b.WriteString("</p>")
+		// Retained qualifiers are part of the narrative, including statistical
+		// scope and missing-value limits. Export must not silently omit them.
+		if len(out.Narrative.Caveats) > 0 {
+			b.WriteString(`<ul data-narrative-caveats="true">`)
+			for _, caveat := range out.Narrative.Caveats {
+				b.WriteString("<li>")
+				b.WriteString(html.EscapeString(caveat))
+				b.WriteString("</li>")
+			}
+			b.WriteString("</ul>")
+		}
 	default:
 		return nil, ErrInvalid
 	}

@@ -74,3 +74,6 @@ Each subsequent API/MCP/render request validates its supplied JWT. Authority is 
 ## Testing and completion
 
 `TestPhaseNN/ACxx` names in the active phase plans bind each contract to actual assertions. Source features map through `docs/plans/coverage.json`. JSON/OpenAPI shape checking and planning scripts do not establish runtime correctness; real PostgreSQL/source drivers, crash scenarios, UI/static output tests and owner-run cloud evidence close implementation gates.
+
+Opt-in deterministic statistical narratives use
+[reviewed statistical narrative evidence](../contracts/statistical-narratives-v3.md).

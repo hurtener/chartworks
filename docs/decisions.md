@@ -798,3 +798,5 @@ Migration and cutover continuation: [D-089 neutral manifests import private stat
 Model gateway continuation: [D-090 OpenRouter rerank through a bounded Bifrost custom provider](decisions/2026-09-22-openrouter-rerank.md).
 
 PNG continuation: [D-091 bounded single-output raster renditions with visible retained meaning](decisions/2026-10-01-bounded-png-renditions.md).
+
+Statistical narrative continuation: [D-092 closed deterministic retained statistics](decisions/2026-10-01-statistical-narrative-evidence.md).

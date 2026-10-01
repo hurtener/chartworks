@@ -185,7 +185,7 @@ func RequireRunManifest(e identity.Envelope, m RunManifest) error {
 // NarrativeClaim is a model-selected, mechanically checked statement. The model
 // cannot supply arbitrary factual prose, SQL, tools or a caller-selected URL.
 type NarrativeClaim struct {
-	Kind     string   `json:"kind" jsonschema:"enum=value,enum=difference"`
+	Kind     string   `json:"kind" jsonschema:"enum=value,enum=difference,enum=trend,enum=extrema,enum=population_variance"`
 	Evidence []string `json:"evidence"`
 }
 
@@ -196,11 +196,12 @@ type NarrativeAnswer struct {
 
 // NarrativeEvidence is the bounded, already-redacted evidence actually supplied.
 type NarrativeEvidence struct {
-	ID    string `json:"id"`
-	Field string `json:"field"`
-	Type  string `json:"type"`
-	Value string `json:"value"`
-	Row   int    `json:"row"`
+	ID        string                      `json:"id"`
+	Field     string                      `json:"field"`
+	Type      string                      `json:"type"`
+	Value     string                      `json:"value"`
+	Row       int                         `json:"row"`
+	Statistic *NarrativeStatisticEvidence `json:"statistic,omitempty"`
 }
 
 // NarrativeResult retains exact text and actual provider/model usage. Rendering

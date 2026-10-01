@@ -203,7 +203,7 @@ func frozenValuesTx(ctx context.Context, tx pgx.Tx, e identity.Envelope, h froze
 			return store.ErrInvalid
 		}
 		if output.Kind == "narrative" && output.State == "succeeded" && m.Selection != nil {
-			if out.Result == nil || reporting.CheckFrozenNarrativeEvidence(m, output, *out.Result) != nil {
+			if out.Result == nil || reporting.CheckFrozenNarrativeEvidenceContext(ctx, m, output, *out.Result) != nil {
 				return store.ErrInvalid
 			}
 		}

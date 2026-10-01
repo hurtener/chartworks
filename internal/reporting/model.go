@@ -185,26 +185,27 @@ type Resolved struct {
 // Narrative is a bounded saved definition only. Phase 28 owns actual generation
 // through Bifrost. No tools, executable templates, URLs or HTML can be supplied.
 type Narrative struct {
-	PolicyVersion   string   `json:"policy_version,omitempty" jsonschema:"enum=bounded-narrative-v2"`
-	MaxClaims       int      `json:"max_claims,omitempty" jsonschema:"minimum=1,maximum=32"`
-	Type            string   `json:"type" jsonschema:"enum=summary,enum=comparison,enum=explanation"`
-	Instructions    string   `json:"instructions"`
-	Fields          []string `json:"fields"`
-	RedactedFields  []string `json:"redacted_fields"`
-	Reduction       string   `json:"reduction" jsonschema:"enum=first_rows,enum=aggregate_evidence"`
-	MaxRows         int      `json:"max_rows"`
-	MaxBytes        int      `json:"max_bytes"`
-	MaxCharacters   int      `json:"max_characters"`
-	MaxCalls        int      `json:"max_calls"`
-	MaxTokens       int      `json:"max_tokens"`
-	TimeoutMillis   int      `json:"timeout_ms"`
-	PromptVersion   string   `json:"prompt_version"`
-	ModelVersion    string   `json:"model_version"`
-	SchemaVersion   string   `json:"schema_version"`
-	Locale          string   `json:"locale"`
-	Tone            string   `json:"tone" jsonschema:"enum=neutral,enum=concise,enum=technical"`
-	RequireEvidence bool     `json:"require_evidence"`
-	RequireCaveats  bool     `json:"require_caveats"`
+	PolicyVersion   string               `json:"policy_version,omitempty" jsonschema:"enum=bounded-narrative-v2,enum=bounded-narrative-v3"`
+	MaxClaims       int                  `json:"max_claims,omitempty" jsonschema:"minimum=1,maximum=32"`
+	Type            string               `json:"type" jsonschema:"enum=summary,enum=comparison,enum=explanation"`
+	Instructions    string               `json:"instructions"`
+	Fields          []string             `json:"fields"`
+	RedactedFields  []string             `json:"redacted_fields"`
+	Reduction       string               `json:"reduction" jsonschema:"enum=first_rows,enum=aggregate_evidence,enum=statistical_evidence"`
+	MaxRows         int                  `json:"max_rows"`
+	MaxBytes        int                  `json:"max_bytes"`
+	MaxCharacters   int                  `json:"max_characters"`
+	MaxCalls        int                  `json:"max_calls"`
+	MaxTokens       int                  `json:"max_tokens"`
+	TimeoutMillis   int                  `json:"timeout_ms"`
+	PromptVersion   string               `json:"prompt_version"`
+	ModelVersion    string               `json:"model_version"`
+	SchemaVersion   string               `json:"schema_version"`
+	Locale          string               `json:"locale"`
+	Tone            string               `json:"tone" jsonschema:"enum=neutral,enum=concise,enum=technical"`
+	RequireEvidence bool                 `json:"require_evidence"`
+	RequireCaveats  bool                 `json:"require_caveats"`
+	Statistics      []NarrativeStatistic `json:"statistics,omitempty"`
 }
 
 // Output is a closed tagged union. A chart/KPI/table has exactly one saved phase
