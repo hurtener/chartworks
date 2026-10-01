@@ -8,7 +8,16 @@ import (
 )
 
 func TestActualDraftStrictProviderSchemas(t *testing.T) {
-	for name, raw := range map[string][]byte{"topic_enhancement_step": enhancementSchema, "topic_quality_review": qualitySchema} {
+	model, profiles := authoringFixture(t)
+	material, err := buildAuthoringContext(model, profiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := qualityReviewSchema(model.Digest(), material.Digest, qualityCoverage(model.Pack()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range map[string][]byte{"topic_enhancement_step": enhancementSchema, "topic_quality_review": review.Document()} {
 		t.Run(name, func(t *testing.T) {
 			domain, err := gateway.NewSchema(name, raw)
 			if err != nil {

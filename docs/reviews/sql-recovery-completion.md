@@ -33,6 +33,27 @@ only the inherited kernel isolation failures described above.
 [SQL recovery](https://github.com/hurtener/chartworks/actions/runs/36917357859),
 [reporting](https://github.com/hurtener/chartworks/actions/runs/36917358205).
 
+PR #65 corrected strict-provider checkpoint `2c52670b55fd5bf3a3605e68db2f2c66b244e2a5`
+passed both Go toolchains with 3,430 unit/subtest and 445 acceptance events each.
+PR #66 calendar checkpoint `8bc87fff035fe9bd88667733d920b363b24e1ab4` passed both
+with 3,435 unit/subtest and 456 acceptance events each, zero failures/missing
+required cases/acceptance skips; only the opt-in reranker was skipped. Tested
+merge `8ba3bf358ba1584f4e55a9fa11c877a4c07fe096` has the exact PR #66 head tree
+`3c437e601e42cca8b266ccf96863d71d4033c6aa`. Fast CI passed. Reporting retained only
+the kernel memory/stability and Phase32 AC03/AC04/AC05 isolation failures.
+[PR #65 SQL](https://github.com/hurtener/chartworks/actions/runs/36929174725),
+[PR #66 SQL](https://github.com/hurtener/chartworks/actions/runs/36929979827),
+[PR #66 reporting](https://github.com/hurtener/chartworks/actions/runs/36929980894).
+
+The live provider now accepts the strict transport, and the calendar authoring
+fix produced canonical metadata. A subsequent synthetic full run passed two
+enhancement responses and reached whole-topic review, but the advisory used
+unqualified entity references and failed before final draft save. Offline replay
+isolated that exact mismatch. The [request-bound review correction](../contracts/topic-quality-review-bindings-v1.md)
+retains all downstream validation and distinguishes declared business meaning
+from physical proof. This is not a successful live publication/SQL result or
+full semantic-quality qualification.
+
 ## Current residual software and qualification
 
 - V10 now composes authenticated reviewed fact-owned periods with grouped

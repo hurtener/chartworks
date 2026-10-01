@@ -184,3 +184,11 @@ transport/adversarial tests and AC05 are acceptance targets, not live semantic
 quality measurements. Actual profile → generated topic → reviewed publication →
 correct SQL still requires the finite live evaluation owned by the integration
 workstream; reviewed SQL examples are a separate learning mechanism.
+
+The [request-bound quality-review contract](../contracts/topic-quality-review-bindings-v1.md)
+closes the producer/consumer identity mismatch: the exact digests and complete
+coverage identifiers constrain both the domain and projected provider schema.
+Declared business definitions remain distinct from physical proof. Retained
+`needs_review` findings require explicit operator adjudication; they are never
+rewritten into approval. Recorded real-source tests exercise unchanged candidate
+publication and independent gross/month results after that explicit review.

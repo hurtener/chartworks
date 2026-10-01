@@ -89,7 +89,7 @@ func TestWholeTopicReviewBindsFullCandidateAndCannotMutate(t *testing.T) {
 	if incomplete.ValidFor(model) {
 		t.Fatal("incomplete coverage accepted")
 	}
-	if _, err := gateway.NewSchema("whole_topic_test", qualitySchema); err != nil {
+	if _, err := qualityReviewSchema(model.Digest(), material.Digest, qualityCoverage(model.Pack())); err != nil {
 		t.Fatal("closed schema invalid", err)
 	}
 }

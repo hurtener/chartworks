@@ -81,7 +81,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		if rerankMode == "normal" {
 			rerankMode = mode
 		}
-		if mode == "topic_quality_echo" {
+		if mode == "topic_quality_echo" || mode == "topic_quality_findings" || mode == "topic_quality_unqualified" {
 			var material map[string]any
 			messages, _ := input["messages"].([]any)
 			for _, message := range messages {
@@ -92,7 +92,7 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 				}
 			}
 			context, _ := material["context"].(map[string]any)
-			answer, _ := json.Marshal(map[string]any{"candidate_digest": context["candidate_digest"], "context_digest": context["digest"], "coverage_digest": material["coverage_digest"], "status": "no_findings", "findings": []any{}})
+			answer, _ := json.Marshal(recordedQualityAnswer(t, mode, context, material))
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "recorded-quality", "object": "chat.completion", "model": model, "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": string(answer)}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}})
 			return
 		}
