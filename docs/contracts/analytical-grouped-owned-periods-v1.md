@@ -68,8 +68,9 @@ retain their prior meanings and cannot impersonate schema 3.
 
 ## Remaining scope
 
-Generic non-temporal fact-only or shared-dimension query filters still require a
-separately reviewed ownership mechanism and remain rejected here. Different
+Generic non-temporal fact-only or shared-dimension query filters remain rejected
+by v10. The separate [v11 final-group-selection contract](analytical-group-selection-v1.md)
+admits only authenticated direct final-spine predicates; it does not change v10. Different
 periods within one fact, HAVING-owned restrictions, more than four fact lanes,
 LEFT joins inside period-bound aggregates, derived-wrapper/derived-spine binding,
 mixed ordinary-completeness/period capabilities, and non-PostgreSQL execution

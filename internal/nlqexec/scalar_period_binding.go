@@ -15,7 +15,7 @@ type metricPeriodReplayer interface {
 }
 
 func bindScalarPeriodCandidate(ctx context.Context, a admission, candidate generatedCandidate) (generatedCandidate, error) {
-	if a.analytical == nil || a.analytical.ScalarPopulations == nil && a.analytical.Version != exec.AnalyticalGroupedOwnedPopulationsVersion {
+	if a.analytical == nil || a.analytical.ScalarPopulations == nil && a.analytical.Version != exec.AnalyticalGroupedOwnedPopulationsVersion && a.analytical.Version != exec.AnalyticalGroupedSelectionVersion {
 		return generatedCandidate{}, exec.ErrBinding
 	}
 	bound, err := bindPeriodProgram(ctx, a.binding, candidate.SQL, candidate.Parameters, *a.analytical)
@@ -28,24 +28,32 @@ func bindScalarPeriodCandidate(ctx context.Context, a admission, candidate gener
 }
 
 func (s *Service) scalarPeriodAdmission(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) (admission, []exec.BusinessConstraint, error) {
-	if q.AnalyticalVersion != analyticalScopedRecordVersion && q.AnalyticalVersion != analyticalGroupedOwnedRecordVersion {
+	if q.AnalyticalVersion != analyticalScopedRecordVersion && q.AnalyticalVersion != analyticalGroupedOwnedRecordVersion && q.AnalyticalVersion != analyticalGroupedSelectionRecordVersion {
 		return admission{}, nil, exec.ErrBinding
 	}
-	replayer, ok := s.router.(metricPeriodReplayer)
-	if !ok {
-		return admission{}, nil, exec.ErrBinding
+	if !isGroupedSelectionRecord(q) || selectedMetricPeriods(a) {
+		replayer, ok := s.router.(metricPeriodReplayer)
+		if !ok {
+			return admission{}, nil, exec.ErrBinding
+		}
+		applications, binding, err := replayer.ReplayMetricPeriodApplications(ctx, e, q.Route)
+		if err != nil {
+			return admission{}, nil, err
+		}
+		if len(applications) == 0 || binding != exec.Hash(a.binding) {
+			return admission{}, nil, exec.ErrBinding
+		}
+		a.metricPeriods = applications
 	}
-	applications, binding, err := replayer.ReplayMetricPeriodApplications(ctx, e, q.Route)
-	if err != nil {
-		return admission{}, nil, err
-	}
-	if len(applications) == 0 || binding != exec.Hash(a.binding) {
-		return admission{}, nil, exec.ErrBinding
-	}
-	a.metricPeriods = applications
 	constraints, err := s.replayQueryClarifications(ctx, e, q)
 	if err != nil {
 		return admission{}, nil, err
+	}
+	if isGroupedSelectionRecord(q) {
+		if len(constraints) == 0 {
+			return admission{}, nil, exec.ErrBinding
+		}
+		return a, constraints, nil
 	}
 	if len(constraints) != 0 {
 		return admission{}, nil, analyticalUnsupported("analytical_query_population_unsupported")
@@ -70,7 +78,7 @@ func (s *Service) verifyScalarPeriodBinding(ctx context.Context, e identity.Enve
 	if err != nil {
 		return err
 	}
-	if contract == nil || contract.ScalarPopulations == nil && contract.Version != exec.AnalyticalGroupedOwnedPopulationsVersion {
+	if contract == nil || contract.ScalarPopulations == nil && contract.Version != exec.AnalyticalGroupedOwnedPopulationsVersion && contract.Version != exec.AnalyticalGroupedSelectionVersion {
 		return exec.ErrBinding
 	}
 	bound, err := bindPeriodProgram(ctx, a.binding, evidence.BaseSQL, evidence.BaseParameters, *contract)
@@ -91,7 +99,25 @@ func clarificationBindingSchemaValid(q QueryRecord) bool {
 	}
 	b := q.Clarification.Binding
 	if b.SchemaVersion == 1 {
-		return !isScalarPeriodRecord(q) && !isGroupedPeriodRecord(q) && b.PopulationPolicy == ""
+		return !isScalarPeriodRecord(q) && !isGroupedPeriodRecord(q) && !isGroupedSelectionRecord(q) && b.PopulationPolicy == ""
+	}
+	if b.SchemaVersion == 4 {
+		if !isGroupedSelectionRecord(q) || b.PopulationPolicy != exec.AnalyticalGroupedSelectionPolicy || len(b.Bindings) == 0 || len(b.Bindings) > 64 {
+			return false
+		}
+		global := false
+		seen := map[string]bool{}
+		for _, binding := range b.Bindings {
+			if binding.Population == "" {
+				global = true
+			} else {
+				if seen[binding.Population] {
+					return false
+				}
+				seen[binding.Population] = true
+			}
+		}
+		return global
 	}
 	valid := b.SchemaVersion == 2 && isScalarPeriodRecord(q) && b.PopulationPolicy == exec.AnalyticalScalarPopulationPolicy || b.SchemaVersion == 3 && isGroupedPeriodRecord(q) && b.PopulationPolicy == exec.AnalyticalGroupedOwnedPopulationPolicy
 	if !valid || len(b.Bindings) < 2 || len(b.Bindings) > 4 {
@@ -108,6 +134,9 @@ func clarificationBindingSchemaValid(q QueryRecord) bool {
 }
 
 func analyticalVersionForReceipt(r *exec.AnalyticalReceipt) int {
+	if r != nil && r.Version == exec.AnalyticalGroupedSelectionVersion && analyticalReceiptScopeValid(r) && topics.DigestValid(r.Contract) && topics.DigestValid(r.Query) {
+		return analyticalGroupedSelectionRecordVersion
+	}
 	if r != nil && r.Version == exec.AnalyticalGroupedOwnedPopulationsVersion && analyticalReceiptScopeValid(r) && topics.DigestValid(r.Contract) && topics.DigestValid(r.Query) {
 		return analyticalGroupedOwnedRecordVersion
 	}
@@ -125,7 +154,14 @@ func isGroupedPeriodRecord(q QueryRecord) bool {
 	return q.AnalyticalVersion == analyticalGroupedOwnedRecordVersion && q.Analytical != nil && strings.HasSuffix(q.Analytical.Scope, ";independent_owned_grouped_populations")
 }
 
+func isGroupedSelectionRecord(q QueryRecord) bool {
+	return q.AnalyticalVersion == analyticalGroupedSelectionRecordVersion && q.Analytical != nil && strings.HasSuffix(q.Analytical.Scope, ";independent_selected_grouped_populations")
+}
+
 func bindPeriodProgram(ctx context.Context, binding exec.Binding, statement string, parameters []exec.Parameter, c exec.AnalyticalContract) (exec.BusinessBoundQuery, error) {
+	if c.Version == exec.AnalyticalGroupedSelectionVersion {
+		return exec.BindGroupedSelectionConstraints(ctx, binding, statement, parameters, c)
+	}
 	if c.Version == exec.AnalyticalGroupedOwnedPopulationsVersion {
 		return exec.BindGroupedPopulationConstraints(ctx, binding, statement, parameters, c)
 	}

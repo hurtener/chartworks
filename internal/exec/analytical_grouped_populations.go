@@ -94,7 +94,7 @@ func groupedLeaves(c AnalyticalContract, dataset string) []AnalyticalExpression 
 // detached contract-wide namespace. It never validates a raw cross-fact join.
 func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (Relation, error) {
 	g := c.GroupedPopulations
-	if (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion && c.Version != AnalyticalGroupedOwnedPopulationsVersion) || (b.Dialect != "postgres" && !(b.Dialect == "mysql" && c.Version == AnalyticalGroupedProgramsVersion)) || g == nil || g.Policy != AnalyticalGroupedPopulationPolicy || (len(g.Lanes) < 2 || len(g.Lanes) > 4) || len(c.Joins)+len(c.Populations) != 0 || c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) < 1 || c.Version == AnalyticalGroupedPopulationsVersion && len(c.Grain.Buckets) != 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
+	if (c.Version != AnalyticalGroupedPopulationsVersion && c.Version != AnalyticalGroupedProgramsVersion && c.Version != AnalyticalGroupedOwnedPopulationsVersion && c.Version != AnalyticalGroupedSelectionVersion) || (b.Dialect != "postgres" && !(b.Dialect == "mysql" && c.Version == AnalyticalGroupedProgramsVersion)) || g == nil || g.Policy != AnalyticalGroupedPopulationPolicy || (len(g.Lanes) < 2 || len(g.Lanes) > 4) || len(c.Joins)+len(c.Populations) != 0 || c.Grain == nil || len(c.Grain.Columns)+len(c.Grain.Buckets) < 1 || c.Version == AnalyticalGroupedPopulationsVersion && len(c.Grain.Buckets) != 0 || c.QueryPopulation != nil && len(c.QueryPopulation.Constraints) > 0 {
 		return Relation{}, ErrBinding
 	}
 	all := map[string]Column{}
@@ -120,7 +120,7 @@ func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (
 		if c.Version == AnalyticalGroupedPopulationsVersion && lane.Domain != "" || lane.Domain != "" && lane.Domain != AnalyticalGroupDomainRaw && lane.Domain != AnalyticalGroupDomainQualifying {
 			return Relation{}, ErrBinding
 		}
-		if c.Version == AnalyticalGroupedOwnedPopulationsVersion {
+		if c.Version == AnalyticalGroupedOwnedPopulationsVersion || c.Version == AnalyticalGroupedSelectionVersion && groupedSelectionHasPeriods(c) {
 			if b.Dialect != "postgres" || lane.QueryPopulation == nil || len(lane.QueryPopulation.Constraints) != 1 || lane.Domain == "" {
 				return Relation{}, ErrBinding
 			}
@@ -213,6 +213,13 @@ func analyticalGroupedRelation(c AnalyticalContract, b Binding, base Relation) (
 
 // ValidateAnalyticalGroupedPopulations checks the compiler's source-backed lanes.
 func ValidateAnalyticalGroupedPopulations(c AnalyticalContract, b Binding) error {
+	if c.Version == AnalyticalGroupedSelectionVersion {
+		if err := validateGroupedSelection(c, b); err != nil {
+			return err
+		}
+	} else if c.GroupSelection != nil {
+		return ErrBinding
+	}
 	for _, r := range b.Relations {
 		if r.ID == c.Dataset {
 			_, err := analyticalGroupedRelation(c, b, r)
@@ -235,7 +242,7 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 		}
 	}
 	fail := func() error { return analyticalFailure("analytical_population_mismatch", false) }
-	if !only(q, "targetList", "fromClause", "withClause", "sortClause", "limitOffset", "limitCount", "limitOption", "op") || text(q["op"]) != "" && text(q["op"]) != "SETOP_NONE" {
+	if !only(q, "targetList", "fromClause", "withClause", "whereClause", "sortClause", "limitOffset", "limitCount", "limitOption", "op") || text(q["op"]) != "" && text(q["op"]) != "SETOP_NONE" {
 		return fail()
 	}
 	var inlineSpine map[string]any
@@ -379,6 +386,12 @@ func (a *analyticalChecker) queryGroupedPopulations(q map[string]any, expected m
 	}
 	if len(joined) != len(policy.Lanes) {
 		return fail()
+	}
+	if err := a.rememberGroupSelectionKeys(keys, aliases, spine); err != nil {
+		return err
+	}
+	if err := a.checkGroupSelection(q); err != nil {
+		return err
 	}
 	outer := *a
 	outer.derivedTerms = map[string]analyticalTerm{}

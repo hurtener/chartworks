@@ -7,6 +7,18 @@ across 32 packages and 412 acceptance events, with zero failures or missing
 required tests. The sole opt-in paid-reranker skip is not live model evidence.
 [Hosted recovery](https://github.com/hurtener/chartworks/actions/runs/36814989291).
 
+PR #70 hosted recovery verified both Go 1.26.4 and 1.27.1 with 3,477 passing
+unit/subtest events across 33 packages and 470 acceptance events each, with no
+failures, missing required tests or acceptance skips. The sole opt-in reranker
+skip is not live evidence. Tested merge `ea78f277` has tree `a3516039`.
+[PR #70 SQL recovery](https://github.com/hurtener/chartworks/actions/runs/36946745827).
+Reporting retains only the kernel memory/stability and Phase32 AC03/AC04/AC05
+failures caused by the absent charged-memory hierarchy. The automatic live attempt
+remains incomplete at the scalar `select`/empty-keys producer mismatch; PR #72
+corrects that schema separately at `112d327d417a90242e898d0e15c535aa39a531e2`
+(tree `d338d8a5`) without a paid rerun. No full-live completion follows from either
+software checkpoint.
+
 Updated 2026-10-02. S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented
 finite software scopes. S4/S5/S6 and Q1/Q2/Q3 remain open. Later sections retain
 historical evidence at their stated revision; the current finite residuals are
@@ -72,8 +84,10 @@ This is bounded live evidence, not full semantic-quality or migration qualificat
 - V10 now composes authenticated reviewed fact-owned periods with grouped
   PostgreSQL region/calendar CTE lanes, schema-3 custody and exact replay. See the
   [grouped-period contract](../contracts/analytical-grouped-owned-periods-v1.md).
-  Generic non-temporal fact/shared-dimension filters, derived owned-lane binding
-  and broader dialects remain open; scalar v9 receipts retain their old meaning
+  V11 now selects complete aligned groups through authenticated direct shared-key
+  predicates at the final spine, with optional fact periods and schema4 replay.
+  Generic fact/shared-dimension pushdown, derived owned-lane binding and broader
+  dialects remain open; scalar v9 receipts retain their old meaning
 - Outer joins have equality-key proof but no reviewed ON-versus-WHERE predicate
   placement policy. Analytical windows/general sets remain unsupported except
   the reviewed UNION DISTINCT group-key spine
@@ -588,3 +602,12 @@ or hidden by that merge. PR #68 has both-toolchain hosted evidence and the bound
 live/held-out results described in [the qualification note](generated-topic-live-qualification.md).
 The held-out grouped live lanes used explicit reviewed grouping; the original
 three automatic-grouping admission failures remain failures.
+
+
+The direct shared-key group-selection continuation is implemented with migration078
+and exact schema4 replay/refinement. Its final local gate passed1,951 affected race
+unit/subtests and70 actual PostgreSQL acceptance events, plus build/vet/planning;
+only the existing optional MySQL local unit test skipped. Six new group-selection
+configurations preserve independent fact populations and NULL/missing/zero meaning.
+See [scope, failures and qualification](group-selection-qualification.md). Hosted
+qualification and all broader residuals remain separate obligations.

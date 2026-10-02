@@ -477,3 +477,16 @@ origin digest so deleting optional policy fields cannot downgrade replay.
 publication through actual HTTP/SDK Plan/Run with independent PostgreSQL results;
 `TestSQLRecoveryGroundedGroupingRunAndSavedPolicy` covers retained policy edges.
 Full engine, renderer and final release qualification remain open.
+
+## Authenticated complete-group selection
+
+[Final-group selection v1](../contracts/analytical-group-selection-v1.md) composes
+independently reviewed grouped populations with service-owned predicates on direct
+final-spine keys, optionally retaining v10 fact periods. V11/schema4 SQL, parameter,
+source and complete receipt replay are required for execution, saved reuse and
+refinement; scoped reusable learning stays ineligible. Migration 078 retains every
+older receipt meaning. The focused compiler/native cases and six real-PostgreSQL
+`TestSQLRecoveryGroupedSelectionAcceptance` configurations are the qualification
+boundary; their observed results are separate from this implementation inventory.
+Generic fact-filter ownership, derived-bucket predicates and extra dialects remain
+outside this increment.

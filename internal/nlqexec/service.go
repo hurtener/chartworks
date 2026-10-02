@@ -371,7 +371,7 @@ func (s *Service) Refine(ctx context.Context, e identity.Envelope, in RefineRequ
 			return PlanResult{}, err
 		}
 	}
-	if isScalarPeriodRecord(old) || isGroupedPeriodRecord(old) {
+	if isScalarPeriodRecord(old) || isGroupedPeriodRecord(old) || isGroupedSelectionRecord(old) {
 		// Grouping continuation reconstructs the parent contract from current
 		// authenticated period applications, never from stored route JSON.
 		parent, parentConstraints, err = s.scalarPeriodAdmission(ctx, e, old, parent)

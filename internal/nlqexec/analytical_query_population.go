@@ -36,6 +36,9 @@ func compileCurrentAnalytical(ctx context.Context, a admission) (contract *exec.
 	if err != nil {
 		return nil, err
 	}
+	if len(constraints) > 0 && !selectedKnownAmountCompleteness(a) {
+		version = analyticalGroupedSelectionRecordVersion
+	}
 	return compileAnalyticalVersion(ctx, a, version, constraints)
 }
 
@@ -75,7 +78,7 @@ func compileQueryPopulation(ctx context.Context, a admission, contract *exec.Ana
 // Persisted route JSON has no in-process predicate seal. Reconstruct through the
 // existing authenticated router replay, never by trusting saved resolutions.
 func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) (*exec.AnalyticalContract, error) {
-	if isScalarPeriodRecord(q) || isGroupedPeriodRecord(q) {
+	if isScalarPeriodRecord(q) || isGroupedPeriodRecord(q) || isGroupedSelectionRecord(q) {
 		a, constraints, err := s.scalarPeriodAdmission(ctx, e, q, a)
 		if err != nil {
 			return nil, err
@@ -93,6 +96,9 @@ func (s *Service) expectedAnalytical(ctx context.Context, e identity.Envelope, q
 }
 
 func analyticalPopulationGuidance(contract *exec.AnalyticalContract) string {
+	if contract != nil && contract.Version == exec.AnalyticalGroupedSelectionVersion {
+		return " The service selects complete aligned groups using authenticated predicates only on direct final key-spine columns, after independent fact aggregation. Do not insert those predicates into a fact lane or UNION spine, do not supply private values or parameters, and preserve the unfiltered raw or qualifying domain of every fact. Fact-owned periods, if declared, remain separately bound inside their own named aggregate CTE. Keep a flat named CTE program with no derived wrappers."
+	}
 	if contract != nil && contract.ScalarPopulations != nil {
 		return ""
 	}

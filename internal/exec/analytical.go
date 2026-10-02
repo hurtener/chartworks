@@ -88,6 +88,7 @@ type AnalyticalMetric struct {
 // does NOT certify question interpretation or query-wide filters. v2 can also
 // prove an explicitly compiled direct-column grain; nil grain remains unmeasured.
 type AnalyticalContract struct {
+	GroupSelection     *AnalyticalQueryPopulation    `json:"group_selection,omitempty"`
 	Completeness       *AnalyticalCompleteness       `json:"completeness,omitempty"`
 	ScalarPopulations  *AnalyticalScalarPopulations  `json:"scalar_populations,omitempty"`
 	GroupDomain        *AnalyticalGroupDomain        `json:"group_domain,omitempty"`
@@ -202,37 +203,9 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 			}
 		}
 	}
-	checker := analyticalChecker{groupedOwned: c.Version == AnalyticalGroupedOwnedPopulationsVersion, scalarPopulations: c.ScalarPopulations, ordinaryGroupProof: standard.Version == AnalyticalGroupedProgramsVersion && c.ScalarPopulations == nil && c.GroupedPopulations == nil && len(c.Populations) == 0, ordinaryGroupDomain: c.GroupDomain, groupedExtensions: standard.Version == AnalyticalGroupedProgramsVersion, reviewedNullPolicy: (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), populations: c.Populations, expandedExpressions: standard.Version == AnalyticalIntentVersion || (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), joins: c.Joins, joinAliases: map[string]string{}, joinUsed: map[int]bool{}, intent: c.Intent, ctx: ctx, relation: relation, parameters: p.candidate.parameters, grain: c.Grain, binding: p.candidate.binding, queryPopulation: c.QueryPopulation}
-	if c.ScalarPopulations != nil {
-		for _, lane := range c.ScalarPopulations.Lanes {
-			checker.populations = append(checker.populations, lane.Dataset)
-		}
-	}
-	if c.GroupedPopulations != nil {
-		for _, lane := range c.GroupedPopulations.Lanes {
-			checker.populations = append(checker.populations, lane.Dataset)
-		}
-	}
-	checker.intentMetricKeys = map[string]string{}
-	expected := map[string]int{}
-	ids := make([]string, 0, len(c.Metrics))
-	seen := map[string]bool{}
-	for _, metric := range c.Metrics {
-		if metric.ID == "" || len(metric.ID) > 256 || seen[metric.ID] {
-			return nil, ErrBinding
-		}
-		seen[metric.ID] = true
-		before := len(checker.leaves)
-		key, err := checker.expected(metric.Expression, 0)
-		if err != nil {
-			return nil, err
-		}
-		if len(checker.leaves) == before {
-			return nil, analyticalFailure("analytical_expression_unsupported", true)
-		}
-		checker.intentMetricKeys[metric.ID] = key
-		expected[key]++
-		ids = append(ids, metric.ID)
+	checker, expected, ids, err := prepareAnalyticalProgram(ctx, p.candidate.binding, c, relation, p.candidate.parameters)
+	if err != nil {
+		return nil, err
 	}
 	// Plan validation already bounded this SQL/AST; retain a separate hard bound
 	// before re-entering the pinned native parser for the narrower semantic proof.
@@ -287,11 +260,14 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	if c.Version == AnalyticalGroupedOwnedPopulationsVersion {
 		receipt.Scope = strings.ReplaceAll(receipt.Scope, "independent_grouped_populations", "independent_owned_grouped_populations")
 	}
+	if c.Version == AnalyticalGroupedSelectionVersion {
+		receipt.Scope = groupedSelectionScope(receipt.Scope)
+	}
 	if c.Completeness != nil {
 		receipt.Completeness = CloneAnalyticalCompleteness(c.Completeness)
 		receipt.Scope += AnalyticalCompletenessScope
 	}
-	if c.Version == AnalyticalScopedPopulationsVersion || c.Version == AnalyticalGroupedOwnedPopulationsVersion {
+	if c.Version == AnalyticalScopedPopulationsVersion || c.Version == AnalyticalGroupedOwnedPopulationsVersion || c.Version == AnalyticalGroupedSelectionVersion {
 		receipt.Outputs, err = checker.provedOutputs(ids)
 		if err != nil {
 			return nil, err
@@ -300,7 +276,49 @@ func CheckAnalyticalPlan(ctx context.Context, p Plan, c AnalyticalContract) (*An
 	return receipt, nil
 }
 
+// prepareAnalyticalProgram builds only a bounded semantic checker. It issues no
+// executable Plan; callers still require the native and authority boundary.
+func prepareAnalyticalProgram(ctx context.Context, binding Binding, c AnalyticalContract, relation Relation, parameters []Parameter) (analyticalChecker, map[string]int, []string, error) {
+	standard := analyticalStandardPolicy(c)
+	checker := analyticalChecker{groupedOwned: c.Version == AnalyticalGroupedOwnedPopulationsVersion || c.Version == AnalyticalGroupedSelectionVersion, groupSelection: c.GroupSelection, scalarPopulations: c.ScalarPopulations, ordinaryGroupProof: standard.Version == AnalyticalGroupedProgramsVersion && c.ScalarPopulations == nil && c.GroupedPopulations == nil && len(c.Populations) == 0, ordinaryGroupDomain: c.GroupDomain, groupedExtensions: standard.Version == AnalyticalGroupedProgramsVersion, reviewedNullPolicy: (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), populations: c.Populations, expandedExpressions: standard.Version == AnalyticalIntentVersion || (standard.Version == AnalyticalGroupedPopulationsVersion || standard.Version == AnalyticalGroupedProgramsVersion), joins: c.Joins, joinAliases: map[string]string{}, joinUsed: map[int]bool{}, intent: c.Intent, ctx: ctx, relation: relation, parameters: parameters, grain: c.Grain, binding: binding, queryPopulation: c.QueryPopulation}
+	if c.ScalarPopulations != nil {
+		for _, lane := range c.ScalarPopulations.Lanes {
+			checker.populations = append(checker.populations, lane.Dataset)
+		}
+	}
+	if c.GroupedPopulations != nil {
+		for _, lane := range c.GroupedPopulations.Lanes {
+			checker.populations = append(checker.populations, lane.Dataset)
+		}
+	}
+	checker.intentMetricKeys = map[string]string{}
+	expected := map[string]int{}
+	ids := make([]string, 0, len(c.Metrics))
+	seen := map[string]bool{}
+	for _, metric := range c.Metrics {
+		if metric.ID == "" || len(metric.ID) > 256 || seen[metric.ID] {
+			return analyticalChecker{}, nil, nil, ErrBinding
+		}
+		seen[metric.ID] = true
+		before := len(checker.leaves)
+		key, err := checker.expected(metric.Expression, 0)
+		if err != nil {
+			return analyticalChecker{}, nil, nil, err
+		}
+		if len(checker.leaves) == before {
+			return analyticalChecker{}, nil, nil, analyticalFailure("analytical_expression_unsupported", true)
+		}
+		checker.intentMetricKeys[metric.ID] = key
+		expected[key]++
+		ids = append(ids, metric.ID)
+	}
+	return checker, expected, ids, nil
+}
+
 type analyticalChecker struct {
+	groupSelection     *AnalyticalQueryPopulation
+	groupSelectionKeys map[string][2]string
+
 	groupedOwned         bool
 	finalTerms           []analyticalTerm
 	scalarPopulations    *AnalyticalScalarPopulations

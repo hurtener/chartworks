@@ -25,6 +25,12 @@ type AnalyticalCompletenessObligation struct {
 }
 
 func validateAnalyticalCapabilities(c AnalyticalContract, b Binding) error {
+	if c.Version == AnalyticalGroupedSelectionVersion {
+		return validateGroupedSelection(c, b)
+	}
+	if c.GroupSelection != nil {
+		return ErrBinding
+	}
 	if c.Version == AnalyticalGroupedOwnedPopulationsVersion {
 		if b.Dialect != "postgres" || c.GroupedPopulations == nil || c.ScalarPopulations != nil || c.Completeness != nil {
 			return ErrBinding
@@ -148,7 +154,7 @@ func AnalyticalOutputsValid(r *AnalyticalReceipt) bool {
 	if r == nil {
 		return false
 	}
-	if r.Version != AnalyticalScopedPopulationsVersion && r.Version != AnalyticalGroupedOwnedPopulationsVersion {
+	if r.Version != AnalyticalScopedPopulationsVersion && r.Version != AnalyticalGroupedOwnedPopulationsVersion && r.Version != AnalyticalGroupedSelectionVersion {
 		return len(r.Outputs) == 0 && r.Completeness == nil
 	}
 	if len(r.Outputs) != len(r.Metrics) || len(r.Outputs) == 0 {
@@ -159,7 +165,7 @@ func AnalyticalOutputsValid(r *AnalyticalReceipt) bool {
 			return false
 		}
 	}
-	if r.Version == AnalyticalGroupedOwnedPopulationsVersion && r.Completeness != nil {
+	if (r.Version == AnalyticalGroupedOwnedPopulationsVersion || r.Version == AnalyticalGroupedSelectionVersion) && r.Completeness != nil {
 		return false
 	}
 	if r.Completeness != nil {
