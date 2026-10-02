@@ -93,9 +93,27 @@ fi
 install -d -m 0755 "$state"
 install -d -o nobody -g nogroup -m 0700 "$state/work"
 install -o root -g root -m 0555 "$trusted_dir/renderer-host-tests.sh" "$state/tests.sh"
+install -o root -g root -m 0555 "$trusted_dir/renderer-source.py" "$state/source.py"
 trap 'result=$?; trap - EXIT; cleanup || result=1; exit "$result"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# The hosted runner's home may be non-traversable by nobody. Stage immutable
+# bytes in this job's existing root-owned directory; do not open the home tree.
+source_digest=$(python3 -I "$state/source.py" prepare "$source_dir" "$state/source" "$source_sha")
+source_dir="$state/source"
+printf 'SOURCE_SNAPSHOT_SHA256=%s\n' "$source_digest"
+install -d -o root -g root -m 0755 "$state/tools/bin"
+# rustup lives below the same private home. Copy only the official executable;
+# job-private CARGO_HOME/RUSTUP_HOME still receive the pinned native toolchain.
+install -o root -g root -m 0555 "$rust_bin/rustup" "$state/tools/bin/rustup"
+rustup_digest=$(sha256sum "$rust_bin/rustup" | cut -d' ' -f1)
+[[ $(sha256sum "$state/tools/bin/rustup" | cut -d' ' -f1) == "$rustup_digest" ]]
+printf 'STAGED_RUSTUP_SHA256=%s\n' "$rustup_digest"
+for shim in cargo rustc rustdoc rustfmt cargo-fmt cargo-clippy clippy-driver; do
+  ln -s rustup "$state/tools/bin/$shim"
+done
+rust_bin="$state/tools/bin"
 
 has_word() { [[ " $(cat "$1") " == *" $2 "* ]]; }
 for controller in memory hugetlb pids cpu; do
@@ -133,6 +151,7 @@ systemd --version | head -n 1
 findmnt -n -o TARGET,FSTYPE,FS-OPTIONS /sys/fs/cgroup
 # No candidate shell, script, binary, hook or dependency runs as root. nobody
 # has neither sudo rights nor docker/admin groups. No credentials are inherited.
+test_result=0
 systemd-run --unit="$unit" --wait --pipe --service-type=exec \
   --property=Slice=-.slice --property=User=nobody --property=Group=nogroup \
   --property=Delegate=yes --property=DelegateSubgroup=manager \
@@ -146,4 +165,7 @@ systemd-run --unit="$unit" --wait --pipe --service-type=exec \
   HOME="$state/work" GOPATH="$state/work/go" GOCACHE="$state/work/go-cache" \
   CARGO_HOME="$state/work/cargo" RUSTUP_HOME="$state/work/rustup" \
   TMPDIR="$state/work/tmp" \
-  /bin/bash "$state/tests.sh" "$source_dir" "$source_sha" "$unit"
+  /bin/bash "$state/tests.sh" "$source_dir" "$source_sha" "$unit" "$source_digest" || test_result=$?
+# Independent trusted verification precedes cleanup, including on test failure.
+python3 -I "$state/source.py" verify "$source_dir" "$source_digest" || test_result=1
+exit "$test_result"
