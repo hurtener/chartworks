@@ -19,8 +19,8 @@
 ### D-001 — Clean-room Go rewrite, two predecessors, never copied · *accepted (kickoff interview, 2026-07-06)*
 
 Chartworks is a clean-room redesign of two Python predecessors — **the client
-predecessor** (`_ref/original_wayfinder/`, the client-tailored original) and
-**the generalistic predecessor** (`_ref/forked_wayfinder_explorer/`, the "Explorer" fork)
+predecessor** (the client-tailored original) and
+**the generalistic predecessor** (its general-purpose fork)
 — rethought Go-native, the way Harbor and Soundings were rethinks rather than
 translations. **No code or files are copied or vendored** from either; `_ref/` is
 gitignored and never read across into the tree. The predecessors are referred to only as
@@ -39,9 +39,9 @@ cheapest way to inherit the *right* half of each.
 
 The product is **Chartworks** (repo `chartworks`, module
 `github.com/hurtener/chartworks` — a **placeholder pending the kickoff interview**), the
-ecosystem's **Explorer seat**: structured-data analytics (engineer → model → NLQ-to-SQL →
-charts), a peer to Portico / Harbor / Dockyard / Stowage / Soundings. "Wayfinder" and
-"Explorer" were the predecessors' names; in the family, the seat is **Chartworks**.
+ecosystem's **structured-analytics service** (engineer → model → NLQ-to-SQL →
+charts), a peer to Portico / Harbor / Dockyard / Stowage / Soundings. The
+predecessors retain neutral descriptions; in the family, the service is **Chartworks**.
 
 **Why:** the family names products by nautical/structural codename, not by function;
 consistency keeps the ecosystem legible. The module path mirrors the sibling convention
