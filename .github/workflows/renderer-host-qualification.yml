@@ -1,0 +1,139 @@
+name: Renderer hosted qualification
+
+# This workflow and its provisioning scripts must be reviewed on the default
+# branch first. Candidate PR content is never a source of privileged commands.
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Same-repository open PR to qualify
+        required: true
+        type: string
+      source_sha:
+        description: Exact 40-character current PR head commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  qualify:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      PR_NUMBER: ${{ inputs.pull_request }}
+      PROVISIONER_SHA: ${{ github.workflow_sha }}
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        ports: [5434:5432]
+        env:
+          POSTGRES_USER: chartworks
+          POSTGRES_PASSWORD: chartworks
+          POSTGRES_DB: chartworks
+        options: >-
+          --health-cmd "pg_isready -U chartworks -d chartworks"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - name: Bind current PR head and trusted workflow source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$ImageOS" = ubuntu24
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/renderer-pr.json"
+          python3 - <<'PY'
+          import json, os
+          p = json.load(open(os.environ['RUNNER_TEMP'] + '/renderer-pr.json'))
+          assert p['state'] == 'open'
+          assert p['head']['repo']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          assert p['head']['sha'] == os.environ['SOURCE_SHA']
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Verify immutable source and prepare evidence directory
+        id: source_guard
+        run: |
+          set -euo pipefail
+          test "$(git -C trusted rev-parse HEAD)" = "$PROVISIONER_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git -C trusted status --porcelain)"
+          test -z "$(git -C candidate status --porcelain)"
+          mkdir "$RUNNER_TEMP/renderer-evidence"
+          printf 'PROVISIONER_COMMIT=%s\nTESTED_COMMIT=%s\n' "$PROVISIONER_SHA" "$SOURCE_SHA" | tee "$RUNNER_TEMP/renderer-evidence/source.log"
+      - name: Qualify in a disposable delegated service as nobody
+        run: |
+          set -euo pipefail
+          sudo /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            GITHUB_ACTIONS=true RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
+            /bin/bash "$GITHUB_WORKSPACE/trusted/scripts/ci/renderer-host.sh" run \
+            "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$GITHUB_WORKSPACE/candidate" \
+            "$SOURCE_SHA" "$(dirname "$(command -v go)")" \
+            "$(dirname "$(command -v rustup)")" \
+            2>&1 | tee "$RUNNER_TEMP/renderer-evidence/qualification.log"
+      - name: Retain structured kernel and Phase32 evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'renderer-evidence'
+          log = root / 'qualification.log'
+          if log.exists():
+              records = {'kernel': [], 'phase32': []}
+              for line in log.read_text(errors='replace').splitlines():
+                  try:
+                      event = json.loads(line)
+                  except ValueError:
+                      continue
+                  if not isinstance(event, dict):
+                      continue
+                  package = event.get('Package', '')
+                  kind = {'github.com/hurtener/chartworks/internal/rendering': 'kernel',
+                          'github.com/hurtener/chartworks/test/acceptance': 'phase32'}.get(package)
+                  if kind:
+                      records[kind].append(json.dumps(event))
+              for kind, lines in records.items():
+                  (root / (kind + '.jsonl')).write_text('\n'.join(lines) + '\n')
+          PY
+      - name: Cleanup transient service, profile and mount changes
+        if: always() && steps.source_guard.outcome == 'success'
+        run: |
+          set -euo pipefail
+          sudo /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            GITHUB_ACTIONS=true RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
+            /bin/bash "$GITHUB_WORKSPACE/trusted/scripts/ci/renderer-host.sh" cleanup \
+            "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            2>&1 | tee "$RUNNER_TEMP/renderer-evidence/cleanup.log"
+      - name: Verify source stayed unchanged and head is still current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -z "$(git -C trusted status --porcelain)"
+          test -z "$(git -C candidate status --porcelain)"
+          test "$(git -C candidate rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$SOURCE_SHA"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: renderer-host-qualification-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/renderer-evidence/*
+          retention-days: 7
