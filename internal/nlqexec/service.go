@@ -1189,7 +1189,7 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 		}
 		groundedParent = &origin
 	}
-	if groundedParent != nil && (question.ClarificationQuery != "" || groundedParent != observedParent) && groundedParent.Route.Concepts != nil {
+	if groundedParent != nil && (question.ClarificationQuery != "" || groundedParent != observedParent) && (groundedParent.Route.Concepts != nil || groundedParent.Route.GroupingIntent != nil) {
 		keeper, ok := s.router.(interface {
 			GroundedOrigin(context.Context, identity.Envelope, nlqroute.RouteResult) (context.Context, error)
 		})
@@ -1419,8 +1419,9 @@ func (s *Service) admissionForQuery(ctx context.Context, e identity.Envelope, q 
 func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest {
 	request := old.Route.Request
 	base := QuestionRequest{
-		ConceptPolicy: request.ConceptPolicy,
-		Topic:         request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
+		ConceptPolicy:        request.ConceptPolicy,
+		GroupingIntentPolicy: request.GroupingIntentPolicy,
+		Topic:                request.Topic, Topics: append([]string(nil), request.Topics...), Context: request.Context, Locale: request.Locale,
 		Question: request.Question, Templates: append([]rulesets.TemplateSelection(nil), request.Templates...), Kinds: append([]string(nil), request.Kinds...), LimitPerKind: request.LimitPerKind,
 		References: append([]semantics.Reference(nil), request.References...), OmittedRoots: append([]semantics.Reference(nil), request.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), request.Choices...),
 		Joins: append([]nlqroute.JoinChoice(nil), request.JoinChoices...), MetricIDs: append([]string(nil), request.MetricIDs...),
@@ -1441,6 +1442,17 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 	if delta.ConceptPolicy != "" {
 		base.ConceptPolicy = delta.ConceptPolicy
 	}
+	if old.Route.GroupingIntent != nil && delta.Question != "" && delta.Question != old.Question && delta.Grouping == nil {
+		// Changed language requires a fresh model choice, not inherited intent.
+		base.Grouping = nil
+		base.GroupingIntentPolicy = nlqroute.GroundedGroupingIntentPolicy
+	}
+	if delta.GroupingIntentPolicy != "" {
+		base.GroupingIntentPolicy = delta.GroupingIntentPolicy
+		if delta.Grouping == nil {
+			base.Grouping = nil
+		}
+	}
 	if delta.Question != "" {
 		base.Question = delta.Question
 	}
@@ -1457,6 +1469,7 @@ func refinementQuestion(old QueryRecord, delta QuestionRequest) QuestionRequest 
 	base.Rerank = base.Rerank || delta.Rerank
 	if delta.Grouping != nil {
 		base.Grouping = nlqroute.CloneGrouping(delta.Grouping)
+		base.GroupingIntentPolicy = ""
 	}
 	if delta.InterpretationPolicy != "" {
 		base.InterpretationPolicy = delta.InterpretationPolicy
@@ -1584,6 +1597,9 @@ func applyMetricEdits(question *QuestionRequest, edits []MetricEdit) error {
 func canonicalizeQuestion(question *QuestionRequest) {
 	if question == nil {
 		return
+	}
+	if question.Grouping != nil && question.ClarificationQuery == "" && question.GroupingIntentPolicy == nlqroute.GroundedGroupingIntentPolicy {
+		question.GroupingIntentPolicy = ""
 	}
 	question.References = append([]semantics.Reference(nil), question.References...)
 	question.MetricIDs = append([]string(nil), question.MetricIDs...)
@@ -2498,7 +2514,7 @@ func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequ
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {
-	return nlqroute.RouteRequest{ConceptPolicy: r.ConceptPolicy, Grouping: nlqroute.CloneGrouping(r.Grouping), Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Templates: append([]rulesets.TemplateSelection(nil), r.Templates...), Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), OmittedRoots: append([]semantics.Reference(nil), r.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank, InterpretationPolicy: r.InterpretationPolicy, InterpretationAnchor: r.InterpretationAnchor, InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections)}
+	return nlqroute.RouteRequest{GroupingIntentPolicy: r.GroupingIntentPolicy, ConceptPolicy: r.ConceptPolicy, Grouping: nlqroute.CloneGrouping(r.Grouping), Answers: semantics.CloneClarificationAnswers(r.Answers), AnswerContext: r.AnswerContext, Topic: r.Topic, Topics: append([]string(nil), r.Topics...), Context: r.Context, Locale: r.Locale, Question: r.Question, Templates: append([]rulesets.TemplateSelection(nil), r.Templates...), Kinds: append([]string(nil), r.Kinds...), LimitPerKind: r.LimitPerKind, References: append([]semantics.Reference(nil), r.References...), OmittedRoots: append([]semantics.Reference(nil), r.OmittedRoots...), Choices: append([]nlqroute.ChoiceSelection(nil), r.Choices...), JoinChoices: append([]nlqroute.JoinChoice(nil), r.Joins...), MetricIDs: append([]string(nil), r.MetricIDs...), Examples: cloneRouteExamples(r.Examples), Rerank: r.Rerank, InterpretationPolicy: r.InterpretationPolicy, InterpretationAnchor: r.InterpretationAnchor, InterpretationEdits: nlqroute.CloneInterpretationEdits(r.InterpretationEdits), InterpretationSelections: nlqroute.CloneInterpretationSelections(r.InterpretationSelections)}
 }
 
 func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
@@ -2515,6 +2531,9 @@ func cloneRouteExamples(items []nlq.OptionalItem) []nlq.OptionalItem {
 
 func validateQuestion(in QuestionRequest) error {
 	if in.GenerationQuery != "" || in.GenerationContext != "" {
+		return ErrInvalid
+	}
+	if in.GroupingIntentPolicy != "" && in.GroupingIntentPolicy != nlqroute.GroundedGroupingIntentPolicy {
 		return ErrInvalid
 	}
 	if in.ConceptPolicy != "" && in.ConceptPolicy != nlqroute.GroundedConceptPolicy {

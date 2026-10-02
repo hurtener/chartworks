@@ -358,6 +358,9 @@ func (r RouteResult) resolutionProof() string {
 	if r.Concepts != nil {
 		parts = append(parts, r.Concepts)
 	}
+	if r.GroupingIntent != nil {
+		parts = append(parts, r.GroupingIntent)
+	}
 	return readexec.Hash(parts)
 }
 
@@ -485,7 +488,7 @@ func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope,
 		if err != nil {
 			return nil, "", err
 		}
-		item := admittedTopic{id: id, publication: contract.Publication}
+		item := admittedTopic{id: id, publication: contract.Publication, relations: contract.Relations}
 		item.rules, item.hasRules, err = s.readRules(ctx, e, id, contract.Publication.State.Version, contract.Publication.Digest)
 		if err != nil {
 			return nil, "", err
@@ -495,18 +498,33 @@ func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope,
 	if !contextMatches(admitted, in.Context) {
 		return nil, "", readexec.ErrBinding
 	}
-	current := RouteResult{Outcome: previous.Outcome, conceptReplay: true}
+	current := RouteResult{Outcome: previous.Outcome, conceptReplay: true, groupingIntentReplay: true}
 	if previous.Concepts != nil {
 		value := previous.Concepts.clone()
 		current.Concepts = &value
 	}
+	if (in.GroupingIntentPolicy != "") != (previous.GroupingIntent != nil) {
+		return nil, "", readexec.ErrBinding
+	}
+	if previous.GroupingIntent != nil {
+		value := previous.GroupingIntent.clone()
+		current.GroupingIntent = &value
+		// Replay the original unspecified input through the deterministic
+		// temporal stage, then restore only the verified learned choice.
+		in.Grouping = nil
+	}
+	groupingRoots := previous.Selection != nil && previous.Selection.GroupingIntent != ""
 	modelRoots := false
 	if previous.Selection != nil {
 		for _, topic := range previous.Selection.Topics {
 			for _, root := range topic.Roots {
 				modelRoots = modelRoots || root.Reason == "grounded_model"
+				groupingRoots = groupingRoots || root.Reason == "grounded_grouping"
 			}
 		}
+	}
+	if groupingRoots && (in.GroupingIntentPolicy != GroundedGroupingIntentPolicy || previous.GroupingIntent == nil) {
+		return nil, "", readexec.ErrBinding
 	}
 	if modelRoots && (in.ConceptPolicy != GroundedConceptPolicy || previous.Concepts == nil) {
 		return nil, "", readexec.ErrBinding
@@ -523,7 +541,23 @@ func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope,
 	if interpretation != nil {
 		current.SourceBindingDigest = interpretation.BindingDigest
 	}
-	if previous.Concepts != nil && previous.Selection == nil {
+	if err := s.selectGroupingIntent(ctx, e, &in, admitted, &current); err != nil {
+		return nil, "", err
+	}
+	if readexec.Hash(in.Grouping) != readexec.Hash(previous.Request.Grouping) || readexec.Hash(current.GroupingIntent) != readexec.Hash(previous.GroupingIntent) {
+		return nil, "", readexec.ErrBinding
+	}
+	current.Request = cloneRouteRequest(in)
+	if current.GroupingIntent != nil && current.GroupingIntent.Choice.Decision != "select" {
+		// This terminal producer outcome precedes semantic/rule resolution.
+		// Replaying it verifies only the same non-executable pending choice;
+		// it must not run the later stages or manufacture an answer-context pin.
+		if previous.Context != nil || previous.Selection != nil || previous.Concepts != nil || len(previous.Resolutions) != 0 || previous.AnswerContext != "" || readexec.Hash(previous.Clarification) != readexec.Hash(current.Clarification) || readexec.Hash(previous.Interpretation) != readexec.Hash(current.Interpretation) || previous.SourceBindingDigest != current.SourceBindingDigest {
+			return nil, "", readexec.ErrBinding
+		}
+		return nil, current.SourceBindingDigest, nil
+	}
+	if (previous.Concepts != nil || previous.GroupingIntent != nil && previous.GroupingIntent.Choice.Decision == "select") && previous.Selection == nil {
 		return nil, "", readexec.ErrBinding
 	}
 	if previous.Selection != nil {

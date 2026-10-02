@@ -270,10 +270,11 @@ type ExampleRecord struct {
 // QuestionRequest is shared by preflight and plan. The verified envelope
 // supplies tenant, actor and session; none of those are accepted from JSON.
 type QuestionRequest struct {
-	GenerationQuery   string                      `json:"generation_query,omitempty"`
-	GenerationContext string                      `json:"generation_context,omitempty"`
-	ConceptPolicy     string                      `json:"concept_policy,omitempty"`
-	Grouping          *nlqroute.GroupingSelection `json:"grouping,omitempty"`
+	GroupingIntentPolicy string                      `json:"grouping_intent_policy,omitempty"`
+	GenerationQuery      string                      `json:"generation_query,omitempty"`
+	GenerationContext    string                      `json:"generation_context,omitempty"`
+	ConceptPolicy        string                      `json:"concept_policy,omitempty"`
+	Grouping             *nlqroute.GroupingSelection `json:"grouping,omitempty"`
 	// ClarificationQuery anchors a typed submission to a retained preflight in
 	// the current actor/session. The ID grants no authority and is rechecked.
 	ClarificationQuery       string                             `json:"clarification_query,omitempty"`

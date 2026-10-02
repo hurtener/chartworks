@@ -104,19 +104,20 @@ type ChoiceSelection struct {
 // Topic reach, source bindings, rule text and facet text are resolved from
 // current published state by Service.Route.
 type RouteRequest struct {
-	ConceptPolicy string                          `json:"concept_policy,omitempty"`
-	Grouping      *GroupingSelection              `json:"grouping,omitempty"`
-	Answers       []semantics.ClarificationAnswer `json:"answers,omitempty"`
-	AnswerContext string                          `json:"answer_context,omitempty"`
-	Topic         string                          `json:"topic,omitempty"`
-	Topics        []string                        `json:"topics,omitempty"`
-	Context       string                          `json:"context"`
-	Locale        nlq.Language                    `json:"locale"`
-	Question      string                          `json:"question"`
-	Templates     []rulesets.TemplateSelection    `json:"templates,omitempty"`
-	Kinds         []string                        `json:"kinds,omitempty"`
-	LimitPerKind  int                             `json:"limit_per_kind,omitempty"`
-	References    []semantics.Reference           `json:"references,omitempty"`
+	GroupingIntentPolicy string                          `json:"grouping_intent_policy,omitempty"`
+	ConceptPolicy        string                          `json:"concept_policy,omitempty"`
+	Grouping             *GroupingSelection              `json:"grouping,omitempty"`
+	Answers              []semantics.ClarificationAnswer `json:"answers,omitempty"`
+	AnswerContext        string                          `json:"answer_context,omitempty"`
+	Topic                string                          `json:"topic,omitempty"`
+	Topics               []string                        `json:"topics,omitempty"`
+	Context              string                          `json:"context"`
+	Locale               nlq.Language                    `json:"locale"`
+	Question             string                          `json:"question"`
+	Templates            []rulesets.TemplateSelection    `json:"templates,omitempty"`
+	Kinds                []string                        `json:"kinds,omitempty"`
+	LimitPerKind         int                             `json:"limit_per_kind,omitempty"`
+	References           []semantics.Reference           `json:"references,omitempty"`
 	// OmittedRoots suppress automatic concept selection; they cannot disable a required rule.
 	OmittedRoots []semantics.Reference `json:"omitted_roots,omitempty"`
 	Choices      []ChoiceSelection     `json:"choices,omitempty"`
@@ -192,16 +193,18 @@ type ContextView struct {
 // RouteResult is a detached routing and context result. A Clarification or
 // StrategyNoRoute result has no Context and therefore cannot reach generation.
 type RouteResult struct {
-	Concepts            *ConceptEvidence `json:"concept_selection,omitempty"`
-	conceptReplay       bool
-	AnswerContext       string                              `json:"answer_context,omitempty"`
-	SourceBindingDigest string                              `json:"source_binding_digest,omitempty"`
-	Clarifications      []semantics.ClarificationEvaluation `json:"clarifications,omitempty"`
-	Resolutions         []semantics.ClarificationResolution `json:"resolutions,omitempty"`
-	business            []readexec.BusinessConstraint
-	metricPeriods       []MetricPeriodApplication
-	resolutionSeal      string
-	Outcome             nlq.Strategy `json:"outcome"`
+	GroupingIntent       *GroupingIntentEvidence `json:"grouping_intent,omitempty"`
+	groupingIntentReplay bool
+	Concepts             *ConceptEvidence `json:"concept_selection,omitempty"`
+	conceptReplay        bool
+	AnswerContext        string                              `json:"answer_context,omitempty"`
+	SourceBindingDigest  string                              `json:"source_binding_digest,omitempty"`
+	Clarifications       []semantics.ClarificationEvaluation `json:"clarifications,omitempty"`
+	Resolutions          []semantics.ClarificationResolution `json:"resolutions,omitempty"`
+	business             []readexec.BusinessConstraint
+	metricPeriods        []MetricPeriodApplication
+	resolutionSeal       string
+	Outcome              nlq.Strategy `json:"outcome"`
 	// Request is the bounded, caller-selected routing input that was admitted
 	// for this result. Persisted refinements use it as their semantic base; it
 	// contains no SQL or authority material.
@@ -286,6 +289,9 @@ func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteReques
 	}
 	ids, err := normalizeRequest(in)
 	if err != nil {
+		return RouteResult{}, err
+	}
+	if err := prepareGroupingIntentRequest(ctx, e, &in); err != nil {
 		return RouteResult{}, err
 	}
 	if len(ids) == 0 {
@@ -477,7 +483,13 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 	if interpretation != nil {
 		result.SourceBindingDigest = interpretation.BindingDigest
 	}
+	if err := s.selectGroupingIntent(ctx, e, &in, admitted, &result); err != nil {
+		return RouteResult{}, err
+	}
 	result.Request = cloneRouteRequest(in)
+	if result.Clarification != nil {
+		return result, nil
+	}
 	if err := s.resolveSemanticSelection(ctx, e, in, admitted, &result); err != nil {
 		err = semanticSelectionError(err, in.Locale)
 		var clarification *Clarification
@@ -727,6 +739,9 @@ func admissionVector(dimensions int) []float32 {
 }
 
 func normalizeRequest(in RouteRequest) ([]string, error) {
+	if err := validateGroupingIntentPolicy(in.GroupingIntentPolicy); err != nil {
+		return nil, err
+	}
 	if err := validateConceptPolicy(in.ConceptPolicy); err != nil {
 		return nil, err
 	}

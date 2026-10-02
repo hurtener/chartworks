@@ -86,3 +86,36 @@ Renderer charged-memory kernel qualification remains blocked on an admitted
 cgroup hierarchy. Broader capability/engine gaps and final phase-34/25 release
 criteria remain open. No merge, deployment or complete-recovery claim follows
 from this baseline.
+
+## Held-out English/Spanish cohort and grouping gap
+
+A subsequent predeclared six-question cohort on the same frozen PR #68 production
+source passed its explicitly labeled lanes in 65.87 seconds, with 15 real calls,
+zero SQL correction calls and USD 0.011820585 settled. The Spanish scalar used
+actual grounded concept selection with no metric IDs and returned USD 700.00.
+The three grouped lanes supplied explicit reviewed metric/grouping selections:
+month gave January/February/March 320/240/140, status gave paid/cancelled 640/60,
+and calendar quarter gave Q1 700. Net-after-refunds and hourly New York requests
+refused before model or source execution. The Spanish hourly refusal was safe
+but still worded in English.
+
+The original raw questions were preserved. Without explicit grouping selection,
+three recorded grouped requests failed admission (month/status grain and quarter
+expression). These are genuine automatic-grouping gaps, not passing language
+results. The new opt-in grouping-intent producer addresses them separately; this
+live cohort cannot be cited as qualification of that later producer.
+
+The fresh six-row fixture changed only its recorded profile provenance digest.
+The two successful semantic enhancement outputs were replayed unchanged, then a
+fresh live review was obtained for the new exact candidate; old advisory digests
+were not rewritten. A preserved `needs_review` uniqueness concern was resolved
+through the same bounded synthetic operator check of the physical primary key.
+
+PR #68 hosted SQL checks subsequently completed on both Go 1.26.4/1.27.1:
+3,450 unit/subtest events across 33 packages and 461 acceptance events per
+configuration, zero failures/missing required/acceptance skips, with only the
+opt-in reranker skip. Tested merge `d3eba2e27e75996532f1b025ea7b480da0eb4da7`
+has the exact production head tree.
+[SQL run](https://github.com/hurtener/chartworks/actions/runs/36936579855).
+Renderer kernel memory/stability and Phase32 AC03/04/05 remain blocked by the
+unavailable admitted charged-memory hierarchy.

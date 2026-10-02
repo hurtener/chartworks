@@ -286,7 +286,7 @@ func reviewedGroupDomains(ctx context.Context, a admission) error {
 // historical selection into new intent. Its exact old catalog and native proof
 // are checked separately; active business evidence still uses normal replay.
 func (s *Service) replayIntentReviewParent(ctx context.Context, e identity.Envelope, q QueryRecord, review bool) ([]exec.BusinessConstraint, error) {
-	if review && q.AnalyticalVersion == 7 && !hasActiveBusinessEvidence(q.Route) && !usesGroundedConcepts(q.Route) && len(q.Route.Request.Answers) == 0 {
+	if review && q.AnalyticalVersion == 7 && !hasActiveBusinessEvidence(q.Route) && !usesGroundedSelections(q.Route) && len(q.Route.Request.Answers) == 0 {
 		return nil, nil
 	}
 	return s.replayQueryClarifications(ctx, e, q)

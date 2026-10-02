@@ -8,13 +8,15 @@ Existing shipped phase labels and historical defect-review results do not
 close this subsequent extension. No required behavior is discarded by this
 tracker correction; prior named acceptance criteria and historical evidence stay.
 
-Current hosted-qualified checkpoint: `c755ad3`. The subsequent runtime tree
-`0ce69bd875deb82df3d3276cbd1c060f815ebfbd` passed integrated local qualification,
-including finite S10/S11 domain/signature completion. Its final published head
-still needs hosted checks. S4/S5/S6 and the explicitly documented legacy predicate
-approval/resume path remain implementation work; Q1/Q2/Q3 are separate gates.
-The canonical tracker controls current scope; historical evidence below does not
-qualify later source.
+Current hosted-qualified SQL checkpoint: PR #68
+`a2567f816dce7c52981e2ef9e17af544f7bb6b50`. Both supported Go toolchains passed
+3,450 unit/subtest and 461 acceptance events; the exact bounded live baseline
+and explicitly selected held-out lanes are recorded in
+[generated-topic qualification](../reviews/generated-topic-live-qualification.md).
+Automatic grouping for the three rich held-out grouping questions was still an
+open gap at that head. The separately opt-in grouping-intent continuation below
+requires its own exact-source local, hosted and live qualification. Full S4/S5/S6,
+engine, renderer and Q1/Q2/Q3 release obligations remain open.
 
 
 Status: shipped. Owner: internal/nlq. Hard dependencies: 09, 10, 17. Current cumulative evidence: [phases 15–18 and 21](../reviews/phase-15-18-current-evidence.md).
@@ -462,3 +464,16 @@ numeric result. `TestTopicFeedbackDocumentRetentionBoundary` covers report
 origin erasure before/after apply and concurrent create/apply versus deletion.
 These recorded tests do not claim live model-generation quality. Prior learning
 examples retain their original semantic version; requalification is separate.
+
+## Grounded grouping-intent consumer
+
+[Grounded grouping intent v1](../contracts/grounded-grouping-intent-v1.md) is wired
+through normal Preflight/Plan, saved questions, refinement and protected retained
+execution. Existing native/analytical SQL proof is unchanged. New grouping intent
+is never supplied by a retained public proof token; current-source replay is
+mandatory even without private predicates. Scalar selections carry an explicit
+origin digest so deleting optional policy fields cannot downgrade replay.
+`TestGeneratedTopicGroundedGroupingIntentRecorded` exercises generated topic
+publication through actual HTTP/SDK Plan/Run with independent PostgreSQL results;
+`TestSQLRecoveryGroundedGroupingRunAndSavedPolicy` covers retained policy edges.
+Full engine, renderer and final release qualification remain open.

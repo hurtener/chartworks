@@ -98,7 +98,7 @@ func sealClarificationCandidate(candidate *generatedCandidate, plan exec.Plan, p
 }
 
 func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Envelope, record QueryRecord) ([]exec.BusinessConstraint, error) {
-	if !usesGroundedConcepts(record.Route) && record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
+	if !usesGroundedSelections(record.Route) && record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
 		return nil, nil
 	}
 	replayer, ok := s.router.(clarificationReplayer)
@@ -123,7 +123,7 @@ func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identit
 		return s.verifyScalarPeriodBinding(ctx, e, record, a)
 	}
 	if !hasActiveBusinessEvidence(record.Route) {
-		if usesGroundedConcepts(record.Route) {
+		if usesGroundedSelections(record.Route) {
 			values, err := s.replayQueryClarifications(ctx, e, record)
 			if err != nil {
 				return err
@@ -309,14 +309,17 @@ func publicClarificationChanges(evidence *ClarificationEvidence) []Clarification
 
 // A retained model-origin root cannot be downgraded merely by dropping the
 // optional policy/evidence fields from serialized query metadata.
-func usesGroundedConcepts(route nlqroute.RouteResult) bool {
-	if route.Concepts != nil || route.Request.ConceptPolicy != "" {
+func usesGroundedSelections(route nlqroute.RouteResult) bool {
+	if route.Concepts != nil || route.Request.ConceptPolicy != "" || route.GroupingIntent != nil || route.Request.GroupingIntentPolicy != "" {
 		return true
 	}
 	if route.Selection != nil {
+		if route.Selection.GroupingIntent != "" {
+			return true
+		}
 		for _, topic := range route.Selection.Topics {
 			for _, root := range topic.Roots {
-				if root.Reason == "grounded_model" {
+				if root.Reason == "grounded_model" || root.Reason == "grounded_grouping" {
 					return true
 				}
 			}

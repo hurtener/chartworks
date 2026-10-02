@@ -103,6 +103,9 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "recorded-quality", "object": "chat.completion", "model": model, "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": string(answer)}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}})
 			return
 		}
+		if strings.HasPrefix(mode, "grounded_choice:") && !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") {
+			mode = recordedGroupingChoice(t, mode, input)
+		}
 		if strings.HasPrefix(mode, "chat_raw:") && !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") {
 			_, _ = io.WriteString(w, encodeRecordedStrictResponse(t, strings.TrimPrefix(mode, "chat_raw:"), input))
 			return

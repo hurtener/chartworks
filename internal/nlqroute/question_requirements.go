@@ -67,12 +67,20 @@ func unresolvedQuestionRequirements(in RouteRequest) *Clarification {
 		}
 		offset, _ := regexp.MatchString(`[+-](?:0[0-9]|1[0-4]):[0-5][0-9]`, text)
 		if occurrence || offset {
-			return &Clarification{Reason: "unsupported_temporal_grain", Outcome: semantics.ClarificationInvalid, Prompt: "Hourly occurrence-aware grouping needs a reviewed supported time-grain contract."}
+			message := "Hourly occurrence-aware grouping needs a reviewed supported time-grain contract."
+			if in.Locale == nlq.LanguageSpanish {
+				message = "La agrupación por ocurrencias horarias necesita una granularidad temporal revisada y compatible."
+			}
+			return &Clarification{Reason: "unsupported_temporal_grain", Outcome: semantics.ClarificationInvalid, Prompt: message}
 		}
 		return &Clarification{Reason: "ambiguous_local_time", Outcome: semantics.ClarificationConflicting, Prompt: prompt}
 	}
 	if has("hourly") || containsPhrase(normalizedPhrase(text), "by hour") || containsPhrase(normalizedPhrase(text), "per hour") || containsPhrase(normalizedPhrase(text), "por hora") {
-		return &Clarification{Reason: "unsupported_temporal_grain", Outcome: semantics.ClarificationInvalid, Prompt: "Choose a supported reviewed calendar grain before generation."}
+		message := "Choose a supported reviewed calendar grain before generation."
+		if in.Locale == nlq.LanguageSpanish {
+			message = "Elegí una granularidad de calendario revisada y compatible antes de generar la consulta."
+		}
+		return &Clarification{Reason: "unsupported_temporal_grain", Outcome: semantics.ClarificationInvalid, Prompt: message}
 	}
 	return nil
 }

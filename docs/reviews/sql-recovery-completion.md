@@ -1,13 +1,13 @@
 # SQL recovery — completion tracker
 
-PR #62 latest hosted-qualified checkpoint: `9ada852c5a78490dff5ba9aeb300e9d927031522`
+Merged SQL/topic foundation (PR #62): `9ada852c5a78490dff5ba9aeb300e9d927031522`
 (tree `6982af6dfeaa40989f80b477071c165e31a29160`). On this exact head, both
 Go 1.26.4 and 1.27.1 recovery jobs recorded 2,998 passing unit/subtest events
 across 32 packages and 412 acceptance events, with zero failures or missing
 required tests. The sole opt-in paid-reranker skip is not live model evidence.
 [Hosted recovery](https://github.com/hurtener/chartworks/actions/runs/36814989291).
 
-Updated 2026-10-01. S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented
+Updated 2026-10-02. S1/S2/S3/S7/S8/S9/S10/S11/S12 have completed their documented
 finite software scopes. S4/S5/S6 and Q1/Q2/Q3 remain open. Later sections retain
 historical evidence at their stated revision; the current finite residuals are
 listed below and in the [software matrix](sql-recovery-software-matrix.md).
@@ -564,3 +564,27 @@ and 421 acceptance events each, including every required variant. The tested
 merge tree equals the published head tree, as recorded above. These remain
 recorded-provider software results; no generic-filter, live-model, renderer-kernel
 or release gate is closed by this increment.
+
+## Full recovery scope status — 2026-10-02 UTC
+
+This task covers topics, reusable learning, SQL, reporting, charting and final
+qualification. It is not a SQL-only target. No percentage is derived from the
+counts of tests, PRs or finite S-items: those items differ materially in size and
+none is a weighted full-product denominator.
+
+| Subsystem | Implemented and evidenced | Still missing or unqualified |
+|---|---|---|
+| Topics and authoring | Profile scaffold, bounded generation, whole-candidate advisory, exact operator review/publication, strict provider projection and canonical calendars; fixed live generated-topic baseline | Broader generated-topic quality and ambiguity calibration, same-snapshot owner cohorts; one six-row baseline is not general quality |
+| Learning and continuation | Reviewed redacted examples, feedback proposals, lineage, private predicate and parameter custody, saved/refined query consumers | Reusable learning for scoped schema-2/schema-3 receipts; remaining engine/profile and broader language journeys |
+| SQL and analytical semantics | Selected metrics/KPIs, direct/calendar grouping, reviewed populations, grouped fact periods, native validation and exact retained replay; recorded independent-oracle corpus | Shared/non-temporal grouped filter ownership, derived owned lanes, outer-join predicate placement, general windows/sets, remaining dialect/physical-key qualification; richer automatic grouping is being implemented separately |
+| Reporting and retention | Captured variants, amount-completeness transport, immutable ownership/derivation, scheduling and retained artifact reads, deletion/expiry gates | Full integrated renderer qualification and broader owner workflows; no full-report PNG/PDF claim |
+| Charts and viewer/export | Reviewed display intent, rich charts, actual browser checks, retained HTML/SVG and bounded single-output PNG, deterministic statistical narratives | Mandatory kernel isolation/stability and 100 representative concurrent renders; forthcoming broader authoring/dashboard experience is not yet qualified |
+| Performance and release | Existing finite phase criteria and pinned source/provider evidence | Actual frozen-run reuse adapter/current performance evidence, remaining engines, same-snapshot comparisons, phase34 then phase25 final release |
+
+PR #62 is merged as `b8ec74fd5a196f75704543938ff70deba94a5344`; its tree exactly
+matches the previously qualified `9ada852c` checkpoint. The reporting and later
+stack remains separately reviewable; mandatory renderer failures are not skipped
+or hidden by that merge. PR #68 has both-toolchain hosted evidence and the bounded
+live/held-out results described in [the qualification note](generated-topic-live-qualification.md).
+The held-out grouped live lanes used explicit reviewed grouping; the original
+three automatic-grouping admission failures remain failures.

@@ -26,9 +26,10 @@ const (
 // SemanticSelection is detached interpretation evidence, never authority or a
 // SQL conformance certificate. A nil selection denotes the legacy replay path.
 type SemanticSelection struct {
-	Version string          `json:"version"`
-	Topics  []SelectedTopic `json:"topics"`
-	Digest  string          `json:"digest"`
+	GroupingIntent string          `json:"grouping_intent_digest,omitempty"`
+	Version        string          `json:"version"`
+	Topics         []SelectedTopic `json:"topics"`
+	Digest         string          `json:"digest"`
 }
 
 // SelectedTopic pins roots and rule facts to an admitted immutable publication.
@@ -520,6 +521,19 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 	if err := initialSemanticSelection(ctx, in, admitted, result.Interpretation); err != nil {
 		return err
 	}
+	if result.GroupingIntent != nil && in.Grouping != nil {
+		for i := range admitted {
+			for _, key := range in.Grouping.Keys {
+				if admitted[i].id == key.Topic {
+					ref := semantics.Reference{Kind: semantics.KindDimension, ID: key.Dimension}
+					if admitted[i].selection.roots[ref] == "" {
+						return readexec.ErrBinding
+					}
+					admitted[i].selection.roots[ref] = "grounded_grouping"
+				}
+			}
+		}
+	}
 	if err := s.selectGroundedConcepts(ctx, e, &in, admitted, result); err != nil {
 		return err
 	}
@@ -618,6 +632,11 @@ func (s *Service) resolveSemanticSelection(ctx context.Context, e identity.Envel
 			return readexec.ErrBinding
 		}
 		current.Selection = selectionView(admitted)
+		if current.GroupingIntent != nil {
+			current.Selection.GroupingIntent = readexec.Hash(current.GroupingIntent)
+			current.Selection.Digest = ""
+			current.Selection.Digest = readexec.Hash(current.Selection)
+		}
 		*result = current
 		return nil
 	}
