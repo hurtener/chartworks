@@ -82,3 +82,14 @@ grouping IDs. Recorded provider outputs qualify transport and lifecycle only.
 Live language quality requires a separately declared cohort on the exact frozen
 candidate. Wider time semantics, arbitrary grouping expressions, fiscal/DST and
 all-source qualification remain outside this slice.
+
+### Decision-bound provider shape
+
+The grouping role's structured output is `{ "choice": { ... } }`, with a nested
+select/clarify/no_match union. A select response must contain at least one admitted
+ID/quote pair. Scalar intent requires exactly one pair naming the scalar catalog
+card, even though the resulting reviewed grouping has zero keys. Clarify requires
+at least two alternatives and no selections; no_match requires empty arrays.
+The strict provider projection preserves those cardinalities; original domain
+uniqueness and structural grounding still run before any consumer. This producer
+shape does not change the public request policy or retained proof schema.

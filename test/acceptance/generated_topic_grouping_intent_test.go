@@ -58,7 +58,12 @@ func recordedGroupingChoice(t *testing.T, mode string, input map[string]any) str
 	} else if len(selected) != 1 {
 		t.Errorf("recorded choice %s expected one actual candidate, got %d", want, len(selected))
 	}
-	body, _ := json.Marshal(map[string]any{"decision": decision, "selected": selected, "alternatives": alternatives})
+	proposal := map[string]any{"decision": decision, "selected": selected, "alternatives": alternatives}
+	var answer any = proposal
+	if want != "metric" {
+		answer = map[string]any{"choice": proposal}
+	}
+	body, _ := json.Marshal(answer)
 	wire, _ := json.Marshal(map[string]any{"id": "recorded-grouping-intent", "object": "chat.completion", "model": input["model"], "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": string(body)}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}})
 	return "chat_raw:" + string(wire)
 }

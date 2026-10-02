@@ -41,7 +41,7 @@ func (g *groupingIntentEngine) Generate(ctx context.Context, _ gateway.Call, _ *
 	p := g.respond(in.Question, in.Candidates)
 	p.Selected = append([]conceptchoice.Selection{}, p.Selected...)
 	p.Alternatives = append([]string{}, p.Alternatives...)
-	raw, _ := json.Marshal(p)
+	raw, _ := json.Marshal(map[string]any{"choice": p})
 	return gateway.Generated{JSON: raw, Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: role}}}}, nil
 }
 func groupingProposal(question string, cards []groupingIntentCard, dimension string, grain semantics.TimeGrain) conceptchoice.Proposal {

@@ -247,6 +247,7 @@ jobs:
           required_acceptance.extend(['TestGatewayStrictSchemaRecordedProviderWire', 'TestGatewayStrictSchemaCrossRoleRejectionBeforeConsumers', 'TestGatewayStrictSchemaLargeNumericWireFidelity', 'TestGatewayRejectsSDKOutputCapExpansionBeforeSpend', 'TestGatewayStrictSchemaVisualRankingRejectsDuplicates', 'TestGatewayStrictSchemaFactoredWireRetained','TestGatewayStrictSchemaInheritedBodyCannotBypassEnvelope'])
           required_acceptance.append('TestSQLRecoveryGroupedOwnedPeriodsAcceptance')
           required_acceptance.extend('TestSQLRecoveryGroupedOwnedPeriodsAcceptance/'+grain+'_'+period+'_'+domain for grain in ['region','month'] for period in ['shared_cohort','fact_activity'] for domain in ['qualifying','raw'])
+          required_units.extend(['TestSQLRecoveryGroundedGroupingDecisionBoundSchema'])
           required_units.extend(['TestSQLRecoveryGroundedGroupingRoutesRichLanguage', 'TestSQLRecoveryGroundedGroupingManualAndLegacyNoModel', 'TestSQLRecoveryGroundedGroupingReplayRejectsTamper', 'TestSQLRecoveryGroundedGroupingClarificationsAndBounds', 'TestSQLRecoveryGroundedGroupingAmbiguityAndSourceDrift', 'TestSQLRecoveryGroundedGroupingPendingAndScalarCustody', 'TestSQLRecoveryGroundedGroupingProtectedOrigin', 'TestSQLRecoveryGroundedGroupingRunAndSavedPolicy'])
           required_acceptance.extend(["TestGeneratedTopicGroundedGroupingIntentRecorded"])
           required_acceptance.extend(['TestGeneratedTopicReviewReferencesRecorded', 'TestGeneratedTopicInvalidReviewDoesNotSave', 'TestGeneratedTopicReviewQuotedEnumProviderContract'])

@@ -54,3 +54,36 @@ head separately. Recorded choices test the complete consumer and provider wire,
 not multilingual model understanding or calibration. No wider fiscal/DST,
 analytical-expression, missing-engine, renderer-kernel, performance or final
 release requirement is closed by this increment. Full scope remains in progress.
+
+## Subsequent live producer defect and offline correction
+
+The first automatic live cohort on PR #70 did not complete. On the unchanged
+Spanish gross question the model returned `decision: select` with an empty
+`selected` array. The scalar catalog card was present. The original structural
+consumer correctly refused the response as `ambiguous_grouping_evidence`; it did
+not execute a scalar query or treat missing evidence as a default. The generic
+choice wire schema, however, permitted that impossible decision/cardinality pair.
+Monthly grouping and concept choices were structurally valid before a subsequent
+provider connectivity failure; no complete automatic-cohort result is claimed.
+
+The grouping producer now uses an object-root schema with a nested tagged choice
+union. `select` requires one or more admitted selections and zero alternatives;
+`clarify` requires at least two alternatives and zero selections; `no_match`
+requires both arrays empty. The scalar prompt explicitly requires exactly one
+`scalar_total` catalog ID plus a nonempty exact question quote. The domain proof
+and exact catalog/grouping checks remain unchanged after unwrapping this producer
+response. Existing concept-selection schema and retained proof formats do not
+change. The captured empty-select response must fail both the new domain schema
+and its actual strict provider projection, including when merely wrapped; it is
+not repaired or silently interpreted as a scalar choice.
+
+This correction requires its own hosted and live qualification. No paid rerun is
+part of the offline regression, and no unavailable provider result is recorded as
+a quality pass.
+
+The correction's local Go1.27.1 gate passed 42 focused route/schema/concept race
+events and nine real PostgreSQL/HTTP/SDK acceptance events (all eight automatic
+producer subcases plus the parent), with zero failures or skips. Full build,
+affected-package vet, goimports and planning checks passed. The strict-wire
+regression checks all three decision branches and rejects the captured invalid
+cardinality. Hosted and new live qualification remain separate.
