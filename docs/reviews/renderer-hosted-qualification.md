@@ -73,12 +73,34 @@ directory traversal and Go/rustup execution are checked under `nobody` before
 candidate code runs; inaccessible preinstalled tools fail the job. Native build
 outputs and caches stay outside the read-only candidate checkout.
 
+The first [hosted attempt](https://github.com/hurtener/chartworks/actions/runs/36957254173)
+reached the unprivileged delegated service, but `nobody` could not traverse the
+runner's private home to enter the candidate checkout. No renderer test ran;
+host cleanup passed. The trusted provisioner now copies the exact detached
+checkout into its existing root-owned job directory, preserves executable bits,
+removes write access, and records a bounded full-content digest. Directory/file
+reads use `O_NOFOLLOW` and open directory descriptors, rejecting candidate links,
+special files and traversal. No candidate hook or script executes during this
+copy. The unprivileged driver checks both the staged Git head/clean tree and its
+content manifest before and after tests. The runner home permissions stay intact.
+The trusted provisioner independently rechecks staged content after the service
+exits, before cleanup; isolated Python ignores candidate-controlled import paths.
+
+The image's official rustup executable is copied into the same job's root-owned
+tools directory and its copied digest is verified/recorded; only trusted rustup
+shim links are added there. Native Rust remains pinned to1.98.1 and installed by
+the unprivileged build in its private toolchain home. The cgroup, AppArmor,
+NoNewPrivileges and per-render limits are unchanged. Source-staging unit tests
+exercise exact bytes/modes, changed content, invalid heads, links, and a link
+replacement during open. They do not replace another hosted kernel run.
+
 At proposal time YAML parsing, shell/embedded-Python syntax and static review have
 run. Synthetic event fixtures verify that a missing required case, skipped case
 and package failure reject qualification. A mocked stop failure verifies cleanup
 aborts before boundary teardown; it does not execute host provisioning.
-The privileged path, AppArmor/NoNewPrivileges interaction, kernel clone3 placement,
-native build and actual renderer tests are unexecuted. A hosted failure must be
+The first hosted attempt exercised delegated service startup and successful host
+cleanup, but kernel clone3 placement, native build and actual renderer tests remain
+unexecuted. A hosted failure must be
 diagnosed within the approved scope; it does not authorize disabling restrictions,
 running tests as root, changing renderer limits or bypassing mandatory tests.
 

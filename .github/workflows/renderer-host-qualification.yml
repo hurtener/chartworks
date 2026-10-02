@@ -83,6 +83,7 @@ jobs:
       - name: Qualify in a disposable delegated service as nobody
         run: |
           set -euo pipefail
+          python3 -B "$GITHUB_WORKSPACE/trusted/scripts/ci/test_renderer_source.py"
           sudo /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             GITHUB_ACTIONS=true RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
             /bin/bash "$GITHUB_WORKSPACE/trusted/scripts/ci/renderer-host.sh" run \

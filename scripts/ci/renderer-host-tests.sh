@@ -4,6 +4,8 @@ set -euo pipefail
 source_dir=${1:?candidate checkout}
 source_sha=${2:?exact candidate commit}
 unit=${3:?delegated unit}
+source_digest=${4:?exact staged source digest}
+export GIT_OPTIONAL_LOCKS=0
 [[ $(id -u) == $(id -u nobody) && $(id -Gn) == nogroup ]]
 [[ $(awk '/^CapEff:/ {print $2}' /proc/self/status) == 0000000000000000 ]]
 [[ $(awk '/^NoNewPrivs:/ {print $2}' /proc/self/status) == 1 ]]
@@ -15,6 +17,7 @@ test "$(git -c safe.directory="$source_dir" rev-parse HEAD)" = "$source_sha"
 test -z "$(git -c safe.directory="$source_dir" status --porcelain)"
 test ! -w .
 test -z "$(find "$source_dir" \( -type f -o -type d \) -writable -print -quit)"
+python3 -I "$(dirname "${BASH_SOURCE[0]}")/source.py" verify "$source_dir" "$source_digest"
 # Go's VCS stamping also calls git; trust only this exact read-only checkout in
 # this job's private configuration, never safe.directory=* on the runner.
 git config --global --add safe.directory "$source_dir"
@@ -65,4 +68,5 @@ assert required <= passed, sorted(required - passed)
 print(f'QUALIFICATION=passed required_events={len(required)}')
 PY
 test -z "$(git -c safe.directory="$source_dir" status --porcelain)"
+python3 -I "$(dirname "${BASH_SOURCE[0]}")/source.py" verify "$source_dir" "$source_digest"
 test -z "$(find "$CHARTWORKS_TEST_RENDER_CGROUP_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name manager -print)"
