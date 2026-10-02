@@ -224,10 +224,11 @@ type TemporalPolicy struct {
 // SemanticFilter is a reviewed mandatory filter concept. It is generation
 // evidence only; execution still requires validator-owned predicates.
 type SemanticFilter struct {
-	ID       string    `json:"id"`
-	Field    Reference `json:"field"`
-	Operator string    `json:"operator"`
-	Values   []string  `json:"values,omitempty"`
+	Relationship string    `json:"relationship,omitempty"`
+	ID           string    `json:"id"`
+	Field        Reference `json:"field"`
+	Operator     string    `json:"operator"`
+	Values       []string  `json:"values,omitempty"`
 }
 
 // Dataset binds stable semantic columns to exact source evidence.
@@ -266,14 +267,15 @@ func (a Aggregation) valid() bool {
 
 // Measure defines one aggregate over an exact column.
 type Measure struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	Field       Reference        `json:"field"`
-	Aggregation Aggregation      `json:"aggregation"`
-	Unit        string           `json:"unit"`
-	Aliases     []string         `json:"aliases,omitempty"`
-	Filters     []SemanticFilter `json:"filters,omitempty"`
+	Completeness *KnownAmountCompleteness `json:"completeness,omitempty"`
+	ID           string                   `json:"id"`
+	Name         string                   `json:"name"`
+	Description  string                   `json:"description"`
+	Field        Reference                `json:"field"`
+	Aggregation  Aggregation              `json:"aggregation"`
+	Unit         string                   `json:"unit"`
+	Aliases      []string                 `json:"aliases,omitempty"`
+	Filters      []SemanticFilter         `json:"filters,omitempty"`
 }
 
 // DimensionRole classifies a grouping field.
@@ -319,14 +321,15 @@ type Dimension struct {
 // KPI carries a business expression and an exact dependency list. Expression is
 // not SQL and never becomes executable without a later validated query consumer.
 type KPI struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	Expression  string           `json:"expression"`
-	Inputs      []Reference      `json:"inputs"`
-	Aliases     []string         `json:"aliases,omitempty"`
-	Unit        string           `json:"unit,omitempty"`
-	Filters     []SemanticFilter `json:"filters,omitempty"`
+	Periods     *MetricPeriodBindings `json:"periods,omitempty"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Expression  string                `json:"expression"`
+	Inputs      []Reference           `json:"inputs"`
+	Aliases     []string              `json:"aliases,omitempty"`
+	Unit        string                `json:"unit,omitempty"`
+	Filters     []SemanticFilter      `json:"filters,omitempty"`
 }
 
 // JoinType is the closed supported join vocabulary.
@@ -363,16 +366,17 @@ func (c Cardinality) valid() bool {
 	return false
 }
 
-// Join is equality-only by construction: it binds two exact column references
-// and has no caller-supplied condition text.
+// Join is equality-only by construction: its first pair and optional additional
+// pairs bind the same two datasets, without caller-supplied condition text.
 type Join struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Left        Reference            `json:"left"`
-	Right       Reference            `json:"right"`
-	Type        JoinType             `json:"type"`
-	Cardinality Cardinality          `json:"cardinality"`
-	Evidence    RelationshipEvidence `json:"evidence,omitempty"`
+	ID             string               `json:"id"`
+	Name           string               `json:"name"`
+	Left           Reference            `json:"left"`
+	Right          Reference            `json:"right"`
+	AdditionalKeys []JoinKeyPair        `json:"additional_keys,omitempty"`
+	Type           JoinType             `json:"type"`
+	Cardinality    Cardinality          `json:"cardinality"`
+	Evidence       RelationshipEvidence `json:"evidence,omitempty"`
 }
 
 // RelationshipEvidence records the reviewed grain/cardinality evidence used
@@ -387,13 +391,14 @@ type RelationshipEvidence struct {
 // RelationshipDecision preserves candidate and rejected join evidence without
 // making it executable. Confirmed relationships live in Joins.
 type RelationshipDecision struct {
-	ID          string               `json:"id"`
-	Left        Reference            `json:"left"`
-	Right       Reference            `json:"right"`
-	Cardinality Cardinality          `json:"cardinality"`
-	State       string               `json:"state"`
-	Evidence    RelationshipEvidence `json:"evidence"`
-	Reason      string               `json:"reason,omitempty"`
+	ID             string               `json:"id"`
+	Left           Reference            `json:"left"`
+	Right          Reference            `json:"right"`
+	AdditionalKeys []JoinKeyPair        `json:"additional_keys,omitempty"`
+	Cardinality    Cardinality          `json:"cardinality"`
+	State          string               `json:"state"`
+	Evidence       RelationshipEvidence `json:"evidence"`
+	Reason         string               `json:"reason,omitempty"`
 }
 
 // CanonicalEntity binds business terms to one stable identity and exact key
@@ -423,19 +428,21 @@ func (e CanonicalEntity) Reference() Reference {
 // TopicPack is an authoring definition only. Lifecycle stage, active pointers, ready
 // facets, authority, and current source health are separate state owned by later work.
 type TopicPack struct {
-	SchemaVersion         int                    `json:"schema_version"`
-	Topic                 string                 `json:"topic"`
-	Version               string                 `json:"version"`
-	Name                  string                 `json:"name"`
-	Description           string                 `json:"description"`
-	Datasets              []Dataset              `json:"datasets"`
-	Measures              []Measure              `json:"measures"`
-	Dimensions            []Dimension            `json:"dimensions"`
-	KPIs                  []KPI                  `json:"kpis"`
-	Joins                 []Join                 `json:"joins"`
-	RelationshipDecisions []RelationshipDecision `json:"relationship_decisions,omitempty"`
-	CanonicalEntities     []CanonicalEntity      `json:"canonical_entities"`
-	Unresolved            []UnresolvedSemantic   `json:"unresolved,omitempty"`
+	GroupDomain           *GroupDomainPolicy       `json:"group_domain,omitempty"`
+	GroupedPopulation     *GroupedPopulationPolicy `json:"grouped_population,omitempty"`
+	SchemaVersion         int                      `json:"schema_version"`
+	Topic                 string                   `json:"topic"`
+	Version               string                   `json:"version"`
+	Name                  string                   `json:"name"`
+	Description           string                   `json:"description"`
+	Datasets              []Dataset                `json:"datasets"`
+	Measures              []Measure                `json:"measures"`
+	Dimensions            []Dimension              `json:"dimensions"`
+	KPIs                  []KPI                    `json:"kpis"`
+	Joins                 []Join                   `json:"joins"`
+	RelationshipDecisions []RelationshipDecision   `json:"relationship_decisions,omitempty"`
+	CanonicalEntities     []CanonicalEntity        `json:"canonical_entities"`
+	Unresolved            []UnresolvedSemantic     `json:"unresolved,omitempty"`
 }
 
 func validLine(s string, maximum int) bool {

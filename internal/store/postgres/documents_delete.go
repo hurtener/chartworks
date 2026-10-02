@@ -213,6 +213,9 @@ func eraseDocumentOwnedRunMaterial(ctx context.Context, tx pgx.Tx, tenant string
 			}
 		}
 	}
+	if err = tombstoneDocumentFeedbackOrigins(ctx, tx, tenant, roots); err != nil {
+		return 0, 0, err
+	}
 	if _, err = tx.Exec(ctx, `DELETE FROM chartworks.nlq_feedback f USING chartworks.nlq_queries q
  WHERE (q.tenant_id,q.actor_id,q.session_id,q.query_id)=(f.tenant_id,f.actor_id,f.session_id,f.query_id)
  AND q.tenant_id=$1 AND EXISTS(SELECT 1 FROM unnest($2::text[]) root WHERE q.operation LIKE 'composition:'||root||':%')`, tenant, roots); err != nil {
@@ -243,6 +246,10 @@ func (d *DB) DeleteDocument(ctx context.Context, e identity.Envelope, kind, id s
 	}
 	dashboardSelection, _ := access.Constrain(e, "reporting.read", "dashboard", "read")
 	err = d.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		// Serialize separately authored semantic proposals with report-origin erasure.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,721415))`, e.Tenant()); err != nil {
+			return err
+		}
 		if replay, found, replayErr := replayDocumentDeletion(ctx, tx, e, kind, id, in); found || replayErr != nil {
 			out = replay
 			return replayErr

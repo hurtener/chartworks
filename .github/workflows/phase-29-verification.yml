@@ -36,6 +36,8 @@ jobs:
         id: checkout
         with:
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
@@ -45,13 +47,11 @@ jobs:
           if test -n "$files"; then
             if ! gofmt -d $files; then echo 'Formatting differences remain; final formatting gate is required.'; fi
           fi
-      - name: Reserve native build disk
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       - uses: actions/cache/restore@v4
         id: rust-cache
         with:
           path: /tmp/chartworks-bruin/source/pkg/sqlparser/rustffi/target
-          key: phase29-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-bruin.sh') }}
+          key: phase29-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-bruin.sh') }}-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**', 'scripts/native-patches/**', 'scripts/build-bruin.sh', 'scripts/native-build-env.sh', 'scripts/apply-bruin-read-patch.sh') }}
       - name: Build the pinned native parser and runner
         id: native
         run: |

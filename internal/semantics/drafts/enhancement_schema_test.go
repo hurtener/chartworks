@@ -119,3 +119,31 @@ func TestEnhancementMetricCatalogCarriesPriorPageMeasure(t *testing.T) {
 		t.Fatalf("prior page generated measure unavailable to next page KPI: %v %#v", err, catalog)
 	}
 }
+
+func TestWholeTopicMetricCatalogCarriesPriorDatasetButNotFutureEntities(t *testing.T) {
+	model, _ := authoringFixture(t)
+	selected := []semantics.Reference{{Kind: semantics.KindColumn, Dataset: "accounts", ID: "column_00"}}
+	catalog, err := enhancementMetricCatalog(model, selected, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := enhancementWire{Results: []semantics.Enhancement{{Dataset: "accounts", Column: "column_00", Kind: semantics.EnhancementMeasure}}, KPIs: []semantics.KPI{{Inputs: []semantics.Reference{{Kind: semantics.KindMeasure, ID: "revenue"}}}}}
+	if err := validateEnhancementOutput(selected, catalog, wire); err != nil {
+		t.Fatal("prior other-dataset metric missing from admitted whole topic", err)
+	}
+	for _, id := range []string{"foreign_metric", semantics.GeneratedEntityID(semantics.EnhancementMeasure, "orders", "column_17")} {
+		wire.KPIs[0].Inputs[0].ID = id
+		if err := validateEnhancementOutput(selected, catalog, wire); !errors.Is(err, gateway.ErrOutput) {
+			t.Fatal("foreign or uncreated metric admitted", id, err)
+		}
+	}
+	again, err := enhancementMetricCatalog(model, selected, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := json.Marshal(catalog)
+	b, _ := json.Marshal(again)
+	if string(a) != string(b) {
+		t.Fatal("catalog changed without semantic revision")
+	}
+}

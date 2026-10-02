@@ -56,12 +56,18 @@ func hasActiveBusinessEvidence(route nlqroute.RouteResult) bool {
 }
 
 func bindClarificationCandidate(ctx context.Context, a admission, candidate generatedCandidate) (generatedCandidate, error) {
+	if a.analytical != nil && a.analytical.ScalarPopulations != nil {
+		return bindScalarPeriodCandidate(ctx, a, candidate)
+	}
 	if !hasActiveBusinessEvidence(a.route) {
 		return candidate, nil
 	}
 	constraints, err := a.route.ResolvedBusinessConstraints()
 	if err != nil {
 		return generatedCandidate{}, err
+	}
+	if len(constraints) == 0 && referenceOnlyBindingMatches(a.route, a.binding) {
+		return candidate, nil
 	}
 	if len(constraints) == 0 || exec.Hash(a.binding) != a.route.SourceBindingDigest {
 		return generatedCandidate{}, exec.ErrBinding
@@ -92,7 +98,7 @@ func sealClarificationCandidate(candidate *generatedCandidate, plan exec.Plan, p
 }
 
 func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Envelope, record QueryRecord) ([]exec.BusinessConstraint, error) {
-	if record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
+	if !usesGroundedConcepts(record.Route) && record.Route.AnswerContext == "" && len(record.Route.Resolutions) == 0 && len(record.Route.Request.Answers) == 0 && (record.Route.Interpretation == nil || len(record.Route.Interpretation.Values)+len(record.Route.Interpretation.Temporal) == 0) {
 		return nil, nil
 	}
 	replayer, ok := s.router.(clarificationReplayer)
@@ -113,7 +119,19 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 // before a new execution. It does not trust stored SQL, a digest, or a previous
 // answer as validator-issued proof; Run still performs normal fresh validation.
 func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identity.Envelope, record QueryRecord, a admission) error {
+	if isScalarPeriodRecord(record) {
+		return s.verifyScalarPeriodBinding(ctx, e, record, a)
+	}
 	if !hasActiveBusinessEvidence(record.Route) {
+		if usesGroundedConcepts(record.Route) {
+			values, err := s.replayQueryClarifications(ctx, e, record)
+			if err != nil {
+				return err
+			}
+			if len(values) != 0 {
+				return exec.ErrBinding
+			}
+		}
 		if record.Clarification != nil {
 			evidence := record.Clarification
 			if evidence.SchemaVersion != 1 || evidence.BaseSQL != "" || len(evidence.BaseParameters) != 0 || evidence.Binding.SchemaVersion != 0 {
@@ -132,7 +150,7 @@ func (s *Service) verifyQueryClarificationBinding(ctx context.Context, e identit
 		return err
 	}
 	if len(constraints) == 0 {
-		return exec.ErrBinding
+		return validateReferenceOnlyEvidence(record, a.binding)
 	}
 	evidence := record.Clarification
 	if evidence == nil || evidence.SchemaVersion != 1 || evidence.BaseSQL == "" || evidence.Binding.SchemaVersion != 1 || evidence.Binding.Validation == nil || !evidence.Binding.Validation.Validated || evidence.Binding.Validation.Source != a.binding.Source || evidence.Binding.Validation.Context != a.binding.Context || evidence.Binding.Validation.Dialect != a.binding.Dialect || evidence.Binding.Validation.Contract != a.binding.Contract || evidence.Binding.SourceBinding != exec.Hash(a.binding) {
@@ -244,7 +262,16 @@ func mergeRefinementClarifications(old QueryRecord, delta QuestionRequest, out *
 		return err
 	}
 	out.Answers, out.Choices = merged, choices
-	out.AnswerContext = old.Route.AnswerContext
+	out.AnswerContext = ""
+	// Refine has already reauthorized and replayed the parent. Only carried
+	// answers/choices need the old form's pin. An inferred-only continuation
+	// can remove its last predicate, changing the optional binding component
+	// of the freshly computed context without changing source authority.
+	// Explicit caller pins are still checked above, and answered forms retain
+	// their exact original pin so policy/source changes cannot be bypassed.
+	if len(merged) > 0 || len(choices) > 0 {
+		out.AnswerContext = old.Route.AnswerContext
+	}
 	return nil
 }
 
@@ -278,4 +305,22 @@ func publicClarificationChanges(evidence *ClarificationEvidence) []Clarification
 		return nil
 	}
 	return append([]ClarificationChange(nil), evidence.Changes...)
+}
+
+// A retained model-origin root cannot be downgraded merely by dropping the
+// optional policy/evidence fields from serialized query metadata.
+func usesGroundedConcepts(route nlqroute.RouteResult) bool {
+	if route.Concepts != nil || route.Request.ConceptPolicy != "" {
+		return true
+	}
+	if route.Selection != nil {
+		for _, topic := range route.Selection.Topics {
+			for _, root := range topic.Roots {
+				if root.Reason == "grounded_model" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/nlq/generationdecision"
 )
 
 // ErrRegistration indicates that an operation cannot be exposed safely.
@@ -31,8 +32,10 @@ type Operation struct {
 
 // ErrorResponse describes an existing wire error, not a new mapping policy.
 type ErrorResponse struct {
-	Status int
-	Code   string
+	// Generation marks the domain-owned, bounded non-executable decision projection.
+	Generation bool
+	Status     int
+	Code       string
 	// Receipt marks an error response that includes the bounded gateway attempt
 	// receipt alongside its stable error code.
 	Receipt bool
@@ -325,8 +328,10 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 		responses[statusString(defaultStatus(d))] = response
 		byStatus := map[int][]string{}
 		receiptByStatus := map[int]bool{}
+		generationByStatus := map[int]bool{}
 		for _, e := range d.Errors {
 			byStatus[e.Status] = append(byStatus[e.Status], e.Code)
+			generationByStatus[e.Status] = generationByStatus[e.Status] || e.Generation
 			receiptByStatus[e.Status] = receiptByStatus[e.Status] || e.Receipt
 		}
 		var receiptDocument any
@@ -343,6 +348,14 @@ func (r *Registry) OpenAPIAt(title, version, basePath string) ([]byte, error) {
 		for status, codes := range byStatus {
 			sort.Strings(codes)
 			properties := map[string]any{"error": map[string]any{"type": "string", "enum": codes}}
+			if generationByStatus[status] {
+				decision, err := SchemaFor("generationProblem", reflect.TypeFor[generationdecision.Problem](), true)
+				var doc any
+				if err != nil || json.Unmarshal(decision.Document(), &doc) != nil {
+					return nil, ErrRegistration
+				}
+				properties["generation"] = doc
+			}
 			if receiptByStatus[status] {
 				properties["receipt"] = receiptDocument
 			}

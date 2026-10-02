@@ -56,6 +56,7 @@ jobs:
             ./internal/identity \
             ./internal/access \
             ./internal/calendars \
+            ./internal/nlq \
             ./internal/api \
             ./internal/httpmount
           # The foundation package has mandatory real-PostgreSQL tests. Compile
@@ -98,6 +99,7 @@ jobs:
           ./internal/identity
           ./internal/access
           ./internal/calendars
+          ./internal/nlq
           ./internal/foundation
           ./internal/api
           ./internal/httpmount

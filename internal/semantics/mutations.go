@@ -1,6 +1,9 @@
 package semantics
 
-import "github.com/hurtener/chartworks/internal/identity"
+import (
+	"github.com/hurtener/chartworks/internal/identity"
+	"sort"
+)
 
 // EntityMutation is one closed put or delete in an atomic draft mutation batch.
 type EntityMutation struct {
@@ -168,7 +171,26 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 			ref.ID = replacement.Dataset
 		}
 	}
+	if pack.GroupedPopulation != nil {
+		for i, id := range pack.GroupedPopulation.Datasets {
+			if id == oldDataset {
+				pack.GroupedPopulation.Datasets[i] = replacement.Dataset
+			}
+		}
+		for i, domain := range pack.GroupedPopulation.GroupDomains {
+			if domain.Dataset == oldDataset {
+				pack.GroupedPopulation.GroupDomains[i].Dataset = replacement.Dataset
+			}
+		}
+		sort.Slice(pack.GroupedPopulation.GroupDomains, func(i, j int) bool {
+			return pack.GroupedPopulation.GroupDomains[i].Dataset < pack.GroupedPopulation.GroupDomains[j].Dataset
+		})
+		sort.Strings(pack.GroupedPopulation.Datasets)
+	}
 	for i := range pack.Measures {
+		if pack.Measures[i].Completeness != nil {
+			rewrite(&pack.Measures[i].Completeness.UnknownCount)
+		}
 		rewrite(&pack.Measures[i].Field)
 		for j := range pack.Measures[i].Filters {
 			rewrite(&pack.Measures[i].Filters[j].Field)
@@ -181,6 +203,12 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 		}
 	}
 	for i := range pack.KPIs {
+		if pack.KPIs[i].Periods != nil {
+			for j := range pack.KPIs[i].Periods.Bindings {
+				rewrite(&pack.KPIs[i].Periods.Bindings[j].Measure)
+				rewrite(&pack.KPIs[i].Periods.Bindings[j].Dimension)
+			}
+		}
 		for j := range pack.KPIs[i].Inputs {
 			rewrite(&pack.KPIs[i].Inputs[j])
 		}
@@ -191,10 +219,18 @@ func ReplaceDataset(model Model, version, oldDataset string, replacement Dataset
 	for i := range pack.Joins {
 		rewrite(&pack.Joins[i].Left)
 		rewrite(&pack.Joins[i].Right)
+		for k := range pack.Joins[i].AdditionalKeys {
+			rewrite(&pack.Joins[i].AdditionalKeys[k].Left)
+			rewrite(&pack.Joins[i].AdditionalKeys[k].Right)
+		}
 	}
 	for i := range pack.RelationshipDecisions {
 		rewrite(&pack.RelationshipDecisions[i].Left)
 		rewrite(&pack.RelationshipDecisions[i].Right)
+		for k := range pack.RelationshipDecisions[i].AdditionalKeys {
+			rewrite(&pack.RelationshipDecisions[i].AdditionalKeys[k].Left)
+			rewrite(&pack.RelationshipDecisions[i].AdditionalKeys[k].Right)
+		}
 	}
 	for i := range pack.CanonicalEntities {
 		for j := range pack.CanonicalEntities[i].Keys {

@@ -173,8 +173,8 @@ type accessResourceForTest struct{ kind, permission, id string }
 func TestGenerateAndValidateUsesOneValidationCorrection(t *testing.T) {
 	e := testEnvelope(t)
 	admitted, generation, call, budget := testGeneration(t, e)
-	invalid := gateway.Generated{JSON: json.RawMessage(`{"sql":"DELETE FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlgen"}}}}
-	valid := gateway.Generated{JSON: json.RawMessage(`{"sql":"SELECT id FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix"}}}}
+	invalid := gateway.Generated{JSON: json.RawMessage(`{"decision":"ready","questions":[],"sql":"DELETE FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlgen"}}}}
+	valid := gateway.Generated{JSON: json.RawMessage(`{"decision":"ready","questions":[],"sql":"SELECT id FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix"}}}}
 	validator := &sequenceValidator{errors: []error{exec.ErrUnsafe, nil}}
 	model := &sequenceGateway{responses: []gateway.Generated{invalid, valid}}
 	service := &Service{validator: validator, engine: model}
@@ -1238,7 +1238,7 @@ func TestRunRepairRebuildsSealedContext(t *testing.T) {
 	inputTokens, outputTokens := 17, 9
 	cost := 0.01
 	engine := &sequenceGateway{responses: []gateway.Generated{
-		{JSON: json.RawMessage(`{"sql":"SELECT id, amount FROM analytics.sales WHERE created_at >= $1  ORDER BY id","parameters":[{"kind":"text","value":"2026-01-01"}],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix", Attempts: 1, InputTokens: &inputTokens, OutputTokens: &outputTokens, CostUSD: &cost}}}},
+		{JSON: json.RawMessage(`{"decision":"ready","questions":[],"sql":"SELECT id, amount FROM analytics.sales WHERE created_at >= $1  ORDER BY id","parameters":[{"kind":"text","value":"2026-01-01"}],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix", Attempts: 1, InputTokens: &inputTokens, OutputTokens: &outputTokens, CostUSD: &cost}}}},
 	}}
 	service := &Service{topics: reader, sources: retainedSourceReader{}, validator: validator, executor: executor, engine: engine, repo: repo}
 	result, err := service.Run(context.Background(), e, RunRequest{QueryID: query.ID, Operation: "operation-repair"})
@@ -1371,7 +1371,7 @@ func TestRunRepairRejectsUnsafeSemanticChanges(t *testing.T) {
 			repo.queries[query.ID] = query
 			executor := &unitExecutor{reports: []exec.ExecutionReport{{Attempt: exec.Attempt{Status: "failed", Code: "query_error"}}, unitResult("succeeded")}, errors: []error{exec.ErrQuery}}
 			engine := &sequenceGateway{responses: []gateway.Generated{
-				{JSON: json.RawMessage(`{"sql":"` + tc.candidate + `","parameters":[{"kind":"text","value":"2026-01-01"}],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix", Attempts: 1}}}},
+				{JSON: json.RawMessage(`{"decision":"ready","questions":[],"sql":"` + tc.candidate + `","parameters":[{"kind":"text","value":"2026-01-01"}],"assumptions":[],"ambiguities":[]}`), Receipt: gateway.Receipt{Calls: []gateway.Usage{{Role: "sqlfix", Attempts: 1}}}},
 			}}
 			service := &Service{topics: reader, sources: retainedSourceReader{}, validator: &unitValidator{}, executor: executor, engine: engine, repo: repo}
 			_, err := service.Run(context.Background(), e, RunRequest{QueryID: query.ID, Operation: "operation-unsafe-" + tc.name})
@@ -1540,14 +1540,14 @@ func TestExampleActivationRequiresReviewedSQLScope(t *testing.T) {
 func TestServiceGenerationFailureBranches(t *testing.T) {
 	e := unitEnvelope(t)
 	admitted, generation, call, budget := testGeneration(t, e)
-	validJSON := json.RawMessage(`{"sql":"SELECT id FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`)
+	validJSON := json.RawMessage(`{"decision":"ready","questions":[],"sql":"SELECT id FROM analytics.sales","parameters":[],"assumptions":[],"ambiguities":[]}`)
 	for _, tc := range []struct {
 		name     string
 		response gateway.Generated
 		wantErr  error
 	}{
 		{name: "malformed", response: gateway.Generated{JSON: json.RawMessage(`{"sql":`)}, wantErr: ErrGeneration},
-		{name: "invalid-candidate", response: gateway.Generated{JSON: json.RawMessage(`{"sql":" SELECT 1","parameters":[],"assumptions":[],"ambiguities":[]}`)}, wantErr: ErrGeneration},
+		{name: "invalid-candidate", response: gateway.Generated{JSON: json.RawMessage(`{"decision":"ready","questions":[],"sql":" SELECT 1","parameters":[],"assumptions":[],"ambiguities":[]}`)}, wantErr: ErrGeneration},
 		{name: "provider-output", response: gateway.Generated{}, wantErr: ErrGeneration},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

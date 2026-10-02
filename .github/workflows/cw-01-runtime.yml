@@ -34,6 +34,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - name: Capture committed runtime source before validation
         run: |
           mkdir -p "$RUNNER_TEMP/cw01-source"
@@ -57,7 +59,7 @@ jobs:
             /tmp/chartworks-native
             ~/.cargo/registry
             ~/.cargo/git
-          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**', 'scripts/native-patches/**', 'scripts/build-bruin.sh', 'scripts/native-build-env.sh', 'scripts/apply-bruin-read-patch.sh') }}
       - name: Build the pinned native read-parser dependency
         run: bash scripts/build-bruin.sh
       - uses: actions/cache/save@v4
@@ -67,7 +69,7 @@ jobs:
             /tmp/chartworks-native
             ~/.cargo/registry
             ~/.cargo/git
-          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981
+          key: cw01-native-linux-5f562c2959496a04d57f5f199f5e3ad22159fa9f-rust1981-signatures-${{ hashFiles('internal/exec/signatureparser/rustffi/**', 'scripts/native-patches/**', 'scripts/build-bruin.sh', 'scripts/native-build-env.sh', 'scripts/apply-bruin-read-patch.sh') }}
       - name: Record exact committed source
         run: |
           git log -1 --format='commit=%H%ntree=%T%nparents=%P'

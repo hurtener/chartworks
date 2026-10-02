@@ -8,6 +8,7 @@ import (
 	"github.com/hurtener/chartworks/internal/access"
 	"github.com/hurtener/chartworks/internal/gateway"
 	"github.com/hurtener/chartworks/internal/identity"
+	"github.com/hurtener/chartworks/internal/nlq/generationdecision"
 	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -81,6 +82,13 @@ func (s *Server) dispatch(ctx context.Context, name string, args json.RawMessage
 			f = Fault{Code: "invalid_request"}
 		}
 		f.Outcome = "unknown"
+		if f.Generation != nil {
+			if generationdecision.MatchesCode(f.Generation, f.Code) {
+				f.Generation = generationdecision.Public(*f.Generation)
+			} else {
+				f.Generation = nil
+			}
+		}
 		if f.Clarification != nil {
 			f.Clarification = semantics.PublicClarificationProblem(*f.Clarification)
 		}
@@ -95,6 +103,7 @@ func (s *Server) dispatch(ctx context.Context, name string, args json.RawMessage
 		wire, encodeErr := json.Marshal(failed)
 		if encodeErr != nil || len(wire)+512 > s.settings.MaxResponseBytes {
 			f.Clarification = nil
+			f.Generation = nil
 			f.Receipt = nil
 			failed = toolFailure(f)
 		}

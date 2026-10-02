@@ -84,6 +84,12 @@ func ExecutionHandler(verifier *auth.Verifier, service *nlqexec.Service, next ht
 				err = service.Feedback(r.Context(), e, in)
 				out = FeedbackResult{Accepted: err == nil}
 			}
+		case "requalifyExampleNLQ":
+			var in nlqexec.ExampleRequalificationRequest
+			err = decodeBody(w, r, selected.Request, &in)
+			if err == nil {
+				out, err = service.RequalifyExample(r.Context(), e, in)
+			}
 		case "exampleStateNLQ":
 			var in nlqexec.ExampleStateRequest
 			err = decodeBody(w, r, selected.Request, &in)

@@ -22,3 +22,15 @@ The recorded PostgreSQL gate also registers a synthetic same-source `audit_total
 The original natural annual English/Spanish questions (`by month in 2026` / `por mes en 2026`) and January-through-March net question remain distinct paid receipt cases. Their reviewed temporal interpretation must retain `[2026-01-01, 2027-01-01)` and `[2026-01-01, 2026-04-01)` bounds respectively. The annual questions must finish validated execution with the values above. The net interval requires SQL with separately aggregated order and refund grains. The bounded PostgreSQL CTE binder applies the reviewed date interval to paid orders before either grain is combined, and the opt-in gate requires a validated run result of **515**. The separate underspecified question retains `ambiguous_temporal_span` without SQL generation.
 
 The gate creates a reviewed block and a published report, then uses the real retained delivery viewer and supervised renderer to write `report.html`, `chart.svg`, `viewer-table.json`, `viewer-chart.json`, `embedding-receipt.json`, `rerank-receipt.json`, `report-receipt.json` and `receipts.json`. It checks that retained table and chart values contain paid **640** and cancelled **60**, and that the static HTML/SVG include both labels and values. JSON receipts contain status, IDs, counts and bounded model usage only; they omit raw prompts, generated SQL, credentials and provider response bodies. HTML/SVG and viewer projections contain only synthetic warehouse values. Save Chrome screenshots of the generated HTML/SVG beside these artifacts after the run; screenshots are a separate visual check. A green recorded test does not establish live provider quality, and this opt-in gate does not mark Phase 25 released.
+
+### Trusted environment proxy
+
+In a controlled runner where direct public DNS is unavailable but an existing
+HTTPS proxy is configured, opt-in live tests may set `CHARTWORKS_LIVE_ENV_PROXY=1`.
+This uses Bifrost's environment-proxy transport only for the fixed official
+HTTPS OpenRouter endpoints. It rejects custom hosts, userinfo, ports, query
+strings, path escapes, private-network relaxation and custom CA configuration
+before credential lookup. Normal TLS verification remains enabled. The default
+application transport is unchanged; public requests cannot enable this option.
+The pinned SDK codec does not follow provider redirects. Do not print proxy
+variables, credentials, headers or raw provider errors into evidence artifacts.

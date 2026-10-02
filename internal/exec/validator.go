@@ -9,6 +9,7 @@ import (
 
 	bruinsql "github.com/bruin-data/bruin/pkg/sqlparser"
 	"github.com/hurtener/chartworks/internal/config"
+	"github.com/hurtener/chartworks/internal/exec/sqlpolicy"
 	"github.com/hurtener/chartworks/internal/identity"
 	pgquery "github.com/wasilibs/go-pgquery"
 )
@@ -170,9 +171,8 @@ func (v *Validator) validate(ctx context.Context, e identity.Envelope, r Request
 }
 
 func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, r Request, binding, scoped Binding, scopeDigest string) (Plan, error) {
-	dialects := map[string]string{"mysql": "mysql", "sqlserver": "tsql", "bigquery": "bigquery", "snowflake": "snowflake", "databricks": "databricks"}
-	dialect, ok := dialects[binding.Dialect]
-	if !ok {
+	dialect, ok := sqlpolicy.NativeDialect(binding.Dialect)
+	if !ok || binding.Dialect == "postgres" {
 		return Plan{}, ErrUnsupported
 	}
 	select {
@@ -185,15 +185,18 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	if err != nil {
 		return Plan{}, ErrUnsafe
 	}
-	parameters := inspection.Parameters
-	if parameters != len(r.Parameters) {
-		parameters, err = warehouseParameterCount(ctx, r.SQL, binding.Dialect)
+	// Corroborate every accepted statement, including the zero/zero case:
+	// native structural inspection can omit markers nested under an expression.
+	// The bounded scanner cannot erase any marker already reported by native
+	// inspection, and quoted text never supplies a business binding.
+	parameters, occurrences, err := warehouseParameterEvidence(ctx, r.SQL, binding.Dialect)
+	if occurrences < inspection.Parameters {
+		return Plan{}, ErrBinding
 	}
 	if err != nil || parameters != len(r.Parameters) || len(inspection.Outputs) < 1 || len(inspection.Outputs) > 256 {
 		return Plan{}, ErrBinding
 	}
 	dependencies := make([]string, 0, len(inspection.Tables))
-	selected := make([]Relation, 0, len(inspection.Tables))
 	for _, table := range inspection.Tables {
 		var relation Relation
 		matches := 0
@@ -206,30 +209,37 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 			return Plan{}, ErrUnsafe
 		}
 		dependencies = append(dependencies, relation.ID)
-		selected = append(selected, relation)
 	}
-	for _, column := range inspection.Columns {
-		if column.Name == "*" || !SQLIdentifier(strings.ToLower(column.Name)) {
-			return Plan{}, ErrUnsupported
-		}
-		matches := 0
-		for _, relation := range selected {
-			if column.Table != "" && !warehouseRelationMatches(binding, relation, column.Table, true) {
-				continue
-			}
-			for _, candidate := range relation.Columns {
-				if candidate.Name == column.Name && candidate.Safe {
-					matches++
-				}
-			}
-		}
-		if matches != 1 {
+	// Keep the structural companion within the same native-work semaphore.
+	select {
+	case v.slots <- struct{}{}:
+	case <-ctx.Done():
+		return Plan{}, ctx.Err()
+	}
+	callEvidence, signatureErr := warehouseSignatureEvidence(ctx, r.SQL, binding.Dialect, dialect, v.limits.MaxASTNodes, v.limits.MaxASTDepth)
+	<-v.slots
+	if signatureErr != nil {
+		return Plan{}, signatureErr
+	}
+	resolvedDependencies, resolvedOutputs, scopeErr := warehouseResolveScope(ctx, callEvidence.tree, binding, scoped, len(r.Parameters))
+	if scopeErr != nil {
+		return Plan{}, scopeErr
+	}
+	nativeDependencies := map[string]bool{}
+	for _, id := range dependencies {
+		nativeDependencies[id] = true
+	}
+	if len(nativeDependencies) != len(resolvedDependencies) || !reflect.DeepEqual(resolvedOutputs, inspection.Outputs) {
+		return Plan{}, ErrUnsafe
+	}
+	for _, id := range resolvedDependencies {
+		if !nativeDependencies[id] {
 			return Plan{}, ErrUnsafe
 		}
 	}
-	allowedFunctions := map[string]bool{"abs": true, "avg": true, "coalesce": true, "count": true, "length": true, "lower": true, "max": true, "min": true, "round": true, "sum": true, "upper": true}
+	dependencies = resolvedDependencies
 	for _, function := range inspection.Functions {
-		if !allowedFunctions[strings.ToLower(function)] {
+		if function != "window_function" && !sqlpolicy.AllowsFunction(binding.Dialect, []string{function}) {
 			return Plan{}, ErrUnsupported
 		}
 	}
@@ -249,13 +259,18 @@ func (v *Validator) validateWarehouse(ctx context.Context, e identity.Envelope, 
 	return Plan{candidate: candidate, nativeChecked: true}, nil
 }
 
-// warehouseParameterCount compensates only for native inspection omissions in
-// otherwise parsed read trees (currently LIKE ... ESCAPE). It does not parse or
-// authorize SQL; the native inspection above remains mandatory for the tree.
+// warehouseParameterCount compensates for omitted markers in otherwise parsed
+// read trees (such as LIKE ... ESCAPE). Its result cannot reduce the native
+// inspection count and never authorizes SQL on its own.
 func warehouseParameterCount(ctx context.Context, statement, dialect string) (int, error) {
+	n, _, err := warehouseParameterEvidence(ctx, statement, dialect)
+	return n, err
+}
+
+func warehouseParameterEvidence(ctx context.Context, statement, dialect string) (int, int, error) {
 	tokens, err := businessScan(ctx, statement, true)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	seen := map[int]bool{}
 	positional := 0
@@ -266,16 +281,16 @@ func warehouseParameterCount(ctx context.Context, statement, dialect string) (in
 		positional++
 		index, err := businessParameterIndex(token.text, dialect, positional)
 		if err != nil || index < 1 || index > 64 {
-			return 0, ErrBinding
+			return 0, 0, ErrBinding
 		}
 		seen[index] = true
 	}
 	for i := 1; i <= len(seen); i++ {
 		if !seen[i] {
-			return 0, ErrBinding
+			return 0, 0, ErrBinding
 		}
 	}
-	return len(seen), nil
+	return len(seen), positional, nil
 }
 
 func warehouseRelationMatches(binding Binding, relation Relation, name string, allowBare bool) bool {

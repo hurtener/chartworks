@@ -35,6 +35,7 @@ type gatewayFixture struct {
 	mu                  sync.Mutex
 	models, keys, paths []string
 	requestBodies       []string
+	chatSequence        []string // Recorded per-chat responses, protected by mu.
 	ca                  string
 	server              *httptest.Server
 }
@@ -60,14 +61,18 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 			return
 		}
 		model, _ := input["model"].(string)
+		mode := f.mode.Load().(string)
 		f.mu.Lock()
+		if !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") && len(f.chatSequence) > 0 {
+			mode = f.chatSequence[0]
+			f.chatSequence = f.chatSequence[1:]
+		}
 		f.models = append(f.models, model)
 		f.keys = append(f.keys, r.Header.Get("Authorization"))
 		f.paths = append(f.paths, r.URL.Path)
 		f.requestBodies = append(f.requestBodies, string(data))
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		mode := f.mode.Load().(string)
 		embeddingMode := f.embeddingMode.Load().(string)
 		if embeddingMode == "normal" {
 			embeddingMode = mode
@@ -75,6 +80,21 @@ func newGatewayFixture(t *testing.T, change func(*config.Gateway)) *gatewayFixtu
 		rerankMode := f.rerankMode.Load().(string)
 		if rerankMode == "normal" {
 			rerankMode = mode
+		}
+		if mode == "topic_quality_echo" {
+			var material map[string]any
+			messages, _ := input["messages"].([]any)
+			for _, message := range messages {
+				m, _ := message.(map[string]any)
+				if m["role"] == "user" {
+					content, _ := m["content"].(string)
+					_ = json.Unmarshal([]byte(content), &material)
+				}
+			}
+			context, _ := material["context"].(map[string]any)
+			answer, _ := json.Marshal(map[string]any{"candidate_digest": context["candidate_digest"], "context_digest": context["digest"], "coverage_digest": material["coverage_digest"], "status": "no_findings", "findings": []any{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "recorded-quality", "object": "chat.completion", "model": model, "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": string(answer)}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}})
+			return
 		}
 		if strings.HasPrefix(mode, "chat_raw:") && !strings.Contains(r.URL.Path, "embedding") && !strings.Contains(r.URL.Path, "rerank") {
 			_, _ = io.WriteString(w, strings.TrimPrefix(mode, "chat_raw:"))

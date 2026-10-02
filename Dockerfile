@@ -12,12 +12,14 @@ ENV PATH=/usr/local/cargo/bin:$PATH
 ENV CHARTWORKS_BRUIN_BUILD_DIR=/opt/chartworks-bruin CGO_ENABLED=1
 ENV CGO_LDFLAGS=-L/opt/chartworks-bruin/source/pkg/sqlparser/rustffi/target/release
 WORKDIR /src
-COPY scripts/build-bruin.sh scripts/build-bruin.sh
+COPY scripts/build-bruin.sh scripts/apply-bruin-read-patch.sh scripts/native-build-env.sh scripts/
+COPY scripts/native-patches scripts/native-patches
+COPY internal/exec/signatureparser/rustffi internal/exec/signatureparser/rustffi
 RUN bash scripts/build-bruin.sh
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 COPY . .
-RUN make build && ./bin/chartworks version && ldd ./bin/chartworks
+RUN bash -c 'source scripts/native-build-env.sh && make build && ./bin/chartworks version && ldd ./bin/chartworks'
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata libstdc++6 \

@@ -41,6 +41,8 @@ import (
 	"github.com/hurtener/chartworks/internal/sources"
 	"github.com/hurtener/chartworks/internal/store/postgres"
 	"github.com/hurtener/chartworks/internal/topicapi"
+	"github.com/hurtener/chartworks/internal/topicfeedback"
+	"github.com/hurtener/chartworks/internal/topicfeedbackapi"
 	"github.com/hurtener/chartworks/internal/vindex"
 	"github.com/hurtener/chartworks/internal/workapi"
 )
@@ -200,6 +202,21 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 				return nil, err
 			}
 		}
+	}
+	var topicFeedback *topicfeedback.Service
+	var topicFeedbackRegistry *api.Registry
+	if w.nlq != nil {
+		topicFeedback, err = topicfeedback.New(db, w.nlq, topics, w.engine)
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+		topicFeedbackRegistry, err = topicfeedbackapi.Registry()
+		if err != nil {
+			w.close()
+			return nil, err
+		}
+		w.handler = topicfeedbackapi.Handler(verifier, topicFeedback, w.handler)
 	}
 	if validator != nil && executor != nil {
 		var byoErr error
@@ -393,12 +410,12 @@ func setupWork(ctx context.Context, v config.Values, db *postgres.DB, verifier *
 			return nil, err
 		}
 	}
-	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry, documentRegistry, evaluationRegistry, onboardingRegistry, migrationRegistry)
+	w.registry, err = api.Compose(publicRegistry, securityRegistry, workRegistry, sourceRegistry, engineeringRegistry, executionRegistry, pipelineRegistry, topicRegistry, nlqRegistry, nlqExecutionRegistry, byoRegistry, chartRegistry, blockRegistry, runtimeRegistry, documentRegistry, evaluationRegistry, onboardingRegistry, migrationRegistry, topicFeedbackRegistry)
 	if err != nil {
 		w.close()
 		return nil, err
 	}
-	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{delivery: delivery, renderer: renderer, evaluation: evaluationService, evaluationRunner: evaluationRunner, onboarding: w.onboarding, migrations: migrations})
+	w.registry, w.handler, err = mountMCP(v, verifier, w.sourceService, published, w.nlq, byo, chartService, w.registry, w.handler, deliveryServices{topicFeedback: topicFeedback, delivery: delivery, renderer: renderer, evaluation: evaluationService, evaluationRunner: evaluationRunner, onboarding: w.onboarding, migrations: migrations})
 	if err != nil {
 		w.close()
 		return nil, err

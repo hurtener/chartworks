@@ -21,21 +21,22 @@ const (
 
 // Enhancement proposes semantics for exactly one existing stable column reference.
 type Enhancement struct {
-	Dataset      string           `json:"dataset"`
-	Column       string           `json:"column"`
-	Kind         EnhancementKind  `json:"kind"`
-	Name         string           `json:"name"`
-	Aggregation  Aggregation      `json:"aggregation,omitempty"`
-	Role         DimensionRole    `json:"role,omitempty"`
-	Geography    bool             `json:"geography,omitempty"`
-	Reason       string           `json:"reason,omitempty"`
-	Description  string           `json:"description,omitempty"`
-	Aliases      []string         `json:"aliases,omitempty"`
-	Unit         string           `json:"unit,omitempty"`
-	SemanticRole SemanticRole     `json:"semantic_role,omitempty"`
-	Values       []GovernedValue  `json:"values,omitempty"`
-	Temporal     *TemporalPolicy  `json:"temporal,omitempty"`
-	Filters      []SemanticFilter `json:"filters,omitempty"`
+	Completeness *KnownAmountCompleteness `json:"completeness,omitempty"`
+	Dataset      string                   `json:"dataset"`
+	Column       string                   `json:"column"`
+	Kind         EnhancementKind          `json:"kind"`
+	Name         string                   `json:"name"`
+	Aggregation  Aggregation              `json:"aggregation,omitempty"`
+	Role         DimensionRole            `json:"role,omitempty"`
+	Geography    bool                     `json:"geography,omitempty"`
+	Reason       string                   `json:"reason,omitempty"`
+	Description  string                   `json:"description,omitempty"`
+	Aliases      []string                 `json:"aliases,omitempty"`
+	Unit         string                   `json:"unit,omitempty"`
+	SemanticRole SemanticRole             `json:"semantic_role,omitempty"`
+	Values       []GovernedValue          `json:"values,omitempty"`
+	Temporal     *TemporalPolicy          `json:"temporal,omitempty"`
+	Filters      []SemanticFilter         `json:"filters,omitempty"`
 }
 
 // GeneratedEntityID derives a stable server-owned ID from the entity kind and
@@ -96,10 +97,16 @@ func ApplyRichEnhancements(model Model, version string, proposals []Enhancement,
 				return Model{}, invalid(CodeInvalidValue, "enhancements.measure")
 			}
 		case EnhancementDimension:
+			if item.Completeness != nil {
+				return Model{}, invalid(CodeInvalidValue, "enhancements.dimension.completeness")
+			}
 			if !validLine(item.Name, 256) || !item.Role.valid() || item.Geography && item.Role != DimensionCategorical || item.Aggregation != "" || item.Reason != "" || !validText(item.Description, 4096) || !validAliases(item.Aliases) || item.Unit != "" || !item.SemanticRole.valid() || !validGovernedValues(item.Values) || !validTemporal(item.Temporal, item.Role) || !validFilters(item.Filters) {
 				return Model{}, invalid(CodeInvalidValue, "enhancements.dimension")
 			}
 		case EnhancementUnresolved:
+			if item.Completeness != nil {
+				return Model{}, invalid(CodeInvalidValue, "enhancements.unresolved.completeness")
+			}
 			if item.Name != "" || item.Aggregation != "" || item.Role != "" || item.Geography || !validLine(item.Reason, 256) || item.Description != "" || len(item.Aliases) != 0 || item.Unit != "" || item.SemanticRole != "" || len(item.Values) != 0 || item.Temporal != nil || len(item.Filters) != 0 {
 				return Model{}, invalid(CodeInvalidValue, "enhancements.unresolved")
 			}
@@ -126,7 +133,7 @@ func ApplyRichEnhancements(model Model, version string, proposals []Enhancement,
 		id := GeneratedEntityID(item.Kind, item.Dataset, item.Column)
 		switch item.Kind {
 		case EnhancementMeasure:
-			p.Measures = append(p.Measures, Measure{ID: id, Name: item.Name, Description: item.Description, Field: ref, Aggregation: item.Aggregation, Unit: item.Unit, Aliases: append([]string(nil), item.Aliases...), Filters: cloneFilters(item.Filters)})
+			p.Measures = append(p.Measures, Measure{Completeness: cloneCompleteness(item.Completeness), ID: id, Name: item.Name, Description: item.Description, Field: ref, Aggregation: item.Aggregation, Unit: item.Unit, Aliases: append([]string(nil), item.Aliases...), Filters: cloneFilters(item.Filters)})
 		case EnhancementDimension:
 			p.Dimensions = append(p.Dimensions, Dimension{ID: id, Name: item.Name, Description: item.Description, Field: ref, Role: item.Role, Geography: item.Geography, Aliases: append([]string(nil), item.Aliases...), Values: append([]GovernedValue(nil), item.Values...), Temporal: item.Temporal, Filters: cloneFilters(item.Filters)})
 		case EnhancementUnresolved:

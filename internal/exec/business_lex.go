@@ -89,9 +89,9 @@ func businessScan(ctx context.Context, sql string, internal bool) ([]businessTok
 			out = append(out, businessToken{start, i, depth, kind, decoded.String()})
 			continue
 		}
-		if c == '?' || c == '$' || c == '@' {
+		if c == '?' || c == '$' || c == '@' || c == ':' && i+1 < len(sql) && (sql[i+1] == 'p' || sql[i+1] == 'P') && (i == 0 || sql[i-1] != ':') {
 			i++
-			if c == '@' {
+			if c == '@' || c == ':' {
 				if i >= len(sql) || sql[i] != 'p' && sql[i] != 'P' {
 					return nil, businessSQLFailure("unsupported_parameter_name")
 				}
@@ -180,13 +180,15 @@ func businessPlaceholder(dialect string, index int) string {
 		return "$" + strconv.Itoa(index)
 	case "sqlserver", "bigquery":
 		return "@p" + strconv.Itoa(index)
+	case "databricks":
+		return ":p" + strconv.Itoa(index)
 	default:
 		return "?"
 	}
 }
 
 func businessParameterIndex(token, dialect string, positional int) (int, error) {
-	if dialect == "mysql" || dialect == "snowflake" || dialect == "databricks" {
+	if dialect == "mysql" || dialect == "snowflake" {
 		if token != "?" {
 			return 0, businessSQLFailure("unsupported_parameter_style")
 		}
@@ -195,6 +197,12 @@ func businessParameterIndex(token, dialect string, positional int) (int, error) 
 	prefix := "$"
 	if dialect == "sqlserver" || dialect == "bigquery" {
 		prefix = "@p"
+	}
+	if dialect == "databricks" {
+		prefix = ":p"
+		if !strings.HasPrefix(token, prefix) {
+			return 0, businessSQLFailure("unsupported_parameter_style")
+		}
 	}
 	if !strings.HasPrefix(strings.ToLower(token), prefix) {
 		return 0, businessSQLFailure("unsupported_parameter_style")

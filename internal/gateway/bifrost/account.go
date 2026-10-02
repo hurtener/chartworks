@@ -14,6 +14,7 @@ type account struct {
 	concurrency       int
 	timeout           int
 	openRouterRerank  bool
+	environmentProxy  bool
 }
 
 // GetConfiguredProviders returns only the pinned native SDK provider.
@@ -36,6 +37,9 @@ func (a *account) GetConfigForProvider(p schemas.ModelProvider) (*schemas.Provid
 	}
 	// Raw bytes stay inside this adapter to detect omissions/duplicates lost by typed SDK decoding.
 	cfg := &schemas.ProviderConfig{SendBackRawResponse: true, NetworkConfig: schemas.NetworkConfig{BaseURL: a.endpoint, DefaultRequestTimeoutInSeconds: a.timeout, MaxRetries: 0, MaxConnsPerHost: a.concurrency, AllowPrivateNetwork: a.private}, ConcurrencyAndBufferSize: schemas.ConcurrencyAndBufferSize{Concurrency: a.concurrency, BufferSize: a.concurrency}, Logger: quietLogger{}, OpenAIConfig: &schemas.OpenAIConfig{DisableStore: true}}
+	if a.environmentProxy {
+		cfg.ProxyConfig = &schemas.ProxyConfig{Type: schemas.EnvProxy}
+	}
 	if a.openRouterRerank {
 		// Pinned Bifrost has no native OpenRouter rerank. Its Cohere request and
 		// response codec matches this OpenRouter endpoint; the custom SDK provider

@@ -24,12 +24,12 @@ func DefaultGatewayLimits() GatewayLimits {
 
 // OptionalRole identifies operations that require explicit enablement.
 func OptionalRole(name string) bool {
-	return name == "rerank" || name == "narrative" || name == "visual_rank"
+	return name == "topic_review" || name == "rerank" || name == "narrative" || name == "visual_rank"
 }
 
 // RoleNames returns a detached inventory of the implemented model roles.
 func RoleNames() []string {
-	return []string{"embedding", "enhance", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank"}
+	return []string{"embedding", "enhance", "topic_review", "sqlgen", "sqlfix", "clarify", "pipeline_draft", "profile_summary", "rerank", "narrative", "visual_rank"}
 }
 
 // NativeProvider resolves the trusted route alias to its Bifrost provider type.
@@ -119,5 +119,5 @@ func ValidateGateway(g Gateway, enabled bool) error {
 			}
 		}
 	}
-	return nil
+	return validateModelWindows(g)
 }

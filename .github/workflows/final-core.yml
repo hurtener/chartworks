@@ -17,6 +17,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - run: make check-mirror
 
   drift:
@@ -25,6 +27,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - run: make planning-check
       - run: make drift-audit
 
@@ -77,6 +81,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
@@ -243,6 +249,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
@@ -270,6 +278,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Bind native parser build identity
+        run: bash scripts/native-build-env.sh
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'

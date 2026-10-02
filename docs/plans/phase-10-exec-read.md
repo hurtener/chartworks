@@ -65,3 +65,13 @@ records require reconciliation rather than automatic erasure. Values are not ret
 The common core's caps apply to later scheduled/frozen consumers without a mode
 bypass. Actual scheduled reporting targets remain phase 30 and are not fabricated
 to close phase 10. Phase 09 was already merged and all six of its criteria remain.
+
+
+## SQL recovery: closed native-query diagnostics
+
+[Query-repair diagnostics v1](../contracts/query-repair-diagnostics-v1.md) adds
+content-free SQL rejection reasons at EXPLAIN/read boundaries and migration 060
+for their durable attempt codes. Raw driver error bodies never cross the source
+revision fence. Native validity, authority, uncertain/cancelled outcomes and the
+existing bounded correction consumer remain separate; no automatic retry is
+added to the read core. Exact new-source qualification is tracked in PR #62.

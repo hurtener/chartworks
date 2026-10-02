@@ -52,6 +52,9 @@ func WithRuntimeConfig(ctx context.Context, cfg RuntimeConfig) (context.Context,
 		}
 		seen[binding.Role] = true
 	}
+	// Freeze role overrides as well as strings: fitting and dispatch must see the
+	// same reviewed configuration even if the caller reuses its input slice.
+	cfg.Models = append([]RuntimeModel(nil), cfg.Models...)
 	return context.WithValue(ctx, runtimeConfigKey{}, cfg), nil
 }
 

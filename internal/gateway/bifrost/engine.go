@@ -21,7 +21,9 @@ import (
 // The application composition root uses zero values; no request or JSON config can enable it.
 type TransportOptions struct {
 	AllowPrivateNetwork bool
-	CACertPEM           string
+	// EnvironmentProxy uses the existing trusted host proxy only for fixed official OpenRouter destinations.
+	EnvironmentProxy bool
+	CACertPEM        string
 }
 type route struct {
 	client           *core.Bifrost
@@ -76,6 +78,10 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 		if !used[p.Name] {
 			continue
 		}
+		if transport.EnvironmentProxy && !environmentProxyDestination(p, transport) {
+			e.Close()
+			return nil, gateway.ErrInput
+		}
 		secret, ok := lookup(strings.TrimPrefix(p.APIKey, "env:"))
 		if !ok || secret == "" || len(secret) > 8192 {
 			e.Close()
@@ -102,14 +108,14 @@ func New(ctx context.Context, cfg config.Gateway, lookup func(string) (string, b
 				}
 			}
 		}
-		fingerprint, _ := json.Marshal([]any{native, endpoint, secret, transport.CACertPEM, transport.AllowPrivateNetwork, seconds, cfg.Limits.Concurrency})
+		fingerprint, _ := json.Marshal([]any{native, endpoint, secret, transport.CACertPEM, transport.AllowPrivateNetwork, transport.EnvironmentProxy, seconds, cfg.Limits.Concurrency})
 		hash := sha256.Sum256(fingerprint)
 		key := hex.EncodeToString(hash[:])
 		client := shared[key]
 		if client == nil {
-			a := &account{provider: native, key: secret, endpoint: endpoint, ca: transport.CACertPEM, private: transport.AllowPrivateNetwork, concurrency: cfg.Limits.Concurrency, timeout: seconds, openRouterRerank: openRouterRerank}
+			a := &account{provider: native, key: secret, endpoint: endpoint, ca: transport.CACertPEM, private: transport.AllowPrivateNetwork, concurrency: cfg.Limits.Concurrency, timeout: seconds, openRouterRerank: openRouterRerank, environmentProxy: transport.EnvironmentProxy}
 			var err error
-			client, err = core.Init(lifetime, schemas.BifrostConfig{Account: a, Logger: quietLogger{}, InitialPoolSize: cfg.Limits.Concurrency, DropExcessRequests: true})
+			client, err = core.Init(lifetime, schemas.BifrostConfig{Account: a, Logger: quietLogger{}, LLMPlugins: []schemas.LLMPlugin{requestIsolation{}}, InitialPoolSize: cfg.Limits.Concurrency, DropExcessRequests: true})
 			if err != nil {
 				e.Close()
 				return nil, gateway.ErrUnavailable
@@ -191,6 +197,14 @@ func (e *Engine) enter(call gateway.Call, b *gateway.Budget) (func(), error) {
 		e.wg.Done()
 	}, nil
 }
+
+// RoleEnabled reports configured role availability without provider I/O. Optional
+// authoring review is admitted before any earlier generation call can spend.
+func (e *Engine) RoleEnabled(name string) bool {
+	_, _, err := e.role(name)
+	return err == nil
+}
+
 func (e *Engine) role(name string) (config.Role, route, error) {
 	r, ok := e.cfg.Roles[name]
 	if !ok || config.OptionalRole(name) && !r.Enabled {
@@ -258,7 +272,22 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 	if name == "embedding" || name == "rerank" || schema == nil || schema.Name() == "" || prompt == "" || len(prompt)+len(system)+len(schema.Document()) > e.cfg.Limits.MaxInputBytes {
 		return out, gateway.ErrInput
 	}
+	envelope, err := e.GenerationEnvelope(ctx, name, system, schema)
+	if err != nil {
+		return out, err
+	}
+	measurement, fits, err := envelope.Measure(prompt)
+	if err != nil {
+		return out, err
+	}
+	if !fits {
+		if measurement.RequestBytes > measurement.MaxRequestBytes {
+			return out, gateway.ErrInput
+		}
+		return out, gateway.ErrBudget
+	}
 	model, system, configurationDigest := gateway.ApplyRuntimeConfig(ctx, name, r.Model, system)
+	reservation := measurement.InputUpperBound + measurement.OutputReserve
 	release, err := e.enter(call, b)
 	if err != nil {
 		return out, err
@@ -275,10 +304,10 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		if err = gateway.ReserveAttempt(ctx, b, call, len(prompt)+len(system)+len(schema.Document())+1024+r.MaxTokens); err != nil {
+		if err = gateway.ReserveAttempt(ctx, b, call, reservation); err != nil {
 			return out, err
 		}
-		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
+		bc, bcCancel := isolatedBifrostContext(ctx)
 		start := time.Now()
 		response, be := p.client.ChatCompletionRequest(bc, &schemas.BifrostChatRequest{Provider: p.provider, Model: model, Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: &prompt}}}, Params: &schemas.ChatParameters{ResponseFormat: &format, MaxCompletionTokens: &r.MaxTokens, Store: core.Ptr(false)}})
 		bcCancel()
@@ -288,11 +317,14 @@ func (e *Engine) generate(ctx context.Context, call gateway.Call, b *gateway.Bud
 			actual = observedModel(response.Model)
 			raw = response.ExtraFields.RawResponse
 		}
-		out.Receipt.Calls = append(out.Receipt.Calls, configuredUsage(name, p, model, actual, configurationDigest, start, raw))
+		usage := configuredUsage(name, p, model, actual, configurationDigest, start, raw)
+		attemptEnvelope := measurement
+		usage.Envelope = &attemptEnvelope
+		out.Receipt.Calls = append(out.Receipt.Calls, usage)
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		if err := observe(b, call, len(prompt)+len(system)+len(schema.Document())+1024+r.MaxTokens, out.Receipt); err != nil {
+		if err := observe(b, call, reservation, out.Receipt); err != nil {
 			return out, err
 		}
 		if be != nil {
@@ -388,7 +420,7 @@ func (e *Engine) Embed(ctx context.Context, call gateway.Call, b *gateway.Budget
 			if err = gateway.ReserveAttempt(ctx, b, call, bytes+128*(end-start)); err != nil {
 				return out, err
 			}
-			bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
+			bc, bcCancel := isolatedBifrostContext(ctx)
 			began := time.Now()
 			response, be := p.client.EmbeddingRequest(bc, &schemas.BifrostEmbeddingRequest{Provider: p.provider, Model: model, Input: &schemas.EmbeddingInput{Texts: append([]string(nil), texts[start:end]...)}, Params: &schemas.EmbeddingParameters{Dimensions: &r.Dimensions}})
 			bcCancel()
@@ -514,7 +546,7 @@ func (e *Engine) Rerank(ctx context.Context, call gateway.Call, b *gateway.Budge
 		if err = gateway.ReserveAttempt(ctx, b, call, size+128*len(items)); err != nil {
 			return out, err
 		}
-		bc, bcCancel := schemas.NewBifrostContextWithCancel(ctx)
+		bc, bcCancel := isolatedBifrostContext(ctx)
 		start := time.Now()
 		response, be := p.client.RerankRequest(bc, &schemas.BifrostRerankRequest{Provider: p.provider, Model: model, Query: query, Documents: documents, Params: &schemas.RerankParameters{TopN: core.Ptr(len(items)), ReturnDocuments: core.Ptr(false)}})
 		bcCancel()
