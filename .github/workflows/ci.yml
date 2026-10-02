@@ -91,6 +91,7 @@ jobs:
           test -z "$(git ls-files '*.go' | xargs gofmt -l)"
           node --check web/report-viewer/app.js
           node --check web/report-viewer/component.test.mjs
+          python3 -B scripts/ci/test_renderer_source.py
           PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-cache" python3 -m compileall -q scripts
       - name: Focused static analysis
         run: >-
