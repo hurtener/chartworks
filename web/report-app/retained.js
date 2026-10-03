@@ -1,4 +1,5 @@
 import {boundedJSON, validateRetainedView} from '../report-viewer/app.js';
+import {reportPages} from './pages.js';
 import {appError, copyData, validID} from './model.js';
 
 export const CANVAS_MAX_OUTPUTS=100;
@@ -14,19 +15,18 @@ const identity=v=>JSON.stringify((v.pages||[]).map(p=>({id:p.id,report:p.report,
 // It is tied to an immutable preview admission snapshot, never a saved baseline.
 export function executionFingerprint(definition) {
   const d=copyData(definition);delete d.metadata;
-  for(const w of d.widgets||[]){delete w.grid;delete w.presentation;if(w.kind==='text')delete w.text;}
-  d.widgets?.sort((a,b)=>a.id.localeCompare(b.id));
+  for(const p of reportPages(d)){if(d.schema_version===3)delete p.title;for(const w of p.widgets){delete w.grid;delete w.presentation;if(w.kind==='text')delete w.text;}p.widgets.sort((a,b)=>a.id.localeCompare(b.id));}
+  d.report_pages?.sort((a,b)=>a.id.localeCompare(b.id));
   return JSON.stringify(d);
 }
 
 function selections(view) {
-  const result=[],pages=new Set();
+  const result=[],pages=new Set(),widgets=new Set();
   for(const page of view.pages||[]){
-    if(!validID(page.id)||pages.has(page.id)||!Array.isArray(page.widgets)||page.widgets.length>100)throw appError('invalid_request');pages.add(page.id);
-    const widgets=new Set();
+    if(!validID(page.id)||pages.has(page.id)||page.report!==view.summary.target.id||page.revision!==view.summary.target.revision||!Array.isArray(page.widgets)||page.widgets.length>100)throw appError('invalid_request');pages.add(page.id);
     for(const widget of page.widgets){
       const g=widget.grid;
-      if(!validID(widget.id)||widgets.has(widget.id)||!g||!['row','column','width','height'].every(k=>Number.isSafeInteger(g[k]))||g.row<0||g.row+g.height>10000||g.column<0||g.width<1||g.column+g.width>12||g.height<1||g.height>100)throw appError('invalid_request');widgets.add(widget.id);
+      if(!validID(widget.id)||widgets.has(widget.id)||!g||!['row','column','width','height'].every(k=>Number.isSafeInteger(g[k]))||g.row<0||g.row+g.height>10000||g.column<0||g.width<1||g.column+g.width>12||g.height<1||g.height>100)throw appError('invalid_request');widgets.add(widget.id);if(widgets.size>100)throw appError('limit_exceeded');
       const outputs=retainedOutputs(widget);
       if(!Array.isArray(outputs)||outputs.length>64||new Set(outputs).size!==outputs.length||outputs.some(o=>widget.kind==='text'?o!=='':!validID(o)))throw appError('invalid_request');
       for(const output of outputs)result.push({kind:'report',run:view.summary.run,page:page.id,widget:widget.id,output,offset:0,limit:100});
@@ -34,6 +34,28 @@ function selections(view) {
     }
   }
   return result;
+}
+
+// Delivery can return a widget-level failure before choosing a default output.
+// This is verified status for an authorized widget, never an output payload.
+function widgetFailure(view) {
+  const selected=view.selection,output=view.output;
+  const widget=view.pages?.find(p=>p.id===selected?.page)?.widgets?.find(w=>w.id===selected?.widget);
+  return !!widget&&['block','query'].includes(widget.kind)&&['failed','partial'].includes(widget.state)&&
+    output?.id===widget.id&&output.kind===widget.kind&&output.state===widget.state&&
+    (output.code||'')===(widget.code||'')&&!view.text&&!output.retained_digest&&
+    view.page_bounds.offset===0&&view.page_bounds.total===0&&view.page_bounds.limit===selected.limit&&!Object.hasOwn(view.page_bounds,'next')&&
+    Object.keys(output).every(key=>['id','kind','state','code','retained_digest'].includes(key));
+}
+
+// A real inline page may be empty. This is authorized page metadata, never an
+// output placeholder or permission to accept an unresolved nonempty widget.
+function emptyPageRoot(view) {
+  const s=view.selection,p=view.pages?.find(page=>page.id===s?.page),b=view.page_bounds;
+  return !!p&&p.report===view.summary.target.id&&p.revision===view.summary.target.revision&&
+    Array.isArray(p.widgets)&&p.widgets.length===0&&s.widget===''&&s.output===''&&s.offset===0&&s.limit===100&&
+    b.offset===0&&b.limit===100&&b.total===0&&!Object.hasOwn(b,'next')&&
+    !view.text&&!view.output&&!view.chart&&!view.table&&!view.narrative&&Array.isArray(view.outputs)&&view.outputs.length===0;
 }
 
 // Disposable, generation-bound retained values. Only reporting_view is used;
@@ -50,6 +72,7 @@ export class RetainedReport {
     if(request&&['kind','run','page','widget','output','offset','limit'].some(key=>v.selection[key]!==request[key]))throw appError('stale_validation');
     if(request&&v.page_bounds.offset!==request.offset)throw appError('stale_validation');
     if(request&&(v.text&&request.output!==''||request.output===''&&v.output?.state==='succeeded'))throw appError('stale_validation');
+    if(request&&['block','query'].includes(v.output?.kind)&&!widgetFailure(v))throw appError('stale_validation');
     if(request?.output&&v.output?.state==='succeeded'&&(v.output.id!==request.output||!v.outputs?.some(o=>o.id===request.output&&o.enabled!==false&&o.selected!==false)))throw appError('stale_validation');
     return expiry;
   }
@@ -66,7 +89,10 @@ export class RetainedReport {
       const armExpiry=()=>{if(this.closed||generation!==this.generation)return;const remaining=expiry-Date.now();if(remaining>0){this.timer=setTimeout(armExpiry,Math.min(2147483647,remaining));this.timer.unref?.();return;}this.clear();this.onExpired();};armExpiry();
       if(!['completed','partial'].includes(value.summary.state))return true;
       const selected=requests.find(r=>['kind','run','page','widget','output','offset'].every(key=>r[key]===value.selection[key]));
-      if((requests.length||value.text||value.output)&&!selected)throw appError('stale_validation');
+      const initialFailure=!selected&&value.selection.output===''&&widgetFailure(value);
+      const initialEmpty=!selected&&emptyPageRoot(value);
+      if(initialFailure)this.check(value,{kind:'report',run:value.summary.run,page:value.selection.page,widget:value.selection.widget,output:'',offset:0,limit:100});
+      if((value.pages?.length||value.text||value.output)&&!selected&&!initialFailure&&!initialEmpty)throw appError('stale_validation');
       if(selected){this.check(value,selected);this.keep(this.value);requests.splice(requests.indexOf(selected),1);}
       let cursor=0;
       const read=async()=>{while(cursor<requests.length&&!this.closed&&generation===this.generation){const request=requests[cursor++],view=await this.invoke('reporting_view',request);if(this.closed||generation!==this.generation)return;this.check(view,request);this.keep(cloneRetained(view));}};

@@ -120,3 +120,7 @@ charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-addr
 ceiling. Missing controller or namespace enforcement fails closed; the application
 does not provision the host or substitute in-process rendering. Deployment
 qualification remains separate from pure functional tests.
+
+## Canvas-first manual authoring continuation
+
+[D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.

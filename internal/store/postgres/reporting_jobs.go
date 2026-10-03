@@ -53,49 +53,54 @@ func reportingDispatchTx(ctx context.Context, tx pgx.Tx, tenant string, target j
 	if err != nil {
 		return blocked()
 	}
+	if definition.SchemaVersion == reporting.PagedDocumentVersion && (len(target.Arguments) != 0 || target.Type == "saved_question") {
+		return blocked()
+	}
 	found := target.Type != "saved_question"
-	for _, widget := range definition.Widgets {
-		if target.Type == "saved_question" && widget.ID != target.Widget {
-			continue
-		}
-		found = true
-		if target.Type == "saved_question" && widget.Kind != "query" {
-			return blocked()
-		}
-		var variant *reporting.QueryVariantReference
-		if reporting.IsCapturedQueryVariant(widget) {
-			if target.Type == "saved_question" {
+	for _, canvas := range reporting.ReportCanvases(definition) {
+		for _, widget := range canvas.Definition.Widgets {
+			if target.Type == "saved_question" && widget.ID != target.Widget {
+				continue
+			}
+			found = true
+			if target.Type == "saved_question" && widget.Kind != "query" {
 				return blocked()
 			}
-			variant = widget.Query.Variant
-			var lowerErr error
-			widget, lowerErr = reporting.CapturedVariantBlock(widget)
-			if lowerErr != nil {
+			var variant *reporting.QueryVariantReference
+			if reporting.IsCapturedQueryVariant(widget) {
+				if target.Type == "saved_question" {
+					return blocked()
+				}
+				variant = widget.Query.Variant
+				var lowerErr error
+				widget, lowerErr = reporting.CapturedVariantBlock(widget)
+				if lowerErr != nil {
+					return blocked()
+				}
+			}
+			if widget.Kind == "query" && (!target.Dynamic || widget.Query == nil || widget.Query.Durability != "replayable") {
 				return blocked()
 			}
-		}
-		if widget.Kind == "query" && (!target.Dynamic || widget.Query == nil || widget.Query.Durability != "replayable") {
-			return blocked()
-		}
-		if widget.Kind != "block" {
-			continue
-		}
-		pin := jobs.ReportingPin{ID: widget.ID, Block: widget.Block.Block}
-		err := tx.QueryRow(ctx, `SELECT r.revision,r.digest FROM chartworks.block_heads h
+			if widget.Kind != "block" {
+				continue
+			}
+			pin := jobs.ReportingPin{ID: widget.ID, Block: widget.Block.Block}
+			err := tx.QueryRow(ctx, `SELECT r.revision,r.digest FROM chartworks.block_heads h
  JOIN chartworks.block_revisions r ON(r.tenant_id,r.block_id)=(h.tenant_id,h.block_id)
  AND r.revision=CASE WHEN $3::bigint=0 THEN h.published_revision ELSE $3 END
  JOIN chartworks.block_publications p ON(p.tenant_id,p.block_id,p.revision)=(r.tenant_id,r.block_id,r.revision)
  WHERE h.tenant_id=$1 AND h.block_id=$2 AND NOT h.archived FOR SHARE OF h`, tenant, pin.Block, widget.Block.Revision).Scan(&pin.Revision, &pin.Digest)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return blocked()
+			if errors.Is(err, pgx.ErrNoRows) {
+				return blocked()
+			}
+			if err != nil {
+				return out, err
+			}
+			if variant != nil && pin.Digest != variant.Digest {
+				return blocked()
+			}
+			out.Pins = append(out.Pins, pin)
 		}
-		if err != nil {
-			return out, err
-		}
-		if variant != nil && pin.Digest != variant.Digest {
-			return blocked()
-		}
-		out.Pins = append(out.Pins, pin)
 	}
 	if !found {
 		return blocked()

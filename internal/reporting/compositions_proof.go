@@ -72,7 +72,7 @@ func requireCompositionGroup(e identity.Envelope, g CompositionGroup) error {
 }
 
 func validComposition(m CompositionManifest) bool {
-	if m.Version != CompositionVersion || !identity.Identifier(m.ID) || !identity.Identifier(m.Tenant) || !identity.Identifier(m.Actor) || !identity.Identifier(m.Session) || !documentKind(m.Kind) || !identity.Identifier(m.Document) || m.Revision < 1 || m.Revision > 256 || !hashValid(m.Digest) || !hashValid(m.RequestHash) || !hashValid(m.TaskHash) || m.Created.IsZero() || !m.Expires.After(m.Created) || m.Limits.Validate() != nil || m.ArtifactLimits.Validate() != nil || !slices.Contains([]string{"fail_closed", "allow_partial"}, m.Policy) || len(m.Pages) > m.Limits.MaxPages || len(m.Pages) == 0 && !m.Redacted || len(m.Groups) > m.Limits.MaxQueries || m.Redacted && m.Kind != "dashboard" {
+	if (m.Version != CompositionVersion && m.Version != PagedCompositionVersion) || !identity.Identifier(m.ID) || !identity.Identifier(m.Tenant) || !identity.Identifier(m.Actor) || !identity.Identifier(m.Session) || !documentKind(m.Kind) || !identity.Identifier(m.Document) || m.Revision < 1 || m.Revision > 256 || !hashValid(m.Digest) || !hashValid(m.RequestHash) || !hashValid(m.TaskHash) || m.Created.IsZero() || !m.Expires.After(m.Created) || m.Limits.Validate() != nil || m.ArtifactLimits.Validate() != nil || !slices.Contains([]string{"fail_closed", "allow_partial"}, m.Policy) || len(m.Pages) > m.Limits.MaxPages || len(m.Pages) == 0 && !m.Redacted || len(m.Groups) > m.Limits.MaxQueries || m.Redacted && m.Kind != "dashboard" {
 		return false
 	}
 	retention := time.Duration(m.ArtifactLimits.Retention)
@@ -89,6 +89,9 @@ func validComposition(m CompositionManifest) bool {
 		}
 		switch g.Kind {
 		case "block":
+			if g.Policy == "private_preview" && (!m.Private || m.Kind != "report" || m.Version != PagedCompositionVersion) {
+				return false
+			}
 			if g.Variant != nil && (!validVariantReference(g.Variant) || g.Variant.Block != g.Block || g.Variant.Revision != g.Revision || g.Variant.Digest != g.Definition || g.Policy != "published") {
 				return false
 			}
@@ -98,7 +101,7 @@ func validComposition(m CompositionManifest) bool {
 					return false
 				}
 			}
-			if !identity.Identifier(g.Block) || g.Revision < 1 || g.Revision > 256 || !hashValid(g.Definition) || !hashValid(g.Execution) || len(g.Outputs) < 1 || len(g.Outputs) > 64 || g.Query != nil || g.Origin != nil || g.Trust == nil || !slices.Contains([]string{"published", "certified_only", "explicit_stale"}, g.Policy) || g.Resolution.At.IsZero() || g.Resolved.At.IsZero() {
+			if !identity.Identifier(g.Block) || g.Revision < 1 || g.Revision > 256 || !hashValid(g.Definition) || !hashValid(g.Execution) || len(g.Outputs) < 1 || len(g.Outputs) > 64 || g.Query != nil || g.Origin != nil || g.Trust == nil || !slices.Contains([]string{"published", "certified_only", "explicit_stale", "private_preview"}, g.Policy) || g.Resolution.At.IsZero() || g.Resolved.At.IsZero() {
 				return false
 			}
 		case "query":
@@ -126,12 +129,23 @@ func validComposition(m CompositionManifest) bool {
 		if !identity.Identifier(p.ID) || pages[p.ID] || !identity.Identifier(p.Report) || p.Revision < 1 || p.Revision > 256 || !hashValid(p.Digest) || !text(p.Title, 256) || !locale(p.Locale) || p.Private && !m.Private {
 			return false
 		}
+		if m.Version == CompositionVersion && (p.ReportPage != "" || p.ContainerPage != "") {
+			return false
+		}
+		if m.Version == PagedCompositionVersion {
+			if !identity.Identifier(p.ReportPage) || m.Kind == "report" && (p.ContainerPage != "" || p.ID != p.ReportPage || p.Report != m.Document || p.Revision != m.Revision || p.Digest != m.Digest) || m.Kind == "dashboard" && !identity.Identifier(p.ContainerPage) {
+				return false
+			}
+		}
 		if _, err := namedZone(p.Timezone); err != nil {
 			return false
 		}
 		pages[p.ID] = true
 		widgets := map[string]bool{}
 		for _, w := range p.Widgets {
+			if w.Definition.Block != nil && w.Definition.Block.Policy == "private_preview" && (m.Version != PagedCompositionVersion || !m.Private || m.Kind != "report") {
+				return false
+			}
 			count++
 			if count > m.Limits.MaxWidgets || !validWidget(w.Definition, m.Limits) || widgets[w.Definition.ID] || w.Group != "" && w.Code != "" {
 				return false
@@ -158,6 +172,9 @@ func validComposition(m CompositionManifest) bool {
 			}
 			used[g.ID] = true
 			if g.Kind == "block" {
+				if (w.Definition.Block.Policy == "private_preview") != (g.Policy == "private_preview") || g.Policy == "private_preview" && w.Definition.Block.Digest != g.Definition {
+					return false
+				}
 				if w.Definition.Block.Block != g.Block || w.Definition.Block.Revision != g.Revision || len(w.Definition.Block.Outputs) == 0 {
 					return false
 				}

@@ -90,3 +90,5 @@ server-verified capabilities. **Consumer** is its authorized published/retained
 consumption profile. Neither term is a Chartworks role, grant, user or issuer.
 **Host adapter** connects the same application to MCP Apps or an approved embedded
 parent; it never transfers provider credentials to the child frame.
+
+**Report-local chart copy** is a separately authorized private block, not an in-place change to a shared publication. **Structural mapping validation** checks schema compatibility; it is not observed-data validation or publication approval.

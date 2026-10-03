@@ -10,6 +10,7 @@ import (
 // DeliveryFilterOptionsRequest is the HTTP/MCP viewer consumer for one exact
 // report filter source. It contains no SQL or physical relation coordinates.
 type DeliveryFilterOptionsRequest struct {
+	Page     string `json:"page,omitempty"`
 	Report   string `json:"report"`
 	Revision int64  `json:"revision"`
 	Filter   string `json:"filter"`

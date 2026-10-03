@@ -15,3 +15,18 @@ test('pagehide closes the transport and unknown methods never invoke tools',asyn
 test('embedded boundary requires exact public registration and one-use challenge',async()=>{const h=harness();assert.throws(()=>new EmbeddedReportAdapter({win:h.win,origin:'*',frame:'f',generation:1,challenge:'a'.repeat(16)}),/invalid_request/);const b=new EmbeddedReportAdapter({win:h.win,origin:'https://host.example',frame:'frame-a',generation:7,challenge:'a'.repeat(16)}),p=b.connect();const m=h.sent[0].message;assert.equal(h.sent[0].origin,'https://host.example');const reply={protocol:'chartworks-report-app-v1',frame:'frame-a',generation:7,id:m.id,result:{challenge:'a'.repeat(16),tools:true}};h.receive({...reply,frame:'frame-b'});h.receive({...reply,generation:6});assert.equal(b.pending.size,1);h.receive(reply);await p;assert.equal(b.challenge,null);assert.equal(b.ready,true);const call=b.call('reporting_runs',{});const handled=call.catch(e=>e.code);assert.equal(h.sent.at(-1).message.generation,7);h.receive({protocol:'chartworks-report-app-v1',frame:'frame-a',generation:7,method:'close'});assert.equal(await handled,'unavailable');assert.equal(b.closed,true);});
 
 test('wrong embedded challenge closes rather than accepting authority hints',async()=>{const h=harness(),b=new EmbeddedReportAdapter({win:h.win,origin:'https://host.example',frame:'frame-a',generation:1,challenge:'a'.repeat(16)}),p=b.connect();h.receive({protocol:'chartworks-report-app-v1',frame:'frame-a',generation:1,id:1,result:{challenge:'b'.repeat(16),tools:true}});await assert.rejects(p,/forbidden/);assert.equal(b.closed,true);});
+
+test('manual chart tools preserve explicit source and target without opening generic authoring',async()=>{
+ const h=await connected();
+ for(const action of ['block_read','block_mapping','block_copy','block_validate']) {
+  const name=`reporting_authoring_${action}_v1`,args={block:'source',revision:3,...(action==='block_copy'?{new_block:'private-copy'}:{})};
+  const pending=h.bridge.call(name,args),message=h.sent.at(-1).message;
+  assert.deepEqual(message.params,{name,arguments:args});
+  h.receive({jsonrpc:'2.0',id:message.id,result:{unchanged:true}});assert.deepEqual(await pending,{unchanged:true});
+ }
+ const catalog=h.bridge.call('chart_catalog',{}),message=h.sent.at(-1).message;
+ assert.deepEqual(message.params,{name:'chart_catalog',arguments:{}});
+ h.receive({jsonrpc:'2.0',id:message.id,result:{kinds:[]}});await catalog;
+ for(const name of ['reporting_authoring_block_sql_v1','reporting_authoring_block_publish_v1','execute_sql'])await assert.rejects(h.bridge.call(name,{}),/forbidden/);
+ h.bridge.close();
+});

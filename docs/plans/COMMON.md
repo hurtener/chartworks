@@ -59,3 +59,7 @@ Go race testing requires a race-capable build environment with CGo enabled even 
 ## Completion and deviations
 
 Attach actual evidence to each implemented feature/gate. Cumulative consumer tests extend earlier services without reverse package dependencies. Keep the registry/counts, phase headers, master, scope contracts, examples and mirrored rules coherent. Preserve old decisions and append explicit superseding ones with unique IDs. A required source feature cannot be removed by silently editing its disposition; approved equivalent behavior needs an explicit migration rule and proof.
+
+## Visual authoring continuation
+
+[D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.

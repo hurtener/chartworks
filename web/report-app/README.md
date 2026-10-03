@@ -13,11 +13,11 @@ parent origins. Neither entrypoint falls back to the other. Both mount the same
   values and explicit approved runs with typed business filters.
 - Builder: exact-target creation; private draft catalog/reopen; headings;
   published KPI/chart/table output selection; report/widget titles; bounded
-  one/two/three-column layout; declared block-parameter filters and bindings;
+  12-column move/resize grid with keyboard/numeric alternatives and explicit arrangement; declared block-parameter filters and bindings;
   full-report CAS save; narrow selected-widget text/presentation save; reload;
   explicit private preview and independent retained read.
 - No chart-mapping replacement, arbitrary query, dynamic generation, narrative
-  generation, publication, advanced drag/drop, multi-page editing or export.
+  generation, publication, multi-selection layout operations or export in this checkpoint.
   Existing unsupported documents are inspection-only. Source execution occurs
   only after an explicit run/preview action.
 
@@ -32,6 +32,32 @@ A private preview's returned run ID is retained as an inspection coordinate.
 The host may need fresh exact run-read/preview authority before `reporting_view`
 can read it. **Inspect last retained run** performs only that read; it never
 executes the preview again. An expired/denied artifact does not regenerate itself.
+
+## Bounded visual editing and independent pages
+
+The Builder starts with an empty new draft. Version 2 needs a heading or approved
+output before save. **Enable pages** is an explicit local upgrade to version 3;
+no read automatically rewrites a legacy document. Empty version 3 pages can save.
+The Components and Selected rail stays beside the canvas; the report list can
+collapse. Components use schematic icons, never fabricated data.
+
+The saved layout has twelve columns, 80px row tracks and 12px gaps. Fine squares
+are decorative. Selected cards have move and eight-edge resize handles. Pointer
+motion previews only DOM geometry; release commits one valid rectangle. Invalid
+placements preserve all cells. Escape, cancellation, capture loss, rerender and
+close roll back the gesture. Arrow keys move; Shift + arrows resize; numeric
+row/column/width/height controls provide another path. Duplicate finds free space;
+explicit arrangement preserves individual heights. Title editing remains inert.
+
+Version 3 tabs use authored page IDs. Add, rename, reorder and remove are unsaved
+page changes until full report CAS save. Keep at least one page. Filters/defaults
+are page-local, widget IDs report-global, and the narrow content patch carries
+both exact page and widget. Other page bytes remain unchanged. Page switching
+cancels gestures and fences delayed metadata and detached form controls.
+Consumer tabs use exact retained page IDs without editing chrome or queries.
+Page-aware compatibility includes every page's semantic settings. Empty initial
+retained pages are verified metadata, not cached payloads. Healthy sibling pages
+remain readable under the original fanout, buffer and lifetime bounds.
 
 ## Saved report canvas
 

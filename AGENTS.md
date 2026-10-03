@@ -4,7 +4,7 @@ Binding for human and automated contributors. This file and CLAUDE.md are byte-i
 
 ## 1. Product
 
-Chartworks is Pengui's structured analytics and governed publishing service: sources/uploads, profiles, reviewed semantic topics, NLQ/BYO query execution, reusable approved blocks, reports/dashboards, scheduled runs, retained results and portable rendering. API-first means no required standalone authoring application. D-096 adds an optional manual report Builder/Consumer app shared by MCP Apps and a registered embedded iframe; the read viewer and true static rendering remain in scope.
+Chartworks is Pengui's structured analytics and governed publishing service: sources/uploads, profiles, reviewed semantic topics, NLQ/BYO query execution, reusable approved blocks, reports/dashboards, scheduled runs, retained results and portable rendering. API-first means no required standalone authoring application. D-096 adds an optional manual report Builder/Consumer app shared by MCP Apps and a registered embedded iframe; D-097 extends the requested scope to canvas-first chart/field authoring and genuine private pages. The read viewer and true static rendering remain in scope.
 
 Pengui alone owns authentication, the issuer, identity, service accounts and access-policy decisions. Chartworks verifies Pengui JWTs and enforces their signed action/resource scopes. Do not recreate users, memberships, roles, grants, API keys, login/OAuth, token issuance, bootstrap admin or embed credentials. Warehouse connector secrets are a separate source concern, not permission to duplicate Pengui integration credentials.
 

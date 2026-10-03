@@ -63,7 +63,7 @@ func (s *Delivery) FilterOptions(ctx context.Context, e identity.Envelope, in De
 	if s == nil || s.documents == nil {
 		return FilterOptionsPage{}, ErrUnavailable
 	}
-	return s.documents.FilterOptions(ctx, e, in.Report, FilterOptionsRequest{Revision: in.Revision, Filter: in.Filter, Search: in.Search, Cursor: in.Cursor, Limit: in.Limit, Locale: in.Locale})
+	return s.documents.FilterOptions(ctx, e, in.Report, FilterOptionsRequest{Page: in.Page, Revision: in.Revision, Filter: in.Filter, Search: in.Search, Cursor: in.Cursor, Limit: in.Limit, Locale: in.Locale})
 }
 
 func deliveryText(s string, maxBytes int) bool {
@@ -219,6 +219,7 @@ func (s *Delivery) appendReportDescription(ctx context.Context, e identity.Envel
 	if err := s.describeBlockSelectors(ctx, e, &described, d); err != nil {
 		return err
 	}
+	// Historical reads retain hard format/message bounds despite lowered authoring limits.
 	out.Pages = append(out.Pages, described)
 	for _, f := range d.Filters {
 		out.Filters = append(out.Filters, ViewerFilter{Page: page, Label: f.Label, Parameter: f.Parameter})
@@ -277,8 +278,12 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 		out.Resource = localizedResource(t.Kind, t.ID, v.Revision, v.Definition.Metadata, in.Locale)
 		out.Timezone = v.Definition.Timezone
 		if t.Kind == "report" {
-			if err := s.appendReportDescription(ctx, e, &out, "main", v, in.Locale); err != nil {
-				return DeliveryDescription{}, err
+			for _, canvas := range ReportCanvases(v.Definition) {
+				leaf := v
+				leaf.Definition = canvas.Definition
+				if err := s.appendReportDescription(ctx, e, &out, canvas.ID, leaf, in.Locale); err != nil {
+					return DeliveryDescription{}, err
+				}
 			}
 		} else {
 			for _, p := range v.Definition.Pages {
@@ -289,8 +294,12 @@ func (s *Delivery) Describe(ctx context.Context, e identity.Envelope, in Deliver
 				if child.Private || child.State.Archived {
 					continue
 				}
-				if err := s.appendReportDescription(ctx, e, &out, p.ID, child, in.Locale); err != nil {
-					return DeliveryDescription{}, err
+				for _, canvas := range ReportCanvases(child.Definition) {
+					leaf := child
+					leaf.Definition = canvas.Definition
+					if err := s.appendReportDescription(ctx, e, &out, DashboardCanvasID(p.ID, child.Definition, canvas.ID), leaf, in.Locale); err != nil {
+						return DeliveryDescription{}, err
+					}
 				}
 			}
 		}
@@ -355,9 +364,11 @@ func (s *Delivery) requireRunOptIns(ctx context.Context, e identity.Envelope, t 
 	if err != nil {
 		return err
 	}
-	for _, w := range d.Widgets {
-		if w.Kind == "query" && !IsCapturedQueryVariant(w) && !dynamic || w.Block != nil && w.Block.Narrative && !narrative {
-			return ErrInvalid
+	for _, canvas := range ReportCanvases(d) {
+		for _, w := range canvas.Definition.Widgets {
+			if w.Kind == "query" && !IsCapturedQueryVariant(w) && !dynamic || w.Block != nil && w.Block.Narrative && !narrative {
+				return ErrInvalid
+			}
 		}
 	}
 	for _, p := range d.Pages {

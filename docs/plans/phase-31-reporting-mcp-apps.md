@@ -92,3 +92,7 @@ display labels, fraction digits, locale/date and currency fallback as inert text
 KPI comparison, target, threshold and sparkline evidence is shown without source or
 model work. The closed formatter and actual retained shapes are shared with the
 bounded static/export slice described by [D-079](../decisions/2026-09-22-rich-output-display.md).
+
+## Visual authoring continuation
+
+[D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.

@@ -3,6 +3,7 @@ package reportingapi
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func TestReportAppBootstrapModesAndExactTargets(t *testing.T) {
 	e := bootstrapAuthority(t, "reporting.read", "reporting.write", "cw.report.read:report", "cw.report.write:report")
 	for _, mode := range []string{"chat", "plan", "apply"} {
 		out, err := call(t.Context(), e, ReportAppBootstrapRequest{Version: 1, Mode: mode, Targets: []string{"report"}})
-		if err != nil || out.Mode != mode || len(out.Targets) != 1 || !out.Targets[0].Capabilities.CanSave || len(out.Guidance.Steps) == 0 {
+		if err != nil || out.Mode != mode || len(out.Targets) != 1 || !out.Targets[0].Capabilities.CanSave || len(out.Guidance.Steps) == 0 || !slices.Equal(out.Guidance.DocumentSchemaVersions, []int{reporting.DocumentVersion, reporting.PagedDocumentVersion}) {
 			t.Fatal(out, err)
 		}
 	}

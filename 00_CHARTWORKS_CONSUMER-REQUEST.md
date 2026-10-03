@@ -56,3 +56,7 @@ adds v13/schema6 for the closed PostgreSQL text-equality SUM/COUNT case. Retaine
 versions, NULL/empty outcomes, private evidence custody and current replay checks
 remain mandatory; generic predicate propagation and broader release qualification
 are separate work.
+
+## Canvas-first manual authoring continuation
+
+[D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.

@@ -808,3 +808,5 @@ Scalar equality continuation: [D-094 exact predicates required by every selected
 Renderer containment continuation: [D-095 resource controls on a protected outer job domain](decisions/2026-10-03-renderer-protected-job-domain.md).
 
 Optional manual report application: [D-096 one shared Builder/Consumer app with Pengui-owned authority](decisions/2026-10-03-manual-report-app.md).
+
+Visual authoring continuation: [D-097 canvas-first chart authoring and genuine private pages](decisions/2026-10-03-visual-chart-authoring.md).

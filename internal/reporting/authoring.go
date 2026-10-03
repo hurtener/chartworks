@@ -42,9 +42,11 @@ func requireAuthoringEnvelope(e identity.Envelope) error {
 }
 
 func manualDocument(d DocumentDefinition) error {
-	for _, w := range d.Widgets {
-		if w.Kind == "query" || w.Query != nil || w.Block != nil && w.Block.Narrative {
-			return ErrInvalid
+	for _, canvas := range ReportCanvases(d) {
+		for _, w := range canvas.Definition.Widgets {
+			if w.Kind == "query" || w.Query != nil || w.Block != nil && w.Block.Narrative {
+				return ErrInvalid
+			}
 		}
 	}
 	return nil
@@ -292,6 +294,7 @@ type WidgetPatch struct {
 }
 
 type AuthoringWidgetRequest struct {
+	Page            string      `json:"page,omitempty"`
 	Report          string      `json:"report"`
 	Widget          string      `json:"widget"`
 	ExpectedVersion int64       `json:"expected_version"`
@@ -319,9 +322,21 @@ func (s *Authoring) PatchWidget(ctx context.Context, e identity.Envelope, in Aut
 	if err := manualDocument(d); err != nil {
 		return DocumentState{}, err
 	}
+	if _, err := SelectReportCanvas(d, in.Page); err != nil {
+		return DocumentState{}, err
+	}
+	widgets := d.Widgets
+	if d.SchemaVersion == PagedDocumentVersion {
+		for i := range d.ReportPages {
+			if d.ReportPages[i].ID == in.Page {
+				widgets = d.ReportPages[i].Widgets
+				break
+			}
+		}
+	}
 	found := false
-	for i := range d.Widgets {
-		w := &d.Widgets[i]
+	for i := range widgets {
+		w := &widgets[i]
 		if w.ID != in.Widget {
 			continue
 		}

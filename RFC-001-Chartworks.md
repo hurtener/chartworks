@@ -229,3 +229,7 @@ current physical uniqueness remain mandatory. The binder explicitly accounts for
 those constraints without rewriting metric predicates or changing v9 period SQL.
 Schema6 receipts retain value-free coverage evidence; current authenticated replay
 reconstructs the proof. This adds no authority path or generic entailment solver.
+
+## Canvas-first manual authoring continuation
+
+[D-097](docs/decisions/2026-10-03-visual-chart-authoring.md) requires direct grid editing, real chart/field authoring, governed dataset-first creation and independent private pages beyond the initial approved-output checkpoint. Copies, validation, private previews and publication keep distinct native authority and lifecycle gates. No automatic source work on edit or deployed-host claim is introduced.

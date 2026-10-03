@@ -52,6 +52,14 @@ func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelop
 	if root.Revision.Digest != m.Digest || root.PublishedAt == nil && !m.Private {
 		return reporting.ErrStale
 	}
+	rootDefinition, err := reporting.ProjectStoredDocument(root.Revision.Raw, m.Kind)
+	if err != nil {
+		return err
+	}
+	expectedPages := 0
+	if m.Kind == "report" {
+		expectedPages = len(reporting.ReportCanvases(rootDefinition))
+	}
 	for _, page := range m.Pages {
 		snapshot, err := documentTx(ctx, tx, e, "report", page.Report, reporting.DocumentReference{Revision: page.Revision}, reporting.Execute, false)
 		if err != nil {
@@ -60,15 +68,48 @@ func compositionDefinitionsTx(ctx context.Context, tx pgx.Tx, e identity.Envelop
 		if snapshot.Revision.Digest != page.Digest || snapshot.PublishedAt == nil && !m.Private {
 			return reporting.ErrStale
 		}
+		if m.Version == reporting.PagedCompositionVersion {
+			child, err := reporting.ProjectStoredDocument(snapshot.Revision.Raw, "report")
+			if err != nil {
+				return err
+			}
+			canvas, err := reporting.SelectReportCanvas(child, page.ReportPage)
+			if err != nil || canvas.Definition.Locale != page.Locale || canvas.Definition.Timezone != page.Timezone {
+				return store.ErrInvalid
+			}
+			if m.Kind == "dashboard" && reporting.DashboardCanvasID(page.ContainerPage, child, page.ReportPage) != page.ID {
+				return store.ErrInvalid
+			}
+		}
 		if m.Kind == "dashboard" {
+			container := page.ID
+			if m.Version == reporting.PagedCompositionVersion {
+				container = page.ContainerPage
+			}
 			var exists bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.document_page_refs WHERE tenant_id=$1 AND kind='dashboard' AND document_id=$2 AND revision=$3 AND page_id=$4 AND report_id=$5 AND report_revision=$6)`, e.Tenant(), m.Document, m.Revision, page.ID, page.Report, page.Revision).Scan(&exists); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.document_page_refs WHERE tenant_id=$1 AND kind='dashboard' AND document_id=$2 AND revision=$3 AND page_id=$4 AND report_id=$5 AND report_revision=$6)`, e.Tenant(), m.Document, m.Revision, container, page.Report, page.Revision).Scan(&exists); err != nil {
 				return err
 			}
 			if !exists || snapshot.PublishedAt == nil {
 				return store.ErrInvalid
 			}
 		}
+	}
+	if m.Kind == "dashboard" {
+		for _, ref := range rootDefinition.Pages {
+			snapshot, err := documentTx(ctx, tx, e, "report", ref.Report, reporting.DocumentReference{Revision: ref.Revision}, reporting.Execute, false)
+			if err != nil {
+				return err
+			}
+			child, err := reporting.ProjectStoredDocument(snapshot.Revision.Raw, "report")
+			if err != nil {
+				return err
+			}
+			expectedPages += len(reporting.ReportCanvases(child))
+		}
+	}
+	if len(m.Pages) != expectedPages {
+		return store.ErrInvalid
 	}
 	// Aggregate dependency pins across every group so the shared fence
 	// acquires all sorted topic locks before any source locks. Dynamic

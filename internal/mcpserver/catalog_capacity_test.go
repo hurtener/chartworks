@@ -17,7 +17,7 @@ func TestRegisteredCatalogCapacity(t *testing.T) {
 		}
 		return out
 	}
-	for _, count := range []int{64, 74, 79, 96} {
+	for _, count := range []int{64, 74, 77, 78, 79, 82, 83, 96} {
 		registry, err := NewRegistry(entries(count))
 		if err != nil || len(registry.Manifest()) != count {
 			t.Fatal("bounded registered inventory rejected or dropped", count, err)
@@ -40,5 +40,18 @@ func TestRegisteredCatalogCapacity(t *testing.T) {
 	bad[95].name = "invalid-name"
 	if _, err := NewRegistry(bad); err == nil {
 		t.Fatal("invalid name admitted at bound")
+	}
+}
+
+func TestManualChartMutationEffects(t *testing.T) {
+	for _, name := range []string{"block_draft_cas_commit", "private_block_copy_commit"} {
+		got, ok := effectFor(name)
+		if !ok || !got.persists || got.readOnly || got.idempotent || got.paid || got.openWorld || got.destructive {
+			t.Fatalf("invalid metadata mutation effect %s: %+v", name, got)
+		}
+	}
+	got, ok := effectFor("explicit_bounded_source_read_private_evidence")
+	if !ok || !got.persists || !got.paid || !got.openWorld || got.readOnly || got.idempotent || got.destructive {
+		t.Fatalf("validation source cost/replay semantics hidden: %+v", got)
 	}
 }

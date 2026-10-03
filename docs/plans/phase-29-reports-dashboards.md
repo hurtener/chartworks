@@ -78,3 +78,7 @@ Use [D-073](../decisions/2026-09-16-reporting-output-policies.md) and the
 source execution, provider-fixture and browser checks. Keep the existing named
 phase criteria and phase status; this assignment closes only its three owned gap
 entries, not the whole phase, other reporting work, or full migration/release.
+
+## Visual authoring continuation
+
+[D-097](../decisions/2026-10-03-visual-chart-authoring.md) requires direct-grid, chart/field and genuine private-page authoring beyond D-096. Preserve existing criteria and historical evidence; qualify new domain, HTTP/MCP/SDK and browser paths separately. Scope approval does not change phase status or make unsupported controls available.

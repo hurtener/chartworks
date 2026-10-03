@@ -26,7 +26,7 @@ func TestReportAppTypedClientUsesCanonicalRoutesAndCAS(t *testing.T) {
 			t.Error("client supplied identity")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if suffix == "save" || suffix == "widget" {
+		if suffix == "save" || suffix == "widget" || suffix == "block_mapping" || suffix == "block_copy" || suffix == "block_validate" {
 			if body["expected_version"] != float64(7) {
 				t.Error("CAS changed")
 			}
@@ -79,7 +79,19 @@ func TestReportAppTypedClientUsesCanonicalRoutesAndCAS(t *testing.T) {
 	if _, err := c.ReadReportAppGuide(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 10 || len(seen) != 10 {
+	if _, err := c.ReadManualChart(t.Context(), ReportAppBlockReadRequest{Block: "block", Revision: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AmendManualChart(t.Context(), ReportAppBlockMappingRequest{Block: "block", Revision: 3, ExpectedVersion: 7}); err == nil {
+		t.Fatal("mapping conflict hidden")
+	}
+	if _, err := c.CopyManualChart(t.Context(), ReportAppBlockCopyRequest{Block: "block", NewBlock: "private-copy", Revision: 3, ExpectedVersion: 7}); err == nil {
+		t.Fatal("copy conflict hidden")
+	}
+	if _, err := c.ValidateManualChart(t.Context(), ReportAppBlockValidateRequest{Block: "private-copy", Revision: 3, ExpectedVersion: 7}); err == nil {
+		t.Fatal("validation conflict hidden")
+	}
+	if calls != 14 || len(seen) != 14 {
 		t.Fatal("missing route or stale bearer", calls, seen)
 	}
 	for name, n := range seen {

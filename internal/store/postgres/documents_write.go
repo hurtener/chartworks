@@ -85,57 +85,70 @@ func insertDocumentLinks(ctx context.Context, tx pgx.Tx, e identity.Envelope, m 
 		origins[origin.Widget] = origin
 	}
 	queryCount := 0
-	for _, widget := range definition.Widgets {
-		if reporting.IsCapturedQueryVariant(widget) {
-			pin := widget.Query.Variant
-			lowered, err := reporting.CapturedVariantBlock(widget)
-			if err != nil {
-				return err
-			}
-			captured, err := blockTx(ctx, tx, e, pin.Block, reporting.Reference{Revision: pin.Revision}, reporting.Read)
-			if err != nil {
-				return err
-			}
-			if err = reporting.CheckCapturedQueryVariant(pin, captured); err != nil {
-				return err
-			}
-			widget = lowered
-		}
-		switch widget.Kind {
-		case "block":
-			w := widget.Block
-			block, err := blockTx(ctx, tx, e, w.Block, reporting.Reference{Revision: w.Revision}, reporting.Read)
-			if err != nil {
-				return err
-			}
-			if block.PublishedAt == nil || block.State.Archived {
-				return reporting.ErrStale
-			}
-			if _, err := reporting.SelectOutputs(block.Revision.Definition.Outputs, w.Outputs); err != nil {
-				return err
-			}
-			if err := reporting.ValidateWidgetBindings(block.Revision.Definition.Parameters, definition, widget); err != nil {
-				return err
-			}
-			_, err = tx.Exec(ctx, `INSERT INTO chartworks.document_block_refs(tenant_id,kind,document_id,revision,widget_id,block_id,pinned_revision,observed_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, e.Tenant(), m.Kind, m.ID, m.Revision.Number, widget.ID, w.Block, nullableRevision(w.Revision), block.Revision.Number)
-			if err != nil {
-				return err
-			}
-			refs := append([]reporting.ResourceReference{{Kind: "block", Permission: "read", ID: w.Block}}, block.References...)
-			for _, ref := range refs {
-				if err := insertDocumentReference(ctx, tx, e, m, ref); err != nil {
+	for _, canvas := range reporting.ReportCanvases(definition) {
+		for _, widget := range canvas.Definition.Widgets {
+			if reporting.IsCapturedQueryVariant(widget) {
+				pin := widget.Query.Variant
+				lowered, err := reporting.CapturedVariantBlock(widget)
+				if err != nil {
 					return err
 				}
+				captured, err := blockTx(ctx, tx, e, pin.Block, reporting.Reference{Revision: pin.Revision}, reporting.Read)
+				if err != nil {
+					return err
+				}
+				if err = reporting.CheckCapturedQueryVariant(pin, captured); err != nil {
+					return err
+				}
+				widget = lowered
 			}
-		case "query":
-			origin, ok := origins[widget.ID]
-			if !ok {
-				return store.ErrInvalid
+			switch widget.Kind {
+			case "block":
+				w := widget.Block
+				block, err := blockTx(ctx, tx, e, w.Block, reporting.Reference{Revision: w.Revision}, reporting.Read)
+				if err != nil {
+					return err
+				}
+				if err := reporting.CheckDocumentBlockReference(e, *w, block); err != nil {
+					return err
+				}
+				if _, err := reporting.SelectOutputs(block.Revision.Definition.Outputs, w.Outputs); err != nil {
+					return err
+				}
+				if err := reporting.ValidateWidgetBindings(block.Revision.Definition.Parameters, canvas.Definition, widget); err != nil {
+					return err
+				}
+				if w.Policy == "private_preview" {
+					tag, err := tx.Exec(ctx, `INSERT INTO chartworks.document_private_block_refs(tenant_id,kind,document_id,revision,widget_id,block_id,block_revision,definition_digest,block_actor_id)
+ SELECT $1,$2,$3,$4,$5,r.block_id,r.revision,r.digest,r.actor_id FROM chartworks.block_revisions r WHERE r.tenant_id=$1 AND r.block_id=$6 AND r.revision=$7 AND r.digest=$8 AND r.actor_id=$9`, e.Tenant(), m.Kind, m.ID, m.Revision.Number, widget.ID, w.Block, w.Revision, w.Digest, e.User())
+					if err != nil {
+						return err
+					}
+					if tag.RowsAffected() != 1 {
+						return reporting.ErrStale
+					}
+				} else {
+					_, err = tx.Exec(ctx, `INSERT INTO chartworks.document_block_refs(tenant_id,kind,document_id,revision,widget_id,block_id,pinned_revision,observed_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, e.Tenant(), m.Kind, m.ID, m.Revision.Number, widget.ID, w.Block, nullableRevision(w.Revision), block.Revision.Number)
+					if err != nil {
+						return err
+					}
+				}
+				refs := append([]reporting.ResourceReference{{Kind: "block", Permission: "read", ID: w.Block}}, block.References...)
+				for _, ref := range refs {
+					if err := insertDocumentReference(ctx, tx, e, m, ref); err != nil {
+						return err
+					}
+				}
+			case "query":
+				origin, ok := origins[widget.ID]
+				if !ok {
+					return store.ErrInvalid
+				}
+				if err := insertDocumentQuery(ctx, tx, e, m, widget, origin); err != nil {
+					return err
+				}
+				queryCount++
 			}
-			if err := insertDocumentQuery(ctx, tx, e, m, widget, origin); err != nil {
-				return err
-			}
-			queryCount++
 		}
 	}
 	if queryCount != len(origins) {

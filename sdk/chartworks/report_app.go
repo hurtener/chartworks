@@ -86,3 +86,36 @@ func (c *Client) ReadReportAppGuide(ctx context.Context) (out ReportAppGuide, er
 	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"guide", "", struct{}{}, &out, 4<<20)
 	return
 }
+
+// Manual chart requests carry neither SQL, rows, column definitions nor grants.
+type ReportAppBlockReadRequest = reporting.AuthoringBlockReadRequest
+type ReportAppBlockMappingRequest = reporting.AuthoringBlockMappingRequest
+type ReportAppBlockCopyRequest = reporting.AuthoringBlockCopyRequest
+type ReportAppChartMapping = reporting.AuthoringChartMapping
+type ReportAppBlockView = reporting.AuthoringBlockView
+type ReportAppBlockValidateRequest = reporting.AuthoringBlockValidateRequest
+type ReportAppBlockValidationResult = reporting.AuthoringBlockValidationResult
+
+// ReadManualChart returns an exact SQL-free revision and server-owned candidates.
+func (c *Client) ReadManualChart(ctx context.Context, in ReportAppBlockReadRequest) (out ReportAppBlockView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_read", "", in, &out, 4<<20)
+	return
+}
+
+// AmendManualChart changes one private output under exact baseline CAS.
+func (c *Client) AmendManualChart(ctx context.Context, in ReportAppBlockMappingRequest) (out ReportAppBlockView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_mapping", "", in, &out, 4<<20)
+	return
+}
+
+// CopyManualChart creates an independently authorized private copy, not approval.
+func (c *Client) CopyManualChart(ctx context.Context, in ReportAppBlockCopyRequest) (out ReportAppBlockView, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_copy", "", in, &out, 4<<20)
+	return
+}
+
+// ValidateManualChart performs one explicit bounded read without automatic retry.
+func (c *Client) ValidateManualChart(ctx context.Context, in ReportAppBlockValidateRequest) (out ReportAppBlockValidationResult, err error) {
+	err = c.callLimit(ctx, "POST", reportingapi.AuthoringPath+"block_validate", "", in, &out, 4<<20)
+	return
+}

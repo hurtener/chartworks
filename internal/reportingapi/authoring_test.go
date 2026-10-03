@@ -14,8 +14,8 @@ func TestAuthoringRegistryParityAndClosedAuthorityInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registry.Definitions()) != 8 {
-		t.Fatal("unexpected first-slice operation count")
+	if len(registry.Definitions()) != 12 {
+		t.Fatal("unexpected manual authoring operation count")
 	}
 	documents, err := DocumentsRegistry(false)
 	if err != nil {

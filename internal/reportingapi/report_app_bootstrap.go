@@ -27,12 +27,13 @@ type ReportAppTarget struct {
 }
 
 type ReportAppGuide struct {
-	Version               int      `json:"version"`
-	DocumentSchemaVersion int      `json:"document_schema_version"`
-	Modes                 []string `json:"modes"`
-	Steps                 []string `json:"steps"`
-	Constraints           []string `json:"constraints"`
-	Documentation         []string `json:"documentation"`
+	Version                int      `json:"version"`
+	DocumentSchemaVersion  int      `json:"document_schema_version"`
+	DocumentSchemaVersions []int    `json:"document_schema_versions"`
+	Modes                  []string `json:"modes"`
+	Steps                  []string `json:"steps"`
+	Constraints            []string `json:"constraints"`
+	Documentation          []string `json:"documentation"`
 }
 
 type ReportAppBootstrap struct {
@@ -55,12 +56,14 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 		return ReportAppGuide{}, access.ErrForbidden
 	}
 	return ReportAppGuide{
-		Version: 1, DocumentSchemaVersion: reporting.DocumentVersion,
+		Version: 1, DocumentSchemaVersion: reporting.DocumentVersion, DocumentSchemaVersions: []int{reporting.DocumentVersion, reporting.PagedDocumentVersion},
 		Modes: []string{"chat", "plan", "apply"},
 		Steps: []string{
 			"Read current target capabilities and exact document revision before proposing changes.",
 			"Discover authorized published blocks and describe their stable output identifiers and typed parameters.",
-			"Compose bounded text and published-block widgets using the canonical document schema.",
+			"Compose bounded text and approved-output widgets using the canonical document schema. Preserve existing schema and page identity unless explicitly upgrading a revision.",
+			"Read exact SQL-free block metadata before offering real chart types or fields. Never invent bindings, units, aggregations or unsupported chart kinds.",
+			"For report-local changes create an explicitly authorized private block copy. Amend only its selected output under version, revision and digest CAS.",
 			"In chat mode explain options; in plan mode return a proposed change without mutation; in apply mode use an explicitly authorized target and expected-version save.",
 			"After a successful save, reopen the exact retained revision. On conflict reload and reconcile; never overwrite blindly.",
 			"Preview is explicit private execution. Read and redraw retained outputs without rerunning queries.",
@@ -70,7 +73,10 @@ func reportAppGuide(ctx context.Context, e identity.Envelope, _ struct{}) (Repor
 			"Pengui owns identity, Teams, resource grants, entitlement and credential issuance. Every operation rechecks current exact action/resource/context reach.",
 			"Selected-widget changes are server-enforced. Do not modify another widget, report metadata or dependencies outside the admitted edit scope.",
 			"Published definitions are immutable; amendments create private revisions under CAS. Private previews remain private after publication.",
-			"Do not invoke query generation, narratives, models or arbitrary code as part of manual composition.",
+			"Do not invoke natural-language query generation, narratives, models or arbitrary code as part of manual composition.",
+			"Copying requires independent source read/preview, new-target tenant/block/topic/dependency authority and charts.bind. Report-write never substitutes for them.",
+			"Schema binding is not data validation. Never execute or publish automatically. Publication can expose an existing central audience and is not private approval.",
+			"Page IDs are stable, widget IDs report-global, and filters/defaults page-local. Never silently drop unsupported pages.",
 			"Credentials and host-only nonces stay in the trusted host and never enter iframe messages, URLs or persisted browser state.",
 		},
 		Documentation: []string{"docs/contracts/report-app-v1.md", "docs/contracts/pengui-authority.md", "docs/reporting/contracts.md", "docs/reporting/delivery.md"},

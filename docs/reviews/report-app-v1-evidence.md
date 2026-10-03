@@ -62,3 +62,22 @@ consumption. It does not claim advanced drag/drop, multi-page authoring, arbitra
 NLQ widget creation, whole-catalog dynamic authority metadata, production host
 activation or complete migration parity. Existing broader release gates remain
 open independently.
+
+## Reconstructed visual-authoring checkpoint (2026-10-03)
+
+The retained-canvas checkpoint was recovered from verified Git objects and blobs
+with tree `507f60f6904567aa593d67bed53584f551f0eda3`, then published as
+`be639041004deea7703d37fb371e790d7bb2b416`. Its fresh local checks passed 67 Node
+cases and both web package race suites. Hosted fast build/lint/planning/mirror
+passed; the browser job stopped before Chrome because an expiry test awaited an
+unreferenced timer. A bounded referenced watchdog fixes that test without changing
+production expiry behavior or weakening assertions.
+
+The subsequent visual grid, inline pages, private-block bridge and four manual
+chart operations were reconstructed after the execution workspace was replaced.
+They are not claimed byte-identical to the lost later local commits. Current
+combined frontend checks pass 98 Node tests, source formatting and planning checks
+pass, and all operation budgets remain unchanged. Current native domain, database,
+transport integration and actual-browser qualification must rerun on this tree.
+Pre-reset PostgreSQL/race results are historical evidence only. The real Pengui
+launch/admission path remains pending; hosted browser fixtures are synthetic.

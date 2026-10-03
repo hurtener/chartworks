@@ -1,6 +1,6 @@
 # Manual report application v1
 
-Status: implementation in progress under D-096; production host activation is not
+Status: implementation in progress under D-096/D-097; production host activation is not
 claimed. This continuation belongs to phases 29/31. The previous read viewer URI
 and delivery contract remain supported independently.
 
@@ -131,3 +131,28 @@ and navigation; actual browser rendering and retained read. Deterministic fixtur
 are not deployed host or live-provider evidence. Advanced drag/drop, multi-page
 editing, arbitrary NLQ widget creation and optional export remain outside this
 first slice.
+
+## Visual authoring and mapping continuation
+
+[D-097](../decisions/2026-10-03-visual-chart-authoring.md) makes direct grid editing,
+real chart/field authoring and private pages required increments, not optional
+substitutes for a complete Builder. The grid supports one-card move/resize,
+collision rejection, duplication and explicit arrangement; advanced layout tools
+and arbitrary natural-language creation are not implied.
+
+Closed block_read, block_mapping, block_copy and block_validate operations extend
+the versioned namespace. Responses omit SQL, narrative instructions and execution
+custody details. Read exposes exact CAS/revision/digest/schema/mapping candidates.
+Mapping changes only one current private output; copy needs a distinct authorized
+new target and independent source read/preview eligibility. Both preserve all
+server-owned hidden definition fields and other outputs. charts.bind/tenant-read
+and native block/parent/dependency authority remain separate from report-write.
+
+Schema binding returns data_validation=not_performed. block_validate explicitly
+uses native bounded source validation, returns narrowed evidence/schema and CAS
+coordinates, and never publishes. Its source work may carry cost and is not
+idempotent or automatically retried. Metadata alone cannot attribute an unknown
+request. Source validation, private report preview and public eligibility changes
+remain separate user actions. Mounted inventory is78 default/83 with optional
+renditions under the unchanged96-tool ceiling; execution and transport budgets
+are unchanged.

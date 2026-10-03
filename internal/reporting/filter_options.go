@@ -30,6 +30,7 @@ const (
 )
 
 type filterCursor struct {
+	Page           string          `json:"page,omitempty"`
 	Report         string          `json:"report"`
 	Revision       int64           `json:"revision"`
 	Filter         string          `json:"filter"`
@@ -395,11 +396,11 @@ func filterColumn(binding exec.Binding, dataset, name string) (exec.Relation, ex
 // It intentionally has no result cache: every page revalidates current signed
 // reach, the immutable report coordinates, active semantics and source revision.
 func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, report string, in FilterOptionsRequest) (FilterOptionsPage, error) {
-	out := FilterOptionsPage{Report: report, Revision: in.Revision, Filter: in.Filter, Options: []FilterOption{}}
+	out := FilterOptionsPage{Page: in.Page, Report: report, Revision: in.Revision, Filter: in.Filter, Options: []FilterOption{}}
 	if s == nil || s.blocks == nil || !s.blocks.CanValidate() || ctx == nil {
 		return out, ErrUnavailable
 	}
-	if !identity.Identifier(report) || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || !utf8.ValidString(in.Search) || strings.ContainsRune(in.Search, 0) || !locale(in.Locale) || len(in.Cursor) > filterCursorMax {
+	if !identity.Identifier(report) || in.Page != "" && !identity.Identifier(in.Page) || in.Revision < 1 || in.Revision > 256 || !identity.Identifier(in.Filter) || in.Limit < 1 || in.Limit > 200 || len(in.Search) > 256 || !utf8.ValidString(in.Search) || strings.ContainsRune(in.Search, 0) || !locale(in.Locale) || len(in.Cursor) > filterCursorMax {
 		return out, ErrInvalid
 	}
 	if !e.Valid() {
@@ -421,8 +422,12 @@ func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, repo
 	if err != nil {
 		return out, err
 	}
+	canvas, err := SelectReportCanvas(definition, in.Page)
+	if err != nil {
+		return out, err
+	}
 	var filter ReportFilter
-	for _, candidate := range definition.Filters {
+	for _, candidate := range canvas.Definition.Filters {
 		if candidate.Parameter.Name == in.Filter {
 			filter = candidate
 			break
@@ -458,7 +463,7 @@ func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, repo
 	}
 	if in.Cursor != "" {
 		cursor, cursorErr := s.decodeFilterCursor(in.Cursor)
-		if cursorErr != nil || cursor.Report != report || cursor.Revision != in.Revision || cursor.Filter != in.Filter || cursor.Search != in.Search || cursor.Limit != in.Limit || cursor.Locale != in.Locale || cursor.SourceRevision != resolved.binding.Revision || cursor.Authority != filterAuthority(e) {
+		if cursorErr != nil || cursor.Page != in.Page || cursor.Report != report || cursor.Revision != in.Revision || cursor.Filter != in.Filter || cursor.Search != in.Search || cursor.Limit != in.Limit || cursor.Locale != in.Locale || cursor.SourceRevision != resolved.binding.Revision || cursor.Authority != filterAuthority(e) {
 			return out, ErrStale
 		}
 		parameter, parameterErr := filterParameter(cursor.Type, cursor.Last)
@@ -512,7 +517,7 @@ func (s *Documents) FilterOptions(ctx context.Context, e identity.Envelope, repo
 		if _, parameterErr := filterParameter(result.Schema[0].Type, last); parameterErr != nil {
 			return FilterOptionsPage{}, parameterErr
 		}
-		out.Next, err = s.encodeFilterCursor(filterCursor{Report: report, Revision: in.Revision, Filter: in.Filter, Search: in.Search, Limit: in.Limit, Locale: in.Locale, SourceRevision: resolved.binding.Revision, Authority: filterAuthority(e), Type: result.Schema[0].Type, Last: append(json.RawMessage(nil), last...), Expires: time.Now().Add(5 * time.Minute).Unix()})
+		out.Next, err = s.encodeFilterCursor(filterCursor{Page: in.Page, Report: report, Revision: in.Revision, Filter: in.Filter, Search: in.Search, Limit: in.Limit, Locale: in.Locale, SourceRevision: resolved.binding.Revision, Authority: filterAuthority(e), Type: result.Schema[0].Type, Last: append(json.RawMessage(nil), last...), Expires: time.Now().Add(5 * time.Minute).Unix()})
 		if err != nil {
 			return FilterOptionsPage{}, err
 		}

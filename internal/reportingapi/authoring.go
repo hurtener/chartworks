@@ -27,7 +27,7 @@ func authoringEntry[I, O any](suffix, action, effect, summary string, call func(
 }
 
 func authoringEntries(service *reporting.Authoring) []runtimeEndpoint {
-	return []runtimeEndpoint{
+	out := []runtimeEndpoint{
 		authoringEntry("capabilities", "reporting.read", "retained_metadata_read", "Read current capability-derived Builder and Consumer hints for an exact report target", service.Capabilities),
 		authoringEntry("drafts", "reporting.write", "retained_metadata_read", "List bounded currently authorized private report draft metadata", service.Drafts),
 		authoringEntry("read", "reporting.write", "retained_metadata_read", "Reopen an exact report revision with independent read and preview authority", service.Read),
@@ -37,6 +37,7 @@ func authoringEntries(service *reporting.Authoring) []runtimeEndpoint {
 		authoringEntry("preview", "reporting.execute", "private_composition_reservation", "Admit an exact private report preview using the existing composition domain", service.Preview),
 		authoringEntry("execute", "reporting.execute", "bounded_frozen_source_read_retained_composition", "Explicitly execute one admitted private report preview with current signed dependency authority", service.Execute),
 	}
+	return append(out, authoringBlockEntries(service)...)
 }
 
 // AuthoringRegistry advertises only the bounded manual slice, with exact native
@@ -98,5 +99,9 @@ func AuthoringMCPBindings(service *reporting.Authoring, app ...mcpserver.AppReso
 	if err = add(mcpserver.Bind(registry, "reporting_authoring_widget_v1", "reporting_authoring_widget_v1", "reporting", "Change only one selected widget's text or presentation under revision and version CAS. The server preserves every other widget, report field and layout; this is edit intent, not a new ACL.", service.PatchWidget, mapper)); err != nil {
 		return nil, err
 	}
-	return out, nil
+	blocks, err := authoringBlockMCPBindings(registry, service)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, blocks...), nil
 }

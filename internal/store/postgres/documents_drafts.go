@@ -50,8 +50,8 @@ func (d *DB) ListDocumentDrafts(ctx context.Context, e identity.Envelope, after 
  WHERE h.tenant_id=$1 AND h.kind='report' AND h.document_id>$2 AND NOT h.archived AND NOT h.deleted
  AND ($3::boolean OR h.document_id=ANY($4::text[]))
  AND NOT EXISTS(SELECT 1 FROM chartworks.document_publications p WHERE (p.tenant_id,p.kind,p.document_id,p.revision)=(r.tenant_id,r.kind,r.document_id,r.revision))
- AND `+documentReferenceEligibility+`
- ORDER BY h.document_id LIMIT $5`, e.Tenant(), after, selection.All(), selection.IDs(), limit+1, grants)
+ AND `+documentReferenceEligibility+` AND `+documentPrivateBlockEligibility("$7", "$8")+`
+ ORDER BY h.document_id LIMIT $5`, e.Tenant(), after, selection.All(), selection.IDs(), limit+1, grants, e.User(), e.Has("reporting.preview"))
 		if err != nil {
 			return err
 		}

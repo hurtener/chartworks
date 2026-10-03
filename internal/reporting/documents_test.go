@@ -146,13 +146,15 @@ func FuzzDocumentProjection(f *testing.F) {
 	f.Add([]byte(`{"schema_version":99}`))
 	raw, _ := json.Marshal(documentFixture())
 	f.Add(raw)
+	paged, _ := json.Marshal(pagedDocumentFixture())
+	f.Add(paged)
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		before := string(raw)
 		d, err := ProjectStoredDocument(raw, "report")
 		if string(raw) != before {
 			t.Fatal("input mutated")
 		}
-		if err == nil && (d.SchemaVersion != DocumentVersion || len(d.Widgets) == 0 || len(d.Widgets) > 100) {
+		if err == nil && (d.SchemaVersion != DocumentVersion && d.SchemaVersion != PagedDocumentVersion || len(ReportCanvases(d)) == 0 || len(ReportCanvases(d)) > 100) {
 			t.Fatal("unbounded or incomplete successful projection")
 		}
 	})
