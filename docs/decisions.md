@@ -804,3 +804,5 @@ Statistical narrative continuation: [D-092 closed deterministic retained statist
 Renderer memory continuation: [D-093 kernel charged-memory enforcement and a separate virtual-address ceiling](decisions/2026-10-01-renderer-charged-memory.md).
 
 Scalar equality continuation: [D-094 exact predicates required by every selected scalar occurrence](decisions/2026-10-03-scalar-predicate-entailment.md).
+
+Renderer containment continuation: [D-095 resource controls on a protected outer job domain](decisions/2026-10-03-renderer-protected-job-domain.md).

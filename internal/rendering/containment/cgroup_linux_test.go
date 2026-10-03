@@ -141,6 +141,64 @@ func TestContainmentKillProbeFailureCleanup(t *testing.T) {
 	}
 }
 
+func TestContainmentHierarchyCleanup(t *testing.T) {
+	for _, mode := range []string{"empty", "revoked", "unexpected-child-data"} {
+		t.Run(mode, func(t *testing.T) {
+			rootPath := t.TempDir()
+			jobPath := filepath.Join(rootPath, "job")
+			leafPath := filepath.Join(jobPath, "worker")
+			if err := os.MkdirAll(leafPath, 0700); err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.Open(rootPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			dir, err := os.Open(jobPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer dir.Close()
+			leaf, err := os.Open(leafPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer leaf.Close()
+			g := &Group{root: root, dir: dir, leaf: leaf, name: "job", leafName: "worker"}
+			if g.FD() != int(leaf.Fd()) || g.FD() == int(dir.Fd()) {
+				t.Fatal("clone target is not the inner namespace leaf")
+			}
+			if mode == "revoked" {
+				if leaf.Chmod(0) != nil || dir.Chmod(0) != nil {
+					t.Fatal("mode revocation")
+				}
+			}
+			if mode == "unexpected-child-data" {
+				if err := os.WriteFile(filepath.Join(leafPath, "unexpected"), []byte("retained"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err = g.removeDirectories()
+			if mode == "unexpected-child-data" {
+				if !errors.Is(err, ErrCleanup) {
+					t.Fatal("nested cleanup failure hidden", err)
+				}
+				if _, err := os.Stat(jobPath); err != nil {
+					t.Fatal("outer removed before inner", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal("hierarchy removal", err)
+			}
+			if _, err := os.Stat(jobPath); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("job hierarchy retained", err)
+			}
+		})
+	}
+}
+
 func TestContainmentIndependentBudgets(t *testing.T) {
 	if AddressSpaceBytes != 3<<30 || MaxChargedBytes != 1<<30 {
 		t.Fatal("approved ceilings changed")

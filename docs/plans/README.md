@@ -158,6 +158,10 @@ their behavior; unknown/ambiguous model choices cannot produce executable plans.
 No interpretation-confidence, live quality or full-recovery completion is inferred
 from these software changes. Historical results above retain their stated scope.
 
+Renderer deployment qualification uses the [D-095 protected outer job domain](../decisions/2026-10-03-renderer-protected-job-domain.md)
+and controller-free worker namespace leaf. Exact-source kernel and full Phase32
+gates remain required; prior single-leaf results do not qualify this topology.
+
 The fresh [bounded scalar equality continuation](../contracts/analytical-scalar-entailment-v1.md)
 is tracked separately from historical reconstruction. Its v13/schema6 family
 accounts for an exact request predicate only when every selected scalar SUM/COUNT

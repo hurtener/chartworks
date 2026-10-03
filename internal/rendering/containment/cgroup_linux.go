@@ -20,11 +20,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Group owns one fresh leaf. No directory or controller descriptor is inherited
-// by the worker; FD is used only by clone3's atomic CLONE_INTO_CGROUP placement.
+// Group owns an outer resource domain and one controller-free namespace leaf.
+// No directory or controller descriptor is inherited by the worker; FD is used
+// only by clone3's atomic CLONE_INTO_CGROUP placement into the inner leaf.
 type Group struct {
-	root, dir *os.File
-	name      string
+	root, dir, leaf *os.File
+	name, leafName  string
 	// Opened in the manager namespace before launch, never inherited. Retaining
 	// controller descriptors prevents same-UID chmod from disabling cleanup.
 	kill, events, memoryEvents *os.File
@@ -153,7 +154,7 @@ func New(rootPath string, memory int64) (*Group, error) {
 		return nil, ErrUnavailable
 	}
 	g := &Group{root: root, dir: os.NewFile(uintptr(fd), "render-cgroup"), name: name}
-	limits := [][2]string{{"memory.max", strconv.FormatInt(memory, 10)}, {"memory.swap.max", "0"}, {"memory.oom.group", "1"}, {"pids.max", "64"}, {"cpu.max", "100000 100000"}, {"cgroup.max.descendants", "0"}, {"cgroup.max.depth", "0"}}
+	limits := [][2]string{{"memory.max", strconv.FormatInt(memory, 10)}, {"memory.swap.max", "0"}, {"memory.oom.group", "1"}, {"pids.max", "64"}, {"cpu.max", "100000 100000"}, {"cgroup.max.descendants", "1"}, {"cgroup.max.depth", "1"}}
 	for _, limit := range limits {
 		if writeControl(g.dir, limit[0], limit[1]) != nil {
 			return nil, g.discard()
@@ -196,7 +197,54 @@ func New(rootPath string, memory int64) (*Group, error) {
 	if e != nil || procs != "" {
 		return nil, g.discard()
 	}
+	if err := g.createLeaf(); err != nil {
+		return nil, g.discard()
+	}
 	return g, nil
+}
+
+// Resource controllers deliberately stop at the outer job. In particular,
+// memory.oom.group is namespace-delegatable, so placing it on the worker's own
+// namespace root lets a hostile worker disable whole-job OOM killing. Without
+// subtree delegation, the inner leaf has no resource controls or independent
+// OOM domain; its processes remain charged to the protected outer job.
+func (g *Group) createLeaf() error {
+	enabled, err := readControl(g.dir, "cgroup.subtree_control")
+	if err != nil || enabled != "" {
+		return ErrUnavailable
+	}
+	if unix.Mkdirat(int(g.dir.Fd()), "worker", 0700) != nil {
+		return ErrUnavailable
+	}
+	g.leafName = "worker"
+	fd, err := unix.Openat(int(g.dir.Fd()), g.leafName, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return ErrUnavailable
+	}
+	g.leaf = os.NewFile(uintptr(fd), "render-namespace-leaf")
+	for _, name := range []string{"cgroup.max.descendants", "cgroup.max.depth"} {
+		if writeControl(g.leaf, name, "0") != nil {
+			return ErrUnavailable
+		}
+		if got, err := readControl(g.leaf, name); err != nil || got != "0" {
+			return ErrUnavailable
+		}
+	}
+	for _, name := range []string{"cgroup.controllers", "cgroup.subtree_control", "cgroup.procs"} {
+		if got, err := readControl(g.leaf, name); err != nil || got != "" {
+			return ErrUnavailable
+		}
+	}
+	if kind, err := readControl(g.leaf, "cgroup.type"); err != nil || kind != "domain" {
+		return ErrUnavailable
+	}
+	if stats, err := readControl(g.leaf, "cgroup.stat"); err != nil || !zeroDescendants(stats) {
+		return ErrUnavailable
+	}
+	if events, err := readControl(g.leaf, "cgroup.events"); err != nil || !unpopulated(events) {
+		return ErrUnavailable
+	}
+	return nil
 }
 
 // probeKillControl verifies a real kill write on a disposable empty sibling.
@@ -235,7 +283,10 @@ func (g *Group) discard() error {
 	defer g.closeControls()
 	defer g.dir.Close()
 	defer g.root.Close()
-	if unix.Unlinkat(int(g.root.Fd()), g.name, unix.AT_REMOVEDIR) != nil {
+	if g.leaf != nil {
+		defer g.leaf.Close()
+	}
+	if g.removeDirectories() != nil {
 		return errors.Join(ErrUnavailable, ErrCleanup)
 	}
 	return ErrUnavailable
@@ -284,7 +335,26 @@ func (g *Group) OOMKilled() (bool, error) {
 	}
 	return false, ErrUnavailable
 }
-func (g *Group) FD() int { return int(g.dir.Fd()) }
+func (g *Group) FD() int {
+	if g.leaf == nil {
+		return -1
+	}
+	return int(g.leaf.Fd())
+}
+
+func (g *Group) removeDirectories() error {
+	if g.leafName != "" {
+		// Restore traversal on this owned, already empty job through its retained
+		// descriptor. Mode revocation must not prevent removing its inner leaf.
+		if g.dir.Chmod(0700) != nil || unix.Unlinkat(int(g.dir.Fd()), g.leafName, unix.AT_REMOVEDIR) != nil {
+			return ErrCleanup
+		}
+	}
+	if unix.Unlinkat(int(g.root.Fd()), g.name, unix.AT_REMOVEDIR) != nil {
+		return ErrCleanup
+	}
+	return nil
+}
 
 // Close terminates all processes before removing the leaf. It uses a separate
 // short cleanup bound even if the render's context was canceled. Failure must
@@ -295,6 +365,9 @@ func (g *Group) Close() error {
 	}
 	defer g.root.Close()
 	defer g.dir.Close()
+	if g.leaf != nil {
+		defer g.leaf.Close()
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	defer g.closeControls()
@@ -311,10 +384,7 @@ func (g *Group) Close() error {
 			return ErrUnavailable
 		}
 		if unpopulated(events) {
-			if unix.Unlinkat(int(g.root.Fd()), g.name, unix.AT_REMOVEDIR) != nil {
-				return ErrUnavailable
-			}
-			return nil
+			return g.removeDirectories()
 		}
 		select {
 		case <-ctx.Done():

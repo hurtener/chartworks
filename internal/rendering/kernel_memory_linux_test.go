@@ -19,6 +19,7 @@ import (
 	"github.com/hurtener/chartworks/internal/rendering/containment"
 	"github.com/hurtener/chartworks/internal/reporting"
 	"github.com/hurtener/chartworks/test/chartfixtures"
+	"golang.org/x/sys/unix"
 )
 
 // This is a deployment qualification gate, never a skip or a host-provisioning
@@ -44,7 +45,7 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 				t.Error("cleanup", err)
 			}
 		}()
-		value, err := os.ReadFile(filepath.Join("/proc/self/fd", strconv.Itoa(g.FD()), "memory.max"))
+		value, err := os.ReadFile(kernelJobPath(g) + "/memory.max")
 		if err != nil {
 			t.Fatal("effective memory limit", err)
 		}
@@ -53,6 +54,7 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 		if err != nil || effective != requested-requested%page || effective > requested {
 			t.Fatal("kernel budget widened or unexpected", effective, err)
 		}
+		assertKernelJobLimits(t, g, effective)
 	})
 	binary := filepath.Join(t.TempDir(), "probe")
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "./testdata/memory_probe.go")
@@ -69,6 +71,15 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			closed := false
+			t.Cleanup(func() {
+				if !closed {
+					if err := g.Close(); err != nil {
+						t.Error("startup cleanup", err)
+					}
+				}
+			})
+			assertKernelJobLimits(t, g, 1<<30)
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			cmd, cleanup, err := sandboxCommand(ctx, binary, "linux_namespaces")
 			if err == nil {
@@ -86,6 +97,7 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 			}
 			killed, eventErr := g.OOMKilled()
 			closeErr := g.Close()
+			closed = true
 			cleanup()
 			cancel()
 			if err != nil || stdout.String() != "alive\n" || stderr.Len() != 0 || eventErr != nil || killed || closeErr != nil {
@@ -119,6 +131,11 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 				}
 			}
 		}()
+		outer, err := os.Open(kernelJobPath(g))
+		if err != nil {
+			t.Fatal("retain outer test path", err)
+		}
+		defer outer.Close()
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer cancel()
 		cmd, cleanup, err := sandboxCommand(ctx, binary, "linux_namespaces")
@@ -141,6 +158,17 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 			t.Fatal(err)
 		}
 		line, readErr := bufio.NewReader(out).ReadString('\n')
+		// The worker can revoke visible inner files, but the outer resource
+		// controls are outside its namespace. Revoke those from the manager as
+		// well to retain the stronger preopened-descriptor cleanup regression.
+		for _, name := range []string{"cgroup.kill", "cgroup.events", "memory.events"} {
+			if err := os.Chmod(filepath.Join("/proc/self/fd", strconv.Itoa(int(outer.Fd())), name), 0); err != nil {
+				t.Fatal("outer controller chmod", name, err)
+			}
+		}
+		if err := outer.Chmod(0); err != nil {
+			t.Fatal("outer directory chmod", err)
+		}
 		cancel()
 		runErr := cmd.Wait()
 		if readErr != nil || line != "controls-revoked\n" || runErr == nil {
@@ -223,6 +251,7 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 		if err != nil || !killed {
 			t.Fatal("no OOM receipt", err)
 		}
+		assertKernelGroupOOM(t, ctx, hungry)
 		if _, err := in.Write([]byte("ping\n")); err != nil {
 			t.Fatal("independent worker lost", err)
 		}
@@ -276,6 +305,12 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 			cmd.Stderr = &stderr
 			runErr := cmd.Run()
 			killed, eventErr := g.OOMKilled()
+			if mode == "tamper" {
+				assertKernelJobLimits(t, g, 1<<30)
+			}
+			if mode == "anonymous" || mode == "descendants" || mode == "file" {
+				assertKernelGroupOOM(t, ctx, g)
+			}
 			if err := g.Close(); err != nil {
 				t.Fatal("cleanup", err)
 			}
@@ -296,7 +331,7 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 				// PID-namespace init exit may close descendant pipes immediately;
 				// otherwise WaitDelay must bound them. Both paths must clean the group.
 				if runErr != nil && !errors.Is(runErr, exec.ErrWaitDelay) {
-					t.Fatalf("descendant pipe deadline: %v", runErr)
+					t.Fatalf("descendant pipe deadline: %v %s", runErr, stderr.String())
 				}
 			case "sleep":
 				if !errors.Is(ctx.Err(), context.DeadlineExceeded) || runErr == nil {
@@ -304,6 +339,88 @@ func TestRendererKernelMemoryContract(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// This path is resolved only in the manager namespace. The clone descriptor
+// points at the inner leaf; its actual parent owns all resource controllers.
+func kernelJobPath(g *containment.Group) string {
+	return filepath.Join("/proc/self/fd", strconv.Itoa(g.FD())) + "/.."
+}
+
+func assertKernelJobLimits(t *testing.T, g *containment.Group, budget int64) {
+	t.Helper()
+	outer := kernelJobPath(g)
+	inner := filepath.Join("/proc/self/fd", strconv.Itoa(g.FD()))
+	for name, want := range map[string]string{"memory.max": strconv.FormatInt(budget, 10), "memory.swap.max": "0", "memory.oom.group": "1", "pids.max": "64", "cpu.max": "100000 100000", "cgroup.max.descendants": "1", "cgroup.max.depth": "1", "cgroup.subtree_control": "", "cgroup.type": "domain"} {
+		data, err := os.ReadFile(outer + "/" + name)
+		if err != nil || strings.TrimSpace(string(data)) != want {
+			t.Fatalf("outer %s: got=%q want=%q err=%v", name, data, want, err)
+		}
+	}
+	for name, want := range map[string]string{"cgroup.controllers": "", "cgroup.subtree_control": "", "cgroup.max.descendants": "0", "cgroup.max.depth": "0", "cgroup.type": "domain"} {
+		data, err := os.ReadFile(inner + "/" + name)
+		if err != nil || strings.TrimSpace(string(data)) != want {
+			t.Fatalf("inner %s: got=%q want=%q err=%v", name, data, want, err)
+		}
+	}
+	for _, name := range []string{"memory.max", "memory.swap.max", "memory.oom.group", "memory.events", "pids.max", "cpu.max"} {
+		if _, err := os.Stat(inner + "/" + name); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("inner resource controller exposed", name, err)
+		}
+	}
+	entries, err := os.ReadDir(outer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	huge := 0
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "hugetlb.") && strings.HasSuffix(entry.Name(), ".max") {
+			huge++
+			data, err := os.ReadFile(outer + "/" + entry.Name())
+			if err != nil || strings.TrimSpace(string(data)) != "0" {
+				t.Fatal("outer HugeTLB limit changed", entry.Name(), err)
+			}
+		}
+	}
+	flags, flagErr := unix.FcntlInt(uintptr(g.FD()), unix.F_GETFD, 0)
+	if huge == 0 || flagErr != nil || flags&unix.FD_CLOEXEC == 0 {
+		t.Fatal("missing HugeTLB limit or leaked clone descriptor", huge, flagErr)
+	}
+}
+
+func assertKernelGroupOOM(t *testing.T, ctx context.Context, g *containment.Group) {
+	t.Helper()
+	if ctx.Err() != nil {
+		t.Fatal("deadline cleanup masked incomplete group OOM", ctx.Err())
+	}
+	outer := kernelJobPath(g)
+	data, err := os.ReadFile(outer + "/memory.events")
+	groupKills := uint64(0)
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "oom_group_kill" {
+			groupKills, _ = strconv.ParseUint(fields[1], 10, 64)
+		}
+	}
+	if err != nil || groupKills == 0 {
+		t.Fatal("outer group OOM receipt absent", string(data), err)
+	}
+	// Group OOM must empty the entire job before manager cancellation or Close
+	// supplies its own kill. Allow only the kernel's short exit/reap propagation.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, err = os.ReadFile(outer + "/cgroup.events")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains("\n"+string(data), "\npopulated 0\n") {
+			return
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			t.Fatal("processes survived outer group OOM", string(data), ctx.Err())
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

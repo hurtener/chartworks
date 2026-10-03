@@ -108,3 +108,15 @@ healthy launches after admission, with no OOM and successful cleanup. Local
 containment tests and compilation cannot confirm behavior on the deployment
 kernel. The complete kernel and Phase32 gates at the fixed exact source remain
 required before claiming the startup cause or deployment qualification resolved.
+
+## Protected resource domain continuation — 2026-10-03
+
+The next exact-source host run at `0629745` passed the startup regression and all
+100 stable catalog renders. It exposed the separate `memory.oom.group` delegation
+gap and child probes opening absent `/dev/null`. [D-095](../decisions/2026-10-03-renderer-protected-job-domain.md)
+places all resource controls on a protected outer job domain with a controller-free
+inner namespace leaf. The adversarial gate now requires outer limit readback,
+absent inner controls, failed controller activation/escape, and whole-job OOM
+evidence before manager cleanup. Child probes reuse the inherited stdin. The
+existing namespace, memory, cancellation and cleanup requirements remain; the
+updated exact-source kernel and full Phase32 gates are still pending.

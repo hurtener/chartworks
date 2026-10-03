@@ -213,7 +213,7 @@ The shipped implementation adds bounded CSV/XLSX/Parquet ingestion into the mana
 
 This does not qualify MySQL, SQL Server, BigQuery, Snowflake or Databricks, publish semantics, or claim live model/deployment evidence. The [phase evidence ledger](docs/reviews/phase-11-12-current-evidence.md) separates accepted local runtime evidence from the pending final cloud rerun.
 
-Renderer memory enforcement follows [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md): a preconfigured cgroup v2
+Renderer memory enforcement follows [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md) and the [D-095 protected job topology](docs/decisions/2026-10-03-renderer-protected-job-domain.md): a preconfigured cgroup v2
 charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-address
 ceiling. Missing controller or namespace enforcement fails closed; the application
 does not provision the host or substitute in-process rendering. Deployment

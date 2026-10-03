@@ -59,10 +59,12 @@ func main() {
 	}
 	if mode == "pipes" {
 		c := exec.Command("/worker", "--sealed-render-worker", "sleep")
+		// The sealed chroot has no /dev/null; reuse the admitted input descriptor.
+		c.Stdin = os.Stdin
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
-		if c.Start() != nil {
-			fatal("child start")
+		if err := c.Start(); err != nil {
+			fatal(fmt.Errorf("child start: %w", err))
 		}
 		return
 	}
@@ -73,10 +75,11 @@ func main() {
 	if mode == "descendants" {
 		for i := 0; i < 4; i++ {
 			c := exec.Command("/worker", "--sealed-render-worker", "child")
+			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr
-			if c.Start() != nil {
-				fatal("child start")
+			if err := c.Start(); err != nil {
+				fatal(fmt.Errorf("child %d start: %w", i, err))
 			}
 		}
 		time.Sleep(time.Minute)
@@ -110,7 +113,7 @@ func main() {
 		if os.Mkdir("/cg", 0700) != nil || syscall.Mount("none", "/cg", "cgroup2", 0, "") != nil {
 			fatal("cgroup mount")
 		}
-		for _, name := range []string{"cgroup.kill", "cgroup.events", "memory.events"} {
+		for _, name := range []string{"cgroup.kill", "cgroup.events"} {
 			if err := os.Chmod("/cg/"+name, 0); err != nil {
 				fatal("controller chmod")
 			}
@@ -150,26 +153,64 @@ func main() {
 	if os.Mkdir("/cg", 0700) != nil || syscall.Mount("none", "/cg", "cgroup2", 0, "") != nil {
 		fatal("cgroup mount")
 	}
-	for name, value := range map[string]string{"memory.max": "max", "memory.swap.max": "max", "memory.oom.group": "0", "cgroup.max.descendants": "max", "cgroup.max.depth": "max", "pids.max": "max", "cpu.max": "max 100000"} {
+	controllerless()
+	for _, control := range [][2]string{{"memory.max", "max"}, {"memory.swap.max", "max"}, {"memory.oom.group", "0"}, {"cgroup.max.descendants", "max"}, {"cgroup.max.depth", "max"}, {"cgroup.type", "threaded"}, {"pids.max", "max"}, {"cpu.max", "max 100000"}} {
+		name, value := control[0], control[1]
 		_ = os.Chmod("/cg/"+name, 0666)
 		if os.WriteFile("/cg/"+name, []byte(value), 0600) == nil {
-			fatal("controller rewrite")
+			fatal("controller rewrite: " + name)
 		}
 	}
 	if os.Mkdir("/cg/escape", 0700) == nil {
 		fatal("descendant created")
+	}
+	for _, controller := range []string{"memory", "hugetlb", "pids", "cpu"} {
+		if os.WriteFile("/cg/cgroup.subtree_control", []byte("+"+controller), 0600) == nil {
+			fatal("controller enabled: " + controller)
+		}
+	}
+	// Traversal above the mount reaches the empty chroot, not the job's real
+	// cgroup parent or siblings.
+	here, err := os.Stat("/")
+	parent, parentErr := os.Stat("/cg/..")
+	if err != nil || parentErr != nil || !os.SameFile(here, parent) {
+		fatal("cgroup parent escaped chroot")
+	}
+	if _, err := os.Stat("/cg/../memory.oom.group"); !os.IsNotExist(err) {
+		fatal("outer OOM control exposed")
+	}
+	entries, err = os.ReadDir("/cg")
+	if err != nil {
+		fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			fatal("visible ancestor or sibling cgroup")
+		}
 	}
 	if syscall.Unshare(syscall.CLONE_NEWCGROUP) == nil {
 		if os.WriteFile("/cg/memory.max", []byte("max"), 0600) == nil {
 			fatal("nested namespace rewrite")
 		}
 	}
-	b, e = os.ReadFile("/cg/memory.max")
-	if e != nil || strings.TrimSpace(string(b)) != "1073741824" {
-		fatal("limit changed")
-	}
+	controllerless()
 	fmt.Println("tamper-denied")
 }
+
+func controllerless() {
+	for _, name := range []string{"cgroup.controllers", "cgroup.subtree_control"} {
+		value, err := os.ReadFile("/cg/" + name)
+		if err != nil || strings.TrimSpace(string(value)) != "" {
+			fatal("resource controller delegated: " + name)
+		}
+	}
+	for _, name := range []string{"memory.max", "memory.swap.max", "memory.oom.group", "memory.events", "pids.max", "cpu.max"} {
+		if _, err := os.Stat("/cg/" + name); !os.IsNotExist(err) {
+			fatal("resource control exposed: " + name)
+		}
+	}
+}
+
 func allocate(n int) {
 	b, e := syscall.Mmap(-1, 0, n, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_PRIVATE|syscall.MAP_ANON)
 	if e != nil {

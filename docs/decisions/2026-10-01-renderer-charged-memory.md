@@ -104,3 +104,12 @@ cleanup. Probe removal failure is an explicit cleanup failure that disables the
 supervisor. No host setting, namespace flag or memory ceiling changes. The
 additional healthy-start regression and existing adversarial kernel gates must
 pass on the exact deployed source; this clarification does not claim they passed.
+
+## Superseding topology — 2026-10-03
+
+[D-095](2026-10-03-renderer-protected-job-domain.md) supersedes this decision's
+single-leaf topology and namespace-root control immutability assumption. Resource
+controls now belong to an outer job domain, while the worker namespace starts at
+its controller-free inner leaf. The memory ceilings and remaining requirements
+are unchanged. Historical single-leaf descriptions above retain their original
+scope and are not the current containment contract.

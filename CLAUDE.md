@@ -150,3 +150,8 @@ charged-memory enforcement of at most 1 GiB per render. Require the admitted
 cgroup v2 hierarchy and atomic namespace placement; absent enforcement fails
 closed. Host provisioning and security-setting changes are separate approval.
 Pure and recorded tests never replace the kernel deployment gate.
+
+D-095 places resource controls on a protected outer job domain and atomically
+launches workers into its controller-free inner namespace leaf. Preserve absent
+inner controllers, whole-job OOM proof and ordered two-level cleanup; namespace
+delegation alone does not protect memory.oom.group at a worker-visible root.

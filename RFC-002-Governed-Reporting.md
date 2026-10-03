@@ -115,7 +115,7 @@ cancellation/reconciliation. Reporting and scheduler consumers must reuse it and
 its ceilings. It introduces no new reporting target, retained result cache,
 identity-policy owner or model dependency.
 
-Renderer memory enforcement follows [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md): a preconfigured cgroup v2
+Renderer memory enforcement follows [D-093](docs/decisions/2026-10-01-renderer-charged-memory.md) and the [D-095 protected job topology](docs/decisions/2026-10-03-renderer-protected-job-domain.md): a preconfigured cgroup v2
 charged-memory boundary of at most 1 GiB and a separate fixed 3 GiB virtual-address
 ceiling. Missing controller or namespace enforcement fails closed; the application
 does not provision the host or substitute in-process rendering. Deployment
