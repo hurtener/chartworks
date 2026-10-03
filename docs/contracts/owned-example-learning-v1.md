@@ -123,8 +123,23 @@ prove actual use. No larger token cap or reduced semantic fixture substitutes fo
 that distinction, and these recorded controls do not prove live learning gains.
 
 The distinct [v12 primary-fact contract](analytical-grouped-fact-predicates-v1.md)
-uses binding schema 5. That schema has no qualified owned-base consumer yet.
-Feedback retains its normal evidence but does not auto-learn the schema-5 base;
-current v12 generation excludes existing owned example families. An unknown
-schema must never fall through to an empty ordinary-learning policy. Unowned
-advisory examples still require current native/analytical proof of generated SQL.
+uses binding schema 5 and the separate
+`current-owned-grouped-fact-predicates-v1` policy. It follows the same exact
+reconstruction, known-literal/NULL scanner, current sealed-family applicability,
+review and native proof requirements. Its producer also re-proves the complete
+retained analytical receipt against the native-validated bound plan, including
+output ordinals; recomputed public hashes cannot substitute for that proof.
+Historical fact bounds, optional periods
+and final group values never enter its base, abstract model slots or neutral
+question. Every new request binds its own current reviewed values. Earlier owned
+families remain ineligible for v12; schema 6 scalar-entailment learning remains
+unsupported. An unknown schema cannot fall through to ordinary learning.
+
+Schema 5 uses the existing policy-discriminated portable envelopes and immutable
+origin columns, without relabeling historical rows or adding a migration. Current
+retrieval admits this policy only after fresh v12 compilation. Requalification
+binds the old value-free base with current schema-5 facts/periods/final selection
+before native analytical proof, creates a distinct candidate and requires a
+separate activation. Eligibility is still distinct from final prompt use; no token
+budget increase is part of this continuation. Exact local, hosted and live
+qualification status is recorded separately.

@@ -14,6 +14,12 @@ import (
 // It does not load authority, execute a query, or approve an authoring draft.
 // The routing consumer must first admit every requested topic and source context.
 func ResolvePublishedClarifications(topic topics.Published, published Published, input semantics.ClarificationInput) (semantics.ClarificationEvaluation, error) {
+	return ResolvePublishedClarificationsWithTerms(topic, published, input, nil)
+}
+
+// ResolvePublishedClarificationsWithTerms requires routing-owned protected origin
+// custody. The descriptive matches are not part of the public clarification DTO.
+func ResolvePublishedClarificationsWithTerms(topic topics.Published, published Published, input semantics.ClarificationInput, matches []semantics.ClarificationTermMatch) (semantics.ClarificationEvaluation, error) {
 	if !topic.State.Active || topic.State.Archived || !published.State.Active || published.State.Retired || topic.State.Topic != published.State.Topic || topic.Definition.Topic != published.Definition.Topic || topic.State.Version != published.Definition.TopicVersion || published.State.Version != published.Definition.Version || topic.Digest != published.Definition.PackDigest {
 		return semantics.ClarificationEvaluation{}, store.ErrConflict
 	}
@@ -28,7 +34,7 @@ func ResolvePublishedClarifications(topic topics.Published, published Published,
 	if model.Digest() != published.Digest {
 		return semantics.ClarificationEvaluation{}, store.ErrConflict
 	}
-	return semantics.ResolveClarifications(model, input), nil
+	return semantics.ResolveClarificationsWithTermContext(model, input, matches), nil
 }
 
 // ClarificationPreviewRequest is a bounded synthetic authoring preview. A draft

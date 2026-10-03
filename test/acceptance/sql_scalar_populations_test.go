@@ -49,6 +49,7 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 		return nlqexec.PlanRequest{QuestionRequest: nlqexec.QuestionRequest{Topic: current.Pack.Topic, Context: current.Pack.Datasets[0].Source.Context, Locale: nlq.LanguageEnglish, Question: questions[key], MetricIDs: metrics, Kinds: []string{"kpi", "measure", "dimension"}, LimitPerKind: 8}}
 	}
 	var previousExample *nlqexec.ExampleRecord
+	var previousInstruction nlq.Instruction
 	for _, activity := range []bool{false, true} {
 		model.mode.Store(phase18RawResponse(t, scopedNetModelSQL(activity)))
 		plan, err := h.query.Plan(t.Context(), h.queryActor, request(activity))
@@ -102,19 +103,30 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 			t.Fatal(freshErr)
 		}
 		if activity {
-			// The full activity context cannot fit both complete demonstrations.
-			// Ranking is not use: preserve explicit budget omission, then isolate
-			// the activity candidate to prove that mandatory-context pressure, not
-			// a competing template, causes omission. Do not raise token limits or
-			// remove the required amount-completeness outputs to force a use claim.
+			// Wrapper compaction can admit the shorter prior cohort demonstration.
+			// Predict that choice from the real production fitter and the exact
+			// earlier instruction body, rather than assuming a random provenance
+			// token count. The complete current activity example still cannot fit.
 			usage := freshStored.ExampleSelection.Usage
-			if usage == nil || len(usage.Used) != 0 || len(usage.Omitted) != 2 || previousExample == nil {
-				t.Fatal("overfull scoped lane lost explicit omission")
+			if usage == nil || previousExample == nil || previousInstruction.Key != "learned-"+previousExample.ID {
+				t.Fatal("missing exact prior scoped demonstration")
 			}
-			omittedIDs := map[string]bool{active.ID: true, previousExample.ID: true}
+			cohortFits := assertScalarCohortPacketFit(t, freshStored, previousInstruction)
+			omittedIDs := map[string]bool{active.ID: true}
+			if !cohortFits {
+				omittedIDs[previousExample.ID] = true
+			}
 			selectedIDs := map[string]bool{active.ID: true, previousExample.ID: true}
+			if len(usage.Omitted) != len(omittedIDs) || len(usage.Used) != 2-len(omittedIDs) {
+				t.Fatal("scoped actual usage disagrees with exact packet fit")
+			}
+			for _, used := range usage.Used {
+				if !cohortFits || used.ExampleID != previousExample.ID || used.Position != 1 || used.Reason != "rendered" || used.Decision != "used" {
+					t.Fatal("unexpected rendered scoped demonstration")
+				}
+			}
 			for _, omitted := range usage.Omitted {
-				if omitted.Reason != "budget" || !omittedIDs[omitted.ExampleID] {
+				if omitted.Reason != "budget" || omitted.Position != 0 || omitted.Decision != "omitted" || !omittedIDs[omitted.ExampleID] {
 					t.Fatal("unexpected scoped omission identity/reason")
 				}
 				delete(omittedIDs, omitted.ExampleID)
@@ -126,8 +138,9 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 				delete(selectedIDs, selected.ExampleID)
 			}
 			if len(omittedIDs) != 0 || len(selectedIDs) != 0 {
-				t.Fatal("scoped omission identity set incomplete")
+				t.Fatal("scoped usage identity set incomplete")
 			}
+
 			if _, retireErr := h.query.ExampleState(t.Context(), h.queryActor, nlqexec.ExampleStateRequest{ExampleID: previousExample.ID, ExpectedVersion: previousExample.Version, State: "retired", ReviewNote: "Isolate current activity demonstration for bounded prompt qualification"}); retireErr != nil {
 				t.Fatal("retire prior test demonstration", retireErr)
 			}
@@ -149,6 +162,14 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 			}
 		} else {
 			assertScopedExampleUsage(t, freshStored, active, 2)
+			for _, instruction := range freshStored.Generation.Selected {
+				if instruction.Key == "learned-"+active.ID {
+					previousInstruction = instruction
+				}
+			}
+			if previousInstruction.Key == "" {
+				t.Fatal("used cohort example missing from actual generation packet")
+			}
 		}
 		previousExample = &active
 		freshResult, freshErr := h.query.Run(t.Context(), h.queryActor, nlqexec.RunRequest{QueryID: freshPlan.QueryID, Operation: freshPlan.QueryID + "-learned"})
@@ -270,4 +291,51 @@ func TestSQLRecoveryScalarCohortActivityAcceptance(t *testing.T) {
 	if len(row) != 2 || string(row[0]) != "null" || (string(row[1]) != "0" && string(row[1]) != `"0"`) {
 		t.Fatal("empty population NULL/count-zero changed", row)
 	}
+}
+
+// Exact mandatory-only packet measurement is a counterfactual fit check, not a
+// change to the routed fixture: all bodies, edges, constraints and physical
+// scope are retained, and the actual production packet is checked below too.
+func assertScalarCohortPacketFit(t *testing.T, q nlqexec.QueryRecord, prior nlq.Instruction) bool {
+	t.Helper()
+	a, err := nlq.NewDefaultContextAssembler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := q.Generation.Context
+	base, err := a.Assemble(t.Context(), nlq.ContextInput{MetricFormat: c.MetricFormat, Locale: c.Locale, Strategy: c.Strategy, Topic: c.Topic, TopicVersion: c.TopicVersion, Topics: c.Topics, Question: c.Question, Relations: c.Relations, Constraints: c.Constraints, Metrics: c.Metrics}, c.Tier)
+	if err != nil {
+		t.Fatal("exact scoped mandatory packet", err)
+	}
+	predicted, err := a.ResolvePrecedence(t.Context(), nlq.GenerationInput{Context: base, Examples: []nlq.Instruction{prior}})
+	if err != nil {
+		t.Fatal("exact scoped demonstration fit", err)
+	}
+	fits := len(predicted.Selected) == 1
+	if fits && (predicted.Selected[0] != prior || predicted.Strategy != nlq.GenerationExamples) {
+		t.Fatal("counterfactual example body or precedence changed")
+	}
+	if !fits && (predicted.Fit == nil || len(predicted.Fit.Omitted) != 1 || predicted.Fit.Omitted[0].ID != prior.Key || predicted.Fit.Omitted[0].Reason != "budget") {
+		t.Fatal("overfull prior demonstration lost exact omission")
+	}
+	counter, err := nlq.NewTiktokenCounter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := counter.Count(q.Generation.Prompt)
+	if err != nil || tokens != q.Generation.Tokens || tokens > 6500 || q.Generation.Budget != 6500 || predicted.Budget != 6500 {
+		t.Fatal("actual packet token/cap mismatch", err)
+	}
+	if fits {
+		if len(q.Generation.Selected) != 1 || q.Generation.Selected[0] != prior || strings.Count(q.Generation.Prompt, "instruction["+prior.Key+"]:"+prior.Text+"\n") != 1 {
+			t.Fatal("used prior demonstration differs from exact original body")
+		}
+	} else if len(q.Generation.Selected) != 0 || strings.Contains(q.Generation.Prompt, "instruction["+prior.Key+"]:") {
+		t.Fatal("omitted demonstration entered actual packet")
+	}
+	if readexec.Hash(base.Metrics) != readexec.Hash(c.Metrics) || readexec.Hash(base.Constraints) != readexec.Hash(c.Constraints) || readexec.Hash(base.Relations) != readexec.Hash(c.Relations) {
+		t.Fatal("counterfactual fit altered mandatory semantics")
+	}
+	t.Logf("prior cohort full-body fit=%t mandatory_tokens=%d one_example_tokens=%d actual_packet_tokens=%d budget=%d", fits, base.Tokens, predicted.Tokens, tokens, q.Generation.Budget)
+	return fits
 }

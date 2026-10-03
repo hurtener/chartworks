@@ -25,7 +25,7 @@ func TestSafeErrors(t *testing.T) {
 		}
 	}
 	manifest, err := Migrations()
-	if err != nil || SchemaVersion() != "81" || len(manifest) != 81 {
+	if err != nil || SchemaVersion() != "82" || len(manifest) != 82 {
 		t.Fatal("schema version", err, SchemaVersion(), len(manifest))
 	}
 	reviewedSchedule := manifest[27]
@@ -89,6 +89,7 @@ func TestSafeErrors(t *testing.T) {
 		{78, "migrations/079_frozen_reuse_owners.sql", "frozen_reuse_custody"},
 		{79, "migrations/080_nlq_grouped_fact_predicates.sql", "independent_filtered_grouped_populations"},
 		{80, "migrations/081_nlq_scalar_predicate_entailment.sql", "nlq_scalar_entailment_binding_shape"},
+		{81, "migrations/082_protected_clarification_origin.sql", "protected_saved_route_equal"},
 	} {
 		added := manifest[m.index]
 		if added.Version != m.index+1 || added.Name != m.name || len(added.Checksum) != 64 || !strings.Contains(added.SQL, m.marker) {

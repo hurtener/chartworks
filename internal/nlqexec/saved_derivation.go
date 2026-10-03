@@ -34,8 +34,14 @@ func SavedDerivationMeaningEqual(child, parent QueryRecord) bool {
 			copy.Query = ""
 			analytical = &copy
 		}
+		route := q.Route
+		if route.Applicability != nil {
+			proof := *route.Applicability
+			proof.Query, proof.PriorQuery, proof.PriorDigest = "", "", ""
+			route.Applicability = &proof
+		}
 		return exec.Hash([]any{"saved-derivation-meaning-v1", q.Session, q.Context, q.Topic, q.Topics, q.TopicVersions,
-			q.RuleVersions, q.Templates, q.ExampleSelection, q.Locale, q.Question, q.Route, q.RelationScope,
+			q.RuleVersions, q.Templates, q.ExampleSelection, q.Locale, q.Question, route, q.RelationScope,
 			q.AnalyticalVersion, analytical, q.Clarification})
 	}
 	return meaning(child) == meaning(parent)
@@ -45,6 +51,12 @@ func SavedDerivationMeaningEqual(child, parent QueryRecord) bool {
 // persistence. The only differences allowed are the child's new operation and
 // lifecycle identity, its explicit derivation pin, and absent direct seals.
 func SavedDerivationCreationValid(child, parent QueryRecord) bool {
+	if child.Route.Applicability != nil || parent.Route.Applicability != nil {
+		c, p := child.Route.Applicability, parent.Route.Applicability
+		if c == nil || p == nil || c.Query != child.ID || p.Query != parent.ID || c.PriorQuery != parent.ID || c.PriorDigest != exec.Hash(p) {
+			return false
+		}
+	}
 	if child.SavedCopyParent == "" || !identity.Identifier(parent.ID) || !SavedDerivationValid(child) || child.SavedCopyParent != parent.ID || child.ParentRevision != parent.Revision ||
 		child.ParentDigest != QueryLineageDigest(parent) || child.EvidenceStale || parent.EvidenceStale ||
 		parent.GenerationPending != nil || !GenerationResolutionValid(parent) || !IntentReviewValid(parent) ||
@@ -86,6 +98,12 @@ func (s *Service) savedDerivationParents(ctx context.Context, e identity.Envelop
 			!savedDerivationParentStatus(parent.Status) || !SavedDerivationMeaningEqual(q, parent) || !sameParameters(q.Parameters, parent.Parameters) ||
 			(q.SQL != parent.SQL && !terminalQueryStatus(q.Status)) {
 			return nil, QueryRecord{}, exec.ErrBinding
+		}
+		if q.Route.Applicability != nil || parent.Route.Applicability != nil {
+			c, p := q.Route.Applicability, parent.Route.Applicability
+			if c == nil || p == nil || c.Query != q.ID || p.Query != parent.ID || c.PriorQuery != parent.ID || c.PriorDigest != exec.Hash(p) {
+				return nil, QueryRecord{}, exec.ErrBinding
+			}
 		}
 		pairs = append(pairs, savedDerivationPair{q, parent})
 		q = parent

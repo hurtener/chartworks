@@ -172,6 +172,7 @@ type Stage struct {
 // assembler's private seal so the wire schema cannot accept a forged sealed
 // context on a later generation call.
 type ContextView struct {
+	MetricFormat nlq.MetricFormat     `json:"metric_format,omitempty"`
 	Tier         nlq.Tier             `json:"tier"`
 	Budget       int                  `json:"budget"`
 	Tokens       int                  `json:"tokens"`
@@ -193,6 +194,11 @@ type ContextView struct {
 // RouteResult is a detached routing and context result. A Clarification or
 // StrategyNoRoute result has no Context and therefore cannot reach generation.
 type RouteResult struct {
+	protectedRedact      func(string, []semantics.ClarificationAnswer) string `json:"-"`
+	Applicability        *ApplicabilityEvidence                               `json:"clarification_applicability,omitempty"`
+	applicabilitySeal    string
+	applicabilityTopics  []ApplicabilityTopic
+	applicabilityPins    []clarificationTopicPin
 	GroupingIntent       *GroupingIntentEvidence `json:"grouping_intent,omitempty"`
 	groupingIntentReplay bool
 	Concepts             *ConceptEvidence `json:"concept_selection,omitempty"`
@@ -245,11 +251,12 @@ func (r RouteResult) GenerationContext() (nlq.AssembledContext, error) {
 // Service coordinates current topic admission, reviewed constraints, one
 // gateway and the existing vector index. It has no cache and no executor.
 type Service struct {
-	topics    TopicReader
-	rules     RuleReader
-	index     IndexReader
-	engine    gateway.Engine
-	assembler *nlq.ContextAssembler
+	applicabilityReader ApplicabilityReader
+	topics              TopicReader
+	rules               RuleReader
+	index               IndexReader
+	engine              gateway.Engine
+	assembler           *nlq.ContextAssembler
 }
 
 // New binds the actual production seams and the pinned cl100k_base assembler.
@@ -280,12 +287,22 @@ type admittedTopic struct {
 
 // Route performs the bounded first routing consumer. Current source and topic
 // checks occur before Embed; only authorized vindex hits enter Rerank.
-func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteRequest) (RouteResult, error) {
+func (s *Service) Route(ctx context.Context, e identity.Envelope, in RouteRequest) (out RouteResult, err error) {
+	original := in
+	defer func() {
+		if err == nil && ctx != nil {
+			out.sealApplicability(e, ctx, original)
+		}
+	}()
 	if ctx == nil || s == nil || s.topics == nil || s.rules == nil || s.index == nil || s.engine == nil || s.assembler == nil {
 		return RouteResult{}, ErrInvalid
 	}
 	if !e.Valid() {
 		return RouteResult{}, access.ErrUnauthenticated
+	}
+	ctx, err = admitApplicabilityContext(ctx, e, in)
+	if err != nil {
+		return RouteResult{}, err
 	}
 	ids, err := normalizeRequest(in)
 	if err != nil {
@@ -702,6 +719,7 @@ func (s *Service) routeResolved(ctx context.Context, e identity.Envelope, in Rou
 		return RouteResult{}, err
 	}
 	input := nlq.ContextInput{
+		MetricFormat: nlq.MetricFormatSharedV2,
 		Locale:       in.Locale,
 		Strategy:     result.Outcome,
 		Topic:        admitted[0].id,
@@ -865,7 +883,7 @@ func normalizeRequest(in RouteRequest) ([]string, error) {
 			return nil, ErrInvalid
 		}
 	}
-	if in.InterpretationPolicy != "" && in.InterpretationPolicy != InterpretationContinuationPolicy {
+	if in.InterpretationPolicy != "" && in.InterpretationPolicy != InterpretationContinuationPolicy && in.InterpretationPolicy != GroundedCalendarPolicy {
 		return nil, ErrInvalid
 	}
 	if !validateInterpretationSelections(in.InterpretationSelections) {
@@ -1510,7 +1528,7 @@ func stageFromReceipt(name string, started time.Time, receipt gateway.Receipt) S
 
 func contextView(input nlq.AssembledContext) *ContextView {
 	out := &ContextView{
-		Tier: input.Tier, Budget: input.Budget, Tokens: input.Tokens, Locale: input.Locale,
+		MetricFormat: input.MetricFormat, Tier: input.Tier, Budget: input.Budget, Tokens: input.Tokens, Locale: input.Locale,
 		Strategy: input.Strategy, Topic: input.Topic, TopicVersion: input.TopicVersion, Topics: append([]nlq.TopicRevision(nil), input.Topics...),
 		Question: input.Question, Prompt: input.Prompt, Evidence: append([]nlq.Evidence(nil), input.Evidence...),
 		Relations: append([]nlq.SourceRelation(nil), input.Relations...),

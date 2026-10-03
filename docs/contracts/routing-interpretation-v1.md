@@ -155,3 +155,10 @@ private defaults, and canonical zero-model route replay. These route-level tests
 do not qualify protected stored-origin applicability or the full SDK lifecycle.
 Private-only applicability triggers still require separate protected-origin work;
 serialized matched-pattern metadata is not authority.
+
+## Explicit grounded-calendar extension
+
+The separately opted-in [grounded calendar v2](grounded-calendar-v2.md) producer
+adds bounded calendar/grouping phrases and exact reviewed named-zone assertions.
+Historical absent-policy and continuation-v1 requests retain this contract's
+original parser behavior. Its separate parser digest is checked on replay.

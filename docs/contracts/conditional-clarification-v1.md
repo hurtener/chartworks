@@ -231,3 +231,8 @@ These corrections are covered by the native scalar-boundary regression tests in
 `business_precision_test.go`, plus
 `internal/semantics/clarification_timezone_test.go`. They do not expand the SQL
 shape subset or qualify a live cloud deployment.
+
+Private-only term applicability across sanitized stored questions uses the
+[protected applicability custody contract](protected-clarification-applicability-v1.md).
+Its guarded producer/write/authenticated-read chain retains match coordinates,
+never a raw question for replay. Serialized witness metadata alone grants nothing.

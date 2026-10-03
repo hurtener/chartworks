@@ -11,7 +11,7 @@ import (
 )
 
 func TestScopedLearningPolicyCustody(t *testing.T) {
-	policies := []string{OwnedExamplePolicy, ScopedScalarExamplePolicy, ScopedGroupedExamplePolicy, ScopedSelectionExamplePolicy}
+	policies := []string{OwnedExamplePolicy, ScopedScalarExamplePolicy, ScopedGroupedExamplePolicy, ScopedSelectionExamplePolicy, ScopedGroupedFactExamplePolicy}
 	seen := map[string]bool{}
 	for i, policy := range policies {
 		if learningPolicyForBinding(i+1) != policy || !ownedLearningPolicy(policy) || !validExampleBindingPolicy(policy) || seen[policy] {
@@ -43,13 +43,13 @@ func TestScopedLearningPolicyCustody(t *testing.T) {
 			t.Fatal("scoped policy downgraded to legacy portability")
 		}
 	}
-	if learningPolicyForBinding(0) != "" || learningPolicyForBinding(5) != "" || validExampleBindingPolicy("unknown-scoped-policy") {
+	if learningPolicyForBinding(0) != "" || learningPolicyForBinding(6) != "" || validExampleBindingPolicy("unknown-scoped-policy") {
 		t.Fatal("unknown binder accepted")
 	}
 }
 
 func TestScopedLearningCannotAcquireAuthorityFromJSON(t *testing.T) {
-	for _, policy := range []string{ScopedScalarExamplePolicy, ScopedGroupedExamplePolicy, ScopedSelectionExamplePolicy} {
+	for _, policy := range []string{ScopedScalarExamplePolicy, ScopedGroupedExamplePolicy, ScopedSelectionExamplePolicy, ScopedGroupedFactExamplePolicy} {
 		a := groupedPeriodAdmission(t, false)
 		// Even genuine historical applications lose their private seal on wire
 		// round-trip. A saved policy must not restore current predicates.
@@ -81,5 +81,18 @@ func TestScopedLearningNullKeepsDisclosureScanner(t *testing.T) {
 	}
 	if err := exec.CheckLearningParameterContent(t.Context(), "SELECT amount /* unsupported annotation */ FROM analytics.sales", values); !errors.Is(err, exec.ErrUnsupported) {
 		t.Fatal("NULL-only path bypassed syntax guard", err)
+	}
+}
+
+func TestGroupedFactLearningHasDistinctOwnedBasePolicy(t *testing.T) {
+	const want = "current-owned-grouped-fact-predicates-v1"
+	if got := learningPolicyForBinding(5); got != want {
+		t.Fatalf("authenticated schema-5 base has no distinct learning policy: got %q want %q", got, want)
+	}
+	if !scopedLearningPolicy(want) || !ownedLearningPolicy(want) || !validExampleBindingPolicy(want) {
+		t.Fatal("schema-5 base rejected by closed policy registry")
+	}
+	if learningPolicyForBinding(6) != "" {
+		t.Fatal("schema-6 scalar entailment was enabled")
 	}
 }

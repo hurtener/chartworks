@@ -220,6 +220,19 @@ func groupingIntentMessage(locale nlq.Language) string {
 }
 
 func (s *Service) selectGroupingIntent(ctx context.Context, e identity.Envelope, in *RouteRequest, admitted []admittedTopic, result *RouteResult) error {
+	// The deterministic v2 producer runs after the initial manual override
+	// preparation. Its checked grouping cannot be replaced by a later model.
+	if in.InterpretationPolicy == GroundedCalendarPolicy && in.GroupingIntentPolicy != "" {
+		if result.GroupingIntent != nil {
+			return readexec.ErrBinding
+		}
+		if in.Grouping == nil {
+			result.Outcome = nlq.StrategyClarify
+			result.Clarification = calendarMeaningError(in.Locale, "unsupported_combined_grouping_policy").(*Clarification)
+			return nil
+		}
+		in.GroupingIntentPolicy = ""
+	}
 	if in.GroupingIntentPolicy == "" {
 		if result.GroupingIntent != nil {
 			return readexec.ErrBinding

@@ -28,6 +28,11 @@ func bindScalarPeriodCandidate(ctx context.Context, a admission, candidate gener
 }
 
 func (s *Service) scalarPeriodAdmission(ctx context.Context, e identity.Envelope, q QueryRecord, a admission) (admission, []exec.BusinessConstraint, error) {
+	var originErr error
+	ctx, originErr = s.withQueryApplicability(ctx, e, q, q.Route.Request, "query.execute", "replay")
+	if originErr != nil {
+		return admission{}, nil, originErr
+	}
 	if q.AnalyticalVersion != analyticalScopedRecordVersion && q.AnalyticalVersion != analyticalGroupedOwnedRecordVersion && q.AnalyticalVersion != analyticalGroupedSelectionRecordVersion && q.AnalyticalVersion != analyticalGroupedFactsRecordVersion && q.AnalyticalVersion != analyticalScalarEntailmentRecordVersion {
 		return admission{}, nil, exec.ErrBinding
 	}

@@ -18,7 +18,7 @@ func TestScalarEntailmentPopulatedMigration(t *testing.T) {
 	dsn := support.Database(t)
 	raw := upgradeFixture(t, dsn)
 	migrations, err := postgres.Migrations()
-	if err != nil || len(migrations) != 81 || migrations[80].Name != "migrations/081_nlq_scalar_predicate_entailment.sql" {
+	if err != nil || len(migrations) < 81 || migrations[80].Name != "migrations/081_nlq_scalar_predicate_entailment.sql" {
 		t.Fatal("migration identity", err)
 	}
 	for _, m := range migrations[1:80] {

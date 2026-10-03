@@ -169,3 +169,43 @@ join keys into new mandatory rendering; its current qualification is in the
 completion tracker. Actual model-window/tokenizer qualification remains open. Recorded wire and synthetic fits do not establish live language
 quality, vendor capacity calibration, cloud-dialect parity or performance. Frozen
 report refresh adds no model work.
+
+## Explicit metric-wrapper format and retained compatibility
+
+`ContextInput`, sealed `AssembledContext`, and retained `ContextView` carry the
+optional `metric_format` presentation discriminator. Omitted/empty means the
+historical renderer: both `shared-versioned-v1` and nonshared prompt bytes,
+protected JSON serialization, context seals, and query-lineage digests remain
+unchanged. The version is never inferred from a prompt marker. Unknown explicit
+values fail closed, including empty metric lanes.
+
+Fresh authenticated routing and its mandatory clarification-budget preflight
+select `shared-versioned-v2`. No public request field enables this format.
+The new format changes only redundant shared-definition wrappers. Every selected
+root text, ordered root-to-dependency edge, exact topic/version/kind/entity ID,
+unscoped-root namespace, and raw definition body is retained. A shared body still
+requires byte equality at the same typed versioned identity; conflicts fail before
+sealing. Nonshared rendering remains byte-identical. `dN` entries encode
+`[namespace,kind,entity_id,utf8_bytes]` followed by one separator space and exactly
+that many raw UTF-8 body bytes. Length framing does not normalize or parse bodies,
+and does not relax the assembler's existing text validation.
+
+The explicit version is bound by the normal context/generation seals. Generation
+precedence and provider-envelope refits carry it through the context owner rather
+than silently defaulting to the newest renderer. Retained current/immutable-source
+admission checks recognized versions and agreement between present generation and
+route contexts. Clarification/metric-period replay keeps the retained route and
+reconstructs governed selections without routing, assembling, or model work.
+Execution-repair resealing uses the retained format, including the historical
+route-context fallback. Explicit v2 prompts must match their canonical structured
+context; omitted legacy retains its existing structured-context reconstruction
+behavior, including compatibility with earlier prompt layouts. A newly requested
+Refine child uses fresh v2 context while the legacy parent's JSON and lineage stay
+unchanged.
+
+Semantic bodies, selection digests, SQL, parameters, analytical proof versions,
+source/publication pins, database schema, and the 1500/3000/6500 token tiers do not
+change. This is not permission to omit a COUNT leaf, key, population, filter,
+relationship, or other mandatory meaning. Unfit raw mandatory bodies still fail
+as a whole with typed insufficiency. Formatter/round-trip and recorded native
+compatibility tests are software evidence, not live-model quality qualification.

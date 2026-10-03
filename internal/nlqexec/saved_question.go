@@ -257,6 +257,20 @@ func (s *Service) PrepareSaved(ctx context.Context, e identity.Envelope, in Save
 			return SavedPlan{}, err
 		}
 		parent := original
+		if original.Route.Applicability != nil {
+			keeper, ok := s.router.(applicabilityKeeper)
+			if !ok {
+				return SavedPlan{}, ErrNoPlan
+			}
+			original.Route, err = keeper.ReissueApplicabilityForCopy(ctx, e, parent.ID, parent.Route)
+			if err != nil {
+				return SavedPlan{}, err
+			}
+			original.Route, err = original.Route.BindApplicabilityQuery(e, id)
+			if err != nil {
+				return SavedPlan{}, err
+			}
+		}
 		original.ID, original.Parent, original.Operation = id, in.Query, operation
 		// The child has its own saved-operation identity; the parent Plan reservation remains with the parent.
 		original.PlanOperation, original.PlanRequestDigest = "", ""

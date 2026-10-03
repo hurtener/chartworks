@@ -126,6 +126,33 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 	out := &Interpretation{Version: interpretationVersion, Parser: "deterministic-span-v2", Locale: in.Locale, Anchor: in.InterpretationAnchor}
 	surface := questionInferenceSurface(*in, admitted)
 	question := surface.text
+	calendarQuestion := question
+	dimensionQuestion := question
+	var calendar calendarProjection
+	if in.InterpretationPolicy == GroundedCalendarPolicy {
+		if err := protectedGroundedCalendarMeaning(*in, admitted); err != nil {
+			return nil, nil, err
+		}
+		calendarQuestion, err = calendarUnquotedQuestionV2(*in, admitted, surface)
+		if err != nil {
+			return nil, nil, err
+		}
+		calendarQuestion = calendarInferenceQuestionV2(calendarQuestion, in.Locale, admitted)
+		calendar, err = calendarProjectionV2(calendarQuestion, in.Locale)
+		if err != nil {
+			return nil, nil, err
+		}
+		values := append([]string(nil), surface.words...)
+		for at := range calendar.consumed {
+			values[at] = opaqueInferenceToken
+		}
+		question = strings.Join(values, " ")
+		dimensions := strings.Fields(calendarQuestion)
+		for at := range calendar.consumed {
+			dimensions[at] = opaqueInferenceToken
+		}
+		dimensionQuestion = strings.Join(dimensions, " ")
+	}
 	if err := protectedCalendarGroupingMeaning(*in, admitted); err != nil {
 		return nil, nil, err
 	}
@@ -248,23 +275,33 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		out.Values = append(out.Values, ValueInterpretation{ID: id, Topic: candidate.item.id, Dimension: candidate.dim.ID, Dataset: candidate.dataset.ID, Column: candidate.column.SourceName, GovernedValue: candidate.value.ID, CanonicalValue: candidate.value.Value, Operator: op, Geography: geography, Provenance: "reviewed_governed_value"})
 	}
 	parsePeriod := func(text string) (parsedSpan, bool, error) {
+		if in.InterpretationPolicy == GroundedCalendarPolicy {
+			projected, err := calendarProjectionV2(text, in.Locale)
+			if err != nil {
+				return parsedSpan{}, false, err
+			}
+			text = projected.text
+		}
 		span, has, err := temporalSpan(text, in.Locale, anchor)
 		if err != nil && len(requestedPeriodDimensions(*in, admitted)) > 0 {
 			if mapped, ok := commonMappedYear(text, in.Locale); ok {
 				span, has, err = mapped, true, nil
 			}
 		}
-		if len(in.InterpretationSelections) > 0 || in.InterpretationPolicy == InterpretationContinuationPolicy {
+		if len(in.InterpretationSelections) > 0 || (in.InterpretationPolicy == InterpretationContinuationPolicy || in.InterpretationPolicy == GroundedCalendarPolicy) {
 			span, has, err = continuationSpan(text, anchor, span, has, err)
 		}
 		return span, has, err
 	}
-	if len(in.InterpretationSelections) > 0 || in.InterpretationPolicy == InterpretationContinuationPolicy {
+	if len(in.InterpretationSelections) > 0 || (in.InterpretationPolicy == InterpretationContinuationPolicy || in.InterpretationPolicy == GroundedCalendarPolicy) {
 		out.Parser = "deterministic-continuation-v1"
 	}
-	span, hasSpan, spanErr := parsePeriod(question)
+	if in.InterpretationPolicy == GroundedCalendarPolicy {
+		out.Parser = "deterministic-grounded-calendar-v2"
+	}
+	span, hasSpan, spanErr := parsePeriod(calendarQuestion)
 	comparison := surface.temporalComparisonQuestion(in.Locale)
-	if comparison != question && spanErr == nil {
+	if comparison != surface.text && spanErr == nil {
 		before, had, beforeErr := parsePeriod(comparison)
 		if beforeErr != nil || had != hasSpan || had && (before.start != span.start || before.end != span.end || before.grain != span.grain) {
 			return nil, nil, protectedMeaningFailure(in.Locale)
@@ -273,13 +310,29 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 	if spanErr != nil {
 		return nil, nil, spanErr
 	}
+
+	if !hasSpan && (calendar.grouping != "" || calendar.zone != "") && in.Grouping == nil {
+		return nil, nil, calendarMeaningError(in.Locale, "unsupported_temporal_span")
+	}
 	if hasSpan {
-		groupGrain, groupErr := requestedGroupingGrain(question, in.Locale)
+		groupGrain, groupErr := requestedGroupingGrain(calendarQuestion, in.Locale)
 		if explicit := reviewedCalendarGrouping(*in, admitted); explicit != "" {
 			groupGrain = explicit
 		}
 		if groupErr != nil {
 			return nil, nil, groupErr
+		}
+		if calendar.grouping != "" {
+			if groupGrain != "" && groupGrain != calendar.grouping {
+				return nil, nil, calendarMeaningError(in.Locale, "ambiguous_temporal_grain")
+			}
+			groupGrain = calendar.grouping
+		}
+		if in.InterpretationPolicy == GroundedCalendarPolicy && in.Grouping != nil {
+			groupGrain = ""
+			if len(in.Grouping.Keys) == 1 {
+				groupGrain = in.Grouping.Keys[0].Grain
+			}
 		}
 		eligible := temporalCandidates[:0]
 		for _, candidate := range temporalCandidates {
@@ -312,7 +365,7 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 			}
 			for _, candidate := range eligible {
 				for _, label := range append([]string{candidate.dim.ID, candidate.dim.Name}, candidate.dim.Aliases...) {
-					if containsPhrase(question, normalizedPhrase(label)) {
+					if containsPhrase(dimensionQuestion, normalizedPhrase(label)) {
 						named = append(named, candidate)
 						break
 					}
@@ -342,12 +395,15 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 		if len(eligible) != 1 && len(periodDimensions) == 0 {
 			return nil, nil, &Clarification{Reason: "ambiguous_temporal_dimension", Outcome: semantics.ClarificationConflicting, Prompt: "Choose the reviewed temporal dimension for this period."}
 		}
-		if in.Grouping == nil && len(eligible) == 1 && reviewedCalendarGrouping(*in, admitted) != "" {
+		if in.Grouping == nil && len(eligible) == 1 && (reviewedCalendarGrouping(*in, admitted) != "" || calendar.grouping != "") {
 			candidate := eligible[0]
 			in.Grouping = &GroupingSelection{Policy: GroupingPolicy, Keys: []GroupingKey{{Topic: candidate.item.id, Dimension: candidate.dim.ID, Grain: groupGrain}}}
 		}
 		for _, candidate := range eligible {
 			candidateSpan := span
+			if err := calendar.validateZone(candidate.dim.Temporal.Timezone); err != nil {
+				return nil, nil, err
+			}
 			fresh[candidate.item.id+"\x00"+candidate.dim.ID] = true
 			target := interpretationTarget(candidate.item.id, candidate.dim.ID, "time")
 			_, _, remove := applyInterpretationEdit(in.InterpretationEdits, target)
@@ -384,6 +440,13 @@ func (s *Service) interpret(ctx context.Context, e identity.Envelope, in *RouteR
 	}
 	if err := s.mergeRetainedInterpretation(ctx, *in, admitted, out, fresh); err != nil {
 		return nil, nil, err
+	}
+	if in.InterpretationPolicy == GroundedCalendarPolicy {
+		// Retained selection merging must not downgrade the opted-in parser identity.
+		out.Parser = "deterministic-grounded-calendar-v2"
+		if err := calendar.validateResolvedTargets(*in, admitted, out); err != nil {
+			return nil, nil, err
+		}
 	}
 	if len(out.Values)+len(out.Temporal) > 128 {
 		return nil, nil, ErrInvalid

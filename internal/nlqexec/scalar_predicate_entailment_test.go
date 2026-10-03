@@ -234,3 +234,57 @@ func TestScalarPredicateEntailmentSelectedCountCoverage(t *testing.T) {
 		}
 	}
 }
+
+func TestScalarPredicateEntailmentDistinguishesSameNamedFactField(t *testing.T) {
+	a, constraints := scalarPredicateCharacterization(t, false)
+	var sourceColumn semantics.Column
+	for _, dataset := range a.publications[0].Definition.Datasets {
+		if dataset.ID == "sales" {
+			for _, column := range dataset.Columns {
+				if column.ID == "region" {
+					sourceColumn = column
+				}
+			}
+		}
+	}
+	if sourceColumn.SourceName == "" {
+		t.Fatal("missing source field")
+	}
+	for i := range a.publications[0].Definition.Datasets {
+		dataset := &a.publications[0].Definition.Datasets[i]
+		if dataset.ID == "refunds" {
+			for _, column := range dataset.Columns {
+				if column.ID == sourceColumn.ID {
+					t.Fatal("fixture already has target field")
+				}
+			}
+			dataset.Columns = append(dataset.Columns, sourceColumn)
+		}
+	}
+	for i := range a.binding.Relations {
+		if a.binding.Relations[i].ID == "refunds" {
+			a.binding.Relations[i].Columns = append(a.binding.Relations[i].Columns, exec.Column{Name: sourceColumn.SourceName, NativeType: sourceColumn.NativeType, Category: sourceColumn.Category, Nullable: sourceColumn.Nullable, Safe: true})
+		}
+	}
+	for i := range a.relationScope {
+		if a.relationScope[i].Dataset == "refunds" {
+			a.relationScope[i].Columns = append(a.relationScope[i].Columns, sourceColumn.SourceName)
+		}
+	}
+	a.binding.Fingerprint = exec.Hash("scalar-source-with-two-real-region-fields")
+	a.route.SourceBindingDigest = exec.Hash(a.binding)
+	a.metricPeriods[0].SourceBindingDigest = exec.Hash(a.binding)
+	resealScalarEntailment(&a)
+	if _, err := compileAnalyticalVersion(t.Context(), a, 13, constraints); err != nil {
+		t.Fatal("original exact field no longer entailed", err)
+	}
+	constraints[0].Dataset = "refunds"
+	if err := exec.ValidateBusinessConstraints(a.binding, constraints); err != nil {
+		t.Fatal("negative must have valid physical coordinates and type", err)
+	}
+	got, err := compileAnalyticalVersion(t.Context(), a, 13, constraints)
+	detail, ok := err.(*exec.AnalyticalError)
+	if got != nil || !ok || detail.Code != "analytical_scalar_predicate_not_entailed" {
+		t.Fatal("same physical field name on a different fact borrowed entailment", err)
+	}
+}

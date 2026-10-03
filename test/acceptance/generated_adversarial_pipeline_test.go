@@ -251,6 +251,11 @@ func generateAdversarialPublished(t *testing.T, netMode ...bool) (*generatedTopi
 	model.embeddingMode.Store("fixed")
 	model.rerankMode.Store("fixed")
 	h, datasets, vocabulary := newAdversarialTopicHarness(t, model.engine, netMode...)
+	return generateAdversarialPublishedFromHarness(t, h, model, datasets, vocabulary, netMode...)
+}
+
+func generateAdversarialPublishedFromHarness(t *testing.T, h *generatedTopicHarness, model *gatewayFixture, datasets map[string]string, vocabulary []drafts.AuthoringValue, netMode ...bool) (*generatedTopicHarness, *gatewayFixture, drafts.Version, map[string]string) {
+	t.Helper()
 	report := &generatedTopicReport{GeneratedOnly: true}
 	current := h.generate(t, report, func(columns []semantics.Reference, last bool) {
 		response := recordedAdversarialStep(t, columns, datasets)

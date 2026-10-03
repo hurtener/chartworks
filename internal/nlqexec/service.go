@@ -173,6 +173,12 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	if err := s.validateClarificationOrigin(ctx, e, in.QuestionRequest, "query.preflight"); err != nil {
 		return PreflightResult{}, err
 	}
+	if observedParent != nil {
+		ctx, err = s.withQueryApplicability(ctx, e, *observedParent, in.routeRequest(), "query.preflight", "reply")
+		if err != nil {
+			return PreflightResult{}, err
+		}
+	}
 	admitted, err := s.admit(ctx, e, in.QuestionRequest, false)
 	if err != nil {
 		return PreflightResult{}, err
@@ -184,12 +190,15 @@ func (s *Service) Preflight(ctx context.Context, e identity.Envelope, in Preflig
 	if err != nil {
 		return PreflightResult{}, err
 	}
-	record := queryRecord(e, id, "preflight", in.ClarificationQuery, in.QuestionRequest, admitted)
+	record, err := queryRecord(e, id, "preflight", in.ClarificationQuery, in.QuestionRequest, admitted)
+	if err != nil {
+		return PreflightResult{}, err
+	}
 	bindParentLineage(&record, observedParent)
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PreflightResult{}, err
 	}
-	return PreflightResult{QueryID: id, SessionID: e.Session(), Route: admitted.route, Confidence: admitted.route.Confidence, Assumptions: assumptions(admitted.route), Ambiguities: ambiguities(admitted.route)}, nil
+	return PreflightResult{QueryID: id, SessionID: e.Session(), Route: record.Route, Confidence: admitted.route.Confidence, Assumptions: assumptions(admitted.route), Ambiguities: ambiguities(admitted.route)}, nil
 }
 
 // Plan generates one bounded candidate and validates it through the existing read core.
@@ -1119,8 +1128,11 @@ func (s *Service) reusablePlanResult(ctx context.Context, record QueryRecord, e 
 		return PlanResult{}, store.ErrConflict
 	}
 	if record.GenerationPending != nil && generationContinuationState(ctx).pendingOrigin() == nil {
-		if record.Parent != parent || exec.Hash(question) != exec.Hash(record.GenerationPending.Request) {
+		if record.Parent != parent || !generationSubmissionEqual(e, record, question) {
 			return PlanResult{}, store.ErrConflict
+		}
+		if err := s.authenticateGenerationQuestion(ctx, e, record, question, "query.plan"); err != nil {
+			return PlanResult{}, err
 		}
 		if err := s.checkGenerationPending(ctx, e, record); err != nil {
 			return PlanResult{}, err
@@ -1196,6 +1208,21 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 			return PlanResult{}, exec.ErrBinding
 		}
 		groundedParent = &origin
+	}
+	applicabilityParent := groundedParent
+	if origin := generationContinuationState(ctx).pendingOrigin(); origin != nil {
+		applicabilityParent = origin
+	}
+	if applicabilityParent != nil {
+		transition := "refine"
+		if question.ClarificationQuery != "" && applicabilityParent.Status == "preflight" {
+			transition = "reply"
+		}
+		var originErr error
+		ctx, originErr = s.withQueryApplicability(ctx, e, *applicabilityParent, question.routeRequest(), action, transition)
+		if originErr != nil {
+			return PlanResult{}, originErr
+		}
 	}
 	if groundedParent != nil && (question.ClarificationQuery != "" || groundedParent != observedParent) && (groundedParent.Route.Concepts != nil || groundedParent.Route.GroupingIntent != nil) {
 		keeper, ok := s.router.(interface {
@@ -1289,7 +1316,10 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err := sealClarificationCandidate(&candidate, validated, previous, admitted.route.Resolutions); err != nil {
 		return PlanResult{}, err
 	}
-	record := queryRecord(e, id, "planned", parent, question, admitted)
+	record, err := queryRecord(e, id, "planned", parent, question, admitted)
+	if err != nil {
+		return PlanResult{}, err
+	}
 	bindParentLineage(&record, observedParent)
 	bindGenerationContinuation(ctx, &record)
 	bindIntentReview(ctx, &record)
@@ -1304,7 +1334,7 @@ func (s *Service) planFreshWithActions(ctx context.Context, e identity.Envelope,
 	if err = s.repo.CreateQuery(ctx, mustScope(e), record); err != nil {
 		return PlanResult{}, err
 	}
-	out := PlanResult{Analytical: cloneAnalyticalReceipt(record.Analytical), Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: admitted.route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: append([]string(nil), record.Assumptions...), Ambiguities: append([]string(nil), record.Ambiguities...), Receipt: receipt, validated: validated}
+	out := PlanResult{Analytical: cloneAnalyticalReceipt(record.Analytical), Bindings: publicClarificationBinding(record.Clarification), AnswerChanges: publicClarificationChanges(record.Clarification), QueryID: id, SessionID: e.Session(), Status: "planned", Route: record.Route, Confidence: admitted.route.Confidence, Generation: string(generation.Strategy), ValidationFixes: fixes, Assumptions: append([]string(nil), record.Assumptions...), Ambiguities: append([]string(nil), record.Ambiguities...), Receipt: receipt, validated: validated}
 	if canInspect(e) {
 		out.SQL = candidate.SQL
 	}
@@ -1830,6 +1860,9 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, a admis
 	if q.Route.Context == nil || len(a.relations) == 0 || !reflect.DeepEqual(q.Route.Context.Relations, a.relations) || !reflect.DeepEqual(q.RelationScope, a.relationScope) {
 		return nlq.AssembledContext{}, exec.ErrBinding
 	}
+	if err := validateRetainedMetricFormat(q); err != nil {
+		return nlq.AssembledContext{}, err
+	}
 	persisted := q.Generation.Context
 	if persisted.Tier == "" || persisted.Question == "" {
 		if q.Route.Context == nil {
@@ -1837,9 +1870,9 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, a admis
 		}
 		view := q.Route.Context
 		persisted = nlq.AssembledContext{
-			Tier: view.Tier, Budget: view.Budget, Tokens: view.Tokens, Locale: view.Locale, Strategy: view.Strategy,
+			MetricFormat: view.MetricFormat, Tier: view.Tier, Budget: view.Budget, Tokens: view.Tokens, Locale: view.Locale, Strategy: view.Strategy,
 			Topic: view.Topic, TopicVersion: view.TopicVersion, Topics: append([]nlq.TopicRevision(nil), view.Topics...),
-			Question: view.Question, Relations: cloneRelations(view.Relations), Evidence: append([]nlq.Evidence(nil), view.Evidence...), Constraints: view.Constraints,
+			Question: view.Question, Prompt: view.Prompt, Relations: cloneRelations(view.Relations), Evidence: append([]nlq.Evidence(nil), view.Evidence...), Constraints: view.Constraints,
 			Metrics: append([]nlq.PinnedMetric(nil), view.Metrics...), Advisory: append([]nlq.OptionalItem(nil), view.Advisory...), Examples: append([]nlq.OptionalItem(nil), view.Examples...),
 		}
 	}
@@ -1867,12 +1900,18 @@ func (s *Service) resealQueryContext(ctx context.Context, q QueryRecord, a admis
 		return nlq.AssembledContext{}, err
 	}
 	assembled, err := assembler.Assemble(ctx, nlq.ContextInput{
-		Locale: persisted.Locale, Strategy: persisted.Strategy, Topic: persisted.Topic, TopicVersion: persisted.TopicVersion,
+		MetricFormat: persisted.MetricFormat, Locale: persisted.Locale, Strategy: persisted.Strategy, Topic: persisted.Topic, TopicVersion: persisted.TopicVersion,
 		Topics: append([]nlq.TopicRevision(nil), persisted.Topics...), Question: persisted.Question, Relations: cloneRelations(persisted.Relations),
 		Evidence: append([]nlq.Evidence(nil), persisted.Evidence...), Constraints: persisted.Constraints,
 		Metrics: append([]nlq.PinnedMetric(nil), persisted.Metrics...), Advisory: append([]nlq.OptionalItem(nil), persisted.Advisory...), Examples: append([]nlq.OptionalItem(nil), persisted.Examples...),
 	}, persisted.Tier)
 	if err != nil || assembled.Question != q.Question || assembled.Strategy != q.Route.Outcome {
+		return nlq.AssembledContext{}, exec.ErrBinding
+	}
+	// Explicit v2 is canonical, including on JSON restoration. Historical omitted
+	// format preserves the prior structured-context reseal behavior; prompt text
+	// cannot select a version or establish retained authority.
+	if persisted.MetricFormat == nlq.MetricFormatSharedV2 && (persisted.Prompt != assembled.Prompt) {
 		return nlq.AssembledContext{}, exec.ErrBinding
 	}
 	if len(q.Topics) != len(q.TopicVersions) {
@@ -2017,6 +2056,9 @@ func (s *Service) resolveCurrentAdmission(ctx context.Context, e identity.Envelo
 	if err != nil {
 		return admission{}, exec.ErrBinding
 	}
+	if err := validateRetainedMetricFormat(q); err != nil {
+		return admission{}, err
+	}
 	return result, nil
 }
 
@@ -2075,6 +2117,9 @@ func (s *Service) retainedAdmission(ctx context.Context, e identity.Envelope, q 
 	result.relationScope, result.relations, err = reviewedProjection(result.reviewed, result.binding)
 	if err != nil || len(q.RelationScope) == 0 || !reflect.DeepEqual(q.RelationScope, result.relationScope) {
 		return admission{}, exec.ErrBinding
+	}
+	if err := validateRetainedMetricFormat(q); err != nil {
+		return admission{}, err
 	}
 	return result, nil
 }
@@ -2517,8 +2562,13 @@ func tokenSet(value string) map[string]bool {
 	return result
 }
 
-func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequest, a admission) QueryRecord {
-	return QueryRecord{ID: id, Session: e.Session(), Parent: parent, Topic: a.route.Topic, Topics: append([]string(nil), a.route.Topics...), TopicVersions: append([]string(nil), a.route.TopicVersions...), RuleVersions: append([]string(nil), a.route.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), a.route.Templates...), Context: in.Context, Locale: in.Locale, Question: a.route.Request.Question, Route: a.route, RelationScope: cloneRelationScope(a.relationScope), Status: status, Assumptions: assumptions(a.route), Ambiguities: ambiguities(a.route), Created: time.Now().UTC(), Updated: time.Now().UTC(), Revision: 1}
+func queryRecord(e identity.Envelope, id, status, parent string, in QuestionRequest, a admission) (QueryRecord, error) {
+	route, err := a.route.BindApplicabilityQuery(e, id)
+	if err != nil {
+		return QueryRecord{}, err
+	}
+	a.route = route
+	return QueryRecord{ID: id, Session: e.Session(), Parent: parent, Topic: a.route.Topic, Topics: append([]string(nil), a.route.Topics...), TopicVersions: append([]string(nil), a.route.TopicVersions...), RuleVersions: append([]string(nil), a.route.RuleVersions...), Templates: append([]rulesets.TemplateSelection(nil), a.route.Templates...), Context: in.Context, Locale: in.Locale, Question: a.route.Request.Question, Route: a.route, RelationScope: cloneRelationScope(a.relationScope), Status: status, Assumptions: assumptions(a.route), Ambiguities: ambiguities(a.route), Created: time.Now().UTC(), Updated: time.Now().UTC(), Revision: 1}, nil
 }
 
 func (r QuestionRequest) routeRequest() nlqroute.RouteRequest {

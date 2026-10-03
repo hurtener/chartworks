@@ -191,6 +191,9 @@ func (d *DB) WithPlanOperationLock(ctx context.Context, scope store.Scope, opera
 }
 
 func insertNLQQuery(ctx context.Context, tx pgx.Tx, scope store.Scope, q nlqexec.QueryRecord) error {
+	if err := validateApplicabilityInsert(ctx, tx, scope, q); err != nil {
+		return err
+	}
 	if q.Topics == nil {
 		q.Topics = []string{}
 	}

@@ -145,3 +145,17 @@ obligations remain enforced throughout.
   configuration test is not a gateway E2E pass; paid execution additionally needs
   reconciled shared budget and permitted provider access. Recorded lifecycle
   results do not establish live model quality
+
+## Offline paired-cohort implementation candidate (2026-10-03)
+
+A newly frozen [offline paired-cohort candidate](paired-cohort-offline-v1.md)
+compares manual/generated definitions and reviewed SQL-example learning on the
+existing synthetic adversarial snapshot. It retains all 19 original contracts
+(16 paired question contracts and 3 shared lifecycle controls) and adds 12 fixed
+EN/ES paraphrases plus a separate 12-question training partition. Its pinned
+metric IDs make it a controlled SQL-consumer comparison, not automatic routing
+or live semantic improvement. Synthetic topic-owner approvals preserve private
+draft custody; the evaluator uses its separate authenticated reviewer contract.
+Calibration remains unknown. Initial harness failures and subsequent exact-head
+qualification are recorded separately; this candidate does not close the live
+or external independent-review gates above.

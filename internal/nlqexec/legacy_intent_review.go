@@ -38,6 +38,7 @@ type IntentReviewOrigin struct {
 // IntentReviewEvidence keeps both origins even if a later generation decision
 // adds an intervening parent. No private answer value is copied into this seal.
 type IntentReviewEvidence struct {
+	producerSeal    string             `json:"-"`
 	Legacy          IntentReviewOrigin `json:"legacy"`
 	Preflight       IntentReviewOrigin `json:"preflight"`
 	AnswerDigest    string             `json:"answer_digest"`
@@ -74,6 +75,7 @@ func bindIntentReview(ctx context.Context, q *QueryRecord) {
 	if p, ok := ctx.Value(intentReviewKey{}).(*IntentReviewEvidence); ok {
 		copy := *p
 		q.IntentReview = &copy
+		q.IntentReview.producerSeal = intentReviewProducerSeal(*q)
 	}
 }
 
@@ -290,4 +292,19 @@ func (s *Service) replayIntentReviewParent(ctx context.Context, e identity.Envel
 		return nil, nil
 	}
 	return s.replayQueryClarifications(ctx, e, q)
+}
+
+func intentReviewProducerSeal(q QueryRecord) string {
+	return exec.Hash([]any{"protected-reviewed-applicability-v1", q.ID, q.Session, q.Context, q.Parent, q.ParentRevision, q.ParentDigest, q.IntentReview, q.Route.Applicability})
+}
+
+// ReviewedApplicabilityOrigin identifies only a privately issued initial review
+// whose SQL parent and separately authenticated preflight retain their own pins.
+// JSON decoding never restores this write-only seal.
+func (q QueryRecord) ReviewedApplicabilityOrigin() (IntentReviewOrigin, bool) {
+	p := q.IntentReview
+	if p == nil || !IntentReviewValid(q) || q.GenerationResolution != nil || q.SavedCopyParent != "" || p.producerSeal == "" || p.producerSeal != intentReviewProducerSeal(q) || q.Parent != p.Legacy.QueryID || q.ParentRevision != p.Legacy.Revision || q.ParentDigest != p.Legacy.Digest {
+		return IntentReviewOrigin{}, false
+	}
+	return p.Preflight, true
 }

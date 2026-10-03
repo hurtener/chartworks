@@ -196,3 +196,30 @@ Declared business definitions remain distinct from physical proof. Retained
 `needs_review` findings require explicit operator adjudication; they are never
 rewritten into approval. Recorded real-source tests exercise unchanged candidate
 publication and independent gross/month results after that explicit review.
+
+### Catalog evidence continuation
+
+The generated-topic authoring context carries bounded complete non-null unique
+keys from current authorized discovery, projected only onto selected safe column
+IDs. See [the authoring contract](../contracts/topic-authoring-calendar-v1.md).
+No migration or new authority is introduced. Unit negatives cover stale and
+foreign catalogs, malformed keys, hidden/nullable components and ambiguous
+projection. `TestGeneratedTopicCatalogKeyEvidenceRecorded` owns native catalog,
+enhancement/review and unchanged publication/query consumer regression coverage;
+its execution result is reported separately from the test inventory.
+
+### Aggregate-envelope composition continuation
+
+The catalog-key continuation composed with the complete four-dataset authoring
+fixture exposed a pre-dispatch operation-budget refusal. At the unchanged
+65,536 cap, the confirmed pass's cursor 8 required 65,565: 60,445 SDK-style request
+bytes, 1,024 protocol reserve and 4,096 output reserve. A sealed diagnostic replay
+at `644479e08c1f92d775bec9e2337d9670403ddfad` reproduced the HTTP 503 and direct
+`gateway.ErrBudget` from reservation, before scalar routing or provider dispatch.
+
+The [authoring contract](../contracts/topic-authoring-calendar-v1.md#lossless-aggregate-transport-and-unchanged-budgets)
+uses a versioned lossless aggregate table to remove repeated field names while
+retaining every fact, disclosure, key and provenance in generation and independent
+review. No budget/output schema, semantic fixture, COUNT proposal, oracle or
+review obligation is weakened. New codec/provenance and composed native tests
+are separate from existing isolated authoring evidence and live quality gates.

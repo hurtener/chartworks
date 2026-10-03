@@ -229,7 +229,7 @@ func TestScalarPredicateEntailmentPublicBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			view := preflight.Route.Context
-			mandatory, err := assembler.Assemble(t.Context(), nlq.ContextInput{Locale: view.Locale, Strategy: view.Strategy, Topic: view.Topic, TopicVersion: view.TopicVersion, Topics: view.Topics, Question: view.Question, Relations: view.Relations, Constraints: view.Constraints, Metrics: view.Metrics}, view.Tier)
+			mandatory, err := assembler.Assemble(t.Context(), nlq.ContextInput{MetricFormat: view.MetricFormat, Locale: view.Locale, Strategy: view.Strategy, Topic: view.Topic, TopicVersion: view.TopicVersion, Topics: view.Topics, Question: view.Question, Relations: view.Relations, Constraints: view.Constraints, Metrics: view.Metrics}, view.Tier)
 			if err != nil {
 				t.Fatal("mandatory headroom observation", err)
 			}

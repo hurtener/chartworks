@@ -1,0 +1,15 @@
+strategy:single_topic
+locale:en
+topic:sales
+version:v3
+question:Compare reviewed sum and unknown count
+metric_definitions:shared-versioned-v1; each root requires every referenced exact topic/version/kind/ID definition below
+metrics[sales:total]:Reviewed total
+metric_dependency_refs[sales:total]:["d0","d1"]
+metrics[sales:unknown]:Reviewed unknown
+metric_dependency_refs[sales:unknown]:["d0","d2"]
+metric_namespace[n0]:{"topic":"sales","version":"v3"}
+definition_identity:[namespace,kind,entity_id]
+metric_dependency_definition[d0] identity:["n0","column","orders:amount"] value:{"dataset":"orders","column":{"id":"amount","source_name":"amount_usd","nullable":true},"meaning":"USD; unknown remains NULL"}
+metric_dependency_definition[d1] identity:["n0","measure","total"] value:{"id":"total","aggregation":"sum","scope":"paid orders","keys":["division","order_id"],"filter":"status = P","meaning":"total"}
+metric_dependency_definition[d2] identity:["n0","measure","unknown"] value:{"id":"unknown","aggregation":"count","scope":"paid orders","keys":["division","order_id"],"filter":"status = P","meaning":"unknown"}

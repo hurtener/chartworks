@@ -53,7 +53,7 @@ type clarificationTopicPin struct {
 	BindingDigest string
 }
 
-func clarificationContext(e identity.Envelope, admitted []admittedTopic) string {
+func clarificationPins(admitted []admittedTopic) []clarificationTopicPin {
 	pins := make([]clarificationTopicPin, 0, len(admitted))
 	for _, item := range admitted {
 		pin := clarificationTopicPin{Topic: item.id, Version: item.publication.State.Version, Digest: item.publication.Digest, Revision: item.publication.State.Revision}
@@ -70,6 +70,11 @@ func clarificationContext(e identity.Envelope, admitted []admittedTopic) string 
 		pins = append(pins, pin)
 	}
 	sort.Slice(pins, func(i, j int) bool { return pins[i].Topic < pins[j].Topic })
+	return pins
+}
+
+func clarificationContext(e identity.Envelope, admitted []admittedTopic) string {
+	pins := clarificationPins(admitted)
 	return readexec.Hash(struct {
 		Schema                 int
 		Tenant, Actor, Session string
@@ -142,13 +147,17 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	for _, index := range order {
 		item := &admitted[index]
 		input := inputs[item.id]
+		seed, seedErr := applicabilityForTopic(ctx, *item)
+		if seedErr != nil {
+			return seedErr
+		}
 		if !item.hasRules {
 			if len(input.Answers)+len(input.LegacyChoices) > 0 {
 				return clarificationFailure(in.Locale, "answers", "no_reviewed_policy")
 			}
 			continue
 		}
-		evaluation, err := rulesets.ResolvePublishedClarifications(item.publication, item.rules, input)
+		evaluation, err := rulesets.ResolvePublishedClarificationsWithTerms(item.publication, item.rules, input, seed)
 		if err != nil {
 			return err
 		}
@@ -215,6 +224,7 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 		}
 	}
 	maskAnswers, maskResolutions := inferenceRedactions(in, admitted)
+	result.protectedRedact = protectedTextRedactor(maskAnswers, append(semantics.CloneClarificationResolutions(redactions), maskResolutions...))
 	redactions = append(redactions, maskResolutions...)
 	safeQuestion := semantics.RedactClarificationText(in.Question, maskAnswers, redactions)
 	questionDigest := sha256.Sum256([]byte(safeQuestion))
@@ -249,6 +259,9 @@ func (s *Service) prepareClarifications(ctx context.Context, e identity.Envelope
 	}
 	if len(result.Resolutions) == 0 && !missing {
 		result.Request.AnswerContext = ""
+	}
+	if err := captureApplicability(ctx, in, admitted, result); err != nil {
+		return err
 	}
 	if err := crossTopicClarificationConflict(admitted, in.Locale); err != nil {
 		return err
@@ -441,7 +454,7 @@ func (s *Service) preflightClarificationBudget(ctx context.Context, in RouteRequ
 	if err != nil {
 		return "", err
 	}
-	input := nlq.ContextInput{Locale: in.Locale, Strategy: result.Outcome, Topic: admitted[0].id, TopicVersion: admitted[0].publication.State.Version, Topics: topicRevisions(admitted), Question: in.Question, Constraints: constraints, Metrics: metrics}
+	input := nlq.ContextInput{MetricFormat: nlq.MetricFormatSharedV2, Locale: in.Locale, Strategy: result.Outcome, Topic: admitted[0].id, TopicVersion: admitted[0].publication.State.Version, Topics: topicRevisions(admitted), Question: in.Question, Constraints: constraints, Metrics: metrics}
 	var last error
 	for _, tier := range []nlq.Tier{nlq.TierLow, nlq.TierMedium, nlq.TierHigh} {
 		if _, err := s.assembler.Assemble(ctx, input, tier); err == nil {
@@ -479,6 +492,11 @@ func (s *Service) ReplayClarifications(ctx context.Context, e identity.Envelope,
 }
 
 func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope, previous RouteResult, applications *[]MetricPeriodApplication) ([]readexec.BusinessConstraint, string, error) {
+	var err error
+	ctx, err = replayApplicabilityContext(ctx, e, previous)
+	if err != nil {
+		return nil, "", err
+	}
 	in := cloneRouteRequest(previous.Request)
 	ids, err := normalizeRequest(in)
 	if err != nil {
@@ -498,6 +516,11 @@ func (s *Service) replayClarifications(ctx context.Context, e identity.Envelope,
 		admitted = append(admitted, item)
 	}
 	if !contextMatches(admitted, in.Context) {
+		return nil, "", readexec.ErrBinding
+	}
+	// Replay uses the retained context as-is. It only reconstructs governed
+	// selections, never calls fresh Route/Assemble or upgrades an omitted format.
+	if previous.Context != nil && !previous.Context.MetricFormat.Valid() {
 		return nil, "", readexec.ErrBinding
 	}
 	current := RouteResult{Outcome: previous.Outcome, conceptReplay: true, groupingIntentReplay: true}

@@ -105,6 +105,11 @@ func (s *Service) replayQueryClarifications(ctx context.Context, e identity.Enve
 	if !ok {
 		return nil, exec.ErrBinding
 	}
+	var originErr error
+	ctx, originErr = s.withQueryApplicability(ctx, e, record, record.Route.Request, "query.execute", "replay")
+	if originErr != nil {
+		return nil, originErr
+	}
 	constraints, binding, err := replayer.ReplayClarifications(ctx, e, record.Route)
 	if err != nil {
 		return nil, err
@@ -288,11 +293,15 @@ func redactClarificationInstructions(in QuestionRequest, route nlqroute.RouteRes
 	redact := func(items []nlq.Instruction) []nlq.Instruction {
 		out := append([]nlq.Instruction(nil), items...)
 		for i := range out {
-			out[i].Text = semantics.RedactClarificationText(out[i].Text, in.Answers, route.Resolutions)
+			out[i].Text = route.RedactProtectedText(out[i].Text, in.Answers)
 		}
 		return out
 	}
 	in.Question = route.Request.Question
+	in.Examples = cloneRouteExamples(in.Examples)
+	for i := range in.Examples {
+		in.Examples[i].Text = route.RedactProtectedText(in.Examples[i].Text, in.Answers)
+	}
 	in.EditBase = redact(in.EditBase)
 	in.Hints = redact(in.Hints)
 	in.ExampleInput = redact(in.ExampleInput)

@@ -245,3 +245,17 @@ binds the complete current admitted catalog and uses typed ambiguity rather than
 question rewriting. Optional protected route JSON requires no migration.
 The ordinary SDK/PG consumer is `TestGeneratedTopicGroundedGroupingIntentRecorded`.
 Recorded evidence does not qualify live language quality or the full phase.
+
+## Explicit shared-metric presentation version
+
+The [generation-packet contract](../contracts/generation-packet-v2.md#explicit-metric-wrapper-format-and-retained-compatibility)
+now separates fresh `shared-versioned-v2` wrappers from omitted historical format.
+All exact definition bodies, versioned namespaces and root edges remain mandatory;
+legacy prompt/JSON/seal/lineage compatibility is covered by pre-change synthetic
+goldens. Route and clarification budget assembly select the explicit fresh format;
+retained replay and generation/provider refitting preserve their selected version.
+The token tiers, semantic selection and analytical proof contracts are unchanged.
+`TestMetricFormat*` covers the pure/service boundaries and
+`TestMetricFormatLegacyStoredReplayAcceptance` names the separate synthetic
+PostgreSQL/SDK legacy replay and fresh-child continuation control. A named test is
+not a qualification claim until its exact-source run is recorded.

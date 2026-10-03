@@ -60,6 +60,11 @@ func (s *Service) reusableLearningBase(ctx context.Context, e identity.Envelope,
 	if correction != "" || evidence == nil || !clarificationBindingSchemaValid(q) || evidence.BaseSQL == "" {
 		return QueryRecord{}, "", false, nil
 	}
+	if evidence.Binding.SchemaVersion == 5 {
+		if err := s.verifyGroupedFactLearningReceipt(ctx, e, q, a, provedBase...); err != nil {
+			return QueryRecord{}, "", false, err
+		}
+	}
 	// Known values in an allegedly unbound base are grounds not to learn, even
 	// when executable SQL has passed its different native-safety requirements.
 	if len(q.Parameters) == 0 && evidence.Binding.SchemaVersion == 1 {
@@ -135,11 +140,11 @@ func ownedExampleApplicable(example ExampleRecord, a admission) bool {
 	if example.Origin.BindingPolicy == "" {
 		return true
 	}
-	if groupedFactLearningUnsupported(a) {
-		return false
-	}
 	if scopedLearningPolicy(example.Origin.BindingPolicy) {
 		return scopedExampleApplicable(example.Origin.BindingPolicy, a)
+	}
+	if ordinaryOwnedLearningUnsupported(a) {
+		return false
 	}
 	if example.Origin.BindingPolicy != OwnedExamplePolicy || !hasActiveBusinessEvidence(a.route) {
 		return false

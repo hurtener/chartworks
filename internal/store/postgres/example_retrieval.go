@@ -26,7 +26,7 @@ func (d *DB) SelectGenerationExamples(ctx context.Context, scope store.Scope, q 
 	}
 	switch q.ScopedPolicy {
 	case "":
-	case nlqexec.ScopedScalarExamplePolicy, nlqexec.ScopedGroupedExamplePolicy, nlqexec.ScopedSelectionExamplePolicy:
+	case nlqexec.ScopedScalarExamplePolicy, nlqexec.ScopedGroupedExamplePolicy, nlqexec.ScopedSelectionExamplePolicy, nlqexec.ScopedGroupedFactExamplePolicy:
 		policies = append(policies, q.ScopedPolicy)
 	default:
 		return nil, store.ErrInvalid

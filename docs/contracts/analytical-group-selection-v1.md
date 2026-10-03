@@ -51,7 +51,8 @@ use the same authority and immutable-lineage fences. The separately reconstructe
 [owned-base learning consumers](owned-example-learning-v1.md#scoped-population-reconstruction)
 admit schemas 2, 3 and 4 under distinct current-placement policies. Exact
 authenticated reconstruction, current applicability and native proof remain
-mandatory; schema 5 has no qualified learning consumer.
+mandatory. Schema 5 has its own distinct current-grouped-fact learning policy,
+documented in that same contract; it cannot borrow schema 4 custody.
 
 Migration 078 appends the closed v11 analytical shape without rewriting old rows.
 V0-v10 and schemas 1-3 retain their prior evidence meanings and cannot claim v11

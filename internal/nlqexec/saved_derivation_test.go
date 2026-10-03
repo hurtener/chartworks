@@ -9,6 +9,8 @@ import (
 
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/gateway"
+	"github.com/hurtener/chartworks/internal/nlqroute"
+	"github.com/hurtener/chartworks/internal/semantics"
 	"github.com/hurtener/chartworks/internal/store"
 )
 
@@ -199,5 +201,17 @@ func TestSavedDerivationCorrectionRequiresFreshNativeProof(t *testing.T) {
 	}
 	if err := s.verifySavedDerivationExecution(context.Background(), e, child, a); !errors.Is(err, exec.ErrBinding) {
 		t.Fatal("zero validator plans accepted", err)
+	}
+}
+
+func TestProtectedSavedDerivationWitnessNormalization(t *testing.T) {
+	parent := unitQuery(unitEnvelope(t), "parent", "topic", "v1", "context", false)
+	parent.Route.Applicability = &nlqroute.ApplicabilityEvidence{Query: parent.ID, PriorQuery: "pending", PriorDigest: exec.Hash("pending"), OriginalQuestion: exec.Hash("original"), Topics: []nlqroute.ApplicabilityTopic{{Matches: []semantics.ClarificationTermMatch{{Pattern: "customer", Version: "v1", Specificity: 1}}}}}
+	child := savedDerivationCopy(parent, "copy")
+	proof := *parent.Route.Applicability
+	proof.Query, proof.PriorQuery, proof.PriorDigest = child.ID, parent.ID, exec.Hash(parent.Route.Applicability)
+	child.Route.Applicability = &proof
+	if !SavedDerivationCreationValid(child, parent) {
+		t.Fatal("protected saved derivation changed its semantic meaning")
 	}
 }

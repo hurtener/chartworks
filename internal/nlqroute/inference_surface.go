@@ -454,3 +454,23 @@ func protectedCalendarGroupingMeaning(in RouteRequest, admitted []admittedTopic)
 	}
 	return nil
 }
+
+// The closure owns detached, read-only masking inputs. It is never serialized or
+// printed as data, and cannot establish applicability or source permissions.
+func protectedTextRedactor(answers []semantics.ClarificationAnswer, resolutions []semantics.ClarificationResolution) func(string, []semantics.ClarificationAnswer) string {
+	base := semantics.CloneClarificationAnswers(answers)
+	masks := semantics.CloneClarificationResolutions(resolutions)
+	return func(text string, extra []semantics.ClarificationAnswer) string {
+		all := append(semantics.CloneClarificationAnswers(base), semantics.CloneClarificationAnswers(extra)...)
+		return semantics.RedactClarificationText(text, all, masks)
+	}
+}
+
+// RedactProtectedText shares the admitted inference mask with downstream input
+// storage. A deserialized route has only its canonical resolved-value mask.
+func (r RouteResult) RedactProtectedText(text string, answers []semantics.ClarificationAnswer) string {
+	if r.protectedRedact != nil {
+		return r.protectedRedact(text, answers)
+	}
+	return semantics.RedactClarificationText(text, answers, r.Resolutions)
+}

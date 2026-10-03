@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hurtener/chartworks/internal/auth"
 	"github.com/hurtener/chartworks/internal/config"
 	"github.com/hurtener/chartworks/internal/exec"
 	"github.com/hurtener/chartworks/internal/identity"
@@ -40,6 +41,8 @@ func TestSQLRecoveryScopedExampleRequalificationAcceptance(t *testing.T) {
 		{"grouped_periods", 3, true, false},
 		{"group_selection_periods", 4, true, false},
 		{"null_group_selection", 4, false, true},
+		{"grouped_fact_periods_selection", 5, true, false},
+		{"grouped_fact_null_only", 5, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newScopedRequalificationFixture(t, tc.schema, tc.periods, tc.nullOnly)
@@ -99,7 +102,7 @@ ALTER TABLE analytics.orders ALTER COLUMN total_usd DROP NOT NULL; ALTER TABLE a
 		}
 	}
 	for i, r := range refunds {
-		if _, err := f.admin.Exec(t.Context(), `INSERT INTO analytics.refunds VALUES($1,$2,$3,$4)`, 200+i, r.order, r.date, r.amount); err != nil {
+		if _, err := f.admin.Exec(t.Context(), `INSERT INTO analytics.refunds VALUES($1,$2,$3,$4)`, 731042619+i, r.order, r.date, r.amount); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -183,6 +186,18 @@ ALTER TABLE analytics.orders ALTER COLUMN total_usd DROP NOT NULL; ALTER TABLE a
 	}
 	effect := &semantics.ClarificationEffect{Kind: "entity", Target: target, Operator: "eq", Nulls: nulls, MaxLength: 64, Values: values}
 	pattern := semantics.ClarificationPattern{ID: "group", Version: "v1", Targets: []semantics.Reference{target}, Provenance: semantics.RuleProvenance{Kind: semantics.ProvenanceHuman, Evidence: "synthetic-reviewed-group-selection"}, Policy: &semantics.ClarificationPolicy{SchemaVersion: 1, When: semantics.ClarificationWhen{AnyTerms: []string{"selected groups"}}, Why: "Select complete aligned groups."}, Slots: []semantics.ClarificationSlot{{ID: "region", Prompt: "Which reviewed group?", Required: true, Kind: semantics.SlotText, Sensitivity: semantics.LiteralSensitive, Effect: effect}}}
+	if schema == 5 {
+		idTarget := semantics.Reference{Kind: semantics.KindColumn, Dataset: pack.Datasets[3].ID, ID: "refund_id"}
+		amountTarget := semantics.Reference{Kind: semantics.KindColumn, Dataset: pack.Datasets[3].ID, ID: "amount_usd"}
+		pattern.Targets = append(pattern.Targets, idTarget, amountTarget)
+		factNulls := "include"
+		if nullOnly {
+			factNulls = "only"
+		}
+		pattern.Slots = append(pattern.Slots,
+			semantics.ClarificationSlot{ID: "minimum_id", Prompt: "Which minimum refund identity?", Required: true, Kind: semantics.SlotNumber, Sensitivity: semantics.LiteralSensitive, Effect: &semantics.ClarificationEffect{Kind: "number", Target: idTarget, Operator: "gte", Nulls: "exclude", Unit: "count", Precision: 19}},
+			semantics.ClarificationSlot{ID: "minimum_amount", Prompt: "Which refund amount population?", Required: true, Kind: semantics.SlotNumber, Sensitivity: semantics.LiteralSensitive, Effect: &semantics.ClarificationEffect{Kind: "number", Target: amountTarget, Operator: "gte", Nulls: factNulls, Unit: "USD", Precision: 12, Scale: 2}})
+	}
 	definition := semantics.RuleSetDefinition{SchemaVersion: 1, ID: "selected-group-rules", Version: "rules-v1", Topic: published.State.Topic, TopicVersion: published.State.Version, PackDigest: published.Digest, Patterns: []semantics.ClarificationPattern{pattern}}
 	ruleDraft, err := rules.Save(t.Context(), actor, rulesets.SaveRequest{Definition: definition, Change: "Review final group selection"})
 	if err != nil {
@@ -210,7 +225,7 @@ ALTER TABLE analytics.orders ALTER COLUMN total_usd DROP NOT NULL; ALTER TABLE a
 func (f *scopedRequalificationFixture) anchor(t *testing.T, year, selected string) nlqexec.QuestionRequest {
 	t.Helper()
 	question := "Net revenue and Known amount count difference"
-	if f.schema == 4 {
+	if f.schema == 4 || f.schema == 5 {
 		question += " for selected groups"
 	}
 	if f.periods {
@@ -220,7 +235,7 @@ func (f *scopedRequalificationFixture) anchor(t *testing.T, year, selected strin
 		question += " by Customer region"
 	}
 	request := nlqexec.QuestionRequest{Topic: f.pack.Topic, Context: f.pack.Datasets[0].Source.Context, Question: question, Locale: nlq.LanguageEnglish, MetricIDs: []string{"net_revenue", "known_difference"}, Kinds: []string{"kpi", "dimension"}, LimitPerKind: 10}
-	if f.schema == 4 {
+	if f.schema == 4 || f.schema == 5 {
 		pending, err := f.query.Preflight(t.Context(), f.actor, nlqexec.PreflightRequest{QuestionRequest: request})
 		if err != nil || pending.Route.Clarification == nil {
 			t.Fatal("current group preflight", err)
@@ -231,11 +246,41 @@ func (f *scopedRequalificationFixture) anchor(t *testing.T, year, selected strin
 		}
 		request.ClarificationQuery, request.AnswerContext = pending.QueryID, pending.Route.AnswerContext
 		request.Answers = []semantics.ClarificationAnswer{{Topic: f.pack.Topic, TopicVersion: f.published.State.Version, RulesetVersion: f.definition.Version, Pattern: "group", PatternVersion: "v1", Slot: "region", Value: &value}}
+		if f.schema == 5 {
+			minimum := "731042619"
+			if year == "2025" {
+				minimum = "731042627"
+			}
+			amount := semantics.ClarificationValue{Number: &semantics.ClarificationNumberInput{Value: "17", Unit: "USD"}}
+			if f.nullOnly {
+				amount = semantics.ClarificationValue{Null: true}
+			}
+			for _, answer := range []struct {
+				slot  string
+				value semantics.ClarificationValue
+			}{
+				{"minimum_id", semantics.ClarificationValue{Number: &semantics.ClarificationNumberInput{Value: minimum, Unit: "count"}}},
+				{"minimum_amount", amount},
+			} {
+				value := answer.value
+				request.Answers = append(request.Answers, semantics.ClarificationAnswer{Topic: f.pack.Topic, TopicVersion: f.published.State.Version, RulesetVersion: f.definition.Version, Pattern: "group", PatternVersion: "v1", Slot: answer.slot, Value: &value})
+			}
+		}
+
 	}
 	return request
 }
 
 func (f *scopedRequalificationFixture) republish(t *testing.T, version string, changedAggregate bool) {
+	t.Helper()
+	f.republishEdited(t, version, func(pack *semantics.TopicPack) {
+		if changedAggregate {
+			pack.Measures[0].Aggregation = semantics.AggregationAverage
+		}
+	})
+}
+
+func (f *scopedRequalificationFixture) republishEdited(t *testing.T, version string, edit func(*semantics.TopicPack)) {
 	t.Helper()
 	previous, err := f.rules.Read(t.Context(), f.actor, f.pack.Topic, "")
 	if err != nil {
@@ -247,9 +292,7 @@ func (f *scopedRequalificationFixture) republish(t *testing.T, version string, c
 	}
 	pack := cloneTopic(t, f.pack)
 	pack.Version, pack.Description = version, "Explicitly reviewed scoped example qualification "+version
-	if changedAggregate {
-		pack.Measures[0].Aggregation = semantics.AggregationAverage
-	}
+	edit(&pack)
 	saved, err := f.draft.Save(t.Context(), f.author, drafts.SaveRequest{Expected: current.Metadata.Revision, Pack: pack, Change: "Current scoped example semantic review"})
 	if err != nil {
 		t.Fatal("save current topic", err)
@@ -339,11 +382,25 @@ func (f *scopedRequalificationFixture) assertResult(t *testing.T, result nlqexec
 		}
 		return
 	}
+	refunds := f.refunds
+	if f.schema == 5 {
+		refunds = nil
+		minimum := 731042619
+		if year == "2025" {
+			minimum = 731042627
+		}
+		for i, r := range f.refunds {
+			if 731042619+i < minimum || f.nullOnly && r.amount != nil || !f.nullOnly && r.amount != nil && *r.amount < 17 {
+				continue
+			}
+			refunds = append(refunds, r)
+		}
+	}
 	if !f.periods {
 		year = ""
 	}
-	expected := groupedOwnedOracle(f.orders, f.refunds, year, f.periods, false, false)
-	if f.schema == 4 {
+	expected := groupedOwnedOracle(f.orders, refunds, year, f.periods, false, false)
+	if f.schema == 4 || f.schema == 5 {
 		if f.nullOnly {
 			selected = "NULL"
 		}
@@ -378,10 +435,11 @@ func (f *scopedRequalificationFixture) assertResult(t *testing.T, result nlqexec
 func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 	t.Helper()
 	ctx := t.Context()
+	wantExamples := int64(2)
 	scope, _ := store.NewScope(f.actor.Tenant(), f.actor.User())
 	metadata := support.Raw(t, f.f.dsn)
-	policy := map[int]string{2: nlqexec.ScopedScalarExamplePolicy, 3: nlqexec.ScopedGroupedExamplePolicy, 4: nlqexec.ScopedSelectionExamplePolicy}[f.schema]
-	analyticalVersion := map[int]string{2: exec.AnalyticalScopedPopulationsVersion, 3: exec.AnalyticalGroupedOwnedPopulationsVersion, 4: exec.AnalyticalGroupedSelectionVersion}[f.schema]
+	policy := map[int]string{2: nlqexec.ScopedScalarExamplePolicy, 3: nlqexec.ScopedGroupedExamplePolicy, 4: nlqexec.ScopedSelectionExamplePolicy, 5: nlqexec.ScopedGroupedFactExamplePolicy}[f.schema]
+	analyticalVersion := map[int]string{2: exec.AnalyticalScopedPopulationsVersion, 3: exec.AnalyticalGroupedOwnedPopulationsVersion, 4: exec.AnalyticalGroupedSelectionVersion, 5: exec.AnalyticalGroupedFactsVersion}[f.schema]
 	oldAnchor := f.anchor(t, "2026", "PRIVATE_REQUAL_731")
 	oldPlan, err := f.query.Plan(ctx, f.actor, nlqexec.PlanRequest{QuestionRequest: oldAnchor})
 	if err != nil {
@@ -395,6 +453,23 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 		t.Fatal("original scoped run", err)
 	}
 	f.assertResult(t, oldRun, "2026", "PRIVATE_REQUAL_731")
+	if f.schema == 5 {
+		calls, reads := f.model.requests.Load(), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+		for _, who := range []struct{ user, session string }{{"other-user", f.actor.Session()}, {f.actor.User(), "other-session"}} {
+			claims := f.f.token.claims(f.actor.Tenant(), who.user, phase18Scopes(f.actor.Tenant(), true))
+			claims["session"] = who.session
+			other, err := f.f.token.verifier.Verify(ctx, f.f.token.sign(t, claims, nil), auth.HTTP)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = f.query.Feedback(ctx, other, nlqexec.FeedbackRequest{QueryID: oldPlan.QueryID, Verdict: "positive"}); err == nil {
+				t.Fatal("foreign actor/session learned fact base")
+			}
+		}
+		if calls != f.model.requests.Load() || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) || count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != 0 {
+			t.Fatal("denied feedback performed work")
+		}
+	}
 	if err = f.query.Feedback(ctx, f.actor, nlqexec.FeedbackRequest{QueryID: oldPlan.QueryID, Verdict: "positive"}); err != nil {
 		t.Fatal("scoped feedback", err)
 	}
@@ -415,12 +490,43 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 		t.Fatal("original value-free custody", err)
 	}
 	originalHash := scopedRequalificationExampleHash(old)
+	if f.schema == 5 {
+		bundle, err := f.query.ExportExamples(ctx, f.actor, nlqexec.ExampleExportRequest{Topic: f.pack.Topic, Limit: 8})
+		if err != nil || bundle.SchemaVersion != 3 || len(bundle.Examples) != 1 {
+			t.Fatal("original grouped-fact portable v3", err)
+		}
+		portable := bundle.Examples[0]
+		if portable.SchemaVersion != 3 || portable.SQL != f.sql || portable.Origin.BindingPolicy != policy {
+			t.Fatal("original portable base custody")
+		}
+		portable.Question += " Imported review copy."
+		portable.Digest = exec.Hash([]any{policy, f.pack.Topic, portable.Question, portable.SQL, portable.ParameterSchema})
+		imported, err := f.query.ImportExample(ctx, f.actor, nlqexec.ExampleImportRequest{Anchor: oldAnchor, Example: portable})
+		if err != nil || imported.ID == old.ID || imported.State != "candidate" || imported.ReviewedAt != nil || imported.ParameterSchema != nil {
+			t.Fatal("import did not require separate candidate review", err)
+		}
+		repeated, err := f.query.ImportExample(ctx, f.actor, nlqexec.ExampleImportRequest{Anchor: oldAnchor, Example: portable})
+		if err != nil || repeated.ID != imported.ID || repeated.Version != imported.Version {
+			t.Fatal("portable replay duplicated evidence", err)
+		}
+		wantExamples++
+	}
 	if _, err = f.query.RequalifyExample(ctx, f.actor, nlqexec.ExampleRequalificationRequest{ExampleID: old.ID, ExpectedVersion: old.Version, Anchor: oldAnchor}); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("unchanged original requalified", err)
 	}
 
 	f.republish(t, "scoped-requal-v2", false)
 	currentAnchor := f.anchor(t, "2025", "PRIVATE_CURRENT_732")
+	if f.schema == 5 {
+		stalePlan, err := f.query.Plan(ctx, f.actor, nlqexec.PlanRequest{QuestionRequest: currentAnchor})
+		if err != nil {
+			t.Fatal("current plan before requalification", err)
+		}
+		staleQuery, err := f.f.db.ReadQuery(ctx, scope, stalePlan.QueryID)
+		if err != nil || len(staleQuery.ExampleSelection.Selected) != 0 {
+			t.Fatal("publication promoted stale/unchecked examples", err)
+		}
+	}
 	server := httptest.NewServer(nlqapi.ExecutionHandler(f.f.token.verifier, f.query, http.NotFoundHandler()))
 	defer server.Close()
 	claims := f.f.token.claims(f.actor.Tenant(), f.actor.User(), phase18Scopes(f.actor.Tenant(), true))
@@ -462,7 +568,7 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 		t.Fatal("original evidence lineage was rewritten")
 	}
 	encoded, _ := json.Marshal([]any{fresh.Question, fresh.SQL, fresh.ParameterSchema, fresh.Origin})
-	for _, value := range []string{"PRIVATE_REQUAL_731", "PRIVATE_CURRENT_732", "2026-01-01", "2025-01-01"} {
+	for _, value := range []string{"PRIVATE_REQUAL_731", "PRIVATE_CURRENT_732", "2026-01-01", "2025-01-01", "731042619", "731042627"} {
 		if strings.Contains(string(encoded), value) {
 			t.Fatal("private current or original owned value entered reusable example")
 		}
@@ -487,7 +593,7 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 	if chat != scopedRequalificationChatCalls(f.model) || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
 		t.Fatal("qualification retry generated SQL or executed source rows")
 	}
-	if count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != 2 {
+	if count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != wantExamples {
 		t.Fatal("qualification retry duplicated evidence")
 	}
 
@@ -515,8 +621,14 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 	if f.periods {
 		wantParameters = 4
 	}
-	if f.schema == 4 && !f.nullOnly {
+	if (f.schema == 4 || f.schema == 5) && !f.nullOnly {
 		wantParameters++
+	}
+	if f.schema == 5 {
+		wantParameters++
+		if !f.nullOnly {
+			wantParameters++
+		}
 	}
 	if len(stored.Parameters) != wantParameters {
 		t.Fatal("owned values became model slots or disappeared")
@@ -533,6 +645,19 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 	if !used {
 		t.Fatal("fresh candidate did not actually reach generation")
 	}
+	if f.schema == 5 {
+		f.model.mu.Lock()
+		wire := strings.Join(f.model.requestBodies, "\n")
+		f.model.mu.Unlock()
+		if !strings.Contains(wire, policy) {
+			t.Fatal("used receipt lacks actual grouped-fact demonstration")
+		}
+		for _, private := range []string{"PRIVATE_REQUAL_731", "PRIVATE_CURRENT_732", "731042619", "731042627"} {
+			if strings.Contains(wire, private) {
+				t.Fatal("historical/current owned value reached model")
+			}
+		}
+	}
 	currentRun := nlqexec.RunRequest{QueryID: currentPlan.QueryID, Operation: currentPlan.QueryID + "-current"}
 	result, err := f.query.Run(ctx, f.actor, currentRun)
 	if err != nil {
@@ -547,6 +672,24 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 	f.assertResult(t, replay, "2025", "PRIVATE_CURRENT_732")
 	if calls != f.model.requests.Load() || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
 		t.Fatal("current terminal replay repeated model/source row execution")
+	}
+
+	if f.schema == 5 && !f.nullOnly {
+		emptyAnchor := f.anchor(t, "2025", "absent")
+		emptyPlan, err := f.query.Plan(ctx, f.actor, nlqexec.PlanRequest{QuestionRequest: emptyAnchor})
+		if err != nil {
+			t.Fatal("learned empty-group plan", err)
+		}
+		emptyQuery, err := f.f.db.ReadQuery(ctx, scope, emptyPlan.QueryID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertScopedExampleUsage(t, emptyQuery, fresh, 5)
+		emptyResult, err := f.query.Run(ctx, f.actor, nlqexec.RunRequest{QueryID: emptyPlan.QueryID, Operation: emptyPlan.QueryID + "-empty"})
+		if err != nil {
+			t.Fatal("learned empty-group execution", err)
+		}
+		f.assertResult(t, emptyResult, "2025", "absent")
 	}
 
 	bundle, err := client.ExportExamplesNLQ(ctx, nlqexec.ExampleExportRequest{Topic: f.pack.Topic, Limit: 8})
@@ -613,6 +756,10 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 		"sql": func(x *nlqexec.PortableExample) {
 			x.SQL = strings.Replace(x.SQL, "g.value-r.value", "g.value+r.value", 1)
 		},
+		"count_population": func(x *nlqexec.PortableExample) { x.SQL = strings.Replace(x.SQL, "COUNT(r.amount_usd)", "COUNT(*)", 1) },
+		"join": func(x *nlqexec.PortableExample) {
+			x.SQL = strings.Replace(x.SQL, "r.order_id=o.order_id", "r.order_id=o.customer_id", 1)
+		},
 		"contract": func(x *nlqexec.PortableExample) {
 			x.Origin.Requalification.ContractDigest = exec.Hash("forged-current-contract")
 		},
@@ -622,6 +769,9 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 		},
 		"evidence":  func(x *nlqexec.PortableExample) { x.PositiveEvidence++ },
 		"downgrade": func(x *nlqexec.PortableExample) { x.SchemaVersion = 3 },
+	}
+	if f.schema == 2 {
+		delete(mutations, "join")
 	}
 	for name, mutate := range mutations {
 		t.Run("reject_"+name, func(t *testing.T) {
@@ -639,7 +789,7 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 	if chat != scopedRequalificationChatCalls(f.model) || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
 		t.Fatal("hostile v5 replay generated SQL or executed source rows")
 	}
-	if count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != 2 {
+	if count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != wantExamples {
 		t.Fatal("hostile import changed candidate population")
 	}
 	for _, mutation := range []string{`origin=origin-'requalification'`, `origin=jsonb_set(origin,'{binding_policy}','"current-owned-predicates-v1"')`, `sql_text=sql_text||' '`} {
@@ -660,8 +810,48 @@ func (f *scopedRequalificationFixture) qualify(t *testing.T) {
 	if chat != scopedRequalificationChatCalls(f.model) || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
 		t.Fatal("semantic rejection generated SQL or executed source rows")
 	}
-	if count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != 2 {
+	if count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != wantExamples {
 		t.Fatal("failed semantic proof persisted a candidate")
 	}
 	assertOriginal()
+	if f.schema == 5 {
+		f.republishEdited(t, "scoped-requal-v4", func(pack *semantics.TopicPack) {
+			pack.Measures[0].Aggregation = semantics.AggregationSum
+			for i := range pack.Measures {
+				if pack.Measures[i].ID == "refund_known" {
+					pack.Measures[i].Field.ID = "refund_id"
+				}
+			}
+		})
+		countAnchor := f.anchor(t, "2025", "PRIVATE_CURRENT_732")
+		chat, reads = scopedRequalificationChatCalls(f.model), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+		if _, err = f.query.RequalifyExample(ctx, f.actor, nlqexec.ExampleRequalificationRequest{ExampleID: old.ID, ExpectedVersion: old.Version, Anchor: countAnchor}); !errors.Is(err, exec.ErrAnalyticalMismatch) {
+			t.Fatal("changed COUNT companion requalified old fact base", err)
+		}
+		if chat != scopedRequalificationChatCalls(f.model) || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) || count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != wantExamples {
+			t.Fatal("COUNT rejection performed replacement work")
+		}
+		assertOriginal()
+		f.republishEdited(t, "scoped-requal-v5", func(pack *semantics.TopicPack) {
+			for i := range pack.Measures {
+				if pack.Measures[i].ID == "refund_known" {
+					pack.Measures[i].Field.ID = "amount_usd"
+				}
+			}
+			for i := range pack.Joins {
+				if pack.Joins[i].ID == "orders-refunds" {
+					pack.Joins[i].Left.ID = "refund_id"
+				}
+			}
+		})
+		joinAnchor := f.anchor(t, "2025", "PRIVATE_CURRENT_732")
+		chat, reads = scopedRequalificationChatCalls(f.model), count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`)
+		if _, err = f.query.RequalifyExample(ctx, f.actor, nlqexec.ExampleRequalificationRequest{ExampleID: old.ID, ExpectedVersion: old.Version, Anchor: joinAnchor}); err == nil {
+			t.Fatal("changed reviewed join requalified old fact base")
+		}
+		if chat != scopedRequalificationChatCalls(f.model) || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) || count(t, metadata, `SELECT count(*) FROM chartworks.nlq_examples`) != wantExamples {
+			t.Fatal("join rejection performed replacement work")
+		}
+		assertOriginal()
+	}
 }

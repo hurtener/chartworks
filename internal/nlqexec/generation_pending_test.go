@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -202,5 +203,36 @@ func TestGenerationPendingChildReplayRevalidatesEvidence(t *testing.T) {
 		if _, err := s.reusablePlanResult(ctx, q, unitEnvelope(t), request, q.Operation, q.Parent); err == nil || GenerationProblem(err) != nil {
 			t.Fatal("stale child decision replayed", err)
 		}
+	}
+}
+
+func TestLegacyPendingDigestRemainsByteCompatible(t *testing.T) {
+	s, q, in := pendingFixture(t)
+	legacy := *q.GenerationPending
+	legacy.Input = nil
+	oldDigest := exec.Hash(struct {
+		ID         string
+		Request    QuestionRequest
+		Binding    string
+		Choices    []generationdecision.Choice
+		Questions  []string
+		Outcome    string
+		Expires    time.Time
+		Round      int
+		Refinement *RefineRequest
+		Mode       string
+	}{legacy.Problem.QueryID, legacy.Request, legacy.Binding, legacy.Problem.Choices, legacy.Problem.Questions, legacy.Problem.Outcome, legacy.Problem.ExpiresAt, legacy.Round, legacy.Refinement, legacy.Problem.Resume})
+	legacy.Problem.AnswerContext = oldDigest
+	q.GenerationPending = &legacy
+	if generationPendingDigest(&legacy) != oldDigest || !GenerationPendingValid(q) {
+		t.Fatal("omitted legacy input commitment changed digest bytes")
+	}
+	_, err := s.reusablePlanResult(t.Context(), q, unitEnvelope(t), in, q.Operation, "")
+	if p := GenerationProblem(err); p == nil || p.AnswerContext != oldDigest {
+		t.Fatal("legacy pending replay changed", err)
+	}
+	encoded, _ := json.Marshal(q)
+	if strings.Contains(string(encoded), `"input"`) {
+		t.Fatal("omitted commitment acquired a wire field")
 	}
 }

@@ -505,9 +505,9 @@ outer-join placement and broader grouped-filter recovery are still open.
 `TestSQLRecoveryGroupedFactAcceptance` own the new compiler/native/service checks.
 The acceptance fixture computes its numeric/NULL oracle independently and checks
 current replacement, exact receipt tampering and zero-model terminal replay.
-Schema5 learning/owned-example consumption is explicitly ineligible; separately
-restored schemas2-4 retain their existing policies. Execution evidence is recorded
-separately from this inventory.
+The later grouped primary-fact learning continuation below adds a distinct schema5
+owned-base policy; schemas2-4 retain their existing policies. Execution evidence
+is recorded separately from this inventory.
 
 ## Fresh bounded scalar equality entailment
 
@@ -524,3 +524,20 @@ receipt/replay/refinement and populated-upgrade qualification. Automatic learnin
 and owned-example consumption for schema6 remain ineligible. This is a fresh
 bounded extension under local qualification, not recovered historical code or a
 claim that generic scalar predicate propagation or wider SQL recovery is complete.
+
+
+## Grouped primary-fact owned-base learning continuation
+
+Binding schema 5 uses the distinct value-free
+`current-owned-grouped-fact-predicates-v1` example policy through the existing
+producer, review, current-origin retrieval, protected portability and explicit
+requalification services. Current v12 compilation establishes applicability;
+retained JSON and older owned policies cannot supply that authority. Schema 6
+scalar-entailment learning remains closed. No token limit, grouped LEFT/shared
+fact capability, origin rewrite or new migration is introduced.
+
+The owned-example contract describes custody. Scoped native lifecycle cases
+extend the existing independent SUM/COUNT/NULL oracles with exact fact predicates,
+optional periods/final selection, current values, actual-use receipts and hostile
+origin/SQL controls. Test names alone do not establish execution or live quality;
+exact-source RED/GREEN and independent review evidence are required separately.

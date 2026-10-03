@@ -170,8 +170,8 @@ func TestSQLRecoveryGroupedFactRecordCustody(t *testing.T) {
 			t.Fatal("fact binder family substituted", schema)
 		}
 	}
-	if learningPolicyForBinding(5) != "" {
-		t.Fatal("unqualified fact learning policy")
+	if learningPolicyForBinding(5) != ScopedGroupedFactExamplePolicy {
+		t.Fatal("distinct fact learning policy missing")
 	}
 	if _, err := (&Service{}).expectedAnalytical(t.Context(), testEnvelope(t), q, a); err == nil {
 		t.Fatal("saved JSON replaced authenticated replay")

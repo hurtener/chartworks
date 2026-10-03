@@ -245,3 +245,6 @@ type NLQConceptEvidence = nlqroute.ConceptEvidence
 
 // NLQConceptOption carries a current reviewed reference for explicit replanning.
 type NLQConceptOption = nlqroute.ConceptOption
+
+// NLQGroundedCalendarPolicy enables versioned grounded calendar and zone assertions.
+const NLQGroundedCalendarPolicy = nlqroute.GroundedCalendarPolicy

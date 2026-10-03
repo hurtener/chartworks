@@ -7,6 +7,19 @@ import (
 	"strings"
 )
 
+// MetricFormat selects model-facing wrappers only. The empty value preserves
+// historical shared and nonshared bytes, JSON seals and retained-query digests.
+// It is never inferred from prompt text and does not change semantic evidence.
+type MetricFormat string
+
+const (
+	MetricFormatLegacyV1 MetricFormat = ""
+	MetricFormatSharedV2 MetricFormat = "shared-versioned-v2"
+)
+
+// Valid reports whether the context owner recognizes the retained format.
+func (f MetricFormat) Valid() bool { return f == MetricFormatLegacyV1 || f == MetricFormatSharedV2 }
+
 // A definition identity is scoped to an exact topic version, not a coincidentally
 // equal entity label in another topic. Unscoped legacy metrics cannot share it.
 type metricDefinitionIdentity struct {
@@ -49,6 +62,10 @@ func metricDefinitionScope(input ContextInput, metric PinnedMetric) (string, str
 // Only byte-identical definitions at the same typed versioned identity share a
 // rendered body. Conflicts fail closed before a context seal can be issued.
 func metricRendering(input ContextInput) (string, error) {
+	if !input.MetricFormat.Valid() {
+		return "", &ValidationError{Code: CodeUnsupported, Path: "metric_format"}
+	}
+
 	definitions := map[metricDefinitionIdentity]string{}
 	var order []metricDefinitionIdentity
 	edges := make([][]metricDefinitionIdentity, len(input.Metrics))
@@ -79,6 +96,9 @@ func metricRendering(input ContextInput) (string, error) {
 	keys := map[metricDefinitionIdentity]string{}
 	for i, id := range order {
 		keys[id] = "d" + strconv.Itoa(i)
+	}
+	if input.MetricFormat == MetricFormatSharedV2 {
+		return renderSharedMetricsV2(input.Metrics, definitions, order, edges, keys), nil
 	}
 	var out strings.Builder
 	out.WriteString("metric_definitions:shared-versioned-v1; each root requires every referenced exact topic/version/kind/ID definition below\n")
@@ -121,4 +141,43 @@ func renderScopedMetrics(input ContextInput) string {
 		return ""
 	} // cloneAndValidateInput rejects this before rendering.
 	return value
+}
+
+// V2 removes repeated wrapper words only. Body bytes are not parsed, normalized,
+// abbreviated or omitted. The explicit UTF-8 byte length makes raw bodies
+// unambiguous even to an independent decoder when they contain delimiters.
+func renderSharedMetricsV2(metrics []PinnedMetric, definitions map[metricDefinitionIdentity]string, order []metricDefinitionIdentity, edges [][]metricDefinitionIdentity, keys map[metricDefinitionIdentity]string) string {
+	var out strings.Builder
+	out.WriteString("metric_definitions:shared-versioned-v2; each root requires all refs; dN:[namespace,kind,entity_id,utf8_bytes] exact_body\n")
+	for i, metric := range metrics {
+		out.WriteString(renderItem(LaneMetrics, metric.ID, metric.Text))
+		refs := make([]string, 0, len(edges[i]))
+		for _, id := range edges[i] {
+			refs = append(refs, keys[id])
+		}
+		raw, _ := json.Marshal(refs)
+		fmt.Fprintf(&out, "refs[%s]:%s\n", metric.ID, raw)
+	}
+	type namespace struct {
+		Topic   string `json:"topic,omitempty"`
+		Version string `json:"version,omitempty"`
+		Root    string `json:"unscoped_root,omitempty"`
+	}
+	namespaces := map[namespace]string{}
+	for _, id := range order {
+		ns := namespace{id.Topic, id.Version, id.Root}
+		if _, ok := namespaces[ns]; !ok {
+			name := "n" + strconv.Itoa(len(namespaces))
+			namespaces[ns] = name
+			raw, _ := json.Marshal(ns)
+			fmt.Fprintf(&out, "namespace[%s]:%s\n", name, raw)
+		}
+	}
+	for _, id := range order {
+		ns := namespace{id.Topic, id.Version, id.Root}
+		body := definitions[id]
+		raw, _ := json.Marshal([]any{namespaces[ns], id.Kind, id.ID, len(body)})
+		fmt.Fprintf(&out, "%s:%s %s\n", keys[id], raw, body)
+	}
+	return out.String()
 }

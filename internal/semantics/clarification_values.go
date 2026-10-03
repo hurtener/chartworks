@@ -336,8 +336,16 @@ func normalizeClarificationTerm(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(value)), " ")
 }
 
+const clarificationOpaqueToken = "\ufffc"
+
 func clarificationTokens(value string) string {
-	return " " + strings.Join(strings.FieldsFunc(strings.ToLower(value), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }), " ") + " "
+	value = strings.ReplaceAll(strings.ToLower(value), "[redacted answer]", clarificationOpaqueToken)
+	return " " + strings.Join(strings.FieldsFunc(value, func(r rune) bool { return r != '\ufffc' && !unicode.IsLetter(r) && !unicode.IsNumber(r) }), " ") + " "
+}
+
+func containsClarificationTerm(tokens, term string) bool {
+	normalized := clarificationTokens(term)
+	return !strings.Contains(normalized, clarificationOpaqueToken) && strings.Contains(tokens, normalized)
 }
 
 func containsClarificationString(values []string, target string) bool {

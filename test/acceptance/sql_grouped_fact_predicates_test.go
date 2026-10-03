@@ -376,6 +376,9 @@ func runGroupedFactAcceptance(t *testing.T, raw, onlyNull, periods, selected boo
 		if _, err := bad.Run(t.Context(), actor, run); err == nil {
 			t.Fatal("tampered fact replay accepted", fault)
 		}
+		if err := bad.Feedback(t.Context(), actor, nlqexec.FeedbackRequest{QueryID: plan.QueryID, Verdict: "positive"}); err == nil {
+			t.Fatal("tampered fact evidence learned a reusable base", fault)
+		}
 	}
 	if calls != model.requests.Load() || reads != count(t, metadata, `SELECT count(*) FROM chartworks.read_attempts`) {
 		t.Fatal("tamper rejection executed work")
@@ -384,8 +387,8 @@ func runGroupedFactAcceptance(t *testing.T, raw, onlyNull, periods, selected boo
 		t.Fatal("fact feedback", err)
 	}
 	examples, err := query.Examples(t.Context(), actor, pack.Topic, 8)
-	if err != nil || len(examples) != 0 {
-		t.Fatal("schema5 silently borrowed old learning policy", err)
+	if err != nil || len(examples) != 1 || examples[0].Origin.BindingPolicy != nlqexec.ScopedGroupedFactExamplePolicy || examples[0].SQL != sql || examples[0].ParameterSchema != nil || examples[0].State != "candidate" {
+		t.Fatal("schema5 lost distinct value-free owned learning base", err)
 	}
 	// Establish a genuinely current, reviewed schema-1 owned example, then
 	// prove a schema-5 request excludes it before prompt selection. This is a
@@ -416,10 +419,19 @@ func runGroupedFactAcceptance(t *testing.T, raw, onlyNull, periods, selected boo
 			t.Fatal(err)
 		}
 		controls, err := query.Examples(t.Context(), actor, pack.Topic, 8)
-		if err != nil || len(controls) != 1 || controls[0].Origin.BindingPolicy != nlqexec.OwnedExamplePolicy {
+		if err != nil || len(controls) != 2 {
 			t.Fatal("missing authentic owned example control", err)
 		}
-		active, err := query.ExampleState(t.Context(), actor, nlqexec.ExampleStateRequest{ExampleID: controls[0].ID, ExpectedVersion: controls[0].Version, State: "active", ReviewNote: "Reviewed current ordinary base"})
+		var ordinaryBase nlqexec.ExampleRecord
+		for _, example := range controls {
+			if example.Origin.BindingPolicy == nlqexec.OwnedExamplePolicy {
+				ordinaryBase = example
+			}
+		}
+		if ordinaryBase.ID == "" {
+			t.Fatal("missing authentic ordinary owned control")
+		}
+		active, err := query.ExampleState(t.Context(), actor, nlqexec.ExampleStateRequest{ExampleID: ordinaryBase.ID, ExpectedVersion: ordinaryBase.Version, State: "active", ReviewNote: "Reviewed current ordinary base"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -431,8 +443,8 @@ func runGroupedFactAcceptance(t *testing.T, raw, onlyNull, periods, selected boo
 			t.Fatal("fact consumption negative", err)
 		}
 		evidence, err := f.db.ReadQuery(t.Context(), scope, planned.QueryID)
-		if err != nil || evidence.ExampleSelection.Eligibility == nil || evidence.ExampleSelection.Eligibility.CurrentOwnedPredicates || evidence.ExampleSelection.Eligibility.CurrentScopedPolicy != "" {
-			t.Fatal("unsupported schema5 advertised owned-example eligibility", err)
+		if err != nil || evidence.ExampleSelection.Eligibility == nil || evidence.ExampleSelection.Eligibility.CurrentOwnedPredicates || evidence.ExampleSelection.Eligibility.CurrentScopedPolicy != nlqexec.ScopedGroupedFactExamplePolicy {
+			t.Fatal("schema5 advertised the wrong owned-example eligibility", err)
 		}
 		for _, pick := range evidence.ExampleSelection.Selected {
 			if pick.ExampleID == active.ID {

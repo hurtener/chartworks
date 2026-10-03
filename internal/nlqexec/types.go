@@ -485,6 +485,11 @@ func New(router Router, topicsReader TopicReader, sourcesReader SourceReader, va
 	if router == nil || topicsReader == nil || sourcesReader == nil || validator == nil || executor == nil || engine == nil || repo == nil {
 		return nil, store.ErrInvalid
 	}
+	if routed, ok := router.(*nlqroute.Service); ok {
+		if reader, ok := repo.(nlqroute.ApplicabilityReader); ok {
+			router = routed.WithApplicabilityReader(reader)
+		}
+	}
 	return &Service{router: router, topics: topicsReader, sources: sourcesReader, validator: validator, executor: executor, engine: engine, repo: repo}, nil
 }
 

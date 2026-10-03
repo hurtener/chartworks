@@ -1,7 +1,9 @@
 # Exact scalar predicate entailment
 
-Status: fresh bounded implementation under local qualification. This is
-not recovered capability evidence. The [observed missing case](../reviews/scalar-predicate-characterization.md)
+Status: fresh bounded implementation with local PostgreSQL 17 qualification.
+The [qualification ledger](../reviews/scalar-predicate-entailment-qualification.md)
+pins exact source checkpoints, failed/corrected gates and remaining scope limits.
+This is not recovered capability evidence. The [observed missing case](../reviews/scalar-predicate-characterization.md)
 is an explicit paid-order selection already required by every selected scalar
 SUM/COUNT leaf, including the reviewed parent filters on refund leaves.
 

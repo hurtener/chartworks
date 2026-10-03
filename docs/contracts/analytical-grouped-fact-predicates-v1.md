@@ -68,10 +68,12 @@ This remains subject to the existing signed authority, immutable source custody,
 retained lifecycle and current admission policies.
 
 Schemas 2-4 retain their separately implemented
-[owned-base learning policies](owned-example-learning-v1.md). Schema 5 deliberately
-has no learning or owned-example consumption policy yet; feedback can be recorded,
-but unknown policy cannot fall back to ordinary learning. A separate authenticated
-base/requalification consumer must be implemented and qualified before enabling it.
+[owned-base learning policies](owned-example-learning-v1.md). Schema 5 uses the
+distinct `current-owned-grouped-fact-predicates-v1` policy with exact authenticated
+base reconstruction, current sealed-family applicability and separately reviewed
+requalification. It cannot borrow another owned policy; unknown schemas and
+schema 6 scalar entailment remain excluded. Historical private fact values,
+periods and final selections are never reusable example content.
 
 ## Unsupported and qualification boundary
 
@@ -117,5 +119,7 @@ origin/unit/timezone, misplaced predicates and swapped private lane values.
 `TestGroupedFactsExtendedOwnershipBoundaries` keeps the typed refusals for a
 shared joined dimension and an affected LEFT lane. These checks extend evidence
 for the existing exclusive-primary INNER contract; they add no production scope.
-The preserved-root LEFT case remains unimplemented, and schema 5 learning remains
-ineligible. Exact executed source and logs accompany each qualification result.
+The preserved-root LEFT case remains unimplemented. The schema-5 learning
+continuation is documented separately in the owned-base contract; this matrix
+alone does not qualify that lifecycle. Exact executed source and logs accompany
+each qualification result.
