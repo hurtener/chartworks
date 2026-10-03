@@ -47,8 +47,11 @@ effects retain their exact fact identity. Replay reconstructs SQL, parameters an
 the complete binding receipt, compares the current source coordinates, then proves
 exact output ordinals through native/analytical validation before exposing retained
 results. Original Plan replay, saved copies and current/retained source admission
-use the same authority and immutable-lineage fences. Reusable learning remains
-ineligible for scoped binding schemas 2, 3 and 4.
+use the same authority and immutable-lineage fences. The separately reconstructed
+[owned-base learning consumers](owned-example-learning-v1.md#scoped-population-reconstruction)
+admit schemas 2, 3 and 4 under distinct current-placement policies. Exact
+authenticated reconstruction, current applicability and native proof remain
+mandatory; schema 5 has no qualified learning consumer.
 
 Migration 078 appends the closed v11 analytical shape without rewriting old rows.
 V0-v10 and schemas 1-3 retain their prior evidence meanings and cannot claim v11

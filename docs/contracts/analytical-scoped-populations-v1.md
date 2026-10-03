@@ -58,8 +58,9 @@ Business binding receipt schema 2 records each effect's fact population, exact
 scoped-constraint digest and final parameter indexes. Its public projection is
 value-free. The protected base statement is retained separately, and replay
 reconstructs the same full statement, parameter vector and placement receipt.
-Receipt 2 is accepted only with v9. Automatic reusable-example learning remains
-ineligible until it has an independently implemented scoped-placement consumer.
+Receipt 2 is accepted only with v9. The separately reconstructed [owned-base learning consumer](owned-example-learning-v1.md#scoped-population-reconstruction)
+admits schema 2 only after exact authenticated binder reconstruction and current
+scoped applicability; its policy does not itself grant predicate authority.
 
 Ordinary fresh plans still issue v8 unless they select the explicitly reviewed
 known-amount completeness capability described below. V9 scoped singleton

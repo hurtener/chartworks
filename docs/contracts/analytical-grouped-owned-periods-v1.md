@@ -54,8 +54,9 @@ The protected period-free SQL is retained separately for refinements. Refinement
 replays the parent's authenticated applications to recover its grouping, then
 routes the new request and binds new current applications to the unbound base.
 It never carries the parent's private period parameters into the edit prompt.
-Automatic reusable-example learning remains ineligible for schema 3 until an
-independently implemented owned-placement consumer exists.
+The separately reconstructed [owned-base learning consumer](owned-example-learning-v1.md#scoped-population-reconstruction)
+admits schema 3 only after exact authenticated binder reconstruction and current
+scoped applicability. Eligibility alone does not establish actual prompt use.
 
 V10 receipts use `independent_owned_grouped_populations`, exact output ordinals,
 and the full SQL/parameter and contract digests. Terminal execution replay

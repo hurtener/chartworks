@@ -283,13 +283,43 @@ func TestRequestControlNestedClaimKeepsParentFenceUnderSaturation(t *testing.T) 
 			if _, err := runner.Cancel(ctx, e, task.ID); err != nil {
 				return err
 			}
-			if _, err := db.PulseRequest(ctx, i, true, limits.Lease); !errors.Is(err, store.ErrConflict) {
+			// Force the legitimate observer-first ordering without elapsed sleeps.
+			observe, stop := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+			defer stop()
+			select {
+			case <-ctx.Done():
+			case <-observe.Done():
+				return errors.New("parent cancellation did not cancel nested handler")
+			}
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				t.Errorf("parent cancellation stopped nested handler with %v", ctx.Err())
+			}
+			if _, err := db.PulseRequest(ctx, i, true, limits.Lease); !errors.Is(err, context.Canceled) {
+				t.Errorf("cancelled caller renewed child: %v", err)
+			}
+			assertNoPublication := func(probe context.Context, want error) {
+				publicationReached := false
+				err := db.requestControlTransaction(probe, func(ctx context.Context, tx pgx.Tx) error {
+					if _, err := requestFenceTx(ctx, tx, i); err != nil {
+						return err
+					}
+					publicationReached = true
+					return completeRequestTx(ctx, tx, i)
+				})
+				if !errors.Is(err, want) || publicationReached {
+					t.Errorf("child publication guard: reached=%t err=%v want=%v", publicationReached, err, want)
+				}
+			}
+			assertNoPublication(ctx, context.Canceled)
+			// Caller cancellation can stop I/O before the row fence is checked.
+			// A separate bounded denial probe must still prove that the persisted
+			// parent cancellation blocks the same signed child invocation.
+			probe, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+			defer cancel()
+			if _, err := db.PulseRequest(probe, i, true, limits.Lease); !errors.Is(err, store.ErrConflict) {
 				t.Errorf("cancelled parent allowed child renewal: %v", err)
 			}
-			err := db.requestControlTransaction(ctx, func(ctx context.Context, tx pgx.Tx) error { _, err := requestFenceTx(ctx, tx, i); return err })
-			if !errors.Is(err, store.ErrConflict) {
-				t.Errorf("cancelled parent allowed child publication: %v", err)
-			}
+			assertNoPublication(probe, store.ErrConflict)
 			return failure
 		})
 		if err == nil || result.State != "failed" {
