@@ -1,5 +1,7 @@
 import {boundedJSON} from '../report-viewer/app.js';
 
+export const APP_MAX_RESULT = 4 << 20;
+export const APP_MAX_WIRE = 16 << 20;
 export const AUTHORING_VERSION = 'report-authoring-v1';
 export const authoringTool = action => `reporting_authoring_${action}_v1`;
 const modelCodes = new Set(['invalid_request','forbidden','conflict','unavailable','busy','stale_validation','limit_exceeded','unauthenticated','not_found','expired','cancelled_or_timed_out']);
@@ -7,12 +9,13 @@ export function appError(code, unknown = false) { const e = new Error(modelCodes
 export function copyData(value) { boundedJSON(value, 2 << 20); return JSON.parse(JSON.stringify(value)); }
 export function validID(value) { return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value); }
 export function unpack(result) {
-  boundedJSON(result);
+  boundedJSON(result, APP_MAX_WIRE);
   let body = result?.structuredContent;
-  if (!body) { const text = result?.content?.find(item => item.type === 'text')?.text; if (typeof text !== 'string') throw appError('unavailable'); try { body = JSON.parse(text); } catch { throw appError('unavailable'); } }
+  if (!body) { const text = result?.content?.find(item => item.type === 'text')?.text; if (typeof text !== 'string' || text.length > APP_MAX_RESULT) throw appError('unavailable'); try { body = JSON.parse(text); } catch { throw appError('unavailable'); } }
   if (result.isError || body?.error) throw appError(body?.error?.code, body?.error?.outcome === 'unknown');
   if (!body || !Object.hasOwn(body,'result')) throw appError('unavailable');
-  return copyData(body.result);
+  boundedJSON(body.result, APP_MAX_RESULT);
+  return JSON.parse(JSON.stringify(body.result));
 }
 export function titleFor(metadata, locale = 'en-US') { return metadata?.find(m => m.locale === locale)?.title || metadata?.[0]?.title || 'Untitled report'; }
 export function newDefinition(title, locale='en-US', timezone='UTC') {

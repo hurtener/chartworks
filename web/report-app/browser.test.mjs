@@ -32,7 +32,7 @@ window.dispatch=(name,a)=>{
  if(name==='reporting_run')return wrap({version:'reporting-view-v1',kind:'report',run:'new-run',state:'completed',code:'',target});
  if(name==='reporting_authoring_preview_v1'){privateRuns.add('private-one');return wrap({id:'private-one',kind:'report',document:a.report,revision:a.revision,private:true,state:'admitted',pages:[]});}
  if(name==='reporting_authoring_execute_v1')return wrap({id:a.run,kind:'report',document:state.id,revision:state.draft_revision,private:true,state:'completed',pages:[]});
- if(name==='reporting_view'){if(denyPrivate&&privateRuns.has(a.run))return failure('forbidden');return wrap(makeView(a.run));}
+ if(name==='reporting_view'){if(denyPrivate&&privateRuns.has(a.run))return failure('not_found');return wrap(makeView(a.run));}
  return failure('forbidden');
 };
 frame.addEventListener('load',()=>{if(embedded)frame.contentWindow.postMessage({protocol:'chartworks-report-app-v1',method:'bootstrap',frame:'fixture-frame',generation:1,params:{challenge:'fixture-challenge-0001'}},location.origin);});

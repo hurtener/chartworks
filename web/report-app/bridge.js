@@ -1,8 +1,8 @@
 import {boundedJSON} from '../report-viewer/app.js';
-import {appError} from './model.js';
+import {appError, APP_MAX_WIRE} from './model.js';
 
 export const REPORT_APP_TOOLS = new Set(['reporting_search','reporting_describe','reporting_runs','reporting_view','reporting_run','reporting_filter_options',...['capabilities','drafts','read','create','save','preview','execute','widget'].map(a=>`reporting_authoring_${a}_v1`)]);
-const wireLimit=12<<20;
+const wireLimit=APP_MAX_WIRE;
 function bridgeOrigin(origin,secure=false) { try { const u=new URL(origin); return u.origin===origin && (secure?u.protocol==='https:':['https:','http:'].includes(u.protocol)); } catch { return false; } }
 class ParentTransport {
   constructor(win,expectedOrigin=null) { this.win=win;this.parent=win.parent;this.origin=expectedOrigin;this.ready=false;this.closed=false;this.sequence=0;this.pending=new Map();this.oncontext=()=>{};this.onresult=()=>{};this.onclose=()=>{};this.onfailure=()=>{};this.listener=e=>this.receive(e);win.addEventListener('message',this.listener);this.unload=()=>this.close();win.addEventListener('pagehide',this.unload); }
