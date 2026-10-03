@@ -48,6 +48,19 @@ func frozenReuseEligible(m reporting.RunManifest) bool {
 	return true
 }
 
+// An immutable nonsharing run may execute independently of foreign custody.
+// It cannot silently abandon custody already recorded for its own operation.
+func frozenReuseBypassTx(ctx context.Context, tx pgx.Tx, m reporting.RunManifest) error {
+	var owned bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chartworks.frozen_reuse_owners WHERE tenant_id=$1 AND owner_operation=$2)`, m.Tenant, m.ID).Scan(&owned); err != nil {
+		return err
+	}
+	if owned {
+		return store.ErrConflict
+	}
+	return nil
+}
+
 func frozenReuseOwnerTx(ctx context.Context, tx pgx.Tx, m reporting.RunManifest) (o frozenReuseOwner, err error) {
 	err = tx.QueryRow(ctx, `SELECT owner_operation,owner_fence,reservation_number,reservation_fence,settlement,settled_attempt,completed FROM chartworks.frozen_reuse_owners WHERE tenant_id=$1 AND reuse_key=$2 AND private_session=$3 FOR UPDATE`, m.Tenant, m.ReuseKey, frozenReusePartition(m)).Scan(&o.operation, &o.fence, &o.number, &o.reservationFence, &o.settlement, &o.attempt, &o.completed)
 	return o, err
@@ -165,11 +178,7 @@ func (d *DB) ClaimFrozenReuse(ctx context.Context, inv jobs.Invocation, id strin
 		}
 		m := *r.Manifest
 		if !frozenReuseEligible(m) {
-			_, readErr = frozenReuseOwnerTx(ctx, tx, m)
-			if readErr == nil {
-				return store.ErrConflict
-			}
-			if !errors.Is(readErr, pgx.ErrNoRows) {
+			if readErr = frozenReuseBypassTx(ctx, tx, m); readErr != nil {
 				return readErr
 			}
 			owner = true
@@ -274,16 +283,10 @@ func (d *DB) ReserveFrozenQuery(ctx context.Context, inv jobs.Invocation, option
 		if options.Number < 1 || options.Number > 3 || options.Preview != m.Private || r.Result != nil {
 			return store.ErrConflict
 		}
-		o, readErr := frozenReuseOwnerTx(ctx, tx, m)
 		if !frozenReuseEligible(m) {
-			if readErr == nil {
-				return store.ErrConflict
-			}
-			if errors.Is(readErr, pgx.ErrNoRows) {
-				return nil
-			}
-			return readErr
+			return frozenReuseBypassTx(ctx, tx, m)
 		}
+		o, readErr := frozenReuseOwnerTx(ctx, tx, m)
 		if errors.Is(readErr, pgx.ErrNoRows) {
 			return store.ErrConflict
 		}

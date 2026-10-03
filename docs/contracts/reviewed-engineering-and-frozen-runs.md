@@ -189,3 +189,10 @@ transparently recovered, and a retained but unfinished/partial origin does not
 authorize a follower to re-execute: these cases remain typed fail-closed results
 until the original operation can safely continue. No automatic administrative
 clearance or complete crash-recovery lifecycle is claimed.
+
+The immutable request's explicit zero reuse age still requests independent fresh
+work, even if another operation owns a matching canonical key. Such a nonsharing
+run is fenced by its own operation and does not join or replace foreign custody.
+The bypass is refused if custody already belongs to that same operation; an
+eligible run cannot use missing or changed custody as permission to start source
+work independently. Sealed manifests cannot be changed to opt out later.
